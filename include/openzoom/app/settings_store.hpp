@@ -2,8 +2,10 @@
 
 #include <QRect>
 #include <QString>
+#include <QMap>
 
 #include "openzoom/app/color_schemes.hpp"
+#include "openzoom/common/recording_contract.hpp"
 
 #include <optional>
 #include <vector>
@@ -21,6 +23,22 @@ enum class ViewportRateMode {
 enum class ViewportFitModeSetting {
     Fill = 0,
     Fit = 1,
+};
+
+enum class CameraAccelerationMode {
+    Automatic = 0,
+    ForceAccelerated = 1,
+    ForceCompatibility = 2,
+};
+
+struct CameraAccelerationSetting {
+    CameraAccelerationMode mode{CameraAccelerationMode::Automatic};
+    bool automaticFallback{false};
+    QString reason;
+    QString decidedOn;
+    // Diagnostic ladder result from the last successful accelerated session:
+    // "zeroCopy", "acceleratedCopy", or "compatibility".
+    QString lastRung;
 };
 
 struct AdvancedConfig {
@@ -48,7 +66,6 @@ struct AdvancedConfig {
     bool vlmAssistEnabled{false};
     bool assistiveOverlayEnabled{true};
     bool stabilizationEnabled{false};
-    float stabilizationStrength{0.85f};
     int displayColorMode{0};
     color_schemes::ColorScheme colorScheme{};
     float contrast{1.0f};
@@ -96,7 +113,10 @@ struct AssistiveSettings {
         QStringLiteral("Reply in the same language as the user's request unless they ask for "
                        "another language. Keep answers concise and easy to understand.")};
     QString vlmApiUrl;
+    // Runtime-only secret. SettingsStore deliberately never serializes this
+    // value; SettingsController loads it from Windows Credential Manager.
     QString vlmApiKey;
+    QString vlmCredentialId;
     QString vlmModel;
     QString vlmPrompt;
     QString tesseractPath;
@@ -127,15 +147,34 @@ struct PresetDefinition {
 };
 
 struct PersistentSettings {
+    // Empty selects UserDataPaths::DefaultRoot(). Keeping the empty value in
+    // settings lets the Documents folder follow Windows account policy.
+    QString userDataRoot;
     int cameraIndex{-1};
+    QString cameraFormatStableId;
+    QString microphoneEndpointId;
+    // Load-only bridge for the removed global compatibility checkbox. The
+    // first selected camera converts it to a per-camera Compatibility mode.
+    bool legacyWiderCameraCompatibility{false};
+    QString cameraAccelerationAttempt;
+    QMap<QString, CameraAccelerationSetting> cameraAcceleration;
     int rotationQuarterTurns{0};
     bool virtualJoystick{false};
+    bool zoomWheelAcceleration{true};
     bool controlsCollapsed{true};
     bool simpleUiMode{true};
     int advancedPanelWidth{520};
     ViewportRateMode viewportRateMode{ViewportRateMode::AutoUpTo120};
     ViewportFitModeSetting viewportFitMode{ViewportFitModeSetting::Fill};
+    RecordingCanvasMode recordingCanvasMode{RecordingCanvasMode::Source};
+    QMap<QString, bool> uiSectionStates;
     QRect assistiveOverlayGeometry;
+    QString annotationColor{QStringLiteral("#fff000")};
+    int annotationWidthPixels{8};
+    bool annotationCaptureOnExit{true};
+    bool annotationDashed{false};
+    QString annotationShapeKind{QStringLiteral("rectangle")};
+    int annotationTextSizePixels{36};
     bool setupAssistantDeclined{false};
     QString selectedPresetId;
     AdvancedConfig currentConfig{};
@@ -148,6 +187,22 @@ struct PersistentSettings {
 
 QString ResolveSettingsPath();
 void EnsureSettingsDirectory(const QString& path);
+
+enum class LoadStatus {
+    Loaded,
+    Missing,
+    Unreadable,
+    InvalidJson,
+    UnsupportedVersion,
+};
+
+struct LoadResult {
+    LoadStatus status{LoadStatus::Missing};
+    std::optional<PersistentSettings> settings;
+    QString error;
+};
+
+LoadResult LoadDetailed(const QString& path);
 std::optional<PersistentSettings> Load(const QString& path);
 bool Save(const QString& path, const PersistentSettings& settings);
 

@@ -8,7 +8,7 @@ namespace openzoom {
 
 class SettingsController {
 public:
-    SettingsController();
+    explicit SettingsController(QString settingsPath = {});
 
     const settings::PersistentSettings& Settings() const noexcept;
     settings::PersistentSettings& MutableSettings() noexcept;
@@ -24,10 +24,19 @@ public:
         settings::AdvancedConfig config, const QString& name);
 
     bool Save(const settings::AdvancedConfig& current);
+    QString TakeStartupNotice();
+    QString LastError() const;
 
 private:
+    void InitializeDefaults();
+    void LoadProtectedSecrets();
+    bool PrepareProtectedSecrets(QString* credentialToRemove);
+
     QString settingsPath_;
     settings::PersistentSettings settings_;
+    QString startupNotice_;
+    QString lastError_;
+    bool protectedSecretReadFailed_{false};
 };
 
 } // namespace openzoom

@@ -104,7 +104,8 @@ no user ever starts the renamed app without their settings following them.
    `%APPDATA%/OpenZoom/settings.json` does, copy (not move) it to the new
    location on first run, then log one line. Leave the old file in place
    for at least three releases so downgrades keep working; document the
-   eventual cleanup in TODO.md. Add a `migratedFrom` field to the JSON so
+   eventual cleanup in [`00-status-and-priority.md`](00-status-and-priority.md).
+   Add a `migratedFrom` field to the JSON so
    support can tell.
 2. **Tool directory migration.** The Setup Assistant installs Tesseract
    and the NVIDIA runtime under `GenericDataLocation/OpenZoom/tools/`.

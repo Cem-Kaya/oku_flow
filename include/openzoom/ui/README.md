@@ -14,6 +14,9 @@ Currently exported:
 - `color_scheme_picker.hpp`: accessible reading-color swatches and custom editor
 - `wheel_safe_combo_box.hpp`: selectors and sliders that do not consume panel
   wheel scrolling
+- `live_status_text.hpp`: synchronized dynamic widget text and accessibility
+  names with silent/polite/assertive announcement policy and trailing-edge
+  coalescing
 - `ai_settings_dialog.hpp`: scrollable, sectioned provider settings with a
   visible built-in Codex prompt, dynamic model/reasoning catalog,
   permissions/workspace, VLM prompt, OCR, installed Windows voice/speed,

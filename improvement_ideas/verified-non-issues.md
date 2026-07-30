@@ -33,7 +33,7 @@ pattern-matches to a real bug class but is actually correct in this codebase.
   work completes.
 - **The real bug nearby:** destroying the *surface object / external memory / device
   buffers that queued kernels still reference* before the stream drains. That one is
-  real and filed as **S1** in [01-stability-threading.md](01-stability-threading.md).
+  real and filed as **S1** in [01-stability-threading.md](done/01-stability-threading.md).
   Fix S1; don't "fix" stream destruction in isolation.
 
 ## 4. "Capture loop races StopCapture/StartCapture on `sourceReader_`" (was S2)

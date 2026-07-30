@@ -52,6 +52,10 @@ CodexAppServerClient::CodexAppServerClient(QObject* parent)
     replyTimeoutTimer_ = new QTimer(this);
     replyTimeoutTimer_->setInterval(5000);
     connect(replyTimeoutTimer_, &QTimer::timeout, this, &CodexAppServerClient::ExpireTimedOutReplies);
+    turnWatchdogTimer_ = new QTimer(this);
+    turnWatchdogTimer_->setInterval(1000);
+    connect(turnWatchdogTimer_, &QTimer::timeout,
+            this, &CodexAppServerClient::CheckTurnWatchdog);
 
     connect(process_.get(), &QProcess::started, this, [this]() {
         emit ServerStateChanged(false, QStringLiteral("Connecting to Codex..."));
@@ -63,14 +67,17 @@ CodexAppServerClient::CodexAppServerClient(QObject* parent)
                                             : QCoreApplication::applicationVersion()}};
         SendRequest(QStringLiteral("initialize"),
                     QJsonObject{{QStringLiteral("clientInfo"), clientInfo}},
-                    [this](const QJsonObject&, const QJsonObject& error) {
-                        FinishInitialization(error);
+                    [this](const QJsonObject& result, const QJsonObject& error) {
+                        FinishInitialization(result, error);
                     });
     });
     connect(process_.get(), &QProcess::readyReadStandardOutput,
             this, &CodexAppServerClient::ConsumeStdout);
     connect(process_.get(), &QProcess::readyReadStandardError, this, [this]() {
-        const QString diagnostic = QString::fromUtf8(process_->readAllStandardError()).trimmed();
+        const QString diagnostic =
+            QString::fromUtf8(process_->readAllStandardError())
+                .trimmed()
+                .left(8192);
         if (!diagnostic.isEmpty()) {
             qWarning().noquote() << "codex app-server:" << diagnostic;
         }
@@ -180,9 +187,12 @@ void CodexAppServerClient::Shutdown()
     }
     process_->closeWriteChannel();
     process_->terminate();
-    if (!process_->waitForFinished(1000)) {
+    if (!process_->waitForFinished(250)) {
         process_->kill();
-        process_->waitForFinished(1000);
+        if (!process_->waitForFinished(250)) {
+            qWarning() << "Codex process did not exit within the bounded "
+                          "shutdown window";
+        }
     }
 }
 
@@ -324,17 +334,40 @@ void CodexAppServerClient::RequestVisionTurn(const QString& prompt,
 
 void CodexAppServerClient::InterruptTurn()
 {
+    RequestInterrupt(QStringLiteral("Assistant request stopped."));
+}
+
+void CodexAppServerClient::RequestInterrupt(const QString& reason)
+{
+    if (interruptRequested_) {
+        return;
+    }
+    interruptRequested_ = true;
+    interruptReason_ = reason;
+    interruptDeadlineMs_ =
+        QDateTime::currentMSecsSinceEpoch() + kInterruptGraceMs;
+    if (!turnWatchdogTimer_->isActive()) {
+        turnWatchdogTimer_->start();
+    }
     if (!initialized_) {
-        FinishActiveTurn({}, QStringLiteral("Assistant request stopped."), true);
+        FinishActiveTurn({}, reason, true);
         return;
     }
     if (activeThreadId_.isEmpty() || activeTurnId_.isEmpty()) {
-        FinishActiveTurn({}, QStringLiteral("Assistant request stopped."), true);
+        FinishActiveTurn({}, reason, true);
         return;
     }
     SendRequest(QStringLiteral("turn/interrupt"),
                 QJsonObject{{QStringLiteral("threadId"), activeThreadId_},
-                            {QStringLiteral("turnId"), activeTurnId_}});
+                            {QStringLiteral("turnId"), activeTurnId_}},
+                [this](const QJsonObject&, const QJsonObject& error) {
+                    if (!error.isEmpty() && IsTurnActive()) {
+                        emit ServerStateChanged(
+                            initialized_,
+                            ErrorMessage(error,
+                                         QStringLiteral("Codex did not acknowledge cancellation.")));
+                    }
+                });
 }
 
 void CodexAppServerClient::LoadConversation(const QString& threadId)
@@ -556,6 +589,10 @@ void CodexAppServerClient::ConsumeStdout()
     stdoutBuffer_.append(process_->readAllStandardOutput());
     qsizetype newline = -1;
     while ((newline = stdoutBuffer_.indexOf('\n')) >= 0) {
+        if (newline > kMaximumProtocolMessageBytes) {
+            FailProtocol(QStringLiteral("Codex sent an oversized protocol message."));
+            return;
+        }
         const QByteArray line = stdoutBuffer_.left(newline).trimmed();
         stdoutBuffer_.remove(0, newline + 1);
         if (line.isEmpty()) {
@@ -568,6 +605,9 @@ void CodexAppServerClient::ConsumeStdout()
             continue;
         }
         HandleMessage(document.object());
+    }
+    if (stdoutBuffer_.size() > kMaximumProtocolBufferBytes) {
+        FailProtocol(QStringLiteral("Codex protocol buffering exceeded the safe limit."));
     }
 }
 
@@ -599,6 +639,11 @@ void CodexAppServerClient::HandleMessage(const QJsonObject& message)
 
 void CodexAppServerClient::HandleNotification(const QString& method, const QJsonObject& params)
 {
+    if (IsTurnActive() &&
+        (method.startsWith(QStringLiteral("item/")) ||
+         method.startsWith(QStringLiteral("turn/")))) {
+        TouchTurnWatchdog();
+    }
     if (method == QStringLiteral("account/login/completed")) {
         if (params.value(QStringLiteral("success")).toBool()) {
             RefreshAccount();
@@ -627,8 +672,10 @@ void CodexAppServerClient::HandleNotification(const QString& method, const QJson
         if (threadId == activeThreadId_ && (activeTurnId_.isEmpty() || turnId == activeTurnId_)) {
             activeTurnId_ = turnId;
             const QString delta = params.value(QStringLiteral("delta")).toString();
-            activeText_ += delta;
-            emit TurnTextDelta(threadId, turnId, delta);
+            const QString accepted = AppendActiveText(delta);
+            if (!accepted.isEmpty()) {
+                emit TurnTextDelta(threadId, turnId, accepted);
+            }
         }
         return;
     }
@@ -640,7 +687,7 @@ void CodexAppServerClient::HandleNotification(const QString& method, const QJson
         const QJsonObject item = params.value(QStringLiteral("item")).toObject();
         if (item.value(QStringLiteral("type")).toString() == QStringLiteral("agentMessage") &&
             activeText_.trimmed().isEmpty()) {
-            activeText_ = item.value(QStringLiteral("text")).toString();
+            AppendActiveText(item.value(QStringLiteral("text")).toString());
         }
         return;
     }
@@ -657,9 +704,14 @@ void CodexAppServerClient::HandleNotification(const QString& method, const QJson
             error = turn.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString();
         }
         if (activeText_.trimmed().isEmpty()) {
-            activeText_ = FinalAgentText(turn);
+            AppendActiveText(FinalAgentText(turn));
         }
-        FinishActiveTurn(activeText_, error, status == QStringLiteral("interrupted"));
+        const bool interrupted =
+            status == QStringLiteral("interrupted") || interruptRequested_;
+        if (interrupted && error.isEmpty() && !interruptReason_.isEmpty()) {
+            error = interruptReason_;
+        }
+        FinishActiveTurn(activeText_, error, interrupted);
         return;
     }
     if (method == QStringLiteral("error")) {
@@ -708,7 +760,8 @@ void CodexAppServerClient::HandleServerRequest(const QJsonValue& id,
     }
 }
 
-void CodexAppServerClient::FinishInitialization(const QJsonObject& error)
+void CodexAppServerClient::FinishInitialization(const QJsonObject& result,
+                                                const QJsonObject& error)
 {
     if (!error.isEmpty()) {
         initialized_ = false;
@@ -716,12 +769,27 @@ void CodexAppServerClient::FinishInitialization(const QJsonObject& error)
         return;
     }
     initialized_ = true;
+    appServerIdentity_ =
+        result.value(QStringLiteral("userAgent")).toString().trimmed();
+    if (appServerIdentity_.isEmpty()) {
+        appServerIdentity_ = QStringLiteral("the installed Codex app-server");
+    }
     SendNotification(QStringLiteral("initialized"));
     emit ServerStateChanged(true, QStringLiteral("Codex ready"));
     SendRequest(QStringLiteral("model/list"),
                 QJsonObject{{QStringLiteral("limit"), 100},
                             {QStringLiteral("includeHidden"), false}},
-                [this](const QJsonObject& result, const QJsonObject&) {
+                [this](const QJsonObject& result, const QJsonObject& error) {
+                    if (!error.isEmpty()) {
+                        const QString fallback =
+                            QStringLiteral("Model discovery failed with %1. "
+                                           "Update the Codex CLI if its model cache is incompatible.")
+                                .arg(appServerIdentity_);
+                        emit ServerStateChanged(
+                            true,
+                            ErrorMessage(error, fallback));
+                        return;
+                    }
                     QStringList modelIds;
                     QJsonArray modelCatalog;
                     QString defaultImageModel;
@@ -844,7 +912,14 @@ void CodexAppServerClient::StartTurnOnThread(const QString& threadId)
     activeCodingEnabled_ = persistent && codingEnabled_;
     activeImagePath_ = pendingTurn_.imagePath;
     activeText_.clear();
+    activeTextTruncated_ = false;
     activeTurnId_.clear();
+    turnStartedAtMs_ = QDateTime::currentMSecsSinceEpoch();
+    lastTurnActivityMs_ = turnStartedAtMs_;
+    interruptRequested_ = false;
+    interruptDeadlineMs_ = 0;
+    interruptReason_.clear();
+    turnWatchdogTimer_->start();
     pendingTurn_ = {};
 
     QJsonObject params{
@@ -889,6 +964,13 @@ void CodexAppServerClient::FinishActiveTurn(const QString& text,
     activeInternetEnabled_ = false;
     activeCodingEnabled_ = false;
     interruptingForbiddenItem_ = false;
+    activeTextTruncated_ = false;
+    interruptRequested_ = false;
+    turnStartedAtMs_ = 0;
+    lastTurnActivityMs_ = 0;
+    interruptDeadlineMs_ = 0;
+    interruptReason_.clear();
+    turnWatchdogTimer_->stop();
     if (!imagePath.isEmpty()) {
         QFile::remove(imagePath);
     }
@@ -916,6 +998,77 @@ void CodexAppServerClient::RejectForbiddenAgentItem(const QJsonObject& item)
     InterruptTurn();
 }
 
+void CodexAppServerClient::TouchTurnWatchdog()
+{
+    lastTurnActivityMs_ = QDateTime::currentMSecsSinceEpoch();
+}
+
+void CodexAppServerClient::CheckTurnWatchdog()
+{
+    if (!IsTurnActive()) {
+        turnWatchdogTimer_->stop();
+        return;
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (interruptRequested_) {
+        if (interruptDeadlineMs_ > 0 && now >= interruptDeadlineMs_) {
+            FinishActiveTurn({}, interruptReason_.isEmpty()
+                                     ? QStringLiteral("Assistant cancellation timed out.")
+                                     : interruptReason_,
+                             true);
+        }
+        return;
+    }
+
+    const qint64 maximum =
+        activePersistent_ ? kPersistentTurnMaximumMs : kVisionTurnMaximumMs;
+    if (turnStartedAtMs_ > 0 && now - turnStartedAtMs_ >= maximum) {
+        RequestInterrupt(QStringLiteral("Assistant request reached its maximum duration."));
+        return;
+    }
+    if (lastTurnActivityMs_ > 0 &&
+        now - lastTurnActivityMs_ >= kTurnIdleTimeoutMs) {
+        RequestInterrupt(QStringLiteral("Assistant request stopped after no progress."));
+    }
+}
+
+void CodexAppServerClient::FailProtocol(const QString& reason)
+{
+    stdoutBuffer_.clear();
+    emit ServerStateChanged(false, reason);
+    if (IsTurnActive()) {
+        FinishActiveTurn({}, reason, false);
+    }
+    FailAllPendingReplies(reason);
+    process_->kill();
+}
+
+QString CodexAppServerClient::AppendActiveText(const QString& delta)
+{
+    if (delta.isEmpty() || activeTextTruncated_) {
+        return {};
+    }
+    const qsizetype available =
+        std::max<qsizetype>(0,
+                            kMaximumAnswerCharacters - activeText_.size());
+    QString accepted = delta.left(available);
+    activeText_ += accepted;
+    if (accepted.size() < delta.size()) {
+        const QString marker =
+            QStringLiteral("\n\n[Answer truncated by OpenZoom for safety.]");
+        if (activeText_.size() + marker.size() <=
+            kMaximumAnswerCharacters + marker.size()) {
+            activeText_ += marker;
+            accepted += marker;
+        }
+        activeTextTruncated_ = true;
+        emit ServerStateChanged(
+            initialized_,
+            QStringLiteral("Codex answer reached OpenZoom's safe display limit."));
+    }
+    return accepted;
+}
+
 QJsonArray CodexAppServerClient::TranscriptFromThread(const QJsonObject& thread)
 {
     QJsonArray messages;
@@ -934,16 +1087,22 @@ QJsonArray CodexAppServerClient::TranscriptFromThread(const QJsonObject& thread)
                 }
                 if (!textParts.isEmpty()) {
                     messages.append(QJsonObject{{QStringLiteral("role"), QStringLiteral("user")},
-                                                {QStringLiteral("text"), textParts.join(QStringLiteral("\n"))}});
+                                                {QStringLiteral("text"),
+                                                 textParts.join(QStringLiteral("\n"))
+                                                     .left(kMaximumTranscriptMessageCharacters)}});
                 }
             } else if (type == QStringLiteral("agentMessage")) {
                 const QString text = item.value(QStringLiteral("text")).toString().trimmed();
                 if (!text.isEmpty()) {
                     messages.append(QJsonObject{{QStringLiteral("role"), QStringLiteral("assistant")},
-                                                {QStringLiteral("text"), text}});
+                                                {QStringLiteral("text"),
+                                                 text.left(kMaximumTranscriptMessageCharacters)}});
                 }
             }
         }
+    }
+    while (messages.size() > kMaximumTranscriptMessages) {
+        messages.removeFirst();
     }
     return messages;
 }

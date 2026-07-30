@@ -7,6 +7,11 @@ relative to that commit — re-locate by symbol name if the files have since cha
 
 ## How to use this directory
 
+- **Read [`00-status-and-priority.md`](00-status-and-priority.md) first.** It is the
+  single ordered view: what is done, half-done, blocked, and what to pick up next.
+  This README is only a map of the directory.
+- Completed plans live in [`done/`](done/README.md). They are kept for provenance —
+  why a design is the way it is — and must not be picked up as work.
 - Each file groups related ideas by theme. Ideas are self-contained: problem, evidence,
   concrete fix, priority, effort.
 - **Verification status matters.** Ideas marked `Confirmed` were verified against the
@@ -22,39 +27,47 @@ relative to that commit — re-locate by symbol name if the files have since cha
 
 ## Files
 
-| File | Theme | Highest priority item |
+Status column is a summary of [`00-status-and-priority.md`](00-status-and-priority.md);
+that document is authoritative.
+
+| File | Theme | Status |
 |---|---|---|
-| [`01-stability-threading.md`](01-stability-threading.md) | Crashes, races, COM/CUDA lifetime | Capture/UI threading audit and fence failure recovery |
-| [`02-architecture-app-decomposition.md`](02-architecture-app-decomposition.md) | God-object breakup, state machines | Decompose 3,396-line `app.cpp` |
-| [`03-performance-gpu-cpu.md`](03-performance-gpu-cpu.md) | Frame latency and throughput | Pinned-host upload staging ring (P11) |
-| [`04-accessibility-ux.md`](04-accessibility-ux.md) | Accessibility (the product mission) | Respect system High Contrast / palette (U2) |
-| [`05-robustness-validation.md`](05-robustness-validation.md) | Input validation, error handling, I/O | Settings versioning/migration (V1) |
-| [`06-build-tooling-docs.md`](06-build-tooling-docs.md) | Build system, CI, tests, docs hygiene | Compiler warnings + first test target |
-| [`07-text-clarity-plan.md`](07-text-clarity-plan.md) | GPU document and text enhancement | Adaptive binarization and background flattening |
-| [`08-ml-text-sr-options.md`](08-ml-text-sr-options.md) | ML text super-resolution research | Choose a practical runtime/model path |
-| [`09-maxine-superres-plan.md`](09-maxine-superres-plan.md) | NVIDIA Video Effects SuperRes | Runtime-loaded, benchmark-gated integration |
-| [`10-vendor-independent-gpu.md`](10-vendor-independent-gpu.md) | Cross-vendor GPU direction | Portable processing backend plan |
-| [`11-hardening-refactor-plan.md`](11-hardening-refactor-plan.md) | Stability, performance, and refactor waves | Measured pipeline hardening |
-| [`12-color-picker-redesign.md`](12-color-picker-redesign.md) | Accessible display-color selection | Visual two-color scheme picker |
-| [`13-handoff-batches-bcd.md`](13-handoff-batches-bcd.md) | Ordered implementation handoff | Batches B, C, then D |
-| [`14-stabilization-v2.md`](14-stabilization-v2.md) | Robust camera stabilization | Similarity tracking and screen lock |
-| [`15-aspect-safe-high-refresh-viewport.md`](15-aspect-safe-high-refresh-viewport.md) | Viewport geometry and motion | Aspect-safe Fill plus 120 FPS navigation |
-| [`16-review-findings-2026-07-23.md`](16-review-findings-2026-07-23.md) | Batch C/D + plan 15 review verdict | Fence fixes done; P1/P2 follow-ups |
-| [`17-project-rename-plan.md`](17-project-rename-plan.md) | Project rename (FrontRow blocked) | Clear a name, migrate settings, then mechanical rename |
-| [`verified-non-issues.md`](verified-non-issues.md) | Refuted findings — do not "fix" these | — |
+| [`00-status-and-priority.md`](00-status-and-priority.md) | **Ordered status of everything** | Start here |
+| [`03-performance-gpu-cpu.md`](03-performance-gpu-cpu.md) | Frame latency and throughput | STALE / PARTIAL |
+| [`04-accessibility-ux.md`](04-accessibility-ux.md) | Accessibility (the product mission) | PARTIAL |
+| [`05-robustness-validation.md`](05-robustness-validation.md) | Input validation, error handling, I/O | PARTIAL (V1/V4 → plan 23) |
+| [`06-build-tooling-docs.md`](06-build-tooling-docs.md) | Build system, CI, docs hygiene | PARTIAL (mostly → plan 24) |
+| [`07-text-clarity-plan.md`](07-text-clarity-plan.md) | GPU document and text enhancement | PARTIAL — only item 13 open (parked) |
+| [`08-ml-text-sr-options.md`](08-ml-text-sr-options.md) | ML text super-resolution research | REFERENCE |
+| [`10-vendor-independent-gpu.md`](10-vendor-independent-gpu.md) | Cross-vendor GPU direction | REFERENCE (not scheduled) |
+| [`14-stabilization-v2.md`](14-stabilization-v2.md) | Robust camera stabilization | ACTIVE |
+| [`15-aspect-safe-high-refresh-viewport.md`](15-aspect-safe-high-refresh-viewport.md) | Viewport geometry and motion | VERIFY (owner acceptance) |
+| [`16-review-findings-2026-07-23.md`](16-review-findings-2026-07-23.md) | Batch C/D + plan 15 review verdict | PARTIAL (P1/P2 open) |
+| [`17-project-rename-plan.md`](17-project-rename-plan.md) | Project rename (FrontRow blocked) | BLOCKED (owner) |
+| [`18-annotation-mode-plan.md`](18-annotation-mode-plan.md) | Draw-on-lecture annotation mode | **VERIFY — R2 implemented, owner hardware pass pending** |
+| [`19-external-review-triage-2026-07-24.md`](19-external-review-triage-2026-07-24.md) | External review verdicts; index for 20-24 | REFERENCE |
+| [`20-capture-recording-integrity.md`](20-capture-recording-integrity.md) | Capture and recording correctness | **P0-P4 implemented — hardware verification/P6 remain** |
+| [`21-user-data-locations.md`](21-user-data-locations.md) | Where the user's work lives | READY |
+| [`22-threading-performance.md`](22-threading-performance.md) | UI-thread offload, latency, throughput | **PARTIAL — percentiles/notes/recording/capture landed** |
+| [`23-security-privacy-release.md`](23-security-privacy-release.md) | Secrets, privacy, robustness, signing | **PRIVATE/TEAM READY — PUBLIC GATED** |
+| [`24-test-build-gates.md`](24-test-build-gates.md) | Test and packaging gates | **VERIFY COMMIT CONTENTS — implementation/tests green** |
+| [`25-stabilization-research.md`](25-stabilization-research.md) | How others stabilize; what we do wrong | REFERENCE / ACTIVE |
+| [`26-virtual-tripod-strength.md`](26-virtual-tripod-strength.md) | Virtual Tripod: weakness analysis + 2026-07-26 defect report | PARTIAL / DEFECTIVE |
+| [`27-advanced-panel-redesign.md`](27-advanced-panel-redesign.md) | Advanced inspector: scopes, sub-menus, real camera modes | **VERIFY — owner/hardware pass** |
+| [`28-dxva-zero-copy-capture.md`](28-dxva-zero-copy-capture.md) | DXVA + zero-copy capture (plan 20 P6, staged with owner gates) | **Stages 0-4 + long soak passed — camera churn remains** |
+| [`29-idea-inbox-2026-07-29.md`](29-idea-inbox-2026-07-29.md) | New idea seeds: product gaps (A-K), lecture-day journey (L-Q), dev/deploy/maintain (R-U) | **Audio seed A implemented; remaining seeds await selection** |
+| [`30-external-memory-capture-bridge.md`](30-external-memory-capture-bridge.md) | Gen-2 CUDA external-memory capture bridge: API names, as-built recipe, remaining validation | **IMPLEMENTED — R1 hardware validation + fence upgrade remain** |
+| [`31-lecture-transcript.md`](31-lecture-transcript.md) | Archived lecture-transcript proposal; microphone recording remains | **DROPPED — owner decision 2026-07-30** |
+| [`32-live-accessible-status.md`](32-live-accessible-status.md) | Dynamic status text reaches screen readers with truthful names, events, and severity policy | **VERIFY — owner NVDA/Narrator pass** |
+| [`verified-non-issues.md`](verified-non-issues.md) | Refuted findings — do not "fix" these | Read before analyzing |
+| [`done/`](done/README.md) | Completed plans (01, 02, 09, 11, 12, 13) | Provenance only |
 
-## Suggested implementation order
+## Implementation order
 
-1. **Stability first** (`01`): the camera-switch lifetime bug, COM leak, and
-   mid-stream format handling are complete; verify the remaining capture/UI
-   threading and fence-failure recovery items before broad refactors.
-2. **Cheap guardrails** (`06`): enable `/W4` warnings and add a first unit-test target for
-   `image_processing.cpp` — both make every later refactor safer.
-3. **Performance** (`03`): presentation and recording readback are now
-   asynchronous; add frame timing (P8), then take the biggest remaining win —
-   the pinned-host upload staging ring (P11) — before optimizing blur and CPU
-   copies.
-4. **Accessibility** (`04`): small effort, directly serves the low-vision mission.
-5. **Architecture** (`02`): do the `app.cpp` decomposition *after* tests exist, ideally in
-   several small extractions rather than one big-bang refactor.
-6. **Robustness** (`05`): fold these into whichever module you touch along the way.
+See [`00-status-and-priority.md`](00-status-and-priority.md#recommended-order).
+The short version: close the test/commit-content gate (24), verify recording
+P0-P4 on real cameras (20), close user-data-location commit contents (21),
+reconcile the stale docs (03/02), then public-release follow-through (23), then
+stabilization architecture (14 Tier 3 / 25). Recording P6 DXVA/zero-copy is
+implemented under plan 28; its long no-tear soak passed, with camera-switch and
+device-removal recovery still awaiting physical-hardware acceptance.

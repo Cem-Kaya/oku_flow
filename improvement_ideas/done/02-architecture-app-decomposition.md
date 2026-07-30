@@ -8,7 +8,7 @@ other improvement in this backlog is easier after this file is split.
 
 **Sequencing advice:** do NOT attempt this as one big-bang refactor. Extract one
 collaborator at a time, building and manually testing after each. Add the first unit
-tests (see [06-build-tooling-docs.md](06-build-tooling-docs.md)) *before* starting.
+tests (see [06-build-tooling-docs.md](../06-build-tooling-docs.md)) *before* starting.
 
 ---
 

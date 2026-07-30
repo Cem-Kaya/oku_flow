@@ -36,6 +36,7 @@
 struct ID3D12Device;
 struct ID3D12Resource;
 struct ID3D12Fence;
+struct ID3D11Texture2D;
 
 namespace openzoom {
 
@@ -66,6 +67,20 @@ struct SuperResRoiMetadata {
     unsigned int outputWidth{};
     unsigned int outputHeight{};
     float scaleFactor{};
+};
+
+struct GpuStageTimings {
+    float inputMs{-1.0f};
+    float geometryMs{-1.0f};
+    float effectsMs{-1.0f};
+    float outputMs{-1.0f};
+    std::uint64_t generation{0};
+
+    bool IsValid() const {
+        return generation > 0 && inputMs >= 0.0f &&
+               geometryMs >= 0.0f && effectsMs >= 0.0f &&
+               outputMs >= 0.0f;
+    }
 };
 
 enum class SpatialUpscaler : int {
@@ -102,7 +117,7 @@ struct ProcessingSettings {
     bool enableTemporalSmoothing{false};
     float temporalSmoothingAlpha{0.25f};
     bool enableStabilization{false};
-    float stabilizationStrength{0.85f};  // 0..1, higher = stronger smoothing
+    bool enableBumpHold{false};           // Extra Stable hold-last-sharp-frame policy
     DisplayColorTransform displayColorTransform{DisplayColorTransform::kNone};
     const std::uint32_t* displayColorLut{}; // host-owned 256-entry BGRA LUT
     std::uint64_t displayColorLutGeneration{};
@@ -157,16 +172,28 @@ struct ProcessingInput {
     unsigned int hostPlane2StrideBytes{0};
     int rotationQuarterTurns{0};          // 0..3 clockwise, applied on GPU after conversion.
                                           // Ignored for inputFormat 0 (CPU already rotated BGRA).
+    // Optional device-resident BGRA source produced by the accelerated camera
+    // path. When present, hostPixels/strides/planes are ignored and CUDA maps
+    // this D3D11 resource directly before running the existing stages.
+    ID3D11Texture2D* d3d11Texture{nullptr};
+    unsigned int d3d11Subresource{0};
+    // Publish the converted, post-rotation frame to the optional original
+    // recording surface before stabilization or any visual effects.
+    bool publishOriginalFrame{false};
 };
 
 #if OPENZOOM_HAS_CUDA_EXT_MEMORY
 struct StabilizationState;
+struct TripodReferenceFeature;
+struct TripodMatchCandidate;
+struct BumpHoldState;
 
 class CudaInteropSurface {
 public:
     explicit CudaInteropSurface(ID3D12Resource* texture,
                                 ID3D12Resource* superResTexture = nullptr,
-                                ID3D12Fence* sharedFence = nullptr);
+                                ID3D12Fence* sharedFence = nullptr,
+                                ID3D12Resource* originalTexture = nullptr);
     ~CudaInteropSurface();
 
     bool IsValid() const { return valid_; }
@@ -178,6 +205,9 @@ public:
                       const ProcessingSettings& settings,
                       const FenceSyncParams& fenceSync);
     const std::string& LastError() const { return lastError_; }
+    bool LastFailureWasCaptureInterop() const {
+        return captureInteropFailed_;
+    }
     void ResetTemporalHistory();
     void ResetStabilization();
     void ResetKeystone();
@@ -202,11 +232,20 @@ public:
     float SuperResAverageMs() const { return superResLastAverageMs_; }
     void SetSuperResPerformanceOverride(bool enabled);
     void ResetSuperRes();
+    // Releases the per-camera D3D interop state. atProcessExit remains part of
+    // the contract for the isolated legacy-driver fallback, but production
+    // capture uses D3D12 external memory and tears down normally.
+    void ResetCaptureInterop(bool atProcessExit = false);
+    const std::string& StabilizerStatus() const { return stabilizerStatus_; }
+    float LastStabilizerMs() const { return lastStabilizerMs_; }
 
     // P8 GPU timing (plan 11 Wave 1): duration of the last sampled ProcessFrame
     // kernel chain in milliseconds, or a negative value while no sample exists.
     // Sampled every 30th frame with cudaEvents; queries never block.
     float LastGpuFrameMs() const { return lastGpuFrameMs_; }
+    GpuStageTimings LastGpuStageTimings() const {
+        return lastGpuStageTimings_;
+    }
 
     CudaInteropSurface(const CudaInteropSurface&) = delete;
     CudaInteropSurface& operator=(const CudaInteropSurface&) = delete;
@@ -214,11 +253,14 @@ public:
 private:
     void Initialize(ID3D12Resource* texture,
                     ID3D12Resource* superResTexture,
-                    ID3D12Fence* sharedFence);
+                    ID3D12Fence* sharedFence,
+                    ID3D12Resource* originalTexture);
 
     bool SelectCudaDeviceMatching(LUID adapterLuid);
     bool CreateSurfaceFromResource(ID3D12Device* device, ID3D12Resource* texture);
     bool CreateSuperResSurfaceFromResource(ID3D12Device* device,
+                                           ID3D12Resource* texture);
+    bool CreateOriginalSurfaceFromResource(ID3D12Device* device,
                                            ID3D12Resource* texture);
     bool EnsureSuperResOutputBuffer(unsigned int width, unsigned int height);
     void ImportFenceSemaphore(ID3D12Device* device, ID3D12Fence* fence);
@@ -240,6 +282,7 @@ private:
     void ReleaseAutoContrast();
     void ReleaseTextClarity();
     void ReleaseSuperRes();
+    void ConsumeStabilizerTiming();
     void ConsumeSuperResTiming();
     void UpdateSuperResCache(const uchar4* source,
                              size_t sourcePitch,
@@ -258,6 +301,13 @@ private:
     void RestoreKeystoneCorrection();
     void ResetKeystoneCornersToIdentity();
     void SynchronizeStream() noexcept;
+    bool UploadD3D11Frame(const ProcessingInput& input,
+                          uchar4* destination,
+                          size_t destinationPitch);
+
+    struct D3D11InteropState;
+    std::unique_ptr<D3D11InteropState> d3d11Interop_;
+    Microsoft::WRL::ComPtr<ID3D12Device> d3d12Device_;
 
     cudaExternalMemory_t externalMemory_{};
     cudaMipmappedArray_t mipArray_{};
@@ -267,6 +317,9 @@ private:
     cudaMipmappedArray_t superResMipArray_{};
     cudaArray_t superResLevel0Array_{};
     cudaSurfaceObject_t superResSurfaceObject_{0};
+    cudaExternalMemory_t originalExternalMemory_{};
+    cudaMipmappedArray_t originalMipArray_{};
+    cudaArray_t originalLevel0Array_{};
     cudaStream_t stream_{};
     cudaExternalSemaphore_t externalSemaphore_{};
 
@@ -274,6 +327,8 @@ private:
     UINT height_{};
     UINT superResWidth_{};
     UINT superResHeight_{};
+    UINT originalWidth_{};
+    UINT originalHeight_{};
     DXGI_FORMAT format_{DXGI_FORMAT_UNKNOWN};
     int cudaDeviceId_{-1};
     bool valid_{false};
@@ -297,11 +352,40 @@ private:
     unsigned int historyHeight_{};
     bool temporalHistoryValid_{};
     float* deviceStabLuma_{};
+    float* deviceStabLumaPrevious_{};
+    float* deviceStabLumaReference_{};
+    float* deviceTripodCurrentPyramid1_{};
+    float* deviceTripodCurrentPyramid2_{};
+    float* deviceTripodReferencePyramid1_{};
+    float* deviceTripodReferencePyramid2_{};
+    TripodReferenceFeature* deviceTripodReferenceFeatures_{};
+    unsigned int* deviceTripodReferenceFeatureCount_{};
+    // Slots 1..3 of the recovery map. Slot 0 uses the primary reference
+    // buffers above and is never evicted.
+    float* deviceTripodRecoveryLuma_{};
+    float* deviceTripodRecoveryPyramid1_{};
+    float* deviceTripodRecoveryPyramid2_{};
+    TripodReferenceFeature* deviceTripodRecoveryFeatures_{};
+    unsigned int* deviceTripodRecoveryFeatureCounts_{};
+    float4* deviceTripodKeyframeOrigins_{};
+    unsigned int* deviceTripodKeyframeValid_{};
+    TripodMatchCandidate* deviceTripodMatchCandidates_{};
+    float* deviceTripodReferenceAccumulator_{};
+    unsigned int* deviceTripodReferenceSampleCounts_{};
+    float* deviceTripodFocusScore_{};
+    float* deviceTripodBestFocusScore_{};
+    unsigned int* deviceTripodSelectionFlag_{};
+    uchar4* deviceBumpHoldFrame_{};
+    size_t deviceBumpHoldPitch_{};
+    BumpHoldState* deviceBumpHoldState_{};
     float* deviceStabColProjCurr_{};
     float* deviceStabRowProjCurr_{};
     float* deviceStabColProjPrev_{};
     float* deviceStabRowProjPrev_{};
     StabilizationState* deviceStabState_{};
+    float4* hostStabDiagnostics_{};
+    float4* deviceStabPairs_{};
+    unsigned int* deviceStabPairCount_{};
     unsigned int stabSmallWidth_{};
     unsigned int stabSmallHeight_{};
     unsigned int stabFactorX_{};
@@ -309,6 +393,22 @@ private:
     unsigned int stabFullWidth_{};
     unsigned int stabFullHeight_{};
     bool stabPrevValid_{};
+    bool tripodReferenceValid_{};
+    bool tripodRelockPending_{};
+    bool virtualTripodActive_{};
+    bool bumpHoldActive_{};
+    bool tripodReferencePrepared_{};
+    unsigned int tripodReferenceBuildFrame_{};
+    unsigned int tripodReferenceAccumulationFrame_{};
+    unsigned int tripodKeyframeAdmissionFrames_{};
+    unsigned int tripodNextRecoverySlot_{1};
+    cudaEvent_t stabilizerTimingStartEvent_{};
+    cudaEvent_t stabilizerTimingStopEvent_{};
+    bool stabilizerTimingPending_{};
+    unsigned int stabilizerTimingFrameCounter_{};
+    float lastStabilizerMs_{-1.0f};
+    std::string stabilizerStatus_{"Stabilizer off"};
+    int activeStabilizerEngine_{-1};
 
     // Raw camera input (NV12/YUY2) + GPU rotation staging.
     unsigned char* deviceRawPlane1_{};
@@ -328,16 +428,17 @@ private:
     // the Qt thread writes these page-locked slots or advances the slot index.
     // ProcessFrame's CUDA stream reads the active slot. Shared D3D/CUDA fence
     // values order GPU work only and cannot guard a host memcpy, so each slot
-    // has a CUDA event recorded immediately after its final H2D copy; the Qt
-    // thread waits for that event before overwriting the slot. The event is
-    // ordered before the same frame's FenceSyncParams::signalValue but permits
-    // reuse before the rest of that frame's kernels finish.
+    // has a CUDA event recorded immediately after its final H2D copy. The Qt
+    // thread queries the slots without blocking and skips the frame if every
+    // slot is still in use. The event is ordered before the same frame's
+    // FenceSyncParams::signalValue but permits reuse before the rest of that
+    // frame's kernels finish.
     struct PinnedUploadSlot {
         unsigned char* data{};
         cudaEvent_t uploadComplete{};
         bool uploadPending{};
     };
-    std::array<PinnedUploadSlot, 2> pinnedUploadSlots_{};
+    std::array<PinnedUploadSlot, 3> pinnedUploadSlots_{};
     size_t pinnedUploadCapacity_{};
     size_t pinnedUploadNextSlot_{};
 
@@ -428,23 +529,29 @@ private:
     // P8 GPU timing: cudaEvent pair around the ProcessFrame kernel chain,
     // recorded every 30th frame and polled (never waited on) the next frames.
     cudaEvent_t processTimingStartEvent_{};
+    cudaEvent_t processTimingInputEvent_{};
+    cudaEvent_t processTimingGeometryEvent_{};
+    cudaEvent_t processTimingEffectsEvent_{};
     cudaEvent_t processTimingStopEvent_{};
     bool processTimingPending_{};
     unsigned int processTimingFrameCounter_{};
     float lastGpuFrameMs_{-1.0f};
+    GpuStageTimings lastGpuStageTimings_{};
 
     int cachedKernelRadius_{-1};
     float cachedKernelSigma_{0.0f};
     bool kernelUploaded_{};
     std::uint64_t cachedDisplayColorLutGeneration_{};
     std::string lastError_;
+    bool captureInteropFailed_{false};
 };
 #else
 class CudaInteropSurface {
 public:
     explicit CudaInteropSurface(ID3D12Resource* /*texture*/,
                                 ID3D12Resource* /*superResTexture*/ = nullptr,
-                                ID3D12Fence* /*sharedFence*/ = nullptr) {}
+                                ID3D12Fence* /*sharedFence*/ = nullptr,
+                                ID3D12Resource* /*originalTexture*/ = nullptr) {}
     ~CudaInteropSurface() = default;
 
     bool IsValid() const { return false; }
@@ -457,6 +564,7 @@ public:
                       const FenceSyncParams& /*fenceSync*/) { return false; }
 
     const std::string& LastError() const { static std::string dummy; return dummy; }
+    bool LastFailureWasCaptureInterop() const { return false; }
     void ResetTemporalHistory() {}
     void ResetStabilization() {}
     void ResetKeystone() {}
@@ -477,7 +585,11 @@ public:
     float SuperResAverageMs() const { return -1.0f; }
     void SetSuperResPerformanceOverride(bool /*enabled*/) {}
     void ResetSuperRes() {}
+    void ResetCaptureInterop(bool /*atProcessExit*/ = false) {}
+    const std::string& StabilizerStatus() const { static std::string dummy; return dummy; }
+    float LastStabilizerMs() const { return -1.0f; }
     float LastGpuFrameMs() const { return -1.0f; }
+    GpuStageTimings LastGpuStageTimings() const { return {}; }
 
     CudaInteropSurface(const CudaInteropSurface&) = delete;
     CudaInteropSurface& operator=(const CudaInteropSurface&) = delete;

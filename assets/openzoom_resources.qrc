@@ -5,6 +5,17 @@
         <file alias="record.svg">icons/lucide/circle.svg</file>
         <file alias="explain.svg">icons/lucide/message-circle-question.svg</file>
         <file alias="read.svg">icons/lucide/volume-2.svg</file>
+        <file alias="draw.svg">icons/lucide/pencil.svg</file>
+        <file alias="pointer.svg">icons/lucide/mouse-pointer.svg</file>
+        <file alias="line.svg">icons/lucide/slash.svg</file>
+        <file alias="shape.svg">icons/lucide/square.svg</file>
+        <file alias="text.svg">icons/lucide/type.svg</file>
+        <file alias="eraser.svg">icons/lucide/eraser.svg</file>
+        <file alias="undo.svg">icons/lucide/undo-2.svg</file>
+        <file alias="redo.svg">icons/lucide/redo-2.svg</file>
+        <file alias="save.svg">icons/lucide/save.svg</file>
+        <file alias="clear.svg">icons/lucide/trash-2.svg</file>
+        <file alias="done.svg">icons/lucide/check.svg</file>
         <file alias="open-settings.svg">icons/lucide/square-arrow-out-up-right.svg</file>
         <file alias="previous.svg">icons/lucide/chevron-left.svg</file>
         <file alias="next.svg">icons/lucide/chevron-right.svg</file>

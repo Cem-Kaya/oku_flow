@@ -84,18 +84,28 @@ literal paths.
 
 ## B6. Docs cleanup and consolidation
 
-- **Priority:** LOW · **Effort:** small · **Status:** Confirmed (files listed exist)
+- **Priority:** LOW · **Effort:** small · **Status:** items 1-3 **DONE 2026-07-26**;
+  items 4-5 still open
 
 Items:
-1. `docs/chatgpt_future_readme.txt` — legacy scratch notes with outdated status claims
-   mixed in. Extract still-valid TODOs into `docs/progress.md`, then delete it (git
-   history preserves it). Its presence actively misleads doc-first agents (per
-   `agents.md` workflow).
-2. `docs/rotation_ui_notes.md` — unreferenced from any documentation map; either link it
-   from `docs/README.md` or fold its content into `docs/code_reference.md`.
-3. `TODO.md` (root) vs `docs/progress.md` vs `docs/ai_upscaling_todo.md` — three
-   overlapping trackers. Pick one canonical tracker (suggest `TODO.md` for active items,
-   `docs/progress.md` for completed-milestone history), and say so in `agents.md`.
+1. ~~`docs/chatgpt_future_readme.txt` — legacy scratch notes with outdated status
+   claims mixed in.~~ **DONE 2026-07-26: deleted.** Reviewed before removal — every
+   "next step" in it had shipped (Qt+D3D12 refactor, CUDA kernels, temporal
+   averaging, stabilization, snapshots, FSR/NIS) and its "current limitations"
+   were false ("CUDA kernels are disabled except for legacy gradient helper").
+   Git history preserves it.
+2. ~~`docs/rotation_ui_notes.md` — unreferenced from any documentation map.~~
+   **DONE 2026-07-26: linked from `docs/README.md`.** Kept rather than folded: 16
+   lines, but all of it is non-obvious live behaviour (orientation is global
+   device state not profile state; `CpuFramePipeline::ResampleToFill` for 90/270).
+3. ~~`TODO.md` vs `docs/progress.md` vs `docs/ai_upscaling_todo.md` — three
+   overlapping trackers.~~ **DONE 2026-07-26: all three deleted.** The canonical
+   tracker is [`00-status-and-priority.md`](00-status-and-priority.md), now
+   pointed to from `README.md` and `docs/README.md`. `TODO.md` was nine fully
+   completed items; `progress.md` duplicated `CHANGELOG.md` plus plans 10/22/24;
+   `ai_upscaling_todo.md` was last refreshed 2026-03-31 and still asked whether
+   OpenCV DNN was the right integration point, months after Maxine SuperRes
+   shipped (plan 09). Superseded by plans 07/08.
 4. Root `CMakePresets.json` is a 4-line include shim for `cmake/CMakePresets.json` — add
    a `"$comment"` field noting "edit cmake/CMakePresets.json, not this file". Note:
    README.md line 54 says presets live in `cmake/CMakePresets.json` — keep that accurate.

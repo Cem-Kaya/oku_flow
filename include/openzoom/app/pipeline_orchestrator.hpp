@@ -9,6 +9,8 @@
 
 #include <array>
 #include <algorithm>
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 
@@ -77,6 +79,24 @@ private:
     std::uint64_t pendingCudaSignal_{0};
 };
 
+struct TimingPercentiles {
+    float p50Ms{-1.0f};
+    float p95Ms{-1.0f};
+    float p99Ms{-1.0f};
+    std::size_t sampleCount{0};
+
+    bool IsValid() const noexcept { return sampleCount > 0; }
+};
+
+enum class FrameTimingStage : std::size_t {
+    CaptureHandoff = 0,
+    CpuPreparation,
+    CudaSubmission,
+    Presentation,
+    RecordingClone,
+    Count,
+};
+
 // Owns the viewport presentation clock and its instrumentation. Camera
 // processing remains a distinct callback: it advances only when the callback
 // consumes a fresh frame, while viewport-only motion may present the cached
@@ -105,6 +125,10 @@ public:
     void Start();
     void Stop();
     void UpdateTimerPolicy();
+    // Thread-safe wakeup used by the Media Foundation callback. Camera
+    // processing must be driven by frame arrival rather than by polling a
+    // single mailbox at approximately the same rate as the producer.
+    void NotifyCameraFrameAvailable(int delayMs = 0);
 
     void SetViewportRateMode(settings::ViewportRateMode mode);
     settings::ViewportRateMode ViewportRateMode() const;
@@ -120,6 +144,11 @@ public:
     int DisplayRefreshRate() const;
     float MeasuredViewportRate() const;
     float FrameTickAverageMs() const;
+    TimingPercentiles FrameTickPercentiles() const;
+    void RecordCaptureToPresentSample(float milliseconds);
+    TimingPercentiles CaptureToPresentPercentiles() const;
+    void RecordStageSample(FrameTimingStage stage, float milliseconds);
+    TimingPercentiles StagePercentiles(FrameTimingStage stage) const;
 
     bool BeginCameraReconnect(qint64 nowMs);
     void CancelCameraReconnect();
@@ -143,6 +172,8 @@ private:
     int RequestedViewportRate() const;
 
     QTimer timer_;
+    std::atomic<bool> running_{false};
+    std::atomic<bool> cameraTickQueued_{false};
     Callbacks callbacks_;
     settings::ViewportRateMode viewportRateMode_{
         settings::ViewportRateMode::AutoUpTo120};
@@ -158,11 +189,22 @@ private:
     QElapsedTimer viewportMotionTailTimer_;
     QElapsedTimer viewportRateMeasurementTimer_;
 
-    std::array<float, 60> frameTickSamplesMs_{};
+    static constexpr std::size_t kTimingSampleCapacity = 240;
+    std::array<float, kTimingSampleCapacity> frameTickSamplesMs_{};
     std::size_t frameTickSampleIndex_{0};
     std::size_t frameTickSampleCount_{0};
     float frameTickSampleSumMs_{0.0f};
     float frameTickAverageMs_{-1.0f};
+    std::array<float, kTimingSampleCapacity> captureToPresentSamplesMs_{};
+    std::size_t captureToPresentSampleIndex_{0};
+    std::size_t captureToPresentSampleCount_{0};
+    static constexpr std::size_t kFrameTimingStageCount =
+        static_cast<std::size_t>(FrameTimingStage::Count);
+    std::array<std::array<float, kTimingSampleCapacity>,
+               kFrameTimingStageCount>
+        stageSamplesMs_{};
+    std::array<std::size_t, kFrameTimingStageCount> stageSampleIndexes_{};
+    std::array<std::size_t, kFrameTimingStageCount> stageSampleCounts_{};
     QElapsedTimer frameTickOverBudgetTimer_;
     bool frameTickOverBudgetWarned_{false};
 

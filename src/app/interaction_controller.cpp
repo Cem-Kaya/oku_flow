@@ -7,9 +7,12 @@
 #include "openzoom/ui/main_window.hpp"
 
 #include <QCursor>
+#include <QAccessible>
+#include <QTimer>
 #include <QtGlobal>
 #include <QWheelEvent>
 #include <QCheckBox>
+#include <QLabel>
 #include <QSlider>
 
 #include <algorithm>
@@ -106,15 +109,22 @@ bool InteractionController::HandlePanScroll(const QWheelEvent* wheelEvent)
     return true;
 }
 
-void InteractionController::HandleZoomWheel(int delta, const QPointF& localPos)
-{
+float InteractionController::ScaledZoom(float current,
+                                        float notches,
+                                        float accel) const {
+    constexpr float kZoomStepRatio = 1.10f;
+    return current * std::pow(kZoomStepRatio, notches * accel);
+}
+
+void InteractionController::ApplyZoom(float target, const QPointF* localPos) {
     if (!app_.uiState_->zoomSlider_) {
         return;
     }
 
     float focusU = 0.0f;
     float focusV = 0.0f;
-    bool hasFocus = app_.MapViewToSource(localPos, focusU, focusV);
+    bool hasFocus =
+        localPos && app_.MapViewToSource(*localPos, focusU, focusV);
     if (app_.debugViewEnabled_) {
         hasFocus = false;
     }
@@ -128,16 +138,19 @@ void InteractionController::HandleZoomWheel(int delta, const QPointF& localPos)
         app_.uiState_->zoomSlider_->setEnabled(true);
     }
 
-    const int stepUnits = (delta / 120);
-    if (stepUnits == 0) {
-        return;
-    }
     const float prevZoom = app_.zoomAmount_;
-    const int stepSize = std::max(app_.uiState_->zoomSlider_->pageStep() / 2, 1);
-    const int deltaValue = stepUnits * stepSize;
-    const int newValue = std::clamp(app_.uiState_->zoomSlider_->value() + deltaValue,
-                                    app_.uiState_->zoomSlider_->minimum(),
-                                    app_.uiState_->zoomSlider_->maximum());
+    const float minimumZoom =
+        static_cast<float>(app_.uiState_->zoomSlider_->minimum()) /
+        static_cast<float>(app_constants::kZoomSliderScale);
+    const float maximumZoom =
+        static_cast<float>(app_.uiState_->zoomSlider_->maximum()) /
+        static_cast<float>(app_constants::kZoomSliderScale);
+    target = std::clamp(target, minimumZoom, maximumZoom);
+    const int newValue = std::clamp(
+        static_cast<int>(std::lround(
+            target * static_cast<float>(app_constants::kZoomSliderScale))),
+        app_.uiState_->zoomSlider_->minimum(),
+        app_.uiState_->zoomSlider_->maximum());
 
     if (newValue == app_.uiState_->zoomSlider_->value()) {
         return;
@@ -160,6 +173,70 @@ void InteractionController::HandleZoomWheel(int delta, const QPointF& localPos)
     } else {
         app_.SyncCurrentConfigToPersistence(true);
     }
+    ScheduleZoomAnnouncement();
+}
+
+void InteractionController::HandleZoomWheel(const QWheelEvent* wheelEvent)
+{
+    if (!wheelEvent) {
+        return;
+    }
+    float notches = 0.0f;
+    if (!wheelEvent->pixelDelta().isNull()) {
+        notches = static_cast<float>(wheelEvent->pixelDelta().y()) / 50.0f;
+    } else if (!wheelEvent->angleDelta().isNull()) {
+        notches = static_cast<float>(wheelEvent->angleDelta().y()) / 120.0f;
+    }
+    if (qFuzzyIsNull(notches)) {
+        return;
+    }
+
+    constexpr qint64 kAccelWindowMs = 120;
+    constexpr float kAccelGrowth = 1.35f;
+    constexpr float kAccelMax = 3.0f;
+    const int direction = notches > 0.0f ? 1 : -1;
+    qint64 gap = kAccelWindowMs + 1;
+    if (wheelTimer_.isValid()) {
+        gap = wheelTimer_.restart();
+    } else {
+        wheelTimer_.start();
+    }
+    if (direction != wheelDirection_) {
+        wheelAccel_ = 1.0f;
+    } else if (app_.settingsController_->MutableSettings()
+                   .zoomWheelAcceleration &&
+               gap < kAccelWindowMs) {
+        wheelAccel_ = std::min(wheelAccel_ * kAccelGrowth, kAccelMax);
+    } else {
+        wheelAccel_ = 1.0f;
+    }
+    wheelDirection_ = direction;
+
+    const float target = ScaledZoom(app_.zoomAmount_, notches, wheelAccel_);
+    const QPointF localPos = wheelEvent->position();
+    ApplyZoom(target, &localPos);
+}
+
+void InteractionController::HandleKeyboardZoom(float notches) {
+    if (qFuzzyIsNull(notches)) {
+        return;
+    }
+    wheelAccel_ = 1.0f;
+    wheelDirection_ = 0;
+    ApplyZoom(ScaledZoom(app_.zoomAmount_, notches, 1.0f), nullptr);
+}
+
+void InteractionController::ScheduleZoomAnnouncement() {
+    const quint64 generation = ++zoomAnnouncementGeneration_;
+    QTimer::singleShot(250, &app_, [this, generation]() {
+        if (generation != zoomAnnouncementGeneration_) {
+            return;
+        }
+        const QString message =
+            QStringLiteral("Zoom %1 times")
+                .arg(QString::number(app_.zoomAmount_, 'f', 1));
+        app_.ShowStatusMessage(message, 2500);
+    });
 }
 
 bool InteractionController::ApplyInputForces(double elapsedSeconds)

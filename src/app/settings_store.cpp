@@ -21,6 +21,8 @@ namespace openzoom::settings {
 
 namespace {
 
+constexpr int kCurrentSettingsVersion = 15;
+
 int SnapRotation(int turns)
 {
     int value = turns % 4;
@@ -234,7 +236,6 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
             config.autoContrastEnabled = true;
             config.autoContrastStrength = 0.7f;
             config.stabilizationEnabled = true;
-            config.stabilizationStrength = 0.85f;
             return config;
         }(),
         []() {
@@ -251,7 +252,6 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
             config.autoContrastEnabled = true;
             config.autoContrastStrength = 0.85f;
             config.stabilizationEnabled = true;
-            config.stabilizationStrength = 0.85f;
             return config;
         }(),
         []() {
@@ -344,7 +344,6 @@ QJsonObject ConfigToJson(const AdvancedConfig& config)
     object.insert(QStringLiteral("vlmAssistEnabled"), config.vlmAssistEnabled);
     object.insert(QStringLiteral("assistiveOverlayEnabled"), config.assistiveOverlayEnabled);
     object.insert(QStringLiteral("stabilizationEnabled"), config.stabilizationEnabled);
-    object.insert(QStringLiteral("stabilizationStrength"), config.stabilizationStrength);
     object.insert(QStringLiteral("displayColorMode"), config.displayColorMode);
     object.insert(QStringLiteral("colorScheme"), ColorSchemeToJson(
         config.colorScheme.stops.size() >= 2
@@ -409,7 +408,6 @@ AdvancedConfig ConfigFromJson(const QJsonObject& object, const AdvancedConfig& d
     config.vlmAssistEnabled = object.value(QStringLiteral("vlmAssistEnabled")).toBool(config.vlmAssistEnabled);
     config.assistiveOverlayEnabled = object.value(QStringLiteral("assistiveOverlayEnabled")).toBool(config.assistiveOverlayEnabled);
     config.stabilizationEnabled = object.value(QStringLiteral("stabilizationEnabled")).toBool(config.stabilizationEnabled);
-    config.stabilizationStrength = Clamp01(static_cast<float>(object.value(QStringLiteral("stabilizationStrength")).toDouble(config.stabilizationStrength)));
     config.displayColorMode = std::clamp(
         object.value(QStringLiteral("displayColorMode")).toInt(config.displayColorMode),
         0, app_constants::kDisplayColorModeCount - 1);
@@ -468,7 +466,10 @@ QJsonObject AssistiveToJson(const AssistiveSettings& assistive)
     object.insert(QStringLiteral("codexWorkspaceDirectory"), assistive.codexWorkspaceDirectory);
     object.insert(QStringLiteral("assistantInstructions"), assistive.assistantInstructions);
     object.insert(QStringLiteral("vlmApiUrl"), assistive.vlmApiUrl);
-    object.insert(QStringLiteral("vlmApiKey"), assistive.vlmApiKey);
+    if (!assistive.vlmCredentialId.trimmed().isEmpty()) {
+        object.insert(QStringLiteral("vlmCredentialId"),
+                      assistive.vlmCredentialId.trimmed());
+    }
     object.insert(QStringLiteral("vlmModel"), assistive.vlmModel);
     object.insert(QStringLiteral("vlmPrompt"), assistive.vlmPrompt);
     object.insert(QStringLiteral("tesseractPath"), assistive.tesseractPath);
@@ -498,7 +499,8 @@ AssistiveSettings AssistiveFromJson(const QJsonObject& object)
     assistive.assistantInstructions = object.value(QStringLiteral("assistantInstructions"))
                                           .toString(assistive.assistantInstructions);
     assistive.vlmApiUrl = object.value(QStringLiteral("vlmApiUrl")).toString(assistive.vlmApiUrl);
-    assistive.vlmApiKey = object.value(QStringLiteral("vlmApiKey")).toString(assistive.vlmApiKey);
+    assistive.vlmCredentialId =
+        object.value(QStringLiteral("vlmCredentialId")).toString();
     assistive.vlmModel = object.value(QStringLiteral("vlmModel")).toString(assistive.vlmModel);
     assistive.vlmPrompt = object.value(QStringLiteral("vlmPrompt")).toString(assistive.vlmPrompt);
     assistive.tesseractPath = object.value(QStringLiteral("tesseractPath")).toString(assistive.tesseractPath);
@@ -615,29 +617,49 @@ void EnsureSettingsDirectory(const QString& path)
     }
 }
 
-std::optional<PersistentSettings> Load(const QString& path)
+namespace {
+
+std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
 {
-    QFile file(path);
-    if (!file.exists()) {
-        return std::nullopt;
-    }
-
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return std::nullopt;
-    }
-
-    const QByteArray data = file.readAll();
-    file.close();
-
-    QJsonParseError parseError{};
-    const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
-    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        return std::nullopt;
-    }
-
-    const QJsonObject root = doc.object();
     PersistentSettings settings;
+    settings.userDataRoot =
+        root.value(QStringLiteral("paths"))
+            .toObject()
+            .value(QStringLiteral("userDataRoot"))
+            .toString();
     settings.cameraIndex = root.value(QStringLiteral("cameraIndex")).toInt(settings.cameraIndex);
+    settings.cameraFormatStableId =
+        root.value(QStringLiteral("cameraFormatStableId")).toString();
+    settings.microphoneEndpointId =
+        root.value(QStringLiteral("microphoneEndpointId")).toString();
+    const QJsonObject capture =
+        root.value(QStringLiteral("capture")).toObject();
+    settings.legacyWiderCameraCompatibility =
+        capture.value(QStringLiteral("widerCameraCompatibility"))
+            .toBool(false);
+    settings.cameraAccelerationAttempt =
+        capture.value(QStringLiteral("accelerationAttempt")).toString();
+    const QJsonObject cameraAcceleration =
+        capture.value(QStringLiteral("cameras")).toObject();
+    for (auto it = cameraAcceleration.begin();
+         it != cameraAcceleration.end(); ++it) {
+        if (!it.value().isObject()) {
+            continue;
+        }
+        const QJsonObject value = it.value().toObject();
+        CameraAccelerationSetting camera;
+        camera.mode = static_cast<CameraAccelerationMode>(std::clamp(
+            value.value(QStringLiteral("mode"))
+                .toInt(static_cast<int>(camera.mode)),
+            static_cast<int>(CameraAccelerationMode::Automatic),
+            static_cast<int>(CameraAccelerationMode::ForceCompatibility)));
+        camera.automaticFallback =
+            value.value(QStringLiteral("automaticFallback")).toBool(false);
+        camera.reason = value.value(QStringLiteral("reason")).toString();
+        camera.decidedOn = value.value(QStringLiteral("decidedOn")).toString();
+        camera.lastRung = value.value(QStringLiteral("lastRung")).toString();
+        settings.cameraAcceleration.insert(it.key(), std::move(camera));
+    }
 
     const int version = root.value(QStringLiteral("version")).toInt(1);
     if (version <= 1 && root.contains(QStringLiteral("zoom"))) {
@@ -651,6 +673,9 @@ std::optional<PersistentSettings> Load(const QString& path)
 
     const QJsonObject ui = root.value(QStringLiteral("ui")).toObject();
     settings.virtualJoystick = ui.value(QStringLiteral("virtualJoystick")).toBool(settings.virtualJoystick);
+    settings.zoomWheelAcceleration =
+        ui.value(QStringLiteral("zoomWheelAcceleration"))
+            .toBool(settings.zoomWheelAcceleration);
     settings.controlsCollapsed = ui.value(QStringLiteral("controlsCollapsed")).toBool(settings.controlsCollapsed);
     settings.simpleUiMode = ui.value(QStringLiteral("simpleUiMode")).toBool(settings.simpleUiMode);
     settings.advancedPanelWidth = std::clamp(
@@ -666,6 +691,19 @@ std::optional<PersistentSettings> Load(const QString& path)
             .toInt(static_cast<int>(settings.viewportFitMode)),
         static_cast<int>(ViewportFitModeSetting::Fill),
         static_cast<int>(ViewportFitModeSetting::Fit)));
+    const QJsonObject recording =
+        root.value(QStringLiteral("recording")).toObject();
+    settings.recordingCanvasMode =
+        static_cast<RecordingCanvasMode>(std::clamp(
+            recording.value(QStringLiteral("canvasMode"))
+                .toInt(static_cast<int>(settings.recordingCanvasMode)),
+            static_cast<int>(RecordingCanvasMode::Source),
+            static_cast<int>(RecordingCanvasMode::Nhd360)));
+    const QJsonObject sectionStates =
+        ui.value(QStringLiteral("sectionStates")).toObject();
+    for (auto it = sectionStates.begin(); it != sectionStates.end(); ++it) {
+        settings.uiSectionStates.insert(it.key(), it.value().toBool(true));
+    }
     settings.selectedPresetId = ui.value(QStringLiteral("selectedPresetId")).toString();
     settings.setupAssistantDeclined =
         ui.value(QStringLiteral("setupAssistantDeclined")).toBool(settings.setupAssistantDeclined);
@@ -682,6 +720,38 @@ std::optional<PersistentSettings> Load(const QString& path)
             overlayWidth,
             overlayHeight);
     }
+    const QJsonObject annotations =
+        root.value(QStringLiteral("annotations")).toObject();
+    const QColor annotationColor(
+        annotations.value(QStringLiteral("color"))
+            .toString(settings.annotationColor));
+    if (annotationColor.isValid()) {
+        settings.annotationColor = annotationColor.name(QColor::HexRgb);
+    }
+    settings.annotationWidthPixels = std::clamp(
+        annotations.value(QStringLiteral("widthPixels"))
+            .toInt(settings.annotationWidthPixels),
+        2,
+        24);
+    settings.annotationCaptureOnExit =
+        annotations.value(QStringLiteral("captureOnExit"))
+            .toBool(settings.annotationCaptureOnExit);
+    settings.annotationDashed =
+        annotations.value(QStringLiteral("dashed"))
+            .toBool(settings.annotationDashed);
+    const QString annotationShapeKind =
+        annotations.value(QStringLiteral("shapeKind"))
+            .toString(settings.annotationShapeKind)
+            .toLower();
+    settings.annotationShapeKind =
+        annotationShapeKind == QStringLiteral("ellipse")
+            ? QStringLiteral("ellipse")
+            : QStringLiteral("rectangle");
+    settings.annotationTextSizePixels = std::clamp(
+        annotations.value(QStringLiteral("textSizePixels"))
+            .toInt(settings.annotationTextSizePixels),
+        12,
+        72);
 
     settings.assistive = AssistiveFromJson(root.value(QStringLiteral("assistive")).toObject());
 
@@ -741,17 +811,105 @@ std::optional<PersistentSettings> Load(const QString& path)
     return settings;
 }
 
+} // namespace
+
+LoadResult LoadDetailed(const QString& path)
+{
+    LoadResult result;
+    QFile file(path);
+    if (!file.exists()) {
+        result.status = LoadStatus::Missing;
+        return result;
+    }
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        result.status = LoadStatus::Unreadable;
+        result.error = QStringLiteral("Could not read settings: %1")
+                           .arg(file.errorString());
+        return result;
+    }
+
+    const QByteArray data = file.readAll();
+    if (file.error() != QFileDevice::NoError) {
+        result.status = LoadStatus::Unreadable;
+        result.error = QStringLiteral("Could not read settings: %1")
+                           .arg(file.errorString());
+        return result;
+    }
+
+    QJsonParseError parseError{};
+    const QJsonDocument document = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        result.status = LoadStatus::InvalidJson;
+        result.error = QStringLiteral("Settings are not valid JSON: %1")
+                           .arg(parseError.errorString());
+        return result;
+    }
+
+    const QJsonObject root = document.object();
+    const int version = root.value(QStringLiteral("version")).toInt(1);
+    if (version > kCurrentSettingsVersion) {
+        result.status = LoadStatus::UnsupportedVersion;
+        result.error =
+            QStringLiteral("Settings version %1 is newer than this OpenZoom build supports (%2).")
+                .arg(version)
+                .arg(kCurrentSettingsVersion);
+        return result;
+    }
+
+    result.settings = ParseSettingsRoot(root);
+    if (!result.settings) {
+        result.status = LoadStatus::InvalidJson;
+        result.error = QStringLiteral("Settings could not be interpreted.");
+        return result;
+    }
+    result.status = LoadStatus::Loaded;
+    return result;
+}
+
+std::optional<PersistentSettings> Load(const QString& path)
+{
+    return LoadDetailed(path).settings;
+}
+
 bool Save(const QString& path, const PersistentSettings& settings)
 {
     EnsureSettingsDirectory(path);
 
     QJsonObject root;
-    root.insert(QStringLiteral("version"), 7);
+    root.insert(QStringLiteral("version"), kCurrentSettingsVersion);
+    root.insert(QStringLiteral("paths"),
+                QJsonObject{{QStringLiteral("userDataRoot"),
+                             settings.userDataRoot}});
     root.insert(QStringLiteral("cameraIndex"), settings.cameraIndex);
+    root.insert(QStringLiteral("cameraFormatStableId"),
+                settings.cameraFormatStableId);
+    root.insert(QStringLiteral("microphoneEndpointId"),
+                settings.microphoneEndpointId);
     root.insert(QStringLiteral("rotationQuarterTurns"), SnapRotation(settings.rotationQuarterTurns));
+    QJsonObject cameraAcceleration;
+    for (auto it = settings.cameraAcceleration.cbegin();
+         it != settings.cameraAcceleration.cend(); ++it) {
+        cameraAcceleration.insert(
+            it.key(),
+            QJsonObject{
+                {QStringLiteral("mode"), static_cast<int>(it.value().mode)},
+                {QStringLiteral("automaticFallback"),
+                 it.value().automaticFallback},
+                {QStringLiteral("reason"), it.value().reason},
+                {QStringLiteral("decidedOn"), it.value().decidedOn},
+                {QStringLiteral("lastRung"), it.value().lastRung}});
+    }
+    root.insert(
+        QStringLiteral("capture"),
+        QJsonObject{
+            {QStringLiteral("accelerationAttempt"),
+             settings.cameraAccelerationAttempt},
+            {QStringLiteral("cameras"), cameraAcceleration}});
 
     QJsonObject ui;
     ui.insert(QStringLiteral("virtualJoystick"), settings.virtualJoystick);
+    ui.insert(QStringLiteral("zoomWheelAcceleration"),
+              settings.zoomWheelAcceleration);
     ui.insert(QStringLiteral("controlsCollapsed"), settings.controlsCollapsed);
     ui.insert(QStringLiteral("simpleUiMode"), settings.simpleUiMode);
     ui.insert(QStringLiteral("advancedPanelWidth"), settings.advancedPanelWidth);
@@ -759,6 +917,12 @@ bool Save(const QString& path, const PersistentSettings& settings)
               static_cast<int>(settings.viewportRateMode));
     ui.insert(QStringLiteral("viewportFitMode"),
               static_cast<int>(settings.viewportFitMode));
+    QJsonObject sectionStates;
+    for (auto it = settings.uiSectionStates.cbegin();
+         it != settings.uiSectionStates.cend(); ++it) {
+        sectionStates.insert(it.key(), it.value());
+    }
+    ui.insert(QStringLiteral("sectionStates"), sectionStates);
     ui.insert(QStringLiteral("selectedPresetId"), settings.selectedPresetId);
     ui.insert(QStringLiteral("setupAssistantDeclined"), settings.setupAssistantDeclined);
     if (settings.assistiveOverlayGeometry.isValid()) {
@@ -770,6 +934,26 @@ bool Save(const QString& path, const PersistentSettings& settings)
                               {QStringLiteral("height"), geometry.height()}});
     }
     root.insert(QStringLiteral("ui"), ui);
+    root.insert(
+        QStringLiteral("recording"),
+        QJsonObject{{QStringLiteral("canvasMode"),
+                     static_cast<int>(settings.recordingCanvasMode)}});
+
+    root.insert(
+        QStringLiteral("annotations"),
+        QJsonObject{
+            {QStringLiteral("color"), settings.annotationColor},
+            {QStringLiteral("widthPixels"),
+             std::clamp(settings.annotationWidthPixels, 2, 24)},
+            {QStringLiteral("captureOnExit"),
+             settings.annotationCaptureOnExit},
+            {QStringLiteral("dashed"), settings.annotationDashed},
+            {QStringLiteral("shapeKind"),
+             settings.annotationShapeKind == QStringLiteral("ellipse")
+                 ? QStringLiteral("ellipse")
+                 : QStringLiteral("rectangle")},
+            {QStringLiteral("textSizePixels"),
+             std::clamp(settings.annotationTextSizePixels, 12, 72)}});
 
     root.insert(QStringLiteral("assistive"), AssistiveToJson(settings.assistive));
 
@@ -798,13 +982,35 @@ bool Save(const QString& path, const PersistentSettings& settings)
     root.insert(QStringLiteral("customPresets"), presetArray);
 
     const QJsonDocument doc(root);
+    const QByteArray serialized = doc.toJson(QJsonDocument::Indented);
+
+    if (QFileInfo::exists(path)) {
+        const LoadResult existing = LoadDetailed(path);
+        if (existing.status == LoadStatus::Loaded) {
+            const QString backupPath = path + QStringLiteral(".backup");
+            if (QFileInfo::exists(backupPath) && !QFile::remove(backupPath)) {
+                return false;
+            }
+            if (!QFile::copy(path, backupPath)) {
+                return false;
+            }
+        }
+    }
+
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return false;
     }
 
-    file.write(doc.toJson(QJsonDocument::Indented));
-    return file.commit();
+    if (file.write(serialized) != serialized.size()) {
+        file.cancelWriting();
+        return false;
+    }
+    if (!file.commit()) {
+        return false;
+    }
+
+    return true;
 }
 
 const std::vector<AdvancedConfig>& BuiltInConfigs()
@@ -899,7 +1105,6 @@ bool AreConfigsEquivalent(const AdvancedConfig& lhs, const AdvancedConfig& rhs)
            lhs.vlmAssistEnabled == rhs.vlmAssistEnabled &&
            lhs.assistiveOverlayEnabled == rhs.assistiveOverlayEnabled &&
            lhs.stabilizationEnabled == rhs.stabilizationEnabled &&
-           withinUiStep(lhs.stabilizationStrength, rhs.stabilizationStrength, 0.005f) &&
            color_schemes::SchemesEquivalent(
                lhs.colorScheme.stops.size() >= 2
                    ? lhs.colorScheme

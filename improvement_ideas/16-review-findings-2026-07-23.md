@@ -216,3 +216,94 @@ Wait before the copy.
    repo keeps only the MIT nvvfx header snapshot (~130 KB) instead of 97 MB of
    sample apps/media.
 3. `CHANGELOG.md` — entry for the M1 fix.
+
+## Stabilizer debug session — 2026-07-24 (reviewer)
+
+Owner report: "stabilization is implemented but not working." Root cause
+found and fixed; the implementation was healthy end to end.
+
+**Evidence gathered** (instrumented `ConsumeStabilizerTiming` with a
+per-sample `qInfo` line, ran the release build with
+`QT_FORCE_STDERR_LOGGING=1` and captured stderr):
+
+- `Stabilizer: NVIDIA Optical Flow Accelerator ready at 320 x 180 grid 4` —
+  the RTX engine initializes on the RTX 4090 laptop; no fallback latch.
+- Steady state: `RTX optical flow | 3600 inliers | correction ~0.0 px` at
+  1-3 ms GPU — all 80x45 flow vectors accepted, estimator chain live.
+- NVOF semantics verified against the SDK programming guide: "Forward flow
+  represents the movement of pixels from input frame to reference frame";
+  OpenZoom passes input=previous / reference=current, so pairs and signs are
+  correct. S10.5 fixed-point divide (/32) present in the flow-pairs kernel.
+
+**Root cause: filter tuning, not plumbing.** Simulating the exact
+`UpdateStabilizationPath`/`KalmanAxis` math showed the constant-velocity
+Kalman *tracked* low-frequency motion instead of removing it: at strength
+0.98 it removed -11% at 1 Hz (slight amplification), 14% at 1.5 Hz, 33% at
+2 Hz — and clamp-arm wobble plus any human "wiggle the phone to test it"
+lives at 1-3 Hz. Only above ~4 Hz did it reach 70%. The 0.015f
+process-noise floor also meant the strength slider stopped mattering near
+the top.
+
+**Fix applied** (`UpdateStabilizationPath` in `src/cuda/cuda_kernels.cu`):
+velocity estimate damped each frame (`velocityLeak = 1 - 0.72 * s`) so the
+CV model cannot resonate with slow swings, and process-noise floors dropped
+(0.015 -> 1e-5 position, 0.002 -> 2e-6 velocity). Simulated removal at max
+strength: 1 Hz -11% -> +41%, 1.5 Hz 14% -> +56%, 2 Hz 33% -> +64%, 3 Hz
+54% -> +75%; deliberate 240 px pan still tracks (max lag ~25 px, view
+settles 0.5 s after the hand stops). Rebuilt, smoke-ran clean (engine
+active, exit 0), and copied the new exe into `dist/OpenZoom`.
+
+**Still open / for the implementer:**
+- Resolved: the per-second `Stabilizer sample` stderr line was removed after
+  diagnosis; the same measurements remain available in Advanced diagnostics.
+- Physical validation pending: owner should wiggle-test the clamped phone.
+  Quick jiggle and bump ring-down should now visibly damp; large slow waves
+  still intentionally follow (that band is indistinguishable from
+  repositioning for a linear filter).
+- If the owner wants a true hard lock, that is the already-approved Screen
+  Lock feature (plan 14), not more Kalman tuning: a linear filter cannot
+  both lock at 0.5 Hz and follow deliberate reframing.
+
+### Recorded clamp-wobble follow-up — 2026-07-24
+
+The owner supplied the paired 2.97-second, 30 FPS AV1 recording
+`VID_20260724_011241_815`. The motion analysis completed before a legacy release
+bundle cleanup removed the local `dist/OpenZoom/output` tree. The numerical
+findings below remain valid, but the source clips and generated traces must be
+restored from Google Drive Trash if another analysis pass is needed. The bundle
+script now preserves `output` and performs its lock check before deletion so
+future recordings are not exposed to that failure mode.
+
+Two independent motion estimates found the source vibration concentrated near
+0.67-1.0 Hz. Gradient phase correlation measured about 20 px robust
+peak-to-peak vertical motion in the 1280x720 source. The magnified processed
+viewport retained conspicuous motion rather than suppressing it. Replaying the
+measured path through the then-current filter predicted only about 55% vertical
+RMS removal at strength 0.98.
+
+The path filter now blends from its responsive constant-velocity Kalman model
+to a low-cutoff mounted-camera near-lock between 90% and 98% strength. The
+measured trace predicts about 93% RMS removal at 98%; ordinary strengths retain
+the responsive Kalman behavior and the existing correction bounds still let a
+large deliberate reframe move through. `stabilization_cuda_tests` now feeds a
+0.75 Hz, 10 px oscillation through the real GPU RANSAC/path update and requires
+at most 20% residual RMS.
+
+### Second recording: correction authority — 2026-07-24
+
+A new paired recording (`VID_20260724_015520_996`, 3.43 s at 30 FPS) remained
+visibly unstable after the near-lock filter change. It is preserved under the
+git-ignored `local_evidence/stabilization/` tree so release bundling cannot
+delete it. Phase-correlation analysis found 1.165 Hz dominant vertical motion,
+about 89 px of net drift, and only approximately 10.5% peak-to-peak attenuation
+in the processed output.
+
+This exposed two remaining limits: translation correction was always clamped
+to 6% of the source, only 43.2 px vertically at 720p, and the 98% near-lock
+still followed too much of the slow drift. The tested 1.25x zoom already crops
+10% from each axis, so the clamp saturated early and passed the remaining
+drift/wobble through. The limit is now derived from that zoom crop reserve (6%
+minimum, 12% maximum), giving this case 72 px; the 98% mounted-camera path now
+updates at only 0.001 per frame. Strength reaches a true 100% hold, and a
+measured-profile CUDA regression covers the combined drift and vibration
+rather than a stationary sinusoid alone.

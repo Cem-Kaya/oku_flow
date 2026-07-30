@@ -90,7 +90,10 @@ void OpenZoomApp::UpdatePresetDescription()
         assistiveText.append(QStringLiteral(" with overlay"));
     }
 
-    uiState_->presetDescriptionLabel_->setText(text + QStringLiteral("\n") + assistiveText);
+    SetLiveText(uiState_->presetDescriptionLabel_,
+                text + QStringLiteral("\n") + assistiveText,
+                LivePoliteness::kSilent,
+                QStringLiteral("Current quick mode description"));
 }
 
 void OpenZoomApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
@@ -105,6 +108,7 @@ void OpenZoomApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
             CaptureCurrentAdvancedConfig();
     }
     UpdatePresetDescription();
+    UpdateSectionChangedCounts();
 }
 
 void OpenZoomApp::ApplyAdvancedConfig(const settings::AdvancedConfig& config)
@@ -199,15 +203,33 @@ void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& se
     virtualJoystickEnabled_ = settings.virtualJoystick;
     OnVirtualJoystickToggled(virtualJoystickEnabled_);
 
+    if (uiState_->zoomWheelAccelerationCheckbox_) {
+        auto block =
+            uiState_->BlockSignals(uiState_->zoomWheelAccelerationCheckbox_);
+        uiState_->zoomWheelAccelerationCheckbox_->setChecked(
+            settings.zoomWheelAcceleration);
+    }
     if (uiState_->collapseButton_) {
         auto block = uiState_->BlockSignals(uiState_->collapseButton_);
-        uiState_->collapseButton_->setChecked(!settings.controlsCollapsed);
+        uiState_->collapseButton_->setChecked(true);
     }
-    controlsCollapsed_ = settings.controlsCollapsed;
-    OnControlsCollapsedToggled(uiState_->collapseButton_ ? uiState_->collapseButton_->isChecked() : !controlsCollapsed_);
+    controlsCollapsed_ = false;
+    OnControlsCollapsedToggled(true);
     simpleUiMode_ = settings.simpleUiMode;
     pipelineOrchestrator_->SetViewportRateMode(settings.viewportRateMode);
     pipelineOrchestrator_->SetViewportFitMode(settings.viewportFitMode);
+    if (recordingManager_) {
+        recordingManager_->SetCanvasMode(settings.recordingCanvasMode);
+    }
+    if (uiState_->microphoneCombo_) {
+        auto block =
+            uiState_->BlockSignals(uiState_->microphoneCombo_);
+        const int index =
+            uiState_->microphoneCombo_->findData(
+                settings.microphoneEndpointId);
+        uiState_->microphoneCombo_->setCurrentIndex(
+            index >= 0 ? index : 0);
+    }
     {
         auto block = uiState_->BlockSignals(uiState_->viewportRateCombo_);
         uiState_->viewportRateCombo_->setCurrentIndex(
@@ -218,9 +240,25 @@ void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& se
         uiState_->viewportFitCombo_->setCurrentIndex(
             static_cast<int>(pipelineOrchestrator_->ViewportFitMode()));
     }
+    {
+        auto block =
+            uiState_->BlockSignals(uiState_->recordingCanvasCombo_);
+        const int index = uiState_->recordingCanvasCombo_->findData(
+            static_cast<int>(settings.recordingCanvasMode));
+        uiState_->recordingCanvasCombo_->setCurrentIndex(
+            index >= 0 ? index : 0);
+    }
     if (mainWindow_) {
         mainWindow_->setAdvancedPanelWidth(settings.advancedPanelWidth);
         mainWindow_->setSimpleMode(settings.simpleUiMode);
+        mainWindow_->setSectionStates(settings.uiSectionStates);
+        mainWindow_->setAnnotationPreferences(
+            QColor(settings.annotationColor),
+            settings.annotationWidthPixels,
+            settings.annotationCaptureOnExit,
+            settings.annotationDashed,
+            settings.annotationShapeKind,
+            settings.annotationTextSizePixels);
     }
     assistiveManager_->RestoreOverlayGeometry(settings.assistiveOverlayGeometry);
     ApplyAdvancedConfig(settings.currentConfig);
@@ -233,24 +271,69 @@ void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& se
 }
 
 void OpenZoomApp::SavePersistentSettings() {
-    settingsController_->MutableSettings().cameraIndex = selectedCameraIndex_;
+    // Startup applies several controls that can request a settings save before
+    // the persisted camera has been selected. Preserve the loaded index until
+    // initialization completes instead of silently replacing it with the
+    // enumeration default.
+    if (initialized_) {
+        settingsController_->MutableSettings().cameraIndex =
+            selectedCameraIndex_;
+    }
+    if (uiState_->microphoneCombo_) {
+        settingsController_->MutableSettings().microphoneEndpointId =
+            uiState_->microphoneCombo_->currentData().toString();
+    }
     settingsController_->MutableSettings().rotationQuarterTurns = rotationQuarterTurns_;
     settingsController_->MutableSettings().virtualJoystick = virtualJoystickEnabled_;
-    settingsController_->MutableSettings().controlsCollapsed = controlsCollapsed_;
+    settingsController_->MutableSettings().controlsCollapsed = false;
+    if (uiState_->zoomWheelAccelerationCheckbox_) {
+        settingsController_->MutableSettings().zoomWheelAcceleration =
+            uiState_->zoomWheelAccelerationCheckbox_->isChecked();
+    }
     settingsController_->MutableSettings().simpleUiMode = simpleUiMode_;
     settingsController_->MutableSettings().viewportRateMode =
         pipelineOrchestrator_->ViewportRateMode();
     settingsController_->MutableSettings().viewportFitMode =
         pipelineOrchestrator_->ViewportFitMode();
+    if (uiState_->recordingCanvasCombo_) {
+        const int storedValue =
+            uiState_->recordingCanvasCombo_->currentData().toInt();
+        settingsController_->MutableSettings().recordingCanvasMode =
+            static_cast<RecordingCanvasMode>(std::clamp(
+                storedValue,
+                static_cast<int>(RecordingCanvasMode::Source),
+                static_cast<int>(RecordingCanvasMode::Nhd360)));
+    }
     if (mainWindow_) {
         settingsController_->MutableSettings().advancedPanelWidth = mainWindow_->advancedPanelWidth();
+        settingsController_->MutableSettings().uiSectionStates =
+            mainWindow_->sectionStates();
+        if (AnnotationOverlay* overlay = mainWindow_->annotationOverlay()) {
+            settingsController_->MutableSettings().annotationColor =
+                overlay->InkColor().name(QColor::HexRgb);
+            settingsController_->MutableSettings().annotationWidthPixels =
+                overlay->InkWidthPixels();
+            settingsController_->MutableSettings().annotationCaptureOnExit =
+                overlay->CaptureOnExit();
+            settingsController_->MutableSettings().annotationDashed =
+                overlay->Dashed();
+            settingsController_->MutableSettings().annotationShapeKind =
+                overlay->ShapeKind();
+            settingsController_->MutableSettings().annotationTextSizePixels =
+                overlay->TextSizePixels();
+        }
     }
     settingsController_->MutableSettings().assistiveOverlayGeometry =
         assistiveManager_->OverlayGeometry();
     if (uiState_->displayColorPicker_ && uiState_->displayColorPicker_->hasCustomScheme()) {
         settingsController_->MutableSettings().customColorScheme = uiState_->displayColorPicker_->customScheme();
     }
-    settingsController_->Save(CaptureCurrentAdvancedConfig());
+    if (!settingsController_->Save(CaptureCurrentAdvancedConfig())) {
+        const QString error = settingsController_->LastError().isEmpty()
+                                  ? QStringLiteral("OpenZoom could not save settings.")
+                                  : settingsController_->LastError();
+        ShowStatusMessage(error, 10000);
+    }
 }
 
 

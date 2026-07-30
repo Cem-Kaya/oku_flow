@@ -3,6 +3,7 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include <QPointF>
+#include <QElapsedTimer>
 #include <QSize>
 
 class QWheelEvent;
@@ -17,7 +18,8 @@ public:
 
     bool HandlePanKey(int key, bool pressed);
     bool HandlePanScroll(const QWheelEvent* wheelEvent);
-    void HandleZoomWheel(int delta, const QPointF& localPos);
+    void HandleZoomWheel(const QWheelEvent* wheelEvent);
+    void HandleKeyboardZoom(float notches);
 
     bool ApplyInputForces(double elapsedSeconds);
     bool HasContinuousMotion() const;
@@ -31,6 +33,10 @@ public:
     void SetJoystickAxes(float x, float y);
 
 private:
+    float ScaledZoom(float current, float notches, float accel) const;
+    void ApplyZoom(float target, const QPointF* localPos);
+    void ScheduleZoomAnnouncement();
+
     OpenZoomApp& app_;
     bool panLeftPressed_{false};
     bool panRightPressed_{false};
@@ -40,6 +46,10 @@ private:
     float joystickPanY_{0.0f};
     bool middlePanActive_{false};
     QPointF middlePanLastPos_{};
+    QElapsedTimer wheelTimer_;
+    float wheelAccel_{1.0f};
+    int wheelDirection_{};
+    quint64 zoomAnnouncementGeneration_{};
 };
 
 } // namespace openzoom

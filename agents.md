@@ -51,8 +51,35 @@ open while contributing and update it whenever the workflow evolves.
   `pwsh.exe -NoProfile -Command 'Get-Date'`. Use this PowerShell 7 bridge for
   Windows build tooling and batch scripts when a native Linux command is not
   enough; do not use the legacy `powershell.exe` bridge.
+- CUDA from the WSL shell needs the WSL driver stub on the library path. A
+  working `nvidia-smi` is not sufficient: without it `torch.cuda.is_available()`
+  returns False, cupy fails to initialise, and CUDA code silently falls back to
+  the CPU. Prefix the command:
+  `LD_LIBRARY_PATH=/usr/lib/wsl/lib:${LD_LIBRARY_PATH:-} python your_script.py`
+  (same prefix for `jupyter lab`).
+- Create Python virtualenvs on local ext4 (`/home/...`), never under the repo.
+  The working copy lives on a 9p Google Drive mount: large installs are slow
+  there and would also be synced to the cloud. Point the local interpreter at
+  the project instead, e.g. `/home/<user>/.venvs/<name>/bin/python /mnt/.../x.py`.
 - Run the appropriate build or test command locally before submitting
   automated changes; note the result in your summary.
+- Use `scripts/agent_build.bat` for the tracked Windows release/CPU/CUDA test
+  matrix. Do not use or recreate machine-specific test runners under the
+  gitignored `build/` directory.
+
+## Locked Release Bundle Fallback
+- Never terminate or relaunch a running OpenZoom instance merely to replace
+  `dist\OpenZoom\open_zoom.exe`.
+- When Windows reports that the primary release executable is in use after a
+  successful build, create a complete sibling bundle at `dist\OpenZoom2\`.
+  Copy the deployed runtime files from `dist\OpenZoom\`, exclude its
+  user-owned `output\` captures, and replace `OpenZoom2\open_zoom.exe` with the
+  newly built executable.
+- Verify that the SHA-256 of the new `OpenZoom2\open_zoom.exe` exactly matches
+  the release-build executable. Report that `dist\OpenZoom\` remains the
+  running/older bundle and give the new bundle path.
+- Use exactly `OpenZoom2`; do not create ambiguous alternatives such as
+  `OpenZoom-next`.
 
 ## Useful References
 - Qt moc and object model: <https://doc.qt.io/qt-6/moc.html>
@@ -66,6 +93,12 @@ Agents that modify the workflow must append to this guide so future runs remain
 aligned with the project goals.
 
 ## Validation Script Behavior
+- `scripts/agent_build.bat` compiles the shipping release configuration, then
+  runs the CPU and CUDA CTest presets. Its PASS/FAIL summary is the normal
+  pre-submission gate for code changes that touch shared behavior.
+- `scripts/build_release_bundle.bat` runs CTest by default and publishes only
+  from a validated staging directory. `OPENZOOM_SKIP_BUNDLE_TESTS=1` is an
+  explicit emergency escape hatch and must remain visibly marked untested.
 - `scripts/run_minimal_test.bat` always requires the main application build to
   succeed. It runs `dx12_cuda_minimal` when
   `sandbox/dx12_cuda_minimal/CMakeLists.txt` exists and otherwise reports the

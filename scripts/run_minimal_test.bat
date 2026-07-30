@@ -25,29 +25,35 @@ if not exist "%BUILD_DIR%" (
 set CONFIG=Release
 set TARGET=dx12_cuda_minimal
 
-rem The sandbox is optional and is not present in every checkout. A missing
-rem harness is a clean skip; a configured harness must still build and pass.
-if not exist "%ROOT_DIR%\sandbox\%TARGET%\CMakeLists.txt" (
-    echo Optional %TARGET% harness is not available; main application build passed.
-    endlocal
-    exit /b 0
+rem The DX12/CUDA sandbox is optional. A configured harness must build and pass.
+if exist "%ROOT_DIR%\sandbox\%TARGET%\CMakeLists.txt" (
+    cmake --build "%BUILD_DIR%" --config %CONFIG% --target %TARGET%
+    if errorlevel 1 goto :fail
+
+    set EXE_PATH=%BUILD_DIR%\%CONFIG%\%TARGET%.exe
+    if not exist "!EXE_PATH!" set EXE_PATH=%BUILD_DIR%\sandbox\%TARGET%\%CONFIG%\%TARGET%.exe
+    if not exist "!EXE_PATH!" set EXE_PATH=%BUILD_DIR%\sandbox\%TARGET%\%TARGET%.exe
+    if not exist "!EXE_PATH!" set EXE_PATH=%BUILD_DIR%\%TARGET%.exe
+
+    if exist "!EXE_PATH!" (
+        echo Running %TARGET% harness: "!EXE_PATH!"
+        "!EXE_PATH!"
+        if errorlevel 1 goto :fail
+    ) else (
+        echo Minimal harness executable not found at "!EXE_PATH!".
+        goto :fail
+    )
+) else (
+    echo Optional %TARGET% harness is not available.
 )
 
-rem Build the DX12/CUDA minimal validation target.
-cmake --build "%BUILD_DIR%" --config %CONFIG% --target %TARGET%
-if errorlevel 1 goto :fail
-
-set EXE_PATH=%BUILD_DIR%\%CONFIG%\%TARGET%.exe
-if not exist "%EXE_PATH%" set EXE_PATH=%BUILD_DIR%\sandbox\%TARGET%\%CONFIG%\%TARGET%.exe
-if not exist "%EXE_PATH%" set EXE_PATH=%BUILD_DIR%\sandbox\%TARGET%\%TARGET%.exe
-if not exist "%EXE_PATH%" set EXE_PATH=%BUILD_DIR%\%TARGET%.exe
-
-if exist "%EXE_PATH%" (
-    echo Running %TARGET% harness: "%EXE_PATH%"
-    "%EXE_PATH%"
-) else (
-    echo Minimal harness executable not found at "%EXE_PATH%".
-    goto :fail
+rem The MF/DXVA probe is always compiled, but it is not automatically run:
+rem opening physical cameras is an explicit owner-in-the-loop hardware gate.
+set TARGET=mf_dxva_minimal
+if exist "%ROOT_DIR%\sandbox\%TARGET%\CMakeLists.txt" (
+    cmake --build "%BUILD_DIR%" --config %CONFIG% --target %TARGET%
+    if errorlevel 1 goto :fail
+    echo Built %TARGET%. Run it explicitly when cameras are available.
 )
 
 endlocal

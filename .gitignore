@@ -35,10 +35,29 @@ Makefile
 /.vs/
 /.DS_Store
 Thumbs.db
+/nul
 /dist/
 /ui ideas/
 /design-qa.md
 /output/
+/local_evidence/
+# CMAKE_EXPORT_COMPILE_COMMANDS is ON, so this is regenerated on every configure.
+compile_commands.json
+# Per-developer preset overrides (machine-specific Qt/CUDA paths) stay local.
+CMakeUserPresets.json
+# Per-developer agent settings; the shared .claude/settings.json is committed.
+/.claude/settings.local.json
+# Crash dumps collected during forensics runs.
+*.dmp
+*.mdmp
+# Python byproducts from the test fixture generators.
+__pycache__/
+*.pyc
+.venv/
+# Virtual-camera media is generated from the tracked fixture generator.
+# Keep both the deterministic test stream and viewing copies out of git.
+/tests/fixtures/**/*.y4m
+/tests/fixtures/**/*.mp4
 /third_party/maxine/redist/*
 !/third_party/maxine/redist/README.md
 # Only the MIT-licensed nvvfx header snapshot belongs in the repo; the SDK's

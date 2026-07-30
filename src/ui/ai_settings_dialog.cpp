@@ -2,6 +2,7 @@
 
 #include "openzoom/ui/ai_settings_dialog.hpp"
 #include "openzoom/common/codex_app_server_client.hpp"
+#include "openzoom/ui/live_status_text.hpp"
 #include "openzoom/ui/wheel_safe_combo_box.hpp"
 
 #include <QCheckBox>
@@ -559,13 +560,16 @@ void AiSettingsDialog::PopulateSpeechVoices()
 void AiSettingsDialog::UpdateSpeechRateLabel()
 {
     const int rate = ttsRateSlider_->value();
+    QString text;
     if (rate == 0) {
-        ttsRateValueLabel_->setText("Normal");
+        text = QStringLiteral("Normal");
     } else if (rate < 0) {
-        ttsRateValueLabel_->setText(QStringLiteral("%1% slower").arg(-rate));
+        text = QStringLiteral("%1% slower").arg(-rate);
     } else {
-        ttsRateValueLabel_->setText(QStringLiteral("%1% faster").arg(rate));
+        text = QStringLiteral("%1% faster").arg(rate);
     }
+    SetLiveText(ttsRateValueLabel_, text, LivePoliteness::kSilent,
+                QStringLiteral("Speech rate"));
 }
 
 void AiSettingsDialog::ApplySpeechPreviewSettings()

@@ -6,12 +6,14 @@
 #include <QMainWindow>
 #include <QWidget>
 #include <QPointF>
+#include <QMap>
 #include <QRectF>
 
 #include <array>
 
 #include "openzoom/ui/render_widget.hpp"
 #include "openzoom/ui/assistive_overlay.hpp"
+#include "openzoom/ui/annotation_overlay.hpp"
 #include "openzoom/ui/joystick_overlay.hpp"
 
 QT_BEGIN_NAMESPACE
@@ -31,6 +33,7 @@ class QTimer;
 class QEvent;
 class QShowEvent;
 class QResizeEvent;
+class QScrollArea;
 class QPaintEvent;
 class QMouseEvent;
 class QPlainTextEdit;
@@ -43,6 +46,8 @@ namespace openzoom {
 
 class OpenZoomApp;
 class ColorSchemePicker;
+class CollapsibleSection;
+namespace settings { struct AdvancedConfig; }
 
 
 
@@ -56,6 +61,7 @@ public:
 
     RenderWidget* renderWidget() const;
     QComboBox* cameraCombo() const;
+    QComboBox* microphoneCombo() const;
     QListWidget* presetList() const;
     QLabel* presetDescriptionLabel() const;
     QPushButton* promotePresetButton() const;
@@ -75,9 +81,13 @@ public:
     QSlider* blurRadiusSlider() const;
     QLabel* blurSigmaValueLabel() const;
     QLabel* blurRadiusValueLabel() const;
-    QListWidget* cameraModesList() const;
+    QComboBox* cameraFormatCombo() const;
+    QLabel* cameraFormatNoticeLabel() const;
+    QCheckBox* zoomWheelAccelerationCheckbox() const;
     QPushButton* capturePhotoButton() const;
     QPushButton* recordButton() const;
+    QPushButton* annotationButton() const;
+    AnnotationOverlay* annotationOverlay() const;
     QCheckBox* temporalSmoothCheckbox() const;
     QSlider* temporalSmoothSlider() const;
     QLabel* temporalSmoothValueLabel() const;
@@ -89,9 +99,14 @@ public:
     QSlider* spatialSharpnessSlider() const;
     QLabel* spatialSharpnessValueLabel() const;
     QLabel* processingStatusLabel() const;
+    QLabel* performanceDiagnosticsLabel() const;
     QComboBox* rotationCombo() const;
     QComboBox* viewportRateCombo() const;
     QComboBox* viewportFitCombo() const;
+    QComboBox* cameraAccelerationCombo() const;
+    QLabel* cameraAccelerationStatusLabel() const;
+    QPushButton* testCameraAccelerationButton() const;
+    QComboBox* recordingCanvasCombo() const;
 
     // Two-speed UI: Simple overlays compact corner controls on the full render
     // surface; Advanced adds a right-side inspector.
@@ -104,7 +119,7 @@ public:
     QPushButton* explainNowButton() const;
     QPushButton* readTextButton() const;
     QCheckBox* stabilizationCheckbox() const;
-    QSlider* stabilizationStrengthSlider() const;
+    QCheckBox* bumpHoldCheckbox() const;
     QCheckBox* keystoneCheckbox() const;
     QCheckBox* autoContrastCheckbox() const;
     QSlider* autoContrastStrengthSlider() const;
@@ -166,13 +181,36 @@ public:
                                      bool stepPending,
                                      int position,
                                      int count);
+    QMap<QString, bool> sectionStates() const;
+    void setSectionStates(const QMap<QString, bool>& states);
+    void updateSectionChangedCounts(const settings::AdvancedConfig& current,
+                                    const settings::AdvancedConfig& defaults);
+    void setAnnotationPreferences(const QColor& color,
+                                  int widthPixels,
+                                  bool captureOnExit,
+                                  bool dashed,
+                                  const QString& shapeKind,
+                                  int textSizePixels);
+    void setAnnotationViewTransform(const ViewTransform& transform);
+    void setAnnotationMode(bool enabled);
 
 signals:
+    void openUserDataFolderRequested();
+    void changeUserDataFolderRequested();
     void keystoneStepBackRequested();
     void keystonePauseResumeRequested();
     void keystoneStepForwardRequested();
     void resetCurrentProfileRequested();
     void superResPerformanceOverrideChanged(bool enabled);
+    void sectionStatesChanged();
+    // reason: 0 explicit snapshot, 1 clear, 2 exit.
+    void annotationSnapshotRequested(int reason);
+    void annotationPreferencesChanged(const QString& colorName,
+                                      int widthPixels,
+                                      bool captureOnExit,
+                                      bool dashed,
+                                      const QString& shapeKind,
+                                      int textSizePixels);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -193,9 +231,11 @@ private:
     bool SimpleChromeHasFocus() const;
     void ApplyAdvancedPanelWidth();
     void ShowHelpDialog();
+    void FilterAdvancedSettings(const QString& query);
 
     RenderWidget* renderWidget_{};
     QComboBox* cameraCombo_{};
+    QComboBox* microphoneCombo_{};
     QListWidget* presetList_{};
     QLabel* presetDescriptionLabel_{};
     QPushButton* promotePresetButton_{};
@@ -208,15 +248,22 @@ private:
     QSlider* blurRadiusSlider_{};
     QLabel* blurSigmaValueLabel_{};
     QLabel* blurRadiusValueLabel_{};
-    QListWidget* cameraModesList_{};
+    QComboBox* cameraFormatCombo_{};
+    QLabel* cameraFormatNoticeLabel_{};
+    QCheckBox* zoomWheelAccelerationCheckbox_{};
+    QLineEdit* settingsSearchEdit_{};
     QPushButton* capturePhotoButton_{};
     QPushButton* recordButton_{};
+    QPushButton* annotationButton_{};
+    AnnotationOverlay* annotationOverlay_{};
+    bool changingAnnotationMode_{};
     QCheckBox* temporalSmoothCheckbox_{};
     QSlider* temporalSmoothSlider_{};
     QLabel* temporalSmoothValueLabel_{};
     QCheckBox* ocrAssistCheckbox_{};
     QCheckBox* vlmAssistCheckbox_{};
     QCheckBox* assistiveOverlayCheckbox_{};
+    QCheckBox* annotationCaptureOnExitCheckbox_{};
     QCheckBox* spatialSharpenCheckbox_{};
     QComboBox* spatialBackendCombo_{};
     QSlider* spatialSharpnessSlider_{};
@@ -231,13 +278,31 @@ private:
     QToolButton* controlsToggleButton_{};
     QWidget* controlsContainer_{};
     QLabel* processingStatusLabel_{};
+    QLabel* performanceDiagnosticsLabel_{};
     QLabel* maxineAttribution_{};
     bool maxineRuntimeInstalled_{};
     OpenZoomApp* app_{};
     QComboBox* rotationCombo_{};
     QComboBox* viewportRateCombo_{};
     QComboBox* viewportFitCombo_{};
+    QComboBox* cameraAccelerationCombo_{};
+    QLabel* cameraAccelerationStatusLabel_{};
+    QPushButton* testCameraAccelerationButton_{};
+    QComboBox* recordingCanvasCombo_{};
+    CollapsibleSection* deviceSection_{};
+    CollapsibleSection* deviceMoreSection_{};
+    CollapsibleSection* recordingSection_{};
+    CollapsibleSection* magnificationSection_{};
+    CollapsibleSection* readabilitySection_{};
+    CollapsibleSection* stabilitySection_{};
+    CollapsibleSection* screenFixSection_{};
+    CollapsibleSection* textClaritySection_{};
+    CollapsibleSection* assistantSection_{};
+    CollapsibleSection* sharpeningSection_{};
+    CollapsibleSection* diagnosticsSection_{};
+    QWidget* firstSettingsSearchMatch_{};
     QWidget* advancedPanel_{};
+    QScrollArea* advancedScroll_{};
     QSplitter* contentSplitter_{};
     int advancedPanelPreferredWidth_{520};
     QWidget* topLeftPanel_{};
@@ -266,7 +331,7 @@ private:
     QPushButton* explainNowButton_{};
     QPushButton* readTextButton_{};
     QCheckBox* stabilizationCheckbox_{};
-    QSlider* stabilizationStrengthSlider_{};
+    QCheckBox* bumpHoldCheckbox_{};
     QCheckBox* keystoneCheckbox_{};
     QWidget* advancedKeystoneTrackingRow_{};
     QPushButton* advancedKeystoneBackButton_{};
@@ -306,6 +371,8 @@ private:
     QSlider* brightnessSlider_{};
     QPushButton* aiSettingsButton_{};
     QPushButton* openNotesButton_{};
+    QPushButton* openUserDataFolderButton_{};
+    QPushButton* changeUserDataFolderButton_{};
     QPushButton* setupAssistantButton_{};
     QLabel* assistantConnectionLabel_{};
     QLabel* assistantUsageLabel_{};

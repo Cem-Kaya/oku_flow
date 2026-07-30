@@ -3,6 +3,7 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include "openzoom/app/settings_store.hpp"
+#include "openzoom/app/user_data_paths.hpp"
 #include "openzoom/common/assistive_runtime.hpp"
 
 #include <QElapsedTimer>
@@ -29,7 +30,8 @@ public:
 
     AssistiveFeatureManager(QWidget& renderWidget,
                             QObject& runtimeParent,
-                            QuestionHandler questionHandler);
+                            QuestionHandler questionHandler,
+                            const UserDataPaths& userDataPaths);
     ~AssistiveFeatureManager();
 
     AssistiveFeatureManager(const AssistiveFeatureManager&) = delete;
@@ -56,13 +58,14 @@ public:
     QRect OverlayGeometry() const;
 
 private:
-    static AssistiveRuntimeConfig BuildRuntimeConfig(
-        const settings::AssistiveSettings& settings);
+    AssistiveRuntimeConfig BuildRuntimeConfig(
+        const settings::AssistiveSettings& settings) const;
     bool AnalysisDue() const;
 
     std::unique_ptr<AssistiveRuntime> runtime_;
     AssistiveOverlay* overlay_{};
     QElapsedTimer analysisTimer_;
+    const UserDataPaths* userDataPaths_{};
     bool overlayEnabled_{true};
 };
 

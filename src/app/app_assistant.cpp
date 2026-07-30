@@ -26,10 +26,8 @@ void OpenZoomApp::OpenNotesFile()
 {
     const QString path = assistiveManager_->Runtime().notesFilePath();
     if (path.isEmpty()) {
-        if (uiState_->processingStatusLabel_) {
-            uiState_->processingStatusLabel_->setText(
-                QStringLiteral("No lecture notes yet — notes appear once OCR or Explain produces text."));
-        }
+        ShowStatusMessage(
+            QStringLiteral("No lecture notes yet — notes appear once OCR or Explain produces text."));
         qInfo() << "Open notes skipped: no notes file written yet";
         return;
     }
@@ -47,23 +45,15 @@ void OpenZoomApp::SubmitOnDemandAnalysis(bool runOcr, bool runVlm)
         return;
     }
 
-    // Prefer the processed GPU output, using the same readback path as the
-    // periodic assistive loop.
-    const UINT64 cudaWaitValue =
-        pipelineOrchestrator_ && pipelineOrchestrator_->FenceInteropEnabled()
-            ? pipelineOrchestrator_->Fence().LastCudaSignal()
-            : 0;
+    // Prefer the processed GPU output. Queue the request with the next
+    // viewport presentation so the existing CUDA/D3D fence contract orders
+    // the copy without blocking the UI thread.
     if (usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
-        processedFrameWidth_ > 0 && processedFrameHeight_ > 0 &&
-        presenter_->ReadbackTexture(cudaSharedTexture_.Get(),
-                                    processedFrameWidth_,
-                                    processedFrameHeight_,
-                                    assistiveBuffer_,
-                                    cudaWaitValue)) {
-        assistiveManager_->Runtime().SubmitFrameForced(assistiveBuffer_.data(),
-                                             static_cast<int>(processedFrameWidth_),
-                                             static_cast<int>(processedFrameHeight_),
-                                             runOcr, runVlm);
+        processedFrameWidth_ > 0 && processedFrameHeight_ > 0) {
+        pendingOnDemandRunOcr_ = pendingOnDemandRunOcr_ || runOcr;
+        pendingOnDemandRunVlm_ = pendingOnDemandRunVlm_ || runVlm;
+        pipelineOrchestrator_->MarkViewportDirty();
+        ShowStatusMessage(QStringLiteral("Capturing the current view..."), 3000);
         return;
     }
 
@@ -105,35 +95,48 @@ void OpenZoomApp::SubmitAssistantPromptText(const QString& prompt,
                                             bool clearAdvancedEditor,
                                             bool forceAttachFrame)
 {
-    if (prompt.trimmed().isEmpty() || assistiveManager_->Runtime().IsCodexTurnActive()) {
+    if (prompt.trimmed().isEmpty() ||
+        assistiveManager_->Runtime().IsCodexTurnActive() ||
+        pendingAssistantFramePrompt_) {
         return;
     }
     const bool attachFrame = forceAttachFrame ||
                              (uiState_->assistantAttachFrameCheckbox_ && uiState_->assistantAttachFrameCheckbox_->isChecked());
+
+    if (attachFrame && usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
+        processedFrameWidth_ > 0 && processedFrameHeight_ > 0) {
+        pendingAssistantFramePrompt_ = PendingAssistantFramePrompt{
+            prompt.trimmed(), clearAdvancedEditor};
+        SetAssistantBusy(true);
+        pipelineOrchestrator_->MarkViewportDirty();
+        ShowStatusMessage(QStringLiteral("Attaching the current view..."), 3000);
+        return;
+    }
+
     const uint8_t* data = nullptr;
     int width = 0;
     int height = 0;
-    const UINT64 cudaWaitValue =
-        pipelineOrchestrator_ && pipelineOrchestrator_->FenceInteropEnabled()
-            ? pipelineOrchestrator_->Fence().LastCudaSignal()
-            : 0;
-    if (attachFrame && usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
-        processedFrameWidth_ > 0 && processedFrameHeight_ > 0 &&
-        presenter_->ReadbackTexture(cudaSharedTexture_.Get(),
-                                    processedFrameWidth_,
-                                    processedFrameHeight_,
-                                    assistiveBuffer_,
-                                    cudaWaitValue)) {
-        data = assistiveBuffer_.data();
-        width = static_cast<int>(processedFrameWidth_);
-        height = static_cast<int>(processedFrameHeight_);
-    } else if (attachFrame && !presentationBuffer_.empty() &&
-               presentationWidth_ > 0 && presentationHeight_ > 0) {
+    if (attachFrame && !presentationBuffer_.empty() &&
+        presentationWidth_ > 0 && presentationHeight_ > 0) {
         data = presentationBuffer_.data();
         width = static_cast<int>(presentationWidth_);
         height = static_cast<int>(presentationHeight_);
     }
+    DispatchAssistantPrompt(prompt,
+                            clearAdvancedEditor,
+                            data,
+                            width,
+                            height,
+                            attachFrame);
+}
 
+void OpenZoomApp::DispatchAssistantPrompt(const QString& prompt,
+                                          bool clearAdvancedEditor,
+                                          const uint8_t* bgraData,
+                                          int width,
+                                          int height,
+                                          bool attachFrame)
+{
     const QString submittedPrompt = prompt.trimmed();
     pendingAssistantPrompt_ = submittedPrompt;
     AppendAssistantMessage(QStringLiteral("You"), submittedPrompt);
@@ -148,11 +151,24 @@ void OpenZoomApp::SubmitAssistantPromptText(const QString& prompt,
     }
     SetAssistantBusy(true);
     assistiveManager_->Runtime().SubmitAssistantPrompt(submittedPrompt,
-                                             currentAssistantThreadId_,
-                                             data,
-                                             width,
-                                             height,
-                                             attachFrame);
+                                                       currentAssistantThreadId_,
+                                                       bgraData,
+                                                       width,
+                                                       height,
+                                                       attachFrame);
+}
+
+void OpenZoomApp::StopAssistantRequest()
+{
+    if (pendingAssistantFramePrompt_) {
+        pendingAssistantFramePrompt_.reset();
+        pendingAssistantFrameReadbackId_ = 0;
+        pendingAssistantFrameReadbackTimer_.invalidate();
+        SetAssistantBusy(false);
+        ShowStatusMessage(QStringLiteral("Assistant request stopped."), 3000);
+        return;
+    }
+    assistiveManager_->Runtime().StopAssistant();
 }
 
 void OpenZoomApp::PopulateAssistantHistory()

@@ -186,7 +186,7 @@ README note. Do not imply NVIDIA endorsement.
 ## Build & verify loop (mandatory)
 `build/agent_build.bat`: VsDevCmd 2022 Community x64 → `cmake --preset
 msvc-release` → `cmake --build --preset msvc-release-build`; run via
-`pwsh.exe -NoProfile -Command 'cmd /c "W:\Google_drive\sync\UU\projects\open_zoom\build\agent_build.bat" 2>&1; exit $LASTEXITCODE'`
+`pwsh.exe -NoProfile -Command 'cmd /c "<repo>\scripts\agent_build.bat" 2>&1; exit $LASTEXITCODE'`
 (timeout 600000). Fix all errors; delete the bat when green. Machines without
 the runtime MUST run cleanly (probe returns unavailable, UI shows install
 hint) — that path is testable on this machine before installing anything.

@@ -104,7 +104,8 @@ private:
     void HandleServerRequest(const QJsonValue& id,
                              const QString& method,
                              const QJsonObject& params);
-    void FinishInitialization(const QJsonObject& error);
+    void FinishInitialization(const QJsonObject& result,
+                              const QJsonObject& error);
     void SubmitPendingTurn();
     void StartNewThreadForPendingTurn();
     void ResumeThreadForPendingTurn();
@@ -113,6 +114,11 @@ private:
                           const QString& error,
                           bool interrupted);
     void RejectForbiddenAgentItem(const QJsonObject& item);
+    void TouchTurnWatchdog();
+    void CheckTurnWatchdog();
+    void RequestInterrupt(const QString& reason);
+    void FailProtocol(const QString& reason);
+    QString AppendActiveText(const QString& delta);
     static QJsonArray TranscriptFromThread(const QJsonObject& thread);
     static QString FinalAgentText(const QJsonObject& turn);
 
@@ -122,6 +128,15 @@ private:
     // JSON-RPC replies are quick control-plane acks (turn results arrive via
     // notifications), so a uniform timeout is safe.
     static constexpr int kRequestTimeoutMs = 60000;
+    static constexpr int kTurnIdleTimeoutMs = 90000;
+    static constexpr int kVisionTurnMaximumMs = 180000;
+    static constexpr int kPersistentTurnMaximumMs = 1800000;
+    static constexpr int kInterruptGraceMs = 5000;
+    static constexpr qsizetype kMaximumProtocolBufferBytes = 4 * 1024 * 1024;
+    static constexpr qsizetype kMaximumProtocolMessageBytes = 2 * 1024 * 1024;
+    static constexpr qsizetype kMaximumAnswerCharacters = 256 * 1024;
+    static constexpr qsizetype kMaximumTranscriptMessageCharacters = 32 * 1024;
+    static constexpr qsizetype kMaximumTranscriptMessages = 200;
 
     struct PendingReply {
         ReplyHandler handler;
@@ -132,11 +147,13 @@ private:
     QByteArray stdoutBuffer_;
     QHash<qint64, PendingReply> pendingReplies_;
     QTimer* replyTimeoutTimer_{nullptr};
+    QTimer* turnWatchdogTimer_{nullptr};
     qint64 nextRequestId_{1};
 
     QString configuredExecutable_;
     QString preferredModel_;
     QString selectedModel_;
+    QString appServerIdentity_;
     QString reasoningEffort_{QStringLiteral("low")};
     QString assistantInstructions_;
     QString workspaceDirectory_;
@@ -155,6 +172,12 @@ private:
     bool activeInternetEnabled_{false};
     bool activeCodingEnabled_{false};
     bool interruptingForbiddenItem_{false};
+    bool activeTextTruncated_{false};
+    bool interruptRequested_{false};
+    qint64 turnStartedAtMs_{0};
+    qint64 lastTurnActivityMs_{0};
+    qint64 interruptDeadlineMs_{0};
+    QString interruptReason_;
 };
 
 } // namespace openzoom

@@ -38,10 +38,12 @@ public:
 
     RenderWidget* renderWidget_{};
     QComboBox* cameraCombo_{};
+    QComboBox* microphoneCombo_{};
     QListWidget* presetList_{};
     QLabel* presetDescriptionLabel_{};
     QPushButton* promotePresetButton_{};
-    QListWidget* cameraModesList_{};
+    QComboBox* cameraFormatCombo_{};
+    QLabel* cameraFormatNoticeLabel_{};
     QCheckBox* bwCheckbox_{};
     QSlider* bwSlider_{};
     QCheckBox* zoomCheckbox_{};
@@ -55,7 +57,12 @@ public:
     QComboBox* rotationCombo_{};
     QComboBox* viewportRateCombo_{};
     QComboBox* viewportFitCombo_{};
+    QComboBox* cameraAccelerationCombo_{};
+    QLabel* cameraAccelerationStatusLabel_{};
+    QPushButton* testCameraAccelerationButton_{};
+    QComboBox* recordingCanvasCombo_{};
     QCheckBox* joystickCheckbox_{};
+    QCheckBox* zoomWheelAccelerationCheckbox_{};
     QToolButton* collapseButton_{};
     QWidget* controlsContainer_{};
     QCheckBox* blurCheckbox_{};
@@ -74,8 +81,8 @@ public:
     QSlider* spatialSharpnessSlider_{};
     QLabel* spatialSharpnessValueLabel_{};
     QLabel* processingStatusLabel_{};
+    QLabel* performanceDiagnosticsLabel_{};
     QCheckBox* stabilizationCheckbox_{};
-    QSlider* stabilizationStrengthSlider_{};
     QCheckBox* keystoneCheckbox_{};
     QCheckBox* autoContrastCheckbox_{};
     QSlider* autoContrastStrengthSlider_{};

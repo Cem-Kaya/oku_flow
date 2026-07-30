@@ -11,6 +11,7 @@
 #include <array>
 #include <cstring>
 #include <iterator>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -40,6 +41,10 @@ inline D3D12_RESOURCE_BARRIER TransitionBarrier(ID3D12Resource* resource,
     return barrier;
 }
 
+constexpr UINT64 kRecordingPoolBudgetBytes =
+    384ull * 1024ull * 1024ull;
+constexpr std::size_t kRecordingPoolMaxSlots = 48;
+
 Microsoft::WRL::ComPtr<ID3DBlob> CompileShader(const char* source,
                                                const char* entryPoint,
                                                const char* target) {
@@ -66,6 +71,269 @@ Microsoft::WRL::ComPtr<ID3DBlob> CompileShader(const char* source,
     }
     return shader;
 }
+
+} // namespace
+
+struct RecordingFramePoolState {
+    struct Slot {
+        Microsoft::WRL::ComPtr<ID3D12Resource> texture;
+        Microsoft::WRL::ComPtr<ID3D12Resource> annotationTexture;
+        Microsoft::WRL::ComPtr<ID3D12Resource> annotationUpload;
+        Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
+        Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvHeap;
+        Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvHeap;
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT annotationFootprint{};
+        UINT8* annotationUploadMapped{};
+        HANDLE textureHandle{nullptr};
+        UINT width{};
+        UINT height{};
+        UINT64 allocationBytes{};
+        bool supportsAnnotations{};
+        bool inUse{};
+
+        ~Slot()
+        {
+            if (annotationUpload && annotationUploadMapped) {
+                annotationUpload->Unmap(0, nullptr);
+            }
+            if (textureHandle) {
+                CloseHandle(textureHandle);
+            }
+        }
+    };
+
+    RecordingFramePoolState(ID3D12Device* device, ID3D12Fence* fence)
+        : device_(device), fence_(fence)
+    {
+        ThrowIfFailed(
+            device_->CreateSharedHandle(
+                fence_.Get(),
+                nullptr,
+                GENERIC_ALL,
+                nullptr,
+                &fenceHandle_),
+            "Failed to share GPU recording fence");
+    }
+
+    ~RecordingFramePoolState()
+    {
+        if (fenceHandle_) {
+            CloseHandle(fenceHandle_);
+        }
+    }
+
+    std::shared_ptr<Slot> Acquire(UINT width,
+                                  UINT height,
+                                  bool needsAnnotations)
+    {
+        std::lock_guard lock(mutex_);
+        for (const auto& slot : slots_) {
+            if (!slot->inUse &&
+                slot->width == width &&
+                slot->height == height &&
+                (!needsAnnotations || slot->supportsAnnotations)) {
+                slot->inUse = true;
+                return slot;
+            }
+        }
+
+        D3D12_RESOURCE_DESC textureDesc{};
+        textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        textureDesc.Width = width;
+        textureDesc.Height = height;
+        textureDesc.DepthOrArraySize = 1;
+        textureDesc.MipLevels = 1;
+        textureDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        textureDesc.SampleDesc.Count = 1;
+        textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        textureDesc.Flags =
+            D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET |
+            D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
+        const UINT64 outputAllocationBytes =
+            device_->GetResourceAllocationInfo(
+                0, 1, &textureDesc).SizeInBytes;
+        D3D12_RESOURCE_DESC annotationDesc = textureDesc;
+        annotationDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT annotationFootprint{};
+        UINT annotationRows = 0;
+        UINT64 annotationRowBytes = 0;
+        UINT64 annotationUploadBytes = 0;
+        device_->GetCopyableFootprints(
+            &annotationDesc,
+            0,
+            1,
+            0,
+            &annotationFootprint,
+            &annotationRows,
+            &annotationRowBytes,
+            &annotationUploadBytes);
+        const UINT64 annotationAllocationBytes =
+            needsAnnotations
+                ? device_->GetResourceAllocationInfo(
+                      0, 1, &annotationDesc).SizeInBytes +
+                      annotationUploadBytes
+                : 0;
+        const UINT64 allocationBytes =
+            outputAllocationBytes + annotationAllocationBytes;
+
+        // Free idle textures of obsolete dimensions before rejecting a new
+        // recording canvas. In-use entries remain until the encoder releases
+        // the corresponding Media Foundation sample.
+        for (auto it = slots_.begin();
+             it != slots_.end() &&
+             (allocatedBytes_ + allocationBytes >
+                  kRecordingPoolBudgetBytes ||
+              slots_.size() >= kRecordingPoolMaxSlots);) {
+            const auto& slot = *it;
+            if (!slot->inUse &&
+                (slot->width != width || slot->height != height ||
+                 (needsAnnotations && !slot->supportsAnnotations))) {
+                allocatedBytes_ -= slot->allocationBytes;
+                it = slots_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        if (allocatedBytes_ + allocationBytes >
+                kRecordingPoolBudgetBytes ||
+            slots_.size() >= kRecordingPoolMaxSlots) {
+            return {};
+        }
+
+        auto slot = std::make_shared<Slot>();
+        slot->width = width;
+        slot->height = height;
+        slot->allocationBytes = allocationBytes;
+        slot->supportsAnnotations = needsAnnotations;
+        slot->inUse = true;
+
+        D3D12_HEAP_PROPERTIES heapProperties{};
+        heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+        D3D12_CLEAR_VALUE clearValue{};
+        clearValue.Format = textureDesc.Format;
+        clearValue.Color[3] = 1.0f;
+        ThrowIfFailed(
+            device_->CreateCommittedResource(
+                &heapProperties,
+                D3D12_HEAP_FLAG_SHARED,
+                &textureDesc,
+                D3D12_RESOURCE_STATE_COMMON,
+                &clearValue,
+                IID_PPV_ARGS(&slot->texture)),
+            "Failed to create pooled GPU recording frame");
+        ThrowIfFailed(
+            device_->CreateCommandAllocator(
+                D3D12_COMMAND_LIST_TYPE_DIRECT,
+                IID_PPV_ARGS(&slot->allocator)),
+            "Failed to create pooled recording command allocator");
+
+        D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc{};
+        srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        srvHeapDesc.NumDescriptors = needsAnnotations ? 2 : 1;
+        srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        ThrowIfFailed(
+            device_->CreateDescriptorHeap(
+                &srvHeapDesc, IID_PPV_ARGS(&slot->srvHeap)),
+            "Failed to create pooled recording SRV heap");
+        if (needsAnnotations) {
+            D3D12_HEAP_PROPERTIES defaultHeap{};
+            defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
+            ThrowIfFailed(
+                device_->CreateCommittedResource(
+                    &defaultHeap,
+                    D3D12_HEAP_FLAG_NONE,
+                    &annotationDesc,
+                    D3D12_RESOURCE_STATE_COMMON,
+                    nullptr,
+                    IID_PPV_ARGS(&slot->annotationTexture)),
+                "Failed to create recording annotation texture");
+
+            D3D12_HEAP_PROPERTIES uploadHeap{};
+            uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
+            D3D12_RESOURCE_DESC uploadDesc{};
+            uploadDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+            uploadDesc.Width = annotationUploadBytes;
+            uploadDesc.Height = 1;
+            uploadDesc.DepthOrArraySize = 1;
+            uploadDesc.MipLevels = 1;
+            uploadDesc.SampleDesc.Count = 1;
+            uploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+            ThrowIfFailed(
+                device_->CreateCommittedResource(
+                    &uploadHeap,
+                    D3D12_HEAP_FLAG_NONE,
+                    &uploadDesc,
+                    D3D12_RESOURCE_STATE_GENERIC_READ,
+                    nullptr,
+                    IID_PPV_ARGS(&slot->annotationUpload)),
+                "Failed to create recording annotation upload buffer");
+            ThrowIfFailed(
+                slot->annotationUpload->Map(
+                    0,
+                    nullptr,
+                    reinterpret_cast<void**>(
+                        &slot->annotationUploadMapped)),
+                "Failed to map recording annotation upload buffer");
+            slot->annotationFootprint = annotationFootprint;
+        }
+        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc{};
+        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        rtvHeapDesc.NumDescriptors = 1;
+        ThrowIfFailed(
+            device_->CreateDescriptorHeap(
+                &rtvHeapDesc, IID_PPV_ARGS(&slot->rtvHeap)),
+            "Failed to create pooled recording RTV heap");
+        device_->CreateRenderTargetView(
+            slot->texture.Get(),
+            nullptr,
+            slot->rtvHeap->GetCPUDescriptorHandleForHeapStart());
+        ThrowIfFailed(
+            device_->CreateSharedHandle(
+                slot->texture.Get(),
+                nullptr,
+                GENERIC_ALL,
+                nullptr,
+                &slot->textureHandle),
+            "Failed to share pooled GPU recording texture");
+
+        allocatedBytes_ += allocationBytes;
+        slots_.push_back(slot);
+        return slot;
+    }
+
+    void Release(const std::shared_ptr<Slot>& slot)
+    {
+        std::lock_guard lock(mutex_);
+        slot->inUse = false;
+    }
+
+    HANDLE FenceHandle() const
+    {
+        return fenceHandle_;
+    }
+
+private:
+    Microsoft::WRL::ComPtr<ID3D12Device> device_;
+    Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
+    HANDLE fenceHandle_{nullptr};
+    std::mutex mutex_;
+    std::vector<std::shared_ptr<Slot>> slots_;
+    UINT64 allocatedBytes_{};
+};
+
+namespace {
+
+struct RecordingFramePoolLease {
+    std::shared_ptr<RecordingFramePoolState> pool;
+    std::shared_ptr<RecordingFramePoolState::Slot> slot;
+
+    ~RecordingFramePoolLease()
+    {
+        if (pool && slot) {
+            pool->Release(slot);
+        }
+    }
+};
 
 } // namespace
 
@@ -756,6 +1024,21 @@ float4 PSMain(VertexOutput input) : SV_Target {
     ThrowIfFailed(device_->CreateGraphicsPipelineState(
                       &pipelineDesc, IID_PPV_ARGS(&scenePipelineState_)),
                   "Failed to create viewport pipeline state");
+
+    D3D12_RENDER_TARGET_BLEND_DESC& annotationBlend =
+        pipelineDesc.BlendState.RenderTarget[0];
+    annotationBlend.BlendEnable = TRUE;
+    annotationBlend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    annotationBlend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+    annotationBlend.BlendOp = D3D12_BLEND_OP_ADD;
+    annotationBlend.SrcBlendAlpha = D3D12_BLEND_ONE;
+    annotationBlend.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+    annotationBlend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    ThrowIfFailed(
+        device_->CreateGraphicsPipelineState(
+            &pipelineDesc,
+            IID_PPV_ARGS(&annotationPipelineState_)),
+        "Failed to create annotation recording pipeline state");
 }
 
 void D3D12Presenter::AcquireBackBuffers()
@@ -1076,6 +1359,240 @@ bool D3D12Presenter::RequestReadback(ID3D12Resource* texture,
         *outRequestId = signalValue;
     }
     return true;
+}
+
+GpuVideoFrame D3D12Presenter::RequestRecordingFrame(
+    ID3D12Resource* texture,
+    UINT sourceWidth,
+    UINT sourceHeight,
+    const RecordingViewTransform& transform,
+    UINT targetWidth,
+    UINT targetHeight,
+    const uint8_t* annotationBgra,
+    std::size_t annotationStrideBytes,
+    bool* outPoolExhausted)
+{
+    GpuVideoFrame frame;
+    if (outPoolExhausted) {
+        *outPoolExhausted = false;
+    }
+    if (!initialized_ || !texture || !fence_ ||
+        sourceWidth == 0 || sourceHeight == 0 ||
+        targetWidth == 0 || targetHeight == 0 ||
+        !transform.valid) {
+        return frame;
+    }
+
+    try {
+        if (!recordingFramePool_) {
+            recordingFramePool_ =
+                std::make_shared<RecordingFramePoolState>(
+                    device_.Get(), fence_.Get());
+        }
+        const bool hasAnnotations =
+            annotationBgra != nullptr &&
+            annotationStrideBytes >=
+                static_cast<std::size_t>(targetWidth) * 4u;
+        auto slot = recordingFramePool_->Acquire(
+            targetWidth, targetHeight, hasAnnotations);
+        if (!slot) {
+            if (outPoolExhausted) {
+                *outPoolExhausted = true;
+            }
+            return {};
+        }
+        auto lease = std::make_shared<RecordingFramePoolLease>();
+        lease->pool = recordingFramePool_;
+        lease->slot = slot;
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+        srvDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Shader4ComponentMapping =
+            D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Texture2D.MipLevels = 1;
+        device_->CreateShaderResourceView(
+            texture,
+            &srvDesc,
+            slot->srvHeap->GetCPUDescriptorHandleForHeapStart());
+        if (hasAnnotations) {
+            const std::size_t copyBytes =
+                static_cast<std::size_t>(targetWidth) * 4u;
+            for (UINT row = 0; row < targetHeight; ++row) {
+                std::memcpy(
+                    slot->annotationUploadMapped +
+                        static_cast<std::size_t>(row) *
+                            slot->annotationFootprint.Footprint.RowPitch,
+                    annotationBgra +
+                        static_cast<std::size_t>(row) *
+                            annotationStrideBytes,
+                    copyBytes);
+            }
+            D3D12_CPU_DESCRIPTOR_HANDLE annotationSrv =
+                slot->srvHeap->GetCPUDescriptorHandleForHeapStart();
+            annotationSrv.ptr += sceneSrvDescriptorSize_;
+            device_->CreateShaderResourceView(
+                slot->annotationTexture.Get(),
+                &srvDesc,
+                annotationSrv);
+        }
+
+        ThrowIfFailed(
+            slot->allocator->Reset(),
+            "Failed to reset recording command allocator");
+        ThrowIfFailed(
+            commandList_->Reset(slot->allocator.Get(), nullptr),
+            "Failed to reset recording command list");
+        auto sourceToSample = TransitionBarrier(
+            texture,
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        commandList_->ResourceBarrier(1, &sourceToSample);
+        auto destinationToRenderTarget = TransitionBarrier(
+            slot->texture.Get(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_RENDER_TARGET);
+        commandList_->ResourceBarrier(1, &destinationToRenderTarget);
+        if (hasAnnotations) {
+            auto annotationToCopy = TransitionBarrier(
+                slot->annotationTexture.Get(),
+                D3D12_RESOURCE_STATE_COMMON,
+                D3D12_RESOURCE_STATE_COPY_DEST);
+            commandList_->ResourceBarrier(1, &annotationToCopy);
+            D3D12_TEXTURE_COPY_LOCATION annotationDestination{};
+            annotationDestination.pResource =
+                slot->annotationTexture.Get();
+            annotationDestination.Type =
+                D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            D3D12_TEXTURE_COPY_LOCATION annotationSource{};
+            annotationSource.pResource = slot->annotationUpload.Get();
+            annotationSource.Type =
+                D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            annotationSource.PlacedFootprint =
+                slot->annotationFootprint;
+            commandList_->CopyTextureRegion(
+                &annotationDestination,
+                0,
+                0,
+                0,
+                &annotationSource,
+                nullptr);
+            auto annotationToSample = TransitionBarrier(
+                slot->annotationTexture.Get(),
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            commandList_->ResourceBarrier(1, &annotationToSample);
+        }
+
+        const D3D12_CPU_DESCRIPTOR_HANDLE rtv =
+            slot->rtvHeap->GetCPUDescriptorHandleForHeapStart();
+        const float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        commandList_->ClearRenderTargetView(
+            rtv, clearColor, 0, nullptr);
+        const D3D12_VIEWPORT viewport{
+            0.0f,
+            0.0f,
+            static_cast<float>(targetWidth),
+            static_cast<float>(targetHeight),
+            0.0f,
+            1.0f};
+        const D3D12_RECT scissor{
+            0,
+            0,
+            static_cast<LONG>(targetWidth),
+            static_cast<LONG>(targetHeight)};
+        commandList_->SetGraphicsRootSignature(sceneRootSignature_.Get());
+        ID3D12DescriptorHeap* heaps[] = {slot->srvHeap.Get()};
+        commandList_->SetDescriptorHeaps(1, heaps);
+        const float constants[16] = {
+            transform.sourceX,
+            transform.sourceY,
+            transform.sourceWidth,
+            transform.sourceHeight,
+            transform.targetX,
+            transform.targetY,
+            transform.targetWidth,
+            transform.targetHeight,
+            0.5f,
+            0.5f,
+            static_cast<float>(targetWidth),
+            static_cast<float>(targetHeight),
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+        };
+        commandList_->SetGraphicsRoot32BitConstants(
+            0, 16, constants, 0);
+        commandList_->SetGraphicsRootDescriptorTable(
+            1,
+            slot->srvHeap->GetGPUDescriptorHandleForHeapStart());
+        commandList_->RSSetViewports(1, &viewport);
+        commandList_->RSSetScissorRects(1, &scissor);
+        commandList_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+        commandList_->SetPipelineState(scenePipelineState_.Get());
+        commandList_->IASetPrimitiveTopology(
+            D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        commandList_->DrawInstanced(3, 1, 0, 0);
+        if (hasAnnotations) {
+            const float annotationConstants[16] = {
+                0.0f, 0.0f, 1.0f, 1.0f,
+                0.0f, 0.0f, 1.0f, 1.0f,
+                0.5f, 0.5f,
+                static_cast<float>(targetWidth),
+                static_cast<float>(targetHeight),
+                0.0f, 0.0f, 0.0f, 0.0f,
+            };
+            commandList_->SetGraphicsRoot32BitConstants(
+                0, 16, annotationConstants, 0);
+            D3D12_GPU_DESCRIPTOR_HANDLE annotationSrv =
+                slot->srvHeap->GetGPUDescriptorHandleForHeapStart();
+            annotationSrv.ptr += sceneSrvDescriptorSize_;
+            commandList_->SetGraphicsRootDescriptorTable(
+                1, annotationSrv);
+            commandList_->SetPipelineState(
+                annotationPipelineState_.Get());
+            commandList_->DrawInstanced(3, 1, 0, 0);
+        }
+
+        auto destinationToCommon = TransitionBarrier(
+            slot->texture.Get(),
+            D3D12_RESOURCE_STATE_RENDER_TARGET,
+            D3D12_RESOURCE_STATE_COMMON);
+        commandList_->ResourceBarrier(1, &destinationToCommon);
+        auto sourceToCommon = TransitionBarrier(
+            texture,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_COMMON);
+        commandList_->ResourceBarrier(1, &sourceToCommon);
+        if (hasAnnotations) {
+            auto annotationToCommon = TransitionBarrier(
+                slot->annotationTexture.Get(),
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                D3D12_RESOURCE_STATE_COMMON);
+            commandList_->ResourceBarrier(1, &annotationToCommon);
+        }
+        ThrowIfFailed(
+            commandList_->Close(),
+            "Failed to close recording command list");
+        ID3D12CommandList* lists[] = {commandList_.Get()};
+        commandQueue_->ExecuteCommandLists(1, lists);
+        const UINT64 readyValue = ++fenceValue_;
+        ThrowIfFailed(
+            commandQueue_->Signal(fence_.Get(), readyValue),
+            "Failed to signal GPU recording frame");
+
+        frame.textureSharedHandle = slot->textureHandle;
+        frame.fenceSharedHandle = recordingFramePool_->FenceHandle();
+        frame.readyFenceValue = readyValue;
+        frame.width = targetWidth;
+        frame.height = targetHeight;
+        frame.lifetime = std::move(lease);
+        return frame;
+    } catch (const std::exception& error) {
+        qWarning() << "GPU recording frame unavailable:" << error.what();
+    }
+    return {};
 }
 
 bool D3D12Presenter::TryGetCompletedReadback(std::vector<uint8_t>& outBgra,

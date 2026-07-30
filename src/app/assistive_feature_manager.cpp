@@ -4,8 +4,7 @@
 
 #include "openzoom/ui/main_window.hpp"
 
-#include <QCoreApplication>
-#include <QDir>
+#include <QDebug>
 #include <QObject>
 #include <QWidget>
 
@@ -23,9 +22,11 @@ const QString kFocusWarning =
 
 AssistiveFeatureManager::AssistiveFeatureManager(QWidget& renderWidget,
                                                  QObject& runtimeParent,
-                                                 QuestionHandler questionHandler)
+                                                 QuestionHandler questionHandler,
+                                                 const UserDataPaths& userDataPaths)
     : runtime_(std::make_unique<AssistiveRuntime>(&runtimeParent)),
-      overlay_(new AssistiveOverlay(&renderWidget)) {
+      overlay_(new AssistiveOverlay(&renderWidget)),
+      userDataPaths_(&userDataPaths) {
     QObject::connect(runtime_.get(), &AssistiveRuntime::OverlayUpdated,
                      overlay_, [this](const QString& title,
                                       const QString& body,
@@ -121,7 +122,7 @@ QRect AssistiveFeatureManager::OverlayGeometry() const {
 }
 
 AssistiveRuntimeConfig AssistiveFeatureManager::BuildRuntimeConfig(
-    const settings::AssistiveSettings& assistive) {
+    const settings::AssistiveSettings& assistive) const {
     AssistiveRuntimeConfig cfg;
     cfg.aiProvider = assistive.aiProvider;
     cfg.codexExecutablePath = assistive.codexExecutablePath;
@@ -142,8 +143,13 @@ AssistiveRuntimeConfig AssistiveFeatureManager::BuildRuntimeConfig(
     cfg.ttsVoiceLocale = assistive.ttsVoiceLocale;
     cfg.ttsRate = assistive.ttsRate;
     cfg.lectureNotesEnabled = assistive.lectureNotesEnabled;
-    cfg.notesDirectory =
-        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("output/notes"));
+    QString notesError;
+    cfg.notesDirectory = userDataPaths_
+                             ? userDataPaths_->Notes(&notesError)
+                             : QString();
+    if (!notesError.isEmpty()) {
+        qWarning() << notesError;
+    }
     return cfg;
 }
 

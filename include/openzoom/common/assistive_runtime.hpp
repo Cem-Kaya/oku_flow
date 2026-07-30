@@ -3,6 +3,7 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include <QObject>
+#include <QByteArray>
 #include <QString>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -16,6 +17,7 @@ QT_BEGIN_NAMESPACE
 class QNetworkAccessManager;
 class QNetworkReply;
 class QProcess;
+class QThreadPool;
 class QTimer;
 #if OPENZOOM_HAS_TTS
 class QTextToSpeech;
@@ -85,9 +87,15 @@ public:
     void RenameAssistantConversation(const QString& threadId, const QString& name);
     void DeleteAssistantConversation(const QString& threadId);
 
-    // Appends a "Photo captured" section with an image reference to the HTML
-    // lecture notes (no-op when notes are disabled).
-    void NoteCapturedPhoto(const QString& filePath);
+    // Appends synchronized original and processed media to the HTML lecture
+    // notes (no-op when notes are disabled).
+    void NoteCapturedPhotoPair(const QString& originalPath,
+                               const QString& processedPath);
+    void NoteCapturedVideoPair(const QString& originalPath,
+                               const QString& processedPath);
+    // Appends an annotation snapshot section with the marked viewport image.
+    void NoteAnnotationSnapshot(const QString& filePath,
+                                const QString& heading);
     // Absolute path of the current lecture notes file; empty if nothing has
     // been written yet.
     QString notesFilePath() const;
@@ -100,6 +108,9 @@ signals:
     void CodexModelCatalogChanged(const QJsonArray& models, const QString& selectedModel);
     void CodexRateLimitChanged(const QString& summary);
     void CodexLoginUrlReady(const QUrl& url);
+    // Emitted only when the effective outbound-data state changes, so the UI
+    // can show and announce it without flooding repeated periodic analyses.
+    void PrivacyNotice(const QString& summary);
     void AssistantConversationCreated(const QJsonObject& thread);
     void AssistantTranscriptLoaded(const QString& threadId, const QJsonArray& messages);
     void AssistantConversationRenamed(const QString& threadId, const QString& name);
@@ -123,7 +134,9 @@ private:
                        const QString& prompt,
                        const QString& threadId,
                        bool persistent);
-    QString SaveCodexFrame(const uint8_t* bgraData, int width, int height);
+    void PostVlmRequest(const QByteArray& requestBody,
+                        const QString& apiUrl,
+                        const QString& apiKey);
     void FinishOcrSuccess(const QString& text);
     void FinishOcrError(const QString& errorText);
     void FinishVlmSuccess(const QString& text);
@@ -133,11 +146,19 @@ private:
     bool UsesCodexProvider() const;
     bool ValidateFrame(const uint8_t* bgraData, int width, int height);
     bool EnsureNotesFile();
+    void FinalizeNotesFile();
     void AppendNoteSection(const QString& heading,
                            const QString& bodyText,
                            const QString& imagePath = {});
+    void AppendNoteMediaPair(const QString& heading,
+                             const QString& originalPath,
+                             const QString& processedPath,
+                             bool video);
+    void AppendNoteHtmlSection(const QString& heading,
+                               const QString& contentHtml);
     void SpeakText(const QString& text);
     void StopSpeech();
+    void EmitPrivacyNoticeIfChanged(const QString& summary);
 
     AssistiveRuntimeConfig config_;
 
@@ -149,8 +170,13 @@ private:
     bool vlmForcedVisible_{false};
     bool ocrRunForced_{false};
     bool ocrTimedOut_{false};
+    bool ocrPreparationPending_{false};
+    bool vlmPreparationPending_{false};
+    bool vlmPreparationPersistent_{false};
     bool warnedDegenerateFrame_{false};
     bool overlayDismissed_{false};
+    std::uint64_t ocrPreparationGeneration_{};
+    std::uint64_t vlmPreparationGeneration_{};
 
     QString ocrText_;
     QString vlmText_;
@@ -158,13 +184,18 @@ private:
     QString vlmStatus_;
 
     QString notesFilePath_;
+    bool notesDocumentOpen_{false};
     QString lastNotedOcrText_;
 
     std::unique_ptr<QProcess> ocrProcess_;
+    std::unique_ptr<QThreadPool> imagePreparationPool_;
     QTimer* ocrWatchdogTimer_{};
     QString pendingOcrImagePath_;
     QNetworkAccessManager* networkManager_{};
     QNetworkReply* activeReply_{};
+    bool vlmResponseTooLarge_{false};
+    QString vlmPreparationThreadId_;
+    QString lastPrivacyNotice_;
     std::unique_ptr<CodexAppServerClient> codexClient_;
 #if OPENZOOM_HAS_TTS
     QTextToSpeech* tts_{};

@@ -200,7 +200,7 @@ WSL/Linux agent shell through the PowerShell 7 bridge (per agents.md: use
    ```bat
    call "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=x64
    if errorlevel 1 exit /b 1
-   cd /d W:\Google_drive\sync\UU\projects\open_zoom
+   cd /d <repo>
    cmake --preset msvc-release
    if errorlevel 1 exit /b 1
    cmake --build --preset msvc-release-build
@@ -218,7 +218,7 @@ WSL/Linux agent shell through the PowerShell 7 bridge (per agents.md: use
 2. Invoke it from the agent shell with:
 
    ```
-   pwsh.exe -NoProfile -Command 'cmd /c "W:\Google_drive\sync\UU\projects\open_zoom\build\agent_build.bat" 2>&1; exit $LASTEXITCODE'
+   pwsh.exe -NoProfile -Command 'cmd /c "<repo>\scripts\agent_build.bat" 2>&1; exit $LASTEXITCODE'
    ```
 
    with a command timeout of 600000 ms (10 minutes — a clean configure plus

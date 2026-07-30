@@ -13,6 +13,9 @@
 #include "openzoom/app/setup_assistant.hpp"
 #include "openzoom/common/maxine_superres.hpp"
 #include <QAbstractButton>
+#include <QAccessible>
+#include <QAccessibleAnnouncementEvent>
+#include <QAccessibleEvent>
 #include <QApplication>
 #include <QDesktopServices>
 #include <QUrl>
@@ -36,6 +39,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QDir>
 #include <QDateTime>
 #include <QImage>
@@ -49,10 +53,14 @@
 #include <QDebug>
 #include <QInputDialog>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPlainTextEdit>
+#include <QProgressDialog>
+#include <QProcess>
+#include <QSignalBlocker>
 #include <QTextBrowser>
 #include <QTextCursor>
 

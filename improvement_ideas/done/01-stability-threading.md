@@ -210,7 +210,7 @@ never happens and the other side can wait forever; there is no resync path.
 **Problem.** Some camera drivers change stride/resolution mid-stream (auto-exposure mode
 switches, USB renegotiation). A stale cached format means every downstream stride
 calculation is wrong → corrupted frames or out-of-bounds reads in the converters
-(see also V2 in [05-robustness-validation.md](05-robustness-validation.md)).
+(see also V2 in [05-robustness-validation.md](../05-robustness-validation.md)).
 
 **Fix.** `IMFSourceReader::ReadSample` reports `MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED`
 in its stream-flags output parameter — check it on every sample (this is the idiomatic MF
