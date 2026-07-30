@@ -34,10 +34,12 @@ UIStateManager::UIStateManager(MainWindow& window, OpenZoomApp& app)
 
     OPENZOOM_BIND_WIDGET(renderWidget_, renderWidget);
     OPENZOOM_BIND_WIDGET(cameraCombo_, cameraCombo);
+    OPENZOOM_BIND_WIDGET(microphoneCombo_, microphoneCombo);
     OPENZOOM_BIND_WIDGET(presetList_, presetList);
     OPENZOOM_BIND_WIDGET(presetDescriptionLabel_, presetDescriptionLabel);
     OPENZOOM_BIND_WIDGET(promotePresetButton_, promotePresetButton);
-    OPENZOOM_BIND_WIDGET(cameraModesList_, cameraModesList);
+    OPENZOOM_BIND_WIDGET(cameraFormatCombo_, cameraFormatCombo);
+    OPENZOOM_BIND_WIDGET(cameraFormatNoticeLabel_, cameraFormatNoticeLabel);
     OPENZOOM_BIND_WIDGET(bwCheckbox_, blackWhiteCheckbox);
     OPENZOOM_BIND_WIDGET(bwSlider_, blackWhiteSlider);
     OPENZOOM_BIND_WIDGET(zoomCheckbox_, zoomCheckbox);
@@ -51,7 +53,12 @@ UIStateManager::UIStateManager(MainWindow& window, OpenZoomApp& app)
     OPENZOOM_BIND_WIDGET(rotationCombo_, rotationCombo);
     OPENZOOM_BIND_WIDGET(viewportRateCombo_, viewportRateCombo);
     OPENZOOM_BIND_WIDGET(viewportFitCombo_, viewportFitCombo);
+    OPENZOOM_BIND_WIDGET(cameraAccelerationCombo_, cameraAccelerationCombo);
+    OPENZOOM_BIND_WIDGET(cameraAccelerationStatusLabel_, cameraAccelerationStatusLabel);
+    OPENZOOM_BIND_WIDGET(testCameraAccelerationButton_, testCameraAccelerationButton);
+    OPENZOOM_BIND_WIDGET(recordingCanvasCombo_, recordingCanvasCombo);
     OPENZOOM_BIND_WIDGET(joystickCheckbox_, joystickCheckbox);
+    OPENZOOM_BIND_WIDGET(zoomWheelAccelerationCheckbox_, zoomWheelAccelerationCheckbox);
     OPENZOOM_BIND_WIDGET(collapseButton_, controlsToggleButton);
     OPENZOOM_BIND_WIDGET(controlsContainer_, controlsContainer);
     OPENZOOM_BIND_WIDGET(blurCheckbox_, blurCheckbox);
@@ -70,8 +77,8 @@ UIStateManager::UIStateManager(MainWindow& window, OpenZoomApp& app)
     OPENZOOM_BIND_WIDGET(spatialSharpnessSlider_, spatialSharpnessSlider);
     OPENZOOM_BIND_WIDGET(spatialSharpnessValueLabel_, spatialSharpnessValueLabel);
     OPENZOOM_BIND_WIDGET(processingStatusLabel_, processingStatusLabel);
+    OPENZOOM_BIND_WIDGET(performanceDiagnosticsLabel_, performanceDiagnosticsLabel);
     OPENZOOM_BIND_WIDGET(stabilizationCheckbox_, stabilizationCheckbox);
-    OPENZOOM_BIND_WIDGET(stabilizationStrengthSlider_, stabilizationStrengthSlider);
     OPENZOOM_BIND_WIDGET(keystoneCheckbox_, keystoneCheckbox);
     OPENZOOM_BIND_WIDGET(autoContrastCheckbox_, autoContrastCheckbox);
     OPENZOOM_BIND_WIDGET(autoContrastStrengthSlider_, autoContrastStrengthSlider);
@@ -162,7 +169,6 @@ settings::AdvancedConfig UIStateManager::ReadConfigFromUI() const
     config.vlmAssistEnabled = app_.vlmAssistEnabled_;
     config.assistiveOverlayEnabled = app_.assistiveOverlayEnabled_;
     config.stabilizationEnabled = app_.stabilizationEnabled_;
-    config.stabilizationStrength = app_.stabilizationStrength_;
     config.displayColorMode = app_.displayColorMode_;
     config.colorScheme = app_.displayColorScheme_;
     config.contrast = app_.contrast_;
@@ -276,15 +282,7 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
         stabilizationCheckbox_->setChecked(config.stabilizationEnabled);
     }
     app_.stabilizationEnabled_ = config.stabilizationEnabled;
-    app_.stabilizationStrength_ = std::clamp(config.stabilizationStrength, 0.0f, 0.98f);
-    if (stabilizationStrengthSlider_) {
-        const int sliderValue = std::clamp(static_cast<int>(std::round(app_.stabilizationStrength_ * 100.0f)),
-                                           stabilizationStrengthSlider_->minimum(), stabilizationStrengthSlider_->maximum());
-        QSignalBlocker block(stabilizationStrengthSlider_);
-        stabilizationStrengthSlider_->setValue(sliderValue);
-    }
     app_.OnStabilizationToggled(app_.stabilizationEnabled_);
-    app_.OnStabilizationStrengthChanged(static_cast<int>(std::round(app_.stabilizationStrength_ * 100.0f)));
 
     if (keystoneCheckbox_) {
         QSignalBlocker block(keystoneCheckbox_);
@@ -342,6 +340,7 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
     setSlider(focusThresholdSlider_, static_cast<int>(std::round(config.focusThreshold * 1000.0f)));
     setChecked(glareSuppressionCheckbox_, config.glareSuppressionEnabled);
     setSlider(glareSuppressionStrengthSlider_, static_cast<int>(std::round(config.glareSuppressionStrength * 100.0f)));
+    app_.UpdateControlEnabledStates();
 #if OPENZOOM_ENABLE_TEXT_SR
     setChecked(mlTextSuperResolutionCheckbox_, config.mlSuperResEnabled);
     setSlider(mlTextSuperResolutionStrengthSlider_,
@@ -437,6 +436,8 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
     app_.OnFocusMarkerToggled(app_.focusMarkerEnabled_);
 
     }
+    app_.UpdateControlEnabledStates();
+    app_.UpdateSectionChangedCounts();
     app_.SyncCurrentConfigToPersistence();
     app_.UpdateProcessingStatusLabel();
 }

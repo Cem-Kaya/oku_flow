@@ -1,10 +1,13 @@
 #include "openzoom/app/color_schemes.hpp"
+#include "openzoom/app/protected_secret_store.hpp"
+#include "openzoom/app/settings_controller.hpp"
 #include "openzoom/app/settings_store.hpp"
 
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
+#include <QUuid>
 #include <QtTest>
 
 namespace openzoom::settings {
@@ -38,7 +41,6 @@ AdvancedConfig MakePopulatedConfig()
     config.vlmAssistEnabled = true;
     config.assistiveOverlayEnabled = false;
     config.stabilizationEnabled = true;
-    config.stabilizationStrength = 0.67f;
     config.displayColorMode = 3;
     config.colorScheme = color_schemes::ColorScheme{
         QStringLiteral("custom"),
@@ -102,8 +104,13 @@ class SettingsStoreTests : public QObject {
 private slots:
     void defaultsUseTeraLow();
     void roundTripPreservesAdvancedConfig();
+    void loadsRemovedGlobalCompatibilityForMigration();
     void migratesLegacyV1();
     void rejectsCorruptJson();
+    void rejectsFutureSettingsVersion();
+    void saveCreatesValidBackup();
+    void protectedSecretRoundTrip();
+    void ignoresPlaintextApiKeyField();
     void clampsOutOfRangeValues();
     void equivalenceUsesUiTolerances();
 };
@@ -122,15 +129,40 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     const QString path = dir.filePath(QStringLiteral("nested/settings.json"));
 
     PersistentSettings expected;
+    expected.userDataRoot = QStringLiteral("D:/OpenZoom Data");
     expected.cameraIndex = 4;
+    expected.microphoneEndpointId =
+        QStringLiteral("{0.0.1.00000000}.test-microphone");
+    expected.cameraFormatStableId =
+        QStringLiteral("{test-subtype}_1920x1080@60/1");
+    expected.cameraAccelerationAttempt =
+        QStringLiteral("\\\\?\\usb#vid_test");
+    expected.cameraAcceleration.insert(
+        QStringLiteral("\\\\?\\usb#vid_test"),
+        CameraAccelerationSetting{
+            CameraAccelerationMode::ForceAccelerated,
+            true,
+            QStringLiteral("test fallback"),
+            QStringLiteral("2026-07-29T12:00:00Z"),
+            QStringLiteral("zeroCopy")});
     expected.rotationQuarterTurns = 3;
     expected.virtualJoystick = true;
+    expected.zoomWheelAcceleration = false;
     expected.controlsCollapsed = false;
     expected.simpleUiMode = false;
     expected.advancedPanelWidth = 744;
     expected.viewportRateMode = ViewportRateMode::Fps90;
     expected.viewportFitMode = ViewportFitModeSetting::Fit;
+    expected.recordingCanvasMode = RecordingCanvasMode::Sd480;
+    expected.uiSectionStates.insert(QStringLiteral("device"), false);
+    expected.uiSectionStates.insert(QStringLiteral("textClarity"), true);
     expected.assistiveOverlayGeometry = QRect(12, 34, 640, 480);
+    expected.annotationColor = QStringLiteral("#00e5ff");
+    expected.annotationWidthPixels = 13;
+    expected.annotationCaptureOnExit = false;
+    expected.annotationDashed = true;
+    expected.annotationShapeKind = QStringLiteral("ellipse");
+    expected.annotationTextSizePixels = 58;
     expected.setupAssistantDeclined = true;
     expected.selectedPresetId = QStringLiteral("custom-preset");
     expected.currentConfig = MakePopulatedConfig();
@@ -145,6 +177,7 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     expected.assistive.assistantInstructions = QStringLiteral("Reply clearly.");
     expected.assistive.vlmApiUrl = QStringLiteral("https://example.invalid/v1");
     expected.assistive.vlmApiKey = QStringLiteral("secret");
+    expected.assistive.vlmCredentialId = QStringLiteral("OpenZoom/Test Round Trip");
     expected.assistive.vlmModel = QStringLiteral("vision");
     expected.assistive.vlmPrompt = QStringLiteral("Describe.");
     expected.assistive.tesseractPath = QStringLiteral("C:/ocr/tesseract.exe");
@@ -164,16 +197,55 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QVERIFY(Save(path, expected));
     const auto loaded = Load(path);
     QVERIFY(loaded.has_value());
+    QVERIFY(loaded->assistive.vlmApiKey.isEmpty());
+    QCOMPARE(loaded->assistive.vlmCredentialId,
+             expected.assistive.vlmCredentialId);
+
+    QFile savedFile(path);
+    QVERIFY(savedFile.open(QIODevice::ReadOnly));
+    const QByteArray savedJson = savedFile.readAll();
+    QVERIFY(!savedJson.contains("secret"));
+    QVERIFY(!savedJson.contains("\"vlmApiKey\""));
 
     QCOMPARE(loaded->cameraIndex, expected.cameraIndex);
+    QCOMPARE(loaded->microphoneEndpointId,
+             expected.microphoneEndpointId);
+    QCOMPARE(loaded->userDataRoot, expected.userDataRoot);
+    QCOMPARE(loaded->cameraFormatStableId, expected.cameraFormatStableId);
+    QCOMPARE(loaded->cameraAccelerationAttempt,
+             expected.cameraAccelerationAttempt);
+    QCOMPARE(loaded->cameraAcceleration.size(),
+             expected.cameraAcceleration.size());
+    const auto loadedAcceleration =
+        loaded->cameraAcceleration.value(
+            QStringLiteral("\\\\?\\usb#vid_test"));
+    QCOMPARE(loadedAcceleration.mode,
+             CameraAccelerationMode::ForceAccelerated);
+    QVERIFY(loadedAcceleration.automaticFallback);
+    QCOMPARE(loadedAcceleration.reason,
+             QStringLiteral("test fallback"));
+    QCOMPARE(loadedAcceleration.decidedOn,
+             QStringLiteral("2026-07-29T12:00:00Z"));
+    QCOMPARE(loadedAcceleration.lastRung,
+             QStringLiteral("zeroCopy"));
     QCOMPARE(loaded->rotationQuarterTurns, expected.rotationQuarterTurns);
     QCOMPARE(loaded->virtualJoystick, expected.virtualJoystick);
+    QCOMPARE(loaded->zoomWheelAcceleration, expected.zoomWheelAcceleration);
     QCOMPARE(loaded->controlsCollapsed, expected.controlsCollapsed);
     QCOMPARE(loaded->simpleUiMode, expected.simpleUiMode);
     QCOMPARE(loaded->advancedPanelWidth, expected.advancedPanelWidth);
     QCOMPARE(loaded->viewportRateMode, expected.viewportRateMode);
     QCOMPARE(loaded->viewportFitMode, expected.viewportFitMode);
+    QCOMPARE(loaded->recordingCanvasMode, expected.recordingCanvasMode);
+    QCOMPARE(loaded->uiSectionStates, expected.uiSectionStates);
     QCOMPARE(loaded->assistiveOverlayGeometry, expected.assistiveOverlayGeometry);
+    QCOMPARE(loaded->annotationColor, expected.annotationColor);
+    QCOMPARE(loaded->annotationWidthPixels, expected.annotationWidthPixels);
+    QCOMPARE(loaded->annotationCaptureOnExit, expected.annotationCaptureOnExit);
+    QCOMPARE(loaded->annotationDashed, expected.annotationDashed);
+    QCOMPARE(loaded->annotationShapeKind, expected.annotationShapeKind);
+    QCOMPARE(loaded->annotationTextSizePixels,
+             expected.annotationTextSizePixels);
     QCOMPARE(loaded->setupAssistantDeclined, expected.setupAssistantDeclined);
     QCOMPARE(loaded->selectedPresetId, expected.selectedPresetId);
     QCOMPARE(loaded->currentConfig.id, expected.currentConfig.id);
@@ -192,6 +264,34 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QCOMPARE(loaded->customConfigs.size(), expected.customConfigs.size());
     QCOMPARE(loaded->customPresets.size(), expected.customPresets.size());
     QVERIFY(AreConfigsEquivalent(loaded->customConfigs.front(), expected.customConfigs.front()));
+}
+
+void SettingsStoreTests::loadsRemovedGlobalCompatibilityForMigration()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("legacy-settings.json"));
+    QVERIFY(WriteJson(
+        path,
+        QJsonObject{
+            {QStringLiteral("capture"),
+             QJsonObject{
+                 {QStringLiteral("widerCameraCompatibility"), true}}}}));
+
+    const auto loaded = Load(path);
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->legacyWiderCameraCompatibility);
+
+    QVERIFY(Save(path, *loaded));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QJsonObject capture =
+        QJsonDocument::fromJson(file.readAll())
+            .object()
+            .value(QStringLiteral("capture"))
+            .toObject();
+    QVERIFY(!capture.contains(
+        QStringLiteral("widerCameraCompatibility")));
 }
 
 void SettingsStoreTests::migratesLegacyV1()
@@ -269,7 +369,6 @@ void SettingsStoreTests::clampsOutOfRangeValues()
         {QStringLiteral("spatialUpscaler"), 99},
         {QStringLiteral("spatialSharpness"), -8.0},
         {QStringLiteral("rotationQuarterTurns"), 11},
-        {QStringLiteral("stabilizationStrength"), 9.0},
         {QStringLiteral("displayColorMode"), 500},
         {QStringLiteral("contrast"), 50.0},
         {QStringLiteral("brightness"), -50.0},
@@ -282,8 +381,15 @@ void SettingsStoreTests::clampsOutOfRangeValues()
         {QStringLiteral("mlSuperResStrength"), 7.0}
     };
     const QJsonObject root{
-        {QStringLiteral("version"), 7},
+        {QStringLiteral("version"), 8},
         {QStringLiteral("ui"), QJsonObject{{QStringLiteral("advancedPanelWidth"), 9999}}},
+        {QStringLiteral("annotations"),
+         QJsonObject{{QStringLiteral("color"), QStringLiteral("not-a-color")},
+                     {QStringLiteral("widthPixels"), 999},
+                     {QStringLiteral("captureOnExit"), false},
+                     {QStringLiteral("dashed"), true},
+                     {QStringLiteral("shapeKind"), QStringLiteral("triangle")},
+                     {QStringLiteral("textSizePixels"), 999}}},
         {QStringLiteral("currentConfig"), current}
     };
     QVERIFY(WriteJson(path, root));
@@ -291,6 +397,12 @@ void SettingsStoreTests::clampsOutOfRangeValues()
     const auto loaded = Load(path);
     QVERIFY(loaded.has_value());
     QCOMPARE(loaded->advancedPanelWidth, 1200);
+    QCOMPARE(loaded->annotationColor, QStringLiteral("#fff000"));
+    QCOMPARE(loaded->annotationWidthPixels, 24);
+    QVERIFY(!loaded->annotationCaptureOnExit);
+    QVERIFY(loaded->annotationDashed);
+    QCOMPARE(loaded->annotationShapeKind, QStringLiteral("rectangle"));
+    QCOMPARE(loaded->annotationTextSizePixels, 72);
     QCOMPARE(loaded->currentConfig.blackWhiteThreshold, 1.0f);
     QCOMPARE(loaded->currentConfig.zoomAmount, 1.0f);
     QCOMPARE(loaded->currentConfig.zoomCenterX, 0.0f);
@@ -301,7 +413,6 @@ void SettingsStoreTests::clampsOutOfRangeValues()
     QCOMPARE(loaded->currentConfig.spatialUpscaler, 1);
     QCOMPARE(loaded->currentConfig.spatialSharpness, 0.0f);
     QCOMPARE(loaded->currentConfig.rotationQuarterTurns, 3);
-    QCOMPARE(loaded->currentConfig.stabilizationStrength, 1.0f);
     QCOMPARE(loaded->currentConfig.displayColorMode, 16);
     QCOMPARE(loaded->currentConfig.contrast, 4.0f);
     QCOMPARE(loaded->currentConfig.brightness, -1.0f);
@@ -312,6 +423,82 @@ void SettingsStoreTests::clampsOutOfRangeValues()
     QCOMPARE(loaded->currentConfig.claheClipLimit, 8.0f);
     QCOMPARE(loaded->currentConfig.focusThreshold, 0.001f);
     QCOMPARE(loaded->currentConfig.mlSuperResStrength, 1.0f);
+}
+
+void SettingsStoreTests::rejectsFutureSettingsVersion()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("future.json"));
+    QVERIFY(WriteJson(path,
+                      QJsonObject{{QStringLiteral("version"), 999}}));
+
+    const LoadResult result = LoadDetailed(path);
+    QCOMPARE(result.status, LoadStatus::UnsupportedVersion);
+    QVERIFY(!result.settings.has_value());
+    QVERIFY(result.error.contains(QStringLiteral("newer")));
+}
+
+void SettingsStoreTests::saveCreatesValidBackup()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+
+    PersistentSettings first;
+    first.cameraIndex = 3;
+    QVERIFY(Save(path, first));
+
+    PersistentSettings second = first;
+    second.cameraIndex = 7;
+    QVERIFY(Save(path, second));
+
+    const auto backup = Load(path + QStringLiteral(".backup"));
+    QVERIFY(backup.has_value());
+    QCOMPARE(backup->cameraIndex, 3);
+    const auto current = Load(path);
+    QVERIFY(current.has_value());
+    QCOMPARE(current->cameraIndex, 7);
+}
+
+void SettingsStoreTests::protectedSecretRoundTrip()
+{
+    const QString credentialId =
+        QStringLiteral("OpenZoom/Test/%1")
+            .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    QString error;
+    QVERIFY2(ProtectedSecretStore::Write(
+                 credentialId, QStringLiteral("test-secret-value"), &error),
+             qPrintable(error));
+
+    const ProtectedSecretResult read =
+        ProtectedSecretStore::Read(credentialId);
+    QCOMPARE(read.status, ProtectedSecretResult::Status::Found);
+    QCOMPARE(read.value, QStringLiteral("test-secret-value"));
+
+    QVERIFY2(ProtectedSecretStore::Remove(credentialId, &error),
+             qPrintable(error));
+    QCOMPARE(ProtectedSecretStore::Read(credentialId).status,
+             ProtectedSecretResult::Status::NotFound);
+}
+
+void SettingsStoreTests::ignoresPlaintextApiKeyField()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const QString secret = QStringLiteral("legacy-plaintext-secret");
+    QVERIFY(WriteJson(
+        path,
+        QJsonObject{
+            {QStringLiteral("version"), 15},
+            {QStringLiteral("assistive"),
+             QJsonObject{
+                 {QStringLiteral("vlmApiKey"), secret}}}}));
+
+    SettingsController controller(path);
+    QVERIFY(controller.Settings().assistive.vlmApiKey.isEmpty());
+    QVERIFY(controller.Settings().assistive.vlmCredentialId.isEmpty());
 }
 
 void SettingsStoreTests::equivalenceUsesUiTolerances()

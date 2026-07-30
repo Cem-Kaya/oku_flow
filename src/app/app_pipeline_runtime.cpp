@@ -2,7 +2,91 @@
 
 #include "app_internal.hpp"
 
+#include <QAccessible>
+#include <QMetaObject>
+#include <QPointer>
+#include <QScopeGuard>
+#include <QThreadPool>
+
+#include <set>
+#include <tuple>
+
 namespace openzoom {
+
+namespace {
+
+RecordingViewTransform ToRecordingTransform(const ViewTransform& transform)
+{
+    return RecordingViewTransform{
+        transform.sourceX,
+        transform.sourceY,
+        transform.sourceWidth,
+        transform.sourceHeight,
+        transform.destinationX,
+        transform.destinationY,
+        transform.destinationWidth,
+        transform.destinationHeight,
+        transform.valid,
+    };
+}
+
+float MeasureCaptureToPresentLatency(std::int64_t captureClock100ns)
+{
+    if (captureClock100ns < 0) {
+        return -1.0f;
+    }
+
+    LARGE_INTEGER counter{};
+    QueryPerformanceCounter(&counter);
+    static const LONGLONG frequencyValue = [] {
+        LARGE_INTEGER frequency{};
+        QueryPerformanceFrequency(&frequency);
+        return frequency.QuadPart;
+    }();
+    if (frequencyValue <= 0) {
+        return -1.0f;
+    }
+    const std::int64_t now100ns =
+        static_cast<std::int64_t>(
+            static_cast<long double>(counter.QuadPart) *
+            kMediaFoundationTicksPerSecond /
+            static_cast<long double>(frequencyValue));
+
+    static std::uint64_t samples = 0;
+    static long double total100ns = 0.0;
+    static std::int64_t maximum100ns = 0;
+    static std::int64_t reportStart100ns = now100ns;
+    const std::int64_t latency100ns =
+        std::max<std::int64_t>(0, now100ns - captureClock100ns);
+    const float latencyMs =
+        static_cast<float>(latency100ns) / 10'000.0f;
+
+    static const bool enabled =
+        qEnvironmentVariableIsSet("OPENZOOM_CAPTURE_DIAGNOSTICS");
+    if (!enabled) {
+        return latencyMs;
+    }
+    ++samples;
+    total100ns += latency100ns;
+    maximum100ns = std::max(maximum100ns, latency100ns);
+    if (now100ns - reportStart100ns < 5 * 10'000'000LL) {
+        return latencyMs;
+    }
+
+    qInfo().nospace()
+        << "Capture-to-present diagnostics: "
+        << static_cast<double>(total100ns / samples / 10'000.0L)
+        << " ms average | "
+        << static_cast<double>(maximum100ns / 10'000.0)
+        << " ms maximum | " << samples << " frames";
+    samples = 0;
+    total100ns = 0.0;
+    maximum100ns = 0;
+    reportStart100ns = now100ns;
+    return latencyMs;
+}
+
+} // namespace
 
 namespace {
 
@@ -53,7 +137,19 @@ SuperResCacheExtent ComputeSuperResCacheExtent(UINT sceneWidth,
 
 void OpenZoomApp::EnumerateCameras() {
     cameras_ = mediaCapture_.EnumerateCameras();
-    selectedCameraIndex_ = cameras_.empty() ? -1 : 0;
+    if (cameras_.empty()) {
+        selectedCameraIndex_ = -1;
+        return;
+    }
+    const int persistedIndex =
+        settingsController_
+            ? settingsController_->MutableSettings().cameraIndex
+            : -1;
+    selectedCameraIndex_ =
+        persistedIndex >= 0 &&
+                static_cast<size_t>(persistedIndex) < cameras_.size()
+            ? persistedIndex
+            : 0;
 }
 
 void OpenZoomApp::PopulateCameraCombo() {
@@ -67,11 +163,73 @@ void OpenZoomApp::PopulateCameraCombo() {
     }
 }
 
-void OpenZoomApp::RefreshCameraModesList(size_t index) {
-    if (!uiState_->cameraModesList_) {
+void OpenZoomApp::EnumerateMicrophones()
+{
+    microphones_ = audioCapture_.EnumerateDevices();
+}
+
+void OpenZoomApp::PopulateMicrophoneCombo()
+{
+    if (!uiState_ || !uiState_->microphoneCombo_) {
         return;
     }
-    uiState_->cameraModesList_->clear();
+    const QSignalBlocker blocker(uiState_->microphoneCombo_);
+    uiState_->microphoneCombo_->clear();
+    uiState_->microphoneCombo_->addItem(
+        QStringLiteral("No microphone (video only)"),
+        QStringLiteral("__none__"));
+    const QString persisted =
+        settingsController_->MutableSettings().microphoneEndpointId;
+    int selectedIndex = 0;
+    for (const AudioDeviceDescriptor& microphone : microphones_) {
+        const QString endpoint =
+            QString::fromStdWString(microphone.endpointId);
+        const QString label =
+            microphone.isDefault
+                ? QStringLiteral("%1 (system default)")
+                      .arg(QString::fromStdWString(microphone.name))
+                : QString::fromStdWString(microphone.name);
+        uiState_->microphoneCombo_->addItem(
+            label, endpoint);
+        if (!persisted.isEmpty() && endpoint == persisted) {
+            selectedIndex = uiState_->microphoneCombo_->count() - 1;
+        } else if (persisted.isEmpty() && microphone.isDefault) {
+            selectedIndex = uiState_->microphoneCombo_->count() - 1;
+        }
+    }
+    if (persisted == QStringLiteral("__none__")) {
+        selectedIndex = 0;
+    } else if (persisted.isEmpty() && selectedIndex == 0 &&
+               !microphones_.empty()) {
+        selectedIndex = 1;
+    }
+    uiState_->microphoneCombo_->setCurrentIndex(selectedIndex);
+    const QString selectedEndpoint =
+        uiState_->microphoneCombo_->currentData().toString();
+    if (persisted.isEmpty() && selectedIndex > 0) {
+        settingsController_->MutableSettings().microphoneEndpointId =
+            selectedEndpoint;
+    } else if (!persisted.isEmpty() &&
+               persisted != QStringLiteral("__none__") &&
+               selectedIndex == 0) {
+        settingsController_->MutableSettings().microphoneEndpointId.clear();
+        ShowStatusMessage(
+            QStringLiteral(
+                "The saved microphone is unavailable. Recordings will be "
+                "video only until another microphone is selected."),
+            9000);
+    }
+}
+
+void OpenZoomApp::RefreshCameraFormats(size_t index) {
+    if (!uiState_->cameraFormatCombo_) {
+        return;
+    }
+    const QSignalBlocker blocker(uiState_->cameraFormatCombo_);
+    uiState_->cameraFormatCombo_->clear();
+    uiState_->cameraFormatCombo_->addItem(
+        QStringLiteral("Automatic (driver's choice)"), QString());
+    cameraFormats_.clear();
     if (index >= cameras_.size()) {
         return;
     }
@@ -79,20 +237,24 @@ void OpenZoomApp::RefreshCameraModesList(size_t index) {
     const auto formats = mediaCapture_.EnumerateFormats(cameras_[index]);
     if (formats.empty()) {
         const std::string& detail = mediaCapture_.LastError();
-        if (!detail.empty()) {
-            uiState_->cameraModesList_->addItem(QStringLiteral("Modes unavailable (%1)").arg(QString::fromStdString(detail)));
-        } else {
-            uiState_->cameraModesList_->addItem(QStringLiteral("No modes reported"));
+        if (uiState_->cameraFormatNoticeLabel_) {
+            SetLiveText(
+                uiState_->cameraFormatNoticeLabel_,
+                !detail.empty()
+                    ? QStringLiteral("Modes unavailable: %1")
+                          .arg(QString::fromStdString(detail))
+                    : QStringLiteral("No camera modes were reported."),
+                LivePoliteness::kPolite,
+                QStringLiteral("Camera format notice"));
+            uiState_->cameraFormatNoticeLabel_->show();
         }
         return;
     }
 
     std::vector<VideoFormat> sorted = formats;
     std::sort(sorted.begin(), sorted.end(), [](const VideoFormat& a, const VideoFormat& b) {
-        const unsigned int pixelsA = a.width * a.height;
-        const unsigned int pixelsB = b.width * b.height;
-        if (pixelsA != pixelsB) {
-            return pixelsA > pixelsB;
+        if (a.height != b.height) {
+            return a.height > b.height;
         }
         const double fpsA = (a.denominator == 0) ? 0.0 : static_cast<double>(a.numerator) / static_cast<double>(a.denominator);
         const double fpsB = (b.denominator == 0) ? 0.0 : static_cast<double>(b.numerator) / static_cast<double>(b.denominator);
@@ -102,10 +264,19 @@ void OpenZoomApp::RefreshCameraModesList(size_t index) {
         if (a.width != b.width) {
             return a.width > b.width;
         }
-        return a.height > b.height;
+        return a.stableId < b.stableId;
     });
 
+    std::set<std::tuple<UINT, UINT, UINT, UINT>> displayed;
+    int selectedIndex = 0;
+    const QString persistedId =
+        settingsController_->MutableSettings().cameraFormatStableId;
     for (const auto& fmt : sorted) {
+        const auto key =
+            std::make_tuple(fmt.width, fmt.height, fmt.numerator, fmt.denominator);
+        if (!displayed.insert(key).second) {
+            continue;
+        }
         QString fpsText;
         if (fmt.numerator == 0 || fmt.denominator == 0) {
             fpsText = QStringLiteral("?");
@@ -117,11 +288,20 @@ void OpenZoomApp::RefreshCameraModesList(size_t index) {
                 fpsText = QString::number(fps, 'f', 2);
             }
         }
-        const QString line = QStringLiteral("%1x%2@%3")
+        const QString line = QStringLiteral("%1 \u00d7 %2 @ %3 fps")
                                  .arg(fmt.width)
                                  .arg(fmt.height)
                                  .arg(fpsText);
-        uiState_->cameraModesList_->addItem(line);
+        cameraFormats_.push_back(fmt);
+        const QString stableId = QString::fromStdWString(fmt.stableId);
+        uiState_->cameraFormatCombo_->addItem(line, stableId);
+        if (!persistedId.isEmpty() && persistedId == stableId) {
+            selectedIndex = uiState_->cameraFormatCombo_->count() - 1;
+        }
+    }
+    uiState_->cameraFormatCombo_->setCurrentIndex(selectedIndex);
+    if (uiState_->cameraFormatNoticeLabel_) {
+        uiState_->cameraFormatNoticeLabel_->hide();
     }
 }
 
@@ -175,6 +355,7 @@ bool OpenZoomApp::EnsureCudaSurface(UINT width, UINT height) {
     cudaSurface_.reset();
     cudaSharedTexture_.Reset();
     cudaSuperResTexture_.Reset();
+    cudaOriginalTexture_.Reset();
     cudaSceneReady_ = false;
     cudaSurfaceWidth_ = 0;
     cudaSurfaceHeight_ = 0;
@@ -226,11 +407,19 @@ bool OpenZoomApp::EnsureCudaSurface(UINT width, UINT height) {
                                                       nullptr,
                                                       IID_PPV_ARGS(&cudaSuperResTexture_)),
                       "Failed to create CUDA SuperRes cache texture");
+        ThrowIfFailed(device->CreateCommittedResource(&heapProps,
+                                                      D3D12_HEAP_FLAG_SHARED,
+                                                      &desc,
+                                                      D3D12_RESOURCE_STATE_COMMON,
+                                                      nullptr,
+                                                      IID_PPV_ARGS(&cudaOriginalTexture_)),
+                      "Failed to create CUDA original recording texture");
 
         auto surface = std::make_unique<CudaInteropSurface>(
             cudaSharedTexture_.Get(),
             cudaSuperResTexture_.Get(),
-            presenter_->GetFence());
+            presenter_->GetFence(),
+            cudaOriginalTexture_.Get());
         if (!surface || !surface->IsValid()) {
             if (surface) {
                 const std::string& err = surface->LastError();
@@ -240,6 +429,7 @@ bool OpenZoomApp::EnsureCudaSurface(UINT width, UINT height) {
             }
             cudaSharedTexture_.Reset();
             cudaSuperResTexture_.Reset();
+            cudaOriginalTexture_.Reset();
             qWarning() << "CUDA surface initialization failed: surface invalid"
                        << "(requested" << width << "x" << height << ")";
             return false;
@@ -272,6 +462,7 @@ bool OpenZoomApp::EnsureCudaSurface(UINT width, UINT height) {
         cudaSurface_.reset();
         cudaSharedTexture_.Reset();
         cudaSuperResTexture_.Reset();
+        cudaOriginalTexture_.Reset();
         cudaSceneReady_ = false;
         cudaSurfaceWidth_ = 0;
         cudaSurfaceHeight_ = 0;
@@ -310,56 +501,46 @@ bool OpenZoomApp::ProcessFrameWithCuda(UINT width, UINT height) {
     input.pixelSizeBytes = static_cast<unsigned int>(sizeof(uint32_t));
     input.width = width;
     input.height = height;
+    input.publishOriginalFrame =
+        recordingManager_ && recordingManager_->IsActive();
     // inputFormat 0 (BGRA): the CPU already converted and rotated, so
     // rotationQuarterTurns stays 0.
 
     return RunCudaPipeline(input, width, height);
 }
 
-// Feeds raw NV12/YUY2 camera frames straight to the CUDA pipeline: color
-// conversion and rotation both run on the GPU and the per-frame CPU
-// convert/rotate work is skipped entirely. Returns false whenever anything is
-// off (unsupported layout, surface failure, ProcessFrame failure) so the
-// caller can fall back to the CPU-converted BGRA path for that frame.
-bool OpenZoomApp::TryProcessRawFrameWithCuda(const MediaFrame& frame,
-                                             CapturedFrame* originalFrame) {
+// Feeds retained D3D11 BGRA textures or raw NV12/YUY2 camera frames straight
+// to the CUDA pipeline. Conversion and rotation stay on the GPU and the
+// per-frame CPU convert/rotate work is skipped entirely. Returns false
+// whenever anything is off so the caller can use the CPU-converted BGRA path.
+bool OpenZoomApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
+                                             CapturedFrame* originalFrame,
+                                             bool* outGpuCompletionPending) {
+    if (outGpuCompletionPending) {
+        *outGpuCompletionPending = false;
+    }
     const bool isNv12 = IsEqualGUID(frame.subtype, MFVideoFormat_NV12);
     const bool isYuy2 = IsEqualGUID(frame.subtype, MFVideoFormat_YUY2);
-    if (!isNv12 && !isYuy2) {
+    const bool isBgra =
+        IsEqualGUID(frame.subtype, MFVideoFormat_ARGB32) ||
+        IsEqualGUID(frame.subtype, MFVideoFormat_RGB32);
+    if (!isNv12 && !isYuy2 &&
+        !(isBgra && frame.IsGpuResident())) {
         return false;
     }
 
     const UINT width = frame.width;
     const UINT height = frame.height;
-    if (width == 0 || height == 0 || frame.data.empty()) {
+    if (width == 0 || height == 0 ||
+        (frame.data.empty() && !frame.IsGpuResident())) {
         return false;
     }
 
-    UINT stride = frame.stride;
-    const uint8_t* plane2 = nullptr;
-    UINT plane2Stride = 0;
-    if (isNv12) {
-        if (stride < width) {
-            stride = width;
-        }
-        // Media Foundation NV12 buffers are contiguous: Y rows followed by
-        // interleaved UV rows, both at the Y stride.
-        const size_t yBytes = static_cast<size_t>(stride) * height;
-        const size_t uvBytes = static_cast<size_t>(stride) * ((height + 1) / 2);
-        if (frame.dataSize < yBytes + uvBytes) {
-            return false;
-        }
-        plane2 = frame.data.data() + yBytes;
-        plane2Stride = stride;
-    } else {
-        if (stride < width * 2) {
-            stride = width * 2;
-        }
-        if (frame.dataSize < static_cast<size_t>(stride) * height) {
-            return false;
-        }
+    // Bottom-up packed camera buffers are normalized by the CPU conversion
+    // path; the raw CUDA upload contract is top-down only.
+    if (frame.stride < 0) {
+        return false;
     }
-
     // Rotation happens on the GPU after conversion, so the interop surface and
     // every processing stage run at the post-rotation extent.
     const int turns = ((rotationQuarterTurns_ % 4) + 4) % 4;
@@ -371,18 +552,141 @@ bool OpenZoomApp::TryProcessRawFrameWithCuda(const MediaFrame& frame,
         return false;
     }
 
-    ProcessingInput input{};
-    input.hostPixels = frame.data.data();
-    input.hostStrideBytes = stride;
-    input.pixelSizeBytes = isNv12 ? 1u : 2u;
-    input.width = width;    // pre-rotation host layout
-    input.height = height;
-    input.inputFormat = isNv12 ? 1 : 2;
-    input.hostPlane2 = plane2;
-    input.hostPlane2StrideBytes = plane2Stride;
-    input.rotationQuarterTurns = turns;
+    auto persistRung = [&](const QString& rung, const QString& reason) {
+        if (captureZeroCopyStatusPersisted_ || currentCameraAccelerationKey_.isEmpty()) {
+            return;
+        }
+        auto& acceleration =
+            settingsController_->MutableSettings().cameraAcceleration[
+                currentCameraAccelerationKey_];
+        acceleration.lastRung = rung;
+        acceleration.reason = reason;
+        acceleration.decidedOn =
+            QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        SavePersistentSettings();
+        captureZeroCopyStatusPersisted_ = true;
+        UpdateCameraAccelerationUi();
+    };
 
-    if (!RunCudaPipeline(input, outWidth, outHeight)) {
+    if (frame.IsGpuResident() && captureZeroCopyAvailable_) {
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> cudaTexture;
+        QElapsedTimer captureHandoffTimer;
+        captureHandoffTimer.start();
+        const GpuFramePreparationResult preparation =
+            mediaCapture_.PrepareGpuFrameForCuda(frame, cudaTexture);
+        pipelineOrchestrator_->RecordStageSample(
+            FrameTimingStage::CaptureHandoff,
+            static_cast<float>(captureHandoffTimer.nsecsElapsed()) * 1e-6f);
+        if (preparation == GpuFramePreparationResult::Ready && cudaTexture) {
+            ProcessingInput gpuInput{};
+            gpuInput.width = width;
+            gpuInput.height = height;
+            gpuInput.inputFormat = isNv12 ? 1 : (isYuy2 ? 2 : 0);
+            gpuInput.pixelSizeBytes = sizeof(std::uint32_t);
+            gpuInput.rotationQuarterTurns = turns;
+            gpuInput.d3d11Texture = cudaTexture.Get();
+            gpuInput.d3d11Subresource = 0;
+            gpuInput.publishOriginalFrame =
+                recordingManager_ && recordingManager_->IsActive();
+            if (RunCudaPipeline(gpuInput, outWidth, outHeight)) {
+                currentCaptureZeroCopyActive_ = true;
+                persistRung(
+                    QStringLiteral("zeroCopy"),
+                    QStringLiteral(
+                        "Direct GPU camera texture transfer to CUDA is active."));
+                processedFrameWidth_ = outWidth;
+                processedFrameHeight_ = outHeight;
+                usingCudaLastFrame_ = true;
+                PresentLatestCudaScene(true, originalFrame);
+                return true;
+            }
+            if (!cudaSurface_ ||
+                !cudaSurface_->LastFailureWasCaptureInterop()) {
+                return false;
+            }
+            captureZeroCopyFailureReason_ =
+                QString::fromStdString(cudaSurface_->LastError());
+        } else if (preparation == GpuFramePreparationResult::Retry) {
+            // Keep this exact retained MF frame alive and retry its pending
+            // D3D11 query from a later event-loop turn. Using the next frame
+            // here would pair the completed conversion with the wrong capture.
+            if (recordingManager_) {
+                recordingManager_->NotifyCaptureGpuRetry();
+            }
+            if (outGpuCompletionPending) {
+                *outGpuCompletionPending = true;
+            }
+            return false;
+        } else {
+            captureZeroCopyFailureReason_ =
+                QStringLiteral(
+                    "The camera GPU texture could not be converted for CUDA.");
+        }
+
+        if (preparation != GpuFramePreparationResult::Retry) {
+            captureZeroCopyAvailable_ = false;
+            currentCaptureZeroCopyActive_ = false;
+            persistRung(
+                QStringLiteral("acceleratedCopy"),
+                QStringLiteral(
+                    "GPU camera capture is active with the safe copy fallback. %1")
+                    .arg(captureZeroCopyFailureReason_));
+            qWarning() << "Zero-copy camera rung unavailable:"
+                       << captureZeroCopyFailureReason_;
+        }
+    }
+
+    if (frame.data.empty() && frame.IsGpuResident()) {
+        if (recordingManager_) {
+            recordingManager_->NotifyCaptureSafeCopyFallback();
+        }
+        if (!mediaCapture_.ReadbackGpuFrame(frame)) {
+            return false;
+        }
+    }
+    if (frame.data.empty()) {
+        return false;
+    }
+    if (!isNv12 && !isYuy2) {
+        // A GPU BGRA frame that reached a lower rung is already in the
+        // CPU pipeline's native format after ReadbackGpuFrame().
+        return false;
+    }
+
+    UINT stride = static_cast<UINT>(frame.stride);
+    const uint8_t* plane2 = nullptr;
+    UINT plane2Stride = 0;
+    if (isNv12) {
+        stride = std::max(stride, width);
+        const size_t yBytes = static_cast<size_t>(stride) * height;
+        const size_t uvBytes =
+            static_cast<size_t>(stride) * ((height + 1) / 2);
+        if (frame.dataSize < yBytes + uvBytes) {
+            return false;
+        }
+        plane2 = frame.data.data() + yBytes;
+        plane2Stride = stride;
+    } else {
+        stride = std::max(stride, width * 2);
+        if (frame.dataSize < static_cast<size_t>(stride) * height) {
+            return false;
+        }
+    }
+
+    ProcessingInput hostInput{};
+    hostInput.hostPixels = frame.data.data();
+    hostInput.hostStrideBytes = stride;
+    hostInput.pixelSizeBytes = isNv12 ? 1u : 2u;
+    hostInput.width = width;
+    hostInput.height = height;
+    hostInput.inputFormat = isNv12 ? 1 : 2;
+    hostInput.hostPlane2 = plane2;
+    hostInput.hostPlane2StrideBytes = plane2Stride;
+    hostInput.rotationQuarterTurns = turns;
+    hostInput.publishOriginalFrame =
+        recordingManager_ && recordingManager_->IsActive();
+
+    if (!RunCudaPipeline(hostInput, outWidth, outHeight)) {
         if (!rawCudaPathWarned_) {
             qWarning() << "GPU raw-format path failed; falling back to CPU conversion for"
                        << (isNv12 ? "NV12" : "YUY2") << "frames";
@@ -391,6 +695,15 @@ bool OpenZoomApp::TryProcessRawFrameWithCuda(const MediaFrame& frame,
         return false;
     }
 
+    currentCaptureZeroCopyActive_ = false;
+    if (currentCaptureAccelerated_) {
+        persistRung(
+            QStringLiteral("acceleratedCopy"),
+            captureZeroCopyFailureReason_.isEmpty()
+                ? QStringLiteral(
+                      "GPU camera capture is active with the safe copy fallback.")
+                : captureZeroCopyFailureReason_);
+    }
     processedFrameWidth_ = outWidth;
     processedFrameHeight_ = outHeight;
     usingCudaLastFrame_ = true;
@@ -430,7 +743,7 @@ bool OpenZoomApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidt
     settings.enableTemporalSmoothing = temporalSmoothEnabled_;
     settings.temporalSmoothingAlpha = temporalSmoothAlpha_;
     settings.enableStabilization = stabilizationEnabled_;
-    settings.stabilizationStrength = stabilizationStrength_;
+    settings.enableBumpHold = stabilizationEnabled_ && bumpHoldEnabled_;
     if (displayColorScheme_.id == QStringLiteral("normal")) {
         settings.displayColorTransform = DisplayColorTransform::kNone;
     } else if (displayColorScheme_.id == QStringLiteral("inverted")) {
@@ -489,8 +802,21 @@ bool OpenZoomApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidt
         cudaSyncParams.signalValue = ticket.signalValue;
     }
 
+    QElapsedTimer cudaSubmissionTimer;
+    cudaSubmissionTimer.start();
     if (!cudaSurface_->ProcessFrame(input, settings, cudaSyncParams)) {
+        pipelineOrchestrator_->RecordStageSample(
+            FrameTimingStage::CudaSubmission,
+            static_cast<float>(cudaSubmissionTimer.nsecsElapsed()) * 1e-6f);
         pipelineOrchestrator_->Fence().CudaFailed();
+        if (input.d3d11Texture &&
+            cudaSurface_->LastFailureWasCaptureInterop()) {
+            // This failure belongs only to the zero-copy top rung. Keep the
+            // CUDA scene/pipeline alive so the caller can read this retained
+            // texture back and retry through the accelerated-copy rung.
+            usingCudaLastFrame_ = false;
+            return false;
+        }
         cudaPipelineAvailable_ = false;
         UpdateKeystoneTrackingUi();
         qWarning() << "CUDA pipeline processing failed, falling back to CPU";
@@ -499,6 +825,9 @@ bool OpenZoomApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidt
         cudaSceneReady_ = false;
         return false;
     }
+    pipelineOrchestrator_->RecordStageSample(
+        FrameTimingStage::CudaSubmission,
+        static_cast<float>(cudaSubmissionTimer.nsecsElapsed()) * 1e-6f);
     pipelineOrchestrator_->ResetCudaFailures();
 
     if (cudaSyncParams.enable) {
@@ -539,6 +868,10 @@ void OpenZoomApp::PresentLatestCudaScene(bool newCameraFrame,
                                  : ViewportFitMode::kFill);
     if (!transform.valid) {
         return;
+    }
+    const ViewTransform annotationTransform = transform;
+    if (mainWindow_) {
+        mainWindow_->setAnnotationViewTransform(annotationTransform);
     }
 
     ID3D12Resource* presentationTexture = cudaSharedTexture_.Get();
@@ -583,13 +916,48 @@ void OpenZoomApp::PresentLatestCudaScene(bool newCameraFrame,
         pendingPhotoReadbackTimer_.invalidate();
         photoCapturePending_ = true;
     }
+    if (pendingAnnotationReadbackId_ != 0 &&
+        pendingAnnotationReadbackTimer_.isValid() &&
+        pendingAnnotationReadbackTimer_.elapsed() > 1000) {
+        pendingAnnotationReadbackId_ = 0;
+        pendingAnnotationReadbackTimer_.invalidate();
+        if (activeAnnotationCapture_) {
+            annotationCaptureQueue_.push_front(
+                std::move(*activeAnnotationCapture_));
+            activeAnnotationCapture_.reset();
+        }
+        pipelineOrchestrator_->MarkViewportDirty();
+    }
+    if (pendingOnDemandReadbackId_ != 0 &&
+        pendingOnDemandReadbackTimer_.isValid() &&
+        pendingOnDemandReadbackTimer_.elapsed() > 1000) {
+        pendingOnDemandReadbackId_ = 0;
+        pendingOnDemandReadbackTimer_.invalidate();
+        pipelineOrchestrator_->MarkViewportDirty();
+    }
+    if (pendingAssistantFrameReadbackId_ != 0 &&
+        pendingAssistantFrameReadbackTimer_.isValid() &&
+        pendingAssistantFrameReadbackTimer_.elapsed() > 1000) {
+        pendingAssistantFrameReadbackId_ = 0;
+        pendingAssistantFrameReadbackTimer_.invalidate();
+        pipelineOrchestrator_->MarkViewportDirty();
+    }
     const bool recordingActive =
         newCameraFrame && recordingManager_ && recordingManager_->IsActive();
     const bool assistiveWanted =
         newCameraFrame && assistiveManager_->WantsPeriodicReadback(debugViewEnabled_);
     const bool photoWanted =
         newCameraFrame && photoCapturePending_ &&
-        originalFrame && originalFrame->IsValid();
+        originalFrame && originalFrame->HasCpuPixels();
+    const bool annotationWanted =
+        pendingAnnotationReadbackId_ == 0 &&
+        !annotationCaptureQueue_.empty();
+    const bool onDemandAssistiveWanted =
+        pendingOnDemandReadbackId_ == 0 &&
+        (pendingOnDemandRunOcr_ || pendingOnDemandRunVlm_);
+    const bool assistantFrameWanted =
+        pendingAssistantFrameReadbackId_ == 0 &&
+        pendingAssistantFramePrompt_.has_value();
 
     FenceSyncParams presentSync{};
     if (pipelineOrchestrator_->FenceInteropEnabled()) {
@@ -605,8 +973,11 @@ void OpenZoomApp::PresentLatestCudaScene(bool newCameraFrame,
     presentationOptions.focusX = presentationFocusX;
     presentationOptions.focusY = presentationFocusY;
     presentationOptions.requestReadback =
-        recordingActive || assistiveWanted || photoWanted;
+        assistiveWanted || photoWanted || annotationWanted ||
+        onDemandAssistiveWanted || assistantFrameWanted;
     UINT64 readbackRequestId = 0;
+    QElapsedTimer presentationTimer;
+    presentationTimer.start();
     const bool presented = presenter_->PresentSceneTexture(
         presentationTexture,
         presentationSourceWidth,
@@ -615,6 +986,9 @@ void OpenZoomApp::PresentLatestCudaScene(bool newCameraFrame,
         presentSync.enable ? &presentSync : nullptr,
         &presentationOptions,
         &readbackRequestId);
+    pipelineOrchestrator_->RecordStageSample(
+        FrameTimingStage::Presentation,
+        static_cast<float>(presentationTimer.nsecsElapsed()) * 1e-6f);
     if (!presented) {
         pipelineOrchestrator_->MarkViewportDirty();
         return;
@@ -627,18 +1001,120 @@ void OpenZoomApp::PresentLatestCudaScene(bool newCameraFrame,
             presenter_->GetLastSignaledFenceValue());
     }
     if (readbackRequestId != 0) {
-        if (recordingActive && originalFrame && originalFrame->IsValid()) {
-            recordingManager_->StorePendingOriginal(
-                readbackRequestId, *originalFrame);
-        }
         if (photoWanted) {
             pendingPhotoReadbackId_ = readbackRequestId;
             pendingPhotoOriginal_ = *originalFrame;
             pendingPhotoReadbackTimer_.restart();
             photoCapturePending_ = false;
         }
+        if (annotationWanted) {
+            activeAnnotationCapture_ =
+                std::move(annotationCaptureQueue_.front());
+            annotationCaptureQueue_.pop_front();
+            activeAnnotationCapture_->transform = annotationTransform;
+            pendingAnnotationReadbackId_ = readbackRequestId;
+            pendingAnnotationReadbackTimer_.restart();
+        }
+        if (onDemandAssistiveWanted) {
+            pendingOnDemandReadbackId_ = readbackRequestId;
+            pendingOnDemandReadbackTimer_.restart();
+        }
+        if (assistantFrameWanted) {
+            pendingAssistantFrameReadbackId_ = readbackRequestId;
+            pendingAssistantFrameReadbackTimer_.restart();
+        }
         pipelineOrchestrator_->Fence().ReadbackObserved(
             presenter_->GetLastSignaledFenceValue());
+    } else if (presentationOptions.requestReadback) {
+        // The four-slot readback ring was temporarily full. Keep the viewport
+        // dirty so user-triggered requests retry instead of blocking.
+        pipelineOrchestrator_->MarkViewportDirty();
+    }
+
+    // Recording owns fixed GPU textures independent of the swap chain.
+    // Clone both the canonical processed view and the post-conversion,
+    // post-rotation original frame into unique shareable allocations. The
+    // worker can feed them directly to Media Foundation without retaining a
+    // camera-owned texture or reading either stream through system memory.
+    if (recordingActive && originalFrame &&
+        originalFrame->width > 0 && originalFrame->height > 0) {
+        QElapsedTimer recordingCloneTimer;
+        recordingCloneTimer.start();
+        const RecordingCanvasSize canvas =
+            recordingManager_->ResolveCanvas(
+                originalFrame->width, originalFrame->height);
+        QImage annotationLayer;
+        const AnnotationOverlay* annotationOverlay =
+            mainWindow_->annotationOverlay();
+        if (annotationOverlay && annotationOverlay->HasInk()) {
+            annotationLayer = QImage(
+                static_cast<int>(canvas.width),
+                static_cast<int>(canvas.height),
+                QImage::Format_ARGB32);
+            annotationLayer.fill(Qt::transparent);
+            QPainter annotationPainter(&annotationLayer);
+            RenderAnnotationStrokes(
+                annotationPainter,
+                annotationOverlay->Strokes(),
+                transform,
+                annotationLayer.size());
+        }
+        bool processedPoolExhausted = false;
+        GpuVideoFrame recordingFrame =
+            presenter_->RequestRecordingFrame(
+                presentationTexture,
+                presentationSourceWidth,
+                presentationSourceHeight,
+                ToRecordingTransform(transform),
+                canvas.width,
+                canvas.height,
+                annotationLayer.isNull()
+                    ? nullptr
+                    : annotationLayer.constBits(),
+                annotationLayer.isNull()
+                    ? 0
+                    : static_cast<std::size_t>(
+                          annotationLayer.bytesPerLine()),
+                &processedPoolExhausted);
+        RecordingViewTransform originalTransform;
+        originalTransform.valid = true;
+        GpuVideoFrame originalRecordingFrame;
+        bool originalPoolExhausted = false;
+        if (cudaOriginalTexture_) {
+            originalRecordingFrame =
+                presenter_->RequestRecordingFrame(
+                    cudaOriginalTexture_.Get(),
+                    originalFrame->width,
+                    originalFrame->height,
+                    originalTransform,
+                    originalFrame->width,
+                    originalFrame->height,
+                    nullptr,
+                    0,
+                    &originalPoolExhausted);
+        }
+        if (pipelineOrchestrator_->FenceInteropEnabled()) {
+            pipelineOrchestrator_->Fence().GraphicsSignaled(
+                presenter_->GetLastSignaledFenceValue());
+        }
+        if (recordingFrame.IsValid() &&
+            (originalRecordingFrame.IsValid() ||
+             originalFrame->HasCpuPixels())) {
+            originalFrame->gpuScene = std::move(originalRecordingFrame);
+            recordingManager_->AddGpuSceneFrame(
+                std::move(recordingFrame),
+                ToRecordingTransform(transform),
+                std::move(*originalFrame));
+        } else {
+            if (processedPoolExhausted || originalPoolExhausted) {
+                recordingManager_->NotifyRecordingPoolSkipped();
+            } else {
+                recordingManager_->NotifyReadbackSkipped();
+            }
+        }
+        pipelineOrchestrator_->RecordStageSample(
+            FrameTimingStage::RecordingClone,
+            static_cast<float>(recordingCloneTimer.nsecsElapsed()) * 1e-6f);
     }
     pipelineOrchestrator_->MarkViewportPresented();
     superResPresentedLastFrame_ = presentingSuperRes;
@@ -648,9 +1124,9 @@ void OpenZoomApp::PresentLatestCudaScene(bool newCameraFrame,
     }
 }
 
-// Drain viewport-sized copies produced by PresentLatestCudaScene. Recording,
-// photos, and assistive analysis therefore consume the same crop and aspect
-// mapping shown on screen rather than the uncropped CUDA scene texture.
+// Drain completed asynchronous viewport copies for photos and assistive
+// analysis. Processed recording now uses a fenced GPU canvas and does not
+// consume this CPU readback ring.
 void OpenZoomApp::DrainCompletedGpuReadbacks() {
     if (!presenter_) {
         return;
@@ -664,7 +1140,7 @@ void OpenZoomApp::DrainCompletedGpuReadbacks() {
                                                readbackHeight,
                                                &requestId)) {
         if (requestId == pendingPhotoReadbackId_ &&
-            pendingPhotoOriginal_.IsValid()) {
+            pendingPhotoOriginal_.HasCpuPixels()) {
             SaveCapturedPhotoPair(asyncReadbackBuffer_.data(),
                                   readbackWidth,
                                   readbackHeight,
@@ -673,11 +1149,56 @@ void OpenZoomApp::DrainCompletedGpuReadbacks() {
             pendingPhotoOriginal_ = {};
             pendingPhotoReadbackTimer_.invalidate();
         }
+        if (requestId == pendingAnnotationReadbackId_ &&
+            activeAnnotationCapture_) {
+            SaveAnnotationSnapshot(asyncReadbackBuffer_.data(),
+                                   readbackWidth,
+                                   readbackHeight,
+                                   activeAnnotationCapture_->strokes,
+                                   activeAnnotationCapture_->transform,
+                                   activeAnnotationCapture_->heading);
+            pendingAnnotationReadbackId_ = 0;
+            pendingAnnotationReadbackTimer_.invalidate();
+            activeAnnotationCapture_.reset();
+            if (!annotationCaptureQueue_.empty()) {
+                pipelineOrchestrator_->MarkViewportDirty();
+            }
+        }
+        if (requestId == pendingOnDemandReadbackId_) {
+            const bool runOcr = pendingOnDemandRunOcr_;
+            const bool runVlm = pendingOnDemandRunVlm_;
+            pendingOnDemandRunOcr_ = false;
+            pendingOnDemandRunVlm_ = false;
+            pendingOnDemandReadbackId_ = 0;
+            pendingOnDemandReadbackTimer_.invalidate();
+            assistiveManager_->Runtime().SubmitFrameForced(
+                asyncReadbackBuffer_.data(),
+                static_cast<int>(readbackWidth),
+                static_cast<int>(readbackHeight),
+                runOcr,
+                runVlm);
+        }
+        if (requestId == pendingAssistantFrameReadbackId_ &&
+            pendingAssistantFramePrompt_) {
+            const PendingAssistantFramePrompt prompt =
+                std::move(*pendingAssistantFramePrompt_);
+            pendingAssistantFramePrompt_.reset();
+            pendingAssistantFrameReadbackId_ = 0;
+            pendingAssistantFrameReadbackTimer_.invalidate();
+            DispatchAssistantPrompt(
+                prompt.prompt,
+                prompt.clearAdvancedEditor,
+                asyncReadbackBuffer_.data(),
+                static_cast<int>(readbackWidth),
+                static_cast<int>(readbackHeight),
+                true);
+        }
         if (recordingManager_) {
-            recordingManager_->HandleProcessedReadback(requestId,
-                                                       asyncReadbackBuffer_.data(),
-                                                       readbackWidth,
-                                                       readbackHeight);
+            recordingManager_->HandleProcessedReadback(
+                requestId,
+                asyncReadbackBuffer_.data(),
+                readbackWidth,
+                readbackHeight);
         }
         const bool focusGateEnabled = focusDetectionEnabled_ || autoTextClarityEnabled_;
         const bool focusAcceptable =
@@ -692,7 +1213,9 @@ void OpenZoomApp::DrainCompletedGpuReadbacks() {
     }
 }
 
-bool OpenZoomApp::StartCameraCapture(size_t index, bool interactive) {
+bool OpenZoomApp::StartCameraCapture(size_t index,
+                                     bool interactive,
+                                     bool forceCompatibility) {
     if (index >= cameras_.size()) {
         return false;
     }
@@ -710,9 +1233,77 @@ bool OpenZoomApp::StartCameraCapture(size_t index, bool interactive) {
     UpdateKeystoneTrackingUi();
 
     const CameraDescriptor& descriptor = cameras_[index];
+    auto& persistent = settingsController_->MutableSettings();
+    currentCameraAccelerationKey_ =
+        QString::fromStdWString(descriptor.symbolicLink);
+    settings::CameraAccelerationSetting& acceleration =
+        persistent.cameraAcceleration[currentCameraAccelerationKey_];
+    if (persistent.legacyWiderCameraCompatibility) {
+        acceleration.mode =
+            settings::CameraAccelerationMode::ForceCompatibility;
+        acceleration.automaticFallback = false;
+        acceleration.reason =
+            QStringLiteral(
+                "Compatibility mode was migrated from the former global "
+                "camera-compatibility option.");
+        acceleration.decidedOn =
+            QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        persistent.legacyWiderCameraCompatibility = false;
+        SavePersistentSettings();
+    }
+    if (persistent.cameraAccelerationAttempt ==
+        currentCameraAccelerationKey_) {
+        acceleration.automaticFallback = true;
+        acceleration.reason =
+            QStringLiteral(
+                "The previous accelerated camera start did not finish. "
+                "Compatibility mode was selected automatically.");
+        acceleration.decidedOn =
+            QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        persistent.cameraAccelerationAttempt.clear();
+        forceCompatibility = true;
+    }
+    const bool explicitlyCompatible =
+        acceleration.mode ==
+        settings::CameraAccelerationMode::ForceCompatibility;
+    const bool automaticFallback =
+        acceleration.mode ==
+            settings::CameraAccelerationMode::Automatic &&
+        acceleration.automaticFallback;
+    const bool requestAcceleration =
+        !forceCompatibility &&
+        !explicitlyCompatible && !automaticFallback;
+    const QString requestedStableId =
+        settingsController_->MutableSettings().cameraFormatStableId;
+    const VideoFormat* requestedFormat = nullptr;
+    for (const VideoFormat& format : cameraFormats_) {
+        if (QString::fromStdWString(format.stableId) == requestedStableId) {
+            requestedFormat = &format;
+            break;
+        }
+    }
     FrameCallback callback = [this](MediaFrame&& frame) {
-        std::scoped_lock lock(cameraMutex_);
-        latestFrame_ = std::move(frame);
+        const bool retainBurst =
+            recordingManager_ && recordingManager_->IsActive();
+        bool droppedPendingFrame = false;
+        {
+            std::scoped_lock lock(cameraMutex_);
+            if (!retainBurst) {
+                droppedPendingFrame = !pendingCameraFrames_.empty();
+                pendingCameraFrames_.clear();
+            } else if (pendingCameraFrames_.size() >=
+                       kMaxRecordingCameraFrames) {
+                pendingCameraFrames_.pop_front();
+                droppedPendingFrame = true;
+            }
+            pendingCameraFrames_.push_back(std::move(frame));
+        }
+        if (recordingManager_) {
+            recordingManager_->NotifyCaptureFrame(droppedPendingFrame);
+        }
+        if (pipelineOrchestrator_) {
+            pipelineOrchestrator_->NotifyCameraFrameAvailable();
+        }
     };
     CaptureErrorCallback errorCallback = [this, captureSession](const std::string& detail) {
         const QString message = QString::fromStdString(detail);
@@ -723,10 +1314,63 @@ bool OpenZoomApp::StartCameraCapture(size_t index, bool interactive) {
                                   Qt::QueuedConnection);
     };
 
-    if (!mediaCapture_.StartCapture(descriptor,
-                                    std::move(callback),
-                                    MFVideoFormat_NV12,
-                                    std::move(errorCallback))) {
+    auto startWithMode = [&](CaptureAccelerationMode mode) {
+        return mediaCapture_.StartCapture(
+            descriptor,
+            requestedFormat,
+            callback,
+            mode == CaptureAccelerationMode::Accelerated
+                ? MFVideoFormat_ARGB32
+                : MFVideoFormat_NV12,
+            errorCallback,
+            mode);
+    };
+
+    bool started = false;
+    if (requestAcceleration) {
+        persistent.cameraAccelerationAttempt =
+            currentCameraAccelerationKey_;
+        SavePersistentSettings();
+        started = startWithMode(CaptureAccelerationMode::Accelerated);
+        if (!started) {
+            const QString acceleratedError =
+                QString::fromStdString(mediaCapture_.LastError());
+            const CameraFailureKind acceleratedFailure =
+                mediaCapture_.LastFailureKind();
+            persistent.cameraAccelerationAttempt.clear();
+            const bool transientDeviceFailure =
+                acceleratedFailure == CameraFailureKind::DeviceBusy ||
+                acceleratedFailure == CameraFailureKind::DeviceMissing;
+            if (!transientDeviceFailure) {
+                acceleration.reason =
+                    acceleratedError.isEmpty()
+                        ? QStringLiteral(
+                              "GPU camera acceleration could not start; using "
+                              "compatibility mode.")
+                        : QStringLiteral(
+                              "GPU camera acceleration could not start: %1")
+                              .arg(acceleratedError);
+                acceleration.decidedOn =
+                    QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+                if (acceleration.mode ==
+                    settings::CameraAccelerationMode::Automatic) {
+                    acceleration.automaticFallback = true;
+                }
+            }
+            SavePersistentSettings();
+            if (!transientDeviceFailure) {
+                qWarning() << acceleration.reason;
+                started =
+                    startWithMode(CaptureAccelerationMode::Compatibility);
+            }
+        }
+    } else {
+        persistent.cameraAccelerationAttempt.clear();
+        started =
+            startWithMode(CaptureAccelerationMode::Compatibility);
+    }
+
+    if (!started) {
         const std::string detail = mediaCapture_.LastError();
         const CameraFailureKind kind = mediaCapture_.LastFailureKind();
         QString message;
@@ -742,13 +1386,29 @@ bool OpenZoomApp::StartCameraCapture(size_t index, bool interactive) {
                 message += QStringLiteral(" (%1)").arg(QString::fromStdString(detail));
             }
         }
-        if (interactive) {
+        if (interactive &&
+            (kind == CameraFailureKind::DeviceBusy ||
+             kind == CameraFailureKind::DeviceMissing)) {
+            qWarning() << "Camera start delayed:" << message;
+            lastCameraError_ = message;
+            StopCameraCapture();
+            UpdateProcessingStatusLabel();
+            ShowStatusMessage(
+                QStringLiteral("%1 OpenZoom will keep trying without "
+                               "blocking the controls.")
+                    .arg(message),
+                12000,
+                LivePoliteness::kAssertive);
+            BeginCameraReconnect();
+        } else if (interactive) {
             HandleCameraStartFailure(message);
         } else {
             qWarning() << "Camera start failed (silent):" << message;
             lastCameraError_ = message;
             UpdateProcessingStatusLabel();
         }
+        currentCaptureAccelerated_ = false;
+        UpdateCameraAccelerationUi();
         return false;
     }
 
@@ -759,21 +1419,82 @@ bool OpenZoomApp::StartCameraCapture(size_t index, bool interactive) {
     cpuSceneHeight_ = 0;
     cpuSceneReady_ = false;
     cameraActive_ = true;
+    currentCaptureAccelerated_ =
+        mediaCapture_.AccelerationMode() ==
+        CaptureAccelerationMode::Accelerated;
+    currentCaptureZeroCopyActive_ = false;
+    const bool forceCopyRung =
+        qEnvironmentVariableIntValue(
+            "OPENZOOM_FORCE_CAPTURE_COPY_RUNG") != 0;
+    captureZeroCopyAvailable_ =
+        currentCaptureAccelerated_ && !forceCopyRung;
+    captureZeroCopyStatusPersisted_ = false;
+    captureZeroCopyFailureReason_ =
+        forceCopyRung
+            ? QStringLiteral(
+                  "The direct GPU rung was disabled by the diagnostic "
+                  "OPENZOOM_FORCE_CAPTURE_COPY_RUNG setting.")
+            : QString{};
+    if (!currentCaptureAccelerated_ &&
+        !currentCameraAccelerationKey_.isEmpty()) {
+        auto& compatibility =
+            settingsController_->MutableSettings().cameraAcceleration[
+                currentCameraAccelerationKey_];
+        compatibility.lastRung = QStringLiteral("compatibility");
+        compatibility.decidedOn =
+            QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        SavePersistentSettings();
+    }
+    if (uiState_->cameraFormatNoticeLabel_) {
+        const QString notice =
+            QString::fromStdString(mediaCapture_.FormatNotice());
+        SetLiveText(uiState_->cameraFormatNoticeLabel_, notice,
+                    notice.isEmpty() ? LivePoliteness::kSilent
+                                     : LivePoliteness::kPolite,
+                    QStringLiteral("Camera format notice"));
+        uiState_->cameraFormatNoticeLabel_->setVisible(!notice.isEmpty());
+    }
     lastCameraError_.clear();
     UpdateKeystoneTrackingUi();
+    UpdateCameraAccelerationUi();
     UpdateProcessingStatusLabel();
     return true;
 }
 
-void OpenZoomApp::StopCameraCapture() {
+void OpenZoomApp::StopCameraCapture(bool atProcessExit) {
     ++cameraSessionId_;
-    mediaCapture_.StopCapture();
+    mediaCapture_.StopCapture([this, atProcessExit]() {
+        if (cudaSurface_) {
+            cudaSurface_->ResetCaptureInterop(atProcessExit);
+        }
+    });
+    if (settingsController_ &&
+        settingsController_->MutableSettings().cameraAccelerationAttempt ==
+            currentCameraAccelerationKey_) {
+        // Reaching this point means the capture thread and driver stopped
+        // cleanly. A process/driver hang never reaches this clear, so the
+        // persisted marker still identifies an incomplete accelerated start
+        // on the next launch.
+        settingsController_->MutableSettings()
+            .cameraAccelerationAttempt.clear();
+        if (uiState_ && assistiveManager_) {
+            SavePersistentSettings();
+        }
+    }
     cameraActive_ = false;
+    currentCaptureAccelerated_ = false;
+    currentCaptureZeroCopyActive_ = false;
+    captureZeroCopyAvailable_ = true;
+    captureZeroCopyStatusPersisted_ = false;
+    captureZeroCopyFailureReason_.clear();
 
     {
         std::scoped_lock lock(cameraMutex_);
-        latestFrame_ = MediaFrame{};
+        pendingCameraFrames_.clear();
+        deferredGpuCameraFrame_.reset();
     }
+    deferredGpuSequence_.reset();
+    deferredGpuWaitTimer_.invalidate();
 
     cpuPipeline_.ResetTemporalHistory();
     if (cudaSurface_) {
@@ -814,6 +1535,37 @@ void OpenZoomApp::HandleCameraRuntimeFailure(uint64_t captureSession, const QStr
 
     qWarning() << "Camera runtime failure:" << message;
     lastCameraError_ = message;
+
+    if (currentCaptureAccelerated_ &&
+        mediaCapture_.ConsumeAccelerationRejected()) {
+        auto& persistent = settingsController_->MutableSettings();
+        settings::CameraAccelerationSetting& acceleration =
+            persistent.cameraAcceleration[currentCameraAccelerationKey_];
+        acceleration.reason =
+            QStringLiteral(
+                "GPU camera acceleration did not produce a usable startup "
+                "image, so OpenZoom switched to compatibility mode.");
+        acceleration.decidedOn =
+            QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        if (acceleration.mode ==
+            settings::CameraAccelerationMode::Automatic) {
+            acceleration.automaticFallback = true;
+        }
+        persistent.cameraAccelerationAttempt.clear();
+        const int cameraIndex = selectedCameraIndex_;
+        SavePersistentSettings();
+        StopCameraCapture();
+        if (cameraIndex >= 0 &&
+            StartCameraCapture(
+                static_cast<size_t>(cameraIndex), false, true)) {
+            ShowStatusMessage(
+                QStringLiteral(
+                    "Camera switched to compatibility mode because the "
+                    "accelerated startup image was not usable."),
+                10000);
+            return;
+        }
+    }
 
     // Mid-stream device loss is handled by the reconnect state machine instead
     // of an error dialog; the flag is also polled from OnFrameTick in case the
@@ -877,7 +1629,7 @@ void OpenZoomApp::DriveCameraReconnect() {
             auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
             uiState_->cameraCombo_->setCurrentIndex(matchIndex);
         }
-        RefreshCameraModesList(static_cast<size_t>(matchIndex));
+        RefreshCameraFormats(static_cast<size_t>(matchIndex));
         ShowStatusMessage(QStringLiteral("Camera reconnected."), 5000);
         return;
     }
@@ -891,7 +1643,8 @@ void OpenZoomApp::DriveCameraReconnect() {
             : QStringLiteral("The camera did not come back. Check the connection, then pick it "
                              "again from the camera list.");
         qWarning() << "Camera reconnect gave up:" << lastCameraError_;
-        ShowStatusMessage(lastCameraError_, 15000);
+        ShowStatusMessage(lastCameraError_, 15000,
+                          LivePoliteness::kAssertive);
         return;
     }
 
@@ -912,6 +1665,23 @@ bool OpenZoomApp::RunFrameTick(double elapsedSeconds) {
         DriveCameraReconnect();
     }
 
+    if (currentCaptureAccelerated_ &&
+        mediaCapture_.ConsumeAccelerationValidated()) {
+        auto& persistent = settingsController_->MutableSettings();
+        persistent.cameraAccelerationAttempt.clear();
+        settings::CameraAccelerationSetting& acceleration =
+            persistent.cameraAcceleration[currentCameraAccelerationKey_];
+        acceleration.automaticFallback = false;
+        acceleration.reason =
+            QStringLiteral("GPU-accelerated camera capture passed startup validation.");
+        acceleration.decidedOn =
+            QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        SavePersistentSettings();
+        UpdateCameraAccelerationUi();
+        qInfo() << "Camera acceleration validated for"
+                << currentCameraAccelerationKey_;
+    }
+
     if (!cameraActive_) {
         return false;
     }
@@ -922,10 +1692,29 @@ bool OpenZoomApp::RunFrameTick(double elapsedSeconds) {
     MediaFrame frame;
     {
         std::scoped_lock lock(cameraMutex_);
-        frame = std::move(latestFrame_);
+        if (deferredGpuCameraFrame_) {
+            frame = std::move(*deferredGpuCameraFrame_);
+            deferredGpuCameraFrame_.reset();
+        } else if (!pendingCameraFrames_.empty()) {
+            frame = std::move(pendingCameraFrames_.front());
+            pendingCameraFrames_.pop_front();
+        }
     }
+    const auto scheduleNextCameraFrame = qScopeGuard([this]() {
+        bool hasPendingFrame = false;
+        {
+            std::scoped_lock lock(cameraMutex_);
+            hasPendingFrame =
+                !deferredGpuCameraFrame_ &&
+                !pendingCameraFrames_.empty();
+        }
+        if (hasPendingFrame && pipelineOrchestrator_) {
+            pipelineOrchestrator_->NotifyCameraFrameAvailable();
+        }
+    });
 
-    if (frame.data.empty() || frame.width == 0 || frame.height == 0) {
+    if ((frame.data.empty() && !frame.IsGpuResident()) ||
+        frame.width == 0 || frame.height == 0) {
         if (usingCudaLastFrame_ && cudaSceneReady_ &&
             (pipelineOrchestrator_->IsViewportDirty() ||
              presenter_->NeedsScenePresent())) {
@@ -947,22 +1736,84 @@ bool OpenZoomApp::RunFrameTick(double elapsedSeconds) {
     }
 
     CapturedFrame originalFrame;
-    const bool recordingActive = recordingManager_ && recordingManager_->IsActive();
-    if ((recordingActive || photoCapturePending_) && !PrepareOriginalFrame(frame, originalFrame)) {
-        if (recordingActive) {
+    bool recordingActive = recordingManager_ && recordingManager_->IsActive();
+    bool cpuOriginalRequired = photoCapturePending_;
+    if (cpuOriginalRequired &&
+        frame.data.empty() && frame.IsGpuResident() &&
+        !mediaCapture_.ReadbackGpuFrame(frame)) {
+        if (photoCapturePending_) {
+            ShowStatusMessage(
+                QStringLiteral(
+                    "Photo not saved: the original camera frame could not be read back."),
+                8000);
+            photoCapturePending_ = false;
+            cpuOriginalRequired = false;
+        }
+    }
+    if (cpuOriginalRequired) {
+        if (!PrepareOriginalFrame(frame, originalFrame) && recordingActive) {
             recordingManager_->Stop(QStringLiteral(
                 "Recording stopped: the original camera frame could not be converted."));
+            recordingActive = false;
         }
+    } else if (recordingActive) {
+        PopulateOriginalFrameMetadata(frame, originalFrame);
     }
 
     // GPU fast path: NV12/YUY2 frames go straight to CUDA (conversion and
     // rotation on the GPU), skipping the per-pixel CPU work below. The CPU
     // path remains for the debug view, other subtypes, GPU-unavailable
     // passthrough, and any frame the raw path rejects.
-    if (!debugViewEnabled_ && TryProcessRawFrameWithCuda(frame, &originalFrame)) {
-        return true;
+    if (!debugViewEnabled_) {
+        bool gpuCompletionPending = false;
+        if (TryProcessRawFrameWithCuda(
+                frame, &originalFrame, &gpuCompletionPending)) {
+            deferredGpuSequence_.reset();
+            deferredGpuWaitTimer_.invalidate();
+            pipelineOrchestrator_->RecordCaptureToPresentSample(
+                MeasureCaptureToPresentLatency(frame.captureClock100ns));
+            return true;
+        }
+        if (gpuCompletionPending) {
+            if (!deferredGpuSequence_ ||
+                *deferredGpuSequence_ != frame.sequenceNumber) {
+                deferredGpuSequence_ = frame.sequenceNumber;
+                deferredGpuWaitTimer_.restart();
+            }
+            // A healthy conversion normally completes on the first retry.
+            // Keep the wait bounded so a wedged driver can still fall back to
+            // the permanent compatibility path instead of freezing preview.
+            constexpr qint64 kGpuCompletionRetryBudgetMs = 25;
+            if (deferredGpuWaitTimer_.elapsed() <
+                kGpuCompletionRetryBudgetMs) {
+                {
+                    std::scoped_lock lock(cameraMutex_);
+                    deferredGpuCameraFrame_ = std::move(frame);
+                }
+                pipelineOrchestrator_->NotifyCameraFrameAvailable(1);
+                return false;
+            }
+
+            if (recordingManager_) {
+                recordingManager_->NotifyCaptureSafeCopyFallback();
+            }
+            deferredGpuSequence_.reset();
+            deferredGpuWaitTimer_.invalidate();
+        }
     }
 
+    QElapsedTimer cpuPreparationTimer;
+    cpuPreparationTimer.start();
+    if (frame.data.empty() && frame.IsGpuResident() &&
+        !mediaCapture_.ReadbackGpuFrame(frame)) {
+        return true;
+    }
+    if (recordingActive && !originalFrame.HasCpuPixels() &&
+        !PrepareOriginalFrame(frame, originalFrame)) {
+        recordingManager_->Stop(QStringLiteral(
+            "Recording stopped: the original camera frame could not be converted."));
+        recordingActive = false;
+    }
     if (!cpuPipeline_.ConvertFrameToBgra(frame.data,
                                          frame.subtype,
                                          frame.width,
@@ -975,10 +1826,15 @@ bool OpenZoomApp::RunFrameTick(double elapsedSeconds) {
     UINT width = frame.width;
     UINT height = frame.height;
     cpuPipeline_.RotateRawBuffer(rotationQuarterTurns_, width, height);
+    pipelineOrchestrator_->RecordStageSample(
+        FrameTimingStage::CpuPreparation,
+        static_cast<float>(cpuPreparationTimer.nsecsElapsed()) * 1e-6f);
     processedFrameWidth_ = width;
     processedFrameHeight_ = height;
 
     BuildCompositeAndPresent(width, height, &originalFrame);
+    pipelineOrchestrator_->RecordCaptureToPresentSample(
+        MeasureCaptureToPresentLatency(frame.captureClock100ns));
     if (photoCapturePending_ && !usingCudaLastFrame_) {
         CapturePendingPhoto(originalFrame);
     }
@@ -1106,6 +1962,9 @@ void OpenZoomApp::PresentFitted(const uint8_t* data,
     if (!mapping.valid) {
         return;
     }
+    if (mainWindow_) {
+        mainWindow_->setAnnotationViewTransform(transform);
+    }
 
     presentationBuffer_.assign(static_cast<size_t>(mapping.targetWidth) * mapping.targetHeight * 4, 0);
     presentationWidth_ = mapping.targetWidth;
@@ -1176,6 +2035,19 @@ void OpenZoomApp::PresentFitted(const uint8_t* data,
         drawFilledCircle(markerX, markerY, kInnerRadius, 255, 255, 255, 255);
     }
 
+    if (!annotationCaptureQueue_.empty()) {
+        PendingAnnotationCapture capture =
+            std::move(annotationCaptureQueue_.front());
+        annotationCaptureQueue_.pop_front();
+        capture.transform = transform;
+        SaveAnnotationSnapshot(presentationBuffer_.data(),
+                               mapping.targetWidth,
+                               mapping.targetHeight,
+                               capture.strokes,
+                               capture.transform,
+                               capture.heading);
+    }
+
     const bool focusGateEnabled = focusDetectionEnabled_ || autoTextClarityEnabled_;
     const bool focusAcceptable =
         !focusGateEnabled || !cudaSurface_ ||
@@ -1190,10 +2062,12 @@ void OpenZoomApp::PresentFitted(const uint8_t* data,
     }
     if (originalFrame && originalFrame->IsValid()) {
         if (recordingManager_) {
-            recordingManager_->AddFrame(presentationBuffer_.data(),
-                                        mapping.targetWidth,
-                                        mapping.targetHeight,
-                                        *originalFrame);
+            recordingManager_->AddSceneFrame(
+                data,
+                srcWidth,
+                srcHeight,
+                ToRecordingTransform(transform),
+                std::move(*originalFrame));
         }
     }
     presenter_->Present(presentationBuffer_.data(), mapping.targetWidth, mapping.targetHeight);
@@ -1201,17 +2075,6 @@ void OpenZoomApp::PresentFitted(const uint8_t* data,
     if (originalFrame) {
         UpdateProcessingStatusLabel();
     }
-}
-
-QString OpenZoomApp::EnsureOutputSubdir(const QString& subdir)
-{
-    QDir base(QCoreApplication::applicationDirPath());
-    QString outDirPath = base.filePath(QStringLiteral("output/%1").arg(subdir));
-    QDir outDir(outDirPath);
-    if (!outDir.exists()) {
-        outDir.mkpath(QStringLiteral("."));
-    }
-    return outDir.absolutePath();
 }
 
 bool OpenZoomApp::PrepareOriginalFrame(const MediaFrame& source,
@@ -1238,27 +2101,40 @@ bool OpenZoomApp::PrepareOriginalFrame(const MediaFrame& source,
     destination.pixels = pixels;
     destination.width = width;
     destination.height = height;
+    destination.identity.captureTimestamp100ns =
+        source.captureTimestamp100ns;
+    destination.identity.captureClock100ns =
+        source.captureClock100ns;
+    destination.identity.sequenceNumber = source.sequenceNumber;
+    destination.identity.frameRateNumerator =
+        source.frameRateNumerator;
+    destination.identity.frameRateDenominator =
+        source.frameRateDenominator;
     return true;
 }
 
-bool OpenZoomApp::SaveSnapshot(const uint8_t* data,
-                               UINT width,
-                               UINT height,
-                               const QString& fullPath)
+bool OpenZoomApp::PopulateOriginalFrameMetadata(
+    const MediaFrame& source,
+    CapturedFrame& destination) const
 {
-    if (!data || width == 0 || height == 0 || fullPath.isEmpty()) {
+    if (source.width == 0 || source.height == 0) {
         return false;
     }
-    QImage image(data,
-                 static_cast<int>(width),
-                 static_cast<int>(height),
-                 static_cast<int>(width) * 4,
-                 QImage::Format_ARGB32);
-    if (!image.save(fullPath, "JPG", 90)) {
-        qWarning() << "Failed to save snapshot to" << fullPath;
-        return false;
-    }
-    qInfo() << "Saved snapshot to" << fullPath;
+    const int turns = ((rotationQuarterTurns_ % 4) + 4) % 4;
+    destination = {};
+    destination.width =
+        ((turns & 1) != 0) ? source.height : source.width;
+    destination.height =
+        ((turns & 1) != 0) ? source.width : source.height;
+    destination.identity.captureTimestamp100ns =
+        source.captureTimestamp100ns;
+    destination.identity.captureClock100ns =
+        source.captureClock100ns;
+    destination.identity.sequenceNumber = source.sequenceNumber;
+    destination.identity.frameRateNumerator =
+        source.frameRateNumerator;
+    destination.identity.frameRateDenominator =
+        source.frameRateDenominator;
     return true;
 }
 
@@ -1268,7 +2144,7 @@ void OpenZoomApp::CapturePendingPhoto(const CapturedFrame& originalFrame)
         return;
     }
     photoCapturePending_ = false;
-    if (!originalFrame.IsValid()) {
+    if (!originalFrame.HasCpuPixels()) {
         ShowStatusMessage(QStringLiteral(
             "Photo not saved: the original camera frame could not be converted."));
         return;
@@ -1297,12 +2173,24 @@ void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
                                         const CapturedFrame& originalFrame)
 {
     if (!processedData || processedWidth == 0 || processedHeight == 0 ||
-        !originalFrame.IsValid()) {
+        !originalFrame.HasCpuPixels()) {
         ShowStatusMessage(QStringLiteral(
             "Photo not saved: the processed or original frame was unavailable."));
         return;
     }
-    const QString dirPath = EnsureOutputSubdir(QStringLiteral("img"));
+    QString outputError;
+    const QString dirPath =
+        userDataPaths_
+            ? userDataPaths_->PhotosForDate(QDate::currentDate(), &outputError)
+            : QString();
+    if (dirPath.isEmpty()) {
+        ShowStatusMessage(
+            outputError.isEmpty()
+                ? QStringLiteral(
+                      "Photo not saved: the OpenZoom Photos folder is unavailable.")
+                : outputError);
+        return;
+    }
     const QString timestamp =
         QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss_zzz"));
     const QString processedPath = QDir(dirPath).filePath(
@@ -1310,19 +2198,196 @@ void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
     const QString originalPath = QDir(dirPath).filePath(
         QStringLiteral("IMG_%1_original.jpg").arg(timestamp));
 
-    const bool processedSaved = SaveSnapshot(processedData,
-                                             processedWidth,
-                                             processedHeight,
-                                             processedPath);
-    const bool originalSaved = SaveSnapshot(originalFrame.pixels.data(),
-                                            originalFrame.width,
-                                            originalFrame.height,
-                                            originalPath);
-    if (processedSaved && originalSaved) {
-        assistiveManager_->Runtime().NoteCapturedPhoto(processedPath);
-        ShowStatusMessage(QStringLiteral("Saved original and processed photos."), 5000);
-    } else {
-        ShowStatusMessage(QStringLiteral("One of the paired photos could not be saved."));
+    QImage processedImage(processedData,
+                          static_cast<int>(processedWidth),
+                          static_cast<int>(processedHeight),
+                          static_cast<int>(processedWidth) * 4,
+                          QImage::Format_ARGB32);
+    QImage originalImage(originalFrame.pixels.data(),
+                         static_cast<int>(originalFrame.width),
+                         static_cast<int>(originalFrame.height),
+                         static_cast<int>(originalFrame.width) * 4,
+                         QImage::Format_ARGB32);
+    processedImage = processedImage.copy();
+    originalImage = originalImage.copy();
+    if (processedImage.isNull() || originalImage.isNull()) {
+        ShowStatusMessage(
+            QStringLiteral("Photo not saved: the image could not be queued."));
+        return;
+    }
+
+    ShowStatusMessage(QStringLiteral("Saving original and processed photos..."),
+                      2500);
+    QPointer<OpenZoomApp> owner(this);
+    const bool queued = imageIoPool_ && imageIoPool_->tryStart(
+        [owner,
+         processedImage = std::move(processedImage),
+         originalImage = std::move(originalImage),
+         processedPath,
+         originalPath]() mutable {
+            const bool processedSaved =
+                processedImage.save(processedPath, "JPG", 90);
+            const bool originalSaved =
+                originalImage.save(originalPath, "JPG", 90);
+            if (!processedSaved) {
+                qWarning() << "Failed to save snapshot to" << processedPath;
+            }
+            if (!originalSaved) {
+                qWarning() << "Failed to save snapshot to" << originalPath;
+            }
+            if (!owner) {
+                return;
+            }
+            QMetaObject::invokeMethod(
+                owner,
+                [owner,
+                 processedSaved,
+                 originalSaved,
+                 processedPath,
+                 originalPath]() {
+                    if (!owner) {
+                        return;
+                    }
+                    if (processedSaved && originalSaved) {
+                        qInfo() << "Saved paired snapshots to"
+                                << originalPath << "and" << processedPath;
+                        owner->assistiveManager_->Runtime()
+                            .NoteCapturedPhotoPair(originalPath,
+                                                   processedPath);
+                        owner->ShowStatusMessage(
+                            QStringLiteral(
+                                "Saved original and processed photos. Press "
+                                "Ctrl+Shift+O to open the OpenZoom folder."),
+                            7000);
+                    } else {
+                        owner->ShowStatusMessage(
+                            QStringLiteral(
+                                "One of the paired photos could not be saved."));
+                    }
+                },
+                Qt::QueuedConnection);
+        });
+    if (!queued) {
+        ShowStatusMessage(
+            QStringLiteral(
+                "Photo not saved: the image writer is busy. Try again."));
+    }
+}
+
+void OpenZoomApp::QueueAnnotationSnapshot(int reason)
+{
+    if (!mainWindow_ || !mainWindow_->annotationOverlay() ||
+        !mainWindow_->annotationOverlay()->HasInk()) {
+        return;
+    }
+    PendingAnnotationCapture capture;
+    capture.strokes = mainWindow_->annotationOverlay()->Strokes();
+    capture.heading =
+        reason == 1
+            ? QStringLiteral("Annotations cleared - snapshot")
+            : reason == 2
+                  ? QStringLiteral("Annotation session ended - snapshot")
+                  : QStringLiteral("Annotated view");
+    annotationCaptureQueue_.push_back(std::move(capture));
+    pipelineOrchestrator_->MarkViewportDirty();
+    ShowStatusMessage(QStringLiteral("Saving annotated view to lecture notes..."),
+                      2500);
+}
+
+void OpenZoomApp::SaveAnnotationSnapshot(
+    const uint8_t* processedData,
+    UINT processedWidth,
+    UINT processedHeight,
+    const QVector<AnnotationStroke>& strokes,
+    const ViewTransform& transform,
+    const QString& heading)
+{
+    if (!processedData || processedWidth == 0 || processedHeight == 0 ||
+        strokes.isEmpty() || !transform.valid) {
+        ShowStatusMessage(
+            QStringLiteral("Annotated view not saved: the viewport was unavailable."));
+        return;
+    }
+
+    QImage image(processedData,
+                 static_cast<int>(processedWidth),
+                 static_cast<int>(processedHeight),
+                 static_cast<int>(processedWidth) * 4,
+                 QImage::Format_ARGB32);
+    QImage annotated = image.copy();
+    if (annotated.isNull()) {
+        ShowStatusMessage(
+            QStringLiteral("Annotated view not saved: the image could not be queued."));
+        return;
+    }
+
+    QString outputError;
+    const QString dirPath =
+        userDataPaths_
+            ? userDataPaths_->PhotosForDate(QDate::currentDate(), &outputError)
+            : QString();
+    if (dirPath.isEmpty()) {
+        ShowStatusMessage(
+            outputError.isEmpty()
+                ? QStringLiteral(
+                      "Annotated view not saved: the OpenZoom Photos folder "
+                      "is unavailable.")
+                : outputError);
+        return;
+    }
+    const QString timestamp =
+        QDateTime::currentDateTime().toString(
+            QStringLiteral("yyyyMMdd_HHmmss_zzz"));
+    const QString path = QDir(dirPath).filePath(
+        QStringLiteral("ANNOTATION_%1.png").arg(timestamp));
+    QPointer<OpenZoomApp> owner(this);
+    const bool queued = imageIoPool_ && imageIoPool_->tryStart(
+        [owner,
+         annotated = std::move(annotated),
+         strokes,
+         transform,
+         path,
+         heading]() mutable {
+            {
+                QPainter painter(&annotated);
+                RenderAnnotationStrokes(painter,
+                                        strokes,
+                                        transform,
+                                        annotated.size());
+            }
+            const bool saved = annotated.save(path, "PNG");
+            if (!saved) {
+                qWarning() << "Failed to save annotation snapshot to" << path;
+            }
+            if (!owner) {
+                return;
+            }
+            QMetaObject::invokeMethod(
+                owner,
+                [owner, saved, path, heading]() {
+                    if (!owner) {
+                        return;
+                    }
+                    if (!saved) {
+                        owner->ShowStatusMessage(
+                            QStringLiteral(
+                                "Annotated view could not be saved."));
+                        return;
+                    }
+                    owner->assistiveManager_->Runtime()
+                        .NoteAnnotationSnapshot(path, heading);
+                    owner->ShowStatusMessage(
+                        QStringLiteral(
+                            "Saved annotated view to lecture notes. Press "
+                            "Ctrl+Shift+O to open the OpenZoom folder."),
+                        7000);
+                },
+                Qt::QueuedConnection);
+        });
+    if (!queued) {
+        ShowStatusMessage(
+            QStringLiteral(
+                "Annotated view not saved: the image writer is busy. Try again."));
     }
 }
 

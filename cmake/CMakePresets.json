@@ -7,13 +7,20 @@
   },
   "configurePresets": [
     {
+      "name": "msvc-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.9.3/msvc2022_64"
+      }
+    },
+    {
       "name": "msvc-debug",
       "displayName": "MSVC Debug (CUDA)",
-      "generator": "Ninja",
+      "inherits": "msvc-base",
       "binaryDir": "${sourceDir}/build/msvc-debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_PREFIX_PATH": "C:/Qt/6.9.3/msvc2022_64",
         "OPENZOOM_ENABLE_CUDA": "ON",
         "OPENZOOM_ENABLE_TEXT_SR": "ON",
         "OPENZOOM_ENABLE_TESTS": "OFF",
@@ -23,11 +30,10 @@
     {
       "name": "msvc-release",
       "displayName": "MSVC Release (CUDA)",
-      "generator": "Ninja",
+      "inherits": "msvc-base",
       "binaryDir": "${sourceDir}/build/msvc-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_PREFIX_PATH": "C:/Qt/6.9.3/msvc2022_64",
         "OPENZOOM_ENABLE_CUDA": "ON",
         "OPENZOOM_ENABLE_TEXT_SR": "ON",
         "OPENZOOM_ENABLE_TESTS": "OFF",
@@ -36,15 +42,27 @@
     },
     {
       "name": "msvc-cpu",
-      "displayName": "MSVC Release (CPU only)",
-      "generator": "Ninja",
+      "displayName": "MSVC Release Tests (CPU only)",
+      "inherits": "msvc-base",
       "binaryDir": "${sourceDir}/build/msvc-cpu",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_PREFIX_PATH": "C:/Qt/6.9.3/msvc2022_64",
         "OPENZOOM_ENABLE_CUDA": "OFF",
         "OPENZOOM_ENABLE_TEXT_SR": "OFF",
         "OPENZOOM_ENABLE_TESTS": "ON"
+      }
+    },
+    {
+      "name": "msvc-cuda-tests",
+      "displayName": "MSVC Release (CUDA + tests)",
+      "inherits": "msvc-base",
+      "binaryDir": "${sourceDir}/build/msvc-cuda-tests",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "OPENZOOM_ENABLE_CUDA": "ON",
+        "OPENZOOM_ENABLE_TEXT_SR": "OFF",
+        "OPENZOOM_ENABLE_TESTS": "ON",
+        "CMAKE_CUDA_ARCHITECTURES": "75;86;89"
       }
     }
   ],
@@ -60,22 +78,31 @@
     {
       "name": "msvc-cpu-build",
       "configurePreset": "msvc-cpu"
+    },
+    {
+      "name": "msvc-cuda-tests-build",
+      "configurePreset": "msvc-cuda-tests"
     }
   ],
   "testPresets": [
-    {
-      "name": "msvc-debug-tests",
-      "configurePreset": "msvc-debug"
-    },
-    {
-      "name": "msvc-release-tests",
-      "configurePreset": "msvc-release"
-    },
     {
       "name": "msvc-cpu-tests",
       "configurePreset": "msvc-cpu",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "msvc-cuda-tests",
+      "configurePreset": "msvc-cuda-tests",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
       }
     }
   ]

@@ -12,15 +12,394 @@ void OpenZoomApp::OnCameraSelectionChanged(int index) {
     // A manual camera pick always wins over an in-flight automatic reconnect.
     pipelineOrchestrator_->CancelCameraReconnect();
     settingsController_->MutableSettings().cameraIndex = index;
-    RefreshCameraModesList(static_cast<size_t>(index));
+    RefreshCameraFormats(static_cast<size_t>(index));
     StartCameraCapture(static_cast<size_t>(index));
+}
+
+void OpenZoomApp::UpdateCameraAccelerationUi()
+{
+    if (!uiState_) {
+        return;
+    }
+    auto& persistent = settingsController_->MutableSettings();
+
+    settings::CameraAccelerationSetting acceleration;
+    if (!currentCameraAccelerationKey_.isEmpty()) {
+        acceleration =
+            persistent.cameraAcceleration.value(
+                currentCameraAccelerationKey_);
+    }
+    if (uiState_->cameraAccelerationCombo_) {
+        auto blocker =
+            uiState_->BlockSignals(
+                uiState_->cameraAccelerationCombo_);
+        uiState_->cameraAccelerationCombo_->setCurrentIndex(
+            static_cast<int>(acceleration.mode));
+    }
+    if (uiState_->testCameraAccelerationButton_) {
+        uiState_->testCameraAccelerationButton_->setEnabled(
+            selectedCameraIndex_ >= 0 &&
+            static_cast<size_t>(selectedCameraIndex_) < cameras_.size());
+    }
+
+    if (!uiState_->cameraAccelerationStatusLabel_) {
+        return;
+    }
+    QString status;
+    if (cameraActive_) {
+        if (currentCaptureZeroCopyActive_) {
+            status = QStringLiteral(
+                "Direct GPU camera transfer is active. Camera frames stay on "
+                "the GPU through Media Foundation, D3D11, and CUDA.");
+        } else if (currentCaptureAccelerated_) {
+            status = QStringLiteral(
+                "GPU camera capture is active with the safe copy fallback.");
+        } else {
+            status = QStringLiteral(
+                "Compatibility capture is active. This path supports more "
+                "camera drivers but can add latency.");
+        }
+    } else {
+        status =
+            QStringLiteral("Camera acceleration has not started yet.");
+    }
+    if (!acceleration.reason.isEmpty()) {
+        status += QStringLiteral("\n%1").arg(acceleration.reason);
+    }
+    SetLiveText(uiState_->cameraAccelerationStatusLabel_, status,
+                LivePoliteness::kSilent,
+                QStringLiteral("Camera acceleration status"));
+    uiState_->cameraAccelerationStatusLabel_->setToolTip(status);
+}
+
+void OpenZoomApp::OnTestCameraAcceleration()
+{
+    if (selectedCameraIndex_ < 0 ||
+        static_cast<size_t>(selectedCameraIndex_) >= cameras_.size()) {
+        ShowStatusMessage(
+            QStringLiteral("Select a camera before running the test."));
+        return;
+    }
+    if (recordingManager_ && recordingManager_->IsActive()) {
+        ShowStatusMessage(
+            QStringLiteral("Stop recording before testing camera acceleration."));
+        return;
+    }
+
+    const QString appDirectory = QCoreApplication::applicationDirPath();
+    const QStringList candidates{
+        QDir(appDirectory).filePath(QStringLiteral("mf_dxva_minimal.exe")),
+        QDir(appDirectory).filePath(
+            QStringLiteral("../sandbox_mf_dxva_minimal/mf_dxva_minimal.exe")),
+        QDir(appDirectory).filePath(
+            QStringLiteral("../sandbox_mf_dxva_minimal/Release/mf_dxva_minimal.exe")),
+        QDir(appDirectory).filePath(
+            QStringLiteral("../../sandbox_mf_dxva_minimal/Release/mf_dxva_minimal.exe")),
+    };
+    QString probePath;
+    for (const QString& candidate : candidates) {
+        const QFileInfo file(candidate);
+        if (file.exists() && file.isFile()) {
+            probePath = file.absoluteFilePath();
+            break;
+        }
+    }
+    if (probePath.isEmpty()) {
+        ShowStatusMessage(
+            QStringLiteral(
+                "The isolated camera test is missing from this OpenZoom "
+                "bundle. Rebuild or reinstall the complete bundle."),
+            12000);
+        return;
+    }
+
+    const int cameraIndex = selectedCameraIndex_;
+    const QString cameraKey = QString::fromStdWString(
+        cameras_[static_cast<size_t>(cameraIndex)].symbolicLink);
+    StopCameraCapture();
+
+    if (uiState_->testCameraAccelerationButton_) {
+        uiState_->testCameraAccelerationButton_->setEnabled(false);
+        SetLiveText(uiState_->testCameraAccelerationButton_,
+                    QStringLiteral("Testing camera..."),
+                    LivePoliteness::kSilent,
+                    QStringLiteral("Test camera acceleration"));
+    }
+    ShowStatusMessage(
+        QStringLiteral(
+            "Testing GPU and compatibility capture in an isolated process..."),
+        12000);
+
+    auto* process = new QProcess(this);
+    process->setProgram(probePath);
+    process->setArguments(
+        {QStringLiteral("--camera"),
+         QString::number(cameraIndex),
+         QStringLiteral("--timeout-ms"),
+         QStringLiteral("12000")});
+    process->setProcessChannelMode(QProcess::SeparateChannels);
+
+    const auto restoreUiAndCamera = [this, cameraIndex]() {
+        if (uiState_->testCameraAccelerationButton_) {
+            SetLiveText(uiState_->testCameraAccelerationButton_,
+                        QStringLiteral("Test this camera"),
+                        LivePoliteness::kSilent,
+                        QStringLiteral("Test camera acceleration"));
+            uiState_->testCameraAccelerationButton_->setEnabled(true);
+        }
+        if (cameraIndex >= 0 &&
+            static_cast<size_t>(cameraIndex) < cameras_.size()) {
+            StartCameraCapture(static_cast<size_t>(cameraIndex), false);
+        }
+    };
+
+    connect(
+        process,
+        &QProcess::finished,
+        this,
+        [this, process, cameraKey, restoreUiAndCamera](
+            int exitCode, QProcess::ExitStatus exitStatus) {
+            const QByteArray output =
+                process->readAllStandardOutput().trimmed();
+            const QString processError =
+                QString::fromUtf8(process->readAllStandardError()).trimmed();
+            process->deleteLater();
+
+            QJsonParseError parseError;
+            const QJsonDocument document =
+                QJsonDocument::fromJson(output, &parseError);
+            const QJsonArray cameras =
+                document.object().value(QStringLiteral("cameras")).toArray();
+            if (exitStatus != QProcess::NormalExit || exitCode != 0 ||
+                parseError.error != QJsonParseError::NoError ||
+                cameras.isEmpty()) {
+                restoreUiAndCamera();
+                const QString detail =
+                    !processError.isEmpty()
+                        ? processError
+                        : QStringLiteral(
+                              "The isolated camera test did not return a "
+                              "usable verdict.");
+                ShowStatusMessage(detail, 12000);
+                return;
+            }
+
+            const QJsonObject camera = cameras.first().toObject();
+            const QJsonObject accelerated =
+                camera.value(QStringLiteral("accelerated")).toObject();
+            const QJsonObject compatibility =
+                camera.value(QStringLiteral("compatibility")).toObject();
+            const QString acceleratedStatus =
+                accelerated.value(QStringLiteral("status")).toString();
+            const QString compatibilityStatus =
+                compatibility.value(QStringLiteral("status")).toString();
+            const double acceleratedMs =
+                accelerated.value(QStringLiteral("averageReadMs")).toDouble();
+            const double compatibilityMs =
+                compatibility.value(QStringLiteral("averageReadMs")).toDouble();
+
+            auto& setting =
+                settingsController_->MutableSettings().cameraAcceleration[
+                    cameraKey];
+            setting.decidedOn =
+                QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+            QString result;
+            if (acceleratedStatus == QStringLiteral("ok")) {
+                setting.automaticFallback = false;
+                setting.reason =
+                    QStringLiteral(
+                        "Isolated test passed: GPU %1 ms, compatibility %2 ms "
+                        "average frame read.")
+                        .arg(acceleratedMs, 0, 'f', 1)
+                        .arg(compatibilityMs, 0, 'f', 1);
+                result =
+                    QStringLiteral(
+                        "GPU camera acceleration passed. Average frame read: "
+                        "%1 ms versus %2 ms in compatibility mode.")
+                        .arg(acceleratedMs, 0, 'f', 1)
+                        .arg(compatibilityMs, 0, 'f', 1);
+            } else if (compatibilityStatus == QStringLiteral("ok")) {
+                if (setting.mode ==
+                    settings::CameraAccelerationMode::Automatic) {
+                    setting.automaticFallback = true;
+                }
+                setting.reason =
+                    QStringLiteral(
+                        "Isolated GPU test returned %1; compatibility capture "
+                        "passed.")
+                        .arg(acceleratedStatus);
+                result =
+                    QStringLiteral(
+                        "GPU capture did not pass, so this camera will use "
+                        "compatibility mode automatically.");
+            } else {
+                setting.reason =
+                    QStringLiteral(
+                        "The isolated test could not verify a usable image in "
+                        "either mode. Check that the camera is connected and "
+                        "showing a detailed scene.");
+                result = setting.reason;
+            }
+            settingsController_->MutableSettings()
+                .cameraAccelerationAttempt.clear();
+            SavePersistentSettings();
+            restoreUiAndCamera();
+            UpdateCameraAccelerationUi();
+            ShowStatusMessage(result, 15000);
+        });
+    connect(
+        process,
+        &QProcess::errorOccurred,
+        this,
+        [this, process, restoreUiAndCamera](QProcess::ProcessError error) {
+            if (error != QProcess::FailedToStart) {
+                return;
+            }
+            const QString detail =
+                QStringLiteral("The isolated camera test could not start: %1")
+                    .arg(process->errorString());
+            process->deleteLater();
+            restoreUiAndCamera();
+            ShowStatusMessage(detail, 12000);
+        });
+    process->start();
+}
+
+void OpenZoomApp::OnCameraAccelerationModeChanged(int index)
+{
+    if (index < 0 || index > 2 ||
+        selectedCameraIndex_ < 0 ||
+        static_cast<size_t>(selectedCameraIndex_) >= cameras_.size()) {
+        return;
+    }
+    const QString key = QString::fromStdWString(
+        cameras_[static_cast<size_t>(selectedCameraIndex_)].symbolicLink);
+    auto& acceleration =
+        settingsController_->MutableSettings().cameraAcceleration[key];
+    acceleration.mode =
+        static_cast<settings::CameraAccelerationMode>(index);
+    acceleration.automaticFallback = false;
+    acceleration.reason.clear();
+    acceleration.decidedOn =
+        QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    settingsController_->MutableSettings().cameraAccelerationAttempt.clear();
+    SavePersistentSettings();
+    StartCameraCapture(
+        static_cast<size_t>(selectedCameraIndex_));
+}
+
+void OpenZoomApp::OnCameraFormatChanged(int index) {
+    if (!uiState_->cameraFormatCombo_ || index < 0) {
+        return;
+    }
+    settingsController_->MutableSettings().cameraFormatStableId =
+        uiState_->cameraFormatCombo_->itemData(index).toString();
+    SavePersistentSettings();
+    if (selectedCameraIndex_ >= 0 &&
+        static_cast<size_t>(selectedCameraIndex_) < cameras_.size()) {
+        StartCameraCapture(static_cast<size_t>(selectedCameraIndex_));
+    }
+}
+
+void OpenZoomApp::OnMicrophoneSelectionChanged(int index)
+{
+    if (!uiState_->microphoneCombo_ || index < 0) {
+        return;
+    }
+    const QString endpoint =
+        uiState_->microphoneCombo_->itemData(index).toString();
+    settingsController_->MutableSettings().microphoneEndpointId =
+        endpoint;
+    if (recordingManager_ && recordingManager_->IsActive()) {
+        recordingManager_->Stop(
+            QStringLiteral(
+                "Recording stopped because the microphone selection changed."));
+        StopMicrophoneCapture();
+    }
+    SavePersistentSettings();
+}
+
+bool OpenZoomApp::StartSelectedMicrophone()
+{
+    StopMicrophoneCapture();
+    if (recordingManager_) {
+        recordingManager_->SetAudioCaptureEnabled(false);
+    }
+    if (!uiState_ || !uiState_->microphoneCombo_) {
+        return true;
+    }
+    const QString endpoint =
+        uiState_->microphoneCombo_->currentData().toString();
+    if (endpoint.isEmpty() ||
+        endpoint == QStringLiteral("__none__")) {
+        return true;
+    }
+
+    const auto microphone = std::find_if(
+        microphones_.cbegin(), microphones_.cend(),
+        [&endpoint](const AudioDeviceDescriptor& candidate) {
+            return QString::fromStdWString(candidate.endpointId) ==
+                   endpoint;
+        });
+    if (microphone == microphones_.cend()) {
+        ShowStatusMessage(
+            QStringLiteral(
+                "The selected microphone is unavailable. Recording will "
+                "continue without sound."),
+            9000);
+        return false;
+    }
+
+    const bool started = audioCapture_.Start(
+        *microphone,
+        [this](AudioFrame&& frame) {
+            if (recordingManager_) {
+                recordingManager_->AddAudioFrame(std::move(frame));
+            }
+        },
+        [this](const std::string& message) {
+            const QString detail = QString::fromStdString(message);
+            QMetaObject::invokeMethod(
+                this,
+                [this, detail]() {
+                    if (recordingManager_) {
+                        recordingManager_->Stop(
+                            QStringLiteral(
+                                "Recording stopped because microphone "
+                                "capture failed."));
+                    }
+                    StopMicrophoneCapture();
+                    ShowStatusMessage(detail, 12000);
+                },
+                Qt::QueuedConnection);
+        });
+    if (!started) {
+        ShowStatusMessage(
+            QStringLiteral(
+                "The selected microphone could not start: %1. Recording "
+                "will continue without sound.")
+                .arg(QString::fromStdString(
+                    audioCapture_.LastError())),
+            12000);
+        return false;
+    }
+    if (recordingManager_) {
+        recordingManager_->SetAudioCaptureEnabled(true);
+    }
+    return true;
+}
+
+void OpenZoomApp::StopMicrophoneCapture(bool retainQueuedAudio)
+{
+    audioCapture_.Stop();
+    if (recordingManager_ && !retainQueuedAudio) {
+        recordingManager_->SetAudioCaptureEnabled(false);
+    }
 }
 
 void OpenZoomApp::OnBlackWhiteToggled(bool checked) {
     blackWhiteEnabled_ = checked;
-    if (uiState_->bwSlider_) {
-        uiState_->bwSlider_->setEnabled(checked);
-    }
+    UpdateControlEnabledStates();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
@@ -33,9 +412,7 @@ void OpenZoomApp::OnBlackWhiteThresholdChanged(int value) {
 void OpenZoomApp::OnZoomToggled(bool checked) {
     zoomEnabled_ = checked;
     pipelineOrchestrator_->MarkViewportDirty();
-    if (uiState_->zoomSlider_) {
-        uiState_->zoomSlider_->setEnabled(checked);
-    }
+    UpdateControlEnabledStates();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
@@ -48,9 +425,7 @@ void OpenZoomApp::OnZoomAmountChanged(int value) {
 
 void OpenZoomApp::OnDebugViewToggled(bool checked) {
     debugViewEnabled_ = checked;
-    if (uiState_->focusMarkerCheckbox_) {
-        uiState_->focusMarkerCheckbox_->setEnabled(!checked);
-    }
+    UpdateControlEnabledStates();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
@@ -113,15 +488,18 @@ void OpenZoomApp::OnRotationSelectionChanged(int index) {
 }
 
 void OpenZoomApp::OnControlsCollapsedToggled(bool checked) {
-    controlsCollapsed_ = !checked;
+    Q_UNUSED(checked);
+    controlsCollapsed_ = false;
     if (uiState_->controlsContainer_) {
-        uiState_->controlsContainer_->setVisible(checked);
+        uiState_->controlsContainer_->show();
     }
     if (uiState_->collapseButton_) {
-        uiState_->collapseButton_->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
-        uiState_->collapseButton_->setText(checked ? "Hide Advanced Tuning" : "Advanced Tuning");
+        const QSignalBlocker blocker(uiState_->collapseButton_);
+        uiState_->collapseButton_->setChecked(true);
+        uiState_->collapseButton_->setArrowType(Qt::DownArrow);
+        uiState_->collapseButton_->setText("Advanced Tuning");
     }
-    settingsController_->MutableSettings().controlsCollapsed = controlsCollapsed_;
+    settingsController_->MutableSettings().controlsCollapsed = false;
 }
 
 void OpenZoomApp::OnVirtualJoystickToggled(bool checked) {
@@ -140,10 +518,13 @@ void OpenZoomApp::OnVirtualJoystickToggled(bool checked) {
     }
     UpdateJoystickVisibility();
     settingsController_->MutableSettings().virtualJoystick = virtualJoystickEnabled_;
+    UpdateSectionChangedCounts();
+    SavePersistentSettings();
 }
 
 void OpenZoomApp::OnBlurToggled(bool checked) {
     blurEnabled_ = checked;
+    UpdateControlEnabledStates();
     UpdateBlurUiLabels();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
@@ -168,11 +549,13 @@ void OpenZoomApp::OnBlurRadiusChanged(int value) {
 
 void OpenZoomApp::OnFocusMarkerToggled(bool checked) {
     focusMarkerEnabled_ = checked;
+    UpdateControlEnabledStates();
     pipelineOrchestrator_->MarkViewportDirty();
     SyncCurrentConfigToPersistence();
 }
 void OpenZoomApp::OnSpatialSharpenToggled(bool checked) {
     spatialSharpenEnabled_ = checked;
+    UpdateControlEnabledStates();
     UpdateSpatialSharpenUi();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
@@ -187,7 +570,10 @@ void OpenZoomApp::OnSpatialUpscalerChanged(int index) {
 void OpenZoomApp::OnSpatialSharpnessChanged(int value) {
     spatialSharpness_ = std::clamp(static_cast<float>(value) / 100.0f, 0.0f, 1.0f);
     if (uiState_->spatialSharpnessValueLabel_) {
-        uiState_->spatialSharpnessValueLabel_->setText(QString::number(spatialSharpness_, 'f', 2));
+        SetLiveText(uiState_->spatialSharpnessValueLabel_,
+                    QString::number(spatialSharpness_, 'f', 2),
+                    LivePoliteness::kSilent,
+                    QStringLiteral("Sharpness"));
     }
     UpdateSpatialSharpenUi();
     UpdateProcessingStatusLabel();
@@ -195,9 +581,7 @@ void OpenZoomApp::OnSpatialSharpnessChanged(int value) {
 }
 void OpenZoomApp::OnTemporalSmoothToggled(bool checked) {
     temporalSmoothEnabled_ = checked;
-    if (uiState_->temporalSmoothSlider_) {
-        uiState_->temporalSmoothSlider_->setEnabled(checked);
-    }
+    UpdateControlEnabledStates();
     cpuPipeline_.ResetTemporalHistory();
     if (cudaSurface_) {
         cudaSurface_->ResetTemporalHistory();
@@ -216,7 +600,10 @@ void OpenZoomApp::OnTemporalSmoothStrengthChanged(int value) {
     }
     temporalSmoothAlpha_ = std::clamp(static_cast<float>(clamped) / 100.0f, 0.0f, 1.0f);
     if (uiState_->temporalSmoothValueLabel_) {
-        uiState_->temporalSmoothValueLabel_->setText(QString::number(temporalSmoothAlpha_, 'f', 2));
+        SetLiveText(uiState_->temporalSmoothValueLabel_,
+                    QString::number(temporalSmoothAlpha_, 'f', 2),
+                    LivePoliteness::kSilent,
+                    QStringLiteral("Temporal blend"));
     }
     cpuPipeline_.ResetTemporalHistory();
     if (cudaSurface_) {
@@ -228,9 +615,14 @@ void OpenZoomApp::OnTemporalSmoothStrengthChanged(int value) {
 }
 void OpenZoomApp::OnStabilizationToggled(bool checked) {
     stabilizationEnabled_ = checked;
-    if (uiState_->stabilizationStrengthSlider_) {
-        uiState_->stabilizationStrengthSlider_->setEnabled(checked);
+    if (!checked) {
+        bumpHoldEnabled_ = false;
+        if (mainWindow_ && mainWindow_->bumpHoldCheckbox()) {
+            const QSignalBlocker blocker(mainWindow_->bumpHoldCheckbox());
+            mainWindow_->bumpHoldCheckbox()->setChecked(false);
+        }
     }
+    UpdateControlEnabledStates();
     if (cudaSurface_) {
         cudaSurface_->ResetStabilization();
         cudaSurface_->ResetKeystone();
@@ -240,19 +632,15 @@ void OpenZoomApp::OnStabilizationToggled(bool checked) {
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnStabilizationStrengthChanged(int value) {
-    const int sliderMin = uiState_->stabilizationStrengthSlider_ ? uiState_->stabilizationStrengthSlider_->minimum() : 0;
-    const int sliderMax = uiState_->stabilizationStrengthSlider_ ? uiState_->stabilizationStrengthSlider_->maximum() : 98;
-    const int clamped = std::clamp(value, sliderMin, sliderMax);
-    if (uiState_->stabilizationStrengthSlider_ && clamped != value) {
-        auto block = uiState_->BlockSignals(uiState_->stabilizationStrengthSlider_);
-        uiState_->stabilizationStrengthSlider_->setValue(clamped);
-    }
-    stabilizationStrength_ = std::clamp(static_cast<float>(clamped) / 100.0f, 0.0f, 0.98f);
-    SyncCurrentConfigToPersistence();
+void OpenZoomApp::OnBumpHoldToggled(bool checked) {
+    bumpHoldEnabled_ =
+        checked && stabilizationEnabled_;
+    UpdateControlEnabledStates();
+    UpdateProcessingStatusLabel();
 }
 void OpenZoomApp::OnKeystoneToggled(bool checked) {
     keystoneEnabled_ = checked;
+    UpdateControlEnabledStates();
     if (cudaSurface_) {
         cudaSurface_->ResetKeystone();
         cudaSurface_->ResetTextClarityHistory();
@@ -313,6 +701,154 @@ void OpenZoomApp::OpenSetupAssistant()
             });
     setupAssistantDialog_->show();
 }
+
+void OpenZoomApp::OpenUserDataFolder()
+{
+    if (!mainWindow_ || !userDataPaths_) {
+        return;
+    }
+    QString error;
+    const QString root = userDataPaths_->Root(&error);
+    if (root.isEmpty()) {
+        QMessageBox::warning(mainWindow_.get(),
+                             QStringLiteral("Open OpenZoom Folder"),
+                             error.isEmpty()
+                                 ? QStringLiteral(
+                                       "The OpenZoom folder is unavailable.")
+                                 : error);
+        return;
+    }
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(root))) {
+        QMessageBox::warning(
+            mainWindow_.get(),
+            QStringLiteral("Open OpenZoom Folder"),
+            QStringLiteral("Windows could not open:\n%1")
+                .arg(QDir::toNativeSeparators(root)));
+        return;
+    }
+    const QString message =
+        QStringLiteral("Opened your OpenZoom folder.");
+    ShowStatusMessage(message, 3500);
+}
+
+void OpenZoomApp::ChangeUserDataFolder()
+{
+    if (!mainWindow_ || !userDataPaths_ || !settingsController_) {
+        return;
+    }
+    QString currentError;
+    const QString currentRoot = userDataPaths_->Root(&currentError);
+    const QString selected = QFileDialog::getExistingDirectory(
+        mainWindow_.get(),
+        QStringLiteral("Choose OpenZoom Folder"),
+        currentRoot,
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    if (selected.isEmpty()) {
+        return;
+    }
+
+    QString error;
+    if (!userDataPaths_->SetConfiguredRoot(selected, &error)) {
+        QMessageBox::warning(
+            mainWindow_.get(),
+            QStringLiteral("Choose OpenZoom Folder"),
+            error.isEmpty()
+                ? QStringLiteral("OpenZoom cannot use the selected folder.")
+                : error);
+        return;
+    }
+
+    settingsController_->MutableSettings().userDataRoot =
+        userDataPaths_->ConfiguredRoot();
+    assistiveManager_->ApplySettings(
+        settingsController_->MutableSettings().assistive);
+    SavePersistentSettings();
+
+    const QString message =
+        QStringLiteral("New OpenZoom files will be saved in %1.")
+            .arg(QDir::toNativeSeparators(userDataPaths_->Root()));
+    ShowStatusMessage(message, 7000);
+}
+
+void OpenZoomApp::OfferLegacyOutputMigration()
+{
+    if (!mainWindow_ || !userDataPaths_ || !userDataPaths_->HasLegacyData()) {
+        return;
+    }
+
+    QMessageBox prompt(mainWindow_.get());
+    prompt.setWindowTitle(QStringLiteral("Copy Existing OpenZoom Files"));
+    prompt.setIcon(QMessageBox::Question);
+    prompt.setText(QStringLiteral(
+        "OpenZoom found photos, recordings, notes, or analysis files beside "
+        "the application."));
+    prompt.setInformativeText(QStringLiteral(
+        "Copy compatible files into your new OpenZoom folder now? The old "
+        "files will not be deleted."));
+    QPushButton* copyButton =
+        prompt.addButton(QStringLiteral("Copy now"), QMessageBox::AcceptRole);
+    prompt.addButton(QStringLiteral("Later"), QMessageBox::RejectRole);
+    prompt.setDefaultButton(copyButton);
+    prompt.exec();
+    if (prompt.clickedButton() != copyButton) {
+        return;
+    }
+
+    QProgressDialog progress(
+        QStringLiteral("Preparing existing OpenZoom files..."),
+        QStringLiteral("Cancel"),
+        0,
+        100,
+        mainWindow_.get());
+    progress.setWindowTitle(QStringLiteral("Copy Existing OpenZoom Files"));
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(0);
+
+    const LegacyMigrationResult result =
+        userDataPaths_->MigrateLegacyOutput(
+            [&progress](qint64 copiedBytes,
+                        qint64 totalBytes,
+                        const QString& currentPath) {
+                const int percent =
+                    totalBytes > 0
+                        ? static_cast<int>(
+                              std::clamp<qint64>(
+                                  copiedBytes * 100 / totalBytes, 0, 100))
+                        : 100;
+                progress.setValue(percent);
+                progress.setLabelText(
+                    QStringLiteral("Copying %1")
+                        .arg(QFileInfo(currentPath).fileName()));
+                QCoreApplication::processEvents();
+                return !progress.wasCanceled();
+            });
+    progress.close();
+
+    if (result.cancelled) {
+        ShowStatusMessage(
+            QStringLiteral(
+                "Copying stopped. Existing files were not deleted; you can "
+                "try again next time OpenZoom starts."),
+            7000);
+        return;
+    }
+    if (!result.error.isEmpty()) {
+        QMessageBox::warning(mainWindow_.get(),
+                             QStringLiteral("Copy Existing OpenZoom Files"),
+                             result.error);
+        return;
+    }
+
+    const QString message =
+        result.copiedData
+            ? QStringLiteral(
+                  "Existing OpenZoom files were copied. Press Ctrl+Shift+O "
+                  "to open the new folder.")
+            : QStringLiteral(
+                  "No compatible files needed copying. Existing files were "
+                  "left in place.");
+    ShowStatusMessage(message, 9000);
+}
 void OpenZoomApp::OnKeystoneStepBack() {
     if (!keystoneEnabled_ || !cudaSurface_) {
         return;
@@ -363,9 +899,7 @@ void OpenZoomApp::UpdateKeystoneTrackingUi() {
 }
 void OpenZoomApp::OnAutoContrastToggled(bool checked) {
     autoContrastEnabled_ = checked;
-    if (uiState_->autoContrastStrengthSlider_) {
-        uiState_->autoContrastStrengthSlider_->setEnabled(checked);
-    }
+    UpdateControlEnabledStates();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
@@ -433,7 +967,6 @@ void OpenZoomApp::OnTextClarityControlsChanged() {
             zoomEnabled_ = true;
         }
         if (!mlTextSuperResolutionUltra1440p_ && uiState_->zoomSlider_) {
-            uiState_->zoomSlider_->setEnabled(true);
             // NVIDIA's smallest supported SuperRes ratio is 4/3. The slider
             // stores hundredths, so 1.33 is the closest user-facing value;
             // the CUDA stage itself uses the exact 4/3 ratio.
@@ -476,29 +1009,7 @@ void OpenZoomApp::OnTextClarityControlsChanged() {
         }
     }
 
-    if (uiState_->backgroundFlattenStrengthSlider_) uiState_->backgroundFlattenStrengthSlider_->setEnabled(backgroundFlattenEnabled_ || autoTextClarityEnabled_);
-    if (uiState_->sauvolaStrengthSlider_) uiState_->sauvolaStrengthSlider_->setEnabled(adaptiveBinarizationEnabled_ || autoTextClarityEnabled_);
-    if (uiState_->binarizationSoftnessSlider_) uiState_->binarizationSoftnessSlider_->setEnabled(adaptiveBinarizationEnabled_ || autoTextClarityEnabled_);
-    if (uiState_->smartSharpenStrengthSlider_) uiState_->smartSharpenStrengthSlider_->setEnabled(smartSharpenEnabled_ || autoTextClarityEnabled_);
-    if (uiState_->claheClipLimitSlider_) uiState_->claheClipLimitSlider_->setEnabled(claheEnabled_);
-    if (uiState_->textHysteresisStrengthSlider_) uiState_->textHysteresisStrengthSlider_->setEnabled(textHysteresisEnabled_ || autoTextClarityEnabled_);
-    if (uiState_->focusThresholdSlider_) uiState_->focusThresholdSlider_->setEnabled(focusDetectionEnabled_ || autoTextClarityEnabled_);
-    if (uiState_->glareSuppressionStrengthSlider_) uiState_->glareSuppressionStrengthSlider_->setEnabled(glareSuppressionEnabled_ || autoTextClarityEnabled_);
-    if (uiState_->mlTextSuperResolutionStrengthSlider_) {
-        uiState_->mlTextSuperResolutionStrengthSlider_->setEnabled(
-            mlTextSuperResolutionEnabled_ && mainWindow_ &&
-            mainWindow_->isMaxineRuntimeInstalled());
-    }
-    if (uiState_->mlTextSuperResolutionPrefer2xCheckbox_) {
-        uiState_->mlTextSuperResolutionPrefer2xCheckbox_->setEnabled(
-            mlTextSuperResolutionEnabled_ && mainWindow_ &&
-            mainWindow_->isMaxineRuntimeInstalled());
-    }
-    if (uiState_->mlTextSuperResolutionUltra1440pCheckbox_) {
-        uiState_->mlTextSuperResolutionUltra1440pCheckbox_->setEnabled(
-            mlTextSuperResolutionEnabled_ && mainWindow_ &&
-            mainWindow_->isMaxineRuntimeInstalled());
-    }
+    UpdateControlEnabledStates();
     if (cudaSurface_) {
         cudaSurface_->ResetTextClarityHistory();
         // SuperRes strength/mode are load-time SDK parameters. Recreate the
@@ -509,6 +1020,66 @@ void OpenZoomApp::OnTextClarityControlsChanged() {
     }
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
+}
+
+void OpenZoomApp::UpdateControlEnabledStates() {
+    const auto setEnabled = [](QWidget* widget, bool enabled) {
+        if (widget) {
+            widget->setEnabled(enabled);
+        }
+    };
+
+    setEnabled(uiState_->bwSlider_, blackWhiteEnabled_);
+    setEnabled(uiState_->zoomSlider_, zoomEnabled_);
+    setEnabled(uiState_->blurSigmaSlider_, blurEnabled_);
+    setEnabled(uiState_->blurRadiusSlider_, blurEnabled_);
+    setEnabled(uiState_->temporalSmoothSlider_, temporalSmoothEnabled_);
+    setEnabled(uiState_->autoContrastStrengthSlider_, autoContrastEnabled_);
+    setEnabled(uiState_->focusMarkerCheckbox_, !debugViewEnabled_);
+    setEnabled(mainWindow_ ? mainWindow_->bumpHoldCheckbox() : nullptr,
+               stabilizationEnabled_);
+
+    setEnabled(uiState_->backgroundFlattenStrengthSlider_,
+               backgroundFlattenEnabled_ || autoTextClarityEnabled_);
+    setEnabled(uiState_->sauvolaStrengthSlider_,
+               adaptiveBinarizationEnabled_ || autoTextClarityEnabled_);
+    setEnabled(uiState_->binarizationSoftnessSlider_,
+               adaptiveBinarizationEnabled_ || autoTextClarityEnabled_);
+    setEnabled(uiState_->smartSharpenStrengthSlider_,
+               smartSharpenEnabled_ || autoTextClarityEnabled_);
+    setEnabled(uiState_->claheClipLimitSlider_, claheEnabled_);
+    setEnabled(uiState_->textHysteresisStrengthSlider_,
+               textHysteresisEnabled_ || autoTextClarityEnabled_);
+    setEnabled(uiState_->focusThresholdSlider_,
+               focusDetectionEnabled_ || autoTextClarityEnabled_);
+    setEnabled(uiState_->glareSuppressionStrengthSlider_,
+               glareSuppressionEnabled_ || autoTextClarityEnabled_);
+
+    const bool superResAvailable =
+        mlTextSuperResolutionEnabled_ && mainWindow_ &&
+        mainWindow_->isMaxineRuntimeInstalled();
+    setEnabled(uiState_->mlTextSuperResolutionStrengthSlider_,
+               superResAvailable);
+    setEnabled(uiState_->mlTextSuperResolutionPrefer2xCheckbox_,
+               superResAvailable);
+    setEnabled(uiState_->mlTextSuperResolutionUltra1440pCheckbox_,
+               superResAvailable);
+    UpdateSectionChangedCounts();
+}
+
+void OpenZoomApp::UpdateSectionChangedCounts() {
+    if (!mainWindow_ || !uiState_) {
+        return;
+    }
+    settings::AdvancedConfig profileDefault;
+    const QString presetId = settingsController_->Settings().selectedPresetId;
+    if (!presetId.isEmpty()) {
+        if (const auto preset = settingsController_->ResolvePreset(presetId)) {
+            profileDefault = *preset;
+        }
+    }
+    mainWindow_->updateSectionChangedCounts(CaptureCurrentAdvancedConfig(),
+                                            profileDefault);
 }
 
 void OpenZoomApp::SetSuperResPerformanceOverride(bool enabled) {

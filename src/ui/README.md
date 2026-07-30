@@ -16,6 +16,9 @@ Current contents:
   persistent custom 2-8 stop gradient/posterize editor
 - `WheelSafeComboBox` and `WheelSafeSlider` for settings controls that remain
   click/drag/keyboard editable without intercepting panel scrolling
+- `SetLiveText` and `SetLiveTextCoalesced` for UI-thread-only dynamic text,
+  role-qualified accessible names, change events, severity-aware
+  announcements, deduplication, and diagnostic coalescing
 - `AiSettingsDialog` for Codex subscription or OpenAI-compatible provider,
   dynamically discovered model/reasoning choices, a visible read-only built-in
   Codex prompt, shared language/behavior instructions, Advanced Assistant

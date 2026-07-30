@@ -3,6 +3,7 @@
 #include "openzoom/app/setup_assistant.hpp"
 
 #include "openzoom/common/maxine_superres.hpp"
+#include "openzoom/ui/live_status_text.hpp"
 
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -146,14 +147,16 @@ void SetDependencyStatus(SetupAssistantDialog::DependencyRow& row,
     row.statusIcon->setAccessibleName(installed
                                           ? QStringLiteral("Installed")
                                           : QStringLiteral("Not installed"));
-    row.status->setText(text);
+    SetLiveText(row.status, text, LivePoliteness::kSilent,
+                QStringLiteral("Setup status"));
 }
 
 void SetDependencyProgress(SetupAssistantDialog::DependencyRow& row, const QString& text) {
     row.statusIcon->setText(QStringLiteral("\u2026"));
     row.statusIcon->setStyleSheet(QStringLiteral("color: #f6c85f;"));
     row.statusIcon->setAccessibleName(QStringLiteral("Setup in progress"));
-    row.status->setText(text);
+    SetLiveText(row.status, text, LivePoliteness::kPolite,
+                QStringLiteral("Setup progress"));
 }
 
 QString RegistryString(HKEY key, const wchar_t* valueName) {
@@ -328,7 +331,10 @@ SetupAssistantDialog::~SetupAssistantDialog() {
         disconnect(fallbackDownloadProcess_, nullptr, this, nullptr);
         if (fallbackDownloadProcess_->state() != QProcess::NotRunning) {
             fallbackDownloadProcess_->kill();
-            fallbackDownloadProcess_->waitForFinished(1000);
+            if (!fallbackDownloadProcess_->waitForFinished(250)) {
+                qWarning() << "Setup download helper did not exit within the "
+                              "bounded shutdown window";
+            }
         }
     }
     if (downloadFile_) {
@@ -347,8 +353,13 @@ void SetupAssistantDialog::closeEvent(QCloseEvent* event) {
     if ((installerProcess_ && installerProcess_->state() != QProcess::NotRunning) ||
         elevatedInstallerHandle_) {
         DependencyRow& row = RowForDependency(activeDependency_);
-        row.status->setText(QStringLiteral(
-            "The vendor installer is still running. Finish or cancel it before closing Setup."));
+        SetLiveText(
+            row.status,
+            QStringLiteral(
+                "The vendor installer is still running. Finish or cancel it "
+                "before closing Setup."),
+            LivePoliteness::kAssertive,
+            QStringLiteral("Setup status"));
         event->ignore();
         return;
     }

@@ -1,6 +1,422 @@
 # Changelog
 
+- Simplified camera acceleration settings to one per-camera dropdown. Removed
+  the redundant global compatibility checkbox and migrate its legacy enabled
+  state to `Compatibility mode` for the selected physical camera.
+
 ## [Unreleased]
+- Added a centralized live-accessibility text path for dynamic labels and
+  buttons. Pipeline/camera failures, recording notices, Setup Assistant
+  progress, and Codex connection state now keep their visible text and
+  role-qualified accessible names synchronized, invalidate cached UIA names,
+  and use polite or assertive announcements according to severity. Repeated
+  announcements are suppressed for five seconds and high-frequency
+  diagnostics are coalesced without unsolicited speech.
+- Kept the persistent Photo/Record/Explain/Read/Draw action bar above the
+  transparent annotation canvas. Photo and Record/Stop now remain clickable
+  while drawing in both Simple and Advanced modes, and pressing Draw again
+  exits annotation mode through its existing checked-state toggle. Native
+  hit testing also returns every persistent corner-control rectangle to its
+  underlying tool window, so continued canvas interaction cannot steal those
+  controls again.
+- Fixed silent frame-content corruption latent in the new camera burst
+  queue: accelerated-path frames referenced the source reader's pooled
+  texture while the underlying `IMFSample` was released, so Media
+  Foundation could recycle the texture and overwrite queued frames' pixels
+  under load - invisible to every drop counter because sample counts stay
+  correct. Retained frames now pin their `IMFSample` for exactly as long as
+  the frame is held (burst queue, deferred-conversion retry); if the
+  reader's pool runs dry, capture paces via `ReadSample` back-pressure
+  instead of corrupting content. Removed the now-unused `CopyDxgiFrame`
+  wrapper left behind by the accelerated-path refactor.
+- Fixed active recordings losing roughly half their camera frames when the
+  Media Foundation callback and a same-rate Qt polling timer drifted out of
+  phase. Camera arrival now wakes the pipeline directly, and recording retains
+  a bounded six-frame burst while preview remains latest-frame-first. A
+  15-second 720p30 hardware run wrote all 450 paired frames through direct-GPU
+  input with no capture, queue, pool, or encoder drops.
+- Delayed D3D11 camera-conversion completion now retains and retries the exact
+  GPU-backed frame asynchronously instead of immediately crossing system
+  memory. The retry is bounded to 25 ms before the permanent safe-copy rung is
+  allowed. Console-attached recording summaries separately report GPU
+  completion retries and actual safe-copy frames.
+- Added console diagnostic log files under the user-owned
+  `Documents\OpenZoom\Debug\` directory (or configured root). A launch with an
+  attached Windows console now tees the same Qt output to one timestamped
+  per-process log, including buffered startup messages, while ordinary GUI
+  launches remain quiet; only the newest 20 logs are retained.
+- Added console-attached recording route diagnostics. Debug terminal launches
+  now print the exact input route, codec, dimensions, and path for each
+  original/processed segment, then report finalized sample counts and any
+  per-frame GPU-surface fallbacks. GPU route counters now reset for every
+  recording session instead of accumulating across sessions.
+- **Found and fixed the root cause of the 2026-07-30 recording stop hang:**
+  the GPU-fed writer's D3D11 device was handed to the Media Foundation DXGI
+  device manager without `ID3D10Multithread` protection, so the hardware
+  encoder's worker threads raced the recording worker on the immediate
+  context and wedged the driver (reproducibly, in `Flush()` around the
+  third submitted frame). A new standalone GPU-fed codec test reproduced
+  the permanent wedge in isolation, named the blocked stage via the new
+  writer telemetry, and now passes for both H.264 and AV1 with correct
+  fragment cadence; it runs in the standard gate wherever D3D12 sharing
+  exists and skips cleanly elsewhere.
+- Extended the recording watchdog into a live-session heartbeat: any single
+  encoder/driver call still running after 10 seconds — including encoder
+  startup and mid-recording mode-change finalization, which the stop-only
+  watchdog could not see — now fails the session visibly with the exact
+  blocked stage instead of silently dropping frames until Stop.
+- Pinned the recording keyframe/fragment interval to about 2 seconds and
+  added a fragment-cadence regression test covering both codecs: the
+  mandatory H.264 leg runs everywhere via the Windows software encoder, and
+  an AV1 leg — the codec production selects first — runs wherever a
+  hardware AV1 encoder exists and skips cleanly elsewhere (verified on the
+  RTX 4090: both codecs produced identical fragment cadence). This bounds
+  what a process crash can lose to roughly the last 2 seconds of encoded
+  media once the first fragment has landed. On startup OpenZoom now sweeps recent recording
+  folders for header-only leftover pairs from crashed or wedged sessions.
+- Hardened the abandoned-recording path found by a full-codebase audit: after
+  the stop watchdog declares the worker blocked, both recorders are marked
+  abandoned so no thread can ever call Finalize on a sink writer that a
+  wedged WriteSample may still occupy, and their teardown deliberately leaks
+  the COM references for process exit to reclaim. Also guarded the queued
+  session-ended callback so it can no longer release the microphone out from
+  under a recording session that started immediately afterwards.
+- Made recording Stop bounded: a watchdog independent of the recording worker
+  now fires if Stopping/Finalizing has not completed within 8 seconds, names
+  the exact blocked encoder/driver call (per-stream, per-stage telemetry that
+  stays observable while the worker is wedged), fails the session visibly,
+  restores the UI, and disables recording until restart instead of leaving
+  the app on "Finishing" forever. The Stop status now says "Stopping" until
+  finalization genuinely begins, closing OpenZoom no longer blocks on an
+  unbounded worker join, and a worker that un-wedges later can no longer post
+  a stale "Recording saved" over the failure report.
+- Fixed unselected drawings appearing highlighted while another item was
+  selected: the selection handles' solid cyan brush leaked into subsequent
+  stroke rendering, filling later closed-ish strokes (for example a drawn
+  mouth arc) solid cyan. Stroke ink and selection visuals now render in two
+  separate passes, which also keeps the selection box and handles on top of
+  every stroke, and a regression test pins the leak.
+- Kept Record available while Draw is active and composited session
+  annotations into the processed recording on the GPU. The synchronized
+  original recording remains the clean, rotation-correct camera stream.
+- Made recording Stop discard queued video/audio work and finalize after the
+  sample already owned by the worker, avoiding seconds of apparent UI lockup.
+  The Record action now retains its `Finishing` state during responsive
+  relayout and reliably returns to `Record` after finalization.
+- Added committed-video-sample accounting to MP4 finalization. Zero-frame
+  placeholders and incomplete original/processed pairs are deleted instead of
+  being announced, linked in notes, or left behind as corrupt 83-byte files.
+- Fixed GPU-fed recording failing on its first video sample after the MP4
+  writer and AAC stream had started. The recording worker now converts the
+  shareable BGRA canvas to encoder-native NV12 with the D3D11 VideoProcessor
+  before submitting the DXGI sample, flushes the video-processor command path,
+  and marks the complete DXGI buffer as valid before `WriteSample`. This fixes
+  the NVIDIA encoder rejecting the otherwise complete texture with
+  `E_INVALIDARG`; the proven CPU BGRA writer remains the compatibility
+  fallback.
+- Replaced the accelerated-camera path's 250 ms viewport-thread D3D11
+  completion poll with a 3 ms interactive allowance followed by one safe
+  fallback frame and retry. Expanded Advanced Diagnostics and over-budget
+  logs with independent capture-handoff, CPU-preparation, CUDA-submission,
+  presentation, recording-clone, encoder-submit, and sampled CUDA
+  input/geometry/effects/output timings so aggregate p95 spikes identify their
+  actual boundary.
+- Added GPU-fed paired recording. The processed fixed canvas and
+  rotation-correct unenhanced camera frame are cloned on the D3D12 queue into
+  shareable textures, synchronized through the existing mandatory GPU fence,
+  and submitted to Media Foundation as DXGI samples without a system-memory
+  round trip. A lazily populated 384 MiB/48-slot texture pool recycles only
+  after the encoder releases each sample; exhaustion is an explicit drop
+  cause and never blocks preview. The CPU BGRA writer remains the permanent
+  compatibility fallback.
+- Removed VLM secrets from persistent JSON. API keys entered in AI Settings
+  now use Windows Credential Manager while `settings.json` stores only an
+  opaque credential id; plaintext `vlmApiKey` fields are ignored because no
+  plaintext-key build was deployed. Added classified settings-load failures,
+  future-schema rejection, valid backups, corrupt-file preservation, and
+  visible recovery notices.
+- Added visible assistive privacy summaries, process-owned temporary-frame
+  cleanup and stale-file sweeping, bounded Codex protocol/answer/transcript
+  buffers, turn watchdogs, forced interrupt recovery, model-catalog
+  compatibility warnings, and denial of server permission/approval requests.
+  Restricted Explain continues to combine read-only, no-network,
+  no-approval policy with unexpected-tool interruption because the stable
+  app-server API does not yet expose a complete per-turn tool allow-list.
+- Added release-integrity metadata: SHA-256 checksums, a release manifest, and
+  an SPDX SBOM. Private/team bundles may remain unsigned, installed
+  code-signing certificates can be selected by thumbprint, and an explicit
+  public-release build now fails rather than publishing without a signature.
+- Added rolling 240-sample p50/p95/p99 diagnostics for camera-processing tick
+  time and capture-to-present latency. Processing-budget warnings now follow
+  the negotiated camera frame period. Lecture-note updates append in constant
+  time during the session instead of rereading and rewriting the growing HTML
+  document.
+- Moved paired-photo JPEG saving, annotation PNG rendering/saving, OCR PNG
+  export, and VLM/Codex resize/JPEG/base64/JSON preparation to bounded worker
+  pools. The UI thread now performs only the ownership-safe frame copy;
+  saturation is visible, cancelled generations cannot start stale requests,
+  and shutdown drains active image jobs.
+- Added Paint-style marquee multi-selection to Draw's Move tool. Dragging
+  empty camera space selects intersecting annotation objects; Shift/Ctrl
+  extends the set, and group drag, keyboard nudge, Delete, and undo operate as
+  one edit. Single-object selections retain their eight resize handles.
+- Fixed the bottom-right Photo/Record/Explain/Read/Draw tool window remaining
+  hidden after Alt-Tab while Advanced mode was active. Application reactivation
+  now restores and raises all persistent camera-corner controls.
+- Passed the long production external-memory visual soak on the physical
+  camera with no observed tearing or stale frames. Plan 28 now retains only
+  camera-switch and device-removal hardware checks.
+- Fixed an intermittent direct-GPU startup downgrade caused by a delayed D3D11
+  completion query. The pending conversion texture is no longer reused or
+  treated as unsupported: OpenZoom safely reads back that frame, retries when
+  the query completes, and keeps external-memory capture available for the
+  session. Added watchdog-isolated `mf_dxva_minimal` external-memory and
+  opt-in legacy interop stress modes with configurable iteration counts. The
+  release bundle passed 100/100 external-memory launch/stream/normal-close
+  cycles; seven cycles exercised the delayed-query path without disabling the
+  top rung, and Windows reported no application faults.
+- Preserve the selected camera through startup initialization so early
+  settings synchronization cannot silently reset the device choice to the
+  first enumerated camera.
+- Added the production zero-CPU-copy camera rung. After accelerated startup
+  validation, Media Foundation samples remain D3D11 textures; a D3D11
+  VideoProcessor converts them into a reusable BGRA surface that CUDA maps
+  directly and copies device-to-device into the existing processing buffers.
+  Per-camera diagnostics persist whether direct GPU, accelerated-copy, or
+  compatibility capture won. Registration/conversion failures drop one rung
+  without disabling CUDA effects. Original photos and videos request readback
+  only while those captures are active, and
+  `OPENZOOM_FORCE_CAPTURE_COPY_RUNG=1` exercises the fallback contract.
+- Added selectable microphone recording. The dedicated Advanced Recording
+  section lists Windows capture endpoints with both video-resolution controls,
+  selects the system-default microphone
+  for new settings, and retain an explicit `No microphone (video only)`
+  choice. The microphone opens only for an active recording. Its normalized
+  48 kHz mono PCM stream shares the camera's monotonic capture clock and is
+  encoded live as AAC into both the original and processed fragmented MP4
+  files. Added a synthetic video-plus-audio mux regression test.
+- Removed the duplicate Simple `More` menu; its OpenZoom-folder command remains
+  in Advanced and on `Ctrl+Shift+O`. Bottom action bars now compact based on
+  their combined width so Advanced mode keeps both clusters on one baseline
+  whenever the viewport can accommodate them.
+- Implemented the validated Media Foundation GPU-accelerated camera path in
+  production. Automatic mode tries a D3D11/DXGI-backed source reader, validates
+  timestamps and image content for the first 30 frames, and transparently
+  reopens the same camera in compatibility mode after negotiation failure,
+  blank output, or an incomplete prior accelerated start. Decisions and
+  reasons persist per camera symbolic link. Advanced Device settings expose
+  Automatic/GPU/Compatibility overrides, a plain-language status line, and an
+  isolated `Test this camera` action. The watchdog-safe probe is included in
+  release bundles. Opt-in diagnostics report camera FPS, copied bytes,
+  read/copy time, capture-thread CPU use, and capture-to-present latency every
+  five seconds.
+- Rebuilt recording around capture identity and a checked worker lifecycle.
+  Original/processed pairs now preserve camera timestamps, sequence numbers,
+  signed stride, and exact fractional frame rate; real stalls remain real VFR
+  gaps. `Processed recording resolution` offers Match camera, 360p, 480p,
+  720p, 1080p, 1440p, and 2160p independently of the window; the camera-mode
+  selector controls the original media resolution. Fixed canvases follow
+  landscape or portrait source orientation. Camera mode changes continue in
+  matching `_partN` pairs. A bounded encoder queue reports drops by cause,
+  finalization is verified asynchronously, and no failed or frame-empty
+  session can claim that it was saved. Added hardware-independent timing,
+  canvas, stride, drop, lifecycle, and completion regression tests.
+- Lecture notes now embed both original and processed photos, and add playable
+  original/processed MP4 controls plus direct links after both files in each
+  recording segment fully finalize. Failed or truncated recording
+  finalizations do not create broken notes entries.
+- Moved all user-created artifacts out of the application and release-bundle
+  directories into one configurable `Documents\OpenZoom\` root. Photos and
+  paired recordings use dated subfolders; notes and analysis exports have
+  stable categories. Added Advanced and Simple `Open my OpenZoom folder`
+  actions, global `Ctrl+Shift+O`, writable-root validation, a recording
+  free-space preflight, and cancellable copy-only migration from legacy
+  `output\` trees without deleting their originals.
+- Added enforceable Windows build and release gates. A tracked
+  `scripts/agent_build.bat` now compiles the shipping CUDA configuration and
+  runs separate CPU and CUDA CTest presets; empty test directories are errors.
+  The sequence stabilization replay is registered with CTest and synthesizes
+  its deterministic clamp-bump frames in memory without Python, ffmpeg, or
+  committed video; optional generated media remains out of git.
+- Hardened release packaging around a validated staging directory. Bundles now
+  require tests by default, treat missing or failed `windeployqt` as fatal,
+  assert the required Qt DLL/platform-plugin and license inventory, never
+  transfer user data through `dist`, use `OpenZoom2` when the primary
+  executable is locked, and verify the published executable by SHA-256.
+- Fixed NVIDIA Super Resolution controls becoming permanently disabled after a
+  normal Windows build reused a stale `OPENZOOM_ENABLE_TEXT_SR=OFF` CMake cache.
+  The everyday build helper now explicitly enables CUDA and the runtime-loaded
+  Text-SR adapter by default, matching release-bundle behavior while retaining
+  environment-variable overrides.
+- Added an accessible annotation canvas for lecture markup. Scene-anchored
+  freehand, straight-line, rectangle, ellipse, and text items stay registered
+  while panning and zooming. The Draw action matches the other persistent
+  actions in Simple and Advanced; narrow viewports compress the action bar to
+  icons instead of hiding it. The flush-left icon-and-label rail opens a
+  transient, tool-specific flyout with checked color swatches, vertical
+  thickness/text sizing, Solid/Dashed style, and rectangle/ellipse choice.
+  The right action rail keeps Undo, Redo, annotated Save, Clear, and Done
+  separate from tool options.
+- Added Paint-style annotation editing with eight functional resize handles,
+  axis-aware or uniform scaling, keyboard resize, shape-outline hit testing,
+  whole-item erase, and one undo record per transform gesture. Wheel and
+  keyboard navigation now cross the native annotation-window boundary and use
+  the existing viewport pan/zoom path. Save-on-exit moved to Advanced
+  Assistant, and color/style/shape/text-size preferences persist globally.
+  Draw tool/state changes use screen-reader announcements without TTS.
+  Fixed middle-button viewport dragging across the top-level annotation
+  window, changed Text to click-then-type inline placement, committed pending
+  labels before annotation actions, and corrected vertical slider fill
+  direction.
+  Fixed Windows input over the native D3D viewport by giving the visually
+  transparent annotation window a real per-pixel hit-test surface.
+  Annotated snapshots use the exact visible viewport, save as lossless PNG,
+  and append to the accessible HTML lecture notes. Color, width, and
+  save-on-exit persist globally; ink never persists between sessions.
+- Redesigned Advanced Image around explicit Device, Viewport, and Profile
+  ownership. Added persistent accessible collapsible groups, automatic
+  expansion and changed counts for non-default tuning, a pinned `Ctrl+F`
+  settings search, and a truthful requested/negotiated camera resolution and
+  frame-rate selector. Viewport preferences now live under `More device
+  options`, while Gaussian blur is demoted to Diagnostics.
+- Fixed precision-trackpad `Ctrl+scroll` zoom by consuming fractional wheel
+  deltas. Zoom now uses consistent geometric 10% steps, optional same-direction
+  acceleration capped at 3x, direction-reset behavior, deterministic
+  unaccelerated keyboard shortcuts, and one settled accessibility
+  announcement instead of per-event speech.
+- Simplified Advanced stabilization to one `Stabilize Image` switch plus the
+  optional `Extra Stable` hold mode. Stabilization now always selects
+  full-strength CUDA feature tracking and the fixed-reference lock. Removed
+  the obsolete pairwise Kalman path, NVIDIA Optical Flow engine, standalone
+  projection fallback, rolling-shutter heuristic, engine selector, strength
+  slider, rolling-shutter toggle, separate tripod toggle, compatibility
+  widget adapters, and their persisted profile fields. Older JSON containing
+  those keys remains loadable because unknown fields are ignored.
+- Added opt-in Advanced `Extra Stable` (formerly `Bump Hold`) for stabilization.
+  It keeps registration live while a rejected model, focus loss, or
+  abrupt absolute-transform step temporarily presents the last sharp,
+  model-valid full-resolution CUDA frame. Five stable frames start a
+  four-frame crossfade back to live video. The transient control is off by
+  default, is not stored in presets, and explicitly warns that moving people
+  or content may be hidden while holding. CUDA tests cover frame capture,
+  impact hold, recovery gating, and pixel-accurate crossfade output.
+- Made Extra Stable's motion trigger 20% less sensitive so ordinary small
+  movements are less likely to hold the frame prematurely. Its settled-view
+  recovery gate is unchanged.
+- Removed the redundant `Re-lock current view` button, `L` shortcut, Qt/app
+  wiring, and public CUDA re-lock request. Stabilization captures its fixed
+  reference automatically when enabled or reset.
+- Fixed Virtual Tripod's multi-frame reference making real low-texture camera
+  vibration worse despite passing the synthetic gate. Production now locks to
+  the sharpest selected keyframe and leaves aligned accumulation disabled until
+  it has a reliable registration-quality gate. A CUDA replay of the saved
+  1280x720 clamp recording reduced independently measured 0.5-8 Hz motion by
+  24-38% across its main translation/rotation axes with the single reference;
+  the accumulated reference reduced vertical vibration by only 3% and
+  increased horizontal vibration. Added an offline production-kernel replay
+  executable and trace output so recorded BGRA frames can be tested without
+  operating a physical camera.
+- Added transient Advanced `Virtual Tripod` stabilization for rigidly mounted
+  cameras. It selects the sharpest of five 640x360 GPU candidates, then
+  prepares real Gaussian pyramids, adaptive subpixel corners, and cached
+  inverse-compositional translation Hessians. Every later frame solves against
+  that prepared sharp anchor instead of integrating frame-to-frame motion, so
+  estimation error cannot accumulate into random-walk drift. Tracking is
+  seeded by the last accepted absolute translation and preferentially fitted
+  inside the expanded visible zoom region. Tripod strength controls display-pixel deadband,
+  correction response, and crop-backed authority. Rejected models hold the
+  last valid correction indefinitely instead of silently replacing the
+  reference and ratcheting the anchor. The uncalibrated rolling-shutter
+  row heuristic is bypassed while the absolute lock is active. CUDA regressions
+  cover 100-source-pixel seeded displacement, high-zoom foreground fitting,
+  absolute drift/wobble rejection, confidence-loss hold, and reference-reset
+  continuity. A deterministic virtual-camera generator can reproduce a Y4M
+  stream and synchronized H.264 MP4 preview modeling 0.7-3 Hz clamp vibration,
+  a desk impact, focus loss, lighting change, and a moving occluder. A labeled
+  comparison MP4 places the known target, disturbed input, and output
+  reconstructed from the CUDA test's measured corrections side by side. These
+  generated media files are ignored and are not part of the repository. The
+  prepared-reference CUDA
+  path removes 97.3% RMS motion with 0.36 display-pixel P95 at 4x zoom in that
+  synthetic gate. Recorded-camera replay is the required production-quality
+  gate because the synthetic texture and translation-only motion are easier
+  than real clamp footage.
+- Fixed restored stabilization state leaving dependent controls disabled until
+  the user toggled stabilization off and on. The remaining Extra Stable control
+  now synchronizes whenever the persisted stabilization value is applied.
+- Changed Automatic stabilization from hardware-first to quality-first after
+  live comparison showed explicit CUDA features were visibly steadier than a
+  valid RTX dense-flow fit on the owner's high-zoom scene. Stabilization now
+  analyzes up to 640x360 instead of sharing keystone's 320x180 surface, accepts
+  CUDA Harris/Lucas-Kanade first, keeps NVOFA warm as the on-device fallback,
+  and uses projection last. Near-lock now enters above 70% and becomes an exact
+  mounted-camera hold at 98%. Release temporarily retains a rate-limited
+  diagnostics terminal reporting estimator, analysis scale, inliers, residual,
+  raw motion, correction, and sampled GPU time every 30 camera frames. Added
+  sparse-gates-dense and 640x360 sampling regressions plus a pinned,
+  git-ignored reference review.
+- Improved the RTX stabilization fallback for low-amplitude magnified shake
+  instead of optical-flow throughput. NVOFA now uses its highest-quality
+  `SLOW` preset and the finest grid supported by the GPU (1x1 on Ampere/Ada,
+  then 2x2 or 4x4 fallback). Dense fields are uniformly sampled over the
+  whole frame before bounded GPU RANSAC so they cannot overflow the pair
+  budget or bias the estimate toward the top of the image. Translation
+  authority now follows the crop margin supplied by zoom up to 45% per axis:
+  2x zoom provides 25%, 4x provides 37.5%, and extreme zoom is capped at 45%.
+  CUDA and live NVOFA regressions cover full-frame dense-flow sampling,
+  high-zoom correction authority, and the finest grid on supported RTX GPUs.
+- Analyzed a second paired 3.43-second stabilization recording at 30 FPS.
+  Its dominant vertical vibration was 1.165 Hz with roughly 89 px of slow
+  drift, while the processed recording removed only about 10.5% of the
+  measured peak-to-peak movement. Its fixed 6% translation limit saturated at
+  43.2 px on a 720p frame, while the 98% near-lock still followed too much of
+  the slow drift. Stabilization now uses the crop reserve already provided by
+  zoom (10%, or 72 px vertically, at 1.25x; bounded to 45%), converges to a
+  much slower mounted-camera path at 98%, and reaches a true 100% hold.
+  A CUDA regression replays the measured drift-and-wobble profile and prevents
+  the fixed-limit failure from returning. The paired evidence and analyzer are
+  preserved outside release-bundle cleanup under git-ignored
+  `local_evidence/stabilization/`.
+- Measured a real 2.97-second clamp-wobble recording and retuned maximum
+  stabilization against its dominant 0.67-1.0 Hz vertical motion (about 20 px
+  peak-to-peak at 720p). Above 90% strength the adaptive path filter now blends
+  into a mounted-camera near-lock; the recorded waveform simulation improves
+  from roughly 55% to over 90% RMS removal at 98% strength. A deterministic
+  CUDA regression now requires at least 80% removal for a 0.75 Hz, 10 px
+  oscillation.
+- Fixed release bundling deleting photos, recordings, notes, and analysis
+  stored under `dist/OpenZoom/output`. The bundle script now preserves that
+  user-data directory before removing an old bundle, restores it on success or
+  failure, and performs a reversible lock check before deleting any bundle
+  files when another process has the directory open.
+- Retuned the stabilizer path filter so stabilization is visible in the band
+  where clamp-arm shake actually lives. The constant-velocity Kalman was
+  tracking 1-3 Hz swings almost perfectly (measured -11% shake removal at
+  1 Hz, +14% at 1.5 Hz — imperceptible), so enabling stabilization appeared
+  to do nothing. The velocity estimate is now damped before each predict and
+  the process-noise floors no longer cap maximum strength: simulated removal
+  at strength 0.98 improves to +41% at 1 Hz, +56% at 1.5 Hz, +75% at 3 Hz,
+  while deliberate pans still track (max lag ~25 px, settled in 0.5 s).
+  Advanced diagnostics expose the engine, inliers, applied correction, and GPU
+  time without emitting per-frame terminal output.
+- Fixed default rolling-shutter compensation weakening stabilization during
+  alternating hand tremor. Scanline timing now offsets around the current
+  global correction instead of blending half the frame toward the previous
+  correction. Advanced diagnostics also show accepted inliers and the sampled
+  translation/rotation correction. NVIDIA SuperRes terminal output is
+  lifecycle-only instead of repeating for every zoom/timing update, and
+  Release builds temporarily retain a rate-limited diagnostics console while
+  stabilization is field-tested.
+- Added Stabilization v2. Automatic mode now evaluates CUDA
+  Harris/Lucas-Kanade features first, uses the current NVIDIA Optical Flow
+  Accelerator field on supported Turing-or-newer GPUs when sparse tracking is
+  rejected, then falls back to the legacy projection correlator. A bounded GPU
+  RANSAC fit rejects moving foreground, a
+  constant-velocity Kalman path smooths translation/rotation/scale, and the
+  affine warp can correct rolling-shutter wobble per scanline. Engine and
+  rolling-shutter choices persist per profile; Advanced diagnostics report the
+  accepted estimator and sampled GPU time. Added deterministic CUDA
+  similarity/outlier tests and a live `nvofapi64.dll` known-motion test.
 - Added Codex CLI to first-run and Advanced `Setup & Downloads`. OpenZoom
   detects official standalone, PATH, and WinGet installs; can install or update
   the per-user CLI from a pinned SHA-256-verified OpenAI bootstrap; persists

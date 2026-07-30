@@ -1,6 +1,6 @@
 # OpenZoom Code Reference
 
-Authoritative code map for the current repository state as of 2026-07-23. Update this file whenever classes, public structs, or significant functions change.
+Authoritative code map for the current repository state as of 2026-07-29. Update this file whenever classes, public structs, or significant functions change.
 
 ## App Module
 
@@ -19,7 +19,8 @@ Authoritative code map for the current repository state as of 2026-07-23. Update
 - Implementation is separated by responsibility:
   - `src/app/app_bootstrap.cpp` — lifecycle, service construction, signal wiring
   - `src/app/app_pipeline_runtime.cpp` — camera-clock processing, persistent
-    scene publication, viewport-only presentation, readback, photos
+    scene publication, viewport-only presentation, readback, photos, and
+    annotated viewport snapshots
   - `src/app/app_interaction.cpp` — input routing, status, focus mapping
   - `src/app/app_controls.cpp` — processing-control slots
   - `src/app/app_settings.cpp` — presets and persistent settings
@@ -28,8 +29,24 @@ Authoritative code map for the current repository state as of 2026-07-23. Update
 - The low-level CUDA/presentation entry points remain private `OpenZoomApp`
   methods; `PipelineOrchestrator` owns their scheduling and synchronization
   policy through callbacks.
+- Photo-pair JPEG encoding/writes and annotation compositing/PNG writes run in
+  a bounded two-thread application image-I/O pool. The UI thread deep-copies
+  the source frame before dispatch, and worker completion returns through a
+  queued callback for notes/status updates. Pool saturation is reported rather
+  than queued without bound, and shutdown drains active jobs before dependent
+  services are destroyed.
 
 ### `include/openzoom/app/pipeline_orchestrator.hpp`
+`openzoom::TimingPercentiles`
+- Rolling timing summary with nearest-rank `p50Ms`, `p95Ms`, `p99Ms`, and
+  `sampleCount`. `IsValid()` distinguishes an empty window.
+
+`openzoom::FrameTimingStage`
+- Independent CPU-side timing windows for `CaptureHandoff`,
+  `CpuPreparation`, `CudaSubmission`, `Presentation`, and `RecordingClone`.
+  `CudaSubmission` measures the host call duration only; sampled CUDA events
+  provide actual GPU execution boundaries.
+
 `openzoom::FenceSequencer`
 - Owns the single monotonic D3D12/CUDA fence timeline. CUDA reservations are
   committed only after submission; failed submissions roll back so no queue
@@ -49,22 +66,116 @@ Authoritative code map for the current repository state as of 2026-07-23. Update
   effective display rate without advancing temporal effects, recording, OCR,
   or SuperRes.
 - Public controls include `Start()`, `Stop()`, `UpdateTimerPolicy()`,
+  `NotifyCameraFrameAvailable(int delayMs = 0)`,
   viewport rate/fit setters, dirty/motion/present notifications, measured rate
   and timing accessors, reconnect methods, and fence/failure methods.
+  `FrameTickPercentiles()`, `CaptureToPresentPercentiles()`, and
+  `StagePercentiles(...)` summarize independent 240-sample windows;
+  `RecordCaptureToPresentSample(...)` and `RecordStageSample(...)` accept only
+  finite non-negative samples. Processing-budget warnings compare p95 camera
+  work with the negotiated camera frame period and include every available
+  stage p95 so an aggregate delay is not mislabeled as CUDA work.
+- `NotifyCameraFrameAvailable(...)` is thread-safe and coalesces Media
+  Foundation callback wakeups onto the Qt event loop. Immediate wakeups drive
+  camera-clock work from frame arrival instead of polling a single mailbox at
+  the producer's nominal frame rate; a short delayed wakeup retries retained
+  GPU work without blocking that event loop.
 - `Callbacks` supplies fresh-frame processing, motion/presenter/camera state,
   active display refresh discovery, and a one-shot explicit-rate clamp notice.
 
 ### `include/openzoom/app/recording_manager.hpp`
-`openzoom::CapturedFrame`, `openzoom::RecordingState`,
+`openzoom::RecordingTimingSnapshot`, `openzoom::CapturedFrame`,
 `openzoom::RecordingManager`
-- Own synchronized original/processed recording state, live AV1-to-H.264
-  negotiation through two `VideoRecorder` instances, matching async readbacks
-  by request id, UI button state, elapsed time, and paired teardown.
+- Owns the explicit recording state machine and a bounded 12-frame worker
+  queue, keeping Media Foundation encoding and checked finalization off the UI
+  thread.
+- Receives camera work from an event-driven application queue: preview remains
+  latest-frame-first, while an active recording retains up to six pending
+  `MediaFrame` objects to absorb short callback/processing phase differences.
+  `NotifyCaptureFrame(...)`, `NotifyCaptureGpuRetry()`, and
+  `NotifyCaptureSafeCopyFallback()` keep capture overwrite, asynchronous GPU
+  retry, and actual system-memory fallback accounting distinct.
+- Matches asynchronous processed-scene readbacks to rotation-correct original
+  frames by request id and preserves capture timestamp, sequence number, and
+  negotiated fractional frame rate across both streams.
+- On the CUDA/D3D12 path, queues paired GPU frames instead: the processed
+  recording canvas and a pre-effect, post-conversion/post-rotation original.
+  It starts each stream independently on GPU input and falls back to the
+  existing CPU BGRA writer when required.
+- Probes AV1 then H.264 for the synchronized pair, maps the processed scene
+  into a persistent Match-camera/360p/480p/720p/1080p/1440p/2160p canvas,
+  starts `_partN` pairs when the camera format changes, and reports
+  capture/readback/recording-pool/pairing/queue/encoder drops by cause. A
+  failed finalization can never produce a "saved" result.
+- When OpenZoom has an attached Windows console, each segment prints its exact
+  processed/original input route (direct GPU, GPU source with worker readback,
+  or CPU/system memory), codec, dimensions, file paths, finalized sample
+  counts, and a session summary of per-frame GPU-surface fallbacks,
+  D3D11-completion retries, and true capture safe-copy frames. These
+  diagnostics remain silent for an ordinary packaged GUI launch.
+- `Stop(...)` immediately releases queued frame/audio leases and finalizes
+  after the sample currently owned by the worker. A segment is retained only
+  when both original and processed recorders report committed video samples;
+  zero-frame placeholders and incomplete pairs are removed.
+- Stop is bounded: an independent UI-thread watchdog fires when
+  Stopping/Finalizing has not reached a terminal state within 8 seconds,
+  reports the exact blocked call via `DescribeWorkerStage()` (worker
+  operation plus each `VideoRecorder`'s observable `WriterStage`), forces
+  `Failed`, restores the UI, and disables recording for the rest of the
+  process (`IsWorkerAbandoned()`); the destructor waits a bounded time for
+  worker shutdown and detaches a wedged worker instead of joining forever.
+- Its constructor accepts a `SegmentSavedCallback`. The worker posts that
+  callback to the Qt thread only after both files in a segment fully finalize,
+  providing the original and processed paths for lecture-note integration.
+- Its optional `SessionEndedCallback` lets the application release the active
+  microphone after asynchronous finalization. `SetAudioCaptureEnabled(...)`
+  controls whether new segments contain sound, and `AddAudioFrame(...)`
+  transfers normalized PCM into the same bounded recording worker. Each audio
+  sample is written to both recorders relative to the segment's shared
+  monotonic clock origin.
+- `EncoderSubmitTiming()` exposes rolling p50/p95/p99 CPU time for submitting
+  the paired video samples on the recording worker. It intentionally does not
+  claim to measure asynchronous hardware-encoder completion.
+- Also owns UI button state, destination free-space preflight, dated
+  `UserDataPaths` output, and paired asynchronous teardown.
+
+### `include/openzoom/app/user_data_paths.hpp`
+`openzoom::UserDataValidationResult`, `openzoom::LegacyMigrationResult`,
+`openzoom::UserDataPaths`
+- Owns every user-created artifact location independently of the executable.
+  An empty configured root resolves through
+  `QStandardPaths::DocumentsLocation/OpenZoom`; explicit roots are normalized,
+  probed for writable create/delete access, and rejected inside the install
+  directory.
+- Public category accessors lazily create the root plus `Photos`,
+  `Recordings`, `Notes`, `Analysis`, and `Debug`; photo and recording
+  accessors add ISO-date subfolders. `Debug()` is used only by
+  console-attached diagnostic launches.
+- Detects legacy install-relative `output` trees and copies eligible category
+  contents with progress/cancellation. It never removes source files and uses
+  a migration marker plus a best-effort legacy `MIGRATED.txt` breadcrumb.
 
 ### `include/openzoom/app/settings_controller.hpp`
 `openzoom::SettingsController`
 - Owns the persisted settings document and settings path, built-in/user preset
   lookup, live-config decoration/matching, quick-option promotion, and saving.
+- Loads/saves the runtime VLM secret through `ProtectedSecretStore` while
+  keeping only its credential id in the settings document. A credential read
+  error prevents an unrelated save from silently erasing the protected
+  secret.
+- Distinguishes first run from invalid, unreadable, and future-version
+  settings; preserves the failed document, restores a valid `.backup` when
+  possible, and exposes a startup notice suitable for the visible status
+  area.
+
+### `include/openzoom/app/protected_secret_store.hpp`
+`openzoom::ProtectedSecretResult`, `openzoom::ProtectedSecretStore`
+- Windows Credential Manager adapter for user secrets. Results distinguish
+  found, missing, and API error states.
+- `DefaultVlmCredentialId()` returns `OpenZoom/VLM API Key`;
+  `Read(...)`, `Write(...)`, and `Remove(...)` operate on opaque target ids.
+  Secret blobs are UTF-8 and are cleared from temporary/native buffers after
+  use.
 
 ### `include/openzoom/app/ui_state_manager.hpp`
 `openzoom::UIStateManager`
@@ -76,7 +187,10 @@ Authoritative code map for the current repository state as of 2026-07-23. Update
 `openzoom::AssistiveFeatureManager`
 - Owns `AssistiveRuntime` plus the floating `AssistiveOverlay`, periodic
   analysis cadence, OCR/VLM mode state, focus warnings, TTS/result routing,
-  and persisted camera-relative overlay geometry.
+  persisted camera-relative overlay geometry, and lecture-note routing through
+  `UserDataPaths`.
+- Routes `AssistiveRuntime::PrivacyNotice` into visible status and a
+  screen-reader announcement without invoking speech synthesis.
 
 ### `include/openzoom/app/suspend_guard.hpp`
 `openzoom::SuspendGuard`
@@ -90,7 +204,11 @@ Authoritative code map for the current repository state as of 2026-07-23. Update
   - `explicit InteractionController(OpenZoomApp& app)`
   - `bool HandlePanKey(int key, bool pressed)`
   - `bool HandlePanScroll(const QWheelEvent* wheelEvent)`
-  - `void HandleZoomWheel(int delta, const QPointF& localPos)`
+  - `void HandleZoomWheel(const QWheelEvent* wheelEvent)` — consumes fractional
+    pixel or angle deltas, applies optional bounded velocity acceleration, and
+    preserves cursor-anchored focus
+  - `void HandleKeyboardZoom(float notches)` — deterministic unaccelerated
+    geometric keyboard zoom
   - `bool ApplyInputForces(double elapsedSeconds)` — integrates motion as
     normalized units per second, so 60 and 120 FPS move at the same speed
   - `bool HasContinuousMotion() const`
@@ -171,7 +289,7 @@ Namespace `openzoom::settings`
   - global aspect policy: default crop-to-fill or show-all fit with black bars
 - `struct AdvancedConfig`
   - full profile-owned tuning payload including image-processing and focus
-    state, OCR/VLM mode flags, stabilization, structured `colorScheme` plus the
+    state, OCR/VLM mode flags, `stabilizationEnabled`, structured `colorScheme` plus the
     migration-only `displayColorMode`, screen fix, and Text Clarity
     (`autoTextClarityEnabled`, background flatten, adaptive
     binarization/Sauvola/softness, polarity, stroke weight, smart sharpen,
@@ -185,24 +303,56 @@ Namespace `openzoom::settings`
     keys on load; new settings are written only under `mlSuperRes*`
   - `rotationQuarterTurns` is read from old profile JSON only for backward migration, is no longer written into profiles, and is ignored by current profile comparisons
 - `struct AssistiveSettings`
-  - AI/assistive configuration: `aiProvider`, `codexExecutablePath`, `codexModel`, `codexReasoningEffort`, `codexInternetEnabled`, `codexCodingEnabled`, `codexWorkspaceDirectory`, `assistantInstructions`, `vlmApiUrl`, `vlmApiKey`, `vlmModel`, `vlmPrompt`, `tesseractPath`, `ocrLanguage`, `ttsEngine`, `ttsVoiceName`, `ttsVoiceLocale`, `ttsRate`, and `lectureNotesEnabled`; non-empty values take precedence over matching environment fallbacks
+  - AI/assistive configuration: `aiProvider`, `codexExecutablePath`,
+    `codexModel`, `codexReasoningEffort`, `codexInternetEnabled`,
+    `codexCodingEnabled`, `codexWorkspaceDirectory`,
+    `assistantInstructions`, `vlmApiUrl`, runtime-only `vlmApiKey`,
+    persisted `vlmCredentialId`, `vlmModel`, `vlmPrompt`, `tesseractPath`,
+    `ocrLanguage`, `ttsEngine`, `ttsVoiceName`, `ttsVoiceLocale`, `ttsRate`,
+    and `lectureNotesEnabled`
+  - `vlmApiKey` is never serialized and a JSON field with that name is
+    ignored. `SettingsController` resolves `vlmCredentialId` through Windows
+    Credential Manager. Matching environment variables remain runtime
+    fallbacks.
 - `struct CodexConversation`
   - OpenZoom-owned thread index entry: `threadId`, `title`, `preview`, `createdAt`, and `updatedAt`; transcripts remain in the Codex thread store
 - `struct PresetDefinition`
   - stage-1 quick-mode metadata: preset id, name, description, target config id, built-in flag
 - `struct PersistentSettings`
-  - persists global `cameraIndex` and `rotationQuarterTurns`, UI state,
-    `simpleUiMode`, resizable `advancedPanelWidth`, camera-relative `assistiveOverlayGeometry`,
-    `viewportRateMode` and `viewportFitMode`,
+  - persists global `cameraIndex`, stable `cameraFormatStableId`,
+    crash-safe `cameraAccelerationAttempt`, per-symbolic-link
+    `CameraAccelerationSetting` mode/fallback/reason/date records plus the last
+    successful ladder rung (`zeroCopy`, `acceleratedCopy`, or
+    `compatibility`),
+    and a load-only bridge that migrates the removed global compatibility
+    checkbox to the selected camera's `Compatibility mode`,
+    configurable `userDataRoot` (empty selects the Documents default), and
+    `rotationQuarterTurns`, UI state,
+    `simpleUiMode`, resizable `advancedPanelWidth`, camera-relative
+    `assistiveOverlayGeometry`, global annotation color/width/dashed style,
+    shape kind, text size, and capture-on-exit preferences (annotation strokes
+    are deliberately not persisted),
+    `viewportRateMode`, `viewportFitMode`, global `recordingCanvasMode`,
+    stable `microphoneEndpointId`,
+    `zoomWheelAcceleration`, and the
+    `uiSectionStates` disclosure map,
     `setupAssistantDeclined`, selected preset id, current live advanced config,
     reusable `customColorScheme`,
     the `assistive` settings block,
     OpenZoom-created `codexConversations`, and user-created configs/presets
+- `enum class LoadStatus`, `struct LoadResult`
+  - classify `Loaded`, `Missing`, `Unreadable`, `InvalidJson`, and
+    `UnsupportedVersion`, with an optional settings payload and error text
 - Functions:
   - `QString ResolveSettingsPath()`
   - `void EnsureSettingsDirectory(const QString& path)`
-  - `std::optional<PersistentSettings> Load(const QString& path)`
-  - `bool Save(const QString& path, const PersistentSettings& settings)`
+  - `LoadResult LoadDetailed(const QString& path)` — rejects versions newer
+    than schema 15 and preserves the reason
+  - `std::optional<PersistentSettings> Load(const QString& path)` —
+    compatibility wrapper around `LoadDetailed`
+  - `bool Save(const QString& path, const PersistentSettings& settings)` —
+    uses `QSaveFile`, checks commit success, backs up a valid prior document,
+    and never serializes runtime secrets
   - `const std::vector<AdvancedConfig>& BuiltInConfigs()`
   - `const std::vector<PresetDefinition>& BuiltInPresets()`
   - `QString DefaultPresetId()`
@@ -222,20 +372,72 @@ Namespace `openzoom::app_constants`
 
 ## Capture Module
 
+### `include/openzoom/capture/audio_capture.hpp`
+Types:
+- `struct AudioDeviceDescriptor`
+  - Windows endpoint `name`, stable `endpointId`, `isDefault`, and retained
+    Media Foundation activation object
+- `struct AudioFrame`
+  - signed 16-bit PCM bytes plus sample rate, channel count, bit depth,
+    QPC-derived `captureClock100ns`, and block duration
+- `using AudioFrameCallback` / `using AudioErrorCallback`
+
+`openzoom::AudioCapture`
+- Enumerates Windows microphone capture endpoints, marks the current
+  multimedia default, and normalizes the selected device to 48 kHz mono PCM.
+- The source reader runs on its own thread only while recording. Audio block
+  timestamps use the same monotonic QPC domain as camera-frame arrival so the
+  recording worker can mux one synchronized AAC track into both MP4 files.
+- Public API:
+  - `std::vector<AudioDeviceDescriptor> EnumerateDevices()`
+  - `bool Start(const AudioDeviceDescriptor&, AudioFrameCallback,
+    AudioErrorCallback = {})`
+  - `void Stop()`
+  - `bool IsRunning() const`
+  - `const std::string& LastError() const`
+  - `const std::wstring& ActiveEndpointId() const`
+
 ### `include/openzoom/capture/media_capture.hpp`
 Types:
 - `struct MediaFrame`
-  - `data`, `subtype`, `width`, `height`, `stride`, `dataSize`
+  - optional packed CPU `data`; optional accelerated `gpuTexture`,
+    `gpuSample`, `gpuSubresource`, and `gpuFormat`; `subtype`, `width`,
+    `height`, signed `stride`, `dataSize`,
+    Media Foundation `captureTimestamp100ns`, arrival
+    `captureClock100ns`, monotonic `sequenceNumber`, and negotiated frame-rate
+    numerator/denominator. The arrival clock is shared with microphone
+    capture and capture-to-present diagnostics. A negative stride is preserved
+    until the CPU conversion boundary instead of being reinterpreted as an
+    unsigned allocation size.
+  - `bool IsGpuResident() const` reports whether the frame retains a D3D11
+    source texture. A frame may carry both GPU and CPU representations during
+    startup validation or original-media capture.
+  - Accelerated frames retain the originating `IMFSample` in `gpuSample`.
+    Media Foundation's source-reader allocator may recycle a pooled texture
+    after its sample is released even while another COM reference keeps the
+    texture object alive. The sample lease therefore travels with the frame
+    through the recording burst queue and deferred GPU-conversion retry, and
+    releases with the frame on consumption or drop.
 - `using FrameCallback = std::function<void(MediaFrame&& frame)>` — transfers
-  ownership from the capture thread into the app's mutex-protected latest-frame
-  slot; the Qt frame tick moves it back out, avoiding two full-frame copies
+  ownership from the capture thread into the app's mutex-protected pending-frame
+  queue; the Qt frame tick moves it back out, avoiding two full-frame copies
 - `using CaptureErrorCallback = std::function<void(const std::string& message)>`
 - `struct CameraDescriptor`
   - `name`, `symbolicLink`, `activation`
 - `struct VideoFormat`
-  - `width`, `height`, `numerator`, `denominator`
+  - Media Foundation `subtype`, `width`, `height`, frame-rate `numerator` /
+    `denominator`, and a driver-order-independent `stableId`
 - `enum class CameraFailureKind`
   - `None`, `DeviceBusy`, `DeviceMissing`, `AccessDenied`, `Other` — plain-language classification of the most recent capture failure
+- `enum class CaptureAccelerationMode`
+  - `Accelerated` creates a D3D11/DXGI device manager for Media Foundation
+    hardware transforms; `Compatibility` retains the conservative
+    system-memory reader
+- `enum class GpuFramePreparationResult`
+  - `Ready` means the reusable NT-shareable BGRA conversion texture is safe
+    for CUDA; `Retry` means its D3D11 completion query is still pending and
+    the caller should use one safe readback without disabling the top rung;
+    `Unsupported` means the session must move down the capture ladder
 
 `openzoom::MediaCapture`
 - Media Foundation camera enumeration and threaded source-reader capture.
@@ -246,10 +448,42 @@ Types:
   - `void Shutdown()`
   - `std::vector<CameraDescriptor> EnumerateCameras()`
   - `std::vector<VideoFormat> EnumerateFormats(const CameraDescriptor& descriptor)`
-  - `bool StartCapture(const CameraDescriptor& descriptor, FrameCallback callback, GUID preferredSubtype = MFVideoFormat_NV12, CaptureErrorCallback errorCallback = {})` — requests the compact NV12 format first so CUDA can perform color conversion, then falls back through YUY2/BGRA formats; retries transient busy/resource errors internally; on failure `LastError()` holds a full plain-language sentence for busy/missing/access-denied kinds
-  - `void StopCapture()`
+  - `bool StartCapture(const CameraDescriptor& descriptor, const VideoFormat*
+    requestedFormat, FrameCallback callback, GUID preferredSubtype =
+    MFVideoFormat_NV12, CaptureErrorCallback errorCallback = {},
+    CaptureAccelerationMode accelerationMode =
+    CaptureAccelerationMode::Compatibility)` — requests the selected frame
+    size/rate when provided, otherwise retains driver choice; prefers compact
+    NV12 for CUDA conversion and falls back through YUY2/BGRA; retries
+    transient busy/resource errors internally. Accelerated mode accepts
+    `IMFDXGIBuffer` samples and, after startup validation, transfers retained
+    D3D11 textures instead of steady-state CPU buffers.
+  - `void StopCapture(const std::function<void()>&
+    beforeAccelerationRelease = {})` — stops and joins the reader thread,
+    invokes the optional callback while the D3D11 acceleration device and
+    reusable texture are still alive (used to release CUDA external-memory
+    imports safely), then releases Media Foundation and acceleration resources
   - `const std::string& LastError() const`
+  - `const std::string& FormatNotice() const` — reports a requested versus
+    negotiated mismatch in plain language
+  - `const VideoFormat& NegotiatedFormat() const`
   - `CameraFailureKind LastFailureKind() const`
+  - `CaptureAccelerationMode AccelerationMode() const`
+  - `bool ConsumeAccelerationValidated()` / `bool
+    ConsumeAccelerationRejected()` — one-shot startup-validator results used
+    by the application fallback ladder
+  - `GpuFramePreparationResult PrepareGpuFrameForCuda(const MediaFrame&,
+    ComPtr<ID3D11Texture2D>&)` — converts a retained accelerated sample into a
+    reusable NT-shareable BGRA D3D11 texture without crossing system memory.
+    The viewport thread waits at most 3 ms for the D3D11 completion query. A
+    delayed query returns `Retry`; the caller must retain and resubmit that
+    exact `MediaFrame`, allowing the same conversion to complete
+    asynchronously without issuing a duplicate blit or crossing system
+    memory. The application permits up to 25 ms of event-loop retries before
+    using the permanent safe-copy rung. The former 250 ms polling allowance
+    could dominate aggregate camera-processing p95 and has been removed.
+  - `bool ReadbackGpuFrame(MediaFrame&)` — explicitly populates packed CPU
+    bytes for validation, original recording/photo capture, or fallback
   - `double CurrentFrameRate() const` — reports the negotiated capture rate;
     diagnostics do not claim viewport re-presentation as camera FPS
   - `bool ConsumeDeviceLost()` — atomically returns and clears the mid-stream device-loss flag; polled from the app's frame tick to drive reconnection
@@ -258,10 +492,14 @@ Types:
   - `ConfigureReader(...)`
   - `ReadCurrentFormat(IMFSourceReader* reader, FrameFormat& outFormat)`
   - `CaptureLoop(FrameCallback callback, CaptureErrorCallback errorCallback)`
+  - `CreateAccelerationDeviceManager()`, `AttachDxgiFrame(...)`,
+    `CopyGpuFrame(...)`, `EnsureVideoProcessor(...)`, and
+    `ValidateStartupFrame(...)`
   - `ExtractFormats(IMFSourceReader* reader)`
   - `HrToString(HRESULT hr)`
 - Capture ownership:
-  - `activeActivation_` retains the activation object for the live session and `StopCapture()` calls `ShutdownObject()` before releasing it
+  - `activeActivation_` retains the activation object for the live session and
+    `StopCapture(...)` calls `ShutdownObject()` before releasing it
   - temporary mode enumeration uses the same balanced activation/shutdown contract
   - the capture callback moves each completed `MediaFrame`; it does not retain
     or access the moved buffer after invoking the consumer
@@ -282,6 +520,14 @@ Types:
   Server-initiated command/file approvals are declined, and permission-profile
   requests receive an empty grant so no additional filesystem or network
   capability is accidentally approved.
+- The stable app-server turn surface does not currently provide a complete
+  per-turn tool allow-list. OpenZoom therefore combines the strongest exposed
+  sandbox/network/approval policy with reactive interruption as defense in
+  depth rather than claiming instruction text alone prevents a tool start.
+- Turn liveness is bounded: 90-second activity timeout, 180-second vision-turn
+  cap, 30-minute persistent-turn cap, and a five-second interrupt grace before
+  forced local reset. Protocol buffers/messages, answers, and loaded
+  transcripts have explicit size/count ceilings and mark truncation.
 - Public API:
   - `Configure(const QString& executablePath, const QString& preferredModel, const QString& reasoningEffort, const QString& assistantInstructions, bool internetEnabled, bool codingEnabled, const QString& workspaceDirectory)`
   - `Start()` / `Shutdown()`
@@ -307,8 +553,13 @@ Supporting types:
 
 `openzoom::AssistiveRuntime`
 - Asynchronous assistive-analysis runtime owned by `OpenZoomApp`.
+- Owns a bounded two-thread image-preparation pool. OCR PNG export and
+  VLM/Codex resize, JPEG, base64, JSON, and temporary-frame writes execute
+  there rather than on the Qt UI thread. Generation tokens invalidate
+  cancelled/superseded work, and queued completions alone start QProcess,
+  network, or Codex operations on the runtime's owning thread.
 - OCR path:
-  - exports the current frame to a temporary PNG
+  - exports the current frame to a temporary PNG on the preparation pool
   - resolves configured/environment, Setup Assistant-managed, PATH, and
     standard Windows Tesseract locations, including sibling `tessdata`
   - runs `tesseract.exe` asynchronously
@@ -317,6 +568,12 @@ Supporting types:
   - default: saves a temporary JPEG and submits it as `localImage` through `CodexAppServerClient`; Codex explanations are on-demand rather than periodic
   - fallback: JPEG-encodes the frame and posts an OpenAI-compatible `chat/completions` request; API keys are optional for local servers
   - streams/finalizes text into the overlay, notes, and Assistant signals; TTS is invoked separately by `ReadAloud(...)`
+  - emits a deduplicated `PrivacyNotice` naming whether a camera frame is
+    attached, the local/remote provider, persistence, and enabled
+    internet/coding capabilities
+- Temporary OCR/Codex files carry the owning process id, are removed on every
+  normal completion/cancellation/shutdown path, and stale files belonging to
+  dead processes are swept at startup.
 - Public API:
   - `AssistiveRuntime(QObject* parent = nullptr)`
   - `~AssistiveRuntime()`
@@ -330,10 +587,20 @@ Supporting types:
   - `void ReadAloud(const QString& text)` — speaks a result only after an explicit user request, using the configured Windows voice and speed
   - `void DismissOverlay()` — hides the current result panel until a new forced OCR, Explain, or Assistant request begins
   - Codex/Assistant control: `StartCodexLogin()`, `StopAssistant()`, `SubmitAssistantPrompt(...)`, `LoadAssistantConversation(...)`, `RenameAssistantConversation(...)`, `DeleteAssistantConversation(...)`
-  - `void NoteCapturedPhoto(const QString& filePath)` — appends a browser-renderable relative photo reference to the HTML lecture notes
+  - `void NoteCapturedPhotoPair(const QString& originalPath, const QString& processedPath)` — appends synchronized original and processed images to the HTML lecture notes
+  - `void NoteCapturedVideoPair(const QString& originalPath, const QString& processedPath)` — appends synchronized playable MP4 controls and direct links to the HTML lecture notes
+  - `void NoteAnnotationSnapshot(const QString& filePath, const QString& heading)`
+    — appends a marked viewport PNG with a caller-supplied accessible heading
+    to the HTML lecture notes
   - `QString notesFilePath() const` — absolute path of the current notes file (empty until something is written)
 - Manual-only text-to-speech of results via Qt TextToSpeech when built with `OPENZOOM_HAS_TTS=1`; the runtime prefers the `winrt` engine and falls back to Qt's default engine.
-- Lecture notes: a valid per-session HTML document in the configured notes directory collecting escaped timestamped OCR text, scene explanations, and portable relative photo references. Updates use `QSaveFile` replacement around an insertion marker so the document remains complete after every entry.
+- Lecture notes: a valid per-session HTML document in the configured notes
+  directory collecting escaped timestamped OCR text, scene explanations,
+  annotations, paired original/processed photos, and fully finalized paired
+  video segments. Media uses portable relative links and responsive grids;
+  videos include native browser controls plus direct links. During a session,
+  new sections append without rereading and rewriting the prior document; the
+  closing HTML tags are finalized when the session closes.
 - Signals:
   - `OverlayUpdated(const QString& title, const QString& body, bool visible)`
   - Codex server/account/model/rate-limit/login state
@@ -378,21 +645,59 @@ Namespace `openzoom::processing`
   - `UINT RawHeight() const`
 
 ### `include/openzoom/common/media_writer.hpp`
-`openzoom::VideoRecorder`
-- Media Foundation sink-writer wrapper for live AV1 or H.264 output. The
+`openzoom::GpuVideoFrame`, `openzoom::VideoRecorder`
+- `GpuVideoFrame` identifies one shareable BGRA D3D texture, the shared fence
+  value that completes its producer write, its dimensions, and an opaque
+  lifetime lease. Media Foundation retains that lease on the submitted sample
+  until the encoder releases it, which is the recording-pool recycle signal.
+- Media Foundation sink-writer wrapper for live AV1 or H.264 output with an
+  optional AAC audio stream. The
   container is fragmented MP4 (fMP4): fragments flush to disk while recording,
   so the file stays playable up to the last completed fragment even if the
   process dies before finalization. Files keep the `.mp4` extension.
 - `enum class Codec` — `Av1`, `H264`
+- `struct AudioFormat` — 48 kHz mono 16-bit PCM input description used to
+  configure the AAC sink stream
 - `enum class StopReason` — `None`, `Manual`, `DiskFull`, `WriteFailed`; why
   the recorder last transitioned from recording to stopped.
+- `enum class FinalizeDisposition` and `struct FinalizeResult` — distinguish
+  nothing-to-finalize, fully completed, and playable-but-truncated outcomes;
+  include the final HRESULT, playable duration, committed
+  `videoSamplesWritten`, and `HasPlayableVideo()` predicate.
 - Public API:
   - `VideoRecorder()`
   - `~VideoRecorder()`
-  - `bool Start(const std::wstring& filePath, UINT width, UINT height, UINT fps, Codec codec)` — starts the requested live encoder and refuses to start with under 500 MB free on the target volume (`LastError()` explains why)
-  - `void Stop()`
+  - `bool Start(const std::wstring& filePath, UINT width, UINT height, UINT
+    frameRateNumerator, UINT frameRateDenominator, Codec codec, const
+    AudioFormat* audioFormat = nullptr)` — starts the requested live video
+    encoder and optional AAC stream with the exact negotiated rate; refuses to
+    start with under 500 MB free on the target volume (`LastError()` explains
+    why)
+  - `bool StartGpu(..., const GpuVideoFrame& probeFrame, ...)` — starts the
+    same writer with an adapter-matched D3D11 device manager; unsupported
+    hardware routes use the existing CPU writer
+  - `bool AddGpuFrame(const GpuVideoFrame&, const
+    RecordingFrameIdentity&)` — opens the pooled D3D12 allocation through its
+    NT handle, queues a GPU fence wait, converts the BGRA recording canvas to
+    encoder-native NV12 through a D3D11 VideoProcessor, and submits the NV12
+    `IMFDXGIBuffer` without reading pixels into system memory. This avoids
+    placing a D3D-unaware BGRA color converter ahead of the hardware encoder.
+    Before `WriteSample`, the D3D11 video context is flushed and the DXGI
+    media buffer's current length is set to its maximum length. Media
+    Foundation creates a DXGI buffer with zero valid bytes initially, and the
+    NVIDIA encoder rejects that nominally empty sample with `E_INVALIDARG`.
+    A worker-side compatibility readback remains the permanent fallback when
+    the adapter cannot create the video-processor path.
+  - `FinalizeResult Stop()` — checks sink finalization and reports whether the
+    file completed fully or only its earlier fragments remain playable;
+    callers use committed-sample accounting rather than file size to reject
+    an empty writer
   - `bool IsRecording() const`
-  - `bool AddFrame(const uint8_t* bgraData, size_t strideBytes)` — free space is re-checked every ~5 seconds; below 200 MB the recording is finalized cleanly and `AddFrame` returns false with `StopReason::DiskFull` (the file is already intact on disk)
+  - `bool AddFrame(const uint8_t* bgraData, size_t strideBytes, const RecordingFrameIdentity& identity)` — writes a variable-frame-rate sample from the normalized camera timestamp; unknown timestamps advance using the exact negotiated ratio. Free space is re-checked every ~5 seconds; below 200 MB the recording is finalized cleanly and `AddFrame` returns false with `StopReason::DiskFull` (the file is already intact on disk)
+  - `bool AddAudioFrame(const std::uint8_t* pcmData, std::size_t byteCount,
+    std::int64_t sampleTime100ns, std::int64_t duration100ns)` — writes one
+    normalized PCM block into the optional AAC stream using the recording
+    manager's segment-relative monotonic timestamp
   - `double DurationSeconds() const`
   - `const std::string& LastError() const`
   - `StopReason LastStopReason() const`
@@ -402,6 +707,22 @@ Namespace `openzoom::processing`
   - `InitializeSink(...)`
   - `FinalizeAndStop(StopReason reason)`
   - `SetError(const std::string& err)`
+
+### `include/openzoom/common/recording_contract.hpp`
+`openzoom::RecordingFrameIdentity`, `openzoom::RecordingTimeline`,
+`openzoom::RecordingCanvasMode`, `openzoom::RecordingCanvasSize`,
+`openzoom::RecordingViewTransform`, `openzoom::RecordingDropCounts`,
+`openzoom::RecordingState`, `openzoom::RecordingCompletionOutcome`
+- Defines the hardware-independent contract shared by capture, recording, and
+  tests. `RecordingTimeline` maps camera timestamps to a monotonic, zero-based
+  Media Foundation timeline and falls back to exact fractional-rate timing.
+- `ResolveRecordingCanvas(...)` and `ResampleRecordingCanvas(...)` preserve
+  canonical Fill/Fit geometry on a fixed processed-video canvas from 360p
+  through 2160p; landscape/portrait orientation follows the source.
+- `IsValidRecordingStateTransition(...)` and
+  `ClassifyRecordingCompletion(...)` centralize legal lifecycle transitions
+  and terminal truthfulness. `RecordingDropCounts::Total()` excludes estimated
+  timestamps while aggregating real frame losses.
 
 ### `include/openzoom/common/maxine_superres.hpp`
 `openzoom::MaxineSuperRes`
@@ -430,6 +751,31 @@ Namespace `openzoom::processing`
   - `static std::wstring FindRuntimeDirectory(...)`
   - `static bool IsRuntimeInstalled(...)`
 
+### `include/openzoom/common/annotation_model.hpp`
+`openzoom::AnnotationTool`, `openzoom::AnnotationItemKind`,
+`openzoom::AnnotationStroke`,
+`openzoom::AnnotationModel`
+- Session-owned vector annotation state. Freehand strokes, two-point straight
+  lines, rectangle/ellipse outlines, and text labels share one item model.
+  Items carry Solid/Dashed style where applicable. Points and widths use
+  normalized processed-scene coordinates rather than viewport pixels, so ink
+  stays registered while the canonical viewport pans or zooms.
+- Editing supports scene-space hit testing, one-item click selection and
+  rectangle-based multi-selection through `SelectInRect(...)`.
+  `selectedStrokeIds()` exposes the ordered selection set while the legacy
+  `selectedStrokeId()`/`selectedStroke()` accessors identify its primary
+  (last-selected) item. Selected groups move, nudge, delete, and undo as one
+  transform gesture. Single-item selections retain bounding-box feedback with
+  eight resize handles and pointer/keyboard scaling. Whole-item erase, clear,
+  bounded undo/redo, and permanent session reset remain supported.
+- `BuildStrokePath(...)` is the shared geometry source for paint, hit testing,
+  selection, and scale bounds. `RenderAnnotationStrokes(...)` is shared by the
+  live overlay and saved PNG path. It maps through `ViewTransform` and draws a
+  matched dashed or solid dark halo under each high-contrast core stroke, so
+  dashed gaps stay transparent.
+- `AnnotationSceneTolerance(...)` converts viewport-pixel widths and hit
+  tolerances into normalized scene distance.
+
 ### `include/openzoom/common/view_transform.hpp`
 `openzoom::ViewportFitMode`, `openzoom::ViewTransform`,
 `openzoom::NormalizedSourceRect`, `openzoom::PixelViewMapping`
@@ -453,7 +799,8 @@ Namespace `openzoom::processing`
 
 `openzoom::D3D12Presenter`
 - Manages the D3D12 device, native-client-sized swap chain, viewport shader,
-  per-frame upload buffers, shared fence, and readback rings.
+  per-frame upload buffers, shared fence, readback rings, and a bounded pool of
+  shareable recording textures.
 - `PresentSceneTexture(...)` samples a persistent processed scene through
   `ViewTransform` using a full-screen triangle and bilinear sampler. The back
   buffer remains the render HWND's native pixel size; camera texture dimensions
@@ -484,7 +831,16 @@ Namespace `openzoom::processing`
     std::vector<uint8_t>& outBgra, UINT64 waitFenceValue = 0)` — optionally
     queues a shared-fence wait before the blocking GPU copy, used by on-demand
     OCR and Assistant frame attachment to avoid reading active CUDA writes
-  - `bool RequestReadback(ID3D12Resource* texture, UINT width, UINT height, UINT64* outRequestId = nullptr)` — enqueues an async copy into a two-slot ring, optionally returning its fence-backed request id; returns false when both slots are in flight
+  - `bool RequestReadback(ID3D12Resource* texture, UINT width, UINT height, UINT64* outRequestId = nullptr)` — enqueues an async copy into a four-slot ring, optionally returning its fence-backed request id; returns false when every slot is in flight
+  - `GpuVideoFrame RequestRecordingFrame(...)` — samples the canonical
+    recording transform into a leased shareable BGRA texture. The lazily grown
+    pool is capped at 384 MiB and 48 slots; a null result with
+    `outPoolExhausted=true` lets recording count a drop rather than block or
+    allocate without limit. The producer fence remains mandatory in addition
+    to the encoder-held lifetime lease. Optional BGRA annotation pixels are
+    uploaded into a per-lease texture and alpha-composited after scene
+    framing. Only the processed caller supplies this layer, so original
+    recordings remain clean.
   - `bool TryGetCompletedReadback(std::vector<uint8_t>& outBgra, UINT& outWidth, UINT& outHeight, UINT64* outRequestId = nullptr)` — moves the oldest completed request's tightly packed BGRA8 pixels out and optionally returns the matching request id. Pending requests are silently dropped by `Resize`
   - `ID3D12Device* GetDevice() const`
   - `ID3D12Fence* GetFence() const`
@@ -520,7 +876,10 @@ Supporting types:
   - `kLumaLut` maps byte luma through the active 256-entry table
 - `struct ProcessingSettings`
   - toggles and parameters for BW, zoom, blur, focus marker, spatial sharpening, temporal smoothing, and staging format
-  - stabilization: `enableStabilization`, `stabilizationStrength` (0..1, higher = stronger path smoothing)
+  - stabilization: `enableStabilization` selects the one full-strength CUDA
+    fixed-reference path. Transient `enableBumpHold`, presented to users as `Extra Stable`,
+    retains the last sharp stabilized GPU frame through rejected/blurred
+    impacts and crossfades back after a stable recovery window
   - display grading: `displayColorTransform`, host-owned `displayColorLut`, and
     monotonic `displayColorLutGeneration`; `textForegroundBgra` and
     `textBackgroundBgra` keep Text Clarity on the same scheme endpoints;
@@ -535,6 +894,9 @@ Supporting types:
     high-resolution cache
 - `struct ProcessingInput`
   - `hostPixels`, `hostStrideBytes`, `pixelSizeBytes`, `width`, `height` — `width`/`height` always describe the host pixel layout (pre-rotation)
+  - optional `d3d11Texture` plus `d3d11Subresource` bypass host staging. The
+    texture is BGRA8 and enters CUDA through the D3D11 → D3D12 →
+    `cudaImportExternalMemory` bridge.
   - `inputFormat` — 0=BGRA8 (existing CPU-converted path), 1=NV12 (`hostPixels` = Y plane, `hostPlane2` = interleaved UV plane with `hostPlane2StrideBytes`), 2=YUY2 (packed in `hostPixels`)
   - `rotationQuarterTurns` — 0..3 clockwise, applied on the GPU after conversion for raw formats only (ignored for BGRA with a one-shot warning). For odd turns the interop surface must be created at the post-rotation extent (height x width); `ProcessFrame` validates and returns false on mismatch
 
@@ -547,6 +909,14 @@ Supporting types:
   and YUY2. Only the Qt tick writes/rotates the slots. A per-slot CUDA event,
   recorded immediately after the final H2D copy, guards the next host write;
   shared D3D/CUDA fence values cannot protect host-side memory reuse.
+- The accelerated top rung exposes Media Foundation's reusable NT-shareable
+  D3D11 VideoProcessor output to the existing D3D12 device, imports that
+  allocation once with `cudaExternalMemoryHandleTypeD3D12Resource`, caches its
+  level-zero array by texture identity, and issues one device-to-device copy
+  into the normal pitched processing buffer per frame. Teardown frees the
+  mapped mip array before destroying external memory. Import/copy failures are
+  classified separately so the application can retain the CUDA effects
+  pipeline and move down the camera ladder.
 - Public API:
   - `explicit CudaInteropSurface(ID3D12Resource* texture, ID3D12Fence* sharedFence = nullptr)`
   - `~CudaInteropSurface()`
@@ -555,8 +925,16 @@ Supporting types:
   - `void RunGradientDemoKernel(unsigned int width, unsigned int height, float timeSeconds)`
   - `bool ProcessFrame(const ProcessingInput& input, const ProcessingSettings& settings, const FenceSyncParams& fenceSync)`
   - `const std::string& LastError() const`
+  - `bool LastFailureWasCaptureInterop() const`
+  - `void ResetCaptureInterop()`
   - `void ResetTemporalHistory()`
-  - `void ResetStabilization()` — clears stabilization state (previous luma profiles, camera-path accumulators); the app calls it on camera switch/stop and rotation changes
+  - `void ResetStabilization()` — clears previous luma/projections, fixed
+    reference maps, absolute correction state, diagnostics, and timing; the app
+    calls it on camera switch/stop, rotation, and profile changes
+  - `const std::string& StabilizerStatus() const` / `float
+    LastStabilizerMs() const` — accepted estimator, sampled inlier/correction
+    summary, and non-blocking sampled GPU duration exposed to Advanced
+    diagnostics
   - `void ResetKeystone()` — clears the keystone detection state (smoothed source-quad corners, pending luma snapshot); the app calls it alongside every `ResetStabilization()` and when the keystone toggle changes
   - `void SetKeystoneTrackingPaused(bool paused)` — freezes or resumes periodic
     projected-quad detection without changing the current warp
@@ -580,6 +958,10 @@ Supporting types:
     sampled ProcessFrame kernel chain (cudaEvent pair recorded every 30th
     frame, polled non-blockingly by `ConsumeProcessTiming()`); negative until
     the first sample completes
+  - `GpuStageTimings LastGpuStageTimings() const` — non-blocking sampled CUDA
+    event durations for input/upload, stabilization and geometry, image
+    effects, and output/SuperRes-cache publication. The boundaries share the
+    existing every-30th-frame sample and add no stream synchronization.
 - Profile and Advanced Text Clarity changes synchronize and reset SuperRes so
   the SDK's load-time strength/mode selectors are applied on the next frame.
   Enabling viewport-target mode restores the default 0.65 strength when zero
@@ -596,17 +978,57 @@ Supporting types:
   (crop, factor) key and retry only when the key changes or the toggle is
   re-enabled. The model directory resolves to the runtime's `models`
   subdirectory, falling back to the DLL directory itself.
-- Stage order: upload/convert/rotate → stabilization → keystone → Text Clarity
+- Stage order: upload/convert/rotate → stabilization (including optional
+  post-warp Extra Stable hold) → keystone → Text Clarity
   analysis/flatten/CLAHE/mask/smart-sharpen → legacy BW → Maxine SuperRes or
   NIS/FSR zoom/sharpen → blur → temporal → auto-contrast → color grade → focus
   marker → interop copy. Maxine discards 10 warmup timings, averages the next
   60 effect runs with CUDA events, and disables itself for the surface above
   the 24 ms target unless the user explicitly overrides the guard.
+- Stabilization uses a dedicated analysis surface capped at 640x360 (keystone
+  remains capped at 320x180). The one on-stream path tracks a fixed reference
+  from the previous accepted
+  absolute-translation prediction and fits the expanded visible zoom region
+  when at least 12 tracks are available there. Lock creation selects the
+  sharpest of five frames, then caches a real three-level Gaussian pyramid,
+  adaptive distributed subpixel corners, and inverse translation Hessians.
+  Multi-frame reference accumulation is disabled because replaying a saved
+  low-texture clamp recording showed that insufficiently registered samples
+  degraded stabilization even though the synthetic accumulation checks
+  passed. The steady-state inverse-compositional tracker rejects high-error
+  patches and the deterministic tripod estimator fits translation only,
+  avoiding false rotation/scale shimmer on a mounted camera.
+  Its absolute measurement uses a zoom-scaled display-pixel deadband and
+  crop-backed correction authority; invalid frames hold the correction
+  indefinitely. Reference capture is automatic when stabilization starts or
+  the camera/pipeline resets. A keyframe map, wide-range projection seed, and
+  short-lived relative fallback recover the same absolute coordinate frame
+  after a bump. The bilinear warp
+  applies one uniform global correction. Three four-float diagnostic
+  samples (fit metadata, correction, and measured frame motion) are copied
+  asynchronously every 30 frames and emitted once to the temporary Release
+  diagnostics terminal; there is no estimator frame readback or stream wait.
 - The luma LUT is copied to CUDA constant memory asynchronously only when
   `displayColorLutGeneration` changes. Contrast and brightness edits reuse the
   resident table and do not trigger uploads.
 
 ### `include/openzoom/cuda/cuda_kernels.hpp`
+`openzoom::StabilizationState`
+- Device-resident x/y translation, rotation, and log-scale measurements;
+  current/previous correction; last reliable frame motion; fixed-reference
+  anchor correction; recovery state; and compact fixed-reference diagnostics.
+
+`openzoom::TripodReferenceFeature`
+- One prepared fixed-reference feature: subpixel level-0 position plus cached
+  inverse 2x2 translation Hessians for the full, half, and quarter-resolution
+  Gaussian pyramid levels.
+
+`openzoom::BumpHoldState`
+- Device-resident presentation state for the opt-in Extra Stable impact
+  hold: live/held/recovery mode, focus ratio, transform step, previous absolute
+  motion, stable-frame counter, crossfade progress, and whether a safe
+  full-resolution frame has been captured.
+
 Kernel launch wrappers:
 - `LaunchGradientKernel(...)`
 - `LaunchBlackWhiteKernel(...)`
@@ -621,9 +1043,42 @@ Kernel launch wrappers:
 - `LaunchStabilizationLumaDownsample(...)`
 - `LaunchStabilizationProjections(...)` — accumulates 16x16 block row/column
   partials with shared-memory atomics, then merges one partial per bin into
-  global memory
-- `LaunchStabilizationEstimate(...)`
-- `LaunchStabilizationWarp(...)`
+  global memory for wide-range fixed-reference re-acquisition
+- `LaunchStabilizationFeaturePairs(...)` — grid-spaced Harris selection and
+  three-level sparse Lucas-Kanade tracking on small luma
+- `LaunchVirtualTripodFeaturePairs(...)` — fixed-reference GPU tracking seeded
+  from `StabilizationState::lastFrameMotion`, with full/source coordinate
+  mapping, a forward/backward closure check, and an absolute-displacement gate
+- `LaunchStabilizationLumaPyramid(...)` — builds real half- and
+  quarter-resolution luma levels with a 5x5 binomial Gaussian before
+  subsampling
+- `LaunchPrepareVirtualTripodReference(...)` — selects one adaptive strongest
+  corner per 16x16 reference cell, refines it to subpixel position, and caches
+  inverse translation Hessians for all three pyramid levels
+- `LaunchPreparedVirtualTripodFeaturePairs(...)` — tracks the cached reference
+  features coarse-to-fine with inverse-compositional Lucas-Kanade, seeded by
+  the last accepted absolute translation and rejected by final patch error
+- `LaunchMeasureVirtualTripodFocus(...)` /
+  `LaunchSelectSharperVirtualTripodReference(...)` — device-side Laplacian
+  focus score and sharpest-candidate selection without a frame readback
+- `LaunchResetBumpHoldState(...)`, `LaunchUpdateBumpHoldState(...)`, and
+  `LaunchApplyBumpHold(...)` — capture only a sharp/model-valid settled frame,
+  hold it through rejected, blurred, or discontinuous tripod measurements,
+  keep registration advancing underneath, then crossfade back after five
+  stable frames
+- `LaunchInitializeVirtualTripodAccumulator(...)` /
+  `LaunchAccumulateVirtualTripodReference(...)` /
+  `LaunchFinalizeVirtualTripodReference(...)` — constructs the persistent
+  reference from registered frames, rejecting low-focus, invalid-transform,
+  out-of-bounds, and moving/photometric-outlier pixels
+- `LaunchResetVirtualTripodState(...)` /
+  `LaunchVirtualTripodSimilarityEstimate(...)` — continuity-preserving anchor
+  capture plus deterministic translation-only absolute-reference RANSAC. The
+  estimator accepts strength, focus center, and zoom so it can prefer the
+  visible-region tracks and define its deadband in display pixels. Invalid
+  models preserve the last correction.
+- `LaunchStabilizationWarp(...)` — applies the current fixed-reference
+  correction with center-relative bilinear inverse sampling
 - `LaunchDisplayColorGradeLinear(...)` — takes the display transform plus
   optional device `autoContrastLevels` (float2 lo/hi) and
   `autoContrastStrength`; the LUT branch indexes constant memory by byte luma
@@ -643,6 +1098,27 @@ Kernel launch wrappers:
   one 256-entry BGRA table upload on the processing stream
 
 ## UI Module
+
+### `include/openzoom/ui/live_status_text.hpp`
+`openzoom::LivePoliteness`, `openzoom::SetLiveText(...)`, and
+`openzoom::SetLiveTextCoalesced(...)`
+- Centralize dynamic `QLabel` and `QAbstractButton` updates on the Qt UI
+  thread. The helper changes the visible text, composes a role-qualified
+  accessible name, emits an accessibility `NameChanged` invalidation, and can
+  issue a polite or assertive announcement.
+- `LivePoliteness::kSilent` updates the accessibility tree without
+  unsolicited speech. `kPolite` covers normal state changes and `kAssertive`
+  is reserved for failures such as camera loss.
+- Announcements with the same complete accessible text are suppressed for
+  five seconds per widget. The coalesced form uses a trailing single-shot
+  timer so rapid diagnostics publish only their latest value.
+- Public API:
+  - `enum class LivePoliteness { kSilent, kPolite, kAssertive }`
+  - `void SetLiveText(QWidget* widget, const QString& text,
+    LivePoliteness politeness, const QString& rolePrefix = {})`
+  - `void SetLiveTextCoalesced(QWidget* widget, const QString& text,
+    LivePoliteness politeness, const QString& rolePrefix = {},
+    int delayMs = 400)`
 
 ### `include/openzoom/ui/render_widget.hpp`
 `openzoom::RenderWidget`
@@ -668,6 +1144,37 @@ Kernel launch wrappers:
 - Signal:
   - `JoystickChanged(float normX, float normY)`
 
+### `include/openzoom/ui/annotation_overlay.hpp`
+`openzoom::AnnotationOverlay`
+- Transparent annotation surface implemented as a frameless tool window owned
+  by `MainWindow`. A one-alpha backing surface keeps Windows mouse hit testing
+  active above the native D3D HWND without visibly obscuring the camera. It
+  follows
+  the render viewport in native screen coordinates so ink and controls remain
+  above the native D3D swap-chain HWND.
+- Public API controls active state, canonical `ViewTransform`, global
+  color/width/dashed/shape/text-size/save-on-exit preferences, ink access,
+  undo/redo, pending-text commit through `CommitPendingText()`, and ordered
+  accessible focus targets.
+- The flush-left vertical tool rail covers Move, Pen, Line, Shape, Text, and
+  whole-item Erase. Pen/Line/Shape/Text open a transient flyout containing only
+  relevant color, size, style, shape, or text controls. A separate flush-right
+  rail owns Undo, Redo, annotated Save, capture-and-Clear, and Done.
+- Keyboard commands remain active from tool controls without stealing ordinary
+  editing shortcuts from the text field. Wheel and unconsumed navigation keys
+  are remapped and synchronously forwarded to the render target/main window,
+  crossing the top-level tool-window boundary without duplicating pan/zoom
+  logic. Middle-button press/move/release events use the same explicit
+  remapping. Move drags on empty camera content create a visible marquee;
+  intersecting vector items become one group that can be dragged, nudged, or
+  deleted together. Shift/Ctrl extends the current selection and screen-reader
+  announcements report the resulting item count.
+  forwarding so drag-pan remains available over the canvas. Text creates an
+  inline editor at the clicked scene coordinate and commits on Enter; Escape
+  cancels it. Slider wheel input is ignored.
+- Signals separate snapshot, clear, exit, clean-photo, preferences, and
+  accessible tool-change intent from application capture policy.
+
 ### `include/openzoom/ui/main_window.hpp`
 `openzoom::MainWindow`
 - Builds the UI shell and exposes widget accessors used by `OpenZoomApp`.
@@ -678,8 +1185,10 @@ Kernel launch wrappers:
   windows plus a contextual keystone strip flush to its edges; Advanced keeps
   the bottom-left quick-mode carousel available and opens a 420-580 pixel
   tabbed inspector to the right of the camera. `Image`
-  contains scrollable device/tuning controls and pipeline status; `Assistant`
-  contains Chat and History views. Wrapping section arrows remain in the tab
+  contains scrollable Device, Recording, and profile-tuning controls plus
+  pipeline status; `Assistant` contains Chat and History views. The Recording
+  section groups processed resolution, camera/original resolution and frame
+  rate, and microphone selection. Wrapping section arrows remain in the tab
   header alongside a compact Help button whose dialog presents Controls before
   Features; a full-width AI Settings pop-out row appears below it. The top-left
   mode switch is restored on application activation in both UI modes. The
@@ -690,12 +1199,17 @@ Kernel launch wrappers:
     inspector widths
   - `QAbstractButton* simpleModeButton() const` / `QAbstractButton* advancedModeButton() const` — checkable and mutually exclusive; state switching is wired internally, while the app connects only for persistence
 - Public API includes getters for:
-  - camera selection and mode list
+  - camera selection; the Recording section's requested camera/original
+    resolution and frame-rate combo, negotiated mode notice, processed-video
+    resolution combo, and microphone selector; Device > More includes the
+    per-camera acceleration selector, status, global compatibility escape
+    hatch, and watchdog-isolated camera test action
   - quick-mode preset list, preset description label, quick-option promotion,
     and Reset Tuning; reset emits `resetCurrentProfileRequested()` so the app
     can restore profile-owned defaults without altering global controls
   - BW, zoom, blur, temporal smoothing, and spatial sharpening controls
-  - stabilization checkbox and strength slider (`stabilizationCheckbox()`, `stabilizationStrengthSlider()`, 0–98)
+  - visible `stabilizationCheckbox()`, `bumpHoldCheckbox()` (the internal
+    getter for the user-facing `Extra Stable` control)
   - screen-fix controls: `keystoneCheckbox()` ("Straighten Screen (Keystone)"), `autoContrastCheckbox()` ("Auto Contrast"), and `autoContrastStrengthSlider()` (0–100, default 70, enabled with its checkbox); `setKeystoneTrackingControls(...)` updates the shared Simple/Advanced Previous, Stop/Continue, and Next controls and their accessible state
   - Simple and Advanced Text Clarity master controls plus component checkboxes,
     sliders, polarity selector, and profile-owned NVIDIA Super Resolution
@@ -710,10 +1224,18 @@ Kernel launch wrappers:
     assistive buttons (`aiSettingsButton()`, `openNotesButton()`,
     `setupAssistantButton()`)
   - Assistant status, sign-in, transcript, prompt, camera attachment, send/stop/new, and history resume/rename/export/delete widgets
-  - focus sliders, rotation combo, debug toggle, focus marker, and the global
-    joystick toggle near the top of Advanced Image
+  - focus sliders, rotation combo, debug toggle, focus marker, and global
+    viewport preferences under Device > More device options
   - capture and recording buttons
-  - processing status label
+  - annotation mode button/overlay plus preference and viewport-transform
+    setters; activation raises the persistent Photo/Record/Explain/Read/Draw
+    tool window above the transparent annotation surface, while the overlay's
+    native hit test returns all persistent corner-control rectangles to their
+    underlying Qt tool windows. Those actions therefore remain clickable after
+    further canvas interaction, and the checked Draw action can exit
+    annotation mode
+  - processing status label and `performanceDiagnosticsLabel()` for rolling
+    p50/p95/p99 camera-processing and capture-to-present timings
   - the static `SuperRes powered by NVIDIA Maxine™` attribution at the bottom
     of the Advanced inspector; `setMaxineRuntimeInstalled(...)` enables or
     disables the compiled control from actual runtime detection and keeps its
@@ -723,7 +1245,9 @@ Kernel launch wrappers:
     fallback state plus compact wrapping source-crop, viewport-target,
     final-zoom, and measured-latency details; a latency-only failure exposes a
     compact `Ignore 24 ms performance limit` checkbox
-- Signals `keystoneStepBackRequested()`, `keystonePauseResumeRequested()`,
+- Signals `annotationSnapshotRequested(int)`,
+  `annotationPreferencesChanged(...)`, `keystoneStepBackRequested()`,
+  `keystonePauseResumeRequested()`,
   `keystoneStepForwardRequested()`, `resetCurrentProfileRequested()`, and
   `superResPerformanceOverrideChanged(bool)` bridge UI commands to
   `OpenZoomApp`.
@@ -740,6 +1264,19 @@ Kernel launch wrappers:
   - large centered mode toast plus assertive `QAccessibleAnnouncementEvent`
   - event filter on the render widget for Ctrl+wheel zoom, plain-wheel pan,
     middle-button drag pan, and corner-window repositioning on resize/move
+
+### `include/openzoom/ui/collapsible_section.hpp`
+`openzoom::CollapsibleSection`
+- Reusable two-level Advanced inspector disclosure group with a focusable
+  `QToolButton` heading, visible/accessibility changed count, persisted key,
+  and temporary search expansion that restores the prior state.
+- Public API:
+  - `QWidget* contentWidget() const`
+  - `void setExpanded(bool)` / `bool isExpanded() const`
+  - `void setChangedCount(int)` / `int changedCount() const`
+  - `void setPersistKey(const QString&)` / `const QString& persistKey() const`
+  - `void setSearchExpanded(bool)`
+- Signal: `expandedChanged(bool)`.
 
 ### `include/openzoom/ui/color_scheme_picker.hpp`
 `openzoom::ColorSchemePicker`

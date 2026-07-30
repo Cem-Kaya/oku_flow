@@ -47,7 +47,13 @@ if defined QT_PREFIX (
 
 if not defined QT_BIN_DIR if exist "%QT_PREFIX_DEFAULT%" call :resolve_qt_bindir "%QT_PREFIX_DEFAULT%"
 
-cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 %CMAKE_QT_ARGS%
+set "CMAKE_EXTRA_ARGS=%CMAKE_ARGS%"
+if not defined OPENZOOM_ENABLE_CUDA set "OPENZOOM_ENABLE_CUDA=ON"
+if not defined OPENZOOM_ENABLE_TEXT_SR set "OPENZOOM_ENABLE_TEXT_SR=ON"
+set "CMAKE_EXTRA_ARGS=%CMAKE_EXTRA_ARGS% -DOPENZOOM_ENABLE_CUDA=%OPENZOOM_ENABLE_CUDA%"
+set "CMAKE_EXTRA_ARGS=%CMAKE_EXTRA_ARGS% -DOPENZOOM_ENABLE_TEXT_SR=%OPENZOOM_ENABLE_TEXT_SR%"
+
+cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 %CMAKE_QT_ARGS% %CMAKE_EXTRA_ARGS%
 if errorlevel 1 goto :fail
 
 cmake --build "%BUILD_DIR%" --config Release

@@ -61,12 +61,66 @@ void LaunchTemporalSmoothLinear(uchar4* dst, size_t dstPitchBytes,
                                 bool historyValid,
                                 cudaStream_t stream);
 
-// Device-resident motion state for video stabilization. It is never read back
-// to the host: the estimate kernel updates it and the warp kernel consumes it.
+// Device-resident state for fixed-reference stabilization. Components are x/y
+// translation in full-resolution pixels, rotation in radians, and logarithmic
+// scale.
 struct StabilizationState {
-    float2 actualPath;   // accumulated camera translation, full-res pixels
-    float2 smoothPath;   // low-pass filtered path, full-res pixels
-    float2 correction;   // smoothPath - actualPath, clamped to the warp margin
+    float4 actualPath;
+    float4 filteredPath;
+    float4 correction;
+    float4 previousCorrection;
+    float4 lastFrameMotion;
+    // x = inlier count, y = similarity model valid, z = mean squared
+    // residual, w = estimator tag (1=RTX flow, 2=features, 3=projection,
+    // 4=Virtual Tripod).
+    float4 diagnostics;
+    // Correction carried across a continuity-preserving Virtual Tripod
+    // re-lock. A new reference starts at zero motion but must retain the last
+    // displayed coordinate system.
+    float4 tripodAnchorCorrection;
+    // Last accepted absolute correction plus a bounded relative correction
+    // used only during short fixed-reference dropouts. The relative term is
+    // never folded into a keyframe origin and is cleared on re-acquisition.
+    float4 tripodAbsoluteCorrection;
+    float4 tripodRelativeMotion;
+    // x = consecutive valid frames, y = consecutive invalid frames,
+    // z = state (0=off/seeding, 1=locked, 2=relative fallback,
+    // 3=crop-limited, 4=recovered through keyframe map),
+    // w = number of anchor captures.
+    float4 tripodDiagnostics;
+};
+
+// Fixed-reference data prepared once when Virtual Tripod locks. Each entry
+// stores a sub-pixel point in level-0 analysis coordinates plus the inverse
+// translation Hessian for the 1x, 1/2x, and 1/4x Gaussian pyramid levels.
+struct TripodReferenceFeature {
+    float2 position;
+    float4 inverseHessian[3];
+};
+
+// One fixed-reference registration result. Motion is expressed in the common
+// coordinate system of the original tripod lock. Statistics are:
+// x = pair count, y = inlier ratio, z = inlier spatial coverage,
+// w = keyframe index.
+struct TripodMatchCandidate {
+    float4 motion;
+    float4 diagnostics;
+    float4 statistics;
+};
+
+// Device-resident presentation policy for mounted-camera bump suppression.
+// `diagnostics` is x=mode (0=tracking, 1=holding, 2=recovering),
+// y=current/reference sharpness ratio, z=absolute-transform step in source
+// pixels, and w=readiness (0=unavailable, 1=preparing, 2=safe frame ready).
+struct BumpHoldState {
+    float4 diagnostics;
+    float4 previousMotion;
+    unsigned int heldFrameValid;
+    unsigned int stableFrames;
+    unsigned int recoveryFrame;
+    unsigned int captureCurrent;
+    float blendAlpha;
+    float reserved[3];
 };
 
 void LaunchStabilizationLumaDownsample(float* dstLuma,
@@ -81,15 +135,180 @@ void LaunchStabilizationProjections(const float* luma,
                                     float* colProj, float* rowProj,
                                     cudaStream_t stream);
 
-void LaunchStabilizationEstimate(const float* currColProj, const float* currRowProj,
-                                 float* prevColProj, float* prevRowProj,
-                                 int smallWidth, int smallHeight,
-                                 float factorX, float factorY,
-                                 int fullWidth, int fullHeight,
-                                 float strength,
-                                 bool previousValid,
-                                 StabilizationState* state,
-                                 cudaStream_t stream);
+// Re-seeds a rejected fixed-reference tracker from a wide-range, zero-mean
+// projection correlation. This changes only the next LK prediction; it never
+// updates the displayed correction or admits a new anchor by itself.
+void LaunchVirtualTripodProjectionSeed(
+    const float* currentColProj, const float* currentRowProj,
+    const float* referenceColProj, const float* referenceRowProj,
+    int smallWidth, int smallHeight, float factorX, float factorY,
+    const float4* keyframeOrigins, const unsigned int* keyframeValid,
+    unsigned int keyframeIndex, StabilizationState* state,
+    cudaStream_t stream);
+
+void LaunchStabilizationFeaturePairs(const float* currentLuma,
+                                     const float* previousLuma,
+                                     int smallWidth, int smallHeight,
+                                     float factorX, float factorY,
+                                     float4* pairs, unsigned int* pairCount,
+                                     unsigned int maxPairs,
+                                     const StabilizationState* gateState,
+                                     cudaStream_t stream);
+
+// Track a fixed scene reference with a wider absolute-motion gate than the
+// pairwise stabilizer. The returned pairs remain reference -> current.
+void LaunchVirtualTripodFeaturePairs(const float* currentLuma,
+                                     const float* referenceLuma,
+                                     int smallWidth, int smallHeight,
+                                     float factorX, float factorY,
+                                     int fullWidth, int fullHeight,
+                                     float4* pairs, unsigned int* pairCount,
+                                     unsigned int maxPairs,
+                                     const StabilizationState* motionSeedState,
+                                     cudaStream_t stream);
+
+void LaunchStabilizationLumaPyramid(const float* level0,
+                                    int level0Width, int level0Height,
+                                    float* level1,
+                                    int level1Width, int level1Height,
+                                    float* level2,
+                                    int level2Width, int level2Height,
+                                    cudaStream_t stream);
+
+void LaunchPrepareVirtualTripodReference(
+    const float* referenceLevel0, int level0Width, int level0Height,
+    const float* referenceLevel1, int level1Width, int level1Height,
+    const float* referenceLevel2, int level2Width, int level2Height,
+    TripodReferenceFeature* features, unsigned int* featureCount,
+    unsigned int maxFeatures, cudaStream_t stream);
+
+void LaunchPreparedVirtualTripodFeaturePairs(
+    const float* currentLevel0, int level0Width, int level0Height,
+    const float* currentLevel1, int level1Width, int level1Height,
+    const float* currentLevel2, int level2Width, int level2Height,
+    const float* referenceLevel0, const float* referenceLevel1,
+    const float* referenceLevel2,
+    const TripodReferenceFeature* features,
+    const unsigned int* featureCount,
+    float factorX, float factorY,
+    int fullWidth, int fullHeight,
+    float4* pairs, unsigned int* pairCount, unsigned int maxPairs,
+    const StabilizationState* motionSeedState, cudaStream_t stream);
+
+// Keyframe-map variant. The common-coordinate origin is subtracted from the
+// last accepted absolute motion when seeding LK. Later keyframes may be
+// skipped on-device after an earlier candidate succeeds.
+void LaunchPreparedVirtualTripodKeyframePairs(
+    const float* currentLevel0, int level0Width, int level0Height,
+    const float* currentLevel1, int level1Width, int level1Height,
+    const float* currentLevel2, int level2Width, int level2Height,
+    const float* referenceLevel0, const float* referenceLevel1,
+    const float* referenceLevel2,
+    const TripodReferenceFeature* features,
+    const unsigned int* featureCount,
+    float factorX, float factorY,
+    int fullWidth, int fullHeight,
+    float4* pairs, unsigned int* pairCount, unsigned int maxPairs,
+    const StabilizationState* motionSeedState,
+    const float4* keyframeOrigins,
+    const unsigned int* keyframeValid,
+    unsigned int keyframeIndex,
+    const TripodMatchCandidate* earlierCandidates,
+    cudaStream_t stream);
+
+// Lock-time reference builder. Focus is measured on-device, the sharpest
+// candidate wins without a host synchronization, then accepted registered
+// frames are averaged with per-pixel motion/outlier rejection.
+void LaunchMeasureVirtualTripodFocus(const float* luma, int width, int height,
+                                     float* focusScore, cudaStream_t stream);
+void LaunchResetBumpHoldState(BumpHoldState* state, cudaStream_t stream);
+void LaunchUpdateBumpHoldState(
+    BumpHoldState* bumpState, const StabilizationState* stabilizationState,
+    const float* currentFocusScore, const float* referenceFocusScore,
+    bool referenceReady, int fullWidth, int fullHeight,
+    float motionEnterPixels, float motionExitPixels, cudaStream_t stream);
+void LaunchApplyBumpHold(
+    uchar4* current, size_t currentPitchBytes,
+    uchar4* held, size_t heldPitchBytes,
+    int width, int height, const BumpHoldState* state,
+    cudaStream_t stream);
+void LaunchSelectSharperVirtualTripodReference(
+    const float* candidate, float* reference, int pixelCount,
+    const float* focusScore, float* bestFocusScore,
+    unsigned int* selectionFlag, cudaStream_t stream);
+void LaunchInitializeVirtualTripodAccumulator(
+    const float* reference, float* accumulator, unsigned int* sampleCounts,
+    int pixelCount, cudaStream_t stream);
+void LaunchAccumulateVirtualTripodReference(
+    const float* current, const float* reference, int width, int height,
+    float factorX, float factorY,
+    const float* focusScore, const float* bestFocusScore,
+    const StabilizationState* state,
+    float* accumulator, unsigned int* sampleCounts, cudaStream_t stream);
+void LaunchFinalizeVirtualTripodReference(
+    float* reference, const float* accumulator,
+    const unsigned int* sampleCounts, int pixelCount, cudaStream_t stream);
+
+// Reset path/filter history for a newly captured fixed reference. When
+// preserveCorrection is true, the current visual correction becomes the new
+// anchor offset so re-locking never jumps.
+void LaunchResetVirtualTripodState(StabilizationState* state,
+                                  bool preserveCorrection,
+                                  cudaStream_t stream);
+
+// Solve reference-to-current motion without integrating pairwise deltas.
+// Rejected models freeze the last good correction instead of drifting or
+// snapping to identity.
+void LaunchVirtualTripodSimilarityEstimate(const float4* pairs,
+                                           const unsigned int* pairCount,
+                                           unsigned int maxPairs,
+                                           int fullWidth, int fullHeight,
+                                           float inlierThresholdPixels,
+                                           float strength,
+                                           float maxCorrectionFraction,
+                                           float focusCenterX,
+                                           float focusCenterY,
+                                           float zoomAmount,
+                                           StabilizationState* state,
+                                           cudaStream_t stream);
+
+// Estimate one fixed-reference candidate without changing the displayed path.
+// SelectVirtualTripodMatch later chooses the best accepted candidate and
+// updates the path exactly once.
+void LaunchVirtualTripodMatchCandidate(
+    const float4* pairs, const unsigned int* pairCount,
+    unsigned int maxPairs, int fullWidth, int fullHeight,
+    float inlierThresholdPixels, float focusCenterX, float focusCenterY,
+    float zoomAmount, const float4* keyframeOrigins,
+    const unsigned int* keyframeValid, unsigned int keyframeIndex,
+    TripodMatchCandidate* candidates, cudaStream_t stream);
+
+void LaunchSelectVirtualTripodMatch(
+    const TripodMatchCandidate* candidates, unsigned int candidateCount,
+    float strength, float maxCorrectionFraction, float zoomAmount,
+    int fullWidth, int fullHeight, StabilizationState* state,
+    cudaStream_t stream);
+
+// Capture a recovery keyframe only after the current frame has a sustained,
+// accepted absolute registration. The keyframe inherits that accepted
+// common-coordinate motion, preventing chained-delta drift.
+void LaunchCaptureVirtualTripodKeyframe(
+    const float* current, float* destination, int pixelCount,
+    const StabilizationState* state, float4* keyframeOrigins,
+    unsigned int* keyframeValid, unsigned int keyframeIndex,
+    unsigned int minimumValidFrames, cudaStream_t stream);
+
+void LaunchInitializeVirtualTripodKeyframe(
+    float4* keyframeOrigins, unsigned int* keyframeValid,
+    unsigned int keyframeIndex, cudaStream_t stream);
+
+// Short-lived pairwise correction used only while every absolute keyframe is
+// rejected. It is bounded and reset immediately on absolute re-acquisition.
+void LaunchVirtualTripodRelativeFallback(
+    const float4* pairs, const unsigned int* pairCount,
+    unsigned int maxPairs, int fullWidth, int fullHeight,
+    float inlierThresholdPixels, float maxCorrectionFraction,
+    StabilizationState* state, cudaStream_t stream);
 
 void LaunchStabilizationWarp(uchar4* dst, size_t dstPitchBytes,
                              const uchar4* src, size_t srcPitchBytes,

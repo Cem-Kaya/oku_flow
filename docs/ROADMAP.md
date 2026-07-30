@@ -19,23 +19,24 @@ and the need to capture material for later study.
 
 ## Phase 1 (implemented in this pass)
 
-### Video stabilization (CUDA, zero readback)
-Projection-profile global motion estimation, fully on-GPU so the pipelined
-presenter never stalls:
-1. Downsample current frame to a small luma image (≤320×180).
-2. Row and column projection profiles (sum of luma per row / per column).
-3. 1D correlation against the previous frame's profiles over ±16 px finds the
-   frame-to-frame translation (dx, dy) — one tiny kernel, result stays in
-   device memory.
-4. Motion filtering in device memory: accumulate the camera path, low-pass it
-   (strength-controlled exponential smoothing), and derive a correction =
-   smoothed path − actual path, clamped to a crop margin.
-5. A warp kernel applies the correction with bilinear sampling as the first
-   pipeline stage.
-Projections use *every pixel*, which makes the estimate robust to noise and
-compression artifacts — well suited to small-amplitude tremble from a phone
-resting on a laptop hinge. State (previous luma, path accumulators) lives in
-`CudaInteropSurface` and resets on camera/resolution change.
+### Fixed-reference video stabilization (CUDA, zero image readback)
+The first GPU stage locks a mounted camera to a prepared reference before
+keystone and text processing:
+1. Downsample current camera content to a luma analysis image capped at
+   640x360.
+2. Prepare a sharp fixed reference, Gaussian pyramid, distributed corners, and
+   inverse-compositional translation Hessians.
+3. Track reference features with CUDA Lucas-Kanade, seeded by the last accepted
+   absolute pose.
+4. A bounded device-side RANSAC fit rejects moving foreground and updates one
+   drift-free absolute correction.
+5. A uniform bilinear warp applies that correction. Rejected frames retain the
+   last trustworthy correction while keyframe and projection-seed recovery
+   attempt to restore the same absolute coordinate frame.
+
+All tracking, fitting, path state, and warping remain on the CUDA stream.
+Advanced exposes one `Stabilize Image` switch and optional `Extra Stable`
+impact hold. Reference capture and rebuild are automatic.
 
 ### Low-vision display modes (CUDA)
 A display-color stage: None / Invert / White-on-black / Yellow-on-black /
@@ -90,7 +91,8 @@ low-vision reading.
   prompt — persisted in settings, editable in a dialog. Works with OpenAI's API
   and any OpenAI-compatible local server (LM Studio, Ollama, llama.cpp server),
   so image-to-text can run fully locally.
-- **Lecture notes**: a per-session HTML file (`output/notes/`) that
+- **Lecture notes**: a per-session HTML file (`Documents/OpenZoom/Notes/` by
+  default) that
   automatically collects timestamped OCR text and scene explanations, and
   embeds portable relative references to captured photos. The browser-ready
   format preserves selectable text and displays images without Markdown
@@ -131,7 +133,9 @@ app presents unprocessed frames with a persistent "GPU required" notice.
   lecturer's laser pointer / current bullet, TTS reads line by line.
 - Slide-change detection (frame difference after stabilization) → auto-OCR
   each new slide exactly once into the notes file, instead of on a timer.
-- Rotation/scale terms in stabilization (projections handle translation only).
+- Opt-in Screen Lock: pin a detected physical projector screen with planar
+  tracking, confidence-based freeze/reacquire, and manual viewport movement
+  within the locked plane.
 
 ## Phase 3 (ideas)
 - Second GPU backend: D3D12 compute shaders for non-NVIDIA hardware (the

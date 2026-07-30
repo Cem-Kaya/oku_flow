@@ -2,19 +2,40 @@
 
 OpenZoom is a Windows-only live magnification application that combines:
 - Qt 6 for the desktop shell and input handling
-- Media Foundation for camera discovery and frame capture
+- Media Foundation for camera and microphone discovery, frame capture, and
+  live media encoding
 - Direct3D 12 for presentation and GPU texture management
 - CUDA for optional GPU processing through D3D12 external-memory interop
 
 ## Architecture At A Glance
 The current frame flow is:
 
-1. `MediaCapture` enumerates cameras and streams frames from the selected device, preferring NV12, then YUY2, before BGRA formats. Frame ownership moves into the application handoff instead of copying the full camera buffer at each boundary.
-2. NV12/YUY2 frames upload their compact raw planes directly; color conversion and rotation run in CUDA. All formats first pack into a two-slot page-locked host ring, whose per-slot CUDA event makes the H2D copies genuinely asynchronous and guards reuse. `CpuFramePipeline` converts/rotates only the remaining formats, the debug composite view, GPU-unavailable passthrough, and the per-frame fallback.
+1. `MediaCapture` enumerates cameras and streams frames from the selected
+   device, preferring NV12, then YUY2, before BGRA formats. Automatic mode
+   first creates a D3D11/DXGI-backed Media Foundation source reader, validates
+   timestamps and image range for 30 startup frames, and transparently reopens
+   the conservative system-memory reader if that camera/driver fails. The
+   accelerated reader retains DXGI textures. D3D11 converts them to a reusable
+   NT-shareable BGRA allocation, D3D12 opens that allocation to provide its
+   exact resource description and allocation size, and CUDA imports it as
+   external memory. A delayed D3D11 completion query causes one safe readback
+   and a retry, not a permanent session downgrade.
+2. The direct-GPU rung copies that imported BGRA array device-to-device into
+   the established CUDA working surface without a CPU bounce. Lower rungs
+   upload compact NV12/YUY2 planes; conversion and rotation still run in CUDA.
+   Host uploads use a two-slot page-locked ring whose per-slot event guards
+   reuse. `CpuFramePipeline` converts/rotates only remaining formats, debug
+   composite view, GPU-unavailable passthrough, and fallback frames.
 3. `CudaInteropSurface` runs the GPU effect chain when the interop surface is
    valid and publishes the completed camera generation as a persistent scene
-   texture. Stateful effects, SuperRes inference, recording, OCR, and
-   assistive scheduling advance only on this camera clock.
+   texture. Its first image stage is a device-resident fixed-reference
+   stabilizer: CUDA Harris/Lucas-Kanade tracking at up to 640x360 feeds a
+   bounded translation RANSAC and a uniform affine warp. A prepared anchor map,
+   projection seed used only for wide-range anchor reacquisition, and bounded
+   relative fallback preserve lock through bumps without integrating a
+   long-running pairwise path.
+   Stateful effects, SuperRes inference, recording, OCR, and assistive
+   scheduling advance only on this camera clock.
 4. `PipelineOrchestrator` runs a separate viewport clock. During pan, zoom,
    focus animation, or resize it can re-present the latest complete scene up
    to 120 FPS or the active display rate; while idle it reduces to the camera
@@ -25,13 +46,23 @@ The current frame flow is:
    Fill crops uniformly and Fit letterboxes uniformly, so camera frames are
    never independently stretched on X or Y. Its frame-slot signal is folded
    back into the same strictly increasing CUDA/D3D12 fence timeline after
-   every present, including viewport-only motion. Recording and periodic assistive
-   grabs use the asynchronous readback ring (`RequestReadback` /
+   every present, including viewport-only motion. Recording reads the completed
+   processed scene before viewport scaling; periodic assistive grabs use the
+   asynchronous readback ring (`RequestReadback` /
    `TryGetCompletedReadback`), while photos and on-demand analysis use
    synchronous readback that queues a wait for the latest CUDA completion
    before copying. Request ids match every processed recording frame to its
    original camera frame.
-6. Two `VideoRecorder` instances encode synchronized original/processed output live through Media Foundation. Both probe AV1 first, fall back together to H.264, and write fragmented MP4 with free-disk-space guards.
+6. `RecordingManager` maps those matched pairs into a fixed processed-video
+   canvas and sends them through a bounded worker queue. Two `VideoRecorder`
+   instances encode synchronized original/processed output live through Media
+   Foundation using the camera timestamps and exact negotiated fractional
+   rate. A selected `AudioCapture` endpoint is normalized to 48 kHz mono PCM
+   on its own capture thread, mapped onto the same monotonic clock, and encoded
+   as AAC into both MP4 files. Both recorders probe AV1 first, fall back
+   together to H.264, write fragmented MP4 with free-disk-space guards, check
+   finalization, report drops by cause, and start matching `_partN` files after
+   a camera-format change.
 
 CUDA is the processing path and the CPU effects pipeline is deprecated: when the GPU pipeline is unavailable the app presents unprocessed passthrough video with a persistent "GPU required" notice instead of running effects on the CPU. The debug composite view remains CPU-only as a diagnostic.
 
@@ -49,7 +80,8 @@ The UI now has two states:
   recording, settings, UI-state, assistive, and interaction managers. The
   `OpenZoomApp` implementation is split by responsibility across `app_*`
   translation units.
-- `src/capture` / `include/openzoom/capture`: Media Foundation camera enumeration, mode discovery, and capture.
+- `src/capture` / `include/openzoom/capture`: Media Foundation camera and
+  microphone enumeration, mode discovery, and capture.
 - `src/common` / `include/openzoom/common`: CPU image conversion/effects,
   canonical aspect/view transforms, frame pipeline, and media writing.
 - `src/d3d12` / `include/openzoom/d3d12`: swap chain, upload, presentation, and texture readback.
@@ -58,11 +90,30 @@ The UI now has two states:
 
 ## Build Matrix
 - `scripts/build_and_run.bat`: default local Windows build and launch helper.
+  It explicitly enables CUDA and the runtime-loaded Text-SR adapter unless
+  either option is overridden in the environment, preventing stale CMake
+  caches from silently disabling NVIDIA Super Resolution.
 - `scripts/build_release_bundle.bat`: packages a distributable `dist/OpenZoom`
   folder and explicitly enables CUDA plus the runtime-loaded Text-SR adapter
-  unless either option is overridden in the environment.
-- `scripts/run_minimal_test.bat`: builds the app without launching it, then runs the DX12/CUDA sandbox harness when its `CMakeLists.txt` is present; otherwise it reports a successful optional-harness skip.
-- `cmake/CMakePresets.json`: includes `msvc-debug`, `msvc-release`, and `msvc-cpu`.
+  unless either option is overridden in the environment. It builds and runs
+  CTest before staging, requires `windeployqt` to succeed, validates the
+  deployed Qt platform runtime, and publishes only a complete bundle. Existing
+  `dist/OpenZoom/output` user captures are preserved. A locked primary bundle
+  produces the complete sibling `dist/OpenZoom2` without stopping the app.
+- `scripts/agent_build.bat`: tracked Windows compile/test matrix. It locates
+  Visual Studio with `vswhere`, compiles `msvc-release`, then runs the CPU and
+  CUDA-enabled CTest presets with explicit PASS/FAIL summaries.
+- `scripts/run_minimal_test.bat`: builds the app without launching it, then
+  runs the DX12/CUDA sandbox harness when its `CMakeLists.txt` is present;
+  otherwise it reports a successful optional-harness skip. It also builds the
+  isolated `mf_dxva_minimal` probe but deliberately does not open physical
+  cameras; that owner-gated probe is run explicitly. CUDA builds also expose
+  `mf_dxva_minimal --interop external --iterations 100` for watchdog-isolated
+  external-memory lifetime stress. The dangerous legacy registration repro is
+  opt-in and never part of automated build gates.
+- `cmake/CMakePresets.json`: includes `msvc-debug`, `msvc-release`,
+  `msvc-cpu`, and `msvc-cuda-tests`. Only `msvc-cpu-tests` and
+  `msvc-cuda-tests` are CTest presets; both fail when no tests are discovered.
 
 Core CMake options:
 - `OPENZOOM_ENABLE_CUDA=ON|OFF`
@@ -135,19 +186,62 @@ legacy `powershell.exe` bridge.
   refocus prompt.
 - Camera selection and orientation are global. Stabilization, display colors,
   contrast, sharpening, zoom, and other image treatment are profile-owned.
+  The shipped `Stabilize Image` switch always uses full-strength CUDA
+  feature/RANSAC registration and automatically activates the fixed-reference
+  lock. Obsolete strength, engine, rolling-shutter, and separate tripod
+  settings are ignored when encountered in older profile JSON and are no
+  longer written. Their runtime implementations and UI adapters have been
+  removed.
+- Stabilization's fixed-reference lock for clamped cameras tracks from the captured
+  reference to the current frame. Per-feature tracking is seeded by the last
+  accepted absolute transform and checked in both directions; RANSAC prefers an
+  expanded visible-zoom ROI when it has enough texture and otherwise falls back
+  to the whole frame. A zoom-scaled display-pixel deadband suppresses
+  subpixel shimmer without integrating pairwise drift. Rejected frames freeze
+  the last correction and never auto-replace the reference. Reference capture
+  and rebuild occur automatically when stabilization starts or the camera
+  pipeline resets.
+- Optional `Extra Stable` is a second transient layer available with
+  stabilization. It continuously runs
+  registration while presenting a full-resolution CUDA copy of the last
+  model-valid, sharp, settled stabilized frame whenever tracking rejects,
+  focus falls below 72% of the lock reference, or the absolute transform
+  jumps beyond the impact gate. The production motion-entry gate is 20% less
+  sensitive than the initial implementation to avoid premature holds. Five
+  settled frames arm recovery and a
+  four-camera-frame blend returns to live video without a hard cut. The held
+  frame is captured before keystone and later effects, so the normal pipeline
+  still treats it consistently. The control is off by default, transient, and
+  warns that moving people or content may be hidden while a frame is held.
   Display Colors uses an accessible compact swatch grid and a 256-entry GPU
   luma LUT; custom 2-8 stop gradients/posterize schemes persist globally for
   reuse by profiles. Its native popover has an opaque backing surface, so
   content beneath it never shows through the swatch and editor controls. Wheel
   scrolling never edits selectors or sliders.
 - Orientation is applied before the rest of the processing pipeline.
-- Settings persist to `%APPDATA%\OpenZoom\OpenZoom\settings.json`.
+- Settings persist to `%APPDATA%\OpenZoom\OpenZoom\settings.json`. A VLM API
+  key entered in AI Settings is protected by Windows Credential Manager; JSON
+  stores only an opaque credential id and ignores plaintext `vlmApiKey`
+  fields. The environment override remains available for local development
+  and is never persisted.
 - Snapshots are saved as timestamp-matched `_original.jpg` and `_processed.jpg`
-  pairs under `output/img/`.
+  pairs under `Documents\OpenZoom\Photos\YYYY-MM-DD\` by default.
 - Recordings are saved as timestamp-matched `_original.mp4` and
-  `_processed.mp4` pairs under `output/vid/`; encoding is live AV1 when
+  `_processed.mp4` pairs under
+  `Documents\OpenZoom\Recordings\YYYY-MM-DD\`; encoding is live AV1 when
   available and otherwise live H.264.
-- The processing status label under Advanced Image diagnostics distinguishes CPU, GPU, fallback, debug-view, recording, OCR, and VLM states without covering the Simple camera view.
+- The processing status label under Advanced Image diagnostics distinguishes
+  CPU, GPU, fallback, debug-view, recording, OCR, and VLM states without
+  covering the Simple camera view. The collapsed Diagnostics group also
+  reports rolling 240-sample p50/p95/p99 camera-processing and
+  capture-to-present timings; budget warnings follow the negotiated camera
+  frame period.
+- Photo and annotation image writes use a bounded application image-I/O pool.
+  OCR and VLM/Codex frame preparation use an independent bounded assistive
+  pool, keeping PNG/JPEG encoding, resizing, base64/JSON construction, and
+  temporary-file writes off the UI thread. Saturation is reported instead of
+  accumulating unbounded work, and cancellation generations prevent stale
+  preparation from launching a request.
 - The Advanced inspector uses a draggable high-contrast splitter and persists
   its width. Text-clarity and display sliders reflow beneath their labels when
   the inspector is narrow, and feature status labels wrap within the panel.
@@ -160,7 +254,16 @@ legacy `powershell.exe` bridge.
   `curl.exe` and then the vendor's alternate host, with the same mandatory
   SHA-256 check on every path. The release bundle contains neither Tesseract
   nor NVIDIA Video Effects binaries.
-- Scene Explain defaults to a native Qt JSON-RPC client for `codex app-server`, reusing a ChatGPT-managed Codex login. Simple Explain threads are ephemeral and always restricted. Advanced Assistant threads are persistent and can opt into internet access or workspace-scoped coding; only OpenZoom-created thread ids are indexed in settings. OpenAI-compatible HTTP servers remain an optional fallback.
+- Scene Explain defaults to a native Qt JSON-RPC client for `codex app-server`,
+  reusing a ChatGPT-managed Codex login. Simple Explain threads are ephemeral
+  and always use a read-only, no-network, no-approval policy. Advanced
+  Assistant threads are persistent and can opt into internet access or
+  workspace-scoped coding; only OpenZoom-created thread ids are indexed in
+  settings. Server approval and permission-escalation requests are denied,
+  unexpected tool items are interrupted, and turn watchdogs always return the
+  UI to idle. The stable app-server surface currently lacks a complete
+  per-turn tool allow-list, so the interrupt path remains necessary defense in
+  depth. OpenAI-compatible HTTP servers remain an optional fallback.
 - The streamed result panel is an owned floating tool window with native
   move/resize handling over the D3D camera surface. Streamed fragments update
   its text without reapplying geometry. Its camera-relative geometry persists
@@ -169,9 +272,19 @@ legacy `powershell.exe` bridge.
   Enter submission remain blocked; once ready, it attaches the current view
   and sends questions into the shared persistent Advanced Assistant
   conversation.
-- Lecture notes are valid per-session HTML documents under `output/notes/`.
+- Lecture notes are valid per-session HTML documents under
+  `Documents\OpenZoom\Notes\`.
   They collect timestamped OCR text, scene explanations, and relative captured
-  image links that render in a browser and remain portable with `output/`.
+  image links that render in a browser and remain portable with the complete
+  OpenZoom user-data root.
+- Photos, recordings, notes, analysis exports, and console diagnostic logs
+  share one user-owned root. Advanced Assistant can select another writable
+  root outside the install directory; `Ctrl+Shift+O` and the Advanced action
+  open it in Explorer. Console-attached launches tee Qt output to a timestamped
+  file under `Debug\`, retain the newest 20 logs, and leave ordinary GUI
+  launches quiet. These logs may contain local paths, device names, camera
+  identifiers, and timing/error details, so review them before sharing.
+  Legacy install-relative output can be copied without deleting its source.
 - AI Settings uses a bounded, vertically scrollable dialog with distinct Codex,
   OpenAI-compatible VLM, OCR, speech, and notes sections. It displays the
   built-in OpenZoom Codex instruction read-only and persists separate user
@@ -189,14 +302,26 @@ legacy `powershell.exe` bridge.
 - `Setup & Downloads` in Advanced reopens the dependency assistant at any time.
   Dismissing its automatic first-run prompt is persisted independently of
   manually reopening it.
+- OCR/Codex camera-frame temporary files include the owning process id, are
+  removed on completion/cancellation/shutdown, and stale files from dead
+  OpenZoom processes are swept on the next startup.
+- Release publishing is designed for the current private/team distribution:
+  unsigned bundles are allowed, an installed code-signing certificate can be
+  selected through `OPENZOOM_SIGN_CERT_SHA1`, and
+  `OPENZOOM_PUBLIC_RELEASE=1` rejects an unsigned build. Every bundle includes
+  SHA-256 checksums, a release manifest, and an SPDX SBOM.
 
 ## Documentation Index
 - [`README.md`](../README.md): top-level project overview and usage.
 - [`docs/code_reference.md`](code_reference.md): authoritative file/class map.
 - [`docs/ui_modes_design.md`](ui_modes_design.md): Simple/Advanced layout and settings-ownership contract.
 - [`docs/hardcoded_paths.md`](hardcoded_paths.md): machine defaults and magic values.
-- [`docs/progress.md`](progress.md): implementation tracker.
-- [`docs/ai_upscaling_todo.md`](ai_upscaling_todo.md): future GPU upscaling plan.
+- [`docs/rotation_ui_notes.md`](rotation_ui_notes.md): orientation ownership and the
+  rotated-frame resample contract.
+- [`improvement_ideas/00-status-and-priority.md`](../improvement_ideas/00-status-and-priority.md):
+  the single implementation tracker — status of every plan and what to do next.
+- [`improvement_ideas/08-ml-text-sr-options.md`](../improvement_ideas/08-ml-text-sr-options.md):
+  ML text super-resolution research (supersedes the old GPU upscaling to-do).
 - [`docs/THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md): third-party attribution and redistribution notes.
 
 ## Current Gaps

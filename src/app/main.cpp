@@ -3,22 +3,27 @@
 #include <exception>
 
 #ifdef _WIN32
+#include <QDebug>
+
+#include "debug_log.hpp"
 #include "openzoom/app/app.hpp"
 #endif
 
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
+    int exitCode = EXIT_FAILURE;
     try {
         openzoom::OpenZoomApp app(argc, argv);
         if (!app.Initialize()) {
-            std::cerr << "OpenZoom initialization failed." << std::endl;
-            return EXIT_FAILURE;
+            qCritical() << "OpenZoom initialization failed.";
+        } else {
+            exitCode = app.Run();
         }
-        return app.Run();
     } catch (const std::exception& ex) {
-        std::cerr << "Fatal error: " << ex.what() << std::endl;
-        return EXIT_FAILURE;
+        qCritical() << "Fatal error:" << ex.what();
     }
+    openzoom::debug_log::Shutdown();
+    return exitCode;
 #else
     std::cerr << "OpenZoom currently supports Windows with CUDA, Qt, and Direct3D12 only.\n";
     return EXIT_FAILURE;

@@ -1,12 +1,19 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include "debug_log.hpp"
+
+#include <QThreadPool>
 
 namespace openzoom {
 
 OpenZoomApp::OpenZoomApp(int& argc, char** argv)
     : QObject(nullptr) {
+    debug_log::InstallIfConsoleAttached();
     qtApp_ = new QApplication(argc, argv);
+    imageIoPool_ = std::make_unique<QThreadPool>();
+    imageIoPool_->setMaxThreadCount(2);
+    imageIoPool_->setExpiryTimeout(30000);
     QCoreApplication::setOrganizationName(QStringLiteral("OpenZoom"));
     QCoreApplication::setApplicationName(QStringLiteral("OpenZoom"));
 }
@@ -29,6 +36,23 @@ bool OpenZoomApp::Initialize()
     InitializePlatform();
 
     presenter_ = std::make_unique<D3D12Presenter>();
+    settingsController_ = std::make_unique<SettingsController>();
+    userDataPaths_ = std::make_unique<UserDataPaths>(
+        settingsController_->Settings().userDataRoot,
+        QCoreApplication::applicationDirPath());
+    if (debug_log::IsEnabled()) {
+        QString debugDirectoryError;
+        const QString debugDirectory =
+            userDataPaths_->Debug(&debugDirectoryError);
+        QString debugLogError;
+        if (debugDirectory.isEmpty() ||
+            !debug_log::SetOutputDirectory(debugDirectory, &debugLogError)) {
+            qWarning().noquote()
+                << (debugLogError.isEmpty()
+                        ? debugDirectoryError
+                        : debugLogError);
+        }
+    }
 
     mainWindow_ = std::make_unique<MainWindow>();
     mainWindow_->setWindowIcon(applicationIcon);
@@ -39,7 +63,8 @@ bool OpenZoomApp::Initialize()
     assistiveManager_ = std::make_unique<AssistiveFeatureManager>(
         *uiState_->renderWidget_,
         *this,
-        [this](const QString& question) { SubmitFloatingAssistantPrompt(question); });
+        [this](const QString& question) { SubmitFloatingAssistantPrompt(question); },
+        *userDataPaths_);
     interactionController_ = std::make_unique<InteractionController>(*this);
     pipelineOrchestrator_ = std::make_unique<PipelineOrchestrator>(
         *this,
@@ -77,7 +102,6 @@ bool OpenZoomApp::Initialize()
     // Fence state belongs to the orchestrator, so seed it only after the
     // manager exists; the presenter itself is intentionally created first.
     ResetCudaFenceState();
-    settingsController_ = std::make_unique<SettingsController>();
     // Startup is a cross-function latch: ApplyAdvancedConfig releases it
     // after the first complete UI/config synchronization.
     configTrackingSuspended_ = true;
@@ -86,6 +110,24 @@ bool OpenZoomApp::Initialize()
         uiState_->recordButton_,
         [this](const QString& message, int durationMs) {
             ShowStatusMessage(message, durationMs);
+        },
+        [this](const QString& originalPath, const QString& processedPath) {
+            if (assistiveManager_) {
+                assistiveManager_->Runtime().NoteCapturedVideoPair(
+                    originalPath, processedPath);
+            }
+        },
+        *userDataPaths_,
+        [this]() {
+            // Session-ended callbacks are queued from the recording worker
+            // after the terminal state is published. If a new recording has
+            // already started by the time this lands, releasing the
+            // microphone now would silently strip audio from that new
+            // session.
+            if (recordingManager_ && recordingManager_->IsActive()) {
+                return;
+            }
+            StopMicrophoneCapture();
         });
     qInfo() << "Rotation combo ready with"
             << uiState_->rotationCombo_->count() << "items";
@@ -141,9 +183,6 @@ bool OpenZoomApp::Initialize()
         focusMarkerEnabled_ = uiState_->focusMarkerCheckbox_->isChecked();
     }
     stabilizationEnabled_ = uiState_->stabilizationCheckbox_ ? uiState_->stabilizationCheckbox_->isChecked() : false;
-    if (uiState_->stabilizationStrengthSlider_) {
-        stabilizationStrength_ = std::clamp(static_cast<float>(uiState_->stabilizationStrengthSlider_->value()) / 100.0f, 0.0f, 0.98f);
-    }
     keystoneEnabled_ = uiState_->keystoneCheckbox_ ? uiState_->keystoneCheckbox_->isChecked() : false;
     autoContrastEnabled_ = uiState_->autoContrastCheckbox_ ? uiState_->autoContrastCheckbox_->isChecked() : false;
     if (uiState_->autoContrastStrengthSlider_) {
@@ -162,10 +201,13 @@ bool OpenZoomApp::Initialize()
     }
 
     PopulateCameraCombo();
+    PopulateMicrophoneCombo();
     PopulatePresetList();
 
     connect(uiState_->cameraCombo_, &QComboBox::currentIndexChanged,
             this, &OpenZoomApp::OnCameraSelectionChanged);
+    connect(uiState_->microphoneCombo_, &QComboBox::currentIndexChanged,
+            this, &OpenZoomApp::OnMicrophoneSelectionChanged);
     if (uiState_->presetList_) {
         connect(uiState_->presetList_, &QListWidget::currentItemChanged,
                 this, &OpenZoomApp::OnPresetSelectionChanged);
@@ -194,17 +236,72 @@ bool OpenZoomApp::Initialize()
             ShowStatusMessage(QStringLiteral("Capturing original and processed photos..."), 2500);
         });
     }
+    connect(mainWindow_.get(), &MainWindow::annotationSnapshotRequested,
+            this, &OpenZoomApp::QueueAnnotationSnapshot);
+    connect(mainWindow_.get(), &MainWindow::annotationPreferencesChanged,
+            this,
+            [this](const QString& colorName,
+                   int widthPixels,
+                   bool captureOnExit,
+                   bool dashed,
+                   const QString& shapeKind,
+                   int textSizePixels) {
+                auto& settings = settingsController_->MutableSettings();
+                settings.annotationColor = colorName;
+                settings.annotationWidthPixels = widthPixels;
+                settings.annotationCaptureOnExit = captureOnExit;
+                settings.annotationDashed = dashed;
+                settings.annotationShapeKind = shapeKind;
+                settings.annotationTextSizePixels = textSizePixels;
+                SavePersistentSettings();
+            });
     if (uiState_->recordButton_) {
         uiState_->recordButton_->setCheckable(true);
         connect(uiState_->recordButton_, &QPushButton::toggled, this, [this](bool checked) {
             if (recordingManager_) {
+                if (checked) {
+                    StartSelectedMicrophone();
+                } else {
+                    // Stop producing PCM first. RecordingManager::Stop
+                    // deliberately clears its queued audio rather than
+                    // draining a tail — finishing the sample the worker
+                    // already owns is what keeps Stop fast — so retaining
+                    // blocks here only avoids tearing down the device while
+                    // the recorder may still reference the current buffer.
+                    StopMicrophoneCapture(true);
+                }
                 recordingManager_->SetRequested(checked);
+                if (checked && !recordingManager_->IsActive()) {
+                    // Recording preflight can reject the session after the
+                    // microphone has opened (for example, on low disk space).
+                    // Do not retain exclusive access to the device when no
+                    // recording session exists.
+                    StopMicrophoneCapture();
+                }
             }
         });
     }
     if (uiState_->rotationCombo_) {
         connect(uiState_->rotationCombo_, &QComboBox::currentIndexChanged,
                 this, &OpenZoomApp::OnRotationSelectionChanged);
+    }
+    if (uiState_->cameraFormatCombo_) {
+        connect(uiState_->cameraFormatCombo_, &QComboBox::currentIndexChanged,
+                this, &OpenZoomApp::OnCameraFormatChanged);
+    }
+    if (uiState_->cameraAccelerationCombo_) {
+        connect(
+            uiState_->cameraAccelerationCombo_,
+            &QComboBox::currentIndexChanged,
+            this,
+            &OpenZoomApp::OnCameraAccelerationModeChanged);
+    }
+    if (uiState_->testCameraAccelerationButton_) {
+        connect(
+            uiState_->testCameraAccelerationButton_,
+            &QPushButton::clicked,
+            this,
+            &OpenZoomApp::OnTestCameraAcceleration);
     }
     connect(uiState_->viewportRateCombo_, &QComboBox::currentIndexChanged,
             this, [this](int index) {
@@ -213,6 +310,7 @@ bool OpenZoomApp::Initialize()
                 settingsController_->MutableSettings().viewportRateMode =
                     mode;
                 pipelineOrchestrator_->SetViewportRateMode(mode);
+                UpdateSectionChangedCounts();
                 SavePersistentSettings();
             });
     connect(uiState_->viewportFitCombo_, &QComboBox::currentIndexChanged,
@@ -223,6 +321,25 @@ bool OpenZoomApp::Initialize()
                 settingsController_->MutableSettings().viewportFitMode =
                     mode;
                 pipelineOrchestrator_->SetViewportFitMode(mode);
+                UpdateSectionChangedCounts();
+                SavePersistentSettings();
+            });
+    connect(uiState_->recordingCanvasCombo_, &QComboBox::currentIndexChanged,
+            this, [this](int index) {
+                const int storedValue =
+                    uiState_->recordingCanvasCombo_->itemData(index).toInt();
+                const int bounded = std::clamp(
+                    storedValue,
+                    static_cast<int>(RecordingCanvasMode::Source),
+                    static_cast<int>(RecordingCanvasMode::Nhd360));
+                const auto mode =
+                    static_cast<RecordingCanvasMode>(bounded);
+                settingsController_->MutableSettings().recordingCanvasMode =
+                    mode;
+                if (recordingManager_) {
+                    recordingManager_->SetCanvasMode(mode);
+                }
+                UpdateSectionChangedCounts();
                 SavePersistentSettings();
             });
     if (uiState_->zoomCenterXSlider_) {
@@ -242,6 +359,23 @@ bool OpenZoomApp::Initialize()
         uiState_->joystickCheckbox_->setChecked(false);
         connect(uiState_->joystickCheckbox_, &QCheckBox::toggled,
                 this, &OpenZoomApp::OnVirtualJoystickToggled);
+    }
+    if (uiState_->zoomWheelAccelerationCheckbox_) {
+        connect(uiState_->zoomWheelAccelerationCheckbox_,
+                &QCheckBox::toggled,
+                this,
+                [this](bool enabled) {
+                    settingsController_->MutableSettings()
+                        .zoomWheelAcceleration = enabled;
+                    UpdateSectionChangedCounts();
+                    SavePersistentSettings();
+                });
+    }
+    if (mainWindow_) {
+        connect(mainWindow_.get(),
+                &MainWindow::sectionStatesChanged,
+                this,
+                &OpenZoomApp::SavePersistentSettings);
     }
     if (uiState_->blurCheckbox_) {
         auto block = uiState_->BlockSignals(uiState_->blurCheckbox_);
@@ -297,9 +431,9 @@ bool OpenZoomApp::Initialize()
         connect(uiState_->stabilizationCheckbox_, &QCheckBox::toggled,
                 this, &OpenZoomApp::OnStabilizationToggled);
     }
-    if (uiState_->stabilizationStrengthSlider_) {
-        connect(uiState_->stabilizationStrengthSlider_, &QSlider::valueChanged,
-                this, &OpenZoomApp::OnStabilizationStrengthChanged);
+    if (mainWindow_->bumpHoldCheckbox()) {
+        connect(mainWindow_->bumpHoldCheckbox(), &QCheckBox::toggled,
+                this, &OpenZoomApp::OnBumpHoldToggled);
     }
     if (uiState_->keystoneCheckbox_) {
         connect(uiState_->keystoneCheckbox_, &QCheckBox::toggled,
@@ -432,8 +566,9 @@ bool OpenZoomApp::Initialize()
     if (uiState_->explainNowButton_) {
         connect(uiState_->explainNowButton_, &QPushButton::clicked,
                 this, [this]() {
-                    if (assistiveManager_->Runtime().IsCodexTurnActive()) {
-                        assistiveManager_->Runtime().StopAssistant();
+                    if (assistiveManager_->Runtime().IsCodexTurnActive() ||
+                        pendingAssistantFramePrompt_) {
+                        StopAssistantRequest();
                     } else {
                         SubmitOnDemandAnalysis(false, true);
                     }
@@ -455,6 +590,10 @@ bool OpenZoomApp::Initialize()
         connect(uiState_->setupAssistantButton_, &QPushButton::clicked,
                 this, [this]() { OpenSetupAssistant(); });
     }
+    connect(mainWindow_.get(), &MainWindow::openUserDataFolderRequested,
+            this, [this]() { OpenUserDataFolder(); });
+    connect(mainWindow_.get(), &MainWindow::changeUserDataFolderRequested,
+            this, [this]() { ChangeUserDataFolder(); });
     if (uiState_->assistantConnectButton_) {
         connect(uiState_->assistantConnectButton_, &QPushButton::clicked,
                 this, [this]() { assistiveManager_->Runtime().StartCodexLogin(); });
@@ -465,7 +604,7 @@ bool OpenZoomApp::Initialize()
     }
     if (uiState_->assistantStopButton_) {
         connect(uiState_->assistantStopButton_, &QPushButton::clicked,
-                this, [this]() { assistiveManager_->Runtime().StopAssistant(); });
+                this, [this]() { StopAssistantRequest(); });
     }
     if (uiState_->assistantNewButton_) {
         connect(uiState_->assistantNewButton_, &QPushButton::clicked, this, [this]() {
@@ -512,7 +651,20 @@ bool OpenZoomApp::Initialize()
             if (!uiState_->assistantTranscript_ || uiState_->assistantTranscript_->toPlainText().trimmed().isEmpty()) {
                 return;
             }
-            const QString suggested = QDir(EnsureOutputSubdir(QStringLiteral("assistant")))
+            QString analysisError;
+            const QString analysisDirectory =
+                userDataPaths_->Analysis(&analysisError);
+            if (analysisDirectory.isEmpty()) {
+                QMessageBox::warning(
+                    mainWindow_.get(),
+                    QStringLiteral("Export Conversation"),
+                    analysisError.isEmpty()
+                        ? QStringLiteral(
+                              "The OpenZoom Analysis folder is unavailable.")
+                        : analysisError);
+                return;
+            }
+            const QString suggested = QDir(analysisDirectory)
                                           .filePath(QStringLiteral("OpenZoom_Assistant_%1.txt")
                                                         .arg(QDateTime::currentDateTime().toString(
                                                             QStringLiteral("yyyyMMdd_HHmmss"))));
@@ -548,18 +700,28 @@ bool OpenZoomApp::Initialize()
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexServerStateChanged,
             this, [this](bool ready, const QString& status) {
                 codexReady_ = ready;
-                uiState_->assistantConnectionLabel_->setText(status);
+                SetLiveText(uiState_->assistantConnectionLabel_, status,
+                            LivePoliteness::kPolite,
+                            QStringLiteral("Codex connection status"));
                 SetAssistantBusy(assistiveManager_->Runtime().IsCodexTurnActive());
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexAccountChanged,
             this, [this](bool signedIn, const QString& label, const QString& planType) {
                 codexSignedIn_ = signedIn;
                 const QString plan = planType.trimmed();
-                uiState_->assistantConnectionLabel_->setText(plan.isEmpty()
-                                                       ? label
-                                                       : QStringLiteral("%1 (%2)").arg(label, plan));
-                uiState_->assistantConnectButton_->setText(signedIn ? QStringLiteral("Reconnect ChatGPT")
-                                                          : QStringLiteral("Connect ChatGPT"));
+                SetLiveText(
+                    uiState_->assistantConnectionLabel_,
+                    plan.isEmpty()
+                        ? label
+                        : QStringLiteral("%1 (%2)").arg(label, plan),
+                    LivePoliteness::kPolite,
+                    QStringLiteral("Codex connection status"));
+                SetLiveText(
+                    uiState_->assistantConnectButton_,
+                    signedIn ? QStringLiteral("Reconnect ChatGPT")
+                             : QStringLiteral("Connect ChatGPT"),
+                    LivePoliteness::kSilent,
+                    QStringLiteral("ChatGPT connection"));
                 SetAssistantBusy(assistiveManager_->Runtime().IsCodexTurnActive());
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexModelsChanged,
@@ -575,9 +737,17 @@ bool OpenZoomApp::Initialize()
                 selectedCodexModel_ = selectedModel;
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexRateLimitChanged,
-            this, [this](const QString& summary) { uiState_->assistantUsageLabel_->setText(summary); });
+            this, [this](const QString& summary) {
+                SetLiveText(uiState_->assistantUsageLabel_, summary,
+                            LivePoliteness::kSilent,
+                            QStringLiteral("Codex usage"));
+            });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexLoginUrlReady,
             this, [](const QUrl& url) { QDesktopServices::openUrl(url); });
+    connect(&assistiveManager_->Runtime(), &AssistiveRuntime::PrivacyNotice,
+            this, [this](const QString& summary) {
+                ShowStatusMessage(summary, 12000);
+            });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantConversationCreated,
             this, [this](const QJsonObject& thread) {
                 settings::CodexConversation conversation;
@@ -647,7 +817,10 @@ bool OpenZoomApp::Initialize()
             this, [this](const QString&, const QString&, bool persistent) {
                 SetAssistantBusy(true);
                 if (!persistent && uiState_->explainNowButton_) {
-                    uiState_->explainNowButton_->setText(QStringLiteral("Stop"));
+                    SetLiveText(uiState_->explainNowButton_,
+                                QStringLiteral("Stop"),
+                                LivePoliteness::kSilent,
+                                QStringLiteral("Explain"));
                 }
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTextDelta,
@@ -673,7 +846,10 @@ bool OpenZoomApp::Initialize()
                    bool persistent) {
                 SetAssistantBusy(false);
                 if (uiState_->explainNowButton_) {
-                    uiState_->explainNowButton_->setText(QStringLiteral("Explain"));
+                    SetLiveText(uiState_->explainNowButton_,
+                                QStringLiteral("Explain"),
+                                LivePoliteness::kSilent,
+                                QStringLiteral("Explain"));
                 }
                 if (!persistent) {
                     return;
@@ -721,6 +897,11 @@ bool OpenZoomApp::Initialize()
     pipelineOrchestrator_->Start();
 
     QTimer::singleShot(0, this, [this]() {
+        const QString settingsNotice = settingsController_->TakeStartupNotice();
+        if (!settingsNotice.isEmpty()) {
+            ShowStatusMessage(settingsNotice, 12000);
+        }
+        OfferLegacyOutputMigration();
         if (!settingsController_->MutableSettings().setupAssistantDeclined &&
             SetupAssistantDialog::NeedsSetup(
                 settingsController_->MutableSettings().assistive.tesseractPath,
@@ -741,7 +922,7 @@ bool OpenZoomApp::Initialize()
             auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
             uiState_->cameraCombo_->setCurrentIndex(initialCameraIndex);
         }
-        RefreshCameraModesList(static_cast<size_t>(initialCameraIndex));
+        RefreshCameraFormats(static_cast<size_t>(initialCameraIndex));
         StartCameraCapture(static_cast<size_t>(initialCameraIndex));
     }
     initialized_ = true;
@@ -752,12 +933,17 @@ OpenZoomApp::~OpenZoomApp() {
     if (settingsController_ && uiState_ && assistiveManager_) {
         SavePersistentSettings();
     }
+    StopMicrophoneCapture();
     recordingManager_.reset();
+    if (imageIoPool_) {
+        imageIoPool_->clear();
+        imageIoPool_->waitForDone();
+    }
     if (pipelineOrchestrator_) {
         pipelineOrchestrator_->Stop();
     }
     if (cameraActive_) {
-        StopCameraCapture();
+        StopCameraCapture(true);
     }
     mediaCapture_.Shutdown();
 
@@ -789,6 +975,7 @@ OpenZoomApp::~OpenZoomApp() {
     cudaSurface_.reset();
     cudaSharedTexture_.Reset();
     cudaSuperResTexture_.Reset();
+    cudaOriginalTexture_.Reset();
     cudaSuperResWidth_ = 0;
     cudaSuperResHeight_ = 0;
     presenter_.reset();
@@ -829,6 +1016,7 @@ void OpenZoomApp::InitializePlatform() {
         qWarning() << "MediaCapture initialization failed";
     }
     EnumerateCameras();
+    EnumerateMicrophones();
 }
 
 void OpenZoomApp::ResolveCudaBufferFormatFromOptions() {

@@ -34,13 +34,31 @@ bool PackedFrameIsValid(const std::vector<uint8_t>& frame,
     return static_cast<std::size_t>(stride) * height <= availableBytes;
 }
 
+bool AbsoluteStride(LONG stride, UINT fallback, UINT& result)
+{
+    if (stride == 0) {
+        result = fallback;
+        return true;
+    }
+    const std::int64_t signedStride = stride;
+    const std::uint64_t magnitude =
+        signedStride < 0
+            ? static_cast<std::uint64_t>(-signedStride)
+            : static_cast<std::uint64_t>(signedStride);
+    if (magnitude > std::numeric_limits<UINT>::max()) {
+        return false;
+    }
+    result = static_cast<UINT>(magnitude);
+    return true;
+}
+
 } // namespace
 
 bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
                                           const GUID& subtype,
                                           UINT width,
                                           UINT height,
-                                          UINT stride,
+                                          LONG stride,
                                           std::size_t dataSize)
 {
     auto rejectFrame = [this]() {
@@ -57,14 +75,32 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
 
     const std::size_t availableBytes =
         dataSize == 0 ? frame.size() : std::min(frame.size(), dataSize);
-    const UINT effectiveStride = stride != 0 ? stride : width * 4u;
+    UINT effectiveStride = 0;
+    if (!AbsoluteStride(stride, width * 4u, effectiveStride)) {
+        return rejectFrame();
+    }
 
     if (IsEqualGUID(subtype, MFVideoFormat_ARGB32)) {
         if (!PackedFrameIsValid(frame, availableBytes, width, height,
                                 effectiveStride, static_cast<std::size_t>(width) * 4u)) {
             return rejectFrame();
         }
-        CopyArgbToBgra(frame.data(), effectiveStride, width, height, stageRaw_);
+        if (stride < 0) {
+            std::vector<uint8_t> topDown(frame.size());
+            for (UINT y = 0; y < height; ++y) {
+                std::memcpy(
+                    topDown.data() + static_cast<std::size_t>(y) * effectiveStride,
+                    frame.data() +
+                        static_cast<std::size_t>(height - 1 - y) *
+                            effectiveStride,
+                    effectiveStride);
+            }
+            CopyArgbToBgra(
+                topDown.data(), effectiveStride, width, height, stageRaw_);
+        } else {
+            CopyArgbToBgra(
+                frame.data(), effectiveStride, width, height, stageRaw_);
+        }
         rawWidth_ = width;
         rawHeight_ = height;
         return true;
@@ -75,15 +111,34 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
                                 effectiveStride, static_cast<std::size_t>(width) * 4u)) {
             return rejectFrame();
         }
-        CopyRgbxToBgra(frame.data(), effectiveStride, width, height, stageRaw_);
+        if (stride < 0) {
+            std::vector<uint8_t> topDown(frame.size());
+            for (UINT y = 0; y < height; ++y) {
+                std::memcpy(
+                    topDown.data() + static_cast<std::size_t>(y) * effectiveStride,
+                    frame.data() +
+                        static_cast<std::size_t>(height - 1 - y) *
+                            effectiveStride,
+                    effectiveStride);
+            }
+            CopyRgbxToBgra(
+                topDown.data(), effectiveStride, width, height, stageRaw_);
+        } else {
+            CopyRgbxToBgra(
+                frame.data(), effectiveStride, width, height, stageRaw_);
+        }
         rawWidth_ = width;
         rawHeight_ = height;
         return true;
     }
 
     if (IsEqualGUID(subtype, MFVideoFormat_NV12)) {
+        UINT nv12Stride = 0;
+        if (!AbsoluteStride(stride, width, nv12Stride)) {
+            return rejectFrame();
+        }
         const bool ok = ConvertNv12ToBgra(frame.data(), availableBytes,
-                                          stride != 0 ? stride : width,
+                                          nv12Stride,
                                           width, height, stageRaw_);
         if (ok) {
             rawWidth_ = width;
@@ -95,7 +150,10 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
     }
 
     if (IsEqualGUID(subtype, MFVideoFormat_YUY2)) {
-        const UINT packedStride = stride != 0 ? stride : width * 2u;
+        UINT packedStride = 0;
+        if (!AbsoluteStride(stride, width * 2u, packedStride)) {
+            return rejectFrame();
+        }
         const bool ok = ConvertYuy2ToBgra(frame.data(), availableBytes,
                                           packedStride, width, height, stageRaw_);
         if (ok) {

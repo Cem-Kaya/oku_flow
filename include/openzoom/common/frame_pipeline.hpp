@@ -39,7 +39,7 @@ public:
                             const GUID& subtype,
                             UINT width,
                             UINT height,
-                            UINT stride,
+                            LONG stride,
                             std::size_t dataSize);
 
     bool RotateRawBuffer(int quarterTurns, UINT& width, UINT& height);

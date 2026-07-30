@@ -4,22 +4,91 @@
 
 #include <QDebug>
 
+#include <d3d10_1.h>
+#include <dxgi1_6.h>
 #include <mferror.h>
 
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstring>
 #include <cwchar>
 #include <cstdio>
+#include <limits>
 #include <set>
 #include <stdexcept>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <sstream>
 
 namespace openzoom {
 
 namespace {
+
+std::wstring GuidStableText(const GUID& guid)
+{
+    wchar_t buffer[40]{};
+    if (StringFromGUID2(guid, buffer, static_cast<int>(std::size(buffer))) <= 0) {
+        return L"{unknown}";
+    }
+    return buffer;
+}
+
+std::wstring MakeFormatStableId(const GUID& subtype,
+                                UINT width,
+                                UINT height,
+                                UINT numerator,
+                                UINT denominator)
+{
+    std::wostringstream stream;
+    stream << GuidStableText(subtype) << L"_" << width << L"x" << height
+           << L"@" << numerator << L"/" << denominator;
+    return stream.str();
+}
+
+std::string FormatDescription(const VideoFormat& format)
+{
+    std::ostringstream stream;
+    stream << format.width << "x" << format.height << " @ ";
+    if (format.denominator == 0) {
+        stream << "?";
+    } else {
+        stream << static_cast<double>(format.numerator) /
+                      static_cast<double>(format.denominator);
+    }
+    stream << " fps";
+    return stream.str();
+}
+
+Microsoft::WRL::ComPtr<IDXGIAdapter1> SelectHighPerformanceAdapter()
+{
+    Microsoft::WRL::ComPtr<IDXGIFactory6> factory;
+    if (FAILED(CreateDXGIFactory2(
+            0, IID_PPV_ARGS(factory.GetAddressOf())))) {
+        return {};
+    }
+
+    for (UINT index = 0;; ++index) {
+        Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+        const HRESULT result = factory->EnumAdapterByGpuPreference(
+            index,
+            DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+            IID_PPV_ARGS(adapter.GetAddressOf()));
+        if (result == DXGI_ERROR_NOT_FOUND) {
+            break;
+        }
+        if (FAILED(result) || !adapter) {
+            continue;
+        }
+        DXGI_ADAPTER_DESC1 description{};
+        adapter->GetDesc1(&description);
+        if ((description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0) {
+            return adapter;
+        }
+    }
+    return {};
+}
 
 std::string FormatHResult(HRESULT hr)
 {
@@ -98,17 +167,67 @@ static const GUID kPreferredSubtypes[] = {
     MFVideoFormat_RGB32,
 };
 
-// Busy/resource-class errors that often clear up within a second (device still
-// warming up, another app releasing it, phone camera waking). Worth retrying.
-bool IsTransientStartError(HRESULT hr)
+std::size_t PackedRowBytes(const GUID& subtype, UINT width)
 {
-    return hr == MF_E_HW_MFT_FAILED_START_STREAMING ||
-           hr == MF_E_VIDEO_RECORDING_DEVICE_INVALIDATED ||
-           hr == MF_E_VIDEO_RECORDING_DEVICE_PREEMPTED ||
-           hr == E_ACCESSDENIED ||
-           hr == HRESULT_FROM_WIN32(ERROR_BUSY) ||
-           hr == HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION) ||
-           hr == HRESULT_FROM_WIN32(ERROR_DEVICE_NOT_CONNECTED);
+    if (IsEqualGUID(subtype, MFVideoFormat_ARGB32) ||
+        IsEqualGUID(subtype, MFVideoFormat_RGB32)) {
+        return static_cast<std::size_t>(width) * 4u;
+    }
+    if (IsEqualGUID(subtype, MFVideoFormat_YUY2)) {
+        return static_cast<std::size_t>(width) * 2u;
+    }
+    if (IsEqualGUID(subtype, MFVideoFormat_NV12)) {
+        return width;
+    }
+    return 0;
+}
+
+UINT PackedRowCount(const GUID& subtype, UINT height)
+{
+    return IsEqualGUID(subtype, MFVideoFormat_NV12)
+               ? height + ((height + 1u) / 2u)
+               : height;
+}
+
+double FrameSpatialRange(const MediaFrame& frame)
+{
+    if (frame.data.empty() || frame.width == 0 || frame.height == 0 ||
+        frame.stride <= 0) {
+        return 0.0;
+    }
+    const bool bgra =
+        IsEqualGUID(frame.subtype, MFVideoFormat_ARGB32) ||
+        IsEqualGUID(frame.subtype, MFVideoFormat_RGB32);
+    const bool nv12 = IsEqualGUID(frame.subtype, MFVideoFormat_NV12);
+    const bool yuy2 = IsEqualGUID(frame.subtype, MFVideoFormat_YUY2);
+    if (!bgra && !nv12 && !yuy2) {
+        return 0.0;
+    }
+
+    const UINT stepX = std::max(1u, frame.width / 32u);
+    const UINT stepY = std::max(1u, frame.height / 18u);
+    double minimum = 255.0;
+    double maximum = 0.0;
+    for (UINT y = 0; y < frame.height; y += stepY) {
+        const auto* row =
+            frame.data.data() + static_cast<std::size_t>(y) *
+                                    static_cast<std::size_t>(frame.stride);
+        for (UINT x = 0; x < frame.width; x += stepX) {
+            double luma = 0.0;
+            if (bgra) {
+                const auto* pixel = row + static_cast<std::size_t>(x) * 4u;
+                luma = 0.0722 * pixel[0] + 0.7152 * pixel[1] +
+                       0.2126 * pixel[2];
+            } else if (nv12) {
+                luma = row[x];
+            } else {
+                luma = row[static_cast<std::size_t>(x) * 2u];
+            }
+            minimum = std::min(minimum, luma);
+            maximum = std::max(maximum, luma);
+        }
+    }
+    return maximum - minimum;
 }
 
 CameraFailureKind ClassifyCameraFailure(HRESULT hr)
@@ -227,9 +346,19 @@ std::vector<CameraDescriptor> MediaCapture::EnumerateCameras()
     }
     CoTaskMemFree(devices);
 
-    std::sort(cameras.begin(), cameras.end(), [](const CameraDescriptor& a, const CameraDescriptor& b) {
-        return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0;
-    });
+    std::sort(
+        cameras.begin(),
+        cameras.end(),
+        [](const CameraDescriptor& a, const CameraDescriptor& b) {
+            const int nameOrder =
+                _wcsicmp(a.name.c_str(), b.name.c_str());
+            if (nameOrder != 0) {
+                return nameOrder < 0;
+            }
+            return _wcsicmp(
+                       a.symbolicLink.c_str(),
+                       b.symbolicLink.c_str()) < 0;
+        });
 
     return cameras;
 }
@@ -276,14 +405,26 @@ std::vector<VideoFormat> MediaCapture::EnumerateFormats(const CameraDescriptor& 
 }
 
 bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
+                                const VideoFormat* requestedFormat,
                                 FrameCallback callback,
                                 GUID preferredSubtype,
-                                CaptureErrorCallback errorCallback)
+                                CaptureErrorCallback errorCallback,
+                                CaptureAccelerationMode accelerationMode)
 {
     StopCapture();
     lastError_.clear();
+    formatNotice_.clear();
+    negotiatedFormat_ = {};
     lastFailureKind_.store(CameraFailureKind::None);
     deviceLost_.store(false);
+    accelerationValidated_.store(false);
+    accelerationRejected_.store(false);
+    accelerationMode_ = accelerationMode;
+    startupValidationFrames_ = 0;
+    startupMaximumSpatialRange_ = 0.0;
+    startupPreviousTimestamp_ = -1;
+    startupAdvancingTimestamps_ = 0;
+    startupValidationComplete_ = false;
 
     if (!descriptor.activation) {
         lastError_ = "Invalid camera activation";
@@ -295,21 +436,15 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
         Microsoft::WRL::ComPtr<IMFMediaSource> mediaSource;
         Microsoft::WRL::ComPtr<IMFSourceReader> reader;
 
-        // Retry transient (busy/resource) failures up to 3 times; fail fast on
-        // structural errors such as unsupported formats.
-        static constexpr DWORD kRetryDelaysMs[] = {150, 300, 600};
         const char* failedStage = "ActivateObject";
-        HRESULT hr = TryOpenDevice(descriptor, mediaSource, reader, failedStage);
-        for (const DWORD delayMs : kRetryDelaysMs) {
-            if (SUCCEEDED(hr) || !IsTransientStartError(hr)) {
-                break;
-            }
-            qWarning() << "Camera start failed with transient error"
-                       << QString::fromStdString(FormatHResult(hr))
-                       << "- retrying in" << delayMs << "ms";
-            ::Sleep(delayMs);
-            hr = TryOpenDevice(descriptor, mediaSource, reader, failedStage);
+        if (accelerationMode == CaptureAccelerationMode::Accelerated &&
+            !CreateAccelerationDeviceManager()) {
+            accelerationRejected_.store(true);
+            return false;
         }
+
+        HRESULT hr = TryOpenDevice(
+            descriptor, mediaSource, reader, failedStage, accelerationMode);
 
         if (FAILED(hr)) {
             const CameraFailureKind kind = ClassifyCameraFailure(hr);
@@ -321,7 +456,7 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
         ActivationShutdownGuard activationGuard(descriptor.activation.Get());
 
         FrameFormat format;
-        if (!ConfigureReader(reader.Get(), preferredSubtype, format)) {
+        if (!ConfigureReader(reader.Get(), preferredSubtype, requestedFormat, format)) {
             lastError_ = "ConfigureReader failed to select format";
             lastFailureKind_.store(CameraFailureKind::Other);
             return false;
@@ -331,6 +466,26 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
         sourceReader_ = std::move(reader);
         activeActivation_ = descriptor.activation;
         currentFormat_ = format;
+        negotiatedFormat_.subtype = format.subtype;
+        negotiatedFormat_.width = format.width;
+        negotiatedFormat_.height = format.height;
+        negotiatedFormat_.numerator = format.frameRateNumerator;
+        negotiatedFormat_.denominator = format.frameRateDenominator;
+        negotiatedFormat_.stableId =
+            MakeFormatStableId(format.subtype,
+                               format.width,
+                               format.height,
+                               format.frameRateNumerator,
+                               format.frameRateDenominator);
+        if (requestedFormat &&
+            (requestedFormat->width != negotiatedFormat_.width ||
+             requestedFormat->height != negotiatedFormat_.height ||
+             requestedFormat->numerator != negotiatedFormat_.numerator ||
+             requestedFormat->denominator != negotiatedFormat_.denominator)) {
+            formatNotice_ = "Requested " + FormatDescription(*requestedFormat) +
+                            "; driver selected " +
+                            FormatDescription(negotiatedFormat_) + ".";
+        }
         frameRateNumerator_.store(format.frameRateNumerator);
         frameRateDenominator_.store(format.frameRateDenominator);
         lastSymbolicLink_ = descriptor.symbolicLink;
@@ -359,7 +514,8 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
 HRESULT MediaCapture::TryOpenDevice(const CameraDescriptor& descriptor,
                                     Microsoft::WRL::ComPtr<IMFMediaSource>& outSource,
                                     Microsoft::WRL::ComPtr<IMFSourceReader>& outReader,
-                                    const char*& failedStage)
+                                    const char*& failedStage,
+                                    CaptureAccelerationMode accelerationMode)
 {
     outSource.Reset();
     outReader.Reset();
@@ -374,14 +530,35 @@ HRESULT MediaCapture::TryOpenDevice(const CameraDescriptor& descriptor,
     ActivationShutdownGuard activationGuard(descriptor.activation.Get());
 
     Microsoft::WRL::ComPtr<IMFAttributes> readerAttributes;
-    ThrowIfFailed(MFCreateAttributes(readerAttributes.GetAddressOf(), 4),
+    ThrowIfFailed(MFCreateAttributes(readerAttributes.GetAddressOf(), 8),
                   "Create reader attributes");
-    ThrowIfFailed(readerAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE),
-                  "Enable video processing");
-    ThrowIfFailed(readerAttributes->SetUINT32(MF_SOURCE_READER_DISABLE_DXVA, TRUE),
-                  "Disable DXVA");
     ThrowIfFailed(readerAttributes->SetUINT32(MF_READWRITE_DISABLE_CONVERTERS, FALSE),
                   "Allow converters");
+    if (accelerationMode == CaptureAccelerationMode::Accelerated) {
+        ThrowIfFailed(
+            readerAttributes->SetUINT32(
+                MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, TRUE),
+            "Enable advanced video processing");
+        ThrowIfFailed(
+            readerAttributes->SetUINT32(
+                MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE),
+            "Enable hardware transforms");
+        ThrowIfFailed(
+            readerAttributes->SetUINT32(MF_SOURCE_READER_DISABLE_DXVA, FALSE),
+            "Enable DXVA");
+        ThrowIfFailed(
+            readerAttributes->SetUnknown(
+                MF_SOURCE_READER_D3D_MANAGER, dxgiDeviceManager_.Get()),
+            "Attach DXGI device manager");
+    } else {
+        ThrowIfFailed(
+            readerAttributes->SetUINT32(
+                MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE),
+            "Enable video processing");
+        ThrowIfFailed(
+            readerAttributes->SetUINT32(MF_SOURCE_READER_DISABLE_DXVA, TRUE),
+            "Disable DXVA");
+    }
 
     Microsoft::WRL::ComPtr<IMFSourceReader> reader;
     hr = MFCreateSourceReaderFromMediaSource(mediaSource.Get(),
@@ -399,9 +576,113 @@ HRESULT MediaCapture::TryOpenDevice(const CameraDescriptor& descriptor,
     return S_OK;
 }
 
+bool MediaCapture::CreateAccelerationDeviceManager()
+{
+    ReleaseAccelerationResources();
+    d3d11Device_.Reset();
+    d3d11Context_.Reset();
+    dxgiDeviceManager_.Reset();
+    dxgiReadbackTexture_.Reset();
+    dxgiResetToken_ = 0;
+
+    constexpr D3D_FEATURE_LEVEL levels[] = {
+        D3D_FEATURE_LEVEL_12_1,
+        D3D_FEATURE_LEVEL_12_0,
+        D3D_FEATURE_LEVEL_11_1,
+        D3D_FEATURE_LEVEL_11_0,
+    };
+    D3D_FEATURE_LEVEL selected{};
+    const UINT flags =
+        D3D11_CREATE_DEVICE_BGRA_SUPPORT |
+        D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
+    const Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter =
+        SelectHighPerformanceAdapter();
+    HRESULT hr = D3D11CreateDevice(
+        adapter.Get(),
+        adapter ? D3D_DRIVER_TYPE_UNKNOWN : D3D_DRIVER_TYPE_HARDWARE,
+        nullptr,
+        flags,
+        levels,
+        ARRAYSIZE(levels),
+        D3D11_SDK_VERSION,
+        d3d11Device_.GetAddressOf(),
+        &selected,
+        d3d11Context_.GetAddressOf());
+    if (FAILED(hr)) {
+        lastError_ =
+            "Hardware camera acceleration could not create a D3D11 device (" +
+            FormatHResult(hr) + ")";
+        return false;
+    }
+
+    Microsoft::WRL::ComPtr<ID3D10Multithread> multithread;
+    if (SUCCEEDED(d3d11Device_.As(&multithread))) {
+        multithread->SetMultithreadProtected(TRUE);
+    }
+
+    hr = MFCreateDXGIDeviceManager(
+        &dxgiResetToken_, dxgiDeviceManager_.GetAddressOf());
+    if (FAILED(hr)) {
+        lastError_ =
+            "Hardware camera acceleration could not create its DXGI manager (" +
+            FormatHResult(hr) + ")";
+        return false;
+    }
+    hr = dxgiDeviceManager_->ResetDevice(
+        d3d11Device_.Get(), dxgiResetToken_);
+    if (FAILED(hr)) {
+        lastError_ =
+            "Hardware camera acceleration could not attach the GPU (" +
+            FormatHResult(hr) + ")";
+        return false;
+    }
+    return true;
+}
+
 bool MediaCapture::ConsumeDeviceLost()
 {
     return deviceLost_.exchange(false);
+}
+
+bool MediaCapture::ConsumeAccelerationValidated()
+{
+    return accelerationValidated_.exchange(false);
+}
+
+bool MediaCapture::ConsumeAccelerationRejected()
+{
+    return accelerationRejected_.exchange(false);
+}
+
+std::int64_t QueryClock100ns()
+{
+    LARGE_INTEGER counter{};
+    LARGE_INTEGER frequency{};
+    QueryPerformanceCounter(&counter);
+    QueryPerformanceFrequency(&frequency);
+    if (frequency.QuadPart <= 0) {
+        return -1;
+    }
+    return static_cast<std::int64_t>(
+        static_cast<long double>(counter.QuadPart) *
+        10'000'000.0L /
+        static_cast<long double>(frequency.QuadPart));
+}
+
+std::uint64_t ThreadCpuTime100ns()
+{
+    FILETIME created{}, exited{}, kernel{}, user{};
+    if (!GetThreadTimes(
+            GetCurrentThread(), &created, &exited, &kernel, &user)) {
+        return 0;
+    }
+    ULARGE_INTEGER kernelTime{};
+    kernelTime.LowPart = kernel.dwLowDateTime;
+    kernelTime.HighPart = kernel.dwHighDateTime;
+    ULARGE_INTEGER userTime{};
+    userTime.LowPart = user.dwLowDateTime;
+    userTime.HighPart = user.dwHighDateTime;
+    return kernelTime.QuadPart + userTime.QuadPart;
 }
 
 double MediaCapture::CurrentFrameRate() const
@@ -413,7 +694,8 @@ double MediaCapture::CurrentFrameRate() const
                      static_cast<double>(denominator);
 }
 
-void MediaCapture::StopCapture()
+void MediaCapture::StopCapture(
+    const std::function<void()>& beforeAccelerationRelease)
 {
     running_ = false;
 
@@ -423,6 +705,19 @@ void MediaCapture::StopCapture()
 
     if (captureThread_.joinable()) {
         captureThread_.join();
+    }
+
+    PrepareAccelerationInteropRelease();
+    if (beforeAccelerationRelease) {
+        try {
+            beforeAccelerationRelease();
+        } catch (const std::exception& error) {
+            qWarning() << "Capture interop release callback failed:"
+                       << error.what();
+        } catch (...) {
+            qWarning()
+                << "Capture interop release callback failed unexpectedly";
+        }
     }
 
     sourceReader_.Reset();
@@ -438,13 +733,59 @@ void MediaCapture::StopCapture()
     }
     mediaSource_.Reset();
     activeActivation_.Reset();
+    ReleaseAccelerationResources();
+    dxgiDeviceManager_.Reset();
+    d3d11Context_.Reset();
+    d3d11Device_.Reset();
+    dxgiResetToken_ = 0;
     currentFormat_ = FrameFormat{};
     frameRateNumerator_.store(0);
     frameRateDenominator_.store(0);
 }
 
+void MediaCapture::PrepareAccelerationInteropRelease()
+{
+    std::scoped_lock lock(d3d11Mutex_);
+    if (!d3d11Device_ || !d3d11Context_) {
+        return;
+    }
+
+    // The capture thread is already joined, so releasing the video-processor
+    // graph here cannot race a new blit or external-memory read.
+    d3d11CudaQueryPending_ = false;
+    d3d11CudaPendingSequence_ = 0;
+    d3d11CudaReadyQuery_.Reset();
+    d3d11CudaOutputView_.Reset();
+    d3d11VideoProcessorOutputTexture_.Reset();
+    d3d11VideoProcessor_.Reset();
+    d3d11VideoProcessorEnumerator_.Reset();
+    d3d11VideoContext_.Reset();
+    d3d11VideoDevice_.Reset();
+    d3d11Context_->ClearState();
+
+    Microsoft::WRL::ComPtr<ID3D11Query> completion;
+    D3D11_QUERY_DESC queryDescription{};
+    queryDescription.Query = D3D11_QUERY_EVENT;
+    if (SUCCEEDED(d3d11Device_->CreateQuery(
+            &queryDescription, completion.GetAddressOf()))) {
+        d3d11Context_->End(completion.Get());
+        d3d11Context_->Flush();
+        const auto deadline =
+            std::chrono::steady_clock::now() +
+            std::chrono::seconds(2);
+        while (d3d11Context_->GetData(
+                   completion.Get(), nullptr, 0, 0) == S_FALSE &&
+               std::chrono::steady_clock::now() < deadline) {
+            Sleep(1);
+        }
+    } else {
+        d3d11Context_->Flush();
+    }
+}
+
 bool MediaCapture::ConfigureReader(IMFSourceReader* reader,
                                    GUID preferredSubtype,
+                                   const VideoFormat* requestedFormat,
                                    FrameFormat& outFormat)
 {
     ThrowIfFailed(reader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE),
@@ -458,6 +799,21 @@ bool MediaCapture::ConfigureReader(IMFSourceReader* reader,
                   "Set major type");
     ThrowIfFailed(desiredType->SetGUID(MF_MT_SUBTYPE, preferredSubtype),
                   "Set subtype");
+    if (requestedFormat) {
+        ThrowIfFailed(MFSetAttributeSize(desiredType.Get(),
+                                         MF_MT_FRAME_SIZE,
+                                         requestedFormat->width,
+                                         requestedFormat->height),
+                      "Set requested frame size");
+        if (requestedFormat->numerator != 0 &&
+            requestedFormat->denominator != 0) {
+            ThrowIfFailed(MFSetAttributeRatio(desiredType.Get(),
+                                              MF_MT_FRAME_RATE,
+                                              requestedFormat->numerator,
+                                              requestedFormat->denominator),
+                          "Set requested frame rate");
+        }
+    }
 
     HRESULT hr = reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,
                                              nullptr,
@@ -475,6 +831,21 @@ bool MediaCapture::ConfigureReader(IMFSourceReader* reader,
                           "Set fallback major type");
             ThrowIfFailed(fallbackType->SetGUID(MF_MT_SUBTYPE, fallback),
                           "Set fallback subtype");
+            if (requestedFormat) {
+                ThrowIfFailed(MFSetAttributeSize(fallbackType.Get(),
+                                                 MF_MT_FRAME_SIZE,
+                                                 requestedFormat->width,
+                                                 requestedFormat->height),
+                              "Set fallback requested frame size");
+                if (requestedFormat->numerator != 0 &&
+                    requestedFormat->denominator != 0) {
+                    ThrowIfFailed(MFSetAttributeRatio(fallbackType.Get(),
+                                                      MF_MT_FRAME_RATE,
+                                                      requestedFormat->numerator,
+                                                      requestedFormat->denominator),
+                                  "Set fallback requested frame rate");
+                }
+            }
 
             if (SUCCEEDED(reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,
                                                       nullptr,
@@ -519,7 +890,7 @@ bool MediaCapture::ReadCurrentFormat(IMFSourceReader* reader, FrameFormat& outFo
     outFormat.subtype = subtype;
     outFormat.width = width;
     outFormat.height = height;
-    outFormat.stride = static_cast<UINT>(std::abs(rawStride));
+    outFormat.stride = rawStride;
     UINT32 frameRateNumerator = 0;
     UINT32 frameRateDenominator = 0;
     if (SUCCEEDED(MFGetAttributeRatio(currentType.Get(),
@@ -539,7 +910,7 @@ std::vector<VideoFormat> MediaCapture::ExtractFormats(IMFSourceReader* reader)
         return formats;
     }
 
-    std::set<std::tuple<UINT, UINT, UINT, UINT>> uniqueKeys;
+    std::set<std::tuple<std::wstring, UINT, UINT, UINT, UINT>> uniqueKeys;
     for (DWORD index = 0;; ++index) {
         Microsoft::WRL::ComPtr<IMFMediaType> mediaType;
         HRESULT hr = reader->GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, index, mediaType.GetAddressOf());
@@ -562,13 +933,21 @@ std::vector<VideoFormat> MediaCapture::ExtractFormats(IMFSourceReader* reader)
             den = 0;
         }
 
-        auto key = std::make_tuple(width, height, num, den);
+        GUID subtype = GUID_NULL;
+        if (FAILED(mediaType->GetGUID(MF_MT_SUBTYPE, &subtype))) {
+            continue;
+        }
+
+        const std::wstring subtypeText = GuidStableText(subtype);
+        auto key = std::make_tuple(subtypeText, width, height, num, den);
         if (uniqueKeys.insert(key).second) {
             VideoFormat fmt;
+            fmt.subtype = subtype;
             fmt.width = width;
             fmt.height = height;
             fmt.numerator = num;
             fmt.denominator = den;
+            fmt.stableId = MakeFormatStableId(subtype, width, height, num, den);
             formats.push_back(fmt);
         }
     }
@@ -578,6 +957,485 @@ std::vector<VideoFormat> MediaCapture::ExtractFormats(IMFSourceReader* reader)
 std::string MediaCapture::HrToString(HRESULT hr)
 {
     return FormatHResult(hr);
+}
+
+void MediaCapture::ReleaseAccelerationResources()
+{
+    std::scoped_lock lock(d3d11Mutex_);
+    d3d11CudaQueryPending_ = false;
+    d3d11CudaPendingSequence_ = 0;
+    d3d11CudaCompletionDelayed_ = false;
+    d3d11CudaReadyQuery_.Reset();
+    d3d11CudaOutputView_.Reset();
+    d3d11VideoProcessorOutputTexture_.Reset();
+    d3d11CudaTexture_.Reset();
+    d3d11VideoProcessor_.Reset();
+    d3d11VideoProcessorEnumerator_.Reset();
+    d3d11VideoContext_.Reset();
+    d3d11VideoDevice_.Reset();
+    dxgiReadbackTexture_.Reset();
+    videoProcessorInputFormat_ = DXGI_FORMAT_UNKNOWN;
+    videoProcessorWidth_ = 0;
+    videoProcessorHeight_ = 0;
+    d3d11CudaNeedsCopy_ = false;
+}
+
+bool MediaCapture::AttachDxgiFrame(IMFMediaBuffer* buffer, MediaFrame& frame)
+{
+    if (!buffer) {
+        return false;
+    }
+
+    Microsoft::WRL::ComPtr<IMFDXGIBuffer> dxgiBuffer;
+    if (FAILED(buffer->QueryInterface(
+            IID_PPV_ARGS(dxgiBuffer.GetAddressOf())))) {
+        return false;
+    }
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(dxgiBuffer->GetResource(
+            IID_PPV_ARGS(texture.GetAddressOf()))) ||
+        !texture) {
+        return false;
+    }
+
+    D3D11_TEXTURE2D_DESC description{};
+    texture->GetDesc(&description);
+    UINT subresource = 0;
+    if (FAILED(dxgiBuffer->GetSubresourceIndex(&subresource))) {
+        subresource = 0;
+    }
+    frame.gpuTexture = std::move(texture);
+    frame.gpuSubresource = subresource;
+    frame.gpuFormat = description.Format;
+    return true;
+}
+
+bool MediaCapture::CopyGpuFrame(const FrameFormat& format, MediaFrame& frame)
+{
+    if (!frame.gpuTexture || !d3d11Device_ || !d3d11Context_) {
+        return false;
+    }
+
+    std::scoped_lock lock(d3d11Mutex_);
+    D3D11_TEXTURE2D_DESC sourceDescription{};
+    frame.gpuTexture->GetDesc(&sourceDescription);
+    GUID readbackSubtype = format.subtype;
+    if (sourceDescription.Format == DXGI_FORMAT_NV12) {
+        readbackSubtype = MFVideoFormat_NV12;
+    } else if (sourceDescription.Format == DXGI_FORMAT_YUY2) {
+        readbackSubtype = MFVideoFormat_YUY2;
+    } else if (sourceDescription.Format ==
+               DXGI_FORMAT_B8G8R8A8_UNORM) {
+        readbackSubtype = MFVideoFormat_ARGB32;
+    } else if (sourceDescription.Format ==
+               DXGI_FORMAT_R8G8B8A8_UNORM) {
+        readbackSubtype = MFVideoFormat_RGB32;
+    }
+    bool recreate = !dxgiReadbackTexture_;
+    if (!recreate) {
+        D3D11_TEXTURE2D_DESC existing{};
+        dxgiReadbackTexture_->GetDesc(&existing);
+        recreate =
+            existing.Width != sourceDescription.Width ||
+            existing.Height != sourceDescription.Height ||
+            existing.Format != sourceDescription.Format;
+    }
+    if (recreate) {
+        D3D11_TEXTURE2D_DESC staging = sourceDescription;
+        staging.MipLevels = 1;
+        staging.ArraySize = 1;
+        staging.Usage = D3D11_USAGE_STAGING;
+        staging.BindFlags = 0;
+        staging.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        staging.MiscFlags = 0;
+        dxgiReadbackTexture_.Reset();
+        const HRESULT createResult = d3d11Device_->CreateTexture2D(
+            &staging, nullptr, dxgiReadbackTexture_.GetAddressOf());
+        if (FAILED(createResult)) {
+            return false;
+        }
+    }
+
+    d3d11Context_->CopySubresourceRegion(
+        dxgiReadbackTexture_.Get(), 0, 0, 0, 0,
+        frame.gpuTexture.Get(), frame.gpuSubresource, nullptr);
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    const HRESULT mapResult = d3d11Context_->Map(
+        dxgiReadbackTexture_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(mapResult) || !mapped.pData) {
+        return false;
+    }
+
+    const std::size_t rowBytes =
+        PackedRowBytes(readbackSubtype, format.width);
+    const UINT rowCount =
+        PackedRowCount(readbackSubtype, format.height);
+    if (rowBytes == 0 || mapped.RowPitch < rowBytes) {
+        d3d11Context_->Unmap(dxgiReadbackTexture_.Get(), 0);
+        return false;
+    }
+    frame.data.resize(rowBytes * rowCount);
+    const auto* source = static_cast<const std::uint8_t*>(mapped.pData);
+    for (UINT row = 0; row < rowCount; ++row) {
+        std::memcpy(
+            frame.data.data() + static_cast<std::size_t>(row) * rowBytes,
+            source + static_cast<std::size_t>(row) * mapped.RowPitch,
+            rowBytes);
+    }
+    d3d11Context_->Unmap(dxgiReadbackTexture_.Get(), 0);
+    frame.subtype = readbackSubtype;
+    frame.stride = static_cast<LONG>(rowBytes);
+    frame.dataSize = frame.data.size();
+    return true;
+}
+
+bool MediaCapture::ReadbackGpuFrame(MediaFrame& frame)
+{
+    if (!frame.IsGpuResident()) {
+        return !frame.data.empty();
+    }
+    FrameFormat format{};
+    format.subtype = frame.subtype;
+    format.width = frame.width;
+    format.height = frame.height;
+    format.stride = frame.stride;
+    format.frameRateNumerator = frame.frameRateNumerator;
+    format.frameRateDenominator = frame.frameRateDenominator;
+    return CopyGpuFrame(format, frame);
+}
+
+bool MediaCapture::EnsureVideoProcessor(const MediaFrame& frame)
+{
+    if (!frame.gpuTexture || !d3d11Device_ || !d3d11Context_ ||
+        frame.width == 0 || frame.height == 0) {
+        return false;
+    }
+    if (d3d11VideoProcessor_ && d3d11CudaTexture_ &&
+        d3d11VideoProcessorOutputTexture_ && d3d11CudaOutputView_ &&
+        d3d11CudaReadyQuery_ &&
+        videoProcessorInputFormat_ == frame.gpuFormat &&
+        videoProcessorWidth_ == frame.width &&
+        videoProcessorHeight_ == frame.height) {
+        return true;
+    }
+
+    d3d11CudaQueryPending_ = false;
+    d3d11CudaPendingSequence_ = 0;
+    d3d11CudaCompletionDelayed_ = false;
+    d3d11CudaReadyQuery_.Reset();
+    d3d11CudaOutputView_.Reset();
+    d3d11VideoProcessorOutputTexture_.Reset();
+    d3d11CudaTexture_.Reset();
+    d3d11VideoProcessor_.Reset();
+    d3d11VideoProcessorEnumerator_.Reset();
+    d3d11VideoContext_.Reset();
+    d3d11VideoDevice_.Reset();
+
+    if (FAILED(d3d11Device_.As(&d3d11VideoDevice_)) ||
+        FAILED(d3d11Context_.As(&d3d11VideoContext_))) {
+        return false;
+    }
+
+    D3D11_VIDEO_PROCESSOR_CONTENT_DESC content{};
+    content.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
+    content.InputFrameRate.Numerator =
+        frame.frameRateNumerator == 0 ? 30 : frame.frameRateNumerator;
+    content.InputFrameRate.Denominator =
+        frame.frameRateDenominator == 0 ? 1 : frame.frameRateDenominator;
+    content.InputWidth = frame.width;
+    content.InputHeight = frame.height;
+    content.OutputFrameRate = content.InputFrameRate;
+    content.OutputWidth = frame.width;
+    content.OutputHeight = frame.height;
+    content.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
+
+    HRESULT result = d3d11VideoDevice_->CreateVideoProcessorEnumerator(
+        &content, d3d11VideoProcessorEnumerator_.GetAddressOf());
+    if (FAILED(result)) {
+        return false;
+    }
+
+    UINT inputSupport = 0;
+    UINT outputSupport = 0;
+    if (FAILED(d3d11VideoProcessorEnumerator_->CheckVideoProcessorFormat(
+            frame.gpuFormat, &inputSupport)) ||
+        (inputSupport & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_INPUT) == 0 ||
+        FAILED(d3d11VideoProcessorEnumerator_->CheckVideoProcessorFormat(
+            DXGI_FORMAT_B8G8R8A8_UNORM, &outputSupport)) ||
+        (outputSupport & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_OUTPUT) == 0) {
+        return false;
+    }
+
+    result = d3d11VideoDevice_->CreateVideoProcessor(
+        d3d11VideoProcessorEnumerator_.Get(), 0,
+        d3d11VideoProcessor_.GetAddressOf());
+    if (FAILED(result)) {
+        return false;
+    }
+
+    D3D11_TEXTURE2D_DESC outputDescription{};
+    outputDescription.Width = frame.width;
+    outputDescription.Height = frame.height;
+    outputDescription.MipLevels = 1;
+    outputDescription.ArraySize = 1;
+    outputDescription.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    outputDescription.SampleDesc.Count = 1;
+    outputDescription.Usage = D3D11_USAGE_DEFAULT;
+    outputDescription.BindFlags =
+        D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    outputDescription.MiscFlags =
+        D3D11_RESOURCE_MISC_SHARED |
+        D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
+    result = d3d11Device_->CreateTexture2D(
+        &outputDescription, nullptr, d3d11CudaTexture_.GetAddressOf());
+    if (FAILED(result)) {
+        return false;
+    }
+
+    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC outputViewDescription{};
+    outputViewDescription.ViewDimension =
+        D3D11_VPOV_DIMENSION_TEXTURE2D;
+    outputViewDescription.Texture2D.MipSlice = 0;
+    result = d3d11VideoDevice_->CreateVideoProcessorOutputView(
+        d3d11CudaTexture_.Get(),
+        d3d11VideoProcessorEnumerator_.Get(),
+        &outputViewDescription,
+        d3d11CudaOutputView_.GetAddressOf());
+    if (FAILED(result)) {
+        // A few drivers reject a shareable allocation as a VideoProcessor
+        // target. Convert into a private texture, then issue one GPU copy into
+        // the shared allocation. This remains a zero-CPU-copy path.
+        d3d11CudaOutputView_.Reset();
+        d3d11CudaTexture_.Reset();
+        outputDescription.MiscFlags = 0;
+        result = d3d11Device_->CreateTexture2D(
+            &outputDescription,
+            nullptr,
+            d3d11VideoProcessorOutputTexture_.GetAddressOf());
+        if (FAILED(result)) {
+            return false;
+        }
+        result = d3d11VideoDevice_->CreateVideoProcessorOutputView(
+            d3d11VideoProcessorOutputTexture_.Get(),
+            d3d11VideoProcessorEnumerator_.Get(),
+            &outputViewDescription,
+            d3d11CudaOutputView_.GetAddressOf());
+        if (FAILED(result)) {
+            return false;
+        }
+        outputDescription.MiscFlags =
+            D3D11_RESOURCE_MISC_SHARED |
+            D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
+        result = d3d11Device_->CreateTexture2D(
+            &outputDescription, nullptr, d3d11CudaTexture_.GetAddressOf());
+        if (FAILED(result)) {
+            return false;
+        }
+        d3d11CudaNeedsCopy_ = true;
+    } else {
+        d3d11VideoProcessorOutputTexture_ = d3d11CudaTexture_;
+        d3d11CudaNeedsCopy_ = false;
+    }
+
+    D3D11_QUERY_DESC queryDescription{};
+    queryDescription.Query = D3D11_QUERY_EVENT;
+    result = d3d11Device_->CreateQuery(
+        &queryDescription, d3d11CudaReadyQuery_.GetAddressOf());
+    if (FAILED(result)) {
+        return false;
+    }
+
+    videoProcessorInputFormat_ = frame.gpuFormat;
+    videoProcessorWidth_ = frame.width;
+    videoProcessorHeight_ = frame.height;
+    return true;
+}
+
+GpuFramePreparationResult MediaCapture::PrepareGpuFrameForCuda(
+    const MediaFrame& frame,
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>& outTexture)
+{
+    outTexture.Reset();
+    if (!frame.IsGpuResident()) {
+        return GpuFramePreparationResult::Unsupported;
+    }
+
+    std::scoped_lock lock(d3d11Mutex_);
+    if (d3d11CudaQueryPending_) {
+        const std::uint64_t pendingSequence =
+            d3d11CudaPendingSequence_;
+        BOOL complete = FALSE;
+        const HRESULT pendingResult = d3d11Context_->GetData(
+            d3d11CudaReadyQuery_.Get(),
+            &complete,
+            sizeof(complete),
+            D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (pendingResult == S_FALSE) {
+            return GpuFramePreparationResult::Retry;
+        }
+        if (FAILED(pendingResult) || !complete) {
+            d3d11CudaQueryPending_ = false;
+            qWarning() << "D3D11 camera conversion completion query failed";
+            return GpuFramePreparationResult::Unsupported;
+        }
+        d3d11CudaQueryPending_ = false;
+        d3d11CudaPendingSequence_ = 0;
+        if (frame.sequenceNumber == pendingSequence) {
+            if (d3d11CudaCompletionDelayed_) {
+                qInfo() << "D3D11 camera conversion recovered; "
+                           "external-memory capture resumed";
+                d3d11CudaCompletionDelayed_ = false;
+            }
+            outTexture = d3d11CudaTexture_;
+            return GpuFramePreparationResult::Ready;
+        }
+    }
+    if (!EnsureVideoProcessor(frame)) {
+        return GpuFramePreparationResult::Unsupported;
+    }
+
+    D3D11_TEXTURE2D_DESC inputDescription{};
+    frame.gpuTexture->GetDesc(&inputDescription);
+    const UINT mipLevels = std::max(1u, inputDescription.MipLevels);
+
+    D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputViewDescription{};
+    inputViewDescription.FourCC = 0;
+    inputViewDescription.ViewDimension =
+        D3D11_VPIV_DIMENSION_TEXTURE2D;
+    inputViewDescription.Texture2D.MipSlice =
+        frame.gpuSubresource % mipLevels;
+    inputViewDescription.Texture2D.ArraySlice =
+        frame.gpuSubresource / mipLevels;
+    Microsoft::WRL::ComPtr<ID3D11VideoProcessorInputView> inputView;
+    HRESULT result = d3d11VideoDevice_->CreateVideoProcessorInputView(
+        frame.gpuTexture.Get(),
+        d3d11VideoProcessorEnumerator_.Get(),
+        &inputViewDescription,
+        inputView.GetAddressOf());
+    if (FAILED(result)) {
+        return GpuFramePreparationResult::Unsupported;
+    }
+
+    const RECT fullFrame{
+        0, 0,
+        static_cast<LONG>(frame.width),
+        static_cast<LONG>(frame.height)};
+    d3d11VideoContext_->VideoProcessorSetOutputTargetRect(
+        d3d11VideoProcessor_.Get(), TRUE, &fullFrame);
+    d3d11VideoContext_->VideoProcessorSetStreamSourceRect(
+        d3d11VideoProcessor_.Get(), 0, TRUE, &fullFrame);
+    d3d11VideoContext_->VideoProcessorSetStreamDestRect(
+        d3d11VideoProcessor_.Get(), 0, TRUE, &fullFrame);
+
+    D3D11_VIDEO_PROCESSOR_STREAM stream{};
+    stream.Enable = TRUE;
+    stream.OutputIndex = 0;
+    stream.InputFrameOrField = 0;
+    stream.PastFrames = 0;
+    stream.FutureFrames = 0;
+    stream.pInputSurface = inputView.Get();
+    result = d3d11VideoContext_->VideoProcessorBlt(
+        d3d11VideoProcessor_.Get(),
+        d3d11CudaOutputView_.Get(),
+        0, 1, &stream);
+    if (FAILED(result)) {
+        return GpuFramePreparationResult::Unsupported;
+    }
+    if (d3d11CudaNeedsCopy_) {
+        d3d11Context_->CopyResource(
+            d3d11CudaTexture_.Get(),
+            d3d11VideoProcessorOutputTexture_.Get());
+    }
+
+    // D3D11 and CUDA use separate API timelines for the same allocation.
+    // Complete the VideoProcessor write (and optional GPU copy) before CUDA
+    // imports/reads it. UploadD3D11Frame performs the reciprocal CUDA drain
+    // before this reusable texture can be written again.
+    d3d11Context_->End(d3d11CudaReadyQuery_.Get());
+    d3d11Context_->Flush();
+    d3d11CudaQueryPending_ = true;
+    d3d11CudaPendingSequence_ = frame.sequenceNumber;
+    // This function runs on the viewport/frame thread. A cold driver used to
+    // occupy that thread for up to 250 ms, which appeared as a CUDA pipeline
+    // spike even though the delay was entirely in D3D11 capture conversion.
+    // Give the normal sub-millisecond conversion a small scheduling allowance.
+    // A delayed query returns Retry so the application can retain this exact
+    // MediaFrame and retry it asynchronously without crossing system memory.
+    constexpr auto kInteractiveCompletionBudget =
+        std::chrono::milliseconds(3);
+    const auto deadline =
+        std::chrono::steady_clock::now() + kInteractiveCompletionBudget;
+    BOOL complete = FALSE;
+    HRESULT completionResult = S_FALSE;
+    while ((completionResult = d3d11Context_->GetData(
+                d3d11CudaReadyQuery_.Get(),
+                &complete,
+                sizeof(complete),
+                D3D11_ASYNC_GETDATA_DONOTFLUSH)) == S_FALSE &&
+           std::chrono::steady_clock::now() < deadline) {
+        Sleep(1);
+    }
+    if (completionResult == S_FALSE) {
+        if (!d3d11CudaCompletionDelayed_) {
+            qWarning() << "D3D11 camera conversion is delayed; retaining the "
+                          "GPU frame and retrying asynchronously";
+            d3d11CudaCompletionDelayed_ = true;
+        }
+        return GpuFramePreparationResult::Retry;
+    }
+    d3d11CudaQueryPending_ = false;
+    d3d11CudaPendingSequence_ = 0;
+    if (FAILED(completionResult) || !complete) {
+        qWarning() << "D3D11 camera conversion completion query failed";
+        return GpuFramePreparationResult::Unsupported;
+    }
+    if (d3d11CudaCompletionDelayed_) {
+        qInfo() << "D3D11 camera conversion recovered; external-memory "
+                   "capture resumed";
+        d3d11CudaCompletionDelayed_ = false;
+    }
+
+    outTexture = d3d11CudaTexture_;
+    return GpuFramePreparationResult::Ready;
+}
+
+bool MediaCapture::ValidateStartupFrame(const MediaFrame& frame)
+{
+    if (accelerationMode_ != CaptureAccelerationMode::Accelerated ||
+        startupValidationComplete_ || accelerationRejected_.load()) {
+        return true;
+    }
+
+    ++startupValidationFrames_;
+    startupMaximumSpatialRange_ =
+        std::max(startupMaximumSpatialRange_, FrameSpatialRange(frame));
+    if (startupPreviousTimestamp_ >= 0 &&
+        frame.captureTimestamp100ns > startupPreviousTimestamp_) {
+        ++startupAdvancingTimestamps_;
+    }
+    startupPreviousTimestamp_ = frame.captureTimestamp100ns;
+
+    constexpr UINT kValidationFrames = 30;
+    if (startupValidationFrames_ < kValidationFrames) {
+        return true;
+    }
+    const bool healthy =
+        startupAdvancingTimestamps_ >= kValidationFrames / 2 &&
+        startupMaximumSpatialRange_ >= 2.0;
+    qInfo() << "Camera acceleration startup validation:"
+            << (healthy ? "passed" : "rejected")
+            << "| advancing timestamps" << startupAdvancingTimestamps_
+            << "of" << startupValidationFrames_
+            << "| spatial range" << startupMaximumSpatialRange_;
+    if (healthy) {
+        startupValidationComplete_ = true;
+        accelerationValidated_.store(true);
+        return true;
+    }
+
+    accelerationRejected_.store(true);
+    return false;
 }
 
 void MediaCapture::CaptureLoop(FrameCallback callback, CaptureErrorCallback errorCallback)
@@ -613,8 +1471,17 @@ void MediaCapture::CaptureLoop(FrameCallback callback, CaptureErrorCallback erro
     }
 
     FrameFormat format = currentFormat_;
+    std::uint64_t sequenceNumber = 0;
+    const bool diagnosticsEnabled =
+        qEnvironmentVariableIsSet("OPENZOOM_CAPTURE_DIAGNOSTICS");
+    std::int64_t diagnosticsStartClock = QueryClock100ns();
+    std::uint64_t diagnosticsStartCpu = ThreadCpuTime100ns();
+    std::uint64_t diagnosticsFrames = 0;
+    std::uint64_t diagnosticsBytes = 0;
+    std::int64_t diagnosticsWork100ns = 0;
 
     while (running_) {
+        const std::int64_t frameWorkStart = QueryClock100ns();
         DWORD streamIndex = 0;
         DWORD flags = 0;
         LONGLONG timestamp = 0;
@@ -683,31 +1550,81 @@ void MediaCapture::CaptureLoop(FrameCallback callback, CaptureErrorCallback erro
             continue;
         }
 
-        Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
-        hr = sample->ConvertToContiguousBuffer(&buffer);
-        if (FAILED(hr) || !buffer) {
-            continue;
-        }
-
-        BYTE* data = nullptr;
-        DWORD length = 0;
-        hr = buffer->Lock(&data, nullptr, &length);
-        if (FAILED(hr) || !data) {
-            if (SUCCEEDED(hr)) {
-                buffer->Unlock();
-            }
-            continue;
-        }
-
         MediaFrame frame;
-        frame.data.assign(data, data + length);
         frame.subtype = format.subtype;
         frame.width = format.width;
         frame.height = format.height;
+        frame.captureTimestamp100ns = timestamp;
+        frame.captureClock100ns = QueryClock100ns();
+        frame.sequenceNumber = sequenceNumber++;
+        frame.frameRateNumerator = format.frameRateNumerator;
+        frame.frameRateDenominator = format.frameRateDenominator;
         frame.stride = format.stride;
-        frame.dataSize = frame.data.size();
+        DWORD length = 0;
 
-        buffer->Unlock();
+        Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+        if (accelerationMode_ == CaptureAccelerationMode::Accelerated) {
+            sample->GetBufferByIndex(0, buffer.GetAddressOf());
+        }
+        const bool gpuAttached =
+            buffer && AttachDxgiFrame(buffer.Get(), frame);
+        if (gpuAttached) {
+            // Pin the sample for as long as the frame is retained anywhere
+            // (six-frame recording burst queue, deferred-conversion retry).
+            // Without this the reader recycles the pooled texture on sample
+            // release and overwrites queued frames' pixels — silent content
+            // corruption that no drop counter can see. Retention is bounded
+            // by the queue depth; if the reader's pool runs dry, ReadSample
+            // paces the capture thread instead of corrupting frames.
+            frame.gpuSample = sample;
+        }
+        // The first frames retain a small CPU readback so the existing
+        // black/frozen-frame startup validator still sees pixels. Once the
+        // accelerated source is validated, steady-state preview frames leave
+        // the capture thread as retained D3D11 textures only.
+        bool frameReady = gpuAttached && startupValidationComplete_;
+        if (gpuAttached && !startupValidationComplete_) {
+            frameReady = CopyGpuFrame(format, frame);
+        }
+        if (!frameReady) {
+            buffer.Reset();
+            hr = sample->ConvertToContiguousBuffer(&buffer);
+            if (FAILED(hr) || !buffer) {
+                continue;
+            }
+
+            BYTE* data = nullptr;
+            hr = buffer->Lock(&data, nullptr, &length);
+            if (FAILED(hr) || !data) {
+                if (SUCCEEDED(hr)) {
+                    buffer->Unlock();
+                }
+                continue;
+            }
+            frame.data.assign(data, data + length);
+            frame.stride = format.stride;
+            frame.dataSize = frame.data.size();
+            buffer->Unlock();
+            frameReady = true;
+        }
+        if (!frameReady) {
+            continue;
+        }
+        frame.dataSize = frame.data.size();
+        length = static_cast<DWORD>(
+            std::min<std::size_t>(
+                frame.dataSize,
+                std::numeric_limits<DWORD>::max()));
+
+        if (!ValidateStartupFrame(frame)) {
+            running_ = false;
+            lastError_ =
+                "Hardware camera acceleration produced invalid startup frames";
+            reportFailure(
+                "Hardware camera acceleration did not produce a usable image; "
+                "retrying in compatibility mode");
+            break;
+        }
 
         if (callback) {
             try {
@@ -720,6 +1637,48 @@ void MediaCapture::CaptureLoop(FrameCallback callback, CaptureErrorCallback erro
                 running_ = false;
                 reportFailure("Frame callback failed with an unknown exception");
                 break;
+            }
+        }
+        if (diagnosticsEnabled) {
+            ++diagnosticsFrames;
+            diagnosticsBytes += length;
+            const std::int64_t now = QueryClock100ns();
+            diagnosticsWork100ns +=
+                std::max<std::int64_t>(0, now - frameWorkStart);
+            const std::int64_t elapsed =
+                now - diagnosticsStartClock;
+            if (elapsed >= 5 * 10'000'000LL) {
+                const std::uint64_t cpuNow = ThreadCpuTime100ns();
+                const double seconds =
+                    static_cast<double>(elapsed) / 10'000'000.0;
+                const double fps =
+                    diagnosticsFrames / std::max(0.001, seconds);
+                const double averageBytes =
+                    diagnosticsFrames == 0
+                        ? 0.0
+                        : static_cast<double>(diagnosticsBytes) /
+                              diagnosticsFrames;
+                const double averageWorkMs =
+                    diagnosticsFrames == 0
+                        ? 0.0
+                        : static_cast<double>(diagnosticsWork100ns) /
+                              diagnosticsFrames / 10'000.0;
+                const double cpuPercent =
+                    100.0 *
+                    static_cast<double>(
+                        cpuNow - diagnosticsStartCpu) /
+                    std::max<double>(1.0, elapsed);
+                qInfo().nospace()
+                    << "Capture diagnostics: " << fps
+                    << " FPS | " << averageBytes
+                    << " CPU bytes/frame | capture work "
+                    << averageWorkMs << " ms | thread CPU "
+                    << cpuPercent << "%";
+                diagnosticsStartClock = now;
+                diagnosticsStartCpu = cpuNow;
+                diagnosticsFrames = 0;
+                diagnosticsBytes = 0;
+                diagnosticsWork100ns = 0;
             }
         }
     }

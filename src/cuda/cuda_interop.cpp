@@ -3,8 +3,12 @@
 #include "openzoom/cuda/cuda_interop.hpp"
 
 #include <d3d12.h>
+#include <dxgi1_2.h>
 
 #if OPENZOOM_HAS_CUDA_EXT_MEMORY
+
+#include <d3d11.h>
+#include <cuda_d3d11_interop.h>
 
 #include "openzoom/cuda/cuda_kernels.hpp"
 #include "openzoom/common/maxine_superres.hpp"
@@ -12,6 +16,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
@@ -24,8 +29,22 @@
 #include <vector>
 
 #include <QDebug>
+#include <QString>
 
 namespace openzoom {
+
+struct CudaInteropSurface::D3D11InteropState {
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    Microsoft::WRL::ComPtr<ID3D12Resource> d3d12Resource;
+    cudaExternalMemory_t externalMemory{};
+    cudaMipmappedArray_t mipArray{};
+    cudaArray_t level0Array{};
+    // Retained solely for the isolated legacy-driver diagnostic path. The
+    // production camera path never creates a legacy registration.
+    cudaGraphicsResource_t resource{};
+    ID3D11Texture2D* identity{};
+    unsigned int subresource{};
+};
 
 namespace {
 
@@ -33,6 +52,22 @@ bool gWarnedFp16Unsupported = false;
 constexpr unsigned int kSuperResWarmupFrames = 10u;
 constexpr unsigned int kSuperResTimingFrames = 60u;
 constexpr float kSuperResLatencyTargetMs = 24.0f;
+constexpr unsigned int kMaximumStabilizationPairs = 4096u;
+constexpr unsigned int kTripodFocusSelectionFrames = 5u;
+constexpr unsigned int kTripodKeyframeCount = 4u;
+constexpr unsigned int kTripodRecoveryKeyframeCount =
+    kTripodKeyframeCount - 1u;
+constexpr unsigned int kTripodKeyframeAdmissionIntervalFrames = 300u;
+constexpr unsigned int kTripodKeyframeMinimumValidFrames = 30u;
+// Extra Stable enters its hold state on a larger transform step than the
+// original 1.25-pixel gate, reducing premature holds by 20%. Recovery remains
+// deliberately tighter so the live view returns only after it settles.
+constexpr float kBumpHoldMotionEnterAnalysisPixels = 1.50f;
+constexpr float kBumpHoldMotionExitAnalysisPixels = 0.55f;
+// Multi-frame reference accumulation remains disabled until alignment quality
+// can be rejected reliably. A misregistered accumulated keyframe performs
+// worse than the selected sharp frame on real low-texture camera footage.
+constexpr unsigned int kTripodReferenceAccumulationFrames = 0u;
 
 std::string SuperResTimingStatus(const char* prefix, float averageMs)
 {
@@ -112,18 +147,33 @@ constexpr size_t kKeystoneHistoryLimit = 32;
 bool gWarnedBgraRotationIgnored = false;
 bool gWarnedInvalidInput = false;
 
-// Shared with stabilization: pick integer downsample factors so the small luma
-// image fits in 320x180 (ceil division for the factor, then again for the
-// resulting extent).
+// Pick integer downsample factors (ceil division for the factor, then again
+// for the resulting extent). Keystone stays inexpensive at 320x180, while
+// stabilization retains twice the linear detail so small pre-zoom tremor is
+// not averaged away before feature tracking.
+void ComputeAnalysisDims(unsigned int width, unsigned int height,
+                         unsigned int targetWidth, unsigned int targetHeight,
+                         unsigned int& factorX, unsigned int& factorY,
+                         unsigned int& smallWidth, unsigned int& smallHeight) {
+    factorX = (width + targetWidth - 1) / targetWidth;
+    factorY = (height + targetHeight - 1) / targetHeight;
+    smallWidth = (width + factorX - 1) / factorX;
+    smallHeight = (height + factorY - 1) / factorY;
+}
+
 void ComputeSmallLumaDims(unsigned int width, unsigned int height,
                           unsigned int& factorX, unsigned int& factorY,
                           unsigned int& smallWidth, unsigned int& smallHeight) {
-    constexpr unsigned int kTargetSmallWidth = 320;
-    constexpr unsigned int kTargetSmallHeight = 180;
-    factorX = (width + kTargetSmallWidth - 1) / kTargetSmallWidth;
-    factorY = (height + kTargetSmallHeight - 1) / kTargetSmallHeight;
-    smallWidth = (width + factorX - 1) / factorX;
-    smallHeight = (height + factorY - 1) / factorY;
+    ComputeAnalysisDims(width, height, 320, 180, factorX, factorY,
+                        smallWidth, smallHeight);
+}
+
+void ComputeStabilizationLumaDims(
+    unsigned int width, unsigned int height,
+    unsigned int& factorX, unsigned int& factorY,
+    unsigned int& smallWidth, unsigned int& smallHeight) {
+    ComputeAnalysisDims(width, height, 640, 360, factorX, factorY,
+                        smallWidth, smallHeight);
 }
 
 struct KeystoneQuadDetection {
@@ -386,9 +436,10 @@ bool QueryDeviceLuid(int deviceId, LUID& luidOut)
 
 CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
                                        ID3D12Resource* superResTexture,
-                                       ID3D12Fence* sharedFence) {
+                                       ID3D12Fence* sharedFence,
+                                       ID3D12Resource* originalTexture) {
     try {
-        Initialize(texture, superResTexture, sharedFence);
+        Initialize(texture, superResTexture, sharedFence, originalTexture);
         valid_ = true;
         lastError_.clear();
     } catch (const std::exception& e) {
@@ -412,6 +463,10 @@ CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
             cudaDestroyExternalMemory(superResExternalMemory_);
             superResExternalMemory_ = nullptr;
         }
+        if (originalExternalMemory_ != nullptr) {
+            cudaDestroyExternalMemory(originalExternalMemory_);
+            originalExternalMemory_ = nullptr;
+        }
         if (externalSemaphore_ != nullptr) {
             cudaDestroyExternalSemaphore(externalSemaphore_);
             externalSemaphore_ = nullptr;
@@ -420,6 +475,8 @@ CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
         level0Array_ = nullptr;
         superResMipArray_ = nullptr;
         superResLevel0Array_ = nullptr;
+        originalMipArray_ = nullptr;
+        originalLevel0Array_ = nullptr;
         if (stream_ != nullptr) {
             cudaStreamDestroy(stream_);
             stream_ = nullptr;
@@ -442,13 +499,27 @@ void CudaInteropSurface::SynchronizeStream() noexcept {
 
 CudaInteropSurface::~CudaInteropSurface() {
     SynchronizeStream();
+    ResetCaptureInterop();
 
     ReleaseSuperRes();
     ReleasePinnedUploadRing();
+    ReleaseDeviceBuffers();
 
     if (processTimingStartEvent_) {
         cudaEventDestroy(processTimingStartEvent_);
         processTimingStartEvent_ = nullptr;
+    }
+    if (processTimingInputEvent_) {
+        cudaEventDestroy(processTimingInputEvent_);
+        processTimingInputEvent_ = nullptr;
+    }
+    if (processTimingGeometryEvent_) {
+        cudaEventDestroy(processTimingGeometryEvent_);
+        processTimingGeometryEvent_ = nullptr;
+    }
+    if (processTimingEffectsEvent_) {
+        cudaEventDestroy(processTimingEffectsEvent_);
+        processTimingEffectsEvent_ = nullptr;
     }
     if (processTimingStopEvent_) {
         cudaEventDestroy(processTimingStopEvent_);
@@ -476,6 +547,11 @@ CudaInteropSurface::~CudaInteropSurface() {
         superResExternalMemory_ = nullptr;
     }
 
+    if (originalExternalMemory_ != nullptr) {
+        cudaDestroyExternalMemory(originalExternalMemory_);
+        originalExternalMemory_ = nullptr;
+    }
+
     if (externalSemaphore_ != nullptr) {
         cudaDestroyExternalSemaphore(externalSemaphore_);
         externalSemaphore_ = nullptr;
@@ -486,7 +562,63 @@ CudaInteropSurface::~CudaInteropSurface() {
         stream_ = nullptr;
     }
 
-    ReleaseDeviceBuffers();
+}
+
+void CudaInteropSurface::ResetCaptureInterop(bool atProcessExit) {
+    if (!d3d11Interop_) {
+        return;
+    }
+    if (cudaDeviceId_ >= 0) {
+        const cudaError_t deviceStatus = cudaSetDevice(cudaDeviceId_);
+        if (deviceStatus != cudaSuccess) {
+            qWarning() << "cudaSetDevice while releasing camera interop failed:"
+                       << cudaGetErrorString(deviceStatus);
+        }
+    }
+    SynchronizeStream();
+    if (atProcessExit && d3d11Interop_->resource) {
+        // The installed NVIDIA driver faults inside the otherwise balanced
+        // legacy unregister call after a VideoProcessor-written texture has
+        // been used for capture. Keep both the registration and its texture
+        // alive until Windows reclaims the process. Releasing only the ComPtr
+        // here would violate CUDA's registered-resource lifetime contract.
+        qWarning() << "Retaining the legacy CUDA/D3D11 camera registration "
+                      "until process exit due to an NVIDIA driver workaround";
+        (void)d3d11Interop_.release();
+        return;
+    }
+    if (d3d11Interop_->resource) {
+        qInfo() << "Releasing CUDA/D3D11 camera interop registration";
+        const cudaError_t result =
+            cudaGraphicsUnregisterResource(d3d11Interop_->resource);
+        if (result != cudaSuccess) {
+            qWarning() << "CUDA camera texture unregister failed:"
+                       << cudaGetErrorString(result);
+        } else {
+            qInfo() << "CUDA/D3D11 camera interop registration released";
+        }
+        d3d11Interop_->resource = nullptr;
+    }
+    if (d3d11Interop_->mipArray) {
+        const cudaError_t result =
+            cudaFreeMipmappedArray(d3d11Interop_->mipArray);
+        if (result != cudaSuccess) {
+            qWarning() << "CUDA camera external-memory array release failed:"
+                       << cudaGetErrorString(result);
+        }
+        d3d11Interop_->mipArray = nullptr;
+        d3d11Interop_->level0Array = nullptr;
+    }
+    if (d3d11Interop_->externalMemory) {
+        const cudaError_t result =
+            cudaDestroyExternalMemory(d3d11Interop_->externalMemory);
+        if (result != cudaSuccess) {
+            qWarning() << "CUDA camera external-memory release failed:"
+                       << cudaGetErrorString(result);
+        }
+        d3d11Interop_->externalMemory = nullptr;
+    }
+    d3d11Interop_.reset();
 }
 
 bool CudaInteropSurface::SelectCudaDeviceMatching(LUID adapterLuid) {
@@ -513,18 +645,13 @@ bool CudaInteropSurface::SelectCudaDeviceMatching(LUID adapterLuid) {
     }
 
     if (!matched) {
-        if (deviceCount > 0) {
-            qWarning() << "No CUDA device LUID matched; using device 0 as fallback";
-            cudaDeviceProp properties{};
-            ThrowIfCudaFailed(cudaGetDeviceProperties(&properties, 0), "cudaGetDeviceProperties failed");
-            ThrowIfCudaFailed(cudaSetDevice(0), "cudaSetDevice failed");
-            cudaDeviceId_ = 0;
-            matchedProps = properties;
-        } else {
-            lastError_ = "No CUDA devices available";
-            qWarning() << "No CUDA devices reported by runtime";
-            return false;
-        }
+        lastError_ =
+            deviceCount > 0
+                ? "No CUDA device matches the D3D12 adapter. GPU processing "
+                  "was disabled to prevent cross-adapter interop corruption."
+                : "No CUDA devices are available.";
+        qWarning() << QString::fromStdString(lastError_);
+        return false;
     }
 
     qInfo() << "Using CUDA device" << cudaDeviceId_ << matchedProps.name;
@@ -681,15 +808,90 @@ bool CudaInteropSurface::CreateSuperResSurfaceFromResource(
     return true;
 }
 
+bool CudaInteropSurface::CreateOriginalSurfaceFromResource(
+    ID3D12Device* device,
+    ID3D12Resource* texture) {
+    if (!texture) {
+        return true;
+    }
+
+    const D3D12_RESOURCE_DESC desc = texture->GetDesc();
+    if (desc.Format != format_ ||
+        desc.Width != width_ ||
+        desc.Height != height_) {
+        throw std::invalid_argument(
+            "Original recording texture must match the primary CUDA surface");
+    }
+    originalWidth_ = static_cast<UINT>(desc.Width);
+    originalHeight_ = desc.Height;
+
+    WindowsSecurityAttributes securityAttributes;
+    HANDLE sharedHandle = nullptr;
+    ThrowIfFailed(device->CreateSharedHandle(texture,
+                                             securityAttributes.get(),
+                                             GENERIC_ALL,
+                                             nullptr,
+                                             &sharedHandle),
+                  "Failed to create shared handle for original recording surface");
+    const D3D12_RESOURCE_ALLOCATION_INFO allocationInfo =
+        device->GetResourceAllocationInfo(0, 1, &desc);
+
+    cudaExternalMemoryHandleDesc memoryDesc{};
+    memoryDesc.type = cudaExternalMemoryHandleTypeD3D12Resource;
+    memoryDesc.handle.win32.handle = sharedHandle;
+    memoryDesc.size = allocationInfo.SizeInBytes;
+    memoryDesc.flags = cudaExternalMemoryDedicated;
+
+    const auto closeHandle = [&sharedHandle]() {
+        if (sharedHandle) {
+            CloseHandle(sharedHandle);
+            sharedHandle = nullptr;
+        }
+    };
+
+    try {
+        ThrowIfCudaFailed(
+            cudaImportExternalMemory(&originalExternalMemory_, &memoryDesc),
+            "cudaImportExternalMemory for original recording surface failed");
+        closeHandle();
+
+        cudaExternalMemoryMipmappedArrayDesc arrayDesc{};
+        arrayDesc.offset = 0;
+        arrayDesc.numLevels = 1;
+        arrayDesc.extent =
+            make_cudaExtent(originalWidth_, originalHeight_, 1);
+        arrayDesc.formatDesc = MakeChannelDescForFormat(format_);
+        arrayDesc.flags =
+            cudaArraySurfaceLoadStore | cudaArrayColorAttachment;
+        ThrowIfCudaFailed(
+            cudaExternalMemoryGetMappedMipmappedArray(
+                &originalMipArray_, originalExternalMemory_, &arrayDesc),
+            "cudaExternalMemoryGetMappedMipmappedArray for original recording surface failed");
+        ThrowIfCudaFailed(
+            cudaGetMipmappedArrayLevel(
+                &originalLevel0Array_, originalMipArray_, 0),
+            "cudaGetMipmappedArrayLevel for original recording surface failed");
+    } catch (...) {
+        closeHandle();
+        throw;
+    }
+
+    qInfo() << "CUDA original recording surface imported successfully ("
+            << originalWidth_ << "x" << originalHeight_ << ")";
+    return true;
+}
+
 void CudaInteropSurface::Initialize(ID3D12Resource* texture,
                                     ID3D12Resource* superResTexture,
-                                    ID3D12Fence* sharedFence) {
+                                    ID3D12Fence* sharedFence,
+                                    ID3D12Resource* originalTexture) {
     if (!texture) {
         throw std::invalid_argument("Cannot initialize CUDA interop with null resource");
     }
 
     Microsoft::WRL::ComPtr<ID3D12Device> device;
     ThrowIfFailed(texture->GetDevice(IID_PPV_ARGS(&device)), "Failed to query ID3D12Device from resource");
+    d3d12Device_ = device;
 
     LUID adapterLuid = device->GetAdapterLuid();
     if (!SelectCudaDeviceMatching(adapterLuid)) {
@@ -698,6 +900,7 @@ void CudaInteropSurface::Initialize(ID3D12Resource* texture,
 
     CreateSurfaceFromResource(device.Get(), texture);
     CreateSuperResSurfaceFromResource(device.Get(), superResTexture);
+    CreateOriginalSurfaceFromResource(device.Get(), originalTexture);
 
     if (sharedFence != nullptr) {
         ImportFenceSemaphore(device.Get(), sharedFence);
@@ -849,8 +1052,10 @@ void CudaInteropSurface::ResetTemporalHistory() {
     temporalHistoryValid_ = false;
 }
 
-bool CudaInteropSurface::EnsureStabilizationBuffers(unsigned int width, unsigned int height) {
-    if (deviceStabState_ && stabFullWidth_ == width && stabFullHeight_ == height) {
+bool CudaInteropSurface::EnsureStabilizationBuffers(unsigned int width,
+                                                    unsigned int height) {
+    if (deviceStabState_ && stabFullWidth_ == width &&
+        stabFullHeight_ == height) {
         return true;
     }
 
@@ -864,11 +1069,137 @@ bool CudaInteropSurface::EnsureStabilizationBuffers(unsigned int width, unsigned
     unsigned int factorY = 0;
     unsigned int smallWidth = 0;
     unsigned int smallHeight = 0;
-    ComputeSmallLumaDims(width, height, factorX, factorY, smallWidth, smallHeight);
+    ComputeStabilizationLumaDims(
+        width, height, factorX, factorY, smallWidth, smallHeight);
 
     ThrowIfCudaFailed(cudaMalloc(reinterpret_cast<void**>(&deviceStabLuma_),
                                  static_cast<size_t>(smallWidth) * smallHeight * sizeof(float)),
                       "cudaMalloc stabilization luma buffer failed");
+    ThrowIfCudaFailed(cudaMalloc(reinterpret_cast<void**>(&deviceStabLumaPrevious_),
+                                 static_cast<size_t>(smallWidth) * smallHeight * sizeof(float)),
+                      "cudaMalloc stabilization previous luma buffer failed");
+    ThrowIfCudaFailed(cudaMalloc(reinterpret_cast<void**>(&deviceStabLumaReference_),
+                                 static_cast<size_t>(smallWidth) * smallHeight * sizeof(float)),
+                      "cudaMalloc stabilization reference luma buffer failed");
+    const unsigned int pyramid1Width = (smallWidth + 1u) / 2u;
+    const unsigned int pyramid1Height = (smallHeight + 1u) / 2u;
+    const unsigned int pyramid2Width = (pyramid1Width + 1u) / 2u;
+    const unsigned int pyramid2Height = (pyramid1Height + 1u) / 2u;
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceTripodCurrentPyramid1_),
+                          static_cast<size_t>(pyramid1Width) * pyramid1Height *
+                              sizeof(float)),
+                      "cudaMalloc tripod current pyramid level 1 failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceTripodCurrentPyramid2_),
+                          static_cast<size_t>(pyramid2Width) * pyramid2Height *
+                              sizeof(float)),
+                      "cudaMalloc tripod current pyramid level 2 failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceTripodReferencePyramid1_),
+                          static_cast<size_t>(pyramid1Width) * pyramid1Height *
+                              sizeof(float)),
+                      "cudaMalloc tripod reference pyramid level 1 failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceTripodReferencePyramid2_),
+                          static_cast<size_t>(pyramid2Width) * pyramid2Height *
+                              sizeof(float)),
+                      "cudaMalloc tripod reference pyramid level 2 failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceTripodReferenceFeatures_),
+                          static_cast<size_t>(kMaximumStabilizationPairs) *
+                              sizeof(TripodReferenceFeature)),
+                      "cudaMalloc tripod prepared reference features failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(
+                              &deviceTripodReferenceFeatureCount_),
+                          sizeof(unsigned int)),
+                      "cudaMalloc tripod prepared feature count failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceTripodRecoveryLuma_),
+                          static_cast<size_t>(kTripodRecoveryKeyframeCount) *
+                              smallWidth * smallHeight * sizeof(float)),
+                      "cudaMalloc tripod recovery luma failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(
+                              &deviceTripodRecoveryPyramid1_),
+                          static_cast<size_t>(kTripodRecoveryKeyframeCount) *
+                              pyramid1Width * pyramid1Height * sizeof(float)),
+                      "cudaMalloc tripod recovery pyramid level 1 failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(
+                              &deviceTripodRecoveryPyramid2_),
+                          static_cast<size_t>(kTripodRecoveryKeyframeCount) *
+                              pyramid2Width * pyramid2Height * sizeof(float)),
+                      "cudaMalloc tripod recovery pyramid level 2 failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(
+                              &deviceTripodRecoveryFeatures_),
+                          static_cast<size_t>(kTripodRecoveryKeyframeCount) *
+                              kMaximumStabilizationPairs *
+                              sizeof(TripodReferenceFeature)),
+                      "cudaMalloc tripod recovery features failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(
+                              &deviceTripodRecoveryFeatureCounts_),
+                          kTripodRecoveryKeyframeCount *
+                              sizeof(unsigned int)),
+                      "cudaMalloc tripod recovery feature counts failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(
+                              &deviceTripodKeyframeOrigins_),
+                          kTripodKeyframeCount * sizeof(float4)),
+                      "cudaMalloc tripod keyframe origins failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(
+                              &deviceTripodKeyframeValid_),
+                          kTripodKeyframeCount * sizeof(unsigned int)),
+                      "cudaMalloc tripod keyframe validity failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(
+                              &deviceTripodMatchCandidates_),
+                          kTripodKeyframeCount *
+                              sizeof(TripodMatchCandidate)),
+                      "cudaMalloc tripod match candidates failed");
+    ThrowIfCudaFailed(
+        cudaMemsetAsync(deviceTripodKeyframeValid_, 0,
+                        kTripodKeyframeCount * sizeof(unsigned int), stream_),
+        "cudaMemsetAsync tripod keyframe validity failed");
+    ThrowIfCudaFailed(
+        cudaMemsetAsync(deviceTripodMatchCandidates_, 0,
+                        kTripodKeyframeCount *
+                            sizeof(TripodMatchCandidate),
+                        stream_),
+        "cudaMemsetAsync tripod match candidates failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(
+                              &deviceTripodReferenceAccumulator_),
+                          static_cast<size_t>(smallWidth) * smallHeight *
+                              sizeof(float)),
+                      "cudaMalloc tripod reference accumulator failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(
+                              &deviceTripodReferenceSampleCounts_),
+                          static_cast<size_t>(smallWidth) * smallHeight *
+                              sizeof(unsigned int)),
+                      "cudaMalloc tripod reference sample counts failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceTripodFocusScore_),
+                          sizeof(float)),
+                      "cudaMalloc tripod focus score failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceTripodBestFocusScore_),
+                          sizeof(float)),
+                      "cudaMalloc tripod best focus score failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceTripodSelectionFlag_),
+                          sizeof(unsigned int)),
+                      "cudaMalloc tripod selection flag failed");
+    ThrowIfCudaFailed(
+        cudaMallocPitch(reinterpret_cast<void**>(&deviceBumpHoldFrame_),
+                        &deviceBumpHoldPitch_,
+                        static_cast<size_t>(width) * sizeof(uchar4), height),
+        "cudaMallocPitch bump hold frame failed");
     ThrowIfCudaFailed(cudaMalloc(reinterpret_cast<void**>(&deviceStabColProjCurr_),
                                  static_cast<size_t>(smallWidth) * sizeof(float)),
                       "cudaMalloc stabilization column projection failed");
@@ -885,6 +1216,23 @@ bool CudaInteropSurface::EnsureStabilizationBuffers(unsigned int width, unsigned
     ThrowIfCudaFailed(cudaMalloc(reinterpret_cast<void**>(&deviceStabState_),
                                  sizeof(StabilizationState)),
                       "cudaMalloc stabilization state failed");
+    ThrowIfCudaFailed(cudaMalloc(
+                          reinterpret_cast<void**>(&deviceBumpHoldState_),
+                          sizeof(BumpHoldState)),
+                      "cudaMalloc bump hold state failed");
+    LaunchResetBumpHoldState(deviceBumpHoldState_, stream_);
+    ThrowIfCudaFailed(cudaMallocHost(
+                          reinterpret_cast<void**>(&hostStabDiagnostics_),
+                          5 * sizeof(float4)),
+                      "cudaMallocHost stabilization diagnostics failed");
+    std::memset(hostStabDiagnostics_, 0, 5 * sizeof(float4));
+    ThrowIfCudaFailed(cudaMalloc(reinterpret_cast<void**>(&deviceStabPairs_),
+                                 static_cast<size_t>(kMaximumStabilizationPairs) *
+                                     sizeof(float4)),
+                      "cudaMalloc stabilization motion pairs failed");
+    ThrowIfCudaFailed(cudaMalloc(reinterpret_cast<void**>(&deviceStabPairCount_),
+                                 sizeof(unsigned int)),
+                      "cudaMalloc stabilization pair count failed");
 
     stabSmallWidth_ = smallWidth;
     stabSmallHeight_ = smallHeight;
@@ -893,17 +1241,138 @@ bool CudaInteropSurface::EnsureStabilizationBuffers(unsigned int width, unsigned
     stabFullWidth_ = width;
     stabFullHeight_ = height;
     stabPrevValid_ = false;
+    tripodReferenceValid_ = false;
+    tripodRelockPending_ = false;
+    virtualTripodActive_ = false;
+    bumpHoldActive_ = false;
+    tripodReferencePrepared_ = false;
+    tripodReferenceBuildFrame_ = 0;
+    tripodReferenceAccumulationFrame_ = 0;
+    tripodKeyframeAdmissionFrames_ = 0;
+    tripodNextRecoverySlot_ = 1u;
     return true;
 }
 
 void CudaInteropSurface::ReleaseStabilization() {
-    if (deviceStabLuma_ || deviceStabColProjCurr_ || deviceStabRowProjCurr_ ||
-        deviceStabColProjPrev_ || deviceStabRowProjPrev_ || deviceStabState_) {
+    if (deviceStabLuma_ || deviceStabLumaPrevious_ || deviceStabLumaReference_ ||
+        deviceTripodCurrentPyramid1_ || deviceTripodCurrentPyramid2_ ||
+        deviceTripodReferencePyramid1_ || deviceTripodReferencePyramid2_ ||
+        deviceTripodReferenceFeatures_ ||
+        deviceTripodReferenceFeatureCount_ ||
+        deviceTripodRecoveryLuma_ ||
+        deviceTripodRecoveryPyramid1_ ||
+        deviceTripodRecoveryPyramid2_ ||
+        deviceTripodRecoveryFeatures_ ||
+        deviceTripodRecoveryFeatureCounts_ ||
+        deviceTripodKeyframeOrigins_ ||
+        deviceTripodKeyframeValid_ ||
+        deviceTripodMatchCandidates_ ||
+        deviceTripodReferenceAccumulator_ ||
+        deviceTripodReferenceSampleCounts_ || deviceTripodFocusScore_ ||
+        deviceTripodBestFocusScore_ || deviceTripodSelectionFlag_ ||
+        deviceBumpHoldFrame_ || deviceBumpHoldState_ ||
+        deviceStabColProjCurr_ || deviceStabRowProjCurr_ ||
+        deviceStabColProjPrev_ || deviceStabRowProjPrev_ || deviceStabState_ ||
+        hostStabDiagnostics_ ||
+        deviceStabPairs_ || deviceStabPairCount_) {
         SynchronizeStream();
     }
     if (deviceStabLuma_) {
         cudaFree(deviceStabLuma_);
         deviceStabLuma_ = nullptr;
+    }
+    if (deviceStabLumaPrevious_) {
+        cudaFree(deviceStabLumaPrevious_);
+        deviceStabLumaPrevious_ = nullptr;
+    }
+    if (deviceStabLumaReference_) {
+        cudaFree(deviceStabLumaReference_);
+        deviceStabLumaReference_ = nullptr;
+    }
+    if (deviceTripodCurrentPyramid1_) {
+        cudaFree(deviceTripodCurrentPyramid1_);
+        deviceTripodCurrentPyramid1_ = nullptr;
+    }
+    if (deviceTripodCurrentPyramid2_) {
+        cudaFree(deviceTripodCurrentPyramid2_);
+        deviceTripodCurrentPyramid2_ = nullptr;
+    }
+    if (deviceTripodReferencePyramid1_) {
+        cudaFree(deviceTripodReferencePyramid1_);
+        deviceTripodReferencePyramid1_ = nullptr;
+    }
+    if (deviceTripodReferencePyramid2_) {
+        cudaFree(deviceTripodReferencePyramid2_);
+        deviceTripodReferencePyramid2_ = nullptr;
+    }
+    if (deviceTripodReferenceFeatures_) {
+        cudaFree(deviceTripodReferenceFeatures_);
+        deviceTripodReferenceFeatures_ = nullptr;
+    }
+    if (deviceTripodReferenceFeatureCount_) {
+        cudaFree(deviceTripodReferenceFeatureCount_);
+        deviceTripodReferenceFeatureCount_ = nullptr;
+    }
+    if (deviceTripodRecoveryLuma_) {
+        cudaFree(deviceTripodRecoveryLuma_);
+        deviceTripodRecoveryLuma_ = nullptr;
+    }
+    if (deviceTripodRecoveryPyramid1_) {
+        cudaFree(deviceTripodRecoveryPyramid1_);
+        deviceTripodRecoveryPyramid1_ = nullptr;
+    }
+    if (deviceTripodRecoveryPyramid2_) {
+        cudaFree(deviceTripodRecoveryPyramid2_);
+        deviceTripodRecoveryPyramid2_ = nullptr;
+    }
+    if (deviceTripodRecoveryFeatures_) {
+        cudaFree(deviceTripodRecoveryFeatures_);
+        deviceTripodRecoveryFeatures_ = nullptr;
+    }
+    if (deviceTripodRecoveryFeatureCounts_) {
+        cudaFree(deviceTripodRecoveryFeatureCounts_);
+        deviceTripodRecoveryFeatureCounts_ = nullptr;
+    }
+    if (deviceTripodKeyframeOrigins_) {
+        cudaFree(deviceTripodKeyframeOrigins_);
+        deviceTripodKeyframeOrigins_ = nullptr;
+    }
+    if (deviceTripodKeyframeValid_) {
+        cudaFree(deviceTripodKeyframeValid_);
+        deviceTripodKeyframeValid_ = nullptr;
+    }
+    if (deviceTripodMatchCandidates_) {
+        cudaFree(deviceTripodMatchCandidates_);
+        deviceTripodMatchCandidates_ = nullptr;
+    }
+    if (deviceTripodReferenceAccumulator_) {
+        cudaFree(deviceTripodReferenceAccumulator_);
+        deviceTripodReferenceAccumulator_ = nullptr;
+    }
+    if (deviceTripodReferenceSampleCounts_) {
+        cudaFree(deviceTripodReferenceSampleCounts_);
+        deviceTripodReferenceSampleCounts_ = nullptr;
+    }
+    if (deviceTripodFocusScore_) {
+        cudaFree(deviceTripodFocusScore_);
+        deviceTripodFocusScore_ = nullptr;
+    }
+    if (deviceTripodBestFocusScore_) {
+        cudaFree(deviceTripodBestFocusScore_);
+        deviceTripodBestFocusScore_ = nullptr;
+    }
+    if (deviceTripodSelectionFlag_) {
+        cudaFree(deviceTripodSelectionFlag_);
+        deviceTripodSelectionFlag_ = nullptr;
+    }
+    if (deviceBumpHoldFrame_) {
+        cudaFree(deviceBumpHoldFrame_);
+        deviceBumpHoldFrame_ = nullptr;
+    }
+    deviceBumpHoldPitch_ = 0;
+    if (deviceBumpHoldState_) {
+        cudaFree(deviceBumpHoldState_);
+        deviceBumpHoldState_ = nullptr;
     }
     if (deviceStabColProjCurr_) {
         cudaFree(deviceStabColProjCurr_);
@@ -925,6 +1394,29 @@ void CudaInteropSurface::ReleaseStabilization() {
         cudaFree(deviceStabState_);
         deviceStabState_ = nullptr;
     }
+    if (hostStabDiagnostics_) {
+        cudaFreeHost(hostStabDiagnostics_);
+        hostStabDiagnostics_ = nullptr;
+    }
+    if (deviceStabPairs_) {
+        cudaFree(deviceStabPairs_);
+        deviceStabPairs_ = nullptr;
+    }
+    if (deviceStabPairCount_) {
+        cudaFree(deviceStabPairCount_);
+        deviceStabPairCount_ = nullptr;
+    }
+    if (stabilizerTimingStartEvent_) {
+        cudaEventDestroy(stabilizerTimingStartEvent_);
+        stabilizerTimingStartEvent_ = nullptr;
+    }
+    if (stabilizerTimingStopEvent_) {
+        cudaEventDestroy(stabilizerTimingStopEvent_);
+        stabilizerTimingStopEvent_ = nullptr;
+    }
+    stabilizerTimingPending_ = false;
+    stabilizerTimingFrameCounter_ = 0;
+    lastStabilizerMs_ = -1.0f;
     stabSmallWidth_ = 0;
     stabSmallHeight_ = 0;
     stabFactorX_ = 0;
@@ -932,6 +1424,17 @@ void CudaInteropSurface::ReleaseStabilization() {
     stabFullWidth_ = 0;
     stabFullHeight_ = 0;
     stabPrevValid_ = false;
+    tripodReferenceValid_ = false;
+    tripodRelockPending_ = false;
+    virtualTripodActive_ = false;
+    bumpHoldActive_ = false;
+    tripodReferencePrepared_ = false;
+    tripodReferenceBuildFrame_ = 0;
+    tripodReferenceAccumulationFrame_ = 0;
+    tripodKeyframeAdmissionFrames_ = 0;
+    tripodNextRecoverySlot_ = 1u;
+    activeStabilizerEngine_ = -1;
+    stabilizerStatus_ = "Stabilizer off";
 }
 
 // Host-side flag only: with previousValid false the estimate kernel zeroes the
@@ -939,6 +1442,18 @@ void CudaInteropSurface::ReleaseStabilization() {
 // device work (and no stream sync) is needed here.
 void CudaInteropSurface::ResetStabilization() {
     stabPrevValid_ = false;
+    tripodReferenceValid_ = false;
+    tripodRelockPending_ = false;
+    virtualTripodActive_ = false;
+    bumpHoldActive_ = false;
+    tripodReferencePrepared_ = false;
+    tripodReferenceBuildFrame_ = 0;
+    tripodReferenceAccumulationFrame_ = 0;
+    tripodKeyframeAdmissionFrames_ = 0;
+    tripodNextRecoverySlot_ = 1u;
+    activeStabilizerEngine_ = -1;
+    lastStabilizerMs_ = -1.0f;
+    stabilizerStatus_ = "Stabilizer resetting";
 }
 
 // Device staging for raw camera formats (NV12 / YUY2). Plane row widths:
@@ -1511,6 +2026,161 @@ void CudaInteropSurface::ConsumeProcessTiming() {
                              processTimingStopEvent_) == cudaSuccess) {
         lastGpuFrameMs_ = elapsedMs;
     }
+    float inputMs = 0.0f;
+    float geometryMs = 0.0f;
+    float effectsMs = 0.0f;
+    float outputMs = 0.0f;
+    if (processTimingInputEvent_ && processTimingGeometryEvent_ &&
+        processTimingEffectsEvent_ &&
+        cudaEventElapsedTime(&inputMs,
+                             processTimingStartEvent_,
+                             processTimingInputEvent_) == cudaSuccess &&
+        cudaEventElapsedTime(&geometryMs,
+                             processTimingInputEvent_,
+                             processTimingGeometryEvent_) == cudaSuccess &&
+        cudaEventElapsedTime(&effectsMs,
+                             processTimingGeometryEvent_,
+                             processTimingEffectsEvent_) == cudaSuccess &&
+        cudaEventElapsedTime(&outputMs,
+                             processTimingEffectsEvent_,
+                             processTimingStopEvent_) == cudaSuccess) {
+        lastGpuStageTimings_ = {
+            inputMs,
+            geometryMs,
+            effectsMs,
+            outputMs,
+            lastGpuStageTimings_.generation + 1,
+        };
+    }
+}
+
+void CudaInteropSurface::ConsumeStabilizerTiming() {
+    if (!stabilizerTimingPending_ || !stabilizerTimingStopEvent_) {
+        return;
+    }
+    const cudaError_t query = cudaEventQuery(stabilizerTimingStopEvent_);
+    if (query == cudaErrorNotReady) {
+        return;
+    }
+    stabilizerTimingPending_ = false;
+    if (query != cudaSuccess) {
+        return;
+    }
+    float elapsedMs = 0.0f;
+    if (cudaEventElapsedTime(&elapsedMs, stabilizerTimingStartEvent_,
+                             stabilizerTimingStopEvent_) == cudaSuccess) {
+        lastStabilizerMs_ = elapsedMs;
+    }
+    if (!hostStabDiagnostics_) {
+        return;
+    }
+    const float4 diagnostics = hostStabDiagnostics_[0];
+    const float4 correction = hostStabDiagnostics_[1];
+    const float4 frameMotion = hostStabDiagnostics_[2];
+    const float4 tripodDiagnostics = hostStabDiagnostics_[3];
+    const float4 bumpHoldDiagnostics = hostStabDiagnostics_[4];
+    const int estimatorTag = static_cast<int>(std::lround(diagnostics.w));
+    activeStabilizerEngine_ =
+        estimatorTag >= 1 && estimatorTag <= 4 ? estimatorTag - 1 : -1;
+    const char* engineName = activeStabilizerEngine_ == 3
+                                 ? "CUDA fixed reference"
+                                 : "Tracking confidence too low";
+    const float correctionPixels =
+        std::hypot(correction.x, correction.y);
+    char status[320]{};
+    if (virtualTripodActive_) {
+        if (tripodDiagnostics.z >= 3.5f) {
+            std::snprintf(
+                status, sizeof(status),
+                "Virtual Tripod recovered through reference map | %.0f inliers | correction %.1f px",
+                static_cast<double>(diagnostics.x),
+                static_cast<double>(correctionPixels));
+        } else if (tripodDiagnostics.z >= 2.5f) {
+            std::snprintf(
+                status, sizeof(status),
+                "Virtual Tripod crop limit reached | %.0f inliers | correction %.1f px",
+                static_cast<double>(diagnostics.x),
+                static_cast<double>(correctionPixels));
+        } else if (tripodDiagnostics.z >= 1.5f) {
+            std::snprintf(
+                status, sizeof(status),
+                "Virtual Tripod recovering from a brief reference loss | %.0f rejected frames",
+                static_cast<double>(tripodDiagnostics.y));
+        } else {
+            std::snprintf(
+                status, sizeof(status),
+                "Virtual Tripod locked | %.0f inliers | correction %.1f px, %.2f deg",
+                static_cast<double>(diagnostics.x),
+                static_cast<double>(correctionPixels),
+                static_cast<double>(correction.z * 57.2957795f));
+        }
+    } else {
+        std::snprintf(
+            status, sizeof(status),
+            "%s | %.0f inliers | correction %.1f px, %.2f deg",
+            engineName, static_cast<double>(diagnostics.x),
+            static_cast<double>(correctionPixels),
+            static_cast<double>(correction.z * 57.2957795f));
+    }
+    if (bumpHoldActive_ && bumpHoldDiagnostics.w >= 0.5f) {
+        const int bumpMode =
+            static_cast<int>(std::lround(bumpHoldDiagnostics.x));
+        if (bumpHoldDiagnostics.w < 1.5f) {
+            std::snprintf(
+                status, sizeof(status),
+                "Extra Stable: preparing a sharp, settled frame | sharpness %.0f%%",
+                static_cast<double>(bumpHoldDiagnostics.y * 100.0f));
+        } else if (bumpMode == 1) {
+            std::snprintf(
+                status, sizeof(status),
+                "Extra Stable: showing the last sharp view | sharpness %.0f%% | motion step %.1f px",
+                static_cast<double>(bumpHoldDiagnostics.y * 100.0f),
+                static_cast<double>(bumpHoldDiagnostics.z));
+        } else if (bumpMode == 2) {
+            std::snprintf(
+                status, sizeof(status),
+                "Extra Stable: returning to the live view | sharpness %.0f%%",
+                static_cast<double>(bumpHoldDiagnostics.y * 100.0f));
+        } else {
+            const std::string tripodStatus(status);
+            std::snprintf(status, sizeof(status),
+                          "Extra Stable armed (live) | %s",
+                          tripodStatus.c_str());
+        }
+    }
+    stabilizerStatus_ = status;
+
+    QString diagnosticLine =
+        QString(
+            "Stabilizer sample | engine %1 | analysis %2x%3 (%4x%5 source "
+            "pixels/sample) | inliers %6 | residual %7 px^2 | "
+            "motion %8,%9 px %10 deg | correction %11,%12 px %13 deg | "
+            "tripod valid/invalid %14/%15 state %16 | %17 ms")
+            .arg(engineName)
+            .arg(stabSmallWidth_)
+            .arg(stabSmallHeight_)
+            .arg(stabFactorX_)
+            .arg(stabFactorY_)
+            .arg(diagnostics.x, 0, 'f', 0)
+            .arg(diagnostics.z, 0, 'f', 3)
+            .arg(frameMotion.x, 0, 'f', 2)
+            .arg(frameMotion.y, 0, 'f', 2)
+            .arg(frameMotion.z * 57.2957795f, 0, 'f', 3)
+            .arg(correction.x, 0, 'f', 2)
+            .arg(correction.y, 0, 'f', 2)
+            .arg(correction.z * 57.2957795f, 0, 'f', 3)
+            .arg(tripodDiagnostics.x, 0, 'f', 0)
+            .arg(tripodDiagnostics.y, 0, 'f', 0)
+            .arg(tripodDiagnostics.z, 0, 'f', 0)
+            .arg(lastStabilizerMs_, 0, 'f', 2);
+    if (bumpHoldActive_) {
+        diagnosticLine +=
+            QString(" | bump mode %1 sharp %2% step %3 px")
+                .arg(bumpHoldDiagnostics.x, 0, 'f', 0)
+                .arg(bumpHoldDiagnostics.y * 100.0f, 0, 'f', 0)
+                .arg(bumpHoldDiagnostics.z, 0, 'f', 2);
+    }
+    qInfo().noquote() << diagnosticLine;
 }
 
 void CudaInteropSurface::ReleaseKeystone() {
@@ -1985,10 +2655,194 @@ void CudaInteropSurface::RunGradientDemoKernel(unsigned int width, unsigned int 
     ThrowIfCudaFailed(cudaStreamSynchronize(stream_), "cudaStreamSynchronize failed");
 }
 
+bool CudaInteropSurface::UploadD3D11Frame(
+    const ProcessingInput& input,
+    uchar4* destination,
+    size_t destinationPitch) {
+    if (!input.d3d11Texture || !destination || stream_ == nullptr ||
+        !d3d12Device_) {
+        captureInteropFailed_ = true;
+        lastError_ =
+            "Camera external-memory interop: missing texture, CUDA "
+            "destination, or D3D12 device";
+        return false;
+    }
+
+    D3D11_TEXTURE2D_DESC description{};
+    input.d3d11Texture->GetDesc(&description);
+    if (description.Width < input.width ||
+        description.Height < input.height ||
+        description.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
+        captureInteropFailed_ = true;
+        lastError_ =
+            "Camera external-memory interop: expected a BGRA8 texture "
+            "matching the camera frame";
+        return false;
+    }
+    if (input.d3d11Subresource != 0) {
+        captureInteropFailed_ = true;
+        lastError_ =
+            "Camera external-memory interop: shared conversion texture must "
+            "use subresource zero";
+        return false;
+    }
+
+    HANDLE d3d11SharedHandle = nullptr;
+    HANDLE d3d12SharedHandle = nullptr;
+    const auto closeSharedHandles = [&]() {
+        if (d3d12SharedHandle) {
+            CloseHandle(d3d12SharedHandle);
+            d3d12SharedHandle = nullptr;
+        }
+        if (d3d11SharedHandle) {
+            CloseHandle(d3d11SharedHandle);
+            d3d11SharedHandle = nullptr;
+        }
+    };
+
+    try {
+        if (cudaDeviceId_ >= 0) {
+            ThrowIfCudaFailed(
+                cudaSetDevice(cudaDeviceId_),
+                "Camera external-memory cudaSetDevice failed");
+        }
+        if (!d3d11Interop_ ||
+            d3d11Interop_->identity != input.d3d11Texture) {
+            ResetCaptureInterop();
+            d3d11Interop_ = std::make_unique<D3D11InteropState>();
+            d3d11Interop_->texture = input.d3d11Texture;
+            d3d11Interop_->identity = input.d3d11Texture;
+            d3d11Interop_->subresource = input.d3d11Subresource;
+
+            Microsoft::WRL::ComPtr<IDXGIResource1> dxgiResource;
+            ThrowIfFailed(
+                input.d3d11Texture->QueryInterface(
+                    IID_PPV_ARGS(dxgiResource.GetAddressOf())),
+                "Camera shared texture does not expose IDXGIResource1");
+            ThrowIfFailed(
+                dxgiResource->CreateSharedHandle(
+                    nullptr,
+                    DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
+                    nullptr,
+                    &d3d11SharedHandle),
+                "Failed to create the D3D11 camera NT shared handle");
+            ThrowIfFailed(
+                d3d12Device_->OpenSharedHandle(
+                    d3d11SharedHandle,
+                    IID_PPV_ARGS(
+                        d3d11Interop_->d3d12Resource.GetAddressOf())),
+                "Failed to open the camera texture on D3D12");
+
+            WindowsSecurityAttributes securityAttributes;
+            ThrowIfFailed(
+                d3d12Device_->CreateSharedHandle(
+                    d3d11Interop_->d3d12Resource.Get(),
+                    securityAttributes.get(),
+                    GENERIC_ALL,
+                    nullptr,
+                    &d3d12SharedHandle),
+                "Failed to create the D3D12 camera shared handle");
+
+            const D3D12_RESOURCE_DESC resourceDescription =
+                d3d11Interop_->d3d12Resource->GetDesc();
+            if (resourceDescription.Dimension !=
+                    D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+                resourceDescription.Width != description.Width ||
+                resourceDescription.Height != description.Height ||
+                resourceDescription.Format != description.Format) {
+                throw std::runtime_error(
+                    "D3D12 opened camera texture does not match its D3D11 "
+                    "allocation");
+            }
+            const D3D12_RESOURCE_ALLOCATION_INFO allocationInfo =
+                d3d12Device_->GetResourceAllocationInfo(
+                    0, 1, &resourceDescription);
+            if (allocationInfo.SizeInBytes == 0 ||
+                allocationInfo.SizeInBytes == UINT64_MAX) {
+                throw std::runtime_error(
+                    "D3D12 could not report the camera allocation size");
+            }
+
+            cudaExternalMemoryHandleDesc memoryDescription{};
+            memoryDescription.type =
+                cudaExternalMemoryHandleTypeD3D12Resource;
+            memoryDescription.handle.win32.handle = d3d12SharedHandle;
+            memoryDescription.size = allocationInfo.SizeInBytes;
+            memoryDescription.flags = cudaExternalMemoryDedicated;
+            ThrowIfCudaFailed(
+                cudaImportExternalMemory(
+                    &d3d11Interop_->externalMemory,
+                    &memoryDescription),
+                "CUDA camera external-memory import failed");
+
+            cudaExternalMemoryMipmappedArrayDesc arrayDescription{};
+            arrayDescription.offset = 0;
+            arrayDescription.numLevels = 1;
+            arrayDescription.extent =
+                make_cudaExtent(description.Width, description.Height, 1);
+            arrayDescription.formatDesc =
+                MakeChannelDescForFormat(description.Format);
+            arrayDescription.flags =
+                cudaArraySurfaceLoadStore | cudaArrayColorAttachment;
+            ThrowIfCudaFailed(
+                cudaExternalMemoryGetMappedMipmappedArray(
+                    &d3d11Interop_->mipArray,
+                    d3d11Interop_->externalMemory,
+                    &arrayDescription),
+                "CUDA camera external-memory array mapping failed");
+            ThrowIfCudaFailed(
+                cudaGetMipmappedArrayLevel(
+                    &d3d11Interop_->level0Array,
+                    d3d11Interop_->mipArray,
+                    0),
+                "CUDA camera external-memory level query failed");
+            closeSharedHandles();
+            qInfo() << "Camera texture imported through "
+                       "D3D11 -> D3D12 -> CUDA external memory ("
+                    << description.Width << "x" << description.Height << ")";
+        }
+
+        ThrowIfCudaFailed(
+            cudaMemcpy2DFromArrayAsync(
+                destination,
+                destinationPitch,
+                d3d11Interop_->level0Array,
+                0,
+                0,
+                static_cast<size_t>(input.width) * sizeof(uchar4),
+                input.height,
+                cudaMemcpyDeviceToDevice,
+                stream_),
+            "Camera external-memory device copy failed");
+        // MediaCapture reuses the shared BGRA conversion texture for its next
+        // VideoProcessorBlt. Drain only this device-to-device upload; all
+        // enhancement kernels are queued after this function returns.
+        ThrowIfCudaFailed(
+            cudaStreamSynchronize(stream_),
+            "Camera external-memory read synchronization failed");
+        return true;
+    } catch (const std::exception& error) {
+        closeSharedHandles();
+        captureInteropFailed_ = true;
+        lastError_ =
+            std::string("Camera external-memory interop: ") + error.what();
+        qWarning() << QString::fromStdString(lastError_);
+        ResetCaptureInterop();
+        // Import and device-copy failures are handled by the capture fallback
+        // ladder. Clear CUDA's per-thread error slot so this frame can retry
+        // through the pinned host-copy rung.
+        (void)cudaGetLastError();
+        return false;
+    }
+}
+
 bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                                       const ProcessingSettings& settings,
                                       const FenceSyncParams& fenceSync) {
-    if (!valid_ || !input.hostPixels || input.width == 0 || input.height == 0) {
+    const bool deviceResidentInput = input.d3d11Texture != nullptr;
+    captureInteropFailed_ = false;
+    if (!valid_ || (!deviceResidentInput && !input.hostPixels) ||
+        input.width == 0 || input.height == 0) {
         return false;
     }
 
@@ -2014,9 +2868,10 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
     switch (format) {
     case 1:  // NV12: hostPixels = Y plane, hostPlane2 = interleaved UV plane
         minStride = static_cast<size_t>(input.width);
-        if (input.hostPlane2 == nullptr ||
+        if (!deviceResidentInput &&
+            (input.hostPlane2 == nullptr ||
             static_cast<size_t>(input.hostPlane2StrideBytes) <
-                (static_cast<size_t>(input.width) + 1) / 2 * 2) {
+                (static_cast<size_t>(input.width) + 1) / 2 * 2)) {
             if (!gWarnedInvalidInput) {
                 qWarning() << "ProcessFrame aborted: invalid NV12 UV plane";
                 gWarnedInvalidInput = true;
@@ -2035,7 +2890,8 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         }
         break;
     }
-    if (static_cast<size_t>(input.hostStrideBytes) < minStride) {
+    if (!deviceResidentInput &&
+        static_cast<size_t>(input.hostStrideBytes) < minStride) {
         if (!gWarnedInvalidInput) {
             qWarning() << "ProcessFrame aborted: stride" << input.hostStrideBytes
                        << "smaller than row size" << static_cast<unsigned long long>(minStride);
@@ -2044,10 +2900,11 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         return false;
     }
 
-    // Rotation runs on the GPU only for raw formats. For BGRA the CPU already
-    // converted *and* rotated, so a nonzero request must not rotate twice.
+    // CPU BGRA inputs arrive pre-rotated. Retained D3D11 BGRA textures have
+    // not crossed the CPU conversion path, so they use the same GPU rotation
+    // stage as raw NV12/YUY2 inputs.
     int turns = 0;
-    if (format == 0) {
+    if (format == 0 && !deviceResidentInput) {
         if (input.rotationQuarterTurns != 0 && !gWarnedBgraRotationIgnored) {
             qWarning() << "ProcessFrame: rotationQuarterTurns ignored for BGRA input"
                           " (CPU path rotates before upload)";
@@ -2093,6 +2950,12 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             if (!processTimingStartEvent_) {
                 ThrowIfCudaFailed(cudaEventCreate(&processTimingStartEvent_),
                                   "cudaEventCreate frame timing start failed");
+                ThrowIfCudaFailed(cudaEventCreate(&processTimingInputEvent_),
+                                  "cudaEventCreate input timing boundary failed");
+                ThrowIfCudaFailed(cudaEventCreate(&processTimingGeometryEvent_),
+                                  "cudaEventCreate geometry timing boundary failed");
+                ThrowIfCudaFailed(cudaEventCreate(&processTimingEffectsEvent_),
+                                  "cudaEventCreate effects timing boundary failed");
                 ThrowIfCudaFailed(cudaEventCreate(&processTimingStopEvent_),
                                   "cudaEventCreate frame timing stop failed");
             }
@@ -2112,19 +2975,32 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         }
 
         PinnedUploadSlot* uploadSlot = nullptr;
-        auto acquireUploadSlot = [&](size_t requiredBytes) -> PinnedUploadSlot& {
+        auto acquireUploadSlot = [&](size_t requiredBytes) -> PinnedUploadSlot* {
             if (!EnsurePinnedUploadRing(requiredBytes)) {
                 throw std::runtime_error("Could not allocate pinned upload staging ring");
             }
-            PinnedUploadSlot& slot = pinnedUploadSlots_[pinnedUploadNextSlot_];
-            pinnedUploadNextSlot_ = (pinnedUploadNextSlot_ + 1) % pinnedUploadSlots_.size();
-            if (slot.uploadPending) {
-                ThrowIfCudaFailed(cudaEventSynchronize(slot.uploadComplete),
-                                  "cudaEventSynchronize upload staging slot failed");
-                slot.uploadPending = false;
+            for (size_t offset = 0; offset < pinnedUploadSlots_.size(); ++offset) {
+                const size_t index =
+                    (pinnedUploadNextSlot_ + offset) % pinnedUploadSlots_.size();
+                PinnedUploadSlot& slot = pinnedUploadSlots_[index];
+                if (slot.uploadPending) {
+                    const cudaError_t queryStatus =
+                        cudaEventQuery(slot.uploadComplete);
+                    if (queryStatus == cudaErrorNotReady) {
+                        continue;
+                    }
+                    ThrowIfCudaFailed(queryStatus,
+                                      "cudaEventQuery upload staging slot failed");
+                    slot.uploadPending = false;
+                }
+                pinnedUploadNextSlot_ =
+                    (index + 1) % pinnedUploadSlots_.size();
+                uploadSlot = &slot;
+                return &slot;
             }
-            uploadSlot = &slot;
-            return slot;
+            lastError_ =
+                "CUDA upload staging ring busy; skipped one camera frame";
+            return nullptr;
         };
         auto copyRows = [](unsigned char* destination, size_t destinationStride,
                            const void* source, size_t sourceStride,
@@ -2137,7 +3013,28 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             }
         };
 
-        if (format == 0) {
+        if (deviceResidentInput) {
+            uchar4* uploadTarget = deviceBufferA_;
+            size_t uploadPitch = devicePitchA_;
+            if (turns != 0) {
+                if (!EnsurePreRotateBuffer(input.width, input.height)) {
+                    return false;
+                }
+                uploadTarget = devicePreRotate_;
+                uploadPitch = devicePitchPreRotate_;
+            }
+            if (!UploadD3D11Frame(input, uploadTarget, uploadPitch)) {
+                return false;
+            }
+            if (turns != 0) {
+                LaunchRotateQuarterLinear(
+                    deviceBufferA_, devicePitchA_,
+                    devicePreRotate_, devicePitchPreRotate_,
+                    static_cast<int>(input.width),
+                    static_cast<int>(input.height),
+                    turns, stream_);
+            }
+        } else if (format == 0) {
             // BGRA path: identical to the historical behavior.
             if (pixelSize != sizeof(uchar4)) {
                 if (!gWarnedFp16Unsupported) {
@@ -2147,11 +3044,15 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             }
 
             const size_t rowBytes = static_cast<size_t>(input.width) * sizeof(uchar4);
-            PinnedUploadSlot& slot = acquireUploadSlot(rowBytes * input.height);
-            copyRows(slot.data, rowBytes, input.hostPixels, input.hostStrideBytes,
+            PinnedUploadSlot* slot =
+                acquireUploadSlot(rowBytes * input.height);
+            if (!slot) {
+                return false;
+            }
+            copyRows(slot->data, rowBytes, input.hostPixels, input.hostStrideBytes,
                      rowBytes, input.height);
             ThrowIfCudaFailed(cudaMemcpy2DAsync(deviceBufferA_, devicePitchA_,
-                                                slot.data, rowBytes,
+                                                slot->data, rowBytes,
                                                 rowBytes, input.height,
                                                 cudaMemcpyHostToDevice, stream_),
                               "cudaMemcpy2DAsync host->device failed");
@@ -2178,14 +3079,18 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 const size_t yBytes = yRowBytes * input.height;
                 const size_t uvRowBytes = (static_cast<size_t>(input.width) + 1) / 2 * 2;
                 const size_t uvRows = (static_cast<size_t>(input.height) + 1) / 2;
-                PinnedUploadSlot& slot = acquireUploadSlot(yBytes + uvRowBytes * uvRows);
-                copyRows(slot.data, yRowBytes, input.hostPixels, input.hostStrideBytes,
+                PinnedUploadSlot* slot =
+                    acquireUploadSlot(yBytes + uvRowBytes * uvRows);
+                if (!slot) {
+                    return false;
+                }
+                copyRows(slot->data, yRowBytes, input.hostPixels, input.hostStrideBytes,
                          yRowBytes, input.height);
-                unsigned char* uvStaging = slot.data + yBytes;
+                unsigned char* uvStaging = slot->data + yBytes;
                 copyRows(uvStaging, uvRowBytes, input.hostPlane2, input.hostPlane2StrideBytes,
                          uvRowBytes, uvRows);
                 ThrowIfCudaFailed(cudaMemcpy2DAsync(deviceRawPlane1_, rawPlane1Pitch_,
-                                                    slot.data, yRowBytes,
+                                                    slot->data, yRowBytes,
                                                     yRowBytes, input.height,
                                                     cudaMemcpyHostToDevice, stream_),
                                   "cudaMemcpy2DAsync NV12 Y plane failed");
@@ -2204,11 +3109,15 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                                        stream_);
             } else {
                 const size_t rowBytes = (static_cast<size_t>(input.width) + 1) / 2 * 4;
-                PinnedUploadSlot& slot = acquireUploadSlot(rowBytes * input.height);
-                copyRows(slot.data, rowBytes, input.hostPixels, input.hostStrideBytes,
+                PinnedUploadSlot* slot =
+                    acquireUploadSlot(rowBytes * input.height);
+                if (!slot) {
+                    return false;
+                }
+                copyRows(slot->data, rowBytes, input.hostPixels, input.hostStrideBytes,
                          rowBytes, input.height);
                 ThrowIfCudaFailed(cudaMemcpy2DAsync(deviceRawPlane1_, rawPlane1Pitch_,
-                                                    slot.data, rowBytes,
+                                                    slot->data, rowBytes,
                                                     rowBytes, input.height,
                                                     cudaMemcpyHostToDevice, stream_),
                                   "cudaMemcpy2DAsync YUY2 failed");
@@ -2229,10 +3138,29 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             }
         }
 
-        if (format == 0) {
+        if (!deviceResidentInput && format == 0) {
             ThrowIfCudaFailed(cudaEventRecord(uploadSlot->uploadComplete, stream_),
                               "cudaEventRecord upload staging slot failed");
             uploadSlot->uploadPending = true;
+        }
+
+        if (input.publishOriginalFrame) {
+            if (!originalLevel0Array_ ||
+                originalWidth_ != procWidth ||
+                originalHeight_ != procHeight) {
+                lastError_ =
+                    "Original recording surface is unavailable or has the wrong dimensions";
+                return false;
+            }
+            ThrowIfCudaFailed(
+                cudaMemcpy2DToArrayAsync(
+                    originalLevel0Array_, 0, 0,
+                    deviceBufferA_, devicePitchA_,
+                    static_cast<size_t>(procWidth) * sizeof(uchar4),
+                    procHeight,
+                    cudaMemcpyDeviceToDevice,
+                    stream_),
+                "cudaMemcpy2DToArrayAsync for original recording frame failed");
         }
 
         uchar4* current = deviceBufferA_;
@@ -2244,13 +3172,42 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             std::swap(current, alternate);
             std::swap(currentPitch, alternatePitch);
         };
+        if (sampleGpuTiming) {
+            ThrowIfCudaFailed(
+                cudaEventRecord(processTimingInputEvent_, stream_),
+                "cudaEventRecord input timing boundary failed");
+        }
 
-        // Stabilization runs first so every later stage sees the jitter-corrected
-        // image. Projections, motion state and the warp correction all stay in
-        // device memory; nothing is read back to the host.
+        // Stabilization runs first so every later stage sees one fixed-reference
+        // CUDA geometry. Tracking, recovery, path state, and the affine warp
+        // remain device-resident.
         if (settings.enableStabilization) {
             if (!EnsureStabilizationBuffers(procWidth, procHeight)) {
                 return false;
+            }
+
+            ConsumeStabilizerTiming();
+            const bool bumpHoldRequested = settings.enableBumpHold;
+            if (bumpHoldRequested != bumpHoldActive_) {
+                bumpHoldActive_ = bumpHoldRequested;
+                LaunchResetBumpHoldState(deviceBumpHoldState_, stream_);
+            }
+            bool sampleStabilizerTiming = false;
+            if (!stabilizerTimingPending_ &&
+                ++stabilizerTimingFrameCounter_ >= 30u) {
+                stabilizerTimingFrameCounter_ = 0;
+                if (!stabilizerTimingStartEvent_) {
+                    ThrowIfCudaFailed(
+                        cudaEventCreate(&stabilizerTimingStartEvent_),
+                        "cudaEventCreate stabilizer timing start failed");
+                    ThrowIfCudaFailed(
+                        cudaEventCreate(&stabilizerTimingStopEvent_),
+                        "cudaEventCreate stabilizer timing stop failed");
+                }
+                ThrowIfCudaFailed(
+                    cudaEventRecord(stabilizerTimingStartEvent_, stream_),
+                    "cudaEventRecord stabilizer timing start failed");
+                sampleStabilizerTiming = true;
             }
 
             LaunchStabilizationLumaDownsample(deviceStabLuma_,
@@ -2259,31 +3216,464 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                                               static_cast<int>(procWidth), static_cast<int>(procHeight),
                                               static_cast<int>(stabFactorX_), static_cast<int>(stabFactorY_),
                                               stream_);
-            LaunchStabilizationProjections(deviceStabLuma_,
-                                           static_cast<int>(stabSmallWidth_), static_cast<int>(stabSmallHeight_),
-                                           deviceStabColProjCurr_, deviceStabRowProjCurr_,
-                                           stream_);
 
-            const float strength = std::clamp(settings.stabilizationStrength, 0.0f, 0.98f);
-            LaunchStabilizationEstimate(deviceStabColProjCurr_, deviceStabRowProjCurr_,
-                                        deviceStabColProjPrev_, deviceStabRowProjPrev_,
-                                        static_cast<int>(stabSmallWidth_), static_cast<int>(stabSmallHeight_),
-                                        static_cast<float>(stabFactorX_), static_cast<float>(stabFactorY_),
-                                        static_cast<int>(procWidth), static_cast<int>(procHeight),
-                                        strength,
-                                        stabPrevValid_,
-                                        deviceStabState_,
-                                        stream_);
+            constexpr float strength = 1.0f;
+            const float zoomAmount =
+                settings.enableZoom ? std::max(settings.zoomAmount, 1.0f) : 1.0f;
+            const float zoomCropReserve =
+                0.5f * (1.0f - 1.0f / zoomAmount);
+            const float maxCorrectionFraction =
+                std::clamp(std::max(0.06f, zoomCropReserve), 0.06f, 0.45f);
+            const float virtualTripodCorrectionFraction =
+                maxCorrectionFraction +
+                strength * (0.45f - maxCorrectionFraction);
+            if (!virtualTripodActive_) {
+                virtualTripodActive_ = true;
+                LaunchResetBumpHoldState(deviceBumpHoldState_, stream_);
+                tripodReferenceValid_ = false;
+                tripodReferencePrepared_ = false;
+                tripodReferenceBuildFrame_ = 0;
+                tripodReferenceAccumulationFrame_ = 0;
+                tripodRelockPending_ = true;
+                stabPrevValid_ = false;
+            }
+
+            if (virtualTripodActive_) {
+                const int pyramid1Width =
+                    static_cast<int>((stabSmallWidth_ + 1u) / 2u);
+                const int pyramid1Height =
+                    static_cast<int>((stabSmallHeight_ + 1u) / 2u);
+                const int pyramid2Width = (pyramid1Width + 1) / 2;
+                const int pyramid2Height = (pyramid1Height + 1) / 2;
+                const int tripodPixelCount =
+                    static_cast<int>(stabSmallWidth_ * stabSmallHeight_);
+                const size_t tripodLevel0Stride =
+                    static_cast<size_t>(stabSmallWidth_) * stabSmallHeight_;
+                const size_t tripodLevel1Stride =
+                    static_cast<size_t>(pyramid1Width) * pyramid1Height;
+                const size_t tripodLevel2Stride =
+                    static_cast<size_t>(pyramid2Width) * pyramid2Height;
+                auto keyframeLevel0 = [&](unsigned int slot) -> float* {
+                    return slot == 0u
+                               ? deviceStabLumaReference_
+                               : deviceTripodRecoveryLuma_ +
+                                     (slot - 1u) * tripodLevel0Stride;
+                };
+                auto keyframeLevel1 = [&](unsigned int slot) -> float* {
+                    return slot == 0u
+                               ? deviceTripodReferencePyramid1_
+                               : deviceTripodRecoveryPyramid1_ +
+                                     (slot - 1u) * tripodLevel1Stride;
+                };
+                auto keyframeLevel2 = [&](unsigned int slot) -> float* {
+                    return slot == 0u
+                               ? deviceTripodReferencePyramid2_
+                               : deviceTripodRecoveryPyramid2_ +
+                                     (slot - 1u) * tripodLevel2Stride;
+                };
+                auto keyframeFeatures =
+                    [&](unsigned int slot) -> TripodReferenceFeature* {
+                    return slot == 0u
+                               ? deviceTripodReferenceFeatures_
+                               : deviceTripodRecoveryFeatures_ +
+                                     (slot - 1u) *
+                                         kMaximumStabilizationPairs;
+                };
+                auto keyframeFeatureCount =
+                    [&](unsigned int slot) -> unsigned int* {
+                    return slot == 0u
+                               ? deviceTripodReferenceFeatureCount_
+                               : deviceTripodRecoveryFeatureCounts_ +
+                                     (slot - 1u);
+                };
+                auto buildKeyframe = [&](unsigned int slot) {
+                    LaunchStabilizationLumaPyramid(
+                        keyframeLevel0(slot),
+                        static_cast<int>(stabSmallWidth_),
+                        static_cast<int>(stabSmallHeight_),
+                        keyframeLevel1(slot),
+                        pyramid1Width, pyramid1Height,
+                        keyframeLevel2(slot),
+                        pyramid2Width, pyramid2Height, stream_);
+                    LaunchPrepareVirtualTripodReference(
+                        keyframeLevel0(slot),
+                        static_cast<int>(stabSmallWidth_),
+                        static_cast<int>(stabSmallHeight_),
+                        keyframeLevel1(slot),
+                        pyramid1Width, pyramid1Height,
+                        keyframeLevel2(slot),
+                        pyramid2Width, pyramid2Height,
+                        keyframeFeatures(slot),
+                        keyframeFeatureCount(slot),
+                        kMaximumStabilizationPairs, stream_);
+                    if (slot == 0u) {
+                        // The primary anchor is immutable until a manual
+                        // re-lock, so its wide-range projection profiles are
+                        // prepared once and reused after a rejected match.
+                        LaunchStabilizationProjections(
+                            keyframeLevel0(slot),
+                            static_cast<int>(stabSmallWidth_),
+                            static_cast<int>(stabSmallHeight_),
+                            deviceStabColProjPrev_,
+                            deviceStabRowProjPrev_, stream_);
+                    }
+                };
+                auto estimateReferenceMap = [&]() {
+                    LaunchStabilizationProjections(
+                        deviceStabLuma_,
+                        static_cast<int>(stabSmallWidth_),
+                        static_cast<int>(stabSmallHeight_),
+                        deviceStabColProjCurr_,
+                        deviceStabRowProjCurr_, stream_);
+                    // This kernel changes only the next LK prediction, and
+                    // only after the preceding absolute model was rejected.
+                    // LK plus RANSAC still decides whether the camera moved.
+                    LaunchVirtualTripodProjectionSeed(
+                        deviceStabColProjCurr_,
+                        deviceStabRowProjCurr_,
+                        deviceStabColProjPrev_,
+                        deviceStabRowProjPrev_,
+                        static_cast<int>(stabSmallWidth_),
+                        static_cast<int>(stabSmallHeight_),
+                        static_cast<float>(stabFactorX_),
+                        static_cast<float>(stabFactorY_),
+                        deviceTripodKeyframeOrigins_,
+                        deviceTripodKeyframeValid_, 0u,
+                        deviceStabState_, stream_);
+                    LaunchStabilizationLumaPyramid(
+                        deviceStabLuma_,
+                        static_cast<int>(stabSmallWidth_),
+                        static_cast<int>(stabSmallHeight_),
+                        deviceTripodCurrentPyramid1_,
+                        pyramid1Width, pyramid1Height,
+                        deviceTripodCurrentPyramid2_,
+                        pyramid2Width, pyramid2Height, stream_);
+                    const float inlierThreshold =
+                        std::max(
+                            2.0f,
+                            1.0f * static_cast<float>(
+                                       std::max(stabFactorX_, stabFactorY_)) /
+                                zoomAmount);
+                    ThrowIfCudaFailed(
+                        cudaMemsetAsync(
+                            deviceTripodMatchCandidates_, 0,
+                            kTripodKeyframeCount *
+                                sizeof(TripodMatchCandidate),
+                            stream_),
+                        "cudaMemsetAsync tripod match candidates failed");
+                    for (unsigned int slot = 0u;
+                         slot < kTripodKeyframeCount; ++slot) {
+                        LaunchPreparedVirtualTripodKeyframePairs(
+                            deviceStabLuma_,
+                            static_cast<int>(stabSmallWidth_),
+                            static_cast<int>(stabSmallHeight_),
+                            deviceTripodCurrentPyramid1_,
+                            pyramid1Width, pyramid1Height,
+                            deviceTripodCurrentPyramid2_,
+                            pyramid2Width, pyramid2Height,
+                            keyframeLevel0(slot),
+                            keyframeLevel1(slot),
+                            keyframeLevel2(slot),
+                            keyframeFeatures(slot),
+                            keyframeFeatureCount(slot),
+                            static_cast<float>(stabFactorX_),
+                            static_cast<float>(stabFactorY_),
+                            static_cast<int>(procWidth),
+                            static_cast<int>(procHeight),
+                            deviceStabPairs_, deviceStabPairCount_,
+                            kMaximumStabilizationPairs,
+                            deviceStabState_,
+                            deviceTripodKeyframeOrigins_,
+                            deviceTripodKeyframeValid_, slot,
+                            deviceTripodMatchCandidates_, stream_);
+                        LaunchVirtualTripodMatchCandidate(
+                            deviceStabPairs_, deviceStabPairCount_,
+                            kMaximumStabilizationPairs,
+                            static_cast<int>(procWidth),
+                            static_cast<int>(procHeight),
+                            inlierThreshold,
+                            std::clamp(settings.zoomCenterX, 0.0f, 1.0f),
+                            std::clamp(settings.zoomCenterY, 0.0f, 1.0f),
+                            zoomAmount, deviceTripodKeyframeOrigins_,
+                            deviceTripodKeyframeValid_, slot,
+                            deviceTripodMatchCandidates_, stream_);
+                    }
+                    LaunchSelectVirtualTripodMatch(
+                        deviceTripodMatchCandidates_,
+                        kTripodKeyframeCount, strength,
+                        virtualTripodCorrectionFraction, zoomAmount,
+                        static_cast<int>(procWidth),
+                        static_cast<int>(procHeight),
+                        deviceStabState_, stream_);
+
+                    // A short pairwise bridge prevents a stale fixed correction
+                    // from making a brief occlusion worse. It is bounded, never
+                    // becomes a keyframe origin, and is cleared by the next
+                    // accepted absolute match.
+                    if (stabPrevValid_) {
+                        LaunchStabilizationFeaturePairs(
+                            deviceStabLuma_, deviceStabLumaPrevious_,
+                            static_cast<int>(stabSmallWidth_),
+                            static_cast<int>(stabSmallHeight_),
+                            static_cast<float>(stabFactorX_),
+                            static_cast<float>(stabFactorY_),
+                            deviceStabPairs_, deviceStabPairCount_,
+                            kMaximumStabilizationPairs,
+                            deviceStabState_, stream_);
+                    } else {
+                        ThrowIfCudaFailed(
+                            cudaMemsetAsync(
+                                deviceStabPairCount_, 0,
+                                sizeof(unsigned int), stream_),
+                            "cudaMemsetAsync tripod fallback pair count failed");
+                    }
+                    LaunchVirtualTripodRelativeFallback(
+                        deviceStabPairs_, deviceStabPairCount_,
+                        kMaximumStabilizationPairs,
+                        static_cast<int>(procWidth),
+                        static_cast<int>(procHeight),
+                        1.5f * static_cast<float>(
+                                   std::max(stabFactorX_, stabFactorY_)),
+                        virtualTripodCorrectionFraction,
+                        deviceStabState_, stream_);
+
+                    ++tripodKeyframeAdmissionFrames_;
+                    if (tripodKeyframeAdmissionFrames_ >=
+                        kTripodKeyframeAdmissionIntervalFrames) {
+                        tripodKeyframeAdmissionFrames_ = 0u;
+                        const unsigned int slot =
+                            tripodNextRecoverySlot_;
+                        LaunchCaptureVirtualTripodKeyframe(
+                            deviceStabLuma_, keyframeLevel0(slot),
+                            tripodPixelCount, deviceStabState_,
+                            deviceTripodKeyframeOrigins_,
+                            deviceTripodKeyframeValid_, slot,
+                            kTripodKeyframeMinimumValidFrames,
+                            stream_);
+                        buildKeyframe(slot);
+                        tripodNextRecoverySlot_ =
+                            slot >= kTripodKeyframeCount - 1u
+                                ? 1u
+                                : slot + 1u;
+                    }
+                };
+
+                if (tripodRelockPending_) {
+                    LaunchResetBumpHoldState(deviceBumpHoldState_, stream_);
+                    LaunchResetVirtualTripodState(
+                        deviceStabState_, false, stream_);
+                    ThrowIfCudaFailed(
+                        cudaMemsetAsync(deviceTripodBestFocusScore_, 0,
+                                        sizeof(float), stream_),
+                        "cudaMemsetAsync tripod best focus score failed");
+                    tripodReferenceValid_ = false;
+                    tripodReferencePrepared_ = false;
+                    tripodReferenceBuildFrame_ = 0;
+                    tripodReferenceAccumulationFrame_ = 0;
+                    tripodKeyframeAdmissionFrames_ = 0;
+                    tripodNextRecoverySlot_ = 1u;
+                    ThrowIfCudaFailed(
+                        cudaMemsetAsync(
+                            deviceTripodKeyframeValid_, 0,
+                            kTripodKeyframeCount *
+                                sizeof(unsigned int),
+                            stream_),
+                        "cudaMemsetAsync tripod keyframe reset failed");
+                    ThrowIfCudaFailed(
+                        cudaMemsetAsync(
+                            deviceTripodMatchCandidates_, 0,
+                            kTripodKeyframeCount *
+                                sizeof(TripodMatchCandidate),
+                            stream_),
+                        "cudaMemsetAsync tripod candidates reset failed");
+                    tripodRelockPending_ = false;
+                    stabilizerStatus_ =
+                        "Virtual Tripod selecting sharp reference";
+                }
+
+                if (tripodReferenceBuildFrame_ <
+                    kTripodFocusSelectionFrames) {
+                    LaunchMeasureVirtualTripodFocus(
+                        deviceStabLuma_,
+                        static_cast<int>(stabSmallWidth_),
+                        static_cast<int>(stabSmallHeight_),
+                        deviceTripodFocusScore_, stream_);
+                    LaunchSelectSharperVirtualTripodReference(
+                        deviceStabLuma_, deviceStabLumaReference_,
+                        tripodPixelCount, deviceTripodFocusScore_,
+                        deviceTripodBestFocusScore_,
+                        deviceTripodSelectionFlag_, stream_);
+                    ++tripodReferenceBuildFrame_;
+                    stabilizerStatus_ =
+                        "Virtual Tripod selecting sharp reference (" +
+                        std::to_string(tripodReferenceBuildFrame_) + "/" +
+                        std::to_string(kTripodFocusSelectionFrames) + ")";
+                    if (tripodReferenceBuildFrame_ ==
+                        kTripodFocusSelectionFrames) {
+                        buildKeyframe(0u);
+                        LaunchInitializeVirtualTripodKeyframe(
+                            deviceTripodKeyframeOrigins_,
+                            deviceTripodKeyframeValid_, 0u, stream_);
+                        tripodReferencePrepared_ = true;
+                        if constexpr (
+                            kTripodReferenceAccumulationFrames > 0u) {
+                            LaunchInitializeVirtualTripodAccumulator(
+                                deviceStabLumaReference_,
+                                deviceTripodReferenceAccumulator_,
+                                deviceTripodReferenceSampleCounts_,
+                                tripodPixelCount, stream_);
+                            stabilizerStatus_ =
+                                "Virtual Tripod aligning reference frames";
+                        } else {
+                            tripodReferenceValid_ = true;
+                            stabilizerStatus_ =
+                                "Virtual Tripod locked (sharp reference)";
+                        }
+                    }
+                } else if (tripodReferenceAccumulationFrame_ <
+                           kTripodReferenceAccumulationFrames) {
+                    estimateReferenceMap();
+                    LaunchMeasureVirtualTripodFocus(
+                        deviceStabLuma_,
+                        static_cast<int>(stabSmallWidth_),
+                        static_cast<int>(stabSmallHeight_),
+                        deviceTripodFocusScore_, stream_);
+                    LaunchAccumulateVirtualTripodReference(
+                        deviceStabLuma_, deviceStabLumaReference_,
+                        static_cast<int>(stabSmallWidth_),
+                        static_cast<int>(stabSmallHeight_),
+                        static_cast<float>(stabFactorX_),
+                        static_cast<float>(stabFactorY_),
+                        deviceTripodFocusScore_,
+                        deviceTripodBestFocusScore_,
+                        deviceStabState_,
+                        deviceTripodReferenceAccumulator_,
+                        deviceTripodReferenceSampleCounts_, stream_);
+                    ++tripodReferenceAccumulationFrame_;
+                    if (tripodReferenceAccumulationFrame_ ==
+                        kTripodReferenceAccumulationFrames) {
+                        LaunchFinalizeVirtualTripodReference(
+                            deviceStabLumaReference_,
+                            deviceTripodReferenceAccumulator_,
+                            deviceTripodReferenceSampleCounts_,
+                            tripodPixelCount, stream_);
+                        buildKeyframe(0u);
+                        LaunchInitializeVirtualTripodKeyframe(
+                            deviceTripodKeyframeOrigins_,
+                            deviceTripodKeyframeValid_, 0u, stream_);
+                        tripodReferenceValid_ = true;
+                        tripodReferencePrepared_ = true;
+                        stabilizerStatus_ =
+                            "Virtual Tripod locked (prepared multi-frame reference)";
+                    }
+                } else if (tripodReferenceValid_ &&
+                           tripodReferencePrepared_) {
+                    estimateReferenceMap();
+                }
+            }
+
+            if (bumpHoldActive_ && tripodReferenceValid_ &&
+                tripodReferencePrepared_) {
+                // The sharpness gate is measured on the same analysis frame
+                // used by the absolute tracker. It stays entirely on the
+                // stabilization stream and never stalls for a host readback.
+                LaunchMeasureVirtualTripodFocus(
+                    deviceStabLuma_, static_cast<int>(stabSmallWidth_),
+                    static_cast<int>(stabSmallHeight_),
+                    deviceTripodFocusScore_, stream_);
+            }
+
+            ThrowIfCudaFailed(
+                cudaMemcpyAsync(
+                    deviceStabLumaPrevious_, deviceStabLuma_,
+                    static_cast<size_t>(stabSmallWidth_) * stabSmallHeight_ *
+                        sizeof(float),
+                    cudaMemcpyDeviceToDevice, stream_),
+                "cudaMemcpyAsync stabilization previous luma failed");
             stabPrevValid_ = true;
 
             LaunchStabilizationWarp(alternate, alternatePitch,
                                     current, currentPitch,
                                     static_cast<int>(procWidth), static_cast<int>(procHeight),
-                                    deviceStabState_,
-                                    stream_);
+                                    deviceStabState_, stream_);
             swapBuffers();
+
+            if (bumpHoldActive_) {
+                const float analysisScale = static_cast<float>(
+                    std::max(stabFactorX_, stabFactorY_));
+                LaunchUpdateBumpHoldState(
+                    deviceBumpHoldState_, deviceStabState_,
+                    deviceTripodFocusScore_, deviceTripodBestFocusScore_,
+                    tripodReferenceValid_ && tripodReferencePrepared_,
+                    static_cast<int>(procWidth), static_cast<int>(procHeight),
+                    kBumpHoldMotionEnterAnalysisPixels * analysisScale,
+                    kBumpHoldMotionExitAnalysisPixels * analysisScale,
+                    stream_);
+                LaunchApplyBumpHold(
+                    current, currentPitch, deviceBumpHoldFrame_,
+                    deviceBumpHoldPitch_, static_cast<int>(procWidth),
+                    static_cast<int>(procHeight), deviceBumpHoldState_, stream_);
+            }
+
+            if (sampleStabilizerTiming) {
+                const auto* diagnosticsAddress =
+                    reinterpret_cast<const char*>(deviceStabState_) +
+                    offsetof(StabilizationState, diagnostics);
+                ThrowIfCudaFailed(
+                    cudaMemcpyAsync(hostStabDiagnostics_, diagnosticsAddress,
+                                    sizeof(float4), cudaMemcpyDeviceToHost,
+                                    stream_),
+                    "cudaMemcpyAsync stabilization diagnostics failed");
+                const auto* correctionAddress =
+                    reinterpret_cast<const char*>(deviceStabState_) +
+                    offsetof(StabilizationState, correction);
+                ThrowIfCudaFailed(
+                    cudaMemcpyAsync(hostStabDiagnostics_ + 1,
+                                    correctionAddress,
+                                    sizeof(float4), cudaMemcpyDeviceToHost,
+                                    stream_),
+                    "cudaMemcpyAsync stabilization correction failed");
+                const auto* motionAddress =
+                    reinterpret_cast<const char*>(deviceStabState_) +
+                    offsetof(StabilizationState, lastFrameMotion);
+                ThrowIfCudaFailed(
+                    cudaMemcpyAsync(hostStabDiagnostics_ + 2,
+                                    motionAddress,
+                                    sizeof(float4), cudaMemcpyDeviceToHost,
+                                    stream_),
+                    "cudaMemcpyAsync stabilization motion failed");
+                const auto* tripodDiagnosticsAddress =
+                    reinterpret_cast<const char*>(deviceStabState_) +
+                    offsetof(StabilizationState, tripodDiagnostics);
+                ThrowIfCudaFailed(
+                    cudaMemcpyAsync(hostStabDiagnostics_ + 3,
+                                    tripodDiagnosticsAddress,
+                                    sizeof(float4), cudaMemcpyDeviceToHost,
+                                    stream_),
+                    "cudaMemcpyAsync virtual tripod diagnostics failed");
+                const auto* bumpHoldDiagnosticsAddress =
+                    reinterpret_cast<const char*>(deviceBumpHoldState_) +
+                    offsetof(BumpHoldState, diagnostics);
+                ThrowIfCudaFailed(
+                    cudaMemcpyAsync(hostStabDiagnostics_ + 4,
+                                    bumpHoldDiagnosticsAddress,
+                                    sizeof(float4), cudaMemcpyDeviceToHost,
+                                    stream_),
+                    "cudaMemcpyAsync bump hold diagnostics failed");
+                ThrowIfCudaFailed(
+                    cudaEventRecord(stabilizerTimingStopEvent_, stream_),
+                    "cudaEventRecord stabilizer timing stop failed");
+                stabilizerTimingPending_ = true;
+            }
+            if (activeStabilizerEngine_ < 0) {
+                stabilizerStatus_ = "CUDA fixed-reference stabilizer preparing";
+            }
         } else {
-            stabPrevValid_ = false;
+            if (stabPrevValid_) {
+                ResetStabilization();
+            }
+            activeStabilizerEngine_ = -1;
+            stabilizerStatus_ = "Stabilizer off";
         }
 
         // Keystone follows stabilization (so the detected quad is jitter-free)
@@ -2298,6 +3688,11 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             // Stage is off, so an eased return would be invisible anyway: drop
             // any pending snapshot and re-enable cleanly from identity.
             ResetKeystone();
+        }
+        if (sampleGpuTiming) {
+            ThrowIfCudaFailed(
+                cudaEventRecord(processTimingGeometryEvent_, stream_),
+                "cudaEventRecord geometry timing boundary failed");
         }
 
         const bool textMaster = settings.enableAutoTextClarity;
@@ -2515,6 +3910,11 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             swapBuffers();
         } else {
             temporalHistoryValid_ = false;
+        }
+        if (sampleGpuTiming) {
+            ThrowIfCudaFailed(
+                cudaEventRecord(processTimingEffectsEvent_, stream_),
+                "cudaEventRecord effects timing boundary failed");
         }
 
         // Auto-contrast measurement feeds the grade kernel below within the

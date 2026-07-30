@@ -1,6 +1,11 @@
 #include "openzoom/app/settings_controller.hpp"
+#include "openzoom/app/protected_secret_store.hpp"
 
 #include <QDateTime>
+#include <QFile>
+#include <QFileInfo>
+
+#include <utility>
 
 namespace openzoom {
 
@@ -15,19 +20,94 @@ QString MakeCustomEntityId(const QString& prefix)
 
 } // namespace
 
-SettingsController::SettingsController()
-    : settingsPath_(settings::ResolveSettingsPath())
+SettingsController::SettingsController(QString settingsPath)
+    : settingsPath_(settingsPath.trimmed().isEmpty()
+                        ? settings::ResolveSettingsPath()
+                        : std::move(settingsPath))
 {
-    if (auto loaded = settings::Load(settingsPath_)) {
-        settings_ = std::move(*loaded);
-        return;
+    bool restoreBackupAfterSecretLoad = false;
+    const settings::LoadResult primary = settings::LoadDetailed(settingsPath_);
+    if (primary.status == settings::LoadStatus::Loaded && primary.settings) {
+        settings_ = *primary.settings;
+    } else if (primary.status == settings::LoadStatus::Missing) {
+        InitializeDefaults();
+    } else {
+        const QString suffix =
+            primary.status == settings::LoadStatus::UnsupportedVersion
+                ? QStringLiteral(".unsupported-")
+                : QStringLiteral(".corrupt-");
+        const QString preservedPath =
+            settingsPath_ + suffix +
+            QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmsszzz"));
+        bool preserved = QFile::rename(settingsPath_, preservedPath);
+        if (!preserved) {
+            preserved = QFile::copy(settingsPath_, preservedPath);
+        }
+
+        const QString backupPath = settingsPath_ + QStringLiteral(".backup");
+        const settings::LoadResult backup = settings::LoadDetailed(backupPath);
+        if (backup.status == settings::LoadStatus::Loaded && backup.settings) {
+            settings_ = *backup.settings;
+            restoreBackupAfterSecretLoad = true;
+            startupNotice_ =
+                QStringLiteral("%1 Recovered the last valid settings backup%2.")
+                    .arg(primary.error,
+                         preserved
+                             ? QStringLiteral("; the original file was preserved")
+                             : QString());
+        } else {
+            InitializeDefaults();
+            startupNotice_ =
+                QStringLiteral("%1 OpenZoom started with safe defaults%2.")
+                    .arg(primary.error,
+                         preserved
+                             ? QStringLiteral("; the original file was preserved")
+                             : QString());
+        }
     }
 
+    LoadProtectedSecrets();
+    if (restoreBackupAfterSecretLoad &&
+        !settings::Save(settingsPath_, settings_)) {
+        startupNotice_ +=
+            (startupNotice_.isEmpty() ? QString() : QStringLiteral(" ")) +
+            QStringLiteral("The recovered settings could not be written back to disk.");
+    }
+}
+
+void SettingsController::InitializeDefaults()
+{
     settings_.selectedPresetId = settings::DefaultPresetId();
     if (auto defaultConfig = ResolvePreset(settings_.selectedPresetId)) {
         settings_.currentConfig = std::move(*defaultConfig);
     } else if (!settings::BuiltInConfigs().empty()) {
         settings_.currentConfig = settings::BuiltInConfigs().front();
+    }
+}
+
+void SettingsController::LoadProtectedSecrets()
+{
+    auto& assistive = settings_.assistive;
+    if (assistive.vlmCredentialId.trimmed().isEmpty()) {
+        return;
+    }
+    const ProtectedSecretResult secret =
+        ProtectedSecretStore::Read(assistive.vlmCredentialId);
+    switch (secret.status) {
+    case ProtectedSecretResult::Status::Found:
+        assistive.vlmApiKey = secret.value;
+        break;
+    case ProtectedSecretResult::Status::NotFound:
+        startupNotice_ +=
+            (startupNotice_.isEmpty() ? QString() : QStringLiteral(" ")) +
+            QStringLiteral("The saved VLM credential was not found. Enter the API key again.");
+        break;
+    case ProtectedSecretResult::Status::Error:
+        protectedSecretReadFailed_ = true;
+        startupNotice_ +=
+            (startupNotice_.isEmpty() ? QString() : QStringLiteral(" ")) +
+            secret.error;
+        break;
     }
 }
 
@@ -140,8 +220,71 @@ settings::PresetDefinition SettingsController::PromoteCurrentConfig(
 
 bool SettingsController::Save(const settings::AdvancedConfig& current)
 {
+    lastError_.clear();
     settings_.currentConfig = DecorateLiveConfig(current);
-    return settings::Save(settingsPath_, settings_);
+    QString credentialToRemove;
+    if (!PrepareProtectedSecrets(&credentialToRemove)) {
+        return false;
+    }
+    if (!settings::Save(settingsPath_, settings_)) {
+        lastError_ =
+            QStringLiteral("OpenZoom could not save settings. The previous settings file "
+                           "and its backup were left intact.");
+        return false;
+    }
+    if (!credentialToRemove.isEmpty()) {
+        QString removeError;
+        if (!ProtectedSecretStore::Remove(credentialToRemove, &removeError)) {
+            lastError_ = removeError;
+            return false;
+        }
+    }
+    return true;
+}
+
+bool SettingsController::PrepareProtectedSecrets(QString* credentialToRemove)
+{
+    auto& assistive = settings_.assistive;
+    if (protectedSecretReadFailed_ && assistive.vlmApiKey.isEmpty()) {
+        lastError_ =
+            QStringLiteral("Settings were not saved because Windows protected credential "
+                           "storage could not be read. This prevents accidental credential loss.");
+        return false;
+    }
+
+    if (!assistive.vlmApiKey.isEmpty()) {
+        if (assistive.vlmCredentialId.trimmed().isEmpty()) {
+            assistive.vlmCredentialId =
+                ProtectedSecretStore::DefaultVlmCredentialId();
+        }
+        QString error;
+        if (!ProtectedSecretStore::Write(assistive.vlmCredentialId,
+                                         assistive.vlmApiKey,
+                                         &error)) {
+            lastError_ = error;
+            return false;
+        }
+        protectedSecretReadFailed_ = false;
+        return true;
+    }
+
+    if (!assistive.vlmCredentialId.trimmed().isEmpty()) {
+        if (credentialToRemove) {
+            *credentialToRemove = assistive.vlmCredentialId.trimmed();
+        }
+        assistive.vlmCredentialId.clear();
+    }
+    return true;
+}
+
+QString SettingsController::TakeStartupNotice()
+{
+    return std::exchange(startupNotice_, {});
+}
+
+QString SettingsController::LastError() const
+{
+    return lastError_;
 }
 
 } // namespace openzoom

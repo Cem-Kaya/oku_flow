@@ -730,12 +730,16 @@ inline void CheckCudaStatus(cudaError_t status, const char* message) {
     }
 }
 
-constexpr int kStabSearchRadius = 16;
-constexpr int kStabCandidateCount = kStabSearchRadius * 2 + 1;
+constexpr int kTripodReacquireRadius = 96;
+constexpr int kTripodReacquireCandidateCount =
+    kTripodReacquireRadius * 2 + 1;
 constexpr int kStabMinOverlap = 8;
 constexpr int kStabEstimateBlockSize = 128;
 constexpr float kStabInvalidSad = 3.402823466e+38f;
-
+constexpr int kStabFeatureCellSize = 16;
+constexpr int kStabFeatureBlockSize = 128;
+constexpr int kStabRansacHypotheses = 50;
+constexpr int kStabMinSimilarityInliers = 12;
 // Box-average a factorX x factorY block of the BGRA source into one luma value.
 // Buffers are BGRA (uchar4: x=B, y=G, z=R, w=A), so luma = 0.299*z + 0.587*y + 0.114*x.
 __global__ void StabilizationLumaDownsampleKernel(float* dstLuma,
@@ -802,117 +806,1528 @@ __global__ void StabilizationProjectionKernel(const float* luma,
     }
 }
 
-// SAD between the current profile and the previous profile displaced by `shift`
-// (content moved by `shift`: curr[i] ~ prev[i - shift]), normalized by overlap.
-__device__ float ProfileSad(const float* curr, const float* prev, int length, int shift) {
-    float sum = 0.0f;
+__device__ void ResetStabilizationState(StabilizationState* state) {
+    state->actualPath = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->filteredPath = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->correction = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->previousCorrection = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->lastFrameMotion = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->diagnostics = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->tripodAnchorCorrection = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->tripodAbsoluteCorrection = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->tripodRelativeMotion = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->tripodDiagnostics = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+__device__ float ProfileZeroMeanSad(const float* current,
+                                    const float* reference,
+                                    int length, int shift) {
+    float currentMean = 0.0f;
+    float referenceMean = 0.0f;
     int count = 0;
-    for (int i = 0; i < length; ++i) {
-        const int j = i - shift;
-        if (j >= 0 && j < length) {
-            sum += fabsf(curr[i] - prev[j]);
+    for (int index = 0; index < length; ++index) {
+        const int referenceIndex = index - shift;
+        if (referenceIndex >= 0 && referenceIndex < length) {
+            currentMean += current[index];
+            referenceMean += reference[referenceIndex];
             ++count;
         }
     }
-    return (count >= kStabMinOverlap) ? sum / static_cast<float>(count) : kStabInvalidSad;
-}
-
-// Single-block kernel: estimates per-frame translation from 1D projection
-// profiles, integrates the camera path, low-passes it, and stores the clamped
-// correction in device memory. Nothing is ever read back to the host.
-__global__ void StabilizationEstimateKernel(const float* currColProj, const float* currRowProj,
-                                            float* prevColProj, float* prevRowProj,
-                                            int smallWidth, int smallHeight,
-                                            float factorX, float factorY,
-                                            int fullWidth, int fullHeight,
-                                            float strength, int previousValid,
-                                            StabilizationState* state) {
-    __shared__ float sadX[kStabCandidateCount];
-    __shared__ float sadY[kStabCandidateCount];
-
-    const int tid = static_cast<int>(threadIdx.x);
-
-    for (int c = tid; c < kStabCandidateCount; c += blockDim.x) {
-        const int shift = c - kStabSearchRadius;
-        sadX[c] = (previousValid != 0) ? ProfileSad(currColProj, prevColProj, smallWidth, shift)
-                                       : kStabInvalidSad;
-        sadY[c] = (previousValid != 0) ? ProfileSad(currRowProj, prevRowProj, smallHeight, shift)
-                                       : kStabInvalidSad;
+    if (count < kStabMinOverlap) {
+        return kStabInvalidSad;
     }
-    __syncthreads();
-
-    if (tid == 0) {
-        if (previousValid == 0) {
-            // First frame after a reset: no motion reference yet.
-            state->actualPath = make_float2(0.0f, 0.0f);
-            state->smoothPath = make_float2(0.0f, 0.0f);
-            state->correction = make_float2(0.0f, 0.0f);
-        } else {
-            // Argmin over candidate shifts; initializing with the zero-shift SAD
-            // biases ties toward "no motion".
-            int dx = 0;
-            float bestX = sadX[kStabSearchRadius];
-            int dy = 0;
-            float bestY = sadY[kStabSearchRadius];
-            for (int c = 0; c < kStabCandidateCount; ++c) {
-                if (sadX[c] < bestX) {
-                    bestX = sadX[c];
-                    dx = c - kStabSearchRadius;
-                }
-                if (sadY[c] < bestY) {
-                    bestY = sadY[c];
-                    dy = c - kStabSearchRadius;
-                }
-            }
-
-            float2 actual = state->actualPath;
-            float2 smooth = state->smoothPath;
-            // Small-image shift -> full-res pixels.
-            actual.x += static_cast<float>(dx) * factorX;
-            actual.y += static_cast<float>(dy) * factorY;
-
-            // smoothPath = lerp(actualPath, smoothPath, strength): exponential
-            // low-pass that follows intentional pans but suppresses jitter.
-            const float s = fminf(fmaxf(strength, 0.0f), 0.98f);
-            smooth.x = actual.x + s * (smooth.x - actual.x);
-            smooth.y = actual.y + s * (smooth.y - actual.y);
-
-            const float marginX = 0.06f * static_cast<float>(fullWidth);
-            const float marginY = 0.06f * static_cast<float>(fullHeight);
-            float2 correction = make_float2(smooth.x - actual.x, smooth.y - actual.y);
-            correction.x = fminf(fmaxf(correction.x, -marginX), marginX);
-            correction.y = fminf(fmaxf(correction.y, -marginY), marginY);
-
-            // Re-center the paths occasionally so float precision cannot degrade
-            // over very long sessions; their difference (the correction) is kept.
-            if (fabsf(actual.x) > 1.0e6f) {
-                smooth.x -= actual.x;
-                actual.x = 0.0f;
-            }
-            if (fabsf(actual.y) > 1.0e6f) {
-                smooth.y -= actual.y;
-                actual.y = 0.0f;
-            }
-
-            state->actualPath = actual;
-            state->smoothPath = smooth;
-            state->correction = correction;
+    const float inverseCount = 1.0f / static_cast<float>(count);
+    currentMean *= inverseCount;
+    referenceMean *= inverseCount;
+    float sum = 0.0f;
+    for (int index = 0; index < length; ++index) {
+        const int referenceIndex = index - shift;
+        if (referenceIndex >= 0 && referenceIndex < length) {
+            sum += fabsf((current[index] - currentMean) -
+                         (reference[referenceIndex] - referenceMean));
         }
     }
-    __syncthreads();
+    return sum * inverseCount;
+}
 
-    // Stash the current projections as "previous" for the next frame.
-    for (int i = tid; i < smallWidth; i += blockDim.x) {
-        prevColProj[i] = currColProj[i];
+__device__ float4 ClampStabilizationCorrection(float4 correction,
+                                               float maxCorrectionFraction,
+                                               int fullWidth,
+                                               int fullHeight,
+                                               bool* translationLimited) {
+    const float translationLimit =
+        fminf(fmaxf(maxCorrectionFraction, 0.06f), 0.45f);
+    const float unclampedX = correction.x;
+    const float unclampedY = correction.y;
+    correction.x = fminf(fmaxf(correction.x, -translationLimit * fullWidth),
+                         translationLimit * fullWidth);
+    correction.y = fminf(fmaxf(correction.y, -translationLimit * fullHeight),
+                         translationLimit * fullHeight);
+    correction.z = fminf(fmaxf(correction.z, -0.0523599f), 0.0523599f);
+    correction.w = fminf(fmaxf(correction.w, -0.04f), 0.04f);
+    if (translationLimited) {
+        *translationLimited =
+            fabsf(correction.x - unclampedX) > 0.01f ||
+            fabsf(correction.y - unclampedY) > 0.01f;
     }
-    for (int i = tid; i < smallHeight; i += blockDim.x) {
-        prevRowProj[i] = currRowProj[i];
+    return correction;
+}
+
+__device__ void UpdateVirtualTripodPath(StabilizationState* state,
+                                        float4 referenceMotion,
+                                        bool motionValid,
+                                        float strength,
+                                        float zoomAmount,
+                                        float maxCorrectionFraction,
+                                        int fullWidth,
+                                        int fullHeight) {
+    state->previousCorrection = state->correction;
+    if (!motionValid) {
+        state->diagnostics.y = 0.0f;
+        state->diagnostics.w = 0.0f;
+        state->tripodDiagnostics.x = 0.0f;
+        state->tripodDiagnostics.y += 1.0f;
+        state->tripodDiagnostics.z = 2.0f;
+        // A rejected absolute model cannot inject drift. Keep both the last
+        // correction and the last trustworthy motion unchanged until the
+        // fixed reference matches again or the host deliberately re-locks.
+        return;
+    }
+
+    // Keep the raw accepted measurement as the next prepared-LK seed. The
+    // displayed correction is clamped below, but feeding that clamp back into
+    // tracking creates a hard capture-range cliff once the rig moves farther
+    // than the crop reserve.
+    state->lastFrameMotion = referenceMotion;
+    state->actualPath = referenceMotion;
+    state->filteredPath = state->tripodAnchorCorrection;
+
+    strength = fminf(fmaxf(strength, 0.0f), 1.0f);
+    zoomAmount = fmaxf(zoomAmount, 1.0f);
+    // Let very slow mount settling restore crop authority at lower strengths.
+    // At maximum strength this is exactly zero, preserving a literal fixed
+    // coordinate system. The rate is capped to roughly one display pixel per
+    // second at 30 camera FPS and never integrates pairwise motion.
+    const float settleBlend = 1.0f - strength;
+    const float settleStep =
+        settleBlend * settleBlend * settleBlend /
+        (30.0f * zoomAmount);
+    const float anchorDeltaX =
+        referenceMotion.x - state->tripodAnchorCorrection.x;
+    const float anchorDeltaY =
+        referenceMotion.y - state->tripodAnchorCorrection.y;
+    state->tripodAnchorCorrection.x +=
+        fminf(fmaxf(anchorDeltaX, -settleStep), settleStep);
+    state->tripodAnchorCorrection.y +=
+        fminf(fmaxf(anchorDeltaY, -settleStep), settleStep);
+
+    bool translationLimited = false;
+    const float4 targetCorrection = ClampStabilizationCorrection(
+        make_float4(state->tripodAnchorCorrection.x - referenceMotion.x,
+                    state->tripodAnchorCorrection.y - referenceMotion.y,
+                    state->tripodAnchorCorrection.z - referenceMotion.z,
+                    state->tripodAnchorCorrection.w - referenceMotion.w),
+        maxCorrectionFraction, fullWidth, fullHeight, &translationLimited);
+    const float deadbandDisplayPixels =
+        0.65f + strength * (0.10f - 0.65f);
+    const float deadbandSourcePixels =
+        deadbandDisplayPixels / zoomAmount;
+    const float maximumStepSourcePixels =
+        (12.0f + strength * 84.0f) / zoomAmount;
+    float deltaX = targetCorrection.x - state->correction.x;
+    float deltaY = targetCorrection.y - state->correction.y;
+    const float deltaLength = hypotf(deltaX, deltaY);
+    if (deltaLength > deadbandSourcePixels) {
+        const float appliedLength =
+            fminf(deltaLength - deadbandSourcePixels,
+                  maximumStepSourcePixels);
+        const float gain = appliedLength / deltaLength;
+        state->correction.x += deltaX * gain;
+        state->correction.y += deltaY * gain;
+    }
+
+    const float displayRadius =
+        0.5f * hypotf(static_cast<float>(fullWidth),
+                      static_cast<float>(fullHeight)) *
+        zoomAmount;
+    const float angularDeadband =
+        deadbandDisplayPixels / fmaxf(displayRadius, 1.0f);
+    const float scaleDeadband = angularDeadband;
+    const float angularDelta = targetCorrection.z - state->correction.z;
+    if (fabsf(angularDelta) > angularDeadband) {
+        const float magnitude =
+            fminf(fabsf(angularDelta) - angularDeadband,
+                  0.004f + strength * 0.016f);
+        state->correction.z += copysignf(magnitude, angularDelta);
+    }
+    const float scaleDelta = targetCorrection.w - state->correction.w;
+    if (fabsf(scaleDelta) > scaleDeadband) {
+        const float magnitude =
+            fminf(fabsf(scaleDelta) - scaleDeadband,
+                  0.002f + strength * 0.008f);
+        state->correction.w += copysignf(magnitude, scaleDelta);
+    }
+    state->tripodAbsoluteCorrection = state->correction;
+    state->tripodRelativeMotion =
+        make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->tripodDiagnostics.x += 1.0f;
+    state->tripodDiagnostics.y = 0.0f;
+    state->tripodDiagnostics.z = translationLimited ? 3.0f : 1.0f;
+}
+
+__global__ void VirtualTripodProjectionSeedKernel(
+    const float* currentColProj, const float* currentRowProj,
+    const float* referenceColProj, const float* referenceRowProj,
+    int smallWidth, int smallHeight, float factorX, float factorY,
+    const float4* keyframeOrigins, const unsigned int* keyframeValid,
+    unsigned int keyframeIndex, StabilizationState* state) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) {
+        return;
+    }
+    if (state->tripodDiagnostics.y < 0.5f ||
+        keyframeValid[keyframeIndex] == 0u) {
+        return;
+    }
+
+    int bestX = kTripodReacquireRadius;
+    int bestY = kTripodReacquireRadius;
+    float bestHorizontalError = kStabInvalidSad;
+    float bestVerticalError = kStabInvalidSad;
+    for (int candidate = 0;
+         candidate < kTripodReacquireCandidateCount; ++candidate) {
+        const int shift = candidate - kTripodReacquireRadius;
+        const float horizontalError =
+            abs(shift) < smallWidth - kStabMinOverlap
+                ? ProfileZeroMeanSad(
+                      currentColProj, referenceColProj, smallWidth, shift)
+                : kStabInvalidSad;
+        const float verticalError =
+            abs(shift) < smallHeight - kStabMinOverlap
+                ? ProfileZeroMeanSad(
+                      currentRowProj, referenceRowProj, smallHeight, shift)
+                : kStabInvalidSad;
+        if (horizontalError < bestHorizontalError) {
+            bestX = candidate;
+            bestHorizontalError = horizontalError;
+        }
+        if (verticalError < bestVerticalError) {
+            bestY = candidate;
+            bestVerticalError = verticalError;
+        }
+    }
+    const float4 origin = keyframeOrigins[keyframeIndex];
+    state->lastFrameMotion.x =
+        origin.x + static_cast<float>(bestX - kTripodReacquireRadius) *
+                       factorX;
+    state->lastFrameMotion.y =
+        origin.y + static_cast<float>(bestY - kTripodReacquireRadius) *
+                       factorY;
+    state->lastFrameMotion.z = origin.z;
+    state->lastFrameMotion.w = origin.w;
+}
+
+__device__ float SampleLuma(const float* image, int width, int height,
+                            float x, float y) {
+    x = fminf(fmaxf(x, 0.0f), static_cast<float>(width - 1));
+    y = fminf(fmaxf(y, 0.0f), static_cast<float>(height - 1));
+    const int x0 = static_cast<int>(floorf(x));
+    const int y0 = static_cast<int>(floorf(y));
+    const int x1 = min(x0 + 1, width - 1);
+    const int y1 = min(y0 + 1, height - 1);
+    const float fx = x - static_cast<float>(x0);
+    const float fy = y - static_cast<float>(y0);
+    const float top = image[y0 * width + x0] +
+                      fx * (image[y0 * width + x1] - image[y0 * width + x0]);
+    const float bottom = image[y1 * width + x0] +
+                         fx * (image[y1 * width + x1] - image[y1 * width + x0]);
+    return top + fy * (bottom - top);
+}
+
+__device__ bool TrackFeaturePyramidal(const float* previous,
+                                      const float* current,
+                                      int width, int height,
+                                      float x, float y,
+                                      float maxDisplacementPixels,
+                                      float initialDisplacementX,
+                                      float initialDisplacementY,
+                                      float& displacementX,
+                                      float& displacementY) {
+    displacementX = initialDisplacementX;
+    displacementY = initialDisplacementY;
+    bool wellConditioned = false;
+
+    // A three-level sparse LK solve without materializing image pyramids:
+    // coarse levels subsample the same small-luma image at 4/2/1 pixel steps.
+    for (int level = 2; level >= 0; --level) {
+        const int step = 1 << level;
+        const int radius = 10;
+        for (int iteration = 0; iteration < 4; ++iteration) {
+            float gxx = 0.0f;
+            float gxy = 0.0f;
+            float gyy = 0.0f;
+            float bx = 0.0f;
+            float by = 0.0f;
+            int samples = 0;
+            for (int oy = -radius; oy <= radius; oy += step) {
+                for (int ox = -radius; ox <= radius; ox += step) {
+                    const float px = x + static_cast<float>(ox);
+                    const float py = y + static_cast<float>(oy);
+                    const float qx = px + displacementX;
+                    const float qy = py + displacementY;
+                    if (px < 2.0f || py < 2.0f ||
+                        px >= width - 2.0f || py >= height - 2.0f ||
+                        qx < 2.0f || qy < 2.0f ||
+                        qx >= width - 2.0f || qy >= height - 2.0f) {
+                        continue;
+                    }
+                    const float gradientX =
+                        0.25f * ((SampleLuma(previous, width, height, px + 1.0f, py) -
+                                  SampleLuma(previous, width, height, px - 1.0f, py)) +
+                                 (SampleLuma(current, width, height, qx + 1.0f, qy) -
+                                  SampleLuma(current, width, height, qx - 1.0f, qy)));
+                    const float gradientY =
+                        0.25f * ((SampleLuma(previous, width, height, px, py + 1.0f) -
+                                  SampleLuma(previous, width, height, px, py - 1.0f)) +
+                                 (SampleLuma(current, width, height, qx, qy + 1.0f) -
+                                  SampleLuma(current, width, height, qx, qy - 1.0f)));
+                    const float temporal =
+                        SampleLuma(current, width, height, qx, qy) -
+                        SampleLuma(previous, width, height, px, py);
+                    gxx += gradientX * gradientX;
+                    gxy += gradientX * gradientY;
+                    gyy += gradientY * gradientY;
+                    bx += gradientX * temporal;
+                    by += gradientY * temporal;
+                    ++samples;
+                }
+            }
+
+            const float determinant = gxx * gyy - gxy * gxy;
+            if (samples < 20 || determinant < 1.0e4f) {
+                return false;
+            }
+            wellConditioned = true;
+            float deltaX = (-gyy * bx + gxy * by) / determinant;
+            float deltaY = (gxy * bx - gxx * by) / determinant;
+            const float maxStep = static_cast<float>(step) * 1.5f;
+            deltaX = fminf(fmaxf(deltaX, -maxStep), maxStep);
+            deltaY = fminf(fmaxf(deltaY, -maxStep), maxStep);
+            displacementX += deltaX;
+            displacementY += deltaY;
+            if (deltaX * deltaX + deltaY * deltaY < 0.0025f) {
+                break;
+            }
+        }
+    }
+
+    return wellConditioned &&
+           displacementX * displacementX + displacementY * displacementY <
+               maxDisplacementPixels * maxDisplacementPixels;
+}
+
+__global__ void GaussianPyramidDownsampleKernel(
+    const float* source, int sourceWidth, int sourceHeight,
+    float* destination, int destinationWidth, int destinationHeight) {
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= destinationWidth || y >= destinationHeight) {
+        return;
+    }
+    constexpr float weights[5] = {1.0f, 4.0f, 6.0f, 4.0f, 1.0f};
+    float sum = 0.0f;
+    float weightSum = 0.0f;
+    const int sourceX = x * 2;
+    const int sourceY = y * 2;
+    for (int oy = -2; oy <= 2; ++oy) {
+        const int sampleY = max(0, min(sourceHeight - 1, sourceY + oy));
+        for (int ox = -2; ox <= 2; ++ox) {
+            const int sampleX = max(0, min(sourceWidth - 1, sourceX + ox));
+            const float weight = weights[ox + 2] * weights[oy + 2];
+            sum += source[sampleY * sourceWidth + sampleX] * weight;
+            weightSum += weight;
+        }
+    }
+    destination[y * destinationWidth + x] = sum / weightSum;
+}
+
+__device__ float HarrisScoreAt(const float* image, int width, int height,
+                               int x, int y) {
+    if (x < 2 || y < 2 || x >= width - 2 || y >= height - 2) {
+        return -1.0f;
+    }
+    float gxx = 0.0f;
+    float gxy = 0.0f;
+    float gyy = 0.0f;
+    for (int oy = -1; oy <= 1; ++oy) {
+        for (int ox = -1; ox <= 1; ++ox) {
+            const int px = x + ox;
+            const int py = y + oy;
+            const float gx =
+                0.5f * (image[py * width + px + 1] -
+                        image[py * width + px - 1]);
+            const float gy =
+                0.5f * (image[(py + 1) * width + px] -
+                        image[(py - 1) * width + px]);
+            gxx += gx * gx;
+            gxy += gx * gy;
+            gyy += gy * gy;
+        }
+    }
+    const float determinant = gxx * gyy - gxy * gxy;
+    const float trace = gxx + gyy;
+    return determinant - 0.04f * trace * trace;
+}
+
+__device__ bool ComputeTranslationInverseHessian(
+    const float* image, int width, int height, float x, float y,
+    float4& inverseHessian) {
+    constexpr int radius = 4;
+    if (x < radius + 2.0f || y < radius + 2.0f ||
+        x >= width - radius - 2.0f || y >= height - radius - 2.0f) {
+        return false;
+    }
+    float gxx = 0.0f;
+    float gxy = 0.0f;
+    float gyy = 0.0f;
+    for (int oy = -radius; oy <= radius; ++oy) {
+        for (int ox = -radius; ox <= radius; ++ox) {
+            const float px = x + static_cast<float>(ox);
+            const float py = y + static_cast<float>(oy);
+            const float gx =
+                0.5f * (SampleLuma(image, width, height, px + 1.0f, py) -
+                        SampleLuma(image, width, height, px - 1.0f, py));
+            const float gy =
+                0.5f * (SampleLuma(image, width, height, px, py + 1.0f) -
+                        SampleLuma(image, width, height, px, py - 1.0f));
+            gxx += gx * gx;
+            gxy += gx * gy;
+            gyy += gy * gy;
+        }
+    }
+    const float determinant = gxx * gyy - gxy * gxy;
+    const float trace = gxx + gyy;
+    // Scale the conditioning gate with local gradient energy instead of using
+    // one absolute corner threshold that starves dim lecture halls.
+    if (trace < 1.0f || determinant < 1.0e-4f * trace * trace) {
+        return false;
+    }
+    const float inverseDeterminant = 1.0f / determinant;
+    inverseHessian =
+        make_float4(gyy * inverseDeterminant,
+                    -gxy * inverseDeterminant,
+                    gxx * inverseDeterminant, trace);
+    return true;
+}
+
+__global__ void PrepareVirtualTripodReferenceKernel(
+    const float* level0, int level0Width, int level0Height,
+    const float* level1, int level1Width, int level1Height,
+    const float* level2, int level2Width, int level2Height,
+    TripodReferenceFeature* features, unsigned int* featureCount,
+    unsigned int maxFeatures) {
+    __shared__ float scores[kStabFeatureBlockSize];
+    __shared__ int indices[kStabFeatureBlockSize];
+    const int tid = static_cast<int>(threadIdx.x);
+    const int cellX = static_cast<int>(blockIdx.x) * kStabFeatureCellSize;
+    const int cellY = static_cast<int>(blockIdx.y) * kStabFeatureCellSize;
+    float bestScore = 0.0f;
+    int bestIndex = -1;
+    for (int local = tid;
+         local < kStabFeatureCellSize * kStabFeatureCellSize;
+         local += blockDim.x) {
+        const int x = cellX + local % kStabFeatureCellSize;
+        const int y = cellY + local / kStabFeatureCellSize;
+        // Coarsest-level inverse compositional patches need this margin.
+        if (x < 24 || y < 24 || x >= level0Width - 24 ||
+            y >= level0Height - 24) {
+            continue;
+        }
+        const float score = HarrisScoreAt(level0, level0Width, level0Height, x, y);
+        if (score > bestScore) {
+            bestScore = score;
+            bestIndex = y * level0Width + x;
+        }
+    }
+    scores[tid] = bestScore;
+    indices[tid] = bestIndex;
+    __syncthreads();
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride && scores[tid + stride] > scores[tid]) {
+            scores[tid] = scores[tid + stride];
+            indices[tid] = indices[tid + stride];
+        }
+        __syncthreads();
+    }
+    if (tid != 0 || indices[0] < 0 || scores[0] <= 0.0f) {
+        return;
+    }
+
+    const int integerX = indices[0] % level0Width;
+    const int integerY = indices[0] / level0Width;
+    const float left =
+        HarrisScoreAt(level0, level0Width, level0Height, integerX - 1, integerY);
+    const float right =
+        HarrisScoreAt(level0, level0Width, level0Height, integerX + 1, integerY);
+    const float up =
+        HarrisScoreAt(level0, level0Width, level0Height, integerX, integerY - 1);
+    const float down =
+        HarrisScoreAt(level0, level0Width, level0Height, integerX, integerY + 1);
+    const float denominatorX = left - 2.0f * scores[0] + right;
+    const float denominatorY = up - 2.0f * scores[0] + down;
+    const float offsetX =
+        fabsf(denominatorX) > 1.0e-6f
+            ? fminf(fmaxf(0.5f * (left - right) / denominatorX, -0.5f), 0.5f)
+            : 0.0f;
+    const float offsetY =
+        fabsf(denominatorY) > 1.0e-6f
+            ? fminf(fmaxf(0.5f * (up - down) / denominatorY, -0.5f), 0.5f)
+            : 0.0f;
+
+    TripodReferenceFeature feature{};
+    feature.position =
+        make_float2(static_cast<float>(integerX) + offsetX,
+                    static_cast<float>(integerY) + offsetY);
+    if (!ComputeTranslationInverseHessian(
+            level0, level0Width, level0Height,
+            feature.position.x, feature.position.y, feature.inverseHessian[0]) ||
+        !ComputeTranslationInverseHessian(
+            level1, level1Width, level1Height,
+            feature.position.x * 0.5f, feature.position.y * 0.5f,
+            feature.inverseHessian[1]) ||
+        !ComputeTranslationInverseHessian(
+            level2, level2Width, level2Height,
+            feature.position.x * 0.25f, feature.position.y * 0.25f,
+            feature.inverseHessian[2])) {
+        return;
+    }
+    const unsigned int output = atomicAdd(featureCount, 1u);
+    if (output < maxFeatures) {
+        features[output] = feature;
     }
 }
 
-// Shift the frame by `correction` (out(x) = in(x - correction)): content the
-// camera dragged to `actualPath` is re-rendered as if it sat at `smoothPath`.
-// The correction is read straight from device memory (no host round trip).
+__device__ bool TrackPreparedTripodFeature(
+    const TripodReferenceFeature& feature,
+    const float* currentLevels[3], const float* referenceLevels[3],
+    const int widths[3], const int heights[3],
+    float initialDx, float initialDy, float& outputDx, float& outputDy) {
+    constexpr int radius = 4;
+    float dx = initialDx * 0.25f;
+    float dy = initialDy * 0.25f;
+    for (int level = 2; level >= 0; --level) {
+        if (level < 2) {
+            dx *= 2.0f;
+            dy *= 2.0f;
+        }
+        const float scale = static_cast<float>(1 << level);
+        const float x = feature.position.x / scale;
+        const float y = feature.position.y / scale;
+        const float4 inverse = feature.inverseHessian[level];
+        for (int iteration = 0; iteration < 8; ++iteration) {
+            if (x + dx < radius + 2.0f || y + dy < radius + 2.0f ||
+                x + dx >= widths[level] - radius - 2.0f ||
+                y + dy >= heights[level] - radius - 2.0f) {
+                return false;
+            }
+            float bx = 0.0f;
+            float by = 0.0f;
+            for (int oy = -radius; oy <= radius; ++oy) {
+                for (int ox = -radius; ox <= radius; ++ox) {
+                    const float px = x + static_cast<float>(ox);
+                    const float py = y + static_cast<float>(oy);
+                    const float gx =
+                        0.5f * (SampleLuma(referenceLevels[level], widths[level],
+                                           heights[level], px + 1.0f, py) -
+                                SampleLuma(referenceLevels[level], widths[level],
+                                           heights[level], px - 1.0f, py));
+                    const float gy =
+                        0.5f * (SampleLuma(referenceLevels[level], widths[level],
+                                           heights[level], px, py + 1.0f) -
+                                SampleLuma(referenceLevels[level], widths[level],
+                                           heights[level], px, py - 1.0f));
+                    const float error =
+                        SampleLuma(currentLevels[level], widths[level],
+                                   heights[level], px + dx, py + dy) -
+                        SampleLuma(referenceLevels[level], widths[level],
+                                   heights[level], px, py);
+                    bx += gx * error;
+                    by += gy * error;
+                }
+            }
+            float deltaX = -(inverse.x * bx + inverse.y * by);
+            float deltaY = -(inverse.y * bx + inverse.z * by);
+            deltaX = fminf(fmaxf(deltaX, -2.5f), 2.5f);
+            deltaY = fminf(fmaxf(deltaY, -2.5f), 2.5f);
+            dx += deltaX;
+            dy += deltaY;
+            if (deltaX * deltaX + deltaY * deltaY < 0.0004f) {
+                break;
+            }
+        }
+    }
+
+    float absoluteError = 0.0f;
+    int samples = 0;
+    for (int oy = -radius; oy <= radius; ++oy) {
+        for (int ox = -radius; ox <= radius; ++ox) {
+            const float px = feature.position.x + static_cast<float>(ox);
+            const float py = feature.position.y + static_cast<float>(oy);
+            absoluteError +=
+                fabsf(SampleLuma(currentLevels[0], widths[0], heights[0],
+                                 px + dx, py + dy) -
+                      SampleLuma(referenceLevels[0], widths[0], heights[0], px, py));
+            ++samples;
+        }
+    }
+    if (absoluteError / static_cast<float>(samples) > 32.0f) {
+        return false;
+    }
+    outputDx = dx;
+    outputDy = dy;
+    return isfinite(dx) && isfinite(dy);
+}
+
+__global__ void PreparedVirtualTripodFeaturePairsKernel(
+    const float* currentLevel0, int level0Width, int level0Height,
+    const float* currentLevel1, int level1Width, int level1Height,
+    const float* currentLevel2, int level2Width, int level2Height,
+    const float* referenceLevel0, const float* referenceLevel1,
+    const float* referenceLevel2,
+    const TripodReferenceFeature* features, const unsigned int* featureCount,
+    float factorX, float factorY,
+    float4* pairs, unsigned int* pairCount, unsigned int maxPairs,
+    const StabilizationState* motionSeedState,
+    const float4* keyframeOrigins,
+    const unsigned int* keyframeValid,
+    unsigned int keyframeIndex,
+    const TripodMatchCandidate* earlierCandidates) {
+    const unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (keyframeValid != nullptr && keyframeValid[keyframeIndex] == 0u) {
+        return;
+    }
+    if (earlierCandidates != nullptr) {
+        for (unsigned int candidate = 0; candidate < keyframeIndex;
+             ++candidate) {
+            if (earlierCandidates[candidate].diagnostics.y >= 0.5f) {
+                return;
+            }
+        }
+    }
+    const unsigned int count = min(*featureCount, maxPairs);
+    if (index >= count) {
+        return;
+    }
+    const float* currentLevels[3] = {
+        currentLevel0, currentLevel1, currentLevel2};
+    const float* referenceLevels[3] = {
+        referenceLevel0, referenceLevel1, referenceLevel2};
+    const int widths[3] = {level0Width, level1Width, level2Width};
+    const int heights[3] = {level0Height, level1Height, level2Height};
+    float4 seed = motionSeedState != nullptr
+                      ? motionSeedState->lastFrameMotion
+                      : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (keyframeOrigins != nullptr) {
+        const float4 origin = keyframeOrigins[keyframeIndex];
+        seed.x -= origin.x;
+        seed.y -= origin.y;
+        seed.z -= origin.z;
+        seed.w -= origin.w;
+    }
+    float dx = 0.0f;
+    float dy = 0.0f;
+    if (!TrackPreparedTripodFeature(
+            features[index], currentLevels, referenceLevels, widths, heights,
+            seed.x / factorX, seed.y / factorY, dx, dy)) {
+        return;
+    }
+    const float maxDisplacement =
+        0.48f * static_cast<float>(max(level0Width, level0Height));
+    if (dx * dx + dy * dy > maxDisplacement * maxDisplacement) {
+        return;
+    }
+    const unsigned int output = atomicAdd(pairCount, 1u);
+    if (output < maxPairs) {
+        const float2 point = features[index].position;
+        pairs[output] =
+            make_float4(point.x * factorX, point.y * factorY,
+                        (point.x + dx) * factorX, (point.y + dy) * factorY);
+    }
+}
+
+__global__ void VirtualTripodFocusKernel(const float* luma, int width, int height,
+                                         float* focusScore) {
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x <= 0 || y <= 0 || x >= width - 1 || y >= height - 1) {
+        return;
+    }
+    const float center = luma[y * width + x];
+    const float laplacian =
+        luma[y * width + x - 1] + luma[y * width + x + 1] +
+        luma[(y - 1) * width + x] + luma[(y + 1) * width + x] -
+        4.0f * center;
+    atomicAdd(focusScore, laplacian * laplacian);
+}
+
+__global__ void ResetBumpHoldStateKernel(BumpHoldState* state) {
+    if (threadIdx.x != 0 || blockIdx.x != 0 || state == nullptr) {
+        return;
+    }
+    state->diagnostics = make_float4(0.0f, 1.0f, 0.0f, 0.0f);
+    state->previousMotion = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    state->heldFrameValid = 0u;
+    state->stableFrames = 0u;
+    state->recoveryFrame = 0u;
+    state->captureCurrent = 0u;
+    state->blendAlpha = 1.0f;
+    state->reserved[0] = 0.0f;
+    state->reserved[1] = 0.0f;
+    state->reserved[2] = 0.0f;
+}
+
+__global__ void UpdateBumpHoldStateKernel(
+    BumpHoldState* bumpState, const StabilizationState* stabilizationState,
+    const float* currentFocusScore, const float* referenceFocusScore,
+    int referenceReady, int fullWidth, int fullHeight,
+    float motionEnterPixels, float motionExitPixels) {
+    if (threadIdx.x != 0 || blockIdx.x != 0 || bumpState == nullptr ||
+        stabilizationState == nullptr || currentFocusScore == nullptr ||
+        referenceFocusScore == nullptr) {
+        return;
+    }
+
+    constexpr float kBlurEnterRatio = 0.72f;
+    constexpr float kBlurExitRatio = 0.82f;
+    constexpr unsigned int kRecoveryStableFrames = 5u;
+    constexpr unsigned int kCrossfadeFrames = 4u;
+    constexpr float kPi = 3.14159265358979323846f;
+
+    bumpState->captureCurrent = 0u;
+    bumpState->blendAlpha = 1.0f;
+
+    if (referenceReady == 0) {
+        bumpState->diagnostics =
+            make_float4(0.0f, 1.0f, 0.0f, 0.0f);
+        bumpState->heldFrameValid = 0u;
+        bumpState->stableFrames = 0u;
+        bumpState->recoveryFrame = 0u;
+        return;
+    }
+
+    const float referenceFocus = fmaxf(*referenceFocusScore, 1.0e-6f);
+    const float sharpnessRatio =
+        fmaxf(*currentFocusScore, 0.0f) / referenceFocus;
+    const bool modelValid = stabilizationState->diagnostics.y >= 0.5f;
+    const float4 motion = stabilizationState->lastFrameMotion;
+    const float4 previous = bumpState->previousMotion;
+    const float radius =
+        0.5f * hypotf(static_cast<float>(max(fullWidth, 1)),
+                      static_cast<float>(max(fullHeight, 1)));
+    const float translationStep =
+        hypotf(motion.x - previous.x, motion.y - previous.y);
+    // Rotation and log-scale are expressed in radians/log units. Convert them
+    // to a conservative source-pixel-equivalent using the translation gate.
+    // Virtual Tripod currently emits translation only, but keeping these terms
+    // makes the gate correct when its regularized similarity model lands.
+    const float angularStep =
+        fabsf(motion.z - previous.z) *
+        fmaxf(motionEnterPixels / (2.0f * kPi), radius);
+    const float scaleStep =
+        fabsf(motion.w - previous.w) * fmaxf(radius, 1.0f);
+    const float transformStep =
+        translationStep + angularStep + scaleStep;
+    if (modelValid) {
+        bumpState->previousMotion = motion;
+    }
+
+    const bool badNow =
+        !modelValid || sharpnessRatio < kBlurEnterRatio ||
+        transformStep > fmaxf(motionEnterPixels, 0.1f);
+    const bool stableNow =
+        modelValid && sharpnessRatio >= kBlurExitRatio &&
+        transformStep <= fmaxf(motionExitPixels, 0.05f);
+    unsigned int mode =
+        static_cast<unsigned int>(fminf(fmaxf(bumpState->diagnostics.x,
+                                              0.0f),
+                                        2.0f));
+
+    if (bumpState->heldFrameValid == 0u) {
+        // Only a sharp, settled, model-valid frame can become the safety
+        // texture. Until one exists, remain live; ApplyBumpHold never reads
+        // the uninitialized hold surface while heldFrameValid is zero.
+        if (stableNow) {
+            bumpState->heldFrameValid = 1u;
+            bumpState->captureCurrent = 1u;
+        }
+        bumpState->stableFrames = 0u;
+        bumpState->recoveryFrame = 0u;
+        mode = 0u;
+    } else if (mode == 0u) {
+        if (badNow) {
+            mode = 1u;
+            bumpState->stableFrames = 0u;
+            bumpState->recoveryFrame = 0u;
+            bumpState->blendAlpha = 0.0f;
+        } else {
+            bumpState->captureCurrent = 1u;
+        }
+    } else if (mode == 1u) {
+        bumpState->blendAlpha = 0.0f;
+        bumpState->stableFrames =
+            stableNow ? bumpState->stableFrames + 1u : 0u;
+        if (bumpState->stableFrames >= kRecoveryStableFrames) {
+            mode = 2u;
+            bumpState->recoveryFrame = 0u;
+        }
+    } else {
+        if (badNow) {
+            mode = 1u;
+            bumpState->stableFrames = 0u;
+            bumpState->recoveryFrame = 0u;
+            bumpState->blendAlpha = 0.0f;
+        } else {
+            const unsigned int nextRecoveryFrame =
+                bumpState->recoveryFrame + 1u;
+            bumpState->recoveryFrame =
+                nextRecoveryFrame < kCrossfadeFrames
+                    ? nextRecoveryFrame
+                    : kCrossfadeFrames;
+            bumpState->blendAlpha =
+                static_cast<float>(bumpState->recoveryFrame) /
+                static_cast<float>(kCrossfadeFrames);
+            if (bumpState->recoveryFrame >= kCrossfadeFrames) {
+                mode = 0u;
+                bumpState->stableFrames = 0u;
+                bumpState->captureCurrent = 1u;
+                bumpState->blendAlpha = 1.0f;
+            }
+        }
+    }
+
+    bumpState->diagnostics =
+        make_float4(static_cast<float>(mode), sharpnessRatio,
+                    transformStep,
+                    bumpState->heldFrameValid != 0u
+                        ? 2.0f
+                        : (modelValid ? 1.0f : 0.0f));
+}
+
+__global__ void ApplyBumpHoldKernel(
+    uchar4* current, size_t currentPitch, uchar4* held, size_t heldPitch,
+    int width, int height, const BumpHoldState* state) {
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= width || y >= height || current == nullptr || held == nullptr ||
+        state == nullptr) {
+        return;
+    }
+
+    auto* currentRow = reinterpret_cast<uchar4*>(
+        reinterpret_cast<unsigned char*>(current) +
+        static_cast<size_t>(y) * currentPitch);
+    auto* heldRow = reinterpret_cast<uchar4*>(
+        reinterpret_cast<unsigned char*>(held) +
+        static_cast<size_t>(y) * heldPitch);
+    const uchar4 live = currentRow[x];
+    if (state->captureCurrent != 0u) {
+        heldRow[x] = live;
+        return;
+    }
+
+    const unsigned int mode =
+        static_cast<unsigned int>(state->diagnostics.x);
+    if (mode == 1u) {
+        currentRow[x] = heldRow[x];
+        return;
+    }
+    if (mode != 2u) {
+        return;
+    }
+
+    const uchar4 frozen = heldRow[x];
+    const float alpha = fminf(fmaxf(state->blendAlpha, 0.0f), 1.0f);
+    const float inverse = 1.0f - alpha;
+    currentRow[x] = make_uchar4(
+        static_cast<unsigned char>(
+            fminf(fmaxf(frozen.x * inverse + live.x * alpha, 0.0f), 255.0f)),
+        static_cast<unsigned char>(
+            fminf(fmaxf(frozen.y * inverse + live.y * alpha, 0.0f), 255.0f)),
+        static_cast<unsigned char>(
+            fminf(fmaxf(frozen.z * inverse + live.z * alpha, 0.0f), 255.0f)),
+        static_cast<unsigned char>(
+            fminf(fmaxf(frozen.w * inverse + live.w * alpha, 0.0f), 255.0f)));
+}
+
+__global__ void SelectSharperTripodReferenceStateKernel(
+    const float* focusScore, float* bestFocusScore,
+    unsigned int* selectionFlag) {
+    if (threadIdx.x != 0 || blockIdx.x != 0) {
+        return;
+    }
+    const bool selected = *focusScore >= *bestFocusScore;
+    *selectionFlag = selected ? 1u : 0u;
+    if (selected) {
+        *bestFocusScore = *focusScore;
+    }
+}
+
+__global__ void SelectSharperTripodReferenceCopyKernel(
+    const float* candidate, float* reference, int pixelCount,
+    const unsigned int* selectionFlag) {
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < pixelCount && *selectionFlag != 0u) {
+        reference[index] = candidate[index];
+    }
+}
+
+__global__ void InitializeTripodAccumulatorKernel(
+    const float* reference, float* accumulator,
+    unsigned int* sampleCounts, int pixelCount) {
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < pixelCount) {
+        accumulator[index] = reference[index];
+        sampleCounts[index] = 1u;
+    }
+}
+
+__global__ void AccumulateTripodReferenceKernel(
+    const float* current, const float* reference, int width, int height,
+    float factorX, float factorY,
+    const float* focusScore, const float* bestFocusScore,
+    const StabilizationState* state,
+    float* accumulator, unsigned int* sampleCounts) {
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= width || y >= height || state->diagnostics.y < 0.5f ||
+        *focusScore < 0.45f * *bestFocusScore) {
+        return;
+    }
+    const float sampleX = static_cast<float>(x) + state->lastFrameMotion.x / factorX;
+    const float sampleY = static_cast<float>(y) + state->lastFrameMotion.y / factorY;
+    if (sampleX < 0.0f || sampleY < 0.0f ||
+        sampleX >= width - 1.0f || sampleY >= height - 1.0f) {
+        return;
+    }
+    const float sample = SampleLuma(current, width, height, sampleX, sampleY);
+    const int index = y * width + x;
+    // Reject moving foreground and lighting outliers instead of smearing them
+    // into the fixed template.
+    if (fabsf(sample - reference[index]) > 22.0f) {
+        return;
+    }
+    accumulator[index] += sample;
+    sampleCounts[index] += 1u;
+}
+
+__global__ void FinalizeTripodReferenceKernel(
+    float* reference, const float* accumulator,
+    const unsigned int* sampleCounts, int pixelCount) {
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < pixelCount && sampleCounts[index] > 0u) {
+        reference[index] =
+            accumulator[index] / static_cast<float>(sampleCounts[index]);
+    }
+}
+
+// One block owns one 16x16 cell, selects the strongest Harris corner from the
+// previous frame, and tracks it with the three-level LK solve above.
+__global__ void StabilizationFeaturePairsKernel(
+    const float* currentLuma, const float* previousLuma,
+    int width, int height, float factorX, float factorY,
+    int fullWidth, int fullHeight,
+    float4* pairs, unsigned int* pairCount, unsigned int maxPairs,
+    const StabilizationState* gateState,
+    const StabilizationState* motionSeedState,
+    float maxDisplacementPixels,
+    int forwardBackwardCheck) {
+    if (gateState != nullptr && gateState->diagnostics.y >= 0.5f) {
+        return;
+    }
+    __shared__ float scores[kStabFeatureBlockSize];
+    __shared__ int indices[kStabFeatureBlockSize];
+    const int tid = static_cast<int>(threadIdx.x);
+    const int cellX = static_cast<int>(blockIdx.x) * kStabFeatureCellSize;
+    const int cellY = static_cast<int>(blockIdx.y) * kStabFeatureCellSize;
+
+    float bestScore = 0.0f;
+    int bestIndex = -1;
+    for (int local = tid;
+         local < kStabFeatureCellSize * kStabFeatureCellSize;
+         local += blockDim.x) {
+        const int x = cellX + local % kStabFeatureCellSize;
+        const int y = cellY + local / kStabFeatureCellSize;
+        if (x < 11 || y < 11 || x >= width - 11 || y >= height - 11) {
+            continue;
+        }
+        float gxx = 0.0f;
+        float gxy = 0.0f;
+        float gyy = 0.0f;
+        for (int oy = -1; oy <= 1; ++oy) {
+            for (int ox = -1; ox <= 1; ++ox) {
+                const int px = x + ox;
+                const int py = y + oy;
+                const float gx = 0.5f *
+                    (previousLuma[py * width + px + 1] -
+                     previousLuma[py * width + px - 1]);
+                const float gy = 0.5f *
+                    (previousLuma[(py + 1) * width + px] -
+                     previousLuma[(py - 1) * width + px]);
+                gxx += gx * gx;
+                gxy += gx * gy;
+                gyy += gy * gy;
+            }
+        }
+        const float determinant = gxx * gyy - gxy * gxy;
+        const float trace = gxx + gyy;
+        const float score = determinant - 0.04f * trace * trace;
+        if (score > bestScore) {
+            bestScore = score;
+            bestIndex = y * width + x;
+        }
+    }
+    scores[tid] = bestScore;
+    indices[tid] = bestIndex;
+    __syncthreads();
+
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride && scores[tid + stride] > scores[tid]) {
+            scores[tid] = scores[tid + stride];
+            indices[tid] = indices[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0 && indices[0] >= 0 && scores[0] > 2.0e5f) {
+        const float x = static_cast<float>(indices[0] % width);
+        const float y = static_cast<float>(indices[0] / width);
+        float initialDx = 0.0f;
+        float initialDy = 0.0f;
+        if (motionSeedState != nullptr) {
+            const float4 motion = motionSeedState->lastFrameMotion;
+            const float scale = expf(motion.w);
+            const float cosine = cosf(motion.z);
+            const float sine = sinf(motion.z);
+            const float sourceX = x * factorX;
+            const float sourceY = y * factorY;
+            const float centerX = 0.5f * static_cast<float>(fullWidth - 1);
+            const float centerY = 0.5f * static_cast<float>(fullHeight - 1);
+            const float localX = sourceX - centerX;
+            const float localY = sourceY - centerY;
+            const float predictedX =
+                centerX + scale * (cosine * localX - sine * localY) +
+                motion.x;
+            const float predictedY =
+                centerY + scale * (sine * localX + cosine * localY) +
+                motion.y;
+            initialDx = (predictedX - sourceX) / factorX;
+            initialDy = (predictedY - sourceY) / factorY;
+        }
+        float dx = 0.0f;
+        float dy = 0.0f;
+        if (TrackFeaturePyramidal(previousLuma, currentLuma, width, height,
+                                  x, y, maxDisplacementPixels,
+                                  initialDx, initialDy, dx, dy)) {
+            bool consistent = true;
+            if (forwardBackwardCheck != 0) {
+                float backwardDx = 0.0f;
+                float backwardDy = 0.0f;
+                consistent =
+                    TrackFeaturePyramidal(
+                        currentLuma, previousLuma, width, height,
+                        x + dx, y + dy, maxDisplacementPixels,
+                        -dx, -dy, backwardDx, backwardDy) &&
+                    (dx + backwardDx) * (dx + backwardDx) +
+                            (dy + backwardDy) * (dy + backwardDy) <=
+                        0.75f * 0.75f;
+            }
+            if (!consistent) {
+                return;
+            }
+            const unsigned int output = atomicAdd(pairCount, 1u);
+            if (output < maxPairs) {
+                pairs[output] = make_float4(
+                    x * factorX, y * factorY,
+                    (x + dx) * factorX, (y + dy) * factorY);
+            }
+        }
+    }
+}
+
+__device__ float SimilarityResidualSquared(const float4& pair,
+                                           float a, float b,
+                                           float tx, float ty) {
+    const float predictedX = a * pair.x - b * pair.y + tx;
+    const float predictedY = b * pair.x + a * pair.y + ty;
+    const float errorX = predictedX - pair.z;
+    const float errorY = predictedY - pair.w;
+    return errorX * errorX + errorY * errorY;
+}
+
+__global__ void ResetVirtualTripodStateKernel(StabilizationState* state,
+                                              int preserveCorrection) {
+    if (threadIdx.x != 0 || blockIdx.x != 0) {
+        return;
+    }
+    float4 previousCorrection = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    float previousCaptures = 0.0f;
+    if (preserveCorrection != 0) {
+        previousCorrection = state->correction;
+        previousCaptures = state->tripodDiagnostics.w;
+    }
+    ResetStabilizationState(state);
+    if (preserveCorrection != 0) {
+        state->correction = previousCorrection;
+        state->previousCorrection = previousCorrection;
+        state->filteredPath = previousCorrection;
+        state->tripodAnchorCorrection = previousCorrection;
+        state->tripodAbsoluteCorrection = previousCorrection;
+    }
+    state->tripodDiagnostics.w = previousCaptures + 1.0f;
+}
+
+__device__ bool VirtualTripodPairInsideRoi(
+    const float4& pair, int fullWidth, int fullHeight,
+    float focusCenterX, float focusCenterY, float zoomAmount) {
+    const float halfSpan =
+        fminf(0.5f, fmaxf(0.15f, 1.0f / fmaxf(zoomAmount, 1.0f)));
+    const float normalizedX =
+        pair.x / fmaxf(static_cast<float>(fullWidth - 1), 1.0f);
+    const float normalizedY =
+        pair.y / fmaxf(static_cast<float>(fullHeight - 1), 1.0f);
+    return fabsf(normalizedX - focusCenterX) <= halfSpan &&
+           fabsf(normalizedY - focusCenterY) <= halfSpan;
+}
+
+__device__ unsigned int SelectVirtualTripodPair(
+    const float4* pairs, unsigned int count, unsigned int seed,
+    bool useRoi, int fullWidth, int fullHeight,
+    float focusCenterX, float focusCenterY, float zoomAmount) {
+    if (!useRoi) {
+        return seed % count;
+    }
+    for (unsigned int offset = 0; offset < count; ++offset) {
+        const unsigned int index = (seed + offset) % count;
+        if (VirtualTripodPairInsideRoi(
+                pairs[index], fullWidth, fullHeight,
+                focusCenterX, focusCenterY, zoomAmount)) {
+            return index;
+        }
+    }
+    return count;
+}
+
+// Absolute-reference counterpart to the pairwise estimator. RANSAC/refit stays
+// identical, but the resulting transform is sent directly to the tripod path
+// rather than accumulated into actualPath.
+__global__ void VirtualTripodSimilarityEstimateKernel(
+    const float4* pairs, const unsigned int* pairCount, unsigned int maxPairs,
+    int fullWidth, int fullHeight, float thresholdPixels,
+    float strength, float maxCorrectionFraction,
+    float focusCenterX, float focusCenterY, float zoomAmount,
+    StabilizationState* state,
+    const float4* keyframeOrigins,
+    const unsigned int* keyframeValid,
+    unsigned int keyframeIndex,
+    TripodMatchCandidate* candidates,
+    int deferPathUpdate) {
+    __shared__ unsigned int hypothesisInliers[kStabRansacHypotheses];
+    __shared__ float hypothesisError[kStabRansacHypotheses];
+    __shared__ float hypothesisA[kStabRansacHypotheses];
+    __shared__ float hypothesisB[kStabRansacHypotheses];
+    __shared__ float hypothesisTx[kStabRansacHypotheses];
+    __shared__ float hypothesisTy[kStabRansacHypotheses];
+    __shared__ unsigned int roiPairCount;
+    __shared__ int useRoi;
+    const int tid = static_cast<int>(threadIdx.x);
+    const unsigned int count = min(*pairCount, maxPairs);
+    if (tid == 0) {
+        if (candidates != nullptr) {
+            candidates[keyframeIndex].motion =
+                make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+            candidates[keyframeIndex].diagnostics =
+                make_float4(0.0f, 0.0f, 0.0f, 4.0f);
+            candidates[keyframeIndex].statistics =
+                make_float4(static_cast<float>(count), 0.0f, 0.0f,
+                            static_cast<float>(keyframeIndex));
+        }
+        roiPairCount = 0;
+        for (unsigned int index = 0; index < count; ++index) {
+            if (VirtualTripodPairInsideRoi(
+                    pairs[index], fullWidth, fullHeight,
+                    focusCenterX, focusCenterY, zoomAmount)) {
+                ++roiPairCount;
+            }
+        }
+        useRoi =
+            roiPairCount >= static_cast<unsigned int>(
+                                kStabMinSimilarityInliers)
+                ? 1
+                : 0;
+    }
+    __syncthreads();
+
+    if (tid < kStabRansacHypotheses) {
+        unsigned int inliers = 0;
+        float error = 0.0f;
+        float a = 1.0f;
+        float b = 0.0f;
+        float tx = 0.0f;
+        float ty = 0.0f;
+        const bool preferRoi = useRoi != 0;
+        bool valid = count >= kStabMinSimilarityInliers;
+        if (valid) {
+            // At high magnification, stabilize what the user is reading.
+            // Fall back to the full frame only when the visible crop does not
+            // contain enough tracked structure to fit a robust model.
+            const unsigned int firstIndex = SelectVirtualTripodPair(
+                pairs, count,
+                static_cast<unsigned int>(tid) * 2654435761u + 17u,
+                preferRoi, fullWidth, fullHeight,
+                focusCenterX, focusCenterY, zoomAmount);
+            valid = firstIndex < count;
+            if (valid) {
+                const float4 pair = pairs[firstIndex];
+                // A clamped camera is a translation problem. Estimating
+                // rotation/scale from feature noise makes static text swim,
+                // so Virtual Tripod deliberately uses the minimum one-pair
+                // translation hypothesis while ordinary stabilization keeps
+                // its full similarity model.
+                tx = pair.z - pair.x;
+                ty = pair.w - pair.y;
+            }
+        }
+        if (valid) {
+            const float thresholdSquared = thresholdPixels * thresholdPixels;
+            for (unsigned int index = 0; index < count; ++index) {
+                if (preferRoi &&
+                    !VirtualTripodPairInsideRoi(
+                        pairs[index], fullWidth, fullHeight,
+                        focusCenterX, focusCenterY, zoomAmount)) {
+                    continue;
+                }
+                const float residual = SimilarityResidualSquared(
+                    pairs[index], a, b, tx, ty);
+                if (residual <= thresholdSquared) {
+                    ++inliers;
+                    error += residual;
+                }
+            }
+        }
+        hypothesisInliers[tid] = inliers;
+        hypothesisError[tid] = error;
+        hypothesisA[tid] = a;
+        hypothesisB[tid] = b;
+        hypothesisTx[tid] = tx;
+        hypothesisTy[tid] = ty;
+    }
+    __syncthreads();
+    if (tid != 0) {
+        return;
+    }
+
+    int best = -1;
+    for (int hypothesis = 0; hypothesis < kStabRansacHypotheses; ++hypothesis) {
+        if (hypothesisInliers[hypothesis] < kStabMinSimilarityInliers) {
+            continue;
+        }
+        if (best < 0 ||
+            hypothesisInliers[hypothesis] > hypothesisInliers[best] ||
+            (hypothesisInliers[hypothesis] == hypothesisInliers[best] &&
+             hypothesisError[hypothesis] < hypothesisError[best])) {
+            best = hypothesis;
+        }
+    }
+    if (best < 0) {
+        if (deferPathUpdate == 0 && state != nullptr) {
+            state->diagnostics = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+            UpdateVirtualTripodPath(
+                state, make_float4(0.0f, 0.0f, 0.0f, 0.0f), false,
+                strength, zoomAmount, maxCorrectionFraction,
+                fullWidth, fullHeight);
+        }
+        return;
+    }
+
+    const float thresholdSquared = thresholdPixels * thresholdPixels;
+    float meanPx = 0.0f;
+    float meanPy = 0.0f;
+    float meanQx = 0.0f;
+    float meanQy = 0.0f;
+    float minPx = static_cast<float>(fullWidth);
+    float minPy = static_cast<float>(fullHeight);
+    float maxPx = 0.0f;
+    float maxPy = 0.0f;
+    unsigned int inliers = 0;
+    for (unsigned int index = 0; index < count; ++index) {
+        const float4 pair = pairs[index];
+        if (useRoi != 0 &&
+            !VirtualTripodPairInsideRoi(
+                pair, fullWidth, fullHeight,
+                focusCenterX, focusCenterY, zoomAmount)) {
+            continue;
+        }
+        if (SimilarityResidualSquared(pair,
+                                      hypothesisA[best], hypothesisB[best],
+                                      hypothesisTx[best], hypothesisTy[best]) <=
+            thresholdSquared) {
+            meanPx += pair.x;
+            meanPy += pair.y;
+            meanQx += pair.z;
+            meanQy += pair.w;
+            minPx = fminf(minPx, pair.x);
+            minPy = fminf(minPy, pair.y);
+            maxPx = fmaxf(maxPx, pair.x);
+            maxPy = fmaxf(maxPy, pair.y);
+            ++inliers;
+        }
+    }
+    if (inliers < kStabMinSimilarityInliers) {
+        if (deferPathUpdate == 0 && state != nullptr) {
+            state->diagnostics =
+                make_float4(static_cast<float>(inliers), 0.0f, 0.0f, 0.0f);
+            UpdateVirtualTripodPath(
+                state, make_float4(0.0f, 0.0f, 0.0f, 0.0f), false,
+                strength, zoomAmount, maxCorrectionFraction,
+                fullWidth, fullHeight);
+        }
+        return;
+    }
+
+    const float inverseCount = 1.0f / static_cast<float>(inliers);
+    meanPx *= inverseCount;
+    meanPy *= inverseCount;
+    meanQx *= inverseCount;
+    meanQy *= inverseCount;
+    float tx = meanQx - meanPx;
+    float ty = meanQy - meanPy;
+    if (keyframeOrigins != nullptr) {
+        tx += keyframeOrigins[keyframeIndex].x;
+        ty += keyframeOrigins[keyframeIndex].y;
+    }
+    const unsigned int consideredPairs =
+        useRoi != 0 ? roiPairCount : count;
+    const float inlierRatio =
+        static_cast<float>(inliers) /
+        fmaxf(static_cast<float>(consideredPairs), 1.0f);
+    const float coverage =
+        fmaxf(maxPx - minPx, 0.0f) *
+        fmaxf(maxPy - minPy, 0.0f) /
+        fmaxf(static_cast<float>(fullWidth) *
+                  static_cast<float>(fullHeight),
+              1.0f);
+    const float meanResidual =
+        hypothesisError[best] / static_cast<float>(inliers);
+    bool modelValid = isfinite(tx) && isfinite(ty);
+    if (candidates != nullptr) {
+        const bool keyframeIsValid =
+            keyframeValid == nullptr ||
+            keyframeValid[keyframeIndex] != 0u;
+        modelValid =
+            modelValid && keyframeIsValid && inlierRatio >= 0.08f &&
+            coverage >= 0.0015f &&
+            meanResidual <= thresholdSquared;
+        candidates[keyframeIndex].motion =
+            make_float4(tx, ty, 0.0f, 0.0f);
+        candidates[keyframeIndex].diagnostics = make_float4(
+            static_cast<float>(inliers), modelValid ? 1.0f : 0.0f,
+            meanResidual, 4.0f);
+        candidates[keyframeIndex].statistics = make_float4(
+            static_cast<float>(consideredPairs), inlierRatio, coverage,
+            static_cast<float>(keyframeIndex));
+    }
+    if (deferPathUpdate != 0 || state == nullptr) {
+        return;
+    }
+    state->diagnostics = make_float4(
+        static_cast<float>(inliers), modelValid ? 1.0f : 0.0f,
+        meanResidual,
+        modelValid ? 4.0f : 0.0f);
+    UpdateVirtualTripodPath(
+        state,
+        make_float4(tx, ty, 0.0f, 0.0f),
+        modelValid, strength, zoomAmount, maxCorrectionFraction,
+        fullWidth, fullHeight);
+}
+
+__global__ void SelectVirtualTripodMatchKernel(
+    const TripodMatchCandidate* candidates, unsigned int candidateCount,
+    float strength, float maxCorrectionFraction, float zoomAmount,
+    int fullWidth, int fullHeight, StabilizationState* state) {
+    if (threadIdx.x != 0 || blockIdx.x != 0) {
+        return;
+    }
+    int best = -1;
+    float bestScore = -1.0f;
+    for (unsigned int index = 0; index < candidateCount; ++index) {
+        const TripodMatchCandidate candidate = candidates[index];
+        if (candidate.diagnostics.y < 0.5f) {
+            continue;
+        }
+        const float score =
+            candidate.statistics.y *
+            sqrtf(fmaxf(candidate.statistics.z, 0.0f)) /
+            (1.0f + fmaxf(candidate.diagnostics.z, 0.0f));
+        if (score > bestScore) {
+            best = static_cast<int>(index);
+            bestScore = score;
+        }
+    }
+    if (best < 0) {
+        state->diagnostics =
+            make_float4(0.0f, 0.0f, 0.0f, 4.0f);
+        UpdateVirtualTripodPath(
+            state, make_float4(0.0f, 0.0f, 0.0f, 0.0f), false,
+            strength, zoomAmount, maxCorrectionFraction,
+            fullWidth, fullHeight);
+        return;
+    }
+
+    const TripodMatchCandidate selected = candidates[best];
+    state->diagnostics = selected.diagnostics;
+    UpdateVirtualTripodPath(
+        state, selected.motion, true, strength, zoomAmount,
+        maxCorrectionFraction, fullWidth, fullHeight);
+    if (best > 0 && state->tripodDiagnostics.z < 2.5f) {
+        state->tripodDiagnostics.z = 4.0f;
+    }
+}
+
+__global__ void InitializeVirtualTripodKeyframeKernel(
+    float4* keyframeOrigins, unsigned int* keyframeValid,
+    unsigned int keyframeIndex) {
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        keyframeOrigins[keyframeIndex] =
+            make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+        keyframeValid[keyframeIndex] = 1u;
+    }
+}
+
+__global__ void CaptureVirtualTripodKeyframeKernel(
+    const float* current, float* destination, int pixelCount,
+    const StabilizationState* state, float4* keyframeOrigins,
+    unsigned int* keyframeValid, unsigned int keyframeIndex,
+    unsigned int minimumValidFrames) {
+    const bool admit =
+        state->diagnostics.y >= 0.5f &&
+        fabsf(state->diagnostics.w - 4.0f) < 0.5f &&
+        state->tripodDiagnostics.z != 2.0f &&
+        state->tripodDiagnostics.x >=
+            static_cast<float>(minimumValidFrames);
+    if (!admit) {
+        return;
+    }
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < pixelCount) {
+        destination[index] = current[index];
+    }
+    if (index == 0) {
+        keyframeOrigins[keyframeIndex] = state->lastFrameMotion;
+        keyframeValid[keyframeIndex] = 1u;
+    }
+}
+
+__global__ void VirtualTripodRelativeFallbackKernel(
+    const float4* pairs, const unsigned int* pairCount,
+    unsigned int maxPairs, int fullWidth, int fullHeight,
+    float thresholdPixels, float maxCorrectionFraction,
+    StabilizationState* state) {
+    if (threadIdx.x != 0 || blockIdx.x != 0 ||
+        state->diagnostics.y >= 0.5f) {
+        return;
+    }
+    const unsigned int count = min(*pairCount, maxPairs);
+    if (count < static_cast<unsigned int>(kStabMinSimilarityInliers)) {
+        state->correction = state->tripodAbsoluteCorrection;
+        return;
+    }
+    const float thresholdSquared = thresholdPixels * thresholdPixels;
+    unsigned int bestInliers = 0u;
+    float bestError = CUDART_INF_F;
+    float bestDx = 0.0f;
+    float bestDy = 0.0f;
+    constexpr unsigned int kFallbackHypotheses = 64u;
+    for (unsigned int hypothesis = 0; hypothesis < kFallbackHypotheses;
+         ++hypothesis) {
+        const float4 seed =
+            pairs[(hypothesis * 2654435761u + 17u) % count];
+        const float dx = seed.z - seed.x;
+        const float dy = seed.w - seed.y;
+        unsigned int inliers = 0u;
+        float error = 0.0f;
+        for (unsigned int index = 0; index < count; ++index) {
+            const float residualX =
+                (pairs[index].z - pairs[index].x) - dx;
+            const float residualY =
+                (pairs[index].w - pairs[index].y) - dy;
+            const float residual =
+                residualX * residualX + residualY * residualY;
+            if (residual <= thresholdSquared) {
+                ++inliers;
+                error += residual;
+            }
+        }
+        if (inliers > bestInliers ||
+            (inliers == bestInliers && error < bestError)) {
+            bestInliers = inliers;
+            bestError = error;
+            bestDx = dx;
+            bestDy = dy;
+        }
+    }
+    if (bestInliers < static_cast<unsigned int>(kStabMinSimilarityInliers) ||
+        static_cast<float>(bestInliers) /
+                static_cast<float>(count) <
+            0.12f) {
+        state->correction = state->tripodAbsoluteCorrection;
+        return;
+    }
+
+    float sumDx = 0.0f;
+    float sumDy = 0.0f;
+    unsigned int inliers = 0u;
+    for (unsigned int index = 0; index < count; ++index) {
+        const float dx = pairs[index].z - pairs[index].x;
+        const float dy = pairs[index].w - pairs[index].y;
+        const float residualX = dx - bestDx;
+        const float residualY = dy - bestDy;
+        if (residualX * residualX + residualY * residualY <=
+            thresholdSquared) {
+            sumDx += dx;
+            sumDy += dy;
+            ++inliers;
+        }
+    }
+    const float inverseCount =
+        1.0f / fmaxf(static_cast<float>(inliers), 1.0f);
+    const float maxRelativeX = 0.035f * static_cast<float>(fullWidth);
+    const float maxRelativeY = 0.035f * static_cast<float>(fullHeight);
+    state->tripodRelativeMotion.x = fminf(
+        fmaxf(state->tripodRelativeMotion.x + sumDx * inverseCount,
+              -maxRelativeX),
+        maxRelativeX);
+    state->tripodRelativeMotion.y = fminf(
+        fmaxf(state->tripodRelativeMotion.y + sumDy * inverseCount,
+              -maxRelativeY),
+        maxRelativeY);
+    bool translationLimited = false;
+    state->correction = ClampStabilizationCorrection(
+        make_float4(
+            state->tripodAbsoluteCorrection.x -
+                state->tripodRelativeMotion.x,
+            state->tripodAbsoluteCorrection.y -
+                state->tripodRelativeMotion.y,
+            state->tripodAbsoluteCorrection.z,
+            state->tripodAbsoluteCorrection.w),
+        maxCorrectionFraction, fullWidth, fullHeight,
+        &translationLimited);
+    state->diagnostics = make_float4(
+        static_cast<float>(inliers), 1.0f,
+        bestError / fmaxf(static_cast<float>(bestInliers), 1.0f), 5.0f);
+    state->tripodDiagnostics.z = 2.0f;
+}
+
+// Apply the inverse of the fixed-reference similarity correction about the
+// frame center.
 __global__ void StabilizationWarpKernel(uchar4* dst, size_t dstPitch,
                                         const uchar4* src, size_t srcPitch,
                                         int width, int height,
@@ -923,9 +2338,18 @@ __global__ void StabilizationWarpKernel(uchar4* dst, size_t dstPitch,
         return;
     }
 
-    const float2 correction = state->correction;
-    const float sampleX = static_cast<float>(x) - correction.x;
-    const float sampleY = static_cast<float>(y) - correction.y;
+    const float4 correction = state->correction;
+    const float centerX = 0.5f * static_cast<float>(width - 1);
+    const float centerY = 0.5f * static_cast<float>(height - 1);
+    const float translatedX = static_cast<float>(x) - centerX - correction.x;
+    const float translatedY = static_cast<float>(y) - centerY - correction.y;
+    const float inverseScale = expf(-correction.w);
+    const float cosine = cosf(correction.z);
+    const float sine = sinf(correction.z);
+    const float sampleX = centerX +
+        inverseScale * (cosine * translatedX + sine * translatedY);
+    const float sampleY = centerY +
+        inverseScale * (-sine * translatedX + cosine * translatedY);
     const float3 color = BilinearSample(src, srcPitch, sampleX, sampleY, width, height);
 
     uchar4* dstRow = RowAt(dst, dstPitch, y);
@@ -1276,27 +2700,453 @@ void LaunchStabilizationProjections(const float* luma,
     CheckCuda("StabilizationProjectionKernel launch failed");
 }
 
-void LaunchStabilizationEstimate(const float* currColProj, const float* currRowProj,
-                                 float* prevColProj, float* prevRowProj,
-                                 int smallWidth, int smallHeight,
-                                 float factorX, float factorY,
-                                 int fullWidth, int fullHeight,
-                                 float strength,
-                                 bool previousValid,
-                                 StabilizationState* state,
-                                 cudaStream_t stream) {
-    if (smallWidth <= 0 || smallHeight <= 0 || fullWidth <= 0 || fullHeight <= 0) {
+void LaunchVirtualTripodProjectionSeed(
+    const float* currentColProj, const float* currentRowProj,
+    const float* referenceColProj, const float* referenceRowProj,
+    int smallWidth, int smallHeight, float factorX, float factorY,
+    const float4* keyframeOrigins, const unsigned int* keyframeValid,
+    unsigned int keyframeIndex, StabilizationState* state,
+    cudaStream_t stream) {
+    if (!currentColProj || !currentRowProj || !referenceColProj ||
+        !referenceRowProj || !keyframeOrigins || !keyframeValid || !state ||
+        smallWidth <= 0 || smallHeight <= 0) {
         return;
     }
-    StabilizationEstimateKernel<<<1, kStabEstimateBlockSize, 0, stream>>>(currColProj, currRowProj,
-                                                                          prevColProj, prevRowProj,
-                                                                          smallWidth, smallHeight,
-                                                                          factorX, factorY,
-                                                                          fullWidth, fullHeight,
-                                                                          strength,
-                                                                          previousValid ? 1 : 0,
-                                                                          state);
-    CheckCuda("StabilizationEstimateKernel launch failed");
+    VirtualTripodProjectionSeedKernel<<<1, 256, 0, stream>>>(
+        currentColProj, currentRowProj, referenceColProj, referenceRowProj,
+        smallWidth, smallHeight, factorX, factorY, keyframeOrigins,
+        keyframeValid, keyframeIndex, state);
+    CheckCuda("VirtualTripodProjectionSeedKernel launch failed");
+}
+
+void LaunchStabilizationFeaturePairs(const float* currentLuma,
+                                     const float* previousLuma,
+                                     int smallWidth, int smallHeight,
+                                     float factorX, float factorY,
+                                     float4* pairs, unsigned int* pairCount,
+                                     unsigned int maxPairs,
+                                     const StabilizationState* gateState,
+                                     cudaStream_t stream) {
+    if (!currentLuma || !previousLuma || !pairs || !pairCount ||
+        smallWidth <= 0 || smallHeight <= 0 || maxPairs == 0) {
+        return;
+    }
+    CheckCudaStatus(cudaMemsetAsync(pairCount, 0, sizeof(unsigned int), stream),
+                    "cudaMemsetAsync stabilization feature count failed");
+    const dim3 gridSize(
+        (smallWidth + kStabFeatureCellSize - 1) / kStabFeatureCellSize,
+        (smallHeight + kStabFeatureCellSize - 1) / kStabFeatureCellSize);
+    StabilizationFeaturePairsKernel<<<gridSize, kStabFeatureBlockSize, 0, stream>>>(
+        currentLuma, previousLuma, smallWidth, smallHeight,
+        factorX, factorY,
+        static_cast<int>(smallWidth * factorX),
+        static_cast<int>(smallHeight * factorY),
+        pairs, pairCount, maxPairs, gateState, nullptr, 24.0f, 0);
+    CheckCuda("StabilizationFeaturePairsKernel launch failed");
+}
+
+void LaunchVirtualTripodFeaturePairs(const float* currentLuma,
+                                     const float* referenceLuma,
+                                     int smallWidth, int smallHeight,
+                                     float factorX, float factorY,
+                                     int fullWidth, int fullHeight,
+                                     float4* pairs, unsigned int* pairCount,
+                                     unsigned int maxPairs,
+                                     const StabilizationState* motionSeedState,
+                                     cudaStream_t stream) {
+    if (!currentLuma || !referenceLuma || !pairs || !pairCount ||
+        smallWidth <= 0 || smallHeight <= 0 || maxPairs == 0) {
+        return;
+    }
+    CheckCudaStatus(cudaMemsetAsync(pairCount, 0, sizeof(unsigned int), stream),
+                    "cudaMemsetAsync virtual tripod feature count failed");
+    const dim3 gridSize(
+        (smallWidth + kStabFeatureCellSize - 1) / kStabFeatureCellSize,
+        (smallHeight + kStabFeatureCellSize - 1) / kStabFeatureCellSize);
+    const float maximumDisplacement =
+        0.48f * static_cast<float>(max(smallWidth, smallHeight));
+    StabilizationFeaturePairsKernel<<<gridSize, kStabFeatureBlockSize, 0, stream>>>(
+        currentLuma, referenceLuma, smallWidth, smallHeight,
+        factorX, factorY, fullWidth, fullHeight,
+        pairs, pairCount, maxPairs, nullptr, motionSeedState,
+        maximumDisplacement, 1);
+    CheckCuda("VirtualTripodFeaturePairsKernel launch failed");
+}
+
+void LaunchStabilizationLumaPyramid(const float* level0,
+                                    int level0Width, int level0Height,
+                                    float* level1,
+                                    int level1Width, int level1Height,
+                                    float* level2,
+                                    int level2Width, int level2Height,
+                                    cudaStream_t stream) {
+    if (!level0 || !level1 || !level2 || level0Width <= 0 || level0Height <= 0 ||
+        level1Width <= 0 || level1Height <= 0 ||
+        level2Width <= 0 || level2Height <= 0) {
+        return;
+    }
+    const dim3 blockSize(16, 16);
+    const dim3 level1Grid(
+        (level1Width + blockSize.x - 1) / blockSize.x,
+        (level1Height + blockSize.y - 1) / blockSize.y);
+    GaussianPyramidDownsampleKernel<<<level1Grid, blockSize, 0, stream>>>(
+        level0, level0Width, level0Height,
+        level1, level1Width, level1Height);
+    CheckCuda("GaussianPyramidDownsampleKernel level 1 launch failed");
+    const dim3 level2Grid(
+        (level2Width + blockSize.x - 1) / blockSize.x,
+        (level2Height + blockSize.y - 1) / blockSize.y);
+    GaussianPyramidDownsampleKernel<<<level2Grid, blockSize, 0, stream>>>(
+        level1, level1Width, level1Height,
+        level2, level2Width, level2Height);
+    CheckCuda("GaussianPyramidDownsampleKernel level 2 launch failed");
+}
+
+void LaunchPrepareVirtualTripodReference(
+    const float* referenceLevel0, int level0Width, int level0Height,
+    const float* referenceLevel1, int level1Width, int level1Height,
+    const float* referenceLevel2, int level2Width, int level2Height,
+    TripodReferenceFeature* features, unsigned int* featureCount,
+    unsigned int maxFeatures, cudaStream_t stream) {
+    if (!referenceLevel0 || !referenceLevel1 || !referenceLevel2 ||
+        !features || !featureCount || maxFeatures == 0u ||
+        level0Width <= 0 || level0Height <= 0 ||
+        level1Width <= 0 || level1Height <= 0 ||
+        level2Width <= 0 || level2Height <= 0) {
+        return;
+    }
+    CheckCudaStatus(cudaMemsetAsync(featureCount, 0, sizeof(unsigned int), stream),
+                    "cudaMemsetAsync virtual tripod prepared feature count failed");
+    const dim3 gridSize(
+        (level0Width + kStabFeatureCellSize - 1) / kStabFeatureCellSize,
+        (level0Height + kStabFeatureCellSize - 1) / kStabFeatureCellSize);
+    PrepareVirtualTripodReferenceKernel<<<
+        gridSize, kStabFeatureBlockSize, 0, stream>>>(
+        referenceLevel0, level0Width, level0Height,
+        referenceLevel1, level1Width, level1Height,
+        referenceLevel2, level2Width, level2Height,
+        features, featureCount, maxFeatures);
+    CheckCuda("PrepareVirtualTripodReferenceKernel launch failed");
+}
+
+void LaunchPreparedVirtualTripodFeaturePairs(
+    const float* currentLevel0, int level0Width, int level0Height,
+    const float* currentLevel1, int level1Width, int level1Height,
+    const float* currentLevel2, int level2Width, int level2Height,
+    const float* referenceLevel0, const float* referenceLevel1,
+    const float* referenceLevel2,
+    const TripodReferenceFeature* features,
+    const unsigned int* featureCount,
+    float factorX, float factorY,
+    int fullWidth, int fullHeight,
+    float4* pairs, unsigned int* pairCount, unsigned int maxPairs,
+    const StabilizationState* motionSeedState, cudaStream_t stream) {
+    if (!currentLevel0 || !currentLevel1 || !currentLevel2 ||
+        !referenceLevel0 || !referenceLevel1 || !referenceLevel2 ||
+        !features || !featureCount || !pairs || !pairCount ||
+        maxPairs == 0u || level0Width <= 0 || level0Height <= 0 ||
+        fullWidth <= 0 || fullHeight <= 0) {
+        return;
+    }
+    CheckCudaStatus(cudaMemsetAsync(pairCount, 0, sizeof(unsigned int), stream),
+                    "cudaMemsetAsync prepared tripod pair count failed");
+    constexpr unsigned int blockSize = 128u;
+    const unsigned int blocks = (maxPairs + blockSize - 1u) / blockSize;
+    PreparedVirtualTripodFeaturePairsKernel<<<blocks, blockSize, 0, stream>>>(
+        currentLevel0, level0Width, level0Height,
+        currentLevel1, level1Width, level1Height,
+        currentLevel2, level2Width, level2Height,
+        referenceLevel0, referenceLevel1, referenceLevel2,
+        features, featureCount, factorX, factorY,
+        pairs, pairCount, maxPairs, motionSeedState,
+        nullptr, nullptr, 0u, nullptr);
+    CheckCuda("PreparedVirtualTripodFeaturePairsKernel launch failed");
+}
+
+void LaunchPreparedVirtualTripodKeyframePairs(
+    const float* currentLevel0, int level0Width, int level0Height,
+    const float* currentLevel1, int level1Width, int level1Height,
+    const float* currentLevel2, int level2Width, int level2Height,
+    const float* referenceLevel0, const float* referenceLevel1,
+    const float* referenceLevel2,
+    const TripodReferenceFeature* features,
+    const unsigned int* featureCount,
+    float factorX, float factorY,
+    int fullWidth, int fullHeight,
+    float4* pairs, unsigned int* pairCount, unsigned int maxPairs,
+    const StabilizationState* motionSeedState,
+    const float4* keyframeOrigins,
+    const unsigned int* keyframeValid,
+    unsigned int keyframeIndex,
+    const TripodMatchCandidate* earlierCandidates,
+    cudaStream_t stream) {
+    if (!currentLevel0 || !currentLevel1 || !currentLevel2 ||
+        !referenceLevel0 || !referenceLevel1 || !referenceLevel2 ||
+        !features || !featureCount || !pairs || !pairCount ||
+        !keyframeOrigins || !keyframeValid || !earlierCandidates ||
+        maxPairs == 0u || level0Width <= 0 || level0Height <= 0 ||
+        fullWidth <= 0 || fullHeight <= 0) {
+        return;
+    }
+    CheckCudaStatus(cudaMemsetAsync(pairCount, 0, sizeof(unsigned int), stream),
+                    "cudaMemsetAsync tripod keyframe pair count failed");
+    constexpr unsigned int blockSize = 128u;
+    const unsigned int blocks = (maxPairs + blockSize - 1u) / blockSize;
+    PreparedVirtualTripodFeaturePairsKernel<<<blocks, blockSize, 0, stream>>>(
+        currentLevel0, level0Width, level0Height,
+        currentLevel1, level1Width, level1Height,
+        currentLevel2, level2Width, level2Height,
+        referenceLevel0, referenceLevel1, referenceLevel2,
+        features, featureCount, factorX, factorY,
+        pairs, pairCount, maxPairs, motionSeedState,
+        keyframeOrigins, keyframeValid, keyframeIndex, earlierCandidates);
+    CheckCuda("PreparedVirtualTripodFeaturePairsKernel keyframe launch failed");
+}
+
+void LaunchMeasureVirtualTripodFocus(const float* luma, int width, int height,
+                                     float* focusScore, cudaStream_t stream) {
+    if (!luma || !focusScore || width <= 2 || height <= 2) {
+        return;
+    }
+    CheckCudaStatus(cudaMemsetAsync(focusScore, 0, sizeof(float), stream),
+                    "cudaMemsetAsync virtual tripod focus score failed");
+    const dim3 blockSize(16, 16);
+    const dim3 gridSize(
+        (width + blockSize.x - 1) / blockSize.x,
+        (height + blockSize.y - 1) / blockSize.y);
+    VirtualTripodFocusKernel<<<gridSize, blockSize, 0, stream>>>(
+        luma, width, height, focusScore);
+    CheckCuda("VirtualTripodFocusKernel launch failed");
+}
+
+void LaunchResetBumpHoldState(BumpHoldState* state, cudaStream_t stream) {
+    if (!state) {
+        return;
+    }
+    ResetBumpHoldStateKernel<<<1, 1, 0, stream>>>(state);
+    CheckCuda("ResetBumpHoldStateKernel launch failed");
+}
+
+void LaunchUpdateBumpHoldState(
+    BumpHoldState* bumpState, const StabilizationState* stabilizationState,
+    const float* currentFocusScore, const float* referenceFocusScore,
+    bool referenceReady, int fullWidth, int fullHeight,
+    float motionEnterPixels, float motionExitPixels, cudaStream_t stream) {
+    if (!bumpState || !stabilizationState || !currentFocusScore ||
+        !referenceFocusScore) {
+        return;
+    }
+    UpdateBumpHoldStateKernel<<<1, 1, 0, stream>>>(
+        bumpState, stabilizationState, currentFocusScore, referenceFocusScore,
+        referenceReady ? 1 : 0, fullWidth, fullHeight,
+        motionEnterPixels, motionExitPixels);
+    CheckCuda("UpdateBumpHoldStateKernel launch failed");
+}
+
+void LaunchApplyBumpHold(
+    uchar4* current, size_t currentPitchBytes,
+    uchar4* held, size_t heldPitchBytes,
+    int width, int height, const BumpHoldState* state,
+    cudaStream_t stream) {
+    if (!current || !held || !state || width <= 0 || height <= 0) {
+        return;
+    }
+    const dim3 blockSize(16, 16);
+    const dim3 gridSize((width + blockSize.x - 1) / blockSize.x,
+                        (height + blockSize.y - 1) / blockSize.y);
+    ApplyBumpHoldKernel<<<gridSize, blockSize, 0, stream>>>(
+        current, currentPitchBytes, held, heldPitchBytes,
+        width, height, state);
+    CheckCuda("ApplyBumpHoldKernel launch failed");
+}
+
+void LaunchSelectSharperVirtualTripodReference(
+    const float* candidate, float* reference, int pixelCount,
+    const float* focusScore, float* bestFocusScore,
+    unsigned int* selectionFlag, cudaStream_t stream) {
+    if (!candidate || !reference || !focusScore || !bestFocusScore ||
+        !selectionFlag || pixelCount <= 0) {
+        return;
+    }
+    SelectSharperTripodReferenceStateKernel<<<1, 1, 0, stream>>>(
+        focusScore, bestFocusScore, selectionFlag);
+    CheckCuda("SelectSharperTripodReferenceStateKernel launch failed");
+    constexpr int blockSize = 256;
+    const int blocks = (pixelCount + blockSize - 1) / blockSize;
+    SelectSharperTripodReferenceCopyKernel<<<blocks, blockSize, 0, stream>>>(
+        candidate, reference, pixelCount, selectionFlag);
+    CheckCuda("SelectSharperTripodReferenceCopyKernel launch failed");
+}
+
+void LaunchInitializeVirtualTripodAccumulator(
+    const float* reference, float* accumulator, unsigned int* sampleCounts,
+    int pixelCount, cudaStream_t stream) {
+    if (!reference || !accumulator || !sampleCounts || pixelCount <= 0) {
+        return;
+    }
+    constexpr int blockSize = 256;
+    const int blocks = (pixelCount + blockSize - 1) / blockSize;
+    InitializeTripodAccumulatorKernel<<<blocks, blockSize, 0, stream>>>(
+        reference, accumulator, sampleCounts, pixelCount);
+    CheckCuda("InitializeTripodAccumulatorKernel launch failed");
+}
+
+void LaunchAccumulateVirtualTripodReference(
+    const float* current, const float* reference, int width, int height,
+    float factorX, float factorY,
+    const float* focusScore, const float* bestFocusScore,
+    const StabilizationState* state,
+    float* accumulator, unsigned int* sampleCounts, cudaStream_t stream) {
+    if (!current || !reference || !focusScore || !bestFocusScore || !state ||
+        !accumulator || !sampleCounts || width <= 0 || height <= 0) {
+        return;
+    }
+    const dim3 blockSize(16, 16);
+    const dim3 gridSize(
+        (width + blockSize.x - 1) / blockSize.x,
+        (height + blockSize.y - 1) / blockSize.y);
+    AccumulateTripodReferenceKernel<<<gridSize, blockSize, 0, stream>>>(
+        current, reference, width, height, factorX, factorY,
+        focusScore, bestFocusScore, state, accumulator, sampleCounts);
+    CheckCuda("AccumulateTripodReferenceKernel launch failed");
+}
+
+void LaunchFinalizeVirtualTripodReference(
+    float* reference, const float* accumulator,
+    const unsigned int* sampleCounts, int pixelCount, cudaStream_t stream) {
+    if (!reference || !accumulator || !sampleCounts || pixelCount <= 0) {
+        return;
+    }
+    constexpr int blockSize = 256;
+    const int blocks = (pixelCount + blockSize - 1) / blockSize;
+    FinalizeTripodReferenceKernel<<<blocks, blockSize, 0, stream>>>(
+        reference, accumulator, sampleCounts, pixelCount);
+    CheckCuda("FinalizeTripodReferenceKernel launch failed");
+}
+
+void LaunchResetVirtualTripodState(StabilizationState* state,
+                                  bool preserveCorrection,
+                                  cudaStream_t stream) {
+    if (!state) {
+        return;
+    }
+    ResetVirtualTripodStateKernel<<<1, 1, 0, stream>>>(
+        state, preserveCorrection ? 1 : 0);
+    CheckCuda("ResetVirtualTripodStateKernel launch failed");
+}
+
+void LaunchVirtualTripodSimilarityEstimate(const float4* pairs,
+                                           const unsigned int* pairCount,
+                                           unsigned int maxPairs,
+                                           int fullWidth, int fullHeight,
+                                           float inlierThresholdPixels,
+                                           float strength,
+                                           float maxCorrectionFraction,
+                                           float focusCenterX,
+                                           float focusCenterY,
+                                           float zoomAmount,
+                                           StabilizationState* state,
+                                           cudaStream_t stream) {
+    if (!pairs || !pairCount || !state || maxPairs == 0 ||
+        fullWidth <= 0 || fullHeight <= 0) {
+        return;
+    }
+    VirtualTripodSimilarityEstimateKernel<<<1, kStabEstimateBlockSize, 0, stream>>>(
+        pairs, pairCount, maxPairs, fullWidth, fullHeight,
+        fmaxf(inlierThresholdPixels, 0.35f),
+        fminf(fmaxf(strength, 0.0f), 1.0f),
+        maxCorrectionFraction,
+        fminf(fmaxf(focusCenterX, 0.0f), 1.0f),
+        fminf(fmaxf(focusCenterY, 0.0f), 1.0f),
+        fmaxf(zoomAmount, 1.0f), state,
+        nullptr, nullptr, 0u, nullptr, 0);
+    CheckCuda("VirtualTripodSimilarityEstimateKernel launch failed");
+}
+
+void LaunchVirtualTripodMatchCandidate(
+    const float4* pairs, const unsigned int* pairCount,
+    unsigned int maxPairs, int fullWidth, int fullHeight,
+    float inlierThresholdPixels, float focusCenterX, float focusCenterY,
+    float zoomAmount, const float4* keyframeOrigins,
+    const unsigned int* keyframeValid, unsigned int keyframeIndex,
+    TripodMatchCandidate* candidates, cudaStream_t stream) {
+    if (!pairs || !pairCount || !keyframeOrigins || !keyframeValid ||
+        !candidates || maxPairs == 0u || fullWidth <= 0 ||
+        fullHeight <= 0) {
+        return;
+    }
+    VirtualTripodSimilarityEstimateKernel<<<
+        1, kStabEstimateBlockSize, 0, stream>>>(
+        pairs, pairCount, maxPairs, fullWidth, fullHeight,
+        fmaxf(inlierThresholdPixels, 0.35f), 1.0f, 0.45f,
+        fminf(fmaxf(focusCenterX, 0.0f), 1.0f),
+        fminf(fmaxf(focusCenterY, 0.0f), 1.0f),
+        fmaxf(zoomAmount, 1.0f), nullptr,
+        keyframeOrigins, keyframeValid, keyframeIndex,
+        candidates, 1);
+    CheckCuda("VirtualTripodSimilarityEstimateKernel candidate launch failed");
+}
+
+void LaunchSelectVirtualTripodMatch(
+    const TripodMatchCandidate* candidates, unsigned int candidateCount,
+    float strength, float maxCorrectionFraction, float zoomAmount,
+    int fullWidth, int fullHeight, StabilizationState* state,
+    cudaStream_t stream) {
+    if (!candidates || candidateCount == 0u || !state ||
+        fullWidth <= 0 || fullHeight <= 0) {
+        return;
+    }
+    SelectVirtualTripodMatchKernel<<<1, 1, 0, stream>>>(
+        candidates, candidateCount,
+        fminf(fmaxf(strength, 0.0f), 1.0f),
+        maxCorrectionFraction, fmaxf(zoomAmount, 1.0f),
+        fullWidth, fullHeight, state);
+    CheckCuda("SelectVirtualTripodMatchKernel launch failed");
+}
+
+void LaunchCaptureVirtualTripodKeyframe(
+    const float* current, float* destination, int pixelCount,
+    const StabilizationState* state, float4* keyframeOrigins,
+    unsigned int* keyframeValid, unsigned int keyframeIndex,
+    unsigned int minimumValidFrames, cudaStream_t stream) {
+    if (!current || !destination || pixelCount <= 0 || !state ||
+        !keyframeOrigins || !keyframeValid) {
+        return;
+    }
+    constexpr int blockSize = 256;
+    const int blocks = (pixelCount + blockSize - 1) / blockSize;
+    CaptureVirtualTripodKeyframeKernel<<<blocks, blockSize, 0, stream>>>(
+        current, destination, pixelCount, state,
+        keyframeOrigins, keyframeValid, keyframeIndex,
+        minimumValidFrames);
+    CheckCuda("CaptureVirtualTripodKeyframeKernel launch failed");
+}
+
+void LaunchInitializeVirtualTripodKeyframe(
+    float4* keyframeOrigins, unsigned int* keyframeValid,
+    unsigned int keyframeIndex, cudaStream_t stream) {
+    if (!keyframeOrigins || !keyframeValid) {
+        return;
+    }
+    InitializeVirtualTripodKeyframeKernel<<<1, 1, 0, stream>>>(
+        keyframeOrigins, keyframeValid, keyframeIndex);
+    CheckCuda("InitializeVirtualTripodKeyframeKernel launch failed");
+}
+
+void LaunchVirtualTripodRelativeFallback(
+    const float4* pairs, const unsigned int* pairCount,
+    unsigned int maxPairs, int fullWidth, int fullHeight,
+    float inlierThresholdPixels, float maxCorrectionFraction,
+    StabilizationState* state, cudaStream_t stream) {
+    if (!pairs || !pairCount || maxPairs == 0u || !state ||
+        fullWidth <= 0 || fullHeight <= 0) {
+        return;
+    }
+    VirtualTripodRelativeFallbackKernel<<<1, 1, 0, stream>>>(
+        pairs, pairCount, maxPairs, fullWidth, fullHeight,
+        fmaxf(inlierThresholdPixels, 0.35f),
+        maxCorrectionFraction, state);
+    CheckCuda("VirtualTripodRelativeFallbackKernel launch failed");
 }
 
 void LaunchStabilizationWarp(uchar4* dst, size_t dstPitchBytes,

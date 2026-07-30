@@ -42,25 +42,33 @@ target_sources(open_zoom PRIVATE
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/constants.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/interaction_controller.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/pipeline_orchestrator.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/app/protected_secret_store.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/recording_manager.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/settings_controller.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/settings_store.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/suspend_guard.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/ui_state_manager.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/app/user_data_paths.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/capture/audio_capture.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/capture/media_capture.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/image_processing.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/frame_pipeline.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/media_writer.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/common/recording_contract.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/maxine_superres.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/common/annotation_model.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/view_transform.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/assistive_runtime.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_app_server_client.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/d3d12/presenter.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/main_window.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/assistive_overlay.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/ui/annotation_overlay.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/joystick_overlay.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/ui/live_status_text.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/render_widget.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/color_scheme_picker.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/ui/collapsible_section.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/responsive_slider_row.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/wheel_safe_combo_box.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/ai_settings_dialog.hpp
@@ -75,6 +83,10 @@ target_include_directories(open_zoom PRIVATE
 )
 set_target_properties(open_zoom PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    # Keep the console in Release while stabilization tuning is active. Runtime
+    # diagnostics are rate-limited, and the console gives field testers enough
+    # evidence to distinguish estimator, filter, and performance failures.
+    WIN32_EXECUTABLE FALSE
 )
 
 target_compile_definitions(open_zoom PRIVATE
@@ -89,7 +101,13 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/assets/openzoom_resources.qrc
     )
 
-    find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
+    find_package(Qt6 QUIET COMPONENTS Widgets Network)
+    if (NOT Qt6_FOUND)
+        message(FATAL_ERROR
+            "Qt6 was not found. Set QT_PREFIX to the Qt msvc2022_64 root "
+            "when using the Windows scripts, set Qt6_DIR to the Qt6 CMake "
+            "package, or update msvc-base in cmake/CMakePresets.json.")
+    endif()
 
     # Optional text-to-speech support (Qt TextToSpeech module).
     find_package(Qt6 QUIET COMPONENTS TextToSpeech)
@@ -106,6 +124,7 @@ if (WIN32)
     target_link_libraries(open_zoom PRIVATE
         Qt6::Widgets
         Qt6::Network
+        d3d11
         d3d12
         dxgi
         mfplat
@@ -120,6 +139,7 @@ if (WIN32)
         Synchronization
         windowscodecs
         comctl32
+        advapi32
     )
 
     target_compile_definitions(open_zoom PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
@@ -129,6 +149,12 @@ if (WIN32)
         if (EXISTS "${SANDBOX_DIR}/CMakeLists.txt")
             add_subdirectory(${SANDBOX_DIR} ${CMAKE_BINARY_DIR}/sandbox_dx12_cuda_minimal)
         endif()
+    endif()
+
+    set(MF_DXVA_SANDBOX_DIR ${PROJECT_SOURCE_DIR}/sandbox/mf_dxva_minimal)
+    if (EXISTS "${MF_DXVA_SANDBOX_DIR}/CMakeLists.txt")
+        add_subdirectory(${MF_DXVA_SANDBOX_DIR}
+                         ${CMAKE_BINARY_DIR}/sandbox_mf_dxva_minimal)
     endif()
 else()
     message(WARNING "OpenZoom is intended to be built on Windows with CUDA, Qt6, and Direct3D12 support.")

@@ -71,11 +71,15 @@ void OpenZoomApp::UpdateBlurUiLabels() {
     const QString sigmaText = QString::number(blurSigma_, 'f', 1);
     const bool blurActive = blurEnabled_;
     if (uiState_->blurSigmaValueLabel_) {
-        uiState_->blurSigmaValueLabel_->setText(sigmaText);
+        SetLiveText(uiState_->blurSigmaValueLabel_, sigmaText,
+                    LivePoliteness::kSilent, QStringLiteral("Blur sigma"));
         uiState_->blurSigmaValueLabel_->setEnabled(blurActive);
     }
     if (uiState_->blurRadiusValueLabel_) {
-        uiState_->blurRadiusValueLabel_->setText(QString::number(blurRadius_));
+        SetLiveText(uiState_->blurRadiusValueLabel_,
+                    QString::number(blurRadius_),
+                    LivePoliteness::kSilent,
+                    QStringLiteral("Blur radius"));
         uiState_->blurRadiusValueLabel_->setEnabled(blurActive);
     }
     if (uiState_->blurSigmaSlider_) {
@@ -108,7 +112,10 @@ void OpenZoomApp::UpdateTemporalSmoothUi() {
     }
     if (uiState_->temporalSmoothValueLabel_) {
         uiState_->temporalSmoothValueLabel_->setEnabled(temporalSmoothEnabled_);
-        uiState_->temporalSmoothValueLabel_->setText(QString::number(temporalSmoothAlpha_, 'f', 2));
+        SetLiveText(uiState_->temporalSmoothValueLabel_,
+                    QString::number(temporalSmoothAlpha_, 'f', 2),
+                    LivePoliteness::kSilent,
+                    QStringLiteral("Temporal blend"));
     }
 }
 
@@ -178,7 +185,10 @@ void OpenZoomApp::UpdateSpatialSharpenUi() {
     }
     if (uiState_->spatialSharpnessValueLabel_) {
         uiState_->spatialSharpnessValueLabel_->setEnabled(enabled);
-        uiState_->spatialSharpnessValueLabel_->setText(QString::number(spatialSharpness_, 'f', 2));
+        SetLiveText(uiState_->spatialSharpnessValueLabel_,
+                    QString::number(spatialSharpness_, 'f', 2),
+                    LivePoliteness::kSilent,
+                    QStringLiteral("Sharpness"));
     }
 }
 
@@ -190,6 +200,7 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
     QString text;
     QString detail;
     QString color;
+    LivePoliteness politeness = LivePoliteness::kPolite;
 
     auto backendLabel = [this]() -> QString {
         if (autoTextClarityEnabled_ || backgroundFlattenEnabled_ ||
@@ -217,6 +228,7 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
         text = QStringLiteral("Reconnecting to camera…");
         detail = QStringLiteral("Camera connection lost - reconnecting automatically");
         color = QStringLiteral("#d17c00");
+        politeness = LivePoliteness::kAssertive;
     } else if (!cameraActive_) {
         text = QStringLiteral("Camera Offline");
         if (lastCameraError_.isEmpty()) {
@@ -225,6 +237,7 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
             detail = QStringLiteral("Processing: Idle (camera offline - %1)").arg(lastCameraError_);
         }
         color = QStringLiteral("#c0392b");
+        politeness = LivePoliteness::kAssertive;
     } else if (debugViewEnabled_) {
         text = QStringLiteral("CPU Debug");
         detail = QStringLiteral("Processing: CPU (debug view)");
@@ -253,6 +266,7 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
         text = QStringLiteral("GPU Required");
         detail = QStringLiteral("GPU required - processing disabled (showing raw video)");
         color = QStringLiteral("#c0392b");
+        politeness = LivePoliteness::kAssertive;
     }
 
     if (recordingManager_ && recordingManager_->IsActive()) {
@@ -272,6 +286,19 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
     if (vlmAssistEnabled_) {
         text.append(QStringLiteral(" [VLM]"));
         detail.append(QStringLiteral(" [VLM]"));
+    }
+    if (cameraActive_ && stabilizationEnabled_ && cudaSurface_) {
+        QString stabilizerLine =
+            QStringLiteral("\nStabilizer: %1")
+                .arg(QString::fromStdString(cudaSurface_->StabilizerStatus()));
+        const float stabilizerMs = cudaSurface_->LastStabilizerMs();
+        if (stabilizerMs >= 0.0f) {
+            stabilizerLine.append(
+                QStringLiteral(" | %1 ms")
+                    .arg(static_cast<double>(stabilizerMs), 0, 'f', 2));
+        }
+        stabilizerLine.append(QStringLiteral(" | CUDA locked"));
+        detail.append(stabilizerLine);
     }
 
     // P8 frame timing (plan 11 Wave 1): rolling CPU tick average and the
@@ -331,22 +358,117 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
             detail = text + QStringLiteral(" - ") + transientStatusMessage_;
             text = transientStatusMessage_;
             color = QStringLiteral("#1c6dd0");
+            politeness = transientStatusPoliteness_;
         } else {
             transientStatusMessage_.clear();
         }
     }
 
-    uiState_->processingStatusLabel_->setText(text);
+    SetLiveText(uiState_->processingStatusLabel_, text, politeness,
+                QStringLiteral("Pipeline status"));
     uiState_->processingStatusLabel_->setToolTip(detail);
     uiState_->processingStatusLabel_->setStyleSheet(QStringLiteral("color: %1;").arg(color));
 
+    if (uiState_->performanceDiagnosticsLabel_) {
+        const TimingPercentiles frame =
+            pipelineOrchestrator_->FrameTickPercentiles();
+        const TimingPercentiles latency =
+            pipelineOrchestrator_->CaptureToPresentPercentiles();
+        const TimingPercentiles captureHandoff =
+            pipelineOrchestrator_->StagePercentiles(
+                FrameTimingStage::CaptureHandoff);
+        const TimingPercentiles cpuPreparation =
+            pipelineOrchestrator_->StagePercentiles(
+                FrameTimingStage::CpuPreparation);
+        const TimingPercentiles cudaSubmission =
+            pipelineOrchestrator_->StagePercentiles(
+                FrameTimingStage::CudaSubmission);
+        const TimingPercentiles presentation =
+            pipelineOrchestrator_->StagePercentiles(
+                FrameTimingStage::Presentation);
+        const TimingPercentiles recordingClone =
+            pipelineOrchestrator_->StagePercentiles(
+                FrameTimingStage::RecordingClone);
+        const auto format = [](const QString& name,
+                               const TimingPercentiles& values) {
+            if (!values.IsValid()) {
+                return QStringLiteral("%1: collecting\u2026").arg(name);
+            }
+            return QStringLiteral("%1: p50 %2 | p95 %3 | p99 %4 ms (%5)")
+                .arg(name)
+                .arg(static_cast<double>(values.p50Ms), 0, 'f', 1)
+                .arg(static_cast<double>(values.p95Ms), 0, 'f', 1)
+                .arg(static_cast<double>(values.p99Ms), 0, 'f', 1)
+                .arg(values.sampleCount);
+        };
+        QStringList performanceLines{
+            format(QStringLiteral("Camera processing"), frame),
+            format(QStringLiteral("Capture to present"), latency),
+            format(QStringLiteral("Capture handoff CPU"), captureHandoff),
+        };
+        if (cpuPreparation.IsValid()) {
+            performanceLines.append(
+                format(QStringLiteral("CPU frame preparation"),
+                       cpuPreparation));
+        }
+        performanceLines.append(
+            format(QStringLiteral("CUDA submission CPU"), cudaSubmission));
+        performanceLines.append(
+            format(QStringLiteral("Presentation CPU"), presentation));
+        if (recordingClone.IsValid()) {
+            performanceLines.append(
+                format(QStringLiteral("Recording clone CPU"),
+                       recordingClone));
+        }
+        if (cudaSurface_) {
+            const GpuStageTimings gpu = cudaSurface_->LastGpuStageTimings();
+            if (gpu.IsValid()) {
+                performanceLines.append(
+                    QStringLiteral(
+                        "Sampled GPU: input %1 | geometry %2 | effects %3 | "
+                        "output %4 ms")
+                        .arg(static_cast<double>(gpu.inputMs), 0, 'f', 2)
+                        .arg(static_cast<double>(gpu.geometryMs), 0, 'f', 2)
+                        .arg(static_cast<double>(gpu.effectsMs), 0, 'f', 2)
+                        .arg(static_cast<double>(gpu.outputMs), 0, 'f', 2));
+            }
+        }
+        if (recordingManager_) {
+            const RecordingTimingSnapshot encoder =
+                recordingManager_->EncoderSubmitTiming();
+            if (encoder.IsValid()) {
+                performanceLines.append(
+                    QStringLiteral(
+                        "Encoder submit CPU: p50 %1 | p95 %2 | p99 %3 ms "
+                        "(%4)")
+                        .arg(static_cast<double>(encoder.p50Ms), 0, 'f', 1)
+                        .arg(static_cast<double>(encoder.p95Ms), 0, 'f', 1)
+                        .arg(static_cast<double>(encoder.p99Ms), 0, 'f', 1)
+                        .arg(encoder.sampleCount));
+            }
+        }
+        const QString performanceText =
+            performanceLines.join(QLatin1Char('\n'));
+        SetLiveTextCoalesced(
+            uiState_->performanceDiagnosticsLabel_,
+            performanceText,
+            LivePoliteness::kSilent,
+            QStringLiteral("Performance timing percentiles"));
+        uiState_->performanceDiagnosticsLabel_->setAccessibleDescription(
+            performanceText);
+    }
+
     QString superResStatus = QStringLiteral("Off");
+    QString superResLogState = QStringLiteral("off");
+    QString superResLogMessage = superResStatus;
     bool superResActive = false;
     if (mlTextSuperResolutionEnabled_) {
         if (!mlTextSuperResolutionUltra1440p_ &&
             (!zoomEnabled_ || zoomAmount_ < 1.33f)) {
             superResStatus = QStringLiteral(
                 "Waiting for 1.33x zoom; NVIDIA SuperRes supports 4/3x and above");
+            superResLogState = QStringLiteral("waiting-for-supported-zoom");
+            superResLogMessage = superResStatus;
         } else {
             QString pipelineState = QStringLiteral("Starting NVIDIA Super Resolution");
             if (cudaSurface_ && !cudaSurface_->SuperResStatus().empty()) {
@@ -355,6 +477,27 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
                     cudaSurface_->IsSuperResActive() &&
                     superResPresentedLastFrame_;
             }
+
+            if (cudaSurface_ && cudaSurface_->IsSuperResPerformanceLimited()) {
+                superResLogState = QStringLiteral("performance-limited");
+            } else if (cudaSurface_ && cudaSurface_->IsSuperResActive()) {
+                // A cached ROI temporarily falling behind viewport motion is
+                // still the same active lifecycle state. Do not turn routine
+                // pan/zoom updates into a terminal retry/status storm.
+                superResLogState = QStringLiteral("active");
+            } else if (pipelineState.contains(QStringLiteral("warming"),
+                                              Qt::CaseInsensitive)) {
+                superResLogState = QStringLiteral("warming-up");
+            } else if (pipelineState.contains(QStringLiteral("measuring"),
+                                              Qt::CaseInsensitive)) {
+                superResLogState = QStringLiteral("measuring");
+            } else if (pipelineState.contains(QStringLiteral("starting"),
+                                              Qt::CaseInsensitive)) {
+                superResLogState = QStringLiteral("starting");
+            } else {
+                superResLogState = QStringLiteral("unavailable");
+            }
+            superResLogMessage = pipelineState.section(QLatin1Char('\n'), 0, 0);
 
             if (superResActive && cudaSurface_) {
                 // Report the factor the stage actually snapped to (4/3, 1.5,
@@ -376,6 +519,19 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
                                      .arg(static_cast<double>(cudaSurface_->SuperResFactor()), 0, 'f', 2)
                                      .arg(geometryDescription)
                                      .arg(zoomEnabled_ ? zoomAmount_ : 1.0f, 0, 'f', 2);
+                if (superResLogState == QStringLiteral("active")) {
+                    superResLogMessage =
+                        QStringLiteral("Active | AI stage %1x%2 -> %3x%4 "
+                                       "(%5x) | %6")
+                            .arg(cudaSurface_->SuperResSourceWidth())
+                            .arg(cudaSurface_->SuperResSourceHeight())
+                            .arg(roi.outputWidth)
+                            .arg(roi.outputHeight)
+                            .arg(static_cast<double>(
+                                     cudaSurface_->SuperResFactor()),
+                                 0, 'f', 2)
+                            .arg(geometryDescription);
+                }
             } else if (cudaSurface_ && cudaSurface_->IsSuperResActive()) {
                 superResStatus = QStringLiteral(
                     "NVIDIA SuperRes ROI cached; using the conventional "
@@ -391,24 +547,35 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
             superResActive,
             cudaSurface_ && cudaSurface_->IsSuperResPerformanceLimited());
     }
-    if (superResStatus != lastSuperResStatus_) {
-        qInfo().noquote() << "NVIDIA Super Resolution:" << superResStatus;
-        lastSuperResStatus_ = superResStatus;
+    if (superResLogState != lastSuperResLogState_) {
+        qInfo().noquote() << "NVIDIA Super Resolution:"
+                          << superResLogMessage;
+        lastSuperResLogState_ = superResLogState;
     }
 }
 
-void OpenZoomApp::ShowStatusMessage(const QString& message, int durationMs)
+void OpenZoomApp::ShowStatusMessage(const QString& message,
+                                    int durationMs,
+                                    LivePoliteness politeness)
 {
     transientStatusMessage_ = message;
     transientStatusUntilMs_ = QDateTime::currentMSecsSinceEpoch() + durationMs;
+    transientStatusPoliteness_ = politeness;
     UpdateProcessingStatusLabel();
 }
 
-void OpenZoomApp::HandleZoomWheel(int delta, const QPointF& localPos) {
+void OpenZoomApp::HandleZoomWheel(const QWheelEvent* wheelEvent) {
     if (!interactionController_) {
         return;
     }
-    interactionController_->HandleZoomWheel(delta, localPos);
+    interactionController_->HandleZoomWheel(wheelEvent);
+}
+
+void OpenZoomApp::HandleKeyboardZoom(float notches) {
+    if (!interactionController_) {
+        return;
+    }
+    interactionController_->HandleKeyboardZoom(notches);
 }
 
 bool OpenZoomApp::MapViewToSource(const QPointF& pos, float& outX, float& outY) const {

@@ -59,7 +59,12 @@ README and expose them in tooltips.
 
 ## U4. Dependent-control enabled state can desync from loaded config
 
-- **Priority:** MEDIUM · **Effort:** small · **Status:** Reported
+> **IMPLEMENTED 2026-07-26 through
+> [plan 27](27-advanced-panel-redesign.md) Phase 0.**
+> Enabled state now comes from `OpenZoomApp::UpdateControlEnabledStates()` after
+> config application and toggle changes. Kept here for the evidence.
+
+- **Priority:** MEDIUM · **Effort:** small · **Status:** Implemented
 - **Evidence:** `src/ui/main_window.cpp` (~410–462) initializes sub-sliders (`bwSlider_`, `zoomSlider_`, `blurSigmaSlider_`, …) as disabled; enablement is wired in app.cpp slots
 
 **Problem.** If settings load with a feature enabled but the corresponding toggle slot

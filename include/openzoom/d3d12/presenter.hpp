@@ -6,9 +6,13 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "openzoom/common/media_writer.hpp"
+#include "openzoom/common/recording_contract.hpp"
 #include "openzoom/common/view_transform.hpp"
 #include "openzoom/cuda/cuda_interop.hpp"
 
@@ -19,6 +23,8 @@ struct IDXGIFactory6;
 struct IDXGISwapChain3;
 
 namespace openzoom {
+
+struct RecordingFramePoolState;
 
 struct ViewportPresentationOptions {
     bool drawFocusMarker{false};
@@ -68,6 +74,20 @@ public:
                          UINT width,
                          UINT height,
                          UINT64* outRequestId = nullptr);
+    // Renders the canonical recording transform into a shareable, fixed-size
+    // BGRA texture. The returned frame is immediately queueable: D3D11 waits
+    // on its shared fence on-GPU, so neither the UI nor recording worker has
+    // to block for completion.
+    GpuVideoFrame RequestRecordingFrame(
+        ID3D12Resource* texture,
+        UINT sourceWidth,
+        UINT sourceHeight,
+        const RecordingViewTransform& transform,
+        UINT targetWidth,
+        UINT targetHeight,
+        const uint8_t* annotationBgra = nullptr,
+        std::size_t annotationStrideBytes = 0,
+        bool* outPoolExhausted = nullptr);
 
     // If a previously requested readback has completed, move its pixels into
     // outBgra (BGRA8 tightly packed) and return true. Returns the OLDEST
@@ -124,6 +144,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> sceneSrvHeap_;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> sceneRootSignature_;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> scenePipelineState_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState>
+        annotationPipelineState_;
     UINT renderTargetDescriptorSize_{};
     UINT sceneSrvDescriptorSize_{};
 
@@ -164,9 +186,17 @@ private:
         UINT64 fenceValue{};
         bool inFlight{};
     };
-    static constexpr UINT kAsyncReadbackSlotCount = 2;
+    // Recording reads the processed scene independently from viewport/photo
+    // readbacks. Four slots allow both copies to overlap two presented frames
+    // without forcing the preview thread to wait.
+    static constexpr UINT kAsyncReadbackSlotCount = 4;
     AsyncReadbackSlot* PrepareAsyncReadbackSlot(UINT width, UINT height);
     AsyncReadbackSlot asyncReadbackSlots_[kAsyncReadbackSlotCount];
+
+    // Shareable recording textures are leased until Media Foundation releases
+    // its sample. The pool is bounded so an encoder backlog produces an
+    // accounted frame drop rather than an allocation spike or preview stall.
+    std::shared_ptr<RecordingFramePoolState> recordingFramePool_;
 };
 
 } // namespace openzoom

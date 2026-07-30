@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "openzoom/ui/assistive_overlay.hpp"
+#include "openzoom/ui/live_status_text.hpp"
 
 #include <QEvent>
 #include <QHBoxLayout>
@@ -237,7 +238,8 @@ void AssistiveOverlay::SetContent(const QString& title, const QString& body, boo
 {
     if (title_ != title) {
         title_ = title;
-        titleLabel_->setText(title_);
+        SetLiveText(titleLabel_, title_, LivePoliteness::kSilent,
+                    QStringLiteral("Assistive result"));
     }
     if (body_ != body) {
         if (!body_.isEmpty() && body.startsWith(body_)) {

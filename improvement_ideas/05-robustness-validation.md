@@ -39,7 +39,7 @@ carefully tuned presets (a big deal for this audience) without telling them.
 **Problem.** Stride and dimensions come from Media Foundation / camera drivers and are
 trusted. `stride == 0`, `stride < width*bpp`, or huge values produce out-of-bounds reads
 or overflowed allocation sizes. Combined with S7 (mid-stream format changes,
-[01-stability-threading.md](01-stability-threading.md)) this is a plausible crash path
+[01-stability-threading.md](done/01-stability-threading.md)) this is a plausible crash path
 with buggy drivers.
 
 **Fix.** At the top of each converter: reject `width/height == 0` or `> 16384`, require

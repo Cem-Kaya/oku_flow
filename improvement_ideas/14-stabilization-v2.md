@@ -1,5 +1,29 @@
 # Plan 14 — Stabilization v2 (Tier 1 + Tier 2) — handoff spec (2026-07-23)
 
+## Implementation status (2026-07-23)
+
+Tier 1 and Tier 2 are implemented on
+`agent/stabilization-v2-rtx-optical-flow`. The automatic device-resident chain
+is NVIDIA Optical Flow Accelerator → CUDA Harris/Lucas-Kanade features →
+projection fallback, with GPU RANSAC similarity fitting, constant-velocity
+Kalman path filtering, affine correction, default-on rolling-shutter
+interpolation, per-profile controls, and sampled active-engine diagnostics.
+
+Automated validation is green: the release app builds; a CUDA test recovers a
+known translation/rotation/scale model despite foreground outliers and verifies
+lost-track decay; and a direct `nvofapi64.dll` test on the reference RTX 4090
+Laptop GPU returns the expected `(3, 0)` flow at grid size 4. Camera-specific
+tremor, deliberate-pan, foreground, jello, and keystone interaction checks
+below remain manual acceptance work. Tier 3 remains a separate future mode.
+
+The 2026-07-24 live tremor check exposed a rolling-shutter composition defect:
+the first implementation blended the whole previous correction into the top
+of the current frame, canceling much of an alternating shake. The warp now
+keeps the current global correction at the center scanline and applies only a
+bounded readout-time offset above/below it. A CUDA image-warp regression test
+locks that behavior, and sampled diagnostics now include inliers plus actual
+translation/rotation correction for manual verification.
+
 Owner-approved scope: Tier 1 (Kalman path filter; rotation+scale model) and
 Tier 2 (sparse-feature estimator with RANSAC; NVIDIA hardware Optical Flow
 when present; rolling-shutter correction). Tier 3 "Screen Lock" planar
@@ -47,6 +71,10 @@ ResetStabilization, called at camera switch/rotation/profile sites).
 
 ## Settings / UI
 - Keep stabilizationEnabled/stabilizationStrength semantics.
+- The top value is a true 100% mounted-camera hold. Translation correction uses
+  the crop reserve already supplied by zoom, never less than the legacy 6% and
+  never more than 45%; 1.25x zoom therefore permits 10% correction per axis,
+  2x permits 25%, and 4x permits 37.5%.
 - Add `stabilizerMode` int: 0 auto (hwflow→features→projection), 1 features,
   2 projection (persist per-preset like other fields; Advanced combo
   "Stabilizer engine" with accessible names; tooltip shows the ACTIVE
@@ -69,7 +97,8 @@ ResetStabilization, called at camera switch/rotation/profile sites).
   double-correction wobble with both enabled.
 
 ## Acceptance
-- [ ] Build green (recipe as in plan 13); no per-frame stalls added
+- [x] Build green (recipe as in plan 13); no per-frame host image readback or
+      blocking estimator synchronization added
       (verify with P8 GPU ms before/after; estimator budget ≤ 2 ms without
       hwflow, ≤ 0.5 ms SM cost with hwflow).
 - [ ] Tremor test: phone on laptop, typing on keyboard — visibly steadier
@@ -90,7 +119,75 @@ numbers and which estimator ran in each test.
 
 ---
 
+## Second recorded validation — 2026-07-24
+
+The owner supplied a new paired 3.43-second, 30 FPS AV1 capture,
+`VID_20260724_015520_996`. It is preserved with hashes, CSV traces, an SVG
+plot, contact sheets, and a reproducible ffmpeg/NumPy/SciPy analyzer under
+git-ignored `local_evidence/stabilization/VID_20260724_015520_996/`.
+
+Sequential phase correlation measured a dominant 1.165 Hz vertical component,
+about 5.25% robust peak-to-peak source movement, and roughly 89 px of net
+vertical drift. The processed output retained about 5.88% peak-to-peak
+movement, only approximately 10.5% attenuation. Saved settings prove the
+capture used Automatic RTX stabilization, 98% strength, rolling-shutter
+correction, and 1.25x zoom.
+
+The estimator was active, but two limits remained: the fixed 6% translation
+clamp allowed only 43.2 px of vertical correction at 720p and saturated well
+before the recorded path, while the 98% near-lock still followed too much of
+the slow drift. The runtime now derives the translation allowance from zoom's
+existing crop reserve: `max(6%, 0.5 * (1 - 1 / zoom))`, capped at 45%. The
+recorded 1.25x configuration therefore receives 72 px of vertical authority.
+The mounted-camera trajectory uses a 0.001 update coefficient at 98%, and the
+strength slider reaches 100%, where the path is held exactly until that
+authority is exhausted. `stabilization_cuda_tests` replays the measured
+1.165 Hz, 18.9 px-amplitude wobble plus 89.34 px drift at the recorded 98%
+strength and requires no more than 25% residual path RMS; the legacy 6% cap
+retains about 43%.
+
+### Live Automatic-vs-CUDA correction (2026-07-24)
+
+The owner verified on the same vibrating camera that explicit CUDA feature
+tracking produced visible improvement while Automatic RTX was nearly
+indistinguishable from off. Inspection found that NVOFA was configured for the
+throughput-oriented `MEDIUM` preset and explicitly preferred its coarsest 4x4
+grid. That is the wrong tradeoff for subpixel 1-2 Hz shake that becomes large
+only after magnification. Automatic now requests `SLOW` and prefers the finest
+reported grid (1x1 on Ampere/Ada, with 2x2/4x4 fallback). Because a 320x180
+1x1 field contains 57,600 vectors, conversion uniformly samples the full field
+into the fixed 4,096-pair RANSAC budget instead of accepting a top-biased
+prefix. High zoom may use its actual crop reserve up to the 45% guard.
+
+### Quality-policy correction and higher-resolution analysis - 2026-07-24
+
+Live comparison showed explicit CUDA feature tracking was visibly steadier
+than Automatic on the owner's high-zoom, low-texture cabinet scene. Automatic
+had treated any valid NVOFA fit as authoritative and never evaluated the sparse
+model, even though NVOFA is a dense-flow primitive rather than a complete
+camera-motion selection policy.
+
+Automatic now evaluates the CUDA Harris/Lucas-Kanade similarity model first,
+keeps NVOFA warm as a fallback when that model is rejected, and retains
+projection correlation as the final compatibility estimator. Stabilization
+analysis increases from the keystone-oriented 320x180 surface to at most
+640x360 so 1-2 source-pixel tremor survives preprocessing; keystone remains at
+320x180. Near-lock now enters progressively above 70% and becomes an exact
+mounted-camera hold at 98% until crop authority is exhausted. The detailed
+reference comparison and pinned research revisions are recorded in
+[`25-stabilization-research.md`](25-stabilization-research.md).
+
+---
+
 ## Tier 3 addendum — "Screen Lock" as a separate opt-in mode (owner-approved 2026-07-23)
+
+**Partial implementation 2026-07-25:** Advanced now exposes transient
+`Virtual Tripod`, `Re-lock current view`, and the plain `L` shortcut. This
+ships the drift-free fixed-reference core: absolute CUDA feature/RANSAC
+registration, last-good hold on confidence loss, and continuity-preserving
+manual/automatic re-anchoring. It anchors the captured scene texture, not yet
+the physical screen quad described below. Therefore the full Tier 3 acceptance
+case for seamless arbitrary slide transitions remains open.
 
 NOT part of default stabilization. A distinct, explicitly-engaged mode
 (Advanced toggle + a hotkey, suggest `L`, announced via accessibility like
