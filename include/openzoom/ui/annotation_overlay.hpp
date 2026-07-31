@@ -81,6 +81,7 @@ protected:
                      qintptr* result) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void changeEvent(QEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
@@ -112,6 +113,7 @@ private:
     void Announce(const QString& message);
     void UpdateToolOptions();
     void UpdateUndoButtons();
+    void UpdateDirectionalUi();
 
     AnnotationModel model_;
     ViewTransform transform_;

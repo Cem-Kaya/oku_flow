@@ -15,6 +15,7 @@ enum class LivePoliteness {
 };
 
 // Updates visible dynamic text and its accessibility representation together.
+// Selectable labels emit both text-content and accessible-name invalidations.
 // Call only on the Qt UI thread. Static widgets may continue to use a fixed
 // accessibleName; dynamic QLabel and QAbstractButton text must use this helper.
 void SetLiveText(QWidget* widget,

@@ -3,6 +3,12 @@
 OpenZoom is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- Live-switchable English, Turkish, and German UI under
+  `Advanced > Image > Application`. The flag-and-native-name selector changes
+  visible labels, accessible names, status announcements, AI response
+  language, locale-formatted values, and the preferred Read Aloud voice
+  immediately without restarting. Debug logs, file names, device names, model
+  ids, and persisted setting tokens remain stable English/data values.
 - Media Foundation camera enumeration with per-device mode listing (`width x height @ fps`), restart-safe device activation, plain-language failure reporting, and automatic reconnection: when a camera drops mid-lecture, OpenZoom quietly retries the same physical device for about 30 seconds (2s/4s/8s backoff) without any modal dialogs, and only reports failure if the device never comes back.
 - CPU frame pipeline for format conversion and rotation of formats the GPU path does not consume, plus the legacy debug composite view. NV12 and YUY2 camera frames bypass it entirely: color conversion and rotation run in CUDA.
 - Direct3D 12 presenter for swap-chain output plus GPU texture readback.
@@ -179,6 +185,16 @@ vendor's alternate host without weakening verification.
 
 ## Runtime Controls
 - `Simple` / `Advanced` switches between a full-view overlay UI and a right-side inspector. The live camera remains visible in both states.
+- `Application language` under the Advanced Image tab's `Application`
+  section offers `English`, `Türkçe`, and `Deutsch` with their flags. The
+  selection is global, persists across restarts, and updates the open windows
+  in place. On first run OpenZoom follows a supported Windows display
+  language, otherwise it starts in English. An AI request already in progress
+  finishes in its old language; the next request follows the new choice.
+  The language registry also carries locale layout direction, so future RTL
+  catalogs can use the same picker and persistence path. RTL languages are not
+  offered yet because each still needs native wording, typography, and
+  screen-reader validation.
 - `Viewport framing` under `Advanced > Image > Device > More device options`
   is a global viewport preference:
   `Fill (crop)` fills the camera area without distorting it, while `Fit (show

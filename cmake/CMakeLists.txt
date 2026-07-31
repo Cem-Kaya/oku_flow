@@ -41,6 +41,7 @@ target_sources(open_zoom PRIVATE
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/color_schemes.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/constants.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/interaction_controller.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/app/language_manager.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/pipeline_orchestrator.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/protected_secret_store.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/recording_manager.hpp
@@ -55,6 +56,7 @@ target_sources(open_zoom PRIVATE
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/frame_pipeline.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/media_writer.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/recording_contract.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/common/response_language.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/maxine_superres.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/annotation_model.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/view_transform.hpp
@@ -70,6 +72,7 @@ target_sources(open_zoom PRIVATE
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/color_scheme_picker.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/collapsible_section.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/responsive_slider_row.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/ui/ui_translation.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/wheel_safe_combo_box.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/ai_settings_dialog.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/setup_assistant.hpp
@@ -101,7 +104,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/assets/openzoom_resources.qrc
     )
 
-    find_package(Qt6 QUIET COMPONENTS Widgets Network)
+    find_package(Qt6 QUIET COMPONENTS Widgets Network LinguistTools)
     if (NOT Qt6_FOUND)
         message(FATAL_ERROR
             "Qt6 was not found. Set QT_PREFIX to the Qt msvc2022_64 root "
@@ -143,6 +146,28 @@ if (WIN32)
     )
 
     target_compile_definitions(open_zoom PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+
+    qt_add_lupdate(
+        LUPDATE_TARGET update_openzoom_translations
+        SOURCE_TARGETS open_zoom
+        TS_FILES
+            ${PROJECT_SOURCE_DIR}/translations/openzoom_tr.ts
+            ${PROJECT_SOURCE_DIR}/translations/openzoom_de.ts
+        OPTIONS -locations none
+    )
+    qt_add_lrelease(
+        LRELEASE_TARGET release_openzoom_translations
+        TS_FILES
+            ${PROJECT_SOURCE_DIR}/translations/openzoom_tr.ts
+            ${PROJECT_SOURCE_DIR}/translations/openzoom_de.ts
+        QM_FILES_OUTPUT_VARIABLE OPENZOOM_QM_FILES
+        OPTIONS -nounfinished
+    )
+    qt_add_resources(open_zoom "open_zoom_translations"
+        PREFIX "/i18n"
+        BASE "${CMAKE_CURRENT_BINARY_DIR}"
+        FILES ${OPENZOOM_QM_FILES}
+    )
 
     if (OPENZOOM_ENABLE_CUDA)
         set(SANDBOX_DIR ${PROJECT_SOURCE_DIR}/sandbox/dx12_cuda_minimal)

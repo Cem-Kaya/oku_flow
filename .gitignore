@@ -41,6 +41,8 @@ Thumbs.db
 /design-qa.md
 /output/
 /local_evidence/
+# Launch/marketing working files (scripts, shot lists, campaign copy) stay local.
+/media_campaign/
 # CMAKE_EXPORT_COMPILE_COMMANDS is ON, so this is regenerated on every configure.
 compile_commands.json
 # Per-developer preset overrides (machine-specific Qt/CUDA paths) stay local.

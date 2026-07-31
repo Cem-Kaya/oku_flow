@@ -4,6 +4,7 @@
 
 #include "openzoom/common/maxine_superres.hpp"
 #include "openzoom/ui/live_status_text.hpp"
+#include "openzoom/ui/ui_translation.hpp"
 
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -116,19 +117,24 @@ SetupAssistantDialog::DependencyRow AddDependencyRow(QVBoxLayout* parent,
     statusLayout->addWidget(row.statusIcon);
     row.status = new QLabel();
     row.status->setWordWrap(true);
-    row.status->setAccessibleName(title + QStringLiteral(" status"));
+    row.status->setAccessibleName(
+        TranslateUi(QStringLiteral("%1 status").arg(title)));
     statusLayout->addWidget(row.status, 1);
     layout->addLayout(statusLayout);
     row.progress = new QProgressBar();
     row.progress->setRange(0, 100);
     row.progress->setVisible(false);
-    row.progress->setAccessibleName(title + QStringLiteral(" download progress"));
+    row.progress->setAccessibleName(
+        TranslateUi(
+            QStringLiteral("%1 download progress").arg(title)));
     layout->addWidget(row.progress);
     auto* actions = new QHBoxLayout();
     row.install = new QPushButton(QStringLiteral("Install"));
-    row.install->setAccessibleName(QStringLiteral("Install ") + title);
+    row.install->setAccessibleName(
+        TranslateUi(QStringLiteral("Install %1").arg(title)));
     row.remove = new QPushButton(QStringLiteral("Remove"));
-    row.remove->setAccessibleName(QStringLiteral("Remove ") + title);
+    row.remove->setAccessibleName(
+        TranslateUi(QStringLiteral("Remove %1").arg(title)));
     actions->addWidget(row.install);
     actions->addWidget(row.remove);
     actions->addStretch(1);

@@ -6,6 +6,8 @@ OpenZoom is a Windows-only live magnification application that combines:
   live media encoding
 - Direct3D 12 for presentation and GPU texture management
 - CUDA for optional GPU processing through D3D12 external-memory interop
+- Qt Linguist catalogs embedded in the executable for live English, Turkish,
+  and German UI switching
 
 ## Architecture At A Glance
 The current frame flow is:
@@ -53,6 +55,43 @@ The current frame flow is:
    synchronous readback that queues a wait for the latest CUDA completion
    before copying. Request ids match every processed recording frame to its
    original camera frame.
+
+## Language And Locale
+
+`LanguageManager` installs an embedded `QTranslator` before the main window is
+constructed and re-translates existing widgets when the user changes
+`Advanced > Image > Application > Application language`. The stable persisted
+values are `en`, `tr`, and `de`; a profile without that key adopts a supported
+Windows locale once. The language setting is global and never part of a quick
+image profile.
+
+Hand-built widgets retain their English source properties through
+`ui_translation`, while `SetLiveText` retains source state for dynamic status
+and accessibility updates. Data-driven values such as camera and microphone
+names, Codex model ids, file paths, telemetry, and serialization tokens are
+not translated. Turkish and German use locale-aware number presentation
+without changing JSON or media metadata.
+
+Built-in AI instructions remain in English for model reliability. Turkish or
+German adds a final response-language directive; user-authored assistant
+instructions remain unmodified and retain higher specificity. Read Aloud
+remains manual-only. A language change prefers an installed matching speech
+voice and reports once through visible status when no matching voice exists.
+
+The localization layer uses Unicode Qt widgets and embedded Qt Linguist
+catalogs rather than Latin-only string handling. Additional LTR languages,
+including Chinese and Japanese, can reuse the same architecture. Locale
+metadata also drives the process layout direction, and OpenZoom's manually
+positioned floating chrome and Draw toolbars use logical leading/trailing
+anchors. Developers can run the English catalog with `--rtl-test` or
+`OPENZOOM_FORCE_RTL=1` to exercise that path before an RTL catalog exists.
+Shipping Arabic, Hebrew, Persian, Urdu, or another RTL language still requires
+a native translation, font/line-break review, and live NVDA/Narrator
+validation; none is currently shown in the language picker.
+
+Catalog source parity, complete translations, LF endings, and `lrelease`
+success are enforced by `scripts/check_translations.ps1`, which runs at the
+start of `scripts/agent_build.bat`.
 6. `RecordingManager` maps those matched pairs into a fixed processed-video
    canvas and sends them through a bounded worker queue. Two `VideoRecorder`
    instances encode synchronized original/processed output live through Media

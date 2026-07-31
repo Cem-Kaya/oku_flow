@@ -622,6 +622,13 @@ namespace {
 std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
 {
     PersistentSettings settings;
+    const QString language =
+        root.value(QStringLiteral("language")).toString().trimmed().toLower();
+    if (language == QStringLiteral("en") ||
+        language == QStringLiteral("tr") ||
+        language == QStringLiteral("de")) {
+        settings.language = language;
+    }
     settings.userDataRoot =
         root.value(QStringLiteral("paths"))
             .toObject()
@@ -876,6 +883,12 @@ bool Save(const QString& path, const PersistentSettings& settings)
     EnsureSettingsDirectory(path);
 
     QJsonObject root;
+    const QString language = settings.language.trimmed().toLower();
+    root.insert(QStringLiteral("language"),
+                language == QStringLiteral("tr") ||
+                        language == QStringLiteral("de")
+                    ? language
+                    : QStringLiteral("en"));
     root.insert(QStringLiteral("version"), kCurrentSettingsVersion);
     root.insert(QStringLiteral("paths"),
                 QJsonObject{{QStringLiteral("userDataRoot"),

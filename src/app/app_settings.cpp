@@ -80,14 +80,24 @@ void OpenZoomApp::UpdatePresetDescription()
 
     QString assistiveText = QStringLiteral("Assistive hooks: off");
     if (ocrAssistEnabled_ && vlmAssistEnabled_) {
-        assistiveText = QStringLiteral("Assistive hooks: OCR + Scene Explain");
+        assistiveText =
+            assistiveOverlayEnabled_
+                ? QStringLiteral(
+                      "Assistive hooks: OCR + Scene Explain with overlay")
+                : QStringLiteral(
+                      "Assistive hooks: OCR + Scene Explain");
     } else if (ocrAssistEnabled_) {
-        assistiveText = QStringLiteral("Assistive hooks: OCR");
+        assistiveText =
+            assistiveOverlayEnabled_
+                ? QStringLiteral("Assistive hooks: OCR with overlay")
+                : QStringLiteral("Assistive hooks: OCR");
     } else if (vlmAssistEnabled_) {
-        assistiveText = QStringLiteral("Assistive hooks: Scene Explain");
-    }
-    if ((ocrAssistEnabled_ || vlmAssistEnabled_) && assistiveOverlayEnabled_) {
-        assistiveText.append(QStringLiteral(" with overlay"));
+        assistiveText =
+            assistiveOverlayEnabled_
+                ? QStringLiteral(
+                      "Assistive hooks: Scene Explain with overlay")
+                : QStringLiteral(
+                      "Assistive hooks: Scene Explain");
     }
 
     SetLiveText(uiState_->presetDescriptionLabel_,

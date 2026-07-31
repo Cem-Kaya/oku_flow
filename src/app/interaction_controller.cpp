@@ -5,6 +5,7 @@
 #include "openzoom/app/app.hpp"
 #include "openzoom/app/constants.hpp"
 #include "openzoom/ui/main_window.hpp"
+#include "openzoom/ui/ui_translation.hpp"
 
 #include <QCursor>
 #include <QAccessible>
@@ -233,8 +234,8 @@ void InteractionController::ScheduleZoomAnnouncement() {
             return;
         }
         const QString message =
-            QStringLiteral("Zoom %1 times")
-                .arg(QString::number(app_.zoomAmount_, 'f', 1));
+            TranslateUi(QStringLiteral("Zoom %L1 times"))
+                .arg(app_.zoomAmount_, 0, 'f', 1);
         app_.ShowStatusMessage(message, 2500);
     });
 }

@@ -25,4 +25,9 @@
         <file alias="play.svg">icons/lucide/play.svg</file>
         <file alias="step-forward.svg">icons/lucide/step-forward.svg</file>
     </qresource>
+    <qresource prefix="/flags">
+        <file alias="us.svg">flags/us.svg</file>
+        <file alias="tr.svg">flags/tr.svg</file>
+        <file alias="de.svg">flags/de.svg</file>
+    </qresource>
 </RCC>

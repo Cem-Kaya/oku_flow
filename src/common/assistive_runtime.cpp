@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "openzoom/common/assistive_runtime.hpp"
+#include "openzoom/common/response_language.hpp"
 #include "openzoom/common/codex_app_server_client.hpp"
 
 #include <QBuffer>
@@ -14,6 +15,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -38,6 +40,7 @@
 
 #if OPENZOOM_HAS_TTS
 #include <QTextToSpeech>
+#include <QVoice>
 #endif
 
 namespace openzoom {
@@ -253,7 +256,8 @@ QString ParseVlmResponseText(const QByteArray& payload)
 QByteArray BuildVlmRequestBody(const QByteArray& jpegBytes,
                                const QString& model,
                                const QString& prompt,
-                               const QString& assistantInstructions)
+                               const QString& assistantInstructions,
+                               const QString& responseLanguageCode)
 {
     const QString dataUri =
         QStringLiteral("data:image/jpeg;base64,%1")
@@ -271,6 +275,15 @@ QByteArray BuildVlmRequestBody(const QByteArray& jpegBytes,
         {QStringLiteral("content"), QJsonArray{textPart, imagePart}}};
 
     QJsonArray messages;
+    const QString languageDirective =
+        AssistiveRuntime::AppendResponseLanguageDirective(
+            QString(), responseLanguageCode);
+    if (!languageDirective.isEmpty()) {
+        messages.append(
+            QJsonObject{
+                {QStringLiteral("role"), QStringLiteral("system")},
+                {QStringLiteral("content"), languageDirective}});
+    }
     if (!assistantInstructions.isEmpty()) {
         messages.append(
             QJsonObject{
@@ -503,6 +516,33 @@ void AssistiveRuntime::SetConfig(const AssistiveRuntimeConfig& config)
     }
 }
 
+void AssistiveRuntime::SetResponseLanguage(const QString& languageCode)
+{
+    const QString normalized = languageCode.trimmed().toLower();
+    const QString next =
+        normalized == QStringLiteral("tr") ||
+                normalized == QStringLiteral("de")
+            ? normalized
+            : QStringLiteral("en");
+    if (responseLanguageCode_ == next) {
+        return;
+    }
+    responseLanguageCode_ = next;
+    warnedMissingVoiceLanguage_.clear();
+#if OPENZOOM_HAS_TTS
+    if (tts_) {
+        SelectVoiceForResponseLanguage(true);
+    }
+#endif
+}
+
+QString AssistiveRuntime::AppendResponseLanguageDirective(
+    const QString& prompt,
+    const QString& languageCode)
+{
+    return openzoom::AppendResponseLanguageDirective(prompt, languageCode);
+}
+
 void AssistiveRuntime::SetModes(bool ocrEnabled, bool vlmEnabled)
 {
     const bool ocrTurningOff = ocrEnabled_ && !ocrEnabled;
@@ -727,6 +767,8 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
                                              int height,
                                              bool attachFrame)
 {
+    const QString responsePrompt =
+        AppendResponseLanguageDirective(prompt, responseLanguageCode_);
     if (!UsesCodexProvider()) {
         emit AssistantTurnFinished(threadId, {}, {},
                                    QStringLiteral("Persistent Assistant conversations require the Codex subscription provider."),
@@ -767,7 +809,7 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
     RefreshOverlay();
 
     if (!attachFrame) {
-        codexClient_->RequestVisionTurn(prompt, {}, threadId, true);
+        codexClient_->RequestVisionTurn(responsePrompt, {}, threadId, true);
         return;
     }
 
@@ -804,7 +846,7 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
         [owner,
          copy = std::move(copy),
          imagePath,
-         prompt,
+         prompt = responsePrompt,
          threadId,
          generation]() mutable {
             if (copy.width() > kMaxVlmFrameEdge ||
@@ -1121,7 +1163,13 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height)
             prompt = QStringLiteral("Describe the visible scene briefly for a low-vision user. "
                                     "Focus on readable text, controls, and major objects.");
         }
-        StartCodexVlm(bgraData, width, height, prompt, {}, false);
+        StartCodexVlm(
+            bgraData,
+            width,
+            height,
+            AppendResponseLanguageDirective(prompt, responseLanguageCode_),
+            {},
+            false);
         return;
     }
     if (vlmHardUnavailable_ || vlmPreparationPending_) {
@@ -1149,6 +1197,7 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height)
     }
     const QString assistantInstructions =
         config_.assistantInstructions.trimmed();
+    const QString responseLanguageCode = responseLanguageCode_;
     const QUrl endpoint(apiUrl);
     const QString endpointName =
         endpoint.host().trimmed().isEmpty()
@@ -1178,6 +1227,7 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height)
          model,
          prompt,
          assistantInstructions,
+         responseLanguageCode,
          generation]() mutable {
             if (copy.width() > kMaxVlmFrameEdge ||
                 copy.height() > kMaxVlmFrameEdge) {
@@ -1196,7 +1246,8 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height)
                     BuildVlmRequestBody(jpegBytes,
                                         model,
                                         prompt,
-                                        assistantInstructions);
+                                        assistantInstructions,
+                                        responseLanguageCode);
             }
             if (!owner) {
                 return;
@@ -1721,10 +1772,73 @@ void AssistiveRuntime::SpeakText(const QString& text)
             }
         }
     }
+    SelectVoiceForResponseLanguage(true);
     tts_->stop();
     tts_->say(text);
 #else
     Q_UNUSED(text);
+#endif
+}
+
+bool AssistiveRuntime::SelectVoiceForResponseLanguage(bool notifyMissing)
+{
+#if OPENZOOM_HAS_TTS
+    if (!tts_) {
+        return false;
+    }
+
+    QLocale targetLocale;
+    if (responseLanguageCode_ == QStringLiteral("tr")) {
+        targetLocale = QLocale(QLocale::Turkish, QLocale::Turkey);
+    } else if (responseLanguageCode_ == QStringLiteral("de")) {
+        targetLocale = QLocale(QLocale::German, QLocale::Germany);
+    } else {
+        targetLocale = QLocale(QLocale::English, QLocale::UnitedStates);
+    }
+
+    const QVoice current = tts_->voice();
+    if (current.locale().language() == targetLocale.language()) {
+        return true;
+    }
+
+    const QList<QVoice> voices = tts_->findVoices();
+    const QVoice* best = nullptr;
+    for (const QVoice& voice : voices) {
+        if (voice.locale().language() != targetLocale.language()) {
+            continue;
+        }
+        if (!best) {
+            best = &voice;
+        }
+        if (voice.locale().territory() == targetLocale.territory()) {
+            best = &voice;
+            break;
+        }
+    }
+    if (best) {
+        tts_->setVoice(*best);
+        warnedMissingVoiceLanguage_.clear();
+        return true;
+    }
+
+    if (notifyMissing &&
+        warnedMissingVoiceLanguage_ != responseLanguageCode_) {
+        warnedMissingVoiceLanguage_ = responseLanguageCode_;
+        const QString languageName =
+            responseLanguageCode_ == QStringLiteral("tr")
+                ? QStringLiteral("Türkçe")
+                : QStringLiteral("Deutsch");
+        emit StatusNotice(
+            QCoreApplication::translate(
+                "OpenZoom",
+                "No %1 voice is installed — using the current voice. "
+                "Install one under Windows Settings → Time & Language → Speech.")
+                .arg(languageName));
+    }
+    return false;
+#else
+    Q_UNUSED(notifyMissing);
+    return false;
 #endif
 }
 

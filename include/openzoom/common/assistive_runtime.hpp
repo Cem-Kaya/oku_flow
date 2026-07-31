@@ -61,6 +61,14 @@ public:
     ~AssistiveRuntime() override;
 
     void SetConfig(const AssistiveRuntimeConfig& config);
+    // Changes the language used by subsequent AI requests and Read Aloud
+    // voice selection. In-flight requests keep the language they started
+    // with.
+    void SetResponseLanguage(const QString& languageCode);
+    QString responseLanguage() const { return responseLanguageCode_; }
+    static QString AppendResponseLanguageDirective(
+        const QString& prompt,
+        const QString& languageCode);
     void SetModes(bool ocrEnabled, bool vlmEnabled);
     bool WantsAnalysis() const;
     bool IsBusy() const;
@@ -123,6 +131,7 @@ signals:
                                const QString& error,
                                bool interrupted,
                                bool persistent);
+    void StatusNotice(const QString& sourceText);
 
 private:
     void RefreshOverlay();
@@ -158,9 +167,12 @@ private:
                                const QString& contentHtml);
     void SpeakText(const QString& text);
     void StopSpeech();
+    bool SelectVoiceForResponseLanguage(bool notifyMissing);
     void EmitPrivacyNoticeIfChanged(const QString& summary);
 
     AssistiveRuntimeConfig config_;
+    QString responseLanguageCode_{QStringLiteral("en")};
+    QString warnedMissingVoiceLanguage_;
 
     bool ocrEnabled_{false};
     bool vlmEnabled_{false};

@@ -10,6 +10,7 @@
 QT_BEGIN_NAMESPACE
 class QCheckBox;
 class QComboBox;
+class QEvent;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
@@ -34,6 +35,9 @@ public:
     openzoom::settings::AssistiveSettings result() const;
     void SetCodexModelCatalog(const QJsonArray& models,
                               const QString& selectedModel);
+
+protected:
+    void changeEvent(QEvent* event) override;
 
 private:
     void UpdateProviderFields();

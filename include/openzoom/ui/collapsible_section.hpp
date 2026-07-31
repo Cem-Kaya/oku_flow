@@ -5,6 +5,7 @@
 #include <QWidget>
 
 QT_BEGIN_NAMESPACE
+class QEvent;
 class QToolButton;
 QT_END_NAMESPACE
 
@@ -26,6 +27,9 @@ public:
 
 signals:
     void expandedChanged(bool expanded);
+
+protected:
+    void changeEvent(QEvent* event) override;
 
 private:
     void UpdateHeader();

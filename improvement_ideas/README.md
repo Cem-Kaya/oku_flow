@@ -59,6 +59,7 @@ that document is authoritative.
 | [`30-external-memory-capture-bridge.md`](30-external-memory-capture-bridge.md) | Gen-2 CUDA external-memory capture bridge: API names, as-built recipe, remaining validation | **IMPLEMENTED — R1 hardware validation + fence upgrade remain** |
 | [`31-lecture-transcript.md`](31-lecture-transcript.md) | Archived lecture-transcript proposal; microphone recording remains | **DROPPED — owner decision 2026-07-30** |
 | [`32-live-accessible-status.md`](32-live-accessible-status.md) | Dynamic status text reaches screen readers with truthful names, events, and severity policy | **VERIFY — owner NVDA/Narrator pass** |
+| [`33-multilingual-support.md`](33-multilingual-support.md) | Live-switchable English/Türkçe/Deutsch: UI, accessibility layer, AI prompts, TTS voice, flag picker | **IMPLEMENTED — owner language/a11y review remains** |
 | [`verified-non-issues.md`](verified-non-issues.md) | Refuted findings — do not "fix" these | Read before analyzing |
 | [`done/`](done/README.md) | Completed plans (01, 02, 09, 11, 12, 13) | Provenance only |
 

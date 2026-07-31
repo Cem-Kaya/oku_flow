@@ -114,7 +114,10 @@ set_tests_properties(annotation_model_geometry PROPERTIES
 add_executable(live_status_text_tests
     live_status_text_tests.cpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/live_status_text.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/ui/ui_translation.hpp
     ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
 )
 
 target_include_directories(live_status_text_tests PRIVATE
@@ -136,6 +139,39 @@ set_tests_properties(live_accessible_status PROPERTIES
 )
 
 if (WIN32)
+    add_executable(language_manager_tests
+        language_manager_tests.cpp
+        ${PROJECT_SOURCE_DIR}/include/openzoom/app/language_manager.hpp
+        ${PROJECT_SOURCE_DIR}/include/openzoom/common/response_language.hpp
+        ${PROJECT_SOURCE_DIR}/include/openzoom/ui/live_status_text.hpp
+        ${PROJECT_SOURCE_DIR}/include/openzoom/ui/ui_translation.hpp
+        ${PROJECT_SOURCE_DIR}/src/app/language_manager.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/response_language.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
+    )
+    target_include_directories(language_manager_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+    )
+    target_link_libraries(language_manager_tests PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+    )
+    qt_add_resources(language_manager_tests "openzoom_test_translations"
+        PREFIX "/i18n"
+        BASE "${CMAKE_CURRENT_BINARY_DIR}/../cmake"
+        FILES ${OPENZOOM_QM_FILES}
+    )
+    add_test(NAME multilingual_live_switch COMMAND language_manager_tests)
+    set_tests_properties(multilingual_live_switch PROPERTIES
+        TIMEOUT 30
+        LABELS "gui"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
+    )
+
     add_executable(recording_integrity_tests
         recording_integrity_tests.cpp
         ${PROJECT_SOURCE_DIR}/src/common/recording_contract.cpp
@@ -242,8 +278,11 @@ if (WIN32)
         annotation_overlay_tests.cpp
         ${PROJECT_SOURCE_DIR}/include/openzoom/ui/annotation_overlay.hpp
         ${PROJECT_SOURCE_DIR}/include/openzoom/ui/live_status_text.hpp
+        ${PROJECT_SOURCE_DIR}/include/openzoom/ui/ui_translation.hpp
         ${PROJECT_SOURCE_DIR}/src/ui/annotation_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
         ${PROJECT_SOURCE_DIR}/src/common/annotation_model.cpp
         ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
         ${PROJECT_SOURCE_DIR}/assets/openzoom_resources.qrc

@@ -3,11 +3,13 @@
 #include "openzoom/ui/ai_settings_dialog.hpp"
 #include "openzoom/common/codex_app_server_client.hpp"
 #include "openzoom/ui/live_status_text.hpp"
+#include "openzoom/ui/ui_translation.hpp"
 #include "openzoom/ui/wheel_safe_combo_box.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QEvent>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -69,9 +71,16 @@ QString ReasoningLabel(const QString& effort)
     if (normalized.isEmpty()) {
         return QStringLiteral("Default");
     }
-    QString label = normalized;
-    label[0] = label[0].toUpper();
-    return label;
+    if (normalized == QStringLiteral("low")) {
+        return QStringLiteral("Low");
+    }
+    if (normalized == QStringLiteral("medium")) {
+        return QStringLiteral("Medium");
+    }
+    if (normalized == QStringLiteral("high")) {
+        return QStringLiteral("High");
+    }
+    return normalized;
 }
 
 } // namespace
@@ -154,6 +163,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     form->addRow("Codex CLI path:", codexPathRow);
 
     codexModelCombo_ = new WheelSafeComboBox();
+    SetComboItemsAreData(codexModelCombo_);
     codexModelCombo_->setMinimumContentsLength(24);
     codexModelCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     const QString configuredModel = initial.codexModel.trimmed().isEmpty()
@@ -298,6 +308,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     contentLayout->addWidget(speechGroup);
 
     ttsVoiceCombo_ = new WheelSafeComboBox();
+    SetComboItemsAreData(ttsVoiceCombo_);
     ttsVoiceCombo_->setMinimumContentsLength(30);
     ttsVoiceCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     speechForm->addRow("Voice:", ttsVoiceCombo_);
@@ -446,6 +457,29 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             "Append OCR and scene descriptions to a lecture notes file");
 }
 
+void AiSettingsDialog::changeEvent(QEvent* event)
+{
+    QDialog::changeEvent(event);
+    if (!event || event->type() != QEvent::LanguageChange) {
+        return;
+    }
+
+    const QString selectedEffort =
+        codexReasoningCombo_->currentData().toString();
+    for (int i = 0; i < codexReasoningCombo_->count(); ++i) {
+        codexReasoningCombo_->setItemText(
+            i, TranslateUi(ReasoningLabel(
+                   codexReasoningCombo_->itemData(i).toString())));
+    }
+    const int selectedIndex =
+        codexReasoningCombo_->findData(selectedEffort);
+    if (selectedIndex >= 0) {
+        codexReasoningCombo_->setCurrentIndex(selectedIndex);
+    }
+    UpdateSpeechRateLabel();
+    PopulateSpeechVoices();
+}
+
 settings::AssistiveSettings AiSettingsDialog::result() const
 {
     settings::AssistiveSettings out;
@@ -509,7 +543,22 @@ void AiSettingsDialog::PopulateSpeechVoices()
             }
         }
     }
-    std::sort(voices.begin(), voices.end(), [](const QVoice& lhs, const QVoice& rhs) {
+    const QLocale appLocale;
+    std::sort(voices.begin(), voices.end(),
+              [&appLocale](const QVoice& lhs, const QVoice& rhs) {
+        const auto rank = [&appLocale](const QVoice& voice) {
+            if (voice.locale().language() != appLocale.language()) {
+                return 2;
+            }
+            return voice.locale().territory() == appLocale.territory()
+                       ? 0
+                       : 1;
+        };
+        const int lhsRank = rank(lhs);
+        const int rhsRank = rank(rhs);
+        if (lhsRank != rhsRank) {
+            return lhsRank < rhsRank;
+        }
         return VoiceLabel(lhs).localeAwareCompare(VoiceLabel(rhs)) < 0;
     });
 
@@ -562,14 +611,14 @@ void AiSettingsDialog::UpdateSpeechRateLabel()
     const int rate = ttsRateSlider_->value();
     QString text;
     if (rate == 0) {
-        text = QStringLiteral("Normal");
+        text = TranslateUi(QStringLiteral("Normal"));
     } else if (rate < 0) {
-        text = QStringLiteral("%1% slower").arg(-rate);
+        text = TranslateUi(QStringLiteral("%1% slower")).arg(-rate);
     } else {
-        text = QStringLiteral("%1% faster").arg(rate);
+        text = TranslateUi(QStringLiteral("%1% faster")).arg(rate);
     }
     SetLiveText(ttsRateValueLabel_, text, LivePoliteness::kSilent,
-                QStringLiteral("Speech rate"));
+                TranslateUi(QStringLiteral("Speech rate")));
 }
 
 void AiSettingsDialog::ApplySpeechPreviewSettings()
@@ -596,7 +645,8 @@ void AiSettingsDialog::PreviewSpeech()
     }
     ApplySpeechPreviewSettings();
     speechPreview_->stop();
-    speechPreview_->say(QStringLiteral("OpenZoom will read this result using the selected voice."));
+    speechPreview_->say(TranslateUi(QStringLiteral(
+        "OpenZoom will read this result using the selected voice.")));
 #endif
 }
 

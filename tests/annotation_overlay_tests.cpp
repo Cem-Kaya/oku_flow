@@ -3,8 +3,16 @@
 
 #include <QLineEdit>
 #include <QMouseEvent>
+#include <QPushButton>
+#include <QFrame>
 #include <QToolButton>
 #include <QtTest>
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <windowsx.h>
 
 #include <cmath>
 
@@ -98,6 +106,8 @@ private slots:
     void middleDragCrossesTheToolWindowBoundary();
     void textPlacementIsClickThenType();
     void moveToolMarqueeSelectsAndMovesMultipleAnnotations();
+    void persistentActionPanelUsesNativeScreenCoordinates();
+    void toolChromeMirrorsForRightToLeftLayouts();
 };
 
 void AnnotationOverlayTests::middleDragCrossesTheToolWindowBoundary()
@@ -276,6 +286,89 @@ void AnnotationOverlayTests::moveToolMarqueeSelectsAndMovesMultipleAnnotations()
 
     QVERIFY(overlay.Undo());
     QCOMPARE(overlay.Strokes(), before);
+}
+
+void AnnotationOverlayTests::persistentActionPanelUsesNativeScreenCoordinates()
+{
+    QWidget owner;
+    owner.resize(900, 600);
+    owner.move(120, 90);
+    MouseSink render(&owner);
+    render.setGeometry(owner.rect());
+    owner.show();
+
+    const Qt::WindowFlags chromeFlags = Qt::Tool |
+                                        Qt::FramelessWindowHint |
+                                        Qt::NoDropShadowWindowHint;
+    QWidget actionPanel(&owner, chromeFlags);
+    actionPanel.setObjectName(QStringLiteral("bottomRightPanel"));
+    actionPanel.setGeometry(590, 480, 280, 90);
+    auto* recordButton = new QPushButton(QStringLiteral("Record"), &actionPanel);
+    recordButton->setGeometry(12, 12, 110, 58);
+    actionPanel.show();
+
+    AnnotationOverlay overlay(&render, &owner);
+    overlay.SetViewTransform(
+        ComputeViewTransform(1280, 720, 900, 600, 1.0f, 0.5f, 0.5f,
+                             ViewportFitMode::kFill));
+    overlay.SetActive(true);
+    actionPanel.raise();
+    overlay.raise();
+    QCoreApplication::processEvents();
+
+    const HWND panelWindow = reinterpret_cast<HWND>(actionPanel.winId());
+    const HWND overlayWindow = reinterpret_cast<HWND>(overlay.winId());
+    QVERIFY(panelWindow);
+    QVERIFY(overlayWindow);
+
+    RECT nativePanelRect{};
+    QVERIFY(GetWindowRect(panelWindow, &nativePanelRect));
+    const int nativeX = nativePanelRect.left +
+                        (nativePanelRect.right - nativePanelRect.left) / 2;
+    const int nativeY = nativePanelRect.top +
+                        (nativePanelRect.bottom - nativePanelRect.top) / 2;
+    const LRESULT hit = SendMessageW(
+        overlayWindow,
+        WM_NCHITTEST,
+        0,
+        MAKELPARAM(nativeX, nativeY));
+    QCOMPARE(hit, static_cast<LRESULT>(HTTRANSPARENT));
+}
+
+void AnnotationOverlayTests::toolChromeMirrorsForRightToLeftLayouts()
+{
+    QWidget owner;
+    owner.resize(1100, 700);
+    MouseSink render(&owner);
+    render.setGeometry(owner.rect());
+    owner.show();
+
+    AnnotationOverlay overlay(&render, &owner);
+    overlay.SetViewTransform(
+        ComputeViewTransform(1280, 720, 1100, 700, 1.0f, 0.5f, 0.5f,
+                             ViewportFitMode::kFill));
+    overlay.SetActive(true);
+    QCoreApplication::processEvents();
+
+    auto* tools =
+        overlay.findChild<QFrame*>(QStringLiteral("annotationToolbar"));
+    auto* options =
+        overlay.findChild<QFrame*>(QStringLiteral("annotationOptions"));
+    auto* actions =
+        overlay.findChild<QFrame*>(QStringLiteral("annotationActions"));
+    QVERIFY(tools);
+    QVERIFY(options);
+    QVERIFY(actions);
+
+    overlay.setLayoutDirection(Qt::LeftToRight);
+    QCoreApplication::processEvents();
+    QVERIFY(tools->x() < options->x());
+    QVERIFY(options->x() < actions->x());
+
+    overlay.setLayoutDirection(Qt::RightToLeft);
+    QCoreApplication::processEvents();
+    QVERIFY(actions->x() < options->x());
+    QVERIFY(options->x() < tools->x());
 }
 
 } // namespace openzoom

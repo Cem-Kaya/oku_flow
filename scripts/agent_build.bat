@@ -17,6 +17,13 @@ set "CUDA_RESULT=SKIP"
 set "VSDEVCMD="
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 
+echo ===== TRANSLATION INTEGRITY GATE =====
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\check_translations.ps1"
+if errorlevel 1 (
+    echo FAIL: translation catalogs are incomplete or stale.
+    goto :summary
+)
+
 if exist "%VSWHERE%" (
     for /f "usebackq delims=" %%V in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find **\VsDevCmd.bat`) do (
         if not defined VSDEVCMD set "VSDEVCMD=%%V"

@@ -66,6 +66,10 @@ open while contributing and update it whenever the workflow evolves.
 - Use `scripts/agent_build.bat` for the tracked Windows release/CPU/CUDA test
   matrix. Do not use or recreate machine-specific test runners under the
   gitignored `build/` directory.
+- Keep `translations/openzoom_tr.ts`, `translations/openzoom_de.ts`, and
+  `src/ui/translation_catalog.cpp` in exact source-key parity. Run
+  `scripts/check_translations.ps1`; use its `-UpdateManifest` switch after
+  intentionally adding or removing catalog entries.
 
 ## Locked Release Bundle Fallback
 - Never terminate or relaunch a running OpenZoom instance merely to replace

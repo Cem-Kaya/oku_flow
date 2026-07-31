@@ -37,6 +37,17 @@ bool OpenZoomApp::Initialize()
 
     presenter_ = std::make_unique<D3D12Presenter>();
     settingsController_ = std::make_unique<SettingsController>();
+    languageManager_ =
+        std::make_unique<LanguageManager>(*qtApp_, this);
+    auto& persistentSettings = settingsController_->MutableSettings();
+    const AppLanguage initialLanguage =
+        persistentSettings.language.trimmed().isEmpty()
+            ? AppLanguageFromSystemLocale()
+            : AppLanguageFromCode(persistentSettings.language);
+    if (!languageManager_->SetLanguage(initialLanguage, false)) {
+        languageManager_->SetLanguage(AppLanguage::English, false);
+    }
+    persistentSettings.language = languageManager_->languageCode();
     userDataPaths_ = std::make_unique<UserDataPaths>(
         settingsController_->Settings().userDataRoot,
         QCoreApplication::applicationDirPath());
@@ -58,6 +69,48 @@ bool OpenZoomApp::Initialize()
     mainWindow_->setWindowIcon(applicationIcon);
     mainWindow_->setApp(this);
     mainWindow_->setMaxineRuntimeInstalled(MaxineSuperRes::IsRuntimeInstalled());
+    if (QComboBox* languageCombo =
+            mainWindow_->applicationLanguageCombo()) {
+        const QSignalBlocker blocker(languageCombo);
+        const int index =
+            languageCombo->findData(languageManager_->languageCode());
+        languageCombo->setCurrentIndex(index >= 0 ? index : 0);
+    }
+    connect(mainWindow_.get(),
+            &MainWindow::applicationLanguageRequested,
+            this,
+            [this](const QString& code) {
+                if (!languageManager_ || !mainWindow_) {
+                    return;
+                }
+                const AppLanguage requested =
+                    AppLanguageFromCode(code);
+                if (!languageManager_->SetLanguage(requested, false)) {
+                    if (QComboBox* combo =
+                            mainWindow_->applicationLanguageCombo()) {
+                        const QSignalBlocker blocker(combo);
+                        combo->setCurrentIndex(
+                            combo->findData(languageManager_->languageCode()));
+                    }
+                    ShowStatusMessage(
+                        TranslateUi(QStringLiteral(
+                            "The selected language could not be loaded.")),
+                        7000);
+                    return;
+                }
+
+                settingsController_->MutableSettings().language =
+                    languageManager_->languageCode();
+                if (assistiveManager_) {
+                    assistiveManager_->Runtime().SetResponseLanguage(
+                        languageManager_->languageCode());
+                }
+                SavePersistentSettings();
+                ShowStatusMessage(
+                    TranslateUi(QStringLiteral("Language set to %1."))
+                        .arg(AppLanguageNativeName(requested)),
+                    5000);
+            });
     uiState_ = std::make_unique<UIStateManager>(*mainWindow_, *this);
     uiState_->renderWidget_->setPresenter(presenter_.get());
     assistiveManager_ = std::make_unique<AssistiveFeatureManager>(
@@ -65,6 +118,14 @@ bool OpenZoomApp::Initialize()
         *this,
         [this](const QString& question) { SubmitFloatingAssistantPrompt(question); },
         *userDataPaths_);
+    assistiveManager_->Runtime().SetResponseLanguage(
+        languageManager_->languageCode());
+    connect(&assistiveManager_->Runtime(),
+            &AssistiveRuntime::StatusNotice,
+            this,
+            [this](const QString& sourceText) {
+                ShowStatusMessage(sourceText, 10000);
+            });
     interactionController_ = std::make_unique<InteractionController>(*this);
     pipelineOrchestrator_ = std::make_unique<PipelineOrchestrator>(
         *this,
@@ -863,7 +924,9 @@ bool OpenZoomApp::Initialize()
                     if (!error.trimmed().isEmpty()) {
                         cursor.insertText(QStringLiteral("\n%1").arg(error.trimmed()));
                     } else if (interrupted) {
-                        cursor.insertText(QStringLiteral("\nStopped."));
+                        cursor.insertText(
+                            QStringLiteral("\n") +
+                            TranslateUi(QStringLiteral("Stopped.")));
                     }
                     cursor.insertText(QStringLiteral("\n\n"));
                     uiState_->assistantTranscript_->setTextCursor(cursor);

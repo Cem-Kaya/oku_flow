@@ -17,8 +17,14 @@ Current contents:
 - `WheelSafeComboBox` and `WheelSafeSlider` for settings controls that remain
   click/drag/keyboard editable without intercepting panel scrolling
 - `SetLiveText` and `SetLiveTextCoalesced` for UI-thread-only dynamic text,
-  role-qualified accessible names, change events, severity-aware
-  announcements, deduplication, and diagnostic coalescing
+  role-qualified accessible names, label text/name invalidation events,
+  severity-aware announcements, deduplication, and diagnostic coalescing
+- `TranslateUi`, `SetLiveTranslationSource`, and
+  `RetranslateWidgetTree` for live English/Türkçe/Deutsch switching without
+  reconstructing hand-built widgets; data-driven combo entries opt out. The
+  app locale also controls layout direction, while manual Simple chrome and
+  annotation rails use logical leading/trailing anchors so an English RTL
+  diagnostic run exercises the same path as a future RTL catalog
 - `AiSettingsDialog` for Codex subscription or OpenAI-compatible provider,
   dynamically discovered model/reasoning choices, a visible read-only built-in
   Codex prompt, shared language/behavior instructions, Advanced Assistant
@@ -26,6 +32,9 @@ Current contents:
   Windows voice/speed selection, and manual speech preview. Its content
   scrolls independently from the fixed confirmation buttons
 - `RenderWidget` for native D3D12 presentation
+- `AnnotationOverlay` for scene-anchored drawing, selection, text entry, and
+  annotation capture. Its native Windows hit test uses physical panel
+  rectangles so persistent camera actions remain clickable at non-100% DPI
 - `AssistiveOverlay`, an owned floating Assistant that uses native move/resize
   handling without letting streamed text reapply its geometry, persists its
   camera-relative position and size, initially clears the top controls, plus

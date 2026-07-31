@@ -95,6 +95,7 @@ void LiveStatusTextTests::changeUpdatesVisibleAndAccessibleText()
     QCOMPARE(label.accessibleName(),
              QStringLiteral("Pipeline status: GPU Ready"));
     QVERIFY(CountEvents(records_, QAccessible::NameChanged) >= 1);
+    QVERIFY(CountEvents(records_, QAccessible::TextUpdated) >= 1);
     QCOMPARE(CountEvents(records_, QAccessible::Announcement), 0);
 }
 

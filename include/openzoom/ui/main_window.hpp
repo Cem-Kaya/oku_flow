@@ -107,6 +107,7 @@ public:
     QLabel* cameraAccelerationStatusLabel() const;
     QPushButton* testCameraAccelerationButton() const;
     QComboBox* recordingCanvasCombo() const;
+    QComboBox* applicationLanguageCombo() const;
 
     // Two-speed UI: Simple overlays compact corner controls on the full render
     // surface; Advanced adds a right-side inspector.
@@ -211,10 +212,12 @@ signals:
                                       bool dashed,
                                       const QString& shapeKind,
                                       int textSizePixels);
+    void applicationLanguageRequested(const QString& code);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
+    void changeEvent(QEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
     bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override;
 
@@ -232,6 +235,7 @@ private:
     void ApplyAdvancedPanelWidth();
     void ShowHelpDialog();
     void FilterAdvancedSettings(const QString& query);
+    void UpdateDirectionalUi();
 
     RenderWidget* renderWidget_{};
     QComboBox* cameraCombo_{};
@@ -274,6 +278,8 @@ private:
     QSlider* zoomCenterYSlider_{};
     QCheckBox* joystickCheckbox_{};
     QToolButton* helpButton_{};
+    QToolButton* previousAdvancedTabButton_{};
+    QToolButton* nextAdvancedTabButton_{};
     QPushButton* resetProfileButton_{};
     QToolButton* controlsToggleButton_{};
     QWidget* controlsContainer_{};
@@ -289,6 +295,8 @@ private:
     QLabel* cameraAccelerationStatusLabel_{};
     QPushButton* testCameraAccelerationButton_{};
     QComboBox* recordingCanvasCombo_{};
+    QComboBox* applicationLanguageCombo_{};
+    CollapsibleSection* applicationSection_{};
     CollapsibleSection* deviceSection_{};
     CollapsibleSection* deviceMoreSection_{};
     CollapsibleSection* recordingSection_{};

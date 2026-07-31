@@ -7,12 +7,14 @@
 
 #include "openzoom/app/app.hpp"
 #include "openzoom/app/constants.hpp"
+#include "openzoom/app/language_manager.hpp"
 #include "openzoom/d3d12/presenter.hpp"
 #include "openzoom/ui/color_scheme_picker.hpp"
 #include "openzoom/ui/collapsible_section.hpp"
 #include "openzoom/ui/live_status_text.hpp"
 #include "openzoom/ui/responsive_slider_row.hpp"
 #include "openzoom/ui/wheel_safe_combo_box.hpp"
+#include "openzoom/ui/ui_translation.hpp"
 
 #include <QAbstractItemModel>
 #include <QAbstractButton>
@@ -376,6 +378,48 @@ MainWindow::MainWindow()
         QStringLiteral("Type part of a setting name to reveal and focus matching controls."));
     advancedLayout->addWidget(settingsSearchEdit_);
 
+    applicationSection_ =
+        new CollapsibleSection(QStringLiteral("Application"));
+    applicationSection_->setPersistKey(QStringLiteral("application"));
+    auto* applicationLayout =
+        qobject_cast<QVBoxLayout*>(
+            applicationSection_->contentWidget()->layout());
+    auto* languageLabel =
+        new QLabel(QStringLiteral("Application language"));
+    applicationLanguageCombo_ = new WheelSafeComboBox();
+    applicationLanguageCombo_->setIconSize(QSize(30, 20));
+    for (AppLanguage language : SupportedAppLanguages()) {
+        applicationLanguageCombo_->addItem(
+            QIcon(AppLanguageFlagResource(language)),
+            AppLanguageNativeName(language),
+            AppLanguageCode(language));
+    }
+    applicationLanguageCombo_->setAccessibleName(
+        QStringLiteral("Application language"));
+    applicationLanguageCombo_->setAccessibleDescription(
+        QStringLiteral(
+            "Changes OpenZoom's interface language immediately. "
+            "An assistant request already in progress keeps its original "
+            "response language."));
+    applicationLanguageCombo_->setToolTip(
+        QStringLiteral(
+            "Changes the interface immediately. In-progress assistant "
+            "requests use the language selected when they started."));
+    SetComboItemsAreData(applicationLanguageCombo_);
+    languageLabel->setBuddy(applicationLanguageCombo_);
+    applicationLayout->addWidget(languageLabel);
+    applicationLayout->addWidget(applicationLanguageCombo_);
+    advancedLayout->addWidget(applicationSection_);
+    connect(applicationLanguageCombo_,
+            &QComboBox::currentIndexChanged,
+            this,
+            [this](int index) {
+                if (index >= 0) {
+                    emit applicationLanguageRequested(
+                        applicationLanguageCombo_->itemData(index).toString());
+                }
+            });
+
     deviceSection_ = new CollapsibleSection(QStringLiteral("Device"));
     deviceSection_->setPersistKey(QStringLiteral("device"));
     auto* deviceLayout =
@@ -385,6 +429,7 @@ MainWindow::MainWindow()
     deviceLayout->addWidget(deviceScopeLabel);
     auto* cameraLabel = new QLabel("Camera");
     cameraCombo_ = new WheelSafeComboBox();
+    SetComboItemsAreData(cameraCombo_);
     cameraCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     cameraCombo_->setMinimumContentsLength(20);
     cameraLabel->setBuddy(cameraCombo_);
@@ -538,6 +583,7 @@ MainWindow::MainWindow()
     auto* cameraFormatLabel =
         new QLabel(QStringLiteral("Camera and original recording resolution && frame rate"));
     cameraFormatCombo_ = new WheelSafeComboBox();
+    SetComboItemsAreData(cameraFormatCombo_);
     cameraFormatCombo_->addItem(QStringLiteral("Automatic (driver's choice)"),
                                 QString());
     cameraFormatCombo_->setToolTip(
@@ -554,6 +600,7 @@ MainWindow::MainWindow()
 
     auto* microphoneLabel = new QLabel(QStringLiteral("Microphone"));
     microphoneCombo_ = new WheelSafeComboBox();
+    SetComboItemsAreData(microphoneCombo_);
     microphoneCombo_->addItem(
         QStringLiteral("No microphone (video only)"),
         QStringLiteral("__none__"));
@@ -666,8 +713,7 @@ MainWindow::MainWindow()
     blurRadiusLayout->addWidget(blurRadiusSlider_, 1);
     blurRadiusLayout->addWidget(blurRadiusValueLabel_);
     blurLayout->addLayout(blurRadiusLayout);
-    // The blur baseline is intentionally constructed here with the other
-    // image controls, but presented later under Diagnostics.
+    readabilityLayout->addLayout(blurLayout);
 
     stabilitySection_ = new CollapsibleSection(QStringLiteral("Stability"));
     stabilitySection_->setPersistKey(QStringLiteral("stability"));
@@ -997,7 +1043,6 @@ MainWindow::MainWindow()
     auto* diagnosticsLayout =
         qobject_cast<QVBoxLayout*>(diagnosticsSection_->contentWidget()->layout());
     controlsLayout->addWidget(diagnosticsSection_);
-    diagnosticsLayout->addLayout(blurLayout);
     auto* debugLayout = new QHBoxLayout();
     debugLayout->setSpacing(8);
     debugButton_ = new QPushButton("Debug View");
@@ -1026,8 +1071,8 @@ MainWindow::MainWindow()
     diagnosticsLayout->addWidget(maxineAttribution_);
 #endif
 
-    const std::array<CollapsibleSection*, 10> advancedSections{
-        deviceSection_, recordingSection_, magnificationSection_, readabilitySection_,
+    const std::array<CollapsibleSection*, 11> advancedSections{
+        applicationSection_, deviceSection_, recordingSection_, magnificationSection_, readabilitySection_,
         stabilitySection_, screenFixSection_, textClaritySection_,
         assistantSection_, sharpeningSection_, diagnosticsSection_};
     for (CollapsibleSection* section : advancedSections) {
@@ -1162,22 +1207,20 @@ MainWindow::MainWindow()
     auto* advancedTabs = new QTabWidget();
     advancedTabs->addTab(imageTabPage, "Image");
     advancedTabs->addTab(assistantPage, "Assistant");
-    auto* previousAdvancedTabButton = new QToolButton();
-    previousAdvancedTabButton->setObjectName(QStringLiteral("advancedTabArrow"));
-    previousAdvancedTabButton->setIcon(QIcon(QStringLiteral(":/openzoom/icons/previous.svg")));
-    previousAdvancedTabButton->setIconSize(QSize(26, 26));
-    previousAdvancedTabButton->setToolTip(QStringLiteral("Previous Advanced section"));
-    previousAdvancedTabButton->setAccessibleName(QStringLiteral("Previous Advanced section"));
-    auto* nextAdvancedTabButton = new QToolButton();
-    nextAdvancedTabButton->setObjectName(QStringLiteral("advancedTabArrow"));
-    nextAdvancedTabButton->setIcon(QIcon(QStringLiteral(":/openzoom/icons/next.svg")));
-    nextAdvancedTabButton->setIconSize(QSize(26, 26));
-    nextAdvancedTabButton->setToolTip(QStringLiteral("Next Advanced section"));
-    nextAdvancedTabButton->setAccessibleName(QStringLiteral("Next Advanced section"));
+    previousAdvancedTabButton_ = new QToolButton();
+    previousAdvancedTabButton_->setObjectName(QStringLiteral("advancedTabArrow"));
+    previousAdvancedTabButton_->setIconSize(QSize(26, 26));
+    previousAdvancedTabButton_->setToolTip(QStringLiteral("Previous Advanced section"));
+    previousAdvancedTabButton_->setAccessibleName(QStringLiteral("Previous Advanced section"));
+    nextAdvancedTabButton_ = new QToolButton();
+    nextAdvancedTabButton_->setObjectName(QStringLiteral("advancedTabArrow"));
+    nextAdvancedTabButton_->setIconSize(QSize(26, 26));
+    nextAdvancedTabButton_->setToolTip(QStringLiteral("Next Advanced section"));
+    nextAdvancedTabButton_->setAccessibleName(QStringLiteral("Next Advanced section"));
     auto* leftTabCorner = new QWidget();
     auto* leftTabCornerLayout = new QHBoxLayout(leftTabCorner);
     leftTabCornerLayout->setContentsMargins(0, 0, 4, 0);
-    leftTabCornerLayout->addWidget(previousAdvancedTabButton);
+    leftTabCornerLayout->addWidget(previousAdvancedTabButton_);
     auto* rightTabCorner = new QWidget();
     auto* rightTabCornerLayout = new QHBoxLayout(rightTabCorner);
     rightTabCornerLayout->setContentsMargins(4, 0, 0, 0);
@@ -1190,18 +1233,19 @@ MainWindow::MainWindow()
     helpButton_->setAccessibleDescription(
         QStringLiteral("Show a guide to OpenZoom controls and features"));
     rightTabCornerLayout->addWidget(helpButton_);
-    rightTabCornerLayout->addWidget(nextAdvancedTabButton);
+    rightTabCornerLayout->addWidget(nextAdvancedTabButton_);
     advancedTabs->setCornerWidget(leftTabCorner, Qt::TopLeftCorner);
     advancedTabs->setCornerWidget(rightTabCorner, Qt::TopRightCorner);
-    connect(previousAdvancedTabButton, &QToolButton::clicked, this, [advancedTabs]() {
+    connect(previousAdvancedTabButton_, &QToolButton::clicked, this, [advancedTabs]() {
         const int count = advancedTabs->count();
         if (count > 0) advancedTabs->setCurrentIndex((advancedTabs->currentIndex() + count - 1) % count);
     });
-    connect(nextAdvancedTabButton, &QToolButton::clicked, this, [advancedTabs]() {
+    connect(nextAdvancedTabButton_, &QToolButton::clicked, this, [advancedTabs]() {
         const int count = advancedTabs->count();
         if (count > 0) advancedTabs->setCurrentIndex((advancedTabs->currentIndex() + 1) % count);
     });
     connect(helpButton_, &QToolButton::clicked, this, &MainWindow::ShowHelpDialog);
+    UpdateDirectionalUi();
     advancedTabs->setMinimumWidth(kAdvancedPanelMinimumWidth);
     advancedTabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     advancedPanel_ = advancedTabs;
@@ -1478,6 +1522,7 @@ MainWindow::MainWindow()
 
     qApp->installEventFilter(this);
     qApp->installNativeEventFilter(this);
+    UpdateDirectionalUi();
     QTimer::singleShot(0, this, [this]() {
         UpdateSimpleChromeGeometry();
         RevealSimpleChrome();
@@ -1774,8 +1819,8 @@ MainWindow::~MainWindow()
 QMap<QString, bool> MainWindow::sectionStates() const
 {
     QMap<QString, bool> states;
-    const std::array<CollapsibleSection*, 11> sections{
-        deviceSection_, deviceMoreSection_, recordingSection_, magnificationSection_,
+    const std::array<CollapsibleSection*, 12> sections{
+        applicationSection_, deviceSection_, deviceMoreSection_, recordingSection_, magnificationSection_,
         readabilitySection_, stabilitySection_, screenFixSection_,
         textClaritySection_, assistantSection_, sharpeningSection_,
         diagnosticsSection_};
@@ -1789,8 +1834,8 @@ QMap<QString, bool> MainWindow::sectionStates() const
 
 void MainWindow::setSectionStates(const QMap<QString, bool>& states)
 {
-    const std::array<CollapsibleSection*, 11> sections{
-        deviceSection_, deviceMoreSection_, recordingSection_, magnificationSection_,
+    const std::array<CollapsibleSection*, 12> sections{
+        applicationSection_, deviceSection_, deviceMoreSection_, recordingSection_, magnificationSection_,
         readabilitySection_, stabilitySection_, screenFixSection_,
         textClaritySection_, assistantSection_, sharpeningSection_,
         diagnosticsSection_};
@@ -1824,6 +1869,9 @@ void MainWindow::updateSectionChangedCounts(
     const int readabilityChanges =
         different(current.blackWhiteEnabled, defaults.blackWhiteEnabled) +
         different(current.blackWhiteThreshold, defaults.blackWhiteThreshold) +
+        different(current.blurEnabled, defaults.blurEnabled) +
+        different(current.blurSigma, defaults.blurSigma) +
+        different(current.blurRadius, defaults.blurRadius) +
         different(current.autoContrastEnabled, defaults.autoContrastEnabled) +
         different(current.autoContrastStrength, defaults.autoContrastStrength) +
         different(current.displayColorMode, defaults.displayColorMode) +
@@ -1882,9 +1930,6 @@ void MainWindow::updateSectionChangedCounts(
     sharpeningSection_->setChangedCount(sharpeningChanges);
 
     const int diagnosticChanges =
-        different(current.blurEnabled, defaults.blurEnabled) +
-        different(current.blurSigma, defaults.blurSigma) +
-        different(current.blurRadius, defaults.blurRadius) +
         different(current.debugView, defaults.debugView);
     diagnosticsSection_->setChangedCount(diagnosticChanges);
 
@@ -1916,13 +1961,13 @@ void MainWindow::updateSectionChangedCounts(
 
 void MainWindow::FilterAdvancedSettings(const QString& query)
 {
-    const QString needle = query.trimmed().toLower();
+    const QString needle = query.trimmed().toCaseFolded();
     const bool searching = !needle.isEmpty();
     firstSettingsSearchMatch_ = nullptr;
     int matchCount = 0;
 
-    const std::array<CollapsibleSection*, 10> sections{
-        deviceSection_, recordingSection_, magnificationSection_, readabilitySection_,
+    const std::array<CollapsibleSection*, 11> sections{
+        applicationSection_, deviceSection_, recordingSection_, magnificationSection_, readabilitySection_,
         stabilitySection_, screenFixSection_, textClaritySection_,
         assistantSection_, sharpeningSection_, diagnosticsSection_};
     for (CollapsibleSection* section : sections) {
@@ -1941,7 +1986,7 @@ void MainWindow::FilterAdvancedSettings(const QString& query)
             } else if (auto* combo = qobject_cast<QComboBox*>(widget)) {
                 text += QLatin1Char(' ') + combo->currentText();
             }
-            if (searching && text.toLower().contains(needle)) {
+            if (searching && text.toCaseFolded().contains(needle)) {
                 sectionMatches = true;
                 ++matchCount;
                 if (!firstSettingsSearchMatch_ && widget->focusPolicy() != Qt::NoFocus) {
@@ -1966,7 +2011,7 @@ void MainWindow::FilterAdvancedSettings(const QString& query)
                 } else if (auto* combo = qobject_cast<QComboBox*>(widget)) {
                     text += QLatin1Char(' ') + combo->currentText();
                 }
-                if (searching && text.toLower().contains(needle)) {
+                if (searching && text.toCaseFolded().contains(needle)) {
                     moreMatches = true;
                     break;
                 }
@@ -2020,6 +2065,9 @@ QPushButton* MainWindow::testCameraAccelerationButton() const {
 }
 QComboBox* MainWindow::recordingCanvasCombo() const {
     return recordingCanvasCombo_;
+}
+QComboBox* MainWindow::applicationLanguageCombo() const {
+    return applicationLanguageCombo_;
 }
 QComboBox* MainWindow::cameraFormatCombo() const { return cameraFormatCombo_; }
 QLabel* MainWindow::cameraFormatNoticeLabel() const { return cameraFormatNoticeLabel_; }
@@ -2502,11 +2550,13 @@ void MainWindow::ShowModeAnnouncement(const QString& label, const QString& profi
         return;
     }
 
-    modeToastTitle_->setText(label.toUpper());
-    modeToastSubtitle_->setText(profileName.trimmed().isEmpty()
-                                    ? QStringLiteral("Quick mode")
-                                    : QStringLiteral("%1 profile").arg(profileName));
-    modeToast_->setAccessibleName(QStringLiteral("Quick mode changed to %1").arg(label));
+    modeToastTitle_->setText(label);
+    modeToastSubtitle_->setText(
+        profileName.trimmed().isEmpty()
+            ? TranslateUi(QStringLiteral("Quick mode"))
+            : TranslateUi(QStringLiteral("%1 profile")).arg(profileName));
+    modeToast_->setAccessibleName(
+        TranslateUi(QStringLiteral("Quick mode changed to %1")).arg(label));
     UpdateSimpleChromeGeometry();
     modeToast_->show();
     modeToast_->raise();
@@ -2583,8 +2633,20 @@ void MainWindow::UpdateSimpleChromeGeometry()
         bottomLeftPanel_->adjustSize();
     }
 
-    topLeftPanel_->move(viewOrigin);
-    bottomLeftPanel_->move(viewOrigin.x(),
+    const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
+    const auto leadingX = [&](int itemWidth) {
+        return rightToLeft
+                   ? viewOrigin.x() + std::max(0, viewWidth - itemWidth)
+                   : viewOrigin.x();
+    };
+    const auto trailingX = [&](int itemWidth) {
+        return rightToLeft
+                   ? viewOrigin.x()
+                   : viewOrigin.x() + std::max(0, viewWidth - itemWidth);
+    };
+
+    topLeftPanel_->move(leadingX(topLeftPanel_->width()), viewOrigin.y());
+    bottomLeftPanel_->move(leadingX(bottomLeftPanel_->width()),
                            viewOrigin.y() + std::max(0, viewHeight - bottomLeftPanel_->height()));
     const bool trackingInline = keystoneTrackingActive_ &&
                                 bottomLeftPanel_->width() + keystoneTrackingPanel_->width() +
@@ -2598,7 +2660,15 @@ void MainWindow::UpdateSimpleChromeGeometry()
                                     : std::max(bottomLeftPanel_->width(),
                                                keystoneTrackingActive_ ? keystoneTrackingPanel_->width() : 0);
     if (keystoneTrackingActive_) {
-        const int trackingX = trackingInline ? bottomLeftPanel_->width() : 0;
+        const int trackingX =
+            trackingInline
+                ? (rightToLeft
+                       ? viewWidth - bottomLeftPanel_->width() -
+                             keystoneTrackingPanel_->width()
+                       : bottomLeftPanel_->width())
+                : (rightToLeft
+                       ? viewWidth - keystoneTrackingPanel_->width()
+                       : 0);
         const int trackingY = trackingInline
                                   ? viewHeight - keystoneTrackingPanel_->height()
                                   : viewHeight - bottomLeftPanel_->height() - keystoneTrackingPanel_->height();
@@ -2609,7 +2679,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
     const int bottomRightY = bottomPanelsOverlap
                                  ? viewHeight - leftChromeHeight - bottomRightPanel_->height()
                                  : viewHeight - bottomRightPanel_->height();
-    bottomRightPanel_->move(viewOrigin.x() + std::max(0, viewWidth - bottomRightPanel_->width()),
+    bottomRightPanel_->move(trailingX(bottomRightPanel_->width()),
                             viewOrigin.y() + std::max(0, bottomRightY));
 
     if (modeGridPopup_) {
@@ -2625,7 +2695,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
                 item->setSizeHint(gridSize - QSize(8, 8));
             }
         }
-        modeGridPopup_->setGeometry(viewOrigin.x(),
+        modeGridPopup_->setGeometry(leadingX(popupWidth),
                                     viewOrigin.y() + std::max(0, viewHeight - leftChromeHeight - popupHeight),
                                     popupWidth,
                                     popupHeight);
@@ -2872,6 +2942,59 @@ void MainWindow::keyReleaseEvent(QKeyEvent* event)
         return;
     }
     QMainWindow::keyReleaseEvent(event);
+}
+
+void MainWindow::changeEvent(QEvent* event)
+{
+    QMainWindow::changeEvent(event);
+    if (event && event->type() == QEvent::LayoutDirectionChange) {
+        UpdateDirectionalUi();
+        UpdateSimpleChromeGeometry();
+    }
+}
+
+void MainWindow::UpdateDirectionalUi()
+{
+    const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
+    const QString previousIcon =
+        rightToLeft ? QStringLiteral(":/openzoom/icons/next.svg")
+                    : QStringLiteral(":/openzoom/icons/previous.svg");
+    const QString nextIcon =
+        rightToLeft ? QStringLiteral(":/openzoom/icons/previous.svg")
+                    : QStringLiteral(":/openzoom/icons/next.svg");
+    const QString backIcon =
+        rightToLeft ? QStringLiteral(":/openzoom/icons/step-forward.svg")
+                    : QStringLiteral(":/openzoom/icons/step-back.svg");
+    const QString forwardIcon =
+        rightToLeft ? QStringLiteral(":/openzoom/icons/step-back.svg")
+                    : QStringLiteral(":/openzoom/icons/step-forward.svg");
+
+    if (previousAdvancedTabButton_) {
+        previousAdvancedTabButton_->setIcon(QIcon(previousIcon));
+    }
+    if (nextAdvancedTabButton_) {
+        nextAdvancedTabButton_->setIcon(QIcon(nextIcon));
+    }
+    if (advancedKeystoneBackButton_) {
+        advancedKeystoneBackButton_->setIcon(QIcon(backIcon));
+    }
+    if (advancedKeystoneNextButton_) {
+        advancedKeystoneNextButton_->setIcon(QIcon(forwardIcon));
+    }
+    if (simpleKeystoneBackButton_) {
+        simpleKeystoneBackButton_->setIcon(QIcon(backIcon));
+    }
+    if (simpleKeystoneNextButton_) {
+        simpleKeystoneNextButton_->setIcon(QIcon(forwardIcon));
+    }
+    if (previousModeButton_) {
+        previousModeButton_->setIcon(
+            style()->standardIcon(QStyle::SP_ArrowBack));
+    }
+    if (nextModeButton_) {
+        nextModeButton_->setIcon(
+            style()->standardIcon(QStyle::SP_ArrowForward));
+    }
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)

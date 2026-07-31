@@ -70,6 +70,7 @@ namespace openzoom {
 class RenderWidget;
 class JoystickOverlay;
 class MainWindow;
+class LanguageManager;
 class InteractionController;
 class UIStateManager;
 class AssistiveFeatureManager;
@@ -254,6 +255,7 @@ private:
 
     QApplication* qtApp_{};
     bool initialized_{false};
+    std::unique_ptr<LanguageManager> languageManager_;
     std::unique_ptr<MainWindow> mainWindow_;
     std::unique_ptr<UIStateManager> uiState_;
     std::unique_ptr<PipelineOrchestrator> pipelineOrchestrator_;

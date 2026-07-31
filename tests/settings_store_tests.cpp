@@ -104,6 +104,7 @@ class SettingsStoreTests : public QObject {
 private slots:
     void defaultsUseTeraLow();
     void roundTripPreservesAdvancedConfig();
+    void invalidLanguageFallsBackToMigrationDefault();
     void loadsRemovedGlobalCompatibilityForMigration();
     void migratesLegacyV1();
     void rejectsCorruptJson();
@@ -129,6 +130,7 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     const QString path = dir.filePath(QStringLiteral("nested/settings.json"));
 
     PersistentSettings expected;
+    expected.language = QStringLiteral("tr");
     expected.userDataRoot = QStringLiteral("D:/OpenZoom Data");
     expected.cameraIndex = 4;
     expected.microphoneEndpointId =
@@ -210,6 +212,7 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QCOMPARE(loaded->cameraIndex, expected.cameraIndex);
     QCOMPARE(loaded->microphoneEndpointId,
              expected.microphoneEndpointId);
+    QCOMPARE(loaded->language, expected.language);
     QCOMPARE(loaded->userDataRoot, expected.userDataRoot);
     QCOMPARE(loaded->cameraFormatStableId, expected.cameraFormatStableId);
     QCOMPARE(loaded->cameraAccelerationAttempt,
@@ -264,6 +267,22 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QCOMPARE(loaded->customConfigs.size(), expected.customConfigs.size());
     QCOMPARE(loaded->customPresets.size(), expected.customPresets.size());
     QVERIFY(AreConfigsEquivalent(loaded->customConfigs.front(), expected.customConfigs.front()));
+}
+
+void SettingsStoreTests::invalidLanguageFallsBackToMigrationDefault()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    QVERIFY(WriteJson(
+        path,
+        QJsonObject{{QStringLiteral("version"), 15},
+                    {QStringLiteral("language"),
+                     QStringLiteral("not-a-language")}}));
+
+    const auto loaded = Load(path);
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->language.isEmpty());
 }
 
 void SettingsStoreTests::loadsRemovedGlobalCompatibilityForMigration()

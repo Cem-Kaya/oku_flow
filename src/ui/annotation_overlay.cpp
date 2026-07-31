@@ -115,6 +115,19 @@ QString ToolName(AnnotationTool tool)
     return QStringLiteral("Annotation tool");
 }
 
+bool NativeWindowContainsPoint(QWidget* widget, const POINT& point)
+{
+    if (!widget || !widget->isVisible()) {
+        return false;
+    }
+
+    const HWND window = reinterpret_cast<HWND>(widget->winId());
+    RECT rect{};
+    return window && IsWindowVisible(window) && GetWindowRect(window, &rect) &&
+           point.x >= rect.left && point.x < rect.right &&
+           point.y >= rect.top && point.y < rect.bottom;
+}
+
 } // namespace
 
 AnnotationOverlay::AnnotationOverlay(QWidget* renderTarget, QWidget* owner)
@@ -140,6 +153,7 @@ AnnotationOverlay::AnnotationOverlay(QWidget* renderTarget, QWidget* owner)
         owner->installEventFilter(this);
     }
     BuildToolbar();
+    UpdateDirectionalUi();
     hide();
 }
 
@@ -725,8 +739,9 @@ bool AnnotationOverlay::nativeEvent(const QByteArray& eventType,
 {
     auto* nativeMessage = static_cast<MSG*>(message);
     if (nativeMessage && nativeMessage->message == WM_NCHITTEST) {
-        const QPoint globalPoint(GET_X_LPARAM(nativeMessage->lParam),
-                                 GET_Y_LPARAM(nativeMessage->lParam));
+        const POINT nativeScreenPoint{
+            GET_X_LPARAM(nativeMessage->lParam),
+            GET_Y_LPARAM(nativeMessage->lParam)};
         if (QWidget* owner = parentWidget()) {
             for (const QString& name :
                  {QStringLiteral("topLeftPanel"),
@@ -737,9 +752,10 @@ bool AnnotationOverlay::nativeEvent(const QByteArray& eventType,
                 if (!panel || !panel->isVisible()) {
                     continue;
                 }
-                const QRect panelGeometry(panel->mapToGlobal(QPoint(0, 0)),
-                                          panel->size());
-                if (panelGeometry.contains(globalPoint)) {
+                // WM_NCHITTEST supplies physical screen pixels. Qt widget
+                // geometry uses device-independent pixels, so comparing the
+                // two directly misses the visible controls at non-100% DPI.
+                if (NativeWindowContainsPoint(panel, nativeScreenPoint)) {
                     *result = HTTRANSPARENT;
                     return true;
                 }
@@ -773,6 +789,15 @@ void AnnotationOverlay::resizeEvent(QResizeEvent* event)
     QWidget::resizeEvent(event);
     PositionToolbar();
     PositionTextEditor();
+}
+
+void AnnotationOverlay::changeEvent(QEvent* event)
+{
+    QWidget::changeEvent(event);
+    if (event && event->type() == QEvent::LayoutDirectionChange) {
+        UpdateDirectionalUi();
+        PositionToolbar();
+    }
 }
 
 void AnnotationOverlay::SyncGeometryToRenderTarget()
@@ -821,16 +846,21 @@ void AnnotationOverlay::PositionToolbar()
         }
     }
     const int safeHeight = std::max(1, safeBottom - safeTop);
+    const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
     toolbar_->move(
-        0,
+        rightToLeft ? std::max(0, width() - toolbar_->width()) : 0,
         safeTop + std::max(0, (safeHeight - toolbar_->height()) / 2));
     actionToolbar_->move(
-        std::max(0, width() - actionToolbar_->width()),
+        rightToLeft ? 0 : std::max(0, width() - actionToolbar_->width()),
         safeTop + std::max(0, (safeHeight - actionToolbar_->height()) / 2));
 
-    const int optionsX = toolbar_->width() + 8;
-    const int availableWidth =
-        std::max(240, actionToolbar_->x() - optionsX - 8);
+    const int gapStart =
+        rightToLeft ? actionToolbar_->geometry().right() + 9
+                    : toolbar_->geometry().right() + 9;
+    const int gapEnd =
+        rightToLeft ? toolbar_->x() - 8
+                    : actionToolbar_->x() - 8;
+    const int availableWidth = std::max(1, gapEnd - gapStart);
     optionsPanel_->setMaximumWidth(std::min(360, availableWidth));
     optionsPanel_->adjustSize();
     QToolButton* activeButton = penButton_;
@@ -843,7 +873,24 @@ void AnnotationOverlay::PositionToolbar()
         toolbar_->y() + activeButton->geometry().top(),
         safeTop,
         std::max(safeTop, safeBottom - optionsPanel_->height()));
-    optionsPanel_->move(optionsX, optionsY);
+    const int optionsX =
+        rightToLeft ? gapEnd - optionsPanel_->width() : gapStart;
+    optionsPanel_->move(std::max(0, optionsX), optionsY);
+}
+
+void AnnotationOverlay::UpdateDirectionalUi()
+{
+    const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
+    if (undoButton_) {
+        undoButton_->setIcon(QIcon(
+            rightToLeft ? QStringLiteral(":/openzoom/icons/redo.svg")
+                        : QStringLiteral(":/openzoom/icons/undo.svg")));
+    }
+    if (redoButton_) {
+        redoButton_->setIcon(QIcon(
+            rightToLeft ? QStringLiteral(":/openzoom/icons/undo.svg")
+                        : QStringLiteral(":/openzoom/icons/redo.svg")));
+    }
 }
 
 bool AnnotationOverlay::MapViewPointToScene(const QPointF& viewPoint,

@@ -319,7 +319,9 @@ Namespace `openzoom::settings`
 - `struct PresetDefinition`
   - stage-1 quick-mode metadata: preset id, name, description, target config id, built-in flag
 - `struct PersistentSettings`
-  - persists global `cameraIndex`, stable `cameraFormatStableId`,
+  - persists global `language` as `en`, `tr`, or `de` (an absent legacy value
+    adopts a supported system locale once), `cameraIndex`, stable
+    `cameraFormatStableId`,
     crash-safe `cameraAccelerationAttempt`, per-symbolic-link
     `CameraAccelerationSetting` mode/fallback/reason/date records plus the last
     successful ladder rung (`zeroCopy`, `acceleratedCopy`, or
@@ -328,6 +330,7 @@ Namespace `openzoom::settings`
     checkbox to the selected camera's `Compatibility mode`,
     configurable `userDataRoot` (empty selects the Documents default), and
     `rotationQuarterTurns`, UI state,
+
     `simpleUiMode`, resizable `advancedPanelWidth`, camera-relative
     `assistiveOverlayGeometry`, global annotation color/width/dashed style,
     shape kind, text size, and capture-on-exit preferences (annotation strokes
@@ -362,6 +365,27 @@ Namespace `openzoom::settings`
   - `bool AreConfigsEquivalent(...)` — compares slider-backed values at their
     representable UI precision so applied presets remain selected after
     control quantization
+
+### `include/openzoom/app/language_manager.hpp`
+`openzoom::LanguageManager`
+- Owns the process `QTranslator`, supported application locale, and live
+  widget-tree retranslation. It does not own persistence; `OpenZoomApp`
+  reads/writes the stable language code through `SettingsController`.
+- `AppLanguage` currently supports `English`, `Turkish`, and `German`.
+  `SupportedAppLanguages()`, `AppLanguageCode(...)`,
+  `AppLanguageNativeName(...)`, `AppLanguageFlagResource(...)`,
+  `AppLanguageLocale(...)`, and `AppLanguageLayoutDirection(...)` expose the
+  centralized language descriptor registry while keeping UI presentation
+  separate from stable serialized values.
+- `SetLanguage(...)` swaps the embedded `:/i18n/openzoom_<code>.qm`, applies
+  the matching `QLocale` and process layout direction, and re-translates every
+  open top-level widget without reconstructing it or changing control
+  selection.
+- `--rtl-test` and `OPENZOOM_FORCE_RTL=1` force the English interface through
+  the right-to-left layout path for development and regression testing. They
+  do not add a language to the user-facing picker.
+- Signals: `languageChanged(const QString&)` and
+  `languageChangeFailed(const QString&)`.
 
 ### `include/openzoom/app/constants.hpp`
 Namespace `openzoom::app_constants`
@@ -585,6 +609,9 @@ Supporting types:
   - `void SubmitFrame(const uint8_t* bgraData, int width, int height)`
   - `void SubmitFrameForced(const uint8_t* bgraData, int width, int height, bool runOcr, bool runVlm)` — runs the requested analyses immediately regardless of enabled modes
   - `void ReadAloud(const QString& text)` — speaks a result only after an explicit user request, using the configured Windows voice and speed
+  - `void SetResponseLanguage(const QString& languageCode)` — selects the
+    response-language directive for subsequent AI requests and prefers a
+    matching installed TTS locale without initiating speech
   - `void DismissOverlay()` — hides the current result panel until a new forced OCR, Explain, or Assistant request begins
   - Codex/Assistant control: `StartCodexLogin()`, `StopAssistant()`, `SubmitAssistantPrompt(...)`, `LoadAssistantConversation(...)`, `RenameAssistantConversation(...)`, `DeleteAssistantConversation(...)`
   - `void NoteCapturedPhotoPair(const QString& originalPath, const QString& processedPath)` — appends synchronized original and processed images to the HTML lecture notes
@@ -605,6 +632,13 @@ Supporting types:
   - `OverlayUpdated(const QString& title, const QString& body, bool visible)`
   - Codex server/account/model/rate-limit/login state
   - Assistant conversation lifecycle, transcript, and streamed turn events
+
+### `include/openzoom/common/response_language.hpp`
+`openzoom::AppendResponseLanguageDirective(...)`
+- Keeps built-in and user-authored model instructions intact while appending
+  `Respond in Turkish.` or `Respond in German.` for the selected UI language.
+  English adds no directive. This helper is shared by the Codex and
+  OpenAI-compatible VLM request paths.
 
 ### `include/openzoom/common/image_processing.hpp`
 Namespace `openzoom::processing`
@@ -1099,13 +1133,28 @@ Kernel launch wrappers:
 
 ## UI Module
 
+### `include/openzoom/ui/ui_translation.hpp`
+Namespace `openzoom`
+- `TranslateUi(...)` translates complete English source strings through the
+  shared `OpenZoom` catalog context. It supports `%1`-style formatted status
+  templates without translating fragments.
+- `SetLiveTranslationSource(...)` records source-language dynamic text and
+  its semantic role so language changes can rebuild visible and accessible
+  text rather than translating a prior translation.
+- `RetranslateWidgetTree(...)` captures and reapplies hand-built widget text,
+  titles, placeholders, tooltips, accessible metadata, tabs, and ordinary
+  combo entries on `QEvent::LanguageChange`.
+- `SetComboItemsAreData(...)` exempts camera names, voices, model ids, and
+  other data-driven combo entries while still translating their surrounding
+  UI metadata.
+
 ### `include/openzoom/ui/live_status_text.hpp`
 `openzoom::LivePoliteness`, `openzoom::SetLiveText(...)`, and
 `openzoom::SetLiveTextCoalesced(...)`
 - Centralize dynamic `QLabel` and `QAbstractButton` updates on the Qt UI
   thread. The helper changes the visible text, composes a role-qualified
-  accessible name, emits an accessibility `NameChanged` invalidation, and can
-  issue a polite or assertive announcement.
+  accessible name, emits accessibility `TextUpdated` and `NameChanged`
+  invalidations for labels, and can issue a polite or assertive announcement.
 - `LivePoliteness::kSilent` updates the accessibility tree without
   unsolicited speech. `kPolite` covers normal state changes and `kAssertive`
   is reserved for failures such as camera loss.
@@ -1169,9 +1218,12 @@ Kernel launch wrappers:
   intersecting vector items become one group that can be dragged, nudged, or
   deleted together. Shift/Ctrl extends the current selection and screen-reader
   announcements report the resulting item count.
-  forwarding so drag-pan remains available over the canvas. Text creates an
-  inline editor at the clicked scene coordinate and commits on Enter; Escape
-  cancels it. Slider wheel input is ignored.
+  Persistent corner controls are excluded from the annotation window's native
+  hit-test surface using Win32 window rectangles, keeping physical
+  `WM_NCHITTEST` coordinates correct at per-monitor DPI scales above 100%.
+  Explicit event forwarding keeps drag-pan available over the canvas. Text
+  creates an inline editor at the clicked scene coordinate and commits on
+  Enter; Escape cancels it. Slider wheel input is ignored.
 - Signals separate snapshot, clear, exit, clean-photo, preferences, and
   accessible tool-change intent from application capture policy.
 

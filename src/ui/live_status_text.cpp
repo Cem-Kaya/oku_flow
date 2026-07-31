@@ -1,4 +1,5 @@
 #include "openzoom/ui/live_status_text.hpp"
+#include "openzoom/ui/ui_translation.hpp"
 
 #include <QAbstractButton>
 #include <QAccessible>
@@ -108,20 +109,31 @@ void SetLiveText(QWidget* widget,
     Q_ASSERT(QThread::currentThread() ==
              QCoreApplication::instance()->thread());
 
-    const QString accessibleText = AccessibleText(text, rolePrefix);
-    const bool visibleChanged = VisibleText(widget) != text;
+    SetLiveTranslationSource(widget, text, rolePrefix);
+    const QString translatedText = TranslateUi(text);
+    const QString accessibleText =
+        AccessibleText(translatedText, TranslateUi(rolePrefix));
+    const QString previousVisibleText = VisibleText(widget);
+    const bool visibleChanged = previousVisibleText != translatedText;
     const bool nameChanged = widget->accessibleName() != accessibleText;
     if (!visibleChanged && !nameChanged) {
         return;
     }
-    if (!ApplyVisibleText(widget, text)) {
+    if (!ApplyVisibleText(widget, translatedText)) {
         qWarning("SetLiveText supports QLabel and QAbstractButton only");
         return;
     }
 
     widget->setAccessibleName(accessibleText);
-    QAccessibleEvent nameEvent(widget, QAccessible::NameChanged);
-    QAccessible::updateAccessibility(&nameEvent);
+    if (visibleChanged && qobject_cast<QLabel*>(widget)) {
+        QAccessibleTextUpdateEvent textEvent(
+            widget, 0, previousVisibleText, translatedText);
+        QAccessible::updateAccessibility(&textEvent);
+    }
+    if (nameChanged) {
+        QAccessibleEvent nameEvent(widget, QAccessible::NameChanged);
+        QAccessible::updateAccessibility(&nameEvent);
+    }
     Announce(widget, accessibleText, politeness);
 }
 

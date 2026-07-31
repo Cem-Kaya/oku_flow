@@ -5,6 +5,29 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+- Added live-switchable English, Turkish, and German across the Qt UI,
+  accessible names, status announcements, AI response language, and manual
+  Read Aloud voice preference. A flag-and-native-name picker under the
+  Advanced Application section persists the global language and updates open
+  windows without restart. Complete embedded catalogs, locale-aware display
+  formatting, response-language directives, and a catalog-integrity build
+  gate keep serialized values, device/model names, logs, and built-in prompts
+  stable.
+- Added right-to-left localization plumbing without exposing an unreviewed RTL
+  language. Locale descriptors now drive application direction, floating
+  Simple controls and Draw toolbars mirror by logical edge, directional icons
+  refresh, and an English-only RTL diagnostic mode provides regression
+  coverage before Arabic, Hebrew, Persian, Urdu, or another RTL catalog ships.
+- Fixed selectable live-status labels retaining stale text in some Windows
+  screen-reader paths. Dynamic labels now emit both text-content and
+  accessible-name invalidations, while the high-frequency performance label
+  remains coalesced and silent. Restored Gaussian Blur, Sigma, and Radius to
+  the Readability image controls instead of mixing them into Diagnostics.
+- Fixed Draw mode blocking the persistent corner controls on Windows display
+  scaling above 100%. The annotation tool window now compares native
+  `WM_NCHITTEST` screen pixels with native panel rectangles, so Photo,
+  Record/Stop, Explain, Read, Draw, and the quick-mode controls remain
+  clickable at 125%, 150%, and other per-monitor DPI scales.
 - Added a centralized live-accessibility text path for dynamic labels and
   buttons. Pipeline/camera failures, recording notices, Setup Assistant
   progress, and Codex connection state now keep their visible text and
@@ -278,7 +301,7 @@
   expansion and changed counts for non-default tuning, a pinned `Ctrl+F`
   settings search, and a truthful requested/negotiated camera resolution and
   frame-rate selector. Viewport preferences now live under `More device
-  options`, while Gaussian blur is demoted to Diagnostics.
+  options`, while Gaussian blur remains with the Readability image controls.
 - Fixed precision-trackpad `Ctrl+scroll` zoom by consuming fractional wheel
   deltas. Zoom now uses consistent geometric 10% steps, optional same-direction
   acceleration capped at 3x, direction-reset behavior, deterministic

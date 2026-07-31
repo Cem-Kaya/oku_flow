@@ -1,7 +1,9 @@
 #include "openzoom/ui/collapsible_section.hpp"
+#include "openzoom/ui/ui_translation.hpp"
 
 #ifdef _WIN32
 
+#include <QEvent>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -80,19 +82,36 @@ void CollapsibleSection::setSearchExpanded(bool searching)
 
 void CollapsibleSection::UpdateHeader()
 {
-    QString label = title_;
+    const QString translatedTitle = TranslateUi(title_);
+    QString label = translatedTitle;
     if (changedCount_ > 0) {
-        label += QStringLiteral(" \u00b7 %1 changed").arg(changedCount_);
+        label = TranslateUi(QStringLiteral("%1 \u00b7 %2 changed"))
+                    .arg(translatedTitle)
+                    .arg(changedCount_);
     }
     header_->setText(label);
     header_->setAccessibleName(
-        QStringLiteral("%1, heading, %2%3")
-            .arg(title_,
-                 isExpanded() ? QStringLiteral("expanded")
-                              : QStringLiteral("collapsed"),
-                 changedCount_ > 0
-                     ? QStringLiteral(", %1 changed").arg(changedCount_)
-                     : QString()));
+        changedCount_ > 0
+            ? TranslateUi(QStringLiteral("%1, heading, %2, %3 changed"))
+                  .arg(translatedTitle,
+                       isExpanded() ? TranslateUi(QStringLiteral("expanded"))
+                                    : TranslateUi(QStringLiteral("collapsed")))
+                  .arg(changedCount_)
+            : TranslateUi(QStringLiteral("%1, heading, %2"))
+                  .arg(translatedTitle,
+                       isExpanded() ? TranslateUi(QStringLiteral("expanded"))
+                                    : TranslateUi(QStringLiteral("collapsed"))));
+    header_->setAccessibleDescription(TranslateUi(
+        QStringLiteral(
+            "Section heading. Activate to expand or collapse this settings group.")));
+}
+
+void CollapsibleSection::changeEvent(QEvent* event)
+{
+    if (event && event->type() == QEvent::LanguageChange) {
+        UpdateHeader();
+    }
+    QWidget::changeEvent(event);
 }
 
 } // namespace openzoom
