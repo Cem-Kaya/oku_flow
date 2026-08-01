@@ -110,8 +110,11 @@ call :copy_required_file "%ROOT_DIR%\assets\icons\lucide\LICENSE" "%STAGING_DIR%
 if errorlevel 1 goto :fail
 
 echo ===== GENERATE RELEASE INTEGRITY METADATA =====
+set "QT_RUNTIME_VERSION="
+for /f "usebackq delims=" %%V in (`"%QT_BIN_DIR%\qmake.exe" -query QT_VERSION`) do set "QT_RUNTIME_VERSION=%%V"
+if not defined QT_RUNTIME_VERSION set "QT_RUNTIME_VERSION=unknown"
 pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\generate_release_metadata.ps1" ^
-    -BundlePath "%STAGING_DIR%" -RepositoryPath "%ROOT_DIR%"
+    -BundlePath "%STAGING_DIR%" -RepositoryPath "%ROOT_DIR%" -QtVersion "%QT_RUNTIME_VERSION%"
 if errorlevel 1 (
     echo ERROR: Release checksums, manifest, or SBOM could not be generated.
     goto :fail

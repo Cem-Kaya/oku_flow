@@ -395,7 +395,11 @@ vendor's alternate host without weakening verification.
   `IMG_<timestamp>_original.jpg` plus `IMG_<timestamp>_processed.jpg` to
   `Documents\OpenZoom\Photos\YYYY-MM-DD\`. The original is decoded,
   rotation-corrected camera output without OpenZoom's enhancement stack; it is
-  not the camera sensor's raw Bayer or compressed USB bitstream.
+  not the camera sensor's raw Bayer or compressed USB bitstream. Both JPEGs
+  encode to `.writing` files before their paired commit. On the next startup,
+  OpenZoom finishes an interrupted second rename or removes the entire
+  incomplete set, so a crash-created final orphan is not kept as a successful
+  capture.
 - Annotation Save, Clear, and optional Save on exit write a lossless
   `ANNOTATION_<timestamp>.png` of the exact visible viewport to the same dated
   Photos folder

@@ -3,24 +3,12 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QLockFile>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest>
 
 namespace openzoom {
-
-namespace {
-
-bool WriteFile(const QString& path, const QByteArray& contents)
-{
-    if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
-        return false;
-    }
-    QFile file(path);
-    return file.open(QIODevice::WriteOnly) &&
-           file.write(contents) == contents.size();
-}
-
-} // namespace
 
 class UserDataPathsTests : public QObject {
     Q_OBJECT
@@ -28,8 +16,11 @@ class UserDataPathsTests : public QObject {
 private slots:
     void createsStableCategoryAndDateFolders();
     void rejectsApplicationDirectory();
-    void migratesLegacyFilesWithoutDeletingSource();
-    void cancellationDoesNotWriteBreadcrumb();
+    void rejectsJunctionIntoApplicationDirectory();
+    void constructorRejectsPersistedRootInsideInstall();
+    void completesInterruptedPhotoPairCommit();
+    void removesUnrecoverablePhotoOrphan();
+    void leavesActivePhotoPairTransactionAlone();
 };
 
 void UserDataPathsTests::createsStableCategoryAndDateFolders()
@@ -70,63 +61,152 @@ void UserDataPathsTests::rejectsApplicationDirectory()
     QVERIFY(result.error.contains(QStringLiteral("outside")));
 }
 
-void UserDataPathsTests::migratesLegacyFilesWithoutDeletingSource()
+void UserDataPathsTests::rejectsJunctionIntoApplicationDirectory()
 {
+    // A root that is lexically outside the install directory but is a
+    // Windows junction pointing back inside it must be rejected — the
+    // containment check resolves links before comparing.
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
     const QString install = temporary.filePath(QStringLiteral("install"));
-    const QString root = temporary.filePath(QStringLiteral("data"));
-    const QString legacyPhoto =
-        QDir(install).filePath(QStringLiteral("output/img/photo.jpg"));
-    const QString legacyVideo =
-        QDir(install).filePath(QStringLiteral("output/vid/recording.mp4"));
-    const QString legacyNote =
-        QDir(install).filePath(QStringLiteral("output/notes/session.html"));
-    QVERIFY(WriteFile(legacyPhoto, QByteArray("photo")));
-    QVERIFY(WriteFile(legacyVideo, QByteArray("video")));
-    QVERIFY(WriteFile(legacyNote, QByteArray("notes")));
+    const QString target =
+        QDir(install).filePath(QStringLiteral("inside"));
+    QVERIFY(QDir().mkpath(target));
+    const QString junction =
+        temporary.filePath(QStringLiteral("outside-link"));
 
-    UserDataPaths paths(root, install);
-    QVERIFY(paths.HasLegacyData());
-    const LegacyMigrationResult result = paths.MigrateLegacyOutput();
-    QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
-    QVERIFY(result.foundLegacyData);
-    QVERIFY(result.copiedData);
-    QVERIFY(QFileInfo::exists(legacyPhoto));
-    QVERIFY(QFileInfo::exists(legacyVideo));
-    QVERIFY(QFileInfo::exists(legacyNote));
-    QVERIFY(QFileInfo::exists(
-        QDir(root).filePath(QStringLiteral("Photos/photo.jpg"))));
-    QVERIFY(QFileInfo::exists(
-        QDir(root).filePath(QStringLiteral("Recordings/recording.mp4"))));
-    QVERIFY(QFileInfo::exists(
-        QDir(root).filePath(QStringLiteral("Notes/session.html"))));
-    QVERIFY(QFileInfo::exists(
-        QDir(root).filePath(QStringLiteral(".legacy-output-migrated"))));
-    QVERIFY(QFileInfo::exists(
-        QDir(install).filePath(QStringLiteral("output/MIGRATED.txt"))));
-    QVERIFY(!paths.HasLegacyData());
+    // Junctions require no privilege; mklink is a cmd.exe builtin.
+    QProcess mklink;
+    mklink.start(QStringLiteral("cmd.exe"),
+                 {QStringLiteral("/c"), QStringLiteral("mklink"),
+                  QStringLiteral("/J"),
+                  QDir::toNativeSeparators(junction),
+                  QDir::toNativeSeparators(target)});
+    if (!mklink.waitForFinished(10000) || mklink.exitCode() != 0 ||
+        !QFileInfo::exists(junction)) {
+        QSKIP("mklink /J unavailable; junction containment not testable");
+    }
+
+    const UserDataValidationResult result =
+        UserDataPaths::ValidateRoot(junction, install);
+    QVERIFY(!result.ok);
 }
 
-void UserDataPathsTests::cancellationDoesNotWriteBreadcrumb()
+void UserDataPathsTests::constructorRejectsPersistedRootInsideInstall()
+{
+    // Persisted settings bypass ValidateRoot, so the constructor itself must
+    // refuse a root inside the install directory and fall back to the
+    // default (empty configured root). Checked via ConfiguredRoot() so the
+    // test never touches the real Documents folder.
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString install = temporary.filePath(QStringLiteral("OpenZoom"));
+    QVERIFY(QDir().mkpath(install));
+
+    const UserDataPaths rejected(
+        QDir(install).filePath(QStringLiteral("captures")), install);
+    QCOMPARE(rejected.ConfiguredRoot(), QString());
+
+    const QString outside = temporary.filePath(QStringLiteral("elsewhere"));
+    QVERIFY(QDir().mkpath(outside));
+    const UserDataPaths accepted(outside, install);
+    QCOMPARE(QDir::cleanPath(accepted.ConfiguredRoot()),
+             QDir::cleanPath(outside));
+}
+
+void UserDataPathsTests::completesInterruptedPhotoPairCommit()
 {
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
-    const QString install = temporary.filePath(QStringLiteral("install"));
-    const QString root = temporary.filePath(QStringLiteral("data"));
-    QVERIFY(WriteFile(
-        QDir(install).filePath(QStringLiteral("output/img/photo.jpg")),
-        QByteArray(1024, 'x')));
+    UserDataPaths paths(temporary.filePath(QStringLiteral("OpenZoom")),
+                        temporary.filePath(QStringLiteral("install")));
+    const QString day = paths.PhotosForDate(QDate::currentDate());
+    const QString stem = QStringLiteral("IMG_20260801_120000_000");
+    const QString processed =
+        QDir(day).filePath(stem + QStringLiteral("_processed.jpg"));
+    const QString original =
+        QDir(day).filePath(stem + QStringLiteral("_original.jpg"));
+    const QString originalTemp = original + QStringLiteral(".writing");
 
-    UserDataPaths paths(root, install);
-    const LegacyMigrationResult result = paths.MigrateLegacyOutput(
-        [](qint64, qint64, const QString&) { return false; });
-    QVERIFY(result.cancelled);
-    QVERIFY(!QFileInfo::exists(
-        QDir(root).filePath(QStringLiteral(".legacy-output-migrated"))));
-    QVERIFY(!QFileInfo::exists(
-        QDir(install).filePath(QStringLiteral("output/MIGRATED.txt"))));
-    QVERIFY(paths.HasLegacyData());
+    QFile processedFile(processed);
+    QVERIFY(processedFile.open(QIODevice::WriteOnly));
+    QCOMPARE(processedFile.write("processed"), qint64(9));
+    processedFile.close();
+    QFile originalFile(originalTemp);
+    QVERIFY(originalFile.open(QIODevice::WriteOnly));
+    QCOMPARE(originalFile.write("original"), qint64(8));
+    originalFile.close();
+
+    const PhotoPairRecoveryResult result =
+        paths.RecoverInterruptedPhotoPairs(
+            QDateTime::currentDateTime().addSecs(60));
+    QCOMPARE(result.completedPairs, 1);
+    QVERIFY(result.unresolvedPaths.isEmpty());
+    QVERIFY(QFileInfo::exists(processed));
+    QVERIFY(QFileInfo::exists(original));
+    QVERIFY(!QFileInfo::exists(originalTemp));
+}
+
+void UserDataPathsTests::removesUnrecoverablePhotoOrphan()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    UserDataPaths paths(temporary.filePath(QStringLiteral("OpenZoom")),
+                        temporary.filePath(QStringLiteral("install")));
+    const QString day = paths.PhotosForDate(QDate::currentDate());
+    const QString orphan = QDir(day).filePath(QStringLiteral(
+        "IMG_20260801_120001_000_processed.jpg"));
+    QFile orphanFile(orphan);
+    QVERIFY(orphanFile.open(QIODevice::WriteOnly));
+    QCOMPARE(orphanFile.write("processed"), qint64(9));
+    orphanFile.close();
+
+    const PhotoPairRecoveryResult result =
+        paths.RecoverInterruptedPhotoPairs(
+            QDateTime::currentDateTime().addSecs(60));
+    QCOMPARE(result.completedPairs, 0);
+    QCOMPARE(result.removedFiles, 1);
+    QVERIFY(result.unresolvedPaths.isEmpty());
+    QVERIFY(!QFileInfo::exists(orphan));
+}
+
+void UserDataPathsTests::leavesActivePhotoPairTransactionAlone()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    UserDataPaths paths(temporary.filePath(QStringLiteral("OpenZoom")),
+                        temporary.filePath(QStringLiteral("install")));
+    const QString day = paths.PhotosForDate(QDate::currentDate());
+    const QString stem = QStringLiteral("IMG_20260801_120002_000");
+    const QString processed =
+        QDir(day).filePath(stem + QStringLiteral("_processed.jpg"));
+    const QString original =
+        QDir(day).filePath(stem + QStringLiteral("_original.jpg"));
+    const QString originalTemp = original + QStringLiteral(".writing");
+    const QString lockPath =
+        QDir(day).filePath(stem + QStringLiteral(".pair.lock"));
+
+    QFile processedFile(processed);
+    QVERIFY(processedFile.open(QIODevice::WriteOnly));
+    QCOMPARE(processedFile.write("processed"), qint64(9));
+    processedFile.close();
+    QFile originalFile(originalTemp);
+    QVERIFY(originalFile.open(QIODevice::WriteOnly));
+    QCOMPARE(originalFile.write("original"), qint64(8));
+    originalFile.close();
+
+    QLockFile activeTransaction(lockPath);
+    activeTransaction.setStaleLockTime(0);
+    QVERIFY(activeTransaction.tryLock(0));
+    const PhotoPairRecoveryResult result =
+        paths.RecoverInterruptedPhotoPairs(
+            QDateTime::currentDateTime().addSecs(60));
+    QCOMPARE(result.completedPairs, 0);
+    QCOMPARE(result.removedFiles, 0);
+    QVERIFY(QFileInfo::exists(processed));
+    QVERIFY(QFileInfo::exists(originalTemp));
+    QVERIFY(!QFileInfo::exists(original));
+    activeTransaction.unlock();
 }
 
 } // namespace openzoom

@@ -692,7 +692,7 @@ void AssistiveRuntime::SubmitFrameForced(const uint8_t* bgraData, int width, int
 void AssistiveRuntime::NoteCapturedPhotoPair(const QString& originalPath,
                                              const QString& processedPath)
 {
-    AppendNoteMediaPair(QStringLiteral("Photo captured"),
+    AppendNoteMediaPair(QCoreApplication::translate("OpenZoom", "Photo captured"),
                         originalPath,
                         processedPath,
                         false);
@@ -701,7 +701,7 @@ void AssistiveRuntime::NoteCapturedPhotoPair(const QString& originalPath,
 void AssistiveRuntime::NoteCapturedVideoPair(const QString& originalPath,
                                              const QString& processedPath)
 {
-    AppendNoteMediaPair(QStringLiteral("Video recorded"),
+    AppendNoteMediaPair(QCoreApplication::translate("OpenZoom", "Video recorded"),
                         originalPath,
                         processedPath,
                         true);
@@ -715,7 +715,7 @@ void AssistiveRuntime::NoteAnnotationSnapshot(const QString& filePath,
     }
     AppendNoteSection(
         heading.trimmed().isEmpty()
-            ? QStringLiteral("Annotated view")
+            ? QCoreApplication::translate("OpenZoom", "Annotated view")
             : heading,
         {},
         filePath);
@@ -1469,7 +1469,9 @@ void AssistiveRuntime::FinishOcrSuccess(const QString& text)
         ocrStatus_.clear();
         if (fullText != lastNotedOcrText_) {
             lastNotedOcrText_ = fullText;
-            AppendNoteSection(QStringLiteral("Text on screen"), fullText);
+            AppendNoteSection(
+                QCoreApplication::translate("OpenZoom", "Text on screen"),
+                fullText);
         }
     }
     RefreshOverlay();
@@ -1493,7 +1495,9 @@ void AssistiveRuntime::FinishVlmSuccess(const QString& text)
         vlmStatus_ = QStringLiteral("VLM returned an empty description.");
     } else {
         vlmStatus_.clear();
-        AppendNoteSection(QStringLiteral("Scene explanation"), fullText);
+        AppendNoteSection(
+            QCoreApplication::translate("OpenZoom", "Scene explanation"),
+            fullText);
     }
     RefreshOverlay();
 }
@@ -1541,13 +1545,27 @@ bool AssistiveRuntime::EnsureNotesFile()
     }
     const QString displayTime = now.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     const QString machineTime = now.toString(Qt::ISODate);
+    // The document language matches the response/UI language at creation
+    // time; every appended section restates its own language so a mid-session
+    // switch cannot make a screen reader misread later sections.
+    const QString documentLanguage =
+        responseLanguageCode_.isEmpty() ? QStringLiteral("en")
+                                        : responseLanguageCode_;
+    const QString notesTitle =
+        QCoreApplication::translate("OpenZoom", "OpenZoom Lecture Notes");
+    const QString startedLine =
+        QCoreApplication::translate("OpenZoom", "Started %1")
+            .toHtmlEscaped()
+            .arg(QStringLiteral("<time datetime=\"%1\">%2</time>")
+                     .arg(machineTime.toHtmlEscaped(),
+                          displayTime.toHtmlEscaped()));
     const QString document = QStringLiteral(
         "<!doctype html>\n"
-        "<html lang=\"en\">\n"
+        "<html lang=\"%2\">\n"
         "<head>\n"
         "  <meta charset=\"utf-8\">\n"
         "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        "  <title>OpenZoom Lecture Notes - %1</title>\n"
+        "  <title>%3 - %1</title>\n"
         "  <style>\n"
         "    :root { color-scheme: light dark; font: 18px/1.6 system-ui, sans-serif; }\n"
         "    body { margin: 0; background: Canvas; color: CanvasText; }\n"
@@ -1568,10 +1586,12 @@ bool AssistiveRuntime::EnsureNotesFile()
         "</head>\n"
         "<body>\n"
         "<main>\n"
-        "  <h1>OpenZoom Lecture Notes</h1>\n"
-        "  <p class=\"created\">Started <time datetime=\"%2\">%1</time></p>\n")
+        "  <h1>%3</h1>\n"
+        "  <p class=\"created\">%4</p>\n")
                                  .arg(displayTime.toHtmlEscaped(),
-                                      machineTime.toHtmlEscaped());
+                                      documentLanguage.toHtmlEscaped(),
+                                      notesTitle.toHtmlEscaped(),
+                                      startedLine);
     const QByteArray documentBytes = document.toUtf8();
     if (file.write(documentBytes) != documentBytes.size() || !file.commit()) {
         qWarning("AssistiveRuntime: failed to finalize notes file %s", qPrintable(path));
@@ -1627,10 +1647,16 @@ void AssistiveRuntime::AppendNoteSection(const QString& heading,
             NotesMediaUrl(notesFilePath_, imagePath).toHtmlEscaped();
         content = QStringLiteral(
                       "    <figure>\n"
-                      "      <a href=\"%1\"><img src=\"%1\" alt=\"Captured processed camera view\" loading=\"lazy\"></a>\n"
-                      "      <figcaption>Processed camera view</figcaption>\n"
+                      "      <a href=\"%1\"><img src=\"%1\" alt=\"%2\" loading=\"lazy\"></a>\n"
+                      "      <figcaption>%3</figcaption>\n"
                       "    </figure>\n")
-                      .arg(imageUrl);
+                      .arg(imageUrl,
+                           QCoreApplication::translate(
+                               "OpenZoom", "Captured processed camera view")
+                               .toHtmlEscaped(),
+                           QCoreApplication::translate(
+                               "OpenZoom", "Processed camera view")
+                               .toHtmlEscaped());
     } else {
         content = QStringLiteral("    <div class=\"note-text\">%1</div>\n")
                       .arg(bodyText.toHtmlEscaped());
@@ -1661,43 +1687,64 @@ void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
         originalMedia = QStringLiteral(
                             "        <video controls preload=\"metadata\">\n"
                             "          <source src=\"%1\" type=\"video/mp4\">\n"
-                            "          <a href=\"%1\">Open original video</a>\n"
+                            "          <a href=\"%1\">%2</a>\n"
                             "        </video>\n")
-                            .arg(originalUrl);
+                            .arg(originalUrl,
+                                 QCoreApplication::translate(
+                                     "OpenZoom", "Open original video")
+                                     .toHtmlEscaped());
         processedMedia = QStringLiteral(
                              "        <video controls preload=\"metadata\">\n"
                              "          <source src=\"%1\" type=\"video/mp4\">\n"
-                             "          <a href=\"%1\">Open processed video</a>\n"
+                             "          <a href=\"%1\">%2</a>\n"
                              "        </video>\n")
-                             .arg(processedUrl);
+                             .arg(processedUrl,
+                                  QCoreApplication::translate(
+                                      "OpenZoom", "Open processed video")
+                                      .toHtmlEscaped());
     } else {
         originalMedia = QStringLiteral(
-                            "        <a href=\"%1\"><img src=\"%1\" alt=\"Original camera view\" loading=\"lazy\"></a>\n")
-                            .arg(originalUrl);
+                            "        <a href=\"%1\"><img src=\"%1\" alt=\"%2\" loading=\"lazy\"></a>\n")
+                            .arg(originalUrl,
+                                 QCoreApplication::translate(
+                                     "OpenZoom", "Original camera view")
+                                     .toHtmlEscaped());
         processedMedia = QStringLiteral(
-                             "        <a href=\"%1\"><img src=\"%1\" alt=\"Processed camera view\" loading=\"lazy\"></a>\n")
-                             .arg(processedUrl);
+                             "        <a href=\"%1\"><img src=\"%1\" alt=\"%2\" loading=\"lazy\"></a>\n")
+                             .arg(processedUrl,
+                                  QCoreApplication::translate(
+                                      "OpenZoom", "Processed camera view")
+                                      .toHtmlEscaped());
     }
 
-    const QString mediaType =
-        video ? QStringLiteral("video") : QStringLiteral("photo");
+    // Full sentences per language — never compose "Original camera" + type,
+    // word order differs in Turkish and German.
+    const QString originalCaption =
+        (video ? QCoreApplication::translate("OpenZoom", "Original camera video")
+               : QCoreApplication::translate("OpenZoom", "Original camera photo"))
+            .toHtmlEscaped();
+    const QString processedCaption =
+        (video ? QCoreApplication::translate("OpenZoom", "Processed camera video")
+               : QCoreApplication::translate("OpenZoom", "Processed camera photo"))
+            .toHtmlEscaped();
     const QString content =
         QStringLiteral(
             "    <div class=\"media-grid\">\n"
             "      <figure>\n"
             "%1"
-            "        <figcaption><a href=\"%2\">Original camera %3</a></figcaption>\n"
+            "        <figcaption><a href=\"%2\">%3</a></figcaption>\n"
             "      </figure>\n"
             "      <figure>\n"
             "%4"
-            "        <figcaption><a href=\"%5\">Processed camera %3</a></figcaption>\n"
+            "        <figcaption><a href=\"%5\">%6</a></figcaption>\n"
             "      </figure>\n"
             "    </div>\n")
             .arg(originalMedia,
                  originalUrl,
-                 mediaType,
+                 originalCaption,
                  processedMedia,
-                 processedUrl);
+                 processedUrl,
+                 processedCaption);
     AppendNoteHtmlSection(heading, content);
 }
 
@@ -1708,14 +1755,21 @@ void AssistiveRuntime::AppendNoteHtmlSection(const QString& heading,
         return;
     }
     const QString timestamp = QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
+    // Sections restate the language they were written in; the document-level
+    // lang only reflects the language at file creation and the user can
+    // switch mid-session.
+    const QString sectionLanguage =
+        responseLanguageCode_.isEmpty() ? QStringLiteral("en")
+                                        : responseLanguageCode_;
     const QString section = QStringLiteral(
-                                "  <section>\n"
+                                "  <section lang=\"%4\">\n"
                                 "    <h2><time>[%1]</time> %2</h2>\n"
                                 "%3"
                                 "  </section>\n")
                                 .arg(timestamp.toHtmlEscaped(),
                                      heading.toHtmlEscaped(),
-                                     contentHtml);
+                                     contentHtml,
+                                     sectionLanguage.toHtmlEscaped());
     const QByteArray sectionBytes = section.toUtf8();
     QFile outputFile(notesFilePath_);
     if (!notesDocumentOpen_ ||
@@ -1827,7 +1881,9 @@ bool AssistiveRuntime::SelectVoiceForResponseLanguage(bool notifyMissing)
         const QString languageName =
             responseLanguageCode_ == QStringLiteral("tr")
                 ? QStringLiteral("Türkçe")
-                : QStringLiteral("Deutsch");
+                : responseLanguageCode_ == QStringLiteral("de")
+                      ? QStringLiteral("Deutsch")
+                      : QStringLiteral("English");
         emit StatusNotice(
             QCoreApplication::translate(
                 "OpenZoom",

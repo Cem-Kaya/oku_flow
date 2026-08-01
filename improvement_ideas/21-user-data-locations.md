@@ -117,14 +117,18 @@ adding session folders once naming/UX is settled.
    `QFileDialog::getExistingDirectory`. Validate writability by creating and
    deleting a probe file before accepting; reject a root inside the install
    directory with an explanation.
-3. **Migration, copy-not-move.** On first run with the new build, if
+3. **Migration, copy-not-move.** ~~On first run with the new build, if
    `<install>/output` exists and the new root has no corresponding content,
-   **copy** it across (same conservative policy as the settings migration in
-   plan 17), write a `MIGRATED.txt` breadcrumb into the old location, and show a
-   one-time status message naming the new folder. Never delete the old tree —
-   the owner has already lost data once. Large recording trees should copy with
-   progress and be cancellable, or be offered as "move later" rather than
-   blocking startup.
+   **copy** it across, write a `MIGRATED.txt` breadcrumb into the old
+   location, and show a one-time status message naming the new folder.~~
+   **REMOVED by owner decision 2026-07-31.** The shipped implementation
+   skipped an entire category when the destination held even one file, then
+   wrote the suppress-forever marker anyway (reported as a High review
+   finding). The owner chose removal over repair: the migration prompt,
+   `UserDataPaths::MigrateLegacyOutput`/`HasLegacyData`/`LegacyOutputRoot`,
+   the `.legacy-output-migrated` marker, and the `MIGRATED.txt` breadcrumb
+   are all gone. Old `output/` trees are left untouched forever; anyone who
+   wants the files copies them by hand. Do not reintroduce.
 4. **Free-space check.** Before starting a recording, verify available space on
    the root's volume (`QStorageInfo`) and refuse to start with a plain-language
    message rather than failing mid-lecture. Pairs with plan 20's recording work.

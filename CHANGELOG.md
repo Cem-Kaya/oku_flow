@@ -5,6 +5,72 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+- Fixed the unsafe detached recording worker at app close. Shutdown now uses
+  an explicit bounded handshake (`RecordingManager::ShutdownForProcessExit`):
+  a clean worker exit is joined as before, while a worker wedged inside a
+  synchronous encoder/driver call now has both recorders abandoned before the
+  detach and the whole manager is intentionally leaked for process exit —
+  member destruction can no longer touch COM objects the worker occupies,
+  and an unwedged worker finds valid memory, silence guards on all UI
+  posting, and cleared queues instead of freed ones. Every mutating
+  `VideoRecorder` entry (`Start`, `StartGpu`, `AddFrame`, `AddGpuFrame`,
+  `AddAudioFrame`, finalize) rejects an abandoned recorder, so a call chain
+  resuming past one blocked call cannot re-enter the sink writer or the
+  other recorder. The sticky abandonment state now also reaches global
+  teardown when a previously poisoned worker recovers and joins: manager
+  destruction is then safe, but `MFShutdown`/`CoUninitialize` are still
+  skipped because the recorder COM references remain intentionally leaked.
+- Made paired photo saves runtime- and crash-transactional. Both JPEGs encode
+  to temporary names before the processed/original rename commit; every
+  runtime rollback deletion is checked and any survivor is named to the user.
+  At startup, an interrupted second rename is completed from the intact
+  `.writing` file; any unrecoverable lone final/temp set is removed together,
+  and a per-pair process lock prevents recovery from racing another active
+  OpenZoom instance. A cleanup failure names the remaining path instead of
+  allowing an orphan to masquerade as a completed capture.
+- Fixed dynamic AI settings text reverting to English: reasoning-effort
+  entries repopulated after a model change and the voice-list placeholders
+  now translate (including the no-TTS-build placeholder on live language
+  switch), and a missing English text-to-speech voice is no longer
+  reported as "Deutsch".
+- Localized generated lecture notes. The HTML document declares the actual
+  response language instead of a hardcoded `lang="en"`, every section
+  restates the language it was written in (mid-session switches stay
+  truthful for screen readers), and all headings, captions, alt texts, and
+  video links are translated at write time.
+- Hardened assistant conversation export: an atomic `QSaveFile` replaces the
+  truncating write, open/write/commit failures show a warning instead of
+  silently discarding the transcript, and success posts a status message
+  with the file location.
+- The release SBOM now records the Qt version actually staged into the
+  bundle (`qmake -query QT_VERSION` from the resolved Qt root) instead of a
+  hardcoded 6.9.3 that ignored `QT_PREFIX`/`Qt6_DIR` overrides.
+- Rebuilt microphone shutdown around an independently owned session block:
+  the capture loop and stop-time flusher own their session flags and reader
+  reference, while frame/error delivery goes through a separately shared,
+  mutex-serialized app target with a per-start generation. Stop cancels that
+  target before waiting, conversion/locking rechecks cancellation immediately
+  before dispatch, and app destruction clears the target under the delivery
+  mutex; a detached old reader can therefore reach neither freed app state
+  nor a later recording session. No path performs an unbounded join. Pending
+  photo writes get 10 s at shutdown before the writer pool is leaked with a
+  diagnostic.
+- Added plan 35 for opening saved images and PDF pages as magnifier sources,
+  reusing colour/Text Clarity/sharpening, OCR, annotation, VLM, and TTS while
+  saving recoverable original/processed renders without modifying the source.
+- The user-data-folder containment check now truly resolves Windows
+  junctions and symlinks (`std::filesystem::canonical`;
+  `QFileInfo::canonicalFilePath` demonstrably does not resolve junctions —
+  covered by a new mklink /J regression test). The persisted root is
+  revalidated on every startup with a status notice and a default-folder
+  fallback, and the `UserDataPaths` constructor itself refuses a root that
+  resolves into the install directory.
+- Removed the legacy `output/` copy-migration (startup prompt,
+  `UserDataPaths::MigrateLegacyOutput`, markers, and its translation
+  catalog entries) by owner decision. The shipped version skipped any
+  category whose destination already held a file yet still wrote the
+  suppress-forever marker; rather than repairing it, the feature is gone.
+  Old install-relative `output/` trees are never read, copied, or deleted.
 - Added live-switchable English, Turkish, and German across the Qt UI,
   accessible names, status announcements, AI response language, and manual
   Read Aloud voice preference. A flag-and-native-name picker under the

@@ -1,9 +1,9 @@
 #pragma once
 
 #include <QDate>
+#include <QDateTime>
 #include <QString>
-
-#include <functional>
+#include <QStringList>
 
 namespace openzoom {
 
@@ -13,23 +13,18 @@ struct UserDataValidationResult {
     QString error;
 };
 
-struct LegacyMigrationResult {
-    bool foundLegacyData{false};
-    bool copiedData{false};
-    bool cancelled{false};
-    qint64 bytesCopied{0};
-    qint64 totalBytes{0};
-    QString error;
+struct PhotoPairRecoveryResult {
+    int completedPairs{};
+    int removedFiles{};
+    // Paths that could neither be committed nor removed. The caller should
+    // surface these because an incomplete capture may remain visible.
+    QStringList unresolvedPaths;
 };
 
 // Owns every user-created OpenZoom artifact path. Configuration and downloaded
 // tools deliberately remain under the application-data directory.
 class UserDataPaths final {
 public:
-    using MigrationProgress =
-        std::function<bool(qint64 copiedBytes, qint64 totalBytes,
-                           const QString& currentPath)>;
-
     explicit UserDataPaths(QString configuredRoot = {},
                            QString installDirectory = {});
 
@@ -50,10 +45,12 @@ public:
     QString Analysis(QString* error = nullptr) const;
     QString Debug(QString* error = nullptr) const;
 
-    QString LegacyOutputRoot() const;
-    bool HasLegacyData() const;
-    LegacyMigrationResult MigrateLegacyOutput(
-        const MigrationProgress& progress = {}) const;
+    // Reconciles stale IMG_* original/processed transactions after an
+    // interrupted process. If one final rename succeeded and the other
+    // fully encoded .writing file remains, the pair is completed; otherwise
+    // incomplete finals and temps are rolled back together.
+    PhotoPairRecoveryResult RecoverInterruptedPhotoPairs(
+        const QDateTime& staleBefore) const;
 
 private:
     QString EnsureRelative(const QString& relativePath, QString* error) const;

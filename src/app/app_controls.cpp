@@ -350,30 +350,76 @@ bool OpenZoomApp::StartSelectedMicrophone()
         return false;
     }
 
+    const std::shared_ptr<MicrophoneCallbackTarget> callbackTarget =
+        microphoneCallbackTarget_;
+    std::uint64_t callbackGeneration = 0;
+    if (callbackTarget) {
+        std::lock_guard lock(callbackTarget->mutex);
+        callbackGeneration = ++callbackTarget->generation;
+        callbackTarget->accepting = callbackTarget->app == this;
+    }
+
     const bool started = audioCapture_.Start(
         *microphone,
-        [this](AudioFrame&& frame) {
-            if (recordingManager_) {
-                recordingManager_->AddAudioFrame(std::move(frame));
+        [callbackTarget, callbackGeneration](AudioFrame&& frame) {
+            if (!callbackTarget) {
+                return;
+            }
+            std::lock_guard lock(callbackTarget->mutex);
+            OpenZoomApp* app = callbackTarget->app;
+            if (!callbackTarget->accepting || !app ||
+                callbackTarget->generation != callbackGeneration) {
+                return;
+            }
+            if (app->recordingManager_) {
+                app->recordingManager_->AddAudioFrame(std::move(frame));
             }
         },
-        [this](const std::string& message) {
+        [callbackTarget, callbackGeneration](const std::string& message) {
+            if (!callbackTarget) {
+                return;
+            }
+            std::lock_guard lock(callbackTarget->mutex);
+            OpenZoomApp* app = callbackTarget->app;
+            if (!callbackTarget->accepting || !app ||
+                callbackTarget->generation != callbackGeneration) {
+                return;
+            }
             const QString detail = QString::fromStdString(message);
             QMetaObject::invokeMethod(
-                this,
-                [this, detail]() {
-                    if (recordingManager_) {
-                        recordingManager_->Stop(
+                app,
+                [callbackTarget, callbackGeneration, detail]() {
+                    OpenZoomApp* currentApp = nullptr;
+                    {
+                        std::lock_guard lock(callbackTarget->mutex);
+                        if (!callbackTarget->accepting ||
+                            callbackTarget->generation !=
+                                callbackGeneration) {
+                            return;
+                        }
+                        currentApp = callbackTarget->app;
+                    }
+                    if (!currentApp) {
+                        return;
+                    }
+                    if (currentApp->recordingManager_) {
+                        currentApp->recordingManager_->Stop(
                             QStringLiteral(
                                 "Recording stopped because microphone "
                                 "capture failed."));
                     }
-                    StopMicrophoneCapture();
-                    ShowStatusMessage(detail, 12000);
+                    currentApp->StopMicrophoneCapture();
+                    currentApp->ShowStatusMessage(detail, 12000);
                 },
                 Qt::QueuedConnection);
         });
     if (!started) {
+        if (callbackTarget) {
+            std::lock_guard lock(callbackTarget->mutex);
+            if (callbackTarget->generation == callbackGeneration) {
+                callbackTarget->accepting = false;
+            }
+        }
         ShowStatusMessage(
             QStringLiteral(
                 "The selected microphone could not start: %1. Recording "
@@ -391,6 +437,15 @@ bool OpenZoomApp::StartSelectedMicrophone()
 
 void OpenZoomApp::StopMicrophoneCapture(bool retainQueuedAudio)
 {
+    // Cancel and serialize callback delivery before waiting for ReadSample.
+    // If Stop must detach a wedged thread, its retained callback can reach
+    // only this independently owned, inactive target. The next Start uses a
+    // different generation.
+    if (microphoneCallbackTarget_) {
+        std::lock_guard lock(microphoneCallbackTarget_->mutex);
+        microphoneCallbackTarget_->accepting = false;
+        ++microphoneCallbackTarget_->generation;
+    }
     audioCapture_.Stop();
     if (recordingManager_ && !retainQueuedAudio) {
         recordingManager_->SetAudioCaptureEnabled(false);
@@ -770,85 +825,6 @@ void OpenZoomApp::ChangeUserDataFolder()
     ShowStatusMessage(message, 7000);
 }
 
-void OpenZoomApp::OfferLegacyOutputMigration()
-{
-    if (!mainWindow_ || !userDataPaths_ || !userDataPaths_->HasLegacyData()) {
-        return;
-    }
-
-    QMessageBox prompt(mainWindow_.get());
-    prompt.setWindowTitle(QStringLiteral("Copy Existing OpenZoom Files"));
-    prompt.setIcon(QMessageBox::Question);
-    prompt.setText(QStringLiteral(
-        "OpenZoom found photos, recordings, notes, or analysis files beside "
-        "the application."));
-    prompt.setInformativeText(QStringLiteral(
-        "Copy compatible files into your new OpenZoom folder now? The old "
-        "files will not be deleted."));
-    QPushButton* copyButton =
-        prompt.addButton(QStringLiteral("Copy now"), QMessageBox::AcceptRole);
-    prompt.addButton(QStringLiteral("Later"), QMessageBox::RejectRole);
-    prompt.setDefaultButton(copyButton);
-    prompt.exec();
-    if (prompt.clickedButton() != copyButton) {
-        return;
-    }
-
-    QProgressDialog progress(
-        QStringLiteral("Preparing existing OpenZoom files..."),
-        QStringLiteral("Cancel"),
-        0,
-        100,
-        mainWindow_.get());
-    progress.setWindowTitle(QStringLiteral("Copy Existing OpenZoom Files"));
-    progress.setWindowModality(Qt::WindowModal);
-    progress.setMinimumDuration(0);
-
-    const LegacyMigrationResult result =
-        userDataPaths_->MigrateLegacyOutput(
-            [&progress](qint64 copiedBytes,
-                        qint64 totalBytes,
-                        const QString& currentPath) {
-                const int percent =
-                    totalBytes > 0
-                        ? static_cast<int>(
-                              std::clamp<qint64>(
-                                  copiedBytes * 100 / totalBytes, 0, 100))
-                        : 100;
-                progress.setValue(percent);
-                progress.setLabelText(
-                    QStringLiteral("Copying %1")
-                        .arg(QFileInfo(currentPath).fileName()));
-                QCoreApplication::processEvents();
-                return !progress.wasCanceled();
-            });
-    progress.close();
-
-    if (result.cancelled) {
-        ShowStatusMessage(
-            QStringLiteral(
-                "Copying stopped. Existing files were not deleted; you can "
-                "try again next time OpenZoom starts."),
-            7000);
-        return;
-    }
-    if (!result.error.isEmpty()) {
-        QMessageBox::warning(mainWindow_.get(),
-                             QStringLiteral("Copy Existing OpenZoom Files"),
-                             result.error);
-        return;
-    }
-
-    const QString message =
-        result.copiedData
-            ? QStringLiteral(
-                  "Existing OpenZoom files were copied. Press Ctrl+Shift+O "
-                  "to open the new folder.")
-            : QStringLiteral(
-                  "No compatible files needed copying. Existing files were "
-                  "left in place.");
-    ShowStatusMessage(message, 9000);
-}
 void OpenZoomApp::OnKeystoneStepBack() {
     if (!keystoneEnabled_ || !cudaSurface_) {
         return;

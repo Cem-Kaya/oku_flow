@@ -176,7 +176,8 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     preferredReasoningEffort_ = initial.codexReasoningEffort.trimmed().toLower();
     for (const QString& effort : {QStringLiteral("low"), QStringLiteral("medium"),
                                   QStringLiteral("high"), QStringLiteral("xhigh")}) {
-        codexReasoningCombo_->addItem(ReasoningLabel(effort), effort);
+        codexReasoningCombo_->addItem(TranslateUi(ReasoningLabel(effort)),
+                                      effort);
     }
     const int reasoningIndex =
         codexReasoningCombo_->findData(preferredReasoningEffort_);
@@ -372,7 +373,8 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             });
     QTimer::singleShot(0, this, &AiSettingsDialog::PopulateSpeechVoices);
 #else
-    ttsVoiceCombo_->addItem("Text-to-speech is unavailable in this build");
+    ttsVoiceCombo_->addItem(
+        TranslateUi(QStringLiteral("Text-to-speech is unavailable in this build")));
     ttsVoiceCombo_->setEnabled(false);
     ttsRateSlider_->setEnabled(false);
     ttsPreviewButton_->setEnabled(false);
@@ -580,8 +582,10 @@ void AiSettingsDialog::PopulateSpeechVoices()
     if (!speechVoicesLoaded_) {
         const bool stillLoading = speechPreview_->state() != QTextToSpeech::Ready &&
                                   speechPreview_->state() != QTextToSpeech::Error;
-        ttsVoiceCombo_->addItem(stillLoading ? "Loading installed Windows voices..."
-                                             : "No installed Windows voices found");
+        ttsVoiceCombo_->addItem(
+            stillLoading
+                ? TranslateUi(QStringLiteral("Loading installed Windows voices..."))
+                : TranslateUi(QStringLiteral("No installed Windows voices found")));
         ttsVoiceCombo_->setEnabled(false);
         ttsPreviewButton_->setEnabled(false);
         return;
@@ -603,6 +607,16 @@ void AiSettingsDialog::PopulateSpeechVoices()
     preferredVoiceName_ = selectedVoice.name();
     preferredVoiceLocale_ = selectedVoice.locale().name();
     ApplySpeechPreviewSettings();
+#else
+    // The build-time placeholder is the combo's only entry; changeEvent
+    // routes LanguageChange here, so re-resolve its translation (the combo
+    // is marked as data, which exempts it from the automatic item pass).
+    if (ttsVoiceCombo_ && ttsVoiceCombo_->count() == 1) {
+        ttsVoiceCombo_->setItemText(
+            0,
+            TranslateUi(QStringLiteral(
+                "Text-to-speech is unavailable in this build")));
+    }
 #endif
 }
 
@@ -774,7 +788,7 @@ void AiSettingsDialog::UpdateCodexReasoningOptions()
     codexReasoningCombo_->clear();
     for (const EffortOption& option : options) {
         const int index = codexReasoningCombo_->count();
-        codexReasoningCombo_->addItem(ReasoningLabel(option.effort),
+        codexReasoningCombo_->addItem(TranslateUi(ReasoningLabel(option.effort)),
                                       option.effort);
         if (!option.description.isEmpty()) {
             codexReasoningCombo_->setItemData(index,

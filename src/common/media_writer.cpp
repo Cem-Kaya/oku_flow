@@ -196,6 +196,13 @@ bool VideoRecorder::Start(const std::wstring& filePath,
                           Codec codec,
                           const AudioFormat* audioFormat)
 {
+    if (abandoned_.load()) {
+        // Poisoned: a wedged worker may still be inside these COM
+        // objects. Every public mutating entry fails fast so a
+        // resumed (previously blocked) caller can never re-enter
+        // the sink writer or start a new stream.
+        return false;
+    }
     Stop();
 
     ULONGLONG freeBytes = 0;
@@ -428,6 +435,13 @@ bool VideoRecorder::StartGpu(
     const GpuVideoFrame& probeFrame,
     const AudioFormat* audioFormat)
 {
+    if (abandoned_.load()) {
+        // Poisoned: a wedged worker may still be inside these COM
+        // objects. Every public mutating entry fails fast so a
+        // resumed (previously blocked) caller can never re-enter
+        // the sink writer or start a new stream.
+        return false;
+    }
     Stop();
     if (!probeFrame.IsValid() ||
         probeFrame.width != width || probeFrame.height != height) {
@@ -779,7 +793,7 @@ bool VideoRecorder::AddAudioFrame(
     std::int64_t sampleTime100ns,
     std::int64_t duration100ns)
 {
-    if (!recording_ || !sinkWriter_ || !audioEnabled_ ||
+    if (abandoned_.load() || !recording_ || !sinkWriter_ || !audioEnabled_ ||
         !pcmData || byteCount == 0 || sampleTime100ns < 0) {
         return false;
     }
@@ -908,7 +922,7 @@ bool VideoRecorder::AddFrame(const uint8_t* bgraData,
                              size_t strideBytes,
                              const RecordingFrameIdentity& identity)
 {
-    if (!recording_ || !sinkWriter_ || !bgraData) {
+    if (abandoned_.load() || !recording_ || !sinkWriter_ || !bgraData) {
         return false;
     }
 
@@ -943,7 +957,7 @@ bool VideoRecorder::AddGpuFrame(
     const GpuVideoFrame& frame,
     const RecordingFrameIdentity& identity)
 {
-    if (!recording_ || !sinkWriter_ ||
+    if (abandoned_.load() || !recording_ || !sinkWriter_ ||
         (!gpuInputEnabled_ && !gpuCompatibilityReadback_) ||
         !gpuDevice_ || !gpuContext_ || !frame.IsValid() ||
         frame.width != frameWidth_ || frame.height != frameHeight_) {

@@ -3,6 +3,7 @@
 #include "app_internal.hpp"
 
 #include <QAccessible>
+#include <QLockFile>
 #include <QMetaObject>
 #include <QPointer>
 #include <QScopeGuard>
@@ -2197,6 +2198,8 @@ void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
         QStringLiteral("IMG_%1_processed.jpg").arg(timestamp));
     const QString originalPath = QDir(dirPath).filePath(
         QStringLiteral("IMG_%1_original.jpg").arg(timestamp));
+    const QString transactionLockPath = QDir(dirPath).filePath(
+        QStringLiteral("IMG_%1.pair.lock").arg(timestamp));
 
     QImage processedImage(processedData,
                           static_cast<int>(processedWidth),
@@ -2224,16 +2227,72 @@ void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
          processedImage = std::move(processedImage),
          originalImage = std::move(originalImage),
          processedPath,
-         originalPath]() mutable {
-            const bool processedSaved =
-                processedImage.save(processedPath, "JPG", 90);
-            const bool originalSaved =
-                originalImage.save(originalPath, "JPG", 90);
-            if (!processedSaved) {
-                qWarning() << "Failed to save snapshot to" << processedPath;
+         originalPath,
+         transactionLockPath]() mutable {
+            // Encode both files before entering the two-rename commit. The
+            // runtime rolls back a failed commit; after a process crash,
+            // startup completes the remaining rename from the intact temp or
+            // removes the entire incomplete set.
+            const QString processedTemp =
+                processedPath + QStringLiteral(".writing");
+            const QString originalTemp =
+                originalPath + QStringLiteral(".writing");
+            QLockFile transactionLock(transactionLockPath);
+            // Do not age out a valid but slow network/removable-drive write.
+            // Owner-process death still makes the lock stale and immediately
+            // recoverable at the next startup.
+            transactionLock.setStaleLockTime(0);
+            const bool lockAcquired = transactionLock.tryLock(0);
+            if (!lockAcquired) {
+                qWarning() << "Could not lock paired snapshot transaction"
+                           << transactionLockPath;
             }
-            if (!originalSaved) {
-                qWarning() << "Failed to save snapshot to" << originalPath;
+            const bool processedSaved =
+                lockAcquired && processedImage.save(processedTemp, "JPG", 90);
+            const bool originalSaved =
+                lockAcquired && originalImage.save(originalTemp, "JPG", 90);
+            if (lockAcquired && !processedSaved) {
+                qWarning() << "Failed to save snapshot to" << processedTemp;
+            }
+            if (lockAcquired && !originalSaved) {
+                qWarning() << "Failed to save snapshot to" << originalTemp;
+            }
+            // Processed renames first. If the process dies between renames,
+            // the processed final plus fully encoded original .writing file
+            // form an unambiguous recovery record; startup finishes the
+            // original rename. A final without its counterpart temp is
+            // rolled back instead of being presented as a complete capture.
+            bool committed = false;
+            if (processedSaved && originalSaved) {
+                if (QFile::rename(processedTemp, processedPath)) {
+                    if (QFile::rename(originalTemp, originalPath)) {
+                        committed = true;
+                    } else {
+                        qWarning() << "Failed to finalize snapshot"
+                                   << originalPath;
+                        if (!QFile::remove(processedPath)) {
+                            qWarning() << "Rollback could not remove"
+                                       << processedPath;
+                        }
+                    }
+                } else {
+                    qWarning() << "Failed to finalize snapshot"
+                               << processedPath;
+                }
+            }
+            QStringList leftoverPaths;
+            if (!committed && lockAcquired) {
+                // Every removal is checked; anything that survives rollback
+                // is reported to the user instead of pretending the folder
+                // is clean. A caller that did not acquire the pair lock must
+                // not touch paths owned by another process with the same
+                // millisecond timestamp.
+                for (const QString& path : {processedTemp, originalTemp,
+                                            processedPath, originalPath}) {
+                    if (QFileInfo::exists(path) && !QFile::remove(path)) {
+                        leftoverPaths.append(QDir::toNativeSeparators(path));
+                    }
+                }
             }
             if (!owner) {
                 return;
@@ -2241,14 +2300,14 @@ void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
             QMetaObject::invokeMethod(
                 owner,
                 [owner,
-                 processedSaved,
-                 originalSaved,
+                 committed,
+                 leftoverPaths,
                  processedPath,
                  originalPath]() {
                     if (!owner) {
                         return;
                     }
-                    if (processedSaved && originalSaved) {
+                    if (committed) {
                         qInfo() << "Saved paired snapshots to"
                                 << originalPath << "and" << processedPath;
                         owner->assistiveManager_->Runtime()
@@ -2259,10 +2318,19 @@ void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
                                 "Saved original and processed photos. Press "
                                 "Ctrl+Shift+O to open the OpenZoom folder."),
                             7000);
+                    } else if (leftoverPaths.isEmpty()) {
+                        owner->ShowStatusMessage(
+                            QStringLiteral(
+                                "The paired photos could not be saved, so no "
+                                "files were kept. Try again."));
                     } else {
                         owner->ShowStatusMessage(
                             QStringLiteral(
-                                "One of the paired photos could not be saved."));
+                                "The paired photos could not be saved. A "
+                                "partial file may remain: %1")
+                                .arg(leftoverPaths.join(
+                                    QStringLiteral(", "))),
+                            10000);
                     }
                 },
                 Qt::QueuedConnection);
@@ -2284,10 +2352,12 @@ void OpenZoomApp::QueueAnnotationSnapshot(int reason)
     capture.strokes = mainWindow_->annotationOverlay()->Strokes();
     capture.heading =
         reason == 1
-            ? QStringLiteral("Annotations cleared - snapshot")
+            ? QCoreApplication::translate("OpenZoom",
+                                          "Annotations cleared - snapshot")
             : reason == 2
-                  ? QStringLiteral("Annotation session ended - snapshot")
-                  : QStringLiteral("Annotated view");
+                  ? QCoreApplication::translate(
+                        "OpenZoom", "Annotation session ended - snapshot")
+                  : QCoreApplication::translate("OpenZoom", "Annotated view");
     annotationCaptureQueue_.push_back(std::move(capture));
     pipelineOrchestrator_->MarkViewportDirty();
     ShowStatusMessage(QStringLiteral("Saving annotated view to lecture notes..."),

@@ -77,6 +77,7 @@ class AssistiveFeatureManager;
 class PipelineOrchestrator;
 class SetupAssistantDialog;
 class ColorSchemePicker;
+struct MicrophoneCallbackTarget;
 
 class D3D12Presenter;
 class CudaInteropSurface;
@@ -147,7 +148,6 @@ private:
     void OpenSetupAssistant();
     void OpenUserDataFolder();
     void ChangeUserDataFolder();
-    void OfferLegacyOutputMigration();
     void OpenNotesFile();
     void SubmitOnDemandAnalysis(bool runOcr, bool runVlm);
     void SubmitAssistantPrompt();
@@ -282,6 +282,11 @@ private:
     MediaCapture mediaCapture_;
     std::vector<AudioDeviceDescriptor> microphones_;
     AudioCapture audioCapture_;
+    // Capture threads hold this target independently of the app. Every
+    // delivery is serialized with Stop/destruction and tagged with a
+    // generation, so a detached old reader cannot reach this object or a
+    // later recording session after cancellation.
+    std::shared_ptr<MicrophoneCallbackTarget> microphoneCallbackTarget_;
     std::mutex cameraMutex_;
     // Preview is latest-wins, while an active recording retains a short burst
     // so scheduler jitter does not discard a camera frame before processing.

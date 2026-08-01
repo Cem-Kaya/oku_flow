@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -50,22 +51,41 @@ public:
                AudioErrorCallback errorCallback = {});
     void Stop();
 
-    bool IsRunning() const { return running_.load(); }
+    bool IsRunning() const { return session_ && session_->running.load(); }
+    // Sticky: a previous Stop() abandoned a wedged reader thread. Process-
+    // global Media Foundation teardown (MFShutdown) is unsafe for the rest
+    // of the process lifetime once this is set — the detached thread may
+    // still be inside an MF call.
+    bool WasAbandoned() const { return abandonedForExit_; }
     const std::string& LastError() const { return lastError_; }
     const std::wstring& ActiveEndpointId() const {
         return activeEndpointId_;
     }
 
 private:
-    void CaptureLoop(AudioFrameCallback callback,
-                     AudioErrorCallback errorCallback);
+    // Owned by every thread that needs it (capture loop, stop-time flusher,
+    // and this object), so a detached wedged thread never touches
+    // AudioCapture members — AudioCapture is a value member of the app and
+    // is destroyed with it. A fresh session per Start() also means a stale
+    // thread can never observe a later session's flags.
+    struct CaptureSession {
+        std::atomic<bool> running{false};
+        std::atomic<bool> loopDone{false};
+        std::atomic<bool> flushDone{true};
+    };
+
+    static void CaptureLoop(std::shared_ptr<CaptureSession> session,
+                            Microsoft::WRL::ComPtr<IMFSourceReader> reader,
+                            AudioFrameCallback callback,
+                            AudioErrorCallback errorCallback);
     bool ConfigureReader(IMFSourceReader* reader);
 
     Microsoft::WRL::ComPtr<IMFMediaSource> mediaSource_;
     Microsoft::WRL::ComPtr<IMFSourceReader> sourceReader_;
     Microsoft::WRL::ComPtr<IMFActivate> activeActivation_;
     std::thread captureThread_;
-    std::atomic<bool> running_{false};
+    std::shared_ptr<CaptureSession> session_;
+    bool abandonedForExit_{false};
     std::wstring activeEndpointId_;
     std::string lastError_;
 };

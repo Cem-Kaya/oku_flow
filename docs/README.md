@@ -102,6 +102,17 @@ start of `scripts/agent_build.bat`.
    together to H.264, write fragmented MP4 with free-disk-space guards, check
    finalization, report drops by cause, and start matching `_partN` files after
    a camera-format change.
+   Microphone callbacks cross an independently owned, generation-tagged target
+   that Stop cancels before waiting; a detached reader can therefore deliver
+   to neither a destroyed app nor a later recording session. Recorder
+   abandonment is sticky into process teardown even when the worker later
+   recovers and joins, so intentionally leaked MF objects are never followed
+   by `MFShutdown`.
+7. Paired photos encode both JPEGs to `.writing` names before the two-rename
+   commit. Startup reconciles every stale transaction: it completes the
+   missing second rename when the counterpart temp proves both encodes
+   finished, otherwise it removes the whole partial set and reports anything
+   the filesystem would not let it clean.
 
 CUDA is the processing path and the CPU effects pipeline is deprecated: when the GPU pipeline is unavailable the app presents unprocessed passthrough video with a persistent "GPU required" notice instead of running effects on the CPU. The debug composite view remains CPU-only as a diagnostic.
 

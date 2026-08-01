@@ -896,18 +896,6 @@
         <translation>OpenZoom Klasörünü Seç</translation>
     </message>
     <message>
-        <source>Copy Existing OpenZoom Files</source>
-        <translation>Mevcut OpenZoom Dosyalarını Kopyala</translation>
-    </message>
-    <message>
-        <source>Copy now</source>
-        <translation>Şimdi kopyala</translation>
-    </message>
-    <message>
-        <source>Copying %1</source>
-        <translation>%1 kopyalanıyor</translation>
-    </message>
-    <message>
         <source>GPU camera capture is active with the safe copy fallback.</source>
         <translation>GPU kamera yakalama, güvenli kopyalama yedeğiyle etkin.</translation>
     </message>
@@ -938,10 +926,6 @@
     <message>
         <source>Opened your OpenZoom folder.</source>
         <translation>OpenZoom klasörünüz açıldı.</translation>
-    </message>
-    <message>
-        <source>Preparing existing OpenZoom files...</source>
-        <translation>Mevcut OpenZoom dosyaları hazırlanıyor...</translation>
     </message>
     <message>
         <source>Recording stopped because the microphone selection changed.</source>
@@ -1044,10 +1028,6 @@
     <message>
         <source>No camera modes were reported.</source>
         <translation>Kamera modu bildirilmedi.</translation>
-    </message>
-    <message>
-        <source>One of the paired photos could not be saved.</source>
-        <translation>Eşleştirilmiş fotoğraflardan biri kaydedilemedi.</translation>
     </message>
     <message>
         <source>Photo not saved: no processed frame was available.</source>
@@ -2482,6 +2462,78 @@ Oturum açmak için AI Ayarları&apos;nda ChatGPT&apos;ye Bağlan seçeneğini k
     <message>
         <source>Controls will hide automatically</source>
         <translation>Denetimler otomatik olarak gizlenecek</translation>
+    </message>
+    <message>
+        <source>OpenZoom Lecture Notes</source>
+        <translation>OpenZoom Ders Notları</translation>
+    </message>
+    <message>
+        <source>Started %1</source>
+        <translation>Başlangıç: %1</translation>
+    </message>
+    <message>
+        <source>Captured processed camera view</source>
+        <translation>Yakalanan işlenmiş kamera görüntüsü</translation>
+    </message>
+    <message>
+        <source>Processed camera view</source>
+        <translation>İşlenmiş kamera görüntüsü</translation>
+    </message>
+    <message>
+        <source>Original camera view</source>
+        <translation>Orijinal kamera görüntüsü</translation>
+    </message>
+    <message>
+        <source>Open original video</source>
+        <translation>Orijinal videoyu aç</translation>
+    </message>
+    <message>
+        <source>Open processed video</source>
+        <translation>İşlenmiş videoyu aç</translation>
+    </message>
+    <message>
+        <source>Original camera video</source>
+        <translation>Orijinal kamera videosu</translation>
+    </message>
+    <message>
+        <source>Original camera photo</source>
+        <translation>Orijinal kamera fotoğrafı</translation>
+    </message>
+    <message>
+        <source>Processed camera video</source>
+        <translation>İşlenmiş kamera videosu</translation>
+    </message>
+    <message>
+        <source>Processed camera photo</source>
+        <translation>İşlenmiş kamera fotoğrafı</translation>
+    </message>
+    <message>
+        <source>Annotations cleared - snapshot</source>
+        <translation>Çizimler temizlendi - anlık görüntü</translation>
+    </message>
+    <message>
+        <source>Annotation session ended - snapshot</source>
+        <translation>Çizim oturumu sona erdi - anlık görüntü</translation>
+    </message>
+    <message>
+        <source>The conversation could not be exported to %1.</source>
+        <translation>Konuşma %1 konumuna dışa aktarılamadı.</translation>
+    </message>
+    <message>
+        <source>Conversation exported to %1.</source>
+        <translation>Konuşma %1 konumuna dışa aktarıldı.</translation>
+    </message>
+    <message>
+        <source>The paired photos could not be saved, so no files were kept. Try again.</source>
+        <translation>Eşleştirilmiş fotoğraflar kaydedilemedi, hiçbir dosya tutulmadı. Yeniden deneyin.</translation>
+    </message>
+    <message>
+        <source>The paired photos could not be saved. A partial file may remain: %1</source>
+        <translation>Eşleştirilmiş fotoğraflar kaydedilemedi. Kısmi bir dosya kalmış olabilir: %1</translation>
+    </message>
+    <message>
+        <source>The saved OpenZoom folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
+        <translation>Kaydedilmiş OpenZoom klasörü kullanılamıyor (%1). Yeni bir klasör seçilene kadar dosyalar varsayılan Belgeler klasörüne gidecek.</translation>
     </message>
 </context>
 </TS>

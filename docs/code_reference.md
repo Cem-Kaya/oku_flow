@@ -122,8 +122,22 @@ Authoritative code map for the current repository state as of 2026-07-29. Update
   reports the exact blocked call via `DescribeWorkerStage()` (worker
   operation plus each `VideoRecorder`'s observable `WriterStage`), forces
   `Failed`, restores the UI, and disables recording for the rest of the
-  process (`IsWorkerAbandoned()`); the destructor waits a bounded time for
-  worker shutdown and detaches a wedged worker instead of joining forever.
+  process (`IsWorkerAbandoned()`).
+- App close uses `ShutdownForProcessExit()`: a bounded handshake that joins a
+  worker that exits and returns true when manager destruction is safe. On
+  false the worker is still wedged
+  inside a synchronous encoder/driver call — both recorders are abandoned
+  (their COM teardown becomes an intentional leak), the worker is detached,
+  and the caller must leak the manager (`unique_ptr::release`) so the
+  detached worker can never touch freed queues or a dangling record button
+  if the blocked call returns before process exit. All worker-side UI
+  posting and `StartSegment` carry abandonment guards, every mutating
+  `VideoRecorder` entry rejects an abandoned recorder (a resumed call chain
+  cannot re-enter the sink writer), and `IsWorkerAbandoned()` remains sticky
+  if the poisoned worker later recovers and joins. App teardown checks that
+  state separately from the safe-to-destroy return value and skips
+  `MFShutdown`/`CoUninitialize` because the abandoned recorder COM references
+  remain intentionally leaked.
 - Its constructor accepts a `SegmentSavedCallback`. The worker posts that
   callback to the Qt thread only after both files in a segment fully finalize,
   providing the original and processed paths for lecture-note integration.
@@ -140,20 +154,34 @@ Authoritative code map for the current repository state as of 2026-07-29. Update
   `UserDataPaths` output, and paired asynchronous teardown.
 
 ### `include/openzoom/app/user_data_paths.hpp`
-`openzoom::UserDataValidationResult`, `openzoom::LegacyMigrationResult`,
+`openzoom::UserDataValidationResult`, `openzoom::PhotoPairRecoveryResult`,
 `openzoom::UserDataPaths`
 - Owns every user-created artifact location independently of the executable.
   An empty configured root resolves through
   `QStandardPaths::DocumentsLocation/OpenZoom`; explicit roots are normalized,
   probed for writable create/delete access, and rejected inside the install
-  directory.
+  directory. Containment resolves Windows junctions/symlinks first via
+  `std::filesystem::canonical` (`QFileInfo::canonicalFilePath` does not
+  resolve junctions), canonicalizing the deepest existing ancestor of a
+  not-yet-created root, so a link pointing back into the install directory
+  cannot pass a lexical comparison. The constructor applies the same
+  containment refusal to persisted roots, and app startup revalidates the
+  saved root with a user-visible fallback notice.
 - Public category accessors lazily create the root plus `Photos`,
   `Recordings`, `Notes`, `Analysis`, and `Debug`; photo and recording
   accessors add ISO-date subfolders. `Debug()` is used only by
   console-attached diagnostic launches.
-- Detects legacy install-relative `output` trees and copies eligible category
-  contents with progress/cancellation. It never removes source files and uses
-  a migration marker plus a best-effort legacy `MIGRATED.txt` breadcrumb.
+- `RecoverInterruptedPhotoPairs(staleBefore)` scans the Photos root and every
+  dated subdirectory for stale `IMG_*` transactions. A processed final plus
+  intact original `.writing` file completes the second rename (with symmetric
+  handling if order changes); any other incomplete final/temp set is removed
+  together. Each active writer holds `IMG_*.pair.lock`, allowing immediate
+  crash recovery without racing a second live OpenZoom process.
+  `PhotoPairRecoveryResult` reports completed pairs, removed files, and paths
+  that could not be reconciled for a user-visible warning.
+- The legacy install-relative `output` migration (copy-on-first-run prompt)
+  was removed by owner decision on 2026-07-31; old files stay where they are
+  and are never touched.
 
 ### `include/openzoom/app/settings_controller.hpp`
 `openzoom::SettingsController`
@@ -412,12 +440,29 @@ Types:
 - The source reader runs on its own thread only while recording. Audio block
   timestamps use the same monotonic QPC domain as camera-frame arrival so the
   recording worker can mux one synchronized AAC track into both MP4 files.
+- `Stop()` is bounded and detach-safe: the reader `Flush` that wakes the
+  blocking `ReadSample` runs on a helper thread (it would serialize behind a
+  wedged reader call), both threads get 3 seconds to acknowledge, and a
+  wedged thread is detached with its COM references leaked. The capture
+  loop and flusher share an independently owned `CaptureSession`
+  (shared_ptr) holding every flag they touch — never a pointer back to
+  `AudioCapture` — so a detached thread survives the object's destruction,
+  and each `Start()` creates a fresh session a stale thread cannot observe.
+  Buffer conversion/locking rechecks the session after each potentially
+  blocking operation and immediately before dispatch. At the app boundary,
+  callbacks retain only an independently owned `MicrophoneCallbackTarget`:
+  Stop cancels its generation before waiting, delivery holds its mutex, and
+  app destruction clears its pointer under that same mutex. Thus even a
+  reader detached between the final session check and callback invocation can
+  reach neither freed app state nor a restarted session. `WasAbandoned()`
+  tells the app to skip process-global MF teardown.
 - Public API:
   - `std::vector<AudioDeviceDescriptor> EnumerateDevices()`
   - `bool Start(const AudioDeviceDescriptor&, AudioFrameCallback,
     AudioErrorCallback = {})`
   - `void Stop()`
   - `bool IsRunning() const`
+  - `bool WasAbandoned() const`
   - `const std::string& LastError() const`
   - `const std::wstring& ActiveEndpointId() const`
 

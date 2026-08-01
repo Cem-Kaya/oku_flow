@@ -73,6 +73,18 @@ public:
                      SessionEndedCallback sessionEndedCallback = {});
     ~RecordingManager();
 
+    // Bounded shutdown handshake for app close. Returns true when the worker
+    // exited and was joined — destroying the manager is then safe, though the
+    // caller must still consult sticky IsWorkerAbandoned() before global
+    // MF/COM teardown because poisoned recorder objects are leaked. Returns
+    // false when the worker is wedged inside a synchronous encoder/driver
+    // call: both recorders are abandoned and the worker is detached, so the
+    // caller MUST leak this object (unique_ptr::release) instead of
+    // destroying it — the detached worker still references its queues and
+    // atomics, and freeing them would hand it dangling memory if the
+    // blocked driver call ever returns before process exit.
+    bool ShutdownForProcessExit();
+
     void SetRequested(bool requested);
     void Stop(const QString& message = {});
     void SetCanvasMode(RecordingCanvasMode mode);
@@ -225,6 +237,10 @@ private:
     std::atomic<std::uint64_t> workerOpFrameSequence_{0};
     std::atomic<std::uint32_t> stopGeneration_{0};
     std::atomic<bool> workerAbandoned_{false};
+    // Set on the ShutdownForProcessExit wedge path; makes the destructor's
+    // leak-contract diagnostic accurate even though detach() clears
+    // joinable().
+    bool workerDetached_{false};
     std::atomic<std::uint64_t> captureFramesSeen_{0};
     std::atomic<std::uint64_t> framesWritten_{0};
     std::atomic<std::uint64_t> captureSlotOverwrite_{0};

@@ -896,18 +896,6 @@
         <translation>OpenZoom-Ordner auswählen</translation>
     </message>
     <message>
-        <source>Copy Existing OpenZoom Files</source>
-        <translation>Vorhandene OpenZoom-Dateien kopieren</translation>
-    </message>
-    <message>
-        <source>Copy now</source>
-        <translation>Jetzt kopieren</translation>
-    </message>
-    <message>
-        <source>Copying %1</source>
-        <translation>%1 wird kopiert</translation>
-    </message>
-    <message>
         <source>GPU camera capture is active with the safe copy fallback.</source>
         <translation>GPU-Kameraaufnahme ist mit sicherem Kopierersatz aktiv.</translation>
     </message>
@@ -938,10 +926,6 @@
     <message>
         <source>Opened your OpenZoom folder.</source>
         <translation>Ihr OpenZoom-Ordner wurde geöffnet.</translation>
-    </message>
-    <message>
-        <source>Preparing existing OpenZoom files...</source>
-        <translation>Vorhandene OpenZoom-Dateien werden vorbereitet...</translation>
     </message>
     <message>
         <source>Recording stopped because the microphone selection changed.</source>
@@ -1044,10 +1028,6 @@
     <message>
         <source>No camera modes were reported.</source>
         <translation>Es wurden keine Kameramodi gemeldet.</translation>
-    </message>
-    <message>
-        <source>One of the paired photos could not be saved.</source>
-        <translation>Eines der gekoppelten Fotos konnte nicht gespeichert werden.</translation>
     </message>
     <message>
         <source>Photo not saved: no processed frame was available.</source>
@@ -2482,6 +2462,78 @@ Verwenden Sie „ChatGPT verbinden“ in den KI-Einstellungen, um sich anzumelde
     <message>
         <source>Controls will hide automatically</source>
         <translation>Bedienelemente werden automatisch ausgeblendet</translation>
+    </message>
+    <message>
+        <source>OpenZoom Lecture Notes</source>
+        <translation>OpenZoom-Vorlesungsnotizen</translation>
+    </message>
+    <message>
+        <source>Started %1</source>
+        <translation>Beginn: %1</translation>
+    </message>
+    <message>
+        <source>Captured processed camera view</source>
+        <translation>Aufgenommene verarbeitete Kameraansicht</translation>
+    </message>
+    <message>
+        <source>Processed camera view</source>
+        <translation>Verarbeitete Kameraansicht</translation>
+    </message>
+    <message>
+        <source>Original camera view</source>
+        <translation>Original-Kameraansicht</translation>
+    </message>
+    <message>
+        <source>Open original video</source>
+        <translation>Originalvideo öffnen</translation>
+    </message>
+    <message>
+        <source>Open processed video</source>
+        <translation>Verarbeitetes Video öffnen</translation>
+    </message>
+    <message>
+        <source>Original camera video</source>
+        <translation>Original-Kameravideo</translation>
+    </message>
+    <message>
+        <source>Original camera photo</source>
+        <translation>Original-Kamerafoto</translation>
+    </message>
+    <message>
+        <source>Processed camera video</source>
+        <translation>Verarbeitetes Kameravideo</translation>
+    </message>
+    <message>
+        <source>Processed camera photo</source>
+        <translation>Verarbeitetes Kamerafoto</translation>
+    </message>
+    <message>
+        <source>Annotations cleared - snapshot</source>
+        <translation>Anmerkungen gelöscht - Schnappschuss</translation>
+    </message>
+    <message>
+        <source>Annotation session ended - snapshot</source>
+        <translation>Anmerkungssitzung beendet - Schnappschuss</translation>
+    </message>
+    <message>
+        <source>The conversation could not be exported to %1.</source>
+        <translation>Die Unterhaltung konnte nicht nach %1 exportiert werden.</translation>
+    </message>
+    <message>
+        <source>Conversation exported to %1.</source>
+        <translation>Unterhaltung nach %1 exportiert.</translation>
+    </message>
+    <message>
+        <source>The paired photos could not be saved, so no files were kept. Try again.</source>
+        <translation>Die gepaarten Fotos konnten nicht gespeichert werden; es wurden keine Dateien behalten. Versuchen Sie es erneut.</translation>
+    </message>
+    <message>
+        <source>The paired photos could not be saved. A partial file may remain: %1</source>
+        <translation>Die gepaarten Fotos konnten nicht gespeichert werden. Eine unvollständige Datei kann verbleiben: %1</translation>
+    </message>
+    <message>
+        <source>The saved OpenZoom folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
+        <translation>Der gespeicherte OpenZoom-Ordner kann nicht verwendet werden (%1). Dateien werden im Standard-Dokumente-Ordner gespeichert, bis ein neuer Ordner gewählt wird.</translation>
     </message>
 </context>
 </TS>

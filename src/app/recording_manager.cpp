@@ -210,7 +210,7 @@ void RecordingManager::RemoveStaleHeaderOnlyRecordings()
     }
 }
 
-RecordingManager::~RecordingManager()
+bool RecordingManager::ShutdownForProcessExit()
 {
     {
         std::lock_guard lock(queueMutex_);
@@ -221,14 +221,16 @@ RecordingManager::~RecordingManager()
     }
     queueCv_.notify_all();
     if (!worker_.joinable()) {
-        return;
+        return !workerDetached_;
     }
     // An unbounded join here reproduced the shipped hang at app close when
     // the worker was wedged inside a synchronous encoder/driver call. Wait a
-    // bounded time for the worker to acknowledge shutdown, then detach. A
-    // detached worker is blocked inside the driver and is terminated by
-    // process exit before it can touch freed members; the alternative — an
-    // unbounded join — is precisely the reported freeze.
+    // bounded time for the worker to acknowledge shutdown, then poison and
+    // detach it. Detaching alone is not enough: the worker still references
+    // this object, so on the false return the caller must leak the manager
+    // (unique_ptr::release) — an unwedged worker then finds valid memory,
+    // abandoned recorders, and cleared queues, and exits without touching
+    // Qt or COM.
     bool done = false;
     {
         std::unique_lock lock(queueMutex_);
@@ -239,13 +241,38 @@ RecordingManager::~RecordingManager()
     }
     if (done) {
         worker_.join();
-        return;
+        return true;
     }
     qCritical() << "Recording worker did not shut down within"
                 << kShutdownJoinMs << "ms; blocked at"
                 << DescribeWorkerStage()
-                << "- detaching it for process exit.";
+                << "- abandoning the recorders and detaching the worker; "
+                   "the manager must now be leaked for process exit.";
+    // Order matters: the abandoned flag silences every worker-side posting
+    // and segment path before the recorders' COM teardown is redirected to
+    // an intentional leak.
+    workerAbandoned_.store(true);
+    processedRecorder_.MarkAbandoned();
+    originalRecorder_.MarkAbandoned();
+    workerDetached_ = true;
     worker_.detach();
+    return false;
+}
+
+RecordingManager::~RecordingManager()
+{
+    ShutdownForProcessExit();
+    if (workerDetached_) {
+        // Reachable only when a caller destroys the manager directly instead
+        // of leaking it after a false ShutdownForProcessExit. The recorders
+        // are already abandoned (their COM state leaks safely), but the
+        // detached worker still references this object's queues; freeing
+        // them here is the residual hazard the leak contract exists to
+        // avoid.
+        qCritical() << "RecordingManager destroyed while its worker is "
+                       "wedged; leak the manager via ShutdownForProcessExit "
+                       "instead.";
+    }
 }
 
 bool RecordingManager::IsActive() const
@@ -795,6 +822,9 @@ QString RecordingManager::SegmentPath(bool processed) const
 
 bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
 {
+    if (workerAbandoned_.load()) {
+        return false;
+    }
     // Encoder creation (StartGpu/BeginWriting) is itself a set of unbounded
     // driver/MFT calls; track it so the heartbeat can catch an init wedge —
     // the first-frame scenario from the 2026-07-30 field failure.
@@ -1447,7 +1477,8 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
         stopRequested_ = false;
         stopMessage_.clear();
     }
-    if (sessionEndedCallback_) {
+    if (sessionEndedCallback_ && recordButton_ &&
+        !workerAbandoned_.load()) {
         const SessionEndedCallback callback = sessionEndedCallback_;
         QMetaObject::invokeMethod(
             recordButton_,
@@ -1566,7 +1597,10 @@ void RecordingManager::PostStatus(
     const QString& message,
     int durationMs) const
 {
-    if (!recordButton_ || !statusCallback_ || message.isEmpty()) {
+    if (workerAbandoned_.load() || !recordButton_ || !statusCallback_ ||
+        message.isEmpty()) {
+        // After abandonment the worker must stay silent: the manager may be
+        // leaked past UI teardown, so recordButton_ can dangle.
         return;
     }
     const QPointer<QPushButton> context(recordButton_);
@@ -1583,7 +1617,7 @@ void RecordingManager::PostStatus(
 
 void RecordingManager::PostButtonState(RecordingState state) const
 {
-    if (!recordButton_) {
+    if (workerAbandoned_.load() || !recordButton_) {
         return;
     }
     const QPointer<QPushButton> button(recordButton_);
@@ -1618,7 +1652,8 @@ void RecordingManager::PostSegmentSaved(
     const QString& originalPath,
     const QString& processedPath) const
 {
-    if (!recordButton_ || !segmentSavedCallback_ ||
+    if (workerAbandoned_.load() || !recordButton_ ||
+        !segmentSavedCallback_ ||
         originalPath.isEmpty() || processedPath.isEmpty()) {
         return;
     }

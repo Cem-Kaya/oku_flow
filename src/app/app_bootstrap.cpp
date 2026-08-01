@@ -3,12 +3,16 @@
 #include "app_internal.hpp"
 #include "debug_log.hpp"
 
+#include <QSaveFile>
 #include <QThreadPool>
 
 namespace openzoom {
 
 OpenZoomApp::OpenZoomApp(int& argc, char** argv)
     : QObject(nullptr) {
+    microphoneCallbackTarget_ =
+        std::make_shared<MicrophoneCallbackTarget>();
+    microphoneCallbackTarget_->app = this;
     debug_log::InstallIfConsoleAttached();
     qtApp_ = new QApplication(argc, argv);
     imageIoPool_ = std::make_unique<QThreadPool>();
@@ -48,9 +52,57 @@ bool OpenZoomApp::Initialize()
         languageManager_->SetLanguage(AppLanguage::English, false);
     }
     persistentSettings.language = languageManager_->languageCode();
+    // Revalidate the persisted root on every startup, not only when the user
+    // picks a folder: a saved directory can later be replaced with a
+    // junction into the install directory, lose its drive, or lose write
+    // access. On failure the session falls back to the default Documents
+    // folder and says so, keeping the saved setting for the user to fix.
+    QString userDataRootNotice;
+    const QString persistedUserDataRoot =
+        settingsController_->Settings().userDataRoot.trimmed();
+    if (!persistedUserDataRoot.isEmpty()) {
+        const UserDataValidationResult persistedRootCheck =
+            UserDataPaths::ValidateRoot(
+                persistedUserDataRoot,
+                QCoreApplication::applicationDirPath());
+        if (!persistedRootCheck.ok) {
+            userDataRootNotice =
+                QStringLiteral(
+                    "The saved OpenZoom folder cannot be used (%1). Files "
+                    "will go to the default Documents folder until a new "
+                    "folder is chosen.")
+                    .arg(persistedRootCheck.error);
+        }
+    }
     userDataPaths_ = std::make_unique<UserDataPaths>(
-        settingsController_->Settings().userDataRoot,
+        userDataRootNotice.isEmpty()
+            ? settingsController_->Settings().userDataRoot
+            : QString(),
         QCoreApplication::applicationDirPath());
+    const PhotoPairRecoveryResult photoRecovery =
+        userDataPaths_->RecoverInterruptedPhotoPairs(
+            // Current builds protect active writers with a per-pair lock, so
+            // unmarked leftovers from older builds are safe to reconcile on
+            // the first startup too.
+            QDateTime::currentDateTime().addSecs(1));
+    if (photoRecovery.completedPairs > 0 ||
+        photoRecovery.removedFiles > 0) {
+        qInfo() << "Recovered interrupted photo transactions:"
+                << photoRecovery.completedPairs << "pair(s) completed,"
+                << photoRecovery.removedFiles << "file(s) rolled back.";
+    }
+    for (const QString& path : photoRecovery.unresolvedPaths) {
+        qWarning() << "Could not reconcile interrupted photo transaction:"
+                   << path;
+    }
+    const QString photoRecoveryNotice =
+        photoRecovery.unresolvedPaths.isEmpty()
+            ? QString()
+            : TranslateUi(QStringLiteral(
+                  "The paired photos could not be saved. A partial file may "
+                  "remain: %1"))
+                  .arg(photoRecovery.unresolvedPaths.join(
+                      QStringLiteral(", ")));
     if (debug_log::IsEnabled()) {
         QString debugDirectoryError;
         const QString debugDirectory =
@@ -736,10 +788,24 @@ bool OpenZoomApp::Initialize()
             if (path.isEmpty()) {
                 return;
             }
-            QFile file(path);
-            if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                file.write(uiState_->assistantTranscript_->toPlainText().toUtf8());
+            QSaveFile file(path);
+            const QByteArray payload =
+                uiState_->assistantTranscript_->toPlainText().toUtf8();
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Text) ||
+                file.write(payload) != payload.size() ||
+                !file.commit()) {
+                QMessageBox::warning(
+                    mainWindow_.get(),
+                    QStringLiteral("Export Conversation"),
+                    QStringLiteral(
+                        "The conversation could not be exported to %1.")
+                        .arg(QDir::toNativeSeparators(path)));
+                return;
             }
+            ShowStatusMessage(
+                QStringLiteral("Conversation exported to %1.")
+                    .arg(QDir::toNativeSeparators(path)),
+                7000);
         });
     }
     if (uiState_->assistantDeleteButton_) {
@@ -959,19 +1025,30 @@ bool OpenZoomApp::Initialize()
     ApplyNativeWindowIcon(mainWindow_.get());
     pipelineOrchestrator_->Start();
 
-    QTimer::singleShot(0, this, [this]() {
-        const QString settingsNotice = settingsController_->TakeStartupNotice();
-        if (!settingsNotice.isEmpty()) {
-            ShowStatusMessage(settingsNotice, 12000);
-        }
-        OfferLegacyOutputMigration();
-        if (!settingsController_->MutableSettings().setupAssistantDeclined &&
-            SetupAssistantDialog::NeedsSetup(
-                settingsController_->MutableSettings().assistive.tesseractPath,
-                settingsController_->MutableSettings().assistive.codexExecutablePath)) {
-            OpenSetupAssistant();
-        }
-    });
+    QTimer::singleShot(
+        0, this,
+        [this, userDataRootNotice, photoRecoveryNotice]() {
+            const QString settingsNotice =
+                settingsController_->TakeStartupNotice();
+            if (!settingsNotice.isEmpty()) {
+                ShowStatusMessage(settingsNotice, 12000);
+            }
+            if (!userDataRootNotice.isEmpty()) {
+                ShowStatusMessage(userDataRootNotice, 15000);
+            }
+            if (!photoRecoveryNotice.isEmpty()) {
+                ShowStatusMessage(photoRecoveryNotice, 15000);
+            }
+            if (!settingsController_->MutableSettings()
+                     .setupAssistantDeclined &&
+                SetupAssistantDialog::NeedsSetup(
+                    settingsController_->MutableSettings()
+                        .assistive.tesseractPath,
+                    settingsController_->MutableSettings()
+                        .assistive.codexExecutablePath)) {
+                OpenSetupAssistant();
+            }
+        });
 
     int initialCameraIndex = 0;
     const int candidate = settingsController_->MutableSettings().cameraIndex;
@@ -997,10 +1074,45 @@ OpenZoomApp::~OpenZoomApp() {
         SavePersistentSettings();
     }
     StopMicrophoneCapture();
+    if (microphoneCallbackTarget_) {
+        std::lock_guard lock(microphoneCallbackTarget_->mutex);
+        microphoneCallbackTarget_->accepting = false;
+        ++microphoneCallbackTarget_->generation;
+        microphoneCallbackTarget_->app = nullptr;
+    }
+    // If a detached thread may still be inside Media Foundation, or poisoned
+    // recorder objects were intentionally leaked after a recovered worker,
+    // process-global MF/COM teardown must be skipped.
+    bool mediaFoundationTeardownUnsafe = audioCapture_.WasAbandoned();
+    if (recordingManager_) {
+        const bool managerSafeToDestroy =
+            recordingManager_->ShutdownForProcessExit();
+        // Abandonment is sticky even when the poisoned worker later recovers
+        // and joins. Its VideoRecorder COM references are intentionally
+        // leaked, so MFShutdown remains unsafe although manager destruction
+        // is now safe.
+        mediaFoundationTeardownUnsafe =
+            mediaFoundationTeardownUnsafe ||
+            recordingManager_->IsWorkerAbandoned();
+        if (!managerSafeToDestroy) {
+            // The worker is still wedged and detached. It references the
+            // manager's queues and recorders, so leak the complete manager.
+            (void)recordingManager_.release();
+        }
+    }
     recordingManager_.reset();
     if (imageIoPool_) {
         imageIoPool_->clear();
-        imageIoPool_->waitForDone();
+        // A photo write to a removable or network user-data folder must not
+        // hang app close forever. On timeout the pool (and its writer
+        // threads) is leaked for process exit; the in-flight tasks only
+        // touch their own captured copies and QPointer-guard the app.
+        if (!imageIoPool_->waitForDone(10000)) {
+            qCritical() << "Image writes did not finish within 10 s at "
+                           "shutdown; leaking the writer pool for process "
+                           "exit.";
+            (void)imageIoPool_.release();
+        }
     }
     if (pipelineOrchestrator_) {
         pipelineOrchestrator_->Stop();
@@ -1044,12 +1156,20 @@ OpenZoomApp::~OpenZoomApp() {
     presenter_.reset();
 
     if (mfInitialized_) {
-        MFShutdown();
+        if (mediaFoundationTeardownUnsafe) {
+            qCritical() << "Skipping MFShutdown: a Media Foundation worker "
+                           "was abandoned or its objects were intentionally "
+                           "leaked; process exit reclaims the runtime.";
+        } else {
+            MFShutdown();
+        }
         mfInitialized_ = false;
     }
 
     if (comInitialized_) {
-        CoUninitialize();
+        if (!mediaFoundationTeardownUnsafe) {
+            CoUninitialize();
+        }
         comInitialized_ = false;
     }
 

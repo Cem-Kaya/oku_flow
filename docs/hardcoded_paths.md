@@ -56,6 +56,8 @@ This document tracks machine-specific defaults, generated output locations, and 
   directory.
 - Snapshot output: paired
   `Photos\YYYY-MM-DD\IMG_*_original.jpg` and `IMG_*_processed.jpg`
+  (commit temps append `.writing`, and an active transaction uses
+  `IMG_*.pair.lock`; startup completes or rolls back abandoned pairs)
 - Recording output: paired
   `Recordings\YYYY-MM-DD\VID_*_original.mp4` and `VID_*_processed.mp4`
 - Lecture notes output: `Notes\NOTES_*.html`; captured-image URLs are stored
@@ -63,9 +65,8 @@ This document tracks machine-specific defaults, generated output locations, and 
 - Assistant export default: `Analysis\OpenZoom_Assistant_*.txt`
 - Console-attached diagnostic logs:
   `Debug\OpenZoom_<timestamp>_pid<process-id>.log`; the newest 20 are retained
-- Legacy `<install>\output\` files can be copied into the user root once.
-  Originals are retained and receive a best-effort `MIGRATED.txt` breadcrumb.
-  Release publishing never transfers, removes, or preserves user artifacts.
+- Legacy `<install>\output\` files are never migrated or touched. Release
+  publishing never transfers, removes, or preserves user artifacts.
 
 ## Runtime Defaults
 - Settings path: `%APPDATA%\OpenZoom\OpenZoom\settings.json`

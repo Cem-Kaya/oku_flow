@@ -55,11 +55,13 @@ that document is authoritative.
 | [`26-virtual-tripod-strength.md`](26-virtual-tripod-strength.md) | Virtual Tripod: weakness analysis + 2026-07-26 defect report | PARTIAL / DEFECTIVE |
 | [`27-advanced-panel-redesign.md`](27-advanced-panel-redesign.md) | Advanced inspector: scopes, sub-menus, real camera modes | **VERIFY — owner/hardware pass** |
 | [`28-dxva-zero-copy-capture.md`](28-dxva-zero-copy-capture.md) | DXVA + zero-copy capture (plan 20 P6, staged with owner gates) | **Stages 0-4 + long soak passed — camera churn remains** |
-| [`29-idea-inbox-2026-07-29.md`](29-idea-inbox-2026-07-29.md) | New idea seeds: product gaps (A-K), lecture-day journey (L-Q), dev/deploy/maintain (R-U) | **Audio seed A implemented; remaining seeds await selection** |
+| [`29-idea-inbox-2026-07-29.md`](29-idea-inbox-2026-07-29.md) | New idea seeds: product gaps (A-K), lecture-day journey (L-Q), dev/deploy/maintain (R-U) | **Audio A implemented; camera B selected/expanded; notes F promoted to 34** |
 | [`30-external-memory-capture-bridge.md`](30-external-memory-capture-bridge.md) | Gen-2 CUDA external-memory capture bridge: API names, as-built recipe, remaining validation | **IMPLEMENTED — R1 hardware validation + fence upgrade remain** |
 | [`31-lecture-transcript.md`](31-lecture-transcript.md) | Archived lecture-transcript proposal; microphone recording remains | **DROPPED — owner decision 2026-07-30** |
 | [`32-live-accessible-status.md`](32-live-accessible-status.md) | Dynamic status text reaches screen readers with truthful names, events, and severity policy | **VERIFY — owner NVDA/Narrator pass** |
 | [`33-multilingual-support.md`](33-multilingual-support.md) | Live-switchable English/Türkçe/Deutsch: UI, accessibility layer, AI prompts, TTS voice, flag picker | **IMPLEMENTED — owner language/a11y review remains** |
+| [`34-searchable-captured-notes.md`](34-searchable-captured-notes.md) | Local OCR associated with saved photos/annotations plus a semantic notes index | **READY — owner selected** |
+| [`35-pdf-image-source-mode.md`](35-pdf-image-source-mode.md) | Open saved images/PDF pages with the magnifier, assistive tools, and paired original/processed saves | **READY — owner selected** |
 | [`verified-non-issues.md`](verified-non-issues.md) | Refuted findings — do not "fix" these | Read before analyzing |
 | [`done/`](done/README.md) | Completed plans (01, 02, 09, 11, 12, 13) | Provenance only |
 

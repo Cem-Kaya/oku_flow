@@ -60,7 +60,6 @@
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPlainTextEdit>
-#include <QProgressDialog>
 #include <QProcess>
 #include <QSignalBlocker>
 #include <QTextBrowser>
@@ -94,6 +93,19 @@
 #include <wrl/client.h>
 
 namespace openzoom {
+
+// Independently owned cancellation/lifetime gate for microphone callbacks.
+// A detached AudioCapture thread may retain this block, but app shutdown
+// clears app under the same mutex used by callback delivery. Holding the
+// mutex across the short delivery makes destruction wait for an already
+// admitted callback, while generation prevents an old reader from entering a
+// newly started microphone session.
+struct MicrophoneCallbackTarget final {
+    std::mutex mutex;
+    OpenZoomApp* app{};
+    std::uint64_t generation{};
+    bool accepting{};
+};
 
 namespace {
 

@@ -3,8 +3,16 @@ param(
     [string]$BundlePath,
 
     [Parameter(Mandatory = $true)]
-    [string]$RepositoryPath
+    [string]$RepositoryPath,
+
+    # Actual Qt runtime version staged into the bundle (qmake -query
+    # QT_VERSION). Never hardcode: QT_PREFIX/Qt6_DIR overrides change it.
+    [string]$QtVersion = ''
 )
+
+$qtRuntimeVersion =
+    if ([string]::IsNullOrWhiteSpace($QtVersion)) { 'unknown' }
+    else { $QtVersion.Trim() }
 
 $ErrorActionPreference = 'Stop'
 $bundle = (Resolve-Path -LiteralPath $BundlePath).Path
@@ -89,7 +97,7 @@ $packages = @(
     [ordered]@{
         SPDXID = 'SPDXRef-Package-Qt'
         name = 'Qt 6 runtime'
-        versionInfo = '6.9.3'
+        versionInfo = $qtRuntimeVersion
         downloadLocation = 'https://www.qt.io/'
         filesAnalyzed = $false
         licenseConcluded = 'NOASSERTION'
