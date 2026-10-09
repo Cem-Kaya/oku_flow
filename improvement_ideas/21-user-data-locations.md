@@ -18,7 +18,7 @@ Every user artifact is written next to the executable:
 | Recordings (original + processed) | `<install>/output/recordings` | src/app/recording_manager.cpp:292 |
 | Lecture notes HTML + images | `<install>/output/notes` | src/app/assistive_feature_manager.cpp:146 |
 | Settings | `%APPDATA%/OpenZoom/OpenZoom/settings.json` (correct already) | src/app/settings_store.cpp:610 |
-| Downloaded tools (Tesseract, NVIDIA runtime) | `GenericDataLocation/OpenZoom/tools` (correct already) | src/common/assistive_runtime.cpp:597 |
+| External tools (Codex CLI, NVIDIA runtime) | Vendor-managed installation paths | docs/hardcoded_paths.md |
 
 Three consequences, in order of how much they hurt:
 

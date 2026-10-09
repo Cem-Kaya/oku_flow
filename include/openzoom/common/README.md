@@ -4,7 +4,7 @@ Public common-layer interfaces live here.
 
 Currently exported:
 - `assistive_runtime.hpp`: shared provider configuration, including response
-  instructions, scene analysis, OCR, speech output, and HTML lecture notes
+  instructions, scene analysis, vision text reading, speech output, and HTML lecture notes
 - `codex_app_server_client.hpp`: native app-server transport with configurable
   model, full model/reasoning catalog discovery, visible built-in prompt, and
   guarded response preferences

@@ -2,14 +2,18 @@
 
 #ifdef _WIN32
 
+#include "openzoom/common/yuv_color.hpp"
+
 #include <wrl/client.h>
 #include <array>
 #include <d3d12.h>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
+#include "openzoom/common/spatial_cache_geometry.hpp"
 
 #ifndef OPENZOOM_HAS_CUDA_EXT_MEMORY
 #  if defined(__has_include)
@@ -102,7 +106,9 @@ enum class DisplayColorTransform : int {
 struct ProcessingSettings {
     bool enableBlackWhite{false};
     float blackWhiteThreshold{0.5f};
-    bool enableZoom{false};
+    bool enableZoom{false};             // Apply legacy image zoom in CUDA.
+    // Viewing magnification also drives stabilization and the SuperRes ROI
+    // when presentation owns zoom and enableZoom is false.
     float zoomAmount{1.0f};
     float zoomCenterX{0.5f};
     float zoomCenterY{0.5f};
@@ -113,6 +119,9 @@ struct ProcessingSettings {
     bool enableSpatialSharpen{false};
     SpatialUpscaler spatialUpscaler{SpatialUpscaler::kNis};
     float spatialSharpness{0.2f};
+    ViewTransform spatialViewTransform{};
+    unsigned int spatialViewportWidth{};
+    unsigned int spatialViewportHeight{};
     CudaBufferFormat stagingFormat{CudaBufferFormat::kRgba8};
     bool enableTemporalSmoothing{false};
     float temporalSmoothingAlpha{0.25f};
@@ -151,6 +160,11 @@ struct ProcessingSettings {
     bool enableMlSuperRes{false};
     float mlSuperResStrength{0.65f};
     bool mlSuperResUltra1440p{false};
+
+    float EffectiveViewingMagnification() const {
+        return std::isfinite(zoomAmount) && zoomAmount > 1.0f
+                   ? zoomAmount : 1.0f;
+    }
 };
 
 // Input frame description.
@@ -168,6 +182,7 @@ struct ProcessingInput {
     unsigned int width{0};
     unsigned int height{0};
     int inputFormat{0};                   // 0=BGRA8 (existing), 1=NV12, 2=YUY2
+    YuvColorInfo yuvColor{};              // Used only for raw YUV conversion.
     const void* hostPlane2{nullptr};      // NV12 UV plane (nullptr otherwise)
     unsigned int hostPlane2StrideBytes{0};
     int rotationQuarterTurns{0};          // 0..3 clockwise, applied on GPU after conversion.
@@ -176,6 +191,9 @@ struct ProcessingInput {
     // path. When present, hostPixels/strides/planes are ignored and CUDA maps
     // this D3D11 resource directly before running the existing stages.
     ID3D11Texture2D* d3d11Texture{nullptr};
+    // Prevents capture from overwriting the converted texture until CUDA
+    // observes copy completion; also retains its capture session backing.
+    std::shared_ptr<void> d3d11TextureLease;
     unsigned int d3d11Subresource{0};
     // Publish the converted, post-rotation frame to the optional original
     // recording surface before stabilization or any visual effects.
@@ -197,6 +215,7 @@ public:
     ~CudaInteropSurface();
 
     bool IsValid() const { return valid_; }
+    bool IsFaulted() const { return streamFaulted_; }
     bool HasExternalSemaphore() const { return externalSemaphore_ != nullptr; }
 
     void RunGradientDemoKernel(unsigned int width, unsigned int height, float timeSeconds);
@@ -227,15 +246,25 @@ public:
     unsigned int SuperResSourceWidth() const { return superResSourceWidth_; }
     unsigned int SuperResSourceHeight() const { return superResSourceHeight_; }
     float SuperResFactor() const { return superResFactorValue_; }
+    // Shared presentation cache: valid for either Maxine or spatial upscale.
+    // outputWidth/Height can occupy only the allocation's top-left rectangle.
     SuperResRoiMetadata SuperResRoi() const { return superResRoi_; }
     bool IsSuperResPerformanceLimited() const { return superResAutoDisabled_; }
     float SuperResAverageMs() const { return superResLastAverageMs_; }
     void SetSuperResPerformanceOverride(bool enabled);
     void ResetSuperRes();
-    // Releases the per-camera D3D interop state. atProcessExit remains part of
-    // the contract for the isolated legacy-driver fallback, but production
-    // capture uses D3D12 external memory and tears down normally.
+    // Releases per-camera imports only after a nonblocking copy-completion
+    // probe. Pending/failed copies retain imports and their producer lease.
+    // atProcessExit retains the isolated legacy-driver registration fallback.
     void ResetCaptureInterop(bool atProcessExit = false);
+    // Producer shutdown failed: retain the entire import and producer lease
+    // until process exit without calling either driver or allocating storage.
+    void AbandonCaptureInterop() noexcept;
+    // Nonblocking source-copy poll. False means keep the producer lease and
+    // retry later; !IsValid() distinguishes terminal failure from ordinary busy.
+    bool PollCaptureCopy();
+    // Bounded full-stream drain. False forbids destroying/reusing this surface.
+    bool WaitForIdle() noexcept;
     const std::string& StabilizerStatus() const { return stabilizerStatus_; }
     float LastStabilizerMs() const { return lastStabilizerMs_; }
 
@@ -292,6 +321,11 @@ private:
                              unsigned int height,
                              const ProcessingSettings& settings);
     void ConsumeProcessTiming();
+    void UpdateSpatialCache(const uchar4* source, size_t sourcePitch,
+                            uchar4* destination, size_t destinationPitch,
+                            unsigned int width, unsigned int height,
+                            const SpatialCacheGeometry& geometry,
+                            const ProcessingSettings& settings);
     bool EnsureGaussianKernel(int radius, float sigma);
     bool EnsureDisplayColorLut(const std::uint32_t* lut, std::uint64_t generation);
     void RunKeystoneStage(uchar4*& current, uchar4*& alternate,
@@ -300,7 +334,8 @@ private:
     void RememberKeystoneCorrection();
     void RestoreKeystoneCorrection();
     void ResetKeystoneCornersToIdentity();
-    void SynchronizeStream() noexcept;
+    bool SynchronizeStream() noexcept;
+    void QuarantineGpuResources() noexcept;
     bool UploadD3D11Frame(const ProcessingInput& input,
                           uchar4* destination,
                           size_t destinationPitch);
@@ -308,6 +343,11 @@ private:
     struct D3D11InteropState;
     std::unique_ptr<D3D11InteropState> d3d11Interop_;
     Microsoft::WRL::ComPtr<ID3D12Device> d3d12Device_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> retainedMainTexture_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> retainedSuperResTexture_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> retainedOriginalTexture_;
+    Microsoft::WRL::ComPtr<ID3D12Fence> retainedSharedFence_;
+    bool streamFaulted_{};
 
     cudaExternalMemory_t externalMemory_{};
     cudaMipmappedArray_t mipArray_{};
@@ -555,6 +595,7 @@ public:
     ~CudaInteropSurface() = default;
 
     bool IsValid() const { return false; }
+    bool IsFaulted() const { return false; }
     bool HasExternalSemaphore() const { return false; }
 
     void RunGradientDemoKernel(unsigned int /*width*/, unsigned int /*height*/, float /*timeSeconds*/) {}
@@ -586,6 +627,9 @@ public:
     void SetSuperResPerformanceOverride(bool /*enabled*/) {}
     void ResetSuperRes() {}
     void ResetCaptureInterop(bool /*atProcessExit*/ = false) {}
+    void AbandonCaptureInterop() noexcept {}
+    bool PollCaptureCopy() { return true; }
+    bool WaitForIdle() noexcept { return true; }
     const std::string& StabilizerStatus() const { static std::string dummy; return dummy; }
     float LastStabilizerMs() const { return -1.0f; }
     float LastGpuFrameMs() const { return -1.0f; }

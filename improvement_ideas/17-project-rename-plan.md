@@ -107,12 +107,9 @@ no user ever starts the renamed app without their settings following them.
    eventual cleanup in [`00-status-and-priority.md`](00-status-and-priority.md).
    Add a `migratedFrom` field to the JSON so
    support can tell.
-2. **Tool directory migration.** The Setup Assistant installs Tesseract
-   and the NVIDIA runtime under `GenericDataLocation/OpenZoom/tools/`.
-   Same copy-if-missing strategy to `<Name>/tools/`, or simpler: keep
-   probing both roots (new first) in `assistive_runtime.cpp` and only
-   install new downloads to the new root. Choose the simpler probe-both —
-   these are multi-hundred-MB payloads; copying them is hostile.
+2. **External tool discovery.** Keep probing the user-installed Codex CLI
+   and NVIDIA runtime locations when the application is renamed; do not copy
+   vendor installations into the application's new data directory.
 3. **Windows identity.** AppUserModelID, `assets/openzoom.rc` version
    strings (ProductName, FileDescription, InternalName, OriginalFilename),
    `.ico`/`.qrc` file names may stay physically the same in this phase —
@@ -135,7 +132,7 @@ no user ever starts the renamed app without their settings following them.
    docs/hardcoded_paths.md updated with the new persistent paths.
 
 Acceptance: fresh machine → old-version install → settings created → new
-version first run → all presets/custom schemes/AI keys present; Tesseract
+version first run → all presets/custom schemes/AI keys present; Codex CLI
 found without re-download; screen reader announces the new name; taskbar
 pin of the new exe survives relaunch.
 

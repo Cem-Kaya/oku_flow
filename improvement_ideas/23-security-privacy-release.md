@@ -117,12 +117,12 @@ proves a forbidden command cannot start.
 
 ## F. Temporary camera frames
 
-OCR and Codex temp images use `setAutoRemove(false)`
-(`assistive_runtime.cpp:672-688, 863-875`); normal paths delete them, crashes do
-not — and the owner's `%TEMP%` already contains a pile of
-`openzoom_ocr_*.png` files, each a picture of a lecture. Sweep stale
-`openzoom_ocr_*` / `openzoom_codex_*` at startup, delete on cancellation and
-shutdown, and prefer memory-backed transport where the consumer allows it.
+Codex camera attachments use temporary `openzoom_codex_*.jpg` files.
+The runtime now includes process ownership in their names, sweeps stale files
+without touching another live process's attachments, and deletes its own files
+on cancellation and shutdown. The retired local recognition pipeline no longer
+creates temporary frames. Prefer memory-backed transport where the consumer
+allows it.
 
 ## G. Release integrity
 
@@ -132,7 +132,7 @@ metadata. This matters more than usual because the app launches configured
 executables and can download external runtimes through Setup Assistant.
 
 Minimum before public distribution: signed binaries and installer, published
-SHA-256 checksums, an SBOM covering Qt/CUDA/Tesseract/Maxine/Codex CLI, and
+SHA-256 checksums, an SBOM covering Qt/CUDA/Maxine/Codex CLI, and
 signature verification on anything Setup Assistant downloads (the pinned
 SHA-256 bootstrap is a good precedent to extend). Pair with plan 21 — an
 installer cannot ship while user data is written under the install directory —

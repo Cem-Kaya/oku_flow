@@ -27,10 +27,12 @@ class AssistiveOverlay;
 class AssistiveFeatureManager final {
 public:
     using QuestionHandler = std::function<void(const QString&)>;
+    using NewChatHandler = std::function<void()>;
 
     AssistiveFeatureManager(QWidget& renderWidget,
                             QObject& runtimeParent,
                             QuestionHandler questionHandler,
+                            NewChatHandler newChatHandler,
                             const UserDataPaths& userDataPaths);
     ~AssistiveFeatureManager();
 
@@ -42,7 +44,7 @@ public:
     AssistiveOverlay& Overlay();
     const AssistiveOverlay& Overlay() const;
 
-    void SetModes(bool ocrEnabled, bool vlmEnabled, bool overlayEnabled);
+    void SetModes(bool vlmEnabled, bool overlayEnabled);
     void ApplySettings(const settings::AssistiveSettings& settings);
 
     bool WantsPeriodicReadback(bool debugViewEnabled) const;

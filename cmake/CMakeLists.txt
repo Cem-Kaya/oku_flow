@@ -46,6 +46,7 @@ target_sources(open_zoom PRIVATE
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/protected_secret_store.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/recording_manager.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/settings_controller.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/app/transcription_session_controller.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/settings_store.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/suspend_guard.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/app/ui_state_manager.hpp
@@ -62,6 +63,11 @@ target_sources(open_zoom PRIVATE
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/view_transform.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/assistive_runtime.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_app_server_client.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_json_rpc_process.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_realtime_transcription_client.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/common/realtime_native_rtc_carrier.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/common/realtime_transcription_interfaces.hpp
+    ${PROJECT_SOURCE_DIR}/include/openzoom/common/transcript.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/d3d12/presenter.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/main_window.hpp
     ${PROJECT_SOURCE_DIR}/include/openzoom/ui/assistive_overlay.hpp
@@ -103,6 +109,12 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/assets/openzoom.rc
         ${PROJECT_SOURCE_DIR}/assets/openzoom_resources.qrc
     )
+
+    # Live transcription is a shipping capability, not an optional build
+    # variant. Keeping one Windows dependency graph avoids an untested moc/
+    # linker split and ensures every release receives the same hardening.
+    include(NativeRtc.cmake)
+    target_link_libraries(open_zoom PRIVATE OpenZoom::NativeRtc)
 
     find_package(Qt6 QUIET COMPONENTS Widgets Network LinguistTools)
     if (NOT Qt6_FOUND)

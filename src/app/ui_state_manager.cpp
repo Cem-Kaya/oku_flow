@@ -57,6 +57,12 @@ UIStateManager::UIStateManager(MainWindow& window, OpenZoomApp& app)
     OPENZOOM_BIND_WIDGET(cameraAccelerationStatusLabel_, cameraAccelerationStatusLabel);
     OPENZOOM_BIND_WIDGET(testCameraAccelerationButton_, testCameraAccelerationButton);
     OPENZOOM_BIND_WIDGET(recordingCanvasCombo_, recordingCanvasCombo);
+    OPENZOOM_BIND_WIDGET(transcribeMicrophoneCheckbox_, transcribeMicrophoneCheckbox);
+    OPENZOOM_BIND_WIDGET(transcriptToNotesCheckbox_, transcriptToNotesCheckbox);
+    OPENZOOM_BIND_WIDGET(transcriptionStatusLabel_, transcriptionStatusLabel);
+    OPENZOOM_BIND_WIDGET(transcriptionQuotaLabel_, transcriptionQuotaLabel);
+    OPENZOOM_BIND_WIDGET(transcriptPartialLabel_, transcriptPartialLabel);
+    OPENZOOM_BIND_WIDGET(transcriptFinalsView_, transcriptFinalsView);
     OPENZOOM_BIND_WIDGET(joystickCheckbox_, joystickCheckbox);
     OPENZOOM_BIND_WIDGET(zoomWheelAccelerationCheckbox_, zoomWheelAccelerationCheckbox);
     OPENZOOM_BIND_WIDGET(collapseButton_, controlsToggleButton);
@@ -69,7 +75,6 @@ UIStateManager::UIStateManager(MainWindow& window, OpenZoomApp& app)
     OPENZOOM_BIND_WIDGET(temporalSmoothCheckbox_, temporalSmoothCheckbox);
     OPENZOOM_BIND_WIDGET(temporalSmoothSlider_, temporalSmoothSlider);
     OPENZOOM_BIND_WIDGET(temporalSmoothValueLabel_, temporalSmoothValueLabel);
-    OPENZOOM_BIND_WIDGET(ocrAssistCheckbox_, ocrAssistCheckbox);
     OPENZOOM_BIND_WIDGET(vlmAssistCheckbox_, vlmAssistCheckbox);
     OPENZOOM_BIND_WIDGET(assistiveOverlayCheckbox_, assistiveOverlayCheckbox);
     OPENZOOM_BIND_WIDGET(spatialSharpenCheckbox_, spatialSharpenCheckbox);
@@ -165,7 +170,6 @@ settings::AdvancedConfig UIStateManager::ReadConfigFromUI() const
     config.spatialSharpness = app_.spatialSharpness_;
     config.debugView = app_.debugViewEnabled_;
     config.focusMarker = app_.focusMarkerEnabled_;
-    config.ocrAssistEnabled = app_.ocrAssistEnabled_;
     config.vlmAssistEnabled = app_.vlmAssistEnabled_;
     config.assistiveOverlayEnabled = app_.assistiveOverlayEnabled_;
     config.stabilizationEnabled = app_.stabilizationEnabled_;
@@ -381,11 +385,6 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
     app_.OnContrastChanged(static_cast<int>(std::round(app_.contrast_ * 100.0f)));
     app_.OnBrightnessChanged(static_cast<int>(std::round(app_.brightness_ * 100.0f)));
 
-    if (ocrAssistCheckbox_) {
-        QSignalBlocker block(ocrAssistCheckbox_);
-        ocrAssistCheckbox_->setChecked(config.ocrAssistEnabled);
-    }
-    app_.ocrAssistEnabled_ = config.ocrAssistEnabled;
     if (vlmAssistCheckbox_) {
         QSignalBlocker block(vlmAssistCheckbox_);
         vlmAssistCheckbox_->setChecked(config.vlmAssistEnabled);
@@ -396,8 +395,7 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
         assistiveOverlayCheckbox_->setChecked(config.assistiveOverlayEnabled);
     }
     app_.assistiveOverlayEnabled_ = config.assistiveOverlayEnabled;
-    app_.assistiveManager_->SetModes(app_.ocrAssistEnabled_,
-                                     app_.vlmAssistEnabled_,
+    app_.assistiveManager_->SetModes(app_.vlmAssistEnabled_,
                                      app_.assistiveOverlayEnabled_);
 
     if (spatialSharpenCheckbox_) {

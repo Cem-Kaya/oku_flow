@@ -356,10 +356,6 @@
         <translation>Parlaklık</translation>
     </message>
     <message>
-        <source>OCR Assist</source>
-        <translation>OCR Yardımı</translation>
-    </message>
-    <message>
         <source>Scene Explain</source>
         <translation>Sahneyi Açıkla</translation>
     </message>
@@ -672,18 +668,6 @@
         <translation>Sahne istemi:</translation>
     </message>
     <message>
-        <source>Text recognition (OCR)</source>
-        <translation>Metin tanıma (OCR)</translation>
-    </message>
-    <message>
-        <source>Tesseract path:</source>
-        <translation>Tesseract yolu:</translation>
-    </message>
-    <message>
-        <source>OCR language:</source>
-        <translation>OCR dili:</translation>
-    </message>
-    <message>
         <source>Read aloud</source>
         <translation>Sesli okuma</translation>
     </message>
@@ -702,6 +686,22 @@
     <message>
         <source>Lecture notes</source>
         <translation>Ders notları</translation>
+    </message>
+    <message>
+        <source>Camera did not stop in time. Restart OpenZoom before changing cameras.</source>
+        <translation>Kamera zamanında durmadı. Kamera değiştirmeden önce OpenZoom'u yeniden başlatın.</translation>
+    </message>
+    <message>
+        <source>GPU stopped responding. Restart OpenZoom to resume video.</source>
+        <translation>GPU yanıt vermeyi durdurdu. Videoya devam etmek için OpenZoom'u yeniden başlatın.</translation>
+    </message>
+    <message>
+        <source>Lecture notes could not be saved.</source>
+        <translation>Ders notları kaydedilemedi.</translation>
+    </message>
+    <message>
+        <source>Saving lecture notes...</source>
+        <translation>Ders notları kaydediliyor...</translation>
     </message>
     <message>
         <source>Write lecture notes file</source>
@@ -828,8 +828,8 @@
         <translation>Konuşma yükleniyor...</translation>
     </message>
     <message>
-        <source>No lecture notes yet — notes appear once OCR or Explain produces text.</source>
-        <translation>Henüz ders notu yok — OCR veya Açıkla metin ürettiğinde notlar görünür.</translation>
+        <source>No lecture notes yet — use Read, Explain, or Assistant to add text.</source>
+        <translation>Henüz ders notu yok — metin eklemek için Oku, Açıkla veya Asistanı kullanın.</translation>
     </message>
     <message>
         <source>OpenZoom Assistant</source>
@@ -1194,10 +1194,6 @@
         <translation>Geçerli kamera görünümü hazırlanamadı.</translation>
     </message>
     <message>
-        <source>Failed to create temporary image for OCR.</source>
-        <translation>OCR için geçici görüntü oluşturulamadı.</translation>
-    </message>
-    <message>
         <source>Failed to encode frame for VLM request.</source>
         <translation>VLM isteği için kare kodlanamadı.</translation>
     </message>
@@ -1206,28 +1202,8 @@
         <translation>Geçerli görünüm Codex için hazırlanamadı.</translation>
     </message>
     <message>
-        <source>Failed to save OCR input image.</source>
-        <translation>OCR giriş görüntüsü kaydedilemedi.</translation>
-    </message>
-    <message>
         <source>No camera frame is available to attach.</source>
         <translation>Eklenecek kamera karesi yok.</translation>
-    </message>
-    <message>
-        <source>OCR found no readable text.</source>
-        <translation>OCR okunabilir metin bulamadı.</translation>
-    </message>
-    <message>
-        <source>OCR image preparation is busy. Try again in a moment.</source>
-        <translation>OCR görüntü hazırlama meşgul. Biraz sonra tekrar deneyin.</translation>
-    </message>
-    <message>
-        <source>OCR is busy with a previous capture. Try again in a moment.</source>
-        <translation>OCR önceki yakalamayla meşgul. Biraz sonra tekrar deneyin.</translation>
-    </message>
-    <message>
-        <source>OCR timed out.</source>
-        <translation>OCR zaman aşımına uğradı.</translation>
     </message>
     <message>
         <source>Persistent Assistant conversations require the Codex subscription provider.</source>
@@ -1238,20 +1214,12 @@
         <translation>Fotoğraf çekildi</translation>
     </message>
     <message>
-        <source>Preparing OCR...</source>
-        <translation>OCR hazırlanıyor...</translation>
-    </message>
-    <message>
         <source>Preparing the current view...</source>
         <translation>Geçerli görünüm hazırlanıyor...</translation>
     </message>
     <message>
         <source>Querying VLM...</source>
         <translation>VLM sorgulanıyor...</translation>
-    </message>
-    <message>
-        <source>Running OCR...</source>
-        <translation>OCR çalıştırılıyor...</translation>
     </message>
     <message>
         <source>Scene explanation</source>
@@ -1306,18 +1274,6 @@
         <translation>Video kaydedildi</translation>
     </message>
     <message>
-        <source>tesseract OCR process failed.</source>
-        <translation>tesseract OCR işlemi başarısız oldu.</translation>
-    </message>
-    <message>
-        <source>tesseract crashed during OCR.</source>
-        <translation>tesseract OCR sırasında çöktü.</translation>
-    </message>
-    <message>
-        <source>tesseract exited with code %1</source>
-        <translation>tesseract %1 koduyla çıktı</translation>
-    </message>
-    <message>
         <source>AI Provider</source>
         <translation>Yapay Zekâ Sağlayıcısı</translation>
     </message>
@@ -1360,14 +1316,6 @@
     <message>
         <source>Scene Prompt</source>
         <translation>Sahne İstemi</translation>
-    </message>
-    <message>
-        <source>Tesseract Path</source>
-        <translation>Tesseract Yolu</translation>
-    </message>
-    <message>
-        <source>OCR Language</source>
-        <translation>OCR Dili</translation>
     </message>
     <message>
         <source>Read Aloud Voice</source>
@@ -1646,8 +1594,8 @@
         <translation>Yardımcı sonucu kapat</translation>
     </message>
     <message>
-        <source>Hide the current OCR or scene explanation result</source>
-        <translation>Geçerli OCR veya sahne açıklaması sonucunu gizle</translation>
+        <source>Hide the current assistant result</source>
+        <translation>Geçerli asistan sonucunu gizle</translation>
     </message>
     <message>
         <source>Move assistive panel</source>
@@ -1666,12 +1614,12 @@
         <translation>Soruyu geçerli kamera görünümüyle OpenZoom Asistanına gönder</translation>
     </message>
     <message>
-        <source>Speak the current OCR or scene explanation result</source>
-        <translation>Geçerli OCR veya sahne açıklaması sonucunu seslendir</translation>
+        <source>Speak the current assistant result</source>
+        <translation>Geçerli asistan sonucunu seslendir</translation>
     </message>
     <message>
-        <source>Streaming OCR and scene explanation result. Use arrow keys to read the text.</source>
-        <translation>OCR ve sahne açıklaması sonucu akış halinde. Metni okumak için ok tuşlarını kullanın.</translation>
+        <source>Streaming assistant result. Use arrow keys to read the text.</source>
+        <translation>Akış halinde gelen asistan sonucu. Metni okumak için ok tuşlarını kullanın.</translation>
     </message>
     <message>
         <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1818,8 +1766,8 @@
         <translation>Codex kullanımı</translation>
     </message>
     <message>
-        <source>Configure the AI vision server, OCR engine, and speech output</source>
-        <translation>Yapay zekâ görüntü sunucusunu, OCR motorunu ve ses çıkışını yapılandır</translation>
+        <source>Configure the vision assistant and speech output</source>
+        <translation>Görsel asistanı ve sesli okumayı yapılandır</translation>
     </message>
     <message>
         <source>Continue</source>
@@ -1894,8 +1842,8 @@
         <translation>NVIDIA Süper Çözünürlük performans sınırını yoksay</translation>
     </message>
     <message>
-        <source>Install or remove optional OCR and NVIDIA Video Effects tools</source>
-        <translation>İsteğe bağlı OCR ve NVIDIA Video Effects araçlarını yükle veya kaldır</translation>
+        <source>Set up Codex CLI and NVIDIA Video Effects</source>
+        <translation>Codex CLI ve NVIDIA Video Effects kurulumunu yap</translation>
     </message>
     <message>
         <source>Keep It Steady</source>
@@ -2000,10 +1948,6 @@
     <message>
         <source>Quick mode changed to %1</source>
         <translation>Hızlı mod %1 olarak değiştirildi</translation>
-    </message>
-    <message>
-        <source>Read Text Aloud</source>
-        <translation>Metni Sesli Oku</translation>
     </message>
     <message>
         <source>Read a Page</source>
@@ -2168,10 +2112,6 @@ Kaldırma Windows tarafından yönetilir.</translation>
         <translation>Windows Uygulamalarını Aç</translation>
     </message>
     <message>
-        <source>Open Windows Installed Apps for Tesseract OCR</source>
-        <translation>Tesseract OCR için Windows Yüklü Uygulamaları aç</translation>
-    </message>
-    <message>
         <source>Open the NVIDIA runtime uninstaller?</source>
         <translation>NVIDIA çalışma zamanı kaldırıcı açılsın mı?</translation>
     </message>
@@ -2188,28 +2128,8 @@ Kaldırma Windows tarafından yönetilir.</translation>
         <translation>OpenZoom Kurulum Asistanı</translation>
     </message>
     <message>
-        <source>Reads printed text locally. Installs only for your Windows account.</source>
-        <translation>Basılı metni yerel olarak okur. Yalnızca Windows hesabınız için yüklenir.</translation>
-    </message>
-    <message>
         <source>Remove NVIDIA Video Effects</source>
         <translation>NVIDIA Video Effects&apos;i Kaldır</translation>
-    </message>
-    <message>
-        <source>Remove OpenZoom&apos;s per-user Tesseract installation</source>
-        <translation>OpenZoom&apos;un kullanıcıya özel Tesseract yüklemesini kaldır</translation>
-    </message>
-    <message>
-        <source>Remove OpenZoom&apos;s per-user Tesseract installation?</source>
-        <translation>OpenZoom&apos;un kullanıcıya özel Tesseract yüklemesi kaldırılsın mı?</translation>
-    </message>
-    <message>
-        <source>Remove OpenZoom-managed Tesseract OCR</source>
-        <translation>OpenZoom tarafından yönetilen Tesseract OCR&apos;ı kaldır</translation>
-    </message>
-    <message>
-        <source>Remove Tesseract OCR</source>
-        <translation>Tesseract OCR&apos;ı Kaldır</translation>
     </message>
     <message>
         <source>Retrying from the alternate vendor host...</source>
@@ -2234,14 +2154,6 @@ Kaldırma Windows tarafından yönetilir.</translation>
     <message>
         <source>Setup status</source>
         <translation>Kurulum durumu</translation>
-    </message>
-    <message>
-        <source>Tesseract OCR</source>
-        <translation>Tesseract OCR</translation>
-    </message>
-    <message>
-        <source>Tesseract OCR is not installed</source>
-        <translation>Tesseract OCR yüklü değil</translation>
     </message>
     <message>
         <source>The Setup Assistant remains available from Advanced settings</source>
@@ -2312,28 +2224,12 @@ Kaldırma Windows tarafından yönetilir.</translation>
         <translation>Yardımcı özellikler: kapalı</translation>
     </message>
     <message>
-        <source>Assistive hooks: OCR</source>
-        <translation>Yardımcı özellikler: OCR</translation>
-    </message>
-    <message>
         <source>Assistive hooks: Scene Explain</source>
         <translation>Yardımcı özellikler: Sahne Açıklaması</translation>
     </message>
     <message>
-        <source>Assistive hooks: OCR + Scene Explain</source>
-        <translation>Yardımcı özellikler: OCR + Sahne Açıklaması</translation>
-    </message>
-    <message>
-        <source>Assistive hooks: OCR with overlay</source>
-        <translation>Yardımcı özellikler: katmanlı OCR</translation>
-    </message>
-    <message>
         <source>Assistive hooks: Scene Explain with overlay</source>
         <translation>Yardımcı özellikler: katmanlı Sahne Açıklaması</translation>
-    </message>
-    <message>
-        <source>Assistive hooks: OCR + Scene Explain with overlay</source>
-        <translation>Yardımcı özellikler: katmanlı OCR + Sahne Açıklaması</translation>
     </message>
     <message>
         <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
@@ -2534,6 +2430,250 @@ Oturum açmak için AI Ayarları&apos;nda ChatGPT&apos;ye Bağlan seçeneğini k
     <message>
         <source>The saved OpenZoom folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
         <translation>Kaydedilmiş OpenZoom klasörü kullanılamıyor (%1). Yeni bir klasör seçilene kadar dosyalar varsayılan Belgeler klasörüne gidecek.</translation>
+    </message>
+    <message>
+        <source>Preparing live transcription...</source>
+        <translation>Canlı yazıya dökme hazırlanıyor...</translation>
+    </message>
+    <message>
+        <source>Listening and transcribing...</source>
+        <translation>Dinleniyor ve yazıya dökülüyor...</translation>
+    </message>
+    <message>
+        <source>Finishing transcript...</source>
+        <translation>Transkript tamamlanıyor...</translation>
+    </message>
+    <message>
+        <source>Transcription finished.</source>
+        <translation>Yazıya dökme tamamlandı.</translation>
+    </message>
+    <message>
+        <source>Codex did not become ready in time.</source>
+        <translation>Codex zamanında hazır olmadı.</translation>
+    </message>
+    <message>
+        <source>Live transcription did not start in time.</source>
+        <translation>Canlı yazıya dökme zamanında başlamadı.</translation>
+    </message>
+    <message>
+        <source>This Codex version does not support live transcription.</source>
+        <translation>Bu Codex sürümü canlı yazıya dökmeyi desteklemiyor.</translation>
+    </message>
+    <message>
+        <source>Live transcription requires Codex signed in with ChatGPT.</source>
+        <translation>Canlı yazıya dökme için Codex'te ChatGPT ile oturum açılmış olmalıdır.</translation>
+    </message>
+    <message>
+        <source>Codex could not start a transcription session.</source>
+        <translation>Codex bir yazıya dökme oturumu başlatamadı.</translation>
+    </message>
+    <message>
+        <source>Codex CLI not found.</source>
+        <translation>Codex komut satırı aracı bulunamadı.</translation>
+    </message>
+    <message>
+        <source>Codex protocol failure.</source>
+        <translation>Codex iletişim kuralı hatası.</translation>
+    </message>
+    <message>
+        <source>Codex stopped unexpectedly.</source>
+        <translation>Codex beklenmedik şekilde durdu.</translation>
+    </message>
+    <message>
+        <source>Live transcription failed.</source>
+        <translation>Canlı yazıya dökme başarısız oldu.</translation>
+    </message>
+    <message>
+        <source>Live transcription connection closed.</source>
+        <translation>Canlı yazıya dökme bağlantısı kapandı.</translation>
+    </message>
+    <message>
+        <source>The WebRTC offer was rejected.</source>
+        <translation>WebRTC teklifi reddedildi.</translation>
+    </message>
+    <message>
+        <source>WebRTC negotiation timed out.</source>
+        <translation>WebRTC anlaşması zaman aşımına uğradı.</translation>
+    </message>
+    <message>
+        <source>WebRTC component unavailable.</source>
+        <translation>WebRTC bileşeni kullanılamıyor.</translation>
+    </message>
+    <message>
+        <source>WebRTC component stopped.</source>
+        <translation>WebRTC bileşeni durdu.</translation>
+    </message>
+    <message>
+        <source>WebRTC negotiation failed.</source>
+        <translation>WebRTC anlaşması başarısız oldu.</translation>
+    </message>
+    <message>
+        <source>Transcript has a gap; recording is unaffected.</source>
+        <translation>Transkriptte boşluk var; kayıt bundan etkilenmez.</translation>
+    </message>
+    <message>
+        <source>Select a recording microphone to transcribe.</source>
+        <translation>Yazıya dökmek için bir kayıt mikrofonu seçin.</translation>
+    </message>
+    <message>
+        <source>Transcription unavailable: %1 Recording continues.</source>
+        <translation>Yazıya dökme kullanılamıyor: %1 Kayıt devam ediyor.</translation>
+    </message>
+    <message>
+        <source>Transcript saved to lecture notes.</source>
+        <translation>Transkript ders notlarına kaydedildi.</translation>
+    </message>
+    <message>
+        <source>Transcript could not be saved to lecture notes.</source>
+        <translation>Transkript ders notlarına kaydedilemedi.</translation>
+    </message>
+    <message>
+        <source>Reconnecting live transcription...</source>
+        <translation>Canlı transkripsiyona yeniden bağlanılıyor...</translation>
+    </message>
+    <message>
+        <source>Codex usage: %1% remaining in the current general window.</source>
+        <translation>Codex kullanımı: geçerli genel pencerede %%1 kaldı.</translation>
+    </message>
+    <message>
+        <source>Codex usage is unavailable.</source>
+        <translation>Codex kullanım bilgisi alınamıyor.</translation>
+    </message>
+    <message>
+        <source>Voice-specific remaining time is not exposed by this Codex app-server.</source>
+        <translation>Bu Codex uygulama sunucusu, sese özgü kalan süreyi bildirmiyor.</translation>
+    </message>
+    <message>
+        <source>Lecture transcript</source>
+        <translation>Ders transkripti</translation>
+    </message>
+    <message>
+        <source>(truncated)</source>
+        <translation>(kısaltıldı)</translation>
+    </message>
+    <message>
+        <source>about %1 into recording</source>
+        <translation>kaydın yaklaşık %1 anında</translation>
+    </message>
+    <message>
+        <source>Transcribe microphone while recording</source>
+        <translation>Kayıt sırasında mikrofonu yazıya dök</translation>
+    </message>
+    <message>
+        <source>Add finalized transcript to lecture notes</source>
+        <translation>Tamamlanan transkripti ders notlarına ekle</translation>
+    </message>
+    <message>
+        <source>Sends microphone audio to Codex Voice for live transcription, only while recording. Requires Codex signed in with ChatGPT.</source>
+        <translation>Mikrofon sesini yalnızca kayıt sırasında canlı yazıya dökme için Codex Voice'a gönderir. Codex'te ChatGPT ile oturum açılmış olmalıdır.</translation>
+    </message>
+    <message>
+        <source>Appends each finalized phrase to the HTML lecture notes. Effective only while lecture notes are enabled.</source>
+        <translation>Tamamlanan her ifadeyi HTML ders notlarına ekler. Yalnızca ders notları etkinken geçerlidir.</translation>
+    </message>
+    <message>
+        <source>Current phrase</source>
+        <translation>Geçerli ifade</translation>
+    </message>
+    <message>
+        <source>Finalized transcript</source>
+        <translation>Tamamlanan transkript</translation>
+    </message>
+    <message>
+        <source>Transcript</source>
+        <translation>Transkript</translation>
+    </message>
+    <message>
+        <source>Global recording setting. Sends microphone audio to Codex Voice for live transcription only while recording. Requires Codex signed in with ChatGPT. Recording works without it.</source>
+        <translation>Genel kayıt ayarı. Mikrofon sesini yalnızca kayıt sırasında canlı yazıya dökme için Codex Voice'a gönderir. Codex'te ChatGPT ile oturum açılmış olmalıdır. Kayıt bu olmadan da çalışır.</translation>
+    </message>
+    <message>
+        <source>Reports the live transcription state. Recording is never affected by transcription problems.</source>
+        <translation>Canlı yazıya dökme durumunu bildirir. Kayıt, yazıya dökme sorunlarından asla etkilenmez.</translation>
+    </message>
+    <message>
+        <source>Shows the general Codex quota window. Voice-specific remaining time is not exposed by this Codex app-server.</source>
+        <translation>Genel Codex kota penceresini gösterir. Bu Codex uygulama sunucusu, sese özgü kalan süreyi bildirmiyor.</translation>
+    </message>
+    <message>
+        <source>The phrase being transcribed right now. Partial text is presentation-only until it is finalized.</source>
+        <translation>Şu anda yazıya dökülen ifade. Kısmi metin, tamamlanana kadar yalnızca görüntülemek içindir.</translation>
+    </message>
+    <message>
+        <source>Read-only list of finalized transcript phrases from the current recording. Text is selectable.</source>
+        <translation>Geçerli kayıttan tamamlanan transkript ifadelerinin salt okunur listesi. Metin seçilebilir.</translation>
+    </message>
+    <message>
+        <source>Transcription status</source>
+        <translation>Yazıya dökme durumu</translation>
+    </message>
+    <message>
+        <source>Expand all</source>
+        <translation>Tümünü genişlet</translation>
+    </message>
+    <message>
+        <source>Collapse all</source>
+        <translation>Tümünü daralt</translation>
+    </message>
+    <message>
+        <source>Light or dark colors</source>
+        <translation>Açık veya koyu renkler</translation>
+    </message>
+    <message>
+        <source>Original and processed video</source>
+        <translation>Orijinal ve işlenmiş video</translation>
+    </message>
+    <message>
+        <source>Original and processed photo</source>
+        <translation>Orijinal ve işlenmiş fotoğraf</translation>
+    </message>
+    <message>
+        <source>View the assistant analyzed</source>
+        <translation>Yardımcının incelediği görünüm</translation>
+    </message>
+    <message>
+        <source>Conversation</source>
+        <translation>Sohbet</translation>
+    </message>
+    <message>
+        <source>New chat</source>
+        <translation>Yeni sohbet</translation>
+    </message>
+    <message>
+        <source>Started a new conversation.</source>
+        <translation>Yeni bir sohbet başlatıldı.</translation>
+    </message>
+    <message>
+        <source>Finish the current answer before starting a new chat.</source>
+        <translation>Yeni sohbet başlatmadan önce mevcut yanıtı bitirin.</translation>
+    </message>
+    <message>
+        <source>Panel position</source>
+        <translation>Panel konumu</translation>
+    </message>
+    <message>
+        <source>Floating</source>
+        <translation>Serbest pencere</translation>
+    </message>
+    <message>
+        <source>Dock left</source>
+        <translation>Sola sabitle</translation>
+    </message>
+    <message>
+        <source>Dock right</source>
+        <translation>Sağa sabitle</translation>
+    </message>
+    <message>
+        <source>Release to dock left</source>
+        <translation>Sola sabitlemek için bırakın</translation>
+    </message>
+    <message>
+        <source>Release to dock right</source>
+        <translation>Sağa sabitlemek için bırakın</translation>
+    </message>
+    <message>
+        <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
+        <translation>Aboneliğe dayalı Oku, Açıkla ve Asistan özelliklerini sağlar. Windows hesabınız için resmi Codex CLI aracını yükler; ChatGPT oturumu açmak ayrı bir adımdır.</translation>
     </message>
 </context>
 </TS>

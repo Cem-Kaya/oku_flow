@@ -27,11 +27,14 @@ if errorlevel 1 goto :fail
 
 call :resolve_qt
 if errorlevel 1 goto :fail
-set "PATH=%QT_BIN_DIR%;%PATH%"
+set "Path=%QT_BIN_DIR%;%Path%"
 
 set "CMAKE_EXTRA_ARGS=%CMAKE_ARGS%"
 if not defined OPENZOOM_ENABLE_CUDA set "OPENZOOM_ENABLE_CUDA=ON"
 if not defined OPENZOOM_ENABLE_TEXT_SR set "OPENZOOM_ENABLE_TEXT_SR=ON"
+set "CUDA_LICENSE_PATH="
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" call :resolve_cuda_license
+if errorlevel 1 goto :fail
 
 echo ===== CONFIGURE TESTED RELEASE =====
 cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -G "%GENERATOR%" %CMAKE_ARCH_ARGS% ^
@@ -93,12 +96,14 @@ if errorlevel 1 (
     goto :fail
 )
 
-rem Proprietary NVIDIA runtimes, Tesseract, and Codex CLI are installed
+rem Proprietary NVIDIA runtimes and Codex CLI are installed
 rem separately through Setup Assistant. Qt's software OpenGL fallback is not
 rem part of the supported GPU path.
 if exist "%STAGING_DIR%\opengl32sw.dll" del /q "%STAGING_DIR%\opengl32sw.dll"
 
 call :copy_required_file "%ROOT_DIR%\LICENSE" "%STAGING_DIR%\LICENSE"
+if errorlevel 1 goto :fail
+call :copy_required_file "%ROOT_DIR%\COMMERCIAL.md" "%STAGING_DIR%\COMMERCIAL.md"
 if errorlevel 1 goto :fail
 call :copy_required_file "%ROOT_DIR%\README.md" "%STAGING_DIR%\README.txt"
 if errorlevel 1 goto :fail
@@ -106,15 +111,50 @@ call :copy_required_file "%ROOT_DIR%\docs\THIRD_PARTY_LICENSES.md" "%STAGING_DIR
 if errorlevel 1 goto :fail
 
 mkdir "%STAGING_DIR%\licenses" 2>nul
+call :copy_required_file "%QT_LICENSE_FILE%" "%STAGING_DIR%\licenses\QT_LICENSE.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%QT_FFMPEG_LICENSE_FILE%" "%STAGING_DIR%\licenses\QT_FFMPEG_LGPL_2_1.txt"
+if errorlevel 1 goto :fail
+mkdir "%STAGING_DIR%\licenses\qt-sbom" 2>nul
+for %%M in (qtbase qtimageformats qtmultimedia qtpdf qtspeech qtsvg) do (
+    call :copy_required_file "%QT_SBOM_DIR%\%%M-%QT_RUNTIME_VERSION%.spdx.json" "%STAGING_DIR%\licenses\qt-sbom\%%M-%QT_RUNTIME_VERSION%.spdx.json"
+    if errorlevel 1 goto :fail
+)
 call :copy_required_file "%ROOT_DIR%\assets\icons\lucide\LICENSE" "%STAGING_DIR%\licenses\LUCIDE_LICENSE.txt"
+if errorlevel 1 goto :fail
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\amd_fsr1\LICENSE.txt" "%STAGING_DIR%\licenses\AMD_FSR1_LICENSE.txt"
+if errorlevel 1 goto :fail
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\nvidia_nis\LICENSE.txt" "%STAGING_DIR%\licenses\NVIDIA_NIS_LICENSE.txt"
+if errorlevel 1 goto :fail
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\maxine\Maxine-VFX-SDK\LICENSE" "%STAGING_DIR%\licenses\NVIDIA_MAXINE_SDK_HEADERS_LICENSE.txt"
+if errorlevel 1 goto :fail
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\maxine\LICENSE.txt" "%STAGING_DIR%\licenses\NVIDIA_MAXINE_INTEGRATION_NOTICE.txt"
+if errorlevel 1 goto :fail
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" call :copy_required_file "%CUDA_LICENSE_PATH%" "%STAGING_DIR%\licenses\NVIDIA_CUDA_EULA.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\LICENSE" "%STAGING_DIR%\licenses\LIBDATACHANNEL_LICENSE.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\deps\libjuice\LICENSE" "%STAGING_DIR%\licenses\LIBJUICE_LICENSE.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\deps\libsrtp\LICENSE" "%STAGING_DIR%\licenses\LIBSRTP_LICENSE.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\deps\usrsctp\LICENSE.md" "%STAGING_DIR%\licenses\USRSCTP_LICENSE.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\deps\plog\LICENSE" "%STAGING_DIR%\licenses\PLOG_LICENSE.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\deps\json\LICENSE.MIT" "%STAGING_DIR%\licenses\NLOHMANN_JSON_LICENSE.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%BUILD_DIR%\_deps\opus-src\COPYING" "%STAGING_DIR%\licenses\OPUS_COPYING.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%BUILD_DIR%\_deps\opus-src\LICENSE_PLEASE_READ.txt" "%STAGING_DIR%\licenses\OPUS_LICENSE_PLEASE_READ.txt"
+if errorlevel 1 goto :fail
+call :copy_required_file "%BUILD_DIR%\_deps\mbedtls-src\LICENSE" "%STAGING_DIR%\licenses\MBEDTLS_LICENSE.txt"
 if errorlevel 1 goto :fail
 
 echo ===== GENERATE RELEASE INTEGRITY METADATA =====
-set "QT_RUNTIME_VERSION="
-for /f "usebackq delims=" %%V in (`"%QT_BIN_DIR%\qmake.exe" -query QT_VERSION`) do set "QT_RUNTIME_VERSION=%%V"
-if not defined QT_RUNTIME_VERSION set "QT_RUNTIME_VERSION=unknown"
 pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\generate_release_metadata.ps1" ^
-    -BundlePath "%STAGING_DIR%" -RepositoryPath "%ROOT_DIR%" -QtVersion "%QT_RUNTIME_VERSION%"
+    -BundlePath "%STAGING_DIR%" -RepositoryPath "%ROOT_DIR%" -QtVersion "%QT_RUNTIME_VERSION%" ^
+    -CudaEnabled "%OPENZOOM_ENABLE_CUDA%"
 if errorlevel 1 (
     echo ERROR: Release checksums, manifest, or SBOM could not be generated.
     goto :fail
@@ -168,6 +208,8 @@ if defined QT_PREFIX (
 for %%I in ("%QT_ROOT%") do set "QT_ROOT=%%~fI"
 set "QT_BIN_DIR=%QT_ROOT%\bin"
 set "WINDEPLOYQT=%QT_BIN_DIR%\windeployqt.exe"
+set "QT_LICENSE_FILE=%QT_ROOT%\LICENSES\LGPL-3.0-only.txt"
+if not exist "%QT_LICENSE_FILE%" for %%I in ("%QT_ROOT%\..\..\Licenses\LICENSE") do set "QT_LICENSE_FILE=%%~fI"
 if not exist "%QT_BIN_DIR%\qmake.exe" (
     echo ERROR: Qt was not found at "%QT_ROOT%".
     echo Set QT_PREFIX to the Qt msvc2022_64 root, set Qt6_DIR to its
@@ -179,7 +221,43 @@ if not exist "%WINDEPLOYQT%" (
     echo Set QT_PREFIX or Qt6_DIR to a complete Qt msvc2022_64 installation.
     exit /b 1
 )
+if not exist "%QT_LICENSE_FILE%" (
+    echo ERROR: Qt license text was not found for "%QT_ROOT%".
+    exit /b 1
+)
+set "QT_RUNTIME_VERSION="
+for /f "usebackq delims=" %%V in (`"%QT_BIN_DIR%\qmake.exe" -query QT_VERSION`) do set "QT_RUNTIME_VERSION=%%V"
+if not defined QT_RUNTIME_VERSION (
+    echo ERROR: The Qt runtime version could not be queried from qmake.exe.
+    exit /b 1
+)
+set "QT_SBOM_DIR=%QT_ROOT%\sbom"
+for %%M in (qtbase qtimageformats qtmultimedia qtpdf qtspeech qtsvg) do if not exist "%QT_SBOM_DIR%\%%M-%QT_RUNTIME_VERSION%.spdx.json" (
+    echo ERROR: Required Qt module SBOM is missing: "%QT_SBOM_DIR%\%%M-%QT_RUNTIME_VERSION%.spdx.json".
+    exit /b 1
+)
+if defined QT_SOURCE_ROOT (
+    for %%I in ("%QT_SOURCE_ROOT%") do set "QT_SOURCE_ROOT=%%~fI"
+) else (
+    for %%I in ("%QT_ROOT%\..\Src") do set "QT_SOURCE_ROOT=%%~fI"
+)
+set "QT_FFMPEG_LICENSE_FILE=%QT_SOURCE_ROOT%\qtmultimedia\src\3rdparty\ffmpeg\LICENSE.LGPL-2.1-or-later.txt"
+if not exist "%QT_FFMPEG_LICENSE_FILE%" (
+    echo ERROR: The FFmpeg LGPL-2.1-or-later text from the matching Qt source tree is missing.
+    echo Install the Qt Sources component or set QT_SOURCE_ROOT to that version's Src directory.
+    exit /b 1
+)
 set "QT_PREFIX=%QT_ROOT%"
+exit /b 0
+
+:resolve_cuda_license
+if defined CUDA_PATH if exist "%CUDA_PATH%\EULA.txt" set "CUDA_LICENSE_PATH=%CUDA_PATH%\EULA.txt"
+if not defined CUDA_LICENSE_PATH if defined CUDAToolkit_ROOT if exist "%CUDAToolkit_ROOT%\EULA.txt" set "CUDA_LICENSE_PATH=%CUDAToolkit_ROOT%\EULA.txt"
+if not defined CUDA_LICENSE_PATH (
+    echo ERROR: CUDA is enabled but the CUDA Toolkit EULA.txt was not found.
+    echo Set CUDA_PATH or CUDAToolkit_ROOT to the toolkit used for this build.
+    exit /b 1
+)
 exit /b 0
 
 :find_built_executable
@@ -220,7 +298,26 @@ if not exist "%STAGING_DIR%\Qt6Widgets.dll" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\Qt6Network.dll" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\platforms\qwindows.dll" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\LICENSE" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\COMMERCIAL.md" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\THIRD_PARTY_LICENSES.md" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\QT_LICENSE.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\QT_FFMPEG_LGPL_2_1.txt" goto :deploy_incomplete
+for %%M in (qtbase qtimageformats qtmultimedia qtpdf qtspeech qtsvg) do if not exist "%STAGING_DIR%\licenses\qt-sbom\%%M-%QT_RUNTIME_VERSION%.spdx.json" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\LUCIDE_LICENSE.txt" goto :deploy_incomplete
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\licenses\AMD_FSR1_LICENSE.txt" goto :deploy_incomplete
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\licenses\NVIDIA_NIS_LICENSE.txt" goto :deploy_incomplete
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\licenses\NVIDIA_MAXINE_SDK_HEADERS_LICENSE.txt" goto :deploy_incomplete
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\licenses\NVIDIA_MAXINE_INTEGRATION_NOTICE.txt" goto :deploy_incomplete
+if /I "%OPENZOOM_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\licenses\NVIDIA_CUDA_EULA.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\LIBDATACHANNEL_LICENSE.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\LIBJUICE_LICENSE.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\LIBSRTP_LICENSE.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\USRSCTP_LICENSE.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\PLOG_LICENSE.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\NLOHMANN_JSON_LICENSE.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\OPUS_COPYING.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\OPUS_LICENSE_PLEASE_READ.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\MBEDTLS_LICENSE.txt" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\SHA256SUMS.txt" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\release-manifest.json" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\SBOM.spdx.json" goto :deploy_incomplete
@@ -235,7 +332,9 @@ exit /b 0
 echo ERROR: Qt deployment or ancillary-file staging is incomplete.
 echo Required files include open_zoom.exe, mf_dxva_minimal.exe,
 echo Qt6Core/Gui/Widgets/Network.dll,
-echo platforms\qwindows.dll, LICENSE, THIRD_PARTY_LICENSES.md,
+echo platforms\qwindows.dll, LICENSE, COMMERCIAL.md, THIRD_PARTY_LICENSES.md,
+echo complete Qt/FFmpeg/module-SPDX, Lucide, CUDA-upscaler, Maxine-header,
+echo native-WebRTC, and CUDA Toolkit notices,
 echo SHA256SUMS.txt, release-manifest.json, and SBOM.spdx.json.
 exit /b 1
 

@@ -94,7 +94,6 @@ QString PlainPresetLabel(const QString& original)
     if (original == QStringLiteral("Sharp Text")) return QStringLiteral("Sharpen Text");
     if (original == QStringLiteral("Large Zoom")) return QStringLiteral("Zoom In More");
     if (original == QStringLiteral("Low Light")) return QStringLiteral("See in Low Light");
-    if (original == QStringLiteral("OCR Assist")) return QStringLiteral("Read Text Aloud");
     if (original == QStringLiteral("Scene Explain")) return QStringLiteral("Describe the Scene");
     return original;
 }
@@ -611,6 +610,32 @@ MainWindow::MainWindow()
     microphoneLabel->setBuddy(microphoneCombo_);
     recordingLayout->addWidget(microphoneLabel);
     recordingLayout->addWidget(microphoneCombo_);
+
+    transcribeMicrophoneCheckbox_ =
+        new QCheckBox(QStringLiteral("Transcribe microphone while recording"));
+    transcribeMicrophoneCheckbox_->setToolTip(QStringLiteral(
+        "Sends microphone audio to Codex Voice for live transcription, only "
+        "while recording. Requires Codex signed in with ChatGPT."));
+    recordingLayout->addWidget(transcribeMicrophoneCheckbox_);
+    transcriptToNotesCheckbox_ =
+        new QCheckBox(QStringLiteral("Add finalized transcript to lecture notes"));
+    transcriptToNotesCheckbox_->setToolTip(QStringLiteral(
+        "Appends each finalized phrase to the HTML lecture notes. Effective "
+        "only while lecture notes are enabled."));
+    transcriptToNotesCheckbox_->setEnabled(false);
+    recordingLayout->addWidget(transcriptToNotesCheckbox_);
+    connect(transcribeMicrophoneCheckbox_, &QCheckBox::toggled,
+            transcriptToNotesCheckbox_, &QWidget::setEnabled);
+    transcriptionStatusLabel_ = new QLabel();
+    transcriptionStatusLabel_->setObjectName(QStringLiteral("transcriptionStatusLabel"));
+    transcriptionStatusLabel_->setWordWrap(true);
+    transcriptionStatusLabel_->setVisible(false);
+    recordingLayout->addWidget(transcriptionStatusLabel_);
+    transcriptionQuotaLabel_ = new QLabel();
+    transcriptionQuotaLabel_->setObjectName(QStringLiteral("transcriptionQuotaLabel"));
+    transcriptionQuotaLabel_->setWordWrap(true);
+    transcriptionQuotaLabel_->setVisible(false);
+    recordingLayout->addWidget(transcriptionQuotaLabel_);
     advancedLayout->addWidget(recordingSection_);
 
     advancedLayout->addWidget(makeSectionLabel("Profile"));
@@ -948,7 +973,6 @@ MainWindow::MainWindow()
     controlsLayout->addWidget(assistantSection_);
     auto* assistiveLayout = new QVBoxLayout();
     assistiveLayout->setSpacing(6);
-    ocrAssistCheckbox_ = new QCheckBox("OCR Assist");
     vlmAssistCheckbox_ = new QCheckBox("Scene Explain");
     assistiveOverlayCheckbox_ = new QCheckBox("Assistive Overlay");
     assistiveOverlayCheckbox_->setChecked(true);
@@ -972,8 +996,7 @@ MainWindow::MainWindow()
         new QPushButton(QStringLiteral("Change OpenZoom folder..."));
     setupAssistantButton_ = new QPushButton(QStringLiteral("Setup && Downloads..."));
     setupAssistantButton_->setToolTip(
-        QStringLiteral("Install or remove optional OCR and NVIDIA Video Effects tools"));
-    assistiveLayout->addWidget(ocrAssistCheckbox_);
+        QStringLiteral("Set up Codex CLI and NVIDIA Video Effects"));
     assistiveLayout->addWidget(vlmAssistCheckbox_);
     assistiveLayout->addWidget(assistiveOverlayCheckbox_);
     assistiveLayout->addWidget(annotationCaptureOnExitCheckbox_);
@@ -1137,7 +1160,7 @@ MainWindow::MainWindow()
     assistantAiSettingsButton->setToolTip(QStringLiteral("Open AI Settings dialog"));
     assistantAiSettingsButton->setAccessibleName(QStringLiteral("AI Settings"));
     assistantAiSettingsButton->setAccessibleDescription(
-        QStringLiteral("Configure the AI vision server, OCR engine, and speech output"));
+        QStringLiteral("Configure the vision assistant and speech output"));
     assistantAiSettingsButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     connect(assistantAiSettingsButton, &QPushButton::clicked,
             aiSettingsButton_, &QPushButton::click);
@@ -1204,9 +1227,33 @@ MainWindow::MainWindow()
     assistantTabs->addTab(historyPage, "History");
     assistantLayout->addWidget(assistantTabs, 1);
 
+    // Read-only live transcript view (plan 36): no send button and no
+    // implied Assistant conversation. Finalized text stays selectable.
+    auto* transcriptPage = new QWidget();
+    auto* transcriptLayout = new QVBoxLayout(transcriptPage);
+    transcriptLayout->setContentsMargins(10, 10, 10, 10);
+    transcriptLayout->setSpacing(6);
+    auto* transcriptPartialCaption = new QLabel(QStringLiteral("Current phrase"));
+    transcriptPartialCaption->setObjectName(QStringLiteral("scopeSubtitle"));
+    transcriptPartialLabel_ = new QLabel();
+    transcriptPartialLabel_->setWordWrap(true);
+    transcriptPartialLabel_->setMinimumHeight(40);
+    transcriptPartialCaption->setBuddy(transcriptPartialLabel_);
+    auto* transcriptFinalsCaption = new QLabel(QStringLiteral("Finalized transcript"));
+    transcriptFinalsCaption->setObjectName(QStringLiteral("scopeSubtitle"));
+    transcriptFinalsView_ = new QPlainTextEdit();
+    transcriptFinalsView_->setReadOnly(true);
+    transcriptFinalsView_->setTabChangesFocus(true);
+    transcriptFinalsCaption->setBuddy(transcriptFinalsView_);
+    transcriptLayout->addWidget(transcriptPartialCaption);
+    transcriptLayout->addWidget(transcriptPartialLabel_);
+    transcriptLayout->addWidget(transcriptFinalsCaption);
+    transcriptLayout->addWidget(transcriptFinalsView_, 1);
+
     auto* advancedTabs = new QTabWidget();
     advancedTabs->addTab(imageTabPage, "Image");
     advancedTabs->addTab(assistantPage, "Assistant");
+    advancedTabs->addTab(transcriptPage, "Transcript");
     previousAdvancedTabButton_ = new QToolButton();
     previousAdvancedTabButton_->setObjectName(QStringLiteral("advancedTabArrow"));
     previousAdvancedTabButton_->setIconSize(QSize(26, 26));
@@ -1369,6 +1416,22 @@ MainWindow::MainWindow()
     bottomRightLayout->addWidget(explainNowButton_);
     bottomRightLayout->addWidget(readTextButton_);
     bottomRightLayout->addWidget(annotationButton_);
+
+    // Simple-mode live transcript overlay (plan 36): never activates, never
+    // takes input or focus, and never announces per-delta — screen-reader
+    // users get state changes through the live status path instead.
+    simpleTranscriptPanel_ = new QWidget(
+        this, chromeFlags | Qt::WindowTransparentForInput |
+                  Qt::WindowDoesNotAcceptFocus);
+    simpleTranscriptPanel_->setObjectName(QStringLiteral("simpleTranscriptPanel"));
+    auto* simpleTranscriptLayout = new QVBoxLayout(simpleTranscriptPanel_);
+    simpleTranscriptLayout->setContentsMargins(12, 8, 12, 8);
+    simpleTranscriptLabel_ = new QLabel();
+    simpleTranscriptLabel_->setObjectName(QStringLiteral("simpleTranscriptLabel"));
+    simpleTranscriptLabel_->setWordWrap(true);
+    simpleTranscriptLabel_->setTextInteractionFlags(Qt::NoTextInteraction);
+    simpleTranscriptLayout->addWidget(simpleTranscriptLabel_);
+    simpleTranscriptPanel_->hide();
 
     connect(annotationButton_, &QPushButton::toggled, this, [this](bool checked) {
         if (changingAnnotationMode_) {
@@ -1603,6 +1666,25 @@ MainWindow::MainWindow()
     setA11y(microphoneCombo_, "Recording microphone",
             "Global recording setting. Select microphone audio for both "
             "original and processed MP4 recordings, or choose no microphone.");
+    setA11y(transcribeMicrophoneCheckbox_, "Transcribe microphone while recording",
+            "Global recording setting. Sends microphone audio to Codex Voice "
+            "for live transcription only while recording. Requires Codex "
+            "signed in with ChatGPT. Recording works without it.");
+    setA11y(transcriptToNotesCheckbox_, "Add finalized transcript to lecture notes",
+            "Appends each finalized phrase to the HTML lecture notes. "
+            "Effective only while lecture notes are enabled.");
+    setA11y(transcriptionStatusLabel_, "Transcription status",
+            "Reports the live transcription state. Recording is never "
+            "affected by transcription problems.");
+    setA11y(transcriptionQuotaLabel_, "Codex usage",
+            "Shows the general Codex quota window. Voice-specific remaining "
+            "time is not exposed by this Codex app-server.");
+    setA11y(transcriptPartialLabel_, "Current phrase",
+            "The phrase being transcribed right now. Partial text is "
+            "presentation-only until it is finalized.");
+    setA11y(transcriptFinalsView_, "Finalized transcript",
+            "Read-only list of finalized transcript phrases from the "
+            "current recording. Text is selectable.");
     setA11y(cameraFormatCombo_, "Resolution and frame rate",
             "Device setting shared by all profiles. Select the camera capture "
             "mode used by original photos and original video.");
@@ -1630,12 +1712,10 @@ MainWindow::MainWindow()
             "Reduce flicker by averaging consecutive frames");
     setA11y(temporalSmoothSlider_, "Temporal Smooth Blend",
             "How strongly new frames blend into the running average");
-    setA11y(ocrAssistCheckbox_, "OCR Assist",
-            "Read on-screen text aloud using optical character recognition");
     setA11y(vlmAssistCheckbox_, "Scene Explain",
             "Describe the magnified scene using an AI vision model");
     setA11y(assistiveOverlayCheckbox_, "Assistive Overlay",
-            "Show OCR and scene descriptions as an on-screen overlay");
+            "Show assistant results in an on-screen panel");
     setA11y(spatialSharpenCheckbox_, "Spatial Sharpen",
             "Sharpen and upscale the image on the GPU");
     setA11y(spatialBackendCombo_, "Sharpen Backend",
@@ -1659,7 +1739,7 @@ MainWindow::MainWindow()
     setA11y(explainNowButton_, "Explain Now",
             "Describe the current camera view once using the AI vision model");
     setA11y(readTextButton_, "Read Text",
-            "Read the text in the current camera view once using OCR");
+            "Read the current camera text with the vision assistant");
     setA11y(stabilizationCheckbox_, "Stabilize Image",
             "Lock the mounted camera view with full-strength CUDA stabilization");
     setA11y(bumpHoldCheckbox_, "Extra Stable",
@@ -1705,7 +1785,7 @@ MainWindow::MainWindow()
     setA11y(selectiveSharpenCheckbox_, "Sharpen Text Only",
             "Apply sharpening near detected text strokes and preserve pictures");
     setA11y(focusDetectionCheckbox_, "Warn When Out of Focus",
-            "Warn and pause OCR when the camera image is too blurry");
+            "Warn before reading when the camera image is too blurry");
     setA11y(glareSuppressionCheckbox_, "Suppress Glare",
             "Reduce small blown highlights on glossy pages and boards");
     setA11y(mlTextSuperResolutionCheckbox_, "ML Text Super Resolution",
@@ -1723,7 +1803,7 @@ MainWindow::MainWindow()
     setA11y(brightnessSlider_, "Brightness",
             "Brightness of the displayed image");
     setA11y(aiSettingsButton_, "AI Settings",
-            "Configure the AI vision server, OCR engine, and speech output");
+            "Configure the vision assistant and speech output");
     setA11y(openNotesButton_, "Open Notes",
             "Open the lecture notes file written by the assistive features");
     setA11y(openUserDataFolderButton_, "Open my OpenZoom folder",
@@ -1731,7 +1811,7 @@ MainWindow::MainWindow()
     setA11y(changeUserDataFolderButton_, "Change OpenZoom folder",
             "Choose where OpenZoom saves new photos, recordings, notes, and analysis files");
     setA11y(setupAssistantButton_, "Setup and Downloads",
-            "Install or remove optional OCR and NVIDIA Video Effects tools");
+            "Set up Codex CLI and NVIDIA Video Effects");
     setA11y(assistantConnectionLabel_, "Codex Connection Status",
             "Current Codex app-server and ChatGPT account status");
     setA11y(assistantUsageLabel_, "Codex Usage",
@@ -1803,6 +1883,8 @@ MainWindow::MainWindow()
     QWidget::setTabOrder(rotationCombo_, recordingCanvasCombo_);
     QWidget::setTabOrder(recordingCanvasCombo_, cameraFormatCombo_);
     QWidget::setTabOrder(cameraFormatCombo_, microphoneCombo_);
+    QWidget::setTabOrder(microphoneCombo_, transcribeMicrophoneCheckbox_);
+    QWidget::setTabOrder(transcribeMicrophoneCheckbox_, transcriptToNotesCheckbox_);
 
     setCentralWidget(central);
     setSimpleMode(true);
@@ -1913,7 +1995,6 @@ void MainWindow::updateSectionChangedCounts(
     textClaritySection_->setChangedCount(textChanges);
 
     const int assistantChanges =
-        different(current.ocrAssistEnabled, defaults.ocrAssistEnabled) +
         different(current.vlmAssistEnabled, defaults.vlmAssistEnabled) +
         different(current.assistiveOverlayEnabled,
                   defaults.assistiveOverlayEnabled);
@@ -2092,7 +2173,6 @@ AnnotationOverlay* MainWindow::annotationOverlay() const { return annotationOver
 QCheckBox* MainWindow::temporalSmoothCheckbox() const { return temporalSmoothCheckbox_; }
 QSlider* MainWindow::temporalSmoothSlider() const { return temporalSmoothSlider_; }
 QLabel* MainWindow::temporalSmoothValueLabel() const { return temporalSmoothValueLabel_; }
-QCheckBox* MainWindow::ocrAssistCheckbox() const { return ocrAssistCheckbox_; }
 QCheckBox* MainWindow::vlmAssistCheckbox() const { return vlmAssistCheckbox_; }
 QCheckBox* MainWindow::assistiveOverlayCheckbox() const { return assistiveOverlayCheckbox_; }
 QCheckBox* MainWindow::spatialSharpenCheckbox() const { return spatialSharpenCheckbox_; }
@@ -2108,6 +2188,75 @@ QAbstractButton* MainWindow::simpleModeButton() const { return simpleModeButton_
 QAbstractButton* MainWindow::advancedModeButton() const { return advancedModeButton_; }
 QPushButton* MainWindow::explainNowButton() const { return explainNowButton_; }
 QPushButton* MainWindow::readTextButton() const { return readTextButton_; }
+QCheckBox* MainWindow::transcribeMicrophoneCheckbox() const
+{
+    return transcribeMicrophoneCheckbox_;
+}
+QCheckBox* MainWindow::transcriptToNotesCheckbox() const
+{
+    return transcriptToNotesCheckbox_;
+}
+QLabel* MainWindow::transcriptionStatusLabel() const { return transcriptionStatusLabel_; }
+QLabel* MainWindow::transcriptionQuotaLabel() const { return transcriptionQuotaLabel_; }
+QLabel* MainWindow::transcriptPartialLabel() const { return transcriptPartialLabel_; }
+QPlainTextEdit* MainWindow::transcriptFinalsView() const { return transcriptFinalsView_; }
+
+void MainWindow::SetSimpleTranscriptActive(bool active)
+{
+    if (simpleTranscriptActive_ == active && simpleTranscriptPanel_ &&
+        simpleTranscriptPanel_->isVisible() == (active && isSimpleMode())) {
+        return;
+    }
+    simpleTranscriptActive_ = active;
+    if (!active) {
+        simpleTranscriptPartial_.clear();
+        simpleTranscriptFinals_.clear();
+        RefreshSimpleTranscriptText();
+    }
+    if (simpleTranscriptPanel_) {
+        simpleTranscriptPanel_->setVisible(active && isSimpleMode());
+        if (simpleTranscriptPanel_->isVisible()) {
+            UpdateSimpleChromeGeometry();
+        }
+    }
+}
+
+void MainWindow::SetSimpleTranscriptPartial(const QString& text)
+{
+    if (simpleTranscriptPartial_ == text) {
+        return;
+    }
+    simpleTranscriptPartial_ = text;
+    RefreshSimpleTranscriptText();
+}
+
+void MainWindow::AppendSimpleTranscriptFinal(const QString& text)
+{
+    if (text.trimmed().isEmpty()) {
+        return;
+    }
+    simpleTranscriptFinals_.append(text);
+    while (simpleTranscriptFinals_.size() > 3) {
+        simpleTranscriptFinals_.removeFirst();
+    }
+    RefreshSimpleTranscriptText();
+}
+
+void MainWindow::RefreshSimpleTranscriptText()
+{
+    if (!simpleTranscriptLabel_) {
+        return;
+    }
+    QStringList lines = simpleTranscriptFinals_;
+    if (!simpleTranscriptPartial_.trimmed().isEmpty()) {
+        lines.append(simpleTranscriptPartial_);
+    }
+    // Silent update: plain text only, no accessible announcement per delta.
+    simpleTranscriptLabel_->setText(lines.join(QStringLiteral("\n")));
+    if (simpleTranscriptPanel_ && simpleTranscriptPanel_->isVisible()) {
+        UpdateSimpleChromeGeometry();
+    }
+}
 
 void MainWindow::setAnnotationPreferences(const QColor& color,
                                           int widthPixels,
@@ -2312,7 +2461,7 @@ void MainWindow::ShowHelpDialog()
         "reading palettes and custom color schemes.</p>"
         "<p><b>NVIDIA Super Resolution</b> improves zoomed detail when the "
         "optional NVIDIA Video Effects runtime is installed.</p>"
-        "<p><b>OCR and Assistant</b> can read text, explain the view, answer "
+        "<p><b>Text reading and Assistant</b> can read text, explain the view, answer "
         "follow-up questions, and add results to lecture notes.</p>"));
     layout->addWidget(guide, 1);
 
@@ -2682,6 +2831,21 @@ void MainWindow::UpdateSimpleChromeGeometry()
     bottomRightPanel_->move(trailingX(bottomRightPanel_->width()),
                             viewOrigin.y() + std::max(0, bottomRightY));
 
+    if (simpleTranscriptPanel_ && simpleTranscriptPanel_->isVisible()) {
+        const int overlayWidth = std::min(viewWidth - 24, 900);
+        simpleTranscriptPanel_->setFixedWidth(std::max(240, overlayWidth));
+        simpleTranscriptPanel_->adjustSize();
+        const int chromeTop =
+            std::min(viewHeight - leftChromeHeight,
+                     std::min(bottomRightY, viewHeight - bottomRightPanel_->height()));
+        const int overlayY =
+            std::max(0, chromeTop - simpleTranscriptPanel_->height() - 8);
+        simpleTranscriptPanel_->move(
+            viewOrigin.x() +
+                std::max(0, (viewWidth - simpleTranscriptPanel_->width()) / 2),
+            viewOrigin.y() + overlayY);
+    }
+
     if (modeGridPopup_) {
         const int popupWidth = std::min(viewWidth, std::max(420, std::min(860, viewWidth * 3 / 4)));
         const int columns = std::max(2, (popupWidth - 28) / 220);
@@ -2846,6 +3010,9 @@ void MainWindow::setSimpleMode(bool simple)
             keystoneTrackingPanel_->show();
         }
         bottomRightPanel_->show();
+        if (simpleTranscriptPanel_ && simpleTranscriptActive_) {
+            simpleTranscriptPanel_->show();
+        }
         UpdateSimpleChromeGeometry();
         RevealSimpleChrome();
     } else if (!simple && advancedModeButton_) {
@@ -2871,6 +3038,10 @@ void MainWindow::setSimpleMode(bool simple)
         bottomRightPanel_->setWindowOpacity(1.0);
         bottomRightPanel_->show();
         bottomRightPanel_->raise();
+        if (simpleTranscriptPanel_) {
+            // The Advanced Transcript tab shows the same content instead.
+            simpleTranscriptPanel_->hide();
+        }
         UpdateSimpleChromeGeometry();
     }
 }
@@ -3095,7 +3266,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
                                   annotationTargets.begin(),
                                   annotationTargets.end());
             }
-            if (auto* overlay = renderWidget_->findChild<AssistiveOverlay*>();
+            if (auto* overlay = findChild<AssistiveOverlay*>();
                 overlay && overlay->isVisible()) {
                 const auto overlayTargets = overlay->FocusTargets();
                 focusOrder.insert(focusOrder.end(), overlayTargets.begin(), overlayTargets.end());
@@ -3134,7 +3305,8 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         }
     }
 
-    if (watched == this && (type == QEvent::Move ||
+    if ((watched == this || watched == centralWidget() || watched == contentSplitter_) &&
+                           (type == QEvent::Move ||
                             type == QEvent::Resize ||
                             type == QEvent::WindowStateChange)) {
         QTimer::singleShot(0, this, &MainWindow::UpdateSimpleChromeGeometry);

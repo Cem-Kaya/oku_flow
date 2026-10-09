@@ -31,7 +31,7 @@ open while contributing and update it whenever the workflow evolves.
 - `src/capture/` – Media Foundation camera enumeration/capture with retry and
   device-loss recovery.
 - `src/ui/` – Simple/Advanced main window, floating chrome, AI settings dialog.
-- `src/common/` – CPU frame prep, assistive runtime (OCR/VLM/TTS/notes), Codex
+- `src/common/` – CPU frame prep, assistive runtime (vision reading/TTS/notes), Codex
   app-server client, fragmented-MP4 video recorder.
 - Public headers mirror the source tree under `include/openzoom/`.
 
@@ -107,3 +107,13 @@ aligned with the project goals.
   succeed. It runs `dx12_cuda_minimal` when
   `sandbox/dx12_cuda_minimal/CMakeLists.txt` exists and otherwise reports the
   optional harness as skipped without failing the validation run.
+
+## Optional Startup Performance Validation
+- Use tracked `scripts/profile_startup.ps1` for real-camera startup and UI
+  latency measurements. It refuses an existing OpenZoom instance and launches
+  only normally exiting profiling children with explicit isolated settings.
+  Do not terminate a user's instance to obtain a measurement.
+- `-CompareLegacy` compares camera-opening sequences in the same executable;
+  it is not a benchmark of every change against an old release. Report actual
+  arrival/presentation rates separately from negotiated camera FPS, and treat
+  first-present timing as submission timing rather than sensor-to-photon latency.

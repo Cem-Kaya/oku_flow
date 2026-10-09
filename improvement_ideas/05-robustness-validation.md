@@ -49,27 +49,11 @@ cap (e.g. 1 GB) before `resize()`. Also verify the source buffer length covers
 
 ---
 
-## V3. Tesseract subprocess: timeout and temp-file cleanup
+## V3. Retired local recognition subprocess
 
-- **Status: DONE 2026-07-22.** OCR owns a watchdog timer, kills a hung process,
-  removes the pending temporary image on completion/error/timeout/shutdown, and
-  prevents a second OCR start while the process is active.
-- **Priority:** MEDIUM · **Effort:** small–medium · **Status:** Partially confirmed (`tempFile.setAutoRemove(false)` seen at assistive_runtime.cpp:265; no timeout timer found)
-- **Evidence:** `src/common/assistive_runtime.cpp` — `StartOcr()` (~260–290), mode-switch kill with 250 ms wait (~158–160)
-
-**Problem.**
-1. No watchdog: a hung `tesseract.exe` stalls OCR forever (busy-flag never clears, so
-   all future OCR is dead until restart).
-2. Temp PNGs are created with `setAutoRemove(false)`; if the process errors/hangs or the
-   app exits mid-OCR, orphaned `openzoom_ocr_*.png` files accumulate in %TEMP%. Verify
-   every exit path deletes `pendingOcrImagePath_`.
-3. Racy restart: mode toggling kills with a 250 ms grace; a new OCR can start while the
-   old process is still dying.
-
-**Fix.** Add a single-shot `QTimer` (5–10 s) started with the process; on timeout,
-`kill()`, delete the temp file, and report "OCR timed out". Delete the temp file in *all*
-finish/error paths (or switch to `setAutoRemove(true)` + keeping the QTemporaryFile
-alive until the process finishes). Guard start/kill with a simple state flag.
+**Closed 2026-09-10:** the separate local recognition subprocess and its setup,
+watchdog, settings, and controls were removed. Read uses the shared vision
+assistant request and cancellation path.
 
 ---
 

@@ -79,19 +79,7 @@ void OpenZoomApp::UpdatePresetDescription()
     }
 
     QString assistiveText = QStringLiteral("Assistive hooks: off");
-    if (ocrAssistEnabled_ && vlmAssistEnabled_) {
-        assistiveText =
-            assistiveOverlayEnabled_
-                ? QStringLiteral(
-                      "Assistive hooks: OCR + Scene Explain with overlay")
-                : QStringLiteral(
-                      "Assistive hooks: OCR + Scene Explain");
-    } else if (ocrAssistEnabled_) {
-        assistiveText =
-            assistiveOverlayEnabled_
-                ? QStringLiteral("Assistive hooks: OCR with overlay")
-                : QStringLiteral("Assistive hooks: OCR");
-    } else if (vlmAssistEnabled_) {
+    if (vlmAssistEnabled_) {
         assistiveText =
             assistiveOverlayEnabled_
                 ? QStringLiteral(
@@ -258,6 +246,20 @@ void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& se
         uiState_->recordingCanvasCombo_->setCurrentIndex(
             index >= 0 ? index : 0);
     }
+    if (uiState_->transcribeMicrophoneCheckbox_) {
+        auto block =
+            uiState_->BlockSignals(uiState_->transcribeMicrophoneCheckbox_);
+        uiState_->transcribeMicrophoneCheckbox_->setChecked(
+            settings.liveTranscriptionEnabled);
+    }
+    if (uiState_->transcriptToNotesCheckbox_) {
+        auto block =
+            uiState_->BlockSignals(uiState_->transcriptToNotesCheckbox_);
+        uiState_->transcriptToNotesCheckbox_->setChecked(
+            settings.appendTranscriptToNotes);
+        uiState_->transcriptToNotesCheckbox_->setEnabled(
+            settings.liveTranscriptionEnabled);
+    }
     if (mainWindow_) {
         mainWindow_->setAdvancedPanelWidth(settings.advancedPanelWidth);
         mainWindow_->setSimpleMode(settings.simpleUiMode);
@@ -271,6 +273,7 @@ void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& se
             settings.annotationTextSizePixels);
     }
     assistiveManager_->RestoreOverlayGeometry(settings.assistiveOverlayGeometry);
+    assistiveManager_->Overlay().SetDockPosition(settings.assistiveOverlayDockPosition);
     ApplyAdvancedConfig(settings.currentConfig);
     rotationQuarterTurns_ = ((settings.rotationQuarterTurns % 4) + 4) % 4;
     UpdateRotationUi();
@@ -314,6 +317,14 @@ void OpenZoomApp::SavePersistentSettings() {
                 static_cast<int>(RecordingCanvasMode::Source),
                 static_cast<int>(RecordingCanvasMode::Nhd360)));
     }
+    if (uiState_->transcribeMicrophoneCheckbox_) {
+        settingsController_->MutableSettings().liveTranscriptionEnabled =
+            uiState_->transcribeMicrophoneCheckbox_->isChecked();
+    }
+    if (uiState_->transcriptToNotesCheckbox_) {
+        settingsController_->MutableSettings().appendTranscriptToNotes =
+            uiState_->transcriptToNotesCheckbox_->isChecked();
+    }
     if (mainWindow_) {
         settingsController_->MutableSettings().advancedPanelWidth = mainWindow_->advancedPanelWidth();
         settingsController_->MutableSettings().uiSectionStates =
@@ -335,6 +346,8 @@ void OpenZoomApp::SavePersistentSettings() {
     }
     settingsController_->MutableSettings().assistiveOverlayGeometry =
         assistiveManager_->OverlayGeometry();
+    settingsController_->MutableSettings().assistiveOverlayDockPosition =
+        assistiveManager_->Overlay().DockPosition();
     if (uiState_->displayColorPicker_ && uiState_->displayColorPicker_->hasCustomScheme()) {
         settingsController_->MutableSettings().customColorScheme = uiState_->displayColorPicker_->customScheme();
     }

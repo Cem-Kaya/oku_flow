@@ -13,7 +13,10 @@
 #include "openzoom/ui/ai_settings_dialog.hpp"
 #include "openzoom/ui/color_scheme_picker.hpp"
 #include "openzoom/app/setup_assistant.hpp"
+#include "openzoom/app/transcription_session_controller.hpp"
+#include "openzoom/common/codex_realtime_transcription_client.hpp"
 #include "openzoom/common/maxine_superres.hpp"
+#include "openzoom/common/realtime_native_rtc_carrier.hpp"
 #include <QAbstractButton>
 #include <QAccessible>
 #include <QAccessibleAnnouncementEvent>
@@ -93,6 +96,32 @@
 #include <wrl/client.h>
 
 namespace openzoom {
+// Tracks detached startup work without extending the lifetime of the app.
+struct StartupWorkerTracker final {
+    std::atomic<unsigned> active{};
+    std::atomic<bool> abandoned{};
+};
+
+// Camera callbacks own only this ingress. They never dereference app state;
+// QObject-context delivery and cancellation are serialized by the narrow lock.
+struct CameraIngress final {
+    std::mutex mutex;
+    std::deque<MediaFrame> frames;
+    OpenZoomApp* receiver{};
+    bool accepting{};
+    bool retainBurst{};
+    bool wakeQueued{};
+    std::uint64_t received{};
+    std::uint64_t dropped{};
+    std::uint64_t profileReceived{};
+    std::uint64_t profileDropped{};
+    ULONGLONG firstArrivalMs{};
+    ULONGLONG lastArrivalMs{};
+    std::uint64_t shortArrivalIntervals{};
+    std::uint64_t longArrivalIntervals{};
+    ULONGLONG maxArrivalIntervalMs{};
+    std::shared_ptr<CameraIngress> retainedAfterTimeout;
+};
 
 // Independently owned cancellation/lifetime gate for microphone callbacks.
 // A detached AudioCapture thread may retain this block, but app shutdown

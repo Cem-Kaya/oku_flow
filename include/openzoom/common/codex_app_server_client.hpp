@@ -2,7 +2,6 @@
 
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
-#include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
@@ -13,8 +12,9 @@
 #include <functional>
 #include <memory>
 
+#include "openzoom/common/codex_json_rpc_process.hpp"
+
 QT_BEGIN_NAMESPACE
-class QProcess;
 class QTimer;
 QT_END_NAMESPACE
 
@@ -44,6 +44,9 @@ public:
     bool IsTurnActive() const;
     QString SelectedModel() const;
     static QString BuiltInAssistantInstructions();
+    // Shared Codex CLI discovery (configured path, OPENZOOM_CODEX_PATH, PATH,
+    // then known install locations). Also used by the realtime client.
+    static QString ResolveExecutablePath(const QString& configuredExecutable);
 
     void RefreshAccount();
     void StartChatGptLogin();
@@ -79,7 +82,7 @@ signals:
                       bool persistent);
 
 private:
-    using ReplyHandler = std::function<void(const QJsonObject& result, const QJsonObject& error)>;
+    using ReplyHandler = CodexJsonRpcProcess::ReplyHandler;
 
     struct PendingTurn {
         QString prompt;
@@ -97,11 +100,8 @@ private:
     qint64 SendRequest(const QString& method,
                        const QJsonObject& params,
                        ReplyHandler handler = {});
-    void SendObject(const QJsonObject& object);
-    void ConsumeStdout();
-    void HandleMessage(const QJsonObject& message);
     void HandleNotification(const QString& method, const QJsonObject& params);
-    void HandleServerRequest(const QJsonValue& id,
+    bool HandleServerRequest(const QJsonValue& id,
                              const QString& method,
                              const QJsonObject& params);
     void FinishInitialization(const QJsonObject& result,
@@ -117,38 +117,20 @@ private:
     void TouchTurnWatchdog();
     void CheckTurnWatchdog();
     void RequestInterrupt(const QString& reason);
-    void FailProtocol(const QString& reason);
     QString AppendActiveText(const QString& delta);
     static QJsonArray TranscriptFromThread(const QJsonObject& thread);
     static QString FinalAgentText(const QJsonObject& turn);
 
-    void ExpireTimedOutReplies();
-    void FailAllPendingReplies(const QString& message);
-
-    // JSON-RPC replies are quick control-plane acks (turn results arrive via
-    // notifications), so a uniform timeout is safe.
-    static constexpr int kRequestTimeoutMs = 60000;
     static constexpr int kTurnIdleTimeoutMs = 90000;
     static constexpr int kVisionTurnMaximumMs = 180000;
     static constexpr int kPersistentTurnMaximumMs = 1800000;
     static constexpr int kInterruptGraceMs = 5000;
-    static constexpr qsizetype kMaximumProtocolBufferBytes = 4 * 1024 * 1024;
-    static constexpr qsizetype kMaximumProtocolMessageBytes = 2 * 1024 * 1024;
     static constexpr qsizetype kMaximumAnswerCharacters = 256 * 1024;
     static constexpr qsizetype kMaximumTranscriptMessageCharacters = 32 * 1024;
     static constexpr qsizetype kMaximumTranscriptMessages = 200;
 
-    struct PendingReply {
-        ReplyHandler handler;
-        qint64 deadlineMs{0};
-    };
-
-    std::unique_ptr<QProcess> process_;
-    QByteArray stdoutBuffer_;
-    QHash<qint64, PendingReply> pendingReplies_;
-    QTimer* replyTimeoutTimer_{nullptr};
+    std::unique_ptr<CodexJsonRpcProcess> rpc_;
     QTimer* turnWatchdogTimer_{nullptr};
-    qint64 nextRequestId_{1};
 
     QString configuredExecutable_;
     QString preferredModel_;

@@ -167,7 +167,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     codexModelCombo_->setMinimumContentsLength(24);
     codexModelCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     const QString configuredModel = initial.codexModel.trimmed().isEmpty()
-                                        ? QStringLiteral("gpt-5.6-tera")
+                                        ? QStringLiteral("gpt-5.6-luna")
                                         : initial.codexModel.trimmed();
     codexModelCombo_->addItem(configuredModel, configuredModel);
     form->addRow("Codex model:", codexModelCombo_);
@@ -269,35 +269,6 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
                     codexReasoningCombo_->currentData().toString();
             });
     UpdateProviderFields();
-
-    auto* ocrGroup = new QGroupBox(QStringLiteral("Text recognition (OCR)"));
-    auto* ocrForm = new QFormLayout(ocrGroup);
-    ocrForm->setSpacing(10);
-    contentLayout->addWidget(ocrGroup);
-
-    tesseractPathEdit_ = new QLineEdit(initial.tesseractPath);
-    tesseractPathEdit_->setPlaceholderText("Path to tesseract.exe");
-    auto* browseButton = new QPushButton("Browse…");
-    connect(browseButton, &QPushButton::clicked, this, [this]() {
-        const QString path = QFileDialog::getOpenFileName(
-            this,
-            "Select Tesseract Executable",
-            tesseractPathEdit_->text(),
-            "Executables (*.exe);;All Files (*)");
-        if (!path.isEmpty()) {
-            tesseractPathEdit_->setText(path);
-        }
-    });
-    auto* tesseractRow = new QHBoxLayout();
-    tesseractRow->setSpacing(8);
-    tesseractRow->addWidget(tesseractPathEdit_, 1);
-    tesseractRow->addWidget(browseButton);
-    ocrForm->addRow("Tesseract path:", tesseractRow);
-
-    ocrLanguageEdit_ = new QLineEdit(
-        initial.ocrLanguage.isEmpty() ? QStringLiteral("eng") : initial.ocrLanguage);
-    ocrLanguageEdit_->setPlaceholderText("eng");
-    ocrForm->addRow("OCR language:", ocrLanguageEdit_);
 
     preferredVoiceName_ = initial.ttsVoiceName;
     preferredVoiceLocale_ = initial.ttsVoiceLocale;
@@ -443,12 +414,6 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             "Name of the vision model, for example gpt-4o-mini or llava");
     setA11y(promptEdit_, "Scene Prompt",
             "Scene-specific instructions sent with each camera frame");
-    setA11y(tesseractPathEdit_, "Tesseract Path",
-            "Location of the Tesseract OCR executable");
-    setA11y(browseButton, "Browse for Tesseract",
-            "Pick the Tesseract OCR executable from disk");
-    setA11y(ocrLanguageEdit_, "OCR Language",
-            "Tesseract language code, for example eng");
     setA11y(ttsVoiceCombo_, "Read Aloud Voice",
             "Choose an installed Windows voice for the Read Aloud button");
     setA11y(ttsRateSlider_, "Read Aloud Speed",
@@ -456,7 +421,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     setA11y(ttsPreviewButton_, "Preview Read Aloud Voice",
             "Speak a short sample with the selected voice and speed");
     setA11y(lectureNotesCheckbox_, "Write Lecture Notes File",
-            "Append OCR and scene descriptions to a lecture notes file");
+            "Append text readings and scene descriptions to lecture notes");
 }
 
 void AiSettingsDialog::changeEvent(QEvent* event)
@@ -501,11 +466,6 @@ settings::AssistiveSettings AiSettingsDialog::result() const
     out.vlmApiKey = apiKeyEdit_->text();
     out.vlmModel = modelEdit_->text().trimmed();
     out.vlmPrompt = promptEdit_->toPlainText();
-    out.tesseractPath = tesseractPathEdit_->text().trimmed();
-    out.ocrLanguage = ocrLanguageEdit_->text().trimmed();
-    if (out.ocrLanguage.isEmpty()) {
-        out.ocrLanguage = QStringLiteral("eng");
-    }
     out.ttsEngine = ttsEngine_;
     out.ttsRate = static_cast<double>(ttsRateSlider_->value()) / 100.0;
 #if OPENZOOM_HAS_TTS
@@ -725,7 +685,7 @@ void AiSettingsDialog::SetCodexModelCatalog(const QJsonArray& models,
     }
     if (codexModelCombo_->count() == 0) {
         const QString fallback = wantedModel.isEmpty()
-                                     ? QStringLiteral("gpt-5.6-tera")
+                                     ? QStringLiteral("gpt-5.6-luna")
                                      : wantedModel;
         codexModelCombo_->addItem(fallback, fallback);
         selectedIndex = 0;

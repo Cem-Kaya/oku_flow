@@ -5,14 +5,13 @@
 namespace openzoom {
 
 void OpenZoomApp::OnCameraSelectionChanged(int index) {
-    if (index < 0 || static_cast<size_t>(index) >= cameras_.size()) {
+    if (cameraStartupPending_ || index < 0 || static_cast<size_t>(index) >= cameras_.size()) {
         return;
     }
 
     // A manual camera pick always wins over an in-flight automatic reconnect.
     pipelineOrchestrator_->CancelCameraReconnect();
     settingsController_->MutableSettings().cameraIndex = index;
-    RefreshCameraFormats(static_cast<size_t>(index));
     StartCameraCapture(static_cast<size_t>(index));
 }
 
@@ -30,6 +29,7 @@ void OpenZoomApp::UpdateCameraAccelerationUi()
                 currentCameraAccelerationKey_);
     }
     if (uiState_->cameraAccelerationCombo_) {
+        uiState_->cameraAccelerationCombo_->setEnabled(!cameraStartupPending_);
         auto blocker =
             uiState_->BlockSignals(
                 uiState_->cameraAccelerationCombo_);
@@ -38,7 +38,7 @@ void OpenZoomApp::UpdateCameraAccelerationUi()
     }
     if (uiState_->testCameraAccelerationButton_) {
         uiState_->testCameraAccelerationButton_->setEnabled(
-            selectedCameraIndex_ >= 0 &&
+            !cameraStartupPending_ && selectedCameraIndex_ >= 0 &&
             static_cast<size_t>(selectedCameraIndex_) < cameras_.size());
     }
 
@@ -74,6 +74,7 @@ void OpenZoomApp::UpdateCameraAccelerationUi()
 
 void OpenZoomApp::OnTestCameraAcceleration()
 {
+    if (cameraStartupPending_) return;
     if (selectedCameraIndex_ < 0 ||
         static_cast<size_t>(selectedCameraIndex_) >= cameras_.size()) {
         ShowStatusMessage(
@@ -267,6 +268,7 @@ void OpenZoomApp::OnTestCameraAcceleration()
 
 void OpenZoomApp::OnCameraAccelerationModeChanged(int index)
 {
+    if (cameraStartupPending_) return;
     if (index < 0 || index > 2 ||
         selectedCameraIndex_ < 0 ||
         static_cast<size_t>(selectedCameraIndex_) >= cameras_.size()) {
@@ -289,7 +291,7 @@ void OpenZoomApp::OnCameraAccelerationModeChanged(int index)
 }
 
 void OpenZoomApp::OnCameraFormatChanged(int index) {
-    if (!uiState_->cameraFormatCombo_ || index < 0) {
+    if (cameraStartupPending_ || !uiState_->cameraFormatCombo_ || index < 0) {
         return;
     }
     settingsController_->MutableSettings().cameraFormatStableId =
@@ -370,6 +372,13 @@ bool OpenZoomApp::StartSelectedMicrophone()
             if (!callbackTarget->accepting || !app ||
                 callbackTarget->generation != callbackGeneration) {
                 return;
+            }
+            // Fan-out under the callback-target mutex: both calls are
+            // bounded, lock-free toward the recorder, and never block. The
+            // transcript copy happens before the recorder consumes the
+            // frame; transcript pressure can never change recorder drops.
+            if (app->transcriptionController_) {
+                (void)app->transcriptionController_->TryEnqueueAudio(frame);
             }
             if (app->recordingManager_) {
                 app->recordingManager_->AddAudioFrame(std::move(frame));
@@ -718,20 +727,12 @@ void OpenZoomApp::OpenSetupAssistant()
     }
 
     setupAssistantDialog_ = new SetupAssistantDialog(
-        settingsController_->MutableSettings().assistive.tesseractPath,
         settingsController_->MutableSettings().assistive.codexExecutablePath,
         settingsController_->MutableSettings().setupAssistantDeclined,
         mainWindow_.get());
     connect(setupAssistantDialog_, &QObject::destroyed, this, [this]() {
         setupAssistantDialog_ = nullptr;
     });
-    connect(setupAssistantDialog_, &SetupAssistantDialog::TesseractPathChanged,
-            this, [this](const QString& path) {
-                settingsController_->MutableSettings().assistive.tesseractPath = path;
-                assistiveManager_->ApplySettings(
-                    settingsController_->MutableSettings().assistive);
-                SavePersistentSettings();
-            });
     connect(setupAssistantDialog_, &SetupAssistantDialog::CodexPathChanged,
             this, [this](const QString& path) {
                 settingsController_->MutableSettings().assistive.codexExecutablePath = path;

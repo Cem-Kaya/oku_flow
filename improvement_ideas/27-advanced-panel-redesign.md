@@ -130,7 +130,7 @@ PROFILE   [ Whiteboard ▾ ]        [Save as…]  [Reset]
     Spatial Sharpen [x]      Sharpness ────────
     ▸ More: Backend (NIS / FSR / Maxine SuperRes), SuperRes override
 ▾ Assistant
-    OCR Assist [x]   Scene Explain [x]   Assistive Overlay [x]
+    Scene Explain [x]   Assistive Overlay [x]
     [ Open Notes ]   [ Setup & Downloads… ]
 ──────────────────────────────────────────────────────────
 ▸ DIAGNOSTICS                                       collapsed

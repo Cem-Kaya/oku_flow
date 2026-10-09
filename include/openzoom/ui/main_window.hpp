@@ -91,7 +91,6 @@ public:
     QCheckBox* temporalSmoothCheckbox() const;
     QSlider* temporalSmoothSlider() const;
     QLabel* temporalSmoothValueLabel() const;
-    QCheckBox* ocrAssistCheckbox() const;
     QCheckBox* vlmAssistCheckbox() const;
     QCheckBox* assistiveOverlayCheckbox() const;
     QCheckBox* spatialSharpenCheckbox() const;
@@ -108,6 +107,20 @@ public:
     QPushButton* testCameraAccelerationButton() const;
     QComboBox* recordingCanvasCombo() const;
     QComboBox* applicationLanguageCombo() const;
+    QCheckBox* transcribeMicrophoneCheckbox() const;
+    QCheckBox* transcriptToNotesCheckbox() const;
+    QLabel* transcriptionStatusLabel() const;
+    QLabel* transcriptionQuotaLabel() const;
+    QLabel* transcriptPartialLabel() const;
+    QPlainTextEdit* transcriptFinalsView() const;
+
+    // Simple-mode live transcript overlay: non-activating and
+    // mouse-transparent, shown above the bottom action panel only while a
+    // transcription session is active. Text updates are silent (no
+    // accessibility announcements per delta).
+    void SetSimpleTranscriptActive(bool active);
+    void SetSimpleTranscriptPartial(const QString& text);
+    void AppendSimpleTranscriptFinal(const QString& text);
 
     // Two-speed UI: Simple overlays compact corner controls on the full render
     // surface; Advanced adds a right-side inspector.
@@ -264,7 +277,6 @@ private:
     QCheckBox* temporalSmoothCheckbox_{};
     QSlider* temporalSmoothSlider_{};
     QLabel* temporalSmoothValueLabel_{};
-    QCheckBox* ocrAssistCheckbox_{};
     QCheckBox* vlmAssistCheckbox_{};
     QCheckBox* assistiveOverlayCheckbox_{};
     QCheckBox* annotationCaptureOnExitCheckbox_{};
@@ -295,6 +307,18 @@ private:
     QLabel* cameraAccelerationStatusLabel_{};
     QPushButton* testCameraAccelerationButton_{};
     QComboBox* recordingCanvasCombo_{};
+    QCheckBox* transcribeMicrophoneCheckbox_{};
+    QCheckBox* transcriptToNotesCheckbox_{};
+    QLabel* transcriptionStatusLabel_{};
+    QLabel* transcriptionQuotaLabel_{};
+    QLabel* transcriptPartialLabel_{};
+    QPlainTextEdit* transcriptFinalsView_{};
+    QWidget* simpleTranscriptPanel_{};
+    QLabel* simpleTranscriptLabel_{};
+    QString simpleTranscriptPartial_;
+    QStringList simpleTranscriptFinals_;
+    bool simpleTranscriptActive_{false};
+    void RefreshSimpleTranscriptText();
     QComboBox* applicationLanguageCombo_{};
     CollapsibleSection* applicationSection_{};
     CollapsibleSection* deviceSection_{};

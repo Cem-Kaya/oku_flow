@@ -30,17 +30,13 @@ namespace openzoom {
 class SetupAssistantDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit SetupAssistantDialog(const QString& configuredTesseractPath,
-                                  const QString& configuredCodexPath,
+    explicit SetupAssistantDialog(const QString& configuredCodexPath,
                                   bool declined,
                                   QWidget* parent = nullptr);
     ~SetupAssistantDialog() override;
 
-    static bool NeedsSetup(const QString& configuredTesseractPath,
-                           const QString& configuredCodexPath);
-    static QString FindTesseractExecutable(const QString& configuredPath = {});
+    static bool NeedsSetup(const QString& configuredCodexPath);
     static QString FindCodexExecutable(const QString& configuredPath = {});
-    static QString ManagedTesseractDirectory();
 
     struct DependencyRow {
         QWidget* container{};
@@ -52,7 +48,6 @@ public:
     };
 
 signals:
-    void TesseractPathChanged(const QString& path);
     void CodexPathChanged(const QString& path);
     void DeclinePreferenceChanged(bool declined);
     void DependenciesChanged();
@@ -61,7 +56,7 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
-    enum class Dependency { None, Tesseract, CodexCli, NvidiaVideoEffects };
+    enum class Dependency { None, CodexCli, NvidiaVideoEffects };
 
     DependencyRow& RowForDependency(Dependency dependency);
     void RefreshStatus();
@@ -79,17 +74,14 @@ private:
                            bool success,
                            const QString& detail = {});
     void ShowDownloadFailure(const QString& message, const QString& vendorPage);
-    void RemoveTesseract();
     void OpenCodexLocationOrGuide();
     void RemoveNvidiaRuntime();
     static QString DetectNvidiaArchitecture();
     static QString FindNvidiaUninstallCommand();
 
-    QString configuredTesseractPath_;
     QString configuredCodexPath_;
     QString nvidiaArchitecture_;
     Dependency activeDependency_{Dependency::None};
-    DependencyRow tesseractRow_;
     DependencyRow codexRow_;
     DependencyRow nvidiaRow_;
     QCheckBox* declineCheckbox_{};

@@ -21,7 +21,7 @@ OpenZoom is a Windows-only camera magnifier built around Qt 6, Media Foundation,
   required by hardware Media Foundation encoders. Photos and on-demand
   analysis use the readback path, then hand image encoding, serialization, and
   file writes to bounded worker pools so that work does not stall the UI.
-- CUDA external-memory interop path with GPU color conversion (NV12/YUY2) and rotation, video stabilization, automatic keystone correction for projected screens, black-and-white, zoom, Gaussian blur, temporal smoothing, auto contrast (percentile level stretch), low-vision display color modes with contrast/brightness, focus marker, and spatial sharpening via NVIDIA NIS or AMD FSR 1.0 style kernels.
+- CUDA external-memory interop path with GPU color conversion (NV12/YUY2) and rotation, video stabilization, automatic keystone correction for projected screens, black-and-white, zoom, Gaussian blur, temporal smoothing, auto contrast (percentile level stretch), low-vision display color modes with contrast/brightness, focus marker, and spatial scaling/sharpening via pinned CUDA adaptations of NVIDIA Image Scaling 1.0.3 or AMD FSR 1.0.2 EASU + RCAS.
 - GPU video stabilization uses full-strength CUDA Harris/Lucas-Kanade feature
   tracking and device-side RANSAC to lock a mounted camera to one fixed GPU
   reference, so long-run estimator drift is impossible by construction.
@@ -45,11 +45,13 @@ OpenZoom is a Windows-only camera magnifier built around Qt 6, Media Foundation,
   latency is the only failure.
 - Two-speed UI: Simple mode gives the full client area to the live view and overlays three auto-fading primary clusters plus contextual screen-correction controls; Advanced keeps the camera visible beside a narrow inspector containing every parameter and pipeline diagnostics. The chosen mode persists.
 - Stage-1 quick modes backed by full stage-2 advanced configurations, including promotion of advanced tuning into user-defined quick options.
-- Local OCR via Tesseract plus scene explanations through either a signed-in Codex CLI/ChatGPT subscription or an OpenAI-compatible HTTP endpoint. Results stream into a focusable assistive panel and Advanced Assistant, can be spoken aloud, and can be written to `Documents\OpenZoom\Notes\`. The non-blocking Setup Assistant can install Tesseract, Codex CLI, and NVIDIA Video Effects without putting those optional runtimes in an OpenZoom release bundle.
-- OCR and VLM frame preparation is bounded and asynchronous: PNG/JPEG
-  encoding, resizing, base64/JSON creation, and temporary image writes happen
-  outside the UI thread, with cancellation tokens preventing stale work from
-  starting a request.
+- Text reading and scene explanations use a signed-in Codex CLI/ChatGPT
+  subscription (Luna with low reasoning by default) or the configured
+  OpenAI-compatible vision endpoint. Results stream into the assistive panel,
+  support manual Read Aloud, and can be saved in `Documents\OpenZoom\Notes\`.
+- Vision frame preparation is bounded and asynchronous: resizing, JPEG
+  encoding, base64/JSON creation, and temporary image writes happen outside
+  the UI thread. Cancellation prevents stale work from starting a request.
 - Session persistence in `%APPDATA%\OpenZoom\OpenZoom\settings.json`.
 - One user-owned root at `Documents\OpenZoom\` for photos, recordings, notes,
   analysis exports, and opt-in console debug logs. The root is configurable,
@@ -67,10 +69,9 @@ CUDA is the processing path; the CPU effects pipeline is deprecated. When the D3
 - Qt 6.9.3 for `msvc2022_64`, or matching overrides via `QT_PREFIX` / `Qt6_DIR`.
 - CMake 3.23 or newer.
 - NVIDIA GPU plus CUDA Toolkit 13.x if you want the CUDA path.
-- Optional: NVIDIA Video Effects runtime for Maxine SuperRes, Tesseract OCR
-  for local text recognition, and Codex CLI for subscription-backed Explain
-  and Assistant features. OpenZoom offers verified vendor downloads for all
-  three from `Setup & Downloads`.
+- Optional: NVIDIA Video Effects runtime for Maxine SuperRes and Codex CLI
+  for subscription-backed Read, Explain, and Assistant features. OpenZoom
+  offers verified vendor downloads through `Setup & Downloads`.
 
 ## Build And Run
 From a Visual Studio x64 developer prompt or a PowerShell 7 session (`pwsh.exe`) with MSVC, Qt, and optionally CUDA on `PATH`:
@@ -141,6 +142,10 @@ by default; the CPU preset disables it. Set the environment override explicitly
 to `OFF` only for a bundle that intentionally omits the adapter. OpenZoom links
 no Maxine import library and ships no proprietary runtime or model files.
 
+The pinned native WebRTC stack (libdatachannel, Opus, Mbed TLS) is part of the
+single supported Windows build. All of it is statically linked with the same
+`/MT` runtime; live transcription adds no browser runtime or dependency DLL.
+
 ### Release bundle
 
 ```bat
@@ -155,10 +160,21 @@ without terminating or relaunching OpenZoom. Set
 `OPENZOOM_SKIP_BUNDLE_TESTS=1` only for an emergency build; the script prints
 `WARNING: UNTESTED BUNDLE` when that explicit escape hatch is used.
 
+Release packaging also needs the matching Qt `Sources` component so it can
+stage Qt Multimedia's exact FFmpeg LGPL-2.1-or-later text. The script discovers
+the normal sibling `Src` directory automatically; set `QT_SOURCE_ROOT` when the
+matching source tree is installed elsewhere.
+
 The published bundle contains `open_zoom.exe`, Qt runtime files,
-`LICENSE`, `README.txt`, `THIRD_PARTY_LICENSES.md`, and the bundled Lucide icon
-notice. It also contains `SHA256SUMS.txt`, `release-manifest.json`, and
-`SBOM.spdx.json`, generated from the exact staged files before publication.
+`LICENSE`, `COMMERCIAL.md`, `README.txt`, `THIRD_PARTY_LICENSES.md`, complete notices for the
+bundled CUDA/reference/native-WebRTC code, Qt and FFmpeg license texts, and the
+six exact Qt module SPDX documents that cover every module and plugin deployed
+by `windeployqt`. It also contains `SHA256SUMS.txt`,
+`release-manifest.json`, and `SBOM.spdx.json`, generated from the exact staged
+files before publication. The top-level SPDX document links the staged Qt SPDX
+documents by namespace and SHA-1, distinguishes bundled dependencies from
+optional user-installed runtimes, and records every staged file in the release
+manifest.
 Private/team bundles may remain unsigned. To sign with a certificate already
 installed in the current user's Windows certificate store, set
 `OPENZOOM_SIGN_CERT_SHA1` to its thumbprint before running the script. A
@@ -171,19 +187,55 @@ unsigned public build.
 Release currently retains a diagnostics terminal while stabilization
 is being field-tuned. Stabilizer output is rate-limited to one detailed sample
 per 30 camera frames rather than printing per frame. The CUDA runtime is linked
-statically. NVIDIA Video Effects, Tesseract,
-and Codex CLI binaries are never copied into the bundle; users obtain them from
-their vendors through the Setup Assistant. The Tesseract installer and
-OpenAI's Codex bootstrap script are pinned and SHA-256 verified before
-execution. The verified Codex bootstrap then verifies the selected official
-release package against OpenAI's checksum manifest.
+statically. NVIDIA Video Effects and Codex CLI binaries are obtained from
+vendors through Setup Assistant and are never copied into the bundle.
+OpenAI's Codex bootstrap script is pinned and SHA-256 verified before execution;
+that bootstrap verifies the selected official release package against OpenAI's
+checksum manifest.
 An existing `dist\OpenZoom\output\` is preserved and restored around the
 rebuild; photos, recordings, notes, and analysis files are user data and are
 never intentionally removed by packaging.
 If Qt's transfer fails, Setup retries with the Windows downloader and then the
 vendor's alternate host without weakening verification.
 
+## Startup And Latency Profiling
+
+With OpenZoom closed and a camera available, run the tracked profiler from
+PowerShell 7 after building:
+
+```powershell
+./scripts/profile_startup.ps1 -Executable ./dist/OpenZoom/open_zoom.exe -Runs 2 -CompareLegacy
+```
+
+Each trial writes `build/startup-profile/<mode>-<run>/startup.json` and logs.
+Its sibling `settings.json` starts from a copy of your settings; AI requests,
+notes, and optional setup prompts are disabled for the trial, and generated
+files use that trial's data folder. The source settings hash is checked after
+each run. The profiler refuses to run alongside another OpenZoom instance and
+lets its own instances exit normally after 15 seconds. `-DurationSeconds`,
+`-CameraIndex`, `-SettingsPath`, and `-OutputDirectory` allow focused comparisons.
+`-DurationSeconds 1 -AllowNoFrame` also permits a short close-during-startup
+check; absent a presented frame, its timings must not be used as a speed result.
+
+`-CompareLegacy` alternates the old synchronous camera-opening sequence and the
+new worker sequence in the same executable. Other rendering changes are shared
+by both modes. Reports distinguish negotiated camera FPS from actual callback
+arrival rate, processed scenes, and successful presents. The 20 ms Qt heartbeat
+measures event-loop delays; camera-to-present latency begins after Media
+Foundation returns a frame and ends at successful presentation submission.
+Startup timing begins in the application constructor and excludes executable
+loading. These are application timings, not sensor-to-photon measurements.
+
+The diagnostic application flag `--startup-profile=<report-path>` uses
+`settings.json` beside the report and writes no camera images. Its optional
+`--startup-profile-ms=<duration>` controls normal automatic exit; omit all
+profiling flags for ordinary operation.
+
 ## Runtime Controls
+- Initial camera opening overlaps with window graphics initialization on a
+  worker. Camera mode discovery reuses the streaming reader, and busy GPU
+  frame slots return control to the UI for a later presentation attempt.
+  Camera selectors are temporarily disabled while the initial device opens.
 - `Simple` / `Advanced` switches between a full-view overlay UI and a right-side inspector. The live camera remains visible in both states.
 - `Application language` under the Advanced Image tab's `Application`
   section offers `English`, `Türkçe`, and `Deutsch` with their flags. The
@@ -220,6 +272,34 @@ vendor's alternate host without weakening verification.
   selects which Windows audio capture endpoint is recorded. New settings use
   the Windows system-default microphone; `No microphone (video only)` records
   silent video. OpenZoom opens the microphone only while recording.
+- `Transcribe microphone while recording`, in the same section, is an opt-in
+  that sends microphone audio to Codex Voice for live transcription while a
+  recording is active. It requires the Codex CLI signed in with ChatGPT,
+  shows the current phrase and
+  finalized text in a read-only Transcript tab (plus a Simple-mode overlay),
+  and `Add finalized transcript to lecture notes` appends each finalized
+  phrase to the HTML lecture notes. Transcription problems never stop,
+  delay, or invalidate the recording; the shown quota is the general Codex
+  window, not voice minutes.
+  The five-second value is negotiation pre-roll/backpressure capacity, not an
+  upload interval or recognition context window: live WebRTC receives
+  continuous 20 ms audio frames, encoded as 48 kbit/s Opus. The realtime
+  carrier holds a bounded 500 ms continuity cushion before paced RTP begins
+  (and rebuilds it after a real later underflow); that cushion prevents
+  capture/UI timer bursts from becoming missing speech and is not a recognition
+  or upload chunk size. The realtime
+  session receives OpenZoom's fixed instruction to transcribe the classroom
+  speaker verbatim and treat spoken content as untrusted quoted data, never an
+  action request. No post-session Codex handoff or second transcription pass is
+  used; if the service closes without a final event, the already-streamed final
+  partial is preserved locally. OpenZoom disables configured
+  MCP servers plus Codex's built-in app and plugin providers before this
+  dedicated child starts, fails closed on any MCP lifecycle event, denies
+  unexpected requests, uses no approvals, a read-only sandbox, and an empty
+  temporary working directory. The WebRTC media path is a statically linked, pinned
+  open-source stack (libdatachannel, Opus, Mbed TLS): no browser component,
+  no ICE/STUN third-party servers, and the assistant's return audio is never
+  decoded.
 - In Simple mode, the switch, profile carousel, and
   Photo/Record/Explain/Read/Draw actions occupy three flush view corners.
   Keystone profiles add a separate Previous/Stop/Next correction strip beside
@@ -362,14 +442,14 @@ vendor's alternate host without weakening verification.
   direction resets acceleration. The global `Zoom wheel acceleration` option
   under `Device > More device options` disables only the acceleration, while
   `Ctrl+=` and `Ctrl+-` always use reproducible unaccelerated geometric steps.
-- `OCR Assist`, `Scene Explain`, and `Assistive Overlay` drive asynchronous assistive analysis and on-screen text overlays.
-- `Read Text`, identified by a speaker icon, runs local OCR. `Explain` sends one temporary, non-history camera question and changes to `Stop` while Codex is working.
-- The assistive result panel updates as an answer streams. It is an owned floating tool window: native window movement keeps dragging responsive over the D3D camera surface, and streamed text does not reset its geometry. Drag its header to move it and an edge or corner to resize it. The first placement clears the top Simple controls; later position and size changes persist relative to the camera view and are restored across restarts. Its text can be focused, selected, and read by a screen reader; the question field remains editable while an answer is streaming, but Ask and Enter submission stay blocked until that answer finishes. Follow-ups enter the shared persistent Assistant conversation with the current view attached. Speech starts only when `Read Aloud` is clicked and omits visible section labels such as `Scene Explain` and `OCR`, while the high-contrast Close control or `Esc` dismisses the panel.
+- `Scene Explain` and `Assistive Overlay` drive asynchronous assistive analysis and on-screen text overlays.
+- `Read Text`, identified by a speaker icon, asks the vision assistant to transcribe the current view verbatim. It preserves source language and marks unreadable portions; it does not summarize the page. Read Aloud speaks the result only when clicked. `Explain` sends one temporary, non-history camera question and changes to `Stop` while Codex is working.
+- The assistive result panel updates as an answer streams. Drag the floating panel header to either app edge to show a purple docking preview, then release to dock there. Moving away or pressing Escape cancels the drop. The highlight uses a debounced latch: stay near the edge for 180 ms to select it, then stay outside its wider release zone for 250 ms to clear it. To undock by dragging, pull the docked header away and hold for about 350 ms; short movements keep it latched, and it cannot immediately snap back to the same side. Its Panel position selector also offers Floating, Dock left, and Dock right. Docking reserves space beside the camera viewport, with image proportions preserved during resizing; drag the separator to resize the dock, or choose Floating to restore the previous movable panel. The chosen dock side and floating geometry persist across restarts. In Draw mode, the floating panel stays clickable and movable, and ink is clipped around its current bounds even after moving or resizing it. In floating mode: native window movement keeps dragging responsive over the D3D camera surface, and streamed text does not reset its geometry. Drag its header to move it and an edge or corner to resize it. The first placement clears the top Simple controls; later position and size changes persist relative to the camera view and are restored across restarts. Its text can be focused, selected, and read by a screen reader; the question field remains editable while an answer is streaming, but Ask and Enter submission stay blocked until that answer finishes. Follow-ups enter the shared persistent Assistant conversation with the current view attached. Speech starts only when `Read Aloud` is clicked and omits visible section labels such as `Scene Explain` and `Read Text`, while the high-contrast Close control or `Esc` dismisses the panel.
 - The Advanced Assistant can attach the current processed view, stream answers, stop a response, and manage persistent OpenZoom conversations with resume, rename, export, and delete actions.
 - The Advanced Assistant subscription label reports the percentage left in the current Codex usage window.
 - `Connect ChatGPT` uses the Codex app-server browser login flow. Existing Codex CLI sign-in is reused automatically.
 - `AI Settings` is vertically scrollable and separates Codex subscription,
-  OpenAI-compatible vision server, OCR, Read Aloud, and lecture-note controls.
+  OpenAI-compatible vision server, Read Aloud, and lecture-note controls.
   It shows OpenZoom's built-in Codex prompt read-only beside editable user
   instructions. The Codex model dropdown and its reasoning dropdown are
   populated from the signed-in app-server's `model/list` response, including
@@ -381,15 +461,21 @@ vendor's alternate host without weakening verification.
   synthesis, across installed languages. Windows 11 Narrator/Magnifier Natural
   voice packages are not currently exposed by that public API and therefore do
   not appear in OpenZoom. Advanced Assistant internet and coding permissions
-  are separate opt-ins; coding also requires a workspace folder.
+  are separate opt-ins; coding—including Python and shell tools—also requires
+  a workspace folder.
 - `Open Notes` opens the current session's accessible HTML lecture notes from
   `Documents\OpenZoom\Notes\` (or the configured OpenZoom root). Notes contain
-  timestamped OCR and scene explanations plus responsive original/processed
+  timestamped text readings and scene explanations plus responsive original/processed
   photo grids. Every fully finalized recording segment adds original and
   processed MP4 players with direct relative links; failed or truncated
   finalizations are not linked.
-- `Spatial Sharpen` enables the CUDA sharpening/upscaling stage and lets you choose NIS or FSR-style processing when the GPU path is active.
-- `Debug View` switches to the CPU composite grid so intermediate stages can be inspected; the nearby pipeline status reports CPU/GPU, fallback, recording, OCR, and VLM state.
+- `Spatial Sharpen` enables the CUDA sharpening/upscaling stage and lets you
+  choose the pinned NVIDIA Image Scaling 1.0.3 NVScaler or AMD FidelityFX FSR
+  1.0.2 EASU + RCAS implementation when the GPU path is active. Magnified
+  crops receive up to 2x enlargement per pass within the existing frame
+  buffers and a 1440p cap; additional zoom uses display scaling. Native-size
+  views retain sharpening. Pan/zoom reuses the cached camera result.
+- `Debug View` switches to the CPU composite grid so intermediate stages can be inspected; the nearby pipeline status reports CPU/GPU, fallback, recording and VLM state.
 - `Show Focus Point` overlays the current zoom center on the presented output.
 - `Capture Photo` waits for the next complete camera frame and saves
   `IMG_<timestamp>_original.jpg` plus `IMG_<timestamp>_processed.jpg` to
@@ -546,10 +632,6 @@ then completed separately through `Connect ChatGPT` in AI Settings.
 
 Environment variables remain as fallback for any field left empty in the
 dialog:
-- OCR first uses the configured path, then `OPENZOOM_TESSERACT_PATH`, the
-  Setup Assistant-managed `%LOCALAPPDATA%\OpenZoom\tools\tesseract\tesseract.exe`,
-  `PATH`, or standard Windows install directories. `Setup & Downloads` installs
-  or removes the managed copy after verifying its pinned installer hash.
 - Maxine discovery checks `OPENZOOM_MAXINE_PATH`, `NV_VIDEO_EFFECTS_PATH`, the
   standard Program Files location, and the NVIDIA Video Effects uninstall
   registry entry. The bottom of Advanced displays the required
@@ -559,7 +641,9 @@ dialog:
   the official standalone
   `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe`, or
   `%LOCALAPPDATA%\Microsoft\WinGet\Links\codex.exe`. New configurations default
-  to `gpt-5.6-tera` with `low` reasoning; explicit saved choices are preserved.
+  to `gpt-5.6-luna` with `low` reasoning. The former misspelled
+  `gpt-5.6-tera` value is migrated automatically; other explicit saved
+  choices are preserved.
 - Configure VLM with:
   - `OPENZOOM_VLM_API_URL`
   - `OPENZOOM_VLM_API_KEY`

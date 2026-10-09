@@ -5,6 +5,18 @@ the historical body.** Effort of the remainder:
 medium-large; still driven by telemetry rather than intuition. Verdicts and
 evidence: plan 19.
 
+> **2026-09-10 startup/presentation update.** Initial device opening now runs
+> on an independent worker concurrently with window/presenter initialization.
+> Native mode discovery reuses that reader. Ordinary D3D12 frame admission and
+> D3D11 conversion completion checks no longer wait on the Qt thread; busy
+> work returns to the scheduler with ownership intact. Recording clones carry
+> explicit CUDA dependencies independent of viewport admission. Latency samples
+> follow the processed scene through its first successful present. Tracked
+> startup profiling records actual camera arrival/processing/presentation rates
+> and UI pulse delays. See [39](39-startup-ui-latency-2026-09-10.md) for measured
+> results and limits; manual device changes and resource teardown remain bounded
+> synchronous ownership boundaries.
+
 > **2026-07-29 absorption note.** Since this plan was written:
 > - **Phase 2's worst offender is gone**: encoder submission and
 >   finalization moved to a bounded 12-frame recording worker with checked
@@ -107,7 +119,7 @@ sleeps of 150/300/600 ms (`media_capture.cpp:298-312`), unbounded capture-thread
 join (`media_capture.cpp:416-426`), `WaitForGpu()` in the degraded interop path
 (`presenter.cpp:422-428`), `cudaEventSynchronize` on staging-slot reuse
 (`cuda_interop.cpp:2230-2244`), `cudaStreamSynchronize` without an external
-semaphore (`cuda_interop.cpp:2868-2876`), and the Codex/Tesseract shutdown
+semaphore (`cuda_interop.cpp:2868-2876`), and the Codex shutdown
 waits. Prefer polling, completion queues, and bounded async shutdown with
 progress reported to the UI.
 

@@ -1,6 +1,8 @@
 #ifdef _WIN32
 
 #include "openzoom/d3d12/presenter.hpp"
+#include "openzoom/d3d12/fence_wait.hpp"
+#include "openzoom/d3d12/frame_readiness.hpp"
 
 #include <QDebug>
 
@@ -307,12 +309,21 @@ struct RecordingFramePoolState {
         slot->inUse = false;
     }
 
+    // A failed drain cannot safely free textures or invalidate encoder leases.
+    // A self-reference preserves the complete pool without allocating during
+    // teardown. The OS reclaims this terminal-fault quarantine at process exit.
+    void RetainUntilProcessExit(const std::shared_ptr<RecordingFramePoolState>& self)
+    {
+        quarantineSelf_ = self;
+    }
+
     HANDLE FenceHandle() const
     {
         return fenceHandle_;
     }
 
 private:
+    std::shared_ptr<RecordingFramePoolState> quarantineSelf_;
     Microsoft::WRL::ComPtr<ID3D12Device> device_;
     Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
     HANDLE fenceHandle_{nullptr};
@@ -341,12 +352,9 @@ D3D12Presenter::D3D12Presenter() = default;
 
 D3D12Presenter::~D3D12Presenter()
 {
-    if (commandQueue_ && fence_ && fenceEvent_) {
-        try {
-            WaitForGpu();
-        } catch (const std::exception& e) {
-            qWarning() << "D3D12Presenter teardown wait failed:" << e.what();
-        }
+    if (faulted_ || (commandQueue_ && fence_ && !WaitForGpu())) {
+        QuarantineResources();
+        return;
     }
     for (UINT i = 0; i < kFrameCount; ++i) {
         if (uploadBuffers_[i]) {
@@ -373,20 +381,36 @@ D3D12Presenter::~D3D12Presenter()
 }
 
 void D3D12Presenter::Initialize(HWND hwnd, UINT width, UINT height)
+try
 {
+    if (faulted_) return;
     hwnd_ = hwnd;
     CreateDevice();
     CreateCommandObjects();
     CreateFenceObjects();
     CreateViewportPipeline();
     CreateSwapChain(width, height);
-    EnsureUploadBuffer(width, height);
+    if (!EnsureUploadBuffer(width, height)) return;
     initialized_ = true;
+}
+catch (const std::exception& error)
+{
+    qWarning() << "D3D12 initialization failed:" << error.what();
+    MarkFenceFault("GPU initialization failed");
+}
+catch (...)
+{
+    MarkFenceFault("Unexpected GPU initialization failure");
 }
 
 bool D3D12Presenter::IsInitialized() const
 {
     return initialized_;
+}
+
+bool D3D12Presenter::IsFaulted() const
+{
+    return faulted_;
 }
 
 bool D3D12Presenter::NeedsScenePresent() const
@@ -410,12 +434,13 @@ std::uint64_t D3D12Presenter::MissedPresentCount() const
 }
 
 void D3D12Presenter::Resize(UINT width, UINT height)
+try
 {
     if (!initialized_ || width == 0 || height == 0) {
         return;
     }
 
-    WaitForGpu();
+    if (!WaitForGpu()) return;
     // The drain retired any in-flight async readbacks; their contents are for
     // the old dimensions, so drop them. Callers simply never receive a
     // TryGetCompletedReadback result for those frames.
@@ -438,8 +463,20 @@ void D3D12Presenter::Resize(UINT width, UINT height)
     height_ = height;
     scenePresentNeeded_ = true;
 }
+catch (const std::exception& error)
+{
+    qWarning() << "D3D12 operation failed:" << error.what();
+    MarkFenceFault("GPU operation failed");
+    return;
+}
+catch (...)
+{
+    MarkFenceFault("Unexpected GPU operation failure");
+    return;
+}
 
 void D3D12Presenter::Present(const uint8_t* data, UINT width, UINT height)
+try
 {
     if (!initialized_ || !data) {
         return;
@@ -453,14 +490,13 @@ void D3D12Presenter::Present(const uint8_t* data, UINT width, UINT height)
         Resize(width, height);
     }
 
-    EnsureUploadBuffer(width, height);
+    if (!initialized_ || !EnsureUploadBuffer(width, height)) return;
 
-    // Pipelined presentation: only wait until the GPU has finished the frame
-    // that previously used this slot's allocator/upload buffer/back buffer,
-    // instead of draining the whole queue every frame.
+    // Retry on a later UI tick if this slot's previous GPU work or the
+    // swap-chain admission signal is not ready. Never wait to reuse resources.
     const UINT backIndex = swapChain_->GetCurrentBackBufferIndex();
-    if (!WaitForFrameSlot(backIndex)) {
-        scenePresentNeeded_ = true;
+    if (!TryAcquireFrameSlot(backIndex)) {
+        scenePresentNeeded_ = !faulted_;
         return;
     }
 
@@ -502,6 +538,17 @@ void D3D12Presenter::Present(const uint8_t* data, UINT width, UINT height)
     frameFenceValues_[backIndex] = signalValue;
     scenePresentNeeded_ = false;
 }
+catch (const std::exception& error)
+{
+    qWarning() << "D3D12 operation failed:" << error.what();
+    MarkFenceFault("GPU operation failed");
+    return;
+}
+catch (...)
+{
+    MarkFenceFault("Unexpected GPU operation failure");
+    return;
+}
 
 void D3D12Presenter::PresentFromTexture(ID3D12Resource* texture,
                                         UINT width,
@@ -527,6 +574,7 @@ bool D3D12Presenter::PresentSceneTexture(ID3D12Resource* texture,
                                         const FenceSyncParams* fenceSync,
                                         const ViewportPresentationOptions* options,
                                         UINT64* outReadbackRequestId)
+try
 {
     if (outReadbackRequestId) {
         *outReadbackRequestId = 0;
@@ -537,16 +585,15 @@ bool D3D12Presenter::PresentSceneTexture(ID3D12Resource* texture,
     }
 
     const bool useFenceSync = fenceSync && fenceSync->enable && fence_.Get() != nullptr;
+    const UINT backIndex = swapChain_->GetCurrentBackBufferIndex();
+    if (!TryAcquireFrameSlot(backIndex)) {
+        scenePresentNeeded_ = !faulted_;
+        return false;
+    }
     AsyncReadbackSlot* readbackSlot =
         options && options->requestReadback
             ? PrepareAsyncReadbackSlot(width_, height_)
             : nullptr;
-
-    const UINT backIndex = swapChain_->GetCurrentBackBufferIndex();
-    if (!WaitForFrameSlot(backIndex)) {
-        scenePresentNeeded_ = true;
-        return false;
-    }
 
     ID3D12CommandAllocator* allocator = frameCommandAllocators_[backIndex].Get();
     ThrowIfFailed(allocator->Reset(), "Failed to reset command allocator");
@@ -661,6 +708,7 @@ bool D3D12Presenter::PresentSceneTexture(ID3D12Resource* texture,
     ThrowIfFailed(commandList_->Close(), "Failed to close command list");
 
     ID3D12CommandList* lists[] = { commandList_.Get() };
+    if (!KeepSubmittedResource(texture)) return false;
     commandQueue_->ExecuteCommandLists(static_cast<UINT>(std::size(lists)), lists);
 
     if (useFenceSync) {
@@ -691,7 +739,7 @@ bool D3D12Presenter::PresentSceneTexture(ID3D12Resource* texture,
         // Without the shared external semaphore there is no cross-API sync:
         // the caller's CUDA stream may write the source texture again as soon
         // as we return, so the queued draw must fully complete first.
-        WaitForGpu();
+        if (!WaitForGpu()) return false;
         ThrowIfFailed(swapChain_->Present(1, 0), "Failed to present swap chain");
         frameFenceValues_[backIndex] = fenceValue_;
         if (readbackSlot) {
@@ -704,6 +752,17 @@ bool D3D12Presenter::PresentSceneTexture(ID3D12Resource* texture,
     }
     scenePresentNeeded_ = false;
     return true;
+}
+catch (const std::exception& error)
+{
+    qWarning() << "D3D12 operation failed:" << error.what();
+    MarkFenceFault("GPU operation failed");
+    return false;
+}
+catch (...)
+{
+    MarkFenceFault("Unexpected GPU operation failure");
+    return false;
 }
 
 ID3D12Device* D3D12Presenter::GetDevice() const
@@ -824,7 +883,9 @@ void D3D12Presenter::CreateSwapChain(UINT width, UINT height)
     scDesc.SampleDesc.Count = 1;
     scDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scDesc.BufferCount = 2;
-    scDesc.Scaling = DXGI_SCALING_STRETCH;
+    // The old back buffer may outlive the HWND size by one resize tick. Keep
+    // its pixel geometry instead of stretching it into the new aspect ratio.
+    scDesc.Scaling = DXGI_SCALING_NONE;
     scDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     scDesc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
@@ -1053,15 +1114,15 @@ void D3D12Presenter::AcquireBackBuffers()
     }
 }
 
-void D3D12Presenter::EnsureUploadBuffer(UINT width, UINT height)
+bool D3D12Presenter::EnsureUploadBuffer(UINT width, UINT height)
 {
     if (uploadBuffers_[0] && uploadWidth_ == width && uploadHeight_ == height) {
-        return;
+        return true;
     }
 
     if (uploadBuffers_[0]) {
         // In-flight frames may still be copying from the old buffers.
-        WaitForGpu();
+        if (!WaitForGpu()) return false;
         for (UINT i = 0; i < kFrameCount; ++i) {
             if (uploadBuffers_[i]) {
                 uploadBuffers_[i]->Unmap(0, nullptr);
@@ -1118,6 +1179,7 @@ void D3D12Presenter::EnsureUploadBuffer(UINT width, UINT height)
 
     uploadWidth_ = width;
     uploadHeight_ = height;
+    return true;
 }
 
 bool D3D12Presenter::ReadbackTexture(ID3D12Resource* texture,
@@ -1125,6 +1187,7 @@ bool D3D12Presenter::ReadbackTexture(ID3D12Resource* texture,
                                      UINT height,
                                      std::vector<uint8_t>& outBgra,
                                      UINT64 waitFenceValue)
+try
 {
     if (!initialized_ || !texture || width == 0 || height == 0) {
         return false;
@@ -1215,9 +1278,10 @@ bool D3D12Presenter::ReadbackTexture(ID3D12Resource* texture,
     }
 
     ID3D12CommandList* lists[] = { commandList_.Get() };
+    if (!KeepSubmittedResource(texture)) return false;
     commandQueue_->ExecuteCommandLists(static_cast<UINT>(std::size(lists)), lists);
 
-    WaitForGpu();
+    if (!WaitForGpu()) return false;
 
     outBgra.resize(static_cast<size_t>(width) * height * 4u);
     uint8_t* mapped = nullptr;
@@ -1234,6 +1298,17 @@ bool D3D12Presenter::ReadbackTexture(ID3D12Resource* texture,
     }
     readbackBuffer_->Unmap(0, nullptr);
     return true;
+}
+catch (const std::exception& error)
+{
+    qWarning() << "D3D12 operation failed:" << error.what();
+    MarkFenceFault("GPU operation failed");
+    return false;
+}
+catch (...)
+{
+    MarkFenceFault("Unexpected GPU operation failure");
+    return false;
 }
 
 D3D12Presenter::AsyncReadbackSlot*
@@ -1308,6 +1383,7 @@ bool D3D12Presenter::RequestReadback(ID3D12Resource* texture,
                                      UINT width,
                                      UINT height,
                                      UINT64* outRequestId)
+try
 {
     if (!initialized_ || !texture || width == 0 || height == 0) {
         return false;
@@ -1349,6 +1425,7 @@ bool D3D12Presenter::RequestReadback(ID3D12Resource* texture,
     ThrowIfFailed(commandList_->Close(), "Failed to close command list");
 
     ID3D12CommandList* lists[] = { commandList_.Get() };
+    if (!KeepSubmittedResource(texture)) return false;
     commandQueue_->ExecuteCommandLists(static_cast<UINT>(std::size(lists)), lists);
 
     const UINT64 signalValue = ++fenceValue_;
@@ -1360,6 +1437,17 @@ bool D3D12Presenter::RequestReadback(ID3D12Resource* texture,
     }
     return true;
 }
+catch (const std::exception& error)
+{
+    qWarning() << "D3D12 operation failed:" << error.what();
+    MarkFenceFault("GPU operation failed");
+    return false;
+}
+catch (...)
+{
+    MarkFenceFault("Unexpected GPU operation failure");
+    return false;
+}
 
 GpuVideoFrame D3D12Presenter::RequestRecordingFrame(
     ID3D12Resource* texture,
@@ -1370,7 +1458,8 @@ GpuVideoFrame D3D12Presenter::RequestRecordingFrame(
     UINT targetHeight,
     const uint8_t* annotationBgra,
     std::size_t annotationStrideBytes,
-    bool* outPoolExhausted)
+    bool* outPoolExhausted,
+    UINT64 waitFenceValue)
 {
     GpuVideoFrame frame;
     if (outPoolExhausted) {
@@ -1576,8 +1665,14 @@ GpuVideoFrame D3D12Presenter::RequestRecordingFrame(
             commandList_->Close(),
             "Failed to close recording command list");
         ID3D12CommandList* lists[] = {commandList_.Get()};
+        if (!KeepSubmittedResource(texture)) return {};
+        if (waitFenceValue > 0) {
+            ThrowIfFailed(commandQueue_->Wait(fence_.Get(), waitFenceValue),
+                          "Failed to queue recording wait on CUDA fence");
+        }
         commandQueue_->ExecuteCommandLists(1, lists);
-        const UINT64 readyValue = ++fenceValue_;
+        const UINT64 readyValue = std::max(fenceValue_, waitFenceValue) + 1;
+        fenceValue_ = readyValue;
         ThrowIfFailed(
             commandQueue_->Signal(fence_.Get(), readyValue),
             "Failed to signal GPU recording frame");
@@ -1591,6 +1686,7 @@ GpuVideoFrame D3D12Presenter::RequestRecordingFrame(
         return frame;
     } catch (const std::exception& error) {
         qWarning() << "GPU recording frame unavailable:" << error.what();
+        MarkFenceFault("GPU recording submission failed");
     }
     return {};
 }
@@ -1599,12 +1695,15 @@ bool D3D12Presenter::TryGetCompletedReadback(std::vector<uint8_t>& outBgra,
                                              UINT& outWidth,
                                              UINT& outHeight,
                                              UINT64* outRequestId)
+try
 {
     if (!initialized_ || !fence_) {
         return false;
     }
 
     const UINT64 completedValue = fence_->GetCompletedValue();
+    if (completedValue == UINT64_MAX || FAILED(device_->GetDeviceRemovedReason()))
+        return MarkFenceFault("Device lost while polling readback fence");
     AsyncReadbackSlot* oldest = nullptr;
     for (auto& slot : asyncReadbackSlots_) {
         if (slot.inFlight && slot.fenceValue <= completedValue &&
@@ -1642,6 +1741,17 @@ bool D3D12Presenter::TryGetCompletedReadback(std::vector<uint8_t>& outBgra,
     }
     return true;
 }
+catch (const std::exception& error)
+{
+    qWarning() << "D3D12 operation failed:" << error.what();
+    MarkFenceFault("GPU operation failed");
+    return false;
+}
+catch (...)
+{
+    MarkFenceFault("Unexpected GPU operation failure");
+    return false;
+}
 
 void D3D12Presenter::CopyToUpload(const uint8_t* data, UINT width, UINT height, UINT slot)
 {
@@ -1660,53 +1770,133 @@ void D3D12Presenter::CopyToUpload(const uint8_t* data, UINT width, UINT height, 
     }
 }
 
-void D3D12Presenter::WaitForGpu()
+bool D3D12Presenter::MarkFenceFault(const char* reason) noexcept
 {
-    const UINT64 fenceValue = ++fenceValue_;
-    ThrowIfFailed(commandQueue_->Signal(fence_.Get(), fenceValue), "Failed to signal fence");
-    if (fence_->GetCompletedValue() < fenceValue) {
-        ThrowIfFailed(fence_->SetEventOnCompletion(fenceValue, fenceEvent_),
-                      "Failed to set fence completion event");
-        WaitForSingleObject(fenceEvent_, INFINITE);
-    }
+    if (!faulted_) qWarning() << "D3D12 presenter stopped:" << reason;
+    faulted_ = true;
+    initialized_ = false;
+    scenePresentNeeded_ = false;
+    return false;
 }
 
-void D3D12Presenter::WaitForFenceValue(UINT64 value)
+bool D3D12Presenter::WaitForGpu() noexcept
 {
-    if (!fence_) {
-        return;
-    }
-    if (fence_->GetCompletedValue() < value) {
-        ThrowIfFailed(fence_->SetEventOnCompletion(value, fenceEvent_),
-                      "Failed to set fence completion event");
-        WaitForSingleObject(fenceEvent_, INFINITE);
-    }
-}
-
-bool D3D12Presenter::WaitForFrameSlot(UINT slot)
-{
-    if (frameLatencyWaitableObject_) {
-        DWORD waitResult = WAIT_IO_COMPLETION;
-        while (waitResult == WAIT_IO_COMPLETION) {
-            waitResult =
-                WaitForSingleObjectEx(frameLatencyWaitableObject_, 100, TRUE);
-        }
-        if (waitResult != WAIT_OBJECT_0) {
-            qWarning() << "Swap-chain frame-latency wait timed out";
-            ++missedPresentCount_;
-            return false;
-        }
-    }
-    WaitForFenceValue(frameFenceValues_[slot]);
+    if (faulted_) return false;
+    if (!commandQueue_ || !fence_ || !fenceEvent_)
+        return MarkFenceFault("Fence objects unavailable");
+    if (fenceValue_ >= UINT64_MAX - 1)
+        return MarkFenceFault("Fence timeline exhausted");
+    const UINT64 value = fenceValue_ + 1;
+    if (FAILED(commandQueue_->Signal(fence_.Get(), value)))
+        return MarkFenceFault("Failed to signal drain fence");
+    fenceValue_ = value;
+    if (!WaitForFenceValue(value)) return false;
+    submittedSourceTextures_.clear();
     return true;
 }
 
-void D3D12Presenter::WaitForIdle()
+bool D3D12Presenter::WaitForFenceValue(UINT64 value) noexcept
 {
-    if (!initialized_) {
-        return;
+    if (faulted_) return false;
+    if (!fence_ || !device_ || !fenceEvent_)
+        return MarkFenceFault("Fence objects unavailable");
+    const auto completed = fence_->GetCompletedValue();
+    if (completed == UINT64_MAX || FAILED(device_->GetDeviceRemovedReason()))
+        return MarkFenceFault("Device removed before fence completion");
+    if (completed >= value) return true;
+    if (FAILED(fence_->SetEventOnCompletion(value, fenceEvent_)))
+        return MarkFenceFault("Failed to set fence completion event");
+    const auto result = WaitForFenceDeadline(value, 1000,
+        [this] { return fence_->GetCompletedValue(); },
+        [this] { return FAILED(device_->GetDeviceRemovedReason()); },
+        [this](std::uint64_t milliseconds) {
+            const DWORD status = WaitForSingleObject(fenceEvent_, static_cast<DWORD>(milliseconds));
+            return status == WAIT_OBJECT_0 ? FenceEventResult::Signaled :
+                   status == WAIT_TIMEOUT ? FenceEventResult::TimedOut : FenceEventResult::Failed;
+        }, [] { return GetTickCount64(); });
+    if (result != FenceWaitResult::Completed)
+        return MarkFenceFault(result == FenceWaitResult::TimedOut ?
+            "Fence deadline expired; resources retained until restart" :
+            "Fence wait failed or device was removed; resources retained until restart");
+    return true;
+}
+
+bool D3D12Presenter::TryAcquireFrameSlot(UINT slot)
+{
+    if (faulted_) return false;
+    if (!fence_ || !device_ || slot >= kFrameCount)
+        return MarkFenceFault("Frame-slot objects unavailable");
+    const auto readiness = PollFrameReadiness(frameFenceValues_[slot],
+        [this] { return fence_->GetCompletedValue(); },
+        [this] { return FAILED(device_->GetDeviceRemovedReason()); },
+        [this] {
+            if (!frameLatencyWaitableObject_) return FenceEventResult::Signaled;
+            const DWORD result = WaitForSingleObject(frameLatencyWaitableObject_, 0);
+            return result == WAIT_OBJECT_0 ? FenceEventResult::Signaled :
+                   result == WAIT_TIMEOUT ? FenceEventResult::TimedOut : FenceEventResult::Failed;
+        });
+    switch (readiness) {
+    case FrameReadiness::Ready:
+        return true;
+    case FrameReadiness::Busy:
+        ++missedPresentCount_;
+        return false;
+    case FrameReadiness::DeviceLost:
+        return MarkFenceFault("Device removed before frame-slot reuse");
+    case FrameReadiness::WaitFailed:
+        return MarkFenceFault("Swap-chain latency poll failed");
     }
-    WaitForGpu();
+    return false;
+}
+
+bool D3D12Presenter::WaitForIdle() noexcept
+{
+    if (faulted_) return false;
+    if (!initialized_) return true;
+    return WaitForGpu();
+}
+
+bool D3D12Presenter::KeepSubmittedResource(ID3D12Resource* texture)
+{
+    for (const auto& resource : submittedSourceTextures_)
+        if (resource.Get() == texture) return true;
+    // Scene resources normally remain stable until a full drain. Bound even
+    // unexpected source churn, and retain every resource already submitted.
+    if (submittedSourceTextures_.size() >= 128)
+        return MarkFenceFault("Too many unretired source resources");
+    submittedSourceTextures_.emplace_back(texture);
+    return true;
+}
+
+void D3D12Presenter::QuarantineResources() noexcept
+{
+    // No Unmap, CloseHandle, Release, or synthetic fence signal on an unknown
+    // GPU completion state. Detach reference ownership allocation-free; a
+    // terminal fault requires process restart, which reclaims this graph.
+    factory_.Detach();
+    device_.Detach();
+    commandQueue_.Detach();
+    for (auto& allocator : frameCommandAllocators_) allocator.Detach();
+    readbackCommandAllocator_.Detach();
+    commandList_.Detach();
+    swapChain_.Detach();
+    for (auto& buffer : backBuffers_) buffer.Detach();
+    renderTargetHeap_.Detach();
+    sceneSrvHeap_.Detach();
+    sceneRootSignature_.Detach();
+    scenePipelineState_.Detach();
+    annotationPipelineState_.Detach();
+    fence_.Detach();
+    for (auto& buffer : uploadBuffers_) buffer.Detach();
+    readbackBuffer_.Detach();
+    for (auto& slot : asyncReadbackSlots_) {
+        slot.buffer.Detach();
+        slot.allocator.Detach();
+    }
+    for (auto& texture : submittedSourceTextures_) texture.Detach();
+    if (recordingFramePool_) recordingFramePool_->RetainUntilProcessExit(recordingFramePool_);
+    fenceEvent_ = nullptr;
+    frameLatencyWaitableObject_ = nullptr;
 }
 
 } // namespace openzoom

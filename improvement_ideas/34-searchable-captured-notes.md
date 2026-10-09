@@ -1,6 +1,11 @@
 # Plan 34 — Searchable Captured Notes
 
-Status: **READY — OWNER SELECTED 2026-07-31**
+Status: **REVISION REQUIRED — 2026-09-10**
+
+The separate local recognition path has been removed. The remaining capture
+association/index work must use explicit vision-assistant requests (Luna by
+default), with user control over whether saved images are submitted. This
+plan does not authorize automatic background subscription requests.
 
 Priority: **HIGH**
 
@@ -15,9 +20,10 @@ semantic index lets keyboard and screen-reader users jump directly to saved
 moments.
 
 This plan promotes idea F from
-[plan 29](29-idea-inbox-2026-07-29.md). It is local image OCR, not lecture
-audio transcription. Plan 31's owner decision remains absolute: do not add
-Whisper, speech-to-text, transcript sidecars, or transcript search.
+[plan 29](29-idea-inbox-2026-07-29.md). Image text comes from the vision assistant; live
+recording transcription and its notes append are owned by
+[plan 36](36-recording-transcription-to-notes.md). Share stable section-id and
+index contracts rather than implementing either pipeline twice.
 
 ## Verified current behavior
 
@@ -33,7 +39,7 @@ The media-saving part already exists and must not be reimplemented:
 - Fully finalized recording segments likewise add both original and processed
   MP4 players.
 - Annotation snapshots add one processed, ink-composited PNG to the notes.
-- Successful foreground/periodic OCR adds a separate `Text on screen`
+- Successful on-demand Read adds a separate `Text on screen`
   section, but that text is not associated with the saved capture that caused
   the user to care about the moment.
 - No automated test currently verifies the generated paired-photo notes HTML.
@@ -43,20 +49,21 @@ original/processed capture.
 
 ## User-visible behavior
 
-### 1. OCR saved captures locally
+### 1. Read saved captures on request
 
-After a paired photo is durably saved and appended to notes:
+After a paired photo is durably saved and appended to notes, an explicit
+request to read that capture can:
 
 1. enqueue a background notes-OCR job for the processed image;
-2. run the configured local Tesseract executable without VLM/network use;
+2. submit the saved image through the configured vision provider;
 3. append the recognized text inside the same logical photo section;
 4. if the processed image produces no useful text, optionally retry the
    original once;
 5. store only one transcript for the pair, labelled with which image produced
    it, so Ctrl+F does not encounter duplicate versions of every sentence.
 
-After an annotation snapshot is saved, enqueue the saved PNG for the same
-local OCR flow. If a clean pre-ink processed frame is available without
+After an annotation snapshot is saved, offer the same explicit reading
+action for its PNG. If a clean pre-ink processed frame is available without
 another readback or file, prefer it for recognition while keeping the
 annotated PNG as the visible artifact. Otherwise OCR the saved annotation.
 
@@ -65,7 +72,7 @@ markers remain separate ideas.
 
 ### 2. Keep capture responsive
 
-Photo/annotation save success must not wait for Tesseract:
+Photo/annotation save success must not wait for the vision assistant:
 
 - Use a bounded, single-consumer notes-OCR queue distinct from the visible
   foreground OCR state.
@@ -74,9 +81,9 @@ Photo/annotation save success must not wait for Tesseract:
 - A saturated queue reports `Photo saved; searchable text is pending` or
   `Photo saved; searchable text was skipped because OCR is busy` without
   claiming the image was lost.
-- Missing/unavailable Tesseract leaves a valid media section and one concise
+- An unavailable vision provider leaves a valid media section and one concise
   note that searchable text was unavailable. It must not repeatedly prompt or
-  spend VLM/Codex usage.
+  retry without another user request.
 - Cancellation and application shutdown are bounded. Already saved images and
   valid notes remain intact even if their OCR job has not completed.
 
@@ -144,12 +151,12 @@ the append-only source.
   collection of interdependent string replacements in
   `assistive_runtime.cpp`.
 - Inject or abstract the OCR runner enough that tests do not require a real
-  Tesseract installation.
+  subscription request or external service.
 - Keep file writes atomic where a whole document or sidecar is replaced.
 - Use the configured notes directory and relative paths from
   `UserDataPaths`; introduce no new hard-coded output root.
-- Background OCR is strictly local. It must not send saved images to Codex or
-  an OpenAI-compatible endpoint.
+- A photo or annotation save alone must not send images to a provider. Only
+  an explicit reading request may use Codex or the configured endpoint.
 
 ## Implementation phases
 
@@ -210,8 +217,9 @@ the append-only source.
 
 ## Explicit non-goals
 
-- Lecture audio transcription, Whisper, SRT/TXT transcript output, or
-  transcript search.
+- Implementing lecture audio transcription, Whisper, or SRT/TXT output in this
+  plan. Plan 36 owns live transcript capture/notes; this plan may index the
+  resulting typed sections through its shared notes index.
 - OCR of every frame or every video segment.
 - Opening a PDF or saved image as the live magnifier input. That is
   [plan 35](35-pdf-image-source-mode.md); this plan concerns images already

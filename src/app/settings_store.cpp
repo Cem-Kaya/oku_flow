@@ -21,7 +21,7 @@ namespace openzoom::settings {
 
 namespace {
 
-constexpr int kCurrentSettingsVersion = 15;
+constexpr int kCurrentSettingsVersion = 16;
 
 int SnapRotation(int turns)
 {
@@ -114,7 +114,6 @@ AdvancedConfig MakeConfig(QString id,
                           bool debugView,
                           bool focusMarker,
                           int rotationQuarterTurns,
-                          bool ocrAssistEnabled,
                           bool vlmAssistEnabled,
                           bool assistiveOverlayEnabled)
 {
@@ -139,7 +138,6 @@ AdvancedConfig MakeConfig(QString id,
     config.debugView = debugView;
     config.focusMarker = focusMarker;
     config.rotationQuarterTurns = SnapRotation(rotationQuarterTurns);
-    config.ocrAssistEnabled = ocrAssistEnabled;
     config.vlmAssistEnabled = vlmAssistEnabled;
     config.assistiveOverlayEnabled = assistiveOverlayEnabled;
     return config;
@@ -156,7 +154,7 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
                    true, 0.25f,
                    true, 1, 0.25f,
                    false, false, 0,
-                   false, false, true),
+                   false, true),
         MakeConfig(QStringLiteral("preset-high-contrast-config"),
                    QStringLiteral("High Contrast"),
                    QStringLiteral("Thresholded monochrome for strong text separation."),
@@ -165,7 +163,7 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
                    true, 0.18f,
                    false, 1, 0.25f,
                    false, false, 0,
-                   false, false, true),
+                   false, true),
         MakeConfig(QStringLiteral("preset-steady-text-config"),
                    QStringLiteral("Steady Text"),
                    QStringLiteral("Favors stability and reduced shimmer during movement."),
@@ -174,7 +172,7 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
                    true, 0.45f,
                    false, 1, 0.25f,
                    false, false, 0,
-                   false, false, true),
+                   false, true),
         MakeConfig(QStringLiteral("preset-sharp-text-config"),
                    QStringLiteral("Sharp Text"),
                    QStringLiteral("Stronger sharpening for crisp UI and document edges."),
@@ -183,7 +181,7 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
                    false, 0.25f,
                    true, 1, 0.45f,
                    false, false, 0,
-                   false, false, true),
+                   false, true),
         MakeConfig(QStringLiteral("preset-large-zoom-config"),
                    QStringLiteral("Large Zoom"),
                    QStringLiteral("Prioritizes magnification with a simpler processing stack."),
@@ -192,7 +190,7 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
                    false, 0.25f,
                    false, 1, 0.25f,
                    false, true, 0,
-                   false, false, true),
+                   false, true),
         MakeConfig(QStringLiteral("preset-low-light-config"),
                    QStringLiteral("Low Light"),
                    QStringLiteral("Softer smoothing-oriented preset for noisy scenes."),
@@ -201,16 +199,7 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
                    true, 0.35f,
                    false, 1, 0.25f,
                    false, false, 0,
-                   false, false, true),
-        MakeConfig(QStringLiteral("preset-ocr-assist-config"),
-                   QStringLiteral("OCR Assist"),
-                   QStringLiteral("Reading preset with OCR hooks enabled for future overlays."),
-                   false, 0.5f, true, 1.7f, 0.5f, 0.5f,
-                   false, 1.0f, 3,
-                   true, 0.28f,
-                   true, 1, 0.28f,
-                   false, false, 0,
-                   true, false, true),
+                   false, true),
         MakeConfig(QStringLiteral("preset-scene-explain-config"),
                    QStringLiteral("Scene Explain"),
                    QStringLiteral("Context-oriented preset with VLM hooks enabled for scene summaries."),
@@ -219,7 +208,7 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
                    true, 0.22f,
                    false, 1, 0.25f,
                    false, false, 0,
-                   false, true, true),
+                   true, true),
         // MakeConfig's parameter list predates the keystone/auto-contrast and
         // stabilization fields, so the newer presets set them afterwards.
         []() {
@@ -231,7 +220,7 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
                        true, 0.25f,
                        false, 1, 0.25f,
                        false, false, 0,
-                       false, false, true);
+                       false, true);
             config.keystoneEnabled = true;
             config.autoContrastEnabled = true;
             config.autoContrastStrength = 0.7f;
@@ -247,7 +236,7 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
                        false, 0.25f,
                        true, 1, 0.35f,
                        false, false, 0,
-                       false, false, true);
+                       false, true);
             config.keystoneEnabled = true;
             config.autoContrastEnabled = true;
             config.autoContrastStrength = 0.85f;
@@ -263,7 +252,7 @@ const std::vector<AdvancedConfig>& BuiltInConfigsStorage()
                        false, 0.25f,
                        false, 1, 0.25f,
                        false, false, 0,
-                       false, false, true);
+                       false, true);
             config.autoTextClarityEnabled = true;
             config.backgroundFlattenEnabled = true;
             config.backgroundFlattenStrength = 0.85f;
@@ -302,8 +291,6 @@ const std::vector<PresetDefinition>& BuiltInPresetsStorage()
          QStringLiteral("Higher magnification with fewer extra effects."), QStringLiteral("preset-large-zoom-config"), true},
         {QStringLiteral("preset-low-light"), QStringLiteral("Low Light"),
          QStringLiteral("Gentler smoothing for dim or noisy scenes."), QStringLiteral("preset-low-light-config"), true},
-        {QStringLiteral("preset-ocr-assist"), QStringLiteral("OCR Assist"),
-         QStringLiteral("Preset reserved for text extraction and readable overlays."), QStringLiteral("preset-ocr-assist-config"), true},
         {QStringLiteral("preset-scene-explain"), QStringLiteral("Scene Explain"),
          QStringLiteral("Preset reserved for future VLM-based scene summaries."), QStringLiteral("preset-scene-explain-config"), true},
         {QStringLiteral("preset-projector"), QStringLiteral("Projector Screen"),
@@ -340,7 +327,6 @@ QJsonObject ConfigToJson(const AdvancedConfig& config)
     object.insert(QStringLiteral("focusMarker"), config.focusMarker);
     object.insert(QStringLiteral("rotationQuarterTurns"),
                   SnapRotation(config.rotationQuarterTurns));
-    object.insert(QStringLiteral("ocrAssistEnabled"), config.ocrAssistEnabled);
     object.insert(QStringLiteral("vlmAssistEnabled"), config.vlmAssistEnabled);
     object.insert(QStringLiteral("assistiveOverlayEnabled"), config.assistiveOverlayEnabled);
     object.insert(QStringLiteral("stabilizationEnabled"), config.stabilizationEnabled);
@@ -404,7 +390,6 @@ AdvancedConfig ConfigFromJson(const QJsonObject& object, const AdvancedConfig& d
     config.debugView = object.value(QStringLiteral("debugView")).toBool(config.debugView);
     config.focusMarker = object.value(QStringLiteral("focusMarker")).toBool(config.focusMarker);
     config.rotationQuarterTurns = SnapRotation(object.value(QStringLiteral("rotationQuarterTurns")).toInt(config.rotationQuarterTurns));
-    config.ocrAssistEnabled = object.value(QStringLiteral("ocrAssistEnabled")).toBool(config.ocrAssistEnabled);
     config.vlmAssistEnabled = object.value(QStringLiteral("vlmAssistEnabled")).toBool(config.vlmAssistEnabled);
     config.assistiveOverlayEnabled = object.value(QStringLiteral("assistiveOverlayEnabled")).toBool(config.assistiveOverlayEnabled);
     config.stabilizationEnabled = object.value(QStringLiteral("stabilizationEnabled")).toBool(config.stabilizationEnabled);
@@ -472,8 +457,6 @@ QJsonObject AssistiveToJson(const AssistiveSettings& assistive)
     }
     object.insert(QStringLiteral("vlmModel"), assistive.vlmModel);
     object.insert(QStringLiteral("vlmPrompt"), assistive.vlmPrompt);
-    object.insert(QStringLiteral("tesseractPath"), assistive.tesseractPath);
-    object.insert(QStringLiteral("ocrLanguage"), assistive.ocrLanguage);
     object.insert(QStringLiteral("ttsEngine"), assistive.ttsEngine);
     object.insert(QStringLiteral("ttsVoiceName"), assistive.ttsVoiceName);
     object.insert(QStringLiteral("ttsVoiceLocale"), assistive.ttsVoiceLocale);
@@ -487,7 +470,14 @@ AssistiveSettings AssistiveFromJson(const QJsonObject& object)
     AssistiveSettings assistive;
     assistive.aiProvider = object.value(QStringLiteral("aiProvider")).toString(assistive.aiProvider);
     assistive.codexExecutablePath = object.value(QStringLiteral("codexExecutablePath")).toString();
-    assistive.codexModel = object.value(QStringLiteral("codexModel")).toString(assistive.codexModel);
+    assistive.codexModel =
+        object.value(QStringLiteral("codexModel"))
+            .toString(assistive.codexModel)
+            .trimmed();
+    if (assistive.codexModel.compare(
+            QStringLiteral("gpt-5.6-tera"), Qt::CaseInsensitive) == 0) {
+        assistive.codexModel = QStringLiteral("gpt-5.6-terra");
+    }
     assistive.codexReasoningEffort = object.value(QStringLiteral("codexReasoningEffort"))
                                           .toString(assistive.codexReasoningEffort);
     assistive.codexInternetEnabled = object.value(QStringLiteral("codexInternetEnabled"))
@@ -503,8 +493,6 @@ AssistiveSettings AssistiveFromJson(const QJsonObject& object)
         object.value(QStringLiteral("vlmCredentialId")).toString();
     assistive.vlmModel = object.value(QStringLiteral("vlmModel")).toString(assistive.vlmModel);
     assistive.vlmPrompt = object.value(QStringLiteral("vlmPrompt")).toString(assistive.vlmPrompt);
-    assistive.tesseractPath = object.value(QStringLiteral("tesseractPath")).toString(assistive.tesseractPath);
-    assistive.ocrLanguage = object.value(QStringLiteral("ocrLanguage")).toString(assistive.ocrLanguage);
     assistive.ttsEngine = object.value(QStringLiteral("ttsEngine")).toString();
     assistive.ttsVoiceName = object.value(QStringLiteral("ttsVoiceName")).toString();
     assistive.ttsVoiceLocale = object.value(QStringLiteral("ttsVoiceLocale")).toString();
@@ -706,6 +694,14 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
                 .toInt(static_cast<int>(settings.recordingCanvasMode)),
             static_cast<int>(RecordingCanvasMode::Source),
             static_cast<int>(RecordingCanvasMode::Nhd360)));
+    // Missing legacy values keep the defaults; non-Boolean JSON types do not
+    // coerce (toBool falls back to the default for non-bool values).
+    settings.liveTranscriptionEnabled =
+        recording.value(QStringLiteral("liveTranscriptionEnabled"))
+            .toBool(settings.liveTranscriptionEnabled);
+    settings.appendTranscriptToNotes =
+        recording.value(QStringLiteral("appendTranscriptToNotes"))
+            .toBool(settings.appendTranscriptToNotes);
     const QJsonObject sectionStates =
         ui.value(QStringLiteral("sectionStates")).toObject();
     for (auto it = sectionStates.begin(); it != sectionStates.end(); ++it) {
@@ -714,6 +710,11 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
     settings.selectedPresetId = ui.value(QStringLiteral("selectedPresetId")).toString();
     settings.setupAssistantDeclined =
         ui.value(QStringLiteral("setupAssistantDeclined")).toBool(settings.setupAssistantDeclined);
+    const QString dockPosition =
+        ui.value(QStringLiteral("assistiveOverlayDockPosition")).toString();
+    if (dockPosition == QStringLiteral("left") || dockPosition == QStringLiteral("right")) {
+        settings.assistiveOverlayDockPosition = dockPosition;
+    }
     const QJsonObject overlayGeometry =
         ui.value(QStringLiteral("assistiveOverlayGeometry")).toObject();
     const int overlayWidth = std::clamp(
@@ -869,6 +870,14 @@ LoadResult LoadDetailed(const QString& path)
         result.error = QStringLiteral("Settings could not be interpreted.");
         return result;
     }
+    const QString storedCodexModel =
+        root.value(QStringLiteral("assistive"))
+            .toObject()
+            .value(QStringLiteral("codexModel"))
+            .toString();
+    result.migrationApplied =
+        storedCodexModel.trimmed().compare(
+            QStringLiteral("gpt-5.6-tera"), Qt::CaseInsensitive) == 0;
     result.status = LoadStatus::Loaded;
     return result;
 }
@@ -938,6 +947,8 @@ bool Save(const QString& path, const PersistentSettings& settings)
     ui.insert(QStringLiteral("sectionStates"), sectionStates);
     ui.insert(QStringLiteral("selectedPresetId"), settings.selectedPresetId);
     ui.insert(QStringLiteral("setupAssistantDeclined"), settings.setupAssistantDeclined);
+    ui.insert(QStringLiteral("assistiveOverlayDockPosition"),
+              settings.assistiveOverlayDockPosition);
     if (settings.assistiveOverlayGeometry.isValid()) {
         const QRect& geometry = settings.assistiveOverlayGeometry;
         ui.insert(QStringLiteral("assistiveOverlayGeometry"),
@@ -950,7 +961,11 @@ bool Save(const QString& path, const PersistentSettings& settings)
     root.insert(
         QStringLiteral("recording"),
         QJsonObject{{QStringLiteral("canvasMode"),
-                     static_cast<int>(settings.recordingCanvasMode)}});
+                     static_cast<int>(settings.recordingCanvasMode)},
+                    {QStringLiteral("liveTranscriptionEnabled"),
+                     settings.liveTranscriptionEnabled},
+                    {QStringLiteral("appendTranscriptToNotes"),
+                     settings.appendTranscriptToNotes}});
 
     root.insert(
         QStringLiteral("annotations"),
@@ -1114,7 +1129,6 @@ bool AreConfigsEquivalent(const AdvancedConfig& lhs, const AdvancedConfig& rhs)
            lhs.debugView == rhs.debugView &&
            lhs.focusMarker == rhs.focusMarker &&
            SnapRotation(lhs.rotationQuarterTurns) == SnapRotation(rhs.rotationQuarterTurns) &&
-           lhs.ocrAssistEnabled == rhs.ocrAssistEnabled &&
            lhs.vlmAssistEnabled == rhs.vlmAssistEnabled &&
            lhs.assistiveOverlayEnabled == rhs.assistiveOverlayEnabled &&
            lhs.stabilizationEnabled == rhs.stabilizationEnabled &&

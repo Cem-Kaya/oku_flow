@@ -4,6 +4,7 @@
 
 #include "openzoom/common/media_writer.hpp"
 #include "openzoom/common/recording_contract.hpp"
+#include "openzoom/common/transcript.hpp"
 #include "openzoom/app/user_data_paths.hpp"
 #include "openzoom/capture/audio_capture.hpp"
 
@@ -16,6 +17,7 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -59,12 +61,20 @@ struct CapturedFrame {
     }
 };
 
+struct SavedRecordingSegment {
+    RecordingSessionInfo session;
+    int segmentIndex{1};
+    QString originalPath;
+    QString processedPath;
+};
+
 class RecordingManager {
 public:
     using StatusCallback = std::function<void(const QString&, int)>;
     using SegmentSavedCallback =
-        std::function<void(const QString&, const QString&)>;
-    using SessionEndedCallback = std::function<void()>;
+        std::function<void(const SavedRecordingSegment&)>;
+    using SessionEndedCallback =
+        std::function<void(const RecordingSessionInfo&)>;
 
     RecordingManager(QPushButton* recordButton,
                      StatusCallback statusCallback,
@@ -95,6 +105,9 @@ public:
 
     bool IsActive() const;
     RecordingState State() const { return state_.load(); }
+    // Identity of the active session; empty while not recording. Transcript
+    // sessions key their durable output to this id.
+    std::optional<RecordingSessionInfo> CurrentSessionInfo() const;
     QString CodecName() const;
     RecordingTimingSnapshot EncoderSubmitTiming() const;
     // True after the stop watchdog declared the recording worker permanently
@@ -206,6 +219,7 @@ private:
     std::atomic<RecordingCanvasMode> canvasMode_{
         RecordingCanvasMode::Source};
     QString sessionTimestamp_;
+    RecordingSessionInfo sessionInfo_;  // guarded by queueMutex_
     QString sessionDirectory_;
     QString codecName_;
     QString stopMessage_;

@@ -28,18 +28,38 @@ Current contents:
 - `AiSettingsDialog` for Codex subscription or OpenAI-compatible provider,
   dynamically discovered model/reasoning choices, a visible read-only built-in
   Codex prompt, shared language/behavior instructions, Advanced Assistant
-  permissions, separately grouped VLM/OCR/speech/notes settings, installed
+  permissions, separately grouped VLM/speech/notes settings, installed
   Windows voice/speed selection, and manual speech preview. Its content
   scrolls independently from the fixed confirmation buttons
 - `RenderWidget` for native D3D12 presentation
 - `AnnotationOverlay` for scene-anchored drawing, selection, text entry, and
   annotation capture. Its native Windows hit test uses physical panel
   rectangles so persistent camera actions remain clickable at non-100% DPI
-- `AssistiveOverlay`, an owned floating Assistant that uses native move/resize
+- `AnnotationOverlay::SetExcludedWidget` tracks the Assistant's visibility,
+  movement, and resize in a native window mask and paint clip, so ink and Draw
+  controls cannot cover or intercept the floating chat. Viewport-ancestor
+  movement also updates the canvas when docking shifts the central layout
+- `AssistiveOverlay`, a `QDockWidget` with Floating/Dock left/Dock right choices
+  that reserve space beside the camera when docked. Floating mode uses native move/resize
   handling without letting streamed text reapply its geometry, persists its
-  camera-relative position and size, initially clears the top controls, plus
+  camera-relative position and size separately from its persisted dock side,
+  initially clears the top controls, plus
   screen-reader streaming text, a follow-up question field, manual Read Aloud,
   high-contrast Close, and Escape dismissal
+- Floating Assistant header drags also dock on release at either app edge.
+  A translucent, high-contrast owned tool window highlights the target above
+  native camera/Draw surfaces without intercepting input or taking focus.
+  Windows move-loop notifications commit/cancel the drop; resizing and ordinary
+  placement updates do not trigger docking
+- Assistant header dragging uses one controller for both floating and docked
+  states. A docked header needs a 32-pixel pull held for 350 ms before release;
+  returning, releasing early, or Escape cancels it. Preview acquisition/release
+  thresholds differ (36/96 logical pixels), with a debounced latch (180 ms to
+  acquire, 250 ms to release). Moves that keep the same target do not restart
+  its timer. The just-released side must be left before it can re-arm. Qt's
+  automatic dock dragging is disabled
+- Presenter resizing uses a 16 ms throttle that is not restarted by subsequent
+  resize events, so continuous splitter motion cannot starve back-buffer updates
 - `JoystickOverlay` for on-canvas panning input
 - `ResponsiveSliderRow` for keeping labels and complete slider tracks usable
   while the Advanced splitter changes width

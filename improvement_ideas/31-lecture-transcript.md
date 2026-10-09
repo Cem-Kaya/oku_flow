@@ -1,9 +1,9 @@
 # Plan 31 - Lecture Transcript
 
-Status: **DROPPED by owner decision on 2026-07-30.**
+Status: **SUPERSEDED by owner decision on 2026-08-07. Active work is Plan 36.**
 
-Do not implement transcription in OpenZoom. This decision removes all planned
-speech-to-text work, including:
+This file preserves the 2026-07-30 decision for provenance. At that time, the
+owner directed OpenZoom not to implement:
 
 - Codex realtime audio and transcript events.
 - Local Whisper installation, inference, or model downloads.
@@ -14,6 +14,11 @@ speech-to-text work, including:
 OpenZoom continues to record the user's selected microphone into the paired
 original and processed videos. Audio recording is not transcription and remains
 part of the product.
+
+On 2026-08-07 the owner explicitly reopened the narrower goal of live
+transcription during recording with finalized text appended to lecture notes.
+Follow `36-recording-transcription-to-notes.md`; do not treat the historical
+prohibition below as current implementation policy.
 
 ## Historical Probe
 

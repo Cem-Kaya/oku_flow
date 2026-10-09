@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
 #include <mfapi.h>
+#include "openzoom/common/yuv_color.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -40,7 +41,8 @@ public:
                             UINT width,
                             UINT height,
                             LONG stride,
-                            std::size_t dataSize);
+                            std::size_t dataSize,
+                            YuvColorInfo color = {});
 
     bool RotateRawBuffer(int quarterTurns, UINT& width, UINT& height);
 

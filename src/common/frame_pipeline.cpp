@@ -59,7 +59,8 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
                                           UINT width,
                                           UINT height,
                                           LONG stride,
-                                          std::size_t dataSize)
+                                          std::size_t dataSize,
+                                          YuvColorInfo color)
 {
     auto rejectFrame = [this]() {
         stageRaw_.clear();
@@ -139,7 +140,7 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
         }
         const bool ok = ConvertNv12ToBgra(frame.data(), availableBytes,
                                           nv12Stride,
-                                          width, height, stageRaw_);
+                                          width, height, stageRaw_, color);
         if (ok) {
             rawWidth_ = width;
             rawHeight_ = height;
@@ -155,7 +156,7 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
             return rejectFrame();
         }
         const bool ok = ConvertYuy2ToBgra(frame.data(), availableBytes,
-                                          packedStride, width, height, stageRaw_);
+                                          packedStride, width, height, stageRaw_, color);
         if (ok) {
             rawWidth_ = width;
             rawHeight_ = height;

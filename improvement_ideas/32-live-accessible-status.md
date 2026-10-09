@@ -29,8 +29,9 @@ Status: **VERIFY — implementation and automated event gate complete
   `ad5ab389f379e4f3611907de0a3165f2a13ec5c1d8d2e0ecaae18ba02e665a4c`.
 - The remaining `setText` sites were classified as construction-only,
   editable-field content, or deliberate visual compression whose full
-  accessible name remains stable. Plan 31 transcription was dropped by owner
-  decision, so no transcript row exists to convert.
+  accessible name remains stable. At implementation time Plan 31 transcription
+  was dropped, so no transcript row existed. Plan 36 now owns the transcript
+  surfaces and must use this plan's live-text policy.
 
 **Owner's report:** visible text changes with app state (the pipeline
 status "GPU Ready" line and others), but the accessibility layer keeps

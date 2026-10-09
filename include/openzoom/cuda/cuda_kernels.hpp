@@ -2,6 +2,8 @@
 
 #ifdef _WIN32
 
+#include "openzoom/common/yuv_color.hpp"
+
 #include <cuda_runtime_api.h>
 
 #include <cstdint>
@@ -40,6 +42,7 @@ void LaunchFocusMarkerLinear(uchar4* buffer, size_t pitchBytes,
                              cudaStream_t stream);
 
 void LaunchFsrEasuRcasLinear(uchar4* dst, size_t dstPitchBytes,
+                             uchar4* scratch, size_t scratchPitchBytes,
                              const uchar4* src, size_t srcPitchBytes,
                              int srcWidth, int srcHeight,
                              int dstWidth, int dstHeight,
@@ -52,6 +55,14 @@ void LaunchNisLinear(uchar4* dst, size_t dstPitchBytes,
                      int dstWidth, int dstHeight,
                      float sharpness,
                      cudaStream_t stream);
+
+// Replicate the last valid row/column into a one-texel guard when a cache
+// occupies only the allocation's top-left region (linear sampler footprint).
+void PadSpatialCacheBorder(cudaArray_t cache,
+                           const uchar4* output, size_t outputPitchBytes,
+                           unsigned int outputWidth, unsigned int outputHeight,
+                           unsigned int cacheWidth, unsigned int cacheHeight,
+                           cudaStream_t stream);
 
 void LaunchTemporalSmoothLinear(uchar4* dst, size_t dstPitchBytes,
                                 const uchar4* src, size_t srcPitchBytes,
@@ -325,18 +336,18 @@ void LaunchDisplayColorGradeLinear(uchar4* buffer, size_t pitchBytes,
                                    float autoContrastStrength,
                                    cudaStream_t stream);
 
-// BT.601 limited-range YUV -> BGRA, integer math identical to the CPU
-// converters in src/common/image_processing.cpp.
+// Metadata-selected BT.601/709 limited/full YUV -> BGRA; shared fixed-point
+// equations match the CPU converters, including footroom and clipping.
 void LaunchNv12ToBgraLinear(uchar4* dst, size_t dstPitchBytes,
                             const unsigned char* yPlane, size_t yPitchBytes,
                             const unsigned char* uvPlane, size_t uvPitchBytes,
                             int width, int height,
-                            cudaStream_t stream);
+                            cudaStream_t stream, YuvColorInfo color = {});
 
 void LaunchYuy2ToBgraLinear(uchar4* dst, size_t dstPitchBytes,
                             const unsigned char* src, size_t srcPitchBytes,
                             int width, int height,
-                            cudaStream_t stream);
+                            cudaStream_t stream, YuvColorInfo color = {});
 
 // Rotate by quarterTurnsClockwise in {1,2,3}. For 1 and 3 the destination is
 // srcHeight x srcWidth; for 2 it matches the source extent.

@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
 #include <Windows.h>
+#include "openzoom/common/yuv_color.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -27,14 +28,16 @@ bool ConvertNv12ToBgra(const uint8_t* src,
                        UINT strideY,
                        UINT width,
                        UINT height,
-                       std::vector<uint8_t>& dst);
+                       std::vector<uint8_t>& dst,
+                       YuvColorInfo color = {});
 
 bool ConvertYuy2ToBgra(const uint8_t* src,
                        size_t srcSize,
                        UINT stride,
                        UINT width,
                        UINT height,
-                       std::vector<uint8_t>& dst);
+                       std::vector<uint8_t>& dst,
+                       YuvColorInfo color = {});
 
 void ApplyBlackWhite(const std::vector<uint8_t>& src,
                      std::vector<uint8_t>& dst,

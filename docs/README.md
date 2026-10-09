@@ -12,18 +12,29 @@ OpenZoom is a Windows-only live magnification application that combines:
 ## Architecture At A Glance
 The current frame flow is:
 
-1. `MediaCapture` enumerates cameras and streams frames from the selected
+1. Initial device opening runs on an independent COM worker while the native
+   window/presenter initializes. Mode discovery reuses the streaming reader;
+   cancellation revokes delivery without retaining the application object.
+   `MediaCapture` enumerates cameras and streams frames from the selected
    device, preferring NV12, then YUY2, before BGRA formats. Automatic mode
    first creates a D3D11/DXGI-backed Media Foundation source reader, validates
    timestamps and image range for 30 startup frames, and transparently reopens
    the conservative system-memory reader if that camera/driver fails. The
-   accelerated reader retains DXGI textures. D3D11 converts them to a reusable
+   accelerated reader retains DXGI textures. Matching BGRA uses a direct GPU
+   rectangle copy; D3D11 converts other supported formats to a reusable
    NT-shareable BGRA allocation, D3D12 opens that allocation to provide its
    exact resource description and allocation size, and CUDA imports it as
-   external memory. A delayed D3D11 completion query causes one safe readback
-   and a retry, not a permanent session downgrade.
+   external memory. A delayed D3D11 completion query retains the same MF
+   frame for event-loop retries after a single nonblocking query; the existing
+   25 ms budget bounds the D3D11 handoff; three consecutive deadlines select
+   safe-copy input for that session. CUDA copy ownership waits retain their
+   independent completion/fault rules. CPU buffers preserve native pitch before tight
+   normalization, and YUV color matrix/range metadata follows each frame.
 2. The direct-GPU rung copies that imported BGRA array device-to-device into
-   the established CUDA working surface without a CPU bounce. Lower rungs
+   the established CUDA working surface without a CPU bounce. A completion
+   event retains a producer lease until the copy finishes, so the UI need not
+   synchronize the processing stream and the conversion texture cannot be
+   reused early. Lower rungs
    upload compact NV12/YUY2 planes; conversion and rotation still run in CUDA.
    Host uploads use a two-slot page-locked ring whose per-slot event guards
    reuse. `CpuFramePipeline` converts/rotates only remaining formats, debug
@@ -36,8 +47,10 @@ The current frame flow is:
    projection seed used only for wide-range anchor reacquisition, and bounded
    relative fallback preserve lock through bumps without integrating a
    long-running pairwise path.
-   Stateful effects, SuperRes inference, recording, OCR, and assistive
+   Stateful effects, SuperRes inference, recording and assistive
    scheduling advance only on this camera clock.
+   NIS/FSR enlargement uses the visible ROI with bounded existing-buffer
+   reuse, up to 2x per pass; partial-cache border guards prevent stale pixels.
 4. `PipelineOrchestrator` runs a separate viewport clock. During pan, zoom,
    focus animation, or resize it can re-present the latest complete scene up
    to 120 FPS or the active display rate; while idle it reduces to the camera
@@ -48,13 +61,31 @@ The current frame flow is:
    Fill crops uniformly and Fit letterboxes uniformly, so camera frames are
    never independently stretched on X or Y. Its frame-slot signal is folded
    back into the same strictly increasing CUDA/D3D12 fence timeline after
-   every present, including viewport-only motion. Recording reads the completed
+   every present, including viewport-only motion. Busy frame-slot admission
+   returns immediately and retains the scene for a later Qt tick. Recording
+   clones queue their own CUDA dependency even when the viewport is busy.
+   Recording reads the completed
    processed scene before viewport scaling; periodic assistive grabs use the
    asynchronous readback ring (`RequestReadback` /
-   `TryGetCompletedReadback`), while photos and on-demand analysis use
-   synchronous readback that queues a wait for the latest CUDA completion
-   before copying. Request ids match every processed recording frame to its
-   original camera frame.
+   `TryGetCompletedReadback`), as do photos and on-demand analysis. Request ids
+   match results to the originating request/frame. Fence and CUDA stream
+   drains have deadlines; failed completion retains live resources and stops
+   GPU submission until restart. Camera shutdown runs on shared session-owned
+   workers with a separate deadline and revocable UI delivery.
+
+Lecture-notes document/image storage uses one bounded ordered background
+queue. Queued jobs retain their paths and immutable data through settings
+changes; cancellation releases unsubmitted images. The UI reports failures
+and waits for actual storage completion before opening notes or announcing
+that transcription was saved.
+
+`scripts/profile_startup.ps1` profiles first-camera presentation, Qt heartbeat
+delays, actual camera arrival FPS, application drops, and processing/presentation
+timings. It uses explicit isolated settings and normal child-process shutdown.
+See the root README for invocation and measurement limits. Initial platform
+discovery, graphics resource creation, and manual device changes still include
+synchronous work; ordinary frame-slot admission and initial device opening no
+longer add blocking waits to the Qt event loop.
 
 ## Language And Locale
 
@@ -232,7 +263,7 @@ legacy `powershell.exe` bridge.
   post-rotation camera mode; 720p is not an internal fixed resolution.
 - Focus scoring reduces Laplacian statistics on-device and asynchronously
   copies only two floats about every 15 frames; no image readback or render
-  stall is introduced. A low score suppresses OCR submission and shows a
+  stall is introduced. A low score suppresses text reading and shows a
   refocus prompt.
 - Camera selection and orientation are global. Stabilization, display colors,
   contrast, sharpening, zoom, and other image treatment are profile-owned.
@@ -281,13 +312,13 @@ legacy `powershell.exe` bridge.
   `Documents\OpenZoom\Recordings\YYYY-MM-DD\`; encoding is live AV1 when
   available and otherwise live H.264.
 - The processing status label under Advanced Image diagnostics distinguishes
-  CPU, GPU, fallback, debug-view, recording, OCR, and VLM states without
+  CPU, GPU, fallback, debug-view, recording and VLM states without
   covering the Simple camera view. The collapsed Diagnostics group also
   reports rolling 240-sample p50/p95/p99 camera-processing and
   capture-to-present timings; budget warnings follow the negotiated camera
   frame period.
 - Photo and annotation image writes use a bounded application image-I/O pool.
-  OCR and VLM/Codex frame preparation use an independent bounded assistive
+  VLM/Codex frame preparation use an independent bounded assistive
   pool, keeping PNG/JPEG encoding, resizing, base64/JSON construction, and
   temporary-file writes off the UI thread. Saturation is reported instead of
   accumulating unbounded work, and cancellation generations prevent stale
@@ -295,15 +326,13 @@ legacy `powershell.exe` bridge.
 - The Advanced inspector uses a draggable high-contrast splitter and persists
   its width. Text-clarity and display sliders reflow beneath their labels when
   the inspector is narrow, and feature status labels wrap within the panel.
-- OCR runs locally through configured, Setup Assistant-managed, PATH, or
-  standard-install Tesseract discovery. The first-run Setup Assistant is
-  non-blocking, verifies pinned vendor downloads, manages Tesseract removal,
-  installs or updates the official Codex CLI, and hides its NVIDIA row on
-  unsupported hardware. Tesseract uses the UB Mannheim
-  GitHub release asset first; a failed Qt transfer is retried with Windows
-  `curl.exe` and then the vendor's alternate host, with the same mandatory
-  SHA-256 check on every path. The release bundle contains neither Tesseract
-  nor NVIDIA Video Effects binaries.
+- Read transcribes the current view through the configured vision provider.
+  New Codex settings select Luna with low reasoning; existing explicit model
+  choices remain available. There is no separate local recognition engine,
+  language-data installation, or automatic text-recognition toggle.
+- The non-blocking first-run Setup Assistant installs or updates the official
+  Codex CLI and offers NVIDIA Video Effects on supported hardware. Downloads
+  are pinned and verified, with a Windows downloader retry on transfer failure.
 - Scene Explain defaults to a native Qt JSON-RPC client for `codex app-server`,
   reusing a ChatGPT-managed Codex login. Simple Explain threads are ephemeral
   and always use a read-only, no-network, no-approval policy. Advanced
@@ -324,7 +353,7 @@ legacy `powershell.exe` bridge.
   conversation.
 - Lecture notes are valid per-session HTML documents under
   `Documents\OpenZoom\Notes\`.
-  They collect timestamped OCR text, scene explanations, and relative captured
+  They collect timestamped text readings, scene explanations, and relative captured
   image links that render in a browser and remain portable with the complete
   OpenZoom user-data root.
 - Photos, recordings, notes, analysis exports, and console diagnostic logs
@@ -336,7 +365,7 @@ legacy `powershell.exe` bridge.
   identifiers, and timing/error details, so review them before sharing.
   Legacy install-relative output can be copied without deleting its source.
 - AI Settings uses a bounded, vertically scrollable dialog with distinct Codex,
-  OpenAI-compatible VLM, OCR, speech, and notes sections. It displays the
+  OpenAI-compatible VLM, speech, and notes sections. It displays the
   built-in OpenZoom Codex instruction read-only and persists separate user
   preferences for response language, tone, and detail. Those preferences are
   added to Codex developer instructions without weakening its permission
@@ -352,7 +381,7 @@ legacy `powershell.exe` bridge.
 - `Setup & Downloads` in Advanced reopens the dependency assistant at any time.
   Dismissing its automatic first-run prompt is persisted independently of
   manually reopening it.
-- OCR/Codex camera-frame temporary files include the owning process id, are
+- Codex camera-frame temporary files include the owning process id, are
   removed on completion/cancellation/shutdown, and stale files from dead
   OpenZoom processes are swept on the next startup.
 - Release publishing is designed for the current private/team distribution:
@@ -377,8 +406,6 @@ legacy `powershell.exe` bridge.
 ## Current Gaps
 - Automated tests are still limited.
 - CUDA interop still needs broader hardware validation across more driver/toolkit combinations.
-- OCR quality depends on a user-installed Tesseract runtime and the quality of
-  the processed frame fed into it.
 - Maxine SuperRes requires a supported NVIDIA GPU and the user-installed
   NVIDIA Video Effects runtime; hardware/runtime and visual-quality validation
   remains necessary across Turing, Ampere, Ada, and Blackwell systems.

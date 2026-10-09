@@ -356,10 +356,6 @@
         <translation>Helligkeit</translation>
     </message>
     <message>
-        <source>OCR Assist</source>
-        <translation>OCR-Hilfe</translation>
-    </message>
-    <message>
         <source>Scene Explain</source>
         <translation>Szene erklären</translation>
     </message>
@@ -672,18 +668,6 @@
         <translation>Szenenanweisung:</translation>
     </message>
     <message>
-        <source>Text recognition (OCR)</source>
-        <translation>Texterkennung (OCR)</translation>
-    </message>
-    <message>
-        <source>Tesseract path:</source>
-        <translation>Tesseract-Pfad:</translation>
-    </message>
-    <message>
-        <source>OCR language:</source>
-        <translation>OCR-Sprache:</translation>
-    </message>
-    <message>
         <source>Read aloud</source>
         <translation>Vorlesen</translation>
     </message>
@@ -702,6 +686,22 @@
     <message>
         <source>Lecture notes</source>
         <translation>Vorlesungsnotizen</translation>
+    </message>
+    <message>
+        <source>Camera did not stop in time. Restart OpenZoom before changing cameras.</source>
+        <translation>Die Kamera wurde nicht rechtzeitig angehalten. Starten Sie OpenZoom neu, bevor Sie die Kamera wechseln.</translation>
+    </message>
+    <message>
+        <source>GPU stopped responding. Restart OpenZoom to resume video.</source>
+        <translation>Die GPU reagiert nicht mehr. Starten Sie OpenZoom neu, um das Video fortzusetzen.</translation>
+    </message>
+    <message>
+        <source>Lecture notes could not be saved.</source>
+        <translation>Vorlesungsnotizen konnten nicht gespeichert werden.</translation>
+    </message>
+    <message>
+        <source>Saving lecture notes...</source>
+        <translation>Vorlesungsnotizen werden gespeichert...</translation>
     </message>
     <message>
         <source>Write lecture notes file</source>
@@ -828,8 +828,8 @@
         <translation>Unterhaltung wird geladen...</translation>
     </message>
     <message>
-        <source>No lecture notes yet — notes appear once OCR or Explain produces text.</source>
-        <translation>Noch keine Vorlesungsnotizen — Notizen erscheinen, sobald OCR oder Erklären Text erzeugt.</translation>
+        <source>No lecture notes yet — use Read, Explain, or Assistant to add text.</source>
+        <translation>Noch keine Vorlesungsnotizen — fügen Sie mit Lesen, Erklären oder dem Assistenten Text hinzu.</translation>
     </message>
     <message>
         <source>OpenZoom Assistant</source>
@@ -1194,10 +1194,6 @@
         <translation>Die aktuelle Kameraansicht konnte nicht vorbereitet werden.</translation>
     </message>
     <message>
-        <source>Failed to create temporary image for OCR.</source>
-        <translation>Temporäres Bild für OCR konnte nicht erstellt werden.</translation>
-    </message>
-    <message>
         <source>Failed to encode frame for VLM request.</source>
         <translation>Frame für die VLM-Anfrage konnte nicht codiert werden.</translation>
     </message>
@@ -1206,28 +1202,8 @@
         <translation>Die aktuelle Ansicht konnte nicht für Codex vorbereitet werden.</translation>
     </message>
     <message>
-        <source>Failed to save OCR input image.</source>
-        <translation>OCR-Eingabebild konnte nicht gespeichert werden.</translation>
-    </message>
-    <message>
         <source>No camera frame is available to attach.</source>
         <translation>Es ist kein Kameraframe zum Anhängen verfügbar.</translation>
-    </message>
-    <message>
-        <source>OCR found no readable text.</source>
-        <translation>OCR hat keinen lesbaren Text gefunden.</translation>
-    </message>
-    <message>
-        <source>OCR image preparation is busy. Try again in a moment.</source>
-        <translation>Die OCR-Bildvorbereitung ist beschäftigt. Versuchen Sie es gleich erneut.</translation>
-    </message>
-    <message>
-        <source>OCR is busy with a previous capture. Try again in a moment.</source>
-        <translation>OCR ist mit einer vorherigen Aufnahme beschäftigt. Versuchen Sie es gleich erneut.</translation>
-    </message>
-    <message>
-        <source>OCR timed out.</source>
-        <translation>Zeitüberschreitung bei OCR.</translation>
     </message>
     <message>
         <source>Persistent Assistant conversations require the Codex subscription provider.</source>
@@ -1238,20 +1214,12 @@
         <translation>Foto aufgenommen</translation>
     </message>
     <message>
-        <source>Preparing OCR...</source>
-        <translation>OCR wird vorbereitet...</translation>
-    </message>
-    <message>
         <source>Preparing the current view...</source>
         <translation>Aktuelle Ansicht wird vorbereitet...</translation>
     </message>
     <message>
         <source>Querying VLM...</source>
         <translation>VLM wird abgefragt...</translation>
-    </message>
-    <message>
-        <source>Running OCR...</source>
-        <translation>OCR wird ausgeführt...</translation>
     </message>
     <message>
         <source>Scene explanation</source>
@@ -1306,18 +1274,6 @@
         <translation>Video aufgenommen</translation>
     </message>
     <message>
-        <source>tesseract OCR process failed.</source>
-        <translation>Der Tesseract-OCR-Prozess ist fehlgeschlagen.</translation>
-    </message>
-    <message>
-        <source>tesseract crashed during OCR.</source>
-        <translation>Tesseract ist während der OCR abgestürzt.</translation>
-    </message>
-    <message>
-        <source>tesseract exited with code %1</source>
-        <translation>Tesseract wurde mit Code %1 beendet</translation>
-    </message>
-    <message>
         <source>AI Provider</source>
         <translation>KI-Anbieter</translation>
     </message>
@@ -1360,14 +1316,6 @@
     <message>
         <source>Scene Prompt</source>
         <translation>Szenenanweisung</translation>
-    </message>
-    <message>
-        <source>Tesseract Path</source>
-        <translation>Tesseract-Pfad</translation>
-    </message>
-    <message>
-        <source>OCR Language</source>
-        <translation>OCR-Sprache</translation>
     </message>
     <message>
         <source>Read Aloud Voice</source>
@@ -1646,8 +1594,8 @@
         <translation>Assistives Ergebnis schließen</translation>
     </message>
     <message>
-        <source>Hide the current OCR or scene explanation result</source>
-        <translation>Aktuelles OCR- oder Szenenerklärungsergebnis ausblenden</translation>
+        <source>Hide the current assistant result</source>
+        <translation>Das aktuelle Assistentenergebnis ausblenden</translation>
     </message>
     <message>
         <source>Move assistive panel</source>
@@ -1666,12 +1614,12 @@
         <translation>Frage zusammen mit der aktuellen Kameraansicht an den OpenZoom-Assistenten senden</translation>
     </message>
     <message>
-        <source>Speak the current OCR or scene explanation result</source>
-        <translation>Aktuelles OCR- oder Szenenerklärungsergebnis vorlesen</translation>
+        <source>Speak the current assistant result</source>
+        <translation>Das aktuelle Assistentenergebnis vorlesen</translation>
     </message>
     <message>
-        <source>Streaming OCR and scene explanation result. Use arrow keys to read the text.</source>
-        <translation>OCR- und Szenenerklärungsergebnis wird gestreamt. Verwenden Sie die Pfeiltasten zum Lesen des Textes.</translation>
+        <source>Streaming assistant result. Use arrow keys to read the text.</source>
+        <translation>Fortlaufendes Assistentenergebnis. Verwenden Sie die Pfeiltasten, um den Text zu lesen.</translation>
     </message>
     <message>
         <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1818,8 +1766,8 @@
         <translation>Codex-Nutzung</translation>
     </message>
     <message>
-        <source>Configure the AI vision server, OCR engine, and speech output</source>
-        <translation>KI-Vision-Server, OCR-Engine und Sprachausgabe konfigurieren</translation>
+        <source>Configure the vision assistant and speech output</source>
+        <translation>Den visuellen Assistenten und die Sprachausgabe konfigurieren</translation>
     </message>
     <message>
         <source>Continue</source>
@@ -1894,8 +1842,8 @@
         <translation>Leistungsgrenze für NVIDIA Super Resolution ignorieren</translation>
     </message>
     <message>
-        <source>Install or remove optional OCR and NVIDIA Video Effects tools</source>
-        <translation>Optionale OCR- und NVIDIA-Video-Effects-Werkzeuge installieren oder entfernen</translation>
+        <source>Set up Codex CLI and NVIDIA Video Effects</source>
+        <translation>Codex CLI und NVIDIA Video Effects einrichten</translation>
     </message>
     <message>
         <source>Keep It Steady</source>
@@ -2000,10 +1948,6 @@
     <message>
         <source>Quick mode changed to %1</source>
         <translation>Schnellmodus auf %1 geändert</translation>
-    </message>
-    <message>
-        <source>Read Text Aloud</source>
-        <translation>Text vorlesen</translation>
     </message>
     <message>
         <source>Read a Page</source>
@@ -2168,10 +2112,6 @@ Die Entfernung wird von Windows verwaltet.</translation>
         <translation>Windows-Apps öffnen</translation>
     </message>
     <message>
-        <source>Open Windows Installed Apps for Tesseract OCR</source>
-        <translation>Windows-Installierte-Apps für Tesseract OCR öffnen</translation>
-    </message>
-    <message>
         <source>Open the NVIDIA runtime uninstaller?</source>
         <translation>Deinstallationsprogramm der NVIDIA-Laufzeit öffnen?</translation>
     </message>
@@ -2188,28 +2128,8 @@ Die Entfernung wird von Windows verwaltet.</translation>
         <translation>OpenZoom-Einrichtungsassistent</translation>
     </message>
     <message>
-        <source>Reads printed text locally. Installs only for your Windows account.</source>
-        <translation>Liest gedruckten Text lokal. Wird nur für Ihr Windows-Konto installiert.</translation>
-    </message>
-    <message>
         <source>Remove NVIDIA Video Effects</source>
         <translation>NVIDIA Video Effects entfernen</translation>
-    </message>
-    <message>
-        <source>Remove OpenZoom&apos;s per-user Tesseract installation</source>
-        <translation>Benutzerbezogene Tesseract-Installation von OpenZoom entfernen</translation>
-    </message>
-    <message>
-        <source>Remove OpenZoom&apos;s per-user Tesseract installation?</source>
-        <translation>Benutzerbezogene Tesseract-Installation von OpenZoom entfernen?</translation>
-    </message>
-    <message>
-        <source>Remove OpenZoom-managed Tesseract OCR</source>
-        <translation>Von OpenZoom verwaltetes Tesseract OCR entfernen</translation>
-    </message>
-    <message>
-        <source>Remove Tesseract OCR</source>
-        <translation>Tesseract OCR entfernen</translation>
     </message>
     <message>
         <source>Retrying from the alternate vendor host...</source>
@@ -2234,14 +2154,6 @@ Die Entfernung wird von Windows verwaltet.</translation>
     <message>
         <source>Setup status</source>
         <translation>Einrichtungsstatus</translation>
-    </message>
-    <message>
-        <source>Tesseract OCR</source>
-        <translation>Tesseract OCR</translation>
-    </message>
-    <message>
-        <source>Tesseract OCR is not installed</source>
-        <translation>Tesseract OCR ist nicht installiert</translation>
     </message>
     <message>
         <source>The Setup Assistant remains available from Advanced settings</source>
@@ -2312,28 +2224,12 @@ Die Entfernung wird von Windows verwaltet.</translation>
         <translation>Hilfsfunktionen: aus</translation>
     </message>
     <message>
-        <source>Assistive hooks: OCR</source>
-        <translation>Hilfsfunktionen: OCR</translation>
-    </message>
-    <message>
         <source>Assistive hooks: Scene Explain</source>
         <translation>Hilfsfunktionen: Szenenerklärung</translation>
     </message>
     <message>
-        <source>Assistive hooks: OCR + Scene Explain</source>
-        <translation>Hilfsfunktionen: OCR + Szenenerklärung</translation>
-    </message>
-    <message>
-        <source>Assistive hooks: OCR with overlay</source>
-        <translation>Hilfsfunktionen: OCR mit Einblendung</translation>
-    </message>
-    <message>
         <source>Assistive hooks: Scene Explain with overlay</source>
         <translation>Hilfsfunktionen: Szenenerklärung mit Einblendung</translation>
-    </message>
-    <message>
-        <source>Assistive hooks: OCR + Scene Explain with overlay</source>
-        <translation>Hilfsfunktionen: OCR + Szenenerklärung mit Einblendung</translation>
     </message>
     <message>
         <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
@@ -2534,6 +2430,250 @@ Verwenden Sie „ChatGPT verbinden“ in den KI-Einstellungen, um sich anzumelde
     <message>
         <source>The saved OpenZoom folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
         <translation>Der gespeicherte OpenZoom-Ordner kann nicht verwendet werden (%1). Dateien werden im Standard-Dokumente-Ordner gespeichert, bis ein neuer Ordner gewählt wird.</translation>
+    </message>
+    <message>
+        <source>Preparing live transcription...</source>
+        <translation>Live-Transkription wird vorbereitet ...</translation>
+    </message>
+    <message>
+        <source>Listening and transcribing...</source>
+        <translation>Es wird zugehört und transkribiert ...</translation>
+    </message>
+    <message>
+        <source>Finishing transcript...</source>
+        <translation>Transkript wird abgeschlossen ...</translation>
+    </message>
+    <message>
+        <source>Transcription finished.</source>
+        <translation>Transkription abgeschlossen.</translation>
+    </message>
+    <message>
+        <source>Codex did not become ready in time.</source>
+        <translation>Codex wurde nicht rechtzeitig bereit.</translation>
+    </message>
+    <message>
+        <source>Live transcription did not start in time.</source>
+        <translation>Die Live-Transkription ist nicht rechtzeitig gestartet.</translation>
+    </message>
+    <message>
+        <source>This Codex version does not support live transcription.</source>
+        <translation>Diese Codex-Version unterstützt keine Live-Transkription.</translation>
+    </message>
+    <message>
+        <source>Live transcription requires Codex signed in with ChatGPT.</source>
+        <translation>Die Live-Transkription erfordert eine ChatGPT-Anmeldung in Codex.</translation>
+    </message>
+    <message>
+        <source>Codex could not start a transcription session.</source>
+        <translation>Codex konnte keine Transkriptionssitzung starten.</translation>
+    </message>
+    <message>
+        <source>Codex CLI not found.</source>
+        <translation>Codex-Befehlszeilenprogramm nicht gefunden.</translation>
+    </message>
+    <message>
+        <source>Codex protocol failure.</source>
+        <translation>Codex-Protokollfehler.</translation>
+    </message>
+    <message>
+        <source>Codex stopped unexpectedly.</source>
+        <translation>Codex wurde unerwartet beendet.</translation>
+    </message>
+    <message>
+        <source>Live transcription failed.</source>
+        <translation>Die Live-Transkription ist fehlgeschlagen.</translation>
+    </message>
+    <message>
+        <source>Live transcription connection closed.</source>
+        <translation>Die Verbindung der Live-Transkription wurde geschlossen.</translation>
+    </message>
+    <message>
+        <source>The WebRTC offer was rejected.</source>
+        <translation>Das WebRTC-Angebot wurde abgelehnt.</translation>
+    </message>
+    <message>
+        <source>WebRTC negotiation timed out.</source>
+        <translation>Die WebRTC-Aushandlung hat das Zeitlimit überschritten.</translation>
+    </message>
+    <message>
+        <source>WebRTC component unavailable.</source>
+        <translation>WebRTC-Komponente nicht verfügbar.</translation>
+    </message>
+    <message>
+        <source>WebRTC component stopped.</source>
+        <translation>WebRTC-Komponente wurde beendet.</translation>
+    </message>
+    <message>
+        <source>WebRTC negotiation failed.</source>
+        <translation>Die WebRTC-Aushandlung ist fehlgeschlagen.</translation>
+    </message>
+    <message>
+        <source>Transcript has a gap; recording is unaffected.</source>
+        <translation>Das Transkript hat eine Lücke; die Aufnahme ist nicht betroffen.</translation>
+    </message>
+    <message>
+        <source>Select a recording microphone to transcribe.</source>
+        <translation>Wählen Sie ein Aufnahmemikrofon für die Transkription.</translation>
+    </message>
+    <message>
+        <source>Transcription unavailable: %1 Recording continues.</source>
+        <translation>Transkription nicht verfügbar: %1 Die Aufnahme läuft weiter.</translation>
+    </message>
+    <message>
+        <source>Transcript saved to lecture notes.</source>
+        <translation>Transkript in den Vorlesungsnotizen gespeichert.</translation>
+    </message>
+    <message>
+        <source>Transcript could not be saved to lecture notes.</source>
+        <translation>Das Transkript konnte nicht in den Vorlesungsnotizen gespeichert werden.</translation>
+    </message>
+    <message>
+        <source>Reconnecting live transcription...</source>
+        <translation>Live-Transkription wird erneut verbunden...</translation>
+    </message>
+    <message>
+        <source>Codex usage: %1% remaining in the current general window.</source>
+        <translation>Codex-Nutzung: %1 % verbleibend im aktuellen allgemeinen Fenster.</translation>
+    </message>
+    <message>
+        <source>Codex usage is unavailable.</source>
+        <translation>Codex-Nutzung ist nicht verfügbar.</translation>
+    </message>
+    <message>
+        <source>Voice-specific remaining time is not exposed by this Codex app-server.</source>
+        <translation>Dieser Codex-App-Server gibt keine sprachspezifische Restzeit an.</translation>
+    </message>
+    <message>
+        <source>Lecture transcript</source>
+        <translation>Vorlesungstranskript</translation>
+    </message>
+    <message>
+        <source>(truncated)</source>
+        <translation>(gekürzt)</translation>
+    </message>
+    <message>
+        <source>about %1 into recording</source>
+        <translation>etwa %1 nach Aufnahmebeginn</translation>
+    </message>
+    <message>
+        <source>Transcribe microphone while recording</source>
+        <translation>Mikrofon während der Aufnahme transkribieren</translation>
+    </message>
+    <message>
+        <source>Add finalized transcript to lecture notes</source>
+        <translation>Fertiges Transkript zu Vorlesungsnotizen hinzufügen</translation>
+    </message>
+    <message>
+        <source>Sends microphone audio to Codex Voice for live transcription, only while recording. Requires Codex signed in with ChatGPT.</source>
+        <translation>Sendet Mikrofonaudio nur während der Aufnahme zur Live-Transkription an Codex Voice. Erfordert eine ChatGPT-Anmeldung in Codex.</translation>
+    </message>
+    <message>
+        <source>Appends each finalized phrase to the HTML lecture notes. Effective only while lecture notes are enabled.</source>
+        <translation>Fügt jeden fertigen Satz den HTML-Vorlesungsnotizen hinzu. Wirksam nur, solange Vorlesungsnotizen aktiviert sind.</translation>
+    </message>
+    <message>
+        <source>Current phrase</source>
+        <translation>Aktueller Satz</translation>
+    </message>
+    <message>
+        <source>Finalized transcript</source>
+        <translation>Fertiges Transkript</translation>
+    </message>
+    <message>
+        <source>Transcript</source>
+        <translation>Transkript</translation>
+    </message>
+    <message>
+        <source>Global recording setting. Sends microphone audio to Codex Voice for live transcription only while recording. Requires Codex signed in with ChatGPT. Recording works without it.</source>
+        <translation>Globale Aufnahmeeinstellung. Sendet Mikrofonaudio nur während der Aufnahme zur Live-Transkription an Codex Voice. Erfordert eine ChatGPT-Anmeldung in Codex. Die Aufnahme funktioniert auch ohne.</translation>
+    </message>
+    <message>
+        <source>Reports the live transcription state. Recording is never affected by transcription problems.</source>
+        <translation>Meldet den Zustand der Live-Transkription. Die Aufnahme wird von Transkriptionsproblemen nie beeinträchtigt.</translation>
+    </message>
+    <message>
+        <source>Shows the general Codex quota window. Voice-specific remaining time is not exposed by this Codex app-server.</source>
+        <translation>Zeigt das allgemeine Codex-Kontingentfenster. Dieser Codex-App-Server gibt keine sprachspezifische Restzeit an.</translation>
+    </message>
+    <message>
+        <source>The phrase being transcribed right now. Partial text is presentation-only until it is finalized.</source>
+        <translation>Der gerade transkribierte Satz. Vorläufiger Text dient nur der Anzeige, bis er fertiggestellt ist.</translation>
+    </message>
+    <message>
+        <source>Read-only list of finalized transcript phrases from the current recording. Text is selectable.</source>
+        <translation>Schreibgeschützte Liste der fertigen Transkriptsätze der aktuellen Aufnahme. Text ist auswählbar.</translation>
+    </message>
+    <message>
+        <source>Transcription status</source>
+        <translation>Transkriptionsstatus</translation>
+    </message>
+    <message>
+        <source>Expand all</source>
+        <translation>Alle ausklappen</translation>
+    </message>
+    <message>
+        <source>Collapse all</source>
+        <translation>Alle einklappen</translation>
+    </message>
+    <message>
+        <source>Light or dark colors</source>
+        <translation>Helle oder dunkle Farben</translation>
+    </message>
+    <message>
+        <source>Original and processed video</source>
+        <translation>Original- und Verarbeitungsvideo</translation>
+    </message>
+    <message>
+        <source>Original and processed photo</source>
+        <translation>Original- und Verarbeitungsfoto</translation>
+    </message>
+    <message>
+        <source>View the assistant analyzed</source>
+        <translation>Vom Assistenten analysierte Ansicht</translation>
+    </message>
+    <message>
+        <source>Conversation</source>
+        <translation>Unterhaltung</translation>
+    </message>
+    <message>
+        <source>New chat</source>
+        <translation>Neuer Chat</translation>
+    </message>
+    <message>
+        <source>Started a new conversation.</source>
+        <translation>Neue Unterhaltung gestartet.</translation>
+    </message>
+    <message>
+        <source>Finish the current answer before starting a new chat.</source>
+        <translation>Beenden Sie die aktuelle Antwort, bevor Sie einen neuen Chat starten.</translation>
+    </message>
+    <message>
+        <source>Panel position</source>
+        <translation>Panelposition</translation>
+    </message>
+    <message>
+        <source>Floating</source>
+        <translation>Frei schwebend</translation>
+    </message>
+    <message>
+        <source>Dock left</source>
+        <translation>Links andocken</translation>
+    </message>
+    <message>
+        <source>Dock right</source>
+        <translation>Rechts andocken</translation>
+    </message>
+    <message>
+        <source>Release to dock left</source>
+        <translation>Zum Andocken links loslassen</translation>
+    </message>
+    <message>
+        <source>Release to dock right</source>
+        <translation>Zum Andocken rechts loslassen</translation>
+    </message>
+    <message>
+        <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
+        <translation>Unterstützt die abonnementbasierten Funktionen Lesen, Erklären und Assistent. Installiert die offizielle Codex CLI für Ihr Windows-Konto; die ChatGPT-Anmeldung erfolgt separat.</translation>
     </message>
 </context>
 </TS>

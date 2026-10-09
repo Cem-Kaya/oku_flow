@@ -45,17 +45,6 @@
 namespace openzoom {
 namespace {
 
-constexpr char kTesseractUrl[] =
-    "https://github.com/UB-Mannheim/tesseract/releases/download/"
-    "v5.4.0.20240606/"
-    "tesseract-ocr-w64-setup-5.4.0.20240606.exe";
-constexpr char kTesseractAlternateUrl[] =
-    "https://digi.bib.uni-mannheim.de/tesseract/"
-    "tesseract-ocr-w64-setup-5.4.0.20240606.exe";
-constexpr char kTesseractSha256[] =
-    "c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9";
-constexpr char kTesseractVendorPage[] =
-    "https://github.com/UB-Mannheim/tesseract/releases/tag/v5.4.0.20240606";
 constexpr char kCodexInstallerUrl[] = "https://chatgpt.com/codex/install.ps1";
 constexpr char kCodexInstallerSha256[] =
     "95923c2ac60b963c95435aaeaefeaab3cbc01559e21fce1fa501ee1f9793ac0e";
@@ -216,12 +205,10 @@ QString FindUninstallCommandInView(REGSAM view) {
 
 } // namespace
 
-SetupAssistantDialog::SetupAssistantDialog(const QString& configuredTesseractPath,
-                                           const QString& configuredCodexPath,
+SetupAssistantDialog::SetupAssistantDialog(const QString& configuredCodexPath,
                                            bool declined,
                                            QWidget* parent)
     : QDialog(parent),
-      configuredTesseractPath_(configuredTesseractPath),
       configuredCodexPath_(configuredCodexPath),
       nvidiaArchitecture_(DetectNvidiaArchitecture()) {
     setWindowTitle(QStringLiteral("OpenZoom Setup Assistant"));
@@ -251,12 +238,9 @@ SetupAssistantDialog::SetupAssistantDialog(const QString& configuredTesseractPat
     auto* rowsWidget = new QWidget();
     auto* rows = new QVBoxLayout(rowsWidget);
     rows->setContentsMargins(0, 0, 0, 0);
-    tesseractRow_ = AddDependencyRow(
-        rows, QStringLiteral("Tesseract OCR"),
-        QStringLiteral("Reads printed text locally. Installs only for your Windows account."));
     codexRow_ = AddDependencyRow(
         rows, QStringLiteral("Codex CLI"),
-        QStringLiteral("Powers subscription-backed Explain and Assistant features. "
+        QStringLiteral("Powers subscription-backed Read, Explain, and Assistant features. "
                        "Installs the official Codex CLI for your Windows account; "
                        "ChatGPT sign-in remains a separate step."));
     nvidiaRow_ = AddDependencyRow(
@@ -288,14 +272,10 @@ SetupAssistantDialog::SetupAssistantDialog(const QString& configuredTesseractPat
     inactivityTimer_->setSingleShot(true);
     inactivityTimer_->setInterval(60000);
 
-    connect(tesseractRow_.install, &QPushButton::clicked,
-            this, [this]() { BeginDownload(Dependency::Tesseract); });
     connect(codexRow_.install, &QPushButton::clicked,
             this, [this]() { BeginDownload(Dependency::CodexCli); });
     connect(nvidiaRow_.install, &QPushButton::clicked,
             this, [this]() { BeginDownload(Dependency::NvidiaVideoEffects); });
-    connect(tesseractRow_.remove, &QPushButton::clicked,
-            this, &SetupAssistantDialog::RemoveTesseract);
     connect(codexRow_.remove, &QPushButton::clicked,
             this, &SetupAssistantDialog::OpenCodexLocationOrGuide);
     connect(nvidiaRow_.remove, &QPushButton::clicked,
@@ -317,8 +297,6 @@ SetupAssistantDialog::SetupAssistantDialog(const QString& configuredTesseractPat
 SetupAssistantDialog::DependencyRow& SetupAssistantDialog::RowForDependency(
     Dependency dependency) {
     switch (dependency) {
-    case Dependency::Tesseract:
-        return tesseractRow_;
     case Dependency::CodexCli:
         return codexRow_;
     case Dependency::NvidiaVideoEffects:
@@ -379,41 +357,6 @@ void SetupAssistantDialog::closeEvent(QCloseEvent* event) {
         fallbackDownloadProcess_->kill();
     }
     QDialog::closeEvent(event);
-}
-
-QString SetupAssistantDialog::ManagedTesseractDirectory() {
-    return QDir(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation))
-        .filePath(QStringLiteral("OpenZoom/tools/tesseract"));
-}
-
-QString SetupAssistantDialog::FindTesseractExecutable(const QString& configuredPath) {
-    QStringList candidates;
-    if (!configuredPath.trimmed().isEmpty()) {
-        const QFileInfo configured(configuredPath.trimmed());
-        candidates.push_back(configured.isDir()
-                                 ? QDir(configured.absoluteFilePath()).filePath(QStringLiteral("tesseract.exe"))
-                                 : configured.absoluteFilePath());
-    }
-    candidates.push_back(QDir(ManagedTesseractDirectory()).filePath(QStringLiteral("tesseract.exe")));
-    const QString fromPath = QStandardPaths::findExecutable(QStringLiteral("tesseract.exe"));
-    if (!fromPath.isEmpty()) {
-        candidates.push_back(fromPath);
-    }
-    const QString programFiles = qEnvironmentVariable("ProgramFiles");
-    if (!programFiles.isEmpty()) {
-        candidates.push_back(QDir(programFiles).filePath(QStringLiteral("Tesseract-OCR/tesseract.exe")));
-    }
-    const QString localAppData = qEnvironmentVariable("LOCALAPPDATA");
-    if (!localAppData.isEmpty()) {
-        candidates.push_back(QDir(localAppData).filePath(
-            QStringLiteral("Programs/Tesseract-OCR/tesseract.exe")));
-    }
-    for (const QString& candidate : candidates) {
-        if (QFileInfo(candidate).isFile()) {
-            return QFileInfo(candidate).absoluteFilePath();
-        }
-    }
-    return {};
 }
 
 QString SetupAssistantDialog::FindCodexExecutable(const QString& configuredPath) {
@@ -477,11 +420,7 @@ QString SetupAssistantDialog::DetectNvidiaArchitecture() {
     return {};
 }
 
-bool SetupAssistantDialog::NeedsSetup(const QString& configuredTesseractPath,
-                                      const QString& configuredCodexPath) {
-    if (FindTesseractExecutable(configuredTesseractPath).isEmpty()) {
-        return true;
-    }
+bool SetupAssistantDialog::NeedsSetup(const QString& configuredCodexPath) {
     if (FindCodexExecutable(configuredCodexPath).isEmpty()) {
         return true;
     }
@@ -489,36 +428,6 @@ bool SetupAssistantDialog::NeedsSetup(const QString& configuredTesseractPath,
 }
 
 void SetupAssistantDialog::RefreshStatus() {
-    const QString tesseract = FindTesseractExecutable(configuredTesseractPath_);
-    const bool tesseractInstalled = !tesseract.isEmpty();
-    const bool managed = !tesseract.isEmpty() &&
-                         QFileInfo(tesseract).absoluteFilePath().startsWith(
-                             QFileInfo(ManagedTesseractDirectory()).absoluteFilePath(),
-                             Qt::CaseInsensitive);
-    SetDependencyStatus(
-        tesseractRow_, tesseractInstalled,
-        !tesseractInstalled
-            ? QStringLiteral("Not installed")
-            : managed
-                  ? QStringLiteral("Installed and managed by OpenZoom\n%1").arg(tesseract)
-                  : QStringLiteral(
-                        "Installed system-wide\n%1\nRemoval is managed by Windows.")
-                        .arg(tesseract));
-    tesseractRow_.install->setEnabled(!tesseractInstalled && activeDependency_ == Dependency::None);
-    tesseractRow_.remove->setText(managed ? QStringLiteral("Remove")
-                                          : tesseractInstalled
-                                                ? QStringLiteral("Open Windows Apps")
-                                                : QStringLiteral("Remove"));
-    tesseractRow_.remove->setAccessibleName(
-        managed ? QStringLiteral("Remove OpenZoom-managed Tesseract OCR")
-                : QStringLiteral("Open Windows Installed Apps for Tesseract OCR"));
-    tesseractRow_.remove->setEnabled(tesseractInstalled && activeDependency_ == Dependency::None);
-    tesseractRow_.remove->setToolTip(
-        managed ? QStringLiteral("Remove OpenZoom's per-user Tesseract installation")
-                : tesseractInstalled
-                      ? QStringLiteral("This system-wide copy must be removed through Windows Installed Apps")
-                      : QStringLiteral("Tesseract OCR is not installed"));
-
     const QString codex = FindCodexExecutable(configuredCodexPath_);
     const bool codexInstalled = !codex.isEmpty();
     SetDependencyStatus(
@@ -563,13 +472,7 @@ void SetupAssistantDialog::BeginDownload(Dependency dependency) {
     }
     QUrl url;
     QString fileName;
-    if (dependency == Dependency::Tesseract) {
-        url = QUrl(QString::fromLatin1(kTesseractUrl));
-        alternateDownloadUrl_ = QString::fromLatin1(kTesseractAlternateUrl);
-        expectedSha256_ = QString::fromLatin1(kTesseractSha256);
-        vendorPage_ = QString::fromLatin1(kTesseractVendorPage);
-        fileName = QStringLiteral("tesseract-ocr-w64-setup-5.4.0.20240606.exe");
-    } else if (dependency == Dependency::CodexCli) {
+    if (dependency == Dependency::CodexCli) {
         url = QUrl(QString::fromLatin1(kCodexInstallerUrl));
         alternateDownloadUrl_.clear();
         expectedSha256_ = QString::fromLatin1(kCodexInstallerSha256);
@@ -860,12 +763,7 @@ void SetupAssistantDialog::StartVerifiedInstaller() {
 
     QString program = downloadPath_;
     QStringList arguments;
-    if (installing == Dependency::Tesseract) {
-        QDir().mkpath(ManagedTesseractDirectory());
-        arguments = {QStringLiteral("/VERYSILENT"), QStringLiteral("/SUPPRESSMSGBOXES"),
-                     QStringLiteral("/NORESTART"), QStringLiteral("/CURRENTUSER"),
-                     QStringLiteral("/DIR=%1").arg(QDir::toNativeSeparators(ManagedTesseractDirectory()))};
-    } else if (installing == Dependency::CodexCli) {
+    if (installing == Dependency::CodexCli) {
         program = QStandardPaths::findExecutable(QStringLiteral("powershell.exe"));
         if (program.isEmpty()) {
             program = QDir(qEnvironmentVariable("SystemRoot", "C:\\Windows"))
@@ -973,15 +871,7 @@ void SetupAssistantDialog::CompleteInstaller(Dependency dependency,
                                              bool success,
                                              const QString& detail) {
     QFile::remove(downloadPath_);
-    if (success && dependency == Dependency::Tesseract) {
-        const QString executable = FindTesseractExecutable(ManagedTesseractDirectory());
-        if (!executable.isEmpty()) {
-            configuredTesseractPath_ = executable;
-            emit TesseractPathChanged(executable);
-        } else {
-            success = false;
-        }
-    } else if (success && dependency == Dependency::CodexCli) {
+    if (success && dependency == Dependency::CodexCli) {
         const QString executable = FindCodexExecutable();
         if (!executable.isEmpty()) {
             configuredCodexPath_ = executable;
@@ -999,9 +889,7 @@ void SetupAssistantDialog::CompleteInstaller(Dependency dependency,
             message += QStringLiteral("\n\n%1").arg(detail.right(1600));
         }
         const QString vendorPage =
-            dependency == Dependency::Tesseract
-                ? QString::fromLatin1(kTesseractVendorPage)
-                : dependency == Dependency::CodexCli
+            dependency == Dependency::CodexCli
                       ? QString::fromLatin1(kCodexVendorPage)
                       : QString::fromLatin1(kNvidiaVendorPage);
         ShowDownloadFailure(message, vendorPage);
@@ -1017,29 +905,6 @@ void SetupAssistantDialog::ShowDownloadFailure(const QString& message, const QSt
     if (box.clickedButton() == vendorButton) {
         QDesktopServices::openUrl(QUrl(vendorPage));
     }
-}
-
-void SetupAssistantDialog::RemoveTesseract() {
-    const QString managed = QFileInfo(ManagedTesseractDirectory()).absoluteFilePath();
-    const QString executable = FindTesseractExecutable(configuredTesseractPath_);
-    if (executable.isEmpty()) {
-        return;
-    }
-    if (!QFileInfo(executable).absoluteFilePath().startsWith(managed, Qt::CaseInsensitive)) {
-        QDesktopServices::openUrl(QUrl(QStringLiteral("ms-settings:appsfeatures")));
-        return;
-    }
-    if (QMessageBox::question(this, QStringLiteral("Remove Tesseract OCR"),
-                              QStringLiteral("Remove OpenZoom's per-user Tesseract installation?"))
-        != QMessageBox::Yes) {
-        return;
-    }
-    if (QDir(ManagedTesseractDirectory()).removeRecursively()) {
-        configuredTesseractPath_.clear();
-        emit TesseractPathChanged(QString());
-        emit DependenciesChanged();
-    }
-    RefreshStatus();
 }
 
 void SetupAssistantDialog::OpenCodexLocationOrGuide() {

@@ -23,6 +23,7 @@ const QString kFocusWarning =
 AssistiveFeatureManager::AssistiveFeatureManager(QWidget& renderWidget,
                                                  QObject& runtimeParent,
                                                  QuestionHandler questionHandler,
+                                                 NewChatHandler newChatHandler,
                                                  const UserDataPaths& userDataPaths)
     : runtime_(std::make_unique<AssistiveRuntime>(&runtimeParent)),
       overlay_(new AssistiveOverlay(&renderWidget)),
@@ -41,6 +42,12 @@ AssistiveFeatureManager::AssistiveFeatureManager(QWidget& renderWidget,
                      overlay_, [handler = std::move(questionHandler)](const QString& question) {
                          if (handler) {
                              handler(question);
+                         }
+                     });
+    QObject::connect(overlay_, &AssistiveOverlay::NewChatRequested,
+                     overlay_, [handler = std::move(newChatHandler)]() {
+                         if (handler) {
+                             handler();
                          }
                      });
     analysisTimer_.invalidate();
@@ -69,12 +76,11 @@ const AssistiveOverlay& AssistiveFeatureManager::Overlay() const {
     return *overlay_;
 }
 
-void AssistiveFeatureManager::SetModes(bool ocrEnabled,
-                                       bool vlmEnabled,
+void AssistiveFeatureManager::SetModes(bool vlmEnabled,
                                        bool overlayEnabled) {
     overlayEnabled_ = overlayEnabled;
-    runtime_->SetModes(ocrEnabled && overlayEnabled_, vlmEnabled && overlayEnabled_);
-    overlay_->setVisible(overlayEnabled_ && (ocrEnabled || vlmEnabled));
+    runtime_->SetModes(vlmEnabled && overlayEnabled_);
+    overlay_->setVisible(overlayEnabled_ && vlmEnabled);
 }
 
 void AssistiveFeatureManager::ApplySettings(const settings::AssistiveSettings& settings) {
@@ -136,8 +142,6 @@ AssistiveRuntimeConfig AssistiveFeatureManager::BuildRuntimeConfig(
     cfg.vlmApiKey = assistive.vlmApiKey;
     cfg.vlmModel = assistive.vlmModel;
     cfg.vlmPrompt = assistive.vlmPrompt;
-    cfg.tesseractPath = assistive.tesseractPath;
-    cfg.ocrLanguage = assistive.ocrLanguage;
     cfg.ttsEngine = assistive.ttsEngine;
     cfg.ttsVoiceName = assistive.ttsVoiceName;
     cfg.ttsVoiceLocale = assistive.ttsVoiceLocale;

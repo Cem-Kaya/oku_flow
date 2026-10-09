@@ -26,9 +26,11 @@ SettingsController::SettingsController(QString settingsPath)
                         : std::move(settingsPath))
 {
     bool restoreBackupAfterSecretLoad = false;
+    bool rewriteMigratedSettings = false;
     const settings::LoadResult primary = settings::LoadDetailed(settingsPath_);
     if (primary.status == settings::LoadStatus::Loaded && primary.settings) {
         settings_ = *primary.settings;
+        rewriteMigratedSettings = primary.migrationApplied;
     } else if (primary.status == settings::LoadStatus::Missing) {
         InitializeDefaults();
     } else {
@@ -49,6 +51,7 @@ SettingsController::SettingsController(QString settingsPath)
         if (backup.status == settings::LoadStatus::Loaded && backup.settings) {
             settings_ = *backup.settings;
             restoreBackupAfterSecretLoad = true;
+            rewriteMigratedSettings = backup.migrationApplied;
             startupNotice_ =
                 QStringLiteral("%1 Recovered the last valid settings backup%2.")
                     .arg(primary.error,
@@ -67,11 +70,11 @@ SettingsController::SettingsController(QString settingsPath)
     }
 
     LoadProtectedSecrets();
-    if (restoreBackupAfterSecretLoad &&
+    if ((restoreBackupAfterSecretLoad || rewriteMigratedSettings) &&
         !settings::Save(settingsPath_, settings_)) {
         startupNotice_ +=
             (startupNotice_.isEmpty() ? QString() : QStringLiteral(" ")) +
-            QStringLiteral("The recovered settings could not be written back to disk.");
+            QStringLiteral("The recovered or migrated settings could not be written back to disk.");
     }
 }
 

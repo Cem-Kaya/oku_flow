@@ -51,12 +51,15 @@ void RenderWidget::showEvent(QShowEvent* event) {
 
 void RenderWidget::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    if (EnsurePresenter()) {
+    // Throttle to the next frame; restarting an active single-shot timer would
+    // defer every resize indefinitely while a splitter keeps moving.
+    if (EnsurePresenter() && !presenterResizeTimer_->isActive()) {
         presenterResizeTimer_->start();
     }
 }
 
 bool RenderWidget::EnsurePresenter() {
+    if (presenter_ && presenter_->IsFaulted()) return false;
     if (!presenter_ || presenter_->IsInitialized()) {
         return presenter_ != nullptr;
     }
@@ -69,7 +72,7 @@ bool RenderWidget::EnsurePresenter() {
     const UINT nativeHeight = static_cast<UINT>(
         std::max<LONG>(1, clientRect.bottom - clientRect.top));
     presenter_->Initialize(hwnd, nativeWidth, nativeHeight);
-    return true;
+    return presenter_->IsInitialized();
 }
 
 void RenderWidget::ApplyPendingPresenterResize() {

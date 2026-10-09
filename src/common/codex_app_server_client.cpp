@@ -7,9 +7,6 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonDocument>
-#include <QJsonParseError>
-#include <QProcess>
 #include <QProcessEnvironment>
 #include <QSignalBlocker>
 #include <QStandardPaths>
@@ -47,17 +44,18 @@ QStringList StringArray(const QJsonArray& values)
 } // namespace
 
 CodexAppServerClient::CodexAppServerClient(QObject* parent)
-    : QObject(parent), process_(std::make_unique<QProcess>(this))
+    : QObject(parent), rpc_(std::make_unique<CodexJsonRpcProcess>(this))
 {
-    replyTimeoutTimer_ = new QTimer(this);
-    replyTimeoutTimer_->setInterval(5000);
-    connect(replyTimeoutTimer_, &QTimer::timeout, this, &CodexAppServerClient::ExpireTimedOutReplies);
     turnWatchdogTimer_ = new QTimer(this);
     turnWatchdogTimer_->setInterval(1000);
     connect(turnWatchdogTimer_, &QTimer::timeout,
             this, &CodexAppServerClient::CheckTurnWatchdog);
 
-    connect(process_.get(), &QProcess::started, this, [this]() {
+    rpc_->SetServerRequestHandler(
+        [this](const QJsonValue& id, const QString& method, const QJsonObject& params) {
+            return HandleServerRequest(id, method, params);
+        });
+    connect(rpc_.get(), &CodexJsonRpcProcess::Started, this, [this]() {
         emit ServerStateChanged(false, QStringLiteral("Connecting to Codex..."));
         QJsonObject clientInfo{
             {QStringLiteral("name"), QStringLiteral("openzoom")},
@@ -71,45 +69,40 @@ CodexAppServerClient::CodexAppServerClient(QObject* parent)
                         FinishInitialization(result, error);
                     });
     });
-    connect(process_.get(), &QProcess::readyReadStandardOutput,
-            this, &CodexAppServerClient::ConsumeStdout);
-    connect(process_.get(), &QProcess::readyReadStandardError, this, [this]() {
-        const QString diagnostic =
-            QString::fromUtf8(process_->readAllStandardError())
-                .trimmed()
-                .left(8192);
-        if (!diagnostic.isEmpty()) {
-            qWarning().noquote() << "codex app-server:" << diagnostic;
+    connect(rpc_.get(), &CodexJsonRpcProcess::NotificationReceived,
+            this, &CodexAppServerClient::HandleNotification);
+    connect(rpc_.get(), &CodexJsonRpcProcess::StderrText, this, [](const QString& diagnostic) {
+        qWarning().noquote() << "codex app-server:" << diagnostic;
+    });
+    connect(rpc_.get(), &CodexJsonRpcProcess::ProtocolFailed, this, [this](const QString& reason) {
+        emit ServerStateChanged(false, reason);
+        if (IsTurnActive()) {
+            FinishActiveTurn({}, reason, false);
         }
     });
-    connect(process_.get(), &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (error == QProcess::FailedToStart) {
-            initialized_ = false;
+    connect(rpc_.get(), &CodexJsonRpcProcess::FailedToStart, this, [this]() {
+        initialized_ = false;
+        emit ServerStateChanged(
+            false,
+            QStringLiteral("Codex CLI not found. Install Codex or set its path in AI Settings."));
+        if (pendingTurn_.valid) {
+            FinishActiveTurn({}, QStringLiteral("Codex CLI could not be started."), false);
+        }
+    });
+    connect(rpc_.get(), &CodexJsonRpcProcess::Finished, this, [this](int exitCode) {
+        const bool wasInitialized = initialized_;
+        initialized_ = false;
+        signedIn_ = false;
+        rpc_->FailAllPendingReplies(QStringLiteral("Codex stopped before replying."));
+        if (wasInitialized || exitCode != 0) {
             emit ServerStateChanged(
                 false,
-                QStringLiteral("Codex CLI not found. Install Codex or set its path in AI Settings."));
-            if (pendingTurn_.valid) {
-                FinishActiveTurn({}, QStringLiteral("Codex CLI could not be started."), false);
-            }
+                QStringLiteral("Codex stopped (exit code %1).").arg(exitCode));
+        }
+        if (!activeThreadId_.isEmpty() || pendingTurn_.valid) {
+            FinishActiveTurn({}, QStringLiteral("Codex stopped before the answer completed."), false);
         }
     });
-    connect(process_.get(),
-            qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-            this,
-            [this](int exitCode, QProcess::ExitStatus) {
-                const bool wasInitialized = initialized_;
-                initialized_ = false;
-                signedIn_ = false;
-                FailAllPendingReplies(QStringLiteral("Codex stopped before replying."));
-                if (wasInitialized || exitCode != 0) {
-                    emit ServerStateChanged(
-                        false,
-                        QStringLiteral("Codex stopped (exit code %1).").arg(exitCode));
-                }
-                if (!activeThreadId_.isEmpty() || pendingTurn_.valid) {
-                    FinishActiveTurn({}, QStringLiteral("Codex stopped before the answer completed."), false);
-                }
-            });
 }
 
 CodexAppServerClient::~CodexAppServerClient()
@@ -151,49 +144,36 @@ void CodexAppServerClient::Configure(const QString& executablePath,
     if (!preferredModel_.isEmpty()) {
         selectedModel_ = preferredModel_;
     }
-    if (executableChanged && process_->state() != QProcess::NotRunning) {
+    if (executableChanged && rpc_->IsRunning()) {
         Shutdown();
     }
 }
 
 void CodexAppServerClient::Start()
 {
-    if (process_->state() != QProcess::NotRunning) {
+    if (rpc_->IsRunning()) {
         return;
     }
 
     initialized_ = false;
-    stdoutBuffer_.clear();
-    FailAllPendingReplies(QStringLiteral("Codex is restarting."));
-    nextRequestId_ = 1;
-    const QString executable = ResolveExecutable();
-    process_->setProgram(executable);
-    process_->setArguments({QStringLiteral("app-server"),
-                            QStringLiteral("--listen"),
-                            QStringLiteral("stdio://")});
-    process_->setProcessChannelMode(QProcess::SeparateChannels);
-    process_->setProcessEnvironment(QProcessEnvironment::systemEnvironment());
+    rpc_->SetProgram(ResolveExecutable(),
+                     {QStringLiteral("app-server"),
+                      QStringLiteral("--listen"),
+                      QStringLiteral("stdio://")});
+    rpc_->SetProcessEnvironment(QProcessEnvironment::systemEnvironment());
     emit ServerStateChanged(false, QStringLiteral("Starting Codex..."));
-    process_->start();
+    rpc_->Start();
 }
 
 void CodexAppServerClient::Shutdown()
 {
-    if (process_->state() == QProcess::NotRunning) {
+    if (!rpc_->IsRunning()) {
         return;
     }
     if (IsTurnActive()) {
         InterruptTurn();
     }
-    process_->closeWriteChannel();
-    process_->terminate();
-    if (!process_->waitForFinished(250)) {
-        process_->kill();
-        if (!process_->waitForFinished(250)) {
-            qWarning() << "Codex process did not exit within the bounded "
-                          "shutdown window";
-        }
-    }
+    rpc_->Shutdown();
 }
 
 bool CodexAppServerClient::IsReady() const { return initialized_; }
@@ -421,8 +401,13 @@ void CodexAppServerClient::DeleteConversation(const QString& threadId)
 
 QString CodexAppServerClient::ResolveExecutable() const
 {
-    if (!configuredExecutable_.isEmpty()) {
-        return configuredExecutable_;
+    return ResolveExecutablePath(configuredExecutable_);
+}
+
+QString CodexAppServerClient::ResolveExecutablePath(const QString& configuredExecutable)
+{
+    if (!configuredExecutable.isEmpty()) {
+        return configuredExecutable;
     }
     const QString environmentPath = qEnvironmentVariable("OPENZOOM_CODEX_PATH").trimmed();
     if (!environmentPath.isEmpty()) {
@@ -475,6 +460,9 @@ QString CodexAppServerClient::DeveloperInstructions(bool persistent) const
                             "conflict with the security and permission limits below: %1 ")
                             .arg(assistantInstructions_);
     }
+    instructions += QStringLiteral(
+        "For verbatim reading or transcription requests, preserve the source wording and language "
+        "even if response preferences ask for another language, tone, or summary. ");
     if (allowCoding) {
         instructions += QStringLiteral(
             "You may inspect files, edit files, and run commands only for the user's request and only "
@@ -510,131 +498,14 @@ QJsonObject CodexAppServerClient::SandboxPolicy(bool persistent) const
 
 void CodexAppServerClient::SendNotification(const QString& method, const QJsonObject& params)
 {
-    SendObject(QJsonObject{{QStringLiteral("method"), method},
-                           {QStringLiteral("params"), params}});
+    rpc_->SendNotification(method, params);
 }
 
 qint64 CodexAppServerClient::SendRequest(const QString& method,
                                          const QJsonObject& params,
                                          ReplyHandler handler)
 {
-    const qint64 id = nextRequestId_++;
-    if (handler) {
-        pendingReplies_.insert(id,
-                               PendingReply{std::move(handler),
-                                            QDateTime::currentMSecsSinceEpoch() + kRequestTimeoutMs});
-        if (!replyTimeoutTimer_->isActive()) {
-            replyTimeoutTimer_->start();
-        }
-    }
-    SendObject(QJsonObject{{QStringLiteral("id"), id},
-                           {QStringLiteral("method"), method},
-                           {QStringLiteral("params"), params}});
-    return id;
-}
-
-void CodexAppServerClient::ExpireTimedOutReplies()
-{
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    QList<ReplyHandler> expired;
-    for (auto it = pendingReplies_.begin(); it != pendingReplies_.end();) {
-        if (it.value().deadlineMs <= now) {
-            expired.push_back(std::move(it.value().handler));
-            it = pendingReplies_.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    if (pendingReplies_.isEmpty()) {
-        replyTimeoutTimer_->stop();
-    }
-    const QJsonObject error{{QStringLiteral("code"), -32001},
-                            {QStringLiteral("message"), QStringLiteral("Codex request timed out.")}};
-    for (ReplyHandler& handler : expired) {
-        handler({}, error);
-    }
-}
-
-void CodexAppServerClient::FailAllPendingReplies(const QString& message)
-{
-    if (pendingReplies_.isEmpty()) {
-        replyTimeoutTimer_->stop();
-        return;
-    }
-    QList<ReplyHandler> handlers;
-    handlers.reserve(pendingReplies_.size());
-    for (auto& pending : pendingReplies_) {
-        handlers.push_back(std::move(pending.handler));
-    }
-    pendingReplies_.clear();
-    replyTimeoutTimer_->stop();
-    const QJsonObject error{{QStringLiteral("code"), -32000}, {QStringLiteral("message"), message}};
-    for (ReplyHandler& handler : handlers) {
-        handler({}, error);
-    }
-}
-
-void CodexAppServerClient::SendObject(const QJsonObject& object)
-{
-    if (process_->state() == QProcess::NotRunning) {
-        return;
-    }
-    QByteArray line = QJsonDocument(object).toJson(QJsonDocument::Compact);
-    line.append('\n');
-    process_->write(line);
-}
-
-void CodexAppServerClient::ConsumeStdout()
-{
-    stdoutBuffer_.append(process_->readAllStandardOutput());
-    qsizetype newline = -1;
-    while ((newline = stdoutBuffer_.indexOf('\n')) >= 0) {
-        if (newline > kMaximumProtocolMessageBytes) {
-            FailProtocol(QStringLiteral("Codex sent an oversized protocol message."));
-            return;
-        }
-        const QByteArray line = stdoutBuffer_.left(newline).trimmed();
-        stdoutBuffer_.remove(0, newline + 1);
-        if (line.isEmpty()) {
-            continue;
-        }
-        QJsonParseError parseError{};
-        const QJsonDocument document = QJsonDocument::fromJson(line, &parseError);
-        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-            qWarning().noquote() << "Ignoring malformed codex app-server message:" << line;
-            continue;
-        }
-        HandleMessage(document.object());
-    }
-    if (stdoutBuffer_.size() > kMaximumProtocolBufferBytes) {
-        FailProtocol(QStringLiteral("Codex protocol buffering exceeded the safe limit."));
-    }
-}
-
-void CodexAppServerClient::HandleMessage(const QJsonObject& message)
-{
-    if (message.contains(QStringLiteral("id")) && message.contains(QStringLiteral("method"))) {
-        HandleServerRequest(message.value(QStringLiteral("id")),
-                            message.value(QStringLiteral("method")).toString(),
-                            message.value(QStringLiteral("params")).toObject());
-        return;
-    }
-    if (message.contains(QStringLiteral("id"))) {
-        const qint64 id = message.value(QStringLiteral("id")).toVariant().toLongLong();
-        auto it = pendingReplies_.find(id);
-        if (it != pendingReplies_.end()) {
-            ReplyHandler handler = std::move(it.value().handler);
-            pendingReplies_.erase(it);
-            if (pendingReplies_.isEmpty()) {
-                replyTimeoutTimer_->stop();
-            }
-            handler(message.value(QStringLiteral("result")).toObject(),
-                    message.value(QStringLiteral("error")).toObject());
-        }
-        return;
-    }
-    HandleNotification(message.value(QStringLiteral("method")).toString(),
-                       message.value(QStringLiteral("params")).toObject());
+    return rpc_->SendRequest(method, params, std::move(handler));
 }
 
 void CodexAppServerClient::HandleNotification(const QString& method, const QJsonObject& params)
@@ -729,7 +600,7 @@ void CodexAppServerClient::HandleNotification(const QString& method, const QJson
     }
 }
 
-void CodexAppServerClient::HandleServerRequest(const QJsonValue& id,
+bool CodexAppServerClient::HandleServerRequest(const QJsonValue& id,
                                                const QString& method,
                                                const QJsonObject&)
 {
@@ -747,17 +618,14 @@ void CodexAppServerClient::HandleServerRequest(const QJsonValue& id,
         result.insert(QStringLiteral("action"), QStringLiteral("decline"));
         result.insert(QStringLiteral("content"), QJsonValue::Null);
     } else {
-        SendObject(QJsonObject{{QStringLiteral("id"), id},
-                               {QStringLiteral("error"),
-                                QJsonObject{{QStringLiteral("code"), -32601},
-                                            {QStringLiteral("message"),
-                                             QStringLiteral("OpenZoom does not expose this Codex capability.")}}}});
-        return;
+        // Unhandled: the transport sends the standard capability denial.
+        return false;
     }
-    SendObject(QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("result"), result}});
+    rpc_->SendResult(id, result);
     if (IsTurnActive()) {
         InterruptTurn();
     }
+    return true;
 }
 
 void CodexAppServerClient::FinishInitialization(const QJsonObject& result,
@@ -1030,17 +898,6 @@ void CodexAppServerClient::CheckTurnWatchdog()
         now - lastTurnActivityMs_ >= kTurnIdleTimeoutMs) {
         RequestInterrupt(QStringLiteral("Assistant request stopped after no progress."));
     }
-}
-
-void CodexAppServerClient::FailProtocol(const QString& reason)
-{
-    stdoutBuffer_.clear();
-    emit ServerStateChanged(false, reason);
-    if (IsTurnActive()) {
-        FinishActiveTurn({}, reason, false);
-    }
-    FailAllPendingReplies(reason);
-    process_->kill();
 }
 
 QString CodexAppServerClient::AppendActiveText(const QString& delta)

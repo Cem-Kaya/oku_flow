@@ -37,7 +37,6 @@ AdvancedConfig MakePopulatedConfig()
     config.debugView = true;
     config.focusMarker = true;
     config.rotationQuarterTurns = 3;
-    config.ocrAssistEnabled = true;
     config.vlmAssistEnabled = true;
     config.assistiveOverlayEnabled = false;
     config.stabilizationEnabled = true;
@@ -102,7 +101,8 @@ class SettingsStoreTests : public QObject {
     Q_OBJECT
 
 private slots:
-    void defaultsUseTeraLow();
+    void defaultsUseLunaLow();
+    void migratesMisspelledTerraModel();
     void roundTripPreservesAdvancedConfig();
     void invalidLanguageFallsBackToMigrationDefault();
     void loadsRemovedGlobalCompatibilityForMigration();
@@ -116,11 +116,50 @@ private slots:
     void equivalenceUsesUiTolerances();
 };
 
-void SettingsStoreTests::defaultsUseTeraLow()
+void SettingsStoreTests::defaultsUseLunaLow()
 {
     const PersistentSettings settings;
-    QCOMPARE(settings.assistive.codexModel, QStringLiteral("gpt-5.6-tera"));
+    QCOMPARE(settings.assistive.codexModel, QStringLiteral("gpt-5.6-luna"));
     QCOMPARE(settings.assistive.codexReasoningEffort, QStringLiteral("low"));
+    QCOMPARE(settings.currentConfig.spatialUpscaler, 1);
+}
+
+void SettingsStoreTests::migratesMisspelledTerraModel()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    QVERIFY(WriteJson(
+        path,
+        QJsonObject{
+            {QStringLiteral("version"), 15},
+            {QStringLiteral("assistive"),
+             QJsonObject{
+                 {QStringLiteral("codexModel"),
+                  QStringLiteral(" Gpt-5.6-Tera ")}}}}));
+
+    const LoadResult loaded = LoadDetailed(path);
+    QCOMPARE(loaded.status, LoadStatus::Loaded);
+    QVERIFY(loaded.settings.has_value());
+    QVERIFY(loaded.migrationApplied);
+    QCOMPARE(loaded.settings->assistive.codexModel,
+             QStringLiteral("gpt-5.6-terra"));
+
+    SettingsController controller(path);
+    QCOMPARE(controller.Settings().assistive.codexModel,
+             QStringLiteral("gpt-5.6-terra"));
+
+    QFile migratedFile(path);
+    QVERIFY(migratedFile.open(QIODevice::ReadOnly));
+    const QJsonObject migratedRoot =
+        QJsonDocument::fromJson(migratedFile.readAll()).object();
+    QCOMPARE(migratedRoot.value(QStringLiteral("version")).toInt(), 16);
+    QCOMPARE(
+        migratedRoot.value(QStringLiteral("assistive"))
+            .toObject()
+            .value(QStringLiteral("codexModel"))
+            .toString(),
+        QStringLiteral("gpt-5.6-terra"));
 }
 
 void SettingsStoreTests::roundTripPreservesAdvancedConfig()
@@ -156,9 +195,12 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     expected.viewportRateMode = ViewportRateMode::Fps90;
     expected.viewportFitMode = ViewportFitModeSetting::Fit;
     expected.recordingCanvasMode = RecordingCanvasMode::Sd480;
+    expected.liveTranscriptionEnabled = true;
+    expected.appendTranscriptToNotes = false;
     expected.uiSectionStates.insert(QStringLiteral("device"), false);
     expected.uiSectionStates.insert(QStringLiteral("textClarity"), true);
     expected.assistiveOverlayGeometry = QRect(12, 34, 640, 480);
+    expected.assistiveOverlayDockPosition = QStringLiteral("right");
     expected.annotationColor = QStringLiteral("#00e5ff");
     expected.annotationWidthPixels = 13;
     expected.annotationCaptureOnExit = false;
@@ -182,8 +224,6 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     expected.assistive.vlmCredentialId = QStringLiteral("OpenZoom/Test Round Trip");
     expected.assistive.vlmModel = QStringLiteral("vision");
     expected.assistive.vlmPrompt = QStringLiteral("Describe.");
-    expected.assistive.tesseractPath = QStringLiteral("C:/ocr/tesseract.exe");
-    expected.assistive.ocrLanguage = QStringLiteral("tur");
     expected.assistive.ttsEngine = QStringLiteral("winrt");
     expected.assistive.ttsVoiceName = QStringLiteral("Natural Voice");
     expected.assistive.ttsVoiceLocale = QStringLiteral("en-US");
@@ -240,8 +280,11 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QCOMPARE(loaded->viewportRateMode, expected.viewportRateMode);
     QCOMPARE(loaded->viewportFitMode, expected.viewportFitMode);
     QCOMPARE(loaded->recordingCanvasMode, expected.recordingCanvasMode);
+    QCOMPARE(loaded->liveTranscriptionEnabled, expected.liveTranscriptionEnabled);
+    QCOMPARE(loaded->appendTranscriptToNotes, expected.appendTranscriptToNotes);
     QCOMPARE(loaded->uiSectionStates, expected.uiSectionStates);
     QCOMPARE(loaded->assistiveOverlayGeometry, expected.assistiveOverlayGeometry);
+    QCOMPARE(loaded->assistiveOverlayDockPosition, expected.assistiveOverlayDockPosition);
     QCOMPARE(loaded->annotationColor, expected.annotationColor);
     QCOMPARE(loaded->annotationWidthPixels, expected.annotationWidthPixels);
     QCOMPARE(loaded->annotationCaptureOnExit, expected.annotationCaptureOnExit);

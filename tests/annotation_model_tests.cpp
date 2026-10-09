@@ -21,8 +21,30 @@ private slots:
     void marqueeSelectionMovesAndDeletesAGroupAsOneEdit();
     void selectionVisualsNeverLeakIntoOtherStrokes();
     void renderingTracksCanonicalViewportTransform();
+    void recordingInkRetainsSceneCoordinatesWithSuperResCrop();
     void sceneToleranceTightensAsViewportZooms();
+    void renderingHonorsTheCallersExclusionRegion();
 };
+
+void AnnotationModelTests::renderingHonorsTheCallersExclusionRegion()
+{
+    AnnotationModel model;
+    model.BeginStroke({0.1, 0.5}, Qt::yellow, 0.02);
+    model.AppendStrokePoint({0.9, 0.5}, 0.001);
+    model.EndStroke();
+    QImage image(400, 200, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.setClipRegion(QRegion(image.rect()) - QRect(150, 0, 100, 200));
+    RenderAnnotationStrokes(painter, model.strokes(),
+                            ComputeViewTransform(400, 200, 400, 200,
+                                                 1.0f, 0.5f, 0.5f, ViewportFitMode::kFill),
+                            image.size());
+    painter.end();
+    QVERIFY(image.pixelColor(100, 100).alpha() > 0);
+    QCOMPARE(image.pixelColor(200, 100).alpha(), 0);
+    QVERIFY(image.pixelColor(300, 100).alpha() > 0);
+}
 
 void AnnotationModelTests::editsSupportUndoRedoAndPermanentSessionReset()
 {
@@ -306,6 +328,53 @@ void AnnotationModelTests::renderingTracksCanonicalViewportTransform()
     RenderAnnotationStrokes(pannedPainter, {stroke}, right, panned.size());
     pannedPainter.end();
     QVERIFY(panned.pixelColor(100, 100).alpha() > 0);
+}
+
+void AnnotationModelTests::recordingInkRetainsSceneCoordinatesWithSuperResCrop()
+{
+    AnnotationStroke stroke;
+    stroke.id = 1;
+    stroke.points = {{0.60, 0.60}, {0.70, 0.60}};
+    stroke.color = Qt::cyan;
+    stroke.sceneWidth = 0.01;
+
+    // A panned 2x view is backed by a non-central SuperRes crop. Annotation
+    // points stay normalized to the original scene, not that cache texture.
+    const ViewTransform annotationTransform = ComputeViewTransform(
+        1280, 720, 640, 360, 2.0f, 0.65f, 0.60f, ViewportFitMode::kFill);
+    QVERIFY(annotationTransform.valid);
+    ViewTransform croppedTextureTransform;
+    QVERIFY(RemapViewTransformToSourceRect(
+        annotationTransform, {0.40f, 0.35f, 0.50f, 0.50f},
+        croppedTextureTransform));
+    ViewTransform fullFrameTextureTransform;
+    QVERIFY(RemapViewTransformToSourceRect(
+        annotationTransform, {0.0f, 0.0f, 1.0f, 1.0f},
+        fullFrameTextureTransform));
+
+    // Recording canvases may differ from the live viewport dimensions.
+    for (const QSize canvas : {QSize(640, 360), QSize(1280, 720)}) {
+        auto render = [&](const ViewTransform& inkTransform) {
+            QImage layer(canvas, QImage::Format_ARGB32);
+            layer.fill(Qt::transparent);
+            QPainter painter(&layer);
+            RenderAnnotationStrokes(painter, {stroke}, inkTransform, canvas);
+            painter.end();
+            return layer;
+        };
+        const QImage recordedInk = render(annotationTransform);
+        const QPoint expectedCenter(canvas.width() / 2, canvas.height() / 2);
+        QVERIFY(recordedInk.pixelColor(expectedCenter).alpha() > 200);
+        QVERIFY(recordedInk.pixelColor(canvas.width() / 4,
+                                       canvas.height() / 2).alpha() == 0);
+        QCOMPARE(recordedInk, render(fullFrameTextureTransform));
+
+        // This is the previously incorrect call: texture-space geometry
+        // moves scene-space ink away from the content at the view center.
+        const QImage misplacedInk = render(croppedTextureTransform);
+        QCOMPARE(misplacedInk.pixelColor(expectedCenter).alpha(), 0);
+        QVERIFY(misplacedInk != recordedInk);
+    }
 }
 
 void AnnotationModelTests::sceneToleranceTightensAsViewportZooms()

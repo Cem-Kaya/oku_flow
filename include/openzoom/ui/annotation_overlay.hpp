@@ -6,6 +6,7 @@
 
 #include <QColor>
 #include <QPointer>
+#include <QRegion>
 #include <QWidget>
 
 #include <optional>
@@ -55,6 +56,7 @@ public:
     int TextSizePixels() const noexcept;
     AnnotationTool CurrentTool() const noexcept;
     QVector<QWidget*> FocusTargets() const;
+    void SetExcludedWidget(QWidget* widget);
 
     void ClearInk();
     bool Undo();
@@ -91,6 +93,8 @@ protected:
 private:
     void BuildToolbar();
     void SyncGeometryToRenderTarget();
+    void UpdateInputRegion();
+    bool IsExcluded(const QPoint& position) const;
     void PositionToolbar();
     void SetTool(AnnotationTool tool);
     void ShowToolOptions(bool visible);
@@ -140,6 +144,8 @@ private:
     QRectF scaleStartBoundsView_;
     std::optional<QPointF> pendingTextScenePoint_;
     QPointer<QWidget> renderTarget_;
+    QPointer<QWidget> excludedWidget_;
+    QRegion drawingRegion_;
     QFrame* toolbar_{};
     QFrame* optionsPanel_{};
     QFrame* actionToolbar_{};

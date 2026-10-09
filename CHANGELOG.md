@@ -5,6 +5,210 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+- Open the initial camera on a worker while the window's graphics initialize,
+  and reuse its streaming reader for camera mode discovery. Canceled startup
+  cannot deliver frames into a destroyed window; startup errors and acceleration
+  fallback remain visible.
+- Reuse already-read validation pixels for initial presentation instead of
+  converting the same startup frames again.
+- Keep GPU camera textures on the direct transfer path when their media type
+  advertises a negative CPU row stride. That CPU-only orientation metadata
+  previously forced unnecessary steady-state GPU-to-CPU readback and upload.
+- Copy matching BGRA camera textures directly on the GPU instead of running a
+  second video-processing pass. Three consecutive D3D11 handoff deadlines select
+  safe-copy input for that session, preventing recurring 25 ms delays; unfinished
+  CUDA copies retain their separate ownership checks and cannot be bypassed.
+- Replace routine GPU frame-slot and D3D11 conversion polling waits with
+  nonblocking checks, keeping the latest scene pending when the GPU is busy.
+  Recording clones retain explicit producer-fence dependencies independently
+  of viewport admission, and latency metrics count successful presentation.
+- Add isolated startup profiling with first-view timing, UI heartbeat delays,
+  actual camera arrival rates, processing/presentation counts, and stage timings.
+- Clarified Read support in the translated Codex setup/install description
+  and refreshed setup and campaign documentation after retiring local recognition.
+- Removed the separate local text-recognition engine, installer/discovery,
+  AI Settings fields, OCR Assist toggle/preset, saved options, translations,
+  and optional release dependency metadata. Read now transcribes through the
+  vision assistant; new Codex settings default to Luna with low reasoning.
+  Existing explicit model choices remain intact. Reading results retain their
+  full text for manual Read Aloud and lecture notes.
+- Stabilized chat docking with one drag controller and a debounced target latch:
+  180 ms to acquire an edge, 250 ms outside the wider release bounds to clear it,
+  and a 350 ms deliberate pull before undocking. Releasing a dock cannot
+  immediately snap back to the same edge.
+- Fixed squeezed camera images during viewport resizing: resize updates no
+  longer wait for dragging to stop, and DXGI keeps old frames unscaled until
+  the correctly sized Fill/Fit frame is ready.
+- Added drag-to-dock for the floating Assistant: a high-contrast side preview
+  appears near the left/right app edge, and releasing docks the chat there.
+  Moving away or canceling the drag clears the preview and keeps it floating.
+- Kept the Assistant clickable and movable in Draw mode by excluding its live
+  bounds from both annotation painting and native mouse input. Added Floating,
+  Dock left, and Dock right panel positions; docking reserves space beside the
+  camera, and the chosen position and floating geometry persist across restarts.
+- NIS/FSR now enlarge the visible crop into the shared presentation cache,
+  with bounded existing-buffer reuse and protected partial-cache borders.
+- Camera stop now isolates driver shutdown in shared worker-owned sessions
+  with deadlines and revocable app callbacks. GPU fence/stream failures stop
+  submission and preserve in-flight resources until restart.
+- Direct GPU camera copies use completion-event leases instead of per-frame
+  CUDA stream synchronization, preventing producer reuse until copying ends.
+- Corrected stabilization to use displayed magnification even when zoom is
+  applied by the presenter, and kept recorded annotation geometry in full
+  scene coordinates when a cropped upscale cache is presented.
+- Normalized native camera-buffer pitch and bottom-up RGB orientation before
+  CPU conversion, including correct NV12 chroma-plane placement.
+- Carried camera BT.601/BT.709 matrix and limited/full-range metadata through
+  CPU, CUDA, and D3D11 conversion, including original recordings. Untagged
+  formats retain the documented BT.601 limited default; unsupported explicit
+  encodings are rejected rather than interpreted with incorrect colors.
+- Added capped backoff for failed CUDA surface initialization, preventing
+  repeated allocation/drain attempts on every raw and fallback frame.
+- Moved lecture-notes image encoding and HTML storage to an ordered bounded
+  background queue. Canceled analyses create no note images, writes retain
+  their original destination, and the UI reports storage failures and waits
+  for actual completion before announcing that a transcript was saved.
+- Replaced the former FSR/NIS-named Lanczos and bilinear approximations with
+  pinned CUDA adaptations of AMD FidelityFX FSR 1.0.2 EASU + RCAS and NVIDIA
+  Image Scaling 1.0.3 NVScaler. The upstream reference headers, exact commits,
+  and full MIT notices are now tracked. Release bundles validate and include
+  Qt, Qt-bundled FFmpeg/PDF/image-plugin components, Lucide, AMD FSR, NVIDIA
+  NIS, Maxine headers, CUDA, nlohmann/json, and the existing native-WebRTC
+  notices, together with the top-level commercial-offerings notice referenced
+  by `LICENSE`. The SPDX SBOM now links the exact Qt module documents, separates
+  optional external runtimes from bundled dependencies, describes the release
+  package, records D3DCompiler when deployed, and correctly identifies
+  statically linked `cudart_static`. Corrected the default Codex model to
+  `gpt-5.6-terra`; saved `gpt-5.6-tera` values are migrated and rewritten
+  automatically without changing the intentional opt-in coding/Python
+  workspace setting.
+- Redesigned the appended lecture-notes page (owner request after the first
+  live hardware run). The head — written once at creation, fully inline and
+  offline — now carries a design-token stylesheet with light and dark themes,
+  a top-right theme toggle (persisted, defaulting to the system scheme),
+  expand/collapse-all controls, and a small viewer script. Every note
+  (photos, videos, explanations, annotations) is a native
+  `<details>/<summary>` card — collapsible by keyboard and screen reader
+  with the heading kept inside the summary for heading navigation. The
+  transcript is now a compact line-by-line feed (short time chip with the
+  approximate offset in its tooltip, per-line language, dashed gap lines)
+  that the viewer script groups into one collapsible block per recording;
+  without script the lines still render as a joined feed. Contrast,
+  focus-visible outlines, and reduced-motion behavior follow web standards,
+  and the append-only architecture is unchanged: each entry remains one
+  checked, flushed, self-contained block, so a crash mid-lecture still
+  leaves a fully styled, readable page. A new `notes_html` ctest guards
+  head structure, escaping, dedupe, and the appended-block invariants.
+  Every transcript line across the whole document — even from separate
+  start/stop recordings with media between them — is consolidated by the
+  head script into one single collapsible transcript block (keyed by
+  recording-session id, with a dashed divider between recordings), so
+  transcript is never scattered into multiple sections. Each collapsed card
+  shows a type icon (AI, video, photo, annotation, transcript) and a
+  one-line preview, with the title first and the timestamp pushed to the far
+  right as the least-prominent element. The consolidated transcript block is
+  placed after the last recorded-video card, since the transcript belongs to
+  the recording. Asking the AI now records the frame it analyzed into
+  `Notes/images/` and embeds it in the note. The Advanced Assistant
+  (Codex chat) records a full exchange — your question in a bubble, the
+  attached frame, then the answer — as one collapsible "Assistant" entry
+  (previously the answer was written text-only and mislabeled "Scene
+  explanation"). The Simple Explain and on-screen-text paths likewise embed
+  their analyzed frame above the answer. In every case the saved image is
+  removed if the request fails, so no orphan images accumulate. Multiple
+  turns of one Advanced Assistant conversation are grouped under a single
+  collapsible "Conversation" block (each turn still individually
+  expandable, titled by its question), keyed by the Codex thread. The
+  floating assistant overlay gains a top-left "New chat" button that starts
+  a fresh conversation, which begins a new Conversation section in the
+  notes.
+- Added opt-in live transcription of the recording microphone (plan 36).
+  While recording, speech is transcribed through the user's ChatGPT-signed-in
+  Codex Voice over a dedicated `codex app-server` child (API-key environment
+  variables removed unread; subscription-backed WebRTC is the only transport,
+  and `experimentalApi` plus a `chatgpt` account are enforced). Native 48 kHz
+  PCM is fanned out from the microphone callback into a bounded five-second
+  queue, chunked to 20 ms, Opus-encoded, and carried into the realtime
+  session by a statically linked native WebRTC stack (pinned libdatachannel,
+  Opus, and Mbed TLS; service-required SendRecv m-line, no ICE/STUN third-party
+  servers, and the assistant's return audio never decoded). Only `role == "user"` finals are
+  durable: each is appended to the HTML lecture notes as a typed, escaped
+  `transcript-segment` section keyed to a new stable recording-session
+  identity, with partial text presentation-only in a read-only Transcript tab
+  and a mouse-transparent Simple-mode overlay. Dropped audio produces one
+  honest gap section; quota is shown as general Codex usage, never as Voice
+  minutes; every failure path (Codex missing, wrong account,
+  network loss, timeouts) ends only the transcript with a
+  translated "Recording continues" message. Recording start, capture, stop,
+  finalization, watchdog, and abandonment behavior are unchanged, and the
+  transcript queue can never block the recorder. Ships English/Turkish/German
+  strings, commit-pinned open-source dependencies recorded in the
+  SBOM/third-party notices (no extra DLLs or assets in the bundle),
+  fake-process protocol tests, controller unit tests, and a loopback
+  RTP/Opus test suite for the native carrier.
+- Hardened plan 36 after implementation review. Live transcription now
+  enumerates and disables configured MCP servers, disables Codex app/plugin
+  providers at process launch, and fails closed on discovery errors or any MCP
+  lifecycle event; the ephemeral
+  thread also uses an empty temporary cwd, no approvals, read-only sandboxing,
+  default-denied server requests, and an explicit untrusted-speech boundary.
+  Accepted pre-roll is drained on Stop through the sole bounded carrier queue
+  before the final grace starts; Opus encoding is off the UI thread, RTP is
+  paced by that worker with no hidden downstream queue,
+  media readiness requires both channel and track, carrier-side loss is reported as a
+  gap, 48 kHz is verified, transient ICE disconnects get recovery time,
+  worker-thread callbacks are lifetime-gated, partial UI updates are
+  coalesced, immediate duplicate finals
+  are suppressed, recording offsets use the first recording microphone clock,
+  stderr payloads are never logged, and note writes consume sequence ids only
+  after a checked append succeeds (failed/short appends roll back to the prior
+  file size). The opt-in live probe now waits for actual media readiness before
+  consuming its finite WAV and succeeds only with a clean completed session,
+  at least one user final, and no gap.
+  Clearly transient connection/network/process failures now append a gap and
+  retry the same recording identity after one second, capped at three attempts;
+  permanent account/capability/isolation errors still fail immediately.
+- Replaced the interim WebView2 transcription carrier with the native WebRTC
+  stack before release (plan 36 Carrier D): no embedded browser process, no
+  Evergreen Runtime prerequisite, no proprietary loader DLL, no staged
+  assets, and no browser cache under the user's documents. The native carrier
+  is now part of the one supported Windows build, with one `/MT` dependency
+  graph, four libdatachannel workers, bounded global cleanup, non-mutating
+  Mbed TLS configuration, complete bundled license texts, and transitive SBOM
+  packages.
+- Fixed sustained native transcription falling behind real time and eventually
+  dropping audio. RTP deadlines now advance from one phase-locked 20 ms clock
+  instead of adding Opus/transport work to every interval, while a genuinely
+  missed deadline re-anchors without a catch-up burst. A new four-second
+  loopback timing regression fails the drifting implementation, and the fixed
+  carrier passed an identical 180-second live lecture rerun with 25 finals,
+  zero gaps, clean completion, and strict-probe exit code 0.
+- Fixed short, burst-fed transcription silently losing acoustic continuity
+  even when neither bounded queue overflowed. The RTP worker now waits for a
+  bounded 500 ms continuity cushion before beginning its 20 ms phase-locked
+  sender, so the controller's 50 ms drain cadence and ordinary Qt timer jitter
+  cannot repeatedly starve media; after a real later underflow it rebuilds the
+  same cushion before resuming. Two corrected 90-second MIT lecture gates
+  improved from BLEU-4 11.519 / WER 66.667% to BLEU-4 80.750–84.460 / WER
+  8.667–10.667% with the production 48 kbit/s/20 ms profile and the same
+  prompt/model/audio.
+  A loopback regression proves no RTP leaves at 400 ms, pacing begins at the
+  500 ms threshold, an actual missed media deadline re-enters buffering, and
+  finalization still drains every accepted frame.
+- Tuned and hardened the classroom transcription contract from a fixed
+  90-second MIT lecture excerpt. `thread/realtime/start` now supplies the exact
+  verbatim-transcription/untrusted-quoted-data prompt; no Codex tail handoff or
+  second transcription pass is enabled. If WebRTC v3 closes without a final
+  event, the controller promotes only the already-streamed bounded user tail
+  locally so recognized speech is not discarded. After correcting the
+  probe/carrier starvation bug, matched runs retained 48 kbit/s Opus at the
+  standard 20 ms packet duration: 64 kbit/s did not improve accuracy, 40 and
+  60 ms packet durations regressed, and illegal 80/160/320 ms Opus frame
+  requests remain rejected by tests. The current public transcription API
+  documents stronger context controls (`keywords`, `languages`, and `delay`),
+  but the signed-in Codex v3 WebRTC backend rejected a live
+  `gpt-live-transcribe` model override and exposes none of those
+  transcription-session fields; unsupported knobs were not added to the app.
 - Fixed the unsafe detached recording worker at app close. Shutdown now uses
   an explicit bounded handshake (`RecordingManager::ShutdownForProcessExit`):
   a clean worker exit is joined as before, while a worker wedged inside a
@@ -511,7 +715,7 @@
   the per-user CLI from a pinned SHA-256-verified OpenAI bootstrap; persists
   the resolved executable immediately; and keeps ChatGPT sign-in explicit.
   The upstream bootstrap also verifies the official release package checksum.
-- Changed new/empty Codex settings to `gpt-5.6-tera` with `low` reasoning while
+- Changed new/empty Codex settings to `gpt-5.6-terra` with `low` reasoning while
   preserving explicit saved choices.
 - Prevented Simple `1`-`9` preset shortcuts from firing while an editable
   Assistant or other text field has focus.
@@ -664,14 +868,6 @@
 - Hardened Windows identity and icon setup with an explicit AppUserModelID and
   native large/small window icons in addition to Qt and executable resources.
 - Setup Assistant dependency rows now use large green check/red X indicators.
-  System-wide Tesseract installations are labelled as Windows-managed and
-  provide an enabled `Open Windows Apps` action instead of an unexplained
-  disabled Remove button; OpenZoom-managed copies retain direct removal.
-- Fixed Tesseract Setup downloads failing when the Mannheim file host returns
-  `Forbidden`. Setup now uses UB Mannheim's GitHub release asset first,
-  retries failed Qt transfers through Windows `curl.exe`, can try the Mannheim
-  host as an alternate, and requires the same pinned SHA-256 digest on every
-  path. The failure action now opens the working GitHub release page.
 - Fixed NVIDIA Video Effects installation failing with Windows error 740. The
   verified installer now launches through the native `runas` shell verb,
   displays the UAC consent flow, remains monitored without blocking the UI,
@@ -684,10 +880,10 @@
   unavailable, failed, or slower than the configured steady-state guard.
 - Added a non-blocking, screen-reader-labelled Setup Assistant on first run and
   through Advanced `Setup & Downloads`. It detects supported NVIDIA GPU
-  generations, downloads the matching NVIDIA or Tesseract installer from a
+  generations, downloads the matching NVIDIA installer from a
   pinned vendor URL with SHA-256 verification and timeout/cancel handling,
   supports removal, and persists `Don't ask again` independently.
-- Removed CUDA Toolkit, NVIDIA Video Effects, Tesseract, language-data, and
+- Removed CUDA Toolkit, NVIDIA Video Effects and
   software-OpenGL binaries from release bundling. CUDA now uses its static
   runtime and optional dependencies are obtained by the user through Setup.
 - Added the mandatory `SuperRes powered by NVIDIA Maxine™` attribution at the
@@ -800,7 +996,7 @@
   language, tone, and detail can be changed independently of the scene prompt.
   Instructions persist and apply to Codex and OpenAI-compatible providers
   without overriding Codex permission limits. Codex now defaults to the
-  installed catalog's `gpt-5.6-tera` image model with Low (`low`) reasoning
+  installed catalog's `gpt-5.6-terra` image model with Low (`low`) reasoning
   and falls back to the app-server default when necessary.
 - Changed the Advanced Assistant usage label to show the percentage remaining
   in the current Codex window instead of the percentage already consumed.
@@ -861,9 +1057,6 @@
 - Kept the active quick mode selected while wheel, keyboard, joystick, or
   middle-drag navigation changes zoom focus; true Advanced edits still become
   a custom setup.
-- Added standard-install and app-managed Tesseract discovery plus TESSDATA
-  setup for local OCR. Tesseract is now installed or removed separately
-  through Setup rather than copied into release bundles.
 - Fixed the release bundler's executable lookup for Visual Studio builds that
   place `open_zoom.exe` under the `cmake\Release` subdirectory.
 - Shortened the visible processing state to fit its corner cluster while
@@ -876,7 +1069,7 @@
   sharpening, zoom, and other image treatment remain part of each quick
   profile. Existing profile rotation values migrate to the global setting.
 - Added an AI settings dialog (VLM base URL / API key / model / prompt,
-  tesseract path and OCR language, TTS, lecture notes) stored in
+  TTS, lecture notes) stored in
   `settings.json`; works with OpenAI-compatible local servers (LM Studio,
   Ollama, llama.cpp server) so image-to-text can run fully offline.
   Environment variables remain as fallback.
@@ -924,7 +1117,7 @@
   `AssistiveRuntime` now generates Qt moc metadata, BGRA frame wrappers use the
   Qt-supported `QImage::Format_ARGB32`, and the CUDA shared texture now matches
   the BGRA presenter/readback path.
-- Added a working assistive-analysis runtime: OCR now shells out to `tesseract.exe`, VLM requests can be sent to an OpenAI-compatible endpoint, and results render in an in-app overlay.
+- Added a working assistive-analysis runtime: vision requests can be sent to an OpenAI-compatible endpoint, and results render in an in-app overlay.
 - Added a two-stage UI model with quick modes for everyday use, advanced tuning for power users, and a path to promote advanced setups into reusable quick options.
 - Refactored settings persistence around live advanced configs plus user-defined preset libraries instead of a single flat settings blob.
 - Added OCR/VLM assistive-mode scaffolding in the UI and persistence layer so future overlays can slot into the preset model cleanly.

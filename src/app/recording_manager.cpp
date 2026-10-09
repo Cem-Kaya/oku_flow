@@ -5,6 +5,7 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QUuid>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -282,6 +283,18 @@ bool RecordingManager::IsActive() const
            state == RecordingState::Recording;
 }
 
+std::optional<RecordingSessionInfo> RecordingManager::CurrentSessionInfo() const
+{
+    if (!IsActive()) {
+        return std::nullopt;
+    }
+    std::lock_guard lock(queueMutex_);
+    if (sessionInfo_.id.isEmpty()) {
+        return std::nullopt;
+    }
+    return sessionInfo_;
+}
+
 QString RecordingManager::CodecName() const
 {
     std::lock_guard lock(queueMutex_);
@@ -398,6 +411,9 @@ void RecordingManager::SetRequested(bool requested)
         sessionTimestamp_ =
             QDateTime::currentDateTime().toString(
                 QStringLiteral("yyyyMMdd_HHmmss_zzz"));
+        sessionInfo_ = RecordingSessionInfo{
+            QUuid::createUuid().toString(QUuid::WithoutBraces),
+            sessionTimestamp_};
         sessionDirectory_ = outputDirectory;
         codecName_.clear();
         stopMessage_.clear();
@@ -545,8 +561,10 @@ void RecordingManager::AbandonWedgedWorker(const QString& trigger)
                 << ") declared the worker blocked" << stage
                 << "- abandoning the worker; recording is disabled until "
                    "OpenZoom restarts.";
+    RecordingSessionInfo endedSession;
     {
         std::lock_guard lock(queueMutex_);
+        endedSession = sessionInfo_;
         frameQueue_.clear();
         audioQueue_.clear();
     }
@@ -564,7 +582,7 @@ void RecordingManager::AbandonWedgedWorker(const QString& trigger)
             .arg(stage),
         20000);
     if (sessionEndedCallback_) {
-        sessionEndedCallback_();
+        sessionEndedCallback_(endedSession);
     }
 }
 
@@ -1470,8 +1488,10 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
     PostButtonState(state_.load());
     PostStatus(message, saved ? 9000 : 14000);
 
+    RecordingSessionInfo endedSession;
     {
         std::lock_guard lock(queueMutex_);
+        endedSession = sessionInfo_;
         frameQueue_.clear();
         audioQueue_.clear();
         stopRequested_ = false;
@@ -1482,7 +1502,7 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
         const SessionEndedCallback callback = sessionEndedCallback_;
         QMetaObject::invokeMethod(
             recordButton_,
-            [callback]() { callback(); },
+            [callback, endedSession]() { callback(endedSession); },
             Qt::QueuedConnection);
     }
 }
@@ -1657,13 +1677,21 @@ void RecordingManager::PostSegmentSaved(
         originalPath.isEmpty() || processedPath.isEmpty()) {
         return;
     }
+    SavedRecordingSegment saved;
+    {
+        std::lock_guard lock(queueMutex_);
+        saved.session = sessionInfo_;
+        saved.segmentIndex = segmentIndex_;
+    }
+    saved.originalPath = originalPath;
+    saved.processedPath = processedPath;
     const QPointer<QPushButton> context(recordButton_);
     const SegmentSavedCallback callback = segmentSavedCallback_;
     QMetaObject::invokeMethod(
         recordButton_,
-        [context, callback, originalPath, processedPath]() {
+        [context, callback, saved]() {
             if (context && callback) {
-                callback(originalPath, processedPath);
+                callback(saved);
             }
         },
         Qt::QueuedConnection);

@@ -63,8 +63,6 @@ private:
     QLineEdit* apiKeyEdit_{};
     QLineEdit* modelEdit_{};
     QPlainTextEdit* promptEdit_{};
-    QLineEdit* tesseractPathEdit_{};
-    QLineEdit* ocrLanguageEdit_{};
     QComboBox* ttsVoiceCombo_{};
     QSlider* ttsRateSlider_{};
     QLabel* ttsRateValueLabel_{};

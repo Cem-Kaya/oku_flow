@@ -62,7 +62,6 @@ struct AdvancedConfig {
     bool debugView{false};
     bool focusMarker{false};
     int rotationQuarterTurns{0};
-    bool ocrAssistEnabled{false};
     bool vlmAssistEnabled{false};
     bool assistiveOverlayEnabled{true};
     bool stabilizationEnabled{false};
@@ -104,7 +103,7 @@ struct AdvancedConfig {
 struct AssistiveSettings {
     QString aiProvider{QStringLiteral("codex")};
     QString codexExecutablePath;
-    QString codexModel{QStringLiteral("gpt-5.6-tera")};
+    QString codexModel{QStringLiteral("gpt-5.6-luna")};
     QString codexReasoningEffort{QStringLiteral("low")};
     bool codexInternetEnabled{false};
     bool codexCodingEnabled{false};
@@ -119,8 +118,6 @@ struct AssistiveSettings {
     QString vlmCredentialId;
     QString vlmModel;
     QString vlmPrompt;
-    QString tesseractPath;
-    QString ocrLanguage{QStringLiteral("eng")};
     QString ttsEngine;
     QString ttsVoiceName;
     QString ttsVoiceLocale;
@@ -170,8 +167,13 @@ struct PersistentSettings {
     ViewportRateMode viewportRateMode{ViewportRateMode::AutoUpTo120};
     ViewportFitModeSetting viewportFitMode{ViewportFitModeSetting::Fill};
     RecordingCanvasMode recordingCanvasMode{RecordingCanvasMode::Source};
+    // Live transcription (plan 36): privacy-safe defaults — microphone audio
+    // is only sent to the realtime service after an explicit opt-in.
+    bool liveTranscriptionEnabled{false};
+    bool appendTranscriptToNotes{true};
     QMap<QString, bool> uiSectionStates;
     QRect assistiveOverlayGeometry;
+    QString assistiveOverlayDockPosition{QStringLiteral("floating")};
     QString annotationColor{QStringLiteral("#fff000")};
     int annotationWidthPixels{8};
     bool annotationCaptureOnExit{true};
@@ -203,6 +205,7 @@ struct LoadResult {
     LoadStatus status{LoadStatus::Missing};
     std::optional<PersistentSettings> settings;
     QString error;
+    bool migrationApplied{false};
 };
 
 LoadResult LoadDetailed(const QString& path);

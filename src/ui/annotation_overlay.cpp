@@ -146,7 +146,9 @@ AnnotationOverlay::AnnotationOverlay(QWidget* renderTarget, QWidget* owner)
     setAccessibleDescription(
         QStringLiteral("Draw, select, resize, save, or clear annotations anchored to the camera scene."));
     if (renderTarget_) {
-        renderTarget_->installEventFilter(this);
+        for (QWidget* widget = renderTarget_; widget; widget = widget->parentWidget()) {
+            widget->installEventFilter(this);
+        }
         SyncGeometryToRenderTarget();
     }
     if (owner) {
@@ -707,6 +709,16 @@ bool AnnotationOverlay::CommitPendingText()
 
 bool AnnotationOverlay::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == excludedWidget_) {
+        if (event->type() == QEvent::Move || event->type() == QEvent::Resize ||
+            event->type() == QEvent::Show || event->type() == QEvent::Hide ||
+            event->type() == QEvent::ParentChange ||
+            event->type() == QEvent::WindowStateChange) {
+            UpdateInputRegion();
+        }
+        // The chat owns its keyboard input, including Draw shortcuts.
+        return QWidget::eventFilter(watched, event);
+    }
     if (watched == widthSlider_ && event->type() == QEvent::Wheel) {
         event->accept();
         return true;
@@ -723,7 +735,9 @@ bool AnnotationOverlay::eventFilter(QObject* watched, QEvent* event)
             }
         }
     }
-    if ((watched == renderTarget_ || watched == parentWidget()) &&
+    auto* geometryWidget = qobject_cast<QWidget*>(watched);
+    if (geometryWidget && renderTarget_ &&
+        (geometryWidget == renderTarget_ || geometryWidget->isAncestorOf(renderTarget_)) &&
         (event->type() == QEvent::Resize ||
          event->type() == QEvent::Move ||
          event->type() == QEvent::Show ||
@@ -742,6 +756,12 @@ bool AnnotationOverlay::nativeEvent(const QByteArray& eventType,
         const POINT nativeScreenPoint{
             GET_X_LPARAM(nativeMessage->lParam),
             GET_Y_LPARAM(nativeMessage->lParam)};
+        if (excludedWidget_ && excludedWidget_->isVisible() &&
+            excludedWidget_->isWindow() &&
+            NativeWindowContainsPoint(excludedWidget_, nativeScreenPoint)) {
+            *result = HTTRANSPARENT;
+            return true;
+        }
         if (QWidget* owner = parentWidget()) {
             for (const QString& name :
                  {QStringLiteral("topLeftPanel"),
@@ -768,6 +788,7 @@ bool AnnotationOverlay::nativeEvent(const QByteArray& eventType,
 void AnnotationOverlay::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
+    painter.setClipRegion(drawingRegion_);
     painter.fillRect(rect(), QColor(0, 0, 0, 1));
     RenderAnnotationStrokes(painter,
                             model_.strokes(),
@@ -789,6 +810,7 @@ void AnnotationOverlay::resizeEvent(QResizeEvent* event)
     QWidget::resizeEvent(event);
     PositionToolbar();
     PositionTextEditor();
+    UpdateInputRegion();
 }
 
 void AnnotationOverlay::changeEvent(QEvent* event)
@@ -811,6 +833,52 @@ void AnnotationOverlay::SyncGeometryToRenderTarget()
         setGeometry(targetGeometry);
     }
     PositionToolbar();
+    UpdateInputRegion();
+}
+
+void AnnotationOverlay::SetExcludedWidget(QWidget* widget)
+{
+    if (excludedWidget_) {
+        excludedWidget_->removeEventFilter(this);
+        disconnect(excludedWidget_, nullptr, this, nullptr);
+    }
+    excludedWidget_ = widget;
+    if (excludedWidget_) {
+        excludedWidget_->installEventFilter(this);
+        connect(excludedWidget_, &QObject::destroyed, this, [this]() {
+            excludedWidget_ = nullptr;
+            UpdateInputRegion();
+        });
+    }
+    UpdateInputRegion();
+}
+
+void AnnotationOverlay::UpdateInputRegion()
+{
+    QRegion region(rect());
+    if (excludedWidget_ && excludedWidget_->isVisible()) {
+        const QRect excluded(mapFromGlobal(excludedWidget_->mapToGlobal(QPoint(0, 0))),
+                             excludedWidget_->size());
+        region -= excluded;
+    }
+    if (region == drawingRegion_) {
+        return;
+    }
+    drawingRegion_ = region;
+    PositionToolbar();
+    // A native window region removes both ink and input, including toolbar
+    // children. Raising Draw later cannot put it back over the floating chat.
+    // QWidget treats an empty mask as "no mask", so use an off-window pixel
+    // when the panel covers the entire viewport.
+    setMask(region.isEmpty() ? QRegion(QRect(-1, -1, 1, 1)) : region);
+    update();
+}
+
+bool AnnotationOverlay::IsExcluded(const QPoint& position) const
+{
+    return excludedWidget_ && excludedWidget_->isVisible() &&
+           QRect(excludedWidget_->mapToGlobal(QPoint(0, 0)), excludedWidget_->size())
+               .contains(mapToGlobal(position));
 }
 
 void AnnotationOverlay::PositionToolbar()
@@ -854,6 +922,33 @@ void AnnotationOverlay::PositionToolbar()
         rightToLeft ? 0 : std::max(0, width() - actionToolbar_->width()),
         safeTop + std::max(0, (safeHeight - actionToolbar_->height()) / 2));
 
+    if (excludedWidget_ && excludedWidget_->isVisible()) {
+        const QRect excluded(mapFromGlobal(excludedWidget_->mapToGlobal(QPoint())),
+                             excludedWidget_->size());
+        QFrame* leftRail = rightToLeft ? actionToolbar_ : toolbar_;
+        QFrame* rightRail = rightToLeft ? toolbar_ : actionToolbar_;
+        if (leftRail->geometry().intersects(excluded)) {
+            const int x = excluded.right() + 9;
+            if (x + leftRail->width() + 8 <= rightRail->x()) {
+                leftRail->move(x, leftRail->y());
+            } else if (excluded.bottom() + 9 + leftRail->height() <= safeBottom) {
+                leftRail->move(leftRail->x(), excluded.bottom() + 9);
+            } else if (excluded.top() - 8 - leftRail->height() >= safeTop) {
+                leftRail->move(leftRail->x(), excluded.top() - 8 - leftRail->height());
+            }
+        }
+        if (rightRail->geometry().intersects(excluded)) {
+            const int x = excluded.left() - 8 - rightRail->width();
+            if (x >= leftRail->geometry().right() + 9) {
+                rightRail->move(x, rightRail->y());
+            } else if (excluded.bottom() + 9 + rightRail->height() <= safeBottom) {
+                rightRail->move(rightRail->x(), excluded.bottom() + 9);
+            } else if (excluded.top() - 8 - rightRail->height() >= safeTop) {
+                rightRail->move(rightRail->x(), excluded.top() - 8 - rightRail->height());
+            }
+        }
+    }
+
     const int gapStart =
         rightToLeft ? actionToolbar_->geometry().right() + 9
                     : toolbar_->geometry().right() + 9;
@@ -896,7 +991,8 @@ void AnnotationOverlay::UpdateDirectionalUi()
 bool AnnotationOverlay::MapViewPointToScene(const QPointF& viewPoint,
                                             QPointF& scenePoint) const
 {
-    if (!transform_.valid || width() <= 0 || height() <= 0) {
+    if (!transform_.valid || width() <= 0 || height() <= 0 ||
+        IsExcluded(viewPoint.toPoint())) {
         return false;
     }
     const qreal viewU = viewPoint.x() / static_cast<qreal>(width());
@@ -1005,7 +1101,8 @@ qreal AnnotationOverlay::CurrentHitTolerance() const
 
 bool AnnotationOverlay::IsOverChrome(const QPoint& position) const
 {
-    return (toolbar_ && toolbar_->isVisible() &&
+    return IsExcluded(position) ||
+           (toolbar_ && toolbar_->isVisible() &&
             toolbar_->geometry().contains(position)) ||
            (optionsPanel_ && optionsPanel_->isVisible() &&
             optionsPanel_->geometry().contains(position)) ||

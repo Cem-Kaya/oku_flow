@@ -279,10 +279,6 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
         }
     }
 
-    if (ocrAssistEnabled_) {
-        text.append(QStringLiteral(" [OCR]"));
-        detail.append(QStringLiteral(" [OCR]"));
-    }
     if (vlmAssistEnabled_) {
         text.append(QStringLiteral(" [VLM]"));
         detail.append(QStringLiteral(" [VLM]"));

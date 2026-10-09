@@ -10,6 +10,12 @@ This document tracks machine-specific defaults, generated output locations, and 
   - `cmake/CMakePresets.json`
   - `README.md` examples
 - Override with `QT_PREFIX` or `Qt6_DIR`.
+- Release packaging requires the matching Qt `Sources` component. Its normal
+  sibling location is `C:\Qt\6.9.3\Src`; override that discovery with
+  `QT_SOURCE_ROOT`. The bundle copies the exact FFmpeg
+  `LICENSE.LGPL-2.1-or-later.txt` from that source tree and the `qtbase`,
+  `qtimageformats`, `qtmultimedia`, `qtpdf`, `qtspeech`, and `qtsvg` SPDX JSON
+  documents from the selected runtime's `sbom` directory.
 
 ## CUDA
 - CMake default: `OPENZOOM_ENABLE_CUDA=ON`
@@ -60,15 +66,42 @@ This document tracks machine-specific defaults, generated output locations, and 
   `IMG_*.pair.lock`; startup completes or rolls back abandoned pairs)
 - Recording output: paired
   `Recordings\YYYY-MM-DD\VID_*_original.mp4` and `VID_*_processed.mp4`
-- Lecture notes output: `Notes\NOTES_*.html`; captured-image URLs are stored
-  relative to each notes file
+- Lecture notes output: `Notes\NOTES_<timestamp>_<UUID>.html`; captured-image URLs are stored
+  relative to each notes file. Assistant-analyzed frames are saved to
+  `Notes\images\AI_<UUID>.jpg` (long side capped at 1920 px, JPEG quality 88)
+  only when the associated answer is ready for storage. Cancellation releases
+  the retained frame; failed HTML appends remove their newly encoded images.
 - Assistant export default: `Analysis\OpenZoom_Assistant_*.txt`
+- Live transcription (native WebRTC stack) creates no profile, cache, or
+  data directory of its own. A `Cache\RealtimeWebView\` folder left behind
+  by a pre-release WebView2 build is unused user data and may be deleted
+  manually.
 - Console-attached diagnostic logs:
   `Debug\OpenZoom_<timestamp>_pid<process-id>.log`; the newest 20 are retained
 - Legacy `<install>\output\` files are never migrated or touched. Release
   publishing never transfers, removes, or preserves user artifacts.
 
 ## Runtime Defaults
+- Camera shutdown worker deadline: 1500 ms shared across producer quiescence
+  and final cleanup, plus caller-side GPU draining bounded to 1000 ms. A
+  timed-out session is retained until process exit and further capture is
+  refused. Presenter fence waits and CUDA stream drains each cap at 1000 ms;
+  fence removal probes use 50 ms slices and frame-latency waits cap at 100 ms.
+- Asynchronous CUDA camera-copy lease deadline: 1000 ms. Completion permits
+  producer reuse; failure/expiry retains ownership and requires restart.
+- NIS/FSR ROI enlargement: up to 2x per pass, bounded by existing scene/cache
+  buffers and 2560x1440 (or portrait 1440x2560). Partial caches have a one-texel
+  guard for bilinear edge sampling. Further magnification is display scaling.
+- Untagged or unknown camera YUV matrix/range defaults to BT.601 limited.
+  Explicit BT.601/BT.709 and limited/full-range metadata are respected by
+  every converter. Other explicitly tagged encodings are rejected.
+- Notes storage: one serial background queue, at most 128 outstanding jobs /
+  256 MiB retained payload. Pending analysis images have a separate three-frame /
+  192 MiB cap. Paths and content are captured when submitted. Queue or storage
+  failure is reported to the UI; accepted work drains at normal app shutdown.
+- CUDA surface initialization retries use a steady-clock backoff of
+  1, 2, 4, 8, 16, then 30 seconds, capped at 30 seconds. Device, fence, camera
+  session, scene extent, or upscale-cache extent changes allow immediate retry.
 - Settings path: `%APPDATA%\OpenZoom\OpenZoom\settings.json`
 - Settings schema version: `15`. Newer versions fail closed; invalid or
   unreadable settings are preserved with a timestamped suffix and the latest
@@ -86,13 +119,13 @@ This document tracks machine-specific defaults, generated output locations, and 
 - Viewport motion remains in the high-rate state for `150 ms` after the last
   input update, then idles at the negotiated camera rate. Native-window resize
   requests are coalesced for `16 ms` before resizing the swap chain.
-- Assistive analysis cadence: roughly `1600 ms` between OCR/VLM submissions
+- Assistive analysis cadence: roughly `1600 ms` between periodic HTTP vision submissions
 - Pipeline timing windows retain `240` samples. Advanced Diagnostics reports
   nearest-rank p50/p95/p99 for camera-processing tick time and
   capture-to-present latency; the processing warning budget is the negotiated
   camera frame period.
 - Codex scene explanations are on-demand only; periodic assistive polling does not spend Codex subscription usage.
-- Default Codex model: `gpt-5.6-tera`; the client uses the current image-capable
+- Default Codex model: `gpt-5.6-luna`; the client uses the current image-capable
   app-server default when that id is unavailable.
 - Default Codex reasoning effort: `low`.
 - Default Assistant Instructions: reply in the request's language unless asked
@@ -129,38 +162,33 @@ This document tracks machine-specific defaults, generated output locations, and 
   Turing, 8.9 = Ada, other 8.x = Ampere, and 10.x or newer = Blackwell.
 
 ## Assistive Runtime Environment
-- Optional OCR executable override: `OPENZOOM_TESSERACT_PATH`
-- Setup Assistant-managed OCR root:
-  `%LOCALAPPDATA%\OpenZoom\tools\tesseract\`; removal is restricted to this
-  OpenZoom-owned directory.
-- Tesseract discovery also checks `PATH` and `C:\Program Files\Tesseract-OCR`.
 - Optional Maxine runtime directory override: `OPENZOOM_MAXINE_PATH` (with
   `NV_VIDEO_EFFECTS_PATH` supported for NVIDIA SDK compatibility).
 - Default Maxine runtime root:
   `%ProgramFiles%\NVIDIA Corporation\NVIDIA Video Effects\`, followed by the
   matching 32-bit/64-bit uninstall registry entry.
-- Setup Assistant URLs and SHA-256 values are pinned in one table in
-  `src/app/setup_assistant.cpp`: Tesseract 5.4.0.20240606, the official Codex
-  Windows bootstrap script, and NVIDIA Video Effects 0.7.6
-  Turing/Ampere/Ada/Blackwell installers. Tesseract's primary
-  source is the UB Mannheim GitHub release asset; the Mannheim download host is
-  retained as an alternate. Qt downloads time out after 60 seconds without
-  activity, then automatically retry through Windows
-  `%SystemRoot%\System32\curl.exe`; all successful transfers use the same pinned
-  SHA-256 verification before execution. Final failures offer the GitHub
-  release, OpenAI Codex setup guide, or NVIDIA vendor page. The verified Codex
-  bootstrap runs with `CODEX_NON_INTERACTIVE=1`; it resolves the latest
-  official release and verifies that package against OpenAI's checksum
-  manifest before installing it.
+- Setup Assistant URLs and SHA-256 values are pinned in
+  `src/app/setup_assistant.cpp`: the official Codex Windows bootstrap script
+  and NVIDIA Video Effects 0.7.6 Turing/Ampere/Ada/Blackwell installers.
+  Qt downloads time out after 60 seconds without activity, then retry through
+  Windows `%SystemRoot%\System32\curl.exe` with the same pinned digest.
+  The verified Codex bootstrap uses `CODEX_NON_INTERACTIVE=1` and verifies
+  its selected release package against OpenAI's checksum manifest.
 - Optional Codex executable override: `OPENZOOM_CODEX_PATH`
 - Codex discovery fallbacks:
   `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` and
   `%LOCALAPPDATA%\Microsoft\WinGet\Links\codex.exe`
 - Codex app-server working directory: `%TEMP%\OpenZoom\assistant\`
+- Live-transcription app-server working directory:
+  `%TEMP%\OpenZoom-transcription-*\`; a new empty directory is created for
+  each session and removed after bounded child shutdown so speech-driven
+  requests cannot even read the project or ordinary user files.
 - Optional Advanced Assistant coding workspace: user-selected in AI Settings; no default folder is granted.
+  Enabling it changes persistent Assistant sessions to `workspaceWrite` for
+  that folder, which intentionally permits local coding tools including Python
+  and shell commands. Simple Explain and non-coding sessions remain read-only.
 - Attached Codex frames use temporary
-  `openzoom_codex_<pid>_*.jpg` files; OCR uses
-  `openzoom_ocr_<pid>_*.png`. They are removed on completion, cancellation,
+  `openzoom_codex_<pid>_*.jpg` files. They are removed on completion, cancellation,
   and shutdown, and startup removes leftovers whose owner process is no
   longer running.
 - Codex control-plane replies time out after `60 s`. A turn idles out after
@@ -183,23 +211,52 @@ This document tracks machine-specific defaults, generated output locations, and 
 
 ## Redistributed Runtime Files
 - The bundle script copies the executable, Qt deployment output, `LICENSE`,
-  `README.md` as `README.txt`, `docs/THIRD_PARTY_LICENSES.md`, and the Lucide
-  notice.
+  `COMMERCIAL.md`, `README.md` as `README.txt`,
+  `docs/THIRD_PARTY_LICENSES.md`, the Lucide
+  notice, the applicable Qt/FFmpeg texts, six exact Qt module SPDX documents,
+  CUDA/FSR/NIS/Maxine-header notices for CUDA builds, and every native-WebRTC
+  dependency notice (including nlohmann/json).
+- Live transcription's native WebRTC stack (libdatachannel, Opus, Mbed TLS;
+  pinned by commit in `cmake/NativeRtc.cmake`) is statically linked into
+  `open_zoom.exe`: no extra DLLs, assets, or runtime dependencies ship for
+  it, and no browser runtime is required.
 - `scripts/build_release_bundle.bat` validates `Qt6Core.dll`,
   `Qt6Gui.dll`, `Qt6Widgets.dll`, `Qt6Network.dll`, and
   `platforms\qwindows.dll` before publishing, and verifies the published
   executable against the tested build by SHA-256.
 - Every bundle contains `SHA256SUMS.txt`, `release-manifest.json`, and
-  `SBOM.spdx.json`. `OPENZOOM_SIGN_CERT_SHA1` optionally selects a
+  `SBOM.spdx.json`. The top-level SPDX document refers to the copied Qt module
+  documents through checksummed `externalDocumentRefs`, models separately
+  installed tools as optional dependencies, and omits CUDA-only packages from
+  CPU-only bundles. `OPENZOOM_SIGN_CERT_SHA1` optionally selects a
   current-user Windows code-signing certificate; `OPENZOOM_PUBLIC_RELEASE=1`
   rejects a bundle when no certificate is configured. The default remains an
   unsigned private/team bundle.
 - It explicitly removes Qt's optional `opengl32sw.dll` and copies no NVIDIA,
-  CUDA Toolkit, Maxine, Tesseract, model, or language-data binaries.
+  CUDA Toolkit, Maxine, model, or language-data binaries.
 - It does not copy an install-relative `output` folder. All current user
   artifacts live outside `dist`, and legacy migration is owned by the app. If
   a pre-migration primary bundle still contains `output`, publishing leaves it
   untouched and uses `OpenZoom2`; an `OpenZoom2` legacy tree is never deleted
   automatically.
+
+## Startup Profiling Defaults
+- `scripts/profile_startup.ps1` defaults to two 15-second trials and
+  `build/startup-profile/<mode>-<run>/` reports, logs, settings, and data. It
+  passes an explicit report path; the app uses its sibling `settings.json`
+  instead of the normal Windows known-folder settings path. A child APPDATA
+  environment override alone does not isolate Qt's Windows settings lookup.
+- `--startup-profile-ms` defaults to 15000 ms, bounded to 1000–60000 ms in the
+  app. The script accepts 1–30 seconds and 1–5 runs. Only profiling enables
+  its precise 20 ms Qt heartbeat with at most 3000 delay samples.
+- Initial setup notices/checks wait 1500 ms after the window is shown. The
+  initial camera worker starts before show, after app services/settings exist.
+  D3D11 conversion retries remain bounded to 25 ms, with a single query per
+  event-loop attempt. Normal D3D12 frame-slot admission uses zero-timeout polls.
+- Three consecutive D3D11 query deadlines latch safe-copy input for the current
+  capture session. Query success resets the streak; camera stop/start resets
+  the latch. CUDA copy ownership waits do not consume this deadline policy.
+- Optional capture diagnostics report native source and converted reader modes
+  separately.
 
 Update this file whenever these defaults move or new fixed paths are introduced.

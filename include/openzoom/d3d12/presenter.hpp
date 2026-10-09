@@ -40,6 +40,7 @@ public:
 
     void Initialize(HWND hwnd, UINT width, UINT height);
     bool IsInitialized() const;
+    bool IsFaulted() const;
     bool NeedsScenePresent() const;
     UINT ViewportWidth() const;
     UINT ViewportHeight() const;
@@ -78,6 +79,8 @@ public:
     // BGRA texture. The returned frame is immediately queueable: D3D11 waits
     // on its shared fence on-GPU, so neither the UI nor recording worker has
     // to block for completion.
+    // waitFenceValue is the source CUDA producer signal; it is honored even
+    // when viewport admission skipped its draw and therefore queued no wait.
     GpuVideoFrame RequestRecordingFrame(
         ID3D12Resource* texture,
         UINT sourceWidth,
@@ -87,7 +90,8 @@ public:
         UINT targetHeight,
         const uint8_t* annotationBgra = nullptr,
         std::size_t annotationStrideBytes = 0,
-        bool* outPoolExhausted = nullptr);
+        bool* outPoolExhausted = nullptr,
+        UINT64 waitFenceValue = 0);
 
     // If a previously requested readback has completed, move its pixels into
     // outBgra (BGRA8 tightly packed) and return true. Returns the OLDEST
@@ -103,10 +107,10 @@ public:
     ID3D12Fence* GetFence() const;
     UINT64 GetLastSignaledFenceValue() const;
 
-    // Block until the GPU has drained all submitted work. Must be called before
-    // releasing resources that in-flight frames may still reference (e.g. the
-    // CUDA shared texture) now that Present paths no longer stall per frame.
-    void WaitForIdle();
+    // Wait at most 1000 ms for submitted work. False latches a terminal fault:
+    // callers must retain CUDA/shared resources, stop submitting, and offer an
+    // application restart. False never grants permission to release resources.
+    bool WaitForIdle() noexcept;
 
 private:
     // Frames in flight; matches the swap-chain buffer count so the current
@@ -119,16 +123,21 @@ private:
     void CreateSwapChain(UINT width, UINT height);
     void CreateViewportPipeline();
     void AcquireBackBuffers();
-    void EnsureUploadBuffer(UINT width, UINT height);
+    bool EnsureUploadBuffer(UINT width, UINT height);
     void CopyToUpload(const uint8_t* data, UINT width, UINT height, UINT slot);
-    void WaitForGpu();
-    void WaitForFenceValue(UINT64 value);
-    bool WaitForFrameSlot(UINT slot);
+    bool WaitForGpu() noexcept;
+    bool WaitForFenceValue(UINT64 value) noexcept;
+    bool MarkFenceFault(const char* reason) noexcept;
+    void QuarantineResources() noexcept;
+    bool KeepSubmittedResource(ID3D12Resource* texture);
+    bool TryAcquireFrameSlot(UINT slot);
 
     HWND hwnd_{};
     UINT width_{};
     UINT height_{};
     bool initialized_{};
+    bool faulted_{};
+    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> submittedSourceTextures_;
     bool scenePresentNeeded_{true};
     std::uint64_t missedPresentCount_{};
 

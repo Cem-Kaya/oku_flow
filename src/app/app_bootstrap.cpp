@@ -10,6 +10,8 @@ namespace openzoom {
 
 OpenZoomApp::OpenZoomApp(int& argc, char** argv)
     : QObject(nullptr) {
+    startupTimer_.start();
+    startupWorkers_ = std::make_shared<StartupWorkerTracker>();
     microphoneCallbackTarget_ =
         std::make_shared<MicrophoneCallbackTarget>();
     microphoneCallbackTarget_->app = this;
@@ -20,6 +22,7 @@ OpenZoomApp::OpenZoomApp(int& argc, char** argv)
     imageIoPool_->setExpiryTimeout(30000);
     QCoreApplication::setOrganizationName(QStringLiteral("OpenZoom"));
     QCoreApplication::setApplicationName(QStringLiteral("OpenZoom"));
+    ConfigureStartupProfiling();
 }
 
 bool OpenZoomApp::Initialize()
@@ -40,7 +43,12 @@ bool OpenZoomApp::Initialize()
     InitializePlatform();
 
     presenter_ = std::make_unique<D3D12Presenter>();
-    settingsController_ = std::make_unique<SettingsController>();
+    // Windows known-folder lookup ignores a child APPDATA override. Profiling
+    // therefore uses an explicit sibling settings file for both load and save.
+    settingsController_ = std::make_unique<SettingsController>(
+        startupProfilePath_.isEmpty()
+            ? QString()
+            : QFileInfo(startupProfilePath_).dir().filePath(QStringLiteral("settings.json")));
     languageManager_ =
         std::make_unique<LanguageManager>(*qtApp_, this);
     auto& persistentSettings = settingsController_->MutableSettings();
@@ -169,7 +177,9 @@ bool OpenZoomApp::Initialize()
         *uiState_->renderWidget_,
         *this,
         [this](const QString& question) { SubmitFloatingAssistantPrompt(question); },
+        [this]() { StartNewAssistantConversation(); },
         *userDataPaths_);
+    mainWindow_->annotationOverlay()->SetExcludedWidget(&assistiveManager_->Overlay());
     assistiveManager_->Runtime().SetResponseLanguage(
         languageManager_->languageCode());
     connect(&assistiveManager_->Runtime(),
@@ -179,6 +189,22 @@ bool OpenZoomApp::Initialize()
                 ShowStatusMessage(sourceText, 10000);
             });
     interactionController_ = std::make_unique<InteractionController>(*this);
+    connect(&assistiveManager_->Runtime(), &AssistiveRuntime::NotesWriteFinished,
+            this, [this](const QString& path, const QString& error) {
+                if (!error.isEmpty()) {
+                    transcriptionNoteWriteFailed_ = true;
+                    transcriptionNotesCompletionPending_ = false;
+                    openNotesWhenStored_ = false;
+                    qWarning() << "Lecture notes storage failed:" << path << error;
+                    ShowStatusMessage(QStringLiteral("Lecture notes could not be saved."), 9000);
+                    return;
+                }
+                MaybeReportTranscriptNotesSaved();
+                if (openNotesWhenStored_ && !assistiveManager_->Runtime().HasPendingNotesWrites()) {
+                    openNotesWhenStored_ = false;
+                    OpenNotesFile();
+                }
+            });
     pipelineOrchestrator_ = std::make_unique<PipelineOrchestrator>(
         *this,
         PipelineOrchestrator::Callbacks{
@@ -224,19 +250,24 @@ bool OpenZoomApp::Initialize()
         [this](const QString& message, int durationMs) {
             ShowStatusMessage(message, durationMs);
         },
-        [this](const QString& originalPath, const QString& processedPath) {
+        [this](const SavedRecordingSegment& segment) {
             if (assistiveManager_) {
                 assistiveManager_->Runtime().NoteCapturedVideoPair(
-                    originalPath, processedPath);
+                    segment.originalPath, segment.processedPath);
             }
         },
         *userDataPaths_,
-        [this]() {
+        [this](const RecordingSessionInfo& endedSession) {
             // Session-ended callbacks are queued from the recording worker
             // after the terminal state is published. If a new recording has
             // already started by the time this lands, releasing the
             // microphone now would silently strip audio from that new
             // session.
+            if (transcriptionController_) {
+                // Idempotent: recorder failure, watchdog, and normal stop all
+                // funnel here; only the matching transcript session ends.
+                transcriptionController_->FinishForSession(endedSession.id);
+            }
             if (recordingManager_ && recordingManager_->IsActive()) {
                 return;
             }
@@ -375,6 +406,12 @@ bool OpenZoomApp::Initialize()
                 if (checked) {
                     StartSelectedMicrophone();
                 } else {
+                    // Transcript input ends first, then PCM production. The
+                    // transcript finalizer is bounded and asynchronous; it
+                    // never delays microphone release or recorder stop.
+                    if (transcriptionController_) {
+                        transcriptionController_->FinishInput();
+                    }
                     // Stop producing PCM first. RecordingManager::Stop
                     // deliberately clears its queued audio rather than
                     // draining a tail — finishing the sample the worker
@@ -390,6 +427,11 @@ bool OpenZoomApp::Initialize()
                     // Do not retain exclusive access to the device when no
                     // recording session exists.
                     StopMicrophoneCapture();
+                    if (transcriptionController_) {
+                        transcriptionController_->Cancel();
+                    }
+                } else if (checked) {
+                    StartTranscriptionForActiveRecording();
                 }
             }
         });
@@ -455,6 +497,28 @@ bool OpenZoomApp::Initialize()
                 UpdateSectionChangedCounts();
                 SavePersistentSettings();
             });
+    if (uiState_->transcribeMicrophoneCheckbox_) {
+        connect(uiState_->transcribeMicrophoneCheckbox_, &QCheckBox::toggled,
+                this, [this](bool checked) {
+                    settingsController_->MutableSettings()
+                        .liveTranscriptionEnabled = checked;
+                    if (!checked && transcriptionController_) {
+                        // Ending the opt-in mid-session ends the transcript
+                        // immediately; recording continues untouched.
+                        transcriptionController_->Cancel();
+                        transcriptionController_->SetEnabled(false);
+                    }
+                    SavePersistentSettings();
+                });
+    }
+    if (uiState_->transcriptToNotesCheckbox_) {
+        connect(uiState_->transcriptToNotesCheckbox_, &QCheckBox::toggled,
+                this, [this](bool checked) {
+                    settingsController_->MutableSettings()
+                        .appendTranscriptToNotes = checked;
+                    SavePersistentSettings();
+                });
+    }
     if (uiState_->zoomCenterXSlider_) {
         connect(uiState_->zoomCenterXSlider_, &QSlider::valueChanged,
                 this, &OpenZoomApp::OnZoomCenterXChanged);
@@ -511,10 +575,6 @@ bool OpenZoomApp::Initialize()
     if (uiState_->temporalSmoothSlider_) {
         connect(uiState_->temporalSmoothSlider_, &QSlider::valueChanged,
                 this, &OpenZoomApp::OnTemporalSmoothStrengthChanged);
-    }
-    if (uiState_->ocrAssistCheckbox_) {
-        connect(uiState_->ocrAssistCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnOcrAssistToggled);
     }
     if (uiState_->vlmAssistCheckbox_) {
         connect(uiState_->vlmAssistCheckbox_, &QCheckBox::toggled,
@@ -683,13 +743,13 @@ bool OpenZoomApp::Initialize()
                         pendingAssistantFramePrompt_) {
                         StopAssistantRequest();
                     } else {
-                        SubmitOnDemandAnalysis(false, true);
+                        SubmitOnDemandAnalysis(false);
                     }
                 });
     }
     if (uiState_->readTextButton_) {
         connect(uiState_->readTextButton_, &QPushButton::clicked,
-                this, [this]() { SubmitOnDemandAnalysis(true, false); });
+                this, [this]() { SubmitOnDemandAnalysis(true); });
     }
     if (uiState_->aiSettingsButton_) {
         connect(uiState_->aiSettingsButton_, &QPushButton::clicked,
@@ -1019,14 +1079,32 @@ bool OpenZoomApp::Initialize()
     UpdateRotationUi();
     UpdatePresetDescription();
     assistiveManager_->SetModes(
-        ocrAssistEnabled_, vlmAssistEnabled_, assistiveOverlayEnabled_);
+        vlmAssistEnabled_, assistiveOverlayEnabled_);
+
+    int initialCameraIndex = 0;
+    const int candidate = settingsController_->MutableSettings().cameraIndex;
+    if (candidate >= 0 && static_cast<size_t>(candidate) < cameras_.size()) {
+        initialCameraIndex = candidate;
+    }
+    if (!cameras_.empty()) {
+        auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
+        uiState_->cameraCombo_->setCurrentIndex(initialCameraIndex);
+        if (!startupSynchronousProfile_) {
+            // All app services/settings now exist. Open the camera while show()
+            // initializes the native presenter; completion still returns via Qt.
+            StartCameraCapture(static_cast<size_t>(initialCameraIndex), true, false, true);
+        }
+    }
 
     mainWindow_->show();
+    startupWindowMs_ = startupTimer_.elapsed();
+    qInfo() << "Startup timing: window shown" << startupWindowMs_ << "ms";
     ApplyNativeWindowIcon(mainWindow_.get());
     pipelineOrchestrator_->Start();
+    pipelineOrchestrator_->NotifyCameraFrameAvailable();
 
     QTimer::singleShot(
-        0, this,
+        1500, this,
         [this, userDataRootNotice, photoRecoveryNotice]() {
             const QString settingsNotice =
                 settingsController_->TakeStartupNotice();
@@ -1043,25 +1121,14 @@ bool OpenZoomApp::Initialize()
                      .setupAssistantDeclined &&
                 SetupAssistantDialog::NeedsSetup(
                     settingsController_->MutableSettings()
-                        .assistive.tesseractPath,
-                    settingsController_->MutableSettings()
                         .assistive.codexExecutablePath)) {
                 OpenSetupAssistant();
             }
         });
 
-    int initialCameraIndex = 0;
-    const int candidate = settingsController_->MutableSettings().cameraIndex;
-    if (candidate >= 0 && static_cast<size_t>(candidate) < cameras_.size()) {
-        initialCameraIndex = candidate;
-    }
-
-    if (!cameras_.empty()) {
-        initialCameraIndex = std::clamp(initialCameraIndex, 0, static_cast<int>(cameras_.size()) - 1);
-        {
-            auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-            uiState_->cameraCombo_->setCurrentIndex(initialCameraIndex);
-        }
+    if (!cameras_.empty() && startupSynchronousProfile_) {
+        // Opt-in comparison mode reproduces the former double-open,
+        // synchronous startup path for the same profiling executable.
         RefreshCameraFormats(static_cast<size_t>(initialCameraIndex));
         StartCameraCapture(static_cast<size_t>(initialCameraIndex));
     }
@@ -1069,9 +1136,232 @@ bool OpenZoomApp::Initialize()
     return true;
 }
 
+void OpenZoomApp::EnsureTranscriptionStack()
+{
+    if (transcriptionController_ || !userDataPaths_) {
+        return;
+    }
+    realtimeTranscriptionClient_ =
+        std::make_unique<CodexRealtimeTranscriptionClient>();
+    // Carrier D: the native WebRTC stack has no browser runtime, profile
+    // directory, or staged assets — it is always constructible.
+    realtimeNativeRtcCarrier_ = std::make_unique<RealtimeNativeRtcCarrier>();
+    transcriptionController_ = std::make_unique<TranscriptionSessionController>(
+        realtimeTranscriptionClient_.get(), realtimeNativeRtcCarrier_.get());
+
+    connect(transcriptionController_.get(),
+            &TranscriptionSessionController::SegmentFinalized,
+            this, [this](const TranscriptSegment& segment) {
+                if (settingsController_ &&
+                    settingsController_->Settings().appendTranscriptToNotes &&
+                    assistiveManager_) {
+                    if (!assistiveManager_->Runtime().NoteTranscriptSegment(segment)) {
+                        transcriptionNoteWriteFailed_ = true;
+                        ShowStatusMessage(
+                            QCoreApplication::translate(
+                                "OpenZoom",
+                                "Transcript could not be saved to lecture notes."),
+                            9000);
+                    }
+                }
+                if (uiState_ && uiState_->transcriptFinalsView_) {
+                    uiState_->transcriptFinalsView_->appendPlainText(segment.text);
+                }
+                if (mainWindow_) {
+                    mainWindow_->AppendSimpleTranscriptFinal(segment.text);
+                }
+            });
+    connect(transcriptionController_.get(),
+            &TranscriptionSessionController::PartialChanged,
+            this, [this](const QString&, quint64, const QString& text) {
+                // Silent, coalesced presentation only — no UIA event per
+                // delta.
+                if (uiState_ && uiState_->transcriptPartialLabel_) {
+                    uiState_->transcriptPartialLabel_->setText(text);
+                }
+                if (mainWindow_) {
+                    mainWindow_->SetSimpleTranscriptPartial(text);
+                }
+            });
+    connect(transcriptionController_.get(),
+            &TranscriptionSessionController::QuotaChanged,
+            this, [this](int remainingPercent, bool known) {
+                if (!uiState_ || !uiState_->transcriptionQuotaLabel_) {
+                    return;
+                }
+                QString text =
+                    known ? QCoreApplication::translate(
+                                "OpenZoom",
+                                "Codex usage: %1% remaining in the current "
+                                "general window.")
+                                .arg(remainingPercent)
+                          : QCoreApplication::translate(
+                                "OpenZoom", "Codex usage is unavailable.");
+                text += QLatin1Char(' ');
+                text += QCoreApplication::translate(
+                    "OpenZoom",
+                    "Voice-specific remaining time is not exposed by this "
+                    "Codex app-server.");
+                uiState_->transcriptionQuotaLabel_->setText(text);
+                uiState_->transcriptionQuotaLabel_->setVisible(true);
+            });
+    connect(transcriptionController_.get(),
+            &TranscriptionSessionController::GapDetected,
+            this, [this](const QString& sessionId, qint64, qint64) {
+                if (settingsController_ &&
+                    settingsController_->Settings().appendTranscriptToNotes &&
+                    assistiveManager_) {
+                    if (!assistiveManager_->Runtime().NoteTranscriptGap(sessionId)) {
+                        transcriptionNoteWriteFailed_ = true;
+                        ShowStatusMessage(
+                            QCoreApplication::translate(
+                                "OpenZoom",
+                                "Transcript could not be saved to lecture notes."),
+                            9000);
+                    }
+                }
+                ShowStatusMessage(
+                    QCoreApplication::translate(
+                        "OpenZoom",
+                        "Transcript has a gap; recording is unaffected."),
+                    9000);
+            });
+    connect(transcriptionController_.get(),
+            &TranscriptionSessionController::StateChanged,
+            this, &OpenZoomApp::OnTranscriptionStateChanged);
+}
+
+void OpenZoomApp::StartTranscriptionForActiveRecording()
+{
+    if (!settingsController_ ||
+        !settingsController_->Settings().liveTranscriptionEnabled) {
+        return;
+    }
+    EnsureTranscriptionStack();
+    if (!transcriptionController_) {
+        return;
+    }
+    transcriptionController_->SetCodexExecutable(
+        settingsController_->Settings().assistive.codexExecutablePath);
+    transcriptionController_->SetEnabled(true);
+    if (!audioCapture_.IsRunning()) {
+        ShowStatusMessage(
+            QCoreApplication::translate(
+                "OpenZoom", "Select a recording microphone to transcribe."),
+            9000);
+        return;
+    }
+    const auto session =
+        recordingManager_ ? recordingManager_->CurrentSessionInfo()
+                          : std::nullopt;
+    if (!session.has_value()) {
+        return;
+    }
+    transcriptionNoteWriteFailed_ = false;
+    transcriptionNotesCompletionPending_ = false;
+    if (uiState_ && uiState_->transcriptFinalsView_) {
+        uiState_->transcriptFinalsView_->clear();
+    }
+    if (mainWindow_) {
+        mainWindow_->SetSimpleTranscriptActive(false);
+    }
+    transcriptionController_->StartSession(
+        *session,
+        languageManager_ ? languageManager_->languageCode()
+                         : QStringLiteral("en"));
+}
+
+void OpenZoomApp::OnTranscriptionStateChanged(TranscriptionState state,
+                                              const QString& status)
+{
+    // Fixed sentences translate via the catalog; a dynamic runtime reason
+    // passes through unchanged rather than being assembled from fragments.
+    const QString translatedStatus =
+        status.isEmpty() ? QString() : TranslateUi(status);
+    if (uiState_ && uiState_->transcriptionStatusLabel_) {
+        uiState_->transcriptionStatusLabel_->setText(translatedStatus);
+        uiState_->transcriptionStatusLabel_->setVisible(!status.isEmpty());
+    }
+    if (mainWindow_) {
+        const bool overlayActive = state == TranscriptionState::Starting ||
+                                   state == TranscriptionState::Listening ||
+                                   state == TranscriptionState::Finalizing;
+        mainWindow_->SetSimpleTranscriptActive(overlayActive);
+    }
+    if (uiState_ && uiState_->transcriptPartialLabel_ &&
+        (state == TranscriptionState::Starting ||
+         state == TranscriptionState::Completed ||
+         state == TranscriptionState::Failed)) {
+        uiState_->transcriptPartialLabel_->clear();
+    }
+    switch (state) {
+    case TranscriptionState::Failed: {
+        const QString reason =
+            translatedStatus.isEmpty()
+                ? QCoreApplication::translate("OpenZoom",
+                                              "Live transcription failed.")
+                : translatedStatus;
+        // The wording always reaffirms that recording is unaffected.
+        ShowStatusMessage(
+            QCoreApplication::translate(
+                "OpenZoom", "Transcription unavailable: %1 Recording continues.")
+                .arg(reason),
+            12000);
+        break;
+    }
+    case TranscriptionState::Unavailable:
+        if (!translatedStatus.isEmpty()) {
+            ShowStatusMessage(translatedStatus, 9000);
+        }
+        break;
+    case TranscriptionState::Starting:
+        if (!translatedStatus.isEmpty()) {
+            ShowStatusMessage(translatedStatus, 4000);
+        }
+        break;
+    case TranscriptionState::Listening:
+    case TranscriptionState::Finalizing:
+        if (!translatedStatus.isEmpty()) {
+            ShowStatusMessage(translatedStatus, 4000);
+        }
+        break;
+    case TranscriptionState::Completed:
+        transcriptionNotesCompletionPending_ = true;
+        MaybeReportTranscriptNotesSaved();
+        break;
+    case TranscriptionState::Off:
+    case TranscriptionState::Ready:
+        break;
+    }
+}
+
+void OpenZoomApp::MaybeReportTranscriptNotesSaved()
+{
+    if (!transcriptionNotesCompletionPending_ || !settingsController_ ||
+        !settingsController_->Settings().appendTranscriptToNotes ||
+        !assistiveManager_ || transcriptionNoteWriteFailed_ ||
+        assistiveManager_->Runtime().HasPendingNotesWrites() ||
+        assistiveManager_->Runtime().notesFilePath().isEmpty()) {
+        return;
+    }
+    transcriptionNotesCompletionPending_ = false;
+    ShowStatusMessage(QCoreApplication::translate(
+        "OpenZoom", "Transcript saved to lecture notes."), 7000);
+}
+
 OpenZoomApp::~OpenZoomApp() {
+    WriteStartupProfile();
+    if (cameraStartupPending_) {
+        StopCameraCapture(true);
+    }
     if (settingsController_ && uiState_ && assistiveManager_) {
         SavePersistentSettings();
+    }
+    // End the transcript before microphone/recorder teardown: revokes audio
+    // acceptance, stops the WebRTC carrier, and bounded-stops the dedicated
+    // Codex child. Never waits on finalization.
+    if (transcriptionController_) {
+        transcriptionController_->Cancel();
     }
     StopMicrophoneCapture();
     if (microphoneCallbackTarget_) {
@@ -1117,10 +1407,14 @@ OpenZoomApp::~OpenZoomApp() {
     if (pipelineOrchestrator_) {
         pipelineOrchestrator_->Stop();
     }
-    if (cameraActive_) {
+    if (cameraActive_ || cameraIngress_) {
         StopCameraCapture(true);
     }
     mediaCapture_.Shutdown();
+    mediaFoundationTeardownUnsafe =
+        mediaFoundationTeardownUnsafe || mediaCapture_.WasAbandoned() ||
+        (startupWorkers_ && (startupWorkers_->active.load() != 0 ||
+                             startupWorkers_->abandoned.load()));
 
     // Stop service callbacks before either the runtime or its UI targets are
     // released. In particular, terminating the Codex child process can emit a
@@ -1144,13 +1438,22 @@ OpenZoomApp::~OpenZoomApp() {
     mainWindow_.reset();
     uiState_.reset();
     joystickOverlay_ = nullptr;
-    if (presenter_) {
-        presenter_->WaitForIdle();
+    const bool graphicsIdle = !presenter_ || presenter_->WaitForIdle();
+    const bool gpuIdle = graphicsIdle && (!cudaSurface_ || cudaSurface_->WaitForIdle());
+    if (gpuIdle) {
+        cudaSurface_.reset();
+        cudaSharedTexture_.Reset();
+        cudaSuperResTexture_.Reset();
+        cudaOriginalTexture_.Reset();
+    } else {
+        // Unsignaled CUDA/D3D work still owns these allocations. Process exit
+        // reclaims them; timeout never grants permission to destroy them.
+        (void)cudaSurface_.release();
+        cudaSharedTexture_.Detach();
+        cudaSuperResTexture_.Detach();
+        cudaOriginalTexture_.Detach();
+        mediaFoundationTeardownUnsafe = true;
     }
-    cudaSurface_.reset();
-    cudaSharedTexture_.Reset();
-    cudaSuperResTexture_.Reset();
-    cudaOriginalTexture_.Reset();
     cudaSuperResWidth_ = 0;
     cudaSuperResHeight_ = 0;
     presenter_.reset();
@@ -1158,7 +1461,7 @@ OpenZoomApp::~OpenZoomApp() {
     if (mfInitialized_) {
         if (mediaFoundationTeardownUnsafe) {
             qCritical() << "Skipping MFShutdown: a Media Foundation worker "
-                           "was abandoned or its objects were intentionally "
+                           "is still active, was abandoned, or its objects were intentionally "
                            "leaked; process exit reclaims the runtime.";
         } else {
             MFShutdown();

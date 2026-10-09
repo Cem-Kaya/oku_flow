@@ -12,6 +12,8 @@
 #include <QJsonArray>
 
 #include "openzoom/app/assistive_feature_manager.hpp"
+#include "openzoom/app/cuda_surface_retry.hpp"
+#include "openzoom/app/capture_handoff_policy.hpp"
 #include "openzoom/app/settings_store.hpp"
 #include "openzoom/app/recording_manager.hpp"
 #include "openzoom/app/pipeline_orchestrator.hpp"
@@ -78,6 +80,11 @@ class PipelineOrchestrator;
 class SetupAssistantDialog;
 class ColorSchemePicker;
 struct MicrophoneCallbackTarget;
+struct CameraIngress;
+struct StartupWorkerTracker;
+class CodexRealtimeTranscriptionClient;
+class RealtimeNativeRtcCarrier;
+class TranscriptionSessionController;
 
 class D3D12Presenter;
 class CudaInteropSurface;
@@ -118,7 +125,6 @@ private slots:
     void OnSpatialSharpnessChanged(int value);
     void OnTemporalSmoothToggled(bool checked);
     void OnTemporalSmoothStrengthChanged(int value);
-    void OnOcrAssistToggled(bool checked);
     void OnVlmAssistToggled(bool checked);
     void OnAssistiveOverlayToggled(bool checked);
     void OnStabilizationToggled(bool checked);
@@ -149,7 +155,7 @@ private:
     void OpenUserDataFolder();
     void ChangeUserDataFolder();
     void OpenNotesFile();
-    void SubmitOnDemandAnalysis(bool runOcr, bool runVlm);
+    void SubmitOnDemandAnalysis(bool readText);
     void SubmitAssistantPrompt();
     void SubmitAssistantPromptText(const QString& prompt,
                                    bool clearAdvancedEditor,
@@ -162,6 +168,10 @@ private:
                                  bool attachFrame);
     void StopAssistantRequest();
     void SubmitFloatingAssistantPrompt(const QString& prompt);
+    // Starts a fresh Advanced Assistant conversation (from the floating
+    // overlay's New chat button); the next answer opens a new conversation
+    // section in the lecture notes.
+    void StartNewAssistantConversation();
     void PopulateAssistantHistory();
     void LoadSelectedAssistantConversation();
     void SetAssistantBusy(bool busy);
@@ -173,10 +183,25 @@ private:
     void PopulateMicrophoneCombo();
     bool StartSelectedMicrophone();
     void StopMicrophoneCapture(bool retainQueuedAudio = false);
+    // Live transcription (plan 36): lazily builds the dedicated Codex
+    // realtime client, the hidden WebRTC host, and the session controller.
+    void EnsureTranscriptionStack();
+    void StartTranscriptionForActiveRecording();
+    void OnTranscriptionStateChanged(TranscriptionState state,
+                                     const QString& status);
     void RefreshCameraFormats(size_t index);
     bool StartCameraCapture(size_t index,
                             bool interactive = true,
-                            bool forceCompatibility = false);
+                            bool forceCompatibility = false,
+                            bool backgroundStartup = false);
+    bool CompleteCameraCaptureStart(bool started, bool interactive, const QString& startupError = {});
+    void QueueInitialCameraStart(const CameraDescriptor& descriptor,
+                                 const QString& requestedStableId,
+                                 FrameCallback callback, CaptureErrorCallback errorCallback,
+                                 bool requestAcceleration, bool interactive, uint64_t captureSession);
+    void RecordStartupFirstPresent();
+    void ConfigureStartupProfiling();
+    void WriteStartupProfile();
     void StopCameraCapture(bool atProcessExit = false);
     void UpdateCameraAccelerationUi();
     void OnCameraAccelerationModeChanged(int index);
@@ -218,7 +243,7 @@ private:
     bool ProcessFrameWithCuda(UINT width, UINT height);
     bool TryProcessRawFrameWithCuda(MediaFrame& frame,
                                     CapturedFrame* originalFrame,
-                                    bool* outGpuCompletionPending = nullptr);
+                                    CaptureGpuPending* outGpuCompletionPending = nullptr);
     bool RunCudaPipeline(const ProcessingInput& input, UINT presentWidth, UINT presentHeight);
     void DrainCompletedGpuReadbacks();
     bool PrepareOriginalFrame(const MediaFrame& source, CapturedFrame& destination);
@@ -245,6 +270,7 @@ private:
                                 CapturedFrame* originalFrame);
     void ResetCudaFenceState();
     void HandleCudaProcessingFailure();
+    bool HandlePresenterFault();
     void ResolveCudaBufferFormatFromOptions();
     void HandleCameraStartFailure(const QString& message);
     void HandleCameraRuntimeFailure(uint64_t captureSession, const QString& message);
@@ -276,6 +302,7 @@ private:
     QString selectedCodexModel_;
 
     std::unique_ptr<D3D12Presenter> presenter_;
+    bool presenterFaultReported_{};
 
     std::vector<CameraDescriptor> cameras_;
     std::vector<VideoFormat> cameraFormats_;
@@ -287,18 +314,36 @@ private:
     // generation, so a detached old reader cannot reach this object or a
     // later recording session after cancellation.
     std::shared_ptr<MicrophoneCallbackTarget> microphoneCallbackTarget_;
-    std::mutex cameraMutex_;
+    std::shared_ptr<CameraIngress> cameraIngress_;
     // Preview is latest-wins, while an active recording retains a short burst
     // so scheduler jitter does not discard a camera frame before processing.
     static constexpr std::size_t kMaxRecordingCameraFrames = 6;
-    std::deque<MediaFrame> pendingCameraFrames_;
     std::optional<MediaFrame> deferredGpuCameraFrame_;
     std::optional<std::uint64_t> deferredGpuSequence_;
     QElapsedTimer deferredGpuWaitTimer_;
     bool cameraActive_{};
+    bool cameraStartupPending_{};
+    std::shared_ptr<StartupWorkerTracker> startupWorkers_;
+    QElapsedTimer startupTimer_;
+    bool startupFirstFrameLogged_{};
+    QString pendingCameraStartupError_;
+    QString startupProfilePath_;
+    QElapsedTimer startupPulseTimer_;
+    std::vector<float> startupPulseDelaysMs_;
+    qint64 startupWindowMs_{-1};
+    qint64 startupCameraReadyMs_{-1};
+    qint64 startupFirstPresentMs_{-1};
+    std::uint64_t startupProcessedScenes_{};
+    std::uint64_t startupPresentedFrames_{};
+    std::uint64_t startupLeaseRetryTicks_{};
+    std::uint64_t startupQueryRetryTicks_{};
+    std::uint64_t startupRetryExpired_{};
+    qint64 startupRetryMaxMs_{};
+    bool startupSynchronousProfile_{};
     bool currentCaptureAccelerated_{};
     bool currentCaptureZeroCopyActive_{};
     bool captureZeroCopyAvailable_{true};
+    CaptureHandoffPolicy captureHandoffPolicy_;
     bool captureZeroCopyStatusPersisted_{};
     QString captureZeroCopyFailureReason_;
     QString currentCameraAccelerationKey_;
@@ -326,7 +371,6 @@ private:
     int blurRadius_{3};
     bool temporalSmoothEnabled_{};
     float temporalSmoothAlpha_{0.25f};
-    bool ocrAssistEnabled_{};
     bool vlmAssistEnabled_{};
     bool assistiveOverlayEnabled_{true};
     bool spatialSharpenEnabled_{};
@@ -375,10 +419,14 @@ private:
     UINT cpuSceneWidth_{};
     UINT cpuSceneHeight_{};
     bool cpuSceneReady_{false};
+    std::int64_t currentCameraCaptureClock100ns_{-1};
+    // Replaced with each processed camera generation, consumed only by its
+    // first successful presentation (including a later viewport retry).
+    std::optional<std::int64_t> pendingSceneCaptureClock100ns_;
     std::vector<uint8_t> assistiveBuffer_;
     std::vector<uint8_t> asyncReadbackBuffer_;
-    bool pendingOnDemandRunOcr_{};
-    bool pendingOnDemandRunVlm_{};
+    bool pendingOnDemandAnalysis_{};
+    bool pendingOnDemandReadText_{};
     UINT64 pendingOnDemandReadbackId_{};
     QElapsedTimer pendingOnDemandReadbackTimer_;
     processing::CpuFramePipeline cpuPipeline_;
@@ -399,6 +447,13 @@ private:
     UINT64 pendingAnnotationReadbackId_{};
     QElapsedTimer pendingAnnotationReadbackTimer_;
 
+    std::unique_ptr<CodexRealtimeTranscriptionClient> realtimeTranscriptionClient_;
+    std::unique_ptr<RealtimeNativeRtcCarrier> realtimeNativeRtcCarrier_;
+    std::unique_ptr<TranscriptionSessionController> transcriptionController_;
+    bool transcriptionNoteWriteFailed_{false};
+    bool transcriptionNotesCompletionPending_{false};
+    bool openNotesWhenStored_{false};
+    void MaybeReportTranscriptNotesSaved();
     std::unique_ptr<AssistiveFeatureManager> assistiveManager_;
     JoystickOverlay* joystickOverlay_{};
     SetupAssistantDialog* setupAssistantDialog_{};
@@ -408,6 +463,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> cudaSuperResTexture_;
     Microsoft::WRL::ComPtr<ID3D12Resource> cudaOriginalTexture_;
     std::unique_ptr<CudaInteropSurface> cudaSurface_;
+    CudaSurfaceRetry cudaSurfaceRetry_;
     UINT cudaSurfaceWidth_{};
     UINT cudaSurfaceHeight_{};
     UINT cudaSuperResWidth_{};

@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "openzoom/cuda/cuda_interop.hpp"
+#include "openzoom/common/gpu_copy_lease.hpp"
 
 #include <d3d12.h>
 #include <dxgi1_2.h>
@@ -44,6 +45,9 @@ struct CudaInteropSurface::D3D11InteropState {
     cudaGraphicsResource_t resource{};
     ID3D11Texture2D* identity{};
     unsigned int subresource{};
+    cudaEvent_t copyComplete{};
+    bool copyEventRecorded{};
+    GpuCopyLease copyLease;
 };
 
 namespace {
@@ -437,7 +441,9 @@ bool QueryDeviceLuid(int deviceId, LUID& luidOut)
 CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
                                        ID3D12Resource* superResTexture,
                                        ID3D12Fence* sharedFence,
-                                       ID3D12Resource* originalTexture) {
+                                       ID3D12Resource* originalTexture)
+    : retainedMainTexture_(texture), retainedSuperResTexture_(superResTexture),
+      retainedOriginalTexture_(originalTexture), retainedSharedFence_(sharedFence) {
     try {
         Initialize(texture, superResTexture, sharedFence, originalTexture);
         valid_ = true;
@@ -446,7 +452,7 @@ CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
         qWarning() << "CudaInteropSurface init failed:" << e.what();
         valid_ = false;
         lastError_ = e.what();
-        SynchronizeStream();
+        if (!SynchronizeStream()) { QuarantineGpuResources(); return; }
         if (surfaceObject_ != 0) {
             cudaDestroySurfaceObject(surfaceObject_);
             surfaceObject_ = 0;
@@ -487,18 +493,47 @@ CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
 // ProcessFrame() returns with kernels still queued on stream_ when fence sync is
 // active, so every teardown path must drain the stream before releasing resources
 // the queued work references (surface object, external memory, device buffers).
-void CudaInteropSurface::SynchronizeStream() noexcept {
-    if (stream_ == nullptr) {
-        return;
+bool CudaInteropSurface::WaitForIdle() noexcept {
+    return SynchronizeStream();
+}
+
+bool CudaInteropSurface::SynchronizeStream() noexcept {
+    if (streamFaulted_) return false;
+    if (stream_ == nullptr) return true;
+    if (cudaDeviceId_ >= 0 && cudaSetDevice(cudaDeviceId_) != cudaSuccess) {
+        streamFaulted_ = true;
+        valid_ = false;
+        return false;
     }
-    const cudaError_t status = cudaStreamSynchronize(stream_);
-    if (status != cudaSuccess) {
-        qWarning() << "cudaStreamSynchronize during teardown failed:" << cudaGetErrorString(status);
+    const auto started = GetTickCount64();
+    for (;;) {
+        const cudaError_t status = cudaStreamQuery(stream_);
+        if (status == cudaSuccess) return true;
+        if (status != cudaErrorNotReady || GetTickCount64() - started >= 1000) {
+            qWarning() << "CUDA stream drain failed or exceeded its deadline; retaining GPU resources";
+            streamFaulted_ = true;
+            valid_ = false;
+            return false;
+        }
+        Sleep(1);
     }
 }
 
+void CudaInteropSurface::QuarantineGpuResources() noexcept {
+    // Raw CUDA allocations/handles deliberately remain allocated. Preserve
+    // owning C++ states and D3D storage too: releasing either is unsafe while
+    // queued work may still use the destination or imported camera source.
+    (void)d3d11Interop_.release();
+    (void)maxineSuperRes_.release();
+    d3d12Device_.Detach();
+    retainedMainTexture_.Detach();
+    retainedSuperResTexture_.Detach();
+    retainedOriginalTexture_.Detach();
+    retainedSharedFence_.Detach();
+}
+
 CudaInteropSurface::~CudaInteropSurface() {
-    SynchronizeStream();
+    if (!SynchronizeStream()) { QuarantineGpuResources(); return; }
     ResetCaptureInterop();
 
     ReleaseSuperRes();
@@ -564,6 +599,12 @@ CudaInteropSurface::~CudaInteropSurface() {
 
 }
 
+void CudaInteropSurface::AbandonCaptureInterop() noexcept {
+    // Losing producer quiescence must never enter CUDA/D3D release routines.
+    // Preserve mappings, source storage, completion event, and session lease.
+    (void)d3d11Interop_.release();
+}
+
 void CudaInteropSurface::ResetCaptureInterop(bool atProcessExit) {
     if (!d3d11Interop_) {
         return;
@@ -575,7 +616,7 @@ void CudaInteropSurface::ResetCaptureInterop(bool atProcessExit) {
                        << cudaGetErrorString(deviceStatus);
         }
     }
-    SynchronizeStream();
+    if (!PollCaptureCopy()) return;
     if (atProcessExit && d3d11Interop_->resource) {
         // The installed NVIDIA driver faults inside the otherwise balanced
         // legacy unregister call after a VideoProcessor-written texture has
@@ -617,6 +658,10 @@ void CudaInteropSurface::ResetCaptureInterop(bool atProcessExit) {
                        << cudaGetErrorString(result);
         }
         d3d11Interop_->externalMemory = nullptr;
+    }
+    if (d3d11Interop_->copyComplete) {
+        cudaEventDestroy(d3d11Interop_->copyComplete);
+        d3d11Interop_->copyComplete = nullptr;
     }
     d3d11Interop_.reset();
 }
@@ -924,6 +969,7 @@ bool CudaInteropSurface::EnsureDeviceBuffers(unsigned int width, unsigned int he
     }
 
     ReleaseDeviceBuffers();
+    if (streamFaulted_) return false;
 
     size_t pitch = 0;
     if (cudaDeviceId_ >= 0) {
@@ -986,7 +1032,7 @@ void CudaInteropSurface::ImportFenceSemaphore(ID3D12Device* device, ID3D12Fence*
 
 void CudaInteropSurface::ReleaseDeviceBuffers() {
     if (deviceBufferA_ || deviceBufferB_ || deviceScratch_ || deviceTemporalHistory_) {
-        SynchronizeStream();
+        if (!SynchronizeStream()) return;
     }
     if (deviceBufferA_) {
         cudaFree(deviceBufferA_);
@@ -1022,6 +1068,7 @@ bool CudaInteropSurface::EnsureTemporalHistory(unsigned int width, unsigned int 
     }
 
     ReleaseTemporalHistory();
+    if (streamFaulted_) return false;
 
     if (cudaDeviceId_ >= 0) {
         ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "cudaSetDevice failed");
@@ -1038,7 +1085,7 @@ bool CudaInteropSurface::EnsureTemporalHistory(unsigned int width, unsigned int 
 
 void CudaInteropSurface::ReleaseTemporalHistory() {
     if (deviceTemporalHistory_) {
-        SynchronizeStream();
+        if (!SynchronizeStream()) return;
         cudaFree(deviceTemporalHistory_);
         deviceTemporalHistory_ = nullptr;
     }
@@ -1060,6 +1107,7 @@ bool CudaInteropSurface::EnsureStabilizationBuffers(unsigned int width,
     }
 
     ReleaseStabilization();
+    if (streamFaulted_) return false;
 
     if (cudaDeviceId_ >= 0) {
         ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "cudaSetDevice failed");
@@ -1275,7 +1323,7 @@ void CudaInteropSurface::ReleaseStabilization() {
         deviceStabColProjPrev_ || deviceStabRowProjPrev_ || deviceStabState_ ||
         hostStabDiagnostics_ ||
         deviceStabPairs_ || deviceStabPairCount_) {
-        SynchronizeStream();
+        if (!SynchronizeStream()) return;
     }
     if (deviceStabLuma_) {
         cudaFree(deviceStabLuma_);
@@ -1466,6 +1514,7 @@ bool CudaInteropSurface::EnsureRawInputBuffers(unsigned int width, unsigned int 
     }
 
     ReleaseRawInput();
+    if (streamFaulted_) return false;
 
     if (cudaDeviceId_ >= 0) {
         ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "cudaSetDevice failed");
@@ -1505,7 +1554,7 @@ bool CudaInteropSurface::EnsurePinnedUploadRing(size_t requiredBytes) {
 
     // Reallocation is resolution/format-change work, never steady-state work.
     // Drain the stream because a queued H2D copy may still reference a slot.
-    SynchronizeStream();
+    if (!SynchronizeStream()) return false;
     ReleasePinnedUploadRing();
 
     try {
@@ -1548,7 +1597,7 @@ bool CudaInteropSurface::EnsurePreRotateBuffer(unsigned int width, unsigned int 
     }
 
     if (devicePreRotate_) {
-        SynchronizeStream();
+        if (!SynchronizeStream()) return false;
         cudaFree(devicePreRotate_);
         devicePreRotate_ = nullptr;
     }
@@ -1567,7 +1616,7 @@ bool CudaInteropSurface::EnsurePreRotateBuffer(unsigned int width, unsigned int 
 
 void CudaInteropSurface::ReleaseRawInput() {
     if (deviceRawPlane1_ || deviceRawPlane2_ || devicePreRotate_) {
-        SynchronizeStream();
+        if (!SynchronizeStream()) return;
     }
     if (deviceRawPlane1_) {
         cudaFree(deviceRawPlane1_);
@@ -1597,6 +1646,7 @@ bool CudaInteropSurface::EnsureKeystoneResources(unsigned int width, unsigned in
     }
 
     ReleaseKeystone();
+    if (streamFaulted_) return false;
 
     if (cudaDeviceId_ >= 0) {
         ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "cudaSetDevice failed");
@@ -1710,7 +1760,7 @@ void CudaInteropSurface::SetSuperResPerformanceOverride(bool enabled) {
 }
 
 void CudaInteropSurface::ResetSuperRes() {
-    SynchronizeStream();
+    if (!SynchronizeStream()) return;
     ReleaseSuperRes();
 }
 
@@ -2007,6 +2057,50 @@ void CudaInteropSurface::UpdateSuperResCache(
 #endif
 }
 
+void CudaInteropSurface::UpdateSpatialCache(
+    const uchar4* source, size_t sourcePitch,
+    uchar4* destination, size_t destinationPitch,
+    unsigned int width, unsigned int height,
+    const SpatialCacheGeometry& geometry,
+    const ProcessingSettings& settings) {
+    if (!geometry.valid || !superResLevel0Array_ || superResRoi_.valid) {
+        return;
+    }
+    const auto* roi = reinterpret_cast<const uchar4*>(
+        reinterpret_cast<const unsigned char*>(source) +
+        static_cast<size_t>(geometry.sourceY) * sourcePitch) + geometry.sourceX;
+    if (settings.spatialUpscaler == SpatialUpscaler::kNis) {
+        LaunchNisLinear(destination, destinationPitch, roi, sourcePitch,
+                        geometry.sourceWidth, geometry.sourceHeight,
+                        geometry.outputWidth, geometry.outputHeight,
+                        settings.spatialSharpness, stream_);
+    } else {
+        LaunchFsrEasuRcasLinear(destination, destinationPitch,
+                                deviceScratch_, devicePitchScratch_,
+                                roi, sourcePitch,
+                                geometry.sourceWidth, geometry.sourceHeight,
+                                geometry.outputWidth, geometry.outputHeight,
+                                settings.spatialSharpness, stream_);
+    }
+    ThrowIfCudaFailed(cudaMemcpy2DToArrayAsync(
+        superResLevel0Array_, 0, 0, destination, destinationPitch,
+        static_cast<size_t>(geometry.outputWidth) * sizeof(uchar4),
+        geometry.outputHeight, cudaMemcpyDeviceToDevice, stream_),
+        "cudaMemcpy2DToArrayAsync spatial cache failed");
+    PadSpatialCacheBorder(superResLevel0Array_, destination, destinationPitch,
+                          geometry.outputWidth, geometry.outputHeight,
+                          superResWidth_, superResHeight_, stream_);
+    superResRoi_ = {
+        true, ++superResGeneration_,
+        static_cast<float>(geometry.sourceX) / width,
+        static_cast<float>(geometry.sourceY) / height,
+        static_cast<float>(geometry.sourceWidth) / width,
+        static_cast<float>(geometry.sourceHeight) / height,
+        geometry.outputWidth, geometry.outputHeight,
+        static_cast<float>(geometry.outputWidth) / geometry.sourceWidth};
+    // IsSuperResActive describes the AI backend, not shared cache validity.
+}
+
 // P8 GPU timing consumer: polls (never waits on) the stop event recorded by a
 // previous sampled frame and folds the elapsed time into lastGpuFrameMs_.
 void CudaInteropSurface::ConsumeProcessTiming() {
@@ -2186,7 +2280,7 @@ void CudaInteropSurface::ConsumeStabilizerTiming() {
 void CudaInteropSurface::ReleaseKeystone() {
     if (deviceKeystoneLuma_ || hostKeystoneLuma_ || keystoneCopyEvent_ != nullptr) {
         // Drains the in-flight snapshot copy (if any) before its buffers vanish.
-        SynchronizeStream();
+        if (!SynchronizeStream()) return;
     }
     if (deviceKeystoneLuma_) {
         cudaFree(deviceKeystoneLuma_);
@@ -2351,6 +2445,7 @@ bool CudaInteropSurface::EnsureAutoContrastBuffers() {
     }
 
     ReleaseAutoContrast();
+    if (streamFaulted_) return false;
 
     if (cudaDeviceId_ >= 0) {
         ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "cudaSetDevice failed");
@@ -2367,7 +2462,7 @@ bool CudaInteropSurface::EnsureAutoContrastBuffers() {
 
 void CudaInteropSurface::ReleaseAutoContrast() {
     if (deviceHistogram_ || deviceAutoLevels_) {
-        SynchronizeStream();
+        if (!SynchronizeStream()) return;
     }
     if (deviceHistogram_) {
         cudaFree(deviceHistogram_);
@@ -2386,6 +2481,7 @@ bool CudaInteropSurface::EnsureTextClarityBuffers(unsigned int width, unsigned i
     }
 
     ReleaseTextClarity();
+    if (streamFaulted_) return false;
     if (cudaDeviceId_ >= 0) {
         ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "cudaSetDevice failed");
     }
@@ -2440,7 +2536,7 @@ bool CudaInteropSurface::EnsureTextClarityBuffers(unsigned int width, unsigned i
 void CudaInteropSurface::ReleaseTextClarity() {
     if (deviceTextLuma_ || deviceTextMaskA_ || deviceClaheHistogram_ ||
         deviceClaheMap_ || deviceTextAnalysis_ || deviceFocusStats_) {
-        SynchronizeStream();
+        if (!SynchronizeStream()) return;
     }
     if (focusCopyEvent_) cudaEventDestroy(focusCopyEvent_);
     if (hostFocusStats_) cudaFreeHost(hostFocusStats_);
@@ -2652,14 +2748,34 @@ void CudaInteropSurface::RunGradientDemoKernel(unsigned int width, unsigned int 
 
     LaunchGradientKernel(surfaceObject_, static_cast<int>(targetWidth), static_cast<int>(targetHeight), timeSeconds);
     ThrowIfCudaFailed(cudaGetLastError(), "Gradient kernel launch failed");
-    ThrowIfCudaFailed(cudaStreamSynchronize(stream_), "cudaStreamSynchronize failed");
+    if (!SynchronizeStream()) return;
+}
+
+bool CudaInteropSurface::PollCaptureCopy() {
+    if (streamFaulted_) return false;
+    if (!d3d11Interop_ || !d3d11Interop_->copyLease.Pending()) return true;
+    cudaError_t status = cudaDeviceId_ >= 0 ? cudaSetDevice(cudaDeviceId_) : cudaSuccess;
+    if (status == cudaSuccess)
+        status = d3d11Interop_->copyEventRecorded ?
+            cudaEventQuery(d3d11Interop_->copyComplete) : cudaErrorUnknown;
+    const auto completion = status == cudaSuccess ? GpuCopyCompletion::Complete :
+        status == cudaErrorNotReady ? GpuCopyCompletion::Pending : GpuCopyCompletion::Failed;
+    const bool complete = d3d11Interop_->copyLease.Poll(completion, GetTickCount64());
+    if (d3d11Interop_->copyLease.Failed()) {
+        streamFaulted_ = true;
+        valid_ = false;
+        captureInteropFailed_ = false;
+        lastError_ = "Camera GPU copy failed or timed out; GPU resources retained until restart";
+    }
+    return complete;
 }
 
 bool CudaInteropSurface::UploadD3D11Frame(
     const ProcessingInput& input,
     uchar4* destination,
     size_t destinationPitch) {
-    if (!input.d3d11Texture || !destination || stream_ == nullptr ||
+    if (!PollCaptureCopy()) return false;
+    if (!input.d3d11TextureLease || !input.d3d11Texture || !destination || stream_ == nullptr ||
         !d3d12Device_) {
         captureInteropFailed_ = true;
         lastError_ =
@@ -2802,6 +2918,14 @@ bool CudaInteropSurface::UploadD3D11Frame(
                     << description.Width << "x" << description.Height << ")";
         }
 
+        if (!d3d11Interop_->copyComplete) {
+            ThrowIfCudaFailed(cudaEventCreateWithFlags(&d3d11Interop_->copyComplete,
+                                                       cudaEventDisableTiming),
+                              "Camera copy event creation failed");
+        }
+        if (!d3d11Interop_->copyLease.Begin(input.d3d11TextureLease, GetTickCount64()))
+            return false;
+        d3d11Interop_->copyEventRecorded = false;
         ThrowIfCudaFailed(
             cudaMemcpy2DFromArrayAsync(
                 destination,
@@ -2814,16 +2938,22 @@ bool CudaInteropSurface::UploadD3D11Frame(
                 cudaMemcpyDeviceToDevice,
                 stream_),
             "Camera external-memory device copy failed");
-        // MediaCapture reuses the shared BGRA conversion texture for its next
-        // VideoProcessorBlt. Drain only this device-to-device upload; all
-        // enhancement kernels are queued after this function returns.
-        ThrowIfCudaFailed(
-            cudaStreamSynchronize(stream_),
-            "Camera external-memory read synchronization failed");
+        // The lease protects the producer texture while this copy is queued.
+        // Later enhancement kernels stay asynchronous; only the copy event is
+        // queried before capture attempts another conversion into this slot.
+        ThrowIfCudaFailed(cudaEventRecord(d3d11Interop_->copyComplete, stream_),
+                          "Camera copy completion event record failed");
+        d3d11Interop_->copyEventRecorded = true;
         return true;
     } catch (const std::exception& error) {
         closeSharedHandles();
-        captureInteropFailed_ = true;
+        const bool copyMayBeInFlight = d3d11Interop_ && d3d11Interop_->copyLease.Pending();
+        captureInteropFailed_ = !copyMayBeInFlight;
+        if (copyMayBeInFlight) {
+            d3d11Interop_->copyLease.Poll(GpuCopyCompletion::Failed, GetTickCount64());
+            streamFaulted_ = true;
+            valid_ = false;
+        }
         lastError_ =
             std::string("Camera external-memory interop: ") + error.what();
         qWarning() << QString::fromStdString(lastError_);
@@ -3106,7 +3236,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                                        deviceRawPlane1_, rawPlane1Pitch_,
                                        deviceRawPlane2_, rawPlane2Pitch_,
                                        static_cast<int>(input.width), static_cast<int>(input.height),
-                                       stream_);
+                                       stream_, input.yuvColor);
             } else {
                 const size_t rowBytes = (static_cast<size_t>(input.width) + 1) / 2 * 4;
                 PinnedUploadSlot* slot =
@@ -3127,7 +3257,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 LaunchYuy2ToBgraLinear(convertTarget, convertPitch,
                                        deviceRawPlane1_, rawPlane1Pitch_,
                                        static_cast<int>(input.width), static_cast<int>(input.height),
-                                       stream_);
+                                       stream_, input.yuvColor);
             }
 
             if (turns != 0) {
@@ -3218,8 +3348,11 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                                               stream_);
 
             constexpr float strength = 1.0f;
+            // Presentation can magnify the scene without enabling CUDA's
+            // legacy zoom stage. Tracking still needs the viewing scale for
+            // its visible ROI, matching tolerance, and display-pixel deadband.
             const float zoomAmount =
-                settings.enableZoom ? std::max(settings.zoomAmount, 1.0f) : 1.0f;
+                settings.EffectiveViewingMagnification();
             const float zoomCropReserve =
                 0.5f * (1.0f - 1.0f / zoomAmount);
             const float maxCorrectionFraction =
@@ -3853,7 +3986,14 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             swapBuffers();
         }
 
-        if (settings.enableSpatialSharpen) {
+        const SpatialCacheGeometry spatialGeometry =
+            settings.enableSpatialSharpen && !settings.enableZoom
+                ? ComputeSpatialCacheGeometry(
+                      settings.spatialViewTransform, procWidth, procHeight,
+                      settings.spatialViewportWidth, settings.spatialViewportHeight,
+                      superResWidth_, superResHeight_)
+                : SpatialCacheGeometry{};
+        if (settings.enableSpatialSharpen && !spatialGeometry.valid) {
             if (settings.spatialUpscaler == SpatialUpscaler::kNis) {
                 LaunchNisLinear(alternate, alternatePitch,
                                 current, currentPitch,
@@ -3863,6 +4003,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                                 stream_);
             } else {
                 LaunchFsrEasuRcasLinear(alternate, alternatePitch,
+                                        deviceScratch_, devicePitchScratch_,
                                         current, currentPitch,
                                         static_cast<int>(procWidth), static_cast<int>(procHeight),
                                         static_cast<int>(procWidth), static_cast<int>(procHeight),
@@ -3980,6 +4121,11 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                             procWidth,
                             procHeight,
                             settings);
+        // Only a new camera frame reaches this point. Temporal effects have
+        // already completed on the full scene; viewport-only presents reuse
+        // the cache or fall back to the scene when panning outside its ROI.
+        UpdateSpatialCache(current, currentPitch, alternate, alternatePitch,
+                           procWidth, procHeight, spatialGeometry, settings);
 
         if (sampleGpuTiming) {
             ThrowIfCudaFailed(cudaEventRecord(processTimingStopEvent_, stream_),
@@ -3994,7 +4140,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             ThrowIfCudaFailed(cudaSignalExternalSemaphoresAsync(&externalSemaphore_, &signalParams, 1, stream_),
                               "cudaSignalExternalSemaphoresAsync failed");
         } else {
-            ThrowIfCudaFailed(cudaStreamSynchronize(stream_), "cudaStreamSynchronize failed");
+            if (!SynchronizeStream()) return false;
         }
         lastError_.clear();
         return true;

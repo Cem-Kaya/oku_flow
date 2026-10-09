@@ -24,19 +24,28 @@ void OpenZoomApp::OpenAiSettingsDialog()
 
 void OpenZoomApp::OpenNotesFile()
 {
+    if (assistiveManager_->Runtime().HasPendingNotesWrites()) {
+        openNotesWhenStored_ = true;
+        ShowStatusMessage(QStringLiteral("Saving lecture notes..."), 3000);
+        return;
+    }
     const QString path = assistiveManager_->Runtime().notesFilePath();
     if (path.isEmpty()) {
         ShowStatusMessage(
-            QStringLiteral("No lecture notes yet — notes appear once OCR or Explain produces text."));
+            QStringLiteral("No lecture notes yet — use Read, Explain, or Assistant to add text."));
         qInfo() << "Open notes skipped: no notes file written yet";
         return;
     }
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 
-void OpenZoomApp::SubmitOnDemandAnalysis(bool runOcr, bool runVlm)
+void OpenZoomApp::SubmitOnDemandAnalysis(bool readText)
 {
-    if (runOcr && (focusDetectionEnabled_ || autoTextClarityEnabled_) && cudaSurface_ &&
+    if (pendingOnDemandAnalysis_ || assistiveManager_->Runtime().IsBusy()) {
+        ShowStatusMessage(QStringLiteral("Scene explanation is busy with a previous request. Try again in a moment."));
+        return;
+    }
+    if (readText && (focusDetectionEnabled_ || autoTextClarityEnabled_) && cudaSurface_ &&
         !cudaSurface_->IsFocusAcceptable(focusThreshold_)) {
         const QString message = QStringLiteral(
             "Image out of focus. Tap the phone screen to refocus before reading text.");
@@ -50,8 +59,8 @@ void OpenZoomApp::SubmitOnDemandAnalysis(bool runOcr, bool runVlm)
     // the copy without blocking the UI thread.
     if (usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
         processedFrameWidth_ > 0 && processedFrameHeight_ > 0) {
-        pendingOnDemandRunOcr_ = pendingOnDemandRunOcr_ || runOcr;
-        pendingOnDemandRunVlm_ = pendingOnDemandRunVlm_ || runVlm;
+        pendingOnDemandAnalysis_ = true;
+        pendingOnDemandReadText_ = readText;
         pipelineOrchestrator_->MarkViewportDirty();
         ShowStatusMessage(QStringLiteral("Capturing the current view..."), 3000);
         return;
@@ -63,7 +72,7 @@ void OpenZoomApp::SubmitOnDemandAnalysis(bool runOcr, bool runVlm)
         assistiveManager_->Runtime().SubmitFrameForced(presentationBuffer_.data(),
                                              static_cast<int>(presentationWidth_),
                                              static_cast<int>(presentationHeight_),
-                                             runOcr, runVlm);
+                                             readText);
         return;
     }
 
@@ -89,6 +98,34 @@ void OpenZoomApp::SubmitFloatingAssistantPrompt(const QString& prompt)
         return;
     }
     SubmitAssistantPromptText(prompt.trimmed(), false, true);
+}
+
+void OpenZoomApp::StartNewAssistantConversation()
+{
+    if (assistiveManager_->Runtime().IsCodexTurnActive() ||
+        pendingAssistantFramePrompt_) {
+        ShowStatusMessage(
+            QCoreApplication::translate(
+                "OpenZoom",
+                "Finish the current answer before starting a new chat."),
+            5000);
+        return;
+    }
+    // Dropping the thread id makes the next turn open a fresh Codex thread,
+    // which the notes writer records as a new Conversation section.
+    currentAssistantThreadId_.clear();
+    pendingAssistantPrompt_.clear();
+    assistantResponseOpen_ = false;
+    assistantResponseReceivedText_ = false;
+    if (uiState_->assistantTranscript_) {
+        uiState_->assistantTranscript_->clear();
+    }
+    if (uiState_->assistantHistoryList_) {
+        uiState_->assistantHistoryList_->clearSelection();
+    }
+    ShowStatusMessage(
+        QCoreApplication::translate("OpenZoom", "Started a new conversation."),
+        4000);
 }
 
 void OpenZoomApp::SubmitAssistantPromptText(const QString& prompt,
@@ -275,20 +312,11 @@ void OpenZoomApp::AppendAssistantMessage(const QString& speaker, const QString& 
     uiState_->assistantTranscript_->ensureCursorVisible();
 }
 
-void OpenZoomApp::OnOcrAssistToggled(bool checked)
-{
-    ocrAssistEnabled_ = checked;
-    assistiveManager_->SetModes(
-        ocrAssistEnabled_, vlmAssistEnabled_, assistiveOverlayEnabled_);
-    UpdateProcessingStatusLabel();
-    SyncCurrentConfigToPersistence();
-}
-
 void OpenZoomApp::OnVlmAssistToggled(bool checked)
 {
     vlmAssistEnabled_ = checked;
     assistiveManager_->SetModes(
-        ocrAssistEnabled_, vlmAssistEnabled_, assistiveOverlayEnabled_);
+        vlmAssistEnabled_, assistiveOverlayEnabled_);
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
@@ -297,7 +325,7 @@ void OpenZoomApp::OnAssistiveOverlayToggled(bool checked)
 {
     assistiveOverlayEnabled_ = checked;
     assistiveManager_->SetModes(
-        ocrAssistEnabled_, vlmAssistEnabled_, assistiveOverlayEnabled_);
+        vlmAssistEnabled_, assistiveOverlayEnabled_);
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }

@@ -111,14 +111,31 @@ are explicit global Assistant permissions in AI Settings. Coding requires a
 workspace folder and affects only persistent Advanced Assistant turns; Simple
 Explain remains restricted even when those permissions are enabled.
 
-Simple Explain and OCR results use one solid floating Assistant over the
-camera. The panel preserves incremental streaming, exposes its text through a
+Simple Explain and Read results use one solid Assistant, floating over the
+camera or docked beside it. The Panel position selector offers Floating,
+Dock left, and Dock right. Docking shrinks and shifts the camera viewport;
+dragging the floating header to either app edge also shows a purple docking
+preview with a release instruction. Releasing docks to that side; moving away
+or pressing Escape cancels the docking gesture. The preview does not take
+focus or mouse input and remains visible above the native camera and Draw.
+The dock separator adjusts panel width. To drag a docked panel off its side,
+pull the header away and hold for about 350 ms; a short click or small movement
+keeps it docked.
+After releasing, move clear of that edge before docking there again. The
+highlight uses a debounced latch: 180 ms of stable edge proximity to appear,
+then 250 ms outside its wider release zone to clear. Brief boundary crossings
+keep the same highlight and drop target.
+Viewport resizing preserves image proportions while the rendering surface
+catches up with the new size. Returning to Floating restores its
+previous camera-relative geometry. Draw mode excludes the floating panel's
+current bounds from ink and native mouse input as it moves or resizes, keeping
+the chat's controls and drag handle usable. The panel preserves incremental streaming, exposes its text through a
 focusable read-only text view, and provides a high-contrast Close control and
 manual Read Aloud action. Its header is a drag handle, its edges and corners
 resize within the camera bounds, and its question field attaches the current
 view to the shared persistent Assistant conversation. Closing it (or pressing
 Escape while it has focus) keeps the current result hidden until the next
-user-requested analysis. OCR, scene explanations, and mode changes never start
+user-requested analysis. Text readings, scene explanations, and mode changes never start
 speech automatically; only Read Aloud or the AI Settings Preview action does
 so. First use positions the panel below the top Simple controls. Position and
 size are stored relative to the camera surface, restored on restart, and
@@ -157,11 +174,11 @@ Other global UI/service values also remain outside profiles:
 | Global UI or service value | Reason |
 | --- | --- |
 | Simple/Advanced state | Restores the user's preferred working view. |
-| Assistive View position and size | Restores the user's chosen floating panel layout. |
+| Assistive View dock side and floating position/size | Restores the chosen panel layout; floating geometry is retained while docked. |
 | Inspector section states | UI preference, not image treatment. |
 | Selected quick profile | Restores the active workflow. |
 | Annotation color, width, line style, shape, text size, and save-on-exit | Drawing preferences are shared across profiles; annotation strokes remain session-only. |
-| VLM/OCR endpoints, credentials, language, Read Aloud voice/speed, and note options | Service configuration is shared by profiles. |
+| VLM endpoints, credentials, language, Read Aloud voice/speed, and note options | Service configuration is shared by profiles. |
 
 Profile values describe how the current image should be treated and are saved
 when the user creates a quick option:
@@ -174,7 +191,7 @@ when the user creates a quick option:
 | Display treatment | Color mode, contrast, and brightness. |
 | Sharpening | Backend, enabled state, and strength. |
 | Text clarity | Master/individual stages, Sauvola and softness, polarity, stroke weight, CLAHE, two-color output, hysteresis, focus threshold, glare suppression. |
-| Assistive behavior | OCR, scene explanation, and assistive overlay enabled states. |
+| Assistive behavior | Scene explanation and assistive overlay enabled states. |
 | Diagnostics | Debug view and focus marker. |
 
 `AdvancedConfig::rotationQuarterTurns` remains readable from old profile JSON

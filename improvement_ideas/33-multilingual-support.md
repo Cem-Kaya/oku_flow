@@ -169,8 +169,8 @@ as if it were fresh.
 - **Presentation labels around AI output** ("Text on screen", status lines
   like "Preparing the current view…", `assistive_runtime.cpp:753-765`,
   `:1158`, `:1168`, `:1316`, `:1335`) are UI strings — translate normally.
-- Plan 31 is DROPPED — no transcription/speech-to-text surface exists or
-  will be added here.
+- No transcription/speech-to-text surface was added by this plan. Plan 36 now
+  owns that feature and must extend the shipped language contract.
 
 ### D7 — TTS voice follows the app language
 On language switch, if the active `QTextToSpeech` voice's
@@ -382,8 +382,8 @@ awkward phrasings still beats an English-only UI for a German student).
 - No locale-dependent file naming, folder naming, or settings encoding.
 - No translation of debug logs, crash forensics output, or stage telemetry
   (D5).
-- No speech-to-text anywhere (plan 31 is DROPPED — standing owner
-  decision).
+- No speech-to-text implementation inside this multilingual plan. Plan 36 owns
+  live recording transcription and its English/Türkçe/Deutsch additions.
 - No per-string language tagging for screen-reader synth switching (UIA
   culture plumbing is not reliably consumed by NVDA per-property; out of
   scope).
