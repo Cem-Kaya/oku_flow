@@ -15,7 +15,7 @@
 #include <deque>
 #include <mutex>
 
-namespace openzoom::debug_log {
+namespace okuflow::debug_log {
 
 namespace {
 
@@ -109,7 +109,7 @@ void PruneOldLogs(const QString& directory)
 {
     QDir logDirectory(directory);
     const QFileInfoList existingLogs = logDirectory.entryInfoList(
-        {QStringLiteral("OpenZoom_*.log")},
+        {QStringLiteral("OkuFlow_*.log")},
         QDir::Files | QDir::NoSymLinks,
         QDir::Time);
 
@@ -151,7 +151,7 @@ bool SetOutputDirectory(const QString& directory, QString* error)
     if (directory.trimmed().isEmpty() || !QDir().mkpath(directory)) {
         if (error) {
             *error = QStringLiteral(
-                         "OpenZoom could not create its Debug log folder: %1")
+                         "OkuFlow could not create its Debug log folder: %1")
                          .arg(directory);
         }
         return false;
@@ -161,7 +161,7 @@ bool SetOutputDirectory(const QString& directory, QString* error)
     const QString timestamp =
         QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss_zzz"));
     const QString filename =
-        QStringLiteral("OpenZoom_%1_pid%2.log")
+        QStringLiteral("OkuFlow_%1_pid%2.log")
             .arg(timestamp)
             .arg(static_cast<qulonglong>(GetCurrentProcessId()));
     const QString path = QDir(directory).filePath(filename);
@@ -172,7 +172,7 @@ bool SetOutputDirectory(const QString& directory, QString* error)
         if (!state.file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             if (error) {
                 *error =
-                    QStringLiteral("OpenZoom could not open Debug log: %1")
+                    QStringLiteral("OkuFlow could not open Debug log: %1")
                         .arg(path);
             }
             state.file.setFileName({});
@@ -236,6 +236,6 @@ void Shutdown()
     state.startupBytes = 0;
 }
 
-} // namespace openzoom::debug_log
+} // namespace okuflow::debug_log
 
 #endif

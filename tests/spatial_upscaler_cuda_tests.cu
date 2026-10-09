@@ -1,4 +1,4 @@
-#include "openzoom/cuda/cuda_kernels.hpp"
+#include "okuflow/cuda/cuda_kernels.hpp"
 
 #include <cuda_runtime.h>
 
@@ -155,7 +155,7 @@ int main()
                       sourceWidth, sourceHeight);
     if (ok) {
         try {
-            openzoom::LaunchFsrEasuRcasLinear(
+            okuflow::LaunchFsrEasuRcasLinear(
                 deviceOutput, outputPitch, deviceScratch, scratchPitch,
                 deviceSource, sourcePitch, sourceWidth, sourceHeight,
                 outputWidth, outputHeight, 0.0f, nullptr);
@@ -163,7 +163,7 @@ int main()
                  CopyToHost(fsrSoft, deviceOutput, outputPitch,
                             outputWidth, outputHeight);
 
-            openzoom::LaunchFsrEasuRcasLinear(
+            okuflow::LaunchFsrEasuRcasLinear(
                 deviceOutput, outputPitch, deviceScratch, scratchPitch,
                 deviceSource, sourcePitch, sourceWidth, sourceHeight,
                 outputWidth, outputHeight, 1.0f, nullptr);
@@ -172,7 +172,7 @@ int main()
                  CopyToHost(fsrSharp, deviceOutput, outputPitch,
                             outputWidth, outputHeight);
 
-            openzoom::LaunchNisLinear(
+            okuflow::LaunchNisLinear(
                 deviceOutput, outputPitch, deviceSource, sourcePitch,
                 sourceWidth, sourceHeight, outputWidth, outputHeight,
                 0.0f, nullptr);
@@ -181,7 +181,7 @@ int main()
                  CopyToHost(nisSoft, deviceOutput, outputPitch,
                             outputWidth, outputHeight);
 
-            openzoom::LaunchNisLinear(
+            okuflow::LaunchNisLinear(
                 deviceOutput, outputPitch, deviceSource, sourcePitch,
                 sourceWidth, sourceHeight, outputWidth, outputHeight,
                 1.0f, nullptr);
@@ -228,7 +228,7 @@ int main()
     }
     if (ok) {
         try {
-            openzoom::LaunchFsrEasuRcasLinear(
+            okuflow::LaunchFsrEasuRcasLinear(
                 deviceOutput, outputPitch, deviceScratch, scratchPitch,
                 deviceSource, sourcePitch, sourceWidth, sourceHeight,
                 outputWidth, outputHeight, 1.0f, nullptr);
@@ -237,7 +237,7 @@ int main()
                             outputWidth, outputHeight) &&
                  CheckConstant(constantOutput, constant, 1, "FSR");
 
-            openzoom::LaunchNisLinear(
+            okuflow::LaunchNisLinear(
                 deviceOutput, outputPitch, deviceSource, sourcePitch,
                 sourceWidth, sourceHeight, outputWidth, outputHeight,
                 1.0f, nullptr);
@@ -270,14 +270,14 @@ int main()
             reinterpret_cast<const unsigned char*>(deviceSource) + roiY * sourcePitch) + roiX;
         std::vector<uchar4> roiOutput(roiWidth * 2 * roiHeight * 2);
         try {
-            openzoom::LaunchNisLinear(
+            okuflow::LaunchNisLinear(
                 deviceOutput, outputPitch, roi, sourcePitch,
                 roiWidth, roiHeight, roiWidth * 2, roiHeight * 2, 0.5f, nullptr);
             ok = ok && CheckCuda(cudaDeviceSynchronize(), "ROI NIS synchronize") &&
                  CopyToHost(roiOutput, deviceOutput, outputPitch,
                             roiWidth * 2, roiHeight * 2) &&
                  CheckConstant(roiOutput, constant, 1, "ROI NIS");
-            openzoom::LaunchFsrEasuRcasLinear(
+            okuflow::LaunchFsrEasuRcasLinear(
                 deviceOutput, outputPitch, deviceScratch, scratchPitch,
                 roi, sourcePitch, roiWidth, roiHeight,
                 roiWidth * 2, roiHeight * 2, 0.5f, nullptr);
@@ -303,7 +303,7 @@ int main()
                 ok = CheckCuda(cudaMemcpy2DToArray(cache, 0, 0,
                     deviceOutput, outputPitch, roiWidth * 2 * sizeof(uchar4),
                     roiHeight * 2, cudaMemcpyDeviceToDevice), "copy valid cache") && ok;
-                openzoom::PadSpatialCacheBorder(cache, deviceOutput, outputPitch,
+                okuflow::PadSpatialCacheBorder(cache, deviceOutput, outputPitch,
                     roiWidth * 2, roiHeight * 2, cacheWidth, cacheHeight, nullptr);
                 ok = CheckCuda(cudaDeviceSynchronize(), "guard synchronize") && ok;
                 ok = CheckCuda(cudaMemcpy2DFromArray(cachePixels.data(),
@@ -333,7 +333,7 @@ int main()
 
     bool rejectedUnsupportedScale = false;
     try {
-        openzoom::LaunchNisLinear(
+        okuflow::LaunchNisLinear(
             deviceOutput, outputPitch, deviceSource, sourcePitch,
             sourceWidth, sourceHeight, sourceWidth * 3, sourceHeight * 3,
             0.5f, nullptr);

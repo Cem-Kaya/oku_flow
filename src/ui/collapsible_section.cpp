@@ -1,5 +1,5 @@
-#include "openzoom/ui/collapsible_section.hpp"
-#include "openzoom/ui/ui_translation.hpp"
+#include "okuflow/ui/collapsible_section.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 
 #ifdef _WIN32
 
@@ -9,7 +9,7 @@
 
 #include <algorithm>
 
-namespace openzoom {
+namespace okuflow {
 
 CollapsibleSection::CollapsibleSection(const QString& title, QWidget* parent)
     : QWidget(parent), title_(title)
@@ -114,6 +114,6 @@ void CollapsibleSection::changeEvent(QEvent* event)
     QWidget::changeEvent(event);
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

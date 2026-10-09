@@ -1,4 +1,4 @@
-#include "openzoom/app/user_data_paths.hpp"
+#include "okuflow/app/user_data_paths.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -13,7 +13,7 @@
 #include <memory>
 #include <system_error>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -155,7 +155,7 @@ QString UserDataPaths::DefaultRoot()
             QStandardPaths::writableLocation(QStandardPaths::HomeLocation))
                         .filePath(QStringLiteral("Documents"));
     }
-    return QDir::cleanPath(QDir(documents).filePath(QStringLiteral("OpenZoom")));
+    return QDir::cleanPath(QDir(documents).filePath(QStringLiteral("OkuFlow")));
 }
 
 UserDataValidationResult UserDataPaths::ValidateRoot(
@@ -167,12 +167,12 @@ UserDataValidationResult UserDataPaths::ValidateRoot(
                                 ? DefaultRoot()
                                 : NormalizeAbsolutePath(requestedRoot);
     if (result.normalizedRoot.isEmpty()) {
-        result.error = QStringLiteral("OpenZoom could not determine a folder.");
+        result.error = QStringLiteral("OkuFlow could not determine a folder.");
         return result;
     }
     if (IsPathInside(result.normalizedRoot, installDirectory)) {
         result.error = QStringLiteral(
-            "Choose a folder outside the OpenZoom application folder. "
+            "Choose a folder outside the OkuFlow application folder. "
             "Application updates replace files in that folder.");
         return result;
     }
@@ -184,19 +184,19 @@ UserDataValidationResult UserDataPaths::ValidateRoot(
     }
     if (!QDir().mkpath(result.normalizedRoot)) {
         result.error =
-            QStringLiteral("OpenZoom could not create the selected folder.");
+            QStringLiteral("OkuFlow could not create the selected folder.");
         return result;
     }
 
     const QString probePath = QDir(result.normalizedRoot)
-                                  .filePath(QStringLiteral(".openzoom-write-test-%1.tmp")
+                                  .filePath(QStringLiteral(".okuflow-write-test-%1.tmp")
                                                 .arg(QUuid::createUuid().toString(
                                                     QUuid::WithoutBraces)));
     QFile probe(probePath);
     if (!probe.open(QIODevice::WriteOnly) ||
-        probe.write("OpenZoom", 8) != 8) {
+        probe.write("OkuFlow", 7) != 7) {
         result.error =
-            QStringLiteral("OpenZoom cannot write to the selected folder.");
+            QStringLiteral("OkuFlow cannot write to the selected folder.");
         probe.close();
         QFile::remove(probePath);
         return result;
@@ -204,7 +204,7 @@ UserDataValidationResult UserDataPaths::ValidateRoot(
     probe.close();
     if (!QFile::remove(probePath)) {
         result.error = QStringLiteral(
-            "OpenZoom wrote to the selected folder but could not remove its "
+            "OkuFlow wrote to the selected folder but could not remove its "
             "temporary test file.");
         return result;
     }
@@ -247,7 +247,7 @@ QString UserDataPaths::EnsureRelative(const QString& relativePath,
     if (!QDir().mkpath(path)) {
         if (error) {
             *error =
-                QStringLiteral("OpenZoom could not create folder: %1").arg(path);
+                QStringLiteral("OkuFlow could not create folder: %1").arg(path);
         }
         return {};
     }
@@ -463,4 +463,4 @@ PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
     return result;
 }
 
-} // namespace openzoom
+} // namespace okuflow

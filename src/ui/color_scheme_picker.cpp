@@ -1,8 +1,8 @@
 #ifdef _WIN32
 
-#include "openzoom/ui/color_scheme_picker.hpp"
+#include "okuflow/ui/color_scheme_picker.hpp"
 
-#include "openzoom/ui/wheel_safe_combo_box.hpp"
+#include "okuflow/ui/wheel_safe_combo_box.hpp"
 
 #include <QAccessible>
 #include <QApplication>
@@ -31,7 +31,7 @@
 #include <algorithm>
 #include <array>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -639,6 +639,6 @@ bool ColorSchemePicker::eventFilter(QObject* watched, QEvent* event)
     return QWidget::eventFilter(watched, event);
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

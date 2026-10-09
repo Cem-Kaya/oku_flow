@@ -326,7 +326,7 @@ seeded, fixed-reference tripod wants — a dense absolute displacement field
 (~14k vectors at a 4x4 grid, against ≤880 sparse points) with the predicted
 transform as the hint. The current wrapper cannot express it: `Process()` takes
 a single image and keeps its own previous frame
-(`include/openzoom/cuda/nvidia_optical_flow.hpp:32-34`).
+(`include/okuflow/cuda/nvidia_optical_flow.hpp:32-34`).
 
 *Fix (T10):* extend the wrapper to accept an explicit (reference, current) pair
 plus a hint field. Gate it behind validation against the sparse model, as the
@@ -717,7 +717,7 @@ Every one of these is cheap, deterministic, and needs no camera:
   recovered transform is off by more than the acceptance tolerance.
 
 And the prerequisite from plan 24 §A still stands: `msvc-debug`/`msvc-release`
-set `OPENZOOM_ENABLE_TESTS=OFF` and `msvc-cpu` sets `OPENZOOM_ENABLE_CUDA=OFF`,
+set `OKUFLOW_ENABLE_TESTS=OFF` and `msvc-cpu` sets `OKUFLOW_ENABLE_CUDA=OFF`,
 so **no preset can build these tests**. Every run above needed a hand-written
 configure.
 

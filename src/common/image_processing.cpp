@@ -1,13 +1,13 @@
 #ifdef _WIN32
 
-#include "openzoom/common/image_processing.hpp"
+#include "okuflow/common/image_processing.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
 
-namespace openzoom {
+namespace okuflow {
 namespace processing {
 
 namespace {
@@ -437,6 +437,6 @@ void ApplyTemporalSmoothCpu(std::vector<uint8_t>& frame,
 }
 
 } // namespace processing
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

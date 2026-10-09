@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.23)
 
-project(OpenZoom LANGUAGES CXX)
+project(OkuFlow HOMEPAGE_URL "https://okuflow.com" LANGUAGES CXX)
 
-if(OPENZOOM_ENABLE_TESTS)
+if(OKUFLOW_ENABLE_TESTS)
     enable_testing()
 endif()
 

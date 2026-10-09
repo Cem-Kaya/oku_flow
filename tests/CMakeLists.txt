@@ -119,7 +119,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/include
     )
     target_compile_definitions(stabilization_viewing_zoom_tests PRIVATE
-        OPENZOOM_HAS_CUDA_EXT_MEMORY=0
+        OKUFLOW_HAS_CUDA_EXT_MEMORY=0
         NOMINMAX WIN32_LEAN_AND_MEAN
     )
     add_test(NAME stabilization_viewing_zoom
@@ -191,8 +191,8 @@ set_tests_properties(annotation_model_geometry PROPERTIES
 
 add_executable(live_status_text_tests
     live_status_text_tests.cpp
-    ${PROJECT_SOURCE_DIR}/include/openzoom/ui/live_status_text.hpp
-    ${PROJECT_SOURCE_DIR}/include/openzoom/ui/ui_translation.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/live_status_text.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ui_translation.hpp
     ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
@@ -219,10 +219,10 @@ set_tests_properties(live_accessible_status PROPERTIES
 if (WIN32)
     add_executable(language_manager_tests
         language_manager_tests.cpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/app/language_manager.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/response_language.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/ui/live_status_text.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/ui/ui_translation.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/app/language_manager.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/response_language.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/live_status_text.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ui_translation.hpp
         ${PROJECT_SOURCE_DIR}/src/app/language_manager.cpp
         ${PROJECT_SOURCE_DIR}/src/common/response_language.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
@@ -238,10 +238,10 @@ if (WIN32)
         Qt6::Widgets
         Qt6::Test
     )
-    qt_add_resources(language_manager_tests "openzoom_test_translations"
+    qt_add_resources(language_manager_tests "okuflow_test_translations"
         PREFIX "/i18n"
         BASE "${CMAKE_CURRENT_BINARY_DIR}/../cmake"
-        FILES ${OPENZOOM_QM_FILES}
+        FILES ${OKUFLOW_QM_FILES}
     )
     add_test(NAME multilingual_live_switch COMMAND language_manager_tests)
     set_tests_properties(multilingual_live_switch PROPERTIES
@@ -354,18 +354,18 @@ if (WIN32)
 
     add_executable(annotation_overlay_tests
         annotation_overlay_tests.cpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/ui/assistive_overlay.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistive_overlay.hpp
         ${PROJECT_SOURCE_DIR}/src/ui/assistive_overlay.cpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/ui/annotation_overlay.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/ui/live_status_text.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/ui/ui_translation.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/annotation_overlay.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/live_status_text.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ui_translation.hpp
         ${PROJECT_SOURCE_DIR}/src/ui/annotation_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
         ${PROJECT_SOURCE_DIR}/src/common/annotation_model.cpp
         ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
-        ${PROJECT_SOURCE_DIR}/assets/openzoom_resources.qrc
+        ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
     )
 
     target_include_directories(annotation_overlay_tests PRIVATE
@@ -389,14 +389,14 @@ if (WIN32)
 
     add_executable(render_widget_tests
         render_widget_tests.cpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/ui/render_widget.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/render_widget.hpp
         ${PROJECT_SOURCE_DIR}/src/ui/render_widget.cpp
         ${PROJECT_SOURCE_DIR}/src/d3d12/presenter.cpp
         ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
     )
     target_include_directories(render_widget_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_compile_definitions(render_widget_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
-        OPENZOOM_HAS_CUDA_EXT_MEMORY=0)
+        OKUFLOW_HAS_CUDA_EXT_MEMORY=0)
     target_link_libraries(render_widget_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test
         d3d12 dxgi d3dcompiler)
     add_test(NAME viewport_resize_presentation COMMAND render_widget_tests)
@@ -406,9 +406,9 @@ if (WIN32)
 
     add_executable(notes_html_tests
         notes_html_tests.cpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/assistive_runtime.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_app_server_client.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_json_rpc_process.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/assistive_runtime.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
         ${PROJECT_SOURCE_DIR}/src/common/assistive_runtime.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_app_server_client.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_json_rpc_process.cpp
@@ -445,10 +445,10 @@ if (WIN32)
 
     add_executable(codex_realtime_client_tests
         codex_realtime_client_tests.cpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_app_server_client.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_json_rpc_process.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_realtime_transcription_client.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/realtime_transcription_interfaces.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_realtime_transcription_client.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_transcription_interfaces.hpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_app_server_client.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_json_rpc_process.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_realtime_transcription_client.cpp
@@ -470,8 +470,8 @@ if (WIN32)
 
     add_executable(transcription_controller_tests
         transcription_controller_tests.cpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/app/transcription_session_controller.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/realtime_transcription_interfaces.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/app/transcription_session_controller.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_transcription_interfaces.hpp
         ${PROJECT_SOURCE_DIR}/src/app/transcription_session_controller.cpp
     )
     target_include_directories(transcription_controller_tests PRIVATE
@@ -495,8 +495,8 @@ if (WIN32)
 
     add_executable(native_rtc_carrier_tests
         native_rtc_carrier_tests.cpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/realtime_native_rtc_carrier.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/realtime_transcription_interfaces.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_native_rtc_carrier.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_transcription_interfaces.hpp
         ${PROJECT_SOURCE_DIR}/src/common/realtime_native_rtc_carrier.cpp
     )
     target_include_directories(native_rtc_carrier_tests PRIVATE
@@ -505,7 +505,7 @@ if (WIN32)
     target_link_libraries(native_rtc_carrier_tests PRIVATE
         Qt6::Core
         Qt6::Test
-        OpenZoom::NativeRtc
+        OkuFlow::NativeRtc
     )
     target_compile_definitions(native_rtc_carrier_tests PRIVATE
         NOMINMAX
@@ -524,12 +524,12 @@ if (WIN32)
     # 48 kHz mono PCM16 WAV.
     add_executable(native_rtc_live_probe
         native_rtc_live_probe.cpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/app/transcription_session_controller.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_app_server_client.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_json_rpc_process.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/codex_realtime_transcription_client.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/realtime_native_rtc_carrier.hpp
-        ${PROJECT_SOURCE_DIR}/include/openzoom/common/realtime_transcription_interfaces.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/app/transcription_session_controller.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_realtime_transcription_client.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_native_rtc_carrier.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_transcription_interfaces.hpp
         ${PROJECT_SOURCE_DIR}/src/app/transcription_session_controller.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_app_server_client.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_json_rpc_process.cpp
@@ -541,7 +541,7 @@ if (WIN32)
     )
     target_link_libraries(native_rtc_live_probe PRIVATE
         Qt6::Core
-        OpenZoom::NativeRtc
+        OkuFlow::NativeRtc
     )
     target_compile_definitions(native_rtc_live_probe PRIVATE
         NOMINMAX
@@ -551,7 +551,7 @@ if (WIN32)
     )
 endif()
 
-if (WIN32 AND OPENZOOM_ENABLE_CUDA)
+if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     add_executable(yuv_color_cuda_tests
         yuv_color_cuda_tests.cu
         ${PROJECT_SOURCE_DIR}/src/cuda/cuda_kernels.cu

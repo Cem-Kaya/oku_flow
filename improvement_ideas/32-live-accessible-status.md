@@ -5,7 +5,7 @@ Status: **VERIFY — implementation and automated event gate complete
 
 ## Implementation record (2026-07-30)
 
-- Added `include/openzoom/ui/live_status_text.hpp` and
+- Added `include/okuflow/ui/live_status_text.hpp` and
   `src/ui/live_status_text.cpp`. `SetLiveText` keeps visible text and a
   role-qualified accessible name synchronized, explicitly invalidates cached
   UIA names, and applies silent/polite/assertive announcement policy.
@@ -24,7 +24,7 @@ Status: **VERIFY — implementation and automated event gate complete
   unchanged-text no-op, assertive announcement metadata, five-second
   deduplication across flapping, and trailing-edge coalescing.
 - Validation passed: shipping release compile, CPU 10/10, CUDA 12/12, and
-  tested release-bundle 12/12. The published `dist/OpenZoom/open_zoom.exe`
+  tested release-bundle 12/12. The published `dist/OkuFlow/oku_flow.exe`
   SHA-256 is
   `ad5ab389f379e4f3611907de0a3165f2a13ec5c1d8d2e0ecaae18ba02e665a4c`.
 - The remaining `setText` sites were classified as construction-only,
@@ -84,7 +84,7 @@ nothing. The helper below asserts UI-thread at entry to keep it that way.
 
 ## Design — one helper, one policy
 
-### `SetLiveText` (`include/openzoom/ui/live_status_text.hpp` and
+### `SetLiveText` (`include/okuflow/ui/live_status_text.hpp` and
 `src/ui/live_status_text.cpp`)
 
 ```cpp

@@ -1,17 +1,17 @@
-#include "openzoom/app/cuda_surface_retry.hpp"
-#include "openzoom/app/capture_handoff_policy.hpp"
+#include "okuflow/app/cuda_surface_retry.hpp"
+#include "okuflow/app/capture_handoff_policy.hpp"
 
 #include <chrono>
 #include <iostream>
 
 int main() {
     using namespace std::chrono;
-    using openzoom::CudaSurfaceRetry;
+    using okuflow::CudaSurfaceRetry;
     int device = 0;
     int replacementDevice = 0;
     int fence = 0;
     int replacementFence = 0;
-    const openzoom::CudaSurfaceConfiguration configuration{
+    const okuflow::CudaSurfaceConfiguration configuration{
         &device, &fence, 1, 1280, 720, 1280, 720};
     CudaSurfaceRetry retry;
     auto now = CudaSurfaceRetry::Clock::time_point{};
@@ -72,8 +72,8 @@ int main() {
     }
     // Two slow conversions followed by a healthy one must not demote the
     // camera. CUDA ownership waits cannot contribute to a conversion streak.
-    openzoom::CaptureHandoffPolicy handoff;
-    using openzoom::CaptureGpuPending;
+    okuflow::CaptureHandoffPolicy handoff;
+    using okuflow::CaptureGpuPending;
     check(!handoff.RecordDeadline(CaptureGpuPending::D3D11Query), "first conversion deadline demoted");
     check(!handoff.RecordDeadline(CaptureGpuPending::D3D11Query), "second conversion deadline demoted");
     for (int tick = 0; tick < 100; ++tick)

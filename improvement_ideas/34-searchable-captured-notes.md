@@ -29,7 +29,7 @@ index contracts rather than implementing either pipeline twice.
 
 The media-saving part already exists and must not be reimplemented:
 
-- `OpenZoomApp::SaveCapturedPhotoPair(...)` writes timestamp-matched
+- `OkuFlowApp::SaveCapturedPhotoPair(...)` writes timestamp-matched
   `_original.jpg` and `_processed.jpg` files.
 - Only after both saves succeed, it calls
   `AssistiveRuntime::NoteCapturedPhotoPair(originalPath, processedPath)`.
@@ -103,7 +103,7 @@ pending-result mechanism:
 - materialize the final combined section/index once at session finalization,
   rather than rereading and rewriting the growing HTML file after every OCR
   result;
-- if OpenZoom or Windows exits unexpectedly, opening the notes must still show
+- if OkuFlow or Windows exits unexpectedly, opening the notes must still show
   every already-appended media section. A later repair/finalize pass may merge
   completed sidecar results.
 
@@ -135,7 +135,7 @@ Requirements:
 - Long OCR text remains in the section, not duplicated in the index.
 - Empty OCR results still produce a useful media entry such as
   `14:03:12 — Photo captured`.
-- Existing relative media URLs and portability of the complete OpenZoom root
+- Existing relative media URLs and portability of the complete OkuFlow root
   remain unchanged.
 
 Building the index once when closing the session is acceptable. If the user

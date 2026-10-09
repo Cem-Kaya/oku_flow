@@ -62,14 +62,14 @@ assistant request and cancellation path.
 - **Status: PARTIALLY ADDRESSED 2026-07-22.** Requests now use a 30-second Qt
   transfer timeout. HTTPS warnings and an explicit response-size cap remain.
 - **Priority:** MEDIUM · **Effort:** small · **Status:** Reported
-- **Evidence:** `src/common/assistive_runtime.cpp` — request construction (~337–344); API key from `OPENZOOM_VLM_API_KEY` env var (~255–257)
+- **Evidence:** `src/common/assistive_runtime.cpp` — request construction (~337–344); API key from `OKUFLOW_VLM_API_KEY` env var (~255–257)
 
 **Problem.** No request timeout (a stalled endpoint wedges the busy-flag), no warning
 when the configured URL is plain HTTP (the API key would then travel in cleartext), and
 no size cap on the response body.
 
 **Fix.** Set `QNetworkRequest::setTransferTimeout(30000)` (Qt ≥5.15 — one line); log a
-prominent warning at startup if `OPENZOOM_VLM_API_URL` is not `https://`; cap accepted
+prominent warning at startup if `OKUFLOW_VLM_API_URL` is not `https://`; cap accepted
 response size; on `QNetworkReply` error include the HTTP status + short body excerpt in
 the overlay error text. Env-var key storage is acceptable for now — documenting that it
 is the user's responsibility is enough at this stage.

@@ -2,7 +2,7 @@
 // head written once with theme toggle and viewer script, every entry a
 // self-contained appended block, transcript as escaped line-by-line feed,
 // collapsible note sections, duplicate-final dedupe. No network, no media
-// files needed. Set OPENZOOM_NOTES_TEST_DIR to keep the generated file for
+// files needed. Set OKUFLOW_NOTES_TEST_DIR to keep the generated file for
 // visual inspection.
 
 #include <QTemporaryDir>
@@ -11,10 +11,10 @@
 #include <QSemaphore>
 #include <QScopeGuard>
 
-#include "openzoom/common/assistive_runtime.hpp"
-#include "openzoom/common/transcript.hpp"
+#include "okuflow/common/assistive_runtime.hpp"
+#include "okuflow/common/transcript.hpp"
 
-using namespace openzoom;
+using namespace okuflow;
 
 class NotesHtmlTests : public QObject {
     Q_OBJECT
@@ -77,12 +77,12 @@ private slots:
     {
         QFETCH(bool, readText);
         QFETCH(QString, language);
-        const QByteArray oldScenario = qgetenv("OPENZOOM_FAKE_CODEX_SCENARIO");
+        const QByteArray oldScenario = qgetenv("OKUFLOW_FAKE_CODEX_SCENARIO");
         const auto restore = qScopeGuard([oldScenario]() {
-            if (oldScenario.isNull()) qunsetenv("OPENZOOM_FAKE_CODEX_SCENARIO");
-            else qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", oldScenario);
+            if (oldScenario.isNull()) qunsetenv("OKUFLOW_FAKE_CODEX_SCENARIO");
+            else qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", oldScenario);
         });
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO",
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO",
                 (QStringLiteral("vision-%1-%2").arg(readText ? QStringLiteral("read")
                                                              : QStringLiteral("explain"), language)).toUtf8());
         QTemporaryDir directory;
@@ -128,7 +128,7 @@ private slots:
 
     void initTestCase()
     {
-        const QByteArray keepDirectory = qgetenv("OPENZOOM_NOTES_TEST_DIR");
+        const QByteArray keepDirectory = qgetenv("OKUFLOW_NOTES_TEST_DIR");
         if (!keepDirectory.isEmpty()) {
             notesDirectory_ = QString::fromLocal8Bit(keepDirectory);
             QDir().mkpath(notesDirectory_);

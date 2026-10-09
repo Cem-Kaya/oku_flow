@@ -23,11 +23,11 @@
 #include <cstring>
 #include <limits>
 
-#include "openzoom/app/transcription_session_controller.hpp"
-#include "openzoom/common/codex_realtime_transcription_client.hpp"
-#include "openzoom/common/realtime_native_rtc_carrier.hpp"
+#include "okuflow/app/transcription_session_controller.hpp"
+#include "okuflow/common/codex_realtime_transcription_client.hpp"
+#include "okuflow/common/realtime_native_rtc_carrier.hpp"
 
-using namespace openzoom;
+using namespace okuflow;
 
 namespace {
 

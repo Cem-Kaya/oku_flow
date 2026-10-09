@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/common/codex_json_rpc_process.hpp"
+#include "okuflow/common/codex_json_rpc_process.hpp"
 
 #include <QDateTime>
 #include <QDebug>
@@ -9,7 +9,7 @@
 #include <QSignalBlocker>
 #include <QTimer>
 
-namespace openzoom {
+namespace okuflow {
 
 CodexJsonRpcProcess::CodexJsonRpcProcess(QObject* parent)
     : QObject(parent), process_(std::make_unique<QProcess>(this))
@@ -221,7 +221,7 @@ void CodexJsonRpcProcess::HandleMessage(const QJsonObject& message)
             return;
         }
         SendError(id, -32601,
-                  QStringLiteral("OpenZoom does not expose this Codex capability."));
+                  QStringLiteral("OkuFlow does not expose this Codex capability."));
         return;
     }
     if (message.contains(QStringLiteral("id"))) {
@@ -272,6 +272,6 @@ void CodexJsonRpcProcess::ExpireTimedOutReplies()
     }
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

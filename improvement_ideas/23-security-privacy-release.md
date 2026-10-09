@@ -5,10 +5,10 @@ DISTRIBUTION REMAINS OWNER-GATED.** Verdicts and evidence: plan 19.
 
 ## 2026-07-29 implementation record
 
-- **A implemented without legacy migration.** OpenZoom has only lived on the
+- **A implemented without legacy migration.** OkuFlow has only lived on the
   owner's and a few teammates' machines and no deployed build ever persisted
   a VLM key. AI Settings now stores the secret in Windows Credential Manager
-  under `OpenZoom/VLM API Key`; JSON stores only `vlmCredentialId` and ignores
+  under `OkuFlow/VLM API Key`; JSON stores only `vlmCredentialId` and ignores
   a plaintext `vlmApiKey` field. The environment override remains
   process-only. There is deliberately no migration path for a deployment that
   never existed.
@@ -26,14 +26,14 @@ DISTRIBUTION REMAINS OWNER-GATED.** Verdicts and evidence: plan 19.
   permission, and elicitation request. Unexpected MCP/dynamic/collaboration
   and other forbidden tool items are interrupted. The current stable
   app-server `turn/start` schema does not expose a complete per-turn tool
-  allow-list, so OpenZoom cannot yet prove that an unexpected tool item is
+  allow-list, so OkuFlow cannot yet prove that an unexpected tool item is
   rejected before the server reports it as started. The reactive path remains
   defense in depth and this plan must be revisited if app-server adds that
   capability.
 - **G implemented for the actual private/team release model.** Bundle staging
   emits SHA-256 checksums, a release manifest, and an SPDX SBOM. An installed
   code-signing certificate can be selected by thumbprint. Unsigned private
-  bundles remain permitted; setting `OPENZOOM_PUBLIC_RELEASE=1` fails closed
+  bundles remain permitted; setting `OKUFLOW_PUBLIC_RELEASE=1` fails closed
   without signing. A signed installer/update channel is still required before
   distributing to arbitrary public users.
 
@@ -117,7 +117,7 @@ proves a forbidden command cannot start.
 
 ## F. Temporary camera frames
 
-Codex camera attachments use temporary `openzoom_codex_*.jpg` files.
+Codex camera attachments use temporary `okuflow_codex_*.jpg` files.
 The runtime now includes process ownership in their names, sweeps stale files
 without touching another live process's attachments, and deletes its own files
 on cancellation and shutdown. The retired local recognition pipeline no longer
@@ -144,7 +144,7 @@ No secret appears anywhere in `%APPDATA%`, logs, or exports; a plaintext JSON
 field is ignored. A stalled assistant turn always returns to idle within the
 configured timeout. A corrupt settings file produces a named preserved copy, a
 restored or default profile, and a screen-reader-friendly explanation.
-`%TEMP%` contains no stale `openzoom_*` frames after a crash-then-restart
+`%TEMP%` contains no stale `okuflow_*` frames after a crash-then-restart
 cycle. Every private/team bundle verifies against its generated checksum.
 Public acceptance additionally requires a valid signature and the
 installer/update work intentionally left outside the current deployment scope.

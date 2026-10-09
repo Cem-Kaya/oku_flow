@@ -1,8 +1,8 @@
 #ifdef _WIN32
 
-#include "openzoom/capture/audio_capture.hpp"
+#include "okuflow/capture/audio_capture.hpp"
 
-#include "openzoom/common/recording_contract.hpp"
+#include "okuflow/common/recording_contract.hpp"
 
 #include <QDebug>
 
@@ -15,7 +15,7 @@
 #include <cstdio>
 #include <stdexcept>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -466,6 +466,6 @@ void AudioCapture::CaptureLoop(
     session->loopDone.store(true);
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

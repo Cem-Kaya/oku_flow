@@ -1,9 +1,9 @@
 #pragma once
-#include "openzoom/capture/media_capture.hpp"
-#include "openzoom/capture/capture_shutdown.hpp"
+#include "okuflow/capture/media_capture.hpp"
+#include "okuflow/capture/capture_shutdown.hpp"
 
 #ifdef _WIN32
-namespace openzoom {
+namespace okuflow {
 class MediaCaptureSession : public std::enable_shared_from_this<MediaCaptureSession> {
 public:
     MediaCaptureSession();
@@ -143,5 +143,5 @@ private:
     bool startupValidationComplete_{false};
 };
 
-} // namespace openzoom
+} // namespace okuflow
 #endif

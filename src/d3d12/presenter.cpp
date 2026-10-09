@@ -1,8 +1,8 @@
 #ifdef _WIN32
 
-#include "openzoom/d3d12/presenter.hpp"
-#include "openzoom/d3d12/fence_wait.hpp"
-#include "openzoom/d3d12/frame_readiness.hpp"
+#include "okuflow/d3d12/presenter.hpp"
+#include "okuflow/d3d12/fence_wait.hpp"
+#include "okuflow/d3d12/frame_readiness.hpp"
 
 #include <QDebug>
 
@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -1899,7 +1899,7 @@ void D3D12Presenter::QuarantineResources() noexcept
     frameLatencyWaitableObject_ = nullptr;
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32
 

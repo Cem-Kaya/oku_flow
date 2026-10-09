@@ -1,6 +1,6 @@
-# OpenZoom Commercial Offerings
+# OkuFlow Commercial Offerings
 
-OpenZoom is free software under GPL-3.0-only (see [`LICENSE`](LICENSE)), built
+OkuFlow is free software under GPL-3.0-only (see [`LICENSE`](LICENSE)), built
 so that legally blind students can watch lectures through a camera magnifier
 without paying for the privilege. That does not change. This document
 describes what *can* be paid for, on top of the free project — never instead
@@ -9,7 +9,7 @@ of it.
 ## What is always free
 
 Everything. The complete source code, every feature, every release. Anyone
-may use, study, modify, and redistribute OpenZoom under the GPL, forever.
+may use, study, modify, and redistribute OkuFlow under the GPL, forever.
 Nothing in this document gates any capability behind payment.
 
 ## What you can buy
@@ -17,7 +17,7 @@ Nothing in this document gates any capability behind payment.
 ### 1. Support contracts and SLAs
 
 For universities, schools, disability-services offices, and assistive-
-technology departments that deploy OpenZoom for their students and need
+technology departments that deploy OkuFlow for their students and need
 someone answerable:
 
 - guaranteed response times for incidents,
@@ -36,9 +36,9 @@ for institutions to shape the project.
 
 ### 3. Commercial licensing
 
-OpenZoom's copyright is held by a single owner, and contributions are
+OkuFlow's copyright is held by a single owner, and contributions are
 accepted under a CLA ([`CLA.md`](CLA.md)) that preserves the ability to
-dual-license. If you want to incorporate OpenZoom code into a proprietary
+dual-license. If you want to incorporate OkuFlow code into a proprietary
 product without GPL obligations — for example, an assistive-technology
 vendor embedding the stabilization or text-clarity pipeline — a separate
 commercial license can be arranged. Pricing is by inquiry.

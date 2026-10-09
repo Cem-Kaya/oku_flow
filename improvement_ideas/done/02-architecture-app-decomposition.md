@@ -1,7 +1,7 @@
 # Architecture: Decomposing the App God-Object
 
 `src/app/app.cpp` is 3,396 lines (as of 2026-07-22; it was 2,233 when this analysis was
-written and keeps growing) and `OpenZoomApp` owns everything: 30+ raw widget
+written and keeps growing) and `OkuFlowApp` owns everything: 30+ raw widget
 pointers, 39 `QSignalBlocker` uses, three independent "suspend sync" flags, the frame
 pipeline, CUDA/fence state, recording, settings, and assistive features. Almost every
 other improvement in this backlog is easier after this file is split.
@@ -12,7 +12,7 @@ tests (see [06-build-tooling-docs.md](../06-build-tooling-docs.md)) *before* sta
 
 ---
 
-## A1. Extract collaborators from `OpenZoomApp`
+## A1. Extract collaborators from `OkuFlowApp`
 
 - **Priority:** HIGH · **Effort:** large (do incrementally) · **Status:** Confirmed (file size/shape verified)
 - **Evidence:** `src/app/app.cpp` — widget-pointer harvesting (~lines 279–318), 170 lines of signal connections (~343–512), pipeline orchestration (~1932–2022), recording (~2155–2229), assistive logic (~940–1004)
@@ -27,12 +27,12 @@ tests (see [06-build-tooling-docs.md](../06-build-tooling-docs.md)) *before* sta
    quick-option promotion. Decouples persistence from widget code.
 4. `UIStateManager`: owns the widget pointers and *all* `QSignalBlocker` /
    suspension-flag logic behind two methods: `ApplyConfigToUI(const AdvancedConfig&)`
-   and `ReadConfigFromUI()`. After this, `OpenZoomApp` never touches a widget directly.
+   and `ReadConfigFromUI()`. After this, `OkuFlowApp` never touches a widget directly.
 5. `PipelineOrchestrator`: owns CPU-vs-CUDA path selection, `EnsureCudaSurface`,
    fence state, and frame ticking. This is where the threading fix S4
    ([01-stability-threading.md](01-stability-threading.md)) lands.
 
-Keep `OpenZoomApp` as a thin composition root that constructs and connects these.
+Keep `OkuFlowApp` as a thin composition root that constructs and connects these.
 
 ---
 

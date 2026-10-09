@@ -1,4 +1,4 @@
-#include "openzoom/common/annotation_model.hpp"
+#include "okuflow/common/annotation_model.hpp"
 
 #include <QFontMetricsF>
 #include <QPainter>
@@ -10,7 +10,7 @@
 #include <cmath>
 #include <limits>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
 qreal SquaredDistanceToSegment(const QPointF& point,
@@ -828,4 +828,4 @@ void RenderAnnotationStrokes(
     painter.restore();
 }
 
-} // namespace openzoom
+} // namespace okuflow

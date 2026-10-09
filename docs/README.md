@@ -1,6 +1,8 @@
-# OpenZoom Documentation Guide
+# OkuFlow Documentation Guide
 
-OpenZoom is a Windows-only live magnification application that combines:
+Website: <https://okuflow.com>
+
+OkuFlow is a Windows-only live magnification application that combines:
 - Qt 6 for the desktop shell and input handling
 - Media Foundation for camera and microphone discovery, frame capture, and
   live media encoding
@@ -112,10 +114,10 @@ voice and reports once through visible status when no matching voice exists.
 The localization layer uses Unicode Qt widgets and embedded Qt Linguist
 catalogs rather than Latin-only string handling. Additional LTR languages,
 including Chinese and Japanese, can reuse the same architecture. Locale
-metadata also drives the process layout direction, and OpenZoom's manually
+metadata also drives the process layout direction, and OkuFlow's manually
 positioned floating chrome and Draw toolbars use logical leading/trailing
 anchors. Developers can run the English catalog with `--rtl-test` or
-`OPENZOOM_FORCE_RTL=1` to exercise that path before an RTL catalog exists.
+`OKUFLOW_FORCE_RTL=1` to exercise that path before an RTL catalog exists.
 Shipping Arabic, Hebrew, Persian, Urdu, or another RTL language still requires
 a native translation, font/line-break review, and live NVDA/Narrator
 validation; none is currently shown in the language picker.
@@ -154,33 +156,33 @@ The UI now has two states:
 - Advanced: the same live view beside a narrow inspector with separate `Image`
   and `Assistant` tabs, wrapping section arrows, a full-width AI Settings row
   below the tabs, and Image-side pipeline diagnostics; Assistant provides subscription
-  status, camera-aware chat, and OpenZoom-owned history
+  status, camera-aware chat, and OkuFlow-owned history
 
 ## Module Map
-- `src/app` / `include/openzoom/app`: composition root plus focused pipeline,
+- `src/app` / `include/okuflow/app`: composition root plus focused pipeline,
   recording, settings, UI-state, assistive, and interaction managers. The
-  `OpenZoomApp` implementation is split by responsibility across `app_*`
+  `OkuFlowApp` implementation is split by responsibility across `app_*`
   translation units.
-- `src/capture` / `include/openzoom/capture`: Media Foundation camera and
+- `src/capture` / `include/okuflow/capture`: Media Foundation camera and
   microphone enumeration, mode discovery, and capture.
-- `src/common` / `include/openzoom/common`: CPU image conversion/effects,
+- `src/common` / `include/okuflow/common`: CPU image conversion/effects,
   canonical aspect/view transforms, frame pipeline, and media writing.
-- `src/d3d12` / `include/openzoom/d3d12`: swap chain, upload, presentation, and texture readback.
-- `src/cuda` / `include/openzoom/cuda`: CUDA interop surface, kernels, and fence synchronization.
-- `src/ui` / `include/openzoom/ui`: Qt widgets, overlays, and event routing.
+- `src/d3d12` / `include/okuflow/d3d12`: swap chain, upload, presentation, and texture readback.
+- `src/cuda` / `include/okuflow/cuda`: CUDA interop surface, kernels, and fence synchronization.
+- `src/ui` / `include/okuflow/ui`: Qt widgets, overlays, and event routing.
 
 ## Build Matrix
 - `scripts/build_and_run.bat`: default local Windows build and launch helper.
   It explicitly enables CUDA and the runtime-loaded Text-SR adapter unless
   either option is overridden in the environment, preventing stale CMake
   caches from silently disabling NVIDIA Super Resolution.
-- `scripts/build_release_bundle.bat`: packages a distributable `dist/OpenZoom`
+- `scripts/build_release_bundle.bat`: packages a distributable `dist/OkuFlow`
   folder and explicitly enables CUDA plus the runtime-loaded Text-SR adapter
   unless either option is overridden in the environment. It builds and runs
   CTest before staging, requires `windeployqt` to succeed, validates the
   deployed Qt platform runtime, and publishes only a complete bundle. Existing
-  `dist/OpenZoom/output` user captures are preserved. A locked primary bundle
-  produces the complete sibling `dist/OpenZoom2` without stopping the app.
+  `dist/OkuFlow/output` user captures are preserved. A locked primary bundle
+  produces the complete sibling `dist/OkuFlow2` without stopping the app.
 - `scripts/agent_build.bat`: tracked Windows compile/test matrix. It locates
   Visual Studio with `vswhere`, compiles `msvc-release`, then runs the CPU and
   CUDA-enabled CTest presets with explicit PASS/FAIL summaries.
@@ -197,9 +199,9 @@ The UI now has two states:
   `msvc-cuda-tests` are CTest presets; both fail when no tests are discovered.
 
 Core CMake options:
-- `OPENZOOM_ENABLE_CUDA=ON|OFF`
-- `OPENZOOM_ENABLE_TESTS=ON|OFF`
-- `OPENZOOM_ENABLE_TEXT_SR=ON|OFF` (runtime-only NVIDIA Maxine SuperRes adapter;
+- `OKUFLOW_ENABLE_CUDA=ON|OFF`
+- `OKUFLOW_ENABLE_TESTS=ON|OFF`
+- `OKUFLOW_ENABLE_TEXT_SR=ON|OFF` (runtime-only NVIDIA Maxine SuperRes adapter;
   enabled by CUDA presets and disabled by the CPU preset)
 
 When operating from the WSL/Linux agent shell, invoke Windows-side tooling with
@@ -300,16 +302,16 @@ legacy `powershell.exe` bridge.
   content beneath it never shows through the swatch and editor controls. Wheel
   scrolling never edits selectors or sliders.
 - Orientation is applied before the rest of the processing pipeline.
-- Settings persist to `%APPDATA%\OpenZoom\OpenZoom\settings.json`. A VLM API
+- Settings persist to `%APPDATA%\OkuFlow\OkuFlow\settings.json`. A VLM API
   key entered in AI Settings is protected by Windows Credential Manager; JSON
   stores only an opaque credential id and ignores plaintext `vlmApiKey`
   fields. The environment override remains available for local development
   and is never persisted.
 - Snapshots are saved as timestamp-matched `_original.jpg` and `_processed.jpg`
-  pairs under `Documents\OpenZoom\Photos\YYYY-MM-DD\` by default.
+  pairs under `Documents\OkuFlow\Photos\YYYY-MM-DD\` by default.
 - Recordings are saved as timestamp-matched `_original.mp4` and
   `_processed.mp4` pairs under
-  `Documents\OpenZoom\Recordings\YYYY-MM-DD\`; encoding is live AV1 when
+  `Documents\OkuFlow\Recordings\YYYY-MM-DD\`; encoding is live AV1 when
   available and otherwise live H.264.
 - The processing status label under Advanced Image diagnostics distinguishes
   CPU, GPU, fallback, debug-view, recording and VLM states without
@@ -337,7 +339,7 @@ legacy `powershell.exe` bridge.
   reusing a ChatGPT-managed Codex login. Simple Explain threads are ephemeral
   and always use a read-only, no-network, no-approval policy. Advanced
   Assistant threads are persistent and can opt into internet access or
-  workspace-scoped coding; only OpenZoom-created thread ids are indexed in
+  workspace-scoped coding; only OkuFlow-created thread ids are indexed in
   settings. Server approval and permission-escalation requests are denied,
   unexpected tool items are interrupted, and turn watchdogs always return the
   UI to idle. The stable app-server surface currently lacks a complete
@@ -352,10 +354,10 @@ legacy `powershell.exe` bridge.
   and sends questions into the shared persistent Advanced Assistant
   conversation.
 - Lecture notes are valid per-session HTML documents under
-  `Documents\OpenZoom\Notes\`.
+  `Documents\OkuFlow\Notes\`.
   They collect timestamped text readings, scene explanations, and relative captured
   image links that render in a browser and remain portable with the complete
-  OpenZoom user-data root.
+  OkuFlow user-data root.
 - Photos, recordings, notes, analysis exports, and console diagnostic logs
   share one user-owned root. Advanced Assistant can select another writable
   root outside the install directory; `Ctrl+Shift+O` and the Advanced action
@@ -366,7 +368,7 @@ legacy `powershell.exe` bridge.
   Legacy install-relative output can be copied without deleting its source.
 - AI Settings uses a bounded, vertically scrollable dialog with distinct Codex,
   OpenAI-compatible VLM, speech, and notes sections. It displays the
-  built-in OpenZoom Codex instruction read-only and persists separate user
+  built-in OkuFlow Codex instruction read-only and persists separate user
   preferences for response language, tone, and detail. Those preferences are
   added to Codex developer instructions without weakening its permission
   policy and become a system message for the OpenAI-compatible fallback. The
@@ -380,17 +382,25 @@ legacy `powershell.exe` bridge.
   exposed by the public Windows Runtime speech API and are not selectable here.
 - `Setup & Downloads` in Advanced reopens the dependency assistant at any time.
   Dismissing its automatic first-run prompt is persisted independently of
-  manually reopening it.
+  manually reopening it. Only missing Codex triggers startup prompting;
+  optional Maxine remains a manual setup choice. The dialog fits the screen
+  and stays above the floating control windows.
+- Advanced Image leads with profile tuning, then shared settings. Slider
+  readouts follow the active locale, Focus X/Y disable with Zoom, and search
+  displays match feedback. The carousel separates its shortcut badge from its
+  elided label; long device selectors expose their full value on hover.
 - Codex camera-frame temporary files include the owning process id, are
   removed on completion/cancellation/shutdown, and stale files from dead
-  OpenZoom processes are swept on the next startup.
+  OkuFlow processes are swept on the next startup.
 - Release publishing is designed for the current private/team distribution:
   unsigned bundles are allowed, an installed code-signing certificate can be
-  selected through `OPENZOOM_SIGN_CERT_SHA1`, and
-  `OPENZOOM_PUBLIC_RELEASE=1` rejects an unsigned build. Every bundle includes
+  selected through `OKUFLOW_SIGN_CERT_SHA1`, and
+  `OKUFLOW_PUBLIC_RELEASE=1` rejects an unsigned build. Every bundle includes
   SHA-256 checksums, a release manifest, and an SPDX SBOM.
 
 ## Documentation Index
+- [`docs/lecture_camera.md`](lecture_camera.md): downloadable lecture sample,
+  isolated OBS Virtual Camera start/stop, and replacement-video workflow.
 - [`README.md`](../README.md): top-level project overview and usage.
 - [`docs/code_reference.md`](code_reference.md): authoritative file/class map.
 - [`docs/ui_modes_design.md`](ui_modes_design.md): Simple/Advanced layout and settings-ownership contract.
@@ -409,7 +419,7 @@ legacy `powershell.exe` bridge.
 - Maxine SuperRes requires a supported NVIDIA GPU and the user-installed
   NVIDIA Video Effects runtime; hardware/runtime and visual-quality validation
   remains necessary across Turing, Ampere, Ada, and Blackwell systems.
-- SuperRes inference follows NVIDIA's synchronous sample path on OpenZoom's
+- SuperRes inference follows NVIDIA's synchronous sample path on OkuFlow's
   CUDA stream. Its enhanced frame is the sole zoom result rather than a layer
   blended over a separately timed conventional zoom frame. Additional zoom
   uses the live focus point mapped into the clamped 4/3x source crop.

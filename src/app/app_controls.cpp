@@ -2,9 +2,9 @@
 
 #include "app_internal.hpp"
 
-namespace openzoom {
+namespace okuflow {
 
-void OpenZoomApp::OnCameraSelectionChanged(int index) {
+void OkuFlowApp::OnCameraSelectionChanged(int index) {
     if (cameraStartupPending_ || index < 0 || static_cast<size_t>(index) >= cameras_.size()) {
         return;
     }
@@ -15,7 +15,7 @@ void OpenZoomApp::OnCameraSelectionChanged(int index) {
     StartCameraCapture(static_cast<size_t>(index));
 }
 
-void OpenZoomApp::UpdateCameraAccelerationUi()
+void OkuFlowApp::UpdateCameraAccelerationUi()
 {
     if (!uiState_) {
         return;
@@ -72,7 +72,7 @@ void OpenZoomApp::UpdateCameraAccelerationUi()
     uiState_->cameraAccelerationStatusLabel_->setToolTip(status);
 }
 
-void OpenZoomApp::OnTestCameraAcceleration()
+void OkuFlowApp::OnTestCameraAcceleration()
 {
     if (cameraStartupPending_) return;
     if (selectedCameraIndex_ < 0 ||
@@ -108,7 +108,7 @@ void OpenZoomApp::OnTestCameraAcceleration()
     if (probePath.isEmpty()) {
         ShowStatusMessage(
             QStringLiteral(
-                "The isolated camera test is missing from this OpenZoom "
+                "The isolated camera test is missing from this OkuFlow "
                 "bundle. Rebuild or reinstall the complete bundle."),
             12000);
         return;
@@ -266,7 +266,7 @@ void OpenZoomApp::OnTestCameraAcceleration()
     process->start();
 }
 
-void OpenZoomApp::OnCameraAccelerationModeChanged(int index)
+void OkuFlowApp::OnCameraAccelerationModeChanged(int index)
 {
     if (cameraStartupPending_) return;
     if (index < 0 || index > 2 ||
@@ -290,7 +290,7 @@ void OpenZoomApp::OnCameraAccelerationModeChanged(int index)
         static_cast<size_t>(selectedCameraIndex_));
 }
 
-void OpenZoomApp::OnCameraFormatChanged(int index) {
+void OkuFlowApp::OnCameraFormatChanged(int index) {
     if (cameraStartupPending_ || !uiState_->cameraFormatCombo_ || index < 0) {
         return;
     }
@@ -303,7 +303,7 @@ void OpenZoomApp::OnCameraFormatChanged(int index) {
     }
 }
 
-void OpenZoomApp::OnMicrophoneSelectionChanged(int index)
+void OkuFlowApp::OnMicrophoneSelectionChanged(int index)
 {
     if (!uiState_->microphoneCombo_ || index < 0) {
         return;
@@ -321,7 +321,7 @@ void OpenZoomApp::OnMicrophoneSelectionChanged(int index)
     SavePersistentSettings();
 }
 
-bool OpenZoomApp::StartSelectedMicrophone()
+bool OkuFlowApp::StartSelectedMicrophone()
 {
     StopMicrophoneCapture();
     if (recordingManager_) {
@@ -368,7 +368,7 @@ bool OpenZoomApp::StartSelectedMicrophone()
                 return;
             }
             std::lock_guard lock(callbackTarget->mutex);
-            OpenZoomApp* app = callbackTarget->app;
+            OkuFlowApp* app = callbackTarget->app;
             if (!callbackTarget->accepting || !app ||
                 callbackTarget->generation != callbackGeneration) {
                 return;
@@ -389,7 +389,7 @@ bool OpenZoomApp::StartSelectedMicrophone()
                 return;
             }
             std::lock_guard lock(callbackTarget->mutex);
-            OpenZoomApp* app = callbackTarget->app;
+            OkuFlowApp* app = callbackTarget->app;
             if (!callbackTarget->accepting || !app ||
                 callbackTarget->generation != callbackGeneration) {
                 return;
@@ -398,7 +398,7 @@ bool OpenZoomApp::StartSelectedMicrophone()
             QMetaObject::invokeMethod(
                 app,
                 [callbackTarget, callbackGeneration, detail]() {
-                    OpenZoomApp* currentApp = nullptr;
+                    OkuFlowApp* currentApp = nullptr;
                     {
                         std::lock_guard lock(callbackTarget->mutex);
                         if (!callbackTarget->accepting ||
@@ -444,7 +444,7 @@ bool OpenZoomApp::StartSelectedMicrophone()
     return true;
 }
 
-void OpenZoomApp::StopMicrophoneCapture(bool retainQueuedAudio)
+void OkuFlowApp::StopMicrophoneCapture(bool retainQueuedAudio)
 {
     // Cancel and serialize callback delivery before waiting for ReadSample.
     // If Stop must detach a wedged thread, its retained callback can reach
@@ -461,19 +461,19 @@ void OpenZoomApp::StopMicrophoneCapture(bool retainQueuedAudio)
     }
 }
 
-void OpenZoomApp::OnBlackWhiteToggled(bool checked) {
+void OkuFlowApp::OnBlackWhiteToggled(bool checked) {
     blackWhiteEnabled_ = checked;
     UpdateControlEnabledStates();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
 
-void OpenZoomApp::OnBlackWhiteThresholdChanged(int value) {
+void OkuFlowApp::OnBlackWhiteThresholdChanged(int value) {
     blackWhiteThreshold_ = std::clamp(static_cast<float>(value) / 255.0f, 0.0f, 1.0f);
     SyncCurrentConfigToPersistence();
 }
 
-void OpenZoomApp::OnZoomToggled(bool checked) {
+void OkuFlowApp::OnZoomToggled(bool checked) {
     zoomEnabled_ = checked;
     pipelineOrchestrator_->MarkViewportDirty();
     UpdateControlEnabledStates();
@@ -481,20 +481,20 @@ void OpenZoomApp::OnZoomToggled(bool checked) {
     SyncCurrentConfigToPersistence();
 }
 
-void OpenZoomApp::OnZoomAmountChanged(int value) {
+void OkuFlowApp::OnZoomAmountChanged(int value) {
     zoomAmount_ = std::max(1.0f, static_cast<float>(value) / static_cast<float>(kZoomSliderScale));
     pipelineOrchestrator_->MarkViewportDirty();
     SyncCurrentConfigToPersistence();
 }
 
-void OpenZoomApp::OnDebugViewToggled(bool checked) {
+void OkuFlowApp::OnDebugViewToggled(bool checked) {
     debugViewEnabled_ = checked;
     UpdateControlEnabledStates();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
 
-void OpenZoomApp::OnZoomCenterXChanged(int value) {
+void OkuFlowApp::OnZoomCenterXChanged(int value) {
     if (suspendControlSync_) {
         return;
     }
@@ -502,7 +502,7 @@ void OpenZoomApp::OnZoomCenterXChanged(int value) {
     SetZoomCenter(norm, zoomCenterY_, false);
 }
 
-void OpenZoomApp::OnZoomCenterYChanged(int value) {
+void OkuFlowApp::OnZoomCenterYChanged(int value) {
     if (suspendControlSync_) {
         return;
     }
@@ -510,7 +510,7 @@ void OpenZoomApp::OnZoomCenterYChanged(int value) {
     SetZoomCenter(zoomCenterX_, norm, false);
 }
 
-void OpenZoomApp::OnRotationSelectionChanged(int index) {
+void OkuFlowApp::OnRotationSelectionChanged(int index) {
     if (!uiState_->rotationCombo_) {
         return;
     }
@@ -551,7 +551,7 @@ void OpenZoomApp::OnRotationSelectionChanged(int index) {
     SyncCurrentConfigToPersistence();
 }
 
-void OpenZoomApp::OnControlsCollapsedToggled(bool checked) {
+void OkuFlowApp::OnControlsCollapsedToggled(bool checked) {
     Q_UNUSED(checked);
     controlsCollapsed_ = false;
     if (uiState_->controlsContainer_) {
@@ -566,7 +566,7 @@ void OpenZoomApp::OnControlsCollapsedToggled(bool checked) {
     settingsController_->MutableSettings().controlsCollapsed = false;
 }
 
-void OpenZoomApp::OnVirtualJoystickToggled(bool checked) {
+void OkuFlowApp::OnVirtualJoystickToggled(bool checked) {
     virtualJoystickEnabled_ = checked;
     if (!virtualJoystickEnabled_) {
         if (interactionController_) {
@@ -586,20 +586,20 @@ void OpenZoomApp::OnVirtualJoystickToggled(bool checked) {
     SavePersistentSettings();
 }
 
-void OpenZoomApp::OnBlurToggled(bool checked) {
+void OkuFlowApp::OnBlurToggled(bool checked) {
     blurEnabled_ = checked;
     UpdateControlEnabledStates();
     UpdateBlurUiLabels();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnBlurSigmaChanged(int value) {
+void OkuFlowApp::OnBlurSigmaChanged(int value) {
     blurSigma_ = SliderValueToSigma(value);
     UpdateBlurUiLabels();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnBlurRadiusChanged(int value) {
+void OkuFlowApp::OnBlurRadiusChanged(int value) {
     const int snapped = SnapBlurRadius(value);
     if (uiState_->blurRadiusSlider_ && snapped != value) {
         auto blocker = uiState_->BlockSignals(uiState_->blurRadiusSlider_);
@@ -611,27 +611,27 @@ void OpenZoomApp::OnBlurRadiusChanged(int value) {
     SyncCurrentConfigToPersistence();
 }
 
-void OpenZoomApp::OnFocusMarkerToggled(bool checked) {
+void OkuFlowApp::OnFocusMarkerToggled(bool checked) {
     focusMarkerEnabled_ = checked;
     UpdateControlEnabledStates();
     pipelineOrchestrator_->MarkViewportDirty();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnSpatialSharpenToggled(bool checked) {
+void OkuFlowApp::OnSpatialSharpenToggled(bool checked) {
     spatialSharpenEnabled_ = checked;
     UpdateControlEnabledStates();
     UpdateSpatialSharpenUi();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnSpatialUpscalerChanged(int index) {
+void OkuFlowApp::OnSpatialUpscalerChanged(int index) {
     const int clamped = std::clamp(index, 0, 1);
     spatialUpscaler_ = static_cast<SpatialUpscaler>(clamped);
     UpdateSpatialSharpenUi();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnSpatialSharpnessChanged(int value) {
+void OkuFlowApp::OnSpatialSharpnessChanged(int value) {
     spatialSharpness_ = std::clamp(static_cast<float>(value) / 100.0f, 0.0f, 1.0f);
     if (uiState_->spatialSharpnessValueLabel_) {
         SetLiveText(uiState_->spatialSharpnessValueLabel_,
@@ -643,7 +643,7 @@ void OpenZoomApp::OnSpatialSharpnessChanged(int value) {
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnTemporalSmoothToggled(bool checked) {
+void OkuFlowApp::OnTemporalSmoothToggled(bool checked) {
     temporalSmoothEnabled_ = checked;
     UpdateControlEnabledStates();
     cpuPipeline_.ResetTemporalHistory();
@@ -654,7 +654,7 @@ void OpenZoomApp::OnTemporalSmoothToggled(bool checked) {
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnTemporalSmoothStrengthChanged(int value) {
+void OkuFlowApp::OnTemporalSmoothStrengthChanged(int value) {
     const int sliderMin = uiState_->temporalSmoothSlider_ ? uiState_->temporalSmoothSlider_->minimum() : 1;
     const int sliderMax = uiState_->temporalSmoothSlider_ ? uiState_->temporalSmoothSlider_->maximum() : 100;
     const int clamped = std::clamp(value, sliderMin, sliderMax);
@@ -677,7 +677,7 @@ void OpenZoomApp::OnTemporalSmoothStrengthChanged(int value) {
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnStabilizationToggled(bool checked) {
+void OkuFlowApp::OnStabilizationToggled(bool checked) {
     stabilizationEnabled_ = checked;
     if (!checked) {
         bumpHoldEnabled_ = false;
@@ -696,13 +696,13 @@ void OpenZoomApp::OnStabilizationToggled(bool checked) {
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnBumpHoldToggled(bool checked) {
+void OkuFlowApp::OnBumpHoldToggled(bool checked) {
     bumpHoldEnabled_ =
         checked && stabilizationEnabled_;
     UpdateControlEnabledStates();
     UpdateProcessingStatusLabel();
 }
-void OpenZoomApp::OnKeystoneToggled(bool checked) {
+void OkuFlowApp::OnKeystoneToggled(bool checked) {
     keystoneEnabled_ = checked;
     UpdateControlEnabledStates();
     if (cudaSurface_) {
@@ -714,7 +714,7 @@ void OpenZoomApp::OnKeystoneToggled(bool checked) {
     SyncCurrentConfigToPersistence();
 }
 
-void OpenZoomApp::OpenSetupAssistant()
+void OkuFlowApp::OpenSetupAssistant()
 {
     if (!mainWindow_) {
         return;
@@ -758,7 +758,7 @@ void OpenZoomApp::OpenSetupAssistant()
     setupAssistantDialog_->show();
 }
 
-void OpenZoomApp::OpenUserDataFolder()
+void OkuFlowApp::OpenUserDataFolder()
 {
     if (!mainWindow_ || !userDataPaths_) {
         return;
@@ -767,27 +767,27 @@ void OpenZoomApp::OpenUserDataFolder()
     const QString root = userDataPaths_->Root(&error);
     if (root.isEmpty()) {
         QMessageBox::warning(mainWindow_.get(),
-                             QStringLiteral("Open OpenZoom Folder"),
+                             QStringLiteral("Open OkuFlow Folder"),
                              error.isEmpty()
                                  ? QStringLiteral(
-                                       "The OpenZoom folder is unavailable.")
+                                       "The OkuFlow folder is unavailable.")
                                  : error);
         return;
     }
     if (!QDesktopServices::openUrl(QUrl::fromLocalFile(root))) {
         QMessageBox::warning(
             mainWindow_.get(),
-            QStringLiteral("Open OpenZoom Folder"),
+            QStringLiteral("Open OkuFlow Folder"),
             QStringLiteral("Windows could not open:\n%1")
                 .arg(QDir::toNativeSeparators(root)));
         return;
     }
     const QString message =
-        QStringLiteral("Opened your OpenZoom folder.");
+        QStringLiteral("Opened your OkuFlow folder.");
     ShowStatusMessage(message, 3500);
 }
 
-void OpenZoomApp::ChangeUserDataFolder()
+void OkuFlowApp::ChangeUserDataFolder()
 {
     if (!mainWindow_ || !userDataPaths_ || !settingsController_) {
         return;
@@ -796,7 +796,7 @@ void OpenZoomApp::ChangeUserDataFolder()
     const QString currentRoot = userDataPaths_->Root(&currentError);
     const QString selected = QFileDialog::getExistingDirectory(
         mainWindow_.get(),
-        QStringLiteral("Choose OpenZoom Folder"),
+        QStringLiteral("Choose OkuFlow Folder"),
         currentRoot,
         QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
     if (selected.isEmpty()) {
@@ -807,9 +807,9 @@ void OpenZoomApp::ChangeUserDataFolder()
     if (!userDataPaths_->SetConfiguredRoot(selected, &error)) {
         QMessageBox::warning(
             mainWindow_.get(),
-            QStringLiteral("Choose OpenZoom Folder"),
+            QStringLiteral("Choose OkuFlow Folder"),
             error.isEmpty()
-                ? QStringLiteral("OpenZoom cannot use the selected folder.")
+                ? QStringLiteral("OkuFlow cannot use the selected folder.")
                 : error);
         return;
     }
@@ -821,12 +821,12 @@ void OpenZoomApp::ChangeUserDataFolder()
     SavePersistentSettings();
 
     const QString message =
-        QStringLiteral("New OpenZoom files will be saved in %1.")
+        QStringLiteral("New OkuFlow files will be saved in %1.")
             .arg(QDir::toNativeSeparators(userDataPaths_->Root()));
     ShowStatusMessage(message, 7000);
 }
 
-void OpenZoomApp::OnKeystoneStepBack() {
+void OkuFlowApp::OnKeystoneStepBack() {
     if (!keystoneEnabled_ || !cudaSurface_) {
         return;
     }
@@ -836,7 +836,7 @@ void OpenZoomApp::OnKeystoneStepBack() {
     }
     UpdateKeystoneTrackingUi();
 }
-void OpenZoomApp::OnKeystonePauseResume() {
+void OkuFlowApp::OnKeystonePauseResume() {
     if (!keystoneEnabled_ || !cudaSurface_) {
         return;
     }
@@ -847,7 +847,7 @@ void OpenZoomApp::OnKeystonePauseResume() {
                       3500);
     UpdateKeystoneTrackingUi();
 }
-void OpenZoomApp::OnKeystoneStepForward() {
+void OkuFlowApp::OnKeystoneStepForward() {
     if (!keystoneEnabled_ || !cudaSurface_) {
         return;
     }
@@ -860,7 +860,7 @@ void OpenZoomApp::OnKeystoneStepForward() {
     }
     UpdateKeystoneTrackingUi();
 }
-void OpenZoomApp::UpdateKeystoneTrackingUi() {
+void OkuFlowApp::UpdateKeystoneTrackingUi() {
     if (!mainWindow_) {
         return;
     }
@@ -874,17 +874,17 @@ void OpenZoomApp::UpdateKeystoneTrackingUi() {
                                              state.canStepForward, state.stepPending,
                                              state.position, state.count);
 }
-void OpenZoomApp::OnAutoContrastToggled(bool checked) {
+void OkuFlowApp::OnAutoContrastToggled(bool checked) {
     autoContrastEnabled_ = checked;
     UpdateControlEnabledStates();
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnAutoContrastStrengthChanged(int value) {
+void OkuFlowApp::OnAutoContrastStrengthChanged(int value) {
     autoContrastStrength_ = std::clamp(static_cast<float>(value) / 100.0f, 0.0f, 1.0f);
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnTextClarityControlsChanged() {
+void OkuFlowApp::OnTextClarityControlsChanged() {
     const bool wasSuperResEnabled = mlTextSuperResolutionEnabled_;
     autoTextClarityEnabled_ = uiState_->textClarityCheckbox_ && uiState_->textClarityCheckbox_->isChecked();
     backgroundFlattenEnabled_ = uiState_->backgroundFlattenCheckbox_ && uiState_->backgroundFlattenCheckbox_->isChecked();
@@ -914,7 +914,7 @@ void OpenZoomApp::OnTextClarityControlsChanged() {
     glareSuppressionEnabled_ = uiState_->glareSuppressionCheckbox_ && uiState_->glareSuppressionCheckbox_->isChecked();
     glareSuppressionStrength_ = uiState_->glareSuppressionStrengthSlider_
                                     ? std::clamp(uiState_->glareSuppressionStrengthSlider_->value() / 100.0f, 0.0f, 1.0f) : 0.5f;
-#if OPENZOOM_ENABLE_TEXT_SR
+#if OKUFLOW_ENABLE_TEXT_SR
     if (uiState_->mlTextSuperResolutionCheckbox_ && uiState_->mlTextSuperResolutionCheckbox_->isChecked()) {
         mlTextSuperResolutionUltra1440p_ =
             uiState_->mlTextSuperResolutionUltra1440pCheckbox_ &&
@@ -999,7 +999,7 @@ void OpenZoomApp::OnTextClarityControlsChanged() {
     SyncCurrentConfigToPersistence();
 }
 
-void OpenZoomApp::UpdateControlEnabledStates() {
+void OkuFlowApp::UpdateControlEnabledStates() {
     const auto setEnabled = [](QWidget* widget, bool enabled) {
         if (widget) {
             widget->setEnabled(enabled);
@@ -1008,6 +1008,8 @@ void OpenZoomApp::UpdateControlEnabledStates() {
 
     setEnabled(uiState_->bwSlider_, blackWhiteEnabled_);
     setEnabled(uiState_->zoomSlider_, zoomEnabled_);
+    setEnabled(uiState_->zoomCenterXSlider_, zoomEnabled_);
+    setEnabled(uiState_->zoomCenterYSlider_, zoomEnabled_);
     setEnabled(uiState_->blurSigmaSlider_, blurEnabled_);
     setEnabled(uiState_->blurRadiusSlider_, blurEnabled_);
     setEnabled(uiState_->temporalSmoothSlider_, temporalSmoothEnabled_);
@@ -1044,7 +1046,7 @@ void OpenZoomApp::UpdateControlEnabledStates() {
     UpdateSectionChangedCounts();
 }
 
-void OpenZoomApp::UpdateSectionChangedCounts() {
+void OkuFlowApp::UpdateSectionChangedCounts() {
     if (!mainWindow_ || !uiState_) {
         return;
     }
@@ -1059,8 +1061,8 @@ void OpenZoomApp::UpdateSectionChangedCounts() {
                                             profileDefault);
 }
 
-void OpenZoomApp::SetSuperResPerformanceOverride(bool enabled) {
-#if OPENZOOM_ENABLE_TEXT_SR
+void OkuFlowApp::SetSuperResPerformanceOverride(bool enabled) {
+#if OKUFLOW_ENABLE_TEXT_SR
     if (!mlTextSuperResolutionEnabled_ || !cudaSurface_) {
         return;
     }
@@ -1073,7 +1075,7 @@ void OpenZoomApp::SetSuperResPerformanceOverride(bool enabled) {
     Q_UNUSED(enabled);
 #endif
 }
-void OpenZoomApp::OnDisplayColorSchemeChanged() {
+void OkuFlowApp::OnDisplayColorSchemeChanged() {
     if (uiState_->displayColorPicker_) {
         displayColorScheme_ = color_schemes::NormalizeColorScheme(
             uiState_->displayColorPicker_->currentScheme(), displayColorMode_);
@@ -1092,15 +1094,15 @@ void OpenZoomApp::OnDisplayColorSchemeChanged() {
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnContrastChanged(int value) {
+void OkuFlowApp::OnContrastChanged(int value) {
     contrast_ = std::clamp(static_cast<float>(value) / 100.0f, 0.25f, 4.0f);
     SyncCurrentConfigToPersistence();
 }
-void OpenZoomApp::OnBrightnessChanged(int value) {
+void OkuFlowApp::OnBrightnessChanged(int value) {
     brightness_ = std::clamp(static_cast<float>(value) / 100.0f, -1.0f, 1.0f);
     SyncCurrentConfigToPersistence();
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

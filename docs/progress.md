@@ -1,4 +1,4 @@
-# OpenZoom Project Tracker
+# OkuFlow Project Tracker
 
 ## Current Snapshot
 Updated after repository audit on 2026-03-31.
@@ -9,7 +9,7 @@ Updated after repository audit on 2026-03-31.
 - [x] Build the CPU frame pipeline for conversion, rotation, zoom, blur, temporal smoothing, and debug compositing.
 - [x] Bring up the Direct3D 12 presenter, including GPU texture readback.
 - [x] Enable the CUDA interop processing path with CPU fallback.
-- [x] Add persistent settings storage in `%APPDATA%\OpenZoom\OpenZoom\settings.json`.
+- [x] Add persistent settings storage in `%APPDATA%\OkuFlow\OkuFlow\settings.json`.
 - [x] Add processed photo capture and processed H.264 MP4 recording.
 - [x] Add rotation-aware focus controls, joystick navigation, mouse pan, and wheel zoom/pan.
 - [x] Add release-bundle scripting and a minimal validation harness entry point.
@@ -19,7 +19,7 @@ Updated after repository audit on 2026-03-31.
 
 ## In Progress
 - [ ] Broaden CUDA interop validation across more GPUs, drivers, and toolkit versions.
-- [ ] Add real automated tests behind `OPENZOOM_ENABLE_TESTS`.
+- [ ] Add real automated tests behind `OKUFLOW_ENABLE_TESTS`.
 - [ ] Tighten documentation and release hygiene as the feature set expands.
 - [ ] Improve OCR quality, add ROI selection, and harden VLM request/response handling across more providers.
 

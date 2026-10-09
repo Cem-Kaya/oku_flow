@@ -1,5 +1,5 @@
-#include "openzoom/capture/capture_buffer.hpp"
-#include "openzoom/capture/capture_texture.hpp"
+#include "okuflow/capture/capture_buffer.hpp"
+#include "okuflow/capture/capture_texture.hpp"
 
 #include <QtTest/QtTest>
 #include <wrl/client.h>
@@ -63,7 +63,7 @@ private slots:
         destinationDescription.MiscFlags = D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
         ComPtr<ID3D11Texture2D> destination;
         QVERIFY(SUCCEEDED(device->CreateTexture2D(&destinationDescription, nullptr, destination.GetAddressOf())));
-        QVERIFY(openzoom::CopyBgraCaptureTexture(context.Get(), source.Get(),
+        QVERIFY(okuflow::CopyBgraCaptureTexture(context.Get(), source.Get(),
             D3D11CalcSubresource(1, 1, 2), destination.Get(), 3, 2));
 
         auto stagingDescription = destinationDescription;
@@ -85,14 +85,14 @@ private slots:
         context->Unmap(staging.Get(), 0);
         QVERIFY(pixelsMatch);
 
-        QVERIFY(!openzoom::CopyBgraCaptureTexture(context.Get(), source.Get(), 4,
+        QVERIFY(!okuflow::CopyBgraCaptureTexture(context.Get(), source.Get(), 4,
             destination.Get(), 3, 2)); // nonexistent array slice
-        QVERIFY(!openzoom::CopyBgraCaptureTexture(context.Get(), source.Get(), 3,
+        QVERIFY(!okuflow::CopyBgraCaptureTexture(context.Get(), source.Get(), 3,
             destination.Get(), 5, 2)); // outside source mip/destination extent
         sourceDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         ComPtr<ID3D11Texture2D> rgbaSource;
         QVERIFY(SUCCEEDED(device->CreateTexture2D(&sourceDescription, initial, rgbaSource.GetAddressOf())));
-        QVERIFY(!openzoom::CopyBgraCaptureTexture(context.Get(), rgbaSource.Get(), 3,
+        QVERIFY(!okuflow::CopyBgraCaptureTexture(context.Get(), rgbaSource.Get(), 3,
             destination.Get(), 3, 2)); // channel conversion must use the video processor
     }
 
@@ -109,14 +109,14 @@ private slots:
         QVERIFY(SUCCEEDED(buffer->SetCurrentLength(20))); // final padding is unnecessary
         std::vector<std::uint8_t> result;
         LONG stride = 0;
-        QVERIFY(openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12,
+        QVERIFY(okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12,
                                              4, 2, 8, result, stride));
         QCOMPARE(stride, LONG(4));
         QCOMPARE(result.size(), std::size_t(12));
         QVERIFY(std::memcmp(result.data(), rows, sizeof(rows)) == 0);
         QVERIFY(SUCCEEDED(buffer->SetCurrentLength(19)));
         const auto previous = result;
-        QVERIFY(!openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12,
+        QVERIFY(!okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12,
                                               4, 2, 8, result, stride));
         QVERIFY(result == previous);
     }
@@ -134,7 +134,7 @@ private slots:
         QVERIFY(SUCCEEDED(buffer->SetCurrentLength(20)));
         std::vector<std::uint8_t> result;
         LONG stride = 0;
-        QVERIFY(openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_RGB32,
+        QVERIFY(okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_RGB32,
                                              2, 2, -12, result, stride));
         QCOMPARE(stride, LONG(8));
         QCOMPARE(result.size(), std::size_t(16));
@@ -159,7 +159,7 @@ private slots:
         QVERIFY(SUCCEEDED(buffer->SetCurrentLength(20)));
         std::vector<std::uint8_t> result;
         LONG stride = 0;
-        QVERIFY(openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_YUY2,
+        QVERIFY(okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_YUY2,
                                              4, 2, 12, result, stride));
         QCOMPARE(stride, LONG(8));
         QCOMPARE(result.size(), std::size_t(16));
@@ -192,7 +192,7 @@ private slots:
         std::vector<std::uint8_t> result;
         LONG stride = 0;
         // Deliberately wrong metadata must not override the actual 2D layout.
-        QVERIFY(openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_RGB32,
+        QVERIFY(okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_RGB32,
                                              6, 3, 4, result, stride));
         QCOMPARE(stride, LONG(24));
         QCOMPARE(result.size(), std::size_t(72));
@@ -202,7 +202,7 @@ private slots:
             }
         }
         // The copy always releases its lock, including on validation failures.
-        QVERIFY(!openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_RGB32,
+        QVERIFY(!okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_RGB32,
                                               600, 3, 4, result, stride));
         QVERIFY(SUCCEEDED(surface->Lock2D(&top, &pitch)));
         QVERIFY(SUCCEEDED(surface->Unlock2D()));
@@ -222,7 +222,7 @@ private slots:
         QVERIFY(SUCCEEDED(surface->Unlock2D()));
         std::vector<std::uint8_t> result;
         LONG stride = 0;
-        QVERIFY(openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12,
+        QVERIFY(okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12,
                                              6, 4, 6, result, stride));
         QCOMPARE(stride, LONG(6));
         QCOMPARE(result.size(), std::size_t(36));
@@ -240,11 +240,11 @@ private slots:
         QVERIFY(SUCCEEDED(buffer->SetCurrentLength(64)));
         std::vector<std::uint8_t> result{77};
         LONG stride = 99;
-        QVERIFY(!openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12, 4, 2, -4, result, stride));
-        QVERIFY(!openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12, 4, 3, 4, result, stride));
-        QVERIFY(!openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_YUY2, 3, 2, 8, result, stride));
-        QVERIFY(!openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_RGB32, 4, 2, 8, result, stride));
-        QVERIFY(!openzoom::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_RGB32, UINT_MAX, UINT_MAX, 4, result, stride));
+        QVERIFY(!okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12, 4, 2, -4, result, stride));
+        QVERIFY(!okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12, 4, 3, 4, result, stride));
+        QVERIFY(!okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_YUY2, 3, 2, 8, result, stride));
+        QVERIFY(!okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_RGB32, 4, 2, 8, result, stride));
+        QVERIFY(!okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_RGB32, UINT_MAX, UINT_MAX, 4, result, stride));
         QCOMPARE(stride, LONG(99));
         QCOMPARE(result.size(), std::size_t(1));
         QCOMPARE(result[0], std::uint8_t(77));

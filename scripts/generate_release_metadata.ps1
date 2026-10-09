@@ -9,7 +9,7 @@ param(
     # QT_VERSION). Never hardcode: QT_PREFIX/Qt6_DIR overrides change it.
     [string]$QtVersion = '',
 
-    # Mirrors OPENZOOM_ENABLE_CUDA from the validated build so the SBOM does
+    # Mirrors OKUFLOW_ENABLE_CUDA from the validated build so the SBOM does
     # not claim a static CUDA runtime in a CPU-only emergency bundle.
     [string]$CudaEnabled = 'ON'
 )
@@ -69,11 +69,11 @@ if ($LASTEXITCODE -ne 0) {
 $statusLines = @(& git -C $repository status --porcelain --untracked-files=normal 2>$null)
 $dirty = $LASTEXITCODE -ne 0 -or $statusLines.Count -gt 0
 
-$executable = Join-Path $bundle 'open_zoom.exe'
+$executable = Join-Path $bundle 'oku_flow.exe'
 $signature = Get-AuthenticodeSignature -LiteralPath $executable
 $manifest = [ordered]@{
     schemaVersion = 1
-    product = 'OpenZoom'
+    product = 'OkuFlow'
     generatedUtc = [DateTime]::UtcNow.ToString('o')
     sourceCommit = [string]$commit
     sourceTreeDirty = $dirty
@@ -102,15 +102,15 @@ $namespaceId = if ($commit -ne 'unknown') {
 }
 $packages = @(
     [ordered]@{
-        SPDXID = 'SPDXRef-Package-OpenZoom'
-        name = 'OpenZoom'
+        SPDXID = 'SPDXRef-Package-OkuFlow'
+        name = 'OkuFlow'
         versionInfo = $namespaceId
         downloadLocation = 'NOASSERTION'
         filesAnalyzed = $false
-        licenseConcluded = 'GPL-3.0-only OR LicenseRef-OpenZoom-Commercial'
-        licenseDeclared = 'GPL-3.0-only OR LicenseRef-OpenZoom-Commercial'
+        licenseConcluded = 'GPL-3.0-only OR LicenseRef-OkuFlow-Commercial'
+        licenseDeclared = 'GPL-3.0-only OR LicenseRef-OkuFlow-Commercial'
         copyrightText = 'NOASSERTION'
-        comment = 'OpenZoom is also available under a separate commercial license.'
+        comment = 'OkuFlow is also available under a separate commercial license.'
     },
     [ordered]@{
         SPDXID = 'SPDXRef-Package-Qt'
@@ -165,7 +165,7 @@ $packages = @(
         licenseConcluded = 'LicenseRef-NVIDIA-CUDA-EULA'
         licenseDeclared = 'LicenseRef-NVIDIA-CUDA-EULA'
         copyrightText = 'Copyright NVIDIA Corporation'
-        comment = 'cudart_static is linked into open_zoom.exe. The separately installed NVIDIA display driver is not bundled. The Toolkit EULA is staged as licenses/NVIDIA_CUDA_EULA.txt.'
+        comment = 'cudart_static is linked into oku_flow.exe. The separately installed NVIDIA display driver is not bundled. The Toolkit EULA is staged as licenses/NVIDIA_CUDA_EULA.txt.'
     },
     [ordered]@{
         SPDXID = 'SPDXRef-Package-Maxine-Headers'
@@ -336,7 +336,7 @@ foreach ($dependency in @(
         continue
     }
     $relationships += [ordered]@{
-        spdxElementId = 'SPDXRef-Package-OpenZoom'
+        spdxElementId = 'SPDXRef-Package-OkuFlow'
         relationshipType = 'DEPENDS_ON'
         relatedSpdxElement = $dependency
     }
@@ -365,29 +365,41 @@ foreach ($dependency in @(
     $relationships += [ordered]@{
         spdxElementId = $dependency
         relationshipType = 'OPTIONAL_DEPENDENCY_OF'
-        relatedSpdxElement = 'SPDXRef-Package-OpenZoom'
+        relatedSpdxElement = 'SPDXRef-Package-OkuFlow'
     }
 }
 
 $qtExternalDocumentRefs = @()
-foreach ($module in @(
+$qtModules = @(
     'qtbase',
     'qtimageformats',
     'qtmultimedia',
-    'qtpdf',
     'qtspeech',
-    'qtsvg')) {
+    'qtsvg')
+$pdfSbomPath = Join-Path $bundle (
+    "licenses/qt-sbom/qtpdf-{0}.spdx.json" -f $qtRuntimeVersion)
+if ((Test-Path -LiteralPath (Join-Path $bundle 'Qt6Pdf.dll')) -or
+    (Test-Path -LiteralPath $pdfSbomPath)) {
+    $qtModules += 'qtpdf'
+}
+foreach ($module in $qtModules) {
     $qtSbomPath = Join-Path $bundle (
         "licenses/qt-sbom/{0}-{1}.spdx.json" -f $module, $qtRuntimeVersion)
     if (-not (Test-Path -LiteralPath $qtSbomPath -PathType Leaf)) {
         throw "Required Qt module SPDX document is missing: $qtSbomPath"
     }
     $qtSbom = Get-Content -LiteralPath $qtSbomPath -Raw | ConvertFrom-Json
-    $qtRootPackage = "SPDXRef-Package-$module"
+    # Qt 6.12 adds a hash suffix to package IDs. Identify the unique module
+    # package by its name, then link its actual SPDXID instead of inventing one.
+    $qtRootPackages = @($qtSbom.packages | Where-Object {
+        $_.name -eq $module -and
+        $_.SPDXID -match "^SPDXRef-Package-$module(?:-[0-9a-f]+)?$"
+    })
     if ([string]::IsNullOrWhiteSpace($qtSbom.documentNamespace) -or
-        $qtRootPackage -notin @($qtSbom.packages | ForEach-Object { $_.SPDXID })) {
-        throw "Qt module SPDX document is invalid or lacks $qtRootPackage`: $qtSbomPath"
+        $qtRootPackages.Count -ne 1) {
+        throw "Qt module SPDX document is invalid or lacks a unique $module package: $qtSbomPath"
     }
+    $qtRootPackage = $qtRootPackages[0].SPDXID
     $externalDocumentId = "DocumentRef-Qt-$module"
     $qtExternalDocumentRefs += [ordered]@{
         externalDocumentId = $externalDocumentId
@@ -410,20 +422,20 @@ $sbom = [ordered]@{
     spdxVersion = 'SPDX-2.3'
     dataLicense = 'CC0-1.0'
     SPDXID = 'SPDXRef-DOCUMENT'
-    name = 'OpenZoom release SBOM'
-    documentNamespace = "https://openzoom.local/spdx/$namespaceId"
-    documentDescribes = @('SPDXRef-Package-OpenZoom')
+    name = 'OkuFlow release SBOM'
+    documentNamespace = "https://okuflow.com/spdx/$namespaceId"
+    documentDescribes = @('SPDXRef-Package-OkuFlow')
     externalDocumentRefs = @($qtExternalDocumentRefs)
     creationInfo = [ordered]@{
         created = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
-        creators = @('Tool: OpenZoom generate_release_metadata.ps1')
+        creators = @('Tool: OkuFlow generate_release_metadata.ps1')
     }
     hasExtractedLicensingInfos = @(
         [ordered]@{
-            licenseId = 'LicenseRef-OpenZoom-Commercial'
+            licenseId = 'LicenseRef-OkuFlow-Commercial'
             extractedText =
-                'OpenZoom is available under a separate commercial license from its copyright holder.'
-            name = 'OpenZoom commercial license'
+                'OkuFlow is available under a separate commercial license from its copyright holder.'
+            name = 'OkuFlow commercial license'
         }
     ) + @(
         if ($cudaIsEnabled) {

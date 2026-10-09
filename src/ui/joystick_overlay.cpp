@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/ui/joystick_overlay.hpp"
+#include "okuflow/ui/joystick_overlay.hpp"
 
 #include <QColor>
 #include <QEvent>
@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace openzoom {
+namespace okuflow {
 
 JoystickOverlay::JoystickOverlay(QWidget* parent)
     : QWidget(parent)
@@ -178,6 +178,6 @@ void JoystickOverlay::UpdateMask()
 }
 
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

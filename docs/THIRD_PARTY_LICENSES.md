@@ -1,30 +1,33 @@
 # Third-Party Licenses and Attributions
 
-OpenZoom relies on several third-party SDKs and code drops. Keep this summary with any redistributed build and update it whenever dependencies or bundled notices change.
+OkuFlow relies on several third-party SDKs and code drops. Keep this summary with any redistributed build and update it whenever dependencies or bundled notices change.
 
 ## Qt 6
 - Upstream: <https://www.qt.io/>
 - License family: LGPL-3.0 / GPL-3.0 / commercial, depending on how Qt is obtained
-- OpenZoom usage: dynamically linked Qt Widgets runtime deployed via `windeployqt`
+- OkuFlow usage: dynamically linked Qt Widgets runtime deployed via `windeployqt`
 - Notes:
   - Release bundles stage the applicable Qt license text as
     `licenses/QT_LICENSE.txt`.
   - They also stage the exact `qtbase`, `qtimageformats`, `qtmultimedia`,
-    `qtpdf`, `qtspeech`, and `qtsvg` SPDX 2.3 JSON documents supplied by the
-    selected Qt runtime under `licenses/qt-sbom/`. The OpenZoom SBOM links each
+    `qtspeech`, and `qtsvg` SPDX 2.3 JSON documents supplied by the
+    selected Qt runtime under `licenses/qt-sbom/`. The OkuFlow SBOM links each
     document by namespace and checksum instead of flattening or weakening Qt's
     detailed component-level license declarations.
+  - Qt PDF's exact `qtpdf` document is also retained when present, and is
+    mandatory if the bundle deploys `Qt6Pdf.dll`. Qt PDF is not an application
+    dependency; an installation without it can still produce a complete bundle.
   - If you modify Qt itself, those changes must be handled under Qt's licensing terms.
   - Development builds expect the user to provide a local Qt installation.
 
 ### FFmpeg libraries deployed by Qt Multimedia
 - Upstream: <https://ffmpeg.org/>
 - Version: the exact version declared by the staged Qt Multimedia SPDX
-  document (7.1.1 for the documented Qt 6.9.3 toolchain)
+  document (9.0.1 for the documented Qt 6.12.0 toolchain)
 - License: LGPL-2.1-or-later plus the permissive component licenses enumerated
   in Qt's `qtmultimedia` SPDX document; the official Qt binary does not include
   FFmpeg's optional GPL-only components
-- OpenZoom usage: `windeployqt` deploys the Qt Multimedia FFmpeg backend and
+- OkuFlow usage: `windeployqt` deploys the Qt Multimedia FFmpeg backend and
   its `avcodec`, `avformat`, `avutil`, `swresample`, and `swscale` libraries
 - Attribution: release bundles stage the matching source tree's complete
   LGPL-2.1-or-later text as `licenses/QT_FFMPEG_LGPL_2_1.txt` and retain the
@@ -60,11 +63,11 @@ OpenZoom relies on several third-party SDKs and code drops. Keep this summary wi
 ## NVIDIA CUDA Toolkit
 - Upstream: <https://developer.nvidia.com/cuda-toolkit>
 - License: NVIDIA CUDA Toolkit EULA
-- OpenZoom redistribution scope:
-  - CUDA-enabled builds link `cudart_static` into `open_zoom.exe`
+- OkuFlow redistribution scope:
+  - CUDA-enabled builds link `cudart_static` into `oku_flow.exe`
   - no standalone CUDA Toolkit runtime DLLs, headers, compilers, or developer
     tools are copied into release bundles
-  - the Toolkit EULA from the exact build toolkit is staged as
+  - the Toolkit EULA (`EULA.txt` or the newer `LICENSE` filename) from the exact build toolkit is staged as
     `licenses/NVIDIA_CUDA_EULA.txt`; the separately installed display driver
     is not part of the bundle
 - Review NVIDIA's current redistribution terms before shipping CUDA-enabled
@@ -79,11 +82,11 @@ OpenZoom relies on several third-party SDKs and code drops. Keep this summary wi
 - Header/sample snapshot license: MIT
 - Runtime license: NVIDIA SDK License Agreement; the supported 0.7.6 Video
   Effects runtime is obtained and installed separately by the user.
-- OpenZoom usage: optional runtime-loaded SuperRes on supported NVIDIA GPUs.
+- OkuFlow usage: optional runtime-loaded SuperRes on supported NVIDIA GPUs.
   The GPL application resolves `NVVideoEffects.dll` and `NVCVImage.dll` with
   `LoadLibrary`/`GetProcAddress`; it has no import-library dependency.
 - Distribution scope: no NVIDIA Video Effects runtime binaries, models, or
-  installers are stored in the repository or copied into OpenZoom bundles.
+  installers are stored in the repository or copied into OkuFlow bundles.
   The Setup Assistant fetches a pinned installer directly from NVIDIA, verifies
   its SHA-256 value, and launches NVIDIA's installer after the user chooses to
   install it.
@@ -99,7 +102,7 @@ OpenZoom relies on several third-party SDKs and code drops. Keep this summary wi
 - Local notice file: [`assets/icons/lucide/LICENSE`](../assets/icons/lucide/LICENSE)
 - License: ISC; several inherited Feather icons also carry the MIT notice in
   the same license file
-- OpenZoom usage: embedded Qt resource icons for camera actions, floating
+- OkuFlow usage: embedded Qt resource icons for camera actions, floating
   Assistant controls, Advanced section navigation, and keystone history
   Previous/Stop/Continue/Next actions
 - Attribution: retain the local license file in source and the third-party
@@ -116,13 +119,13 @@ OpenZoom relies on several third-party SDKs and code drops. Keep this summary wi
 ## Native WebRTC Stack (live transcription, plan 36 Carrier D)
 All components below are fetched by pinned commit at build time (never
 committed to this repository), built as static libraries, and linked into
-`open_zoom.exe`. Every license is GPL-3.0-compatible; no proprietary
+`oku_flow.exe`. Every license is GPL-3.0-compatible; no proprietary
 component is involved and no extra runtime DLL ships in the bundle. Exact
 upstream license texts are staged in the release bundle's `licenses/`
 directory and covered by its checksum manifest.
 
 - **libdatachannel v0.24.5** (commit `443f6934d9007eb7076ab7825ba330f355fcbead`)
-  - License: MPL-2.0 (file-level copyleft; OpenZoom uses it unmodified)
+  - License: MPL-2.0 (file-level copyleft; OkuFlow uses it unmodified)
   - Role: PeerConnection, SDP, ICE, DTLS-SRTP, SCTP data channel, RTP
     packetization
   - Bundled pinned submodules (also separate SBOM packages):
@@ -157,18 +160,40 @@ ordinary changes re-validated by the loopback and live test matrices.
 - NVIDIA Video Effects runtime, models, and installers
 - OpenAI Codex CLI binaries and installer/bootstrap files
 
-`OPENZOOM_ENABLE_TEXT_SR` adds only the dynamic Maxine adapter built from the
+`OKUFLOW_ENABLE_TEXT_SR` adds only the dynamic Maxine adapter built from the
 MIT header snapshot. It does not add a link-time or redistribution dependency
 on the proprietary runtime.
 
 ## Optional External Tools And Services
+- OBS Studio (GPL-2.0-or-later, <https://obsproject.com/>) is an optional
+  separately installed lecture-test tool. `scripts/lecture_camera.ps1`
+  prepares a private local portable copy, including its bundled obs-websocket
+  plugin. Neither OBS nor its binaries/plugins ship in OkuFlow bundles.
+- DroidCam Virtual Output 0.2.2 (GPL-2.0,
+  <https://github.com/dev47apps/droidcam-obs-virtual-output>) is extracted from
+  a SHA-256-verified official package into the private OBS copy. The separately
+  installed modern DroidCam Video kernel driver makes that output visible to
+  Media Foundation. The script does not install/relicense that driver. Neither
+  driver, plugin source, installer, nor plugin binaries ship in OkuFlow bundles.
+- FFmpeg is an optional separately installed tool used by yt-dlp to remux
+  YouTube HLS downloads. These tooling binaries are not bundled with OkuFlow.
+- The optional default lecture sample is Sanjay Sarma / MIT OpenCourseWare,
+  2.003J Dynamics and Control I, Fall 2007, Lecture 2: The spider on a Frisbee
+  problem, under CC BY-NC-SA 4.0. It is downloaded to the user's local scratch
+  directory with an adjacent attribution/source record and remains excluded
+  from git and OkuFlow bundles. Its license is separate from OkuFlow's dual
+  license; see [`lecture_camera.md`](lecture_camera.md) and
+  <https://ocw.mit.edu/pages/privacy-and-terms-of-use/>.
+- `yt-dlp` (<https://github.com/yt-dlp/yt-dlp>) is an optional external
+  downloader for replacement YouTube sources; no downloader or Python package
+  is bundled. The default publisher download needs neither.
 - OpenAI-compatible VLM services may be used at runtime through user-supplied endpoint credentials, but no hosted model or service SDK is bundled here.
 - OpenAI Codex CLI may be launched as an optional external `codex app-server`
   process. At the user's request, Setup Assistant may download an exact pinned
   copy of OpenAI's official Windows bootstrap script, verify its SHA-256, and
   run it with prompts disabled. That upstream bootstrap independently verifies
   the selected official release package against OpenAI's checksum manifest.
-  OpenZoom does not bundle Codex source, binaries, model weights, installer, or
+  OkuFlow does not bundle Codex source, binaries, model weights, installer, or
   an OpenAI SDK. Codex authentication, service access, usage limits, updates,
   and licensing remain governed by the user's Codex installation and OpenAI
   terms.

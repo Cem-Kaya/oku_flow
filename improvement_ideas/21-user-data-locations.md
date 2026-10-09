@@ -17,13 +17,13 @@ Every user artifact is written next to the executable:
 | Photos (original + processed) | `<install>/output/photos` | src/app/app_pipeline_runtime.cpp:1211 |
 | Recordings (original + processed) | `<install>/output/recordings` | src/app/recording_manager.cpp:292 |
 | Lecture notes HTML + images | `<install>/output/notes` | src/app/assistive_feature_manager.cpp:146 |
-| Settings | `%APPDATA%/OpenZoom/OpenZoom/settings.json` (correct already) | src/app/settings_store.cpp:610 |
+| Settings | `%APPDATA%/OkuFlow/OkuFlow/settings.json` (correct already) | src/app/settings_store.cpp:610 |
 | External tools (Codex CLI, NVIDIA runtime) | Vendor-managed installation paths | docs/hardcoded_paths.md |
 
 Three consequences, in order of how much they hurt:
 
 1. **The owner has already lost data to this.** Release bundling deleted the
-   `dist/OpenZoom/output` tree; the current mitigation is a
+   `dist/OkuFlow/output` tree; the current mitigation is a
    preserve-and-restore hack inside `scripts/build_release_bundle.bat`. User
    data living inside a build output directory is the actual bug — the hack is
    treating the symptom.
@@ -36,14 +36,14 @@ Three consequences, in order of how much they hurt:
 
 ## Decision: Documents, not AppData — everything in ONE folder
 
-**Root: `%USERPROFILE%\Documents\OpenZoom\`**
-(`QStandardPaths::DocumentsLocation` + `/OpenZoom`), user-configurable.
+**Root: `%USERPROFILE%\Documents\OkuFlow\`**
+(`QStandardPaths::DocumentsLocation` + `/OkuFlow`), user-configurable.
 **Confirmed by the owner, 2026-07-24.**
 
 > **This plan explicitly does NOT scatter files into the per-type Windows shell
 > folders.** Photos do *not* go to `Pictures`, recordings do *not* go to
 > `Videos`, notes do *not* go loose in `Documents`. Everything a lecture
-> produces lives together under the single `OpenZoom` root, in typed
+> produces lives together under the single `OkuFlow` root, in typed
 > subfolders. Splitting one lecture across three shell folders is exactly the
 > outcome this plan exists to prevent.
 
@@ -69,7 +69,7 @@ Rationale:
 Layout:
 
 ```
-Documents/OpenZoom/
+Documents/OkuFlow/
   Photos/          YYYY-MM-DD/  photo_<timestamp>_original.jpg | _processed.jpg
   Recordings/      YYYY-MM-DD/  rec_<timestamp>_original.mp4  | _processed.mp4
   Notes/           NOTES_<timestamp>.html + images/
@@ -84,7 +84,7 @@ downloaded tool installs, caches, temp frames.
 
 ### Optional refinement (owner's call, default off)
 
-A **per-session folder** mode: `Documents/OpenZoom/2026-07-24 Lecture 3/`
+A **per-session folder** mode: `Documents/OkuFlow/2026-07-24 Lecture 3/`
 containing that session's photos, recordings, and notes together. This is the
 purest expression of "one lecture, one folder" and pairs naturally with plan
 18's annotation snapshots. Recommend shipping the typed layout first and
@@ -93,7 +93,7 @@ adding session folders once naming/UX is settled.
 ## The Open Folder shortcut
 
 - A button in Advanced (near Setup & Downloads) **and** in the Simple-mode
-  overflow: **"Open my OpenZoom folder"**, calling
+  overflow: **"Open my OkuFlow folder"**, calling
   `QDesktopServices::openUrl(QUrl::fromLocalFile(root))`.
 - Global keyboard shortcut (suggest `Ctrl+Shift+O`), listed in the Help dialog.
 - Accessible name/description set via the existing `setA11y` pattern; announce
@@ -147,7 +147,7 @@ adding session folders once naming/UX is settled.
   lecture's photo, recording, and notes are reachable from one folder.
 - Open Folder opens Explorer at the root from both Simple and Advanced, by
   button and by keyboard, and is announced by the screen reader.
-- Upgrade path: an existing `dist/OpenZoom/output` tree with photos, recordings,
+- Upgrade path: an existing `dist/OkuFlow/output` tree with photos, recordings,
   and notes appears in the new root after first run, and the original is still
   present on disk.
 - Changing the root to a user-chosen directory relocates *new* writes only,

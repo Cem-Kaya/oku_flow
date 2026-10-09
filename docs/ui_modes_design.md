@@ -32,7 +32,9 @@ Simple mode is the normal operating view:
   visible. `Ctrl+H` pins the controls on screen or restores automatic hiding.
 - The current profile is flanked by previous/next buttons. The grid button or
   current-profile button opens a temporary tile grid with plain-language names
-  and number badges.
+  and number badges. The carousel paints a separate shortcut badge and elides
+  its label within the available width; an unmatched configuration shows
+  `Custom Setup` without a badge.
 - Number keys `1` through `9` apply the first nine quick modes from anywhere
   in Simple mode. `Tab` and `Shift+Tab` move across the separate corner
   clusters in a predictable order, and `Esc` closes the mode grid.
@@ -54,7 +56,7 @@ Simple mode is the normal operating view:
   viewport pan and zoom do not detach marks from lecture content. Move
   selects one item with an explicit bounding box; Erase removes whole items.
   Closing the mode clears session ink after the configured annotated snapshot.
-- A compact `Text Clarity` checkbox beside the profile carousel is the only
+- A large, button-styled `Text Clarity` checkbox beside Simple/Advanced is the only
   direct image-processing toggle in Simple mode. It automatically chooses
   paper/board/mixed behavior; all component parameters remain in Advanced.
 - Device selection and detailed numeric controls are intentionally absent.
@@ -66,13 +68,22 @@ number shortcuts.
 ## Advanced Mode
 
 Advanced mode keeps the live image visible and opens a narrow inspector on its
-right. Its top-level tabs are `Image` and `Assistant`; previous/next arrows
-wrap across current and future sections. A full-width AI Settings pop-out row
+right. Its top-level tabs are `Image`, `Assistant`, and `Transcript`;
+previous/next arrows are hidden until there are four sections. `Ctrl+Tab`
+continues to cycle tabs. A full-width AI Settings pop-out row
 sits directly below the tab strip on both pages instead of crowding navigation.
 The top-left Simple/Advanced switch remains pinned in Advanced and is restored
 after Alt-Tab or other application deactivation.
 
 The scrollable Image inspector exposes four explicit ownership scopes:
+
+Profile tuning appears first, followed by a Shared settings heading and
+Device, Recording, and Application sections. Keyboard order follows this
+visual order; settings ownership remains unchanged. Slider readouts use the
+active locale and dim with their slider. Long selector names elide in the
+middle, with full names available on hover and in the underlying Qt value.
+Focus X/Y and their labels/readouts disable when Zoom is off. Zoom, focus, and
+black-and-white rows use the responsive row component to preserve track space.
 
 1. **Device** contains the camera and physical orientation. These settings
    change capture hardware.
@@ -91,7 +102,15 @@ Profile controls use reusable, keyboard-focusable collapsible headings.
 Disclosure state persists globally, non-default groups expand automatically
 and show a changed count, and `Ctrl+F` focuses the pinned settings search.
 Search expands matching groups regardless of their saved disclosure state and
-restores that state when cleared.
+restores that state when cleared. The outlined search field has a search glyph,
+a readable placeholder, and a visible match count or `No matching settings`.
+
+Before the first presented camera frame, during reconnection, and while capture
+is stopped, a centered high-contrast placeholder explains camera state in both
+UI modes. It hides when OkuFlow is inactive. This does not yet detect a camera
+that stalls after its first frame. Setup Assistant is raised above owned chrome
+and fits its rows to the available screen; optional Maxine alone no longer
+triggers its startup prompt.
 
 The compact question-mark button in the tab header opens help without taking
 permanent camera space. The guide lists Controls before Features.
@@ -104,8 +123,8 @@ section. It shows Codex/ChatGPT connection and usage state, a camera-aware chat,
 and a history tab. A new conversation can attach the current processed frame;
 follow-up questions can keep or omit that attachment. Simple Explain creates a
 temporary thread and never appears in history. Advanced Assistant creates
-persistent threads and lists only ids created by OpenZoom, with resume, rename,
-export, and delete actions. Codex owns the transcript store while OpenZoom keeps
+persistent threads and lists only ids created by OkuFlow, with resume, rename,
+export, and delete actions. Codex owns the transcript store while OkuFlow keeps
 the small title/preview/timestamp index in `settings.json`. Internet and coding
 are explicit global Assistant permissions in AI Settings. Coding requires a
 workspace folder and affects only persistent Advanced Assistant turns; Simple

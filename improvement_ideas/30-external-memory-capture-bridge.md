@@ -109,13 +109,13 @@ frame-rate (camera-bound) or visual change.
   launch -> external-memory stream -> normal close cycles on the physical USB
   webcam. All 100 imported the external texture, all 100 exited with code 0,
   seven exercised the delayed-query retry, none disabled the top rung, and
-  Application Error / WER contained zero `open_zoom.exe` faults.
+  Application Error / WER contained zero `oku_flow.exe` faults.
 - **Passed 2026-07-29:** long production moving-picture inspection on the
   physical camera. The owner reported flawless output with no visible tearing
   or stale frames.
 - Camera switching between DroidCam / USB webcam / Pixel (black-frame
   fallback camera) under the new import; force-fail via
-  `OPENZOOM_FORCE_CAPTURE_COPY_RUNG=1` degrades with one announcement.
+  `OKUFLOW_FORCE_CAPTURE_COPY_RUNG=1` degrades with one announcement.
 - Camera-switch and device-removal checks remain. The 1000+ moving-frame
   tearing/staleness portion of plan 28 gate 3 passed on 2026-07-29.
 
@@ -134,7 +134,7 @@ The USB webcam external route passed 100/100 iterations at 0.684 ms average;
 the deployed release-bundle probe repeated 100/100 at 0.747 ms average.
 The dangerous legacy mode was built but deliberately not run during routine
 validation; a crash/no-verdict is classified by the parent watchdog rather
-than taking down OpenZoom.
+than taking down OkuFlow.
 
 ### R3 — Phase 2: fence-based async handoff (later, do not rush)
 
@@ -158,5 +158,5 @@ close 28 once R1 passes and gate 2 (lecture-length session) is done. Plan
 
 R1 numbers recorded here; legacy repro loop crashes and external-memory
 loop is clean (R2); after R3, capture→present jitter measurably narrows
-under `OPENZOOM_CAPTURE_DIAGNOSTICS=1` with no correctness regressions on
+under `OKUFLOW_CAPTURE_DIAGNOSTICS=1` with no correctness regressions on
 the R1 matrix.

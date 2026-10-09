@@ -95,7 +95,7 @@ set "CUDA_RESULT=PASS"
 
 :summary
 echo.
-echo ===== OPENZOOM BUILD GATE SUMMARY =====
+echo ===== OKUFLOW BUILD GATE SUMMARY =====
 echo %RELEASE_RESULT%: release compile
 echo %CPU_RESULT%: CPU test suite
 echo %CUDA_RESULT%: CUDA test suite

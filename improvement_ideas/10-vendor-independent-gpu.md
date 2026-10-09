@@ -26,7 +26,7 @@ NVIDIA), retiring both the NVIDIA-only constraint and the pure-CPU build.
    discipline carries over identically (focus/keystone stats via tiny
    copy-to-readback-buffer polled by fence, like the async readback ring).
 4. **Backend selection** at startup: NVIDIA+CUDA OK → CudaBackend (feature
-   superset); else D3d12ComputeBackend; `OPENZOOM_FORCE_BACKEND` override for
+   superset); else D3d12ComputeBackend; `OKUFLOW_FORCE_BACKEND` override for
    testing. Status label shows active backend.
 5. **CPU build deprecation**: once the D3D12 backend reaches parity, remove
    the `msvc-cpu` preset and CPU effect stages entirely (CPU keeps only

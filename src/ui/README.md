@@ -5,8 +5,8 @@ This module owns the Qt widget layer.
 Current contents:
 - `MainWindow` for the persistent render surface, three auto-fading Simple-mode
   corner clusters, the shared Simple/Advanced quick-mode carousel and numbered
-  grid/toast, and right-side Advanced Image and Assistant tabs with section
-  arrows, labeled top-level AI Settings, top-packed collapsible tuning,
+  grid/toast, and right-side Advanced Image, Assistant, and Transcript tabs,
+  labeled top-level AI Settings, profile-first collapsible tuning,
   SuperRes source/target status plus compact 2x/performance controls,
   diagnostics, and Chat/History workflows. The
   inspector uses a persistent draggable splitter, responsive slider rows, and
@@ -15,7 +15,11 @@ Current contents:
 - `ColorSchemePicker` for the compact accessible reading-color/effects grid and
   persistent custom 2-8 stop gradient/posterize editor
 - `WheelSafeComboBox` and `WheelSafeSlider` for settings controls that remain
-  click/drag/keyboard editable without intercepting panel scrolling
+  click/drag/keyboard editable without intercepting panel scrolling. Long combo
+  entries elide in the middle and expose their complete name on hover.
+- Camera-state placeholders, separate carousel shortcut badges, localized
+  slider readouts, and visible Advanced search results. Owned dialogs are
+  raised above chrome; tab arrows appear only for four or more sections.
 - `SetLiveText` and `SetLiveTextCoalesced` for UI-thread-only dynamic text,
   role-qualified accessible names, label text/name invalidation events,
   severity-aware announcements, deduplication, and diagnostic coalescing

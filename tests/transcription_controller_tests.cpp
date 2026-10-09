@@ -5,9 +5,9 @@
 #include <QSignalSpy>
 #include <QtTest>
 
-#include "openzoom/app/transcription_session_controller.hpp"
+#include "okuflow/app/transcription_session_controller.hpp"
 
-using namespace openzoom;
+using namespace okuflow;
 
 namespace {
 

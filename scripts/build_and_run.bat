@@ -8,7 +8,7 @@ pushd "%ROOT_DIR%" >nul
 set ROOT_DIR=%CD%
 
 set BUILD_DIR=%ROOT_DIR%\build
-set QT_PREFIX_DEFAULT=C:\Qt\6.9.3\msvc2022_64
+set QT_PREFIX_DEFAULT=C:\Qt\6.12.0\msvc2022_64
 
 if not exist "%BUILD_DIR%" (
     mkdir "%BUILD_DIR%"
@@ -33,13 +33,13 @@ if exist "%CACHE_FILE%" (
 set "QT_BIN_DIR="
 
 if defined QT_PREFIX (
-    set "CMAKE_QT_ARGS=-DCMAKE_PREFIX_PATH=%QT_PREFIX%"
+    set "CMAKE_QT_ARGS=-DCMAKE_PREFIX_PATH=%QT_PREFIX% -DQt6_DIR=%QT_PREFIX%\lib\cmake\Qt6"
     call :resolve_qt_bindir "%QT_PREFIX%"
 ) else if defined Qt6_DIR (
     set "CMAKE_QT_ARGS=-DQt6_DIR=%Qt6_DIR%"
     call :resolve_qt_bindir "%Qt6_DIR%"
 ) else if exist "%QT_PREFIX_DEFAULT%" (
-    set "CMAKE_QT_ARGS=-DCMAKE_PREFIX_PATH=%QT_PREFIX_DEFAULT%"
+    set "CMAKE_QT_ARGS=-DCMAKE_PREFIX_PATH=%QT_PREFIX_DEFAULT% -DQt6_DIR=%QT_PREFIX_DEFAULT%\lib\cmake\Qt6"
     call :resolve_qt_bindir "%QT_PREFIX_DEFAULT%"
 ) else (
     set "CMAKE_QT_ARGS="
@@ -48,10 +48,10 @@ if defined QT_PREFIX (
 if not defined QT_BIN_DIR if exist "%QT_PREFIX_DEFAULT%" call :resolve_qt_bindir "%QT_PREFIX_DEFAULT%"
 
 set "CMAKE_EXTRA_ARGS=%CMAKE_ARGS%"
-if not defined OPENZOOM_ENABLE_CUDA set "OPENZOOM_ENABLE_CUDA=ON"
-if not defined OPENZOOM_ENABLE_TEXT_SR set "OPENZOOM_ENABLE_TEXT_SR=ON"
-set "CMAKE_EXTRA_ARGS=%CMAKE_EXTRA_ARGS% -DOPENZOOM_ENABLE_CUDA=%OPENZOOM_ENABLE_CUDA%"
-set "CMAKE_EXTRA_ARGS=%CMAKE_EXTRA_ARGS% -DOPENZOOM_ENABLE_TEXT_SR=%OPENZOOM_ENABLE_TEXT_SR%"
+if not defined OKUFLOW_ENABLE_CUDA set "OKUFLOW_ENABLE_CUDA=ON"
+if not defined OKUFLOW_ENABLE_TEXT_SR set "OKUFLOW_ENABLE_TEXT_SR=ON"
+set "CMAKE_EXTRA_ARGS=%CMAKE_EXTRA_ARGS% -DOKUFLOW_ENABLE_CUDA=%OKUFLOW_ENABLE_CUDA%"
+set "CMAKE_EXTRA_ARGS=%CMAKE_EXTRA_ARGS% -DOKUFLOW_ENABLE_TEXT_SR=%OKUFLOW_ENABLE_TEXT_SR%"
 
 cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 %CMAKE_QT_ARGS% %CMAKE_EXTRA_ARGS%
 if errorlevel 1 goto :fail
@@ -59,11 +59,11 @@ if errorlevel 1 goto :fail
 cmake --build "%BUILD_DIR%" --config Release
 if errorlevel 1 goto :fail
 
-set EXE_PATH=%BUILD_DIR%\cmake\Release\open_zoom.exe
-if not exist "%EXE_PATH%" set EXE_PATH=%BUILD_DIR%\Release\open_zoom.exe
-if not exist "%EXE_PATH%" set EXE_PATH=%BUILD_DIR%\open_zoom.exe
+set EXE_PATH=%BUILD_DIR%\cmake\Release\oku_flow.exe
+if not exist "%EXE_PATH%" set EXE_PATH=%BUILD_DIR%\Release\oku_flow.exe
+if not exist "%EXE_PATH%" set EXE_PATH=%BUILD_DIR%\oku_flow.exe
 
-if /I "%OPENZOOM_SKIP_RUN%"=="1" goto after_run
+if /I "%OKUFLOW_SKIP_RUN%"=="1" goto after_run
 
 if exist "%EXE_PATH%" (
     echo Launching %EXE_PATH%

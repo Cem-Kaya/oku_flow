@@ -50,7 +50,7 @@ the controlled camera runs.
    PowerShell profiler alternates camera-opening sequences in one executable,
    stores explicit isolated settings and per-trial data, disables AI/notes/setup,
    checks the source settings hash, and lets each child exit normally. It refuses
-   an already-running OpenZoom instance. Timing starts in the app constructor,
+   an already-running OkuFlow instance. Timing starts in the app constructor,
    and presentation is measured at successful submission; this is not a
    sensor-to-photon benchmark. Preliminary runs made before correcting Windows
    known-folder isolation are excluded from the controlled comparison.
@@ -184,13 +184,13 @@ matrix/bundle results follow below.
   CUDA CTest **28/28**. Translation validation passed for all **664** complete
   Turkish/German source keys.
 - Final `scripts/build_release_bundle.bat`: release-bundle CTest **28/28**;
-  tested staging bundle published successfully to `dist/OpenZoom/`. Logs are
+  tested staging bundle published successfully to `dist/OkuFlow/`. Logs are
   `build/startup-latency-build.log` and `build/startup-latency-bundle.log`.
 - The published executable was built on **2026-09-10 at 19:27 (+03:00)** and
   is 8,108,544 bytes. Its SHA-256 exactly matches
-  `build/release-bundle/cmake/Release/open_zoom.exe`:
+  `build/release-bundle/cmake/Release/oku_flow.exe`:
   `B7F364AF814BABBD5BA33391C3C8125A4DB652669139CC6DA4EA98A8E7F472E5`.
-  The primary bundle was available for replacement; `OpenZoom2` was not needed.
+  The primary bundle was available for replacement; `OkuFlow2` was not needed.
 - The corrected docking fixture passed three focused runs and the complete
   annotation suite before the final successful matrices. No production docking
   behavior was altered by that fixture correction.

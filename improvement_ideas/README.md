@@ -1,6 +1,6 @@
 # Improvement Ideas
 
-Actionable improvement backlog for OpenZoom, written for AI agents (or humans) picking up
+Actionable improvement backlog for OkuFlow (formerly OpenZoom), written for AI agents (or humans) picking up
 future work. Produced from a full-codebase analysis on 2026-07-21 at commit `9e069d9`
 ("Add assistive runtime and harden Windows builds"). All `file:line` references are
 relative to that commit — re-locate by symbol name if the files have since changed.
@@ -43,7 +43,7 @@ that document is authoritative.
 | [`14-stabilization-v2.md`](14-stabilization-v2.md) | Robust camera stabilization | ACTIVE |
 | [`15-aspect-safe-high-refresh-viewport.md`](15-aspect-safe-high-refresh-viewport.md) | Viewport geometry and motion | VERIFY (owner acceptance) |
 | [`16-review-findings-2026-07-23.md`](16-review-findings-2026-07-23.md) | Batch C/D + plan 15 review verdict | PARTIAL (P1/P2 open) |
-| [`17-project-rename-plan.md`](17-project-rename-plan.md) | Project rename (FrontRow blocked) | BLOCKED (owner) |
+| [`17-project-rename-plan.md`](17-project-rename-plan.md) | Project rename to OkuFlow (FrontRow was blocked) | **EXECUTED 2026-10-09 — owner items remain (trademark, other domains, Store/winget ID, announcement, social preview)** |
 | [`18-annotation-mode-plan.md`](18-annotation-mode-plan.md) | Draw-on-lecture annotation mode | **VERIFY — R2 implemented, owner hardware pass pending** |
 | [`19-external-review-triage-2026-07-24.md`](19-external-review-triage-2026-07-24.md) | External review verdicts; index for 20-24 | REFERENCE |
 | [`20-capture-recording-integrity.md`](20-capture-recording-integrity.md) | Capture and recording correctness | **P0-P4 implemented — hardware verification/P6 remain** |
@@ -66,6 +66,8 @@ that document is authoritative.
 | [`37-code-review-notes-2026-09-10.md`](37-code-review-notes-2026-09-10.md) | Source review and fixes: stabilization zoom, recorded ink, capture layout/color, CUDA fallback, notes I/O, scaling, and recovery | **IMPLEMENTED — all 10; release + CPU/CUDA matrix passed** |
 | [`38-vision-reading-cleanup-2026-09-10.md`](38-vision-reading-cleanup-2026-09-10.md) | Retire separate recognition setup/UI; use Luna-backed vision reading with source-language preservation | **IMPLEMENTED — release + CPU/CUDA + bundle gates passed** |
 | [`39-startup-ui-latency-2026-09-10.md`](39-startup-ui-latency-2026-09-10.md) | Concurrent camera startup, nonblocking presentation admission, accurate latency and delivery profiling | **IMPLEMENTED — measurement and validation recorded in the note** |
+| [`40-ui-polish-and-checkout-review-2026-10-09.md`](40-ui-polish-and-checkout-review-2026-10-09.md) | UI polish backlog (Setup Assistant, Simple, Advanced, theme module) plus the resolved hybrid-checkout blocker | **ACTIVE — W1 resolved** |
+| [`41-project-review-2026-10-09.md`](41-project-review-2026-10-09.md) | Current project review: saved-photo ownership, storage lifecycle, accessibility, hardware acceptance, build gates, settings, and backlog drift | **REVIEW COMPLETE — recommendations open** |
 | [`verified-non-issues.md`](verified-non-issues.md) | Refuted findings — do not "fix" these | Read before analyzing |
 | [`done/`](done/README.md) | Completed plans (01, 02, 09, 11, 12, 13) | Provenance only |
 

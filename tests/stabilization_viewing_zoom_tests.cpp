@@ -1,10 +1,10 @@
-#include "openzoom/cuda/cuda_interop.hpp"
+#include "okuflow/cuda/cuda_interop.hpp"
 
 #include <iostream>
 #include <limits>
 
 int main() {
-    openzoom::ProcessingSettings settings{};
+    okuflow::ProcessingSettings settings{};
     auto expectZoom = [&](float expected, const char* scenario) {
         const float actual = settings.EffectiveViewingMagnification();
         if (actual == expected) {

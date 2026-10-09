@@ -31,6 +31,35 @@ authorized Astra implementations followed by root integration, compilation,
 and tests. Release compilation passed; CPU passed 23/23 and CUDA passed 27/27,
 with no skips. Live camera performance and real driver hangs were not measured.
 
+## UI polish and checkout review added 2026-10-09
+
+[40 — UI polish and checkout review](40-ui-polish-and-checkout-review-2026-10-09.md)
+records the owner-requested UI polish backlog observed in the 2026-09-10
+bundle: Setup Assistant, Simple mode, Advanced inspector, and a central theme
+module. Its W1 blocker (a hybrid checkout that could not build) was resolved on
+2026-10-09 when the complete tree was pushed as `078cdde`.
+The first polish batch is implemented in the working tree: startup/setup,
+carousel, profile-first inspector, readouts/search, and Zoom-dependent focus.
+Final validation passed release compilation, CPU 24/24, CUDA 28/28, and 674
+translation entries. Plan 40's checkpoint lists remaining implementation and
+visual acceptance work.
+The owner subsequently changed the SDK baseline to Qt 6.12.0. The full matrix
+passed again and the independently tested Qt 6.12 bundle was published to
+`dist/OkuFlow`; SDK migration and packaging validation are recorded in plan 40.
+
+## Project review added 2026-10-09
+
+[41 — Project review and improvement priorities](41-project-review-2026-10-09.md)
+reviews the current working tree after the UI polish and Qt migration. Its
+highest-priority new finding is **R1: photo recovery/rollback can delete
+already-saved user images**. R2 identifies remaining storage waits during
+startup/shutdown. R3-R9 refine accessibility, camera acceptance, build/test
+gates, settings bounds, modularity, and build identity under existing plans.
+R10 records specific stale tracker/documentation claims, including plan 22's
+completed offloads, plan 24's now-tracked tests, and plan 34's retired local-OCR
+direction. Read this review before following the older rows/order below;
+its recommendations are not implemented by this documentation update.
+
 ## The list
 
 [39 — Startup and UI latency](39-startup-ui-latency-2026-09-10.md) records the
@@ -52,7 +81,7 @@ describes that review's original validation only.
 | 14 | Stabilization v2 | **ACTIVE** | Tier 1/2 shipped and being retuned continuously. Tier 3 Screen Lock is owner-approved and **plan 25 argues it is the correct primary algorithm, not an extra mode**. |
 | 15 | Aspect-safe viewport | **VERIFY** | Implemented and smoke-verified. Outstanding: multi-monitor/DPI acceptance pass and the 2560x1440 timing gate. Owner/hardware task only. |
 | 16 | Review findings (Batch C/D) | **PARTIAL** | P0s (F1-F4 fences) fixed. Open P1/P2: M2 AssistiveFeatureManager disconnect, M3 dual ownership, release null-guards (the plan-02 A5 remnant), F3 degraded-mode stalls, swallowed photo capture, F6 no re-present when camera off, unused generation tag, color-migration/LUT tests. |
-| 17 | Project rename | **BLOCKED (owner)** | FrontRow failed clearance. Needs the owner to pick a name (OpenLoupe recommended) and run the Phase 0 checklist. Everything after is written and name-agnostic. |
+| 17 | Project rename | **EXECUTED 2026-10-09 — OWNER ITEMS REMAIN** | The owner chose **OkuFlow** (FrontRow failed clearance). Phases 2 and 3 were done together. There is no in-app legacy-data migration because the app is not widely distributed; the owner's machine was migrated once by hand on 2026-10-09. The GitHub repo is now `Cem-Kaya/oku_flow` and okuflow.com is registered. Still open for the owner: trademark search and filing for "OkuFlow", other domains (.org/.app), Microsoft Store/winget ID, announcement copy, and the social-preview image. |
 | 18 | Annotation mode | **VERIFY — R2 IMPLEMENTED** | R2 code landed 2026-07-28: transient tool flyout, right action rail, checked swatches, Shape and dashed styles, eight functional scale handles, cross-window zoom/pan forwarding, Advanced action bar, persistence, contrast/text fixes, and CPU model/settings coverage. Release build and automated tests pass; owner hardware/trackpad/screen-reader/notes acceptance remains. |
 | 19 | External review triage | **REFERENCE** | The verdict list and index for 20-24. Read before starting any of them. |
 | 20 | Capture / recording integrity | **P0-P4 IMPLEMENTED — VERIFY HARDWARE** | Implemented 2026-07-28: timestamp/sequence identity, signed stride, exact fractional-rate VFR, checked asynchronous finalization, explicit states/drop reporting, fixed Source/1080p/1440p/2160p canvas, `_partN` mode-change pairs, bounded encoder worker queue, and fail-closed CUDA/DXGI adapter matching. Release build, CPU 6/6, CUDA 8/8 pass. Remaining: P5 reconnect/device hardware matrix; eliminating preview-slot loss needs plan 22; P6 DXVA/zero-copy is now **plan 28**. |
@@ -72,8 +101,16 @@ describes that review's original validation only.
 | 35 | PDF / image source mode | **READY — OWNER SELECTED** | Open a saved image or PDF page as a static magnifier source; reuse colour/Text Clarity/sharpening, OCR, annotation, VLM, and TTS; save a recoverable original/processed render pair without modifying the source; retain PDF page provenance in notes. |
 | 36 | Recording transcription to notes | **IMPLEMENTED 2026-08-08 — Carrier D native stack, live gate PASSED** | Live user-only transcription ships end to end behind the opt-in on the native WebRTC stack (libdatachannel v0.24.5 + opus v1.5.2 + MbedTLS 3.6.7 LTS, all commit-pinned and statically linked; no browser, no proprietary bits, no extra runtime files). Every WebView2 artifact is deleted. The live WAV gate produced correct partials and finalized user segments against real Codex (Windows codex-cli 0.147.0); loopback RTP/Opus tests run in ctest. Remaining owner acceptance: real microphone plus NVDA/Narrator pass, and quota behavior over a full lecture. |
 | 26 | Virtual Tripod strength | **PARTIAL / DEFECTIVE** | Phases A/B implemented. Saved-camera replay on 2026-07-26 proved the synthetic 97.3% gate overstates real performance: accumulated-reference alignment left 0.5-8 Hz vertical vibration almost unchanged and worsened horizontal motion. Production now uses the sharp single keyframe, which improves the saved clip by 24-38% on its main axes, but stronger real-scene correspondence/reacquisition remains open before Phase C. |
+| 40 | UI polish and checkout review | **ACTIVE — W1 resolved** | C1 theme module, S1-S5 Setup Assistant/startup, M1-M5 Simple mode, A1-A7 Advanced inspector. Also open: W2 bundle/source mismatch (build identity, inbox S) and W3 build output inside the synced Drive folder. |
+| 41 | Project review 2026-10-09 | **REVIEW COMPLETE — recommendations open** | R1 saved-photo ownership first; R2 storage lifecycle; R3-R9 refine existing implementation/acceptance work; R10 reconciles stale backlog claims. |
 
 ## Recommended order
+
+**2026-10-09 review update:** prioritize [41 R1/R2](41-project-review-2026-10-09.md)
+and use that review's suggested sequence while reconciling this historical
+order. In particular, do not restart completed plan-22 offloads or the retired
+local-recognition path, and do not mistake pending hardware acceptance for
+missing implementation.
 
 Rationale: unblock verification first, then stop losing user data, then fix what
 silently corrupts recordings, then what blocks distribution, then speed.
@@ -139,7 +176,9 @@ silently corrupts recordings, then what blocks distribution, then speed.
 
 **Owner decisions blocking work**
 
-- **17** — pick a name and run the Phase 0 clearance checklist.
+- **17** — rename executed (OkuFlow). Remaining owner items: trademark search
+  and filing for "OkuFlow", other domains (.org/.app), Microsoft Store/winget
+  ID, announcement copy, and the social-preview image.
 - **15** — run the multi-monitor/DPI and 1440p timing acceptance pass.
 - **12** (archived) — a final screenshot/screen-reader look at the colour picker.
 - **23** — lawyer review of CLA/§7 and public code-signing/installer ownership

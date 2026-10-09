@@ -13,7 +13,7 @@
 #include <tuple>
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -64,7 +64,7 @@ float MeasureCaptureToPresentLatency(std::int64_t captureClock100ns)
         static_cast<float>(latency100ns) / 10'000.0f;
 
     static const bool enabled =
-        qEnvironmentVariableIsSet("OPENZOOM_CAPTURE_DIAGNOSTICS");
+        qEnvironmentVariableIsSet("OKUFLOW_CAPTURE_DIAGNOSTICS");
     if (!enabled) {
         return latencyMs;
     }
@@ -137,7 +137,7 @@ SuperResCacheExtent ComputeSuperResCacheExtent(UINT sceneWidth,
 
 } // namespace
 
-void OpenZoomApp::EnumerateCameras() {
+void OkuFlowApp::EnumerateCameras() {
     cameras_ = mediaCapture_.EnumerateCameras();
     if (cameras_.empty()) {
         selectedCameraIndex_ = -1;
@@ -154,7 +154,7 @@ void OpenZoomApp::EnumerateCameras() {
             : 0;
 }
 
-void OpenZoomApp::PopulateCameraCombo() {
+void OkuFlowApp::PopulateCameraCombo() {
     if (!uiState_->cameraCombo_) {
         return;
     }
@@ -165,12 +165,12 @@ void OpenZoomApp::PopulateCameraCombo() {
     }
 }
 
-void OpenZoomApp::EnumerateMicrophones()
+void OkuFlowApp::EnumerateMicrophones()
 {
     microphones_ = audioCapture_.EnumerateDevices();
 }
 
-void OpenZoomApp::PopulateMicrophoneCombo()
+void OkuFlowApp::PopulateMicrophoneCombo()
 {
     if (!uiState_ || !uiState_->microphoneCombo_) {
         return;
@@ -223,7 +223,7 @@ void OpenZoomApp::PopulateMicrophoneCombo()
     }
 }
 
-void OpenZoomApp::RefreshCameraFormats(size_t index) {
+void OkuFlowApp::RefreshCameraFormats(size_t index) {
     if (!uiState_->cameraFormatCombo_) {
         return;
     }
@@ -311,7 +311,7 @@ void OpenZoomApp::RefreshCameraFormats(size_t index) {
     }
 }
 
-void OpenZoomApp::ResetCudaFenceState() {
+void OkuFlowApp::ResetCudaFenceState() {
     const UINT64 baseValue = presenter_ ? presenter_->GetLastSignaledFenceValue() : 0;
     pipelineOrchestrator_->ResetFence(baseValue);
     if (recordingManager_) {
@@ -324,7 +324,7 @@ void OpenZoomApp::ResetCudaFenceState() {
 // consecutive failures trigger a full resync — drain the graphics queue and
 // re-seed the fence timeline — plus a single status message, so a persistent
 // CUDA failure can neither wedge the present loop nor spam the user.
-void OpenZoomApp::HandleCudaProcessingFailure() {
+void OkuFlowApp::HandleCudaProcessingFailure() {
     if (pipelineOrchestrator_->RecordCudaFailure() == 3) {
         if (presenter_) {
             if (!presenter_->WaitForIdle()) {
@@ -339,7 +339,7 @@ void OpenZoomApp::HandleCudaProcessingFailure() {
     }
 }
 
-bool OpenZoomApp::HandlePresenterFault() {
+bool OkuFlowApp::HandlePresenterFault() {
     if ((!presenter_ || !presenter_->IsFaulted()) &&
         (!cudaSurface_ || !cudaSurface_->IsFaulted())) return false;
     usingCudaLastFrame_ = false;
@@ -348,13 +348,13 @@ bool OpenZoomApp::HandlePresenterFault() {
     if (!presenterFaultReported_) {
         presenterFaultReported_ = true;
         ShowStatusMessage(QStringLiteral(
-            "GPU stopped responding. Restart OpenZoom to resume video."),
+            "GPU stopped responding. Restart OkuFlow to resume video."),
             15000, LivePoliteness::kAssertive);
     }
     return true;
 }
 
-bool OpenZoomApp::EnsureCudaSurface(UINT width, UINT height) {
+bool OkuFlowApp::EnsureCudaSurface(UINT width, UINT height) {
     if (HandlePresenterFault()) return false;
     if (!presenter_ || !uiState_->renderWidget_ || !uiState_->renderWidget_->isPresenterReady()) {
         // Readiness is transient and checked again next frame without GPU work.
@@ -520,7 +520,7 @@ bool OpenZoomApp::EnsureCudaSurface(UINT width, UINT height) {
     }
 }
 
-bool OpenZoomApp::ProcessFrameWithCuda(UINT width, UINT height) {
+bool OkuFlowApp::ProcessFrameWithCuda(UINT width, UINT height) {
     const auto& stageRaw = cpuPipeline_.StageRaw();
     if (stageRaw.empty()) {
         qWarning() << "CUDA pipeline skipped: stage raw empty";
@@ -552,7 +552,7 @@ bool OpenZoomApp::ProcessFrameWithCuda(UINT width, UINT height) {
 // to the CUDA pipeline. Conversion and rotation stay on the GPU and the
 // per-frame CPU convert/rotate work is skipped entirely. Returns false
 // whenever anything is off so the caller can use the CPU-converted BGRA path.
-bool OpenZoomApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
+bool OkuFlowApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
                                              CapturedFrame* originalFrame,
                                              CaptureGpuPending* outGpuCompletionPending) {
     if (outGpuCompletionPending) {
@@ -787,7 +787,7 @@ bool OpenZoomApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
 // Shared tail of the CUDA path: builds ProcessingSettings from the live UI
 // state, runs ProcessFrame with the fence dance, and presents the result.
 // The interop surface must already exist at presentWidth x presentHeight.
-bool OpenZoomApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth, UINT presentHeight) {
+bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth, UINT presentHeight) {
     if (!cudaSurface_) {
         qWarning() << "CUDA pipeline disabled: surface not available";
         usingCudaLastFrame_ = false;
@@ -930,7 +930,7 @@ bool OpenZoomApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidt
     return true;
 }
 
-void OpenZoomApp::PresentLatestCudaScene(bool newCameraFrame,
+void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
                                          CapturedFrame* originalFrame) {
     if (!cudaSceneReady_ || !cudaSharedTexture_ || !presenter_ ||
         !presenter_->IsInitialized() ||
@@ -1099,6 +1099,7 @@ void OpenZoomApp::PresentLatestCudaScene(bool newCameraFrame,
             presenter_->GetLastSignaledFenceValue());
     }
     if (presented) {
+        cameraFramePresented_ = true;
         RecordStartupFirstPresent();
         if (pendingSceneCaptureClock100ns_) {
             pipelineOrchestrator_->RecordCaptureToPresentSample(
@@ -1245,7 +1246,7 @@ void OpenZoomApp::PresentLatestCudaScene(bool newCameraFrame,
 // Drain completed asynchronous viewport copies for photos and assistive
 // analysis. Processed recording now uses a fenced GPU canvas and does not
 // consume this CPU readback ring.
-void OpenZoomApp::DrainCompletedGpuReadbacks() {
+void OkuFlowApp::DrainCompletedGpuReadbacks() {
     if (!presenter_) {
         return;
     }
@@ -1329,7 +1330,7 @@ void OpenZoomApp::DrainCompletedGpuReadbacks() {
     }
 }
 
-bool OpenZoomApp::StartCameraCapture(size_t index,
+bool OkuFlowApp::StartCameraCapture(size_t index,
                                      bool interactive,
                                      bool forceCompatibility,
                                      bool backgroundStartup) {
@@ -1342,7 +1343,7 @@ bool OpenZoomApp::StartCameraCapture(size_t index,
     StopCameraCapture();
     if (mediaCapture_.WasAbandoned()) {
         ShowStatusMessage(QStringLiteral(
-            "Camera did not stop in time. Restart OpenZoom before changing cameras."), 15000);
+            "Camera did not stop in time. Restart OkuFlow before changing cameras."), 15000);
         return false;
     }
     const uint64_t captureSession = cameraSessionId_;
@@ -1538,7 +1539,7 @@ bool OpenZoomApp::StartCameraCapture(size_t index,
     return CompleteCameraCaptureStart(started, interactive);
 }
 
-bool OpenZoomApp::CompleteCameraCaptureStart(bool started, bool interactive, const QString& startupError) {
+bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, const QString& startupError) {
     if (!started) {
         const std::string detail = startupError.isEmpty()
                                       ? mediaCapture_.LastError()
@@ -1565,7 +1566,7 @@ bool OpenZoomApp::CompleteCameraCaptureStart(bool started, bool interactive, con
             StopCameraCapture();
             UpdateProcessingStatusLabel();
             ShowStatusMessage(
-                QStringLiteral("%1 OpenZoom will keep trying without "
+                QStringLiteral("%1 OkuFlow will keep trying without "
                                "blocking the controls.")
                     .arg(message),
                 12000,
@@ -1590,6 +1591,7 @@ bool OpenZoomApp::CompleteCameraCaptureStart(bool started, bool interactive, con
     cpuSceneHeight_ = 0;
     cpuSceneReady_ = false;
     cameraActive_ = true;
+    cameraFramePresented_ = false;
     pendingSceneCaptureClock100ns_.reset();
     currentCameraCaptureClock100ns_ = -1;
     currentCaptureAccelerated_ =
@@ -1598,7 +1600,7 @@ bool OpenZoomApp::CompleteCameraCaptureStart(bool started, bool interactive, con
     currentCaptureZeroCopyActive_ = false;
     const bool forceCopyRung =
         qEnvironmentVariableIntValue(
-            "OPENZOOM_FORCE_CAPTURE_COPY_RUNG") != 0;
+            "OKUFLOW_FORCE_CAPTURE_COPY_RUNG") != 0;
     captureZeroCopyAvailable_ =
         currentCaptureAccelerated_ && !forceCopyRung;
     captureHandoffPolicy_.Reset();
@@ -1607,7 +1609,7 @@ bool OpenZoomApp::CompleteCameraCaptureStart(bool started, bool interactive, con
         forceCopyRung
             ? QStringLiteral(
                   "The direct GPU rung was disabled by the diagnostic "
-                  "OPENZOOM_FORCE_CAPTURE_COPY_RUNG setting.")
+                  "OKUFLOW_FORCE_CAPTURE_COPY_RUNG setting.")
             : QString{};
     if (!currentCaptureAccelerated_ &&
         !currentCameraAccelerationKey_.isEmpty()) {
@@ -1640,7 +1642,7 @@ bool OpenZoomApp::CompleteCameraCaptureStart(bool started, bool interactive, con
     return true;
 }
 
-void OpenZoomApp::StopCameraCapture(bool atProcessExit) {
+void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
     pendingSceneCaptureClock100ns_.reset();
     currentCameraCaptureClock100ns_ = -1;
     const bool startupWasPending = cameraStartupPending_;
@@ -1679,7 +1681,7 @@ void OpenZoomApp::StopCameraCapture(bool atProcessExit) {
     }
     if (!captureStopped && !atProcessExit) {
         ShowStatusMessage(QStringLiteral(
-            "Camera did not stop in time. Restart OpenZoom before changing cameras."), 15000);
+            "Camera did not stop in time. Restart OkuFlow before changing cameras."), 15000);
     }
     if (captureStopped && !startupWasPending && settingsController_ &&
         settingsController_->MutableSettings().cameraAccelerationAttempt ==
@@ -1695,6 +1697,7 @@ void OpenZoomApp::StopCameraCapture(bool atProcessExit) {
         }
     }
     cameraActive_ = false;
+    cameraFramePresented_ = false;
     currentCaptureAccelerated_ = false;
     currentCaptureZeroCopyActive_ = false;
     captureZeroCopyAvailable_ = true;
@@ -1723,7 +1726,7 @@ void OpenZoomApp::StopCameraCapture(bool atProcessExit) {
     UpdateProcessingStatusLabel();
 }
 
-void OpenZoomApp::HandleCameraStartFailure(const QString& message) {
+void OkuFlowApp::HandleCameraStartFailure(const QString& message) {
     qWarning() << "Camera start failed:" << message;
     lastCameraError_ = message;
     StopCameraCapture();
@@ -1733,7 +1736,7 @@ void OpenZoomApp::HandleCameraStartFailure(const QString& message) {
     }
 }
 
-void OpenZoomApp::HandleCameraRuntimeFailure(uint64_t captureSession, const QString& message) {
+void OkuFlowApp::HandleCameraRuntimeFailure(uint64_t captureSession, const QString& message) {
     if (captureSession == cameraSessionId_ && cameraStartupPending_) {
         pendingCameraStartupError_ = message;
         return;
@@ -1758,7 +1761,7 @@ void OpenZoomApp::HandleCameraRuntimeFailure(uint64_t captureSession, const QStr
         acceleration.reason =
             QStringLiteral(
                 "GPU camera acceleration did not produce a usable startup "
-                "image, so OpenZoom switched to compatibility mode.");
+                "image, so OkuFlow switched to compatibility mode.");
         acceleration.decidedOn =
             QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
         if (acceleration.mode ==
@@ -1799,7 +1802,7 @@ void OpenZoomApp::HandleCameraRuntimeFailure(uint64_t captureSession, const QStr
 // Camera reconnect state machine. Entered on mid-stream device loss; driven
 // from OnFrameTick with QDateTime-based backoff (2s/4s/8s), no blocking
 // sleeps, no modal dialogs. Gives up after ~30 seconds.
-void OpenZoomApp::BeginCameraReconnect() {
+void OkuFlowApp::BeginCameraReconnect() {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (!pipelineOrchestrator_->BeginCameraReconnect(now)) {
         return;
@@ -1810,7 +1813,7 @@ void OpenZoomApp::BeginCameraReconnect() {
     UpdateProcessingStatusLabel();
 }
 
-void OpenZoomApp::DriveCameraReconnect() {
+void OkuFlowApp::DriveCameraReconnect() {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (!pipelineOrchestrator_->CameraReconnectDue(now)) {
         return;
@@ -1867,7 +1870,7 @@ void OpenZoomApp::DriveCameraReconnect() {
 
 
 
-bool OpenZoomApp::RunFrameTick(double elapsedSeconds) {
+bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
     if (HandlePresenterFault()) return false;
     // Camera loss / reconnect state machine. ConsumeDeviceLost() is polled
     // here in addition to the capture error callback so the reconnect starts
@@ -2079,7 +2082,7 @@ bool OpenZoomApp::RunFrameTick(double elapsedSeconds) {
     }
     return true;
 }
-void OpenZoomApp::BuildCompositeAndPresent(UINT width,
+void OkuFlowApp::BuildCompositeAndPresent(UINT width,
                                            UINT height,
                                            CapturedFrame* originalFrame) {
     processedFrameWidth_ = width;
@@ -2171,7 +2174,7 @@ void OpenZoomApp::BuildCompositeAndPresent(UINT width,
                   originalFrame);
 }
 
-void OpenZoomApp::PresentFitted(const uint8_t* data,
+void OkuFlowApp::PresentFitted(const uint8_t* data,
                                 UINT srcWidth,
                                 UINT srcHeight,
                                 bool cropToFill,
@@ -2321,6 +2324,7 @@ void OpenZoomApp::PresentFitted(const uint8_t* data,
         pipelineOrchestrator_->MarkViewportDirty();
         return;
     }
+    cameraFramePresented_ = true;
     RecordStartupFirstPresent();
     if (pendingSceneCaptureClock100ns_) {
         pipelineOrchestrator_->RecordCaptureToPresentSample(
@@ -2333,7 +2337,7 @@ void OpenZoomApp::PresentFitted(const uint8_t* data,
     }
 }
 
-bool OpenZoomApp::PrepareOriginalFrame(const MediaFrame& source,
+bool OkuFlowApp::PrepareOriginalFrame(const MediaFrame& source,
                                        CapturedFrame& destination)
 {
     destination = {};
@@ -2370,7 +2374,7 @@ bool OpenZoomApp::PrepareOriginalFrame(const MediaFrame& source,
     return true;
 }
 
-bool OpenZoomApp::PopulateOriginalFrameMetadata(
+bool OkuFlowApp::PopulateOriginalFrameMetadata(
     const MediaFrame& source,
     CapturedFrame& destination) const
 {
@@ -2395,7 +2399,7 @@ bool OpenZoomApp::PopulateOriginalFrameMetadata(
     return true;
 }
 
-void OpenZoomApp::CapturePendingPhoto(const CapturedFrame& originalFrame)
+void OkuFlowApp::CapturePendingPhoto(const CapturedFrame& originalFrame)
 {
     if (!photoCapturePending_) {
         return;
@@ -2424,7 +2428,7 @@ void OpenZoomApp::CapturePendingPhoto(const CapturedFrame& originalFrame)
                           originalFrame);
 }
 
-void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
+void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
                                         UINT processedWidth,
                                         UINT processedHeight,
                                         const CapturedFrame& originalFrame)
@@ -2444,7 +2448,7 @@ void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
         ShowStatusMessage(
             outputError.isEmpty()
                 ? QStringLiteral(
-                      "Photo not saved: the OpenZoom Photos folder is unavailable.")
+                      "Photo not saved: the OkuFlow Photos folder is unavailable.")
                 : outputError);
         return;
     }
@@ -2477,7 +2481,7 @@ void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
 
     ShowStatusMessage(QStringLiteral("Saving original and processed photos..."),
                       2500);
-    QPointer<OpenZoomApp> owner(this);
+    QPointer<OkuFlowApp> owner(this);
     const bool queued = imageIoPool_ && imageIoPool_->tryStart(
         [owner,
          processedImage = std::move(processedImage),
@@ -2572,7 +2576,7 @@ void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
                         owner->ShowStatusMessage(
                             QStringLiteral(
                                 "Saved original and processed photos. Press "
-                                "Ctrl+Shift+O to open the OpenZoom folder."),
+                                "Ctrl+Shift+O to open the OkuFlow folder."),
                             7000);
                     } else if (leftoverPaths.isEmpty()) {
                         owner->ShowStatusMessage(
@@ -2598,7 +2602,7 @@ void OpenZoomApp::SaveCapturedPhotoPair(const uint8_t* processedData,
     }
 }
 
-void OpenZoomApp::QueueAnnotationSnapshot(int reason)
+void OkuFlowApp::QueueAnnotationSnapshot(int reason)
 {
     if (!mainWindow_ || !mainWindow_->annotationOverlay() ||
         !mainWindow_->annotationOverlay()->HasInk()) {
@@ -2608,19 +2612,19 @@ void OpenZoomApp::QueueAnnotationSnapshot(int reason)
     capture.strokes = mainWindow_->annotationOverlay()->Strokes();
     capture.heading =
         reason == 1
-            ? QCoreApplication::translate("OpenZoom",
+            ? QCoreApplication::translate("OkuFlow",
                                           "Annotations cleared - snapshot")
             : reason == 2
                   ? QCoreApplication::translate(
-                        "OpenZoom", "Annotation session ended - snapshot")
-                  : QCoreApplication::translate("OpenZoom", "Annotated view");
+                        "OkuFlow", "Annotation session ended - snapshot")
+                  : QCoreApplication::translate("OkuFlow", "Annotated view");
     annotationCaptureQueue_.push_back(std::move(capture));
     pipelineOrchestrator_->MarkViewportDirty();
     ShowStatusMessage(QStringLiteral("Saving annotated view to lecture notes..."),
                       2500);
 }
 
-void OpenZoomApp::SaveAnnotationSnapshot(
+void OkuFlowApp::SaveAnnotationSnapshot(
     const uint8_t* processedData,
     UINT processedWidth,
     UINT processedHeight,
@@ -2656,7 +2660,7 @@ void OpenZoomApp::SaveAnnotationSnapshot(
         ShowStatusMessage(
             outputError.isEmpty()
                 ? QStringLiteral(
-                      "Annotated view not saved: the OpenZoom Photos folder "
+                      "Annotated view not saved: the OkuFlow Photos folder "
                       "is unavailable.")
                 : outputError);
         return;
@@ -2666,7 +2670,7 @@ void OpenZoomApp::SaveAnnotationSnapshot(
             QStringLiteral("yyyyMMdd_HHmmss_zzz"));
     const QString path = QDir(dirPath).filePath(
         QStringLiteral("ANNOTATION_%1.png").arg(timestamp));
-    QPointer<OpenZoomApp> owner(this);
+    QPointer<OkuFlowApp> owner(this);
     const bool queued = imageIoPool_ && imageIoPool_->tryStart(
         [owner,
          annotated = std::move(annotated),
@@ -2705,7 +2709,7 @@ void OpenZoomApp::SaveAnnotationSnapshot(
                     owner->ShowStatusMessage(
                         QStringLiteral(
                             "Saved annotated view to lecture notes. Press "
-                            "Ctrl+Shift+O to open the OpenZoom folder."),
+                            "Ctrl+Shift+O to open the OkuFlow folder."),
                         7000);
                 },
                 Qt::QueuedConnection);
@@ -2717,6 +2721,6 @@ void OpenZoomApp::SaveAnnotationSnapshot(
     }
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

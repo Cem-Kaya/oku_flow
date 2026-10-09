@@ -1,4 +1,4 @@
-#include "openzoom/app/user_data_paths.hpp"
+#include "okuflow/app/user_data_paths.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -8,7 +8,7 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
-namespace openzoom {
+namespace okuflow {
 
 class UserDataPathsTests : public QObject {
     Q_OBJECT
@@ -28,7 +28,7 @@ void UserDataPathsTests::createsStableCategoryAndDateFolders()
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
     const QString install = temporary.filePath(QStringLiteral("install"));
-    const QString root = temporary.filePath(QStringLiteral("documents/OpenZoom"));
+    const QString root = temporary.filePath(QStringLiteral("documents/OkuFlow"));
     QVERIFY(QDir().mkpath(install));
 
     UserDataPaths paths(root, install);
@@ -51,7 +51,7 @@ void UserDataPathsTests::rejectsApplicationDirectory()
 {
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
-    const QString install = temporary.filePath(QStringLiteral("OpenZoom"));
+    const QString install = temporary.filePath(QStringLiteral("OkuFlow"));
     QVERIFY(QDir().mkpath(install));
 
     const UserDataValidationResult result =
@@ -100,7 +100,7 @@ void UserDataPathsTests::constructorRejectsPersistedRootInsideInstall()
     // test never touches the real Documents folder.
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
-    const QString install = temporary.filePath(QStringLiteral("OpenZoom"));
+    const QString install = temporary.filePath(QStringLiteral("OkuFlow"));
     QVERIFY(QDir().mkpath(install));
 
     const UserDataPaths rejected(
@@ -118,7 +118,7 @@ void UserDataPathsTests::completesInterruptedPhotoPairCommit()
 {
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
-    UserDataPaths paths(temporary.filePath(QStringLiteral("OpenZoom")),
+    UserDataPaths paths(temporary.filePath(QStringLiteral("OkuFlow")),
                         temporary.filePath(QStringLiteral("install")));
     const QString day = paths.PhotosForDate(QDate::currentDate());
     const QString stem = QStringLiteral("IMG_20260801_120000_000");
@@ -151,7 +151,7 @@ void UserDataPathsTests::removesUnrecoverablePhotoOrphan()
 {
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
-    UserDataPaths paths(temporary.filePath(QStringLiteral("OpenZoom")),
+    UserDataPaths paths(temporary.filePath(QStringLiteral("OkuFlow")),
                         temporary.filePath(QStringLiteral("install")));
     const QString day = paths.PhotosForDate(QDate::currentDate());
     const QString orphan = QDir(day).filePath(QStringLiteral(
@@ -174,7 +174,7 @@ void UserDataPathsTests::leavesActivePhotoPairTransactionAlone()
 {
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
-    UserDataPaths paths(temporary.filePath(QStringLiteral("OpenZoom")),
+    UserDataPaths paths(temporary.filePath(QStringLiteral("OkuFlow")),
                         temporary.filePath(QStringLiteral("install")));
     const QString day = paths.PhotosForDate(QDate::currentDate());
     const QString stem = QStringLiteral("IMG_20260801_120002_000");
@@ -209,8 +209,8 @@ void UserDataPathsTests::leavesActivePhotoPairTransactionAlone()
     activeTransaction.unlock();
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
-QTEST_GUILESS_MAIN(openzoom::UserDataPathsTests)
+QTEST_GUILESS_MAIN(okuflow::UserDataPathsTests)
 
 #include "user_data_paths_tests.moc"

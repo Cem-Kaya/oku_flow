@@ -1,10 +1,11 @@
 #ifdef _WIN32
 
-#include "openzoom/ui/ui_translation.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 
 #include <QAbstractButton>
 #include <QAccessible>
 #include <QAccessibleEvent>
+#include <QByteArray>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QGroupBox>
@@ -22,25 +23,27 @@
 #include <cstddef>
 #include <functional>
 
-namespace openzoom {
+namespace okuflow {
 
 const char* const* TranslationCatalogSources(std::size_t* count);
 
 namespace {
 
-constexpr auto kSourceText = "_openzoomTranslationSourceText";
-constexpr auto kSourceTitle = "_openzoomTranslationSourceTitle";
-constexpr auto kSourcePlaceholder = "_openzoomTranslationSourcePlaceholder";
-constexpr auto kSourceToolTip = "_openzoomTranslationSourceToolTip";
-constexpr auto kSourceAccessibleName = "_openzoomTranslationSourceAccessibleName";
+constexpr auto kSourceText = "_okuflowTranslationSourceText";
+constexpr auto kSourceTitle = "_okuflowTranslationSourceTitle";
+constexpr auto kSourcePlaceholder = "_okuflowTranslationSourcePlaceholder";
+constexpr auto kSourceToolTip = "_okuflowTranslationSourceToolTip";
+constexpr auto kSourceAccessibleName = "_okuflowTranslationSourceAccessibleName";
 constexpr auto kSourceAccessibleDescription =
-    "_openzoomTranslationSourceAccessibleDescription";
-constexpr auto kSourceWindowTitle = "_openzoomTranslationSourceWindowTitle";
-constexpr auto kSourceComboItems = "_openzoomTranslationSourceComboItems";
-constexpr auto kSourceTabItems = "_openzoomTranslationSourceTabItems";
-constexpr auto kComboItemsAreData = "_openzoomComboItemsAreData";
-constexpr auto kLiveSourceText = "_openzoomLiveTranslationSourceText";
-constexpr auto kLiveRolePrefix = "_openzoomLiveTranslationRolePrefix";
+    "_okuflowTranslationSourceAccessibleDescription";
+constexpr auto kSourceWindowTitle = "_okuflowTranslationSourceWindowTitle";
+constexpr auto kSourceComboItems = "_okuflowTranslationSourceComboItems";
+constexpr auto kSourceTabItems = "_okuflowTranslationSourceTabItems";
+constexpr auto kComboItemsAreData = "_okuflowComboItemsAreData";
+constexpr auto kLiveSourceText = "_okuflowLiveTranslationSourceText";
+constexpr auto kLiveRolePrefix = "_okuflowLiveTranslationRolePrefix";
+constexpr auto kLiveDescriptionSource =
+    "_okuflowLiveTranslationDescriptionSource";
 
 struct TranslationTemplate {
     QString source;
@@ -133,7 +136,7 @@ QString TranslateFormattedUi(const QString& formattedSource)
             candidate.source.toUtf8();
         QString translated =
             QCoreApplication::translate(
-                "OpenZoom", sourceUtf8.constData());
+                "OkuFlow", sourceUtf8.constData());
         if (translated == candidate.source) {
             return formattedSource;
         }
@@ -199,16 +202,28 @@ QString AccessibleText(const QString& text, const QString& rolePrefix)
     return QStringLiteral("%1: %2").arg(prefix, text);
 }
 
-QString SourceProperty(QObject* object,
-                       const char* propertyName,
-                       const QString& currentValue)
+// Returns the current-language text for a source-language widget property.
+// The first value seen becomes the source. If the property later no longer
+// holds the translation applied here, application code replaced it (for
+// example a status-dependent button label), so the new value becomes the
+// source instead of being reverted on the next Show/Polish/LanguageChange pass.
+QString TranslateTrackedProperty(QObject* object,
+                                 const char* propertyName,
+                                 const QString& currentValue)
 {
-    const QVariant existing = object->property(propertyName);
-    if (existing.isValid()) {
-        return existing.toString();
+    const QByteArray appliedName = QByteArray(propertyName) + "Applied";
+    const QVariant source = object->property(propertyName);
+    const QVariant applied = object->property(appliedName.constData());
+    QString sourceText = currentValue;
+    if (source.isValid() && applied.isValid() &&
+        applied.toString() == currentValue) {
+        sourceText = source.toString();
+    } else {
+        object->setProperty(propertyName, currentValue);
     }
-    object->setProperty(propertyName, currentValue);
-    return currentValue;
+    const QString translated = TranslateUi(sourceText);
+    object->setProperty(appliedName.constData(), translated);
+    return translated;
 }
 
 void TranslateWidget(QWidget* widget)
@@ -218,12 +233,12 @@ void TranslateWidget(QWidget* widget)
     }
 
     if (!widget->windowTitle().isEmpty()) {
-        widget->setWindowTitle(TranslateUi(
-            SourceProperty(widget, kSourceWindowTitle, widget->windowTitle())));
+        widget->setWindowTitle(TranslateTrackedProperty(
+            widget, kSourceWindowTitle, widget->windowTitle()));
     }
     if (!widget->toolTip().isEmpty()) {
-        widget->setToolTip(TranslateUi(
-            SourceProperty(widget, kSourceToolTip, widget->toolTip())));
+        widget->setToolTip(TranslateTrackedProperty(
+            widget, kSourceToolTip, widget->toolTip()));
     }
     const QVariant liveSource = widget->property(kLiveSourceText);
     if (liveSource.isValid()) {
@@ -246,59 +261,55 @@ void TranslateWidget(QWidget* widget)
             QAccessible::updateAccessibility(&nameEvent);
         }
     } else if (!widget->accessibleName().isEmpty()) {
-        widget->setAccessibleName(TranslateUi(
-            SourceProperty(widget,
-                           kSourceAccessibleName,
-                           widget->accessibleName())));
+        widget->setAccessibleName(TranslateTrackedProperty(
+            widget, kSourceAccessibleName, widget->accessibleName()));
     }
-    if (!widget->accessibleDescription().isEmpty()) {
-        widget->setAccessibleDescription(TranslateUi(
-            SourceProperty(widget,
-                           kSourceAccessibleDescription,
-                           widget->accessibleDescription())));
+    const QVariant liveDescription = widget->property(kLiveDescriptionSource);
+    if (liveDescription.isValid()) {
+        widget->setAccessibleDescription(
+            TranslateUi(liveDescription.toString()));
+    } else if (!widget->accessibleDescription().isEmpty()) {
+        widget->setAccessibleDescription(TranslateTrackedProperty(
+            widget,
+            kSourceAccessibleDescription,
+            widget->accessibleDescription()));
     }
 
     if (!liveSource.isValid()) {
         if (auto* label = qobject_cast<QLabel*>(widget)) {
             if (!label->text().isEmpty()) {
-                label->setText(TranslateUi(
-                    SourceProperty(label, kSourceText, label->text())));
+                label->setText(TranslateTrackedProperty(
+                    label, kSourceText, label->text()));
             }
         } else if (auto* button = qobject_cast<QAbstractButton*>(widget)) {
             if (!button->text().isEmpty()) {
-                button->setText(TranslateUi(
-                    SourceProperty(button, kSourceText, button->text())));
+                button->setText(TranslateTrackedProperty(
+                    button, kSourceText, button->text()));
             }
         }
     }
 
     if (auto* group = qobject_cast<QGroupBox*>(widget)) {
         if (!group->title().isEmpty()) {
-            group->setTitle(TranslateUi(
-                SourceProperty(group, kSourceTitle, group->title())));
+            group->setTitle(TranslateTrackedProperty(
+                group, kSourceTitle, group->title()));
         }
     }
 
     if (auto* edit = qobject_cast<QLineEdit*>(widget)) {
         if (!edit->placeholderText().isEmpty()) {
-            edit->setPlaceholderText(TranslateUi(
-                SourceProperty(edit,
-                               kSourcePlaceholder,
-                               edit->placeholderText())));
+            edit->setPlaceholderText(TranslateTrackedProperty(
+                edit, kSourcePlaceholder, edit->placeholderText()));
         }
     } else if (auto* plainEdit = qobject_cast<QPlainTextEdit*>(widget)) {
         if (!plainEdit->placeholderText().isEmpty()) {
-            plainEdit->setPlaceholderText(TranslateUi(
-                SourceProperty(plainEdit,
-                               kSourcePlaceholder,
-                               plainEdit->placeholderText())));
+            plainEdit->setPlaceholderText(TranslateTrackedProperty(
+                plainEdit, kSourcePlaceholder, plainEdit->placeholderText()));
         }
     } else if (auto* textEdit = qobject_cast<QTextEdit*>(widget)) {
         if (!textEdit->placeholderText().isEmpty()) {
-            textEdit->setPlaceholderText(TranslateUi(
-                SourceProperty(textEdit,
-                               kSourcePlaceholder,
-                               textEdit->placeholderText())));
+            textEdit->setPlaceholderText(TranslateTrackedProperty(
+                textEdit, kSourcePlaceholder, textEdit->placeholderText()));
         }
     }
 
@@ -345,7 +356,7 @@ QString TranslateUi(const QString& sourceText)
     }
     const QByteArray utf8 = sourceText.toUtf8();
     const QString translated =
-        QCoreApplication::translate("OpenZoom", utf8.constData());
+        QCoreApplication::translate("OkuFlow", utf8.constData());
     return translated == sourceText
                ? TranslateFormattedUi(sourceText)
                : translated;
@@ -360,6 +371,20 @@ void SetLiveTranslationSource(QWidget* widget,
     }
     widget->setProperty(kLiveSourceText, sourceText);
     widget->setProperty(kLiveRolePrefix, rolePrefix);
+}
+
+void SetLiveAccessibleDescription(QWidget* widget, const QString& sourceText)
+{
+    if (!widget) {
+        return;
+    }
+    widget->setProperty(kLiveDescriptionSource, sourceText);
+    const QString description = TranslateUi(sourceText);
+    if (widget->accessibleDescription() != description) {
+        widget->setAccessibleDescription(description);
+        QAccessibleEvent event(widget, QAccessible::DescriptionChanged);
+        QAccessible::updateAccessibility(&event);
+    }
 }
 
 void RetranslateWidgetTree(QWidget* root)
@@ -382,6 +407,6 @@ void SetComboItemsAreData(QWidget* combo)
     }
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif

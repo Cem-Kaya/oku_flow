@@ -6,7 +6,7 @@
 - License: MIT; see `LICENSE.txt`
 - Imported files: `NIS_Config.h`, `NIS_Scaler.h`, and the upstream license
 
-OpenZoom's CUDA adaptation is implemented in
+OkuFlow's CUDA adaptation is implemented in
 `src/cuda/spatial_upscalers.cu`. It uses the upstream host configuration,
 64-phase scaler and USM coefficient banks, edge detector, four directional
 filters, and adaptive sharpening equations. Shader texture/group primitives

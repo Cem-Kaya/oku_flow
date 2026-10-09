@@ -1,4 +1,4 @@
-# OpenZoom 2.0 Roadmap — The Lecture Assistant
+# OkuFlow 2.0 Roadmap — The Lecture Assistant
 
 Mission: the best possible tool for a legally blind university student to follow
 live lectures using a phone camera clamped to a laptop. Everything below serves
@@ -65,7 +65,7 @@ low-vision reading.
   individual controls.
 - Asynchronous Laplacian-variance focus scoring copies only two floats every
   15 frames and gates blurry text-reading captures.
-- NVIDIA Maxine SuperRes is integrated behind `OPENZOOM_ENABLE_TEXT_SR` as a
+- NVIDIA Maxine SuperRes is integrated behind `OKUFLOW_ENABLE_TEXT_SR` as a
   runtime-loaded optional tier. It shares the CUDA stream, falls back to NIS
   when unavailable or too slow, and ships no proprietary runtime or weights.
 
@@ -91,7 +91,7 @@ low-vision reading.
   prompt — persisted in settings, editable in a dialog. Works with OpenAI's API
   and any OpenAI-compatible local server (LM Studio, Ollama, llama.cpp server),
   so image-to-text can run fully locally.
-- **Lecture notes**: a per-session HTML file (`Documents/OpenZoom/Notes/` by
+- **Lecture notes**: a per-session HTML file (`Documents/OkuFlow/Notes/` by
   default) that
   collects timestamped vision readings and scene explanations, and
   embeds portable relative references to captured photos. The browser-ready

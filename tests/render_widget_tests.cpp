@@ -1,5 +1,5 @@
-#include "openzoom/ui/render_widget.hpp"
-#include "openzoom/d3d12/presenter.hpp"
+#include "okuflow/ui/render_widget.hpp"
+#include "okuflow/d3d12/presenter.hpp"
 
 #include <QElapsedTimer>
 #include <QTimer>
@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 using Microsoft::WRL::ComPtr;
 
@@ -213,7 +213,7 @@ void RenderWidgetTests::circleKeepsItsAspectAcrossViewportResizes()
     }
     QVERIFY(presenter.WaitForIdle());
 }
-} // namespace openzoom
+} // namespace okuflow
 
-QTEST_MAIN(openzoom::RenderWidgetTests)
+QTEST_MAIN(okuflow::RenderWidgetTests)
 #include "render_widget_tests.moc"

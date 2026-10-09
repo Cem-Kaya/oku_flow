@@ -1,10 +1,54 @@
-# Plan 17 — Renaming the Project (target: FrontRow — read Phase 0 first)
+# Plan 17 — Renaming the Project (executed: OkuFlow)
 
-Status: DRAFT — blocked on the Phase 0 naming decision by the owner.
-Everything after Phase 0 is name-agnostic: it uses `<Name>` (display form,
-e.g. `FrontRow`), `<name>` (lowercase identifier, e.g. `frontrow`), and
-`<name_snake>` (e.g. `front_row`) placeholders so the same plan executes
-regardless of which name survives clearance.
+Status: **EXECUTED (2026-10-09).** The owner chose the name **OkuFlow**. The
+decision record, phase status, and open items are directly below; the rest
+of this document is kept as the plan was written. The Phase 0 evidence
+(FrontRow and the other screened candidates) is historical and unedited.
+This file and the CHANGELOG rename entry intentionally keep the old name
+OpenZoom: the rationale, the evidence, and the "from" side of each rename
+step still say OpenZoom. The data-migration steps in Phase 2 were not
+implemented; see the decision record.
+The later phases use `<Name>` (display form, e.g. `FrontRow`), `<name>`
+(lowercase identifier, e.g. `frontrow`), and `<name_snake>` (e.g.
+`front_row`) placeholders; for the executed rename these are `OkuFlow`,
+`okuflow`, and `oku_flow`.
+
+## Decision record (2026-10-09)
+
+- Name: `OkuFlow`. Forms: display `OkuFlow`, identifier `okuflow`, file
+  form `oku_flow`, build option and environment prefix `OKUFLOW_`.
+- Executable `oku_flow.exe`; bundle directory `dist\OkuFlow`; Windows
+  AppUserModelID `CemKaya.OkuFlow`.
+- Domain okuflow.com registered by the owner.
+- GitHub repository renamed to `Cem-Kaya/oku_flow` on 2026-10-09, homepage
+  https://okuflow.com. Old `github.com/Cem-Kaya/open_zoom` URLs redirect.
+- No in-app migration. The app is not widely distributed, so the rename
+  ships without any legacy-data migration or compatibility code: no
+  settings copy, no `Documents\OpenZoom` folder adoption, no saved-credential
+  copy, and no `OPENZOOM_*` environment-variable fallback. The owner's own
+  machine was migrated once by hand on 2026-10-09: settings, the Documents
+  data folder, and the saved credential. Existing local OpenZoom settings
+  and data on any other machine are not migrated automatically.
+
+## Phase status
+
+| Phase | State |
+|---|---|
+| 0 — Name clearance | Superseded by the owner's decision. The screening below is historical; this file records no trademark or availability results for OkuFlow. |
+| 1 — Identity decisions | DONE for the constants in the decision record above; no tagline decision is recorded here. |
+| 2 — User-visible rename + data migration | The user-visible rename is DONE 2026-10-09, executed together with Phase 3. The in-app data migration was dropped and replaced by a one-time manual migration of the owner's machine (see the decision record). |
+| 3 — Internal mechanical rename | DONE 2026-10-09, executed together with Phase 2. |
+| 4 — Ecosystem | PARTIAL — the repository rename and the okuflow.com domain are done; the rest is open (below). |
+
+## Open items
+
+Owner items:
+
+- Trademark search and filing for "OkuFlow" (Phase 0 checklist and Phase 4).
+- Other domains (`.org`, `.app`).
+- Microsoft Store / winget package ID.
+- Announcement copy.
+- Social-preview image for the GitHub repository.
 
 ## Why rename at all
 
@@ -73,7 +117,7 @@ trademarks in conflict here.
 **Recommendation:** OpenLoupe as primary candidate, pending the checklist.
 Do not proceed to Phase 2 until Phase 0 is signed off in this file.
 
-## Phase 1 — Identity decisions (half a day, no code)
+## Phase 1 — Identity decisions (no code)
 
 Decide and record in this file before touching code, because every later
 step consumes these constants:
@@ -94,7 +138,12 @@ step consumes these constants:
 - Icon: keep the current chroma icon initially (rebrand later if desired);
   only the embedded strings change in this plan.
 
-## Phase 2 — User-visible rename + data migration (1-2 days)
+## Phase 2 — User-visible rename + data migration
+
+> **Superseded 2026-10-09:** the data-migration parts of this phase (the
+> ordering rule below, step 1, and the old-version settings check in the
+> acceptance paragraph) were not implemented. There is no in-app migration;
+> see the decision record at the top of this file.
 
 Order matters: migration code ships *in the same build* as the rename so
 no user ever starts the renamed app without their settings following them.
@@ -136,7 +185,7 @@ version first run → all presets/custom schemes/AI keys present; Codex CLI
 found without re-download; screen reader announces the new name; taskbar
 pin of the new exe survives relaunch.
 
-## Phase 3 — Internal mechanical rename (1-2 days, one atomic PR)
+## Phase 3 — Internal mechanical rename (one atomic PR)
 
 The dangerous phase, purely because of repo mechanics. Do it in a single
 PR containing *no functional change whatsoever*, after Phase 2 has been
@@ -161,14 +210,16 @@ runtime-verified.
 - Gates: msvc-release build green, msvc-cpu build green, ctest green,
   app launches, camera runs, settings load — before merge.
 
-What deliberately does NOT change: git history (never rewrite), the
-`improvement_ideas/` texts (historical documents keep saying OpenZoom),
-old CHANGELOG entries, and the LICENSE's GPL body. The LICENSE *notice*,
-COMMERCIAL.md, and CLA.md get the new name — CLA.md §1 already defines
-the Project as "including any renamed successor of the same code base",
-so existing agreement language survives the rename with no re-consent.
+What deliberately does NOT change: git history (never rewrite) and the
+LICENSE's GPL body. The LICENSE *notice*, COMMERCIAL.md, and CLA.md get
+the new name — CLA.md §1 already defines the Project as "including any
+renamed successor of the same code base", so existing agreement language
+survives the rename with no re-consent. (As written, this plan also kept
+the `improvement_ideas/` texts and old CHANGELOG entries on the old name.
+The owner reversed that on 2026-10-09 and renamed them; this file and the
+CHANGELOG rename entry are the rename records that keep the old name.)
 
-## Phase 4 — Ecosystem (an afternoon + ongoing)
+## Phase 4 — Ecosystem
 
 - GitHub: rename the repository (GitHub auto-redirects old URLs and git
   remotes, but update local remotes and any CI references anyway), update
@@ -193,8 +244,10 @@ so existing agreement language survives the rename with no re-consent.
   mechanical rename misbehaves (endings churn, moc/AUTOMOC surprises),
   revert it alone — the user-visible rename from Phase 2 stands on its
   own indefinitely; internal identifiers saying `openzoom` harm nobody.
-- Settings migration is copy-based, so a rollback to the old exe finds
-  its old file untouched.
+  (Executed 2026-10-09 as one combined change, so this separation did not
+  apply.)
+- There is no in-app settings migration (see the decision record), so there
+  is no migration code to roll back.
 
 ## Sources (Phase 0 evidence)
 

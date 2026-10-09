@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/cuda/cuda_kernels.hpp"
+#include "okuflow/cuda/cuda_kernels.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -23,7 +23,7 @@
 // banks while replacing HLSL/GLSL texture and group primitives with CUDA
 // pitched-memory loads.
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -656,7 +656,7 @@ void LaunchFsrEasuRcasLinear(uchar4* dst, size_t dstPitchBytes,
     CheckLaunch("FidelityFX FSR 1.0 EASU launch failed");
 
     // FsrRcasCon transforms sharpness stops with exp2(-stops). Mapping the
-    // OpenZoom 0..1 slider through stops=-log2(slider) preserves that exact
+    // OkuFlow 0..1 slider through stops=-log2(slider) preserves that exact
     // transform while retaining 0 as a true no-sharpen endpoint.
     const float sharpnessScale =
         std::clamp(sharpness, 0.0f, 1.0f);
@@ -765,6 +765,6 @@ void PadSpatialCacheBorder(cudaArray_t cache,
     }
 }
 
-}  // namespace openzoom
+}  // namespace okuflow
 
 #endif

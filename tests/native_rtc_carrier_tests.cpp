@@ -5,7 +5,7 @@
 // Codex, no microphone.
 //
 // If a hardened machine ever surfaces a firewall prompt for loopback UDP,
-// set OPENZOOM_SKIP_NATIVE_RTC_TESTS=1 to skip visibly.
+// set OKUFLOW_SKIP_NATIVE_RTC_TESTS=1 to skip visibly.
 
 #include <QElapsedTimer>
 #include <QSignalSpy>
@@ -19,9 +19,9 @@
 
 #include <rtc/rtc.hpp>
 
-#include "openzoom/common/realtime_native_rtc_carrier.hpp"
+#include "okuflow/common/realtime_native_rtc_carrier.hpp"
 
-using namespace openzoom;
+using namespace okuflow;
 
 namespace {
 
@@ -180,7 +180,7 @@ class NativeRtcCarrierTests : public QObject {
 
     bool SkipRequested()
     {
-        return qEnvironmentVariableIntValue("OPENZOOM_SKIP_NATIVE_RTC_TESTS") == 1;
+        return qEnvironmentVariableIntValue("OKUFLOW_SKIP_NATIVE_RTC_TESTS") == 1;
     }
 
     // Drives one carrier through offer/answer against a loopback peer.
@@ -212,7 +212,7 @@ private slots:
     void offerAnswerChannelAndRtpFlow()
     {
         if (SkipRequested()) {
-            QSKIP("OPENZOOM_SKIP_NATIVE_RTC_TESTS=1");
+            QSKIP("OKUFLOW_SKIP_NATIVE_RTC_TESTS=1");
         }
         RealtimeNativeRtcCarrier carrier;
         AnsweringPeer peer;
@@ -251,7 +251,7 @@ private slots:
     void rejectsWrongFormatAndStaleGeneration()
     {
         if (SkipRequested()) {
-            QSKIP("OPENZOOM_SKIP_NATIVE_RTC_TESTS=1");
+            QSKIP("OKUFLOW_SKIP_NATIVE_RTC_TESTS=1");
         }
         RealtimeNativeRtcCarrier carrier;
         AnsweringPeer peer;
@@ -278,7 +278,7 @@ private slots:
     void configurableBitrateAndFrameDuration()
     {
         if (SkipRequested()) {
-            QSKIP("OPENZOOM_SKIP_NATIVE_RTC_TESTS=1");
+            QSKIP("OKUFLOW_SKIP_NATIVE_RTC_TESTS=1");
         }
         const RealtimeNativeRtcProfile profile{64000, 40};
         QVERIFY(RealtimeNativeRtcCarrier::IsProfileSupported(profile));
@@ -314,7 +314,7 @@ private slots:
     void startupBufferPreventsCaptureTimerStarvation()
     {
         if (SkipRequested()) {
-            QSKIP("OPENZOOM_SKIP_NATIVE_RTC_TESTS=1");
+            QSKIP("OKUFLOW_SKIP_NATIVE_RTC_TESTS=1");
         }
         RealtimeNativeRtcCarrier carrier;
         AnsweringPeer peer;
@@ -378,7 +378,7 @@ private slots:
     void pacedDrainStaysRealtimeWithoutBursting()
     {
         if (SkipRequested()) {
-            QSKIP("OPENZOOM_SKIP_NATIVE_RTC_TESTS=1");
+            QSKIP("OKUFLOW_SKIP_NATIVE_RTC_TESTS=1");
         }
         RealtimeNativeRtcCarrier carrier;
         AnsweringPeer peer;
@@ -414,7 +414,7 @@ private slots:
     void invalidAnswerFailsCleanly()
     {
         if (SkipRequested()) {
-            QSKIP("OPENZOOM_SKIP_NATIVE_RTC_TESTS=1");
+            QSKIP("OKUFLOW_SKIP_NATIVE_RTC_TESTS=1");
         }
         RealtimeNativeRtcCarrier carrier;
         QSignalSpy offers(&carrier, &RealtimeNativeRtcCarrier::OfferReady);
@@ -429,7 +429,7 @@ private slots:
     void repeatedCyclesStayClean()
     {
         if (SkipRequested()) {
-            QSKIP("OPENZOOM_SKIP_NATIVE_RTC_TESTS=1");
+            QSKIP("OKUFLOW_SKIP_NATIVE_RTC_TESTS=1");
         }
         RealtimeNativeRtcCarrier carrier;
         QSignalSpy offers(&carrier, &RealtimeNativeRtcCarrier::OfferReady);

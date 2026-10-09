@@ -1,4 +1,4 @@
-#include "openzoom/capture/capture_shutdown.hpp"
+#include "okuflow/capture/capture_shutdown.hpp"
 
 #include <QtTest/QtTest>
 #include <atomic>
@@ -14,7 +14,7 @@ private slots:
     void blockedReaderReturnsAtDeadlineAndOwnsItsState()
     {
         struct Session {
-            openzoom::CaptureShutdown shutdown;
+            okuflow::CaptureShutdown shutdown;
             std::atomic<bool> resourcesReleased{false};
         };
         auto session = std::make_shared<Session>();
@@ -54,7 +54,7 @@ private slots:
 
     void consumerReleasePrecedesProducerTeardown()
     {
-        auto control = std::make_shared<openzoom::CaptureShutdown>();
+        auto control = std::make_shared<okuflow::CaptureShutdown>();
         std::atomic<bool> consumerReleased{false}, producerReleased{false}, orderingCorrect{false};
         std::thread coordinator([&] {
             control->MarkQuiescent();
@@ -79,7 +79,7 @@ private slots:
 
     void cancellationDoesNotWaitOnEnteredCallbackAndNewSessionIsIndependent()
     {
-        auto old = std::make_shared<openzoom::CaptureShutdown>();
+        auto old = std::make_shared<okuflow::CaptureShutdown>();
         std::promise<void> entered, release;
         auto releaseFuture = release.get_future().share();
         std::thread worker([&] {
@@ -93,7 +93,7 @@ private slots:
         old->MarkQuiescent();
         const bool entryDenied = !old->TryEnterDelivery();
         const bool incorrectlyQuiescent = old->WaitQuiescent(start + 25ms);
-        auto fresh = std::make_shared<openzoom::CaptureShutdown>();
+        auto fresh = std::make_shared<okuflow::CaptureShutdown>();
         const bool newEntryAllowed = bool(fresh->TryEnterDelivery());
         release.set_value();
         worker.join();
@@ -105,7 +105,7 @@ private slots:
 
     void stalledFinalReleaseSharesTheOriginalDeadline()
     {
-        openzoom::CaptureShutdown control;
+        okuflow::CaptureShutdown control;
         std::promise<void> finishRelease;
         auto releaseFuture = finishRelease.get_future().share();
         std::thread coordinator([&] {

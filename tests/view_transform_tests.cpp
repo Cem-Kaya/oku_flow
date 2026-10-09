@@ -1,5 +1,5 @@
-#include "openzoom/common/view_transform.hpp"
-#include "openzoom/app/pipeline_orchestrator.hpp"
+#include "okuflow/common/view_transform.hpp"
+#include "okuflow/app/pipeline_orchestrator.hpp"
 
 #include <QtTest/QTest>
 
@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -364,8 +364,8 @@ void ViewTransformTests::fenceSequencerIgnoresMissedAdmission() {
     QCOMPARE(afterRecording.signalValue, 14u);
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
-QTEST_GUILESS_MAIN(openzoom::ViewTransformTests)
+QTEST_GUILESS_MAIN(okuflow::ViewTransformTests)
 
 #include "view_transform_tests.moc"

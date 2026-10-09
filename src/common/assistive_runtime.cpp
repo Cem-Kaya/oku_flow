@@ -1,8 +1,8 @@
 #ifdef _WIN32
 
-#include "openzoom/common/assistive_runtime.hpp"
-#include "openzoom/common/response_language.hpp"
-#include "openzoom/common/codex_app_server_client.hpp"
+#include "okuflow/common/assistive_runtime.hpp"
+#include "okuflow/common/response_language.hpp"
+#include "okuflow/common/codex_app_server_client.hpp"
 
 #include <QBuffer>
 #include <QByteArray>
@@ -39,12 +39,12 @@
 
 #include <windows.h>
 
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
 #include <QTextToSpeech>
 #include <QVoice>
 #endif
 
-namespace openzoom {
+namespace okuflow {
 
 // A serial, byte-bounded queue. Worker closures own only immutable values;
 // receiver access is guarded during dispatch and disconnected at destruction.
@@ -114,7 +114,7 @@ QString ResolvedSetting(const QString& configured, const char* envName)
 QString VlmNotConfiguredMessage()
 {
     return QStringLiteral("VLM not configured. Set the server URL and model in AI Settings "
-                          "or via OPENZOOM_VLM_API_URL and OPENZOOM_VLM_MODEL. An API key is optional for local servers.");
+                          "or via OKUFLOW_VLM_API_URL and OKUFLOW_VLM_MODEL. An API key is optional for local servers.");
 }
 
 QString CodexNotAvailableMessage()
@@ -138,7 +138,7 @@ QString CreateAssistiveTemporaryFramePath(const QString& purpose,
     QTemporaryFile tempFile(
         QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
             .filePath(
-                QStringLiteral("openzoom_%1_%2_XXXXXX.%3")
+                QStringLiteral("okuflow_%1_%2_XXXXXX.%3")
                     .arg(purpose)
                     .arg(GetCurrentProcessId())
                     .arg(suffix)));
@@ -175,12 +175,12 @@ void SweepAssistiveTemporaryFrames()
     QDir temporaryDirectory(
         QStandardPaths::writableLocation(QStandardPaths::TempLocation));
     const QRegularExpression ownedFilePattern(
-        QStringLiteral(R"(^openzoom_codex_(\d+)_.*\.(?:png|jpg)$)"));
+        QStringLiteral(R"(^okuflow_codex_(\d+)_.*\.(?:png|jpg)$)"));
     const QDateTime legacyCutoff =
         QDateTime::currentDateTimeUtc().addSecs(-60 * 60);
     int removed = 0;
     for (const QString& pattern :
-         {QStringLiteral("openzoom_codex_*.jpg")}) {
+         {QStringLiteral("okuflow_codex_*.jpg")}) {
         const QFileInfoList files =
             temporaryDirectory.entryInfoList({pattern}, QDir::Files);
         for (const QFileInfo& file : files) {
@@ -216,7 +216,7 @@ void RemoveCurrentProcessAssistiveFrames()
         QStandardPaths::writableLocation(QStandardPaths::TempLocation));
     const QString processId = QString::number(GetCurrentProcessId());
     for (const QString& pattern :
-         {QStringLiteral("openzoom_codex_%1_*.jpg").arg(processId)}) {
+         {QStringLiteral("okuflow_codex_%1_*.jpg").arg(processId)}) {
         for (const QString& fileName :
              temporaryDirectory.entryList({pattern}, QDir::Files)) {
             QFile::remove(temporaryDirectory.filePath(fileName));
@@ -436,7 +436,7 @@ void AssistiveRuntime::SetConfig(const AssistiveRuntimeConfig& config)
         config.ttsRate != config_.ttsRate;
     if (speechConfigChanged) {
         StopSpeech();
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
         delete tts_;
         tts_ = nullptr;
 #endif
@@ -482,7 +482,7 @@ void AssistiveRuntime::SetResponseLanguage(const QString& languageCode)
     }
     responseLanguageCode_ = next;
     warnedMissingVoiceLanguage_.clear();
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (tts_) {
         SelectVoiceForResponseLanguage(true);
     }
@@ -493,7 +493,7 @@ QString AssistiveRuntime::AppendResponseLanguageDirective(
     const QString& prompt,
     const QString& languageCode)
 {
-    return openzoom::AppendResponseLanguageDirective(prompt, languageCode);
+    return okuflow::AppendResponseLanguageDirective(prompt, languageCode);
 }
 
 void AssistiveRuntime::SetModes(bool vlmEnabled)
@@ -595,7 +595,7 @@ void AssistiveRuntime::SubmitFrameForced(const uint8_t* bgraData, int width, int
 void AssistiveRuntime::NoteCapturedPhotoPair(const QString& originalPath,
                                              const QString& processedPath)
 {
-    AppendNoteMediaPair(QCoreApplication::translate("OpenZoom", "Photo captured"),
+    AppendNoteMediaPair(QCoreApplication::translate("OkuFlow", "Photo captured"),
                         originalPath,
                         processedPath,
                         false);
@@ -604,7 +604,7 @@ void AssistiveRuntime::NoteCapturedPhotoPair(const QString& originalPath,
 void AssistiveRuntime::NoteCapturedVideoPair(const QString& originalPath,
                                              const QString& processedPath)
 {
-    AppendNoteMediaPair(QCoreApplication::translate("OpenZoom", "Video recorded"),
+    AppendNoteMediaPair(QCoreApplication::translate("OkuFlow", "Video recorded"),
                         originalPath,
                         processedPath,
                         true);
@@ -691,7 +691,7 @@ bool AssistiveRuntime::NoteTranscriptSegment(const TranscriptSegment& segment)
         timeChip = QStringLiteral(
                        " <time class=\"tr-at\" datetime=\"PT%1S\" title=\"%2\">%3</time>")
                        .arg(QString::number(offsetSeconds),
-                            QCoreApplication::translate("OpenZoom",
+                            QCoreApplication::translate("OkuFlow",
                                                         "about %1 into recording")
                                 .arg(FormatClockDuration(segment.approximateOffset100ns))
                                 .toHtmlEscaped(),
@@ -715,7 +715,7 @@ bool AssistiveRuntime::NoteTranscriptSegment(const TranscriptSegment& segment)
                  text.toHtmlEscaped(),
                  segment.truncated
                      ? QStringLiteral(" %1").arg(
-                           QCoreApplication::translate("OpenZoom", "(truncated)")
+                           QCoreApplication::translate("OkuFlow", "(truncated)")
                                .toHtmlEscaped())
                      : QString(),
                  timeChip);
@@ -742,7 +742,7 @@ bool AssistiveRuntime::NoteTranscriptGap(const QString& recordingSessionId)
             "<span class=\"tr-text\">%2</span></p>\n")
             .arg(recordingSessionId.toHtmlEscaped(),
                  QCoreApplication::translate(
-                     "OpenZoom",
+                     "OkuFlow",
                      "Transcript has a gap; recording is unaffected.")
                      .toHtmlEscaped()));
 }
@@ -755,7 +755,7 @@ void AssistiveRuntime::NoteAnnotationSnapshot(const QString& filePath,
     }
     AppendNoteSection(
         heading.trimmed().isEmpty()
-            ? QCoreApplication::translate("OpenZoom", "Annotated view")
+            ? QCoreApplication::translate("OkuFlow", "Annotated view")
             : heading,
         {},
         filePath);
@@ -1017,8 +1017,8 @@ bool AssistiveRuntime::VlmConfigured() const
     if (UsesCodexProvider()) {
         return codexClient_ != nullptr;
     }
-    return !ResolvedSetting(config_.vlmApiUrl, "OPENZOOM_VLM_API_URL").isEmpty() &&
-           !ResolvedSetting(config_.vlmModel, "OPENZOOM_VLM_MODEL").isEmpty();
+    return !ResolvedSetting(config_.vlmApiUrl, "OKUFLOW_VLM_API_URL").isEmpty() &&
+           !ResolvedSetting(config_.vlmModel, "OKUFLOW_VLM_MODEL").isEmpty();
 }
 
 bool AssistiveRuntime::UsesCodexProvider() const
@@ -1089,10 +1089,10 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height, 
         return;
     }
 
-    const QString apiUrl = ResolvedSetting(config_.vlmApiUrl, "OPENZOOM_VLM_API_URL");
-    const QString apiKey = ResolvedSetting(config_.vlmApiKey, "OPENZOOM_VLM_API_KEY");
-    const QString model = ResolvedSetting(config_.vlmModel, "OPENZOOM_VLM_MODEL");
-    QString prompt = readText ? readingPrompt : ResolvedSetting(config_.vlmPrompt, "OPENZOOM_VLM_PROMPT");
+    const QString apiUrl = ResolvedSetting(config_.vlmApiUrl, "OKUFLOW_VLM_API_URL");
+    const QString apiKey = ResolvedSetting(config_.vlmApiKey, "OKUFLOW_VLM_API_KEY");
+    const QString model = ResolvedSetting(config_.vlmModel, "OKUFLOW_VLM_MODEL");
+    QString prompt = readText ? readingPrompt : ResolvedSetting(config_.vlmPrompt, "OKUFLOW_VLM_PROMPT");
     if (prompt.isEmpty()) {
         prompt = QStringLiteral("Describe the visible scene briefly for a low-vision user. Focus on readable text, UI elements, and major objects.");
     }
@@ -1231,7 +1231,7 @@ void AssistiveRuntime::PostVlmRequest(
             payload.size() > kMaximumVlmResponseBytes) {
             vlmResponseTooLarge_ = false;
             FinishVlmError(
-                QStringLiteral("VLM response exceeded OpenZoom's safe size limit."));
+                QStringLiteral("VLM response exceeded OkuFlow's safe size limit."));
             reply->deleteLater();
             return;
         }
@@ -1389,7 +1389,7 @@ void AssistiveRuntime::FinishVlmSuccess(const QString& text)
     } else {
         vlmStatus_.clear();
         noted = AppendNoteSection(
-            QCoreApplication::translate("OpenZoom", readingText_ ? "Text on screen" : "Scene explanation"),
+            QCoreApplication::translate("OkuFlow", readingText_ ? "Text on screen" : "Scene explanation"),
             fullText, analyzedImage, true);
     }
     if (!noted && !analyzedImage.isEmpty()) {
@@ -1451,7 +1451,7 @@ void AssistiveRuntime::FinishAssistantTurnSuccess(const QString& threadId,
                                "    </figure>\n")
                                .arg(imageUrl,
                                     QCoreApplication::translate(
-                                        "OpenZoom", "View the assistant analyzed")
+                                        "OkuFlow", "View the assistant analyzed")
                                         .toHtmlEscaped());
             }
             content += QStringLiteral("    <p class=\"note-text\">%1</p>\n")
@@ -1470,7 +1470,7 @@ void AssistiveRuntime::FinishAssistantTurnSuccess(const QString& threadId,
             metadata.conversationId = conversation.left(64);
             const QString heading =
                 question.isEmpty()
-                    ? QCoreApplication::translate("OpenZoom", "Assistant")
+                    ? QCoreApplication::translate("OkuFlow", "Assistant")
                     : question.simplified().left(80);
             noted = AppendNoteHtmlSection(heading, content, metadata);
         }
@@ -1515,9 +1515,9 @@ bool AssistiveRuntime::EnsureNotesFile()
         responseLanguageCode_.isEmpty() ? QStringLiteral("en")
                                         : responseLanguageCode_;
     const QString notesTitle =
-        QCoreApplication::translate("OpenZoom", "OpenZoom Lecture Notes");
+        QCoreApplication::translate("OkuFlow", "OkuFlow Lecture Notes");
     const QString startedLine =
-        QCoreApplication::translate("OpenZoom", "Started %1")
+        QCoreApplication::translate("OkuFlow", "Started %1")
             .toHtmlEscaped()
             .arg(QStringLiteral("<time datetime=\"%1\">%2</time>")
                      .arg(machineTime.toHtmlEscaped(),
@@ -1631,7 +1631,7 @@ bool AssistiveRuntime::EnsureNotesFile()
   <script>
   (function () {
     "use strict";
-    var storageKey = "openzoom-notes-theme";
+    var storageKey = "okuflow-notes-theme";
     function applyTheme(value) {
       if (value === "light" || value === "dark") {
         document.documentElement.setAttribute("data-theme", value);
@@ -1788,7 +1788,7 @@ bool AssistiveRuntime::EnsureNotesFile()
 <body>
 <header class="topbar">
   <div class="topbar-inner">
-    <p class="brand">OpenZoom</p>
+    <p class="brand">OkuFlow</p>
     <div class="tools">
       <button type="button" id="btn-expand">@@EXPAND@@</button>
       <button type="button" id="btn-collapse">@@COLLAPSE@@</button>
@@ -1803,22 +1803,22 @@ bool AssistiveRuntime::EnsureNotesFile()
     document.replace(QStringLiteral("@@LANG@@"),
                      documentLanguage.toHtmlEscaped());
     document.replace(QStringLiteral("@@TRLABEL@@"),
-                     QCoreApplication::translate("OpenZoom", "Lecture transcript")
+                     QCoreApplication::translate("OkuFlow", "Lecture transcript")
                          .toHtmlEscaped());
     document.replace(QStringLiteral("@@CONVOLABEL@@"),
-                     QCoreApplication::translate("OpenZoom", "Conversation")
+                     QCoreApplication::translate("OkuFlow", "Conversation")
                          .toHtmlEscaped());
     document.replace(QStringLiteral("@@TITLE@@"), notesTitle.toHtmlEscaped());
     document.replace(QStringLiteral("@@TIME@@"), displayTime.toHtmlEscaped());
     document.replace(QStringLiteral("@@CREATED@@"), startedLine);
     document.replace(QStringLiteral("@@EXPAND@@"),
-                     QCoreApplication::translate("OpenZoom", "Expand all")
+                     QCoreApplication::translate("OkuFlow", "Expand all")
                          .toHtmlEscaped());
     document.replace(QStringLiteral("@@COLLAPSE@@"),
-                     QCoreApplication::translate("OpenZoom", "Collapse all")
+                     QCoreApplication::translate("OkuFlow", "Collapse all")
                          .toHtmlEscaped());
     document.replace(QStringLiteral("@@THEMELABEL@@"),
-                     QCoreApplication::translate("OpenZoom", "Light or dark colors")
+                     QCoreApplication::translate("OkuFlow", "Light or dark colors")
                          .toHtmlEscaped());
     if (!QueueNotesWork(path, document.size() * 2,
                         [path, directory, document] {
@@ -1876,7 +1876,7 @@ bool AssistiveRuntime::AppendNoteSection(const QString& heading,
                            "    </figure>\n")
                            .arg(imageUrl,
                                 QCoreApplication::translate(
-                                    "OpenZoom", "View the assistant analyzed")
+                                    "OkuFlow", "View the assistant analyzed")
                                     .toHtmlEscaped());
         }
         content += QStringLiteral("    <p class=\"note-text\">%1</p>\n")
@@ -1895,10 +1895,10 @@ bool AssistiveRuntime::AppendNoteSection(const QString& heading,
                       "    </figure>\n")
                       .arg(imageUrl,
                            QCoreApplication::translate(
-                               "OpenZoom", "Captured processed camera view")
+                               "OkuFlow", "Captured processed camera view")
                                .toHtmlEscaped(),
                            QCoreApplication::translate(
-                               "OpenZoom", "Processed camera view")
+                               "OkuFlow", "Processed camera view")
                                .toHtmlEscaped());
         // A single processed image reaches here only for annotation
         // snapshots; the marked-drawing icon fits better than a camera.
@@ -1965,7 +1965,7 @@ void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
                             "        </video>\n")
                             .arg(originalUrl,
                                  QCoreApplication::translate(
-                                     "OpenZoom", "Open original video")
+                                     "OkuFlow", "Open original video")
                                      .toHtmlEscaped());
         processedMedia = QStringLiteral(
                              "        <video controls preload=\"metadata\">\n"
@@ -1974,32 +1974,32 @@ void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
                              "        </video>\n")
                              .arg(processedUrl,
                                   QCoreApplication::translate(
-                                      "OpenZoom", "Open processed video")
+                                      "OkuFlow", "Open processed video")
                                       .toHtmlEscaped());
     } else {
         originalMedia = QStringLiteral(
                             "        <a href=\"%1\"><img src=\"%1\" alt=\"%2\" loading=\"lazy\"></a>\n")
                             .arg(originalUrl,
                                  QCoreApplication::translate(
-                                     "OpenZoom", "Original camera view")
+                                     "OkuFlow", "Original camera view")
                                      .toHtmlEscaped());
         processedMedia = QStringLiteral(
                              "        <a href=\"%1\"><img src=\"%1\" alt=\"%2\" loading=\"lazy\"></a>\n")
                              .arg(processedUrl,
                                   QCoreApplication::translate(
-                                      "OpenZoom", "Processed camera view")
+                                      "OkuFlow", "Processed camera view")
                                       .toHtmlEscaped());
     }
 
     // Full sentences per language — never compose "Original camera" + type,
     // word order differs in Turkish and German.
     const QString originalCaption =
-        (video ? QCoreApplication::translate("OpenZoom", "Original camera video")
-               : QCoreApplication::translate("OpenZoom", "Original camera photo"))
+        (video ? QCoreApplication::translate("OkuFlow", "Original camera video")
+               : QCoreApplication::translate("OkuFlow", "Original camera photo"))
             .toHtmlEscaped();
     const QString processedCaption =
-        (video ? QCoreApplication::translate("OpenZoom", "Processed camera video")
-               : QCoreApplication::translate("OpenZoom", "Processed camera photo"))
+        (video ? QCoreApplication::translate("OkuFlow", "Processed camera video")
+               : QCoreApplication::translate("OkuFlow", "Processed camera photo"))
             .toHtmlEscaped();
     const QString content =
         QStringLiteral(
@@ -2023,9 +2023,9 @@ void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
     metadata.cssClass = QStringLiteral("media");
     metadata.kind = video ? QStringLiteral("video") : QStringLiteral("photo");
     metadata.previewText =
-        video ? QCoreApplication::translate("OpenZoom",
+        video ? QCoreApplication::translate("OkuFlow",
                                             "Original and processed video")
-              : QCoreApplication::translate("OpenZoom",
+              : QCoreApplication::translate("OkuFlow",
                                             "Original and processed photo");
     AppendNoteHtmlSection(heading, content, metadata);
 }
@@ -2202,7 +2202,7 @@ bool AssistiveRuntime::AppendNoteHtmlSection(const QString& heading,
 
 void AssistiveRuntime::SpeakText(const QString& text)
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (text.trimmed().isEmpty()) {
         return;
     }
@@ -2255,7 +2255,7 @@ void AssistiveRuntime::SpeakText(const QString& text)
 
 bool AssistiveRuntime::SelectVoiceForResponseLanguage(bool notifyMissing)
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (!tts_) {
         return false;
     }
@@ -2305,7 +2305,7 @@ bool AssistiveRuntime::SelectVoiceForResponseLanguage(bool notifyMissing)
                       : QStringLiteral("English");
         emit StatusNotice(
             QCoreApplication::translate(
-                "OpenZoom",
+                "OkuFlow",
                 "No %1 voice is installed — using the current voice. "
                 "Install one under Windows Settings → Time & Language → Speech.")
                 .arg(languageName));
@@ -2319,13 +2319,13 @@ bool AssistiveRuntime::SelectVoiceForResponseLanguage(bool notifyMissing)
 
 void AssistiveRuntime::StopSpeech()
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (tts_) {
         tts_->stop();
     }
 #endif
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

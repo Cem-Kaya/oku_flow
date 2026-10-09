@@ -1,7 +1,7 @@
-#include "openzoom/app/language_manager.hpp"
-#include "openzoom/common/response_language.hpp"
-#include "openzoom/ui/live_status_text.hpp"
-#include "openzoom/ui/ui_translation.hpp"
+#include "okuflow/app/language_manager.hpp"
+#include "okuflow/common/response_language.hpp"
+#include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 
 #include <QAccessible>
 #include <QApplication>
@@ -12,7 +12,7 @@
 
 #include <algorithm>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
 QObject* g_accessibilityTarget{};
@@ -36,6 +36,7 @@ private slots:
     void cleanup();
     void catalogsLoadAndTranslateSentinels();
     void liveStatusRetranslatesAccessibly();
+    void codeChangedTextSurvivesRetranslation();
     void responseLanguageDirectivePreservesPrompt();
     void rtlDirectionPlumbing();
 
@@ -126,6 +127,40 @@ void LanguageManagerTests::liveStatusRetranslatesAccessibly()
     QVERIFY(manager.SetLanguage(AppLanguage::English, false));
 }
 
+void LanguageManagerTests::codeChangedTextSurvivesRetranslation()
+{
+    auto* application =
+        qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application);
+    LanguageManager manager(*application);
+
+    // Polish/Show retranslation records the construction-time label, then
+    // status code replaces it (Setup Assistant: Install -> Update). The next
+    // pass must keep the replacement rather than restoring the first label.
+    QPushButton button(QStringLiteral("Install"));
+    RetranslateWidgetTree(&button);
+    SetLiveAccessibleDescription(&button, QStringLiteral("Recording"));
+    button.setText(QStringLiteral("Recording"));
+    button.setToolTip(QStringLiteral("Recording"));
+    RetranslateWidgetTree(&button);
+    QCOMPARE(button.text(), QStringLiteral("Recording"));
+    QCOMPARE(button.toolTip(), QStringLiteral("Recording"));
+
+    QVERIFY(manager.SetLanguage(AppLanguage::Turkish, false));
+    QCOMPARE(button.text(), QStringLiteral("Kayıt"));
+    QCOMPARE(button.toolTip(), QStringLiteral("Kayıt"));
+    QCOMPARE(button.accessibleDescription(), QStringLiteral("Kayıt"));
+
+    // Returning to Custom Setup removes the previous shortcut description;
+    // retranslation must not resurrect it on the next language change.
+    SetLiveAccessibleDescription(&button, QString());
+
+    QVERIFY(manager.SetLanguage(AppLanguage::English, false));
+    QCOMPARE(button.text(), QStringLiteral("Recording"));
+    QCOMPARE(button.toolTip(), QStringLiteral("Recording"));
+    QVERIFY(button.accessibleDescription().isEmpty());
+}
+
 void LanguageManagerTests::responseLanguageDirectivePreservesPrompt()
 {
     const QString prompt = QStringLiteral("Describe this view.");
@@ -159,7 +194,7 @@ void LanguageManagerTests::rtlDirectionPlumbing()
     auto* application =
         qobject_cast<QApplication*>(QCoreApplication::instance());
     QVERIFY(application);
-    qputenv("OPENZOOM_FORCE_RTL", "1");
+    qputenv("OKUFLOW_FORCE_RTL", "1");
     {
         LanguageManager manager(*application);
         QVERIFY(manager.rtlTestMode());
@@ -177,11 +212,11 @@ void LanguageManagerTests::rtlDirectionPlumbing()
         QCoreApplication::processEvents();
         QVERIFY(first->x() > second->x());
     }
-    qunsetenv("OPENZOOM_FORCE_RTL");
+    qunsetenv("OKUFLOW_FORCE_RTL");
     application->setLayoutDirection(Qt::LeftToRight);
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
-QTEST_MAIN(openzoom::LanguageManagerTests)
+QTEST_MAIN(okuflow::LanguageManagerTests)
 #include "language_manager_tests.moc"

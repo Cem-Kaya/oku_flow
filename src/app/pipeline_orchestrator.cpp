@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/app/pipeline_orchestrator.hpp"
+#include "okuflow/app/pipeline_orchestrator.hpp"
 
 #include <QDebug>
 #include <QMetaObject>
@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -484,6 +484,6 @@ void PipelineOrchestrator::RecordFrameTickSample(qint64 elapsedNanos)
     }
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

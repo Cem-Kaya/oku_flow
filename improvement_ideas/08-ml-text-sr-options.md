@@ -1,11 +1,11 @@
 # ML Text Super-Resolution Options — Pre-Trained Models Only (2026-07)
 
-Research report for filling the `OPENZOOM_ENABLE_TEXT_SR` integration boundary
+Research report for filling the `OKUFLOW_ENABLE_TEXT_SR` integration boundary
 (`cmake/ProjectOptions.cmake`, adapter stub around `src/cuda/cuda_interop.cpp:1653`)
 with a **pre-trained, downloadable** model. Constraints applied to every option:
 
 - **No training.** Weights must be downloadable today (GitHub release, HuggingFace, vendor SDK).
-- **License of code AND weights** must be compatible with OpenZoom's GPL-3.0 +
+- **License of code AND weights** must be compatible with OkuFlow's GPL-3.0 +
   commercial dual license → commercial redistribution required. Apache-2.0 / MIT /
   BSD = good. No-license repos, CC-BY-NC, research-only, "contact us" = **blocked**.
 - **Latency budget:** ~640×360 ROI, 2×–4× upscale, **< 8 ms** on an RTX 30/40-series
@@ -124,7 +124,7 @@ Treat all *(est.)* numbers as ±2× until we benchmark on real hardware.
 
 **Driver-level free win: RTX Video SDK** — now app-integrable with native **D3D12** support; expose as a cheap "Video Enhance" toggle on the presented frame. Worth a 1-day spike; not the text-SR endgame.
 
-### Integration sketch (behind `OPENZOOM_ENABLE_TEXT_SR=ON`)
+### Integration sketch (behind `OKUFLOW_ENABLE_TEXT_SR=ON`)
 
 1. New `TextSrAdapter` interface in the CUDA pipeline at the existing stub
    (`cuda_interop.cpp` ~line 1653), running **on the zoomed ROI only**, before
@@ -132,7 +132,7 @@ Treat all *(est.)* numbers as ±2× until we benchmark on real hardware.
    (never run ML-SR + NIS together — pick per settings).
 2. Backends: `MaxineSrAdapter` (NvVFX, CUDA buffers in/out) and `TrtSrAdapter`
    (TensorRT C++ API; ONNX asset in `models/`; engine cached under
-   `%LOCALAPPDATA%/OpenZoom/trt-cache/<model>-<sm>-<driver>-<trt>.engine`;
+   `%LOCALAPPDATA%/OkuFlow/trt-cache/<model>-<sm>-<driver>-<trt>.engine`;
    build ≈ seconds–1 min, do it async with a status toast, fall back to NIS
    until ready). FP16 default; INT8 later via calibration on synthetic text
    crops (see §5.1) — optional, FP16 already fits budget for RLFN-class.
@@ -190,7 +190,7 @@ RLFN Apache-2.0, or our own ~0.3 M-param convnet) on **synthetic text pairs**:
   training converges in hours on one consumer GPU; an RLFN-class model is
   **a weekend of GPU time** on a single RTX 4090-class card. No dataset license
   issues, unlimited data, degradation tuned to *our* cameras (we can even mix in
-  a few hundred real OpenZoom frame captures as validation).
+  a few hundred real OkuFlow frame captures as validation).
 - **Decisive advantage:** the resulting weights are **ours outright** — cleanly
   dual-licensable under GPL-3.0 + commercial with zero third-party terms, and a
   text-specialized model at RLFN latency would likely beat every general-purpose
@@ -262,7 +262,7 @@ Two license regimes coexist:
   "non-production". 30-day termination-for-convenience with destroy-all-copies
   and no prior-distribution carve-out. Do not build on this.
 
-**Binding conditions for OpenZoom:**
+**Binding conditions for OkuFlow:**
 1. **Anti-copyleft clause (EULA §2.5 / NVSLA §8.8):** the SDK must never become
    subject to an open-source license → NVIDIA bits must NOT ship inside the
    GPL-3.0-distributed build. Architecture: SuperRes is an optional

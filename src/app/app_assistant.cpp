@@ -2,9 +2,9 @@
 
 #include "app_internal.hpp"
 
-namespace openzoom {
+namespace okuflow {
 
-void OpenZoomApp::OpenAiSettingsDialog()
+void OkuFlowApp::OpenAiSettingsDialog()
 {
     if (!mainWindow_) {
         return;
@@ -22,7 +22,7 @@ void OpenZoomApp::OpenAiSettingsDialog()
     }
 }
 
-void OpenZoomApp::OpenNotesFile()
+void OkuFlowApp::OpenNotesFile()
 {
     if (assistiveManager_->Runtime().HasPendingNotesWrites()) {
         openNotesWhenStored_ = true;
@@ -39,7 +39,7 @@ void OpenZoomApp::OpenNotesFile()
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 
-void OpenZoomApp::SubmitOnDemandAnalysis(bool readText)
+void OkuFlowApp::SubmitOnDemandAnalysis(bool readText)
 {
     if (pendingOnDemandAnalysis_ || assistiveManager_->Runtime().IsBusy()) {
         ShowStatusMessage(QStringLiteral("Scene explanation is busy with a previous request. Try again in a moment."));
@@ -79,7 +79,7 @@ void OpenZoomApp::SubmitOnDemandAnalysis(bool readText)
     qWarning() << "On-demand analysis skipped: no frame available";
 }
 
-void OpenZoomApp::SubmitAssistantPrompt()
+void OkuFlowApp::SubmitAssistantPrompt()
 {
     if (!uiState_->assistantPromptEdit_ || assistiveManager_->Runtime().IsCodexTurnActive()) {
         return;
@@ -92,7 +92,7 @@ void OpenZoomApp::SubmitAssistantPrompt()
     SubmitAssistantPromptText(prompt, true, false);
 }
 
-void OpenZoomApp::SubmitFloatingAssistantPrompt(const QString& prompt)
+void OkuFlowApp::SubmitFloatingAssistantPrompt(const QString& prompt)
 {
     if (prompt.trimmed().isEmpty()) {
         return;
@@ -100,13 +100,13 @@ void OpenZoomApp::SubmitFloatingAssistantPrompt(const QString& prompt)
     SubmitAssistantPromptText(prompt.trimmed(), false, true);
 }
 
-void OpenZoomApp::StartNewAssistantConversation()
+void OkuFlowApp::StartNewAssistantConversation()
 {
     if (assistiveManager_->Runtime().IsCodexTurnActive() ||
         pendingAssistantFramePrompt_) {
         ShowStatusMessage(
             QCoreApplication::translate(
-                "OpenZoom",
+                "OkuFlow",
                 "Finish the current answer before starting a new chat."),
             5000);
         return;
@@ -124,11 +124,11 @@ void OpenZoomApp::StartNewAssistantConversation()
         uiState_->assistantHistoryList_->clearSelection();
     }
     ShowStatusMessage(
-        QCoreApplication::translate("OpenZoom", "Started a new conversation."),
+        QCoreApplication::translate("OkuFlow", "Started a new conversation."),
         4000);
 }
 
-void OpenZoomApp::SubmitAssistantPromptText(const QString& prompt,
+void OkuFlowApp::SubmitAssistantPromptText(const QString& prompt,
                                             bool clearAdvancedEditor,
                                             bool forceAttachFrame)
 {
@@ -167,7 +167,7 @@ void OpenZoomApp::SubmitAssistantPromptText(const QString& prompt,
                             attachFrame);
 }
 
-void OpenZoomApp::DispatchAssistantPrompt(const QString& prompt,
+void OkuFlowApp::DispatchAssistantPrompt(const QString& prompt,
                                           bool clearAdvancedEditor,
                                           const uint8_t* bgraData,
                                           int width,
@@ -179,7 +179,7 @@ void OpenZoomApp::DispatchAssistantPrompt(const QString& prompt,
     AppendAssistantMessage(QStringLiteral("You"), submittedPrompt);
     QTextCursor cursor = uiState_->assistantTranscript_->textCursor();
     cursor.movePosition(QTextCursor::End);
-    cursor.insertText(QStringLiteral("OpenZoom Assistant\n"));
+    cursor.insertText(QStringLiteral("OkuFlow Assistant\n"));
     uiState_->assistantTranscript_->setTextCursor(cursor);
     assistantResponseOpen_ = true;
     assistantResponseReceivedText_ = false;
@@ -195,7 +195,7 @@ void OpenZoomApp::DispatchAssistantPrompt(const QString& prompt,
                                                        attachFrame);
 }
 
-void OpenZoomApp::StopAssistantRequest()
+void OkuFlowApp::StopAssistantRequest()
 {
     if (pendingAssistantFramePrompt_) {
         pendingAssistantFramePrompt_.reset();
@@ -208,7 +208,7 @@ void OpenZoomApp::StopAssistantRequest()
     assistiveManager_->Runtime().StopAssistant();
 }
 
-void OpenZoomApp::PopulateAssistantHistory()
+void OkuFlowApp::PopulateAssistantHistory()
 {
     if (!uiState_->assistantHistoryList_) {
         return;
@@ -233,7 +233,7 @@ void OpenZoomApp::PopulateAssistantHistory()
                                            QStringLiteral("yyyy-MM-dd  HH:mm"))
                                      : QString();
         const QString title = conversation->title.trimmed().isEmpty()
-                                  ? QStringLiteral("OpenZoom Assistant")
+                                  ? QStringLiteral("OkuFlow Assistant")
                                   : conversation->title.trimmed();
         const QString preview = conversation->preview.simplified().left(110);
         auto* item = new QListWidgetItem(
@@ -251,7 +251,7 @@ void OpenZoomApp::PopulateAssistantHistory()
     }
 }
 
-void OpenZoomApp::LoadSelectedAssistantConversation()
+void OkuFlowApp::LoadSelectedAssistantConversation()
 {
     if (!uiState_->assistantHistoryList_ || assistiveManager_->Runtime().IsCodexTurnActive()) {
         return;
@@ -269,7 +269,7 @@ void OpenZoomApp::LoadSelectedAssistantConversation()
     assistiveManager_->Runtime().LoadAssistantConversation(threadId);
 }
 
-void OpenZoomApp::SetAssistantBusy(bool busy)
+void OkuFlowApp::SetAssistantBusy(bool busy)
 {
     assistiveManager_->Overlay().SetBusy(busy);
     if (uiState_->assistantSendButton_) {
@@ -297,7 +297,7 @@ void OpenZoomApp::SetAssistantBusy(bool busy)
     }
 }
 
-void OpenZoomApp::AppendAssistantMessage(const QString& speaker, const QString& text)
+void OkuFlowApp::AppendAssistantMessage(const QString& speaker, const QString& text)
 {
     if (!uiState_->assistantTranscript_ || text.trimmed().isEmpty()) {
         return;
@@ -312,7 +312,7 @@ void OpenZoomApp::AppendAssistantMessage(const QString& speaker, const QString& 
     uiState_->assistantTranscript_->ensureCursorVisible();
 }
 
-void OpenZoomApp::OnVlmAssistToggled(bool checked)
+void OkuFlowApp::OnVlmAssistToggled(bool checked)
 {
     vlmAssistEnabled_ = checked;
     assistiveManager_->SetModes(
@@ -321,7 +321,7 @@ void OpenZoomApp::OnVlmAssistToggled(bool checked)
     SyncCurrentConfigToPersistence();
 }
 
-void OpenZoomApp::OnAssistiveOverlayToggled(bool checked)
+void OkuFlowApp::OnAssistiveOverlayToggled(bool checked)
 {
     assistiveOverlayEnabled_ = checked;
     assistiveManager_->SetModes(
@@ -331,6 +331,6 @@ void OpenZoomApp::OnAssistiveOverlayToggled(bool checked)
 }
 
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

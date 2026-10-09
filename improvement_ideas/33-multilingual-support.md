@@ -82,25 +82,25 @@ Use the standard `tr()` → `.ts` (XML, UTF-8, LF) → `.qm` pipeline with
 - `.qm` files embed into the executable via the resource system —
   **zero new deployment files**, `windeployqt` flow unchanged.
 
-Files: `translations/openzoom_tr.ts`, `translations/openzoom_de.ts`
-(English is the source language; no `openzoom_en.ts`). Both LF, UTF-8.
+Files: `translations/okuflow_tr.ts`, `translations/okuflow_de.ts`
+(English is the source language; no `okuflow_en.ts`). Both LF, UTF-8.
 
 ### D2 — Translation contexts
 Strings inside `Q_OBJECT` classes use plain `tr()` (class-name context).
 Free functions and non-QObject helpers use
-`QCoreApplication::translate("OpenZoom", …)` with a small set of stable
-context names (`"OpenZoom"`, `"Recording"`, `"Assistant"`). Never build a
+`QCoreApplication::translate("OkuFlow", …)` with a small set of stable
+context names (`"OkuFlow"`, `"Recording"`, `"Assistant"`). Never build a
 sentence by concatenating translated fragments — word order differs in
 German and Turkish; always use `%1`-style placeholders on a full sentence.
 
 ### D3 — LanguageManager and the live-switch mechanism
 A small app-owned object (not a singleton), e.g.
-`include/openzoom/app/language_manager.hpp`:
+`include/okuflow/app/language_manager.hpp`:
 
 - `enum class AppLanguage { English, Turkish, German };`
 - `SetLanguage(AppLanguage)`:
   1. `qApp->removeTranslator()` on the previous `QTranslator` (if any),
-  2. `install` the new one loaded from `:/i18n/openzoom_<code>.qm`
+  2. `install` the new one loaded from `:/i18n/okuflow_<code>.qm`
      (English = no translator installed; source strings are the catalog),
   3. persist `"language": "tr"` to the settings store,
   4. Qt then delivers `QEvent::LanguageChange` to every widget — that event
@@ -296,7 +296,7 @@ directive for tr/de and not for en; manual Codex round-trip in Turkish
 returns Turkish prose.
 
 ### P4 — Catalog authoring and review
-Agent authors complete `openzoom_tr.ts` and `openzoom_de.ts`. Before bulk
+Agent authors complete `okuflow_tr.ts` and `okuflow_de.ts`. Before bulk
 translation, fix a short **glossary** for consistency and put it at the top
 of this plan when decided — proposed starting points, owner reviews the
 Turkish column personally:
@@ -372,7 +372,7 @@ awkward phrasings still beats an English-only UI for a German student).
   registry now carries locale and layout direction; `LanguageManager` applies
   it globally; manually positioned Simple chrome and annotation rails mirror
   through logical leading/trailing anchors; directional history/navigation
-  icons refresh; and `--rtl-test` / `OPENZOOM_FORCE_RTL=1` exercise the path
+  icons refresh; and `--rtl-test` / `OKUFLOW_FORCE_RTL=1` exercise the path
   with English text. Adding a fourth LTR language later remains one `.ts`
   file, flag, descriptor/enum entry, and response-language directive. Qt's
   Unicode text and Linguist catalogs support CJK without a new translation

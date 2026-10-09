@@ -1,7 +1,7 @@
 #ifdef _WIN32
 
-#include "openzoom/ui/annotation_overlay.hpp"
-#include "openzoom/ui/live_status_text.hpp"
+#include "okuflow/ui/annotation_overlay.hpp"
+#include "okuflow/ui/live_status_text.hpp"
 
 #include <QAccessible>
 #include <QAccessibleAnnouncementEvent>
@@ -36,7 +36,7 @@
 #include <array>
 #include <cmath>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
 struct InkPreset {
@@ -230,7 +230,7 @@ void AnnotationOverlay::BuildToolbar()
                                  const QString& iconName) {
         auto* button = new QToolButton();
         button->setText(text);
-        button->setIcon(QIcon(QStringLiteral(":/openzoom/icons/") + iconName));
+        button->setIcon(QIcon(QStringLiteral(":/okuflow/icons/") + iconName));
         button->setIconSize(QSize(25, 25));
         button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
         button->setFixedSize(84, 72);
@@ -371,7 +371,7 @@ void AnnotationOverlay::BuildToolbar()
                                      const QString& iconName) {
         auto* button = new QToolButton();
         button->setText(text);
-        button->setIcon(QIcon(QStringLiteral(":/openzoom/icons/") + iconName));
+        button->setIcon(QIcon(QStringLiteral(":/okuflow/icons/") + iconName));
         button->setIconSize(QSize(25, 25));
         button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
         button->setFixedSize(84, 72);
@@ -978,13 +978,13 @@ void AnnotationOverlay::UpdateDirectionalUi()
     const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
     if (undoButton_) {
         undoButton_->setIcon(QIcon(
-            rightToLeft ? QStringLiteral(":/openzoom/icons/redo.svg")
-                        : QStringLiteral(":/openzoom/icons/undo.svg")));
+            rightToLeft ? QStringLiteral(":/okuflow/icons/redo.svg")
+                        : QStringLiteral(":/okuflow/icons/undo.svg")));
     }
     if (redoButton_) {
         redoButton_->setIcon(QIcon(
-            rightToLeft ? QStringLiteral(":/openzoom/icons/undo.svg")
-                        : QStringLiteral(":/openzoom/icons/redo.svg")));
+            rightToLeft ? QStringLiteral(":/okuflow/icons/undo.svg")
+                        : QStringLiteral(":/okuflow/icons/redo.svg")));
     }
 }
 
@@ -1744,6 +1744,6 @@ void AnnotationOverlay::Announce(const QString& message)
     QAccessible::updateAccessibility(&event);
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

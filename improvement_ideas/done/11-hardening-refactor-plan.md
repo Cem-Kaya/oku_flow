@@ -23,14 +23,14 @@ statement.
 
 Orientation for an agent with no prior context: the application core is
 `src/app/app.cpp` (~4,169 lines) with its header at
-`include/openzoom/app/app.hpp` (note: the header is NOT in `src/app/`; all
-public headers mirror the source tree under `include/openzoom/`). The CUDA
+`include/okuflow/app/app.hpp` (note: the header is NOT in `src/app/`; all
+public headers mirror the source tree under `include/okuflow/`). The CUDA
 interop surface and frame pipeline live in `src/cuda/cuda_interop.cpp`
-(~2,252 lines, header `include/openzoom/cuda/cuda_interop.hpp`), and every
+(~2,252 lines, header `include/okuflow/cuda/cuda_interop.hpp`), and every
 GPU kernel plus its launch wrapper lives in `src/cuda/cuda_kernels.cu`
-(~2,033 lines, header `include/openzoom/cuda/cuda_kernels.hpp`). Settings
+(~2,033 lines, header `include/okuflow/cuda/cuda_kernels.hpp`). Settings
 persistence is `src/app/settings_store.cpp` with
-`include/openzoom/app/settings_store.hpp`. Line numbers cited below were
+`include/okuflow/app/settings_store.hpp`. Line numbers cited below were
 verified against the tree at the time of writing; treat them as "within a few
 dozen lines" anchors, not exact offsets, and re-locate symbols by name.
 
@@ -46,13 +46,13 @@ after the average stays above 40 ms for 3 s. Always on, including release.
 Expanded completion notes, for anyone who needs to read or extend the
 instrumentation (Wave 3 depends on it for every measurement):
 
-- CPU side. `OpenZoomApp::OnFrameTick()` (src/app/app.cpp ~3609) starts a
+- CPU side. `OkuFlowApp::OnFrameTick()` (src/app/app.cpp ~3609) starts a
   `QElapsedTimer`, runs the real tick body `RunFrameTick()` (~3647), and — only
   when the tick actually processed a frame (`frameTickProcessedFrame_`, set at
   ~3672 once a non-empty camera frame was picked up) — feeds the elapsed
   nanoseconds into `RecordFrameTickSample()` (~3619). That function maintains a
   60-entry ring (`frameTickSamplesMs_` and friends, declared with an
-  explanatory comment block at include/openzoom/app/app.hpp ~519–531) and a
+  explanatory comment block at include/okuflow/app/app.hpp ~519–531) and a
   running sum, so the rolling average is O(1) per frame. Idle ticks are
   deliberately excluded so they cannot dilute the average.
 - GPU side. `CudaInteropSurface::ProcessFrame()` records
@@ -63,7 +63,7 @@ instrumentation (Wave 3 depends on it for every measurement):
   (~2212–2216). Sampling happens on every 30th frame; results are consumed by
   polling (`cudaEventQuery`, never a blocking wait) in
   `ConsumeProcessTiming()` (~1016–1033) and surface through
-  `LastGpuFrameMs()` (include/openzoom/cuda/cuda_interop.hpp ~177–180).
+  `LastGpuFrameMs()` (include/okuflow/cuda/cuda_interop.hpp ~177–180).
 - Display. `UpdateProcessingStatusLabel()` (src/app/app.cpp ~2790–2803)
   appends the line `"NN.N ms/frame - CUDA|passthrough - GPU NN.N ms"` to the
   status label's TOOLTIP (the corner label itself stays short on purpose).
@@ -96,7 +96,7 @@ refuted, with file:line evidence) recorded in improvement_ideas/01.
 Expanded completion notes — Wave 3 and Wave 4 both touch this machinery, so
 here is exactly where it lives and how it is used today:
 
-- The `FenceSequencer` struct is defined in include/openzoom/app/app.hpp
+- The `FenceSequencer` struct is defined in include/okuflow/app/app.hpp
   (~89–142) with the full S6b contract written as a comment block directly
   above it (~68–88). One monotonic timeline on the shared D3D12 fence: per
   CUDA frame, CUDA waits `max(lastGraphicsSignal, lastReadbackSignal)` and
@@ -110,7 +110,7 @@ here is exactly where it lives and how it is used today:
   (`BeginCudaFrame()` merely reserves; `CudaSignaled()` commits;
   `CudaFailed()` rolls the reservation back so nobody ever waits on a value
   that will never be signaled).
-- The single call site is `OpenZoomApp::RunCudaPipeline()`
+- The single call site is `OkuFlowApp::RunCudaPipeline()`
   (src/app/app.cpp ~3209–3256): ticket issued at ~3215–3222, rollback on
   ProcessFrame failure at ~3226, commit at ~3237, present wait/signal pair at
   ~3242–3256, and readback observation in `HandleGpuFramePresented()`
@@ -130,7 +130,7 @@ here is exactly where it lives and how it is used today:
   Qt-thread-only. Do NOT introduce a worker thread before Wave 4's
   PipelineOrchestrator step — that is A1-step-5 territory.
 
-1. S6b fence contract: new `include/openzoom/app/fence_protocol.md`-style
+1. S6b fence contract: new `include/okuflow/app/fence_protocol.md`-style
    comment block OR a small `FenceSequencer` struct in app.hpp owning
    sharedFenceCounter_/lastCudaSignalValue_/lastGraphicsSignalValue_/
    lastReadbackSignalValue_ with methods `BeginCudaFrame()`, `CudaFailed()`,
@@ -204,12 +204,12 @@ HOW. The upload call sites in `CudaInteropSurface::ProcessFrame()`
 
 - BGRA path: one `cudaMemcpy2DAsync(deviceBufferA_, ...)` at ~1617–1621. Its
   host source is `cpuPipeline_.StageRaw()` — a `std::vector` handed in by
-  `OpenZoomApp::ProcessFrameWithCuda()` (src/app/app.cpp ~3034–3062).
+  `OkuFlowApp::ProcessFrameWithCuda()` (src/app/app.cpp ~3034–3062).
 - Raw NV12 path: two copies (Y plane ~1641–1645, interleaved UV plane
   ~1648–1652) into `deviceRawPlane1_`/`deviceRawPlane2_`.
 - Raw YUY2 path: one copy at ~1660–1664 into `deviceRawPlane1_`.
   Both raw paths receive their host pointers from
-  `OpenZoomApp::TryProcessRawFrameWithCuda()` (src/app/app.cpp ~3070–3149),
+  `OkuFlowApp::TryProcessRawFrameWithCuda()` (src/app/app.cpp ~3070–3149),
   which points into `MediaFrame::data` — the Qt-tick deep copy of
   `latestFrame_` made in `RunFrameTick()` (~3663–3667).
 
@@ -416,7 +416,7 @@ WHY. The current separable Gaussian
 src/cuda/cuda_kernels.cu ~350–418) reads `2*radius+1` global-memory samples
 per pixel per pass with no staging; radius can reach 50 (`kMaxBlurRadius`,
 ~345; the UI exposes radii up to 50 via `kSupportedBlurRadii` in
-include/openzoom/app/constants.hpp ~19). At large radii this is the most
+include/okuflow/app/constants.hpp ~19). At large radii this is the most
 expensive kernel in the pipeline. An iterated box blur computes each output
 pixel in O(1) time regardless of radius (running-sum/sliding-window), and
 three iterations converge closely to a Gaussian. The trade is that it is an
@@ -425,7 +425,7 @@ APPROXIMATION — hence the gate below.
 HOW.
 1. Implement the 3× iterated box blur as a NEW kernel (or kernel pair)
    behind the SAME `LaunchGaussianBlurLinear` signature
-   (include/openzoom/cuda/cuda_kernels.hpp ~29–33: dst, scratch, src,
+   (include/okuflow/cuda/cuda_kernels.hpp ~29–33: dst, scratch, src,
    pitches, width, height, stream). Keep the OLD Gaussian kernels compiled
    and callable.
 2. Select by radius inside the launcher: radius > 8 → box chain; radius ≤ 8
@@ -495,8 +495,8 @@ visual diffs anywhere except the P4-approved blur approximation.
 
 ## Wave 4 — Architecture decomposition (A2 → A3+A1.1 → A1.3 → A1.4 → A1.2/A4/A5) — CODE COMPLETE 2026-07-23
 
-WHY this wave exists. `src/app/app.cpp` is ~4,169 lines and `OpenZoomApp`
-owns everything: ~90 raw widget pointers (include/openzoom/app/app.hpp
+WHY this wave exists. `src/app/app.cpp` is ~4,169 lines and `OkuFlowApp`
+owns everything: ~90 raw widget pointers (include/okuflow/app/app.hpp
 ~302–396), dozens of `QSignalBlocker` uses, three independent "suspend sync"
 flags, the frame pipeline, CUDA/fence state, recording, settings, and
 assistive features. Every future change pays a tax on this file. The
@@ -514,11 +514,11 @@ recommended, and mandatory before step 3 per the gate below): land plan-06
 B2's settings_store round-trip tests BEFORE touching SettingsController.
 
 A structural note that affects every step: `MainWindow` and
-`InteractionController` are `friend` classes of `OpenZoomApp`
-(include/openzoom/app/app.hpp ~146–147) and reach into its privates. Each
+`InteractionController` are `friend` classes of `OkuFlowApp`
+(include/okuflow/app/app.hpp ~146–147) and reach into its privates. Each
 extraction that moves members those friends touch must either route the
 access through the new collaborator's public API or keep a thin delegating
-accessor on `OpenZoomApp` — grep `src/app/interaction_controller.cpp` and
+accessor on `OkuFlowApp` — grep `src/app/interaction_controller.cpp` and
 `src/ui/main_window.cpp` for the moved members before each step.
 
 ### Step 1 — A2: `SuspendGuard` RAII (mechanical warm-up)
@@ -570,7 +570,7 @@ logic. Recording is self-contained (writers, paths, size checks, 12-hour
 cap) which makes it the ideal first real extraction.
 
 HOW. Create `src/app/recording_manager.cpp` +
-`include/openzoom/app/recording_manager.hpp`. Move: `videoRecorder_`,
+`include/okuflow/app/recording_manager.hpp`. Move: `videoRecorder_`,
 `originalVideoRecorder_`, `pendingOriginalReadbacks_`, the recording_*
 members; `StopRecordingUi()`; `StartPairedRecorders()` (~4025–4097,
 including the AV1→H264 codec fallback loop and output paths under
@@ -580,7 +580,7 @@ Introduce `enum class RecordingState { Idle, Starting, Recording, Stopping,
 Error }` with ONE `SetRecordingState()` transition function that owns all
 UI updates (the record button text/checked state — today toggled with a
 `QSignalBlocker` at ~4019) and all writer start/stop calls; every error
-path routes through it. `OpenZoomApp` keeps only the button slot delegating
+path routes through it. `OkuFlowApp` keeps only the button slot delegating
 in, and passes a status-message callback (or the manager exposes a Qt
 signal) so `ShowStatusMessage()` (~2863) keeps working. The async-readback
 consumption stays where the data arrives: `HandleGpuFramePresented()`
@@ -610,7 +610,7 @@ ACCEPTANCE:
 
 THE GATE (mandatory, from plan 06 B2): BEFORE touching settings code,
 create minimal round-trip tests for `settings_store`. The cmake option
-`OPENZOOM_ENABLE_TESTS` already exists and currently warns that no
+`OKUFLOW_ENABLE_TESTS` already exists and currently warns that no
 `tests/CMakeLists.txt` exists (cmake/CMakeLists.txt ~123–128). Wire it:
 `tests/CMakeLists.txt` with Catch2 (FetchContent) or QtTest, registered
 with ctest. Minimum test set against `src/app/settings_store.cpp`:
@@ -656,11 +656,11 @@ ACCEPTANCE:
 ### Step 4 — A1.4: `UIStateManager` (+ A5 non-null policy)
 
 WHY. ~90 widget pointers and every `QSignalBlocker` in the app live in
-`OpenZoomApp`. The apply/read choreography is the most repetitive code in
+`OkuFlowApp`. The apply/read choreography is the most repetitive code in
 the file, and the null-checking is inconsistent (~71 scattered checks,
 other paths dereference freely — plan 02 A5). Centralizing widget access
 behind `ApplyConfigToUI(const AdvancedConfig&)` / `ReadConfigFromUI()`
-ends both problems: `OpenZoomApp` stops touching widgets, and the manager
+ends both problems: `OkuFlowApp` stops touching widgets, and the manager
 enforces ONE policy — widget pointers are non-null references from
 construction to destruction (assert once at construction; DROP the
 scattered checks).
@@ -668,7 +668,7 @@ scattered checks).
 HOW. Move the widget pointer members (app.hpp ~302–396), the harvesting
 block (app.cpp ~337–425), and the widget-write half of
 `ApplyAdvancedConfig()` into the manager. The signal connections (~501–711)
-target `OpenZoomApp` slots; they can stay app-side initially (connected via
+target `OkuFlowApp` slots; they can stay app-side initially (connected via
 accessors) or move — but whichever you choose, do it uniformly in this one
 step.
 
@@ -722,7 +722,7 @@ Three extractions, still ONE PER STEP with build+smoke between:
   processing worker thread is ever introduced (plan 01 S4's long-term
   note), it happens INSIDE this class, later — not during this extraction.
 - A4 constructor→`Initialize()` split LAST, once every collaborator owns
-  its own setup: keep the `OpenZoomApp` constructor minimal and throw-safe,
+  its own setup: keep the `OkuFlowApp` constructor minimal and throw-safe,
   move risky work into `bool Initialize()` called from `main()`
   (src/app/main.cpp ~11–17 currently catches exceptions from a
   partially-constructed app), with idempotent cleanup on failure. Known
@@ -742,7 +742,7 @@ composition — construction, wiring, and delegation only.
 
 - `SuspendGuard`, `RecordingManager`, `SettingsController`,
   `UIStateManager`, `AssistiveFeatureManager`, and `PipelineOrchestrator` now
-  have focused public headers and source files. `OpenZoomApp` construction is
+  have focused public headers and source files. `OkuFlowApp` construction is
   minimal and fallible startup moved to `Initialize()`.
 - The settings gate is active in the CPU preset. It covers round-trip,
   legacy migration, corrupt input, clamping, and comparison tolerances.
@@ -761,7 +761,7 @@ composition — construction, wiring, and delegation only.
   artificial intermediate numbers are recorded here.
 - Deviation: `PipelineOrchestrator` owns both clocks, timing, fence sequencing,
   CUDA failure accounting, and reconnect state, while the low-level CPU/CUDA
-  path functions remain private `OpenZoomApp` methods isolated in
+  path functions remain private `OkuFlowApp` methods isolated in
   `app_pipeline_runtime.cpp`. Moving their large state graph into a second
   owning object during the aspect/presentation change would have mixed a risky
   ownership rewrite with behavior changes.

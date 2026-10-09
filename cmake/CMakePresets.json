@@ -11,7 +11,8 @@
       "hidden": true,
       "generator": "Ninja",
       "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "C:/Qt/6.9.3/msvc2022_64"
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.12.0/msvc2022_64",
+        "Qt6_DIR": "C:/Qt/6.12.0/msvc2022_64/lib/cmake/Qt6"
       }
     },
     {
@@ -21,9 +22,9 @@
       "binaryDir": "${sourceDir}/build/msvc-debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "OPENZOOM_ENABLE_CUDA": "ON",
-        "OPENZOOM_ENABLE_TEXT_SR": "ON",
-        "OPENZOOM_ENABLE_TESTS": "OFF",
+        "OKUFLOW_ENABLE_CUDA": "ON",
+        "OKUFLOW_ENABLE_TEXT_SR": "ON",
+        "OKUFLOW_ENABLE_TESTS": "OFF",
         "CMAKE_CUDA_ARCHITECTURES": "75;86;89"
       }
     },
@@ -34,9 +35,9 @@
       "binaryDir": "${sourceDir}/build/msvc-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "OPENZOOM_ENABLE_CUDA": "ON",
-        "OPENZOOM_ENABLE_TEXT_SR": "ON",
-        "OPENZOOM_ENABLE_TESTS": "OFF",
+        "OKUFLOW_ENABLE_CUDA": "ON",
+        "OKUFLOW_ENABLE_TEXT_SR": "ON",
+        "OKUFLOW_ENABLE_TESTS": "OFF",
         "CMAKE_CUDA_ARCHITECTURES": "75;86;89"
       }
     },
@@ -47,9 +48,9 @@
       "binaryDir": "${sourceDir}/build/msvc-cpu",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "OPENZOOM_ENABLE_CUDA": "OFF",
-        "OPENZOOM_ENABLE_TEXT_SR": "OFF",
-        "OPENZOOM_ENABLE_TESTS": "ON"
+        "OKUFLOW_ENABLE_CUDA": "OFF",
+        "OKUFLOW_ENABLE_TEXT_SR": "OFF",
+        "OKUFLOW_ENABLE_TESTS": "ON"
       }
     },
     {
@@ -59,9 +60,9 @@
       "binaryDir": "${sourceDir}/build/msvc-cuda-tests",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "OPENZOOM_ENABLE_CUDA": "ON",
-        "OPENZOOM_ENABLE_TEXT_SR": "OFF",
-        "OPENZOOM_ENABLE_TESTS": "ON",
+        "OKUFLOW_ENABLE_CUDA": "ON",
+        "OKUFLOW_ENABLE_TEXT_SR": "OFF",
+        "OKUFLOW_ENABLE_TESTS": "ON",
         "CMAKE_CUDA_ARCHITECTURES": "75;86;89"
       }
     }

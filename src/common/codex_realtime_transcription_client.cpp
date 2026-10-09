@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/common/codex_realtime_transcription_client.hpp"
+#include "okuflow/common/codex_realtime_transcription_client.hpp"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -15,10 +15,10 @@
 
 #include <algorithm>
 
-#include "openzoom/common/codex_app_server_client.hpp"
-#include "openzoom/common/transcript.hpp"
+#include "okuflow/common/codex_app_server_client.hpp"
+#include "okuflow/common/transcript.hpp"
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -143,8 +143,8 @@ CodexRealtimeTranscriptionClient::CodexRealtimeTranscriptionClient(QObject* pare
         phase_ = Phase::Initializing;
         const quint64 generation = generation_;
         QJsonObject clientInfo{
-            {QStringLiteral("name"), QStringLiteral("openzoom")},
-            {QStringLiteral("title"), QStringLiteral("OpenZoom")},
+            {QStringLiteral("name"), QStringLiteral("okuflow")},
+            {QStringLiteral("title"), QStringLiteral("OkuFlow")},
             {QStringLiteral("version"), QCoreApplication::applicationVersion().isEmpty()
                                             ? QStringLiteral("0.1.0")
                                             : QCoreApplication::applicationVersion()}};
@@ -289,7 +289,7 @@ void CodexRealtimeTranscriptionClient::BeginSession(quint64 generation)
     resolvedExecutable_ =
         CodexAppServerClient::ResolveExecutablePath(configuredExecutable_);
     isolatedWorkingDirectory_ = std::make_unique<QTemporaryDir>(
-        QDir::tempPath() + QStringLiteral("/OpenZoom-transcription-XXXXXX"));
+        QDir::tempPath() + QStringLiteral("/OkuFlow-transcription-XXXXXX"));
     if (!isolatedWorkingDirectory_->isValid()) {
         isolatedWorkingDirectory_.reset();
         FailSession(QStringLiteral("Codex transcription isolation could not be established."));
@@ -625,6 +625,6 @@ bool CodexRealtimeTranscriptionClient::GenerationCurrent(quint64 generation) con
     return generation == generation_;
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

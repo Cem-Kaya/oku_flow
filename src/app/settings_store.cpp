@@ -1,7 +1,7 @@
 #ifdef _WIN32
 
-#include "openzoom/app/settings_store.hpp"
-#include "openzoom/app/constants.hpp"
+#include "okuflow/app/settings_store.hpp"
+#include "okuflow/app/constants.hpp"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -17,7 +17,7 @@
 #include <cmath>
 #include <utility>
 
-namespace openzoom::settings {
+namespace okuflow::settings {
 
 namespace {
 
@@ -858,7 +858,7 @@ LoadResult LoadDetailed(const QString& path)
     if (version > kCurrentSettingsVersion) {
         result.status = LoadStatus::UnsupportedVersion;
         result.error =
-            QStringLiteral("Settings version %1 is newer than this OpenZoom build supports (%2).")
+            QStringLiteral("Settings version %1 is newer than this OkuFlow build supports (%2).")
                 .arg(version)
                 .arg(kCurrentSettingsVersion);
         return result;
@@ -1170,6 +1170,6 @@ bool AreConfigsEquivalent(const AdvancedConfig& lhs, const AdvancedConfig& rhs)
            lhs.mlSuperResUltra1440p == rhs.mlSuperResUltra1440p;
 }
 
-} // namespace openzoom::settings
+} // namespace okuflow::settings
 
 #endif // _WIN32

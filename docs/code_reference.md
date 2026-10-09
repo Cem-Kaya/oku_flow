@@ -1,18 +1,58 @@
-# OpenZoom Code Reference
+# OkuFlow Code Reference
 
-Authoritative code map for the current repository state as of 2026-09-10. Update this file whenever classes, public structs, or significant functions change.
+Authoritative code map for the current repository state as of 2026-10-09. Update this file whenever classes, public structs, or significant functions change.
 
 ## App Module
 
-### `include/openzoom/app/app.hpp`
-`openzoom::OpenZoomApp`
+### Windows build and packaging helpers
+- `scripts/build_and_run.bat`, `scripts/build_release_bundle.bat`, and
+  `cmake/CMakePresets.json` default to Qt 6.12.0; translation validation and
+  startup profiling use the same SDK default.
+- `scripts/build_release_bundle.bat` stages the five required Qt module SPDX
+  documents plus PDF when installed. `validate_staging_bundle` also requires PDF
+  metadata if `Qt6Pdf.dll` is deployed.
+  `OKUFLOW_BUNDLE_BUILD_DIR` optionally redirects its build tree outside the
+  synced checkout; the full build/test/staging gates still run.
+  `resolve_cuda_license` accepts the selected toolkit's `EULA.txt` or newer
+  `LICENSE` layout while retaining the deployed notice's existing filename.
+- `scripts/generate_release_metadata.ps1` validates and links the staged
+  documents using the unique module name and its actual SPDXID, including
+  Qt 6.12's hash suffix. PDF joins the required document list when its runtime or notice
+  is present; missing metadata for a deployed PDF runtime remains an error.
+
+### `scripts/lecture_camera.ps1`
+- Start/Stop/Status/Download operations implement the local OBS lecture camera.
+  The `.bat` starters expose one-click camera/app launch and shutdown;
+  `lecture_camera_sample.json` retains the reviewed default source/provenance.
+- `Download-Lecture` checks the publisher download's byte count and SHA-1,
+  or invokes external yt-dlp for an explicit replacement URL. It stages to a
+  unique file before replacing the destination and writes source/attribution
+  and SHA-256 beside the completed media.
+- `Get-OwnedProcess` validates recorded PID, start time, and executable inside
+  the scratch root. `Stop-OwnedObs` stops Virtual Camera over WebSocket,
+  requests normal exit, and force-stops only the verified owned process after
+  a timeout. Startup failures use the same cleanup.
+- `Connect-Obs`, `Receive-ObsMessage`, `Send-ObsMessage`, `Get-Base64Sha256`, and
+  `Invoke-ObsRequest` implement bounded authenticated obs-websocket v5 control.
+  `Write-JsonFile` serializes private scenes, plugin config, and ownership.
+  Start creates a separate portable OBS copy for each installed executable
+  hash, fits a looping media source to a 1280x720/30 FPS output, checks decode
+  and camera state, and persists the selected local file and start offset.
+- `Install-MediaFoundationOutput` verifies the pinned DroidCam output plugin
+  package, extracts/selects its x64 DLL, and installs it into private OBS only.
+  The existing DroidCam Video driver exposes this scene to Media Foundation;
+  built-in OBS Virtual Camera remains available for DirectShow clients.
+  `Start-OkuFlow` opens the deployed bundle only when it is not already running.
+
+### `include/okuflow/app/app.hpp`
+`okuflow::OkuFlowApp`
 - Composition root for Qt/COM/Media Foundation startup and the application
   services. It delegates scheduling, settings/presets, widget synchronization,
   assistive behavior, interaction, and paired recording to focused manager
   classes instead of implementing those policies directly.
 - Public API:
-  - `OpenZoomApp(int& argc, char** argv)`
-  - `~OpenZoomApp()`
+  - `OkuFlowApp(int& argc, char** argv)`
+  - `~OkuFlowApp()`
   - `bool Initialize()` — performs fallible platform, UI, presenter, camera,
     settings, and service initialization after construction
   - `int Run()`
@@ -28,7 +68,7 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
   - `src/app/app_settings.cpp` — presets and persistent settings
   - `src/app/app_assistant.cpp` — Assistant and assistive actions
   - `src/app/app.cpp` — intentionally empty compatibility translation unit
-- The low-level CUDA/presentation entry points remain private `OpenZoomApp`
+- The low-level CUDA/presentation entry points remain private `OkuFlowApp`
   methods; `PipelineOrchestrator` owns their scheduling and synchronization
   policy through callbacks.
 - `StartCameraCapture(..., bool backgroundStartup = false)` starts the initial
@@ -92,18 +132,18 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
   than queued without bound, and shutdown drains active jobs before dependent
   services are destroyed.
 
-### `include/openzoom/app/pipeline_orchestrator.hpp`
-`openzoom::TimingPercentiles`
+### `include/okuflow/app/pipeline_orchestrator.hpp`
+`okuflow::TimingPercentiles`
 - Rolling timing summary with nearest-rank `p50Ms`, `p95Ms`, `p99Ms`, and
   `sampleCount`. `IsValid()` distinguishes an empty window.
 
-`openzoom::FrameTimingStage`
+`okuflow::FrameTimingStage`
 - Independent CPU-side timing windows for `CaptureHandoff`,
   `CpuPreparation`, `CudaSubmission`, `Presentation`, and `RecordingClone`.
   `CudaSubmission` measures the host call duration only; sampled CUDA events
   provide actual GPU execution boundaries.
 
-`openzoom::FenceSequencer`
+`okuflow::FenceSequencer`
 - Owns the single monotonic D3D12/CUDA fence timeline. CUDA reservations are
   committed only after submission; failed submissions roll back so no queue
   waits on a value that will never be signaled.
@@ -112,7 +152,7 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
   the actual last value after every successful present, so viewport-only draws
   and camera processing cannot reuse or rewind a fence value.
 
-`openzoom::PipelineOrchestrator`
+`okuflow::PipelineOrchestrator`
 - Owns the two-clock scheduler, active/idle viewport rate policy, elapsed-time
   tick timing at nanosecond precision, dirty/presentation generation state, display-rate clamp
   reporting, camera reconnect backoff, fence sequencing, and repeated CUDA
@@ -139,9 +179,9 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
 - `Callbacks` supplies fresh-frame processing, motion/presenter/camera state,
   active display refresh discovery, and a one-shot explicit-rate clamp notice.
 
-### `include/openzoom/app/recording_manager.hpp`
-`openzoom::RecordingTimingSnapshot`, `openzoom::CapturedFrame`,
-`openzoom::RecordingManager`
+### `include/okuflow/app/recording_manager.hpp`
+`okuflow::RecordingTimingSnapshot`, `okuflow::CapturedFrame`,
+`okuflow::RecordingManager`
 - Owns the explicit recording state machine and a bounded 12-frame worker
   queue, keeping Media Foundation encoding and checked finalization off the UI
   thread.
@@ -163,7 +203,7 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
   starts `_partN` pairs when the camera format changes, and reports
   capture/readback/recording-pool/pairing/queue/encoder drops by cause. A
   failed finalization can never produce a "saved" result.
-- When OpenZoom has an attached Windows console, each segment prints its exact
+- When OkuFlow has an attached Windows console, each segment prints its exact
   processed/original input route (direct GPU, GPU source with worker readback,
   or CPU/system memory), codec, dimensions, file paths, finalized sample
   counts, and a session summary of per-frame GPU-surface fallbacks,
@@ -216,12 +256,12 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
 - Also owns UI button state, destination free-space preflight, dated
   `UserDataPaths` output, and paired asynchronous teardown.
 
-### `include/openzoom/app/user_data_paths.hpp`
-`openzoom::UserDataValidationResult`, `openzoom::PhotoPairRecoveryResult`,
-`openzoom::UserDataPaths`
+### `include/okuflow/app/user_data_paths.hpp`
+`okuflow::UserDataValidationResult`, `okuflow::PhotoPairRecoveryResult`,
+`okuflow::UserDataPaths`
 - Owns every user-created artifact location independently of the executable.
   An empty configured root resolves through
-  `QStandardPaths::DocumentsLocation/OpenZoom`; explicit roots are normalized,
+  `QStandardPaths::DocumentsLocation/OkuFlow`; explicit roots are normalized,
   probed for writable create/delete access, and rejected inside the install
   directory. Containment resolves Windows junctions/symlinks first via
   `std::filesystem::canonical` (`QFileInfo::canonicalFilePath` does not
@@ -239,15 +279,15 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
   intact original `.writing` file completes the second rename (with symmetric
   handling if order changes); any other incomplete final/temp set is removed
   together. Each active writer holds `IMG_*.pair.lock`, allowing immediate
-  crash recovery without racing a second live OpenZoom process.
+  crash recovery without racing a second live OkuFlow process.
   `PhotoPairRecoveryResult` reports completed pairs, removed files, and paths
   that could not be reconciled for a user-visible warning.
 - The legacy install-relative `output` migration (copy-on-first-run prompt)
   was removed by owner decision on 2026-07-31; old files stay where they are
   and are never touched.
 
-### `include/openzoom/app/settings_controller.hpp`
-`openzoom::SettingsController`
+### `include/okuflow/app/settings_controller.hpp`
+`okuflow::SettingsController`
 - Owns the persisted settings document and settings path, built-in/user preset
   lookup, live-config decoration/matching, quick-option promotion, and saving.
 - Rewrites a successfully loaded document when `LoadResult::migrationApplied`
@@ -261,23 +301,23 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
   possible, and exposes a startup notice suitable for the visible status
   area.
 
-### `include/openzoom/app/protected_secret_store.hpp`
-`openzoom::ProtectedSecretResult`, `openzoom::ProtectedSecretStore`
+### `include/okuflow/app/protected_secret_store.hpp`
+`okuflow::ProtectedSecretResult`, `okuflow::ProtectedSecretStore`
 - Windows Credential Manager adapter for user secrets. Results distinguish
   found, missing, and API error states.
-- `DefaultVlmCredentialId()` returns `OpenZoom/VLM API Key`;
+- `DefaultVlmCredentialId()` returns `OkuFlow/VLM API Key`;
   `Read(...)`, `Write(...)`, and `Remove(...)` operate on opaque target ids.
   Secret blobs are UTF-8 and are cleared from temporary/native buffers after
   use.
 
-### `include/openzoom/app/ui_state_manager.hpp`
-`openzoom::UIStateManager`
+### `include/okuflow/app/ui_state_manager.hpp`
+`okuflow::UIStateManager`
 - Caches the `MainWindow` widget accessors in one UI-only object and translates
   between controls and `settings::AdvancedConfig`. It centralizes signal
   blocking during programmatic configuration changes.
 
-### `include/openzoom/app/assistive_feature_manager.hpp`
-`openzoom::AssistiveFeatureManager`
+### `include/okuflow/app/assistive_feature_manager.hpp`
+`okuflow::AssistiveFeatureManager`
 - Owns `AssistiveRuntime` plus the floating `AssistiveOverlay`, periodic
   analysis cadence, vision mode state, focus warnings, TTS/result routing,
   persisted camera-relative overlay geometry, and lecture-note routing through
@@ -285,16 +325,16 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
 - Routes `AssistiveRuntime::PrivacyNotice` into visible status and a
   screen-reader announcement without invoking speech synthesis.
 
-### `include/openzoom/app/suspend_guard.hpp`
-`openzoom::SuspendGuard`
+### `include/okuflow/app/suspend_guard.hpp`
+`okuflow::SuspendGuard`
 - Small non-copyable RAII latch used while applying settings/UI state. It
   restores the referenced suspension flag even when a scope exits early.
 
-### `include/openzoom/app/interaction_controller.hpp`
-`openzoom::InteractionController`
+### `include/okuflow/app/interaction_controller.hpp`
+`okuflow::InteractionController`
 - Converts keyboard, wheel, mouse-drag, and virtual joystick input into zoom-center updates.
 - Public API:
-  - `explicit InteractionController(OpenZoomApp& app)`
+  - `explicit InteractionController(OkuFlowApp& app)`
   - `bool HandlePanKey(int key, bool pressed)`
   - `bool HandlePanScroll(const QWheelEvent* wheelEvent)`
   - `void HandleZoomWheel(const QWheelEvent* wheelEvent)` — consumes fractional
@@ -312,13 +352,14 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
   - `void ResetJoystick()`
   - `void SetJoystickAxes(float x, float y)`
 
-### `include/openzoom/app/setup_assistant.hpp`
-`openzoom::SetupAssistantDialog`
-- Nonmodal, accessible dependency manager shown after first paint when an
-  optional dependency is missing and the user has not declined automatic
+### `include/okuflow/app/setup_assistant.hpp`
+`okuflow::SetupAssistantDialog`
+- Nonmodal, accessible dependency manager shown after first paint when
+  Codex is missing and the user has not declined automatic
   prompting. Advanced `Setup & Downloads` can reopen it at any time.
-- Startup `NeedsSetup` checks only a missing Codex executable or a missing
-  NVIDIA Video Effects runtime on a supported GPU. The translated Codex row
+- Startup `NeedsSetup` checks only a missing Codex executable; optional Maxine
+  does not trigger startup prompting. The dialog fits its dependency rows up
+  to 85% of the available screen height. The translated Codex row
   describes its Read, Explain, and Assistant functions; Install becomes Update
   when the executable is found. No separate recognition component is probed.
 - Streams the pinned official Codex bootstrap and architecture-specific
@@ -333,7 +374,7 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
 - NVIDIA installation/removal is delegated to the vendor installer or
   registered uninstaller.
 - Codex installs or updates through OpenAI's verified per-user bootstrap.
-  OpenZoom detects its standalone and WinGet paths, persists the resolved
+  OkuFlow detects its standalone and WinGet paths, persists the resolved
   executable, and keeps ChatGPT authentication as a separate AI Settings
   action. Because the official installer exposes no uninstall action, the row
   opens the install folder or official setup guide instead.
@@ -350,8 +391,8 @@ Authoritative code map for the current repository state as of 2026-09-10. Update
   while a launched vendor installer is running so Qt cannot terminate it by
   destroying the child `QProcess`.
 
-### `include/openzoom/app/color_schemes.hpp`
-Namespace `openzoom::color_schemes`
+### `include/okuflow/app/color_schemes.hpp`
+Namespace `okuflow::color_schemes`
 - `enum class SchemeMode { Duotone, Posterize, Gradient }` selects two-stop,
   hard-banded, or smoothly interpolated luma mapping.
 - `struct ColorScheme` is the single display-color model: stable id, visible and
@@ -368,8 +409,8 @@ Namespace `openzoom::color_schemes`
 - `PackBgra(...)`, `UnpackBgra(...)`, `ModeToken(...)`, `ModeFromToken(...)`,
   and `SchemesEquivalent(...)` support persistence and comparison.
 
-### `include/openzoom/app/settings_store.hpp`
-Namespace `openzoom::settings`
+### `include/okuflow/app/settings_store.hpp`
+Namespace `okuflow::settings`
 - `enum class ViewportRateMode`
   - global viewport navigation policy: `AutoUpTo120`, fixed 60/90/120 FPS, or
     `MatchDisplay`; explicit choices clamp to the active monitor
@@ -405,7 +446,7 @@ Namespace `openzoom::settings`
     Credential Manager. Matching environment variables remain runtime
     fallbacks.
 - `struct CodexConversation`
-  - OpenZoom-owned thread index entry: `threadId`, `title`, `preview`, `createdAt`, and `updatedAt`; transcripts remain in the Codex thread store
+  - OkuFlow-owned thread index entry: `threadId`, `title`, `preview`, `createdAt`, and `updatedAt`; transcripts remain in the Codex thread store
 - `struct PresetDefinition`
   - stage-1 quick-mode metadata: preset id, name, description, target config id, built-in flag
 - `struct PersistentSettings`
@@ -433,7 +474,7 @@ Namespace `openzoom::settings`
     `setupAssistantDeclined`, selected preset id, current live advanced config,
     reusable `customColorScheme`,
     the `assistive` settings block,
-    OpenZoom-created `codexConversations`, and user-created configs/presets
+    OkuFlow-created `codexConversations`, and user-created configs/presets
 - `enum class LoadStatus`, `struct LoadResult`
   - classify `Loaded`, `Missing`, `Unreadable`, `InvalidJson`, and
     `UnsupportedVersion`, with an optional settings payload, error text, and
@@ -458,10 +499,10 @@ Namespace `openzoom::settings`
     representable UI precision so applied presets remain selected after
     control quantization
 
-### `include/openzoom/app/language_manager.hpp`
-`openzoom::LanguageManager`
+### `include/okuflow/app/language_manager.hpp`
+`okuflow::LanguageManager`
 - Owns the process `QTranslator`, supported application locale, and live
-  widget-tree retranslation. It does not own persistence; `OpenZoomApp`
+  widget-tree retranslation. It does not own persistence; `OkuFlowApp`
   reads/writes the stable language code through `SettingsController`.
 - `AppLanguage` currently supports `English`, `Turkish`, and `German`.
   `SupportedAppLanguages()`, `AppLanguageCode(...)`,
@@ -469,18 +510,18 @@ Namespace `openzoom::settings`
   `AppLanguageLocale(...)`, and `AppLanguageLayoutDirection(...)` expose the
   centralized language descriptor registry while keeping UI presentation
   separate from stable serialized values.
-- `SetLanguage(...)` swaps the embedded `:/i18n/openzoom_<code>.qm`, applies
+- `SetLanguage(...)` swaps the embedded `:/i18n/okuflow_<code>.qm`, applies
   the matching `QLocale` and process layout direction, and re-translates every
   open top-level widget without reconstructing it or changing control
   selection.
-- `--rtl-test` and `OPENZOOM_FORCE_RTL=1` force the English interface through
+- `--rtl-test` and `OKUFLOW_FORCE_RTL=1` force the English interface through
   the right-to-left layout path for development and regression testing. They
   do not add a language to the user-facing picker.
 - Signals: `languageChanged(const QString&)` and
   `languageChangeFailed(const QString&)`.
 
-### `include/openzoom/app/constants.hpp`
-Namespace `openzoom::app_constants`
+### `include/okuflow/app/constants.hpp`
+Namespace `okuflow::app_constants`
 - UI scaling and step constants for zoom, panning, and blur controls
 - Helper functions:
   - `SliderValueToSigma(int sliderValue)`
@@ -488,7 +529,7 @@ Namespace `openzoom::app_constants`
 
 ## Capture Module
 
-### `include/openzoom/capture/audio_capture.hpp`
+### `include/okuflow/capture/audio_capture.hpp`
 Types:
 - `struct AudioDeviceDescriptor`
   - Windows endpoint `name`, stable `endpointId`, `isDefault`, and retained
@@ -498,7 +539,7 @@ Types:
     QPC-derived `captureClock100ns`, and block duration
 - `using AudioFrameCallback` / `using AudioErrorCallback`
 
-`openzoom::AudioCapture`
+`okuflow::AudioCapture`
 - Enumerates Windows microphone capture endpoints, marks the current
   multimedia default, and normalizes the selected device to 48 kHz mono PCM.
 - The source reader runs on its own thread only while recording. Audio block
@@ -530,7 +571,7 @@ Types:
   - `const std::string& LastError() const`
   - `const std::wstring& ActiveEndpointId() const`
 
-### `include/openzoom/capture/media_capture.hpp`
+### `include/okuflow/capture/media_capture.hpp`
 Types:
 - `struct MediaFrame`
   - optional packed CPU `data`; optional accelerated `gpuTexture`,
@@ -572,7 +613,7 @@ Types:
     the caller should use one safe readback without disabling the top rung;
     `Unsupported` means the session must move down the capture ladder
 
-`openzoom::MediaCapture`
+`okuflow::MediaCapture`
 - Media Foundation camera enumeration and threaded source-reader capture.
 - Public API:
   - `MediaCapture()`
@@ -676,8 +717,8 @@ Types:
 
 ## Common Module
 
-### `include/openzoom/common/codex_json_rpc_process.hpp`
-`openzoom::CodexJsonRpcProcess`
+### `include/okuflow/common/codex_json_rpc_process.hpp`
+`okuflow::CodexJsonRpcProcess`
 - Shared JSONL/JSON-RPC stdio transport for local Codex app-server children,
   extracted from `CodexAppServerClient` (plan 36 Phase 1). Owns the
   `QProcess` lifecycle, request ids and per-request reply deadlines (default
@@ -692,9 +733,9 @@ Types:
   kill the child. Clients fail their own pending replies on `Finished` with a
   client-appropriate message.
 
-### `include/openzoom/common/transcript.hpp`
-`openzoom::TranscriptionState`, `openzoom::RecordingSessionInfo`,
-`openzoom::TranscriptSegment`, `openzoom::transcript_limits`
+### `include/okuflow/common/transcript.hpp`
+`okuflow::TranscriptionState`, `okuflow::RecordingSessionInfo`,
+`okuflow::TranscriptSegment`, `okuflow::transcript_limits`
 - Live-transcription contracts shared by the realtime client, controller,
   notes writer, and UI (plan 36). `TranscriptionState` never gates recorder
   behavior. `transcript_limits` centralizes the bounds: 8 KiB final/current
@@ -702,8 +743,8 @@ Types:
   bytes), 960-sample 20 ms carrier chunks, and a five-chunk (100 ms) bridge
   batch cap.
 
-### `include/openzoom/common/realtime_transcription_interfaces.hpp`
-`openzoom::RealtimeTranscriptionService`, `openzoom::RealtimeAudioCarrier`
+### `include/okuflow/common/realtime_transcription_interfaces.hpp`
+`okuflow::RealtimeTranscriptionService`, `okuflow::RealtimeAudioCarrier`
 - Abstract QObject interfaces separating the live-transcription control plane
   (session/account/realtime start/stop plus user-only transcript signals) from
   the media plane (WebRTC offer/answer, bounded PCM hand-off, combined data-
@@ -712,8 +753,8 @@ Types:
   sessions can never touch newer state. `TranscriptionSessionController` is
   unit-tested against fakes of both.
 
-### `include/openzoom/common/codex_realtime_transcription_client.hpp`
-`openzoom::CodexRealtimeTranscriptionClient` (implements `RealtimeTranscriptionService`)
+### `include/okuflow/common/codex_realtime_transcription_client.hpp`
+`okuflow::CodexRealtimeTranscriptionClient` (implements `RealtimeTranscriptionService`)
 - Dedicated Codex app-server child for live transcription (plan 36):
   `codex app-server --listen stdio:// --enable realtime_conversation
   --disable apps --disable plugins` with
@@ -751,8 +792,8 @@ Types:
   `usedPercent` into a clamped remaining percentage; the UI labels it as
   general Codex quota, never as Voice minutes.
 
-### `include/openzoom/app/transcription_session_controller.hpp`
-`openzoom::TranscriptionSessionController`
+### `include/okuflow/app/transcription_session_controller.hpp`
+`okuflow::TranscriptionSessionController`
 - Recording-coupled state machine for one transcription session
   (`Off/Unavailable/Ready/Starting/Listening/Finalizing/Completed/Failed`).
   Owns the monotonic operation generation, the bounded capture-thread PCM
@@ -784,8 +825,8 @@ Types:
   failure); a stale id is ignored. `Cancel()` is immediate teardown used by
   preflight rejection, the settings opt-out, and app shutdown.
 
-### `include/openzoom/common/realtime_native_rtc_carrier.hpp`
-`openzoom::RealtimeNativeRtcCarrier` (implements `RealtimeAudioCarrier`)
+### `include/okuflow/common/realtime_native_rtc_carrier.hpp`
+`okuflow::RealtimeNativeRtcCarrier` (implements `RealtimeAudioCarrier`)
 - Plan 36 Carrier D: native WebRTC media plane on the commit-pinned
   libdatachannel + Opus + Mbed TLS stack (`cmake/NativeRtc.cmake`,
   everything statically linked with `/MT`). One mono Opus track (RFC 7587
@@ -836,12 +877,12 @@ Types:
   they are not legal single-frame inputs to `opus_encode` and aggregating RTP
   packets would not provide the recognizer with additional context.
 
-### `include/openzoom/common/codex_app_server_client.hpp`
-`openzoom::CodexAppServerClient`
+### `include/okuflow/common/codex_app_server_client.hpp`
+`okuflow::CodexAppServerClient`
 - Native Qt JSON-RPC client for the local `codex app-server` stdio transport,
   built on the shared `CodexJsonRpcProcess`.
 - The public surface covers server lifecycle, account/login state,
-  model/rate-limit discovery, assistant turns, cancellation, and OpenZoom
+  model/rate-limit discovery, assistant turns, cancellation, and OkuFlow
   conversation load/rename/delete operations.
 - Restricted mode uses read-only sandboxing, approval policy `never`, disabled
   network access, and vision-only developer instructions. Persistent Advanced
@@ -852,7 +893,7 @@ Types:
   requests receive an empty grant so no additional filesystem or network
   capability is accidentally approved.
 - The stable app-server turn surface does not currently provide a complete
-  per-turn tool allow-list. OpenZoom therefore combines the strongest exposed
+  per-turn tool allow-list. OkuFlow therefore combines the strongest exposed
   sandbox/network/approval policy with reactive interruption as defense in
   depth rather than claiming instruction text alone prevents a tool start.
 - Turn liveness is bounded: 90-second activity timeout, 180-second vision-turn
@@ -863,7 +904,7 @@ Types:
   - `Configure(const QString& executablePath, const QString& preferredModel, const QString& reasoningEffort, const QString& assistantInstructions, bool internetEnabled, bool codingEnabled, const QString& workspaceDirectory)`
   - `Start()` / `Shutdown()`
   - `IsReady()`, `IsSignedIn()`, `IsTurnActive()`, `SelectedModel()`
-  - `BuiltInAssistantInstructions()` returns the read-only OpenZoom identity
+  - `BuiltInAssistantInstructions()` returns the read-only OkuFlow identity
     prompt shown in AI Settings
   - `RefreshAccount()` / `StartChatGptLogin()`
   - `RequestVisionTurn(...)` / `InterruptTurn()`
@@ -880,13 +921,13 @@ Types:
   language even when conversational response preferences request translation
   or summarization.
 
-### `include/openzoom/common/assistive_runtime.hpp`
+### `include/okuflow/common/assistive_runtime.hpp`
 Supporting types:
 - `struct AssistiveRuntimeConfig`
   - same provider/Codex/VLM/speech fields as `settings::AssistiveSettings`, including Codex internet/coding/workspace permissions, plus `QString notesDirectory` (absolute directory for lecture notes; empty disables notes)
 
-`openzoom::AssistiveRuntime`
-- Asynchronous assistive-analysis runtime owned by `OpenZoomApp`.
+`okuflow::AssistiveRuntime`
+- Asynchronous assistive-analysis runtime owned by `OkuFlowApp`.
 - Notes use an independent ordered worker queue (`NotesWorkState` and
   `QueueNotesWork`): up to 128 jobs / 256 MiB of retained data. Each job owns
   immutable content and its destination; runtime destruction disconnects
@@ -909,7 +950,7 @@ Supporting types:
 - There is one vision busy state. A second forced request reports status
   without clearing the active answer or its retained notes image. Codex
   requests remain user-initiated; enabling scene mode does not spend allowance
-  periodically. `OpenZoomApp::SubmitOnDemandAnalysis(bool readText)` retains
+  periodically. `OkuFlowApp::SubmitOnDemandAnalysis(bool readText)` retains
   the requested action across asynchronous GPU readback.
 - VLM path:
   - default: saves a temporary JPEG and submits it as `localImage` through `CodexAppServerClient`; Codex explanations are on-demand rather than periodic
@@ -969,10 +1010,10 @@ Supporting types:
   - `QString notesFilePath() const` — absolute reserved notes path (empty
     until creation is queued; the file may not exist yet).
   - `bool HasPendingNotesWrites() const` includes queued work and completions
-    awaiting delivery on the runtime thread. `OpenZoomApp::OpenNotesFile`
+    awaiting delivery on the runtime thread. `OkuFlowApp::OpenNotesFile`
     defers opening until this clears; `MaybeReportTranscriptNotesSaved`
     announces success only after transcription and notes storage finish.
-- Manual-only text-to-speech of results via Qt TextToSpeech when built with `OPENZOOM_HAS_TTS=1`; the runtime prefers the `winrt` engine and falls back to Qt's default engine.
+- Manual-only text-to-speech of results via Qt TextToSpeech when built with `OKUFLOW_HAS_TTS=1`; the runtime prefers the `winrt` engine and falls back to Qt's default engine.
 - Lecture notes: a valid per-session HTML document in the configured notes
   directory collecting escaped timestamped text readings, scene explanations,
   annotations, paired original/processed photos, fully finalized paired
@@ -994,15 +1035,15 @@ Supporting types:
   - Codex server/account/model/rate-limit/login state
   - Assistant conversation lifecycle, transcript, and streamed turn events
 
-### `include/openzoom/common/response_language.hpp`
-`openzoom::AppendResponseLanguageDirective(...)`
+### `include/okuflow/common/response_language.hpp`
+`okuflow::AppendResponseLanguageDirective(...)`
 - Keeps built-in and user-authored model instructions intact while appending
   `Respond in Turkish.` or `Respond in German.` for the selected UI language.
   English adds no directive. This helper is shared by the Codex and
   OpenAI-compatible VLM request paths.
 
-### `include/openzoom/common/image_processing.hpp`
-Namespace `openzoom::processing`
+### `include/okuflow/common/image_processing.hpp`
+Namespace `okuflow::processing`
 - Format conversion helpers:
   - `CopyArgbToBgra(...)`
   - `CopyRgbxToBgra(...)`
@@ -1017,8 +1058,8 @@ Namespace `openzoom::processing`
   - `ApplyGaussianBlur(...)`
   - `ApplyTemporalSmoothCpu(...)`
 
-### `include/openzoom/common/frame_pipeline.hpp`
-Namespace `openzoom::processing`
+### `include/okuflow/common/frame_pipeline.hpp`
+Namespace `okuflow::processing`
 - `struct CpuPipelineConfig`
   - `enableBlackWhite`, `blackWhiteThreshold`
   - `enableZoom`, `zoomAmount`, `zoomCenterX`, `zoomCenterY`
@@ -1039,8 +1080,8 @@ Namespace `openzoom::processing`
   - `UINT RawWidth() const`
   - `UINT RawHeight() const`
 
-### `include/openzoom/common/media_writer.hpp`
-`openzoom::GpuVideoFrame`, `openzoom::VideoRecorder`
+### `include/okuflow/common/media_writer.hpp`
+`okuflow::GpuVideoFrame`, `okuflow::VideoRecorder`
 - `GpuVideoFrame` identifies one shareable BGRA D3D texture, the shared fence
   value that completes its producer write, its dimensions, and an opaque
   lifetime lease. Media Foundation retains that lease on the submitted sample
@@ -1103,11 +1144,11 @@ Namespace `openzoom::processing`
   - `FinalizeAndStop(StopReason reason)`
   - `SetError(const std::string& err)`
 
-### `include/openzoom/common/recording_contract.hpp`
-`openzoom::RecordingFrameIdentity`, `openzoom::RecordingTimeline`,
-`openzoom::RecordingCanvasMode`, `openzoom::RecordingCanvasSize`,
-`openzoom::RecordingViewTransform`, `openzoom::RecordingDropCounts`,
-`openzoom::RecordingState`, `openzoom::RecordingCompletionOutcome`
+### `include/okuflow/common/recording_contract.hpp`
+`okuflow::RecordingFrameIdentity`, `okuflow::RecordingTimeline`,
+`okuflow::RecordingCanvasMode`, `okuflow::RecordingCanvasSize`,
+`okuflow::RecordingViewTransform`, `okuflow::RecordingDropCounts`,
+`okuflow::RecordingState`, `okuflow::RecordingCompletionOutcome`
 - Defines the hardware-independent contract shared by capture, recording, and
   tests. `RecordingTimeline` maps camera timestamps to a monotonic, zero-based
   Media Foundation timeline and falls back to exact fractional-rate timing.
@@ -1119,13 +1160,13 @@ Namespace `openzoom::processing`
   and terminal truthfulness. `RecordingDropCounts::Total()` excludes estimated
   timestamps while aggregating real frame losses.
 
-### `include/openzoom/common/maxine_superres.hpp`
-`openzoom::MaxineSuperRes`
+### `include/okuflow/common/maxine_superres.hpp`
+`okuflow::MaxineSuperRes`
 - GPL-clean runtime-only adapter for NVIDIA Video Effects SuperRes. The
   implementation includes the staged MIT headers but resolves every
   proprietary entry point from `NVCVImage.dll` and `NVVideoEffects.dll` with
   `LoadLibraryExW`/`GetProcAddress`; it has no import-library dependency.
-- Discovery checks an explicit override, `OPENZOOM_MAXINE_PATH`,
+- Discovery checks an explicit override, `OKUFLOW_MAXINE_PATH`,
   `NV_VIDEO_EFFECTS_PATH`, the standard Program Files directory, and uninstall
   registry views. Models are loaded from the detected runtime's `models`
   subdirectory. A missing runtime is cached as unavailable without crashing.
@@ -1146,10 +1187,10 @@ Namespace `openzoom::processing`
   - `static std::wstring FindRuntimeDirectory(...)`
   - `static bool IsRuntimeInstalled(...)`
 
-### `include/openzoom/common/annotation_model.hpp`
-`openzoom::AnnotationTool`, `openzoom::AnnotationItemKind`,
-`openzoom::AnnotationStroke`,
-`openzoom::AnnotationModel`
+### `include/okuflow/common/annotation_model.hpp`
+`okuflow::AnnotationTool`, `okuflow::AnnotationItemKind`,
+`okuflow::AnnotationStroke`,
+`okuflow::AnnotationModel`
 - Session-owned vector annotation state. Freehand strokes, two-point straight
   lines, rectangle/ellipse outlines, and text labels share one item model.
   Items carry Solid/Dashed style where applicable. Points and widths use
@@ -1171,9 +1212,9 @@ Namespace `openzoom::processing`
 - `AnnotationSceneTolerance(...)` converts viewport-pixel widths and hit
   tolerances into normalized scene distance.
 
-### `include/openzoom/common/view_transform.hpp`
-`openzoom::ViewportFitMode`, `openzoom::ViewTransform`,
-`openzoom::NormalizedSourceRect`, `openzoom::PixelViewMapping`
+### `include/okuflow/common/view_transform.hpp`
+`okuflow::ViewportFitMode`, `okuflow::ViewTransform`,
+`okuflow::NormalizedSourceRect`, `okuflow::PixelViewMapping`
 - Define the single camera-to-viewport geometry contract used by the D3D12
   shader, CPU fallback, pointer mapping, focus marker, and cached SuperRes ROI.
   The mapping always uses one uniform scale.
@@ -1187,12 +1228,12 @@ Namespace `openzoom::processing`
 
 ## D3D12 Module
 
-### `include/openzoom/d3d12/presenter.hpp`
-`openzoom::ViewportPresentationOptions`
+### `include/okuflow/d3d12/presenter.hpp`
+`okuflow::ViewportPresentationOptions`
 - Optional per-present focus marker and readback request used by the viewport
   shader pass.
 
-`openzoom::D3D12Presenter`
+`okuflow::D3D12Presenter`
 - Manages the D3D12 device, native-client-sized swap chain, viewport shader,
   per-frame upload buffers, shared fence, readback rings, and a bounded pool of
   shareable recording textures.
@@ -1259,12 +1300,12 @@ Namespace `openzoom::processing`
   - `FrameReadiness` / `PollFrameReadiness` in `d3d12/frame_readiness.hpp`
     distinguish Ready, Busy, DeviceLost, and WaitFailed without consuming a
     latency signal while the selected allocator is still in flight.
-  - `OpenZoomApp::HandlePresenterFault` also handles CUDA terminal faults:
+  - `OkuFlowApp::HandlePresenterFault` also handles CUDA terminal faults:
     it stops frame processing and reports that restarting is required.
 
 ## CUDA Module
 
-### `include/openzoom/cuda/cuda_interop.hpp`
+### `include/okuflow/cuda/cuda_interop.hpp`
 Supporting types:
 - `struct FenceSyncParams`
   - `enable`, `waitValue`, `signalValue`
@@ -1323,7 +1364,7 @@ Supporting types:
   - `inputFormat` — 0=BGRA8 (existing CPU-converted path), 1=NV12 (`hostPixels` = Y plane, `hostPlane2` = interleaved UV plane with `hostPlane2StrideBytes`), 2=YUY2 (packed in `hostPixels`)
   - `rotationQuarterTurns` — 0..3 clockwise, applied on the GPU after conversion for raw formats only (ignored for BGRA with a one-shot warning). For odd turns the interop surface must be created at the post-rotation extent (height x width); `ProcessFrame` validates and returns false on mismatch
 
-`openzoom::CudaInteropSurface`
+`okuflow::CudaInteropSurface`
 - Imports a D3D12 texture into CUDA and runs the GPU effect chain.
 - Teardown and buffer reallocation use bounded stream completion polling;
   failed drains latch a terminal fault and preserve allocations, owning CUDA
@@ -1448,18 +1489,18 @@ Supporting types:
   `displayColorLutGeneration` changes. Contrast and brightness edits reuse the
   resident table and do not trigger uploads.
 
-### `include/openzoom/cuda/cuda_kernels.hpp`
-`openzoom::StabilizationState`
+### `include/okuflow/cuda/cuda_kernels.hpp`
+`okuflow::StabilizationState`
 - Device-resident x/y translation, rotation, and log-scale measurements;
   current/previous correction; last reliable frame motion; fixed-reference
   anchor correction; recovery state; and compact fixed-reference diagnostics.
 
-`openzoom::TripodReferenceFeature`
+`okuflow::TripodReferenceFeature`
 - One prepared fixed-reference feature: subpixel level-0 position plus cached
   inverse 2x2 translation Hessians for the full, half, and quarter-resolution
   Gaussian pyramid levels.
 
-`openzoom::BumpHoldState`
+`okuflow::BumpHoldState`
 - Device-resident presentation state for the opt-in Extra Stable impact
   hold: live/held/recovery mode, focus ratio, transform step, previous absolute
   motion, stable-frame counter, crossfade progress, and whether a safe
@@ -1540,14 +1581,20 @@ Kernel launch wrappers:
 
 ## UI Module
 
-### `include/openzoom/ui/ui_translation.hpp`
-Namespace `openzoom`
+### `include/okuflow/ui/ui_translation.hpp`
+Namespace `okuflow`
 - `TranslateUi(...)` translates complete English source strings through the
-  shared `OpenZoom` catalog context. It supports `%1`-style formatted status
+  shared `OkuFlow` catalog context. It supports `%1`-style formatted status
   templates without translating fragments.
 - `SetLiveTranslationSource(...)` records source-language dynamic text and
   its semantic role so language changes can rebuild visible and accessible
   text rather than translating a prior translation.
+- `SetLiveAccessibleDescription(...)` records a replaceable source description,
+  including an empty value, for dynamic shortcut metadata and emits a
+  DescriptionChanged accessibility event when the applied value changes.
+- Internal `TranslateTrackedProperty(...)` tracks the last applied translation
+  so application updates to labels/tooltips become the new source instead of
+  being overwritten by construction-time text on Show/Polish.
 - `RetranslateWidgetTree(...)` captures and reapplies hand-built widget text,
   titles, placeholders, tooltips, accessible metadata, tabs, and ordinary
   combo entries on `QEvent::LanguageChange`.
@@ -1555,9 +1602,9 @@ Namespace `openzoom`
   other data-driven combo entries while still translating their surrounding
   UI metadata.
 
-### `include/openzoom/ui/live_status_text.hpp`
-`openzoom::LivePoliteness`, `openzoom::SetLiveText(...)`, and
-`openzoom::SetLiveTextCoalesced(...)`
+### `include/okuflow/ui/live_status_text.hpp`
+`okuflow::LivePoliteness`, `okuflow::SetLiveText(...)`, and
+`okuflow::SetLiveTextCoalesced(...)`
 - Centralize dynamic `QLabel` and `QAbstractButton` updates on the Qt UI
   thread. The helper changes the visible text, composes a role-qualified
   accessible name, emits accessibility `TextUpdated` and `NameChanged`
@@ -1576,8 +1623,8 @@ Namespace `openzoom`
     LivePoliteness politeness, const QString& rolePrefix = {},
     int delayMs = 400)`
 
-### `include/openzoom/ui/render_widget.hpp`
-`openzoom::RenderWidget`
+### `include/okuflow/ui/render_widget.hpp`
+`okuflow::RenderWidget`
 - Native widget that hosts the D3D12 presenter. Show and resize events create
   or coalesce native-client-pixel presenter resizes so splitter/window motion
   cannot make camera-frame dimensions take over the swap chain.
@@ -1592,8 +1639,8 @@ Namespace `openzoom`
   - `void setPresenter(D3D12Presenter* presenter)`
   - `bool isPresenterReady() const`
 
-### `include/openzoom/ui/joystick_overlay.hpp`
-`openzoom::JoystickOverlay`
+### `include/okuflow/ui/joystick_overlay.hpp`
+`okuflow::JoystickOverlay`
 - Circular on-canvas joystick overlay.
 - Anchors to the render viewport's bottom-right corner, but detects the Simple
   action cluster's native window rectangle and moves one margin above it.
@@ -1605,8 +1652,8 @@ Namespace `openzoom`
 - Signal:
   - `JoystickChanged(float normX, float normY)`
 
-### `include/openzoom/ui/annotation_overlay.hpp`
-`openzoom::AnnotationOverlay`
+### `include/okuflow/ui/annotation_overlay.hpp`
+`okuflow::AnnotationOverlay`
 - Transparent annotation surface implemented as a frameless tool window owned
   by `MainWindow`. A one-alpha backing surface keeps Windows mouse hit testing
   active above the native D3D HWND without visibly obscuring the camera. It
@@ -1651,9 +1698,9 @@ Namespace `openzoom`
 - Signals separate snapshot, clear, exit, clean-photo, preferences, and
   accessible tool-change intent from application capture policy.
 
-### `include/openzoom/ui/main_window.hpp`
-`openzoom::MainWindow`
-- Builds the UI shell and exposes widget accessors used by `OpenZoomApp`.
+### `include/okuflow/ui/main_window.hpp`
+`okuflow::MainWindow`
+- Builds the UI shell and exposes widget accessors used by `OkuFlowApp`.
 - Installs both Qt and Win32-native event filters for reliable activity
   detection across the native swap-chain surface and its owned control windows.
 - Two-speed UI around one persistent render widget: Simple keeps the render
@@ -1661,14 +1708,27 @@ Namespace `openzoom`
   windows plus a contextual keystone strip flush to its edges; Advanced keeps
   the bottom-left quick-mode carousel available and opens a 420-580 pixel
   tabbed inspector to the right of the camera. `Image`
-  contains scrollable Device, Recording, and profile-tuning controls plus
-  pipeline status; `Assistant` contains Chat and History views. The Recording
+  presents profile tuning first, followed by shared Device, Recording, and
+  Application settings; `Assistant` contains Chat and History views. The Recording
   section groups processed resolution, camera/original resolution and frame
-  rate, and microphone selection. Wrapping section arrows remain in the tab
-  header alongside a compact Help button whose dialog presents Controls before
+  rate, and microphone selection. Section arrows are hidden for three or fewer
+  tabs; the outlined Help button presents Controls before
   Features; a full-width AI Settings pop-out row appears below it. The top-left
   mode switch is restored on application activation in both UI modes. The
   collapsed tuning panel keeps its remaining controls packed at the top.
+  - `setCameraPlaceholder(...)` / `UpdateCameraPlaceholderVisibility()` show
+    source-tracked startup/reconnect/stopped-capture text only while the app is
+    active. `OkuFlowApp::UpdateCameraPlaceholder()` derives it from capture
+    state and `cameraFramePresented_`, reset at camera start/stop.
+  - `OkuFlowApp::UpdateControlEnabledStates()` disables Focus X/Y along with
+    the Zoom slider when Zoom is off; companion labels mirror that state.
+  - `RaiseDialogsAboveChrome()` restores visible owned dialogs above tool
+    windows whenever chrome is raised.
+  - Internal `ModeCarouselButton` elides at paint time and draws a separate
+    shortcut badge. `EnabledMirror` dims a slider's companion readout;
+    `FormatPercent`, `FormatScaled`, and `FormatSigned` use the active locale.
+    Readout refreshers run on language changes. Search excludes numeric
+    readouts and displays a silent match count or empty-result message.
   - `void setSimpleMode(bool simple)` / `bool isSimpleMode() const`
   - `int advancedPanelWidth() const` / `void setAdvancedPanelWidth(int width)`
     expose the persisted splitter width while preserving minimum camera and
@@ -1726,7 +1786,7 @@ Namespace `openzoom`
   `keystonePauseResumeRequested()`,
   `keystoneStepForwardRequested()`, `resetCurrentProfileRequested()`, and
   `superResPerformanceOverrideChanged(bool)` bridge UI commands to
-  `OpenZoomApp`.
+  `OkuFlowApp`.
 - Event handling:
   - arrow-key routing for panning
   - global Qt activity detection plus native render-window mouse/focus
@@ -1741,8 +1801,8 @@ Namespace `openzoom`
   - event filter on the render widget for Ctrl+wheel zoom, plain-wheel pan,
     middle-button drag pan, and corner-window repositioning on resize/move
 
-### `include/openzoom/ui/collapsible_section.hpp`
-`openzoom::CollapsibleSection`
+### `include/okuflow/ui/collapsible_section.hpp`
+`okuflow::CollapsibleSection`
 - Reusable two-level Advanced inspector disclosure group with a focusable
   `QToolButton` heading, visible/accessibility changed count, persisted key,
   and temporary search expansion that restores the prior state.
@@ -1754,8 +1814,8 @@ Namespace `openzoom`
   - `void setSearchExpanded(bool)`
 - Signal: `expandedChanged(bool)`.
 
-### `include/openzoom/ui/color_scheme_picker.hpp`
-`openzoom::ColorSchemePicker`
+### `include/okuflow/ui/color_scheme_picker.hpp`
+`okuflow::ColorSchemePicker`
 - Replaces the old full-width combo list with a compact trigger and owned tool
   popover containing six-column reading-color/effect grids and a Custom editor.
 - The frameless native popover uses an opaque backing store and solid dark
@@ -1772,14 +1832,17 @@ Namespace `openzoom`
 - Public API: `currentScheme()`, `customScheme()`, `setCurrentScheme(...)`,
   `setCustomScheme(...)`, and `hasCustomScheme()`.
 
-### `include/openzoom/ui/wheel_safe_combo_box.hpp`
-`openzoom::WheelSafeComboBox` / `openzoom::WheelSafeSlider`
+### `include/okuflow/ui/wheel_safe_combo_box.hpp`
+`okuflow::WheelSafeComboBox` / `okuflow::WheelSafeSlider`
+- Noneditable combos paint long entries with middle elision and show their
+  full current text on hover when truncated. Model/current text stays intact
+  for Qt accessibility; designed tooltips remain available for fitting text.
 - Ignore wheel edits so events continue to the surrounding scroll area or
   camera navigation. Click, drag (sliders), and keyboard editing remain
   unchanged. All settings combos and sliders use these subclasses.
 
-### `include/openzoom/ui/ai_settings_dialog.hpp`
-`openzoom::AiSettingsDialog`
+### `include/okuflow/ui/ai_settings_dialog.hpp`
+`okuflow::AiSettingsDialog`
 - Modal editor for AI provider selection and assistive configuration. Supports
   Codex subscription mode with executable/model overrides, explicit internet
   and workspace-scoped coding permissions, and an
@@ -1799,8 +1862,8 @@ Namespace `openzoom`
   - `SetCodexModelCatalog(const QJsonArray& models, const QString& selectedModel)`
   - `settings::AssistiveSettings result() const` — the edited settings after the dialog is accepted
 
-### `include/openzoom/ui/assistive_overlay.hpp`
-`openzoom::AssistiveOverlay`
+### `include/okuflow/ui/assistive_overlay.hpp`
+`okuflow::AssistiveOverlay`
 - Solid Assistant `QDockWidget`, floating on top of the render
   surface. Its header and edges use the native window-system move/resize path;
   streamed result updates never reapply window geometry. A
@@ -1856,13 +1919,13 @@ Namespace `openzoom`
   - `QuestionSubmitted(const QString& question)`
   - `NewChatRequested()`
 
-### `include/openzoom/ui/responsive_slider_row.hpp`
-`openzoom::ResponsiveSliderRow`
+### `include/okuflow/ui/responsive_slider_row.hpp`
+`okuflow::ResponsiveSliderRow`
 - Reusable settings row that moves its slider to a full-width second line when
   the inspector is too narrow. This keeps labels wrapped and every point of
   the slider track reachable during live splitter resizing.
 
-### `include/openzoom/capture/capture_buffer.hpp`
+### `include/okuflow/capture/capture_buffer.hpp`
 - `CopyCaptureBuffer(IMFMediaBuffer*, subtype, width, height,
   negotiatedStride, output, outputStride)` reads native two-dimensional pitch
   before the negotiated media-type fallback. It validates row extents and
@@ -1870,17 +1933,17 @@ Namespace `openzoom`
   and leaves output unchanged on invalid/truncated layouts. Single-buffer MF
   samples retain their native 2D interface instead of being flattened first.
 
-### `include/openzoom/app/cuda_surface_retry.hpp`
+### `include/okuflow/app/cuda_surface_retry.hpp`
 - `CudaSurfaceConfiguration` keys device/fence identity, camera session,
   scene dimensions, and upscale-cache dimensions.
 - `CudaSurfaceRetry::ShouldAttempt(configuration, now)` allows immediate
   initialization after configuration changes. `RecordFailure(now)` applies
   1/2/4/8/16/30-second capped delays measured from failed attempt completion;
-  `RecordSuccess()` resets failure history. `OpenZoomApp::EnsureCudaSurface`
+  `RecordSuccess()` resets failure history. `OkuFlowApp::EnsureCudaSurface`
   checks this policy before graphics draining or shared resource allocation,
   so raw and converted fallback calls share one failed-attempt cache.
 
-### `include/openzoom/common/yuv_color.hpp` and `capture/capture_color.hpp`
+### `include/okuflow/common/yuv_color.hpp` and `capture/capture_color.hpp`
 - `YuvColorInfo` carries `YuvMatrix::{Bt601,Bt709}` and
   `YuvRange::{Limited,Full}` with BT.601 limited defaults. It travels through
   capture `FrameFormat` / `MediaFrame`, CPU frame preparation and original
@@ -1895,7 +1958,7 @@ Namespace `openzoom`
   processor input. Output is full-range BGRA; unsupported full-range input
   capability moves capture to raw conversion.
 
-### `include/openzoom/common/spatial_cache_geometry.hpp`
+### `include/okuflow/common/spatial_cache_geometry.hpp`
 - `SpatialCacheGeometry` / `ComputeSpatialCacheGeometry` enclose the canonical
   visible ROI in integer source pixels and select differing output dimensions,
   bounded by existing scene/cache buffers, 1440p, and 2x per pass.
@@ -1920,6 +1983,6 @@ Namespace `openzoom`
 ## Entry Point
 
 ### `src/app/main.cpp`
-- On Windows, constructs `OpenZoomApp`, calls fallible `Initialize()`, then
+- On Windows, constructs `OkuFlowApp`, calls fallible `Initialize()`, then
   enters `Run()` inside a `try`/`catch`.
 - On non-Windows platforms, exits with an unsupported-platform message.

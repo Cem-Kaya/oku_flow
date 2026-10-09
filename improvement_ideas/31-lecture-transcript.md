@@ -3,7 +3,7 @@
 Status: **SUPERSEDED by owner decision on 2026-08-07. Active work is Plan 36.**
 
 This file preserves the 2026-07-30 decision for provenance. At that time, the
-owner directed OpenZoom not to implement:
+owner directed OkuFlow not to implement:
 
 - Codex realtime audio and transcript events.
 - Local Whisper installation, inference, or model downloads.
@@ -11,7 +11,7 @@ owner directed OpenZoom not to implement:
 - Transcript insertion into lecture notes.
 - Transcript search, extraction, and post-recording jobs.
 
-OpenZoom continues to record the user's selected microphone into the paired
+OkuFlow continues to record the user's selected microphone into the paired
 original and processed videos. Audio recording is not transcription and remains
 part of the product.
 
@@ -31,6 +31,6 @@ worker returned:
 realtime conversation requires API key auth
 ```
 
-OpenZoom does not deploy with an API key. No production transcription code was
+OkuFlow does not deploy with an API key. No production transcription code was
 implemented, so dropping this plan requires no product-code removal or data
 migration.

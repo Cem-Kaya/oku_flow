@@ -1,11 +1,11 @@
-#include "openzoom/app/pipeline_orchestrator.hpp"
-#include "openzoom/d3d12/frame_readiness.hpp"
+#include "okuflow/app/pipeline_orchestrator.hpp"
+#include "okuflow/d3d12/frame_readiness.hpp"
 
 #include <QtTest>
 
 #include <limits>
 
-namespace openzoom {
+namespace okuflow {
 
 class PipelineOrchestratorTests : public QObject {
     Q_OBJECT
@@ -138,8 +138,8 @@ void PipelineOrchestratorTests::busyFrameRetriesLeaveQtHeartbeatResponsive()
     QVERIFY(!orchestrator.IsViewportDirty());
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
-QTEST_GUILESS_MAIN(openzoom::PipelineOrchestratorTests)
+QTEST_GUILESS_MAIN(okuflow::PipelineOrchestratorTests)
 
 #include "pipeline_orchestrator_tests.moc"

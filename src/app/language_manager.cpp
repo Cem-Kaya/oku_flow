@@ -1,8 +1,8 @@
 #ifdef _WIN32
 
-#include "openzoom/app/language_manager.hpp"
+#include "okuflow/app/language_manager.hpp"
 
-#include "openzoom/ui/ui_translation.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -12,7 +12,7 @@
 
 #include <array>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
 struct LanguageDescriptor {
@@ -49,7 +49,7 @@ bool ForceRtlRequested(const QApplication& application)
         return true;
     }
     const QString value =
-        qEnvironmentVariable("OPENZOOM_FORCE_RTL").trimmed().toLower();
+        qEnvironmentVariable("OKUFLOW_FORCE_RTL").trimmed().toLower();
     return value == QStringLiteral("1") ||
            value == QStringLiteral("true") ||
            value == QStringLiteral("yes") ||
@@ -148,7 +148,7 @@ bool LanguageManager::SetLanguage(AppLanguage language, bool announce)
 
     if (language != AppLanguage::English) {
         const QString resourcePath =
-            QStringLiteral(":/i18n/openzoom_%1.qm")
+            QStringLiteral(":/i18n/okuflow_%1.qm")
                 .arg(AppLanguageCode(language));
         if (!translator_.load(resourcePath) ||
             !application_->installTranslator(&translator_)) {
@@ -198,6 +198,6 @@ void LanguageManager::ApplyLocale(AppLanguage language)
         forceRightToLeft_ ? Qt::RightToLeft : locale.textDirection());
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif

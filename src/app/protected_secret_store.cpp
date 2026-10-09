@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/app/protected_secret_store.hpp"
+#include "okuflow/app/protected_secret_store.hpp"
 
 #include <QByteArray>
 
@@ -9,7 +9,7 @@
 
 #include <algorithm>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -43,7 +43,7 @@ std::wstring NativeCredentialId(const QString& credentialId)
 
 QString ProtectedSecretStore::DefaultVlmCredentialId()
 {
-    return QStringLiteral("OpenZoom/VLM API Key");
+    return QStringLiteral("OkuFlow/VLM API Key");
 }
 
 ProtectedSecretResult ProtectedSecretStore::Read(const QString& credentialId)
@@ -109,7 +109,7 @@ bool ProtectedSecretStore::Write(const QString& credentialId,
     credential.CredentialBlob =
         reinterpret_cast<LPBYTE>(utf8.data());
     credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
-    credential.UserName = const_cast<wchar_t*>(L"OpenZoom");
+    credential.UserName = const_cast<wchar_t*>(L"OkuFlow");
 
     const BOOL written = CredWriteW(&credential, 0);
     const DWORD windowsError = written ? ERROR_SUCCESS : GetLastError();
@@ -148,6 +148,6 @@ bool ProtectedSecretStore::Remove(const QString& credentialId, QString* error)
     return false;
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif

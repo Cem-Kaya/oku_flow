@@ -8,7 +8,7 @@
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 
-#if OPENZOOM_PROBE_HAS_CUDA
+#if OKUFLOW_PROBE_HAS_CUDA
 #include <cuda_d3d11_interop.h>
 #include <cuda_runtime.h>
 #endif
@@ -40,7 +40,7 @@ void CheckHr(HRESULT result, const char* operation)
     }
 }
 
-#if OPENZOOM_PROBE_HAS_CUDA
+#if OKUFLOW_PROBE_HAS_CUDA
 
 void CheckCuda(cudaError_t result, const char* operation)
 {
@@ -430,7 +430,7 @@ InteropStressResult RunCudaInteropStress(
         result.detail = "Invalid stress-test input";
         return result;
     }
-#if !OPENZOOM_PROBE_HAS_CUDA
+#if !OKUFLOW_PROBE_HAS_CUDA
     result.status = "skip";
     result.detail = "This probe build does not include CUDA";
     return result;

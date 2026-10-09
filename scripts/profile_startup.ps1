@@ -14,12 +14,12 @@ $ErrorActionPreference = "Stop"
 $repository = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $application = (Resolve-Path -LiteralPath $Executable).Path
 $destination = [IO.Path]::GetFullPath((Join-Path $repository $OutputDirectory))
-if (Get-Process -Name open_zoom -ErrorAction SilentlyContinue) {
-    throw "An OpenZoom instance is already running. Close it before profiling to avoid competing for its camera."
+if (Get-Process -Name oku_flow -ErrorAction SilentlyContinue) {
+    throw "An OkuFlow instance is already running. Close it before profiling to avoid competing for its camera."
 }
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 if (-not $SettingsPath) {
-    $SettingsPath = Join-Path $env:APPDATA "OpenZoom/OpenZoom/settings.json"
+    $SettingsPath = Join-Path $env:APPDATA "OkuFlow/OkuFlow/settings.json"
 }
 $settingsText = if (Test-Path -LiteralPath $SettingsPath) {
     Get-Content -LiteralPath $SettingsPath -Raw
@@ -66,14 +66,14 @@ for ($run = 1; $run -le $Runs; ++$run) {
         $startInfo.RedirectStandardOutput = $true
         $startInfo.RedirectStandardError = $true
         $startInfo.Environment["QT_FORCE_STDERR_LOGGING"] = "1"
-        $startInfo.Environment["OPENZOOM_CAPTURE_DIAGNOSTICS"] = "1"
+        $startInfo.Environment["OKUFLOW_CAPTURE_DIAGNOSTICS"] = "1"
         # Source-tree builds can use the documented Qt runtime without deployment.
         $qtBin = if ($env:QT_PREFIX) { Join-Path $env:QT_PREFIX "bin" }
-                 else { "C:/Qt/6.9.3/msvc2022_64/bin" }
+                 else { "C:/Qt/6.12.0/msvc2022_64/bin" }
         $startInfo.Environment["PATH"] = $qtBin + ";" + $env:PATH
-        $startInfo.Environment.Remove("OPENZOOM_VLM_API_URL") | Out-Null
-        $startInfo.Environment.Remove("OPENZOOM_VLM_MODEL") | Out-Null
-        $startInfo.Environment.Remove("OPENZOOM_VLM_API_KEY") | Out-Null
+        $startInfo.Environment.Remove("OKUFLOW_VLM_API_URL") | Out-Null
+        $startInfo.Environment.Remove("OKUFLOW_VLM_MODEL") | Out-Null
+        $startInfo.Environment.Remove("OKUFLOW_VLM_API_KEY") | Out-Null
         $startInfo.ArgumentList.Add("--startup-profile=$report")
         $startInfo.ArgumentList.Add("--startup-profile-ms=$($DurationSeconds * 1000)")
         if ($mode -eq "legacy") { $startInfo.ArgumentList.Add("--startup-profile-legacy-camera") }

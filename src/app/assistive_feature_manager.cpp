@@ -1,8 +1,8 @@
 #ifdef _WIN32
 
-#include "openzoom/app/assistive_feature_manager.hpp"
+#include "okuflow/app/assistive_feature_manager.hpp"
 
-#include "openzoom/ui/main_window.hpp"
+#include "okuflow/ui/main_window.hpp"
 
 #include <QDebug>
 #include <QObject>
@@ -10,7 +10,7 @@
 
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -162,6 +162,6 @@ bool AssistiveFeatureManager::AnalysisDue() const {
            analysisTimer_.elapsed() >= kAssistiveIntervalMs;
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif

@@ -6,7 +6,7 @@
 #include <thread>
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 // Intentionally no static destructor: a driver or CUDA import may still refer
 // to these objects during process teardown. WasAbandoned also prevents MFShutdown.
@@ -36,7 +36,7 @@ void MediaCapture::Shutdown() { StopCapture(); }
 std::vector<CameraDescriptor> MediaCapture::EnumerateCameras()
 {
     if (abandonedForExit_) {
-        lastError_ = "The camera driver did not stop safely. Restart OpenZoom before opening another camera.";
+        lastError_ = "The camera driver did not stop safely. Restart OkuFlow before opening another camera.";
         return {};
     }
     // Enumeration state is separate even if an old session is still stopping.
@@ -47,7 +47,7 @@ std::vector<CameraDescriptor> MediaCapture::EnumerateCameras()
 std::vector<VideoFormat> MediaCapture::EnumerateFormats(const CameraDescriptor& descriptor)
 {
     if (abandonedForExit_) {
-        lastError_ = "The camera driver did not stop safely. Restart OpenZoom before querying camera formats.";
+        lastError_ = "The camera driver did not stop safely. Restart OkuFlow before querying camera formats.";
         return {};
     }
     auto enumerator = std::make_shared<MediaCaptureSession>();
@@ -64,7 +64,7 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
                                 const std::wstring& requestedStableId)
 {
     if (!StopCapture() || abandonedForExit_) {
-        lastError_ = "The camera driver did not stop safely. Restart OpenZoom before opening another camera.";
+        lastError_ = "The camera driver did not stop safely. Restart OkuFlow before opening another camera.";
         if (session_) session_->lastFailureKind_.store(CameraFailureKind::Other);
         return false;
     }
@@ -81,7 +81,7 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
     nativeFormats_ = session_->NativeFormats();
     if (started) lastSymbolicLink_ = session_->LastSymbolicLink();
     else if (!StopCapture()) {
-        lastError_ = "The camera could not start and its driver did not stop safely. Restart OpenZoom before trying again.";
+        lastError_ = "The camera could not start and its driver did not stop safely. Restart OkuFlow before trying again.";
         session_->lastFailureKind_.store(CameraFailureKind::Other);
     }
     return started;
@@ -168,5 +168,5 @@ GpuFramePreparationResult MediaCapture::PrepareGpuFrameForCuda(
 }
 bool MediaCapture::ReadbackGpuFrame(MediaFrame& frame)
 { return session_ && !session_->releaseNotified_ && session_->ReadbackGpuFrame(frame); }
-} // namespace openzoom
+} // namespace okuflow
 #endif

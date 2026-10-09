@@ -1,10 +1,10 @@
-#include "openzoom/common/spatial_cache_geometry.hpp"
+#include "okuflow/common/spatial_cache_geometry.hpp"
 
 #include <iostream>
 #include <limits>
 
 int main() {
-    using namespace openzoom;
+    using namespace okuflow;
     bool passed = true;
     auto check = [&](bool condition, const char* label) {
         if (!condition) {

@@ -1,10 +1,10 @@
 #ifdef _WIN32
 
-#include "openzoom/ui/ai_settings_dialog.hpp"
-#include "openzoom/common/codex_app_server_client.hpp"
-#include "openzoom/ui/live_status_text.hpp"
-#include "openzoom/ui/ui_translation.hpp"
-#include "openzoom/ui/wheel_safe_combo_box.hpp"
+#include "okuflow/ui/ai_settings_dialog.hpp"
+#include "okuflow/common/codex_app_server_client.hpp"
+#include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/ui_translation.hpp"
+#include "okuflow/ui/wheel_safe_combo_box.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -34,16 +34,16 @@
 #include <algorithm>
 #include <cmath>
 
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
 #include <QTextToSpeech>
 #include <QVoice>
 #endif
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
 QString VoiceLabel(const QVoice& voice)
 {
     const QLocale locale = voice.locale();
@@ -218,7 +218,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     builtInInstructionsEdit_->setReadOnly(true);
     builtInInstructionsEdit_->setMaximumHeight(120);
     builtInInstructionsEdit_->setToolTip(
-        QStringLiteral("OpenZoom always sends this instruction to Codex. "
+        QStringLiteral("OkuFlow always sends this instruction to Codex. "
                        "Permission rules are appended from the controls above."));
     form->addRow("Built-in prompt:", builtInInstructionsEdit_);
 
@@ -314,7 +314,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             this, &AiSettingsDialog::PreviewSpeech);
     UpdateSpeechRateLabel();
 
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     const QStringList engines = QTextToSpeech::availableEngines();
     auto resolveEngine = [&engines](const QString& requested) {
         for (const QString& engine : engines) {
@@ -405,7 +405,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     setA11y(assistantInstructionsEdit_, "Assistant Instructions",
             "Set the response language, tone, detail, and other response preferences");
     setA11y(builtInInstructionsEdit_, "Built-in Codex Prompt",
-            "Read-only OpenZoom instruction always sent to Codex before your instructions");
+            "Read-only OkuFlow instruction always sent to Codex before your instructions");
     setA11y(apiUrlEdit_, "VLM Server URL",
             "Address of the OpenAI-compatible chat completions endpoint");
     setA11y(apiKeyEdit_, "API Key",
@@ -417,7 +417,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     setA11y(ttsVoiceCombo_, "Read Aloud Voice",
             "Choose an installed Windows voice for the Read Aloud button");
     setA11y(ttsRateSlider_, "Read Aloud Speed",
-            "Adjust how slowly or quickly OpenZoom reads a result");
+            "Adjust how slowly or quickly OkuFlow reads a result");
     setA11y(ttsPreviewButton_, "Preview Read Aloud Voice",
             "Speak a short sample with the selected voice and speed");
     setA11y(lectureNotesCheckbox_, "Write Lecture Notes File",
@@ -468,7 +468,7 @@ settings::AssistiveSettings AiSettingsDialog::result() const
     out.vlmPrompt = promptEdit_->toPlainText();
     out.ttsEngine = ttsEngine_;
     out.ttsRate = static_cast<double>(ttsRateSlider_->value()) / 100.0;
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     const QVoice voice = ttsVoiceCombo_->currentData().value<QVoice>();
     out.ttsVoiceName = voice.name();
     out.ttsVoiceLocale = voice.locale().name();
@@ -482,7 +482,7 @@ settings::AssistiveSettings AiSettingsDialog::result() const
 
 void AiSettingsDialog::PopulateSpeechVoices()
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (!speechPreview_ || populatingSpeechVoices_) {
         return;
     }
@@ -597,7 +597,7 @@ void AiSettingsDialog::UpdateSpeechRateLabel()
 
 void AiSettingsDialog::ApplySpeechPreviewSettings()
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (!speechPreview_ || !speechVoicesLoaded_) {
         return;
     }
@@ -613,14 +613,14 @@ void AiSettingsDialog::ApplySpeechPreviewSettings()
 
 void AiSettingsDialog::PreviewSpeech()
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (!speechPreview_) {
         return;
     }
     ApplySpeechPreviewSettings();
     speechPreview_->stop();
     speechPreview_->say(TranslateUi(QStringLiteral(
-        "OpenZoom will read this result using the selected voice.")));
+        "OkuFlow will read this result using the selected voice.")));
 #endif
 }
 
@@ -765,6 +765,6 @@ void AiSettingsDialog::UpdateCodexReasoningOptions()
         codexReasoningCombo_->currentData().toString();
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

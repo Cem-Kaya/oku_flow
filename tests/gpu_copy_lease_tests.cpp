@@ -1,7 +1,7 @@
 #include <QtTest>
-#include "openzoom/common/gpu_copy_lease.hpp"
+#include "okuflow/common/gpu_copy_lease.hpp"
 
-using namespace openzoom;
+using namespace okuflow;
 
 class GpuCopyLeaseTests : public QObject {
     Q_OBJECT

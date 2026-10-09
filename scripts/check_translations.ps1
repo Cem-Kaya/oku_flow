@@ -10,8 +10,8 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $translationDirectory = Join-Path $repoRoot "translations"
 $manifestPath = Join-Path $repoRoot "src\ui\translation_catalog.cpp"
 $catalogPaths = @(
-    (Join-Path $translationDirectory "openzoom_tr.ts"),
-    (Join-Path $translationDirectory "openzoom_de.ts")
+    (Join-Path $translationDirectory "okuflow_tr.ts"),
+    (Join-Path $translationDirectory "okuflow_de.ts")
 )
 
 function Read-Catalog {
@@ -68,12 +68,12 @@ function Write-Manifest {
     $lines.Add("")
     $lines.Add("#include <cstddef>")
     $lines.Add("")
-    $lines.Add("namespace openzoom {")
+    $lines.Add("namespace okuflow {")
     $lines.Add("namespace {")
-    $lines.Add("[[maybe_unused]] const char* const kOpenZoomTranslationSources[] = {")
+    $lines.Add("[[maybe_unused]] const char* const kOkuFlowTranslationSources[] = {")
     foreach ($source in $Sources) {
         $encoded = ConvertTo-Json $source -Compress
-        $lines.Add("    QT_TRANSLATE_NOOP(`"OpenZoom`", $encoded),")
+        $lines.Add("    QT_TRANSLATE_NOOP(`"OkuFlow`", $encoded),")
     }
     $lines.Add("};")
     $lines.Add("} // namespace")
@@ -81,13 +81,13 @@ function Write-Manifest {
     $lines.Add("const char* const* TranslationCatalogSources(std::size_t* count)")
     $lines.Add("{")
     $lines.Add("    if (count) {")
-    $lines.Add("        *count = sizeof(kOpenZoomTranslationSources) /")
-    $lines.Add("                 sizeof(kOpenZoomTranslationSources[0]);")
+    $lines.Add("        *count = sizeof(kOkuFlowTranslationSources) /")
+    $lines.Add("                 sizeof(kOkuFlowTranslationSources[0]);")
     $lines.Add("    }")
-    $lines.Add("    return kOpenZoomTranslationSources;")
+    $lines.Add("    return kOkuFlowTranslationSources;")
     $lines.Add("}")
     $lines.Add("")
-    $lines.Add("} // namespace openzoom")
+    $lines.Add("} // namespace okuflow")
 
     [IO.File]::WriteAllText(
         $Path,
@@ -109,7 +109,7 @@ function Read-ManifestSources {
     }
 
     $text = [Text.Encoding]::UTF8.GetString($bytes)
-    $pattern = 'QT_TRANSLATE_NOOP\("OpenZoom",\s*("(?:\\.|[^"\\])*")\)'
+    $pattern = 'QT_TRANSLATE_NOOP\("OkuFlow",\s*("(?:\\.|[^"\\])*")\)'
     $sources =
         [Collections.Generic.Dictionary[string, bool]]::new(
             [StringComparer]::Ordinal)
@@ -162,7 +162,7 @@ $manifest = Read-ManifestSources $manifestPath
 Compare-SourceSets "translation manifest" $manifest "catalogs" $turkish
 
 if ([string]::IsNullOrWhiteSpace($QtPrefix)) {
-    $QtPrefix = "C:\Qt\6.9.3\msvc2022_64"
+    $QtPrefix = "C:\Qt\6.12.0\msvc2022_64"
 }
 $lrelease = Join-Path $QtPrefix "bin\lrelease.exe"
 if (-not (Test-Path $lrelease)) {
@@ -174,7 +174,7 @@ if (-not (Test-Path $lrelease)) {
 }
 
 $temporaryDirectory =
-    Join-Path ([IO.Path]::GetTempPath()) ("openzoom-translations-" + [guid]::NewGuid())
+    Join-Path ([IO.Path]::GetTempPath()) ("okuflow-translations-" + [guid]::NewGuid())
 [IO.Directory]::CreateDirectory($temporaryDirectory) | Out-Null
 try {
     foreach ($catalogPath in $catalogPaths) {

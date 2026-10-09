@@ -1,5 +1,5 @@
 #ifdef _WIN32
-#include "openzoom/capture/capture_buffer.hpp"
+#include "okuflow/capture/capture_buffer.hpp"
 
 #include <wrl/client.h>
 #include <cstddef>
@@ -7,7 +7,7 @@
 #include <limits>
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 struct BufferUnlock {
     IMFMediaBuffer* linear{};
@@ -101,5 +101,5 @@ bool CopyCaptureBuffer(IMFMediaBuffer* buffer, const GUID& subtype,
     outputStride = static_cast<LONG>(rowBytes);
     return true;
 }
-} // namespace openzoom
+} // namespace okuflow
 #endif

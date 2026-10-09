@@ -5,6 +5,36 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+- Rename the product from OpenZoom to OkuFlow. The website is
+  <https://okuflow.com> and the repository is now
+  <https://github.com/Cem-Kaya/oku_flow> (old `open_zoom` URLs redirect). The
+  executable is now `oku_flow.exe`, the release bundle is `dist\OkuFlow`, the
+  code namespace and include directory are `okuflow`, and the Windows
+  AppUserModelID is `CemKaya.OkuFlow`, so taskbar pins of the old executable
+  must be re-pinned. CMake build options and environment variables are now
+  `OKUFLOW_*`. Existing local OpenZoom settings and data are not migrated
+  automatically.
+- Add one-click start/stop for a local lecture test feed through an isolated
+  OBS Virtual Camera, with a downloaded, attributed classroom sample,
+  replacement-video selection, playback looping, and verified process ownership.
+- Switch the Windows toolchain defaults, translation compiler, startup profiler,
+  and release deployment to Qt 6.12.0. Preserve Multimedia and TextToSpeech
+  support and matching Qt/FFmpeg notices. PDF metadata is required only when
+  PDF is installed or deployed, rather than requiring an unused PDF SDK.
+  Release metadata links Qt 6.12's actual hash-suffixed SPDX IDs. Bundle builds
+  can use a local directory, and accept CUDA's newer `LICENSE` filename.
+- Improve Setup Assistant sizing and stacking, and stop prompting at startup
+  solely because optional NVIDIA Super Resolution is missing.
+- Show a centered camera placeholder during startup, reconnection, and stopped
+  capture. Give the quick-mode carousel a separate number badge and reliable
+  label elision, including an accurate Custom Setup state.
+- Put profile tuning before shared settings in Advanced, add locale-formatted
+  slider readouts and visible search results, enlarge Simple Text Clarity,
+  and reveal truncated device names in tooltips. Keep recording/help icons
+  consistent and hide tab arrows while three or fewer tabs are present.
+- Disable Focus X/Y when Zoom is off, including their labels and readouts;
+  Zoom, focus, and black-and-white rows wrap to fit narrow inspectors.
+- Preserve dynamically replaced widget labels during live retranslation.
 - Open the initial camera on a worker while the window's graphics initialize,
   and reuse its streaming reader for camera mode discovery. Canceled startup
   cannot deliver frames into a destroyed window; startup errors and acceleration
@@ -230,7 +260,7 @@
   At startup, an interrupted second rename is completed from the intact
   `.writing` file; any unrecoverable lone final/temp set is removed together,
   and a per-pair process lock prevents recovery from racing another active
-  OpenZoom instance. A cleanup failure names the remaining path instead of
+  OkuFlow instance. A cleanup failure names the remaining path instead of
   allowing an orphan to masquerade as a completed capture.
 - Fixed dynamic AI settings text reverting to English: reasoning-effort
   entries repopulated after a model change and the voice-list placeholders
@@ -334,7 +364,7 @@
   allowed. Console-attached recording summaries separately report GPU
   completion retries and actual safe-copy frames.
 - Added console diagnostic log files under the user-owned
-  `Documents\OpenZoom\Debug\` directory (or configured root). A launch with an
+  `Documents\OkuFlow\Debug\` directory (or configured root). A launch with an
   attached Windows console now tees the same Qt output to one timestamped
   per-process log, including buffered startup messages, while ordinary GUI
   launches remain quiet; only the newest 20 logs are retained.
@@ -365,7 +395,7 @@
   hardware AV1 encoder exists and skips cleanly elsewhere (verified on the
   RTX 4090: both codecs produced identical fragment cadence). This bounds
   what a process crash can lose to roughly the last 2 seconds of encoded
-  media once the first fragment has landed. On startup OpenZoom now sweeps recent recording
+  media once the first fragment has landed. On startup OkuFlow now sweeps recent recording
   folders for header-only leftover pairs from crashed or wedged sessions.
 - Hardened the abandoned-recording path found by a full-codebase audit: after
   the stop watchdog declares the worker blocked, both recorders are marked
@@ -380,7 +410,7 @@
   stays observable while the worker is wedged), fails the session visibly,
   restores the UI, and disables recording until restart instead of leaving
   the app on "Finishing" forever. The Stop status now says "Stopping" until
-  finalization genuinely begins, closing OpenZoom no longer blocks on an
+  finalization genuinely begins, closing OkuFlow no longer blocks on an
   unbounded worker join, and a worker that un-wedges later can no longer post
   a stale "Recording saved" over the failure report.
 - Fixed unselected drawings appearing highlighted while another item was
@@ -461,7 +491,7 @@
   camera-switch and device-removal hardware checks.
 - Fixed an intermittent direct-GPU startup downgrade caused by a delayed D3D11
   completion query. The pending conversion texture is no longer reused or
-  treated as unsupported: OpenZoom safely reads back that frame, retries when
+  treated as unsupported: OkuFlow safely reads back that frame, retries when
   the query completes, and keeps external-memory capture available for the
   session. Added watchdog-isolated `mf_dxva_minimal` external-memory and
   opt-in legacy interop stress modes with configurable iteration counts. The
@@ -479,7 +509,7 @@
   compatibility capture won. Registration/conversion failures drop one rung
   without disabling CUDA effects. Original photos and videos request readback
   only while those captures are active, and
-  `OPENZOOM_FORCE_CAPTURE_COPY_RUNG=1` exercises the fallback contract.
+  `OKUFLOW_FORCE_CAPTURE_COPY_RUNG=1` exercises the fallback contract.
 - Added selectable microphone recording. The dedicated Advanced Recording
   section lists Windows capture endpoints with both video-resolution controls,
   selects the system-default microphone
@@ -488,7 +518,7 @@
   48 kHz mono PCM stream shares the camera's monotonic capture clock and is
   encoded live as AAC into both the original and processed fragmented MP4
   files. Added a synthetic video-plus-audio mux regression test.
-- Removed the duplicate Simple `More` menu; its OpenZoom-folder command remains
+- Removed the duplicate Simple `More` menu; its OkuFlow-folder command remains
   in Advanced and on `Ctrl+Shift+O`. Bottom action bars now compact based on
   their combined width so Advanced mode keeps both clusters on one baseline
   whenever the viewport can accommodate them.
@@ -519,9 +549,9 @@
   recording segment fully finalize. Failed or truncated recording
   finalizations do not create broken notes entries.
 - Moved all user-created artifacts out of the application and release-bundle
-  directories into one configurable `Documents\OpenZoom\` root. Photos and
+  directories into one configurable `Documents\OkuFlow\` root. Photos and
   paired recordings use dated subfolders; notes and analysis exports have
-  stable categories. Added Advanced and Simple `Open my OpenZoom folder`
+  stable categories. Added Advanced and Simple `Open my OkuFlow folder`
   actions, global `Ctrl+Shift+O`, writable-root validation, a recording
   free-space preflight, and cancellable copy-only migration from legacy
   `output\` trees without deleting their originals.
@@ -534,10 +564,10 @@
 - Hardened release packaging around a validated staging directory. Bundles now
   require tests by default, treat missing or failed `windeployqt` as fatal,
   assert the required Qt DLL/platform-plugin and license inventory, never
-  transfer user data through `dist`, use `OpenZoom2` when the primary
+  transfer user data through `dist`, use `OkuFlow2` when the primary
   executable is locked, and verify the published executable by SHA-256.
 - Fixed NVIDIA Super Resolution controls becoming permanently disabled after a
-  normal Windows build reused a stale `OPENZOOM_ENABLE_TEXT_SR=OFF` CMake cache.
+  normal Windows build reused a stale `OKUFLOW_ENABLE_TEXT_SR=OFF` CMake cache.
   The everyday build helper now explicitly enables CUDA and the runtime-loaded
   Text-SR adapter by default, matching release-bundle behavior while retaining
   environment-variable overrides.
@@ -678,7 +708,7 @@
   CUDA regression now requires at least 80% removal for a 0.75 Hz, 10 px
   oscillation.
 - Fixed release bundling deleting photos, recordings, notes, and analysis
-  stored under `dist/OpenZoom/output`. The bundle script now preserves that
+  stored under `dist/OkuFlow/output`. The bundle script now preserves that
   user-data directory before removing an old bundle, restores it on success or
   failure, and performs a reversible lock check before deleting any bundle
   files when another process has the directory open.
@@ -710,7 +740,7 @@
   rolling-shutter choices persist per profile; Advanced diagnostics report the
   accepted estimator and sampled GPU time. Added deterministic CUDA
   similarity/outlier tests and a live `nvofapi64.dll` known-motion test.
-- Added Codex CLI to first-run and Advanced `Setup & Downloads`. OpenZoom
+- Added Codex CLI to first-run and Advanced `Setup & Downloads`. OkuFlow
   detects official standalone, PATH, and WinGet installs; can install or update
   the per-user CLI from a pinned SHA-256-verified OpenAI bootstrap; persists
   the resolved executable immediately; and keeps ChatGPT sign-in explicit.
@@ -740,7 +770,7 @@
 - Made AI Settings usable at constrained window heights with a vertically
   scrollable content area and fixed OK/Cancel row. Codex subscription,
   OpenAI-compatible VLM, OCR, Read Aloud, and notes now have distinct sections;
-  the built-in OpenZoom Codex prompt is visible read-only, while user response
+  the built-in OkuFlow Codex prompt is visible read-only, while user response
   preferences remain editable. Model and reasoning selectors now update from
   Codex app-server `model/list`, including each model's supported effort set.
 - Made the NVIDIA SuperRes latency decision inspectable and overridable. The
@@ -752,7 +782,7 @@
   crop, and removed a redundant destination clear before the full-frame output
   transfer.
 - Fixed release bundles silently inheriting a stale
-  `OPENZOOM_ENABLE_TEXT_SR=OFF` CMake cache value. CUDA bundles now explicitly
+  `OKUFLOW_ENABLE_TEXT_SR=OFF` CMake cache value. CUDA bundles now explicitly
   compile the runtime-loaded NVIDIA Super Resolution adapter by default while
   still allowing an environment override, and the control reflects the
   installed Video Effects runtime instead of appearing permanently disabled.
@@ -792,7 +822,7 @@
   that ROI, otherwise immediately showing the identically registered
   conventional scene until a later camera frame refreshes the AI crop. This
   prevents fixed-center ghost layers during high-refresh panning.
-- Continued the application/UI disaggregation: `OpenZoomApp` is now a
+- Continued the application/UI disaggregation: `OkuFlowApp` is now a
   composition root with fallible `Initialize()`, focused pipeline, recording,
   settings, UI-state, assistive, and interaction managers, and responsibility
   split across `app_*` translation units. Render, joystick, assistive overlay,
@@ -875,7 +905,7 @@
   refreshes dependency status when it exits.
 - Added a GPL-clean NVIDIA Maxine SuperRes tier for zoomed text. The adapter
   resolves the separately installed Video Effects 0.7.6 runtime dynamically,
-  runs device-only conversion and inference on OpenZoom's existing CUDA
+  runs device-only conversion and inference on OkuFlow's existing CUDA
   stream, persists enable/strength per profile, and falls back to NIS/FSR when
   unavailable, failed, or slower than the configured steady-state guard.
 - Added a non-blocking, screen-reader-labelled Setup Assistant on first run and
@@ -983,7 +1013,7 @@
   sweeper timer; pending request handlers now also receive an error (instead
   of being silently dropped) when Codex stops or restarts.
 - Simple-mode floating chrome (corner panels, mode grid, toast) now hides when
-  OpenZoom loses focus so the always-on-top tool windows no longer float over
+  OkuFlow loses focus so the always-on-top tool windows no longer float over
   other applications; it reappears on reactivation.
 - Closing the mode grid (Esc or toggle) returns keyboard focus to the current
   mode button instead of leaving focus stranded.
@@ -1017,12 +1047,12 @@
   Coding requires an existing workspace folder and uses Codex workspace-write
   sandboxing limited to that writable root; both permissions remain disabled
   by default and never apply to ephemeral Simple Explain turns.
-- Added a native Qt client for `codex app-server` over stdio JSON-RPC. OpenZoom
+- Added a native Qt client for `codex app-server` over stdio JSON-RPC. OkuFlow
   can reuse a user's ChatGPT-managed Codex login for image-aware explanations
   without an API key, discovers compatible image models, shows subscription
   usage, streams answers, and supports cancellation.
 - Added an Advanced Assistant surface with camera attachment, persistent
-  OpenZoom-only conversation history, resume, rename, export, and delete.
+  OkuFlow-only conversation history, resume, rename, export, and delete.
   Simple Explain uses ephemeral threads and does not add history.
 - Defaulted Codex integration to read-only/no-network vision turns and
   automatic interruption of ungranted command, file-edit, or web-search items;
@@ -1030,7 +1060,7 @@
   for additional permissions receive an explicit empty grant.
   OpenAI-compatible local/cloud VLM servers remain an optional provider, and
   local servers no longer require a dummy API key.
-- Added a custom multi-resolution OpenZoom magnifier icon to the Windows
+- Added a custom multi-resolution OkuFlow magnifier icon to the Windows
   executable for Explorer, shortcuts, and taskbar presentation.
 - Replaced the Simple-mode Read action's document icon with the native speaker
   icon so its read-aloud behavior is immediately recognizable.
@@ -1058,7 +1088,7 @@
   middle-drag navigation changes zoom focus; true Advanced edits still become
   a custom setup.
 - Fixed the release bundler's executable lookup for Visual Studio builds that
-  place `open_zoom.exe` under the `cmake\Release` subdirectory.
+  place `oku_flow.exe` under the `cmake\Release` subdirectory.
 - Shortened the visible processing state to fit its corner cluster while
   retaining full GPU/backend and camera-error detail in the status tooltip.
 - Fixed quick modes with half-step values being mislabeled as a custom setup
@@ -1112,7 +1142,7 @@
 - Added screen-reader metadata (accessible names and descriptions) to all
   interactive controls in the main window.
 - Fixed several build/runtime hardening issues: CPU-only CMake definitions now
-  honor `OPENZOOM_ENABLE_CUDA=OFF`, missing direct includes were added, CUDA-off
+  honor `OKUFLOW_ENABLE_CUDA=OFF`, missing direct includes were added, CUDA-off
   stubs match the app API, Qt teardown destroys widgets before `QApplication`,
   `AssistiveRuntime` now generates Qt moc metadata, BGRA frame wrappers use the
   Qt-supported `QImage::Format_ARGB32`, and the CUDA shared texture now matches
@@ -1127,10 +1157,10 @@
 - Refreshed the Markdown documentation set to match the current module split, active CUDA fallback behavior, camera mode listing, snapshot/recording outputs, and public API surface.
 
 ## [v0.1] - 2025-10-15
-- Added `scripts/build_release_bundle.bat` to produce a self-contained `dist/OpenZoom` folder with Qt and CUDA runtime DLLs.
-- Enabled optional CUDA builds via `OPENZOOM_ENABLE_CUDA` and introduced new CMake presets for MSVC debug/release and CPU-only configurations.
+- Added `scripts/build_release_bundle.bat` to produce a self-contained `dist/OkuFlow` folder with Qt and CUDA runtime DLLs.
+- Enabled optional CUDA builds via `OKUFLOW_ENABLE_CUDA` and introduced new CMake presets for MSVC debug/release and CPU-only configurations.
 - Guarded CUDA headers and added temporal smoothing pipeline along with FSR/NIS backend selection.
 - Updated documentation: new `docs/hardcoded_paths.md`, refreshed README quick-start, third-party license summary, and dual-license notes.
 - Consolidated licensing into a single `LICENSE` file (GPL-3.0 + commercial notice).
 
-> Upload `dist/OpenZoom/OpenZoom.zip` to GitHub Releases when publishing v0.1.
+> Upload `dist/OkuFlow/OkuFlow.zip` to GitHub Releases when publishing v0.1.

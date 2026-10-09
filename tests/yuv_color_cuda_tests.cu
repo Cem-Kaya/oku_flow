@@ -1,4 +1,4 @@
-#include "openzoom/cuda/cuda_kernels.hpp"
+#include "okuflow/cuda/cuda_kernels.hpp"
 #include "yuv_color_reference.hpp"
 #include <cuda_runtime.h>
 #include <iostream>
@@ -49,14 +49,14 @@ int main()
         Check(cudaMemcpy(yy.data, yuy2.data(), yuy2.size(), cudaMemcpyHostToDevice));
         std::vector<unsigned char> result(outputPitch * height);
         for (bool bt709 : {false, true}) for (bool full : {false, true}) {
-            const openzoom::YuvColorInfo color{
-                bt709 ? openzoom::YuvMatrix::Bt709 : openzoom::YuvMatrix::Bt601,
-                full ? openzoom::YuvRange::Full : openzoom::YuvRange::Limited};
+            const okuflow::YuvColorInfo color{
+                bt709 ? okuflow::YuvMatrix::Bt709 : okuflow::YuvMatrix::Bt601,
+                full ? okuflow::YuvRange::Full : okuflow::YuvRange::Limited};
             for (bool planar : {false, true}) {
-                if (planar) openzoom::LaunchNv12ToBgraLinear(
+                if (planar) okuflow::LaunchNv12ToBgraLinear(
                     reinterpret_cast<uchar4*>(out.data), outputPitch,
                     nv.data, pitch, nv.data + pitch * height, pitch, width, height, nullptr, color);
-                else openzoom::LaunchYuy2ToBgraLinear(
+                else okuflow::LaunchYuy2ToBgraLinear(
                     reinterpret_cast<uchar4*>(out.data), outputPitch,
                     yy.data, pitch, width, height, nullptr, color);
                 Check(cudaMemcpy(result.data(), out.data, result.size(), cudaMemcpyDeviceToHost));

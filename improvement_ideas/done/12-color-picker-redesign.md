@@ -125,17 +125,17 @@ accessor is `MainWindow::displayColorCombo()` (~2178). ALL of this
 delegate/bar machinery is deleted by this plan ("the old bar-list UI is
 fully gone" is an acceptance criterion).
 
-**App wiring.** `OpenZoomApp` harvests the combo at `src/app/app.cpp`
+**App wiring.** `OkuFlowApp` harvests the combo at `src/app/app.cpp`
 ~405, connects `currentIndexChanged` → `OnDisplayColorModeChanged` at
 ~700–703; the slot (~2517) clamps into `displayColorMode_` (member,
-`include/openzoom/app/app.hpp` ~437) and syncs persistence.
+`include/okuflow/app/app.hpp` ~437) and syncs persistence.
 `ApplyAdvancedConfig` writes the combo back under `QSignalBlocker` and
 manually invokes the slot once (~1447–1467). `RunCudaPipeline` copies
 `displayColorMode_` into `ProcessingSettings.displayColorMode` (~3180).
-`kDisplayColorModeCount` = 17 (`include/openzoom/app/constants.hpp` ~13).
+`kDisplayColorModeCount` = 17 (`include/okuflow/app/constants.hpp` ~13).
 
 **Persistence.** `settings::AdvancedConfig.displayColorMode`
-(include/openzoom/app/settings_store.hpp ~37) round-trips through
+(include/okuflow/app/settings_store.hpp ~37) round-trips through
 `ConfigToJson`/`ConfigFromJson` (`src/app/settings_store.cpp` ~289 and
 ~348–350, clamped to the mode count on read) and participates in
 `AreConfigsEquivalent` (~806). Presets capture/apply it via
@@ -177,7 +177,7 @@ Concretely:
     skipping the kernel when contrast/brightness/auto-contrast are neutral.
   - "Inverted colors": the existing per-channel inversion branch, verbatim.
   - Everything else (built-in pairs, effects, custom): `lut[lumaByte]`.
-- `ProcessingSettings` (include/openzoom/cuda/cuda_interop.hpp ~69–116)
+- `ProcessingSettings` (include/okuflow/cuda/cuda_interop.hpp ~69–116)
   grows whatever minimal fields the kernel needs (e.g. an enum
   none/invert/lut plus the LUT generation counter). `displayColorMode`
   remains as a field only as long as the composite-kernel call site and
@@ -257,7 +257,7 @@ Built-in "Effects" schemes shipped in the same table: Grayscale
 ## 4. Picker UI specification (implement AFTER the backend is green)
 
 New files: `src/ui/color_scheme_picker.cpp` +
-`include/openzoom/ui/color_scheme_picker.hpp` (mirror the tree layout, as
+`include/okuflow/ui/color_scheme_picker.hpp` (mirror the tree layout, as
 all modules do).
 
 ### 4.1 Trigger control (replaces the combo in the Display colors row)
@@ -271,7 +271,7 @@ opens the popover. The trigger's own swatch is the only persistent
 "preview" — the camera view itself is the real preview (owner decision:
 NO giant preview bars anywhere, ever again).
 
-Keep `MainWindow` compiling for `OpenZoomApp`: either replace the
+Keep `MainWindow` compiling for `OkuFlowApp`: either replace the
 `displayColorCombo()` accessor (~2178) with a picker accessor and adapt
 app.cpp (harvest at ~405, connect at ~700–703, apply at ~1447–1467), or
 keep a hidden shim during the transition — but VERIFY the wiring: the app

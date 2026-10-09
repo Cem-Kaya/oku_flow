@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/app/transcription_session_controller.hpp"
+#include "okuflow/app/transcription_session_controller.hpp"
 
 #include <QDebug>
 #include <QDateTime>
@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 
 using transcript_limits::kCarrierChunkBytes;
 using transcript_limits::kMaximumBridgeBatchChunks;
@@ -683,6 +683,6 @@ void TranscriptionSessionController::DrainAudioQueue()
     BeginFinalizeGraceIfDrained();
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

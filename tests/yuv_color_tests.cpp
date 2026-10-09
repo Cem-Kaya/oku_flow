@@ -1,6 +1,6 @@
-#include "openzoom/capture/capture_color.hpp"
-#include "openzoom/common/frame_pipeline.hpp"
-#include "openzoom/common/image_processing.hpp"
+#include "okuflow/capture/capture_color.hpp"
+#include "okuflow/common/frame_pipeline.hpp"
+#include "okuflow/common/image_processing.hpp"
 #include "yuv_color_reference.hpp"
 
 #include <QtTest/QtTest>
@@ -16,20 +16,20 @@ private slots:
     {
         Microsoft::WRL::ComPtr<IMFAttributes> attributes;
         QVERIFY(SUCCEEDED(MFCreateAttributes(attributes.GetAddressOf(), 2)));
-        openzoom::YuvColorInfo color{openzoom::YuvMatrix::Bt709, openzoom::YuvRange::Full};
-        QVERIFY(openzoom::ReadCaptureYuvColor(attributes.Get(), color));
-        QVERIFY(color.matrix == openzoom::YuvMatrix::Bt601);
-        QVERIFY(color.range == openzoom::YuvRange::Limited);
+        okuflow::YuvColorInfo color{okuflow::YuvMatrix::Bt709, okuflow::YuvRange::Full};
+        QVERIFY(okuflow::ReadCaptureYuvColor(attributes.Get(), color));
+        QVERIFY(color.matrix == okuflow::YuvMatrix::Bt601);
+        QVERIFY(color.range == okuflow::YuvRange::Limited);
         for (bool bt709 : {false, true}) {
             for (bool full : {false, true}) {
                 QVERIFY(SUCCEEDED(attributes->SetUINT32(MF_MT_YUV_MATRIX,
                     bt709 ? MFVideoTransferMatrix_BT709 : MFVideoTransferMatrix_BT601)));
                 QVERIFY(SUCCEEDED(attributes->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE,
                     full ? MFNominalRange_0_255 : MFNominalRange_16_235)));
-                QVERIFY(openzoom::ReadCaptureYuvColor(attributes.Get(), color));
-                QCOMPARE(color.matrix == openzoom::YuvMatrix::Bt709, bt709);
-                QCOMPARE(color.range == openzoom::YuvRange::Full, full);
-                const auto d3d = openzoom::CaptureVideoColorSpace(color);
+                QVERIFY(okuflow::ReadCaptureYuvColor(attributes.Get(), color));
+                QCOMPARE(color.matrix == okuflow::YuvMatrix::Bt709, bt709);
+                QCOMPARE(color.range == okuflow::YuvRange::Full, full);
+                const auto d3d = okuflow::CaptureVideoColorSpace(color);
                 QCOMPARE(UINT(d3d.YCbCr_Matrix), bt709 ? 1u : 0u);
                 QCOMPARE(UINT(d3d.Nominal_Range), UINT(full
                     ? D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_0_255
@@ -39,23 +39,23 @@ private slots:
         }
         QVERIFY(SUCCEEDED(attributes->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_Unknown)));
         QVERIFY(SUCCEEDED(attributes->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_Unknown)));
-        QVERIFY(openzoom::ReadCaptureYuvColor(attributes.Get(), color));
-        QVERIFY(color.matrix == openzoom::YuvMatrix::Bt601);
-        QVERIFY(color.range == openzoom::YuvRange::Limited);
+        QVERIFY(okuflow::ReadCaptureYuvColor(attributes.Get(), color));
+        QVERIFY(color.matrix == okuflow::YuvMatrix::Bt601);
+        QVERIFY(color.range == okuflow::YuvRange::Limited);
         QVERIFY(SUCCEEDED(attributes->SetUINT32(MF_MT_YUV_MATRIX, 999)));
-        QVERIFY(!openzoom::ReadCaptureYuvColor(attributes.Get(), color));
+        QVERIFY(!okuflow::ReadCaptureYuvColor(attributes.Get(), color));
         QVERIFY(SUCCEEDED(attributes->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT601)));
         QVERIFY(SUCCEEDED(attributes->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_48_208)));
-        QVERIFY(!openzoom::ReadCaptureYuvColor(attributes.Get(), color));
+        QVERIFY(!okuflow::ReadCaptureYuvColor(attributes.Get(), color));
     }
 
     void bothFormatsMatchReferenceAcrossRangeBoundaries()
     {
         for (bool bt709 : {false, true}) {
             for (bool full : {false, true}) {
-                const openzoom::YuvColorInfo color{
-                    bt709 ? openzoom::YuvMatrix::Bt709 : openzoom::YuvMatrix::Bt601,
-                    full ? openzoom::YuvRange::Full : openzoom::YuvRange::Limited};
+                const okuflow::YuvColorInfo color{
+                    bt709 ? okuflow::YuvMatrix::Bt709 : okuflow::YuvMatrix::Bt601,
+                    full ? okuflow::YuvRange::Full : okuflow::YuvRange::Limited};
                 for (int y : {0, 15, 16, 17, 64, 128, 234, 235, 236, 255}) {
                     for (int u : {0, 16, 90, 128, 240, 255}) {
                         for (int v : {0, 16, 90, 128, 240, 255}) {
@@ -65,8 +65,8 @@ private slots:
                             const std::uint8_t nv12[]{yy, yy, yy, yy, uu, vv};
                             const std::uint8_t yuy2[]{yy, uu, yy, vv};
                             std::vector<std::uint8_t> a, b;
-                            QVERIFY(openzoom::processing::ConvertNv12ToBgra(nv12, 6, 2, 2, 2, a, color));
-                            QVERIFY(openzoom::processing::ConvertYuy2ToBgra(yuy2, 4, 4, 2, 1, b, color));
+                            QVERIFY(okuflow::processing::ConvertNv12ToBgra(nv12, 6, 2, 2, 2, a, color));
+                            QVERIFY(okuflow::processing::ConvertYuy2ToBgra(yuy2, 4, 4, 2, 1, b, color));
                             const auto rgb = ReferenceYuvRgb(y, u, v, bt709, full);
                             for (int pixel = 0; pixel < 4; ++pixel) {
                                 QVERIFY(std::abs(int(a[pixel * 4]) - rgb[2]) <= 1);
@@ -87,9 +87,9 @@ private slots:
         // Quantized full-range BT.709 red. Treating it as 601 limited gives
         // a visibly different result, so this tests propagation, not parity.
         const std::vector<std::uint8_t> frame{54, 99, 54, 255};
-        openzoom::processing::CpuFramePipeline pipeline;
+        okuflow::processing::CpuFramePipeline pipeline;
         QVERIFY(pipeline.ConvertFrameToBgra(frame, MFVideoFormat_YUY2, 2, 1, 4, 4,
-            {openzoom::YuvMatrix::Bt709, openzoom::YuvRange::Full}));
+            {okuflow::YuvMatrix::Bt709, okuflow::YuvRange::Full}));
         const auto& pixels = pipeline.StageRaw();
         QVERIFY(pixels[0] <= 1);
         QVERIFY(pixels[1] <= 1);

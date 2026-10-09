@@ -3,7 +3,7 @@
 #include "app_internal.hpp"
 #include <QSaveFile>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
 // A startup job never owns an app pointer. Its delivery uses the same revocable
@@ -40,7 +40,7 @@ struct CameraStartupJob final {
 
 } // namespace
 
-void OpenZoomApp::ConfigureStartupProfiling() {
+void OkuFlowApp::ConfigureStartupProfiling() {
     int durationMs = 15000;
     for (const QString& argument : qtApp_->arguments()) {
         if (argument.startsWith(QStringLiteral("--startup-profile=")))
@@ -74,7 +74,7 @@ void OpenZoomApp::ConfigureStartupProfiling() {
     });
 }
 
-void OpenZoomApp::RecordStartupFirstPresent() {
+void OkuFlowApp::RecordStartupFirstPresent() {
     ++startupPresentedFrames_;
     if (startupFirstFrameLogged_) return;
     startupFirstFrameLogged_ = true;
@@ -82,7 +82,7 @@ void OpenZoomApp::RecordStartupFirstPresent() {
     qInfo() << "Startup timing: first camera frame presented" << startupFirstPresentMs_ << "ms";
 }
 
-void OpenZoomApp::WriteStartupProfile() {
+void OkuFlowApp::WriteStartupProfile() {
     if (startupProfilePath_.isEmpty()) return;
     auto sorted = startupPulseDelaysMs_;
     std::sort(sorted.begin(), sorted.end());
@@ -165,7 +165,7 @@ void OpenZoomApp::WriteStartupProfile() {
     }
 }
 
-void OpenZoomApp::QueueInitialCameraStart(
+void OkuFlowApp::QueueInitialCameraStart(
     const CameraDescriptor& descriptor, const QString& requestedStableId,
     FrameCallback callback, CaptureErrorCallback errorCallback,
     bool requestAcceleration, bool interactive, uint64_t captureSession) {
@@ -178,6 +178,7 @@ void OpenZoomApp::QueueInitialCameraStart(
     const std::wstring name = descriptor.name;
     const std::wstring symbolicLink = descriptor.symbolicLink;
     cameraStartupPending_ = true;
+    UpdateCameraPlaceholder();
     UpdateCameraAccelerationUi();
     if (uiState_->cameraCombo_) uiState_->cameraCombo_->setEnabled(false);
     if (uiState_->cameraFormatCombo_) uiState_->cameraFormatCombo_->setEnabled(false);
@@ -279,5 +280,5 @@ void OpenZoomApp::QueueInitialCameraStart(
     }
 }
 
-} // namespace openzoom
+} // namespace okuflow
 #endif

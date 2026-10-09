@@ -17,7 +17,7 @@ annotation, and Read Aloud.
 The source is immutable. Saving from source mode creates a paired original
 render and processed render under the normal dated Photos root; lecture notes
 embed both. For a PDF, notes also retain a link to the source document and the
-page number. OpenZoom must never overwrite or silently recompress the file the
+page number. OkuFlow must never overwrite or silently recompress the file the
 user opened.
 
 ## Verified current behavior
@@ -63,7 +63,7 @@ user opened.
 - Never mutate the opened file.
 - **Save photo** in source mode writes two recoverable outputs using the same
   pair-commit contract as camera photos:
-  - an `original` render before OpenZoom effects, at the chosen PDF render
+  - an `original` render before OkuFlow effects, at the chosen PDF render
     resolution or decoded image dimensions;
   - a `processed` render matching the enhanced source canvas, excluding
     transient UI chrome and including ink only when the user selects the

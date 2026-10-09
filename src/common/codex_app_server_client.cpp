@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/common/codex_app_server_client.hpp"
+#include "okuflow/common/codex_app_server_client.hpp"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -14,12 +14,12 @@
 
 #include <algorithm>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
 constexpr auto kAssistantIdentity =
-    "You are the assistant inside OpenZoom, an accessibility magnifier for people with low vision. "
+    "You are the assistant inside OkuFlow, an accessibility magnifier for people with low vision. "
     "Give concise, concrete answers that prioritize readable text, controls, obstacles, and spatial "
     "relationships when an image is attached. Do not use Markdown tables. ";
 
@@ -58,8 +58,8 @@ CodexAppServerClient::CodexAppServerClient(QObject* parent)
     connect(rpc_.get(), &CodexJsonRpcProcess::Started, this, [this]() {
         emit ServerStateChanged(false, QStringLiteral("Connecting to Codex..."));
         QJsonObject clientInfo{
-            {QStringLiteral("name"), QStringLiteral("openzoom")},
-            {QStringLiteral("title"), QStringLiteral("OpenZoom")},
+            {QStringLiteral("name"), QStringLiteral("okuflow")},
+            {QStringLiteral("title"), QStringLiteral("OkuFlow")},
             {QStringLiteral("version"), QCoreApplication::applicationVersion().isEmpty()
                                             ? QStringLiteral("0.1.0")
                                             : QCoreApplication::applicationVersion()}};
@@ -409,7 +409,7 @@ QString CodexAppServerClient::ResolveExecutablePath(const QString& configuredExe
     if (!configuredExecutable.isEmpty()) {
         return configuredExecutable;
     }
-    const QString environmentPath = qEnvironmentVariable("OPENZOOM_CODEX_PATH").trimmed();
+    const QString environmentPath = qEnvironmentVariable("OKUFLOW_CODEX_PATH").trimmed();
     if (!environmentPath.isEmpty()) {
         return environmentPath;
     }
@@ -445,8 +445,8 @@ QString CodexAppServerClient::AssistantWorkingDirectory(bool persistent) const
         temp = QCoreApplication::applicationDirPath();
     }
     QDir dir(temp);
-    dir.mkpath(QStringLiteral("OpenZoom/assistant"));
-    return dir.filePath(QStringLiteral("OpenZoom/assistant"));
+    dir.mkpath(QStringLiteral("OkuFlow/assistant"));
+    return dir.filePath(QStringLiteral("OkuFlow/assistant"));
 }
 
 QString CodexAppServerClient::DeveloperInstructions(bool persistent) const
@@ -712,7 +712,7 @@ void CodexAppServerClient::StartNewThreadForPendingTurn()
         {QStringLiteral("sandbox"), allowCoding ? QStringLiteral("workspace-write")
                                                 : QStringLiteral("read-only")},
         {QStringLiteral("ephemeral"), !persistent},
-        {QStringLiteral("serviceName"), QStringLiteral("openzoom")},
+        {QStringLiteral("serviceName"), QStringLiteral("okuflow")},
         {QStringLiteral("developerInstructions"), DeveloperInstructions(persistent)}};
     if (!selectedModel_.isEmpty()) {
         params.insert(QStringLiteral("model"), selectedModel_);
@@ -912,7 +912,7 @@ QString CodexAppServerClient::AppendActiveText(const QString& delta)
     activeText_ += accepted;
     if (accepted.size() < delta.size()) {
         const QString marker =
-            QStringLiteral("\n\n[Answer truncated by OpenZoom for safety.]");
+            QStringLiteral("\n\n[Answer truncated by OkuFlow for safety.]");
         if (activeText_.size() + marker.size() <=
             kMaximumAnswerCharacters + marker.size()) {
             activeText_ += marker;
@@ -921,7 +921,7 @@ QString CodexAppServerClient::AppendActiveText(const QString& delta)
         activeTextTruncated_ = true;
         emit ServerStateChanged(
             initialized_,
-            QStringLiteral("Codex answer reached OpenZoom's safe display limit."));
+            QStringLiteral("Codex answer reached OkuFlow's safe display limit."));
     }
     return accepted;
 }
@@ -976,6 +976,6 @@ QString CodexAppServerClient::FinalAgentText(const QJsonObject& turn)
     return finalText.trimmed();
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

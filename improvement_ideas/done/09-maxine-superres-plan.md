@@ -16,7 +16,7 @@ SLA verification in 08-ml-text-sr-options.md. Legal architecture is fixed:
 1. New module `src/common/maxine_superres.cpp/hpp`: wraps the SDK **via
    LoadLibrary at runtime only** — no import library, no link-time dependency.
    The GPL binary contains only MIT headers + `LoadLibraryW` probing:
-   - Discovery order: `OPENZOOM_MAXINE_PATH` env/setting → registry/default
+   - Discovery order: `OKUFLOW_MAXINE_PATH` env/setting → registry/default
      `%ProgramFiles%\NVIDIA Corporation\NVIDIA Video Effects\` → absent.
    - Resolve `NvVFX_*` / `NvCVImage_*` entry points with GetProcAddress; any
      miss → cleanly unavailable.
@@ -39,7 +39,7 @@ SLA verification in 08-ml-text-sr-options.md. Legal architecture is fixed:
 ## Settings & UI
 - `AdvancedConfig`: `mlSuperResEnabled` exists (verify name from the current
   experimental toggle); add `mlSuperResStrength` float 0..1 if absent.
-- Keep `OPENZOOM_ENABLE_TEXT_SR` semantics: the *plugin loader* compiles in
+- Keep `OKUFLOW_ENABLE_TEXT_SR` semantics: the *plugin loader* compiles in
   always (it's MIT-clean); the flag can retire or gate UI visibility.
 
 ## Compliance tasks (from the SLA — mandatory)
@@ -88,7 +88,7 @@ Assistant** (first run + Settings entry) fetches dependencies dynamically:
    the optional tools (vision unavailable, NIS/FSR upscaling). Setup Assistant shows per-dependency
    status (Installed / Not installed / Download), is screen-reader friendly,
    and never blocks startup.
-4. **Legal win**: OpenZoom distributions (GPL and commercial alike) contain
+4. **Legal win**: OkuFlow distributions (GPL and commercial alike) contain
    zero proprietary runtime bits and zero Codex CLI binaries — users obtain each
    directly from its vendor under that vendor's license. The
    `third_party/maxine/redist/` drop dir becomes developer-convenience only.
@@ -108,7 +108,7 @@ conditions above are binding. Repo: Windows-only Qt6 + D3D12 + CUDA. Build
 recipe at the end; iterate until green. Mixed CRLF/LF — ignore.
 
 ## Part 1 — Maxine SuperRes plugin (GPL-clean)
-1. New `src/common/maxine_superres.cpp` + `include/openzoom/common/maxine_superres.hpp`:
+1. New `src/common/maxine_superres.cpp` + `include/okuflow/common/maxine_superres.hpp`:
    class `MaxineSuperRes`. Include headers ONLY from
    `third_party/maxine/Maxine-VFX-SDK/nvvfx/include/` (MIT — committable).
    NEVER link an import lib: resolve `NVVideoEffects.dll` + `NvCVImage.dll`
@@ -131,7 +131,7 @@ recipe at the end; iterate until green. Mixed CRLF/LF — ignore.
    equivalence, apply/capture, per-preset like every other field.
 
 ## Part 2 — Setup Assistant (first-run installer + uninstaller)
-1. New `src/app/setup_assistant.cpp` + `include/openzoom/app/setup_assistant.hpp`:
+1. New `src/app/setup_assistant.cpp` + `include/okuflow/app/setup_assistant.hpp`:
    `class SetupAssistantDialog : public QDialog`. Two dependency rows, each
    with status (Installed / Not installed), Download/Install button, progress
    bar, and a **Remove button**:

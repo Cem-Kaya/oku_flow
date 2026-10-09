@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/cuda/cuda_kernels.hpp"
+#include "okuflow/cuda/cuda_kernels.hpp"
 
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
@@ -22,7 +22,7 @@
 #include <vector>
 #include <cmath>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -3705,6 +3705,6 @@ bool UploadDisplayColorLut(const std::uint32_t* lut256, cudaStream_t stream) {
                                    cudaMemcpyHostToDevice, stream) == cudaSuccess;
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

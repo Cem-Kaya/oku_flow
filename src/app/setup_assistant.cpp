@@ -1,10 +1,10 @@
 #ifdef _WIN32
 
-#include "openzoom/app/setup_assistant.hpp"
+#include "okuflow/app/setup_assistant.hpp"
 
-#include "openzoom/common/maxine_superres.hpp"
-#include "openzoom/ui/live_status_text.hpp"
-#include "openzoom/ui/ui_translation.hpp"
+#include "okuflow/common/maxine_superres.hpp"
+#include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -16,6 +16,7 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QFrame>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
@@ -26,6 +27,7 @@
 #include <QProcessEnvironment>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScreen>
 #include <QScrollArea>
 #include <QStandardPaths>
 #include <QTimer>
@@ -38,11 +40,11 @@
 #include <windows.h>
 #include <shellapi.h>
 
-#if OPENZOOM_ENABLE_CUDA
+#if OKUFLOW_ENABLE_CUDA
 #include <cuda_runtime_api.h>
 #endif
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
 constexpr char kCodexInstallerUrl[] = "https://chatgpt.com/codex/install.ps1";
@@ -76,6 +78,16 @@ constexpr std::array<NvidiaInstaller, 4> kNvidiaInstallers{{
      "nvidia_video_effects_sdk_installer_v0.7.6_turing.exe",
      "d51d8789f96a82375b04bcca6914eee301ad5b6cc45137d7b86fc45ddb205f2d"},
 }};
+
+// User-facing name for an installer architecture key. Product generations
+// stay untranslated; the keys themselves are download identifiers.
+QString NvidiaArchitectureDisplayName(const QString& architecture) {
+    if (architecture == QStringLiteral("blackwell")) return QStringLiteral("Blackwell (RTX 50)");
+    if (architecture == QStringLiteral("ada")) return QStringLiteral("Ada Lovelace (RTX 40)");
+    if (architecture == QStringLiteral("ampere")) return QStringLiteral("Ampere (RTX 30)");
+    if (architecture == QStringLiteral("turing")) return QStringLiteral("Turing (RTX 20)");
+    return architecture;
+}
 
 SetupAssistantDialog::DependencyRow AddDependencyRow(QVBoxLayout* parent,
                                                       const QString& title,
@@ -211,7 +223,7 @@ SetupAssistantDialog::SetupAssistantDialog(const QString& configuredCodexPath,
     : QDialog(parent),
       configuredCodexPath_(configuredCodexPath),
       nvidiaArchitecture_(DetectNvidiaArchitecture()) {
-    setWindowTitle(QStringLiteral("OpenZoom Setup Assistant"));
+    setWindowTitle(QStringLiteral("OkuFlow Setup Assistant"));
     setAttribute(Qt::WA_DeleteOnClose);
     setModal(false);
     resize(680, 560);
@@ -227,8 +239,8 @@ SetupAssistantDialog::SetupAssistantDialog(const QString& configuredCodexPath,
     heading->setFont(headingFont);
     root->addWidget(heading);
     auto* intro = new QLabel(QStringLiteral(
-        "OpenZoom downloads these tools directly from their vendors and verifies each download "
-        "before it runs. They are not included in the OpenZoom package."));
+        "OkuFlow downloads these tools directly from their vendors and verifies each download "
+        "before it runs. They are not included in the OkuFlow package."));
     intro->setWordWrap(true);
     root->addWidget(intro);
 
@@ -292,6 +304,26 @@ SetupAssistantDialog::SetupAssistantDialog(const QString& configuredCodexPath,
     });
 
     RefreshStatus();
+
+    // Fit every dependency row without an inner scrollbar when the screen has
+    // room, so no row is cut mid-line; the scroll area remains for small
+    // screens and large text. Measure the natural height with the rows
+    // forced fully visible, then release that constraint.
+    const QMargins margins = root->contentsMargins();
+    const int rowsWidth = width() - margins.left() - margins.right();
+    const int rowsHeight = rows->hasHeightForWidth()
+                               ? rows->totalHeightForWidth(rowsWidth)
+                               : rowsWidget->sizeHint().height();
+    scroll->setMinimumHeight(rowsHeight);
+    const int naturalHeight = root->hasHeightForWidth()
+                                  ? root->totalHeightForWidth(width())
+                                  : sizeHint().height();
+    scroll->setMinimumHeight(0);
+    const QScreen* screen = parent ? parent->screen() : QGuiApplication::primaryScreen();
+    const int maximumHeight =
+        screen ? screen->availableGeometry().height() * 85 / 100 : naturalHeight;
+    resize(width(), std::clamp(naturalHeight, minimumHeight(),
+                               std::max(minimumHeight(), maximumHeight)));
 }
 
 SetupAssistantDialog::DependencyRow& SetupAssistantDialog::RowForDependency(
@@ -396,7 +428,7 @@ QString SetupAssistantDialog::FindCodexExecutable(const QString& configuredPath)
 }
 
 QString SetupAssistantDialog::DetectNvidiaArchitecture() {
-#if OPENZOOM_ENABLE_CUDA
+#if OKUFLOW_ENABLE_CUDA
     int count = 0;
     if (cudaGetDeviceCount(&count) != cudaSuccess || count <= 0) {
         return {};
@@ -421,10 +453,7 @@ QString SetupAssistantDialog::DetectNvidiaArchitecture() {
 }
 
 bool SetupAssistantDialog::NeedsSetup(const QString& configuredCodexPath) {
-    if (FindCodexExecutable(configuredCodexPath).isEmpty()) {
-        return true;
-    }
-    return !DetectNvidiaArchitecture().isEmpty() && !MaxineSuperRes::IsRuntimeInstalled();
+    return FindCodexExecutable(configuredCodexPath).isEmpty();
 }
 
 void SetupAssistantDialog::RefreshStatus() {
@@ -434,7 +463,7 @@ void SetupAssistantDialog::RefreshStatus() {
         codexRow_, codexInstalled,
         codexInstalled
             ? QStringLiteral("Installed\n%1\nUse Connect ChatGPT in AI Settings to sign in.")
-                  .arg(codex)
+                  .arg(QDir::toNativeSeparators(codex))
             : QStringLiteral("Not installed"));
     codexRow_.install->setText(
         codexInstalled ? QStringLiteral("Update") : QStringLiteral("Install"));
@@ -459,8 +488,10 @@ void SetupAssistantDialog::RefreshStatus() {
         SetDependencyStatus(nvidiaRow_, installed,
                             installed
                                 ? QStringLiteral("Installed")
-                                : QStringLiteral("Not installed - %1 installer selected")
-                                      .arg(nvidiaArchitecture_));
+                                : QStringLiteral("Not installed. Install downloads the "
+                                                 "package for %1 GPUs.")
+                                      .arg(NvidiaArchitectureDisplayName(
+                                          nvidiaArchitecture_)));
         nvidiaRow_.install->setEnabled(!installed && activeDependency_ == Dependency::None);
         nvidiaRow_.remove->setEnabled(installed && activeDependency_ == Dependency::None);
     }
@@ -498,7 +529,7 @@ void SetupAssistantDialog::BeginDownload(Dependency dependency) {
     primaryDownloadError_.clear();
 
     const QString downloadDirectory = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-                                          .filePath(QStringLiteral("OpenZoom/downloads"));
+                                          .filePath(QStringLiteral("OkuFlow/downloads"));
     QDir().mkpath(downloadDirectory);
     downloadPath_ = QDir(downloadDirectory).filePath(fileName);
     downloadFile_ = std::make_unique<QFile>(downloadPath_);
@@ -514,7 +545,7 @@ void SetupAssistantDialog::BeginDownload(Dependency dependency) {
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("OpenZoom Setup Assistant"));
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("OkuFlow Setup Assistant"));
     reply_ = network_->get(request);
     DependencyRow& row = RowForDependency(dependency);
     row.progress->setValue(0);
@@ -950,6 +981,6 @@ void SetupAssistantDialog::RemoveNvidiaRuntime() {
     });
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

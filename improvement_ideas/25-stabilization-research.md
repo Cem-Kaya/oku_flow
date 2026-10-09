@@ -2,8 +2,8 @@
 
 Status: **research complete; fixed-reference Virtual Tripod implemented
 (2026-07-25).** Reference checkouts live in the git-ignored `ref/` (see
-`ref/README-openzoom.md` for the pinned commit table). No reference source,
-binary, or asset is copied into OpenZoom or its release bundle.
+`ref/README-okuflow.md` for the pinned commit table). No reference source,
+binary, or asset is copied into OkuFlow or its release bundle.
 
 Owner's report that prompted this: at maximum strength, explicit CUDA feature
 tracking visibly helps while Automatic/RTX barely does, *and neither is close to
@@ -14,7 +14,7 @@ processed output.
 
 ## The headline
 
-**OpenZoom is running a general-purpose handheld-video algorithm on what is
+**OkuFlow is running a general-purpose handheld-video algorithm on what is
 actually the easiest case in the entire stabilization literature, and is
 therefore leaving almost all of the available performance unused.**
 
@@ -71,7 +71,7 @@ the owner's measurements.
 ## Finding 1 — The drift is structural, not a tuning failure
 
 **The 89 px drift cannot be tuned away, because the estimator is built to
-accumulate it.** OpenZoom copies the current analysis frame into the "previous"
+accumulate it.** OkuFlow copies the current analysis frame into the "previous"
 buffer on *every* frame (`src/cuda/cuda_interop.cpp:2554-2560`) and integrates
 pairwise motion into `actualPath`. Every frame's small estimation error is added
 permanently to that running total. There is no absolute reference anywhere in
@@ -95,7 +95,7 @@ incremental and drift is impossible by construction. Gyroflow exposes the same
 concept as a first-class smoothing mode, `Fixed camera`
 (`ref/gyroflow/src/core/smoothing/fixed.rs`).
 
-**Why this fits OpenZoom perfectly:** the phone is clamped and the board does
+**Why this fits OkuFlow perfectly:** the phone is clamped and the board does
 not move, so a keyframe stays valid for minutes. This is precisely the
 already-approved **Screen Lock** feature (plan 14, Tier 3 addendum) — the
 research says it is not merely a nice extra mode, it is the *correct primary
@@ -119,7 +119,7 @@ Design sketch (for whoever implements it):
 
 ## Finding 2 — A clamp is not a constraint: we saturate where the field optimizes
 
-OpenZoom smooths with a Kalman filter and then **clips** the resulting
+OkuFlow smooths with a Kalman filter and then **clips** the resulting
 correction to a fraction of the frame. When the desired correction exceeds the
 budget, the clamp binds and the residual shake passes straight through to the
 screen. That is exactly the failure mode the owner measured: a 6% limit

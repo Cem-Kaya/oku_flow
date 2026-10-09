@@ -2,14 +2,14 @@
 
 #include "app_internal.hpp"
 
-namespace openzoom {
+namespace okuflow {
 
-settings::AdvancedConfig OpenZoomApp::CaptureCurrentAdvancedConfig() const
+settings::AdvancedConfig OkuFlowApp::CaptureCurrentAdvancedConfig() const
 {
     return uiState_->ReadConfigFromUI();
 }
 
-void OpenZoomApp::PopulatePresetList()
+void OkuFlowApp::PopulatePresetList()
 {
     if (!uiState_->presetList_) {
         return;
@@ -33,7 +33,7 @@ void OpenZoomApp::PopulatePresetList()
     }
 }
 
-void OpenZoomApp::RefreshPresetSelection(bool preserveCurrentSelection)
+void OkuFlowApp::RefreshPresetSelection(bool preserveCurrentSelection)
 {
     const settings::AdvancedConfig current = CaptureCurrentAdvancedConfig();
     const QString matchedPresetId =
@@ -59,7 +59,7 @@ void OpenZoomApp::RefreshPresetSelection(bool preserveCurrentSelection)
     }
 }
 
-void OpenZoomApp::UpdatePresetDescription()
+void OkuFlowApp::UpdatePresetDescription()
 {
     if (!uiState_->presetDescriptionLabel_) {
         return;
@@ -94,7 +94,7 @@ void OpenZoomApp::UpdatePresetDescription()
                 QStringLiteral("Current quick mode description"));
 }
 
-void OpenZoomApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
+void OkuFlowApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
 {
     if (configTrackingSuspended_) {
         return;
@@ -109,12 +109,12 @@ void OpenZoomApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
     UpdateSectionChangedCounts();
 }
 
-void OpenZoomApp::ApplyAdvancedConfig(const settings::AdvancedConfig& config)
+void OkuFlowApp::ApplyAdvancedConfig(const settings::AdvancedConfig& config)
 {
     uiState_->ApplyConfigToUI(config);
 }
 
-void OpenZoomApp::ResetCurrentConfigToDefaults()
+void OkuFlowApp::ResetCurrentConfigToDefaults()
 {
     if (!mainWindow_) {
         return;
@@ -136,7 +136,7 @@ void OpenZoomApp::ResetCurrentConfigToDefaults()
     defaults.id = QStringLiteral("current-live");
     defaults.name = QStringLiteral("Current Setup");
     defaults.description =
-        QStringLiteral("Profile tuning reset to OpenZoom defaults.");
+        QStringLiteral("Profile tuning reset to OkuFlow defaults.");
 
     settingsController_->MutableSettings().selectedPresetId.clear();
     ApplyAdvancedConfig(defaults);
@@ -150,7 +150,7 @@ void OpenZoomApp::ResetCurrentConfigToDefaults()
                       4000);
 }
 
-void OpenZoomApp::PromoteCurrentConfigToPreset()
+void OkuFlowApp::PromoteCurrentConfigToPreset()
 {
     if (!mainWindow_) {
         return;
@@ -174,7 +174,7 @@ void OpenZoomApp::PromoteCurrentConfigToPreset()
     UpdatePresetDescription();
 }
 
-void OpenZoomApp::OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetItem* /*previous*/)
+void OkuFlowApp::OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetItem* /*previous*/)
 {
     if (presetSelectionSyncSuspended_ || !current) {
         return;
@@ -190,7 +190,7 @@ void OpenZoomApp::OnPresetSelectionChanged(QListWidgetItem* current, QListWidget
     ApplyAdvancedConfig(*config);
 }
 
-void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& settings) {
+void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings& settings) {
     if (uiState_->displayColorPicker_ && settings.customColorScheme.stops.size() >= 2) {
         uiState_->displayColorPicker_->setCustomScheme(settings.customColorScheme);
     }
@@ -283,7 +283,7 @@ void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& se
     assistiveManager_->ApplySettings(settings.assistive);
 }
 
-void OpenZoomApp::SavePersistentSettings() {
+void OkuFlowApp::SavePersistentSettings() {
     // Startup applies several controls that can request a settings save before
     // the persisted camera has been selected. Preserve the loaded index until
     // initialization completes instead of silently replacing it with the
@@ -353,13 +353,13 @@ void OpenZoomApp::SavePersistentSettings() {
     }
     if (!settingsController_->Save(CaptureCurrentAdvancedConfig())) {
         const QString error = settingsController_->LastError().isEmpty()
-                                  ? QStringLiteral("OpenZoom could not save settings.")
+                                  ? QStringLiteral("OkuFlow could not save settings.")
                                   : settingsController_->LastError();
         ShowStatusMessage(error, 10000);
     }
 }
 
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

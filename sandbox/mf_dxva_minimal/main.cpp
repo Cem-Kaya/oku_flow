@@ -623,7 +623,7 @@ ProbeResult RunChildProbe(std::size_t cameraIndex, bool accelerated)
     MFCreateAttributes(attributes.GetAddressOf(), 8);
     // Basic and advanced source-reader video processing are mutually
     // exclusive. Advanced processing is the DXVA-aware path; compatibility
-    // mode mirrors OpenZoom's established software-conversion reader.
+    // mode mirrors OkuFlow's established software-conversion reader.
     attributes->SetUINT32(
         accelerated
             ? MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING

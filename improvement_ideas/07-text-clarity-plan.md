@@ -5,7 +5,7 @@
 Implemented in the CUDA pipeline: items 1-12 and 15, including persistence,
 Advanced controls, the Simple master toggle, the `Document` preset, and
 focus-aware OCR gating. Item 13 now has the off-by-default
-`OPENZOOM_ENABLE_TEXT_SR` integration boundary; a functional ML stage remains
+`OKUFLOW_ENABLE_TEXT_SR` integration boundary; a functional ML stage remains
 blocked on selecting licensed weights/runtime and meeting the latency budget.
 The original proposal contains no item 14, so there is no item 14 to
 implement. The plan below is retained as the research/design record.

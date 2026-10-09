@@ -162,7 +162,7 @@ the permanent compatibility fallback.
 
 “Original” now has an explicit definition: pre-effect and pre-zoom, but
 post-format-conversion and post-user-rotation. It matches what the user saw
-from that camera orientation without any OpenZoom enhancement.
+from that camera orientation without any OkuFlow enhancement.
 
 Do not confuse hardware **encoding** with hardware **feeding**. The writer
 already requested Media Foundation hardware transforms, so supported systems

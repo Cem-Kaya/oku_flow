@@ -1,7 +1,7 @@
 #ifdef _WIN32
 
-#include "openzoom/ui/assistive_overlay.hpp"
-#include "openzoom/ui/live_status_text.hpp"
+#include "okuflow/ui/assistive_overlay.hpp"
+#include "okuflow/ui/live_status_text.hpp"
 
 #include <QEvent>
 #include <QApplication>
@@ -35,7 +35,7 @@
 #endif
 #include <windows.h>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 class DockPreviewLabel final : public QLabel {
@@ -166,7 +166,7 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
 
     closeButton_ = new QToolButton();
     closeButton_->setObjectName(QStringLiteral("assistiveCloseButton"));
-    closeButton_->setIcon(QIcon(QStringLiteral(":/openzoom/icons/close.svg")));
+    closeButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/close.svg")));
     closeButton_->setIconSize(QSize(28, 28));
     closeButton_->setToolTip(QStringLiteral("Close result"));
     closeButton_->setAccessibleName(QStringLiteral("Close assistive result"));
@@ -200,7 +200,7 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     askButton_->setEnabled(false);
     askButton_->setAccessibleName(QStringLiteral("Ask Assistant"));
     askButton_->setAccessibleDescription(
-        QStringLiteral("Send the question with the current camera view to OpenZoom Assistant"));
+        QStringLiteral("Send the question with the current camera view to OkuFlow Assistant"));
     questionRow->addWidget(questionEdit_, 1);
     questionRow->addWidget(askButton_);
     layout->addLayout(questionRow);
@@ -219,7 +219,7 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     footer->addStretch(1);
     readAloudButton_ = new QPushButton(QStringLiteral("Read Aloud"));
     readAloudButton_->setObjectName(QStringLiteral("assistiveReadButton"));
-    readAloudButton_->setIcon(QIcon(QStringLiteral(":/openzoom/icons/read.svg")));
+    readAloudButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/read.svg")));
     readAloudButton_->setIconSize(QSize(24, 24));
     readAloudButton_->setAccessibleName(QStringLiteral("Read assistive result aloud"));
     readAloudButton_->setAccessibleDescription(
@@ -935,6 +935,6 @@ std::array<QWidget*, 7> AssistiveOverlay::FocusTargets() const
 }
 
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

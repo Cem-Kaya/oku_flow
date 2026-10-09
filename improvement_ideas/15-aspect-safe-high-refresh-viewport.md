@@ -41,7 +41,7 @@ Implementation notes:
   without a dedicated resize queue.
 
 This plan fixes those problems together because both require the same missing
-boundary: OpenZoom needs a persistent processed scene texture and a separate,
+boundary: OkuFlow needs a persistent processed scene texture and a separate,
 viewport-sized presentation pass.
 
 ## User-visible goals
@@ -272,18 +272,18 @@ choice per camera symbolic link.
 
 ## Ownership and likely code touchpoints
 
-- `src/d3d12/presenter.cpp`, `include/openzoom/d3d12/presenter.hpp`: viewport
+- `src/d3d12/presenter.cpp`, `include/okuflow/d3d12/presenter.hpp`: viewport
   render pass, exact client-size swap chain, descriptor/constant rings, pacing,
   presentation counters.
-- `src/app/app.cpp`, `include/openzoom/app/app.hpp`: split camera processing from
+- `src/app/app.cpp`, `include/okuflow/app/app.hpp`: split camera processing from
   viewport presentation, scene generation ownership, two-clock scheduling,
   diagnostic aggregation.
 - `src/app/interaction_controller.cpp`: elapsed-time pan/zoom integration.
-- `src/ui/main_window.cpp`, `include/openzoom/ui/main_window.hpp`: reliable
+- `src/ui/main_window.cpp`, `include/okuflow/ui/main_window.hpp`: reliable
   native-pixel viewport resize notification and global setting controls.
-- `src/app/settings_store.cpp`, `include/openzoom/app/settings_store.hpp`: global
+- `src/app/settings_store.cpp`, `include/okuflow/app/settings_store.hpp`: global
   viewport rate and Fill/Fit persistence with migration defaults.
-- `src/capture/media_capture.cpp`, `include/openzoom/capture/media_capture.hpp`:
+- `src/capture/media_capture.cpp`, `include/okuflow/capture/media_capture.hpp`:
   report active FPS; exact camera-mode selection is a follow-on, not required
   for the first presentation fix.
 - `src/cuda/cuda_interop.cpp`: publish a stable completed scene texture and

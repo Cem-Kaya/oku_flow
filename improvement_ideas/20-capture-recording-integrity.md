@@ -127,7 +127,7 @@ flags.
 **2026-08-01 third review pass — delivery and recovered-abandonment gaps
 closed.** The session block alone did not protect callbacks that had already
 passed its post-`ReadSample` check and then stalled in buffer conversion or
-locking: those lambdas still captured raw `OpenZoomApp*`, so a detached reader
+locking: those lambdas still captured raw `OkuFlowApp*`, so a detached reader
 could resume into freed app state or a new session. Frame/error delivery now
 retains an independently owned `MicrophoneCallbackTarget`; Stop cancels and
 advances its generation before waiting, delivery is serialized by its mutex,
@@ -213,7 +213,7 @@ Two structural facts fall out of this flow:
 
 **Problem (re-verified).** `MediaFrame` carries pixels and nothing else —
 no timestamp, no sequence, unsigned stride
-(`include/openzoom/capture/media_capture.hpp:19-26`). The capture loop
+(`include/okuflow/capture/media_capture.hpp:19-26`). The capture loop
 receives the sample timestamp and drops it (`media_capture.cpp:717-725`).
 The writer synthesizes a fixed-step timeline (`media_writer.cpp:233-243`)
 at a hard-coded 30 fps (`recording_manager.cpp:146`).

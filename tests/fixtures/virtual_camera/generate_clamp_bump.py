@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate OpenZoom's deterministic clamped-camera stabilization fixture."""
+"""Generate OkuFlow's deterministic clamped-camera stabilization fixture."""
 
 from __future__ import annotations
 
@@ -78,8 +78,8 @@ def read_corrections(path: Path) -> list[tuple[float, float]]:
         )
     return [
         (
-            float(row["openzoom_correction_dx_pixels"]),
-            float(row["openzoom_correction_dy_pixels"]),
+            float(row["okuflow_correction_dx_pixels"]),
+            float(row["okuflow_correction_dy_pixels"]),
         )
         for row in rows
     ]
@@ -289,7 +289,7 @@ def write_comparison_y4m(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate OpenZoom's deterministic stabilization fixture."
+        description="Generate OkuFlow's deterministic stabilization fixture."
     )
     parser.add_argument(
         "--output-dir",
@@ -312,7 +312,7 @@ def main() -> None:
     video_path = output_dir / "clamp_bump_160x90_30fps.y4m"
     preview_path = output_dir / "clamp_bump_160x90_30fps.mp4"
     comparison_path = output_dir / "clamp_bump_comparison.mp4"
-    corrections_path = root / "clamp_bump_openzoom_corrections.csv"
+    corrections_path = root / "clamp_bump_okuflow_corrections.csv"
     manifest_path = output_dir / "clamp_bump_motion.csv"
     chroma = bytes([128]) * ((WIDTH // 2) * (HEIGHT // 2))
     rows = []

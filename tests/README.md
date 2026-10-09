@@ -1,4 +1,4 @@
-# OpenZoom Tests
+# OkuFlow Tests
 
 The startup/presentation work extends `fence_wait` with nonblocking slot
 admission, allocator-before-latency-signal ordering, device removal, and failed
@@ -142,7 +142,7 @@ correction trace exported by:
 
 ```powershell
 build\release-bundle\tests\Release\stabilization_cuda_tests.exe `
-  --export-corrections tests\fixtures\virtual_camera\clamp_bump_openzoom_corrections.csv
+  --export-corrections tests\fixtures\virtual_camera\clamp_bump_okuflow_corrections.csv
 ```
 
 Regenerate the input and comparison media with `ffmpeg` available on `PATH`:

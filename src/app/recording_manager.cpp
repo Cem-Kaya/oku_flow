@@ -1,7 +1,7 @@
 #ifdef _WIN32
 
-#include "openzoom/app/recording_manager.hpp"
-#include "openzoom/ui/live_status_text.hpp"
+#include "okuflow/app/recording_manager.hpp"
+#include "okuflow/ui/live_status_text.hpp"
 
 #include <QDate>
 #include <QDateTime>
@@ -26,7 +26,7 @@
 #include <cmath>
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -367,7 +367,7 @@ void RecordingManager::SetRequested(bool requested)
         // in the app keeps working.
         ShowStatus(QStringLiteral(
             "Recording is unavailable because the video encoder stopped "
-            "responding earlier. Restart OpenZoom to record again."));
+            "responding earlier. Restart OkuFlow to record again."));
         UpdateButton();
         return;
     }
@@ -384,7 +384,7 @@ void RecordingManager::SetRequested(bool requested)
     const QString outputDirectory = EnsureOutputDirectory();
     if (outputDirectory.isEmpty()) {
         ShowStatus(QStringLiteral(
-            "Recording could not start because the OpenZoom recordings "
+            "Recording could not start because the OkuFlow recordings "
             "folder is unavailable."));
         UpdateButton();
         return;
@@ -393,7 +393,7 @@ void RecordingManager::SetRequested(bool requested)
     constexpr qint64 kMinimumFreeBytes = 1024LL * 1024LL * 1024LL;
     if (!storage.isValid() || !storage.isReady()) {
         ShowStatus(QStringLiteral(
-            "Recording could not start because OpenZoom could not check "
+            "Recording could not start because OkuFlow could not check "
             "the destination drive."));
         UpdateButton();
         return;
@@ -401,7 +401,7 @@ void RecordingManager::SetRequested(bool requested)
     if (storage.bytesAvailable() < kMinimumFreeBytes) {
         ShowStatus(QStringLiteral(
             "Recording could not start: less than 1 GB is free in the "
-            "OpenZoom folder."));
+            "OkuFlow folder."));
         UpdateButton();
         return;
     }
@@ -560,7 +560,7 @@ void RecordingManager::AbandonWedgedWorker(const QString& trigger)
     qCritical() << "Recording watchdog (" << trigger
                 << ") declared the worker blocked" << stage
                 << "- abandoning the worker; recording is disabled until "
-                   "OpenZoom restarts.";
+                   "OkuFlow restarts.";
     RecordingSessionInfo endedSession;
     {
         std::lock_guard lock(queueMutex_);
@@ -577,7 +577,7 @@ void RecordingManager::AbandonWedgedWorker(const QString& trigger)
         QStringLiteral(
             "Recording could not continue: the video encoder stopped "
             "responding (%1). The files from this session may be "
-            "incomplete. Recording is disabled until OpenZoom is "
+            "incomplete. Recording is disabled until OkuFlow is "
             "restarted; everything else keeps working.")
             .arg(stage),
         20000);
@@ -1037,7 +1037,7 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
         PostStatus(
             QStringLiteral(
                 "Recording %1 video%2 with %3 at "
-                "%4/%5 FPS. Press Ctrl+Shift+O to open the OpenZoom folder.")
+                "%4/%5 FPS. Press Ctrl+Shift+O to open the OkuFlow folder.")
                 .arg(feed)
                 .arg(includeAudio ? QStringLiteral(" with microphone audio")
                                   : QString())
@@ -1744,6 +1744,6 @@ void RecordingManager::UpdateButton()
         QStringLiteral("Record"));
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

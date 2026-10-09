@@ -44,7 +44,7 @@ Final validation passed on 2026-09-10:
 
 - `scripts/agent_build.bat`: release compile, 24/24 CPU tests, 28/28 CUDA tests.
 - `scripts/build_release_bundle.bat`: 28/28 release tests; published
-  `dist/OpenZoom/open_zoom.exe` with matching release-build SHA-256.
+  `dist/OkuFlow/oku_flow.exe` with matching release-build SHA-256.
 - Translation integrity: 664 source keys, complete Turkish/German parity.
 - Source/documentation and published app-metadata scans contain no references
   to the retired recognition engine.
@@ -54,7 +54,7 @@ Published executable SHA-256:
 
 ## 6. Startup/setup follow-up audit
 
-Traced `OpenZoomApp::Initialize` through `SetupAssistantDialog::NeedsSetup`
+Traced `OkuFlowApp::Initialize` through `SetupAssistantDialog::NeedsSetup`
 and `OpenSetupAssistant`. Automatic prompting respects the saved decline
 preference and checks only Codex CLI and NVIDIA Video Effects on supported
 hardware. The dependency enum, rows, callbacks, download selection, and install
@@ -74,7 +74,7 @@ records are not current application sources or inputs to the shipping bundle;
 their historical contents were preserved.
 
 The follow-up build passed the release/CPU/CUDA gate and all 28 packaged-release
-tests. The updated `dist/OpenZoom/open_zoom.exe` was built at 17:38:06 +03:00 on
+tests. The updated `dist/OkuFlow/oku_flow.exe` was built at 17:38:06 +03:00 on
 2026-09-10 and its hash matches the validated release output. Follow-up logs:
 `build/setup-removal-recheck-build.log` and
 `build/setup-removal-recheck-bundle.log`.

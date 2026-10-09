@@ -1,11 +1,11 @@
-#include "openzoom/app/color_schemes.hpp"
+#include "okuflow/app/color_schemes.hpp"
 
-#include "openzoom/app/constants.hpp"
+#include "okuflow/app/constants.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace openzoom::color_schemes {
+namespace okuflow::color_schemes {
 
 namespace {
 
@@ -246,4 +246,4 @@ bool SchemesEquivalent(const ColorScheme& lhsRequested,
     return true;
 }
 
-} // namespace openzoom::color_schemes
+} // namespace okuflow::color_schemes

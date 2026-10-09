@@ -1,6 +1,6 @@
 // Fake Codex app-server for deterministic realtime-client protocol tests.
 // Speaks JSONL on stdio and plays the scenario named by the
-// OPENZOOM_FAKE_CODEX_SCENARIO environment variable. Never touches the
+// OKUFLOW_FAKE_CODEX_SCENARIO environment variable. Never touches the
 // network. Exits when stdin closes.
 
 #include <QByteArray>
@@ -256,7 +256,7 @@ void HandleMessage(const QJsonObject& message)
 
 int main(int argc, char** argv)
 {
-    const char* scenario = std::getenv("OPENZOOM_FAKE_CODEX_SCENARIO");
+    const char* scenario = std::getenv("OKUFLOW_FAKE_CODEX_SCENARIO");
     gScenario = scenario != nullptr ? QString::fromUtf8(scenario) : QStringLiteral("happy");
     const bool visionScenario = gScenario.startsWith(QStringLiteral("vision-"));
 

@@ -2,21 +2,21 @@
 
 #ifdef _WIN32
 
-#include "openzoom/app/app.hpp"
-#include "openzoom/cuda/cuda_interop.hpp"
-#include "openzoom/d3d12/presenter.hpp"
-#include "openzoom/app/constants.hpp"
-#include "openzoom/app/interaction_controller.hpp"
-#include "openzoom/app/language_manager.hpp"
-#include "openzoom/ui/main_window.hpp"
-#include "openzoom/ui/ui_translation.hpp"
-#include "openzoom/ui/ai_settings_dialog.hpp"
-#include "openzoom/ui/color_scheme_picker.hpp"
-#include "openzoom/app/setup_assistant.hpp"
-#include "openzoom/app/transcription_session_controller.hpp"
-#include "openzoom/common/codex_realtime_transcription_client.hpp"
-#include "openzoom/common/maxine_superres.hpp"
-#include "openzoom/common/realtime_native_rtc_carrier.hpp"
+#include "okuflow/app/app.hpp"
+#include "okuflow/cuda/cuda_interop.hpp"
+#include "okuflow/d3d12/presenter.hpp"
+#include "okuflow/app/constants.hpp"
+#include "okuflow/app/interaction_controller.hpp"
+#include "okuflow/app/language_manager.hpp"
+#include "okuflow/ui/main_window.hpp"
+#include "okuflow/ui/ui_translation.hpp"
+#include "okuflow/ui/ai_settings_dialog.hpp"
+#include "okuflow/ui/color_scheme_picker.hpp"
+#include "okuflow/app/setup_assistant.hpp"
+#include "okuflow/app/transcription_session_controller.hpp"
+#include "okuflow/common/codex_realtime_transcription_client.hpp"
+#include "okuflow/common/maxine_superres.hpp"
+#include "okuflow/common/realtime_native_rtc_carrier.hpp"
 #include <QAbstractButton>
 #include <QAccessible>
 #include <QAccessibleAnnouncementEvent>
@@ -95,7 +95,7 @@
 
 #include <wrl/client.h>
 
-namespace openzoom {
+namespace okuflow {
 // Tracks detached startup work without extending the lifetime of the app.
 struct StartupWorkerTracker final {
     std::atomic<unsigned> active{};
@@ -107,7 +107,7 @@ struct StartupWorkerTracker final {
 struct CameraIngress final {
     std::mutex mutex;
     std::deque<MediaFrame> frames;
-    OpenZoomApp* receiver{};
+    OkuFlowApp* receiver{};
     bool accepting{};
     bool retainBurst{};
     bool wakeQueued{};
@@ -131,14 +131,14 @@ struct CameraIngress final {
 // newly started microphone session.
 struct MicrophoneCallbackTarget final {
     std::mutex mutex;
-    OpenZoomApp* app{};
+    OkuFlowApp* app{};
     std::uint64_t generation{};
     bool accepting{};
 };
 
 namespace {
 
-constexpr int kOpenZoomIconResourceId = 101;
+constexpr int kOkuFlowIconResourceId = 101;
 
 void ThrowIfFailed(HRESULT hr, const char* message)
 {
@@ -156,7 +156,7 @@ void ApplyNativeWindowIcon(QWidget* window)
     const HWND handle = reinterpret_cast<HWND>(window->winId());
     const auto loadIcon = [module](int width, int height) -> HICON {
         return static_cast<HICON>(LoadImageW(
-            module, MAKEINTRESOURCEW(kOpenZoomIconResourceId), IMAGE_ICON,
+            module, MAKEINTRESOURCEW(kOkuFlowIconResourceId), IMAGE_ICON,
             width, height, LR_DEFAULTCOLOR | LR_SHARED));
     };
     if (const HICON largeIcon = loadIcon(GetSystemMetrics(SM_CXICON),
@@ -171,8 +171,8 @@ void ApplyNativeWindowIcon(QWidget* window)
     }
 }
 
-namespace processing = openzoom::processing;
-using namespace openzoom::app_constants;
+namespace processing = okuflow::processing;
+using namespace okuflow::app_constants;
 
 CudaBufferFormat ParseCudaBufferFormatToken(const QString& token, bool* ok)
 {
@@ -230,6 +230,6 @@ int QueryDisplayRefreshHz(HWND hwnd)
 constexpr int kPresetIdRole = Qt::UserRole + 1;
 
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

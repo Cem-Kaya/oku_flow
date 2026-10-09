@@ -6,9 +6,9 @@
 #include <QSignalSpy>
 #include <QtTest>
 
-#include "openzoom/common/codex_realtime_transcription_client.hpp"
+#include "okuflow/common/codex_realtime_transcription_client.hpp"
 
-using openzoom::CodexRealtimeTranscriptionClient;
+using okuflow::CodexRealtimeTranscriptionClient;
 
 namespace {
 
@@ -42,7 +42,7 @@ private slots:
 
     void happyPathFiltersRolesAndAcceptsStopTail()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "happy");
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "happy");
         CodexRealtimeTranscriptionClient client;
         client.SetExecutablePath(FakeServerPath());
         QSignalSpy ready(&client, &CodexRealtimeTranscriptionClient::SessionReady);
@@ -85,7 +85,7 @@ private slots:
 
     void nonChatGptAccountFails()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "notchatgpt");
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "notchatgpt");
         CodexRealtimeTranscriptionClient client;
         client.SetExecutablePath(FakeServerPath());
         QSignalSpy failed(&client, &CodexRealtimeTranscriptionClient::SessionFailed);
@@ -99,7 +99,7 @@ private slots:
 
     void missingRealtimeSupportFails()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "norealtime");
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "norealtime");
         CodexRealtimeTranscriptionClient client;
         client.SetExecutablePath(FakeServerPath());
         QSignalSpy ready(&client, &CodexRealtimeTranscriptionClient::SessionReady);
@@ -113,7 +113,7 @@ private slots:
 
     void asyncApiKeyAuthErrorFails()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "apikey");
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "apikey");
         CodexRealtimeTranscriptionClient client;
         client.SetExecutablePath(FakeServerPath());
         QSignalSpy ready(&client, &CodexRealtimeTranscriptionClient::SessionReady);
@@ -131,7 +131,7 @@ private slots:
 
     void malformedProtocolLineIsIgnored()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "malformed");
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "malformed");
         CodexRealtimeTranscriptionClient client;
         client.SetExecutablePath(FakeServerPath());
         QSignalSpy ready(&client, &CodexRealtimeTranscriptionClient::SessionReady);
@@ -143,7 +143,7 @@ private slots:
 
     void oversizedProtocolLineFailsSession()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "oversized");
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "oversized");
         CodexRealtimeTranscriptionClient client;
         client.SetExecutablePath(FakeServerPath());
         QSignalSpy ready(&client, &CodexRealtimeTranscriptionClient::SessionReady);
@@ -156,7 +156,7 @@ private slots:
 
     void oversizedOfferIsRejectedLocally()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "happy");
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "happy");
         CodexRealtimeTranscriptionClient client;
         client.SetExecutablePath(FakeServerPath());
         QSignalSpy ready(&client, &CodexRealtimeTranscriptionClient::SessionReady);
@@ -170,7 +170,7 @@ private slots:
 
     void staleGenerationCallsAreIgnored()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "happy");
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "happy");
         CodexRealtimeTranscriptionClient client;
         client.SetExecutablePath(FakeServerPath());
         QSignalSpy ready(&client, &CodexRealtimeTranscriptionClient::SessionReady);
@@ -189,7 +189,7 @@ private slots:
 
     void toolDiscoveryFailureFailsClosed()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "tool_discovery_failure");
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "tool_discovery_failure");
         CodexRealtimeTranscriptionClient client;
         client.SetExecutablePath(FakeServerPath());
         QSignalSpy ready(&client, &CodexRealtimeTranscriptionClient::SessionReady);
@@ -202,7 +202,7 @@ private slots:
 
     void unexpectedMcpStartupFailsClosed()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "unexpected_mcp");
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "unexpected_mcp");
         CodexRealtimeTranscriptionClient client;
         client.SetExecutablePath(FakeServerPath());
         QSignalSpy ready(&client, &CodexRealtimeTranscriptionClient::SessionReady);
@@ -216,8 +216,8 @@ private slots:
 
     void stderrPayloadIsNeverForwarded()
     {
-        qputenv("OPENZOOM_FAKE_CODEX_SCENARIO", "stderr_payload");
-        openzoom::CodexJsonRpcProcess process;
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "stderr_payload");
+        okuflow::CodexJsonRpcProcess process;
         QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
         environment.remove(QStringLiteral("OPENAI_API_KEY"));
         environment.remove(QStringLiteral("CODEX_API_KEY"));
@@ -231,7 +231,7 @@ private slots:
              QStringLiteral("plugins"),
              QStringLiteral("-c"),
              QStringLiteral("mcp_servers.fake_tools.enabled=false")});
-        QSignalSpy diagnostics(&process, &openzoom::CodexJsonRpcProcess::StderrText);
+        QSignalSpy diagnostics(&process, &okuflow::CodexJsonRpcProcess::StderrText);
         process.Start();
         QTRY_COMPARE(diagnostics.count(), 1);
         const QString diagnostic = diagnostics.at(0).at(0).toString();

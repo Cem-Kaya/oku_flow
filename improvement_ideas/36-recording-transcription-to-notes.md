@@ -65,7 +65,7 @@ specification.
 
 The reopened scope is deliberately narrow:
 
-- transcribe the selected microphone while an OpenZoom recording is active;
+- transcribe the selected microphone while an OkuFlow recording is active;
 - show partial and finalized text live;
 - append finalized user speech to the existing HTML lecture notes;
 - use the signed-in ChatGPT account through Codex Voice when the experimental
@@ -83,7 +83,7 @@ disconnected, or broken.
 
 With **Transcribe microphone while recording** enabled, pressing **Record**
 starts the existing paired original/processed MP4 recording and an independent
-transcription session. OpenZoom displays the current partial phrase and a
+transcription session. OkuFlow displays the current partial phrase and a
 scrollable list of finalized phrases. Each finalized phrase is HTML-escaped and
 appended to the active lecture-notes document with a recording-session id and
 an approximate recording-relative time.
@@ -101,7 +101,7 @@ The visible product promises are:
 
 1. Transcription is opt-in and only sends microphone audio while recording.
 2. Only `role == "user"` transcript events appear or enter notes.
-3. Remote audio is hard-muted and discarded; OpenZoom does not call TTS for it.
+3. Remote audio is hard-muted and discarded; OkuFlow does not call TTS for it.
 4. Partial text is presentation-only while the session is live. Server finals,
    or the exact bounded user tail promoted locally on requested close, are
    durable; no tail is sent through a second model pass.
@@ -113,7 +113,7 @@ The visible product promises are:
 ## Non-goals
 
 - Cookie/session extraction, authorization-header copying, private-endpoint
-  replay, or embedding the user's Codex credential in OpenZoom.
+  replay, or embedding the user's Codex credential in OkuFlow.
 - Automatic assistant answers, spoken replies, agent handoffs, tool calls, or
   submitting recognized speech to the existing Advanced Assistant.
 - Local Whisper/model installation, post-recording backfill, SRT/VTT/TXT
@@ -127,14 +127,14 @@ The visible product promises are:
   transcription API is documented below only as an explicit future fallback
   with separate Platform billing.
 
-## Verified current OpenZoom architecture
+## Verified current OkuFlow architecture
 
 This plan is based on current symbols, not on older backlog line numbers.
 
 | Area | Current contract | Integration consequence |
 |---|---|---|
 | Microphone capture | `AudioCapture` produces signed PCM16, 48 kHz, mono `AudioFrame` values with QPC-based `captureClock100ns` and `duration100ns`. | Preserve the capture clock. Carrier A must prove app-server accepts unchanged 48 kHz; Carrier B must adapt to the actual Web Audio sample rate; the public fallback requires 24 kHz. |
-| Capture callback | `OpenZoomApp::StartSelectedMicrophone()` installs a generation-gated callback in `src/app/app_controls.cpp`; it currently moves each frame into `RecordingManager::AddAudioFrame`. | This is the only native fan-out point. It must not perform JSON/base64 encoding, WebView calls, disk I/O, or a blocking push. |
+| Capture callback | `OkuFlowApp::StartSelectedMicrophone()` installs a generation-gated callback in `src/app/app_controls.cpp`; it currently moves each frame into `RecordingManager::AddAudioFrame`. | This is the only native fan-out point. It must not perform JSON/base64 encoding, WebView calls, disk I/O, or a blocking push. |
 | Record lifecycle | The Record toggle in `src/app/app_bootstrap.cpp` starts the selected microphone, calls `RecordingManager::SetRequested(checked)`, then closes the microphone again if recording preflight rejects the request. | Start transcription only after `IsActive()` and `AudioCapture::IsRunning()` are true. |
 | Recorder | `RecordingManager` owns bounded worker queues, drop accounting, stop watchdog, abandonment rules, and paired segment callbacks. | Do not put realtime work on the recorder worker or weaken a Plan 20 integrity invariant. |
 | Notes | `AssistiveRuntime::EnsureNotesFile()` creates `NOTES_yyyyMMdd_HHmmss.html`; `AppendNoteHtmlSection()` appends and flushes a bounded section. | Add a typed transcript-note API while retaining O(1), crash-tolerant appends. |
@@ -156,7 +156,7 @@ struct AudioFrame {
 };
 ~~~
 
-For a native carrier that accepts OpenZoom's unchanged 48 kHz format, rechunk
+For a native carrier that accepts OkuFlow's unchanged 48 kHz format, rechunk
 on a worker to 20 ms:
 
 ~~~text
@@ -198,8 +198,8 @@ sendRequest(
     QJsonObject{
         {QStringLiteral("clientInfo"),
          QJsonObject{
-             {QStringLiteral("name"), QStringLiteral("openzoom")},
-             {QStringLiteral("title"), QStringLiteral("OpenZoom")},
+             {QStringLiteral("name"), QStringLiteral("okuflow")},
+             {QStringLiteral("title"), QStringLiteral("OkuFlow")},
              {QStringLiteral("version"), QCoreApplication::applicationVersion()},
          }},
         {QStringLiteral("capabilities"),
@@ -210,7 +210,7 @@ sendNotification(QStringLiteral("initialized"), {});
 
 The dedicated realtime process removes API-key environment variables without
 reading their values. This keeps subscription auth intentional while leaving
-OpenZoom's ordinary Assistant process/provider unchanged.
+OkuFlow's ordinary Assistant process/provider unchanged.
 
 ### Verify account type without exposing credentials
 
@@ -237,7 +237,7 @@ only, and pass `-c mcp_servers."<escaped-name>".enabled=false` for every
 effective enabled server. If discovery fails, output is malformed/oversized,
 or any `mcpServer/*` startup event is later observed, fail transcription
 closed. Never log the discovery JSON because transports can include
-environment values. Create a new empty `%TEMP%\OpenZoom-transcription-*`
+environment values. Create a new empty `%TEMP%\OkuFlow-transcription-*`
 directory for the session and remove it after bounded child shutdown.
 
 ~~~cpp
@@ -283,13 +283,13 @@ sendRequest(QStringLiteral("thread/realtime/start"), params);
 
 `clientManagedHandoffs:true` suppresses automatic Codex response delivery. It
 does not make this experimental conversational session identical to the public
-transcription API, so OpenZoom must still discard every non-user transcript and
+transcription API, so OkuFlow must still discard every non-user transcript and
 all remote audio. Muting/discarding output is not a billing control: the
 underlying realtime session can still consume Codex Voice allowance.
 Omit `flushTranscriptTailOnSessionEnd`. Inspection of Codex 0.147's source and
 tests confirms that it routes the remaining transcript through a Codex handoff;
 that is an unwanted second agent pass and is incompatible with this feature's
-no-handoff scope. OpenZoom instead retains the streamed user delta locally and
+no-handoff scope. OkuFlow instead retains the streamed user delta locally and
 promotes it only when the requested close arrives without `done`.
 
 ### Build the WebRTC offer in WebView2
@@ -328,7 +328,7 @@ after `setRemoteDescription` succeeds. Listening additionally requires
 `thread/realtime/started` and the `oai-events` channel to be open.
 
 The known-good prototype uses `getUserMedia`, which opens a browser microphone.
-That proves auth/protocol, not that opening the correct OpenZoom-selected
+That proves auth/protocol, not that opening the correct OkuFlow-selected
 endpoint twice is safe. The production audio carrier is therefore a Phase 0
 gate below.
 
@@ -758,7 +758,7 @@ browser input. Other contracts stay the same.
 ## Phase 0 — mandatory audio-carrier gate
 
 Subscription auth is proven only for WebRTC. The prototype opens a browser
-microphone while OpenZoom already owns a selected Media Foundation microphone.
+microphone while OkuFlow already owns a selected Media Foundation microphone.
 Run this ordered matrix behind one `IRealtimeAudioCarrier` interface.
 
 ### Carrier A — WebRTC control plane plus app-server appendAudio
@@ -767,7 +767,7 @@ Run this ordered matrix behind one `IRealtimeAudioCarrier` interface.
    transceiver sufficient to produce a real SDP offer.
 2. Apply the `thread/realtime/sdp` answer, then wait for
    `thread/realtime/started` plus channel open.
-3. Feed actual OpenZoom PCM through `thread/realtime/appendAudio` in 20 ms
+3. Feed actual OkuFlow PCM through `thread/realtime/appendAudio` in 20 ms
    chunks.
 4. Speak a known sentence while the recorder consumes those same frames.
 5. Pass only if a user final arrives, browser microphone permission is never
@@ -813,7 +813,7 @@ clearly disclosed compatibility path:
 - otherwise require the user to select a **Transcription microphone** and
   persist its browser device id for the private origin;
 - never silently switch to browser default when a different endpoint is
-  selected in OpenZoom;
+  selected in OkuFlow;
 - open the recorder first, then browser capture; on coexistence failure disable
   transcription and keep recording;
 - stop the browser track on Stop, denial, removal, app-server error, and app
@@ -921,7 +921,7 @@ This is the sole realtime prompt, not a second pass. The security boundary
 remains disabled MCP/app/plugin providers, denied server requests, no approvals,
 the read-only sandbox, and an empty cwd. `flushTranscriptTailOnSessionEnd` stays
 absent because Codex 0.147 source shows that option routes the remaining speech
-through a Codex handoff. On requested close, OpenZoom instead promotes only the
+through a Codex handoff. On requested close, OkuFlow instead promotes only the
 bounded `role:user` delta it already received; it does no re-recognition and
 issues no new model turn.
 
@@ -1012,7 +1012,7 @@ None of those fields is reachable through the shipping subscription route:
    session`. The temporary override hook was removed after the probe.
 3. Codex 0.147 source validates subscription WebRTC as **conversational** v1/v3
    only. Its separate v2 transcription-session implementation uses WebSocket
-   and requires API-key auth; OpenZoom intentionally removes API-key variables
+   and requires API-key auth; OkuFlow intentionally removes API-key variables
    unread and accepts only the user's ChatGPT-signed-in Codex account.
 4. Earlier v3 turn-detection updates were rejected as unknown parameters, and
    v1 failed before media on its unavailable Quicksilver alpha requirement.
@@ -1035,7 +1035,7 @@ so a student cannot turn speech into instructions or actions.
   `oai-events`, streamed synthetic speech, and produced correct
   `role:"user"` transcripts over stdio. Nothing in the protocol requires
   Chromium.
-- OpenZoom's use is the minimal WebRTC case: one mono Opus track on the
+- OkuFlow's use is the minimal WebRTC case: one mono Opus track on the
   service-required SendRecv m-line,
   one SCTP data channel, a locally authored offer, no renegotiation, no
   video, no receive-side decoding (the assistant's return audio is discarded
@@ -1046,7 +1046,7 @@ so a student cannot turn speech into instructions or actions.
   stable, small API surface.
 
 What is given up: WebView2's Evergreen runtime auto-patched the network and
-crypto stack; with Carrier D that servicing duty moves to OpenZoom (see the
+crypto stack; with Carrier D that servicing duty moves to OkuFlow (see the
 servicing policy below). What is gained: no embedded browser process, no
 Evergreen runtime dependency, no proprietary loader DLL in the GPL bundle
 (the plan-23 WebView2 license determination disappears), no
@@ -1086,7 +1086,7 @@ Constraints verified at spec time:
 - `FetchContent_Declare` for the three pins above using `GIT_REPOSITORY` +
   `GIT_TAG <commit sha>`; submodules are cloned by FetchContent's default.
   The first configure needs network; the environment variable
-  `OPENZOOM_NATIVE_RTC_SOURCES` may point at pre-cloned source trees for
+  `OKUFLOW_NATIVE_RTC_SOURCES` may point at pre-cloned source trees for
   offline builds (same policy the WebView2 nupkg pin had).
 - Static everywhere (the app already compiles `/MT`):
   `BUILD_SHARED_LIBS=OFF`, libdatachannel `NO_EXAMPLES=ON NO_TESTS=ON
@@ -1095,7 +1095,7 @@ Constraints verified at spec time:
   MbedTLS targets are handed to libdatachannel the way the pinned version's
   `FindMbedTLS` expects (verify against the pinned tree, not current docs).
 - Link `LibDataChannel::LibDataChannelStatic`, `opus`, and the three MbedTLS
-  libraries into `open_zoom`, plus `ws2_32`, `iphlpapi`, and `bcrypt`.
+  libraries into `oku_flow`, plus `ws2_32`, `iphlpapi`, and `bcrypt`.
 - Nothing is staged beside the executable: no DLLs, no assets, no
   windeployqt involvement. Bundle validation drops the WebView2 lines and
   gains nothing — absence of extra files is the point. Expected static size
@@ -1103,7 +1103,7 @@ Constraints verified at spec time:
 
 ### New component — `RealtimeNativeRtcCarrier`
 
-`include/openzoom/common/realtime_native_rtc_carrier.hpp` and
+`include/okuflow/common/realtime_native_rtc_carrier.hpp` and
 `src/common/realtime_native_rtc_carrier.cpp` (common, not ui — no UI
 dependency remains). Implements the existing `RealtimeAudioCarrier`
 interface; `TranscriptionSessionController`, the Codex client, notes, UI,
@@ -1133,7 +1133,7 @@ Threading contract:
 1. Tear down any previous peer (close channel, reset track, close and
    release the PeerConnection).
 2. `rtc::Configuration` with **no ICE servers**: the browser-proven path
-   used host candidates only, so by default OpenZoom contacts no third-party
+   used host candidates only, so by default OkuFlow contacts no third-party
    STUN/TURN service (privacy). A config hook is documented for adding one
    STUN server later if the hardware matrix shows symmetric-NAT failures;
    enabling it is an owner decision recorded in the gate result.
@@ -1144,7 +1144,7 @@ Threading contract:
 4. Add the audio media: mid `0`, direction SendRecv, Opus payload type 111.
    Per RFC 7587 the SDP always signals `opus/48000/2` even though the
    payload is mono; include `a=ptime:20`. Media handler chain per the pinned
-   API: `RtpPacketizationConfig` (random non-zero SSRC, cname `openzoom`,
+   API: `RtpPacketizationConfig` (random non-zero SSRC, cname `okuflow`,
    payload type 111, 48 kHz clock) → `OpusRtpPacketizer` →
    `RtcpSrReporter` (sender reports help the service's jitter estimation).
    RTP pacing lives in the carrier's bounded worker. libdatachannel's
@@ -1211,7 +1211,7 @@ string, which stays in the catalogs).
 
 ### Servicing policy (replaces Evergreen auto-updates)
 
-Dropping WebView2 moves network/crypto patching from Microsoft to OpenZoom.
+Dropping WebView2 moves network/crypto patching from Microsoft to OkuFlow.
 The accepted policy: the four pinned components are listed in the SBOM; the
 release checklist gains one step — review MbedTLS security advisories and
 libdatachannel/opus releases, and bump pins in an ordinary change that
@@ -1222,7 +1222,7 @@ is an LTS branch and is expected to receive fixes without API breaks.
 
 - `src/ui/realtime_webrtc_host.{hpp,cpp}`, `assets/realtime/`
   (`index.html`, `bridge.js`, `worklet.js`), `cmake/WebView2.cmake`, and the
-  `openzoom_stage_webview2_runtime` hook.
+  `okuflow_stage_webview2_runtime` hook.
 - Release bundle: WebView2Loader/realtime staging and validation lines; SBOM
   WebView2 package (replaced by the four native packages);
   `docs/THIRD_PARTY_LICENSES.md` WebView2 section (replaced by
@@ -1363,7 +1363,7 @@ For a native carrier, the callback fan-out is:
 AudioFrame frame = std::move(capturedFrame);
 
 // Run only after the callback target has proved this generation still owns
-// live sinks. Never unlock and retain an unowned raw OpenZoomApp pointer.
+// live sinks. Never unlock and retain an unowned raw OkuFlowApp pointer.
 if (app->transcriptionController_) {
     (void)app->transcriptionController_->TryEnqueueAudio(frame);
 }
@@ -1373,7 +1373,7 @@ if (app->recordingManager_) {
 ~~~
 
 The current callback deliberately holds `MicrophoneCallbackTarget::mutex`
-while dereferencing its raw `OpenZoomApp*`. Do not simply copy that pointer and
+while dereferencing its raw `OkuFlowApp*`. Do not simply copy that pointer and
 unlock: teardown could then free the app. Either keep the mutex across only the
 two bounded queue calls, or preferably replace the raw-app dispatch with a
 shared `MicrophoneFrameRouter` captured by the callback; Stop revokes its
@@ -1552,7 +1552,7 @@ and Platform billing) or a local speech model; neither is a drop-in removal.
 The WebRTC host is a hidden native component, not a general browser:
 
 - map packaged assets to one exact secure origin such as
-  `https://voice.openzoom.local/`;
+  `https://voice.okuflow.local/`;
 - use restrictive CSP and local scripts only;
 - block navigation, new windows, downloads, external protocols, drag/drop,
   context menus, and production DevTools;
@@ -1567,13 +1567,13 @@ The WebRTC host is a hidden native component, not a general browser:
 Use the prototype's pinned package as the reproducible baseline:
 
 ~~~cmake
-set(OPENZOOM_WEBVIEW2_VERSION "1.0.4078.44")
-set(OPENZOOM_WEBVIEW2_SHA256
+set(OKUFLOW_WEBVIEW2_VERSION "1.0.4078.44")
+set(OKUFLOW_WEBVIEW2_SHA256
     "DC4D1D9168DF26B830398303E50210B6E1729F6CE5A7AC69D2C766852F489962")
 ~~~
 
 Create imported `Microsoft::WebView2Loader`, then stage
-`WebView2Loader.dll` and realtime assets beside `open_zoom.exe`;
+`WebView2Loader.dll` and realtime assets beside `oku_flow.exe`;
 `windeployqt` will not do it.
 
 Before distribution:
@@ -1614,14 +1614,14 @@ Before distribution:
 
 | File | Responsibility |
 |---|---|
-| `include/openzoom/common/codex_json_rpc_process.hpp` / `src/common/codex_json_rpc_process.cpp` | Extract bounded stdio JSONL process, request, timeout, framing, size, stderr, shutdown, and unexpected-server-request rules. |
-| `include/openzoom/common/codex_realtime_transcription_client.hpp` / `src/common/codex_realtime_transcription_client.cpp` | Account gate, ephemeral thread, WebRTC start/SDP/stop, event filtering, quota, watchdog. |
-| `include/openzoom/common/transcript.hpp` | State/segment contracts, ids, and limits without UI dependencies. |
-| `include/openzoom/app/transcription_session_controller.hpp` / `src/app/transcription_session_controller.cpp` | Recording-coupled state, generation, optional queue/chunker, carrier, reducer, finalization, gaps. |
-| `include/openzoom/ui/realtime_webrtc_host.hpp` / `src/ui/realtime_webrtc_host.cpp` | Restricted hidden WebView2 lifecycle, origin/permissions, bridge, SDP, cleanup. **Deleted by Carrier D (step D3).** |
+| `include/okuflow/common/codex_json_rpc_process.hpp` / `src/common/codex_json_rpc_process.cpp` | Extract bounded stdio JSONL process, request, timeout, framing, size, stderr, shutdown, and unexpected-server-request rules. |
+| `include/okuflow/common/codex_realtime_transcription_client.hpp` / `src/common/codex_realtime_transcription_client.cpp` | Account gate, ephemeral thread, WebRTC start/SDP/stop, event filtering, quota, watchdog. |
+| `include/okuflow/common/transcript.hpp` | State/segment contracts, ids, and limits without UI dependencies. |
+| `include/okuflow/app/transcription_session_controller.hpp` / `src/app/transcription_session_controller.cpp` | Recording-coupled state, generation, optional queue/chunker, carrier, reducer, finalization, gaps. |
+| `include/okuflow/ui/realtime_webrtc_host.hpp` / `src/ui/realtime_webrtc_host.cpp` | Restricted hidden WebView2 lifecycle, origin/permissions, bridge, SDP, cleanup. **Deleted by Carrier D (step D3).** |
 | `assets/realtime/index.html` / `assets/realtime/bridge.js` | CSP WebRTC peer, `oai-events`, selected carrier, remote mute, bounded messages. **Deleted by Carrier D (step D3).** |
 | `cmake/WebView2.cmake` | Pinned package/hash, imported target, runtime/asset copy. **Deleted by Carrier D (step D3).** |
-| `include/openzoom/common/realtime_native_rtc_carrier.hpp` / `src/common/realtime_native_rtc_carrier.cpp` | Carrier D: native PeerConnection/track/channel lifecycle, Opus encode, RTP send, backpressure, generation-gated queued callbacks. |
+| `include/okuflow/common/realtime_native_rtc_carrier.hpp` / `src/common/realtime_native_rtc_carrier.cpp` | Carrier D: native PeerConnection/track/channel lifecycle, Opus encode, RTP send, backpressure, generation-gated queued callbacks. |
 | `cmake/NativeRtc.cmake` | Carrier D: pinned libdatachannel/opus/MbedTLS FetchContent, static targets, offline override. |
 | `tests/native_rtc_carrier_tests.cpp` | Carrier D: loopback peer negotiation, RTP/Opus assertions, cycle/leak and congestion tests. |
 

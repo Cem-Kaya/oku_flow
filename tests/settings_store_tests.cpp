@@ -1,7 +1,7 @@
-#include "openzoom/app/color_schemes.hpp"
-#include "openzoom/app/protected_secret_store.hpp"
-#include "openzoom/app/settings_controller.hpp"
-#include "openzoom/app/settings_store.hpp"
+#include "okuflow/app/color_schemes.hpp"
+#include "okuflow/app/protected_secret_store.hpp"
+#include "okuflow/app/settings_controller.hpp"
+#include "okuflow/app/settings_store.hpp"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -10,7 +10,7 @@
 #include <QUuid>
 #include <QtTest>
 
-namespace openzoom::settings {
+namespace okuflow::settings {
 
 namespace {
 
@@ -170,7 +170,7 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
 
     PersistentSettings expected;
     expected.language = QStringLiteral("tr");
-    expected.userDataRoot = QStringLiteral("D:/OpenZoom Data");
+    expected.userDataRoot = QStringLiteral("D:/OkuFlow Data");
     expected.cameraIndex = 4;
     expected.microphoneEndpointId =
         QStringLiteral("{0.0.1.00000000}.test-microphone");
@@ -221,7 +221,7 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     expected.assistive.assistantInstructions = QStringLiteral("Reply clearly.");
     expected.assistive.vlmApiUrl = QStringLiteral("https://example.invalid/v1");
     expected.assistive.vlmApiKey = QStringLiteral("secret");
-    expected.assistive.vlmCredentialId = QStringLiteral("OpenZoom/Test Round Trip");
+    expected.assistive.vlmCredentialId = QStringLiteral("OkuFlow/Test Round Trip");
     expected.assistive.vlmModel = QStringLiteral("vision");
     expected.assistive.vlmPrompt = QStringLiteral("Describe.");
     expected.assistive.ttsEngine = QStringLiteral("winrt");
@@ -526,7 +526,7 @@ void SettingsStoreTests::saveCreatesValidBackup()
 void SettingsStoreTests::protectedSecretRoundTrip()
 {
     const QString credentialId =
-        QStringLiteral("OpenZoom/Test/%1")
+        QStringLiteral("OkuFlow/Test/%1")
             .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
     QString error;
     QVERIFY2(ProtectedSecretStore::Write(
@@ -580,8 +580,8 @@ void SettingsStoreTests::equivalenceUsesUiTolerances()
     QVERIFY(!AreConfigsEquivalent(base, outside));
 }
 
-} // namespace openzoom::settings
+} // namespace okuflow::settings
 
-QTEST_GUILESS_MAIN(openzoom::settings::SettingsStoreTests)
+QTEST_GUILESS_MAIN(okuflow::settings::SettingsStoreTests)
 
 #include "settings_store_tests.moc"

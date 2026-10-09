@@ -1,5 +1,5 @@
 Notes for future assistant
-Project: OpenZoom (A11Y_ZOOM) – Windows real-time camera processing playground
+Project: OkuFlow (A11Y_ZOOM) – Windows real-time camera processing playground
 
 Vision & initial ask
 - Build a Windows desktop app that captures camera frames, runs GPU kernels (multi-frame, e.g. temporal average, digital stabilization), chains several effects, and displays the result live with the ability to snap still pictures.
@@ -75,7 +75,7 @@ Pause log (2025-??): CUDA interop still failing
 - `cudaImportExternalMemory` continues to fail when importing the shared D3D12 texture, so the app keeps falling back to the CPU path. Error strings are not yet surfaced.
 - Next session: add verbose logging around the failing CUDA calls, then build a minimal `sandbox/dx12_cuda_minimal` sample that loads `img/img.jpg`, creates a shared D3D12 texture, imports it into CUDA, runs a trivial kernel, and presents the texture. Use the sample to validate heap flags and fence sync before copying fixes into the main pipeline.
 
-Update (2025-02): After refactor the Qt runtime DLLs are required at launch on Windows. Ensure Qtin is on PATH or copy Qt6*.dll beside open_zoom.exe before running the batch.
+Update (2025-02): After refactor the Qt runtime DLLs are required at launch on Windows. Ensure Qtin is on PATH or copy Qt6*.dll beside oku_flow.exe before running the batch.
 
 Update (2025-02): Added .gitignore (filters build/, ref/, IDE, Qt artifacts) and docs/README.md basics. Remember to sync these whenever the directory layout changes, especially when new generated folders appear. Qt runtime DLL note remains: ensure PATH points to Qtin before running.
 

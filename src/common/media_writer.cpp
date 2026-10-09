@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/common/media_writer.hpp"
+#include "okuflow/common/media_writer.hpp"
 
 #include <mferror.h>
 #include <propvarutil.h>
@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -61,7 +61,7 @@ private:
     std::shared_ptr<void> lifetime_;
 };
 
-constexpr GUID kOpenZoomFrameLifetimeAttribute{
+constexpr GUID kOkuFlowFrameLifetimeAttribute{
     0x0d433dd5,
     0xc1ba,
     0x4698,
@@ -1179,7 +1179,7 @@ bool VideoRecorder::AddGpuFrame(
         }
         ThrowIfFailed(
             sample->SetUnknown(
-                kOpenZoomFrameLifetimeAttribute, lifetime.Get()),
+                kOkuFlowFrameLifetimeAttribute, lifetime.Get()),
             "Retain shared recording frame");
         return QueueVideoSample(std::move(sample), identity);
     } catch (const std::exception& error) {
@@ -1197,6 +1197,6 @@ double VideoRecorder::DurationSeconds() const
            static_cast<double>(kMediaFoundationTicksPerSecond);
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

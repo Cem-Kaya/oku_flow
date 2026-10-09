@@ -1,4 +1,4 @@
-#include "openzoom/cuda/cuda_kernels.hpp"
+#include "okuflow/cuda/cuda_kernels.hpp"
 
 #include <cuda_runtime.h>
 
@@ -115,7 +115,7 @@ bool WriteStabilizationTrace(
         return false;
     }
     output << "frame,input_dx_pixels,input_dy_pixels,"
-              "openzoom_correction_dx_pixels,openzoom_correction_dy_pixels,"
+              "okuflow_correction_dx_pixels,okuflow_correction_dy_pixels,"
               "accepted\n";
     for (const StabilizationTraceRow& row : rows) {
         output << row.frame << ',' << row.inputDx << ',' << row.inputDy << ','
@@ -153,7 +153,7 @@ int main(int argc, char** argv)
 
     float4* devicePairs = nullptr;
     unsigned int* devicePairCount = nullptr;
-    openzoom::StabilizationState* deviceState = nullptr;
+    okuflow::StabilizationState* deviceState = nullptr;
     bool ok =
         CheckCuda(cudaMalloc(reinterpret_cast<void**>(&devicePairs),
                              devicePairCapacity * sizeof(float4)),
@@ -162,7 +162,7 @@ int main(int argc, char** argv)
                              sizeof(unsigned int)),
                   "cudaMalloc pair count") &&
         CheckCuda(cudaMalloc(reinterpret_cast<void**>(&deviceState),
-                             sizeof(openzoom::StabilizationState)),
+                             sizeof(okuflow::StabilizationState)),
                   "cudaMalloc state");
     if (!ok) {
         cudaFree(devicePairs);
@@ -218,7 +218,7 @@ int main(int argc, char** argv)
                        currentLuma.size() * sizeof(float),
                        cudaMemcpyHostToDevice),
                    "cudaMemcpy virtual tripod current luma");
-    openzoom::StabilizationState seededTrackerState{};
+    okuflow::StabilizationState seededTrackerState{};
     seededTrackerState.lastFrameMotion =
         make_float4(96.0f, 0.0f, 0.0f, 0.0f);
     ok = ok &&
@@ -227,7 +227,7 @@ int main(int argc, char** argv)
                               cudaMemcpyHostToDevice),
                    "cudaMemcpy virtual tripod tracker seed");
     if (ok) {
-        openzoom::LaunchVirtualTripodFeaturePairs(
+        okuflow::LaunchVirtualTripodFeaturePairs(
             deviceCurrentLuma, deviceReferenceLuma,
             trackerWidth, trackerHeight, 2.0f, 2.0f,
             width, height, devicePairs, devicePairCount,
@@ -276,7 +276,7 @@ int main(int argc, char** argv)
     float* deviceReferenceLevel2 = nullptr;
     float* deviceCurrentLevel1 = nullptr;
     float* deviceCurrentLevel2 = nullptr;
-    openzoom::TripodReferenceFeature* devicePreparedFeatures = nullptr;
+    okuflow::TripodReferenceFeature* devicePreparedFeatures = nullptr;
     unsigned int* devicePreparedFeatureCount = nullptr;
     float* deviceReferenceAccumulator = nullptr;
     unsigned int* deviceReferenceSampleCounts = nullptr;
@@ -304,7 +304,7 @@ int main(int argc, char** argv)
          CheckCuda(cudaMalloc(
                        reinterpret_cast<void**>(&devicePreparedFeatures),
                        devicePairCapacity *
-                           sizeof(openzoom::TripodReferenceFeature)),
+                           sizeof(okuflow::TripodReferenceFeature)),
                    "cudaMalloc prepared tripod features") &&
          CheckCuda(cudaMalloc(
                        reinterpret_cast<void**>(&devicePreparedFeatureCount),
@@ -328,12 +328,12 @@ int main(int argc, char** argv)
                               sizeof(unsigned int)),
                    "cudaMalloc tripod selection flag");
     if (ok) {
-        openzoom::LaunchStabilizationLumaPyramid(
+        okuflow::LaunchStabilizationLumaPyramid(
             deviceReferenceLuma, trackerWidth, trackerHeight,
             deviceReferenceLevel1, trackerLevel1Width, trackerLevel1Height,
             deviceReferenceLevel2, trackerLevel2Width, trackerLevel2Height,
             nullptr);
-        openzoom::LaunchPrepareVirtualTripodReference(
+        okuflow::LaunchPrepareVirtualTripodReference(
             deviceReferenceLuma, trackerWidth, trackerHeight,
             deviceReferenceLevel1, trackerLevel1Width, trackerLevel1Height,
             deviceReferenceLevel2, trackerLevel2Width, trackerLevel2Height,
@@ -352,7 +352,7 @@ int main(int argc, char** argv)
         }
     }
     if (ok) {
-        openzoom::LaunchResetVirtualTripodState(deviceState, false, nullptr);
+        okuflow::LaunchResetVirtualTripodState(deviceState, false, nullptr);
         std::vector<float> displayErrors;
         double inputSquared = 0.0;
         double outputSquared = 0.0;
@@ -388,12 +388,12 @@ int main(int argc, char** argv)
             if (!ok) {
                 break;
             }
-            openzoom::LaunchStabilizationLumaPyramid(
+            okuflow::LaunchStabilizationLumaPyramid(
                 deviceCurrentLuma, trackerWidth, trackerHeight,
                 deviceCurrentLevel1, trackerLevel1Width, trackerLevel1Height,
                 deviceCurrentLevel2, trackerLevel2Width, trackerLevel2Height,
                 nullptr);
-            openzoom::LaunchPreparedVirtualTripodFeaturePairs(
+            okuflow::LaunchPreparedVirtualTripodFeaturePairs(
                 deviceCurrentLuma, trackerWidth, trackerHeight,
                 deviceCurrentLevel1, trackerLevel1Width, trackerLevel1Height,
                 deviceCurrentLevel2, trackerLevel2Width, trackerLevel2Height,
@@ -402,11 +402,11 @@ int main(int argc, char** argv)
                 devicePreparedFeatureCount, analysisToSource, analysisToSource,
                 width, height, devicePairs, devicePairCount,
                 devicePairCapacity, deviceState, nullptr);
-            openzoom::LaunchVirtualTripodSimilarityEstimate(
+            okuflow::LaunchVirtualTripodSimilarityEstimate(
                 devicePairs, devicePairCount, devicePairCapacity, width, height,
                 2.0f, 1.0f, 0.45f, 0.5f, 0.5f, testZoom,
                 deviceState, nullptr);
-            openzoom::StabilizationState measuredState{};
+            okuflow::StabilizationState measuredState{};
             ok = CheckCuda(
                 cudaMemcpy(&measuredState, deviceState, sizeof(measuredState),
                            cudaMemcpyDeviceToHost),
@@ -477,10 +477,10 @@ int main(int argc, char** argv)
                                   cudaMemcpyHostToDevice),
                        "cudaMemcpy blurred tripod candidate");
         if (ok) {
-            openzoom::LaunchMeasureVirtualTripodFocus(
+            okuflow::LaunchMeasureVirtualTripodFocus(
                 deviceCurrentLuma, trackerWidth, trackerHeight,
                 deviceFocusScore, nullptr);
-            openzoom::LaunchSelectSharperVirtualTripodReference(
+            okuflow::LaunchSelectSharperVirtualTripodReference(
                 deviceCurrentLuma, deviceReferenceLuma,
                 static_cast<int>(referenceLuma.size()), deviceFocusScore,
                 deviceBestFocusScore, deviceSelectionFlag, nullptr);
@@ -490,10 +490,10 @@ int main(int argc, char** argv)
                            "cudaMemcpy sharp tripod candidate");
         }
         if (ok) {
-            openzoom::LaunchMeasureVirtualTripodFocus(
+            okuflow::LaunchMeasureVirtualTripodFocus(
                 deviceCurrentLuma, trackerWidth, trackerHeight,
                 deviceFocusScore, nullptr);
-            openzoom::LaunchSelectSharperVirtualTripodReference(
+            okuflow::LaunchSelectSharperVirtualTripodReference(
                 deviceCurrentLuma, deviceReferenceLuma,
                 static_cast<int>(referenceLuma.size()), deviceFocusScore,
                 deviceBestFocusScore, deviceSelectionFlag, nullptr);
@@ -517,11 +517,11 @@ int main(int argc, char** argv)
             }
         }
         if (ok) {
-            openzoom::LaunchInitializeVirtualTripodAccumulator(
+            okuflow::LaunchInitializeVirtualTripodAccumulator(
                 deviceReferenceLuma, deviceReferenceAccumulator,
                 deviceReferenceSampleCounts,
                 static_cast<int>(referenceLuma.size()), nullptr);
-            openzoom::StabilizationState accumulationState{};
+            okuflow::StabilizationState accumulationState{};
             accumulationState.diagnostics.y = 1.0f;
             accumulationState.lastFrameMotion =
                 make_float4(4.0f, -2.0f, 0.0f, 0.0f);
@@ -547,10 +547,10 @@ int main(int argc, char** argv)
                 if (!ok) {
                     break;
                 }
-                openzoom::LaunchMeasureVirtualTripodFocus(
+                okuflow::LaunchMeasureVirtualTripodFocus(
                     deviceCurrentLuma, trackerWidth, trackerHeight,
                     deviceFocusScore, nullptr);
-                openzoom::LaunchAccumulateVirtualTripodReference(
+                okuflow::LaunchAccumulateVirtualTripodReference(
                     deviceCurrentLuma, deviceReferenceLuma,
                     trackerWidth, trackerHeight, 2.0f, 2.0f,
                     deviceFocusScore, deviceBestFocusScore, deviceState,
@@ -558,7 +558,7 @@ int main(int argc, char** argv)
                     nullptr);
             }
             if (ok) {
-                openzoom::LaunchFinalizeVirtualTripodReference(
+                okuflow::LaunchFinalizeVirtualTripodReference(
                     deviceReferenceLuma, deviceReferenceAccumulator,
                     deviceReferenceSampleCounts,
                     static_cast<int>(referenceLuma.size()), nullptr);
@@ -618,7 +618,7 @@ int main(int argc, char** argv)
     cudaFree(devicePreparedFeatureCount);
     cudaFree(deviceReferenceLuma);
     cudaFree(deviceCurrentLuma);
-    openzoom::StabilizationState state{};
+    okuflow::StabilizationState state{};
     const unsigned int noPairs = 0;
     constexpr float testFps = 30.0f;
     std::vector<float4> oscillationPairs;
@@ -642,7 +642,7 @@ int main(int argc, char** argv)
     // the pairwise filter, absolute motion must not accumulate: the displayed
     // path (reference motion + correction) stays at the captured origin even
     // across slow drift and the recorded clamp-arm oscillation.
-    openzoom::LaunchResetVirtualTripodState(deviceState, false, nullptr);
+    okuflow::LaunchResetVirtualTripodState(deviceState, false, nullptr);
     inputEnergy = 0.0;
     outputEnergy = 0.0;
     for (int frame = 0; ok && frame < recordedFrames; ++frame) {
@@ -661,7 +661,7 @@ int main(int argc, char** argv)
                                   oscillationPairs.size() * sizeof(float4),
                                   cudaMemcpyHostToDevice),
                        "cudaMemcpy virtual tripod pairs");
-        openzoom::LaunchVirtualTripodSimilarityEstimate(
+        okuflow::LaunchVirtualTripodSimilarityEstimate(
             devicePairs, devicePairCount, oscillationPairCount, width, height,
             6.0f, 0.98f, 0.25f, 0.5f, 0.5f, 1.0f,
             deviceState, nullptr);
@@ -698,7 +698,7 @@ int main(int argc, char** argv)
          CheckCuda(cudaMemcpy(devicePairCount, &noPairs, sizeof(noPairs),
                               cudaMemcpyHostToDevice),
                    "cudaMemcpy virtual tripod empty count");
-    openzoom::LaunchVirtualTripodSimilarityEstimate(
+    okuflow::LaunchVirtualTripodSimilarityEstimate(
         devicePairs, devicePairCount, oscillationPairCount, width, height,
         6.0f, 0.98f, 0.25f, 0.5f, 0.5f, 1.0f,
         deviceState, nullptr);
@@ -714,7 +714,7 @@ int main(int argc, char** argv)
              Near(state.tripodDiagnostics.z, 2.0f, 0.01f,
                   "virtual tripod weakened state");
     }
-    openzoom::LaunchResetVirtualTripodState(deviceState, true, nullptr);
+    okuflow::LaunchResetVirtualTripodState(deviceState, true, nullptr);
     for (float4& pair : oscillationPairs) {
         pair.z = pair.x;
         pair.w = pair.y;
@@ -728,7 +728,7 @@ int main(int argc, char** argv)
                               sizeof(oscillationPairCount),
                               cudaMemcpyHostToDevice),
                    "cudaMemcpy virtual tripod relock count");
-    openzoom::LaunchVirtualTripodSimilarityEstimate(
+    okuflow::LaunchVirtualTripodSimilarityEstimate(
         devicePairs, devicePairCount, oscillationPairCount, width, height,
         6.0f, 0.98f, 0.25f, 0.5f, 0.5f, 1.0f,
         deviceState, nullptr);
@@ -768,7 +768,7 @@ int main(int argc, char** argv)
     }
     const unsigned int roiPairCount =
         static_cast<unsigned int>(roiPairs.size());
-    openzoom::LaunchResetVirtualTripodState(deviceState, false, nullptr);
+    okuflow::LaunchResetVirtualTripodState(deviceState, false, nullptr);
     ok = ok &&
          CheckCuda(cudaMemcpy(devicePairs, roiPairs.data(),
                               roiPairs.size() * sizeof(float4),
@@ -777,7 +777,7 @@ int main(int argc, char** argv)
          CheckCuda(cudaMemcpy(devicePairCount, &roiPairCount,
                               sizeof(roiPairCount), cudaMemcpyHostToDevice),
                    "cudaMemcpy virtual tripod ROI count");
-    openzoom::LaunchVirtualTripodSimilarityEstimate(
+    okuflow::LaunchVirtualTripodSimilarityEstimate(
         devicePairs, devicePairCount, roiPairCount, width, height,
         1.0f, 1.0f, 0.45f, 0.82f, 0.5f, 4.0f,
         deviceState, nullptr);
@@ -805,7 +805,7 @@ int main(int argc, char** argv)
     // Recovery keyframes live in the original lock's coordinate system. A
     // +3/-2 px match against a keyframe captured at +40/-15 px must therefore
     // produce +43/-17 px, not restart the tripod origin at +3/-2.
-    openzoom::TripodMatchCandidate* deviceCandidates = nullptr;
+    okuflow::TripodMatchCandidate* deviceCandidates = nullptr;
     float4* deviceKeyframeOrigins = nullptr;
     unsigned int* deviceKeyframeValid = nullptr;
     constexpr unsigned int keyframeCount = 4u;
@@ -819,7 +819,7 @@ int main(int argc, char** argv)
     ok = ok &&
          CheckCuda(cudaMalloc(reinterpret_cast<void**>(&deviceCandidates),
                               keyframeCount *
-                                  sizeof(openzoom::TripodMatchCandidate)),
+                                  sizeof(okuflow::TripodMatchCandidate)),
                    "cudaMalloc tripod candidates") &&
          CheckCuda(cudaMalloc(reinterpret_cast<void**>(&deviceKeyframeOrigins),
                               keyframeCount * sizeof(float4)),
@@ -837,7 +837,7 @@ int main(int argc, char** argv)
                    "cudaMemcpy tripod keyframe validity") &&
          CheckCuda(cudaMemset(deviceCandidates, 0,
                               keyframeCount *
-                                  sizeof(openzoom::TripodMatchCandidate)),
+                                  sizeof(okuflow::TripodMatchCandidate)),
                    "cudaMemset tripod candidates");
     std::vector<float4> recoveryPairs;
     for (int y = 80; y <= 640; y += 70) {
@@ -860,12 +860,12 @@ int main(int argc, char** argv)
                               cudaMemcpyHostToDevice),
                    "cudaMemcpy recovery keyframe pair count");
     if (ok) {
-        openzoom::LaunchResetVirtualTripodState(deviceState, false, nullptr);
-        openzoom::LaunchVirtualTripodMatchCandidate(
+        okuflow::LaunchResetVirtualTripodState(deviceState, false, nullptr);
+        okuflow::LaunchVirtualTripodMatchCandidate(
             devicePairs, devicePairCount, recoveryPairCount, width, height,
             1.0f, 0.5f, 0.5f, 1.0f, deviceKeyframeOrigins,
             deviceKeyframeValid, 1u, deviceCandidates, nullptr);
-        openzoom::LaunchSelectVirtualTripodMatch(
+        okuflow::LaunchSelectVirtualTripodMatch(
             deviceCandidates, keyframeCount, 1.0f, 0.45f, 1.0f,
             width, height, deviceState, nullptr);
         ok = CheckCuda(cudaMemcpy(&state, deviceState, sizeof(state),
@@ -898,7 +898,7 @@ int main(int argc, char** argv)
     ok = ok &&
          CheckCuda(cudaMemset(deviceCandidates, 0,
                               keyframeCount *
-                                  sizeof(openzoom::TripodMatchCandidate)),
+                                  sizeof(okuflow::TripodMatchCandidate)),
                    "cudaMemset rejected tripod candidates") &&
          CheckCuda(cudaMemcpy(devicePairs, fallbackPairs.data(),
                               fallbackPairs.size() * sizeof(float4),
@@ -909,10 +909,10 @@ int main(int argc, char** argv)
                               cudaMemcpyHostToDevice),
                    "cudaMemcpy tripod fallback count");
     if (ok) {
-        openzoom::LaunchSelectVirtualTripodMatch(
+        okuflow::LaunchSelectVirtualTripodMatch(
             deviceCandidates, keyframeCount, 1.0f, 0.45f, 1.0f,
             width, height, deviceState, nullptr);
-        openzoom::LaunchVirtualTripodRelativeFallback(
+        okuflow::LaunchVirtualTripodRelativeFallback(
             devicePairs, devicePairCount, fallbackPairCount,
             width, height, 1.0f, 0.45f, deviceState, nullptr);
         ok = CheckCuda(cudaMemcpy(&state, deviceState, sizeof(state),
@@ -946,12 +946,12 @@ int main(int argc, char** argv)
                               cudaMemcpyHostToDevice),
                    "cudaMemcpy tripod seed clamp count");
     if (ok) {
-        openzoom::LaunchResetVirtualTripodState(deviceState, false, nullptr);
+        okuflow::LaunchResetVirtualTripodState(deviceState, false, nullptr);
         // Let the display correction reach its crop budget. The first accepted
         // frame is deliberately rate-limited, while every frame must preserve
         // the full 500 px tracker seed.
         for (int frame = 0; frame < 16; ++frame) {
-            openzoom::LaunchVirtualTripodSimilarityEstimate(
+            okuflow::LaunchVirtualTripodSimilarityEstimate(
                 devicePairs, devicePairCount, recoveryPairCount, width, height,
                 2.0f, 1.0f, 0.25f, 0.5f, 0.5f, 4.0f,
                 deviceState, nullptr);
@@ -1033,13 +1033,13 @@ int main(int argc, char** argv)
                               cudaMemcpyHostToDevice),
                    "cudaMemcpy tripod current rows");
     if (ok) {
-        openzoom::StabilizationState rejectedState{};
+        okuflow::StabilizationState rejectedState{};
         rejectedState.tripodDiagnostics.y = 1.0f;
         ok = CheckCuda(cudaMemcpy(deviceState, &rejectedState,
                                   sizeof(rejectedState),
                                   cudaMemcpyHostToDevice),
                        "cudaMemcpy rejected tripod state");
-        openzoom::LaunchVirtualTripodProjectionSeed(
+        okuflow::LaunchVirtualTripodProjectionSeed(
             deviceCurrentColumns, deviceCurrentRows,
             deviceReferenceColumns, deviceReferenceRows,
             projectionWidth, projectionHeight, 2.0f, 2.0f,
@@ -1085,7 +1085,7 @@ int main(int argc, char** argv)
     uchar4* deviceSource = nullptr;
     uchar4* deviceStabilized = nullptr;
     const size_t warpBytes = source.size() * sizeof(uchar4);
-    openzoom::StabilizationState warpState{};
+    okuflow::StabilizationState warpState{};
     warpState.correction = make_float4(8.0f, 0.0f, 0.0f, 0.0f);
     ok = ok &&
          CheckCuda(cudaMalloc(reinterpret_cast<void**>(&deviceSource),
@@ -1101,7 +1101,7 @@ int main(int argc, char** argv)
                               cudaMemcpyHostToDevice),
                    "cudaMemcpy stabilization warp state");
     if (ok) {
-        openzoom::LaunchStabilizationWarp(
+        okuflow::LaunchStabilizationWarp(
             deviceStabilized, static_cast<size_t>(warpWidth) * sizeof(uchar4),
             deviceSource, static_cast<size_t>(warpWidth) * sizeof(uchar4),
             warpWidth, warpHeight, deviceState, nullptr);
@@ -1129,7 +1129,7 @@ int main(int argc, char** argv)
         static_cast<size_t>(bumpWidth) * bumpHeight * sizeof(uchar4);
     uchar4* deviceBumpCurrent = nullptr;
     uchar4* deviceBumpHeld = nullptr;
-    openzoom::BumpHoldState* deviceBumpState = nullptr;
+    okuflow::BumpHoldState* deviceBumpState = nullptr;
     float* deviceBumpFocus = nullptr;
     float* deviceBumpReferenceFocus = nullptr;
     std::vector<uchar4> bumpFrame(
@@ -1150,7 +1150,7 @@ int main(int argc, char** argv)
                               bumpBytes),
                    "cudaMalloc bump hold held") &&
          CheckCuda(cudaMalloc(reinterpret_cast<void**>(&deviceBumpState),
-                              sizeof(openzoom::BumpHoldState)),
+                              sizeof(okuflow::BumpHoldState)),
                    "cudaMalloc bump hold state") &&
          CheckCuda(cudaMalloc(reinterpret_cast<void**>(&deviceBumpFocus),
                               sizeof(float)),
@@ -1167,7 +1167,7 @@ int main(int argc, char** argv)
          CheckCuda(cudaMemcpy(deviceBumpReferenceFocus, &sharpFocus,
                               sizeof(sharpFocus), cudaMemcpyHostToDevice),
                    "cudaMemcpy bump hold reference focus");
-    openzoom::StabilizationState bumpTrackingState{};
+    okuflow::StabilizationState bumpTrackingState{};
     bumpTrackingState.diagnostics.y = 1.0f;
     bumpTrackingState.lastFrameMotion =
         make_float4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1177,12 +1177,12 @@ int main(int argc, char** argv)
                               cudaMemcpyHostToDevice),
                    "cudaMemcpy bump hold tracking state");
     if (ok) {
-        openzoom::LaunchResetBumpHoldState(deviceBumpState, nullptr);
+        okuflow::LaunchResetBumpHoldState(deviceBumpState, nullptr);
         ok = fillBumpFrame(10u);
-        openzoom::LaunchUpdateBumpHoldState(
+        okuflow::LaunchUpdateBumpHoldState(
             deviceBumpState, deviceState, deviceBumpFocus,
             deviceBumpReferenceFocus, true, 1280, 720, 5.0f, 2.0f, nullptr);
-        openzoom::LaunchApplyBumpHold(
+        okuflow::LaunchApplyBumpHold(
             deviceBumpCurrent,
             static_cast<size_t>(bumpWidth) * sizeof(uchar4),
             deviceBumpHeld,
@@ -1197,10 +1197,10 @@ int main(int argc, char** argv)
                                   cudaMemcpyHostToDevice),
                        "cudaMemcpy bump hold impact state") &&
              fillBumpFrame(100u);
-        openzoom::LaunchUpdateBumpHoldState(
+        okuflow::LaunchUpdateBumpHoldState(
             deviceBumpState, deviceState, deviceBumpFocus,
             deviceBumpReferenceFocus, true, 1280, 720, 5.0f, 2.0f, nullptr);
-        openzoom::LaunchApplyBumpHold(
+        okuflow::LaunchApplyBumpHold(
             deviceBumpCurrent,
             static_cast<size_t>(bumpWidth) * sizeof(uchar4),
             deviceBumpHeld,
@@ -1210,7 +1210,7 @@ int main(int argc, char** argv)
              CheckCuda(cudaMemcpy(bumpFrame.data(), deviceBumpCurrent,
                                   bumpBytes, cudaMemcpyDeviceToHost),
                        "cudaMemcpy bump hold impact output");
-        openzoom::BumpHoldState bumpState{};
+        okuflow::BumpHoldState bumpState{};
         ok = ok &&
              CheckCuda(cudaMemcpy(&bumpState, deviceBumpState,
                                   sizeof(bumpState), cudaMemcpyDeviceToHost),
@@ -1224,10 +1224,10 @@ int main(int argc, char** argv)
     }
     for (int stable = 0; ok && stable < 5; ++stable) {
         ok = fillBumpFrame(100u);
-        openzoom::LaunchUpdateBumpHoldState(
+        okuflow::LaunchUpdateBumpHoldState(
             deviceBumpState, deviceState, deviceBumpFocus,
             deviceBumpReferenceFocus, true, 1280, 720, 5.0f, 2.0f, nullptr);
-        openzoom::LaunchApplyBumpHold(
+        okuflow::LaunchApplyBumpHold(
             deviceBumpCurrent,
             static_cast<size_t>(bumpWidth) * sizeof(uchar4),
             deviceBumpHeld,
@@ -1236,10 +1236,10 @@ int main(int argc, char** argv)
     }
     for (int recovery = 0; ok && recovery < 4; ++recovery) {
         ok = fillBumpFrame(100u);
-        openzoom::LaunchUpdateBumpHoldState(
+        okuflow::LaunchUpdateBumpHoldState(
             deviceBumpState, deviceState, deviceBumpFocus,
             deviceBumpReferenceFocus, true, 1280, 720, 5.0f, 2.0f, nullptr);
-        openzoom::LaunchApplyBumpHold(
+        okuflow::LaunchApplyBumpHold(
             deviceBumpCurrent,
             static_cast<size_t>(bumpWidth) * sizeof(uchar4),
             deviceBumpHeld,
@@ -1255,7 +1255,7 @@ int main(int argc, char** argv)
         }
     }
     if (ok) {
-        openzoom::BumpHoldState bumpState{};
+        okuflow::BumpHoldState bumpState{};
         ok = CheckCuda(cudaMemcpy(&bumpState, deviceBumpState,
                                   sizeof(bumpState), cudaMemcpyDeviceToHost),
                        "cudaMemcpy bump hold recovered mode");

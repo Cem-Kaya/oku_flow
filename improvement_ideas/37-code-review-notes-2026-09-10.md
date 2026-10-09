@@ -35,8 +35,8 @@ Root reviewed and integrated the Astra implementations and ran the tracked
 Final log: [review37-build-matrix.log](../build/review37-build-matrix.log).
 The follow-up `scripts/build_release_bundle.bat` run also passed all 27
 release tests and published the complete CUDA-enabled bundle to
-`dist/OpenZoom`. Its executable SHA-256 was checked against
-`build/release-bundle/cmake/Release/open_zoom.exe` and matched exactly.
+`dist/OkuFlow`. Its executable SHA-256 was checked against
+`build/release-bundle/cmake/Release/oku_flow.exe` and matched exactly.
 Packaging log: [review37-bundle.log](../build/review37-bundle.log).
 The CUDA preset includes the shared CPU coverage plus its GPU targets; the
 counts are suite executions, not 50 different tests. No targets were skipped.
@@ -60,7 +60,7 @@ effective viewing zoom, including 1x when Fit suppresses requested magnification
 Coverage: `stabilization_viewing_zoom`, existing canonical-view geometry and
 CUDA stabilization/replay targets.
 
-**Problem:** `OpenZoomApp::RunCudaPipeline()` sets `settings.enableZoom = false`
+**Problem:** `OkuFlowApp::RunCudaPipeline()` sets `settings.enableZoom = false`
 because image enlargement now belongs to presentation. It separately supplies
 the actual viewing magnification in `settings.zoomAmount`.
 `CudaInteropSurface::ProcessFrame()` nevertheless uses `enableZoom` to decide
@@ -76,7 +76,7 @@ region can receive the wrong weight.
 **Evidence:**
 
 - [app_pipeline_runtime.cpp](../src/app/app_pipeline_runtime.cpp),
-  `OpenZoomApp::RunCudaPipeline`, lines 728–734.
+  `OkuFlowApp::RunCudaPipeline`, lines 728–734.
 - [cuda_interop.cpp](../src/cuda/cuda_interop.cpp),
   `CudaInteropSurface::ProcessFrame`, lines 3220–3224 and the subsequent
   `LaunchVirtualTripodMatchCandidate` / `LaunchSelectVirtualTripodMatch` calls.
@@ -109,7 +109,7 @@ though the live overlay remains aligned. A full-frame cache with an identity
 source rectangle does not expose the same mismatch.
 
 **Evidence:** [app_pipeline_runtime.cpp](../src/app/app_pipeline_runtime.cpp),
-`OpenZoomApp::PresentLatestCudaScene`: crop remapping at lines 892–904 and
+`OkuFlowApp::PresentLatestCudaScene`: crop remapping at lines 892–904 and
 `RenderAnnotationStrokes(..., transform, ...)` at lines 1057–1061.
 
 **Suggested correction:** Render the annotation layer using `annotationTransform`.
@@ -206,7 +206,7 @@ repeatedly pay allocation, synchronization, initialization, and logging costs.
 The fallback therefore continues doing work that is already known to fail.
 
 **Evidence:** [app_pipeline_runtime.cpp](../src/app/app_pipeline_runtime.cpp),
-`OpenZoomApp::EnsureCudaSurface`, successful-cache check at lines 346–350,
+`OkuFlowApp::EnsureCudaSurface`, successful-cache check at lines 346–350,
 resource reset at lines 353–365, and initialization failure at lines 424–436;
 callers `TryProcessRawFrameWithCuda` and `ProcessFrameWithCuda`.
 
@@ -314,7 +314,7 @@ ordering correctly protects normal resource lifetime.
 **Evidence:** [media_capture.cpp](../src/capture/media_capture.cpp),
 `MediaCapture::StopCapture`, lines 697–707;
 [app_pipeline_runtime.cpp](../src/app/app_pipeline_runtime.cpp),
-`OpenZoomApp::StopCameraCapture`, starting at line 1465.
+`OkuFlowApp::StopCameraCapture`, starting at line 1465.
 
 **Suggested correction:** Design a bounded stop policy with independently owned
 capture state. If a worker cannot stop, preserve its resources and callback

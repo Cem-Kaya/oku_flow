@@ -3,7 +3,7 @@
 Refreshed on 2026-03-31 after auditing the current repository state.
 
 ## What Already Exists
-- [x] Audit current GPU entry points: `OpenZoomApp::ProcessFrameWithCuda` and `CudaInteropSurface::ProcessFrame`.
+- [x] Audit current GPU entry points: `OkuFlowApp::ProcessFrameWithCuda` and `CudaInteropSurface::ProcessFrame`.
 - [x] Add a persistent UI toggle for spatial sharpening plus backend selection.
 - [x] Introduce a staging format switch (`rgba8` or `fp16`) for future expansion.
 - [x] Keep Gaussian blur available as a non-AI baseline path.

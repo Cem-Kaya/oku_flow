@@ -1,5 +1,5 @@
-#include "openzoom/app/settings_controller.hpp"
-#include "openzoom/app/protected_secret_store.hpp"
+#include "okuflow/app/settings_controller.hpp"
+#include "okuflow/app/protected_secret_store.hpp"
 
 #include <QDateTime>
 #include <QFile>
@@ -7,7 +7,7 @@
 
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -61,7 +61,7 @@ SettingsController::SettingsController(QString settingsPath)
         } else {
             InitializeDefaults();
             startupNotice_ =
-                QStringLiteral("%1 OpenZoom started with safe defaults%2.")
+                QStringLiteral("%1 OkuFlow started with safe defaults%2.")
                     .arg(primary.error,
                          preserved
                              ? QStringLiteral("; the original file was preserved")
@@ -231,7 +231,7 @@ bool SettingsController::Save(const settings::AdvancedConfig& current)
     }
     if (!settings::Save(settingsPath_, settings_)) {
         lastError_ =
-            QStringLiteral("OpenZoom could not save settings. The previous settings file "
+            QStringLiteral("OkuFlow could not save settings. The previous settings file "
                            "and its backup were left intact.");
         return false;
     }
@@ -290,4 +290,4 @@ QString SettingsController::LastError() const
     return lastError_;
 }
 
-} // namespace openzoom
+} // namespace okuflow

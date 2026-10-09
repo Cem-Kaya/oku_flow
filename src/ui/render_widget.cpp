@@ -1,8 +1,8 @@
 #ifdef _WIN32
 
-#include "openzoom/ui/render_widget.hpp"
+#include "okuflow/ui/render_widget.hpp"
 
-#include "openzoom/d3d12/presenter.hpp"
+#include "okuflow/d3d12/presenter.hpp"
 
 #include <Windows.h>
 
@@ -13,7 +13,7 @@
 
 #include <algorithm>
 
-namespace openzoom {
+namespace okuflow {
 
 RenderWidget::RenderWidget(QWidget* parent)
     : QWidget(parent) {
@@ -94,6 +94,6 @@ void RenderWidget::ApplyPendingPresenterResize() {
     }
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

@@ -78,13 +78,13 @@ Everything below is in `src/ui/main_window.cpp` unless stated.
 | `"Assistive"` | `:714` |
 | `"Sharpen and focus"` | `:738` |
 | `"Interaction and diagnostics"` | `:788` |
-| Accessors (`cameraModesList()`, …) | `include/openzoom/ui/main_window.hpp:78,211` |
+| Accessors (`cameraModesList()`, …) | `include/okuflow/ui/main_window.hpp:78,211` |
 | Per-slot `setEnabled` calls | `src/app/app_controls.cpp:22,37,52,199,239,368,437` |
 | Partial text-clarity enable block | `src/app/app_controls.cpp:480-500` |
-| `VideoFormat {width,height,numerator,denominator}` | `include/openzoom/capture/media_capture.hpp:44-49` |
+| `VideoFormat {width,height,numerator,denominator}` | `include/okuflow/capture/media_capture.hpp:44-49` |
 | `MediaCapture::StartCapture` | `src/capture/media_capture.cpp:278` |
 | `MediaCapture::ConfigureReader` | `src/capture/media_capture.cpp:446` |
-| `EnumerateFormats` | `include/openzoom/capture/media_capture.hpp` |
+| `EnumerateFormats` | `include/okuflow/capture/media_capture.hpp` |
 
 ---
 
@@ -165,13 +165,13 @@ auto-expand keys off "is this non-default".
 
 **Implementation**
 
-1. Add `void OpenZoomApp::UpdateControlEnabledStates();` — declare in
-   `include/openzoom/app/app.hpp` near the other `Update*Ui()` members, define
+1. Add `void OkuFlowApp::UpdateControlEnabledStates();` — declare in
+   `include/okuflow/app/app.hpp` near the other `Update*Ui()` members, define
    in `src/app/app_controls.cpp`.
 2. Move **every** existing `setEnabled` call from the toggle slots into it.
    Each line derives purely from config flags, never from widget state:
    ```cpp
-   void OpenZoomApp::UpdateControlEnabledStates() {
+   void OkuFlowApp::UpdateControlEnabledStates() {
        auto set = [](QWidget* w, bool on) { if (w) w->setEnabled(on); };
        set(uiState_->bwSlider_,   blackWhiteEnabled_);
        set(uiState_->zoomSlider_, zoomEnabled_);
@@ -232,7 +232,7 @@ what makes it safe to do first.
 
 ## Phase 2 — collapsible sections + auto-expand (1–2 days)
 
-**New file: `src/ui/collapsible_section.cpp` / `include/openzoom/ui/collapsible_section.hpp`.**
+**New file: `src/ui/collapsible_section.cpp` / `include/okuflow/ui/collapsible_section.hpp`.**
 Follow the existing standalone-widget pattern (`color_scheme_picker.*`).
 
 ```cpp
@@ -263,7 +263,7 @@ Requirements:
 
 **Auto-expand rule (non-negotiable).** A `More` block whose contents differ from
 profile defaults **must** expand on load and show its changed count. Implement
-as `OpenZoomApp::UpdateSectionChangedCounts()`, called from the same two places
+as `OkuFlowApp::UpdateSectionChangedCounts()`, called from the same two places
 as `UpdateControlEnabledStates()`. Compare against the profile's default
 `AdvancedConfig` using the existing equivalence helper in
 `src/app/settings_store.cpp`. Without this, U4's *"the UI lies about its own
@@ -321,7 +321,7 @@ to a combo without this work only makes the lie prettier.
    `"Requested 1920x1080 @ 60; driver selected 1280x720 @ 30."`
 
 **Settings** — add `std::wstring cameraFormatStableId` to the **global** section
-of `PersistentSettings` (`include/openzoom/app/settings_store.hpp`), never to
+of `PersistentSettings` (`include/okuflow/app/settings_store.hpp`), never to
 `AdvancedConfig`. It is a device property. Migration: absent → `nullptr`
 (driver's choice), which is exactly today's behaviour, so old settings files
 keep working.
@@ -335,7 +335,7 @@ keep working.
 7. Populate sorted by height then frame rate, descending, de-duplicated,
    formatted `"1280 × 720 @ 30 fps"`. Add a first entry
    `"Automatic (driver's choice)"` mapping to `nullptr`.
-8. `OpenZoomApp::OnCameraFormatChanged(int)` in `app_controls.cpp` next to the
+8. `OkuFlowApp::OnCameraFormatChanged(int)` in `app_controls.cpp` next to the
    existing camera slot: persist the stable id, restart capture through the same
    path as camera switching (`app_pipeline_runtime.cpp:700-712`, which already
    does the `ResetStabilization` / `ResetKeystone` / `ResetTemporalHistory`
@@ -478,7 +478,7 @@ collapsible sections are a hazard, not a free win.
 Phases 0–5 are implemented:
 
 - dependent-control enabled state is centralized in
-  `OpenZoomApp::UpdateControlEnabledStates()`;
+  `OkuFlowApp::UpdateControlEnabledStates()`;
 - Device, Viewport, and Profile ownership is visible and announced;
 - the Advanced inspector uses persistent, changed-aware collapsible sections
   with a pinned `Ctrl+F` search;
@@ -489,10 +489,10 @@ Phases 0–5 are implemented:
 
 Automated validation:
 
-- release `open_zoom` target: passed with CUDA and NVIDIA Text Super Resolution;
+- release `oku_flow` target: passed with CUDA and NVIDIA Text Super Resolution;
 - `settings_store_round_trip`: passed;
 - `viewport_transform_geometry`: passed;
-- locked-bundle fallback: `dist/OpenZoom2/open_zoom.exe` SHA-256 matches the
+- locked-bundle fallback: `dist/OkuFlow2/oku_flow.exe` SHA-256 matches the
   release build (`51FBB39CA53D7B447A324C1715FAC79074489ECDC9588C90245B633DA55731EE`).
 
 The unchecked acceptance items above remain deliberate owner/hardware checks.

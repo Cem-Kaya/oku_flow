@@ -1,9 +1,9 @@
 #ifdef _WIN32
 
 #include "media_capture_session.hpp"
-#include "openzoom/capture/capture_texture.hpp"
-#include "openzoom/capture/capture_buffer.hpp"
-#include "openzoom/capture/capture_color.hpp"
+#include "okuflow/capture/capture_texture.hpp"
+#include "okuflow/capture/capture_buffer.hpp"
+#include "okuflow/capture/capture_color.hpp"
 
 #include <QDebug>
 
@@ -25,7 +25,7 @@
 #include <utility>
 #include <sstream>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -465,7 +465,7 @@ bool MediaCaptureSession::StartCapture(const CameraDescriptor& descriptor,
             return false;
         }
 
-        if (qEnvironmentVariableIsSet("OPENZOOM_CAPTURE_DIAGNOSTICS")) {
+        if (qEnvironmentVariableIsSet("OKUFLOW_CAPTURE_DIAGNOSTICS")) {
             Microsoft::WRL::ComPtr<IMFPresentationDescriptor> presentation;
             DWORD streamCount = 0;
             if (SUCCEEDED(mediaSource->CreatePresentationDescriptor(&presentation)) &&
@@ -1553,7 +1553,7 @@ void MediaCaptureSession::CaptureLoop(FrameCallback callback, CaptureErrorCallba
     FrameFormat format = currentFormat_;
     std::uint64_t sequenceNumber = 0;
     const bool diagnosticsEnabled =
-        qEnvironmentVariableIsSet("OPENZOOM_CAPTURE_DIAGNOSTICS");
+        qEnvironmentVariableIsSet("OKUFLOW_CAPTURE_DIAGNOSTICS");
     std::int64_t diagnosticsStartClock = QueryClock100ns();
     std::uint64_t diagnosticsStartCpu = ThreadCpuTime100ns();
     std::uint64_t diagnosticsFrames = 0;
@@ -1769,6 +1769,6 @@ void MediaCaptureSession::CaptureLoop(FrameCallback callback, CaptureErrorCallba
     }
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

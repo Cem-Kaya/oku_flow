@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/common/realtime_native_rtc_carrier.hpp"
+#include "okuflow/common/realtime_native_rtc_carrier.hpp"
 
 #include <QDebug>
 #include <QMetaObject>
@@ -23,9 +23,9 @@
 #include <opus.h>
 #include <rtc/rtc.hpp>
 
-#include "openzoom/common/transcript.hpp"
+#include "okuflow/common/transcript.hpp"
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -480,9 +480,9 @@ void RealtimeNativeRtcCarrier::PrepareOffer(quint64 generation)
         audio.addOpusCodec(kOpusPayloadType);
         audio.addAttribute(
             "ptime:" + std::to_string(profile_.opusFrameDurationMs));
-        audio.addSSRC(ssrc, "openzoom-audio");
+        audio.addSSRC(ssrc, "okuflow-audio");
         impl_->rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
-            ssrc, "openzoom", kOpusPayloadType,
+            ssrc, "okuflow", kOpusPayloadType,
             rtc::OpusRtpPacketizer::DefaultClockRate);
         auto packetizer =
             std::make_shared<rtc::OpusRtpPacketizer>(impl_->rtpConfig);
@@ -765,6 +765,6 @@ void RealtimeNativeRtcCarrier::TearDownPeer()
     impl_->readyEmitted = false;
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

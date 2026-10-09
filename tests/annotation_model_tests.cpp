@@ -1,5 +1,5 @@
-#include "openzoom/common/annotation_model.hpp"
-#include "openzoom/common/view_transform.hpp"
+#include "okuflow/common/annotation_model.hpp"
+#include "okuflow/common/view_transform.hpp"
 
 #include <QImage>
 #include <QPainter>
@@ -7,7 +7,7 @@
 
 #include <cmath>
 
-namespace openzoom {
+namespace okuflow {
 
 class AnnotationModelTests final : public QObject {
     Q_OBJECT
@@ -394,8 +394,8 @@ void AnnotationModelTests::sceneToleranceTightensAsViewportZooms()
     QVERIFY(std::abs(oneXTolerance / fourXTolerance - 4.0) < 0.01);
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
-QTEST_MAIN(openzoom::AnnotationModelTests)
+QTEST_MAIN(okuflow::AnnotationModelTests)
 
 #include "annotation_model_tests.moc"

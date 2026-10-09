@@ -1,15 +1,15 @@
 #ifdef _WIN32
 
-#include "openzoom/common/frame_pipeline.hpp"
+#include "okuflow/common/frame_pipeline.hpp"
 
-#include "openzoom/common/image_processing.hpp"
+#include "okuflow/common/image_processing.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
 
-namespace openzoom::processing {
+namespace okuflow::processing {
 
 namespace {
 
@@ -490,6 +490,6 @@ void CpuFramePipeline::ResetTemporalHistory()
     temporalHistoryValid_ = false;
 }
 
-} // namespace openzoom::processing
+} // namespace okuflow::processing
 
 #endif // _WIN32

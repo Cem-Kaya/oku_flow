@@ -1,8 +1,8 @@
 #include <QtTest>
-#include "openzoom/d3d12/fence_wait.hpp"
-#include "openzoom/d3d12/frame_readiness.hpp"
+#include "okuflow/d3d12/fence_wait.hpp"
+#include "okuflow/d3d12/frame_readiness.hpp"
 
-using namespace openzoom;
+using namespace okuflow;
 
 class FenceWaitTests : public QObject {
     Q_OBJECT

@@ -1,6 +1,6 @@
-#include "openzoom/common/view_transform.hpp"
-#include "openzoom/ui/annotation_overlay.hpp"
-#include "openzoom/ui/assistive_overlay.hpp"
+#include "okuflow/common/view_transform.hpp"
+#include "okuflow/ui/annotation_overlay.hpp"
+#include "okuflow/ui/assistive_overlay.hpp"
 
 #include <QComboBox>
 #include <QLineEdit>
@@ -22,7 +22,7 @@
 
 #include <cmath>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
 class MouseSink final : public QWidget {
@@ -952,8 +952,8 @@ void AnnotationOverlayTests::toolChromeMirrorsForRightToLeftLayouts()
     QVERIFY(options->x() < tools->x());
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
-QTEST_MAIN(openzoom::AnnotationOverlayTests)
+QTEST_MAIN(okuflow::AnnotationOverlayTests)
 
 #include "annotation_overlay_tests.moc"

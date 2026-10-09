@@ -1,18 +1,18 @@
 #ifdef _WIN32
 
-#include "openzoom/cuda/cuda_interop.hpp"
-#include "openzoom/common/gpu_copy_lease.hpp"
+#include "okuflow/cuda/cuda_interop.hpp"
+#include "okuflow/common/gpu_copy_lease.hpp"
 
 #include <d3d12.h>
 #include <dxgi1_2.h>
 
-#if OPENZOOM_HAS_CUDA_EXT_MEMORY
+#if OKUFLOW_HAS_CUDA_EXT_MEMORY
 
 #include <d3d11.h>
 #include <cuda_d3d11_interop.h>
 
-#include "openzoom/cuda/cuda_kernels.hpp"
-#include "openzoom/common/maxine_superres.hpp"
+#include "okuflow/cuda/cuda_kernels.hpp"
+#include "okuflow/common/maxine_superres.hpp"
 
 #include <windows.h>
 
@@ -32,7 +32,7 @@
 #include <QDebug>
 #include <QString>
 
-namespace openzoom {
+namespace okuflow {
 
 struct CudaInteropSurface::D3D11InteropState {
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
@@ -1848,7 +1848,7 @@ void CudaInteropSurface::UpdateSuperResCache(
         return;
     }
 
-#if OPENZOOM_ENABLE_TEXT_SR
+#if OKUFLOW_ENABLE_TEXT_SR
     struct SuperResScale {
         unsigned int numerator;
         unsigned int denominator;
@@ -4163,8 +4163,8 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
     }
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
-#endif // OPENZOOM_HAS_CUDA_EXT_MEMORY
+#endif // OKUFLOW_HAS_CUDA_EXT_MEMORY
 
 #endif // _WIN32

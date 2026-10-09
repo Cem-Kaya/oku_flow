@@ -2,9 +2,9 @@
 
 #include "app_internal.hpp"
 
-namespace openzoom {
+namespace okuflow {
 
-void OpenZoomApp::SetZoomCenter(float normX, float normY, bool syncUi,
+void OkuFlowApp::SetZoomCenter(float normX, float normY, bool syncUi,
                                 bool preservePresetSelection,
                                 bool persist) {
     const float clampedX = std::clamp(normX, 0.0f, 1.0f);
@@ -29,7 +29,7 @@ void OpenZoomApp::SetZoomCenter(float normX, float normY, bool syncUi,
     }
 }
 
-bool OpenZoomApp::HandlePanKey(int key, bool pressed) {
+bool OkuFlowApp::HandlePanKey(int key, bool pressed) {
     if (!interactionController_) {
         return false;
     }
@@ -41,21 +41,21 @@ bool OpenZoomApp::HandlePanKey(int key, bool pressed) {
     return handled;
 }
 
-bool OpenZoomApp::HandlePanScroll(const QWheelEvent* wheelEvent) {
+bool OkuFlowApp::HandlePanScroll(const QWheelEvent* wheelEvent) {
     if (!interactionController_) {
         return false;
     }
     return interactionController_->HandlePanScroll(wheelEvent);
 }
 
-bool OpenZoomApp::ApplyInputForces(double elapsedSeconds) {
+bool OkuFlowApp::ApplyInputForces(double elapsedSeconds) {
     if (!interactionController_) {
         return false;
     }
     return interactionController_->ApplyInputForces(elapsedSeconds);
 }
 
-void OpenZoomApp::UpdateJoystickVisibility() {
+void OkuFlowApp::UpdateJoystickVisibility() {
     if (!joystickOverlay_) {
         return;
     }
@@ -67,7 +67,7 @@ void OpenZoomApp::UpdateJoystickVisibility() {
     }
 }
 
-void OpenZoomApp::UpdateBlurUiLabels() {
+void OkuFlowApp::UpdateBlurUiLabels() {
     const QString sigmaText = QString::number(blurSigma_, 'f', 1);
     const bool blurActive = blurEnabled_;
     if (uiState_->blurSigmaValueLabel_) {
@@ -97,7 +97,7 @@ void OpenZoomApp::UpdateBlurUiLabels() {
     }
 }
 
-void OpenZoomApp::UpdateTemporalSmoothUi() {
+void OkuFlowApp::UpdateTemporalSmoothUi() {
     if (uiState_->temporalSmoothCheckbox_) {
         auto block = uiState_->BlockSignals(uiState_->temporalSmoothCheckbox_);
         uiState_->temporalSmoothCheckbox_->setChecked(temporalSmoothEnabled_);
@@ -119,7 +119,7 @@ void OpenZoomApp::UpdateTemporalSmoothUi() {
     }
 }
 
-void OpenZoomApp::RotateNormalizedPoint(float inX, float inY, int quarterTurns, float& outX, float& outY) {
+void OkuFlowApp::RotateNormalizedPoint(float inX, float inY, int quarterTurns, float& outX, float& outY) {
     const int turnsRaw = quarterTurns % 4;
     const int turns = turnsRaw < 0 ? turnsRaw + 4 : turnsRaw;
     switch (turns) {
@@ -153,7 +153,7 @@ void OpenZoomApp::RotateNormalizedPoint(float inX, float inY, int quarterTurns, 
 
 
 
-void OpenZoomApp::UpdateRotationUi() {
+void OkuFlowApp::UpdateRotationUi() {
     const int turnsRaw = rotationQuarterTurns_ % 4;
     const int turns = turnsRaw < 0 ? turnsRaw + 4 : turnsRaw;
     if (uiState_->rotationCombo_) {
@@ -164,7 +164,7 @@ void OpenZoomApp::UpdateRotationUi() {
     }
 }
 
-void OpenZoomApp::UpdateSpatialSharpenUi() {
+void OkuFlowApp::UpdateSpatialSharpenUi() {
     const bool enabled = spatialSharpenEnabled_;
 
     if (uiState_->spatialSharpenCheckbox_) {
@@ -192,7 +192,28 @@ void OpenZoomApp::UpdateSpatialSharpenUi() {
     }
 }
 
-void OpenZoomApp::UpdateProcessingStatusLabel() {
+void OkuFlowApp::UpdateCameraPlaceholder() {
+    if (!mainWindow_) {
+        return;
+    }
+    QString title;
+    QString detail;
+    if (!cameraActive_ && pipelineOrchestrator_->IsCameraReconnectPending()) {
+        title = QStringLiteral("Reconnecting to camera…");
+        detail = QStringLiteral("The camera connection was lost. OkuFlow is reconnecting automatically.");
+    } else if (cameraStartupPending_ || (cameraActive_ && !cameraFramePresented_)) {
+        title = QStringLiteral("Starting camera…");
+    } else if (!cameraActive_) {
+        title = QStringLiteral("No camera picture");
+        detail = cameras_.empty()
+                     ? QStringLiteral("Connect a camera, then choose it under Advanced, Device.")
+                     : QStringLiteral("Choose a camera under Advanced, Device, or check that it is connected.");
+    }
+    mainWindow_->setCameraPlaceholder(title, detail);
+}
+
+void OkuFlowApp::UpdateProcessingStatusLabel() {
+    UpdateCameraPlaceholder();
     if (!uiState_->processingStatusLabel_) {
         return;
     }
@@ -550,7 +571,7 @@ void OpenZoomApp::UpdateProcessingStatusLabel() {
     }
 }
 
-void OpenZoomApp::ShowStatusMessage(const QString& message,
+void OkuFlowApp::ShowStatusMessage(const QString& message,
                                     int durationMs,
                                     LivePoliteness politeness)
 {
@@ -560,21 +581,21 @@ void OpenZoomApp::ShowStatusMessage(const QString& message,
     UpdateProcessingStatusLabel();
 }
 
-void OpenZoomApp::HandleZoomWheel(const QWheelEvent* wheelEvent) {
+void OkuFlowApp::HandleZoomWheel(const QWheelEvent* wheelEvent) {
     if (!interactionController_) {
         return;
     }
     interactionController_->HandleZoomWheel(wheelEvent);
 }
 
-void OpenZoomApp::HandleKeyboardZoom(float notches) {
+void OkuFlowApp::HandleKeyboardZoom(float notches) {
     if (!interactionController_) {
         return;
     }
     interactionController_->HandleKeyboardZoom(notches);
 }
 
-bool OpenZoomApp::MapViewToSource(const QPointF& pos, float& outX, float& outY) const {
+bool OkuFlowApp::MapViewToSource(const QPointF& pos, float& outX, float& outY) const {
     if (!uiState_->renderWidget_ || processedFrameWidth_ == 0 || processedFrameHeight_ == 0) {
         return false;
     }
@@ -620,33 +641,33 @@ bool OpenZoomApp::MapViewToSource(const QPointF& pos, float& outX, float& outY) 
     return true;
 }
 
-void OpenZoomApp::BeginMousePan(const QPointF& pos, const QSize& widgetSize) {
+void OkuFlowApp::BeginMousePan(const QPointF& pos, const QSize& widgetSize) {
     if (!interactionController_) {
         return;
     }
     interactionController_->BeginMousePan(pos, widgetSize);
 }
 
-bool OpenZoomApp::UpdateMousePan(const QPointF& pos) {
+bool OkuFlowApp::UpdateMousePan(const QPointF& pos) {
     if (!interactionController_) {
         return false;
     }
     return interactionController_->UpdateMousePan(pos);
 }
 
-void OpenZoomApp::EndMousePan() {
+void OkuFlowApp::EndMousePan() {
     if (!interactionController_) {
         return;
     }
     interactionController_->EndMousePan();
 }
 
-bool OpenZoomApp::IsMousePanActive() const
+bool OkuFlowApp::IsMousePanActive() const
 {
     return interactionController_ && interactionController_->IsMousePanActive();
 }
 
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32
