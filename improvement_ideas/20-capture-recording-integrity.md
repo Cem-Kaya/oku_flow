@@ -90,6 +90,55 @@ with periodic `Flush()`, noted as an optional follow-up; the window before
 the first fragment is unrecoverable by definition (no samples exist) and
 its leftovers are now cleaned automatically.
 
+**2026-07-31 external-review fix — detached-worker lifetime closed.** An
+external review confirmed a real residual hazard in the 2026-07-30 bounded
+destructor: detaching a wedged worker and then letting `~RecordingManager`
+destroy members could still (a) run `~VideoRecorder → Stop → Finalize`
+against COM objects the wedged worker occupies, and (b) hand the worker
+freed queues/callbacks if the blocked driver call returned between manager
+destruction and process exit. Fixed with an explicit leak contract:
+`ShutdownForProcessExit()` performs the bounded handshake (join on clean
+exit); on a wedge it abandons both recorders *before* detaching and returns
+false, and app teardown then leaks the whole manager
+(`unique_ptr::release`) instead of destroying it. Worker-side UI posting
+(`PostStatus`/`PostButtonState`/`PostSegmentSaved`/session-ended) and
+`StartSegment` gained abandonment guards so an un-wedged worker in a leaked
+manager touches neither Qt objects nor the app-owned `UserDataPaths`. The
+reviewer's maximal alternative (helper-process encoder isolation) remains
+noted above as the escalation if hardware ever shows wedges that survive
+these guards.
+
+**2026-07-31 second review pass — contract completed.** The re-review found
+the first fix incomplete and it was right: entry guards in the *manager*
+did not stop a call chain resuming past one blocked recorder call, and
+`MFShutdown` at app close could race a still-wedged MF thread. Closed by
+(1) poisoning every mutating `VideoRecorder` entry (`Start`, `StartGpu`,
+`AddFrame`, `AddGpuFrame`, `AddAudioFrame`; finalize was already guarded)
+so an abandoned recorder fails fast at the API boundary, and (2) skipping
+`MFShutdown`/`CoUninitialize` whenever a detached MF thread may exist —
+recording worker (leak contract) or microphone reader
+(`AudioCapture::WasAbandoned`). Microphone shutdown itself was rebuilt on
+an independently owned session block (shared_ptr owned by the capture
+loop, the stop-time flusher, and the object) so a detached audio thread
+never references `AudioCapture` members at all, no path performs an
+unbounded join, and a restarted microphone cannot alias a stale thread's
+flags.
+
+**2026-08-01 third review pass — delivery and recovered-abandonment gaps
+closed.** The session block alone did not protect callbacks that had already
+passed its post-`ReadSample` check and then stalled in buffer conversion or
+locking: those lambdas still captured raw `OkuFlowApp*`, so a detached reader
+could resume into freed app state or a new session. Frame/error delivery now
+retains an independently owned `MicrophoneCallbackTarget`; Stop cancels and
+advances its generation before waiting, delivery is serialized by its mutex,
+and destruction clears the app pointer under the same mutex. Capture also
+rechecks cancellation after conversion, after lock, and immediately before
+dispatch. The same review found that a poisoned recording worker could recover
+and join, making the manager safe to destroy while its intentionally leaked
+recorder COM objects still made `MFShutdown` invalid. App teardown now treats
+sticky `IsWorkerAbandoned()` as a separate MF/COM teardown veto regardless of
+the shutdown handshake's safe-to-destroy result.
+
 Recording currently produces files that *look* fine and are quietly wrong:
 wrong playback speed, silently missing frames, window-dependent resolution,
 and a "saved" message that is not backed by a checked finalize. For a student
@@ -164,7 +213,7 @@ Two structural facts fall out of this flow:
 
 **Problem (re-verified).** `MediaFrame` carries pixels and nothing else —
 no timestamp, no sequence, unsigned stride
-(`include/openzoom/capture/media_capture.hpp:19-26`). The capture loop
+(`include/okuflow/capture/media_capture.hpp:19-26`). The capture loop
 receives the sample timestamp and drops it (`media_capture.cpp:717-725`).
 The writer synthesizes a fixed-step timeline (`media_writer.cpp:233-243`)
 at a hard-coded 30 fps (`recording_manager.cpp:146`).

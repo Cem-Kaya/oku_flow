@@ -1,10 +1,11 @@
-#include "openzoom/app/pipeline_orchestrator.hpp"
+#include "okuflow/app/pipeline_orchestrator.hpp"
+#include "okuflow/d3d12/frame_readiness.hpp"
 
 #include <QtTest>
 
 #include <limits>
 
-namespace openzoom {
+namespace okuflow {
 
 class PipelineOrchestratorTests : public QObject {
     Q_OBJECT
@@ -14,6 +15,7 @@ private slots:
     void keepsStageTimingWindowsIndependent();
     void rejectsInvalidLatencySamples();
     void coalescesCameraFrameWakeups();
+    void busyFrameRetriesLeaveQtHeartbeatResponsive();
 };
 
 void PipelineOrchestratorTests::reportsNearestRankPercentiles()
@@ -90,8 +92,54 @@ void PipelineOrchestratorTests::coalescesCameraFrameWakeups()
     orchestrator.Stop();
 }
 
-} // namespace openzoom
+void PipelineOrchestratorTests::busyFrameRetriesLeaveQtHeartbeatResponsive()
+{
+    int heartbeats = 0;
+    int busyTicks = 0;
+    int admissionPolls = 0;
+    int presentations = 0;
+    std::uint64_t completed = 9;
+    PipelineOrchestrator* scheduler = nullptr;
+    PipelineOrchestrator orchestrator(*this,
+        PipelineOrchestrator::Callbacks{
+            .tick = [&](double) {
+                if (presentations != 0) return false;
+                const auto readiness = PollFrameReadiness(10,
+                    [&] { return completed; }, [] { return false; }, [&] {
+                        ++admissionPolls;
+                        return FenceEventResult::Signaled;
+                    });
+                if (readiness == FrameReadiness::Busy) {
+                    ++busyTicks;
+                    scheduler->MarkViewportDirty();
+                    scheduler->NotifyCameraFrameAvailable(1);
+                } else if (readiness == FrameReadiness::Ready) {
+                    ++presentations;
+                    scheduler->MarkViewportPresented();
+                }
+                return false;
+            },
+        });
+    scheduler = &orchestrator;
+    QTimer heartbeat;
+    connect(&heartbeat, &QTimer::timeout, this, [&] {
+        ++heartbeats;
+        if (heartbeats == 5) completed = 10;
+    });
+    heartbeat.start(2);
+    orchestrator.Start();
+    orchestrator.NotifyCameraFrameAvailable();
+    QTRY_COMPARE_WITH_TIMEOUT(presentations, 1, 1000);
+    orchestrator.Stop();
+    heartbeat.stop();
+    QVERIFY(heartbeats >= 5);
+    QVERIFY(busyTicks > 0);
+    QCOMPARE(admissionPolls, 1);
+    QVERIFY(!orchestrator.IsViewportDirty());
+}
 
-QTEST_GUILESS_MAIN(openzoom::PipelineOrchestratorTests)
+} // namespace okuflow
+
+QTEST_GUILESS_MAIN(okuflow::PipelineOrchestratorTests)
 
 #include "pipeline_orchestrator_tests.moc"

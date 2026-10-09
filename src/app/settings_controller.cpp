@@ -1,5 +1,5 @@
-#include "openzoom/app/settings_controller.hpp"
-#include "openzoom/app/protected_secret_store.hpp"
+#include "okuflow/app/settings_controller.hpp"
+#include "okuflow/app/protected_secret_store.hpp"
 
 #include <QDateTime>
 #include <QFile>
@@ -7,7 +7,7 @@
 
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -26,9 +26,11 @@ SettingsController::SettingsController(QString settingsPath)
                         : std::move(settingsPath))
 {
     bool restoreBackupAfterSecretLoad = false;
+    bool rewriteMigratedSettings = false;
     const settings::LoadResult primary = settings::LoadDetailed(settingsPath_);
     if (primary.status == settings::LoadStatus::Loaded && primary.settings) {
         settings_ = *primary.settings;
+        rewriteMigratedSettings = primary.migrationApplied;
     } else if (primary.status == settings::LoadStatus::Missing) {
         InitializeDefaults();
     } else {
@@ -49,6 +51,7 @@ SettingsController::SettingsController(QString settingsPath)
         if (backup.status == settings::LoadStatus::Loaded && backup.settings) {
             settings_ = *backup.settings;
             restoreBackupAfterSecretLoad = true;
+            rewriteMigratedSettings = backup.migrationApplied;
             startupNotice_ =
                 QStringLiteral("%1 Recovered the last valid settings backup%2.")
                     .arg(primary.error,
@@ -58,7 +61,7 @@ SettingsController::SettingsController(QString settingsPath)
         } else {
             InitializeDefaults();
             startupNotice_ =
-                QStringLiteral("%1 OpenZoom started with safe defaults%2.")
+                QStringLiteral("%1 OkuFlow started with safe defaults%2.")
                     .arg(primary.error,
                          preserved
                              ? QStringLiteral("; the original file was preserved")
@@ -67,11 +70,11 @@ SettingsController::SettingsController(QString settingsPath)
     }
 
     LoadProtectedSecrets();
-    if (restoreBackupAfterSecretLoad &&
+    if ((restoreBackupAfterSecretLoad || rewriteMigratedSettings) &&
         !settings::Save(settingsPath_, settings_)) {
         startupNotice_ +=
             (startupNotice_.isEmpty() ? QString() : QStringLiteral(" ")) +
-            QStringLiteral("The recovered settings could not be written back to disk.");
+            QStringLiteral("The recovered or migrated settings could not be written back to disk.");
     }
 }
 
@@ -228,7 +231,7 @@ bool SettingsController::Save(const settings::AdvancedConfig& current)
     }
     if (!settings::Save(settingsPath_, settings_)) {
         lastError_ =
-            QStringLiteral("OpenZoom could not save settings. The previous settings file "
+            QStringLiteral("OkuFlow could not save settings. The previous settings file "
                            "and its backup were left intact.");
         return false;
     }
@@ -287,4 +290,4 @@ QString SettingsController::LastError() const
     return lastError_;
 }
 
-} // namespace openzoom
+} // namespace okuflow

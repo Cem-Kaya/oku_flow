@@ -2,7 +2,7 @@
 
 #include <QString>
 
-namespace openzoom::debug_log {
+namespace okuflow::debug_log {
 
 // Installs a Qt message tee only when the process has an attached Windows
 // console. Messages emitted before the user-data root is known are buffered.
@@ -17,4 +17,4 @@ QString CurrentPath();
 // Restores the prior Qt message handler and closes the current log.
 void Shutdown();
 
-} // namespace openzoom::debug_log
+} // namespace okuflow::debug_log

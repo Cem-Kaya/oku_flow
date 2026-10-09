@@ -1,4 +1,4 @@
-#include "openzoom/ui/live_status_text.hpp"
+#include "okuflow/ui/live_status_text.hpp"
 
 #include <QAccessible>
 #include <QAccessibleAnnouncementEvent>
@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
 struct AccessibilityRecord {
@@ -177,7 +177,7 @@ void LiveStatusTextTests::coalescerPublishesOnlyTheTrailingValue()
     QCOMPARE(CountEvents(records_, QAccessible::Announcement), 1);
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
-QTEST_MAIN(openzoom::LiveStatusTextTests)
+QTEST_MAIN(okuflow::LiveStatusTextTests)
 #include "live_status_text_tests.moc"

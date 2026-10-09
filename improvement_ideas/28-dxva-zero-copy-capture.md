@@ -52,7 +52,7 @@ So: not fear — sequencing. The sequence has now arrived at this plan.
   kernels need nothing new.
 - **Frame identity survives** (plan 20 P0): `MediaFrame` carries
   `captureTimestamp100ns`, `sequenceNumber`, negotiated rate, signed stride
-  (`include/openzoom/capture/media_capture.hpp:19-31`). A GPU-resident frame
+  (`include/okuflow/capture/media_capture.hpp:19-31`). A GPU-resident frame
   must carry the same fields — the struct grows a texture handle variant, it
   does not get replaced.
 - **Failure classification exists** (`CameraFailureKind`,
@@ -89,7 +89,7 @@ thread CPU %. Log a one-line summary every 5 s while a debug flag is on.
 Purpose: stage 4's before/after is a number. (Coordinate with plan 22
 Phase 1 so the counters are the same ones it will keep.)
 
-Implementation: set `OPENZOOM_CAPTURE_DIAGNOSTICS=1` before starting a debug
+Implementation: set `OKUFLOW_CAPTURE_DIAGNOSTICS=1` before starting a debug
 build. `MediaCapture` reports camera FPS, bytes copied per frame,
 ReadSample/copy wall time, and capture-thread CPU use; the app reports
 capture-to-present average and maximum latency. Both summaries are throttled
@@ -139,7 +139,7 @@ capture code was enabled:
 
 - Basic and advanced source-reader video processing were both enabled even
   though Media Foundation defines them as mutually exclusive.
-- The compatibility comparison forced BGRA, unlike OpenZoom's established
+- The compatibility comparison forced BGRA, unlike OkuFlow's established
   `NV12 -> YUY2 -> ARGB32 -> RGB32` negotiation order. The probe now mirrors
   production and validates luma according to the negotiated subtype.
 
@@ -256,7 +256,7 @@ Only what the spike proved, moved into the app:
 
 Implementation notes:
 
-- `OPENZOOM_FORCE_CAPTURE_COPY_RUNG=1` force-fails the top rung without
+- `OKUFLOW_FORCE_CAPTURE_COPY_RUNG=1` force-fails the top rung without
   disabling the D3D11 reader, so the accelerated-copy fallback can be compared
   against direct GPU transfer on the same camera and mode.
 - The per-camera settings record the last winning rung and reason.
@@ -406,7 +406,7 @@ physical USB webcam:
   occurred during shutdown after a successful import, so no later camera frame
   existed to emit recovery;
 - 0/100 disabled the top rung or persisted an accelerated-copy downgrade;
-- Windows Application Error / WER reported zero `open_zoom.exe` faults during
+- Windows Application Error / WER reported zero `oku_flow.exe` faults during
   the run.
 
 This closes the transient-startup, launch/quit, and long moving-picture

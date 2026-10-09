@@ -1,6 +1,6 @@
 # Improvement Ideas
 
-Actionable improvement backlog for OpenZoom, written for AI agents (or humans) picking up
+Actionable improvement backlog for OkuFlow (formerly OpenZoom), written for AI agents (or humans) picking up
 future work. Produced from a full-codebase analysis on 2026-07-21 at commit `9e069d9`
 ("Add assistive runtime and harden Windows builds"). All `file:line` references are
 relative to that commit — re-locate by symbol name if the files have since changed.
@@ -43,7 +43,7 @@ that document is authoritative.
 | [`14-stabilization-v2.md`](14-stabilization-v2.md) | Robust camera stabilization | ACTIVE |
 | [`15-aspect-safe-high-refresh-viewport.md`](15-aspect-safe-high-refresh-viewport.md) | Viewport geometry and motion | VERIFY (owner acceptance) |
 | [`16-review-findings-2026-07-23.md`](16-review-findings-2026-07-23.md) | Batch C/D + plan 15 review verdict | PARTIAL (P1/P2 open) |
-| [`17-project-rename-plan.md`](17-project-rename-plan.md) | Project rename (FrontRow blocked) | BLOCKED (owner) |
+| [`17-project-rename-plan.md`](17-project-rename-plan.md) | Project rename to OkuFlow (FrontRow was blocked) | **EXECUTED 2026-10-09 — owner items remain (trademark, other domains, Store/winget ID, announcement, social preview)** |
 | [`18-annotation-mode-plan.md`](18-annotation-mode-plan.md) | Draw-on-lecture annotation mode | **VERIFY — R2 implemented, owner hardware pass pending** |
 | [`19-external-review-triage-2026-07-24.md`](19-external-review-triage-2026-07-24.md) | External review verdicts; index for 20-24 | REFERENCE |
 | [`20-capture-recording-integrity.md`](20-capture-recording-integrity.md) | Capture and recording correctness | **P0-P4 implemented — hardware verification/P6 remain** |
@@ -55,11 +55,19 @@ that document is authoritative.
 | [`26-virtual-tripod-strength.md`](26-virtual-tripod-strength.md) | Virtual Tripod: weakness analysis + 2026-07-26 defect report | PARTIAL / DEFECTIVE |
 | [`27-advanced-panel-redesign.md`](27-advanced-panel-redesign.md) | Advanced inspector: scopes, sub-menus, real camera modes | **VERIFY — owner/hardware pass** |
 | [`28-dxva-zero-copy-capture.md`](28-dxva-zero-copy-capture.md) | DXVA + zero-copy capture (plan 20 P6, staged with owner gates) | **Stages 0-4 + long soak passed — camera churn remains** |
-| [`29-idea-inbox-2026-07-29.md`](29-idea-inbox-2026-07-29.md) | New idea seeds: product gaps (A-K), lecture-day journey (L-Q), dev/deploy/maintain (R-U) | **Audio seed A implemented; remaining seeds await selection** |
+| [`29-idea-inbox-2026-07-29.md`](29-idea-inbox-2026-07-29.md) | New idea seeds: product gaps (A-K), lecture-day journey (L-Q/W), dev/deploy/maintain (R-U) | **Audio A implemented; camera B selected; notes F → 34; transcript W → 36** |
 | [`30-external-memory-capture-bridge.md`](30-external-memory-capture-bridge.md) | Gen-2 CUDA external-memory capture bridge: API names, as-built recipe, remaining validation | **IMPLEMENTED — R1 hardware validation + fence upgrade remain** |
-| [`31-lecture-transcript.md`](31-lecture-transcript.md) | Archived lecture-transcript proposal; microphone recording remains | **DROPPED — owner decision 2026-07-30** |
+| [`31-lecture-transcript.md`](31-lecture-transcript.md) | Historical lecture-transcript decision/probe; superseded by plan 36 | **REFERENCE — superseded 2026-08-07** |
 | [`32-live-accessible-status.md`](32-live-accessible-status.md) | Dynamic status text reaches screen readers with truthful names, events, and severity policy | **VERIFY — owner NVDA/Narrator pass** |
 | [`33-multilingual-support.md`](33-multilingual-support.md) | Live-switchable English/Türkçe/Deutsch: UI, accessibility layer, AI prompts, TTS voice, flag picker | **IMPLEMENTED — owner language/a11y review remains** |
+| [`34-searchable-captured-notes.md`](34-searchable-captured-notes.md) | User-requested vision reading for captured photos/annotations plus a semantic notes index | **REVISION REQUIRED — local recognition path retired** |
+| [`35-pdf-image-source-mode.md`](35-pdf-image-source-mode.md) | Open saved images/PDF pages with the magnifier, assistive tools, and paired original/processed saves | **READY — owner selected** |
+| [`36-recording-transcription-to-notes.md`](36-recording-transcription-to-notes.md) | Codex Voice live recording transcription with finalized text appended to lecture notes | **IMPLEMENTED — native Carrier D, live gate PASSED; owner mic/NVDA acceptance remains** |
+| [`37-code-review-notes-2026-09-10.md`](37-code-review-notes-2026-09-10.md) | Source review and fixes: stabilization zoom, recorded ink, capture layout/color, CUDA fallback, notes I/O, scaling, and recovery | **IMPLEMENTED — all 10; release + CPU/CUDA matrix passed** |
+| [`38-vision-reading-cleanup-2026-09-10.md`](38-vision-reading-cleanup-2026-09-10.md) | Retire separate recognition setup/UI; use Luna-backed vision reading with source-language preservation | **IMPLEMENTED — release + CPU/CUDA + bundle gates passed** |
+| [`39-startup-ui-latency-2026-09-10.md`](39-startup-ui-latency-2026-09-10.md) | Concurrent camera startup, nonblocking presentation admission, accurate latency and delivery profiling | **IMPLEMENTED — measurement and validation recorded in the note** |
+| [`40-ui-polish-and-checkout-review-2026-10-09.md`](40-ui-polish-and-checkout-review-2026-10-09.md) | UI polish backlog (Setup Assistant, Simple, Advanced, theme module) plus the resolved hybrid-checkout blocker | **ACTIVE — W1 resolved** |
+| [`41-project-review-2026-10-09.md`](41-project-review-2026-10-09.md) | Current project review: saved-photo ownership, storage lifecycle, accessibility, hardware acceptance, build gates, settings, and backlog drift | **REVIEW COMPLETE — recommendations open** |
 | [`verified-non-issues.md`](verified-non-issues.md) | Refuted findings — do not "fix" these | Read before analyzing |
 | [`done/`](done/README.md) | Completed plans (01, 02, 09, 11, 12, 13) | Provenance only |
 

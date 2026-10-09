@@ -1,0 +1,2 @@
+# check_translations.ps1 requires LF catalogs regardless of core.autocrlf.
+translations/*.ts text eol=lf

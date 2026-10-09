@@ -1,4 +1,4 @@
-# OpenZoom 2.0 Roadmap — The Lecture Assistant
+# OkuFlow 2.0 Roadmap — The Lecture Assistant
 
 Mission: the best possible tool for a legally blind university student to follow
 live lectures using a phone camera clamped to a laptop. Everything below serves
@@ -9,7 +9,7 @@ and the need to capture material for later study.
 
 1. **Stable, readable image** — GPU stabilization kills mount vibration;
    low-vision color schemes and contrast controls make slides readable.
-2. **AI that takes notes for you** — OCR and vision-language models turn what
+2. **AI that takes notes for you** — Vision-language models turn what
    the camera sees into text, explanations, and a timestamped notes file.
 3. **Two-speed UI** — Simple mode: a handful of huge, high-contrast buttons.
    Advanced mode: every parameter. Nothing in between to learn.
@@ -64,8 +64,8 @@ low-vision reading.
   compact Simple `Text Clarity` master expose the stack without requiring the
   individual controls.
 - Asynchronous Laplacian-variance focus scoring copies only two floats every
-  15 frames and gates blurry OCR captures.
-- NVIDIA Maxine SuperRes is integrated behind `OPENZOOM_ENABLE_TEXT_SR` as a
+  15 frames and gates blurry text-reading captures.
+- NVIDIA Maxine SuperRes is integrated behind `OKUFLOW_ENABLE_TEXT_SR` as a
   runtime-loaded optional tier. It shares the CUDA stream, falls back to NIS
   when unavailable or too slow, and ships no proprietary runtime or weights.
 
@@ -91,22 +91,23 @@ low-vision reading.
   prompt — persisted in settings, editable in a dialog. Works with OpenAI's API
   and any OpenAI-compatible local server (LM Studio, Ollama, llama.cpp server),
   so image-to-text can run fully locally.
-- **Lecture notes**: a per-session HTML file (`Documents/OpenZoom/Notes/` by
+- **Lecture notes**: a per-session HTML file (`Documents/OkuFlow/Notes/` by
   default) that
-  automatically collects timestamped OCR text and scene explanations, and
+  collects timestamped vision readings and scene explanations, and
   embeds portable relative references to captured photos. The browser-ready
   format preserves selectable text and displays images without Markdown
   preview quirks.
-- On-demand analysis ("Explain now") in addition to the periodic loop.
+- On-demand Read and Explain; automatic scene analysis is available only for
+  an explicitly configured HTTP vision provider.
 - Shared, persisted Assistant Instructions for response language, tone, and
   detail across Codex and OpenAI-compatible providers, with a separate scene
   prompt and configurable Codex reasoning effort.
-- Manual text-to-speech of OCR/VLM results with installed Windows voice and
+- Manual text-to-speech of assistant results with installed Windows voice and
   speed selection (Qt TextToSpeech, if available).
 - Track a supported Microsoft API for Narrator/Magnifier Natural voices. Their
   AppX model packages are currently private to Windows accessibility clients
   and do not appear in public `Windows.Media.SpeechSynthesis::AllVoices`.
-- OCR hardening: configurable tesseract path + language, process watchdog.
+- Vision reading: Luna by default, verbatim text with no automatic analysis.
 
 ### UI overhaul
 - `Simple / Advanced` as two states around one persistent render surface.
@@ -116,7 +117,7 @@ low-vision reading.
   Advanced opens a narrow right-side inspector with global camera/orientation
   and all profile-owned tuning controls, including stabilization and display
   colors.
-- AI settings dialog (URL/key/model/prompt, Tesseract path/language, manual
+- AI settings dialog (URL/key/model/prompt, Codex model/reasoning, manual
   Read Aloud voice/speed, notes) backed by `settings.json`; environment
   variables remain as fallback.
 - Larger default fonts and visible focus indicators app-wide.
@@ -129,10 +130,11 @@ formats, GPU-unavailable passthrough, and per-frame fallback. Without CUDA the
 app presents unprocessed frames with a persistent "GPU required" notice.
 
 ## Phase 2 (next)
-- Reading mode: OCR layout awareness — detect text lines, auto-follow the
+- Reading mode: text layout awareness — detect text lines, auto-follow the
   lecturer's laser pointer / current bullet, TTS reads line by line.
-- Slide-change detection (frame difference after stabilization) → auto-OCR
-  each new slide exactly once into the notes file, instead of on a timer.
+- Opt-in slide-change detection (frame difference after stabilization) → offer
+  a vision reading for each new slide. Recurring remote requests would require
+  a separate explicit opt-in and usage budget.
 - Opt-in Screen Lock: pin a detected physical projector screen with planar
   tracking, confidence-based freeze/reacquire, and manual viewport movement
   within the locked plane.

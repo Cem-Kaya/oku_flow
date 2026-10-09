@@ -45,7 +45,7 @@ Requirements:
 - **Plain-language labels in Simple mode** (idea from option 13):
   Reading → "Read a Page", High Contrast → "High Contrast", Steady Text →
   "Keep It Steady", Sharp Text → "Sharpen Text", Large Zoom → "Zoom In
-  More", Low Light → "See in Low Light", OCR Assist → "Read Text Aloud".
+  More", Low Light → "See in Low Light".
 - Use a speaker icon for the `Read` action so it is visually distinct from photo
   capture and communicates that recognized text can be spoken aloud.
   (Advanced mode keeps the technical names.)

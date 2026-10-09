@@ -1,10 +1,10 @@
 #ifdef _WIN32
 
-#include "openzoom/ui/ai_settings_dialog.hpp"
-#include "openzoom/common/codex_app_server_client.hpp"
-#include "openzoom/ui/live_status_text.hpp"
-#include "openzoom/ui/ui_translation.hpp"
-#include "openzoom/ui/wheel_safe_combo_box.hpp"
+#include "okuflow/ui/ai_settings_dialog.hpp"
+#include "okuflow/common/codex_app_server_client.hpp"
+#include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/ui_translation.hpp"
+#include "okuflow/ui/wheel_safe_combo_box.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -34,16 +34,16 @@
 #include <algorithm>
 #include <cmath>
 
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
 #include <QTextToSpeech>
 #include <QVoice>
 #endif
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
 QString VoiceLabel(const QVoice& voice)
 {
     const QLocale locale = voice.locale();
@@ -167,7 +167,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     codexModelCombo_->setMinimumContentsLength(24);
     codexModelCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     const QString configuredModel = initial.codexModel.trimmed().isEmpty()
-                                        ? QStringLiteral("gpt-5.6-tera")
+                                        ? QStringLiteral("gpt-5.6-luna")
                                         : initial.codexModel.trimmed();
     codexModelCombo_->addItem(configuredModel, configuredModel);
     form->addRow("Codex model:", codexModelCombo_);
@@ -176,7 +176,8 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     preferredReasoningEffort_ = initial.codexReasoningEffort.trimmed().toLower();
     for (const QString& effort : {QStringLiteral("low"), QStringLiteral("medium"),
                                   QStringLiteral("high"), QStringLiteral("xhigh")}) {
-        codexReasoningCombo_->addItem(ReasoningLabel(effort), effort);
+        codexReasoningCombo_->addItem(TranslateUi(ReasoningLabel(effort)),
+                                      effort);
     }
     const int reasoningIndex =
         codexReasoningCombo_->findData(preferredReasoningEffort_);
@@ -217,7 +218,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     builtInInstructionsEdit_->setReadOnly(true);
     builtInInstructionsEdit_->setMaximumHeight(120);
     builtInInstructionsEdit_->setToolTip(
-        QStringLiteral("OpenZoom always sends this instruction to Codex. "
+        QStringLiteral("OkuFlow always sends this instruction to Codex. "
                        "Permission rules are appended from the controls above."));
     form->addRow("Built-in prompt:", builtInInstructionsEdit_);
 
@@ -269,35 +270,6 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             });
     UpdateProviderFields();
 
-    auto* ocrGroup = new QGroupBox(QStringLiteral("Text recognition (OCR)"));
-    auto* ocrForm = new QFormLayout(ocrGroup);
-    ocrForm->setSpacing(10);
-    contentLayout->addWidget(ocrGroup);
-
-    tesseractPathEdit_ = new QLineEdit(initial.tesseractPath);
-    tesseractPathEdit_->setPlaceholderText("Path to tesseract.exe");
-    auto* browseButton = new QPushButton("Browse…");
-    connect(browseButton, &QPushButton::clicked, this, [this]() {
-        const QString path = QFileDialog::getOpenFileName(
-            this,
-            "Select Tesseract Executable",
-            tesseractPathEdit_->text(),
-            "Executables (*.exe);;All Files (*)");
-        if (!path.isEmpty()) {
-            tesseractPathEdit_->setText(path);
-        }
-    });
-    auto* tesseractRow = new QHBoxLayout();
-    tesseractRow->setSpacing(8);
-    tesseractRow->addWidget(tesseractPathEdit_, 1);
-    tesseractRow->addWidget(browseButton);
-    ocrForm->addRow("Tesseract path:", tesseractRow);
-
-    ocrLanguageEdit_ = new QLineEdit(
-        initial.ocrLanguage.isEmpty() ? QStringLiteral("eng") : initial.ocrLanguage);
-    ocrLanguageEdit_->setPlaceholderText("eng");
-    ocrForm->addRow("OCR language:", ocrLanguageEdit_);
-
     preferredVoiceName_ = initial.ttsVoiceName;
     preferredVoiceLocale_ = initial.ttsVoiceLocale;
     ttsEngine_ = initial.ttsEngine;
@@ -342,7 +314,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             this, &AiSettingsDialog::PreviewSpeech);
     UpdateSpeechRateLabel();
 
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     const QStringList engines = QTextToSpeech::availableEngines();
     auto resolveEngine = [&engines](const QString& requested) {
         for (const QString& engine : engines) {
@@ -372,7 +344,8 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             });
     QTimer::singleShot(0, this, &AiSettingsDialog::PopulateSpeechVoices);
 #else
-    ttsVoiceCombo_->addItem("Text-to-speech is unavailable in this build");
+    ttsVoiceCombo_->addItem(
+        TranslateUi(QStringLiteral("Text-to-speech is unavailable in this build")));
     ttsVoiceCombo_->setEnabled(false);
     ttsRateSlider_->setEnabled(false);
     ttsPreviewButton_->setEnabled(false);
@@ -432,7 +405,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     setA11y(assistantInstructionsEdit_, "Assistant Instructions",
             "Set the response language, tone, detail, and other response preferences");
     setA11y(builtInInstructionsEdit_, "Built-in Codex Prompt",
-            "Read-only OpenZoom instruction always sent to Codex before your instructions");
+            "Read-only OkuFlow instruction always sent to Codex before your instructions");
     setA11y(apiUrlEdit_, "VLM Server URL",
             "Address of the OpenAI-compatible chat completions endpoint");
     setA11y(apiKeyEdit_, "API Key",
@@ -441,20 +414,14 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             "Name of the vision model, for example gpt-4o-mini or llava");
     setA11y(promptEdit_, "Scene Prompt",
             "Scene-specific instructions sent with each camera frame");
-    setA11y(tesseractPathEdit_, "Tesseract Path",
-            "Location of the Tesseract OCR executable");
-    setA11y(browseButton, "Browse for Tesseract",
-            "Pick the Tesseract OCR executable from disk");
-    setA11y(ocrLanguageEdit_, "OCR Language",
-            "Tesseract language code, for example eng");
     setA11y(ttsVoiceCombo_, "Read Aloud Voice",
             "Choose an installed Windows voice for the Read Aloud button");
     setA11y(ttsRateSlider_, "Read Aloud Speed",
-            "Adjust how slowly or quickly OpenZoom reads a result");
+            "Adjust how slowly or quickly OkuFlow reads a result");
     setA11y(ttsPreviewButton_, "Preview Read Aloud Voice",
             "Speak a short sample with the selected voice and speed");
     setA11y(lectureNotesCheckbox_, "Write Lecture Notes File",
-            "Append OCR and scene descriptions to a lecture notes file");
+            "Append text readings and scene descriptions to lecture notes");
 }
 
 void AiSettingsDialog::changeEvent(QEvent* event)
@@ -499,14 +466,9 @@ settings::AssistiveSettings AiSettingsDialog::result() const
     out.vlmApiKey = apiKeyEdit_->text();
     out.vlmModel = modelEdit_->text().trimmed();
     out.vlmPrompt = promptEdit_->toPlainText();
-    out.tesseractPath = tesseractPathEdit_->text().trimmed();
-    out.ocrLanguage = ocrLanguageEdit_->text().trimmed();
-    if (out.ocrLanguage.isEmpty()) {
-        out.ocrLanguage = QStringLiteral("eng");
-    }
     out.ttsEngine = ttsEngine_;
     out.ttsRate = static_cast<double>(ttsRateSlider_->value()) / 100.0;
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     const QVoice voice = ttsVoiceCombo_->currentData().value<QVoice>();
     out.ttsVoiceName = voice.name();
     out.ttsVoiceLocale = voice.locale().name();
@@ -520,7 +482,7 @@ settings::AssistiveSettings AiSettingsDialog::result() const
 
 void AiSettingsDialog::PopulateSpeechVoices()
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (!speechPreview_ || populatingSpeechVoices_) {
         return;
     }
@@ -580,8 +542,10 @@ void AiSettingsDialog::PopulateSpeechVoices()
     if (!speechVoicesLoaded_) {
         const bool stillLoading = speechPreview_->state() != QTextToSpeech::Ready &&
                                   speechPreview_->state() != QTextToSpeech::Error;
-        ttsVoiceCombo_->addItem(stillLoading ? "Loading installed Windows voices..."
-                                             : "No installed Windows voices found");
+        ttsVoiceCombo_->addItem(
+            stillLoading
+                ? TranslateUi(QStringLiteral("Loading installed Windows voices..."))
+                : TranslateUi(QStringLiteral("No installed Windows voices found")));
         ttsVoiceCombo_->setEnabled(false);
         ttsPreviewButton_->setEnabled(false);
         return;
@@ -603,6 +567,16 @@ void AiSettingsDialog::PopulateSpeechVoices()
     preferredVoiceName_ = selectedVoice.name();
     preferredVoiceLocale_ = selectedVoice.locale().name();
     ApplySpeechPreviewSettings();
+#else
+    // The build-time placeholder is the combo's only entry; changeEvent
+    // routes LanguageChange here, so re-resolve its translation (the combo
+    // is marked as data, which exempts it from the automatic item pass).
+    if (ttsVoiceCombo_ && ttsVoiceCombo_->count() == 1) {
+        ttsVoiceCombo_->setItemText(
+            0,
+            TranslateUi(QStringLiteral(
+                "Text-to-speech is unavailable in this build")));
+    }
 #endif
 }
 
@@ -623,7 +597,7 @@ void AiSettingsDialog::UpdateSpeechRateLabel()
 
 void AiSettingsDialog::ApplySpeechPreviewSettings()
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (!speechPreview_ || !speechVoicesLoaded_) {
         return;
     }
@@ -639,14 +613,14 @@ void AiSettingsDialog::ApplySpeechPreviewSettings()
 
 void AiSettingsDialog::PreviewSpeech()
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (!speechPreview_) {
         return;
     }
     ApplySpeechPreviewSettings();
     speechPreview_->stop();
     speechPreview_->say(TranslateUi(QStringLiteral(
-        "OpenZoom will read this result using the selected voice.")));
+        "OkuFlow will read this result using the selected voice.")));
 #endif
 }
 
@@ -711,7 +685,7 @@ void AiSettingsDialog::SetCodexModelCatalog(const QJsonArray& models,
     }
     if (codexModelCombo_->count() == 0) {
         const QString fallback = wantedModel.isEmpty()
-                                     ? QStringLiteral("gpt-5.6-tera")
+                                     ? QStringLiteral("gpt-5.6-luna")
                                      : wantedModel;
         codexModelCombo_->addItem(fallback, fallback);
         selectedIndex = 0;
@@ -774,7 +748,7 @@ void AiSettingsDialog::UpdateCodexReasoningOptions()
     codexReasoningCombo_->clear();
     for (const EffortOption& option : options) {
         const int index = codexReasoningCombo_->count();
-        codexReasoningCombo_->addItem(ReasoningLabel(option.effort),
+        codexReasoningCombo_->addItem(TranslateUi(ReasoningLabel(option.effort)),
                                       option.effort);
         if (!option.description.isEmpty()) {
             codexReasoningCombo_->setItemData(index,
@@ -791,6 +765,6 @@ void AiSettingsDialog::UpdateCodexReasoningOptions()
         codexReasoningCombo_->currentData().toString();
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

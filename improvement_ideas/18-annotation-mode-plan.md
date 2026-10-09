@@ -62,9 +62,9 @@ without any extra effort during the lecture.
   (`NOTES_*.html`, `src/common/assistive_runtime.cpp:940`), with
   `AppendNoteSection(heading, text, imagePath)` (private) and
   `NoteCapturedPhoto` / `notesFilePath()` public
-  (`include/openzoom/common/assistive_runtime.hpp:88-93`).
+  (`include/okuflow/common/assistive_runtime.hpp:88-93`).
 - **Canonical geometry.** `ViewTransform` + `ComputeViewTransform` +
-  `ComputePixelViewMapping` (`include/openzoom/common/view_transform.hpp`)
+  `ComputePixelViewMapping` (`include/okuflow/common/view_transform.hpp`)
   already define the scene↔viewport mapping used by shader, CPU path, and
   ROI remap. Annotations reuse it; no new geometry math.
 
@@ -176,7 +176,7 @@ eraser) announced in the buttons' accessible descriptions.
 - New `AnnotationModel` (strokes, selection, undo stack) — plain C++/Qt,
   no GPU types, unit-testable in the msvc-cpu preset.
 - Mode/tool state lives in `UiStateManager` alongside existing UI state;
-  `OpenZoomApp` wires overlay ↔ model ↔ pipeline (snapshot flag) in
+  `OkuFlowApp` wires overlay ↔ model ↔ pipeline (snapshot flag) in
   `app_controls.cpp` / `app_bootstrap.cpp` following existing patterns.
 - Settings (`SettingsStore`, new `annotations` object in settings.json):
   ink color, width, capture-on-exit toggle. Strokes themselves are
@@ -285,7 +285,7 @@ select-first convention. Owner can veto the position, not the tool.
 
 ```
 +--------------------------------------------------------------------------+
-| [OpenZoom] [Simple|Advanced] [ ] Text Clarity          (top-left chrome) |
+| [OkuFlow]  [Simple|Advanced] [ ] Text Clarity          (top-left chrome) |
 |                                                                          |
 | +------+  +-----------------+                          +---------+       |
 | | Pen* |  | Pen             |                          | Undo    |       |
@@ -713,7 +713,7 @@ per `agents.md`:
 |---|---|---|---|
 | **R2-A** | Advanced-mode action bar (R2.8) + all contrast/text fixes (R2.7 #1-5) | `src/ui/main_window.cpp`, palette setup site | 0.5 day — do first, all one-liners with outsized daily-use impact |
 | **R2-B** | Wheel + key forwarding (R2.4) | `src/ui/annotation_overlay.cpp` | 0.5 day + rig verify (trackpad and mouse, Simple and Advanced) |
-| **R2-C** | Rail/flyout restructure: icons, right action rail, swatch grid, vertical slider, Solid/Dashed UI, flyout lifecycle (R2.2, R2.3), Save-on-exit relocation, R2.7 #6-7 | `annotation_overlay.{hpp,cpp}`, `main_window.cpp` (Assistant checkbox), new icon assets + `assets/openzoom_resources.qrc` | 1.5-2 days |
+| **R2-C** | Rail/flyout restructure: icons, right action rail, swatch grid, vertical slider, Solid/Dashed UI, flyout lifecycle (R2.2, R2.3), Save-on-exit relocation, R2.7 #6-7 | `annotation_overlay.{hpp,cpp}`, `main_window.cpp` (Assistant checkbox), new icon assets + `assets/okuflow_resources.qrc` | 1.5-2 days |
 | **R2-D** | Move-mode scale handles (R2.5): `BuildStrokePath` extraction, handle hit/drag/cursors, keyboard resize, model scale API | `annotation_model.{hpp,cpp}`, `annotation_overlay.cpp`, model tests | 1-1.5 days |
 | **R2-E** | Shape tool (R2.6): kinds, rendering, outline hit-test, flyout pair, `dashed` render rule | `annotation_model.{hpp,cpp}`, `annotation_overlay.cpp`, `settings_store.{hpp,cpp}` + tests | 1 day |
 

@@ -1,6 +1,9 @@
 #ifdef _WIN32
 
-#include "openzoom/capture/media_capture.hpp"
+#include "media_capture_session.hpp"
+#include "okuflow/capture/capture_texture.hpp"
+#include "okuflow/capture/capture_buffer.hpp"
+#include "okuflow/capture/capture_color.hpp"
 
 #include <QDebug>
 
@@ -22,7 +25,7 @@
 #include <utility>
 #include <sstream>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -275,25 +278,11 @@ std::string DescribeCameraFailure(CameraFailureKind kind, HRESULT hr, const char
 
 } // namespace
 
-MediaCapture::MediaCapture() = default;
+MediaCaptureSession::MediaCaptureSession() = default;
 
-MediaCapture::~MediaCapture()
-{
-    StopCapture();
-    Shutdown();
-}
+MediaCaptureSession::~MediaCaptureSession() = default;
 
-bool MediaCapture::Initialize()
-{
-    return true;
-}
-
-void MediaCapture::Shutdown()
-{
-    StopCapture();
-}
-
-std::vector<CameraDescriptor> MediaCapture::EnumerateCameras()
+std::vector<CameraDescriptor> MediaCaptureSession::EnumerateCameras()
 {
     std::vector<CameraDescriptor> cameras;
 
@@ -363,7 +352,7 @@ std::vector<CameraDescriptor> MediaCapture::EnumerateCameras()
     return cameras;
 }
 
-std::vector<VideoFormat> MediaCapture::EnumerateFormats(const CameraDescriptor& descriptor)
+std::vector<VideoFormat> MediaCaptureSession::EnumerateFormats(const CameraDescriptor& descriptor)
 {
     lastError_.clear();
     std::vector<VideoFormat> formats;
@@ -404,17 +393,18 @@ std::vector<VideoFormat> MediaCapture::EnumerateFormats(const CameraDescriptor& 
     return formats;
 }
 
-bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
+bool MediaCaptureSession::StartCapture(const CameraDescriptor& descriptor,
                                 const VideoFormat* requestedFormat,
                                 FrameCallback callback,
                                 GUID preferredSubtype,
                                 CaptureErrorCallback errorCallback,
-                                CaptureAccelerationMode accelerationMode)
+                                CaptureAccelerationMode accelerationMode,
+                                const std::wstring& requestedStableId)
 {
-    StopCapture();
     lastError_.clear();
     formatNotice_.clear();
     negotiatedFormat_ = {};
+    nativeFormats_.clear();
     lastFailureKind_.store(CameraFailureKind::None);
     deviceLost_.store(false);
     accelerationValidated_.store(false);
@@ -455,6 +445,19 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
 
         ActivationShutdownGuard activationGuard(descriptor.activation.Get());
 
+        // Resolve persisted selection on the reader we will stream from. A
+        // separate EnumerateFormats probe would activate, shut down, and reopen
+        // this same camera before it could deliver its first frame.
+        nativeFormats_ = ExtractFormats(reader.Get());
+        if (!requestedFormat && !requestedStableId.empty()) {
+            const auto requested = std::find_if(
+                nativeFormats_.begin(), nativeFormats_.end(),
+                [&requestedStableId](const VideoFormat& candidate) {
+                    return candidate.stableId == requestedStableId;
+                });
+            if (requested != nativeFormats_.end()) requestedFormat = &*requested;
+        }
+
         FrameFormat format;
         if (!ConfigureReader(reader.Get(), preferredSubtype, requestedFormat, format)) {
             lastError_ = "ConfigureReader failed to select format";
@@ -462,6 +465,31 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
             return false;
         }
 
+        if (qEnvironmentVariableIsSet("OKUFLOW_CAPTURE_DIAGNOSTICS")) {
+            Microsoft::WRL::ComPtr<IMFPresentationDescriptor> presentation;
+            DWORD streamCount = 0;
+            if (SUCCEEDED(mediaSource->CreatePresentationDescriptor(&presentation)) &&
+                SUCCEEDED(presentation->GetStreamDescriptorCount(&streamCount))) {
+                for (DWORD index = 0; index < streamCount; ++index) {
+                    BOOL selected = FALSE;
+                    Microsoft::WRL::ComPtr<IMFStreamDescriptor> stream;
+                    Microsoft::WRL::ComPtr<IMFMediaTypeHandler> handler;
+                    Microsoft::WRL::ComPtr<IMFMediaType> nativeType;
+                    GUID major = GUID_NULL;
+                    if (FAILED(presentation->GetStreamDescriptorByIndex(index, &selected, &stream)) ||
+                        FAILED(stream->GetMediaTypeHandler(&handler)) ||
+                        FAILED(handler->GetMajorType(&major)) || major != MFMediaType_Video ||
+                        FAILED(handler->GetCurrentMediaType(&nativeType))) continue;
+                    UINT32 nativeWidth = 0, nativeHeight = 0, numerator = 0, denominator = 0;
+                    MFGetAttributeSize(nativeType.Get(), MF_MT_FRAME_SIZE, &nativeWidth, &nativeHeight);
+                    MFGetAttributeRatio(nativeType.Get(), MF_MT_FRAME_RATE, &numerator, &denominator);
+                    qInfo() << "Capture native source format:" << nativeWidth << "x" << nativeHeight
+                            << "rate" << numerator << "/" << denominator
+                            << "| reader output:" << format.width << "x" << format.height
+                            << "rate" << format.frameRateNumerator << "/" << format.frameRateDenominator;
+                }
+            }
+        }
         mediaSource_ = std::move(mediaSource);
         sourceReader_ = std::move(reader);
         activeActivation_ = descriptor.activation;
@@ -492,26 +520,26 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
         activationGuard.Dismiss();
 
         running_ = true;
-        captureThread_ = std::thread(&MediaCapture::CaptureLoop,
-                                     this,
-                                     std::move(callback),
-                                     std::move(errorCallback));
+        captureThread_ = std::thread(
+            [session = shared_from_this(), callback = std::move(callback),
+             errorCallback = std::move(errorCallback)]() mutable {
+                session->CaptureLoop(std::move(callback), std::move(errorCallback));
+            });
         return true;
     } catch (const std::exception& e) {
         lastError_ = e.what();
         lastFailureKind_.store(CameraFailureKind::Other);
-        qWarning() << "MediaCapture::StartCapture exception:" << e.what();
+        qWarning() << "MediaCaptureSession::StartCapture exception:" << e.what();
     } catch (...) {
         lastError_ = "Unknown exception while starting capture";
         lastFailureKind_.store(CameraFailureKind::Other);
-        qWarning() << "MediaCapture::StartCapture unknown exception";
+        qWarning() << "MediaCaptureSession::StartCapture unknown exception";
     }
 
-    StopCapture();
     return false;
 }
 
-HRESULT MediaCapture::TryOpenDevice(const CameraDescriptor& descriptor,
+HRESULT MediaCaptureSession::TryOpenDevice(const CameraDescriptor& descriptor,
                                     Microsoft::WRL::ComPtr<IMFMediaSource>& outSource,
                                     Microsoft::WRL::ComPtr<IMFSourceReader>& outReader,
                                     const char*& failedStage,
@@ -576,7 +604,7 @@ HRESULT MediaCapture::TryOpenDevice(const CameraDescriptor& descriptor,
     return S_OK;
 }
 
-bool MediaCapture::CreateAccelerationDeviceManager()
+bool MediaCaptureSession::CreateAccelerationDeviceManager()
 {
     ReleaseAccelerationResources();
     d3d11Device_.Reset();
@@ -639,17 +667,17 @@ bool MediaCapture::CreateAccelerationDeviceManager()
     return true;
 }
 
-bool MediaCapture::ConsumeDeviceLost()
+bool MediaCaptureSession::ConsumeDeviceLost()
 {
     return deviceLost_.exchange(false);
 }
 
-bool MediaCapture::ConsumeAccelerationValidated()
+bool MediaCaptureSession::ConsumeAccelerationValidated()
 {
     return accelerationValidated_.exchange(false);
 }
 
-bool MediaCapture::ConsumeAccelerationRejected()
+bool MediaCaptureSession::ConsumeAccelerationRejected()
 {
     return accelerationRejected_.exchange(false);
 }
@@ -685,7 +713,7 @@ std::uint64_t ThreadCpuTime100ns()
     return kernelTime.QuadPart + userTime.QuadPart;
 }
 
-double MediaCapture::CurrentFrameRate() const
+double MediaCaptureSession::CurrentFrameRate() const
 {
     const UINT denominator = frameRateDenominator_.load();
     return denominator == 0
@@ -694,8 +722,7 @@ double MediaCapture::CurrentFrameRate() const
                      static_cast<double>(denominator);
 }
 
-void MediaCapture::StopCapture(
-    const std::function<void()>& beforeAccelerationRelease)
+void MediaCaptureSession::Quiesce()
 {
     running_ = false;
 
@@ -708,18 +735,18 @@ void MediaCapture::StopCapture(
     }
 
     PrepareAccelerationInteropRelease();
-    if (beforeAccelerationRelease) {
-        try {
-            beforeAccelerationRelease();
-        } catch (const std::exception& error) {
-            qWarning() << "Capture interop release callback failed:"
-                       << error.what();
-        } catch (...) {
-            qWarning()
-                << "Capture interop release callback failed unexpectedly";
-        }
-    }
+}
 
+void MediaCaptureSession::ReleaseResources()
+{
+    // CUDA releases the consumer lease only after its copy-completion event
+    // succeeds. A nonblocking import reset may leave that copy outstanding;
+    // never clear producer backing merely because its own D3D work quiesced.
+    while (!activeCudaLease_.expired()) {
+        if (shutdown_->IsAbandoned()) return;
+        Sleep(1);
+    }
+    if (shutdown_->IsAbandoned()) return;
     sourceReader_.Reset();
     if (activeActivation_) {
         const HRESULT hr = activeActivation_->ShutdownObject();
@@ -743,15 +770,32 @@ void MediaCapture::StopCapture(
     frameRateDenominator_.store(0);
 }
 
-void MediaCapture::PrepareAccelerationInteropRelease()
+void MediaCaptureSession::PrepareAccelerationInteropRelease()
 {
     std::scoped_lock lock(d3d11Mutex_);
     if (!d3d11Device_ || !d3d11Context_) {
         return;
     }
 
-    // The capture thread is already joined, so releasing the video-processor
-    // graph here cannot race a new blit or external-memory read.
+    // This executes only on the independently owned stop coordinator. A stuck
+    // driver may hold it indefinitely; the facade's deadline retains the entire
+    // session rather than treating a timeout as successful GPU completion.
+    Microsoft::WRL::ComPtr<ID3D11Query> completion;
+    D3D11_QUERY_DESC queryDescription{};
+    queryDescription.Query = D3D11_QUERY_EVENT;
+    ThrowIfFailed(d3d11Device_->CreateQuery(
+        &queryDescription, completion.GetAddressOf()), "Create capture shutdown query");
+    d3d11Context_->End(completion.Get());
+    d3d11Context_->Flush();
+    HRESULT completionResult;
+    do {
+        completionResult = d3d11Context_->GetData(completion.Get(), nullptr, 0, 0);
+        if (completionResult == S_FALSE) Sleep(1);
+    } while (completionResult == S_FALSE);
+    ThrowIfFailed(completionResult, "Wait for capture producer completion");
+
+    // The capture thread is joined and producer work has completed. Keep the
+    // shared BGRA allocation itself until the caller releases its CUDA import.
     d3d11CudaQueryPending_ = false;
     d3d11CudaPendingSequence_ = 0;
     d3d11CudaReadyQuery_.Reset();
@@ -762,28 +806,9 @@ void MediaCapture::PrepareAccelerationInteropRelease()
     d3d11VideoContext_.Reset();
     d3d11VideoDevice_.Reset();
     d3d11Context_->ClearState();
-
-    Microsoft::WRL::ComPtr<ID3D11Query> completion;
-    D3D11_QUERY_DESC queryDescription{};
-    queryDescription.Query = D3D11_QUERY_EVENT;
-    if (SUCCEEDED(d3d11Device_->CreateQuery(
-            &queryDescription, completion.GetAddressOf()))) {
-        d3d11Context_->End(completion.Get());
-        d3d11Context_->Flush();
-        const auto deadline =
-            std::chrono::steady_clock::now() +
-            std::chrono::seconds(2);
-        while (d3d11Context_->GetData(
-                   completion.Get(), nullptr, 0, 0) == S_FALSE &&
-               std::chrono::steady_clock::now() < deadline) {
-            Sleep(1);
-        }
-    } else {
-        d3d11Context_->Flush();
-    }
 }
 
-bool MediaCapture::ConfigureReader(IMFSourceReader* reader,
+bool MediaCaptureSession::ConfigureReader(IMFSourceReader* reader,
                                    GUID preferredSubtype,
                                    const VideoFormat* requestedFormat,
                                    FrameFormat& outFormat)
@@ -859,7 +884,7 @@ bool MediaCapture::ConfigureReader(IMFSourceReader* reader,
     return typeSelected && ReadCurrentFormat(reader, outFormat);
 }
 
-bool MediaCapture::ReadCurrentFormat(IMFSourceReader* reader, FrameFormat& outFormat)
+bool MediaCaptureSession::ReadCurrentFormat(IMFSourceReader* reader, FrameFormat& outFormat)
 {
     Microsoft::WRL::ComPtr<IMFMediaType> currentType;
     ThrowIfFailed(reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,
@@ -875,7 +900,11 @@ bool MediaCapture::ReadCurrentFormat(IMFSourceReader* reader, FrameFormat& outFo
                   "Get frame size");
 
     LONG rawStride = 0;
-    if (FAILED(MFGetStrideForBitmapInfoHeader(subtype.Data1, width, &rawStride))) {
+    UINT32 storedStride = 0;
+    if (SUCCEEDED(currentType->GetUINT32(MF_MT_DEFAULT_STRIDE, &storedStride))) {
+        // MF stores the signed stride as UINT32, including bottom-up RGB.
+        std::memcpy(&rawStride, &storedStride, sizeof(rawStride));
+    } else if (FAILED(MFGetStrideForBitmapInfoHeader(subtype.Data1, width, &rawStride))) {
         if (IsEqualGUID(subtype, MFVideoFormat_ARGB32) || IsEqualGUID(subtype, MFVideoFormat_RGB32)) {
             rawStride = static_cast<LONG>(width * 4);
         } else if (IsEqualGUID(subtype, MFVideoFormat_NV12)) {
@@ -888,6 +917,13 @@ bool MediaCapture::ReadCurrentFormat(IMFSourceReader* reader, FrameFormat& outFo
     }
 
     outFormat.subtype = subtype;
+    outFormat.yuvColor = {};
+    if ((IsEqualGUID(subtype, MFVideoFormat_NV12) ||
+         IsEqualGUID(subtype, MFVideoFormat_YUY2)) &&
+        !ReadCaptureYuvColor(currentType.Get(), outFormat.yuvColor)) {
+        qWarning() << "Camera supplied an unsupported YUV matrix or nominal range";
+        return false;
+    }
     outFormat.width = width;
     outFormat.height = height;
     outFormat.stride = rawStride;
@@ -903,7 +939,7 @@ bool MediaCapture::ReadCurrentFormat(IMFSourceReader* reader, FrameFormat& outFo
     return true;
 }
 
-std::vector<VideoFormat> MediaCapture::ExtractFormats(IMFSourceReader* reader)
+std::vector<VideoFormat> MediaCaptureSession::ExtractFormats(IMFSourceReader* reader)
 {
     std::vector<VideoFormat> formats;
     if (!reader) {
@@ -954,17 +990,16 @@ std::vector<VideoFormat> MediaCapture::ExtractFormats(IMFSourceReader* reader)
     return formats;
 }
 
-std::string MediaCapture::HrToString(HRESULT hr)
+std::string MediaCaptureSession::HrToString(HRESULT hr)
 {
     return FormatHResult(hr);
 }
 
-void MediaCapture::ReleaseAccelerationResources()
+void MediaCaptureSession::ReleaseAccelerationResources()
 {
     std::scoped_lock lock(d3d11Mutex_);
     d3d11CudaQueryPending_ = false;
     d3d11CudaPendingSequence_ = 0;
-    d3d11CudaCompletionDelayed_ = false;
     d3d11CudaReadyQuery_.Reset();
     d3d11CudaOutputView_.Reset();
     d3d11VideoProcessorOutputTexture_.Reset();
@@ -980,7 +1015,7 @@ void MediaCapture::ReleaseAccelerationResources()
     d3d11CudaNeedsCopy_ = false;
 }
 
-bool MediaCapture::AttachDxgiFrame(IMFMediaBuffer* buffer, MediaFrame& frame)
+bool MediaCaptureSession::AttachDxgiFrame(IMFMediaBuffer* buffer, MediaFrame& frame)
 {
     if (!buffer) {
         return false;
@@ -1011,7 +1046,7 @@ bool MediaCapture::AttachDxgiFrame(IMFMediaBuffer* buffer, MediaFrame& frame)
     return true;
 }
 
-bool MediaCapture::CopyGpuFrame(const FrameFormat& format, MediaFrame& frame)
+bool MediaCaptureSession::CopyGpuFrame(const FrameFormat& format, MediaFrame& frame)
 {
     if (!frame.gpuTexture || !d3d11Device_ || !d3d11Context_) {
         return false;
@@ -1090,13 +1125,14 @@ bool MediaCapture::CopyGpuFrame(const FrameFormat& format, MediaFrame& frame)
     return true;
 }
 
-bool MediaCapture::ReadbackGpuFrame(MediaFrame& frame)
+bool MediaCaptureSession::ReadbackGpuFrame(MediaFrame& frame)
 {
     if (!frame.IsGpuResident()) {
         return !frame.data.empty();
     }
     FrameFormat format{};
     format.subtype = frame.subtype;
+    format.yuvColor = frame.yuvColor;
     format.width = frame.width;
     format.height = frame.height;
     format.stride = frame.stride;
@@ -1105,14 +1141,16 @@ bool MediaCapture::ReadbackGpuFrame(MediaFrame& frame)
     return CopyGpuFrame(format, frame);
 }
 
-bool MediaCapture::EnsureVideoProcessor(const MediaFrame& frame)
+bool MediaCaptureSession::EnsureVideoProcessor(const MediaFrame& frame)
 {
     if (!frame.gpuTexture || !d3d11Device_ || !d3d11Context_ ||
         frame.width == 0 || frame.height == 0) {
         return false;
     }
-    if (d3d11VideoProcessor_ && d3d11CudaTexture_ &&
-        d3d11VideoProcessorOutputTexture_ && d3d11CudaOutputView_ &&
+    const bool directBgraCopy = frame.gpuFormat == DXGI_FORMAT_B8G8R8A8_UNORM;
+    if ((directBgraCopy || (d3d11VideoProcessor_ &&
+                           d3d11VideoProcessorOutputTexture_ && d3d11CudaOutputView_)) &&
+        d3d11CudaTexture_ &&
         d3d11CudaReadyQuery_ &&
         videoProcessorInputFormat_ == frame.gpuFormat &&
         videoProcessorWidth_ == frame.width &&
@@ -1122,7 +1160,6 @@ bool MediaCapture::EnsureVideoProcessor(const MediaFrame& frame)
 
     d3d11CudaQueryPending_ = false;
     d3d11CudaPendingSequence_ = 0;
-    d3d11CudaCompletionDelayed_ = false;
     d3d11CudaReadyQuery_.Reset();
     d3d11CudaOutputView_.Reset();
     d3d11VideoProcessorOutputTexture_.Reset();
@@ -1131,6 +1168,33 @@ bool MediaCapture::EnsureVideoProcessor(const MediaFrame& frame)
     d3d11VideoProcessorEnumerator_.Reset();
     d3d11VideoContext_.Reset();
     d3d11VideoDevice_.Reset();
+
+    if (directBgraCopy) {
+        // MF has already converted this sample to the exact CUDA handoff
+        // format. A bit-preserving GPU copy needs neither video processing nor
+        // another color conversion (and avoids its driver scheduling path).
+        D3D11_TEXTURE2D_DESC output{};
+        output.Width = frame.width;
+        output.Height = frame.height;
+        output.MipLevels = 1;
+        output.ArraySize = 1;
+        output.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        output.SampleDesc.Count = 1;
+        output.Usage = D3D11_USAGE_DEFAULT;
+        output.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        output.MiscFlags = D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
+        if (FAILED(d3d11Device_->CreateTexture2D(
+                &output, nullptr, d3d11CudaTexture_.GetAddressOf()))) return false;
+        D3D11_QUERY_DESC query{};
+        query.Query = D3D11_QUERY_EVENT;
+        if (FAILED(d3d11Device_->CreateQuery(
+                &query, d3d11CudaReadyQuery_.GetAddressOf()))) return false;
+        d3d11CudaNeedsCopy_ = false;
+        videoProcessorInputFormat_ = frame.gpuFormat;
+        videoProcessorWidth_ = frame.width;
+        videoProcessorHeight_ = frame.height;
+        return true;
+    }
 
     if (FAILED(d3d11Device_.As(&d3d11VideoDevice_)) ||
         FAILED(d3d11Context_.As(&d3d11VideoContext_))) {
@@ -1252,16 +1316,28 @@ bool MediaCapture::EnsureVideoProcessor(const MediaFrame& frame)
     return true;
 }
 
-GpuFramePreparationResult MediaCapture::PrepareGpuFrameForCuda(
+GpuFramePreparationResult MediaCaptureSession::PrepareGpuFrameForCuda(
     const MediaFrame& frame,
-    Microsoft::WRL::ComPtr<ID3D11Texture2D>& outTexture)
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>& outTexture,
+    std::shared_ptr<void>& outLease)
 {
     outTexture.Reset();
+    outLease.reset();
     if (!frame.IsGpuResident()) {
         return GpuFramePreparationResult::Unsupported;
     }
 
     std::scoped_lock lock(d3d11Mutex_);
+    if (!activeCudaLease_.expired()) {
+        return GpuFramePreparationResult::Retry;
+    }
+    const auto leaseReadyTexture = [&]() {
+        // A distinct control block makes weak expiration track the consumer,
+        // while the contained session reference retains all producer backing.
+        outLease = std::make_shared<std::shared_ptr<MediaCaptureSession>>(shared_from_this());
+        activeCudaLease_ = outLease;
+        outTexture = d3d11CudaTexture_;
+    };
     if (d3d11CudaQueryPending_) {
         const std::uint64_t pendingSequence =
             d3d11CudaPendingSequence_;
@@ -1282,18 +1358,41 @@ GpuFramePreparationResult MediaCapture::PrepareGpuFrameForCuda(
         d3d11CudaQueryPending_ = false;
         d3d11CudaPendingSequence_ = 0;
         if (frame.sequenceNumber == pendingSequence) {
-            if (d3d11CudaCompletionDelayed_) {
-                qInfo() << "D3D11 camera conversion recovered; "
-                           "external-memory capture resumed";
-                d3d11CudaCompletionDelayed_ = false;
-            }
-            outTexture = d3d11CudaTexture_;
+            leaseReadyTexture();
             return GpuFramePreparationResult::Ready;
         }
     }
     if (!EnsureVideoProcessor(frame)) {
         return GpuFramePreparationResult::Unsupported;
     }
+
+    if (frame.gpuFormat == DXGI_FORMAT_B8G8R8A8_UNORM) {
+        if (!CopyBgraCaptureTexture(d3d11Context_.Get(), frame.gpuTexture.Get(),
+                frame.gpuSubresource, d3d11CudaTexture_.Get(), frame.width, frame.height)) {
+            return GpuFramePreparationResult::Unsupported;
+        }
+    } else {
+    const bool yuvInput = frame.gpuFormat == DXGI_FORMAT_NV12 ||
+                          frame.gpuFormat == DXGI_FORMAT_YUY2;
+    if (yuvInput && frame.yuvColor.range == YuvRange::Full) {
+        D3D11_VIDEO_PROCESSOR_CAPS caps{};
+        if (FAILED(d3d11VideoProcessorEnumerator_->GetVideoProcessorCaps(&caps)) ||
+            (caps.DeviceCaps & D3D11_VIDEO_PROCESSOR_DEVICE_CAPS_NOMINAL_RANGE) == 0) {
+            // A driver without nominal-range support would silently expand
+            // full-range YUV as limited. Let the raw CPU/CUDA rung convert it.
+            return GpuFramePreparationResult::Unsupported;
+        }
+    }
+    const auto inputColor = CaptureVideoColorSpace(yuvInput ? frame.yuvColor
+        : YuvColorInfo{YuvMatrix::Bt709, YuvRange::Full});
+    const auto outputColor = CaptureVideoColorSpace(
+        {YuvMatrix::Bt709, YuvRange::Full});
+    // Apply every frame: a media-type change need not recreate the processor
+    // when only color metadata changes. RGB output always uses full range.
+    d3d11VideoContext_->VideoProcessorSetStreamColorSpace(
+        d3d11VideoProcessor_.Get(), 0, &inputColor);
+    d3d11VideoContext_->VideoProcessorSetOutputColorSpace(
+        d3d11VideoProcessor_.Get(), &outputColor);
 
     D3D11_TEXTURE2D_DESC inputDescription{};
     frame.gpuTexture->GetDesc(&inputDescription);
@@ -1347,41 +1446,26 @@ GpuFramePreparationResult MediaCapture::PrepareGpuFrameForCuda(
             d3d11CudaTexture_.Get(),
             d3d11VideoProcessorOutputTexture_.Get());
     }
+    }
 
     // D3D11 and CUDA use separate API timelines for the same allocation.
-    // Complete the VideoProcessor write (and optional GPU copy) before CUDA
+    // Complete the direct copy or VideoProcessor write before CUDA
     // imports/reads it. UploadD3D11Frame performs the reciprocal CUDA drain
     // before this reusable texture can be written again.
     d3d11Context_->End(d3d11CudaReadyQuery_.Get());
     d3d11Context_->Flush();
     d3d11CudaQueryPending_ = true;
     d3d11CudaPendingSequence_ = frame.sequenceNumber;
-    // This function runs on the viewport/frame thread. A cold driver used to
-    // occupy that thread for up to 250 ms, which appeared as a CUDA pipeline
-    // spike even though the delay was entirely in D3D11 capture conversion.
-    // Give the normal sub-millisecond conversion a small scheduling allowance.
-    // A delayed query returns Retry so the application can retain this exact
-    // MediaFrame and retry it asynchronously without crossing system memory.
-    constexpr auto kInteractiveCompletionBudget =
-        std::chrono::milliseconds(3);
-    const auto deadline =
-        std::chrono::steady_clock::now() + kInteractiveCompletionBudget;
+    // Never sleep on the viewport thread waiting for this separate GPU
+    // timeline. Pending work retains this exact MediaFrame for the app's 1 ms
+    // event-loop retries and existing 25 ms safe-copy fallback deadline.
     BOOL complete = FALSE;
-    HRESULT completionResult = S_FALSE;
-    while ((completionResult = d3d11Context_->GetData(
+    const HRESULT completionResult = d3d11Context_->GetData(
                 d3d11CudaReadyQuery_.Get(),
                 &complete,
                 sizeof(complete),
-                D3D11_ASYNC_GETDATA_DONOTFLUSH)) == S_FALSE &&
-           std::chrono::steady_clock::now() < deadline) {
-        Sleep(1);
-    }
+                D3D11_ASYNC_GETDATA_DONOTFLUSH);
     if (completionResult == S_FALSE) {
-        if (!d3d11CudaCompletionDelayed_) {
-            qWarning() << "D3D11 camera conversion is delayed; retaining the "
-                          "GPU frame and retrying asynchronously";
-            d3d11CudaCompletionDelayed_ = true;
-        }
         return GpuFramePreparationResult::Retry;
     }
     d3d11CudaQueryPending_ = false;
@@ -1390,17 +1474,12 @@ GpuFramePreparationResult MediaCapture::PrepareGpuFrameForCuda(
         qWarning() << "D3D11 camera conversion completion query failed";
         return GpuFramePreparationResult::Unsupported;
     }
-    if (d3d11CudaCompletionDelayed_) {
-        qInfo() << "D3D11 camera conversion recovered; external-memory "
-                   "capture resumed";
-        d3d11CudaCompletionDelayed_ = false;
-    }
 
-    outTexture = d3d11CudaTexture_;
+    leaseReadyTexture();
     return GpuFramePreparationResult::Ready;
 }
 
-bool MediaCapture::ValidateStartupFrame(const MediaFrame& frame)
+bool MediaCaptureSession::ValidateStartupFrame(const MediaFrame& frame)
 {
     if (accelerationMode_ != CaptureAccelerationMode::Accelerated ||
         startupValidationComplete_ || accelerationRejected_.load()) {
@@ -1438,13 +1517,14 @@ bool MediaCapture::ValidateStartupFrame(const MediaFrame& frame)
     return false;
 }
 
-void MediaCapture::CaptureLoop(FrameCallback callback, CaptureErrorCallback errorCallback)
+void MediaCaptureSession::CaptureLoop(FrameCallback callback, CaptureErrorCallback errorCallback)
 {
     HRESULT coInit = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     const bool shouldUninitializeCom = SUCCEEDED(coInit);
-    auto reportFailure = [&errorCallback](const std::string& message) {
+    auto reportFailure = [this, &errorCallback](const std::string& message) {
         qWarning() << "Camera capture stopped:" << QString::fromStdString(message);
-        if (errorCallback) {
+        auto delivery = shutdown_->TryEnterDelivery();
+        if (errorCallback && delivery) {
             try {
                 errorCallback(message);
             } catch (const std::exception& e) {
@@ -1473,7 +1553,7 @@ void MediaCapture::CaptureLoop(FrameCallback callback, CaptureErrorCallback erro
     FrameFormat format = currentFormat_;
     std::uint64_t sequenceNumber = 0;
     const bool diagnosticsEnabled =
-        qEnvironmentVariableIsSet("OPENZOOM_CAPTURE_DIAGNOSTICS");
+        qEnvironmentVariableIsSet("OKUFLOW_CAPTURE_DIAGNOSTICS");
     std::int64_t diagnosticsStartClock = QueryClock100ns();
     std::uint64_t diagnosticsStartCpu = ThreadCpuTime100ns();
     std::uint64_t diagnosticsFrames = 0;
@@ -1552,6 +1632,7 @@ void MediaCapture::CaptureLoop(FrameCallback callback, CaptureErrorCallback erro
 
         MediaFrame frame;
         frame.subtype = format.subtype;
+        frame.yuvColor = format.yuvColor;
         frame.width = format.width;
         frame.height = format.height;
         frame.captureTimestamp100ns = timestamp;
@@ -1588,23 +1669,24 @@ void MediaCapture::CaptureLoop(FrameCallback callback, CaptureErrorCallback erro
         }
         if (!frameReady) {
             buffer.Reset();
-            hr = sample->ConvertToContiguousBuffer(&buffer);
+            DWORD bufferCount = 0;
+            hr = sample->GetBufferCount(&bufferCount);
+            if (SUCCEEDED(hr)) {
+                // Preserve the native 2D interface/pitch for single-buffer video.
+                hr = bufferCount == 1
+                    ? sample->GetBufferByIndex(0, buffer.GetAddressOf())
+                    : sample->ConvertToContiguousBuffer(buffer.GetAddressOf());
+            }
             if (FAILED(hr) || !buffer) {
                 continue;
             }
 
-            BYTE* data = nullptr;
-            hr = buffer->Lock(&data, nullptr, &length);
-            if (FAILED(hr) || !data) {
-                if (SUCCEEDED(hr)) {
-                    buffer->Unlock();
-                }
+            if (!CopyCaptureBuffer(buffer.Get(), format.subtype,
+                                   format.width, format.height, format.stride,
+                                   frame.data, frame.stride)) {
                 continue;
             }
-            frame.data.assign(data, data + length);
-            frame.stride = format.stride;
             frame.dataSize = frame.data.size();
-            buffer->Unlock();
             frameReady = true;
         }
         if (!frameReady) {
@@ -1618,15 +1700,14 @@ void MediaCapture::CaptureLoop(FrameCallback callback, CaptureErrorCallback erro
 
         if (!ValidateStartupFrame(frame)) {
             running_ = false;
-            lastError_ =
-                "Hardware camera acceleration produced invalid startup frames";
             reportFailure(
                 "Hardware camera acceleration did not produce a usable image; "
                 "retrying in compatibility mode");
             break;
         }
 
-        if (callback) {
+        auto delivery = shutdown_->TryEnterDelivery();
+        if (callback && delivery) {
             try {
                 callback(std::move(frame));
             } catch (const std::exception& e) {
@@ -1688,6 +1769,6 @@ void MediaCapture::CaptureLoop(FrameCallback callback, CaptureErrorCallback erro
     }
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

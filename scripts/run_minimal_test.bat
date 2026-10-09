@@ -11,10 +11,10 @@ set BUILD_DIR=%ROOT_DIR%\build
 popd >nul
 
 rem Build the main application without launching it.
-set "OPENZOOM_SKIP_RUN=1"
+set "OKUFLOW_SKIP_RUN=1"
 call "%SCRIPT_DIR%build_and_run.bat"
 if errorlevel 1 goto :fail
-set "OPENZOOM_SKIP_RUN="
+set "OKUFLOW_SKIP_RUN="
 
 rem At this point the main app has exited and the build tree is configured.
 if not exist "%BUILD_DIR%" (

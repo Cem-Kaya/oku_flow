@@ -3,40 +3,53 @@
 #include "app_internal.hpp"
 #include "debug_log.hpp"
 
+#include <QSaveFile>
 #include <QThreadPool>
 
-namespace openzoom {
+namespace okuflow {
 
-OpenZoomApp::OpenZoomApp(int& argc, char** argv)
+OkuFlowApp::OkuFlowApp(int& argc, char** argv)
     : QObject(nullptr) {
+    startupTimer_.start();
+    startupWorkers_ = std::make_shared<StartupWorkerTracker>();
+    microphoneCallbackTarget_ =
+        std::make_shared<MicrophoneCallbackTarget>();
+    microphoneCallbackTarget_->app = this;
     debug_log::InstallIfConsoleAttached();
     qtApp_ = new QApplication(argc, argv);
     imageIoPool_ = std::make_unique<QThreadPool>();
     imageIoPool_->setMaxThreadCount(2);
     imageIoPool_->setExpiryTimeout(30000);
-    QCoreApplication::setOrganizationName(QStringLiteral("OpenZoom"));
-    QCoreApplication::setApplicationName(QStringLiteral("OpenZoom"));
+    QCoreApplication::setOrganizationName(QStringLiteral("OkuFlow"));
+    QCoreApplication::setApplicationName(QStringLiteral("OkuFlow"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("okuflow.com"));
+    ConfigureStartupProfiling();
 }
 
-bool OpenZoomApp::Initialize()
+bool OkuFlowApp::Initialize()
 {
     if (initialized_) {
         return true;
     }
 
     const HRESULT appIdResult =
-        SetCurrentProcessExplicitAppUserModelID(L"OpenZoom.OpenZoom");
+        SetCurrentProcessExplicitAppUserModelID(L"CemKaya.OkuFlow");
     if (FAILED(appIdResult)) {
         qWarning() << "Could not set Windows AppUserModelID"
                    << QStringLiteral("0x%1").arg(static_cast<qulonglong>(appIdResult), 0, 16);
     }
-    const QIcon applicationIcon(QStringLiteral(":/openzoom/icons/app.png"));
+    const QIcon applicationIcon(QStringLiteral(":/okuflow/icons/app.png"));
     qtApp_->setWindowIcon(applicationIcon);
     ResolveCudaBufferFormatFromOptions();
     InitializePlatform();
 
     presenter_ = std::make_unique<D3D12Presenter>();
-    settingsController_ = std::make_unique<SettingsController>();
+    // Windows known-folder lookup ignores a child APPDATA override. Profiling
+    // therefore uses an explicit sibling settings file for both load and save.
+    settingsController_ = std::make_unique<SettingsController>(
+        startupProfilePath_.isEmpty()
+            ? QString()
+            : QFileInfo(startupProfilePath_).dir().filePath(QStringLiteral("settings.json")));
     languageManager_ =
         std::make_unique<LanguageManager>(*qtApp_, this);
     auto& persistentSettings = settingsController_->MutableSettings();
@@ -48,9 +61,57 @@ bool OpenZoomApp::Initialize()
         languageManager_->SetLanguage(AppLanguage::English, false);
     }
     persistentSettings.language = languageManager_->languageCode();
+    // Revalidate the persisted root on every startup, not only when the user
+    // picks a folder: a saved directory can later be replaced with a
+    // junction into the install directory, lose its drive, or lose write
+    // access. On failure the session falls back to the default Documents
+    // folder and says so, keeping the saved setting for the user to fix.
+    QString userDataRootNotice;
+    const QString persistedUserDataRoot =
+        settingsController_->Settings().userDataRoot.trimmed();
+    if (!persistedUserDataRoot.isEmpty()) {
+        const UserDataValidationResult persistedRootCheck =
+            UserDataPaths::ValidateRoot(
+                persistedUserDataRoot,
+                QCoreApplication::applicationDirPath());
+        if (!persistedRootCheck.ok) {
+            userDataRootNotice =
+                QStringLiteral(
+                    "The saved OkuFlow folder cannot be used (%1). Files "
+                    "will go to the default Documents folder until a new "
+                    "folder is chosen.")
+                    .arg(persistedRootCheck.error);
+        }
+    }
     userDataPaths_ = std::make_unique<UserDataPaths>(
-        settingsController_->Settings().userDataRoot,
+        userDataRootNotice.isEmpty()
+            ? settingsController_->Settings().userDataRoot
+            : QString(),
         QCoreApplication::applicationDirPath());
+    const PhotoPairRecoveryResult photoRecovery =
+        userDataPaths_->RecoverInterruptedPhotoPairs(
+            // Current builds protect active writers with a per-pair lock, so
+            // unmarked leftovers from older builds are safe to reconcile on
+            // the first startup too.
+            QDateTime::currentDateTime().addSecs(1));
+    if (photoRecovery.completedPairs > 0 ||
+        photoRecovery.removedFiles > 0) {
+        qInfo() << "Recovered interrupted photo transactions:"
+                << photoRecovery.completedPairs << "pair(s) completed,"
+                << photoRecovery.removedFiles << "file(s) rolled back.";
+    }
+    for (const QString& path : photoRecovery.unresolvedPaths) {
+        qWarning() << "Could not reconcile interrupted photo transaction:"
+                   << path;
+    }
+    const QString photoRecoveryNotice =
+        photoRecovery.unresolvedPaths.isEmpty()
+            ? QString()
+            : TranslateUi(QStringLiteral(
+                  "The paired photos could not be saved. A partial file may "
+                  "remain: %1"))
+                  .arg(photoRecovery.unresolvedPaths.join(
+                      QStringLiteral(", ")));
     if (debug_log::IsEnabled()) {
         QString debugDirectoryError;
         const QString debugDirectory =
@@ -117,7 +178,9 @@ bool OpenZoomApp::Initialize()
         *uiState_->renderWidget_,
         *this,
         [this](const QString& question) { SubmitFloatingAssistantPrompt(question); },
+        [this]() { StartNewAssistantConversation(); },
         *userDataPaths_);
+    mainWindow_->annotationOverlay()->SetExcludedWidget(&assistiveManager_->Overlay());
     assistiveManager_->Runtime().SetResponseLanguage(
         languageManager_->languageCode());
     connect(&assistiveManager_->Runtime(),
@@ -127,6 +190,22 @@ bool OpenZoomApp::Initialize()
                 ShowStatusMessage(sourceText, 10000);
             });
     interactionController_ = std::make_unique<InteractionController>(*this);
+    connect(&assistiveManager_->Runtime(), &AssistiveRuntime::NotesWriteFinished,
+            this, [this](const QString& path, const QString& error) {
+                if (!error.isEmpty()) {
+                    transcriptionNoteWriteFailed_ = true;
+                    transcriptionNotesCompletionPending_ = false;
+                    openNotesWhenStored_ = false;
+                    qWarning() << "Lecture notes storage failed:" << path << error;
+                    ShowStatusMessage(QStringLiteral("Lecture notes could not be saved."), 9000);
+                    return;
+                }
+                MaybeReportTranscriptNotesSaved();
+                if (openNotesWhenStored_ && !assistiveManager_->Runtime().HasPendingNotesWrites()) {
+                    openNotesWhenStored_ = false;
+                    OpenNotesFile();
+                }
+            });
     pipelineOrchestrator_ = std::make_unique<PipelineOrchestrator>(
         *this,
         PipelineOrchestrator::Callbacks{
@@ -172,19 +251,24 @@ bool OpenZoomApp::Initialize()
         [this](const QString& message, int durationMs) {
             ShowStatusMessage(message, durationMs);
         },
-        [this](const QString& originalPath, const QString& processedPath) {
+        [this](const SavedRecordingSegment& segment) {
             if (assistiveManager_) {
                 assistiveManager_->Runtime().NoteCapturedVideoPair(
-                    originalPath, processedPath);
+                    segment.originalPath, segment.processedPath);
             }
         },
         *userDataPaths_,
-        [this]() {
+        [this](const RecordingSessionInfo& endedSession) {
             // Session-ended callbacks are queued from the recording worker
             // after the terminal state is published. If a new recording has
             // already started by the time this lands, releasing the
             // microphone now would silently strip audio from that new
             // session.
+            if (transcriptionController_) {
+                // Idempotent: recorder failure, watchdog, and normal stop all
+                // funnel here; only the matching transcript session ends.
+                transcriptionController_->FinishForSession(endedSession.id);
+            }
             if (recordingManager_ && recordingManager_->IsActive()) {
                 return;
             }
@@ -266,12 +350,12 @@ bool OpenZoomApp::Initialize()
     PopulatePresetList();
 
     connect(uiState_->cameraCombo_, &QComboBox::currentIndexChanged,
-            this, &OpenZoomApp::OnCameraSelectionChanged);
+            this, &OkuFlowApp::OnCameraSelectionChanged);
     connect(uiState_->microphoneCombo_, &QComboBox::currentIndexChanged,
-            this, &OpenZoomApp::OnMicrophoneSelectionChanged);
+            this, &OkuFlowApp::OnMicrophoneSelectionChanged);
     if (uiState_->presetList_) {
         connect(uiState_->presetList_, &QListWidget::currentItemChanged,
-                this, &OpenZoomApp::OnPresetSelectionChanged);
+                this, &OkuFlowApp::OnPresetSelectionChanged);
     }
     if (uiState_->promotePresetButton_) {
         connect(uiState_->promotePresetButton_, &QPushButton::clicked,
@@ -280,16 +364,16 @@ bool OpenZoomApp::Initialize()
     connect(mainWindow_.get(), &MainWindow::resetCurrentProfileRequested,
             this, [this]() { ResetCurrentConfigToDefaults(); });
     connect(uiState_->bwCheckbox_, &QCheckBox::toggled,
-            this, &OpenZoomApp::OnBlackWhiteToggled);
+            this, &OkuFlowApp::OnBlackWhiteToggled);
     connect(uiState_->bwSlider_, &QSlider::valueChanged,
-            this, &OpenZoomApp::OnBlackWhiteThresholdChanged);
+            this, &OkuFlowApp::OnBlackWhiteThresholdChanged);
     connect(uiState_->zoomCheckbox_, &QCheckBox::toggled,
-            this, &OpenZoomApp::OnZoomToggled);
+            this, &OkuFlowApp::OnZoomToggled);
     connect(uiState_->zoomSlider_, &QSlider::valueChanged,
-            this, &OpenZoomApp::OnZoomAmountChanged);
+            this, &OkuFlowApp::OnZoomAmountChanged);
     if (uiState_->debugButton_) {
         connect(uiState_->debugButton_, &QPushButton::toggled,
-                this, &OpenZoomApp::OnDebugViewToggled);
+                this, &OkuFlowApp::OnDebugViewToggled);
     }
     if (uiState_->capturePhotoButton_) {
         connect(uiState_->capturePhotoButton_, &QPushButton::clicked, this, [this]() {
@@ -298,7 +382,7 @@ bool OpenZoomApp::Initialize()
         });
     }
     connect(mainWindow_.get(), &MainWindow::annotationSnapshotRequested,
-            this, &OpenZoomApp::QueueAnnotationSnapshot);
+            this, &OkuFlowApp::QueueAnnotationSnapshot);
     connect(mainWindow_.get(), &MainWindow::annotationPreferencesChanged,
             this,
             [this](const QString& colorName,
@@ -323,6 +407,12 @@ bool OpenZoomApp::Initialize()
                 if (checked) {
                     StartSelectedMicrophone();
                 } else {
+                    // Transcript input ends first, then PCM production. The
+                    // transcript finalizer is bounded and asynchronous; it
+                    // never delays microphone release or recorder stop.
+                    if (transcriptionController_) {
+                        transcriptionController_->FinishInput();
+                    }
                     // Stop producing PCM first. RecordingManager::Stop
                     // deliberately clears its queued audio rather than
                     // draining a tail — finishing the sample the worker
@@ -338,31 +428,36 @@ bool OpenZoomApp::Initialize()
                     // Do not retain exclusive access to the device when no
                     // recording session exists.
                     StopMicrophoneCapture();
+                    if (transcriptionController_) {
+                        transcriptionController_->Cancel();
+                    }
+                } else if (checked) {
+                    StartTranscriptionForActiveRecording();
                 }
             }
         });
     }
     if (uiState_->rotationCombo_) {
         connect(uiState_->rotationCombo_, &QComboBox::currentIndexChanged,
-                this, &OpenZoomApp::OnRotationSelectionChanged);
+                this, &OkuFlowApp::OnRotationSelectionChanged);
     }
     if (uiState_->cameraFormatCombo_) {
         connect(uiState_->cameraFormatCombo_, &QComboBox::currentIndexChanged,
-                this, &OpenZoomApp::OnCameraFormatChanged);
+                this, &OkuFlowApp::OnCameraFormatChanged);
     }
     if (uiState_->cameraAccelerationCombo_) {
         connect(
             uiState_->cameraAccelerationCombo_,
             &QComboBox::currentIndexChanged,
             this,
-            &OpenZoomApp::OnCameraAccelerationModeChanged);
+            &OkuFlowApp::OnCameraAccelerationModeChanged);
     }
     if (uiState_->testCameraAccelerationButton_) {
         connect(
             uiState_->testCameraAccelerationButton_,
             &QPushButton::clicked,
             this,
-            &OpenZoomApp::OnTestCameraAcceleration);
+            &OkuFlowApp::OnTestCameraAcceleration);
     }
     connect(uiState_->viewportRateCombo_, &QComboBox::currentIndexChanged,
             this, [this](int index) {
@@ -403,23 +498,45 @@ bool OpenZoomApp::Initialize()
                 UpdateSectionChangedCounts();
                 SavePersistentSettings();
             });
+    if (uiState_->transcribeMicrophoneCheckbox_) {
+        connect(uiState_->transcribeMicrophoneCheckbox_, &QCheckBox::toggled,
+                this, [this](bool checked) {
+                    settingsController_->MutableSettings()
+                        .liveTranscriptionEnabled = checked;
+                    if (!checked && transcriptionController_) {
+                        // Ending the opt-in mid-session ends the transcript
+                        // immediately; recording continues untouched.
+                        transcriptionController_->Cancel();
+                        transcriptionController_->SetEnabled(false);
+                    }
+                    SavePersistentSettings();
+                });
+    }
+    if (uiState_->transcriptToNotesCheckbox_) {
+        connect(uiState_->transcriptToNotesCheckbox_, &QCheckBox::toggled,
+                this, [this](bool checked) {
+                    settingsController_->MutableSettings()
+                        .appendTranscriptToNotes = checked;
+                    SavePersistentSettings();
+                });
+    }
     if (uiState_->zoomCenterXSlider_) {
         connect(uiState_->zoomCenterXSlider_, &QSlider::valueChanged,
-                this, &OpenZoomApp::OnZoomCenterXChanged);
+                this, &OkuFlowApp::OnZoomCenterXChanged);
     }
     if (uiState_->zoomCenterYSlider_) {
         connect(uiState_->zoomCenterYSlider_, &QSlider::valueChanged,
-                this, &OpenZoomApp::OnZoomCenterYChanged);
+                this, &OkuFlowApp::OnZoomCenterYChanged);
     }
     if (uiState_->collapseButton_) {
         connect(uiState_->collapseButton_, &QToolButton::toggled,
-                this, &OpenZoomApp::OnControlsCollapsedToggled);
+                this, &OkuFlowApp::OnControlsCollapsedToggled);
         OnControlsCollapsedToggled(uiState_->collapseButton_->isChecked());
     }
     if (uiState_->joystickCheckbox_) {
         uiState_->joystickCheckbox_->setChecked(false);
         connect(uiState_->joystickCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnVirtualJoystickToggled);
+                this, &OkuFlowApp::OnVirtualJoystickToggled);
     }
     if (uiState_->zoomWheelAccelerationCheckbox_) {
         connect(uiState_->zoomWheelAccelerationCheckbox_,
@@ -436,85 +553,81 @@ bool OpenZoomApp::Initialize()
         connect(mainWindow_.get(),
                 &MainWindow::sectionStatesChanged,
                 this,
-                &OpenZoomApp::SavePersistentSettings);
+                &OkuFlowApp::SavePersistentSettings);
     }
     if (uiState_->blurCheckbox_) {
         auto block = uiState_->BlockSignals(uiState_->blurCheckbox_);
         uiState_->blurCheckbox_->setChecked(blurEnabled_);
         connect(uiState_->blurCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnBlurToggled);
+                this, &OkuFlowApp::OnBlurToggled);
     }
     if (uiState_->blurSigmaSlider_) {
         connect(uiState_->blurSigmaSlider_, &QSlider::valueChanged,
-                this, &OpenZoomApp::OnBlurSigmaChanged);
+                this, &OkuFlowApp::OnBlurSigmaChanged);
     }
     if (uiState_->blurRadiusSlider_) {
         connect(uiState_->blurRadiusSlider_, &QSlider::valueChanged,
-                this, &OpenZoomApp::OnBlurRadiusChanged);
+                this, &OkuFlowApp::OnBlurRadiusChanged);
     }
     if (uiState_->temporalSmoothCheckbox_) {
         connect(uiState_->temporalSmoothCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnTemporalSmoothToggled);
+                this, &OkuFlowApp::OnTemporalSmoothToggled);
     }
     if (uiState_->temporalSmoothSlider_) {
         connect(uiState_->temporalSmoothSlider_, &QSlider::valueChanged,
-                this, &OpenZoomApp::OnTemporalSmoothStrengthChanged);
-    }
-    if (uiState_->ocrAssistCheckbox_) {
-        connect(uiState_->ocrAssistCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnOcrAssistToggled);
+                this, &OkuFlowApp::OnTemporalSmoothStrengthChanged);
     }
     if (uiState_->vlmAssistCheckbox_) {
         connect(uiState_->vlmAssistCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnVlmAssistToggled);
+                this, &OkuFlowApp::OnVlmAssistToggled);
     }
     if (uiState_->assistiveOverlayCheckbox_) {
         connect(uiState_->assistiveOverlayCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnAssistiveOverlayToggled);
+                this, &OkuFlowApp::OnAssistiveOverlayToggled);
     }
     if (uiState_->spatialSharpenCheckbox_) {
         connect(uiState_->spatialSharpenCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnSpatialSharpenToggled);
+                this, &OkuFlowApp::OnSpatialSharpenToggled);
     }
     if (uiState_->spatialBackendCombo_) {
         connect(uiState_->spatialBackendCombo_, &QComboBox::currentIndexChanged,
-                this, &OpenZoomApp::OnSpatialUpscalerChanged);
+                this, &OkuFlowApp::OnSpatialUpscalerChanged);
     }
     if (uiState_->spatialSharpnessSlider_) {
         connect(uiState_->spatialSharpnessSlider_, &QSlider::valueChanged,
-                this, &OpenZoomApp::OnSpatialSharpnessChanged);
+                this, &OkuFlowApp::OnSpatialSharpnessChanged);
     }
     if (uiState_->focusMarkerCheckbox_) {
         connect(uiState_->focusMarkerCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnFocusMarkerToggled);
+                this, &OkuFlowApp::OnFocusMarkerToggled);
     }
     if (uiState_->stabilizationCheckbox_) {
         connect(uiState_->stabilizationCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnStabilizationToggled);
+                this, &OkuFlowApp::OnStabilizationToggled);
     }
     if (mainWindow_->bumpHoldCheckbox()) {
         connect(mainWindow_->bumpHoldCheckbox(), &QCheckBox::toggled,
-                this, &OpenZoomApp::OnBumpHoldToggled);
+                this, &OkuFlowApp::OnBumpHoldToggled);
     }
     if (uiState_->keystoneCheckbox_) {
         connect(uiState_->keystoneCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnKeystoneToggled);
+                this, &OkuFlowApp::OnKeystoneToggled);
     }
     connect(mainWindow_.get(), &MainWindow::keystoneStepBackRequested,
-            this, &OpenZoomApp::OnKeystoneStepBack);
+            this, &OkuFlowApp::OnKeystoneStepBack);
     connect(mainWindow_.get(), &MainWindow::keystonePauseResumeRequested,
-            this, &OpenZoomApp::OnKeystonePauseResume);
+            this, &OkuFlowApp::OnKeystonePauseResume);
     connect(mainWindow_.get(), &MainWindow::keystoneStepForwardRequested,
-            this, &OpenZoomApp::OnKeystoneStepForward);
+            this, &OkuFlowApp::OnKeystoneStepForward);
     connect(mainWindow_.get(), &MainWindow::superResPerformanceOverrideChanged,
-            this, &OpenZoomApp::SetSuperResPerformanceOverride);
+            this, &OkuFlowApp::SetSuperResPerformanceOverride);
     if (uiState_->autoContrastCheckbox_) {
         connect(uiState_->autoContrastCheckbox_, &QCheckBox::toggled,
-                this, &OpenZoomApp::OnAutoContrastToggled);
+                this, &OkuFlowApp::OnAutoContrastToggled);
     }
     if (uiState_->autoContrastStrengthSlider_) {
         connect(uiState_->autoContrastStrengthSlider_, &QSlider::valueChanged,
-                this, &OpenZoomApp::OnAutoContrastStrengthChanged);
+                this, &OkuFlowApp::OnAutoContrastStrengthChanged);
     }
     if (uiState_->simpleTextClarityCheckbox_) {
         connect(uiState_->simpleTextClarityCheckbox_, &QCheckBox::toggled, this, [this](bool checked) {
@@ -592,15 +705,15 @@ bool OpenZoomApp::Initialize()
     }
     if (uiState_->displayColorPicker_) {
         connect(uiState_->displayColorPicker_, &ColorSchemePicker::schemeChanged,
-                this, &OpenZoomApp::OnDisplayColorSchemeChanged);
+                this, &OkuFlowApp::OnDisplayColorSchemeChanged);
     }
     if (uiState_->contrastSlider_) {
         connect(uiState_->contrastSlider_, &QSlider::valueChanged,
-                this, &OpenZoomApp::OnContrastChanged);
+                this, &OkuFlowApp::OnContrastChanged);
     }
     if (uiState_->brightnessSlider_) {
         connect(uiState_->brightnessSlider_, &QSlider::valueChanged,
-                this, &OpenZoomApp::OnBrightnessChanged);
+                this, &OkuFlowApp::OnBrightnessChanged);
     }
     // Simple/Advanced mode buttons: the MainWindow wires the page switch
     // internally; here we only track the state for persistence and expand the
@@ -631,13 +744,13 @@ bool OpenZoomApp::Initialize()
                         pendingAssistantFramePrompt_) {
                         StopAssistantRequest();
                     } else {
-                        SubmitOnDemandAnalysis(false, true);
+                        SubmitOnDemandAnalysis(false);
                     }
                 });
     }
     if (uiState_->readTextButton_) {
         connect(uiState_->readTextButton_, &QPushButton::clicked,
-                this, [this]() { SubmitOnDemandAnalysis(true, false); });
+                this, [this]() { SubmitOnDemandAnalysis(true); });
     }
     if (uiState_->aiSettingsButton_) {
         connect(uiState_->aiSettingsButton_, &QPushButton::clicked,
@@ -721,12 +834,12 @@ bool OpenZoomApp::Initialize()
                     QStringLiteral("Export Conversation"),
                     analysisError.isEmpty()
                         ? QStringLiteral(
-                              "The OpenZoom Analysis folder is unavailable.")
+                              "The OkuFlow Analysis folder is unavailable.")
                         : analysisError);
                 return;
             }
             const QString suggested = QDir(analysisDirectory)
-                                          .filePath(QStringLiteral("OpenZoom_Assistant_%1.txt")
+                                          .filePath(QStringLiteral("OkuFlow_Assistant_%1.txt")
                                                         .arg(QDateTime::currentDateTime().toString(
                                                             QStringLiteral("yyyyMMdd_HHmmss"))));
             const QString path = QFileDialog::getSaveFileName(mainWindow_.get(),
@@ -736,10 +849,24 @@ bool OpenZoomApp::Initialize()
             if (path.isEmpty()) {
                 return;
             }
-            QFile file(path);
-            if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                file.write(uiState_->assistantTranscript_->toPlainText().toUtf8());
+            QSaveFile file(path);
+            const QByteArray payload =
+                uiState_->assistantTranscript_->toPlainText().toUtf8();
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Text) ||
+                file.write(payload) != payload.size() ||
+                !file.commit()) {
+                QMessageBox::warning(
+                    mainWindow_.get(),
+                    QStringLiteral("Export Conversation"),
+                    QStringLiteral(
+                        "The conversation could not be exported to %1.")
+                        .arg(QDir::toNativeSeparators(path)));
+                return;
             }
+            ShowStatusMessage(
+                QStringLiteral("Conversation exported to %1.")
+                    .arg(QDir::toNativeSeparators(path)),
+                7000);
         });
     }
     if (uiState_->assistantDeleteButton_) {
@@ -751,7 +878,7 @@ bool OpenZoomApp::Initialize()
             const QString threadId = item->data(Qt::UserRole).toString();
             if (QMessageBox::question(mainWindow_.get(),
                                       QStringLiteral("Delete Conversation"),
-                                      QStringLiteral("Permanently delete this OpenZoom assistant conversation?"))
+                                      QStringLiteral("Permanently delete this OkuFlow assistant conversation?"))
                 == QMessageBox::Yes) {
                 assistiveManager_->Runtime().DeleteAssistantConversation(threadId);
             }
@@ -816,7 +943,7 @@ bool OpenZoomApp::Initialize()
                 conversation.preview = pendingAssistantPrompt_.left(160);
                 conversation.title = pendingAssistantPrompt_.simplified().left(60);
                 if (conversation.title.isEmpty()) {
-                    conversation.title = QStringLiteral("OpenZoom Assistant");
+                    conversation.title = QStringLiteral("OkuFlow Assistant");
                 }
                 conversation.createdAt = thread.value(QStringLiteral("createdAt")).toInteger(
                     QDateTime::currentSecsSinceEpoch());
@@ -843,7 +970,7 @@ bool OpenZoomApp::Initialize()
                     const QString speaker = message.value(QStringLiteral("role")).toString()
                                                     == QStringLiteral("user")
                                                 ? QStringLiteral("You")
-                                                : QStringLiteral("OpenZoom Assistant");
+                                                : QStringLiteral("OkuFlow Assistant");
                     AppendAssistantMessage(speaker, message.value(QStringLiteral("text")).toString());
                 }
                 assistantResponseOpen_ = false;
@@ -953,38 +1080,56 @@ bool OpenZoomApp::Initialize()
     UpdateRotationUi();
     UpdatePresetDescription();
     assistiveManager_->SetModes(
-        ocrAssistEnabled_, vlmAssistEnabled_, assistiveOverlayEnabled_);
-
-    mainWindow_->show();
-    ApplyNativeWindowIcon(mainWindow_.get());
-    pipelineOrchestrator_->Start();
-
-    QTimer::singleShot(0, this, [this]() {
-        const QString settingsNotice = settingsController_->TakeStartupNotice();
-        if (!settingsNotice.isEmpty()) {
-            ShowStatusMessage(settingsNotice, 12000);
-        }
-        OfferLegacyOutputMigration();
-        if (!settingsController_->MutableSettings().setupAssistantDeclined &&
-            SetupAssistantDialog::NeedsSetup(
-                settingsController_->MutableSettings().assistive.tesseractPath,
-                settingsController_->MutableSettings().assistive.codexExecutablePath)) {
-            OpenSetupAssistant();
-        }
-    });
+        vlmAssistEnabled_, assistiveOverlayEnabled_);
 
     int initialCameraIndex = 0;
     const int candidate = settingsController_->MutableSettings().cameraIndex;
     if (candidate >= 0 && static_cast<size_t>(candidate) < cameras_.size()) {
         initialCameraIndex = candidate;
     }
-
     if (!cameras_.empty()) {
-        initialCameraIndex = std::clamp(initialCameraIndex, 0, static_cast<int>(cameras_.size()) - 1);
-        {
-            auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-            uiState_->cameraCombo_->setCurrentIndex(initialCameraIndex);
+        auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
+        uiState_->cameraCombo_->setCurrentIndex(initialCameraIndex);
+        if (!startupSynchronousProfile_) {
+            // All app services/settings now exist. Open the camera while show()
+            // initializes the native presenter; completion still returns via Qt.
+            StartCameraCapture(static_cast<size_t>(initialCameraIndex), true, false, true);
         }
+    }
+
+    mainWindow_->show();
+    startupWindowMs_ = startupTimer_.elapsed();
+    qInfo() << "Startup timing: window shown" << startupWindowMs_ << "ms";
+    ApplyNativeWindowIcon(mainWindow_.get());
+    pipelineOrchestrator_->Start();
+    pipelineOrchestrator_->NotifyCameraFrameAvailable();
+
+    QTimer::singleShot(
+        1500, this,
+        [this, userDataRootNotice, photoRecoveryNotice]() {
+            const QString settingsNotice =
+                settingsController_->TakeStartupNotice();
+            if (!settingsNotice.isEmpty()) {
+                ShowStatusMessage(settingsNotice, 12000);
+            }
+            if (!userDataRootNotice.isEmpty()) {
+                ShowStatusMessage(userDataRootNotice, 15000);
+            }
+            if (!photoRecoveryNotice.isEmpty()) {
+                ShowStatusMessage(photoRecoveryNotice, 15000);
+            }
+            if (!settingsController_->MutableSettings()
+                     .setupAssistantDeclined &&
+                SetupAssistantDialog::NeedsSetup(
+                    settingsController_->MutableSettings()
+                        .assistive.codexExecutablePath)) {
+                OpenSetupAssistant();
+            }
+        });
+
+    if (!cameras_.empty() && startupSynchronousProfile_) {
+        // Opt-in comparison mode reproduces the former double-open,
+        // synchronous startup path for the same profiling executable.
         RefreshCameraFormats(static_cast<size_t>(initialCameraIndex));
         StartCameraCapture(static_cast<size_t>(initialCameraIndex));
     }
@@ -992,23 +1137,285 @@ bool OpenZoomApp::Initialize()
     return true;
 }
 
-OpenZoomApp::~OpenZoomApp() {
+void OkuFlowApp::EnsureTranscriptionStack()
+{
+    if (transcriptionController_ || !userDataPaths_) {
+        return;
+    }
+    realtimeTranscriptionClient_ =
+        std::make_unique<CodexRealtimeTranscriptionClient>();
+    // Carrier D: the native WebRTC stack has no browser runtime, profile
+    // directory, or staged assets — it is always constructible.
+    realtimeNativeRtcCarrier_ = std::make_unique<RealtimeNativeRtcCarrier>();
+    transcriptionController_ = std::make_unique<TranscriptionSessionController>(
+        realtimeTranscriptionClient_.get(), realtimeNativeRtcCarrier_.get());
+
+    connect(transcriptionController_.get(),
+            &TranscriptionSessionController::SegmentFinalized,
+            this, [this](const TranscriptSegment& segment) {
+                if (settingsController_ &&
+                    settingsController_->Settings().appendTranscriptToNotes &&
+                    assistiveManager_) {
+                    if (!assistiveManager_->Runtime().NoteTranscriptSegment(segment)) {
+                        transcriptionNoteWriteFailed_ = true;
+                        ShowStatusMessage(
+                            QCoreApplication::translate(
+                                "OkuFlow",
+                                "Transcript could not be saved to lecture notes."),
+                            9000);
+                    }
+                }
+                if (uiState_ && uiState_->transcriptFinalsView_) {
+                    uiState_->transcriptFinalsView_->appendPlainText(segment.text);
+                }
+                if (mainWindow_) {
+                    mainWindow_->AppendSimpleTranscriptFinal(segment.text);
+                }
+            });
+    connect(transcriptionController_.get(),
+            &TranscriptionSessionController::PartialChanged,
+            this, [this](const QString&, quint64, const QString& text) {
+                // Silent, coalesced presentation only — no UIA event per
+                // delta.
+                if (uiState_ && uiState_->transcriptPartialLabel_) {
+                    uiState_->transcriptPartialLabel_->setText(text);
+                }
+                if (mainWindow_) {
+                    mainWindow_->SetSimpleTranscriptPartial(text);
+                }
+            });
+    connect(transcriptionController_.get(),
+            &TranscriptionSessionController::QuotaChanged,
+            this, [this](int remainingPercent, bool known) {
+                if (!uiState_ || !uiState_->transcriptionQuotaLabel_) {
+                    return;
+                }
+                QString text =
+                    known ? QCoreApplication::translate(
+                                "OkuFlow",
+                                "Codex usage: %1% remaining in the current "
+                                "general window.")
+                                .arg(remainingPercent)
+                          : QCoreApplication::translate(
+                                "OkuFlow", "Codex usage is unavailable.");
+                text += QLatin1Char(' ');
+                text += QCoreApplication::translate(
+                    "OkuFlow",
+                    "Voice-specific remaining time is not exposed by this "
+                    "Codex app-server.");
+                uiState_->transcriptionQuotaLabel_->setText(text);
+                uiState_->transcriptionQuotaLabel_->setVisible(true);
+            });
+    connect(transcriptionController_.get(),
+            &TranscriptionSessionController::GapDetected,
+            this, [this](const QString& sessionId, qint64, qint64) {
+                if (settingsController_ &&
+                    settingsController_->Settings().appendTranscriptToNotes &&
+                    assistiveManager_) {
+                    if (!assistiveManager_->Runtime().NoteTranscriptGap(sessionId)) {
+                        transcriptionNoteWriteFailed_ = true;
+                        ShowStatusMessage(
+                            QCoreApplication::translate(
+                                "OkuFlow",
+                                "Transcript could not be saved to lecture notes."),
+                            9000);
+                    }
+                }
+                ShowStatusMessage(
+                    QCoreApplication::translate(
+                        "OkuFlow",
+                        "Transcript has a gap; recording is unaffected."),
+                    9000);
+            });
+    connect(transcriptionController_.get(),
+            &TranscriptionSessionController::StateChanged,
+            this, &OkuFlowApp::OnTranscriptionStateChanged);
+}
+
+void OkuFlowApp::StartTranscriptionForActiveRecording()
+{
+    if (!settingsController_ ||
+        !settingsController_->Settings().liveTranscriptionEnabled) {
+        return;
+    }
+    EnsureTranscriptionStack();
+    if (!transcriptionController_) {
+        return;
+    }
+    transcriptionController_->SetCodexExecutable(
+        settingsController_->Settings().assistive.codexExecutablePath);
+    transcriptionController_->SetEnabled(true);
+    if (!audioCapture_.IsRunning()) {
+        ShowStatusMessage(
+            QCoreApplication::translate(
+                "OkuFlow", "Select a recording microphone to transcribe."),
+            9000);
+        return;
+    }
+    const auto session =
+        recordingManager_ ? recordingManager_->CurrentSessionInfo()
+                          : std::nullopt;
+    if (!session.has_value()) {
+        return;
+    }
+    transcriptionNoteWriteFailed_ = false;
+    transcriptionNotesCompletionPending_ = false;
+    if (uiState_ && uiState_->transcriptFinalsView_) {
+        uiState_->transcriptFinalsView_->clear();
+    }
+    if (mainWindow_) {
+        mainWindow_->SetSimpleTranscriptActive(false);
+    }
+    transcriptionController_->StartSession(
+        *session,
+        languageManager_ ? languageManager_->languageCode()
+                         : QStringLiteral("en"));
+}
+
+void OkuFlowApp::OnTranscriptionStateChanged(TranscriptionState state,
+                                              const QString& status)
+{
+    // Fixed sentences translate via the catalog; a dynamic runtime reason
+    // passes through unchanged rather than being assembled from fragments.
+    const QString translatedStatus =
+        status.isEmpty() ? QString() : TranslateUi(status);
+    if (uiState_ && uiState_->transcriptionStatusLabel_) {
+        uiState_->transcriptionStatusLabel_->setText(translatedStatus);
+        uiState_->transcriptionStatusLabel_->setVisible(!status.isEmpty());
+    }
+    if (mainWindow_) {
+        const bool overlayActive = state == TranscriptionState::Starting ||
+                                   state == TranscriptionState::Listening ||
+                                   state == TranscriptionState::Finalizing;
+        mainWindow_->SetSimpleTranscriptActive(overlayActive);
+    }
+    if (uiState_ && uiState_->transcriptPartialLabel_ &&
+        (state == TranscriptionState::Starting ||
+         state == TranscriptionState::Completed ||
+         state == TranscriptionState::Failed)) {
+        uiState_->transcriptPartialLabel_->clear();
+    }
+    switch (state) {
+    case TranscriptionState::Failed: {
+        const QString reason =
+            translatedStatus.isEmpty()
+                ? QCoreApplication::translate("OkuFlow",
+                                              "Live transcription failed.")
+                : translatedStatus;
+        // The wording always reaffirms that recording is unaffected.
+        ShowStatusMessage(
+            QCoreApplication::translate(
+                "OkuFlow", "Transcription unavailable: %1 Recording continues.")
+                .arg(reason),
+            12000);
+        break;
+    }
+    case TranscriptionState::Unavailable:
+        if (!translatedStatus.isEmpty()) {
+            ShowStatusMessage(translatedStatus, 9000);
+        }
+        break;
+    case TranscriptionState::Starting:
+        if (!translatedStatus.isEmpty()) {
+            ShowStatusMessage(translatedStatus, 4000);
+        }
+        break;
+    case TranscriptionState::Listening:
+    case TranscriptionState::Finalizing:
+        if (!translatedStatus.isEmpty()) {
+            ShowStatusMessage(translatedStatus, 4000);
+        }
+        break;
+    case TranscriptionState::Completed:
+        transcriptionNotesCompletionPending_ = true;
+        MaybeReportTranscriptNotesSaved();
+        break;
+    case TranscriptionState::Off:
+    case TranscriptionState::Ready:
+        break;
+    }
+}
+
+void OkuFlowApp::MaybeReportTranscriptNotesSaved()
+{
+    if (!transcriptionNotesCompletionPending_ || !settingsController_ ||
+        !settingsController_->Settings().appendTranscriptToNotes ||
+        !assistiveManager_ || transcriptionNoteWriteFailed_ ||
+        assistiveManager_->Runtime().HasPendingNotesWrites() ||
+        assistiveManager_->Runtime().notesFilePath().isEmpty()) {
+        return;
+    }
+    transcriptionNotesCompletionPending_ = false;
+    ShowStatusMessage(QCoreApplication::translate(
+        "OkuFlow", "Transcript saved to lecture notes."), 7000);
+}
+
+OkuFlowApp::~OkuFlowApp() {
+    WriteStartupProfile();
+    if (cameraStartupPending_) {
+        StopCameraCapture(true);
+    }
     if (settingsController_ && uiState_ && assistiveManager_) {
         SavePersistentSettings();
     }
+    // End the transcript before microphone/recorder teardown: revokes audio
+    // acceptance, stops the WebRTC carrier, and bounded-stops the dedicated
+    // Codex child. Never waits on finalization.
+    if (transcriptionController_) {
+        transcriptionController_->Cancel();
+    }
     StopMicrophoneCapture();
+    if (microphoneCallbackTarget_) {
+        std::lock_guard lock(microphoneCallbackTarget_->mutex);
+        microphoneCallbackTarget_->accepting = false;
+        ++microphoneCallbackTarget_->generation;
+        microphoneCallbackTarget_->app = nullptr;
+    }
+    // If a detached thread may still be inside Media Foundation, or poisoned
+    // recorder objects were intentionally leaked after a recovered worker,
+    // process-global MF/COM teardown must be skipped.
+    bool mediaFoundationTeardownUnsafe = audioCapture_.WasAbandoned();
+    if (recordingManager_) {
+        const bool managerSafeToDestroy =
+            recordingManager_->ShutdownForProcessExit();
+        // Abandonment is sticky even when the poisoned worker later recovers
+        // and joins. Its VideoRecorder COM references are intentionally
+        // leaked, so MFShutdown remains unsafe although manager destruction
+        // is now safe.
+        mediaFoundationTeardownUnsafe =
+            mediaFoundationTeardownUnsafe ||
+            recordingManager_->IsWorkerAbandoned();
+        if (!managerSafeToDestroy) {
+            // The worker is still wedged and detached. It references the
+            // manager's queues and recorders, so leak the complete manager.
+            (void)recordingManager_.release();
+        }
+    }
     recordingManager_.reset();
     if (imageIoPool_) {
         imageIoPool_->clear();
-        imageIoPool_->waitForDone();
+        // A photo write to a removable or network user-data folder must not
+        // hang app close forever. On timeout the pool (and its writer
+        // threads) is leaked for process exit; the in-flight tasks only
+        // touch their own captured copies and QPointer-guard the app.
+        if (!imageIoPool_->waitForDone(10000)) {
+            qCritical() << "Image writes did not finish within 10 s at "
+                           "shutdown; leaking the writer pool for process "
+                           "exit.";
+            (void)imageIoPool_.release();
+        }
     }
     if (pipelineOrchestrator_) {
         pipelineOrchestrator_->Stop();
     }
-    if (cameraActive_) {
+    if (cameraActive_ || cameraIngress_) {
         StopCameraCapture(true);
     }
     mediaCapture_.Shutdown();
+    mediaFoundationTeardownUnsafe =
+        mediaFoundationTeardownUnsafe || mediaCapture_.WasAbandoned() ||
+        (startupWorkers_ && (startupWorkers_->active.load() != 0 ||
+                             startupWorkers_->abandoned.load()));
 
     // Stop service callbacks before either the runtime or its UI targets are
     // released. In particular, terminating the Codex child process can emit a
@@ -1032,24 +1439,41 @@ OpenZoomApp::~OpenZoomApp() {
     mainWindow_.reset();
     uiState_.reset();
     joystickOverlay_ = nullptr;
-    if (presenter_) {
-        presenter_->WaitForIdle();
+    const bool graphicsIdle = !presenter_ || presenter_->WaitForIdle();
+    const bool gpuIdle = graphicsIdle && (!cudaSurface_ || cudaSurface_->WaitForIdle());
+    if (gpuIdle) {
+        cudaSurface_.reset();
+        cudaSharedTexture_.Reset();
+        cudaSuperResTexture_.Reset();
+        cudaOriginalTexture_.Reset();
+    } else {
+        // Unsignaled CUDA/D3D work still owns these allocations. Process exit
+        // reclaims them; timeout never grants permission to destroy them.
+        (void)cudaSurface_.release();
+        cudaSharedTexture_.Detach();
+        cudaSuperResTexture_.Detach();
+        cudaOriginalTexture_.Detach();
+        mediaFoundationTeardownUnsafe = true;
     }
-    cudaSurface_.reset();
-    cudaSharedTexture_.Reset();
-    cudaSuperResTexture_.Reset();
-    cudaOriginalTexture_.Reset();
     cudaSuperResWidth_ = 0;
     cudaSuperResHeight_ = 0;
     presenter_.reset();
 
     if (mfInitialized_) {
-        MFShutdown();
+        if (mediaFoundationTeardownUnsafe) {
+            qCritical() << "Skipping MFShutdown: a Media Foundation worker "
+                           "is still active, was abandoned, or its objects were intentionally "
+                           "leaked; process exit reclaims the runtime.";
+        } else {
+            MFShutdown();
+        }
         mfInitialized_ = false;
     }
 
     if (comInitialized_) {
-        CoUninitialize();
+        if (!mediaFoundationTeardownUnsafe) {
+            CoUninitialize();
+        }
         comInitialized_ = false;
     }
 
@@ -1057,11 +1481,11 @@ OpenZoomApp::~OpenZoomApp() {
     qtApp_ = nullptr;
 }
 
-int OpenZoomApp::Run() {
+int OkuFlowApp::Run() {
     return initialized_ && qtApp_ ? qtApp_->exec() : -1;
 }
 
-void OpenZoomApp::InitializePlatform() {
+void OkuFlowApp::InitializePlatform() {
     const HRESULT coInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (SUCCEEDED(coInit) || coInit == RPC_E_CHANGED_MODE) {
         comInitialized_ = SUCCEEDED(coInit);
@@ -1082,17 +1506,17 @@ void OpenZoomApp::InitializePlatform() {
     EnumerateMicrophones();
 }
 
-void OpenZoomApp::ResolveCudaBufferFormatFromOptions() {
+void OkuFlowApp::ResolveCudaBufferFormatFromOptions() {
     cudaBufferFormat_ = CudaBufferFormat::kRgba8;
 
     bool ok = false;
-    const QByteArray envValue = qgetenv("OPENZOOM_CUDA_BUFFER_FORMAT");
+    const QByteArray envValue = qgetenv("OKUFLOW_CUDA_BUFFER_FORMAT");
     if (!envValue.isEmpty()) {
         const auto parsed = ParseCudaBufferFormatToken(QString::fromUtf8(envValue), &ok);
         if (ok) {
             cudaBufferFormat_ = parsed;
         } else {
-            qWarning() << "Ignoring unknown OPENZOOM_CUDA_BUFFER_FORMAT value" << envValue;
+            qWarning() << "Ignoring unknown OKUFLOW_CUDA_BUFFER_FORMAT value" << envValue;
         }
     }
 
@@ -1118,6 +1542,6 @@ void OpenZoomApp::ResolveCudaBufferFormatFromOptions() {
 }
 
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

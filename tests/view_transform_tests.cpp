@@ -1,5 +1,5 @@
-#include "openzoom/common/view_transform.hpp"
-#include "openzoom/app/pipeline_orchestrator.hpp"
+#include "okuflow/common/view_transform.hpp"
+#include "okuflow/app/pipeline_orchestrator.hpp"
 
 #include <QtTest/QTest>
 
@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -83,6 +83,7 @@ private slots:
     void cachedRoiRemapsWithoutChangingDestinationGeometry();
     void cachedRoiRejectsUncoveredViewport();
     void fenceSequencerAdoptsPresenterSlotSignals();
+    void fenceSequencerIgnoresMissedAdmission();
 };
 
 void ViewTransformTests::fillPreservesUniformScaleAcrossAspectRatios() {
@@ -342,8 +343,29 @@ void ViewTransformTests::fenceSequencerAdoptsPresenterSlotSignals() {
     QCOMPARE(nextCuda.signalValue, 16u);
 }
 
-} // namespace openzoom
+void ViewTransformTests::fenceSequencerIgnoresMissedAdmission() {
+    FenceSequencer sequencer;
+    sequencer.Reset(10);
+    const auto first = sequencer.BeginCudaFrame(10);
+    QCOMPARE(first.signalValue, 11u);
+    sequencer.CudaSignaled();
+    QCOMPARE(sequencer.BeginGraphicsFrame(10), 12u);
+    // Admission was busy: no draw or signal was submitted. The next CUDA
+    // frame must not wait for that unsubmitted graphics value.
+    const auto next = sequencer.BeginCudaFrame(10);
+    QCOMPARE(next.waitValue, 10u);
+    QCOMPARE(next.signalValue, 12u);
+    sequencer.CudaSignaled();
+    // Independent recording waits on CUDA 12 and signals graphics 13 even
+    // when the viewport remains busy. That real reader must be respected.
+    sequencer.GraphicsSignaled(13);
+    const auto afterRecording = sequencer.BeginCudaFrame(13);
+    QCOMPARE(afterRecording.waitValue, 13u);
+    QCOMPARE(afterRecording.signalValue, 14u);
+}
 
-QTEST_GUILESS_MAIN(openzoom::ViewTransformTests)
+} // namespace okuflow
+
+QTEST_GUILESS_MAIN(okuflow::ViewTransformTests)
 
 #include "view_transform_tests.moc"

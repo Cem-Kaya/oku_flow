@@ -1,4 +1,4 @@
-#include "openzoom/common/annotation_model.hpp"
+#include "okuflow/common/annotation_model.hpp"
 
 #include <QFontMetricsF>
 #include <QPainter>
@@ -10,7 +10,7 @@
 #include <cmath>
 #include <limits>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
 qreal SquaredDistanceToSegment(const QPointF& point,
@@ -725,7 +725,7 @@ void RenderAnnotationStrokes(
         transform.destinationY * destinationSize.height(),
         transform.destinationWidth * destinationSize.width(),
         transform.destinationHeight * destinationSize.height());
-    painter.setClipRect(activeDestination);
+    painter.setClipRect(activeDestination, Qt::IntersectClip);
     QRectF groupSelectionBounds;
     bool haveGroupSelectionBounds = false;
 
@@ -828,4 +828,4 @@ void RenderAnnotationStrokes(
     painter.restore();
 }
 
-} // namespace openzoom
+} // namespace okuflow

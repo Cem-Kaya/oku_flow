@@ -10,7 +10,7 @@
 // detector. Exit codes: 0 pass, 1 fail, 77 clean skip (no D3D12 device or
 // no GPU-fed writer support on this machine).
 
-#include "openzoom/common/media_writer.hpp"
+#include "okuflow/common/media_writer.hpp"
 
 #include <d3d12.h>
 #include <dxgi1_4.h>
@@ -105,7 +105,7 @@ struct SharedFrameContext {
     ComPtr<ID3D12Fence> fence;
     HANDLE textureHandle{nullptr};
     HANDLE fenceHandle{nullptr};
-    openzoom::GpuVideoFrame frame;
+    okuflow::GpuVideoFrame frame;
 
     ~SharedFrameContext()
     {
@@ -275,14 +275,14 @@ bool CreateSharedFrame(SharedFrameContext& context)
 // fMP4 fragments (the crash-survivability cadence) — but submitted through
 // StartGpu/AddGpuFrame. Sets *skipped when this codec's GPU-fed writer is
 // unavailable here.
-bool RunGpuCodecPass(openzoom::VideoRecorder::Codec codec,
-                     const openzoom::GpuVideoFrame& frame,
+bool RunGpuCodecPass(okuflow::VideoRecorder::Codec codec,
+                     const okuflow::GpuVideoFrame& frame,
                      bool* skipped)
 {
     *skipped = false;
-    const char* codecName = openzoom::VideoRecorder::CodecName(codec);
+    const char* codecName = okuflow::VideoRecorder::CodecName(codec);
     const std::filesystem::path output = TemporaryMp4Path();
-    openzoom::VideoRecorder recorder;
+    okuflow::VideoRecorder recorder;
     // Self-diagnosing watcher: if any writer call wedges (the 2026-07-30
     // incident class), this names the exact blocked stage on stderr once a
     // second instead of leaving a silent hang for the CTest timeout.
@@ -302,7 +302,7 @@ bool RunGpuCodecPass(openzoom::VideoRecorder::Codec codec,
             if (quietTicks >= 1) {
                 std::cerr << "[watch] " << codecName << " frame " << frame
                           << " stage: "
-                          << openzoom::VideoRecorder::StageName(
+                          << okuflow::VideoRecorder::StageName(
                                  recorder.ActiveStage())
                           << std::endl;
             }
@@ -321,7 +321,7 @@ bool RunGpuCodecPass(openzoom::VideoRecorder::Codec codec,
     } watcherJoin{watching, watcher};
 
     std::cerr << "[test] " << codecName << " StartGpu..." << std::endl;
-    const openzoom::VideoRecorder::AudioFormat audioFormat{};
+    const okuflow::VideoRecorder::AudioFormat audioFormat{};
     bool passed = recorder.StartGpu(
         output.wstring(), kWidth, kHeight, 30, 1, codec, frame,
         &audioFormat);
@@ -349,7 +349,7 @@ bool RunGpuCodecPass(openzoom::VideoRecorder::Codec codec,
             audio[sample] =
                 static_cast<std::int16_t>(std::sin(phase) * 6000.0);
         }
-        openzoom::RecordingFrameIdentity identity;
+        okuflow::RecordingFrameIdentity identity;
         identity.captureTimestamp100ns =
             static_cast<std::int64_t>(index) * frameDuration100ns;
         identity.captureClock100ns = identity.captureTimestamp100ns;
@@ -366,7 +366,7 @@ bool RunGpuCodecPass(openzoom::VideoRecorder::Codec codec,
     }
 
     std::cerr << "[test] " << codecName << " finalizing..." << std::endl;
-    const openzoom::VideoRecorder::FinalizeResult finalized =
+    const okuflow::VideoRecorder::FinalizeResult finalized =
         recorder.Stop();
     std::cerr << "[test] " << codecName << " finalized" << std::endl;
     passed = passed && finalized.HasPlayableVideo() &&
@@ -424,7 +424,7 @@ int main()
         } else {
             bool h264Skipped = false;
             bool passed = RunGpuCodecPass(
-                openzoom::VideoRecorder::Codec::H264,
+                okuflow::VideoRecorder::Codec::H264,
                 context.frame,
                 &h264Skipped);
             if (h264Skipped) {
@@ -436,7 +436,7 @@ int main()
             } else {
                 bool av1Skipped = false;
                 const bool av1Passed = RunGpuCodecPass(
-                    openzoom::VideoRecorder::Codec::Av1,
+                    okuflow::VideoRecorder::Codec::Av1,
                     context.frame,
                     &av1Skipped);
                 std::cout << "GPU-fed AV1 leg: "

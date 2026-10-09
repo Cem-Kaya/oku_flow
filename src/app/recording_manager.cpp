@@ -1,10 +1,11 @@
 #ifdef _WIN32
 
-#include "openzoom/app/recording_manager.hpp"
-#include "openzoom/ui/live_status_text.hpp"
+#include "okuflow/app/recording_manager.hpp"
+#include "okuflow/ui/live_status_text.hpp"
 
 #include <QDate>
 #include <QDateTime>
+#include <QUuid>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -25,7 +26,7 @@
 #include <cmath>
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -210,7 +211,7 @@ void RecordingManager::RemoveStaleHeaderOnlyRecordings()
     }
 }
 
-RecordingManager::~RecordingManager()
+bool RecordingManager::ShutdownForProcessExit()
 {
     {
         std::lock_guard lock(queueMutex_);
@@ -221,14 +222,16 @@ RecordingManager::~RecordingManager()
     }
     queueCv_.notify_all();
     if (!worker_.joinable()) {
-        return;
+        return !workerDetached_;
     }
     // An unbounded join here reproduced the shipped hang at app close when
     // the worker was wedged inside a synchronous encoder/driver call. Wait a
-    // bounded time for the worker to acknowledge shutdown, then detach. A
-    // detached worker is blocked inside the driver and is terminated by
-    // process exit before it can touch freed members; the alternative — an
-    // unbounded join — is precisely the reported freeze.
+    // bounded time for the worker to acknowledge shutdown, then poison and
+    // detach it. Detaching alone is not enough: the worker still references
+    // this object, so on the false return the caller must leak the manager
+    // (unique_ptr::release) — an unwedged worker then finds valid memory,
+    // abandoned recorders, and cleared queues, and exits without touching
+    // Qt or COM.
     bool done = false;
     {
         std::unique_lock lock(queueMutex_);
@@ -239,13 +242,38 @@ RecordingManager::~RecordingManager()
     }
     if (done) {
         worker_.join();
-        return;
+        return true;
     }
     qCritical() << "Recording worker did not shut down within"
                 << kShutdownJoinMs << "ms; blocked at"
                 << DescribeWorkerStage()
-                << "- detaching it for process exit.";
+                << "- abandoning the recorders and detaching the worker; "
+                   "the manager must now be leaked for process exit.";
+    // Order matters: the abandoned flag silences every worker-side posting
+    // and segment path before the recorders' COM teardown is redirected to
+    // an intentional leak.
+    workerAbandoned_.store(true);
+    processedRecorder_.MarkAbandoned();
+    originalRecorder_.MarkAbandoned();
+    workerDetached_ = true;
     worker_.detach();
+    return false;
+}
+
+RecordingManager::~RecordingManager()
+{
+    ShutdownForProcessExit();
+    if (workerDetached_) {
+        // Reachable only when a caller destroys the manager directly instead
+        // of leaking it after a false ShutdownForProcessExit. The recorders
+        // are already abandoned (their COM state leaks safely), but the
+        // detached worker still references this object's queues; freeing
+        // them here is the residual hazard the leak contract exists to
+        // avoid.
+        qCritical() << "RecordingManager destroyed while its worker is "
+                       "wedged; leak the manager via ShutdownForProcessExit "
+                       "instead.";
+    }
 }
 
 bool RecordingManager::IsActive() const
@@ -253,6 +281,18 @@ bool RecordingManager::IsActive() const
     const RecordingState state = state_.load();
     return state == RecordingState::Starting ||
            state == RecordingState::Recording;
+}
+
+std::optional<RecordingSessionInfo> RecordingManager::CurrentSessionInfo() const
+{
+    if (!IsActive()) {
+        return std::nullopt;
+    }
+    std::lock_guard lock(queueMutex_);
+    if (sessionInfo_.id.isEmpty()) {
+        return std::nullopt;
+    }
+    return sessionInfo_;
 }
 
 QString RecordingManager::CodecName() const
@@ -327,7 +367,7 @@ void RecordingManager::SetRequested(bool requested)
         // in the app keeps working.
         ShowStatus(QStringLiteral(
             "Recording is unavailable because the video encoder stopped "
-            "responding earlier. Restart OpenZoom to record again."));
+            "responding earlier. Restart OkuFlow to record again."));
         UpdateButton();
         return;
     }
@@ -344,7 +384,7 @@ void RecordingManager::SetRequested(bool requested)
     const QString outputDirectory = EnsureOutputDirectory();
     if (outputDirectory.isEmpty()) {
         ShowStatus(QStringLiteral(
-            "Recording could not start because the OpenZoom recordings "
+            "Recording could not start because the OkuFlow recordings "
             "folder is unavailable."));
         UpdateButton();
         return;
@@ -353,7 +393,7 @@ void RecordingManager::SetRequested(bool requested)
     constexpr qint64 kMinimumFreeBytes = 1024LL * 1024LL * 1024LL;
     if (!storage.isValid() || !storage.isReady()) {
         ShowStatus(QStringLiteral(
-            "Recording could not start because OpenZoom could not check "
+            "Recording could not start because OkuFlow could not check "
             "the destination drive."));
         UpdateButton();
         return;
@@ -361,7 +401,7 @@ void RecordingManager::SetRequested(bool requested)
     if (storage.bytesAvailable() < kMinimumFreeBytes) {
         ShowStatus(QStringLiteral(
             "Recording could not start: less than 1 GB is free in the "
-            "OpenZoom folder."));
+            "OkuFlow folder."));
         UpdateButton();
         return;
     }
@@ -371,6 +411,9 @@ void RecordingManager::SetRequested(bool requested)
         sessionTimestamp_ =
             QDateTime::currentDateTime().toString(
                 QStringLiteral("yyyyMMdd_HHmmss_zzz"));
+        sessionInfo_ = RecordingSessionInfo{
+            QUuid::createUuid().toString(QUuid::WithoutBraces),
+            sessionTimestamp_};
         sessionDirectory_ = outputDirectory;
         codecName_.clear();
         stopMessage_.clear();
@@ -517,9 +560,11 @@ void RecordingManager::AbandonWedgedWorker(const QString& trigger)
     qCritical() << "Recording watchdog (" << trigger
                 << ") declared the worker blocked" << stage
                 << "- abandoning the worker; recording is disabled until "
-                   "OpenZoom restarts.";
+                   "OkuFlow restarts.";
+    RecordingSessionInfo endedSession;
     {
         std::lock_guard lock(queueMutex_);
+        endedSession = sessionInfo_;
         frameQueue_.clear();
         audioQueue_.clear();
     }
@@ -532,12 +577,12 @@ void RecordingManager::AbandonWedgedWorker(const QString& trigger)
         QStringLiteral(
             "Recording could not continue: the video encoder stopped "
             "responding (%1). The files from this session may be "
-            "incomplete. Recording is disabled until OpenZoom is "
+            "incomplete. Recording is disabled until OkuFlow is "
             "restarted; everything else keeps working.")
             .arg(stage),
         20000);
     if (sessionEndedCallback_) {
-        sessionEndedCallback_();
+        sessionEndedCallback_(endedSession);
     }
 }
 
@@ -795,6 +840,9 @@ QString RecordingManager::SegmentPath(bool processed) const
 
 bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
 {
+    if (workerAbandoned_.load()) {
+        return false;
+    }
     // Encoder creation (StartGpu/BeginWriting) is itself a set of unbounded
     // driver/MFT calls; track it so the heartbeat can catch an init wedge —
     // the first-frame scenario from the 2026-07-30 field failure.
@@ -989,7 +1037,7 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
         PostStatus(
             QStringLiteral(
                 "Recording %1 video%2 with %3 at "
-                "%4/%5 FPS. Press Ctrl+Shift+O to open the OpenZoom folder.")
+                "%4/%5 FPS. Press Ctrl+Shift+O to open the OkuFlow folder.")
                 .arg(feed)
                 .arg(includeAudio ? QStringLiteral(" with microphone audio")
                                   : QString())
@@ -1440,18 +1488,21 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
     PostButtonState(state_.load());
     PostStatus(message, saved ? 9000 : 14000);
 
+    RecordingSessionInfo endedSession;
     {
         std::lock_guard lock(queueMutex_);
+        endedSession = sessionInfo_;
         frameQueue_.clear();
         audioQueue_.clear();
         stopRequested_ = false;
         stopMessage_.clear();
     }
-    if (sessionEndedCallback_) {
+    if (sessionEndedCallback_ && recordButton_ &&
+        !workerAbandoned_.load()) {
         const SessionEndedCallback callback = sessionEndedCallback_;
         QMetaObject::invokeMethod(
             recordButton_,
-            [callback]() { callback(); },
+            [callback, endedSession]() { callback(endedSession); },
             Qt::QueuedConnection);
     }
 }
@@ -1566,7 +1617,10 @@ void RecordingManager::PostStatus(
     const QString& message,
     int durationMs) const
 {
-    if (!recordButton_ || !statusCallback_ || message.isEmpty()) {
+    if (workerAbandoned_.load() || !recordButton_ || !statusCallback_ ||
+        message.isEmpty()) {
+        // After abandonment the worker must stay silent: the manager may be
+        // leaked past UI teardown, so recordButton_ can dangle.
         return;
     }
     const QPointer<QPushButton> context(recordButton_);
@@ -1583,7 +1637,7 @@ void RecordingManager::PostStatus(
 
 void RecordingManager::PostButtonState(RecordingState state) const
 {
-    if (!recordButton_) {
+    if (workerAbandoned_.load() || !recordButton_) {
         return;
     }
     const QPointer<QPushButton> button(recordButton_);
@@ -1618,17 +1672,26 @@ void RecordingManager::PostSegmentSaved(
     const QString& originalPath,
     const QString& processedPath) const
 {
-    if (!recordButton_ || !segmentSavedCallback_ ||
+    if (workerAbandoned_.load() || !recordButton_ ||
+        !segmentSavedCallback_ ||
         originalPath.isEmpty() || processedPath.isEmpty()) {
         return;
     }
+    SavedRecordingSegment saved;
+    {
+        std::lock_guard lock(queueMutex_);
+        saved.session = sessionInfo_;
+        saved.segmentIndex = segmentIndex_;
+    }
+    saved.originalPath = originalPath;
+    saved.processedPath = processedPath;
     const QPointer<QPushButton> context(recordButton_);
     const SegmentSavedCallback callback = segmentSavedCallback_;
     QMetaObject::invokeMethod(
         recordButton_,
-        [context, callback, originalPath, processedPath]() {
+        [context, callback, saved]() {
             if (context && callback) {
-                callback(originalPath, processedPath);
+                callback(saved);
             }
         },
         Qt::QueuedConnection);
@@ -1681,6 +1744,6 @@ void RecordingManager::UpdateButton()
         QStringLiteral("Record"));
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

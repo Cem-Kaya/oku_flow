@@ -2,14 +2,14 @@
 
 #include "app_internal.hpp"
 
-namespace openzoom {
+namespace okuflow {
 
-settings::AdvancedConfig OpenZoomApp::CaptureCurrentAdvancedConfig() const
+settings::AdvancedConfig OkuFlowApp::CaptureCurrentAdvancedConfig() const
 {
     return uiState_->ReadConfigFromUI();
 }
 
-void OpenZoomApp::PopulatePresetList()
+void OkuFlowApp::PopulatePresetList()
 {
     if (!uiState_->presetList_) {
         return;
@@ -33,7 +33,7 @@ void OpenZoomApp::PopulatePresetList()
     }
 }
 
-void OpenZoomApp::RefreshPresetSelection(bool preserveCurrentSelection)
+void OkuFlowApp::RefreshPresetSelection(bool preserveCurrentSelection)
 {
     const settings::AdvancedConfig current = CaptureCurrentAdvancedConfig();
     const QString matchedPresetId =
@@ -59,7 +59,7 @@ void OpenZoomApp::RefreshPresetSelection(bool preserveCurrentSelection)
     }
 }
 
-void OpenZoomApp::UpdatePresetDescription()
+void OkuFlowApp::UpdatePresetDescription()
 {
     if (!uiState_->presetDescriptionLabel_) {
         return;
@@ -79,19 +79,7 @@ void OpenZoomApp::UpdatePresetDescription()
     }
 
     QString assistiveText = QStringLiteral("Assistive hooks: off");
-    if (ocrAssistEnabled_ && vlmAssistEnabled_) {
-        assistiveText =
-            assistiveOverlayEnabled_
-                ? QStringLiteral(
-                      "Assistive hooks: OCR + Scene Explain with overlay")
-                : QStringLiteral(
-                      "Assistive hooks: OCR + Scene Explain");
-    } else if (ocrAssistEnabled_) {
-        assistiveText =
-            assistiveOverlayEnabled_
-                ? QStringLiteral("Assistive hooks: OCR with overlay")
-                : QStringLiteral("Assistive hooks: OCR");
-    } else if (vlmAssistEnabled_) {
+    if (vlmAssistEnabled_) {
         assistiveText =
             assistiveOverlayEnabled_
                 ? QStringLiteral(
@@ -106,7 +94,7 @@ void OpenZoomApp::UpdatePresetDescription()
                 QStringLiteral("Current quick mode description"));
 }
 
-void OpenZoomApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
+void OkuFlowApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
 {
     if (configTrackingSuspended_) {
         return;
@@ -121,12 +109,12 @@ void OpenZoomApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
     UpdateSectionChangedCounts();
 }
 
-void OpenZoomApp::ApplyAdvancedConfig(const settings::AdvancedConfig& config)
+void OkuFlowApp::ApplyAdvancedConfig(const settings::AdvancedConfig& config)
 {
     uiState_->ApplyConfigToUI(config);
 }
 
-void OpenZoomApp::ResetCurrentConfigToDefaults()
+void OkuFlowApp::ResetCurrentConfigToDefaults()
 {
     if (!mainWindow_) {
         return;
@@ -148,7 +136,7 @@ void OpenZoomApp::ResetCurrentConfigToDefaults()
     defaults.id = QStringLiteral("current-live");
     defaults.name = QStringLiteral("Current Setup");
     defaults.description =
-        QStringLiteral("Profile tuning reset to OpenZoom defaults.");
+        QStringLiteral("Profile tuning reset to OkuFlow defaults.");
 
     settingsController_->MutableSettings().selectedPresetId.clear();
     ApplyAdvancedConfig(defaults);
@@ -162,7 +150,7 @@ void OpenZoomApp::ResetCurrentConfigToDefaults()
                       4000);
 }
 
-void OpenZoomApp::PromoteCurrentConfigToPreset()
+void OkuFlowApp::PromoteCurrentConfigToPreset()
 {
     if (!mainWindow_) {
         return;
@@ -186,7 +174,7 @@ void OpenZoomApp::PromoteCurrentConfigToPreset()
     UpdatePresetDescription();
 }
 
-void OpenZoomApp::OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetItem* /*previous*/)
+void OkuFlowApp::OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetItem* /*previous*/)
 {
     if (presetSelectionSyncSuspended_ || !current) {
         return;
@@ -202,7 +190,7 @@ void OpenZoomApp::OnPresetSelectionChanged(QListWidgetItem* current, QListWidget
     ApplyAdvancedConfig(*config);
 }
 
-void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& settings) {
+void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings& settings) {
     if (uiState_->displayColorPicker_ && settings.customColorScheme.stops.size() >= 2) {
         uiState_->displayColorPicker_->setCustomScheme(settings.customColorScheme);
     }
@@ -258,6 +246,20 @@ void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& se
         uiState_->recordingCanvasCombo_->setCurrentIndex(
             index >= 0 ? index : 0);
     }
+    if (uiState_->transcribeMicrophoneCheckbox_) {
+        auto block =
+            uiState_->BlockSignals(uiState_->transcribeMicrophoneCheckbox_);
+        uiState_->transcribeMicrophoneCheckbox_->setChecked(
+            settings.liveTranscriptionEnabled);
+    }
+    if (uiState_->transcriptToNotesCheckbox_) {
+        auto block =
+            uiState_->BlockSignals(uiState_->transcriptToNotesCheckbox_);
+        uiState_->transcriptToNotesCheckbox_->setChecked(
+            settings.appendTranscriptToNotes);
+        uiState_->transcriptToNotesCheckbox_->setEnabled(
+            settings.liveTranscriptionEnabled);
+    }
     if (mainWindow_) {
         mainWindow_->setAdvancedPanelWidth(settings.advancedPanelWidth);
         mainWindow_->setSimpleMode(settings.simpleUiMode);
@@ -271,6 +273,7 @@ void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& se
             settings.annotationTextSizePixels);
     }
     assistiveManager_->RestoreOverlayGeometry(settings.assistiveOverlayGeometry);
+    assistiveManager_->Overlay().SetDockPosition(settings.assistiveOverlayDockPosition);
     ApplyAdvancedConfig(settings.currentConfig);
     rotationQuarterTurns_ = ((settings.rotationQuarterTurns % 4) + 4) % 4;
     UpdateRotationUi();
@@ -280,7 +283,7 @@ void OpenZoomApp::ApplyPersistentSettings(const settings::PersistentSettings& se
     assistiveManager_->ApplySettings(settings.assistive);
 }
 
-void OpenZoomApp::SavePersistentSettings() {
+void OkuFlowApp::SavePersistentSettings() {
     // Startup applies several controls that can request a settings save before
     // the persisted camera has been selected. Preserve the loaded index until
     // initialization completes instead of silently replacing it with the
@@ -314,6 +317,14 @@ void OpenZoomApp::SavePersistentSettings() {
                 static_cast<int>(RecordingCanvasMode::Source),
                 static_cast<int>(RecordingCanvasMode::Nhd360)));
     }
+    if (uiState_->transcribeMicrophoneCheckbox_) {
+        settingsController_->MutableSettings().liveTranscriptionEnabled =
+            uiState_->transcribeMicrophoneCheckbox_->isChecked();
+    }
+    if (uiState_->transcriptToNotesCheckbox_) {
+        settingsController_->MutableSettings().appendTranscriptToNotes =
+            uiState_->transcriptToNotesCheckbox_->isChecked();
+    }
     if (mainWindow_) {
         settingsController_->MutableSettings().advancedPanelWidth = mainWindow_->advancedPanelWidth();
         settingsController_->MutableSettings().uiSectionStates =
@@ -335,18 +346,20 @@ void OpenZoomApp::SavePersistentSettings() {
     }
     settingsController_->MutableSettings().assistiveOverlayGeometry =
         assistiveManager_->OverlayGeometry();
+    settingsController_->MutableSettings().assistiveOverlayDockPosition =
+        assistiveManager_->Overlay().DockPosition();
     if (uiState_->displayColorPicker_ && uiState_->displayColorPicker_->hasCustomScheme()) {
         settingsController_->MutableSettings().customColorScheme = uiState_->displayColorPicker_->customScheme();
     }
     if (!settingsController_->Save(CaptureCurrentAdvancedConfig())) {
         const QString error = settingsController_->LastError().isEmpty()
-                                  ? QStringLiteral("OpenZoom could not save settings.")
+                                  ? QStringLiteral("OkuFlow could not save settings.")
                                   : settingsController_->LastError();
         ShowStatusMessage(error, 10000);
     }
 }
 
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

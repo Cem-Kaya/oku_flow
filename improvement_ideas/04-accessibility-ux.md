@@ -1,6 +1,6 @@
 # Accessibility & UX
 
-OpenZoom's mission (per `agents.md`) is an AI-assisted magnifier for people with low
+OkuFlow's mission (per `agents.md`) is an AI-assisted magnifier for people with low
 vision — yet the app itself currently has almost no assistive-technology support. These
 are mostly small-effort, high-mission-value items.
 
@@ -61,7 +61,7 @@ README and expose them in tooltips.
 
 > **IMPLEMENTED 2026-07-26 through
 > [plan 27](27-advanced-panel-redesign.md) Phase 0.**
-> Enabled state now comes from `OpenZoomApp::UpdateControlEnabledStates()` after
+> Enabled state now comes from `OkuFlowApp::UpdateControlEnabledStates()` after
 > config application and toggle changes. Kept here for the evidence.
 
 - **Priority:** MEDIUM · **Effort:** small · **Status:** Implemented

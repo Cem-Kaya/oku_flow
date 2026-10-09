@@ -11,7 +11,7 @@ cleanup. Repo hygiene note: `build/` exists on disk but is **not** tracked in gi
 - **Priority:** MEDIUM · **Effort:** small · **Status:** Confirmed (no `target_compile_options` warning flags anywhere in cmake/)
 - **Evidence:** `cmake/ProjectOptions.cmake`, `cmake/CMakeLists.txt`
 
-**Fix.** Add `/W4` (MSVC) to the `open_zoom` target; fix the fallout (expect mostly
+**Fix.** Add `/W4` (MSVC) to the `oku_flow` target; fix the fallout (expect mostly
 unused-variable and conversion warnings); then add `/WX` so it stays clean. Scope flags
 to project targets only — don't let them leak into `third_party/` (amd_fsr1, nvidia_nis).
 For the `.cu` files, pass host-compiler warnings via
@@ -22,7 +22,7 @@ the app.cpp decomposition so the refactor is warning-guarded.
 
 ## B2. Create the missing test infrastructure
 
-- **Priority:** MEDIUM · **Effort:** large (but start small) · **Status:** Confirmed (an `OPENZOOM_ENABLE_TESTS` option exists but `tests/` does not; cmake warns about it at cmake/CMakeLists.txt ~102–108)
+- **Priority:** MEDIUM · **Effort:** large (but start small) · **Status:** Confirmed (an `OKUFLOW_ENABLE_TESTS` option exists but `tests/` does not; cmake warns about it at cmake/CMakeLists.txt ~102–108)
 - **Evidence:** cmake option present, zero test files in the repo
 
 **Problem.** 8,800 lines of pipeline/persistence logic with no tests; every refactor in
@@ -31,7 +31,7 @@ camera.
 
 **Fix.** Don't aim for coverage — aim for the pure, hardware-free logic first:
 1. `tests/CMakeLists.txt` with Catch2 (FetchContent) wired to the existing
-   `OPENZOOM_ENABLE_TESTS` option and `ctest`.
+   `OKUFLOW_ENABLE_TESTS` option and `ctest`.
 2. First targets, in order of value: `image_processing` (NV12/YUY2 conversion with known
    pixel fixtures — also locks in the V2 validation work), `settings_store`
    (round-trip, legacy v1, corrupt file, out-of-range fields), zoom/crop rect math.
@@ -48,11 +48,11 @@ Capture/D3D12/CUDA stay manual-test-only for now; document that in `tests/README
 - **Priority:** MEDIUM · **Effort:** medium · **Status:** Confirmed (no `.github/` directory exists)
 
 **Fix.** `.github/workflows/build.yml` on `windows-latest`: install Qt via
-`jurplel/install-qt-action`, configure with `-DOPENZOOM_ENABLE_CUDA=OFF` (CUDA toolchain
+`jurplel/install-qt-action`, configure with `-DOKUFLOW_ENABLE_CUDA=OFF` (CUDA toolchain
 is impractical on hosted runners), build the `msvc-cpu` preset, run ctest (after B2).
 A CPU-only compile+test gate already catches the majority of breakage in this repo —
 CHANGELOG shows CPU-only builds have broken before ("CPU-only CMake definitions now
-honor OPENZOOM_ENABLE_CUDA=OFF").
+honor OKUFLOW_ENABLE_CUDA=OFF").
 
 ---
 

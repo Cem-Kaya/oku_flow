@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/cuda/cuda_kernels.hpp"
+#include "okuflow/cuda/cuda_kernels.hpp"
 
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
@@ -22,7 +22,7 @@
 #include <vector>
 #include <cmath>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -39,45 +39,6 @@ __device__ float3 ReadPixelLinear(const uchar4* src, size_t pitchBytes, int x, i
     const auto* row = reinterpret_cast<const uchar4*>(reinterpret_cast<const uint8_t*>(src) + pitchBytes * clampedY);
     const uchar4 value = row[clampedX];
     return make_float3(value.x, value.y, value.z);
-}
-
-__device__ float Lanczos2(float x) {
-    x = fabsf(x);
-    if (x < 1e-6f) {
-        return 1.0f;
-    }
-    if (x >= 2.0f) {
-        return 0.0f;
-    }
-    const float pix = CUDART_PI_F * x;
-    const float pixHalf = pix * 0.5f;
-    return (sinf(pix) * sinf(pixHalf)) / (pix * pixHalf);
-}
-
-__device__ float3 LanczosSample(const uchar4* src, size_t pitchBytes,
-                                float sampleX, float sampleY,
-                                int width, int height) {
-    const int baseX = static_cast<int>(floorf(sampleX));
-    const int baseY = static_cast<int>(floorf(sampleY));
-    float3 accum = make_float3(0.0f, 0.0f, 0.0f);
-    float weightSum = 0.0f;
-    for (int j = -1; j <= 2; ++j) {
-        for (int i = -1; i <= 2; ++i) {
-            const float w = Lanczos2(sampleX - (baseX + i)) * Lanczos2(sampleY - (baseY + j));
-            const float3 c = ReadPixelLinear(src, pitchBytes, baseX + i, baseY + j, width, height);
-            accum.x += c.x * w;
-            accum.y += c.y * w;
-            accum.z += c.z * w;
-            weightSum += w;
-        }
-    }
-    if (weightSum > 0.0f) {
-        const float inv = 1.0f / weightSum;
-        accum.x *= inv;
-        accum.y *= inv;
-        accum.z *= inv;
-    }
-    return accum;
 }
 
 __device__ float3 BilinearSample(const uchar4* src, size_t pitchBytes,
@@ -495,82 +456,6 @@ __global__ void TemporalSmoothKernel(uchar4* dst, size_t dstPitch,
                             255u);
 }
 
-__global__ void FsrEasuRcasKernel(uchar4* dst, size_t dstPitchBytes,
-                                  const uchar4* src, size_t srcPitchBytes,
-                                  int srcWidth, int srcHeight,
-                                  int dstWidth, int dstHeight,
-                                  float sharpness) {
-    const int x = blockIdx.x * blockDim.x + threadIdx.x;
-    const int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= dstWidth || y >= dstHeight) {
-        return;
-    }
-
-    const float scaleX = static_cast<float>(srcWidth) / static_cast<float>(dstWidth);
-    const float scaleY = static_cast<float>(srcHeight) / static_cast<float>(dstHeight);
-    const float sampleX = (static_cast<float>(x) + 0.5f) * scaleX - 0.5f;
-    const float sampleY = (static_cast<float>(y) + 0.5f) * scaleY - 0.5f;
-
-    float3 color = LanczosSample(src, srcPitchBytes, sampleX, sampleY, srcWidth, srcHeight);
-
-    const int nearX = static_cast<int>(roundf(sampleX));
-    const int nearY = static_cast<int>(roundf(sampleY));
-    const float3 blur = BoxBlur3x3(src, srcPitchBytes, nearX, nearY, srcWidth, srcHeight);
-
-    const float sharpen = fmaxf(0.0f, fminf(sharpness, 1.0f));
-    color.x = fmaf(sharpen, color.x - blur.x, color.x);
-    color.y = fmaf(sharpen, color.y - blur.y, color.y);
-    color.z = fmaf(sharpen, color.z - blur.z, color.z);
-
-    color.x = fminf(fmaxf(color.x, 0.0f), 255.0f);
-    color.y = fminf(fmaxf(color.y, 0.0f), 255.0f);
-    color.z = fminf(fmaxf(color.z, 0.0f), 255.0f);
-
-    auto* row = RowAt(dst, dstPitchBytes, y);
-    row[x] = make_uchar4(static_cast<unsigned char>(color.x + 0.5f),
-                         static_cast<unsigned char>(color.y + 0.5f),
-                         static_cast<unsigned char>(color.z + 0.5f),
-                         255u);
-}
-
-__global__ void NisKernel(uchar4* dst, size_t dstPitchBytes,
-                          const uchar4* src, size_t srcPitchBytes,
-                          int srcWidth, int srcHeight,
-                          int dstWidth, int dstHeight,
-                          float sharpness) {
-    const int x = blockIdx.x * blockDim.x + threadIdx.x;
-    const int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= dstWidth || y >= dstHeight) {
-        return;
-    }
-
-    const float scaleX = static_cast<float>(srcWidth) / static_cast<float>(dstWidth);
-    const float scaleY = static_cast<float>(srcHeight) / static_cast<float>(dstHeight);
-    const float sampleX = (static_cast<float>(x) + 0.5f) * scaleX - 0.5f;
-    const float sampleY = (static_cast<float>(y) + 0.5f) * scaleY - 0.5f;
-
-    float3 base = BilinearSample(src, srcPitchBytes, sampleX, sampleY, srcWidth, srcHeight);
-
-    const int nearX = static_cast<int>(roundf(sampleX));
-    const int nearY = static_cast<int>(roundf(sampleY));
-    const float3 blur = BoxBlur3x3(src, srcPitchBytes, nearX, nearY, srcWidth, srcHeight);
-
-    const float sharpen = fmaxf(0.0f, fminf(sharpness, 1.0f));
-    base.x = fmaf(sharpen, base.x - blur.x, base.x);
-    base.y = fmaf(sharpen, base.y - blur.y, base.y);
-    base.z = fmaf(sharpen, base.z - blur.z, base.z);
-
-    base.x = fminf(fmaxf(base.x, 0.0f), 255.0f);
-    base.y = fminf(fmaxf(base.y, 0.0f), 255.0f);
-    base.z = fminf(fmaxf(base.z, 0.0f), 255.0f);
-
-    auto* row = RowAt(dst, dstPitchBytes, y);
-    row[x] = make_uchar4(static_cast<unsigned char>(base.x + 0.5f),
-                         static_cast<unsigned char>(base.y + 0.5f),
-                         static_cast<unsigned char>(base.z + 0.5f),
-                         255u);
-}
-
 inline void CheckCuda(const char* message) {
     cudaError_t status = cudaGetLastError();
     if (status != cudaSuccess) {
@@ -656,46 +541,6 @@ void LaunchFocusMarkerLinear(uchar4* buffer, size_t pitchBytes,
                                                           centerXNorm, centerYNorm,
                                                           radiusOuter, radiusInner);
     CheckCuda("FocusMarkerKernel launch failed");
-}
-
-void LaunchFsrEasuRcasLinear(uchar4* dst, size_t dstPitchBytes,
-                             const uchar4* src, size_t srcPitchBytes,
-                             int srcWidth, int srcHeight,
-                             int dstWidth, int dstHeight,
-                             float sharpness,
-                             cudaStream_t stream) {
-    if (dstWidth <= 0 || dstHeight <= 0 || srcWidth <= 0 || srcHeight <= 0) {
-        return;
-    }
-    const dim3 blockSize(16, 16);
-    const dim3 gridSize((dstWidth + blockSize.x - 1) / blockSize.x,
-                        (dstHeight + blockSize.y - 1) / blockSize.y);
-    FsrEasuRcasKernel<<<gridSize, blockSize, 0, stream>>>(dst, dstPitchBytes,
-                                                         src, srcPitchBytes,
-                                                         srcWidth, srcHeight,
-                                                         dstWidth, dstHeight,
-                                                         sharpness);
-    CheckCuda("FsrEasuRcasKernel launch failed");
-}
-
-void LaunchNisLinear(uchar4* dst, size_t dstPitchBytes,
-                     const uchar4* src, size_t srcPitchBytes,
-                     int srcWidth, int srcHeight,
-                     int dstWidth, int dstHeight,
-                     float sharpness,
-                     cudaStream_t stream) {
-    if (dstWidth <= 0 || dstHeight <= 0 || srcWidth <= 0 || srcHeight <= 0) {
-        return;
-    }
-    const dim3 blockSize(16, 16);
-    const dim3 gridSize((dstWidth + blockSize.x - 1) / blockSize.x,
-                        (dstHeight + blockSize.y - 1) / blockSize.y);
-    NisKernel<<<gridSize, blockSize, 0, stream>>>(dst, dstPitchBytes,
-                                                 src, srcPitchBytes,
-                                                 srcWidth, srcHeight,
-                                                 dstWidth, dstHeight,
-                                                 sharpness);
-    CheckCuda("NisKernel launch failed");
 }
 
 void LaunchTemporalSmoothLinear(uchar4* dst, size_t dstPitchBytes,
@@ -2437,25 +2282,16 @@ __global__ void DisplayColorGradeKernel(uchar4* buffer, size_t pitchBytes,
     row[x] = make_uchar4(FloatToByte(b), FloatToByte(g), FloatToByte(r), pixel.w);
 }
 
-__device__ inline unsigned char ClampIntToByte(int value) {
-    return static_cast<unsigned char>(max(0, min(255, value)));
-}
-
-// Integer BT.601 limited-range YUV -> BGRA. The coefficients and rounding match
-// ConvertNv12ToBgra in src/common/image_processing.cpp bit-for-bit so switching
-// the conversion from CPU to GPU changes nothing visually.
-__device__ inline uchar4 Bt601ToBgra(int yValue, int u, int v) {
-    const int c = max(yValue - 16, 0);
-    const int r = (298 * c + 409 * v + 128) >> 8;
-    const int g = (298 * c - 100 * u - 208 * v + 128) >> 8;
-    const int b = (298 * c + 516 * u + 128) >> 8;
-    return make_uchar4(ClampIntToByte(b), ClampIntToByte(g), ClampIntToByte(r), 255u);
+__device__ inline uchar4 YuvToBgra(int yValue, int u, int v,
+                                 const YuvCoefficients& coefficients) {
+    const auto pixel = ConvertYuvPixel(yValue, u, v, coefficients);
+    return make_uchar4(pixel.b, pixel.g, pixel.r, 255u);
 }
 
 __global__ void Nv12ToBgraKernel(uchar4* dst, size_t dstPitch,
                                  const unsigned char* yPlane, size_t yPitch,
                                  const unsigned char* uvPlane, size_t uvPitch,
-                                 int width, int height) {
+                                 int width, int height, YuvCoefficients coefficients) {
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height) {
@@ -2465,17 +2301,17 @@ __global__ void Nv12ToBgraKernel(uchar4* dst, size_t dstPitch,
     const unsigned char* yRow = yPlane + static_cast<size_t>(y) * yPitch;
     const unsigned char* uvRow = uvPlane + static_cast<size_t>(y >> 1) * uvPitch;
     const int uvIndex = x & ~1;
-    const int u = static_cast<int>(uvRow[uvIndex]) - 128;
-    const int v = static_cast<int>(uvRow[uvIndex + 1]) - 128;
+    const int u = uvRow[uvIndex];
+    const int v = uvRow[uvIndex + 1];
 
     uchar4* dstRow = RowAt(dst, dstPitch, y);
-    dstRow[x] = Bt601ToBgra(static_cast<int>(yRow[x]), u, v);
+    dstRow[x] = YuvToBgra(static_cast<int>(yRow[x]), u, v, coefficients);
 }
 
 // One thread per horizontal pixel pair (YUY2 stores Y0 U Y1 V per 2 pixels).
 __global__ void Yuy2ToBgraKernel(uchar4* dst, size_t dstPitch,
                                  const unsigned char* src, size_t srcPitch,
-                                 int width, int height) {
+                                 int width, int height, YuvCoefficients coefficients) {
     const int pairX = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
     const int x0 = pairX * 2;
@@ -2486,14 +2322,14 @@ __global__ void Yuy2ToBgraKernel(uchar4* dst, size_t dstPitch,
     const unsigned char* srcPtr = src + static_cast<size_t>(y) * srcPitch +
                                   static_cast<size_t>(pairX) * 4u;
     const int y0 = srcPtr[0];
-    const int u = static_cast<int>(srcPtr[1]) - 128;
+    const int u = srcPtr[1];
     const int y1 = srcPtr[2];
-    const int v = static_cast<int>(srcPtr[3]) - 128;
+    const int v = srcPtr[3];
 
     uchar4* dstRow = RowAt(dst, dstPitch, y);
-    dstRow[x0] = Bt601ToBgra(y0, u, v);
+    dstRow[x0] = YuvToBgra(y0, u, v, coefficients);
     if (x0 + 1 < width) {
-        dstRow[x0 + 1] = Bt601ToBgra(y1, u, v);
+        dstRow[x0 + 1] = YuvToBgra(y1, u, v, coefficients);
     }
 }
 
@@ -3191,7 +3027,7 @@ void LaunchNv12ToBgraLinear(uchar4* dst, size_t dstPitchBytes,
                             const unsigned char* yPlane, size_t yPitchBytes,
                             const unsigned char* uvPlane, size_t uvPitchBytes,
                             int width, int height,
-                            cudaStream_t stream) {
+                            cudaStream_t stream, YuvColorInfo color) {
     if (width <= 0 || height <= 0) {
         return;
     }
@@ -3201,14 +3037,14 @@ void LaunchNv12ToBgraLinear(uchar4* dst, size_t dstPitchBytes,
     Nv12ToBgraKernel<<<gridSize, blockSize, 0, stream>>>(dst, dstPitchBytes,
                                                          yPlane, yPitchBytes,
                                                          uvPlane, uvPitchBytes,
-                                                         width, height);
+                                                         width, height, GetYuvCoefficients(color));
     CheckCuda("Nv12ToBgraKernel launch failed");
 }
 
 void LaunchYuy2ToBgraLinear(uchar4* dst, size_t dstPitchBytes,
                             const unsigned char* src, size_t srcPitchBytes,
                             int width, int height,
-                            cudaStream_t stream) {
+                            cudaStream_t stream, YuvColorInfo color) {
     if (width <= 0 || height <= 0) {
         return;
     }
@@ -3218,7 +3054,7 @@ void LaunchYuy2ToBgraLinear(uchar4* dst, size_t dstPitchBytes,
                         (height + blockSize.y - 1) / blockSize.y);
     Yuy2ToBgraKernel<<<gridSize, blockSize, 0, stream>>>(dst, dstPitchBytes,
                                                          src, srcPitchBytes,
-                                                         width, height);
+                                                         width, height, GetYuvCoefficients(color));
     CheckCuda("Yuy2ToBgraKernel launch failed");
 }
 
@@ -3869,6 +3705,6 @@ bool UploadDisplayColorLut(const std::uint32_t* lut256, cudaStream_t stream) {
                                    cudaMemcpyHostToDevice, stream) == cudaSuccess;
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

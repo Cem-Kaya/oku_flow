@@ -1,11 +1,11 @@
 # ML Text Super-Resolution Options — Pre-Trained Models Only (2026-07)
 
-Research report for filling the `OPENZOOM_ENABLE_TEXT_SR` integration boundary
+Research report for filling the `OKUFLOW_ENABLE_TEXT_SR` integration boundary
 (`cmake/ProjectOptions.cmake`, adapter stub around `src/cuda/cuda_interop.cpp:1653`)
 with a **pre-trained, downloadable** model. Constraints applied to every option:
 
 - **No training.** Weights must be downloadable today (GitHub release, HuggingFace, vendor SDK).
-- **License of code AND weights** must be compatible with OpenZoom's GPL-3.0 +
+- **License of code AND weights** must be compatible with OkuFlow's GPL-3.0 +
   commercial dual license → commercial redistribution required. Apache-2.0 / MIT /
   BSD = good. No-license repos, CC-BY-NC, research-only, "contact us" = **blocked**.
 - **Latency budget:** ~640×360 ROI, 2×–4× upscale, **< 8 ms** on an RTX 30/40-series
@@ -51,7 +51,7 @@ Treat all *(est.)* numbers as ±2× until we benchmark on real hardware.
 - **License:** SDK API headers and proxy-loader source are MIT. The **binaries + models are under the NVIDIA Software License Agreement** (+ Product-Specific Terms for NVIDIA AI Products) — proprietary but explicitly designed for commercial apps: NVIDIA documents that a developer "can package the runtime dependencies into the application or require application users to use the SDK installer". Action item: read the current SLA once before shipping; this is *not* an open-weights option, but it is a shippable one. (Precedent: OBS plugins/StreamFX ship against it.)
 - **Performance (vendor-published, exactly our workload):** SuperRes 2× **360p→720p: 3.28 ms on RTX 2060, 1.54 ms on RTX 3080, 0.505 ms on RTX 4090** — <https://docs.nvidia.com/maxine/vfx/WindowsVFXSDK/PerformanceReference.html>. A 3060 laptop lands ~2–3 ms → comfortably inside the 8 ms budget. Scales 4/3×, 1.5×, 2×, 3×, 4×; two modes (0 = conservative, 1 = strong enhancement). The separate cheap **Upscale** effect (edge-adaptive, non-DNN) is sub-ms and duplicates what NIS already gives us — ignore it.
 - **Deployment on our stack:** best-in-class fit. `NvVFX_Run` consumes `NvCVImage`, which wraps **CUDA device buffers directly** — our pipeline is already CUDA-resident, so no D3D12 interop, no ONNX, no TensorRT plumbing, no engine build. Effect load ≈ seconds at startup (its own TRT engines are pre-baked per-arch in the installer). GPU support: Turing/Ampere/Ada/Blackwell w/ Tensor Cores, driver ≥ 521.98, Windows 10+.
-- **Gotchas:** ~400 MB runtime (either bundled per SLA or user-installed via NVIDIA's installer — recommend the latter, like our Tesseract approach); NVIDIA-only (acceptable today — the whole pipeline is CUDA — but it dies with a future DirectML backend); models are a black box (no INT8/tuning control); quality mode 1 can over-enhance noise — expose our blend-strength slider on top.
+- **Gotchas:** ~400 MB runtime (either bundled per SLA or user-installed via NVIDIA's installer — recommend the latter); NVIDIA-only (acceptable today — the whole pipeline is CUDA — but it dies with a future DirectML backend); models are a black box (no INT8/tuning control); quality mode 1 can over-enhance noise — expose our blend-strength slider on top.
 
 ### 2.2 Real-ESRGAN family — the open-weights quality option
 
@@ -116,7 +116,7 @@ Treat all *(est.)* numbers as ±2× until we benchmark on real hardware.
 
 ## 3. RECOMMENDATION
 
-**Primary: NVIDIA Maxine VFX SuperRes** — the only option with *vendor-measured* latency on exactly our workload (360p→720p 2×: 3.28 ms on an RTX 2060; expect ~2–3 ms on a 3060 laptop), pre-trained, maintained (v0.7.6, 2025), consumes CUDA buffers natively (zero interop with our pipeline), and is commercially shippable under the NVIDIA SLA (headers MIT). Cost: proprietary models, ~400 MB runtime (have users run NVIDIA's installer, exactly like our Tesseract flow), NVIDIA-only. One SLA read-through is the only open action.
+**Primary: NVIDIA Maxine VFX SuperRes** — the only option with *vendor-measured* latency on exactly our workload (360p→720p 2×: 3.28 ms on an RTX 2060; expect ~2–3 ms on a 3060 laptop), pre-trained, maintained (v0.7.6, 2025), consumes CUDA buffers natively (zero interop with our pipeline), and is commercially shippable under the NVIDIA SLA (headers MIT). Cost: proprietary models, ~400 MB runtime (have users run NVIDIA's installer), NVIDIA-only. One SLA read-through is the only open action.
 
 **Open-weights alternative / second tier: RLFN (Apache-2.0)** — 0.317 M params, ~4–7 ms est. at 640×360 ×4 via TensorRT FP16; the best license-quality-latency balance among genuinely open models. Ship the ONNX in-repo, build+cache the TRT engine at first enable. Add **`realesr-general-x4v3` (BSD-3)** as a "deep zoom" tier only (ROI ≤ ~320×180, where it fits the budget and its hallucination risk is offset by the wdn denoise blend).
 
@@ -124,7 +124,7 @@ Treat all *(est.)* numbers as ±2× until we benchmark on real hardware.
 
 **Driver-level free win: RTX Video SDK** — now app-integrable with native **D3D12** support; expose as a cheap "Video Enhance" toggle on the presented frame. Worth a 1-day spike; not the text-SR endgame.
 
-### Integration sketch (behind `OPENZOOM_ENABLE_TEXT_SR=ON`)
+### Integration sketch (behind `OKUFLOW_ENABLE_TEXT_SR=ON`)
 
 1. New `TextSrAdapter` interface in the CUDA pipeline at the existing stub
    (`cuda_interop.cpp` ~line 1653), running **on the zoomed ROI only**, before
@@ -132,7 +132,7 @@ Treat all *(est.)* numbers as ±2× until we benchmark on real hardware.
    (never run ML-SR + NIS together — pick per settings).
 2. Backends: `MaxineSrAdapter` (NvVFX, CUDA buffers in/out) and `TrtSrAdapter`
    (TensorRT C++ API; ONNX asset in `models/`; engine cached under
-   `%LOCALAPPDATA%/OpenZoom/trt-cache/<model>-<sm>-<driver>-<trt>.engine`;
+   `%LOCALAPPDATA%/OkuFlow/trt-cache/<model>-<sm>-<driver>-<trt>.engine`;
    build ≈ seconds–1 min, do it async with a status toast, fall back to NIS
    until ready). FP16 default; INT8 later via calibration on synthetic text
    crops (see §5.1) — optional, FP16 already fits budget for RLFN-class.
@@ -190,7 +190,7 @@ RLFN Apache-2.0, or our own ~0.3 M-param convnet) on **synthetic text pairs**:
   training converges in hours on one consumer GPU; an RLFN-class model is
   **a weekend of GPU time** on a single RTX 4090-class card. No dataset license
   issues, unlimited data, degradation tuned to *our* cameras (we can even mix in
-  a few hundred real OpenZoom frame captures as validation).
+  a few hundred real OkuFlow frame captures as validation).
 - **Decisive advantage:** the resulting weights are **ours outright** — cleanly
   dual-licensable under GPL-3.0 + commercial with zero third-party terms, and a
   text-specialized model at RLFN latency would likely beat every general-purpose
@@ -262,7 +262,7 @@ Two license regimes coexist:
   "non-production". 30-day termination-for-convenience with destroy-all-copies
   and no prior-distribution carve-out. Do not build on this.
 
-**Binding conditions for OpenZoom:**
+**Binding conditions for OkuFlow:**
 1. **Anti-copyleft clause (EULA §2.5 / NVSLA §8.8):** the SDK must never become
    subject to an open-source license → NVIDIA bits must NOT ship inside the
    GPL-3.0-distributed build. Architecture: SuperRes is an optional

@@ -1,18 +1,19 @@
-#include "openzoom/app/user_data_paths.hpp"
+#include "okuflow/app/user_data_paths.hpp"
 
-#include <QDateTime>
 #include <QDir>
-#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
-#include <QSaveFile>
+#include <QHash>
+#include <QLockFile>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QUuid>
-#include <QVector>
 
-#include <array>
+#include <filesystem>
+#include <memory>
+#include <system_error>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -24,13 +25,62 @@ QString NormalizeAbsolutePath(const QString& path)
     return QDir::cleanPath(QFileInfo(path.trimmed()).absoluteFilePath());
 }
 
+// Resolves Windows junctions/symlinks before a containment comparison. A
+// purely lexical check would accept a root that is a link pointing back
+// inside the install directory. The candidate may not exist yet, so the
+// deepest existing ancestor is canonicalized and the remainder reattached.
+QString CanonicalizeForContainment(const QString& path)
+{
+    const QString absolute = NormalizeAbsolutePath(path);
+    if (absolute.isEmpty()) {
+        return absolute;
+    }
+    QString existing = absolute;
+    QStringList tail;
+    while (!existing.isEmpty() && !QFileInfo::exists(existing)) {
+        const QFileInfo info(existing);
+        const QString parent = info.absolutePath();
+        if (parent == existing) {
+            break;
+        }
+        tail.prepend(info.fileName());
+        existing = parent;
+    }
+    // QFileInfo::canonicalFilePath does NOT resolve NTFS junctions on
+    // Windows (verified by the junction regression test), so resolution
+    // goes through std::filesystem::canonical, which uses
+    // GetFinalPathNameByHandle and resolves junctions and symlinks alike.
+    QString canonical;
+    if (QFileInfo::exists(existing)) {
+        std::error_code errorCode;
+        const std::filesystem::path resolved = std::filesystem::canonical(
+            std::filesystem::path(existing.toStdWString()), errorCode);
+        if (!errorCode) {
+            QString text = QString::fromStdWString(resolved.native());
+            if (text.startsWith(QStringLiteral("\\\\?\\"))) {
+                text = text.mid(4);
+            }
+            canonical = NormalizeAbsolutePath(text);
+        }
+    }
+    if (canonical.isEmpty()) {
+        return absolute;
+    }
+    QString resolved = canonical;
+    for (const QString& part : tail) {
+        resolved = QDir(resolved).filePath(part);
+    }
+    return QDir::cleanPath(resolved);
+}
+
 bool IsPathInside(const QString& candidate, const QString& parent)
 {
     if (candidate.isEmpty() || parent.isEmpty()) {
         return false;
     }
-    const QString child = QDir::toNativeSeparators(NormalizeAbsolutePath(candidate));
-    QString root = QDir::toNativeSeparators(NormalizeAbsolutePath(parent));
+    const QString child =
+        QDir::toNativeSeparators(CanonicalizeForContainment(candidate));
+    QString root = QDir::toNativeSeparators(CanonicalizeForContainment(parent));
     if (!root.endsWith(QDir::separator())) {
         root += QDir::separator();
     }
@@ -38,113 +88,46 @@ bool IsPathInside(const QString& candidate, const QString& parent)
            child.startsWith(root, Qt::CaseInsensitive);
 }
 
-bool DirectoryHasFiles(const QString& path)
+struct PhotoPairFiles {
+    QString originalFinal;
+    QString processedFinal;
+    QString originalTemp;
+    QString processedTemp;
+    QString transactionLock;
+    QDateTime newestModification;
+};
+
+void TrackNewestModification(PhotoPairFiles& pair, const QFileInfo& file)
 {
-    if (!QFileInfo::exists(path)) {
-        return false;
+    if (!pair.newestModification.isValid() ||
+        file.lastModified() > pair.newestModification) {
+        pair.newestModification = file.lastModified();
     }
-    QDirIterator iterator(path, QDir::Files | QDir::NoDotAndDotDot,
-                          QDirIterator::Subdirectories);
-    return iterator.hasNext();
 }
 
-qint64 DirectoryBytes(const QString& path)
+QString PhotoPairKey(const QString& fileName,
+                     bool* original,
+                     bool* temporary)
 {
-    qint64 total = 0;
-    QDirIterator iterator(path, QDir::Files | QDir::NoDotAndDotDot,
-                          QDirIterator::Subdirectories);
-    while (iterator.hasNext()) {
-        iterator.next();
-        total += iterator.fileInfo().size();
+    QString finalName = fileName;
+    *temporary = finalName.endsWith(QStringLiteral(".writing"));
+    if (*temporary) {
+        finalName.chop(QStringLiteral(".writing").size());
     }
-    return total;
-}
-
-bool CopyFileWithProgress(const QString& sourcePath,
-                          const QString& destinationPath,
-                          qint64 totalBytes,
-                          qint64& copiedBytes,
-                          const UserDataPaths::MigrationProgress& progress,
-                          bool& cancelled,
-                          QString& error)
-{
-    QFile source(sourcePath);
-    if (!source.open(QIODevice::ReadOnly)) {
-        error = QStringLiteral("Could not read legacy file: %1").arg(sourcePath);
-        return false;
+    const QString originalSuffix = QStringLiteral("_original.jpg");
+    const QString processedSuffix = QStringLiteral("_processed.jpg");
+    if (!finalName.startsWith(QStringLiteral("IMG_"))) {
+        return {};
     }
-    if (!QDir().mkpath(QFileInfo(destinationPath).absolutePath())) {
-        error = QStringLiteral("Could not create migration folder: %1")
-                    .arg(QFileInfo(destinationPath).absolutePath());
-        return false;
+    if (finalName.endsWith(originalSuffix)) {
+        *original = true;
+        return finalName.left(finalName.size() - originalSuffix.size());
     }
-    if (QFileInfo::exists(destinationPath)) {
-        copiedBytes += QFileInfo(sourcePath).size();
-        if (progress && !progress(copiedBytes, totalBytes, sourcePath)) {
-            cancelled = true;
-            return false;
-        }
-        return true;
+    if (finalName.endsWith(processedSuffix)) {
+        *original = false;
+        return finalName.left(finalName.size() - processedSuffix.size());
     }
-
-    QSaveFile destination(destinationPath);
-    if (!destination.open(QIODevice::WriteOnly)) {
-        error = QStringLiteral("Could not create migrated file: %1")
-                    .arg(destinationPath);
-        return false;
-    }
-
-    constexpr qint64 kCopyChunkBytes = 1024 * 1024;
-    while (!source.atEnd()) {
-        const QByteArray chunk = source.read(kCopyChunkBytes);
-        if (chunk.isEmpty() && source.error() != QFileDevice::NoError) {
-            error = QStringLiteral("Could not finish reading: %1").arg(sourcePath);
-            destination.cancelWriting();
-            return false;
-        }
-        if (destination.write(chunk) != chunk.size()) {
-            error = QStringLiteral("Could not finish writing: %1")
-                        .arg(destinationPath);
-            destination.cancelWriting();
-            return false;
-        }
-        copiedBytes += chunk.size();
-        if (progress && !progress(copiedBytes, totalBytes, sourcePath)) {
-            cancelled = true;
-            destination.cancelWriting();
-            return false;
-        }
-    }
-    if (!destination.commit()) {
-        error = QStringLiteral("Could not finalize migrated file: %1")
-                    .arg(destinationPath);
-        return false;
-    }
-    return true;
-}
-
-bool CopyDirectoryContents(const QString& sourceRoot,
-                           const QString& destinationRoot,
-                           qint64 totalBytes,
-                           qint64& copiedBytes,
-                           const UserDataPaths::MigrationProgress& progress,
-                           bool& cancelled,
-                           QString& error)
-{
-    QDir sourceDirectory(sourceRoot);
-    QDirIterator iterator(sourceRoot, QDir::Files | QDir::NoDotAndDotDot,
-                          QDirIterator::Subdirectories);
-    while (iterator.hasNext()) {
-        const QString sourcePath = iterator.next();
-        const QString relativePath = sourceDirectory.relativeFilePath(sourcePath);
-        const QString destinationPath =
-            QDir(destinationRoot).filePath(relativePath);
-        if (!CopyFileWithProgress(sourcePath, destinationPath, totalBytes,
-                                  copiedBytes, progress, cancelled, error)) {
-            return false;
-        }
-    }
-    return true;
+    return {};
 }
 
 } // namespace
@@ -153,6 +136,14 @@ UserDataPaths::UserDataPaths(QString configuredRoot, QString installDirectory)
     : configuredRoot_(configuredRoot.trimmed()),
       installDirectory_(NormalizeAbsolutePath(installDirectory))
 {
+    // Defense in depth for persisted roots that bypass ValidateRoot: a saved
+    // directory later replaced with a junction into the install directory
+    // must never be honored. Falls back to the default Documents root; the
+    // app-level startup validation is responsible for telling the user.
+    if (!configuredRoot_.isEmpty() &&
+        IsPathInside(configuredRoot_, installDirectory_)) {
+        configuredRoot_.clear();
+    }
 }
 
 QString UserDataPaths::DefaultRoot()
@@ -164,7 +155,7 @@ QString UserDataPaths::DefaultRoot()
             QStandardPaths::writableLocation(QStandardPaths::HomeLocation))
                         .filePath(QStringLiteral("Documents"));
     }
-    return QDir::cleanPath(QDir(documents).filePath(QStringLiteral("OpenZoom")));
+    return QDir::cleanPath(QDir(documents).filePath(QStringLiteral("OkuFlow")));
 }
 
 UserDataValidationResult UserDataPaths::ValidateRoot(
@@ -176,12 +167,12 @@ UserDataValidationResult UserDataPaths::ValidateRoot(
                                 ? DefaultRoot()
                                 : NormalizeAbsolutePath(requestedRoot);
     if (result.normalizedRoot.isEmpty()) {
-        result.error = QStringLiteral("OpenZoom could not determine a folder.");
+        result.error = QStringLiteral("OkuFlow could not determine a folder.");
         return result;
     }
     if (IsPathInside(result.normalizedRoot, installDirectory)) {
         result.error = QStringLiteral(
-            "Choose a folder outside the OpenZoom application folder. "
+            "Choose a folder outside the OkuFlow application folder. "
             "Application updates replace files in that folder.");
         return result;
     }
@@ -193,19 +184,19 @@ UserDataValidationResult UserDataPaths::ValidateRoot(
     }
     if (!QDir().mkpath(result.normalizedRoot)) {
         result.error =
-            QStringLiteral("OpenZoom could not create the selected folder.");
+            QStringLiteral("OkuFlow could not create the selected folder.");
         return result;
     }
 
     const QString probePath = QDir(result.normalizedRoot)
-                                  .filePath(QStringLiteral(".openzoom-write-test-%1.tmp")
+                                  .filePath(QStringLiteral(".okuflow-write-test-%1.tmp")
                                                 .arg(QUuid::createUuid().toString(
                                                     QUuid::WithoutBraces)));
     QFile probe(probePath);
     if (!probe.open(QIODevice::WriteOnly) ||
-        probe.write("OpenZoom", 8) != 8) {
+        probe.write("OkuFlow", 7) != 7) {
         result.error =
-            QStringLiteral("OpenZoom cannot write to the selected folder.");
+            QStringLiteral("OkuFlow cannot write to the selected folder.");
         probe.close();
         QFile::remove(probePath);
         return result;
@@ -213,7 +204,7 @@ UserDataValidationResult UserDataPaths::ValidateRoot(
     probe.close();
     if (!QFile::remove(probePath)) {
         result.error = QStringLiteral(
-            "OpenZoom wrote to the selected folder but could not remove its "
+            "OkuFlow wrote to the selected folder but could not remove its "
             "temporary test file.");
         return result;
     }
@@ -256,7 +247,7 @@ QString UserDataPaths::EnsureRelative(const QString& relativePath,
     if (!QDir().mkpath(path)) {
         if (error) {
             *error =
-                QStringLiteral("OpenZoom could not create folder: %1").arg(path);
+                QStringLiteral("OkuFlow could not create folder: %1").arg(path);
         }
         return {};
     }
@@ -308,120 +299,168 @@ QString UserDataPaths::Debug(QString* error) const
     return EnsureRelative(QStringLiteral("Debug"), error);
 }
 
-QString UserDataPaths::LegacyOutputRoot() const
+PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
+    const QDateTime& staleBefore) const
 {
-    return installDirectory_.isEmpty()
-               ? QString()
-               : QDir(installDirectory_).filePath(QStringLiteral("output"));
-}
-
-bool UserDataPaths::HasLegacyData() const
-{
-    const QString legacyRoot = LegacyOutputRoot();
-    if (legacyRoot.isEmpty() || !DirectoryHasFiles(legacyRoot)) {
-        return false;
-    }
-    const QString root =
-        configuredRoot_.isEmpty() ? DefaultRoot() : NormalizeAbsolutePath(configuredRoot_);
-    return !QFileInfo::exists(
-        QDir(root).filePath(QStringLiteral(".legacy-output-migrated")));
-}
-
-LegacyMigrationResult UserDataPaths::MigrateLegacyOutput(
-    const MigrationProgress& progress) const
-{
-    LegacyMigrationResult result;
-    const QString legacyRoot = LegacyOutputRoot();
-    result.foundLegacyData = !legacyRoot.isEmpty() && DirectoryHasFiles(legacyRoot);
-    if (!result.foundLegacyData) {
-        return result;
-    }
-
-    QString rootError;
-    const QString newRoot = Root(&rootError);
-    if (newRoot.isEmpty()) {
-        result.error = rootError;
-        return result;
-    }
-
-    struct MigrationGroup {
-        const char* source;
-        const char* destination;
-    };
-    constexpr std::array groups{
-        MigrationGroup{"img", "Photos"},
-        MigrationGroup{"photos", "Photos"},
-        MigrationGroup{"vid", "Recordings"},
-        MigrationGroup{"recordings", "Recordings"},
-        MigrationGroup{"notes", "Notes"},
-        MigrationGroup{"assistant", "Analysis/Assistant"},
-        MigrationGroup{"analysis", "Analysis"},
-    };
-
-    struct EligibleGroup {
-        QString source;
-        QString destination;
-    };
-    QVector<EligibleGroup> eligible;
-    for (const MigrationGroup& group : groups) {
-        const QString source = QDir(legacyRoot).filePath(
-            QString::fromLatin1(group.source));
-        const QString destination = QDir(newRoot).filePath(
-            QString::fromLatin1(group.destination));
-        if (!DirectoryHasFiles(source) || DirectoryHasFiles(destination)) {
-            continue;
+    PhotoPairRecoveryResult result;
+    QString error;
+    const QString root = Photos(&error);
+    if (root.isEmpty()) {
+        if (!error.isEmpty()) {
+            result.unresolvedPaths.append(error);
         }
-        eligible.push_back({source, destination});
-        result.totalBytes += DirectoryBytes(source);
+        return result;
     }
 
-    for (const EligibleGroup& group : eligible) {
-        if (!CopyDirectoryContents(group.source, group.destination,
-                                   result.totalBytes, result.bytesCopied,
-                                   progress, result.cancelled, result.error)) {
-            return result;
+    QStringList directories =
+        QDir(root).entryList(QDir::Dirs | QDir::NoDotAndDotDot,
+                             QDir::Name | QDir::Reversed);
+    // Scan every dated directory: an app may not be reopened promptly after
+    // a crash, so limiting recovery to the newest dates would let an old
+    // final orphan survive indefinitely.
+    directories.prepend(QString()); // Also cover the legacy Photos root.
+
+    for (const QString& child : directories) {
+        const QDir directory(
+            child.isEmpty() ? root : QDir(root).filePath(child));
+        const QFileInfoList files = directory.entryInfoList(
+            {QStringLiteral("IMG_*_original.jpg"),
+             QStringLiteral("IMG_*_processed.jpg"),
+             QStringLiteral("IMG_*_original.jpg.writing"),
+             QStringLiteral("IMG_*_processed.jpg.writing"),
+             QStringLiteral("IMG_*.pair.lock")},
+            QDir::Files);
+        QHash<QString, PhotoPairFiles> pairs;
+        for (const QFileInfo& file : files) {
+            const QString fileName = file.fileName();
+            if (fileName.startsWith(QStringLiteral("IMG_")) &&
+                fileName.endsWith(QStringLiteral(".pair.lock"))) {
+                const QString key = fileName.left(
+                    fileName.size() - QStringLiteral(".pair.lock").size());
+                PhotoPairFiles& pair = pairs[key];
+                pair.originalFinal = directory.filePath(
+                    key + QStringLiteral("_original.jpg"));
+                pair.processedFinal = directory.filePath(
+                    key + QStringLiteral("_processed.jpg"));
+                pair.originalTemp = pair.originalFinal +
+                                    QStringLiteral(".writing");
+                pair.processedTemp = pair.processedFinal +
+                                     QStringLiteral(".writing");
+                pair.transactionLock = file.absoluteFilePath();
+                TrackNewestModification(pair, file);
+                continue;
+            }
+            bool original = false;
+            bool temporary = false;
+            const QString key =
+                PhotoPairKey(fileName, &original, &temporary);
+            if (key.isEmpty()) {
+                continue;
+            }
+            PhotoPairFiles& pair = pairs[key];
+            // Keep all four expected paths even when only one member exists;
+            // recovery may need to rename a temp into its absent final name.
+            pair.originalFinal = directory.filePath(
+                key + QStringLiteral("_original.jpg"));
+            pair.processedFinal = directory.filePath(
+                key + QStringLiteral("_processed.jpg"));
+            pair.originalTemp = pair.originalFinal +
+                                QStringLiteral(".writing");
+            pair.processedTemp = pair.processedFinal +
+                                 QStringLiteral(".writing");
+            pair.transactionLock = directory.filePath(
+                key + QStringLiteral(".pair.lock"));
+            QString& slot = original
+                                ? (temporary ? pair.originalTemp
+                                             : pair.originalFinal)
+                                : (temporary ? pair.processedTemp
+                                             : pair.processedFinal);
+            slot = file.absoluteFilePath();
+            TrackNewestModification(pair, file);
         }
-        result.copiedData = true;
-    }
 
-    const QByteArray contents =
-        QStringLiteral(
-            "OpenZoom copied compatible user files from:\n%1\n\n"
-            "Copy completed: %2\n"
-            "The original files were not deleted. You may review and remove "
-            "them manually.\n")
-            .arg(QDir::toNativeSeparators(legacyRoot),
-                 QDateTime::currentDateTime().toString(Qt::ISODate))
-            .toUtf8();
+        for (auto pairIt = pairs.begin(); pairIt != pairs.end(); ++pairIt) {
+            PhotoPairFiles& pair = pairIt.value();
+            const auto exists = [](const QString& path) {
+                return !path.isEmpty() && QFileInfo::exists(path);
+            };
+            std::unique_ptr<QLockFile> recoveryLock;
+            if (exists(pair.transactionLock)) {
+                recoveryLock =
+                    std::make_unique<QLockFile>(pair.transactionLock);
+                // A live owner, regardless of duration, must never have its
+                // transaction stolen. A dead owner is detected from the lock
+                // metadata and can be recovered immediately after a crash.
+                recoveryLock->setStaleLockTime(0);
+                if (!recoveryLock->tryLock(0)) {
+                    continue;
+                }
+            } else if (staleBefore.isValid() &&
+                       pair.newestModification >= staleBefore) {
+                // Compatibility for temp/final leftovers written before the
+                // transaction lock existed.
+                continue;
+            }
+            const auto removeFile = [&result, &exists](QString& path) {
+                if (!exists(path)) {
+                    path.clear();
+                    return;
+                }
+                if (QFile::remove(path)) {
+                    ++result.removedFiles;
+                    path.clear();
+                } else if (!result.unresolvedPaths.contains(path)) {
+                    result.unresolvedPaths.append(path);
+                }
+            };
 
-    QSaveFile migrationMarker(
-        QDir(newRoot).filePath(QStringLiteral(".legacy-output-migrated")));
-    if (!migrationMarker.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        result.error =
-            QStringLiteral("Legacy files were copied, but OpenZoom could not "
-                           "write the migration record.");
-        return result;
-    }
-    if (migrationMarker.write(contents) != contents.size() ||
-        !migrationMarker.commit()) {
-        result.error =
-            QStringLiteral("OpenZoom could not finalize the migration record.");
-        return result;
-    }
+            bool originalFinal = exists(pair.originalFinal);
+            bool processedFinal = exists(pair.processedFinal);
+            if (originalFinal && processedFinal) {
+                removeFile(pair.originalTemp);
+                removeFile(pair.processedTemp);
+                continue;
+            }
 
-    // Best effort: this human-readable breadcrumb lives beside the original
-    // files. A Program Files installation may be read-only, so the marker in
-    // the user-data root remains the authority for suppressing repeat prompts.
-    QSaveFile breadcrumb(
-        QDir(legacyRoot).filePath(QStringLiteral("MIGRATED.txt")));
-    if (breadcrumb.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        if (breadcrumb.write(contents) != contents.size()) {
-            breadcrumb.cancelWriting();
-        } else {
-            breadcrumb.commit();
+            // The runtime renames processed first. A processed final plus an
+            // original temp therefore proves both JPEG encodes completed;
+            // finish the second rename. The symmetric case is handled too so
+            // recovery remains correct if commit order changes later.
+            bool completed = false;
+            if (processedFinal && !originalFinal &&
+                exists(pair.originalTemp) &&
+                !pair.originalFinal.isEmpty()) {
+                completed = QFile::rename(pair.originalTemp,
+                                          pair.originalFinal);
+                if (completed) {
+                    ++result.completedPairs;
+                    pair.originalTemp.clear();
+                }
+            } else if (originalFinal && !processedFinal &&
+                       exists(pair.processedTemp) &&
+                       !pair.processedFinal.isEmpty()) {
+                completed = QFile::rename(pair.processedTemp,
+                                          pair.processedFinal);
+                if (completed) {
+                    ++result.completedPairs;
+                    pair.processedTemp.clear();
+                }
+            }
+            if (completed) {
+                removeFile(pair.originalTemp);
+                removeFile(pair.processedTemp);
+                continue;
+            }
+
+            // No recoverable commit exists. Remove the whole partial set so
+            // a lone final JPEG can never masquerade as a completed capture.
+            removeFile(pair.originalTemp);
+            removeFile(pair.processedTemp);
+            removeFile(pair.originalFinal);
+            removeFile(pair.processedFinal);
         }
     }
     return result;
 }
 
-} // namespace openzoom
+} // namespace okuflow

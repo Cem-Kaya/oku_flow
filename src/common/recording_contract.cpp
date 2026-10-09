@@ -1,10 +1,10 @@
-#include "openzoom/common/recording_contract.hpp"
+#include "okuflow/common/recording_contract.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -302,4 +302,4 @@ RecordingCompletionOutcome ClassifyRecordingCompletion(
     return RecordingCompletionOutcome::FailedTruncated;
 }
 
-} // namespace openzoom
+} // namespace okuflow

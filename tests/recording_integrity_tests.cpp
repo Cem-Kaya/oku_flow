@@ -1,5 +1,5 @@
-#include "openzoom/common/frame_pipeline.hpp"
-#include "openzoom/common/recording_contract.hpp"
+#include "okuflow/common/frame_pipeline.hpp"
+#include "okuflow/common/recording_contract.hpp"
 
 #include <QtTest>
 
@@ -10,9 +10,9 @@
 
 namespace {
 
-using openzoom::RecordingCanvasMode;
-using openzoom::RecordingCompletionOutcome;
-using openzoom::RecordingState;
+using okuflow::RecordingCanvasMode;
+using okuflow::RecordingCompletionOutcome;
+using okuflow::RecordingState;
 
 class RecordingIntegrityTests : public QObject {
     Q_OBJECT
@@ -45,7 +45,7 @@ void RecordingIntegrityTests::exactNominalFrameDurations()
     };
 
     for (const Case& test : cases) {
-        openzoom::RecordingTimeline timeline;
+        okuflow::RecordingTimeline timeline;
         timeline.Reset(test.numerator, test.denominator);
         QCOMPARE(timeline.NominalDuration100ns(),
                  test.expectedDuration);
@@ -54,7 +54,7 @@ void RecordingIntegrityTests::exactNominalFrameDurations()
 
 void RecordingIntegrityTests::fractionalRateDoesNotDrift()
 {
-    openzoom::RecordingTimeline timeline;
+    okuflow::RecordingTimeline timeline;
     timeline.Reset(30'000, 1'001);
 
     std::int64_t timestamp = -1;
@@ -68,7 +68,7 @@ void RecordingIntegrityTests::fractionalRateDoesNotDrift()
 
 void RecordingIntegrityTests::cameraTimestampsPreserveRealGaps()
 {
-    openzoom::RecordingTimeline timeline;
+    okuflow::RecordingTimeline timeline;
     timeline.Reset(30, 1);
     constexpr std::int64_t sourceOrigin = 50'000'000;
 
@@ -80,7 +80,7 @@ void RecordingIntegrityTests::cameraTimestampsPreserveRealGaps()
 
 void RecordingIntegrityTests::missingAndBackwardTimestampsStayMonotonic()
 {
-    openzoom::RecordingTimeline timeline;
+    okuflow::RecordingTimeline timeline;
     timeline.Reset(30, 1);
 
     QCOMPARE(timeline.MapTimestamp(-1), 0LL);
@@ -96,7 +96,7 @@ void RecordingIntegrityTests::missingAndBackwardTimestampsStayMonotonic()
 
 void RecordingIntegrityTests::dropCountsExcludeEstimatedTimestamps()
 {
-    const openzoom::RecordingDropCounts drops{
+    const okuflow::RecordingDropCounts drops{
         1, 2, 3, 4, 5, 6, 99,
     };
     QCOMPARE(drops.Total(), 21ULL);
@@ -105,92 +105,92 @@ void RecordingIntegrityTests::dropCountsExcludeEstimatedTimestamps()
 
 void RecordingIntegrityTests::completionNeverSavesAfterFinalizeFailure()
 {
-    QCOMPARE(openzoom::ClassifyRecordingCompletion(
+    QCOMPARE(okuflow::ClassifyRecordingCompletion(
                  true, true, true, false),
              RecordingCompletionOutcome::Saved);
-    QCOMPARE(openzoom::ClassifyRecordingCompletion(
+    QCOMPARE(okuflow::ClassifyRecordingCompletion(
                  true, true, false, false),
              RecordingCompletionOutcome::FailedTruncated);
-    QCOMPARE(openzoom::ClassifyRecordingCompletion(
+    QCOMPARE(okuflow::ClassifyRecordingCompletion(
                  true, true, true, true),
              RecordingCompletionOutcome::FailedTruncated);
-    QCOMPARE(openzoom::ClassifyRecordingCompletion(
+    QCOMPARE(okuflow::ClassifyRecordingCompletion(
                  false, true, true, false),
              RecordingCompletionOutcome::FailedTruncated);
-    QCOMPARE(openzoom::ClassifyRecordingCompletion(
+    QCOMPARE(okuflow::ClassifyRecordingCompletion(
                  true, false, true, false),
              RecordingCompletionOutcome::FailedBeforeFirstFrame);
 }
 
 void RecordingIntegrityTests::stateMachineRejectsIllegalTransitions()
 {
-    QVERIFY(openzoom::IsValidRecordingStateTransition(
+    QVERIFY(okuflow::IsValidRecordingStateTransition(
         RecordingState::Idle, RecordingState::Starting));
-    QVERIFY(openzoom::IsValidRecordingStateTransition(
+    QVERIFY(okuflow::IsValidRecordingStateTransition(
         RecordingState::Starting, RecordingState::Recording));
-    QVERIFY(openzoom::IsValidRecordingStateTransition(
+    QVERIFY(okuflow::IsValidRecordingStateTransition(
         RecordingState::Recording, RecordingState::Stopping));
-    QVERIFY(openzoom::IsValidRecordingStateTransition(
+    QVERIFY(okuflow::IsValidRecordingStateTransition(
         RecordingState::Stopping, RecordingState::Finalizing));
-    QVERIFY(openzoom::IsValidRecordingStateTransition(
+    QVERIFY(okuflow::IsValidRecordingStateTransition(
         RecordingState::Finalizing, RecordingState::Completed));
-    QVERIFY(openzoom::IsValidRecordingStateTransition(
+    QVERIFY(okuflow::IsValidRecordingStateTransition(
         RecordingState::Failed, RecordingState::Starting));
     // The stop watchdog escapes a wedged worker by forcing Failed from
     // either non-terminal stopping state; both must stay legal.
-    QVERIFY(openzoom::IsValidRecordingStateTransition(
+    QVERIFY(okuflow::IsValidRecordingStateTransition(
         RecordingState::Stopping, RecordingState::Failed));
-    QVERIFY(openzoom::IsValidRecordingStateTransition(
+    QVERIFY(okuflow::IsValidRecordingStateTransition(
         RecordingState::Finalizing, RecordingState::Failed));
 
-    QVERIFY(!openzoom::IsValidRecordingStateTransition(
+    QVERIFY(!okuflow::IsValidRecordingStateTransition(
         RecordingState::Idle, RecordingState::Completed));
-    QVERIFY(!openzoom::IsValidRecordingStateTransition(
+    QVERIFY(!okuflow::IsValidRecordingStateTransition(
         RecordingState::Completed, RecordingState::Recording));
-    QVERIFY(!openzoom::IsValidRecordingStateTransition(
+    QVERIFY(!okuflow::IsValidRecordingStateTransition(
         RecordingState::Finalizing, RecordingState::Recording));
 }
 
 void RecordingIntegrityTests::recordingCanvasModesAreFixedAndOrientationAware()
 {
-    QCOMPARE(openzoom::ResolveRecordingCanvas(
+    QCOMPARE(okuflow::ResolveRecordingCanvas(
                  RecordingCanvasMode::Source, 1'280, 720).width,
              1'280U);
-    QCOMPARE(openzoom::ResolveRecordingCanvas(
+    QCOMPARE(okuflow::ResolveRecordingCanvas(
                  RecordingCanvasMode::Source, 1'280, 720).height,
              720U);
 
-    const auto nhd = openzoom::ResolveRecordingCanvas(
+    const auto nhd = okuflow::ResolveRecordingCanvas(
         RecordingCanvasMode::Nhd360, 1'920, 1'080);
     QCOMPARE(nhd.width, 640U);
     QCOMPARE(nhd.height, 360U);
 
-    const auto sd = openzoom::ResolveRecordingCanvas(
+    const auto sd = okuflow::ResolveRecordingCanvas(
         RecordingCanvasMode::Sd480, 1'920, 1'080);
     QCOMPARE(sd.width, 854U);
     QCOMPARE(sd.height, 480U);
 
-    const auto hd = openzoom::ResolveRecordingCanvas(
+    const auto hd = okuflow::ResolveRecordingCanvas(
         RecordingCanvasMode::Hd720, 1'920, 1'080);
     QCOMPARE(hd.width, 1'280U);
     QCOMPARE(hd.height, 720U);
 
-    const auto fullHd = openzoom::ResolveRecordingCanvas(
+    const auto fullHd = okuflow::ResolveRecordingCanvas(
         RecordingCanvasMode::FullHd1080, 640, 480);
     QCOMPARE(fullHd.width, 1'920U);
     QCOMPARE(fullHd.height, 1'080U);
 
-    const auto portrait = openzoom::ResolveRecordingCanvas(
+    const auto portrait = okuflow::ResolveRecordingCanvas(
         RecordingCanvasMode::QuadHd1440, 720, 1'280);
     QCOMPARE(portrait.width, 1'440U);
     QCOMPARE(portrait.height, 2'560U);
 
-    const auto portrait360 = openzoom::ResolveRecordingCanvas(
+    const auto portrait360 = okuflow::ResolveRecordingCanvas(
         RecordingCanvasMode::Nhd360, 720, 1'280);
     QCOMPARE(portrait360.width, 360U);
     QCOMPARE(portrait360.height, 640U);
 
-    const auto invalid = openzoom::ResolveRecordingCanvas(
+    const auto invalid = okuflow::ResolveRecordingCanvas(
         RecordingCanvasMode::UltraHd2160, 0, 1'080);
     QCOMPARE(invalid.width, 0U);
     QCOMPARE(invalid.height, 0U);
@@ -202,22 +202,22 @@ void RecordingIntegrityTests::canvasResamplerPreservesIdentityAndFitBars()
         10, 11, 12, 255, 20, 21, 22, 255,
         30, 31, 32, 255, 40, 41, 42, 255,
     };
-    const openzoom::RecordingViewTransform identity{
+    const okuflow::RecordingViewTransform identity{
         0.0f, 0.0f, 1.0f, 1.0f,
         0.0f, 0.0f, 1.0f, 1.0f,
         true,
     };
     std::vector<std::uint8_t> destination;
-    QVERIFY(openzoom::ResampleRecordingCanvas(
+    QVERIFY(okuflow::ResampleRecordingCanvas(
         source.data(), 2, 2, identity, 2, 2, destination));
     QCOMPARE(destination, source);
 
-    const openzoom::RecordingViewTransform fit{
+    const okuflow::RecordingViewTransform fit{
         0.0f, 0.0f, 1.0f, 1.0f,
         0.0f, 0.25f, 1.0f, 0.5f,
         true,
     };
-    QVERIFY(openzoom::ResampleRecordingCanvas(
+    QVERIFY(okuflow::ResampleRecordingCanvas(
         source.data(), 2, 2, fit, 4, 4, destination));
     QCOMPARE(destination.size(), std::size_t{64});
     for (int x = 0; x < 4; ++x) {
@@ -243,7 +243,7 @@ void RecordingIntegrityTests::negativeStrideRestoresTopDownRows()
         10, 0, 0, 255, 20, 0, 0, 255,
     };
 
-    openzoom::processing::CpuFramePipeline pipeline;
+    okuflow::processing::CpuFramePipeline pipeline;
     QVERIFY(pipeline.ConvertFrameToBgra(
         bottomUp,
         MFVideoFormat_ARGB32,

@@ -1,8 +1,8 @@
 #ifdef _WIN32
 
-#include "openzoom/capture/audio_capture.hpp"
+#include "okuflow/capture/audio_capture.hpp"
 
-#include "openzoom/common/recording_contract.hpp"
+#include "okuflow/common/recording_contract.hpp"
 
 #include <QDebug>
 
@@ -11,10 +11,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <stdexcept>
 
-namespace openzoom {
+namespace okuflow {
 
 namespace {
 
@@ -284,9 +285,10 @@ bool AudioCapture::Start(
         sourceReader_ = std::move(reader);
         activeActivation_ = descriptor.activation;
         activeEndpointId_ = descriptor.endpointId;
-        running_ = true;
+        session_ = std::make_shared<CaptureSession>();
+        session_->running.store(true);
         captureThread_ = std::thread(
-            &AudioCapture::CaptureLoop, this,
+            &AudioCapture::CaptureLoop, session_, sourceReader_,
             std::move(callback), std::move(errorCallback));
         return true;
     } catch (const std::exception& error) {
@@ -300,12 +302,70 @@ bool AudioCapture::Start(
 
 void AudioCapture::Stop()
 {
-    running_ = false;
-    if (sourceReader_) {
-        sourceReader_->Flush(MF_SOURCE_READER_ALL_STREAMS);
+    const std::shared_ptr<CaptureSession> session = session_;
+    if (session) {
+        session->running.store(false);
+    }
+    // Flush wakes the blocking ReadSample, but it serializes behind any
+    // wedged reader call — issued inline it could hang Stop before the
+    // bounded wait below even starts. The helper owns its own reader and
+    // session references, so it stays valid even if it must be detached.
+    std::thread flusher;
+    if (session && sourceReader_ && captureThread_.joinable()) {
+        session->flushDone.store(false);
+        Microsoft::WRL::ComPtr<IMFSourceReader> reader = sourceReader_;
+        flusher = std::thread([session, reader]() {
+            reader->Flush(MF_SOURCE_READER_ALL_STREAMS);
+            session->flushDone.store(true);
+        });
+    }
+    // Settled means both the loop and the flusher have finished their
+    // bodies, so the joins below are bounded by construction — there is no
+    // unbounded join on any path.
+    bool settled = !captureThread_.joinable();
+    if (!settled) {
+        constexpr int kStopTimeoutMs = 3000;
+        const auto deadline =
+            std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(kStopTimeoutMs);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (session->loopDone.load() && session->flushDone.load()) {
+                settled = true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    }
+    if (!settled) {
+        // A thread is wedged inside a synchronous driver call. Detach both
+        // threads and leak the COM references: the threads keep their own
+        // session/reader ownership (never this object), so no memory they
+        // can reach is ever freed, and a later Start() builds a fresh
+        // session a stale thread cannot observe. MFShutdown must be skipped
+        // for the rest of the process (see WasAbandoned).
+        qCritical() << "Microphone capture did not stop within its bounded "
+                       "wait; detaching the capture thread and leaking the "
+                       "reader for process exit.";
+        lastError_ = "Microphone shutdown timed out";
+        abandonedForExit_ = true;
+        if (captureThread_.joinable()) {
+            captureThread_.detach();
+        }
+        if (flusher.joinable()) {
+            flusher.detach();
+        }
+        (void)sourceReader_.Detach();
+        (void)mediaSource_.Detach();
+        (void)activeActivation_.Detach();
+        activeEndpointId_.clear();
+        session_.reset();
+        return;
     }
     if (captureThread_.joinable()) {
         captureThread_.join();
+    }
+    if (flusher.joinable()) {
+        flusher.join();
     }
     sourceReader_.Reset();
     ShutdownSource(mediaSource_.Get());
@@ -315,17 +375,19 @@ void AudioCapture::Stop()
     }
     activeActivation_.Reset();
     activeEndpointId_.clear();
+    session_.reset();
 }
 
 void AudioCapture::CaptureLoop(
+    std::shared_ptr<CaptureSession> session,
+    Microsoft::WRL::ComPtr<IMFSourceReader> reader,
     AudioFrameCallback callback,
     AudioErrorCallback errorCallback)
 {
     const HRESULT comResult =
         CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     const bool uninitializeCom = SUCCEEDED(comResult);
-    ComPtr<IMFSourceReader> reader = sourceReader_;
-    while (running_ && reader) {
+    while (session->running.load() && reader) {
         DWORD streamIndex = 0;
         DWORD flags = 0;
         LONGLONG sourceTimestamp = 0;
@@ -334,16 +396,16 @@ void AudioCapture::CaptureLoop(
             MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0,
             &streamIndex, &flags, &sourceTimestamp,
             sample.GetAddressOf());
-        if (!running_) {
+        if (!session->running.load()) {
             break;
         }
         if (FAILED(result) ||
             (flags & MF_SOURCE_READERF_ERROR) != 0) {
-            running_ = false;
+            const bool reportError = session->running.exchange(false);
             const std::string message =
                 "Microphone capture stopped (" +
                 HResultText(result) + ")";
-            if (errorCallback) {
+            if (reportError && errorCallback) {
                 errorCallback(message);
             }
             break;
@@ -358,11 +420,18 @@ void AudioCapture::CaptureLoop(
                 buffer.GetAddressOf())) || !buffer) {
             continue;
         }
+        if (!session->running.load()) {
+            break;
+        }
         BYTE* data = nullptr;
         DWORD length = 0;
         if (FAILED(buffer->Lock(
                 &data, nullptr, &length)) || !data) {
             continue;
+        }
+        if (!session->running.load()) {
+            buffer->Unlock();
+            break;
         }
         AudioFrame frame;
         frame.pcm.assign(data, data + length);
@@ -378,6 +447,13 @@ void AudioCapture::CaptureLoop(
         frame.captureClock100ns =
             QueryClock100ns() - frame.duration100ns;
         buffer->Unlock();
+        // Convert/Lock/copy can itself stall in a driver. Recheck immediately
+        // before dispatch; the independently owned app target supplies the
+        // final cancellation/lifetime gate for the remaining check-to-call
+        // race.
+        if (!session->running.load()) {
+            break;
+        }
         if (callback) {
             callback(std::move(frame));
         }
@@ -385,8 +461,11 @@ void AudioCapture::CaptureLoop(
     if (uninitializeCom) {
         CoUninitialize();
     }
+    // Lets Stop()'s bounded wait distinguish a finished loop from one wedged
+    // inside ReadSample.
+    session->loopDone.store(true);
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

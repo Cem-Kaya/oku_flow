@@ -5,6 +5,306 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+- Rename the product from OpenZoom to OkuFlow. The website is
+  <https://okuflow.com> and the repository is now
+  <https://github.com/Cem-Kaya/oku_flow> (old `open_zoom` URLs redirect). The
+  executable is now `oku_flow.exe`, the release bundle is `dist\OkuFlow`, the
+  code namespace and include directory are `okuflow`, and the Windows
+  AppUserModelID is `CemKaya.OkuFlow`, so taskbar pins of the old executable
+  must be re-pinned. CMake build options and environment variables are now
+  `OKUFLOW_*`. Existing local OpenZoom settings and data are not migrated
+  automatically.
+- Add one-click start/stop for a local lecture test feed through an isolated
+  OBS Virtual Camera, with a downloaded, attributed classroom sample,
+  replacement-video selection, playback looping, and verified process ownership.
+- Switch the Windows toolchain defaults, translation compiler, startup profiler,
+  and release deployment to Qt 6.12.0. Preserve Multimedia and TextToSpeech
+  support and matching Qt/FFmpeg notices. PDF metadata is required only when
+  PDF is installed or deployed, rather than requiring an unused PDF SDK.
+  Release metadata links Qt 6.12's actual hash-suffixed SPDX IDs. Bundle builds
+  can use a local directory, and accept CUDA's newer `LICENSE` filename.
+- Improve Setup Assistant sizing and stacking, and stop prompting at startup
+  solely because optional NVIDIA Super Resolution is missing.
+- Show a centered camera placeholder during startup, reconnection, and stopped
+  capture. Give the quick-mode carousel a separate number badge and reliable
+  label elision, including an accurate Custom Setup state.
+- Put profile tuning before shared settings in Advanced, add locale-formatted
+  slider readouts and visible search results, enlarge Simple Text Clarity,
+  and reveal truncated device names in tooltips. Keep recording/help icons
+  consistent and hide tab arrows while three or fewer tabs are present.
+- Disable Focus X/Y when Zoom is off, including their labels and readouts;
+  Zoom, focus, and black-and-white rows wrap to fit narrow inspectors.
+- Preserve dynamically replaced widget labels during live retranslation.
+- Open the initial camera on a worker while the window's graphics initialize,
+  and reuse its streaming reader for camera mode discovery. Canceled startup
+  cannot deliver frames into a destroyed window; startup errors and acceleration
+  fallback remain visible.
+- Reuse already-read validation pixels for initial presentation instead of
+  converting the same startup frames again.
+- Keep GPU camera textures on the direct transfer path when their media type
+  advertises a negative CPU row stride. That CPU-only orientation metadata
+  previously forced unnecessary steady-state GPU-to-CPU readback and upload.
+- Copy matching BGRA camera textures directly on the GPU instead of running a
+  second video-processing pass. Three consecutive D3D11 handoff deadlines select
+  safe-copy input for that session, preventing recurring 25 ms delays; unfinished
+  CUDA copies retain their separate ownership checks and cannot be bypassed.
+- Replace routine GPU frame-slot and D3D11 conversion polling waits with
+  nonblocking checks, keeping the latest scene pending when the GPU is busy.
+  Recording clones retain explicit producer-fence dependencies independently
+  of viewport admission, and latency metrics count successful presentation.
+- Add isolated startup profiling with first-view timing, UI heartbeat delays,
+  actual camera arrival rates, processing/presentation counts, and stage timings.
+- Clarified Read support in the translated Codex setup/install description
+  and refreshed setup and campaign documentation after retiring local recognition.
+- Removed the separate local text-recognition engine, installer/discovery,
+  AI Settings fields, OCR Assist toggle/preset, saved options, translations,
+  and optional release dependency metadata. Read now transcribes through the
+  vision assistant; new Codex settings default to Luna with low reasoning.
+  Existing explicit model choices remain intact. Reading results retain their
+  full text for manual Read Aloud and lecture notes.
+- Stabilized chat docking with one drag controller and a debounced target latch:
+  180 ms to acquire an edge, 250 ms outside the wider release bounds to clear it,
+  and a 350 ms deliberate pull before undocking. Releasing a dock cannot
+  immediately snap back to the same edge.
+- Fixed squeezed camera images during viewport resizing: resize updates no
+  longer wait for dragging to stop, and DXGI keeps old frames unscaled until
+  the correctly sized Fill/Fit frame is ready.
+- Added drag-to-dock for the floating Assistant: a high-contrast side preview
+  appears near the left/right app edge, and releasing docks the chat there.
+  Moving away or canceling the drag clears the preview and keeps it floating.
+- Kept the Assistant clickable and movable in Draw mode by excluding its live
+  bounds from both annotation painting and native mouse input. Added Floating,
+  Dock left, and Dock right panel positions; docking reserves space beside the
+  camera, and the chosen position and floating geometry persist across restarts.
+- NIS/FSR now enlarge the visible crop into the shared presentation cache,
+  with bounded existing-buffer reuse and protected partial-cache borders.
+- Camera stop now isolates driver shutdown in shared worker-owned sessions
+  with deadlines and revocable app callbacks. GPU fence/stream failures stop
+  submission and preserve in-flight resources until restart.
+- Direct GPU camera copies use completion-event leases instead of per-frame
+  CUDA stream synchronization, preventing producer reuse until copying ends.
+- Corrected stabilization to use displayed magnification even when zoom is
+  applied by the presenter, and kept recorded annotation geometry in full
+  scene coordinates when a cropped upscale cache is presented.
+- Normalized native camera-buffer pitch and bottom-up RGB orientation before
+  CPU conversion, including correct NV12 chroma-plane placement.
+- Carried camera BT.601/BT.709 matrix and limited/full-range metadata through
+  CPU, CUDA, and D3D11 conversion, including original recordings. Untagged
+  formats retain the documented BT.601 limited default; unsupported explicit
+  encodings are rejected rather than interpreted with incorrect colors.
+- Added capped backoff for failed CUDA surface initialization, preventing
+  repeated allocation/drain attempts on every raw and fallback frame.
+- Moved lecture-notes image encoding and HTML storage to an ordered bounded
+  background queue. Canceled analyses create no note images, writes retain
+  their original destination, and the UI reports storage failures and waits
+  for actual completion before announcing that a transcript was saved.
+- Replaced the former FSR/NIS-named Lanczos and bilinear approximations with
+  pinned CUDA adaptations of AMD FidelityFX FSR 1.0.2 EASU + RCAS and NVIDIA
+  Image Scaling 1.0.3 NVScaler. The upstream reference headers, exact commits,
+  and full MIT notices are now tracked. Release bundles validate and include
+  Qt, Qt-bundled FFmpeg/PDF/image-plugin components, Lucide, AMD FSR, NVIDIA
+  NIS, Maxine headers, CUDA, nlohmann/json, and the existing native-WebRTC
+  notices, together with the top-level commercial-offerings notice referenced
+  by `LICENSE`. The SPDX SBOM now links the exact Qt module documents, separates
+  optional external runtimes from bundled dependencies, describes the release
+  package, records D3DCompiler when deployed, and correctly identifies
+  statically linked `cudart_static`. Corrected the default Codex model to
+  `gpt-5.6-terra`; saved `gpt-5.6-tera` values are migrated and rewritten
+  automatically without changing the intentional opt-in coding/Python
+  workspace setting.
+- Redesigned the appended lecture-notes page (owner request after the first
+  live hardware run). The head — written once at creation, fully inline and
+  offline — now carries a design-token stylesheet with light and dark themes,
+  a top-right theme toggle (persisted, defaulting to the system scheme),
+  expand/collapse-all controls, and a small viewer script. Every note
+  (photos, videos, explanations, annotations) is a native
+  `<details>/<summary>` card — collapsible by keyboard and screen reader
+  with the heading kept inside the summary for heading navigation. The
+  transcript is now a compact line-by-line feed (short time chip with the
+  approximate offset in its tooltip, per-line language, dashed gap lines)
+  that the viewer script groups into one collapsible block per recording;
+  without script the lines still render as a joined feed. Contrast,
+  focus-visible outlines, and reduced-motion behavior follow web standards,
+  and the append-only architecture is unchanged: each entry remains one
+  checked, flushed, self-contained block, so a crash mid-lecture still
+  leaves a fully styled, readable page. A new `notes_html` ctest guards
+  head structure, escaping, dedupe, and the appended-block invariants.
+  Every transcript line across the whole document — even from separate
+  start/stop recordings with media between them — is consolidated by the
+  head script into one single collapsible transcript block (keyed by
+  recording-session id, with a dashed divider between recordings), so
+  transcript is never scattered into multiple sections. Each collapsed card
+  shows a type icon (AI, video, photo, annotation, transcript) and a
+  one-line preview, with the title first and the timestamp pushed to the far
+  right as the least-prominent element. The consolidated transcript block is
+  placed after the last recorded-video card, since the transcript belongs to
+  the recording. Asking the AI now records the frame it analyzed into
+  `Notes/images/` and embeds it in the note. The Advanced Assistant
+  (Codex chat) records a full exchange — your question in a bubble, the
+  attached frame, then the answer — as one collapsible "Assistant" entry
+  (previously the answer was written text-only and mislabeled "Scene
+  explanation"). The Simple Explain and on-screen-text paths likewise embed
+  their analyzed frame above the answer. In every case the saved image is
+  removed if the request fails, so no orphan images accumulate. Multiple
+  turns of one Advanced Assistant conversation are grouped under a single
+  collapsible "Conversation" block (each turn still individually
+  expandable, titled by its question), keyed by the Codex thread. The
+  floating assistant overlay gains a top-left "New chat" button that starts
+  a fresh conversation, which begins a new Conversation section in the
+  notes.
+- Added opt-in live transcription of the recording microphone (plan 36).
+  While recording, speech is transcribed through the user's ChatGPT-signed-in
+  Codex Voice over a dedicated `codex app-server` child (API-key environment
+  variables removed unread; subscription-backed WebRTC is the only transport,
+  and `experimentalApi` plus a `chatgpt` account are enforced). Native 48 kHz
+  PCM is fanned out from the microphone callback into a bounded five-second
+  queue, chunked to 20 ms, Opus-encoded, and carried into the realtime
+  session by a statically linked native WebRTC stack (pinned libdatachannel,
+  Opus, and Mbed TLS; service-required SendRecv m-line, no ICE/STUN third-party
+  servers, and the assistant's return audio never decoded). Only `role == "user"` finals are
+  durable: each is appended to the HTML lecture notes as a typed, escaped
+  `transcript-segment` section keyed to a new stable recording-session
+  identity, with partial text presentation-only in a read-only Transcript tab
+  and a mouse-transparent Simple-mode overlay. Dropped audio produces one
+  honest gap section; quota is shown as general Codex usage, never as Voice
+  minutes; every failure path (Codex missing, wrong account,
+  network loss, timeouts) ends only the transcript with a
+  translated "Recording continues" message. Recording start, capture, stop,
+  finalization, watchdog, and abandonment behavior are unchanged, and the
+  transcript queue can never block the recorder. Ships English/Turkish/German
+  strings, commit-pinned open-source dependencies recorded in the
+  SBOM/third-party notices (no extra DLLs or assets in the bundle),
+  fake-process protocol tests, controller unit tests, and a loopback
+  RTP/Opus test suite for the native carrier.
+- Hardened plan 36 after implementation review. Live transcription now
+  enumerates and disables configured MCP servers, disables Codex app/plugin
+  providers at process launch, and fails closed on discovery errors or any MCP
+  lifecycle event; the ephemeral
+  thread also uses an empty temporary cwd, no approvals, read-only sandboxing,
+  default-denied server requests, and an explicit untrusted-speech boundary.
+  Accepted pre-roll is drained on Stop through the sole bounded carrier queue
+  before the final grace starts; Opus encoding is off the UI thread, RTP is
+  paced by that worker with no hidden downstream queue,
+  media readiness requires both channel and track, carrier-side loss is reported as a
+  gap, 48 kHz is verified, transient ICE disconnects get recovery time,
+  worker-thread callbacks are lifetime-gated, partial UI updates are
+  coalesced, immediate duplicate finals
+  are suppressed, recording offsets use the first recording microphone clock,
+  stderr payloads are never logged, and note writes consume sequence ids only
+  after a checked append succeeds (failed/short appends roll back to the prior
+  file size). The opt-in live probe now waits for actual media readiness before
+  consuming its finite WAV and succeeds only with a clean completed session,
+  at least one user final, and no gap.
+  Clearly transient connection/network/process failures now append a gap and
+  retry the same recording identity after one second, capped at three attempts;
+  permanent account/capability/isolation errors still fail immediately.
+- Replaced the interim WebView2 transcription carrier with the native WebRTC
+  stack before release (plan 36 Carrier D): no embedded browser process, no
+  Evergreen Runtime prerequisite, no proprietary loader DLL, no staged
+  assets, and no browser cache under the user's documents. The native carrier
+  is now part of the one supported Windows build, with one `/MT` dependency
+  graph, four libdatachannel workers, bounded global cleanup, non-mutating
+  Mbed TLS configuration, complete bundled license texts, and transitive SBOM
+  packages.
+- Fixed sustained native transcription falling behind real time and eventually
+  dropping audio. RTP deadlines now advance from one phase-locked 20 ms clock
+  instead of adding Opus/transport work to every interval, while a genuinely
+  missed deadline re-anchors without a catch-up burst. A new four-second
+  loopback timing regression fails the drifting implementation, and the fixed
+  carrier passed an identical 180-second live lecture rerun with 25 finals,
+  zero gaps, clean completion, and strict-probe exit code 0.
+- Fixed short, burst-fed transcription silently losing acoustic continuity
+  even when neither bounded queue overflowed. The RTP worker now waits for a
+  bounded 500 ms continuity cushion before beginning its 20 ms phase-locked
+  sender, so the controller's 50 ms drain cadence and ordinary Qt timer jitter
+  cannot repeatedly starve media; after a real later underflow it rebuilds the
+  same cushion before resuming. Two corrected 90-second MIT lecture gates
+  improved from BLEU-4 11.519 / WER 66.667% to BLEU-4 80.750–84.460 / WER
+  8.667–10.667% with the production 48 kbit/s/20 ms profile and the same
+  prompt/model/audio.
+  A loopback regression proves no RTP leaves at 400 ms, pacing begins at the
+  500 ms threshold, an actual missed media deadline re-enters buffering, and
+  finalization still drains every accepted frame.
+- Tuned and hardened the classroom transcription contract from a fixed
+  90-second MIT lecture excerpt. `thread/realtime/start` now supplies the exact
+  verbatim-transcription/untrusted-quoted-data prompt; no Codex tail handoff or
+  second transcription pass is enabled. If WebRTC v3 closes without a final
+  event, the controller promotes only the already-streamed bounded user tail
+  locally so recognized speech is not discarded. After correcting the
+  probe/carrier starvation bug, matched runs retained 48 kbit/s Opus at the
+  standard 20 ms packet duration: 64 kbit/s did not improve accuracy, 40 and
+  60 ms packet durations regressed, and illegal 80/160/320 ms Opus frame
+  requests remain rejected by tests. The current public transcription API
+  documents stronger context controls (`keywords`, `languages`, and `delay`),
+  but the signed-in Codex v3 WebRTC backend rejected a live
+  `gpt-live-transcribe` model override and exposes none of those
+  transcription-session fields; unsupported knobs were not added to the app.
+- Fixed the unsafe detached recording worker at app close. Shutdown now uses
+  an explicit bounded handshake (`RecordingManager::ShutdownForProcessExit`):
+  a clean worker exit is joined as before, while a worker wedged inside a
+  synchronous encoder/driver call now has both recorders abandoned before the
+  detach and the whole manager is intentionally leaked for process exit —
+  member destruction can no longer touch COM objects the worker occupies,
+  and an unwedged worker finds valid memory, silence guards on all UI
+  posting, and cleared queues instead of freed ones. Every mutating
+  `VideoRecorder` entry (`Start`, `StartGpu`, `AddFrame`, `AddGpuFrame`,
+  `AddAudioFrame`, finalize) rejects an abandoned recorder, so a call chain
+  resuming past one blocked call cannot re-enter the sink writer or the
+  other recorder. The sticky abandonment state now also reaches global
+  teardown when a previously poisoned worker recovers and joins: manager
+  destruction is then safe, but `MFShutdown`/`CoUninitialize` are still
+  skipped because the recorder COM references remain intentionally leaked.
+- Made paired photo saves runtime- and crash-transactional. Both JPEGs encode
+  to temporary names before the processed/original rename commit; every
+  runtime rollback deletion is checked and any survivor is named to the user.
+  At startup, an interrupted second rename is completed from the intact
+  `.writing` file; any unrecoverable lone final/temp set is removed together,
+  and a per-pair process lock prevents recovery from racing another active
+  OkuFlow instance. A cleanup failure names the remaining path instead of
+  allowing an orphan to masquerade as a completed capture.
+- Fixed dynamic AI settings text reverting to English: reasoning-effort
+  entries repopulated after a model change and the voice-list placeholders
+  now translate (including the no-TTS-build placeholder on live language
+  switch), and a missing English text-to-speech voice is no longer
+  reported as "Deutsch".
+- Localized generated lecture notes. The HTML document declares the actual
+  response language instead of a hardcoded `lang="en"`, every section
+  restates the language it was written in (mid-session switches stay
+  truthful for screen readers), and all headings, captions, alt texts, and
+  video links are translated at write time.
+- Hardened assistant conversation export: an atomic `QSaveFile` replaces the
+  truncating write, open/write/commit failures show a warning instead of
+  silently discarding the transcript, and success posts a status message
+  with the file location.
+- The release SBOM now records the Qt version actually staged into the
+  bundle (`qmake -query QT_VERSION` from the resolved Qt root) instead of a
+  hardcoded 6.9.3 that ignored `QT_PREFIX`/`Qt6_DIR` overrides.
+- Rebuilt microphone shutdown around an independently owned session block:
+  the capture loop and stop-time flusher own their session flags and reader
+  reference, while frame/error delivery goes through a separately shared,
+  mutex-serialized app target with a per-start generation. Stop cancels that
+  target before waiting, conversion/locking rechecks cancellation immediately
+  before dispatch, and app destruction clears the target under the delivery
+  mutex; a detached old reader can therefore reach neither freed app state
+  nor a later recording session. No path performs an unbounded join. Pending
+  photo writes get 10 s at shutdown before the writer pool is leaked with a
+  diagnostic.
+- Added plan 35 for opening saved images and PDF pages as magnifier sources,
+  reusing colour/Text Clarity/sharpening, OCR, annotation, VLM, and TTS while
+  saving recoverable original/processed renders without modifying the source.
+- The user-data-folder containment check now truly resolves Windows
+  junctions and symlinks (`std::filesystem::canonical`;
+  `QFileInfo::canonicalFilePath` demonstrably does not resolve junctions —
+  covered by a new mklink /J regression test). The persisted root is
+  revalidated on every startup with a status notice and a default-folder
+  fallback, and the `UserDataPaths` constructor itself refuses a root that
+  resolves into the install directory.
+- Removed the legacy `output/` copy-migration (startup prompt,
+  `UserDataPaths::MigrateLegacyOutput`, markers, and its translation
+  catalog entries) by owner decision. The shipped version skipped any
+  category whose destination already held a file yet still wrote the
+  suppress-forever marker; rather than repairing it, the feature is gone.
+  Old install-relative `output/` trees are never read, copied, or deleted.
 - Added live-switchable English, Turkish, and German across the Qt UI,
   accessible names, status announcements, AI response language, and manual
   Read Aloud voice preference. A flag-and-native-name picker under the
@@ -64,7 +364,7 @@
   allowed. Console-attached recording summaries separately report GPU
   completion retries and actual safe-copy frames.
 - Added console diagnostic log files under the user-owned
-  `Documents\OpenZoom\Debug\` directory (or configured root). A launch with an
+  `Documents\OkuFlow\Debug\` directory (or configured root). A launch with an
   attached Windows console now tees the same Qt output to one timestamped
   per-process log, including buffered startup messages, while ordinary GUI
   launches remain quiet; only the newest 20 logs are retained.
@@ -95,7 +395,7 @@
   hardware AV1 encoder exists and skips cleanly elsewhere (verified on the
   RTX 4090: both codecs produced identical fragment cadence). This bounds
   what a process crash can lose to roughly the last 2 seconds of encoded
-  media once the first fragment has landed. On startup OpenZoom now sweeps recent recording
+  media once the first fragment has landed. On startup OkuFlow now sweeps recent recording
   folders for header-only leftover pairs from crashed or wedged sessions.
 - Hardened the abandoned-recording path found by a full-codebase audit: after
   the stop watchdog declares the worker blocked, both recorders are marked
@@ -110,7 +410,7 @@
   stays observable while the worker is wedged), fails the session visibly,
   restores the UI, and disables recording until restart instead of leaving
   the app on "Finishing" forever. The Stop status now says "Stopping" until
-  finalization genuinely begins, closing OpenZoom no longer blocks on an
+  finalization genuinely begins, closing OkuFlow no longer blocks on an
   unbounded worker join, and a worker that un-wedges later can no longer post
   a stale "Recording saved" over the failure report.
 - Fixed unselected drawings appearing highlighted while another item was
@@ -191,7 +491,7 @@
   camera-switch and device-removal hardware checks.
 - Fixed an intermittent direct-GPU startup downgrade caused by a delayed D3D11
   completion query. The pending conversion texture is no longer reused or
-  treated as unsupported: OpenZoom safely reads back that frame, retries when
+  treated as unsupported: OkuFlow safely reads back that frame, retries when
   the query completes, and keeps external-memory capture available for the
   session. Added watchdog-isolated `mf_dxva_minimal` external-memory and
   opt-in legacy interop stress modes with configurable iteration counts. The
@@ -209,7 +509,7 @@
   compatibility capture won. Registration/conversion failures drop one rung
   without disabling CUDA effects. Original photos and videos request readback
   only while those captures are active, and
-  `OPENZOOM_FORCE_CAPTURE_COPY_RUNG=1` exercises the fallback contract.
+  `OKUFLOW_FORCE_CAPTURE_COPY_RUNG=1` exercises the fallback contract.
 - Added selectable microphone recording. The dedicated Advanced Recording
   section lists Windows capture endpoints with both video-resolution controls,
   selects the system-default microphone
@@ -218,7 +518,7 @@
   48 kHz mono PCM stream shares the camera's monotonic capture clock and is
   encoded live as AAC into both the original and processed fragmented MP4
   files. Added a synthetic video-plus-audio mux regression test.
-- Removed the duplicate Simple `More` menu; its OpenZoom-folder command remains
+- Removed the duplicate Simple `More` menu; its OkuFlow-folder command remains
   in Advanced and on `Ctrl+Shift+O`. Bottom action bars now compact based on
   their combined width so Advanced mode keeps both clusters on one baseline
   whenever the viewport can accommodate them.
@@ -249,9 +549,9 @@
   recording segment fully finalize. Failed or truncated recording
   finalizations do not create broken notes entries.
 - Moved all user-created artifacts out of the application and release-bundle
-  directories into one configurable `Documents\OpenZoom\` root. Photos and
+  directories into one configurable `Documents\OkuFlow\` root. Photos and
   paired recordings use dated subfolders; notes and analysis exports have
-  stable categories. Added Advanced and Simple `Open my OpenZoom folder`
+  stable categories. Added Advanced and Simple `Open my OkuFlow folder`
   actions, global `Ctrl+Shift+O`, writable-root validation, a recording
   free-space preflight, and cancellable copy-only migration from legacy
   `output\` trees without deleting their originals.
@@ -264,10 +564,10 @@
 - Hardened release packaging around a validated staging directory. Bundles now
   require tests by default, treat missing or failed `windeployqt` as fatal,
   assert the required Qt DLL/platform-plugin and license inventory, never
-  transfer user data through `dist`, use `OpenZoom2` when the primary
+  transfer user data through `dist`, use `OkuFlow2` when the primary
   executable is locked, and verify the published executable by SHA-256.
 - Fixed NVIDIA Super Resolution controls becoming permanently disabled after a
-  normal Windows build reused a stale `OPENZOOM_ENABLE_TEXT_SR=OFF` CMake cache.
+  normal Windows build reused a stale `OKUFLOW_ENABLE_TEXT_SR=OFF` CMake cache.
   The everyday build helper now explicitly enables CUDA and the runtime-loaded
   Text-SR adapter by default, matching release-bundle behavior while retaining
   environment-variable overrides.
@@ -408,7 +708,7 @@
   CUDA regression now requires at least 80% removal for a 0.75 Hz, 10 px
   oscillation.
 - Fixed release bundling deleting photos, recordings, notes, and analysis
-  stored under `dist/OpenZoom/output`. The bundle script now preserves that
+  stored under `dist/OkuFlow/output`. The bundle script now preserves that
   user-data directory before removing an old bundle, restores it on success or
   failure, and performs a reversible lock check before deleting any bundle
   files when another process has the directory open.
@@ -440,12 +740,12 @@
   rolling-shutter choices persist per profile; Advanced diagnostics report the
   accepted estimator and sampled GPU time. Added deterministic CUDA
   similarity/outlier tests and a live `nvofapi64.dll` known-motion test.
-- Added Codex CLI to first-run and Advanced `Setup & Downloads`. OpenZoom
+- Added Codex CLI to first-run and Advanced `Setup & Downloads`. OkuFlow
   detects official standalone, PATH, and WinGet installs; can install or update
   the per-user CLI from a pinned SHA-256-verified OpenAI bootstrap; persists
   the resolved executable immediately; and keeps ChatGPT sign-in explicit.
   The upstream bootstrap also verifies the official release package checksum.
-- Changed new/empty Codex settings to `gpt-5.6-tera` with `low` reasoning while
+- Changed new/empty Codex settings to `gpt-5.6-terra` with `low` reasoning while
   preserving explicit saved choices.
 - Prevented Simple `1`-`9` preset shortcuts from firing while an editable
   Assistant or other text field has focus.
@@ -470,7 +770,7 @@
 - Made AI Settings usable at constrained window heights with a vertically
   scrollable content area and fixed OK/Cancel row. Codex subscription,
   OpenAI-compatible VLM, OCR, Read Aloud, and notes now have distinct sections;
-  the built-in OpenZoom Codex prompt is visible read-only, while user response
+  the built-in OkuFlow Codex prompt is visible read-only, while user response
   preferences remain editable. Model and reasoning selectors now update from
   Codex app-server `model/list`, including each model's supported effort set.
 - Made the NVIDIA SuperRes latency decision inspectable and overridable. The
@@ -482,7 +782,7 @@
   crop, and removed a redundant destination clear before the full-frame output
   transfer.
 - Fixed release bundles silently inheriting a stale
-  `OPENZOOM_ENABLE_TEXT_SR=OFF` CMake cache value. CUDA bundles now explicitly
+  `OKUFLOW_ENABLE_TEXT_SR=OFF` CMake cache value. CUDA bundles now explicitly
   compile the runtime-loaded NVIDIA Super Resolution adapter by default while
   still allowing an environment override, and the control reflects the
   installed Video Effects runtime instead of appearing permanently disabled.
@@ -522,7 +822,7 @@
   that ROI, otherwise immediately showing the identically registered
   conventional scene until a later camera frame refreshes the AI crop. This
   prevents fixed-center ghost layers during high-refresh panning.
-- Continued the application/UI disaggregation: `OpenZoomApp` is now a
+- Continued the application/UI disaggregation: `OkuFlowApp` is now a
   composition root with fallible `Initialize()`, focused pipeline, recording,
   settings, UI-state, assistive, and interaction managers, and responsibility
   split across `app_*` translation units. Render, joystick, assistive overlay,
@@ -598,14 +898,6 @@
 - Hardened Windows identity and icon setup with an explicit AppUserModelID and
   native large/small window icons in addition to Qt and executable resources.
 - Setup Assistant dependency rows now use large green check/red X indicators.
-  System-wide Tesseract installations are labelled as Windows-managed and
-  provide an enabled `Open Windows Apps` action instead of an unexplained
-  disabled Remove button; OpenZoom-managed copies retain direct removal.
-- Fixed Tesseract Setup downloads failing when the Mannheim file host returns
-  `Forbidden`. Setup now uses UB Mannheim's GitHub release asset first,
-  retries failed Qt transfers through Windows `curl.exe`, can try the Mannheim
-  host as an alternate, and requires the same pinned SHA-256 digest on every
-  path. The failure action now opens the working GitHub release page.
 - Fixed NVIDIA Video Effects installation failing with Windows error 740. The
   verified installer now launches through the native `runas` shell verb,
   displays the UAC consent flow, remains monitored without blocking the UI,
@@ -613,15 +905,15 @@
   refreshes dependency status when it exits.
 - Added a GPL-clean NVIDIA Maxine SuperRes tier for zoomed text. The adapter
   resolves the separately installed Video Effects 0.7.6 runtime dynamically,
-  runs device-only conversion and inference on OpenZoom's existing CUDA
+  runs device-only conversion and inference on OkuFlow's existing CUDA
   stream, persists enable/strength per profile, and falls back to NIS/FSR when
   unavailable, failed, or slower than the configured steady-state guard.
 - Added a non-blocking, screen-reader-labelled Setup Assistant on first run and
   through Advanced `Setup & Downloads`. It detects supported NVIDIA GPU
-  generations, downloads the matching NVIDIA or Tesseract installer from a
+  generations, downloads the matching NVIDIA installer from a
   pinned vendor URL with SHA-256 verification and timeout/cancel handling,
   supports removal, and persists `Don't ask again` independently.
-- Removed CUDA Toolkit, NVIDIA Video Effects, Tesseract, language-data, and
+- Removed CUDA Toolkit, NVIDIA Video Effects and
   software-OpenGL binaries from release bundling. CUDA now uses its static
   runtime and optional dependencies are obtained by the user through Setup.
 - Added the mandatory `SuperRes powered by NVIDIA Maxine™` attribution at the
@@ -721,7 +1013,7 @@
   sweeper timer; pending request handlers now also receive an error (instead
   of being silently dropped) when Codex stops or restarts.
 - Simple-mode floating chrome (corner panels, mode grid, toast) now hides when
-  OpenZoom loses focus so the always-on-top tool windows no longer float over
+  OkuFlow loses focus so the always-on-top tool windows no longer float over
   other applications; it reappears on reactivation.
 - Closing the mode grid (Esc or toggle) returns keyboard focus to the current
   mode button instead of leaving focus stranded.
@@ -734,7 +1026,7 @@
   language, tone, and detail can be changed independently of the scene prompt.
   Instructions persist and apply to Codex and OpenAI-compatible providers
   without overriding Codex permission limits. Codex now defaults to the
-  installed catalog's `gpt-5.6-tera` image model with Low (`low`) reasoning
+  installed catalog's `gpt-5.6-terra` image model with Low (`low`) reasoning
   and falls back to the app-server default when necessary.
 - Changed the Advanced Assistant usage label to show the percentage remaining
   in the current Codex window instead of the percentage already consumed.
@@ -755,12 +1047,12 @@
   Coding requires an existing workspace folder and uses Codex workspace-write
   sandboxing limited to that writable root; both permissions remain disabled
   by default and never apply to ephemeral Simple Explain turns.
-- Added a native Qt client for `codex app-server` over stdio JSON-RPC. OpenZoom
+- Added a native Qt client for `codex app-server` over stdio JSON-RPC. OkuFlow
   can reuse a user's ChatGPT-managed Codex login for image-aware explanations
   without an API key, discovers compatible image models, shows subscription
   usage, streams answers, and supports cancellation.
 - Added an Advanced Assistant surface with camera attachment, persistent
-  OpenZoom-only conversation history, resume, rename, export, and delete.
+  OkuFlow-only conversation history, resume, rename, export, and delete.
   Simple Explain uses ephemeral threads and does not add history.
 - Defaulted Codex integration to read-only/no-network vision turns and
   automatic interruption of ungranted command, file-edit, or web-search items;
@@ -768,7 +1060,7 @@
   for additional permissions receive an explicit empty grant.
   OpenAI-compatible local/cloud VLM servers remain an optional provider, and
   local servers no longer require a dummy API key.
-- Added a custom multi-resolution OpenZoom magnifier icon to the Windows
+- Added a custom multi-resolution OkuFlow magnifier icon to the Windows
   executable for Explorer, shortcuts, and taskbar presentation.
 - Replaced the Simple-mode Read action's document icon with the native speaker
   icon so its read-aloud behavior is immediately recognizable.
@@ -795,11 +1087,8 @@
 - Kept the active quick mode selected while wheel, keyboard, joystick, or
   middle-drag navigation changes zoom focus; true Advanced edits still become
   a custom setup.
-- Added standard-install and app-managed Tesseract discovery plus TESSDATA
-  setup for local OCR. Tesseract is now installed or removed separately
-  through Setup rather than copied into release bundles.
 - Fixed the release bundler's executable lookup for Visual Studio builds that
-  place `open_zoom.exe` under the `cmake\Release` subdirectory.
+  place `oku_flow.exe` under the `cmake\Release` subdirectory.
 - Shortened the visible processing state to fit its corner cluster while
   retaining full GPU/backend and camera-error detail in the status tooltip.
 - Fixed quick modes with half-step values being mislabeled as a custom setup
@@ -810,7 +1099,7 @@
   sharpening, zoom, and other image treatment remain part of each quick
   profile. Existing profile rotation values migrate to the global setting.
 - Added an AI settings dialog (VLM base URL / API key / model / prompt,
-  tesseract path and OCR language, TTS, lecture notes) stored in
+  TTS, lecture notes) stored in
   `settings.json`; works with OpenAI-compatible local servers (LM Studio,
   Ollama, llama.cpp server) so image-to-text can run fully offline.
   Environment variables remain as fallback.
@@ -853,12 +1142,12 @@
 - Added screen-reader metadata (accessible names and descriptions) to all
   interactive controls in the main window.
 - Fixed several build/runtime hardening issues: CPU-only CMake definitions now
-  honor `OPENZOOM_ENABLE_CUDA=OFF`, missing direct includes were added, CUDA-off
+  honor `OKUFLOW_ENABLE_CUDA=OFF`, missing direct includes were added, CUDA-off
   stubs match the app API, Qt teardown destroys widgets before `QApplication`,
   `AssistiveRuntime` now generates Qt moc metadata, BGRA frame wrappers use the
   Qt-supported `QImage::Format_ARGB32`, and the CUDA shared texture now matches
   the BGRA presenter/readback path.
-- Added a working assistive-analysis runtime: OCR now shells out to `tesseract.exe`, VLM requests can be sent to an OpenAI-compatible endpoint, and results render in an in-app overlay.
+- Added a working assistive-analysis runtime: vision requests can be sent to an OpenAI-compatible endpoint, and results render in an in-app overlay.
 - Added a two-stage UI model with quick modes for everyday use, advanced tuning for power users, and a path to promote advanced setups into reusable quick options.
 - Refactored settings persistence around live advanced configs plus user-defined preset libraries instead of a single flat settings blob.
 - Added OCR/VLM assistive-mode scaffolding in the UI and persistence layer so future overlays can slot into the preset model cleanly.
@@ -868,10 +1157,10 @@
 - Refreshed the Markdown documentation set to match the current module split, active CUDA fallback behavior, camera mode listing, snapshot/recording outputs, and public API surface.
 
 ## [v0.1] - 2025-10-15
-- Added `scripts/build_release_bundle.bat` to produce a self-contained `dist/OpenZoom` folder with Qt and CUDA runtime DLLs.
-- Enabled optional CUDA builds via `OPENZOOM_ENABLE_CUDA` and introduced new CMake presets for MSVC debug/release and CPU-only configurations.
+- Added `scripts/build_release_bundle.bat` to produce a self-contained `dist/OkuFlow` folder with Qt and CUDA runtime DLLs.
+- Enabled optional CUDA builds via `OKUFLOW_ENABLE_CUDA` and introduced new CMake presets for MSVC debug/release and CPU-only configurations.
 - Guarded CUDA headers and added temporal smoothing pipeline along with FSR/NIS backend selection.
 - Updated documentation: new `docs/hardcoded_paths.md`, refreshed README quick-start, third-party license summary, and dual-license notes.
 - Consolidated licensing into a single `LICENSE` file (GPL-3.0 + commercial notice).
 
-> Upload `dist/OpenZoom/OpenZoom.zip` to GitHub Releases when publishing v0.1.
+> Upload `dist/OkuFlow/OkuFlow.zip` to GitHub Releases when publishing v0.1.

@@ -1,6 +1,8 @@
-# OpenZoom
+# OkuFlow
 
-OpenZoom is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
+OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository: <https://github.com/Cem-Kaya/oku_flow>.
+
+OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
 - Live-switchable English, Turkish, and German UI under
@@ -9,7 +11,7 @@ OpenZoom is a Windows-only camera magnifier built around Qt 6, Media Foundation,
   language, locale-formatted values, and the preferred Read Aloud voice
   immediately without restarting. Debug logs, file names, device names, model
   ids, and persisted setting tokens remain stable English/data values.
-- Media Foundation camera enumeration with per-device mode listing (`width x height @ fps`), restart-safe device activation, plain-language failure reporting, and automatic reconnection: when a camera drops mid-lecture, OpenZoom quietly retries the same physical device for about 30 seconds (2s/4s/8s backoff) without any modal dialogs, and only reports failure if the device never comes back.
+- Media Foundation camera enumeration with per-device mode listing (`width x height @ fps`), restart-safe device activation, plain-language failure reporting, and automatic reconnection: when a camera drops mid-lecture, OkuFlow quietly retries the same physical device for about 30 seconds (2s/4s/8s backoff) without any modal dialogs, and only reports failure if the device never comes back.
 - CPU frame pipeline for format conversion and rotation of formats the GPU path does not consume, plus the legacy debug composite view. NV12 and YUY2 camera frames bypass it entirely: color conversion and rotation run in CUDA.
 - Direct3D 12 presenter for swap-chain output plus GPU texture readback.
   Processed and rotation-correct unenhanced video recording use a bounded
@@ -21,7 +23,7 @@ OpenZoom is a Windows-only camera magnifier built around Qt 6, Media Foundation,
   required by hardware Media Foundation encoders. Photos and on-demand
   analysis use the readback path, then hand image encoding, serialization, and
   file writes to bounded worker pools so that work does not stall the UI.
-- CUDA external-memory interop path with GPU color conversion (NV12/YUY2) and rotation, video stabilization, automatic keystone correction for projected screens, black-and-white, zoom, Gaussian blur, temporal smoothing, auto contrast (percentile level stretch), low-vision display color modes with contrast/brightness, focus marker, and spatial sharpening via NVIDIA NIS or AMD FSR 1.0 style kernels.
+- CUDA external-memory interop path with GPU color conversion (NV12/YUY2) and rotation, video stabilization, automatic keystone correction for projected screens, black-and-white, zoom, Gaussian blur, temporal smoothing, auto contrast (percentile level stretch), low-vision display color modes with contrast/brightness, focus marker, and spatial scaling/sharpening via pinned CUDA adaptations of NVIDIA Image Scaling 1.0.3 or AMD FSR 1.0.2 EASU + RCAS.
 - GPU video stabilization uses full-strength CUDA Harris/Lucas-Kanade feature
   tracking and device-side RANSAC to lock a mounted camera to one fixed GPU
   reference, so long-run estimator drift is impossible by construction.
@@ -45,13 +47,15 @@ OpenZoom is a Windows-only camera magnifier built around Qt 6, Media Foundation,
   latency is the only failure.
 - Two-speed UI: Simple mode gives the full client area to the live view and overlays three auto-fading primary clusters plus contextual screen-correction controls; Advanced keeps the camera visible beside a narrow inspector containing every parameter and pipeline diagnostics. The chosen mode persists.
 - Stage-1 quick modes backed by full stage-2 advanced configurations, including promotion of advanced tuning into user-defined quick options.
-- Local OCR via Tesseract plus scene explanations through either a signed-in Codex CLI/ChatGPT subscription or an OpenAI-compatible HTTP endpoint. Results stream into a focusable assistive panel and Advanced Assistant, can be spoken aloud, and can be written to `Documents\OpenZoom\Notes\`. The non-blocking Setup Assistant can install Tesseract, Codex CLI, and NVIDIA Video Effects without putting those optional runtimes in an OpenZoom release bundle.
-- OCR and VLM frame preparation is bounded and asynchronous: PNG/JPEG
-  encoding, resizing, base64/JSON creation, and temporary image writes happen
-  outside the UI thread, with cancellation tokens preventing stale work from
-  starting a request.
-- Session persistence in `%APPDATA%\OpenZoom\OpenZoom\settings.json`.
-- One user-owned root at `Documents\OpenZoom\` for photos, recordings, notes,
+- Text reading and scene explanations use a signed-in Codex CLI/ChatGPT
+  subscription (Luna with low reasoning by default) or the configured
+  OpenAI-compatible vision endpoint. Results stream into the assistive panel,
+  support manual Read Aloud, and can be saved in `Documents\OkuFlow\Notes\`.
+- Vision frame preparation is bounded and asynchronous: resizing, JPEG
+  encoding, base64/JSON creation, and temporary image writes happen outside
+  the UI thread. Cancellation prevents stale work from starting a request.
+- Session persistence in `%APPDATA%\OkuFlow\OkuFlow\settings.json`.
+- One user-owned root at `Documents\OkuFlow\` for photos, recordings, notes,
   analysis exports, and opt-in console debug logs. The root is configurable,
   and `Ctrl+Shift+O` opens it from anywhere in the application.
 - A branded, high-contrast magnifier icon embedded in the Windows executable
@@ -64,13 +68,12 @@ CUDA is the processing path; the CPU effects pipeline is deprecated. When the D3
 ## Prerequisites
 - Windows 10 or Windows 11.
 - Visual Studio 2022 with the Desktop C++ workload and Windows SDK.
-- Qt 6.9.3 for `msvc2022_64`, or matching overrides via `QT_PREFIX` / `Qt6_DIR`.
+- Qt 6.12.0 for `msvc2022_64`, or matching overrides via `QT_PREFIX` / `Qt6_DIR`.
 - CMake 3.23 or newer.
 - NVIDIA GPU plus CUDA Toolkit 13.x if you want the CUDA path.
-- Optional: NVIDIA Video Effects runtime for Maxine SuperRes, Tesseract OCR
-  for local text recognition, and Codex CLI for subscription-backed Explain
-  and Assistant features. OpenZoom offers verified vendor downloads for all
-  three from `Setup & Downloads`.
+- Optional: NVIDIA Video Effects runtime for Maxine SuperRes and Codex CLI
+  for subscription-backed Read, Explain, and Assistant features. OkuFlow
+  offers verified vendor downloads through `Setup & Downloads`.
 
 ## Build And Run
 From a Visual Studio x64 developer prompt or a PowerShell 7 session (`pwsh.exe`) with MSVC, Qt, and optionally CUDA on `PATH`:
@@ -86,8 +89,8 @@ with `pwsh.exe -NoProfile -Command '...'`, for example
 The helper script:
 - configures `build\` with the Visual Studio 2022 generator,
 - clears stale CMake cache entries when the source path changes,
-- builds `open_zoom`,
-- prefers `build\cmake\Release\open_zoom.exe` when launching,
+- builds `oku_flow`,
+- prefers `build\cmake\Release\oku_flow.exe` when launching,
 - runs `windeployqt` automatically when it can find the Qt runtime.
 
 If Windows reports missing `Qt6*.dll` files, add the Qt `bin` directory to `PATH` or point `QT_PREFIX` / `Qt6_DIR` at the correct installation.
@@ -131,15 +134,19 @@ ctest --preset msvc-cuda-tests
 ### CPU-only build
 
 ```powershell
-cmake -S . -B build-cpu -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="C:/Qt/6.9.3/msvc2022_64" -DOPENZOOM_ENABLE_CUDA=OFF
+cmake -S . -B build-cpu -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="C:/Qt/6.12.0/msvc2022_64" -DOKUFLOW_ENABLE_CUDA=OFF
 cmake --build build-cpu
 ```
 
-`OPENZOOM_ENABLE_TEXT_SR=ON` compiles the runtime-only NVIDIA Maxine SuperRes
+`OKUFLOW_ENABLE_TEXT_SR=ON` compiles the runtime-only NVIDIA Maxine SuperRes
 adapter and its controls. CUDA presets and the release-bundle script enable it
 by default; the CPU preset disables it. Set the environment override explicitly
-to `OFF` only for a bundle that intentionally omits the adapter. OpenZoom links
+to `OFF` only for a bundle that intentionally omits the adapter. OkuFlow links
 no Maxine import library and ships no proprietary runtime or model files.
+
+The pinned native WebRTC stack (libdatachannel, Opus, Mbed TLS) is part of the
+single supported Windows build. All of it is statically linked with the same
+`/MT` runtime; live transcription adds no browser runtime or dependency DLL.
 
 ### Release bundle
 
@@ -149,46 +156,110 @@ scripts\build_release_bundle.bat
 
 This builds the application and tests in one release tree, requires CTest to
 pass, deploys into a staging directory, validates the Qt runtime and license
-files, and only then publishes `dist\OpenZoom\`. If that bundle is locked by a
-running app, the complete tested build is published as `dist\OpenZoom2\`
-without terminating or relaunching OpenZoom. Set
-`OPENZOOM_SKIP_BUNDLE_TESTS=1` only for an emergency build; the script prints
+files, and only then publishes `dist\OkuFlow\`. If that bundle is locked by a
+running app, the complete tested build is published as `dist\OkuFlow2\`
+without terminating or relaunching OkuFlow. Set
+`OKUFLOW_BUNDLE_BUILD_DIR` to use a local build directory outside the synced
+checkout. Set
+`OKUFLOW_SKIP_BUNDLE_TESTS=1` only for an emergency build; the script prints
 `WARNING: UNTESTED BUNDLE` when that explicit escape hatch is used.
 
-The published bundle contains `open_zoom.exe`, Qt runtime files,
-`LICENSE`, `README.txt`, `THIRD_PARTY_LICENSES.md`, and the bundled Lucide icon
-notice. It also contains `SHA256SUMS.txt`, `release-manifest.json`, and
-`SBOM.spdx.json`, generated from the exact staged files before publication.
+Release packaging also needs the matching Qt `Sources` component so it can
+stage Qt Multimedia's exact FFmpeg LGPL-2.1-or-later text. The script discovers
+the normal sibling `Src` directory automatically; set `QT_SOURCE_ROOT` when the
+matching source tree is installed elsewhere.
+
+The published bundle contains `oku_flow.exe`, Qt runtime files,
+`LICENSE`, `COMMERCIAL.md`, `README.txt`, `THIRD_PARTY_LICENSES.md`, complete notices for the
+bundled CUDA/reference/native-WebRTC code, Qt and FFmpeg license texts, and the
+exact Qt module SPDX documents that cover every module and plugin deployed
+by `windeployqt`. It also contains `SHA256SUMS.txt`,
+`release-manifest.json`, and `SBOM.spdx.json`, generated from the exact staged
+files before publication. The top-level SPDX document links the staged Qt SPDX
+documents by namespace and SHA-1, distinguishes bundled dependencies from
+optional user-installed runtimes, and records every staged file in the release
+manifest.
 Private/team bundles may remain unsigned. To sign with a certificate already
 installed in the current user's Windows certificate store, set
-`OPENZOOM_SIGN_CERT_SHA1` to its thumbprint before running the script. A
+`OKUFLOW_SIGN_CERT_SHA1` to its thumbprint before running the script. A
 self-signed code-signing certificate is suitable for the current small team
 when teammates explicitly trust its public certificate; never distribute the
-certificate's private key. Setting `OPENZOOM_PUBLIC_RELEASE=1` makes a missing
+certificate's private key. Setting `OKUFLOW_PUBLIC_RELEASE=1` makes a missing
 or invalid signature a packaging failure rather than silently publishing an
 unsigned public build.
 
 Release currently retains a diagnostics terminal while stabilization
 is being field-tuned. Stabilizer output is rate-limited to one detailed sample
 per 30 camera frames rather than printing per frame. The CUDA runtime is linked
-statically. NVIDIA Video Effects, Tesseract,
-and Codex CLI binaries are never copied into the bundle; users obtain them from
-their vendors through the Setup Assistant. The Tesseract installer and
-OpenAI's Codex bootstrap script are pinned and SHA-256 verified before
-execution. The verified Codex bootstrap then verifies the selected official
-release package against OpenAI's checksum manifest.
-An existing `dist\OpenZoom\output\` is preserved and restored around the
+statically. NVIDIA Video Effects and Codex CLI binaries are obtained from
+vendors through Setup Assistant and are never copied into the bundle.
+OpenAI's Codex bootstrap script is pinned and SHA-256 verified before execution;
+that bootstrap verifies the selected official release package against OpenAI's
+checksum manifest.
+An existing `dist\OkuFlow\output\` is preserved and restored around the
 rebuild; photos, recordings, notes, and analysis files are user data and are
 never intentionally removed by packaging.
 If Qt's transfer fails, Setup retries with the Windows downloader and then the
 vendor's alternate host without weakening verification.
 
+## Lecture Video Test Camera
+
+Double-click `scripts/start_lecture_camera.bat` to loop a downloaded lecture
+through OBS Virtual Camera and open OkuFlow. On first use select
+`Advanced > Image > Device > Camera > DroidCam Video`. OBS's standard virtual
+camera runs alongside this Media Foundation output used by OkuFlow.
+Double-click `scripts/stop_lecture_camera.bat` to stop the test feed.
+The video remains available for replacement at
+`%LOCALAPPDATA%\OkuFlow\lecture-camera\media\lecture.mp4`.
+Requires installed OBS Studio, PowerShell 7, 7-Zip, and the modern DroidCam
+Video driver (already installed on the setup machine); first run prepares a separate
+portable OBS copy and downloads the sample. See
+[`docs/lecture_camera.md`](docs/lecture_camera.md) for source selection,
+replacement videos, status, and limitations.
+
+## Startup And Latency Profiling
+
+With OkuFlow closed and a camera available, run the tracked profiler from
+PowerShell 7 after building:
+
+```powershell
+./scripts/profile_startup.ps1 -Executable ./dist/OkuFlow/oku_flow.exe -Runs 2 -CompareLegacy
+```
+
+Each trial writes `build/startup-profile/<mode>-<run>/startup.json` and logs.
+Its sibling `settings.json` starts from a copy of your settings; AI requests,
+notes, and optional setup prompts are disabled for the trial, and generated
+files use that trial's data folder. The source settings hash is checked after
+each run. The profiler refuses to run alongside another OkuFlow instance and
+lets its own instances exit normally after 15 seconds. `-DurationSeconds`,
+`-CameraIndex`, `-SettingsPath`, and `-OutputDirectory` allow focused comparisons.
+`-DurationSeconds 1 -AllowNoFrame` also permits a short close-during-startup
+check; absent a presented frame, its timings must not be used as a speed result.
+
+`-CompareLegacy` alternates the old synchronous camera-opening sequence and the
+new worker sequence in the same executable. Other rendering changes are shared
+by both modes. Reports distinguish negotiated camera FPS from actual callback
+arrival rate, processed scenes, and successful presents. The 20 ms Qt heartbeat
+measures event-loop delays; camera-to-present latency begins after Media
+Foundation returns a frame and ends at successful presentation submission.
+Startup timing begins in the application constructor and excludes executable
+loading. These are application timings, not sensor-to-photon measurements.
+
+The diagnostic application flag `--startup-profile=<report-path>` uses
+`settings.json` beside the report and writes no camera images. Its optional
+`--startup-profile-ms=<duration>` controls normal automatic exit; omit all
+profiling flags for ordinary operation.
+
 ## Runtime Controls
+- Initial camera opening overlaps with window graphics initialization on a
+  worker. Camera mode discovery reuses the streaming reader, and busy GPU
+  frame slots return control to the UI for a later presentation attempt.
+  Camera selectors are temporarily disabled while the initial device opens.
 - `Simple` / `Advanced` switches between a full-view overlay UI and a right-side inspector. The live camera remains visible in both states.
 - `Application language` under the Advanced Image tab's `Application`
   section offers `English`, `Türkçe`, and `Deutsch` with their flags. The
   selection is global, persists across restarts, and updates the open windows
-  in place. On first run OpenZoom follows a supported Windows display
+  in place. On first run OkuFlow follows a supported Windows display
   language, otherwise it starts in English. An AI request already in progress
   finishes in its old language; the next request follows the new choice.
   The language registry also carries locale layout direction, so future RTL
@@ -204,7 +275,7 @@ vendor's alternate host without weakening verification.
 - `Viewport motion rate`, beside framing under `More device options`, controls
   how smoothly pan and animated zoom move over
   the latest processed scene: Auto (up to 120 FPS), 60, 90, 120, or Match
-  display. The active monitor clamps unsupported choices and OpenZoom reports
+  display. The active monitor clamps unsupported choices and OkuFlow reports
   the effective rate. This does not invent camera frames: a 30 FPS camera is
   still 30 FPS; only navigation over its newest completed frame is refreshed
   more often. Auto reduces to the camera rate while idle.
@@ -219,7 +290,35 @@ vendor's alternate host without weakening verification.
 - `Microphone`, in the same global Recording section,
   selects which Windows audio capture endpoint is recorded. New settings use
   the Windows system-default microphone; `No microphone (video only)` records
-  silent video. OpenZoom opens the microphone only while recording.
+  silent video. OkuFlow opens the microphone only while recording.
+- `Transcribe microphone while recording`, in the same section, is an opt-in
+  that sends microphone audio to Codex Voice for live transcription while a
+  recording is active. It requires the Codex CLI signed in with ChatGPT,
+  shows the current phrase and
+  finalized text in a read-only Transcript tab (plus a Simple-mode overlay),
+  and `Add finalized transcript to lecture notes` appends each finalized
+  phrase to the HTML lecture notes. Transcription problems never stop,
+  delay, or invalidate the recording; the shown quota is the general Codex
+  window, not voice minutes.
+  The five-second value is negotiation pre-roll/backpressure capacity, not an
+  upload interval or recognition context window: live WebRTC receives
+  continuous 20 ms audio frames, encoded as 48 kbit/s Opus. The realtime
+  carrier holds a bounded 500 ms continuity cushion before paced RTP begins
+  (and rebuilds it after a real later underflow); that cushion prevents
+  capture/UI timer bursts from becoming missing speech and is not a recognition
+  or upload chunk size. The realtime
+  session receives OkuFlow's fixed instruction to transcribe the classroom
+  speaker verbatim and treat spoken content as untrusted quoted data, never an
+  action request. No post-session Codex handoff or second transcription pass is
+  used; if the service closes without a final event, the already-streamed final
+  partial is preserved locally. OkuFlow disables configured
+  MCP servers plus Codex's built-in app and plugin providers before this
+  dedicated child starts, fails closed on any MCP lifecycle event, denies
+  unexpected requests, uses no approvals, a read-only sandbox, and an empty
+  temporary working directory. The WebRTC media path is a statically linked, pinned
+  open-source stack (libdatachannel, Opus, Mbed TLS): no browser component,
+  no ICE/STUN third-party servers, and the assistant's return audio is never
+  decoded.
 - In Simple mode, the switch, profile carousel, and
   Photo/Record/Explain/Read/Draw actions occupy three flush view corners.
   Keystone profiles add a separate Previous/Stop/Next correction strip beside
@@ -291,7 +390,19 @@ vendor's alternate host without weakening verification.
   turned off.
 - The bottom-left quick-mode carousel and its full preset grid remain available
   in Advanced mode, so presets can be changed without returning to Simple.
-- Advanced has separate `Image` and `Assistant` tabs with wrapping previous/next navigation arrows. `Image` separates Device, Viewport, and Profile ownership, then groups profile tuning under persistent collapsible headings; `Assistant` contains a persistent camera-aware chat plus an OpenZoom-only history list. `Ctrl+F` focuses the pinned settings search, which reveals matching controls even inside collapsed groups. Non-default groups expand and show a changed count so active tuning is never hidden. Each page places the labeled `AI Settings` pop-out in a full-width row directly below the tab strip. Drag the high-contrast divider at the inspector's left edge to resize it; OpenZoom remembers the width. Long setting rows place their slider on a second line instead of clipping text or making part of the track unreachable.
+- Advanced has separate `Image`, `Assistant`, and `Transcript` tabs. Tab arrows
+  appear only for four or more sections; `Ctrl+Tab` cycles tabs. Image puts
+  profile tuning first, followed by shared Device, Recording, and Application
+  settings. Sliders show locale-formatted values. `Ctrl+F` focuses the outlined
+  settings search, which reveals matching controls and displays a match count.
+  Non-default groups expand and show a changed count. Each page places the
+  labeled `AI Settings` pop-out below the tab strip. Drag the inspector's left
+  divider to resize it; OkuFlow remembers the width. Long selector names show
+  their complete text on hover.
+- A centered camera-state panel explains startup, reconnection, and stopped
+  capture until a frame is presented. Setup Assistant no longer opens solely
+  because optional NVIDIA Super Resolution is missing; `Setup & Downloads`
+  remains available in Advanced.
 - `Save As Quick Option` promotes the current advanced setup into a reusable stage-1 preset.
 - `Reset Tuning` restores profile-owned image and assistive controls to their
   defaults after confirmation. It deliberately keeps the selected camera,
@@ -302,10 +413,10 @@ vendor's alternate host without weakening verification.
   selection, requested resolution/frame rate, and orientation are Device
   settings rather than part of a quick profile.
 - `Resolution & frame rate` requests an actual Media Foundation capture mode.
-  OpenZoom reads back the negotiated format and reports when the driver
+  OkuFlow reads back the negotiated format and reports when the driver
   selected a different mode. `Automatic` preserves the driver's choice.
 - `Camera acceleration`, under `Device > More device options`, defaults to
-  Automatic. OpenZoom tries the lower-latency Media Foundation GPU path,
+  Automatic. OkuFlow tries the lower-latency Media Foundation GPU path,
   validates the first 30 frames, and reopens the same camera in compatibility
   mode if negotiation fails or the image is blank. The decision and reason are
   remembered per physical camera. `Always use GPU acceleration` and
@@ -317,13 +428,13 @@ vendor's alternate host without weakening verification.
   pipeline. A delayed D3D11 completion query uses safe readback for that frame
   and retries the top rung instead of disabling it. If conversion or external
   import fails,
-  OpenZoom remembers the result and drops to the accelerated-copy rung; the
+  OkuFlow remembers the result and drops to the accelerated-copy rung; the
   compatibility reader remains the permanent final fallback. Original
   photos/videos request GPU readback only while those captures are active.
 - `Test this camera` temporarily releases the live camera and compares GPU and
   compatibility capture in a watchdog-isolated helper process, then restores
   the live view and reports both average frame-read times. A hung camera driver
-  cannot freeze the OpenZoom process. The `Camera acceleration` dropdown is
+  cannot freeze the OkuFlow process. The `Camera acceleration` dropdown is
   the single control for choosing automatic, forced GPU, or compatibility
   capture for the selected camera.
 - `Rotation` rotates the pipeline in 90 degree clockwise steps before downstream processing.
@@ -362,40 +473,50 @@ vendor's alternate host without weakening verification.
   direction resets acceleration. The global `Zoom wheel acceleration` option
   under `Device > More device options` disables only the acceleration, while
   `Ctrl+=` and `Ctrl+-` always use reproducible unaccelerated geometric steps.
-- `OCR Assist`, `Scene Explain`, and `Assistive Overlay` drive asynchronous assistive analysis and on-screen text overlays.
-- `Read Text`, identified by a speaker icon, runs local OCR. `Explain` sends one temporary, non-history camera question and changes to `Stop` while Codex is working.
-- The assistive result panel updates as an answer streams. It is an owned floating tool window: native window movement keeps dragging responsive over the D3D camera surface, and streamed text does not reset its geometry. Drag its header to move it and an edge or corner to resize it. The first placement clears the top Simple controls; later position and size changes persist relative to the camera view and are restored across restarts. Its text can be focused, selected, and read by a screen reader; the question field remains editable while an answer is streaming, but Ask and Enter submission stay blocked until that answer finishes. Follow-ups enter the shared persistent Assistant conversation with the current view attached. Speech starts only when `Read Aloud` is clicked and omits visible section labels such as `Scene Explain` and `OCR`, while the high-contrast Close control or `Esc` dismisses the panel.
-- The Advanced Assistant can attach the current processed view, stream answers, stop a response, and manage persistent OpenZoom conversations with resume, rename, export, and delete actions.
+- `Scene Explain` and `Assistive Overlay` drive asynchronous assistive analysis and on-screen text overlays.
+- `Read Text`, identified by a speaker icon, asks the vision assistant to transcribe the current view verbatim. It preserves source language and marks unreadable portions; it does not summarize the page. Read Aloud speaks the result only when clicked. `Explain` sends one temporary, non-history camera question and changes to `Stop` while Codex is working.
+- The assistive result panel updates as an answer streams. Drag the floating panel header to either app edge to show a purple docking preview, then release to dock there. Moving away or pressing Escape cancels the drop. The highlight uses a debounced latch: stay near the edge for 180 ms to select it, then stay outside its wider release zone for 250 ms to clear it. To undock by dragging, pull the docked header away and hold for about 350 ms; short movements keep it latched, and it cannot immediately snap back to the same side. Its Panel position selector also offers Floating, Dock left, and Dock right. Docking reserves space beside the camera viewport, with image proportions preserved during resizing; drag the separator to resize the dock, or choose Floating to restore the previous movable panel. The chosen dock side and floating geometry persist across restarts. In Draw mode, the floating panel stays clickable and movable, and ink is clipped around its current bounds even after moving or resizing it. In floating mode: native window movement keeps dragging responsive over the D3D camera surface, and streamed text does not reset its geometry. Drag its header to move it and an edge or corner to resize it. The first placement clears the top Simple controls; later position and size changes persist relative to the camera view and are restored across restarts. Its text can be focused, selected, and read by a screen reader; the question field remains editable while an answer is streaming, but Ask and Enter submission stay blocked until that answer finishes. Follow-ups enter the shared persistent Assistant conversation with the current view attached. Speech starts only when `Read Aloud` is clicked and omits visible section labels such as `Scene Explain` and `Read Text`, while the high-contrast Close control or `Esc` dismisses the panel.
+- The Advanced Assistant can attach the current processed view, stream answers, stop a response, and manage persistent OkuFlow conversations with resume, rename, export, and delete actions.
 - The Advanced Assistant subscription label reports the percentage left in the current Codex usage window.
 - `Connect ChatGPT` uses the Codex app-server browser login flow. Existing Codex CLI sign-in is reused automatically.
 - `AI Settings` is vertically scrollable and separates Codex subscription,
-  OpenAI-compatible vision server, OCR, Read Aloud, and lecture-note controls.
-  It shows OpenZoom's built-in Codex prompt read-only beside editable user
+  OpenAI-compatible vision server, Read Aloud, and lecture-note controls.
+  It shows OkuFlow's built-in Codex prompt read-only beside editable user
   instructions. The Codex model dropdown and its reasoning dropdown are
   populated from the signed-in app-server's `model/list` response, including
   each model's supported efforts and default; the saved model remains visible
   as unavailable when it is absent from the current catalog. Assistant
   Instructions can set a preferred response language, tone, or level of detail
-  for both providers without changing Codex security permissions. OpenZoom
+  for both providers without changing Codex security permissions. OkuFlow
   lists every voice exposed to desktop applications by Windows Runtime speech
   synthesis, across installed languages. Windows 11 Narrator/Magnifier Natural
   voice packages are not currently exposed by that public API and therefore do
-  not appear in OpenZoom. Advanced Assistant internet and coding permissions
-  are separate opt-ins; coding also requires a workspace folder.
+  not appear in OkuFlow. Advanced Assistant internet and coding permissions
+  are separate opt-ins; coding—including Python and shell tools—also requires
+  a workspace folder.
 - `Open Notes` opens the current session's accessible HTML lecture notes from
-  `Documents\OpenZoom\Notes\` (or the configured OpenZoom root). Notes contain
-  timestamped OCR and scene explanations plus responsive original/processed
+  `Documents\OkuFlow\Notes\` (or the configured OkuFlow root). Notes contain
+  timestamped text readings and scene explanations plus responsive original/processed
   photo grids. Every fully finalized recording segment adds original and
   processed MP4 players with direct relative links; failed or truncated
   finalizations are not linked.
-- `Spatial Sharpen` enables the CUDA sharpening/upscaling stage and lets you choose NIS or FSR-style processing when the GPU path is active.
-- `Debug View` switches to the CPU composite grid so intermediate stages can be inspected; the nearby pipeline status reports CPU/GPU, fallback, recording, OCR, and VLM state.
+- `Spatial Sharpen` enables the CUDA sharpening/upscaling stage and lets you
+  choose the pinned NVIDIA Image Scaling 1.0.3 NVScaler or AMD FidelityFX FSR
+  1.0.2 EASU + RCAS implementation when the GPU path is active. Magnified
+  crops receive up to 2x enlargement per pass within the existing frame
+  buffers and a 1440p cap; additional zoom uses display scaling. Native-size
+  views retain sharpening. Pan/zoom reuses the cached camera result.
+- `Debug View` switches to the CPU composite grid so intermediate stages can be inspected; the nearby pipeline status reports CPU/GPU, fallback, recording and VLM state.
 - `Show Focus Point` overlays the current zoom center on the presented output.
 - `Capture Photo` waits for the next complete camera frame and saves
   `IMG_<timestamp>_original.jpg` plus `IMG_<timestamp>_processed.jpg` to
-  `Documents\OpenZoom\Photos\YYYY-MM-DD\`. The original is decoded,
-  rotation-corrected camera output without OpenZoom's enhancement stack; it is
-  not the camera sensor's raw Bayer or compressed USB bitstream.
+  `Documents\OkuFlow\Photos\YYYY-MM-DD\`. The original is decoded,
+  rotation-corrected camera output without OkuFlow's enhancement stack; it is
+  not the camera sensor's raw Bayer or compressed USB bitstream. Both JPEGs
+  encode to `.writing` files before their paired commit. On the next startup,
+  OkuFlow finishes an interrupted second rename or removes the entire
+  incomplete set, so a crash-created final orphan is not kept as a successful
+  capture.
 - Annotation Save, Clear, and optional Save on exit write a lossless
   `ANNOTATION_<timestamp>.png` of the exact visible viewport to the same dated
   Photos folder
@@ -406,13 +527,13 @@ vendor's alternate host without weakening verification.
   persist globally; strokes are session-only and are discarded after exit.
 - `Start Recording` writes synchronized `VID_<timestamp>_original.mp4` and
   `VID_<timestamp>_processed.mp4` files to
-  `Documents\OpenZoom\Recordings\YYYY-MM-DD\`. Both are encoded live:
+  `Documents\OkuFlow\Recordings\YYYY-MM-DD\`. Both are encoded live:
   the original follows the selected camera mode and the processed file follows
   `Processed recording resolution`.
   When a microphone is selected, the same capture-clock-synchronized
   48 kHz mono AAC track is embedded in both files. Choosing
   `No microphone (video only)` omits the audio stream.
-  OpenZoom tries AV1 first and falls back to H.264 when AV1 is unavailable. It
+  OkuFlow tries AV1 first and falls back to H.264 when AV1 is unavailable. It
   does not transcode after Stop. Fragmented MP4 keeps each file playable up to
   its last completed fragment, the duration cap is 12 hours, and disk-space
   guards stop both files together. Stop discards queued frames and finalizes
@@ -442,7 +563,7 @@ vendor's alternate host without weakening verification.
 - Wheel, arrow-key, joystick, and middle-drag panning keep the active quick mode selected; changing an actual Advanced processing control still creates a custom setup.
 
 ## Persistence And Output Paths
-- Settings persist to `%APPDATA%\OpenZoom\OpenZoom\settings.json`. Camera and
+- Settings persist to `%APPDATA%\OkuFlow\OkuFlow\settings.json`. Camera and
   orientation are global; stabilization, colors, contrast, sharpening, zoom,
   and the other image treatments are stored in the current profile and
   user-created quick options. UI and assistive/AI configuration also persist,
@@ -450,12 +571,12 @@ vendor's alternate host without weakening verification.
   capture-on-exit preference (but never annotation strokes). A VLM API key
   entered in AI Settings is stored in Windows Credential Manager; the JSON
   contains only the credential identifier and ignores any plaintext
-  `vlmApiKey` field. OpenZoom has never distributed or bundled an API key.
-  OpenZoom stores
+  `vlmApiKey` field. OkuFlow has never distributed or bundled an API key.
+  OkuFlow stores
   only an index of the persistent
   Codex conversations it created; Codex stores their transcripts. Temporary
   Simple explanations are ephemeral and do not enter history.
-- User-created files share one root: `Documents\OpenZoom\` by default.
+- User-created files share one root: `Documents\OkuFlow\` by default.
   Advanced Assistant can change it to another writable folder outside the
   application directory. The choice persists as `paths.userDataRoot`.
 - Snapshot pairs and annotated captures are written under
@@ -464,7 +585,7 @@ vendor's alternate host without weakening verification.
   `Notes\NOTES_<timestamp>.html`; Assistant exports default to `Analysis\`.
   Console-attached launches also tee Qt diagnostics to one timestamped file
   under `Debug\`, retaining the newest 20 logs. Relative image references keep
-  the complete OpenZoom root portable.
+  the complete OkuFlow root portable.
 - Recording uses the camera's timestamps and exact negotiated fractional frame
   rate, so a capture stall becomes a real time gap instead of fabricated
   duplicate frames or wrong-speed playback. Encoding runs on a bounded worker
@@ -474,28 +595,28 @@ vendor's alternate host without weakening verification.
   readback, recording-texture-pool, pairing, queue, or encoder losses when it
   stops. Camera format changes finalize the current playable pair and continue
   in matching `_part2`, `_part3`, and later segment pairs.
-- When OpenZoom is launched with a Windows console attached, recording prints
+- When OkuFlow is launched with a Windows console attached, recording prints
   one route line per segment and one completion summary. The output names the
   processed and original MP4 paths and distinguishes direct-GPU input,
   GPU-source worker readback, and CPU/system-memory input. Its final summary
   also separates asynchronous GPU-completion retries from frames that actually
   used the safe-copy capture rung. Ordinary Start-menu or Explorer launches
   remain quiet. All Qt console output from that diagnostic launch is also saved to
-  `Documents\OpenZoom\Debug\OpenZoom_<timestamp>_pid<id>.log` (or the selected
+  `Documents\OkuFlow\Debug\OkuFlow_<timestamp>_pid<id>.log` (or the selected
   user-data root). Debug logs can include local paths, device names, camera
   identifiers, and timing/error details; review them before sharing.
-- Set `OPENZOOM_CAPTURE_DIAGNOSTICS=1` before launching a debug build to print
+- Set `OKUFLOW_CAPTURE_DIAGNOSTICS=1` before launching a debug build to print
   one capture summary every five seconds: camera FPS, CPU bytes copied per
   frame, Media Foundation capture work, capture-thread CPU use, and
   capture-to-present latency. Production Automatic mode uses the accelerated
   direct-GPU rung after its per-camera startup validation, then falls back to
   accelerated copy and compatibility capture in that order. For diagnostic
-  fallback testing, `OPENZOOM_FORCE_CAPTURE_COPY_RUNG=1` disables only the
+  fallback testing, `OKUFLOW_FORCE_CAPTURE_COPY_RUNG=1` disables only the
   direct-GPU rung for that run. The standalone probe at
   `build\msvc-release\sandbox_mf_dxva_minimal\mf_dxva_minimal.exe` compares
   accelerated and compatibility capture in an isolated watchdog process and
   prints JSON. Release bundles include the same helper beside
-  `open_zoom.exe`; Advanced `Test this camera` invokes it directly.
+  `oku_flow.exe`; Advanced `Test this camera` invokes it directly.
   Maintainers can exercise the production lifetime path in a watchdog child:
   `mf_dxva_minimal.exe --camera N --interop external --iterations 100`.
   `--interop legacy` is an opt-in driver-reproduction mode and is never run by
@@ -510,12 +631,11 @@ vendor's alternate host without weakening verification.
   completion. The over-budget warning follows the negotiated camera frame
   period and prints the available stage p95 values instead of attributing an
   aggregate spike to CUDA.
-- `Open my OpenZoom folder` is available in Advanced Assistant.
+- `Open my OkuFlow folder` is available in Advanced Assistant.
   `Ctrl+Shift+O` invokes it globally and recreates a missing root.
-- On upgrade, OpenZoom can copy compatible files from a legacy
-  install-relative `output\` folder. Copying is cancellable, never deletes the
-  originals, and leaves a `MIGRATED.txt` breadcrumb beside them. Release
-  publishing also refuses to replace a legacy bundle containing that folder.
+- OkuFlow never reads, copies, or deletes a legacy install-relative `output\`
+  folder. Release publishing refuses to replace a legacy bundle containing
+  that folder.
 
 ## Assistive Runtime Configuration
 The in-app `AI Settings` dialog is the primary way to configure the assistive
@@ -525,7 +645,7 @@ fallback provider accepts any OpenAI-compatible `chat/completions` server,
 including local ones (LM Studio, Ollama, llama.cpp server), so image-to-text can
 run fully offline. Local servers do not require an API key.
 
-OpenZoom's Codex client starts in restricted mode: read-only sandboxing, no
+OkuFlow's Codex client starts in restricted mode: read-only sandboxing, no
 approvals, no tool network access, and vision-only instructions. AI Settings
 can independently allow internet access and coding for persistent Advanced
 Assistant conversations. Coding requires an existing workspace folder and uses
@@ -533,7 +653,7 @@ Codex `workspaceWrite` sandboxing with that folder as the only writable root.
 Simple Explain always stays restricted. MCP, dynamic, and collaboration tools
 remain blocked in every mode, and unexpected approval requests are denied.
 The current stable app-server `turn/start` surface does not expose a complete
-per-turn tool allow-list, so OpenZoom also interrupts unexpected tool items as
+per-turn tool allow-list, so OkuFlow also interrupts unexpected tool items as
 defense in depth; it does not claim that developer instructions alone are a
 protocol-level guarantee.
 Codex app-server is still a local coding-agent process. `Setup & Downloads`
@@ -542,27 +662,25 @@ then completed separately through `Connect ChatGPT` in AI Settings.
 
 Environment variables remain as fallback for any field left empty in the
 dialog:
-- OCR first uses the configured path, then `OPENZOOM_TESSERACT_PATH`, the
-  Setup Assistant-managed `%LOCALAPPDATA%\OpenZoom\tools\tesseract\tesseract.exe`,
-  `PATH`, or standard Windows install directories. `Setup & Downloads` installs
-  or removes the managed copy after verifying its pinned installer hash.
-- Maxine discovery checks `OPENZOOM_MAXINE_PATH`, `NV_VIDEO_EFFECTS_PATH`, the
+- Maxine discovery checks `OKUFLOW_MAXINE_PATH`, `NV_VIDEO_EFFECTS_PATH`, the
   standard Program Files location, and the NVIDIA Video Effects uninstall
   registry entry. The bottom of Advanced displays the required
   `SuperRes powered by NVIDIA Maxine™` attribution; this is attribution only
   and does not imply NVIDIA endorsement.
-- Codex first uses the configured CLI path, then `OPENZOOM_CODEX_PATH`, `PATH`,
+- Codex first uses the configured CLI path, then `OKUFLOW_CODEX_PATH`, `PATH`,
   the official standalone
   `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe`, or
   `%LOCALAPPDATA%\Microsoft\WinGet\Links\codex.exe`. New configurations default
-  to `gpt-5.6-tera` with `low` reasoning; explicit saved choices are preserved.
+  to `gpt-5.6-luna` with `low` reasoning. The former misspelled
+  `gpt-5.6-tera` value is migrated automatically; other explicit saved
+  choices are preserved.
 - Configure VLM with:
-  - `OPENZOOM_VLM_API_URL`
-  - `OPENZOOM_VLM_API_KEY`
-  - `OPENZOOM_VLM_MODEL`
-  - optional `OPENZOOM_VLM_PROMPT`
+  - `OKUFLOW_VLM_API_URL`
+  - `OKUFLOW_VLM_API_KEY`
+  - `OKUFLOW_VLM_MODEL`
+  - optional `OKUFLOW_VLM_PROMPT`
 
-`OPENZOOM_VLM_API_KEY` is a development/runtime override and is never copied
+`OKUFLOW_VLM_API_KEY` is a development/runtime override and is never copied
 into settings or a release bundle. A key entered in AI Settings is protected
 by Windows Credential Manager instead.
 
@@ -573,7 +691,7 @@ by Windows Credential Manager instead.
 - `src/d3d12/` - Direct3D 12 presenter, swap chain, upload, and readback logic.
 - `src/cuda/` - CUDA interop surface and kernels.
 - `src/ui/` - Qt widgets, overlays, and event routing.
-- `include/openzoom/` - public headers mirroring the source layout.
+- `include/okuflow/` - public headers mirroring the source layout.
 - `docs/` - architecture notes, code reference, progress tracking, and licensing docs.
 - `scripts/` - build, bundle, and validation helpers.
 

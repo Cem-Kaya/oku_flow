@@ -1,4 +1,4 @@
-#include "openzoom/cuda/cuda_kernels.hpp"
+#include "okuflow/cuda/cuda_kernels.hpp"
 
 #include <cuda_runtime.h>
 
@@ -443,19 +443,19 @@ int main(int argc, char** argv)
     float* currentLevel2 = nullptr;
     float* referenceLevel1 = nullptr;
     float* referenceLevel2 = nullptr;
-    openzoom::TripodReferenceFeature* referenceFeatures = nullptr;
+    okuflow::TripodReferenceFeature* referenceFeatures = nullptr;
     unsigned int* referenceFeatureCount = nullptr;
     float* recoveryLuma = nullptr;
     float* recoveryLevel1 = nullptr;
     float* recoveryLevel2 = nullptr;
-    openzoom::TripodReferenceFeature* recoveryFeatures = nullptr;
+    okuflow::TripodReferenceFeature* recoveryFeatures = nullptr;
     unsigned int* recoveryFeatureCounts = nullptr;
     float4* keyframeOrigins = nullptr;
     unsigned int* keyframeValid = nullptr;
-    openzoom::TripodMatchCandidate* matchCandidates = nullptr;
+    okuflow::TripodMatchCandidate* matchCandidates = nullptr;
     float4* pairs = nullptr;
     unsigned int* pairCount = nullptr;
-    openzoom::StabilizationState* state = nullptr;
+    okuflow::StabilizationState* state = nullptr;
     float* focusScore = nullptr;
     float* bestFocusScore = nullptr;
     unsigned int* selectionFlag = nullptr;
@@ -583,7 +583,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    openzoom::LaunchResetVirtualTripodState(state, false, stream);
+    okuflow::LaunchResetVirtualTripodState(state, false, stream);
     ok = CheckCuda(cudaMemsetAsync(bestFocusScore, 0, sizeof(float), stream),
                    "cudaMemsetAsync best focus score") &&
          CheckCuda(cudaMemsetAsync(
@@ -593,7 +593,7 @@ int main(int argc, char** argv)
          CheckCuda(cudaMemsetAsync(
                        matchCandidates, 0,
                        kKeyframeCount *
-                           sizeof(openzoom::TripodMatchCandidate),
+                           sizeof(okuflow::TripodMatchCandidate),
                        stream),
                    "cudaMemsetAsync match candidates");
 
@@ -637,7 +637,7 @@ int main(int argc, char** argv)
                    : recoveryLevel2 + (slot - 1) * level2Pixels;
     };
     auto keyframeFeatures =
-        [&](unsigned int slot) -> openzoom::TripodReferenceFeature* {
+        [&](unsigned int slot) -> okuflow::TripodReferenceFeature* {
         return slot == 0
                    ? referenceFeatures
                    : recoveryFeatures +
@@ -649,18 +649,18 @@ int main(int argc, char** argv)
                    : recoveryFeatureCounts + (slot - 1);
     };
     auto buildReference = [&](unsigned int slot) {
-        openzoom::LaunchStabilizationLumaPyramid(
+        okuflow::LaunchStabilizationLumaPyramid(
             keyframeLevel0(slot), analysisWidth, analysisHeight,
             keyframeLevel1(slot), level1Width, level1Height,
             keyframeLevel2(slot), level2Width, level2Height, stream);
-        openzoom::LaunchPrepareVirtualTripodReference(
+        okuflow::LaunchPrepareVirtualTripodReference(
             keyframeLevel0(slot), analysisWidth, analysisHeight,
             keyframeLevel1(slot), level1Width, level1Height,
             keyframeLevel2(slot), level2Width, level2Height,
             keyframeFeatures(slot), keyframeFeatureCount(slot),
             kMaximumPairs, stream);
         if (slot == 0) {
-            openzoom::LaunchStabilizationProjections(
+            okuflow::LaunchStabilizationProjections(
                 keyframeLevel0(slot), analysisWidth, analysisHeight,
                 referenceColProjection, referenceRowProjection, stream);
         }
@@ -670,27 +670,27 @@ int main(int argc, char** argv)
     unsigned int keyframeAdmissionCounter = 0;
     unsigned int nextRecoverySlot = 1;
     auto estimateMotion = [&]() {
-        openzoom::LaunchStabilizationProjections(
+        okuflow::LaunchStabilizationProjections(
             currentLuma, analysisWidth, analysisHeight,
             currentColProjection, currentRowProjection, stream);
-        openzoom::LaunchVirtualTripodProjectionSeed(
+        okuflow::LaunchVirtualTripodProjectionSeed(
             currentColProjection, currentRowProjection,
             referenceColProjection, referenceRowProjection,
             analysisWidth, analysisHeight,
             static_cast<float>(factorX), static_cast<float>(factorY),
             keyframeOrigins, keyframeValid, 0, state, stream);
-        openzoom::LaunchStabilizationLumaPyramid(
+        okuflow::LaunchStabilizationLumaPyramid(
             currentLuma, analysisWidth, analysisHeight,
             currentLevel1, level1Width, level1Height,
             currentLevel2, level2Width, level2Height, stream);
         CheckCuda(cudaMemsetAsync(
                       matchCandidates, 0,
                       kKeyframeCount *
-                          sizeof(openzoom::TripodMatchCandidate),
+                          sizeof(okuflow::TripodMatchCandidate),
                       stream),
                   "cudaMemsetAsync replay candidates");
         for (unsigned int slot = 0; slot < kKeyframeCount; ++slot) {
-            openzoom::LaunchPreparedVirtualTripodKeyframePairs(
+            okuflow::LaunchPreparedVirtualTripodKeyframePairs(
                 currentLuma, analysisWidth, analysisHeight,
                 currentLevel1, level1Width, level1Height,
                 currentLevel2, level2Width, level2Height,
@@ -703,18 +703,18 @@ int main(int argc, char** argv)
                 pairs, pairCount, kMaximumPairs, state,
                 keyframeOrigins, keyframeValid, slot,
                 matchCandidates, stream);
-            openzoom::LaunchVirtualTripodMatchCandidate(
+            okuflow::LaunchVirtualTripodMatchCandidate(
                 pairs, pairCount, kMaximumPairs,
                 options.width, options.height, inlierThreshold,
                 0.5f, 0.5f, options.zoom, keyframeOrigins,
                 keyframeValid, slot, matchCandidates, stream);
         }
-        openzoom::LaunchSelectVirtualTripodMatch(
+        okuflow::LaunchSelectVirtualTripodMatch(
             matchCandidates, kKeyframeCount, options.strength,
             tripodCorrectionFraction, options.zoom,
             options.width, options.height, state, stream);
         if (previousValid) {
-            openzoom::LaunchStabilizationFeaturePairs(
+            okuflow::LaunchStabilizationFeaturePairs(
                 currentLuma, previousLuma, analysisWidth, analysisHeight,
                 static_cast<float>(factorX),
                 static_cast<float>(factorY), pairs, pairCount,
@@ -724,7 +724,7 @@ int main(int argc, char** argv)
                                       stream),
                       "cudaMemsetAsync replay fallback count");
         }
-        openzoom::LaunchVirtualTripodRelativeFallback(
+        okuflow::LaunchVirtualTripodRelativeFallback(
             pairs, pairCount, kMaximumPairs,
             options.width, options.height,
             1.5f * static_cast<float>(std::max(factorX, factorY)),
@@ -733,7 +733,7 @@ int main(int argc, char** argv)
         ++keyframeAdmissionCounter;
         if (keyframeAdmissionCounter >= kKeyframeAdmissionFrames) {
             keyframeAdmissionCounter = 0;
-            openzoom::LaunchCaptureVirtualTripodKeyframe(
+            okuflow::LaunchCaptureVirtualTripodKeyframe(
                 currentLuma, keyframeLevel0(nextRecoverySlot),
                 static_cast<int>(analysisPixels), state,
                 keyframeOrigins, keyframeValid, nextRecoverySlot,
@@ -783,7 +783,7 @@ int main(int argc, char** argv)
             break;
         }
 
-        openzoom::LaunchStabilizationLumaDownsample(
+        okuflow::LaunchStabilizationLumaDownsample(
             currentLuma, analysisWidth, analysisHeight, deviceInput,
             inputPitch, options.width, options.height, factorX, factorY,
             stream);
@@ -791,16 +791,16 @@ int main(int argc, char** argv)
         const char* phase = "locked";
         if (frame < kFocusSelectionFrames) {
             phase = "selecting";
-            openzoom::LaunchMeasureVirtualTripodFocus(
+            okuflow::LaunchMeasureVirtualTripodFocus(
                 currentLuma, analysisWidth, analysisHeight, focusScore, stream);
-            openzoom::LaunchSelectSharperVirtualTripodReference(
+            okuflow::LaunchSelectSharperVirtualTripodReference(
                 currentLuma, referenceLuma, static_cast<int>(analysisPixels),
                 focusScore, bestFocusScore, selectionFlag, stream);
             if (frame + 1 == kFocusSelectionFrames) {
                 buildReference(0);
-                openzoom::LaunchInitializeVirtualTripodKeyframe(
+                okuflow::LaunchInitializeVirtualTripodKeyframe(
                     keyframeOrigins, keyframeValid, 0, stream);
-                openzoom::LaunchInitializeVirtualTripodAccumulator(
+                okuflow::LaunchInitializeVirtualTripodAccumulator(
                     referenceLuma, referenceAccumulator,
                     referenceSampleCounts, static_cast<int>(analysisPixels),
                     stream);
@@ -809,9 +809,9 @@ int main(int argc, char** argv)
                    options.referenceAccumulationFrames) {
             phase = "accumulating";
             estimateMotion();
-            openzoom::LaunchMeasureVirtualTripodFocus(
+            okuflow::LaunchMeasureVirtualTripodFocus(
                 currentLuma, analysisWidth, analysisHeight, focusScore, stream);
-            openzoom::LaunchAccumulateVirtualTripodReference(
+            okuflow::LaunchAccumulateVirtualTripodReference(
                 currentLuma, referenceLuma, analysisWidth, analysisHeight,
                 static_cast<float>(factorX), static_cast<float>(factorY),
                 focusScore, bestFocusScore, state, referenceAccumulator,
@@ -819,19 +819,19 @@ int main(int argc, char** argv)
             ++accumulationFrame;
             if (accumulationFrame ==
                 options.referenceAccumulationFrames) {
-                openzoom::LaunchFinalizeVirtualTripodReference(
+                okuflow::LaunchFinalizeVirtualTripodReference(
                     referenceLuma, referenceAccumulator,
                     referenceSampleCounts, static_cast<int>(analysisPixels),
                     stream);
                 buildReference(0);
-                openzoom::LaunchInitializeVirtualTripodKeyframe(
+                okuflow::LaunchInitializeVirtualTripodKeyframe(
                     keyframeOrigins, keyframeValid, 0, stream);
             }
         } else {
             estimateMotion();
         }
 
-        openzoom::LaunchStabilizationWarp(
+        okuflow::LaunchStabilizationWarp(
             deviceOutput, outputPitch, deviceInput, inputPitch,
             options.width, options.height, state, stream);
         ok = ok && CheckCuda(
@@ -841,10 +841,10 @@ int main(int argc, char** argv)
             "cudaMemcpyAsync replay previous luma");
         previousValid = true;
 
-        openzoom::StabilizationState measuredState{};
+        okuflow::StabilizationState measuredState{};
         unsigned int measuredPairCount = 0;
         unsigned int measuredReferenceFeatureCount = 0;
-        std::array<openzoom::TripodMatchCandidate, kKeyframeCount>
+        std::array<okuflow::TripodMatchCandidate, kKeyframeCount>
             measuredCandidates{};
         ok = CheckCuda(
                  cudaMemcpy2DAsync(

@@ -4,7 +4,7 @@ Status: **IMPLEMENTED / VERIFY COMMIT CONTENTS.** Proposed 2026-07-24,
 re-audited and expanded 2026-07-28, then implemented and validated on Windows
 the same day. The CPU matrix passed 4/4 tests, the CUDA matrix passed 6/6
 tests, and the release-bundle path passed the same six tests before publishing
-a hash-verified `dist/OpenZoom` bundle.
+a hash-verified `dist/OkuFlow` bundle.
 
 The remaining gate is repository hygiene rather than code: several test
 sources and the optional fixture generator are still untracked in the owner's
@@ -31,8 +31,8 @@ Read this before touching anything; the original plan predates half of it.
 | `view_transform_tests` | `viewport_transform_geometry` (`:42`) | none | n/a | tracked |
 | `annotation_model_tests` | `annotation_model_geometry` (`:64`) | none | n/a | **untracked** |
 | `annotation_overlay_tests` | `annotation_overlay_interactions` (`:91`) | `WIN32` (`:70`) | needs a real desktop session — it drags across a frameless-window boundary | **untracked** |
-| `stabilization_cuda_tests` | `stabilization_similarity_cuda` (`:112`) | `WIN32 AND OPENZOOM_ENABLE_CUDA` (`:98`) | `SKIP_RETURN_CODE 77` (`:116`) — clean skip without a CUDA device | **untracked** |
-| `stabilization_replay_cuda` | `stabilization_replay_regression` | `WIN32 AND OPENZOOM_ENABLE_CUDA` | `SKIP_RETURN_CODE 77`; deterministic clamp-bump input synthesized in memory | **untracked** |
+| `stabilization_cuda_tests` | `stabilization_similarity_cuda` (`:112`) | `WIN32 AND OKUFLOW_ENABLE_CUDA` (`:98`) | `SKIP_RETURN_CODE 77` (`:116`) — clean skip without a CUDA device | **untracked** |
+| `stabilization_replay_cuda` | `stabilization_replay_regression` | `WIN32 AND OKUFLOW_ENABLE_CUDA` | `SKIP_RETURN_CODE 77`; deterministic clamp-bump input synthesized in memory | **untracked** |
 
 `stabilization_replay_cuda` is the offline replay harness (CLI:
 `--input/--output/--trace/--width/--height/--zoom/--strength`,
@@ -133,9 +133,9 @@ drop their private copies of generator + Qt path. Then add:
   "binaryDir": "${sourceDir}/build/msvc-cuda-tests",
   "cacheVariables": {
     "CMAKE_BUILD_TYPE": "Release",
-    "OPENZOOM_ENABLE_CUDA": "ON",
-    "OPENZOOM_ENABLE_TEXT_SR": "OFF",
-    "OPENZOOM_ENABLE_TESTS": "ON",
+    "OKUFLOW_ENABLE_CUDA": "ON",
+    "OKUFLOW_ENABLE_TEXT_SR": "OFF",
+    "OKUFLOW_ENABLE_TESTS": "ON",
     "CMAKE_CUDA_ARCHITECTURES": "75;86;89"
   }
 }
@@ -214,10 +214,10 @@ release tree's suite, assembles a disposable staging directory, validates its
 runtime inventory and executable hash, and only then publishes. The original
 defects and their implemented remedies are retained below for provenance:
 
-**C1. It never runs a test.** The build step compiles only the `open_zoom`
-target (`:116-121`); `OPENZOOM_ENABLE_TESTS` is never passed (`:107-113`), so
+**C1. It never runs a test.** The build step compiles only the `oku_flow`
+target (`:116-121`); `OKUFLOW_ENABLE_TESTS` is never passed (`:107-113`), so
 the bundle tree contains no tests to run even by hand. Fix: add
-`-DOPENZOOM_ENABLE_TESTS=ON` to the configure at `:113`, build the default
+`-DOKUFLOW_ENABLE_TESTS=ON` to the configure at `:113`, build the default
 target set, and insert between `:121` and the EXE probe at `:123`:
 
 ```bat
@@ -228,7 +228,7 @@ if errorlevel 1 goto :fail
 One tree, and the gate runs against the exact bits being shipped — CUDA suite
 included on the owner's machine (CUDA is ON by default here, `:108`), clean
 77-skips elsewhere. Escape hatch for emergency rebuilds:
-`OPENZOOM_SKIP_BUNDLE_TESTS=1` prints a loud `WARNING: UNTESTED BUNDLE` and
+`OKUFLOW_SKIP_BUNDLE_TESTS=1` prints a loud `WARNING: UNTESTED BUNDLE` and
 skips the ctest leg only — default is always test.
 
 **C2. Missing windeployqt is a warning, then success.** `:166-168` prints
@@ -338,7 +338,7 @@ Validated on Windows 2026-07-28:
 3. `scripts\build_release_bundle.bat` rebuilt the tested Release tree, passed
    all six tests, ran `windeployqt`, verified required Qt/platform/license
    files, matched the staged and built executable hashes, and published
-   `dist/OpenZoom`.
+   `dist/OkuFlow`.
 4. The published executable SHA-256 was
    `6995ea8d897240ae37e9310d03c182544f4c5462db33105969f1f8def013953b`.
 5. A deliberately invalid Qt prefix failed non-zero with an instructional

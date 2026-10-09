@@ -1,7 +1,7 @@
 # Review Findings — Batch C/D + Plan 15 Drop (2026-07-23)
 
 Independent review of the working tree as of the 18:12 build (the large drop
-containing the app decomposition, the include/openzoom header tree, the tests,
+containing the app decomposition, the include/okuflow header tree, the tests,
 and the plan-15 aspect-safe high-refresh viewport). Four review passes ran over
 (1) app decomposition fidelity, (2) UI/shutdown safety, (3) the GPU/fence
 architecture, (4) tests/CMake/docs/hygiene, plus independent crash forensics on
@@ -44,7 +44,7 @@ in the drop.**
   value `slotSignal = ++fenceValue_` (src/d3d12/presenter.cpp:398-410).
 - `FenceSequencer::BeginGraphicsFrame()` is const and reserves nothing;
   `GraphicsSignaled()` advances `nextValue_` by only 1
-  (include/openzoom/app/pipeline_orchestrator.hpp:52-58). The sequencer never
+  (include/okuflow/app/pipeline_orchestrator.hpp:52-58). The sequencer never
   learns about the slot signal unless `ReadbackObserved(GetLastSignaledFenceValue())`
   runs — and that call sits inside `if (readbackRequestId != 0)`
   (src/app/app_pipeline_runtime.cpp:555-568).
@@ -123,9 +123,9 @@ Wait before the copy.
 
 - **Test presets are false-green no-ops:** `msvc-debug-tests` /
   `msvc-release-tests` point at configure presets with
-  `OPENZOOM_ENABLE_TESTS=OFF` (cmake/CMakePresets.json:19, 33, 67-73) — ctest
+  `OKUFLOW_ENABLE_TESTS=OFF` (cmake/CMakePresets.json:19, 33, 67-73) — ctest
   finds zero tests and exits 0. The test TUs are CUDA-free, so just flip
-  `OPENZOOM_ENABLE_TESTS=ON` in all three configure presets (also fixes the
+  `OKUFLOW_ENABLE_TESTS=ON` in all three configure presets (also fixes the
   "tests live only in the deprecated CPU preset" tension) and add
   `"execution": {"noTestsAction": "error"}` to every test preset.
 - **Missing tests where the CHANGELOG claims most:** legacy color modes 2-16 →
@@ -170,7 +170,7 @@ Wait before the copy.
   `assistiveRuntime_->IsCodexTurnActive()` on every exit with a running Codex
   child). The fix set — `QSignalBlocker` across `Shutdown()`
   (codex_app_server_client.cpp:108-115) plus the disconnect-all sweep in
-  `~OpenZoomApp` (app_bootstrap.cpp:730-739) — is correct and triple-redundant.
+  `~OkuFlowApp` (app_bootstrap.cpp:730-739) — is correct and triple-redundant.
   Six launch/run/close smoke cycles on the 18:12 build: clean exit 0, zero new
   WER events.
 - The 0xc0000374 heap-corruption events (03:57, 04:13-04:18) are the same
@@ -182,7 +182,7 @@ Wait before the copy.
 
 ## Positive findings (don't re-litigate)
 
-- Decomposition fidelity: every old `OpenZoomApp::` method accounted for;
+- Decomposition fidelity: every old `OkuFlowApp::` method accounted for;
   constructor/Initialize sequence preserved ~1:1; capture callback still
   touches only `latestFrame_` under `cameraMutex_` + a queued marshal
   (verified-non-issues #6 still holds); FenceSequencer encodes the old inline
@@ -232,7 +232,7 @@ per-sample `qInfo` line, ran the release build with
   1-3 ms GPU — all 80x45 flow vectors accepted, estimator chain live.
 - NVOF semantics verified against the SDK programming guide: "Forward flow
   represents the movement of pixels from input frame to reference frame";
-  OpenZoom passes input=previous / reference=current, so pairs and signs are
+  OkuFlow passes input=previous / reference=current, so pairs and signs are
   correct. S10.5 fixed-point divide (/32) present in the flow-pairs kernel.
 
 **Root cause: filter tuning, not plumbing.** Simulating the exact
@@ -251,7 +251,7 @@ CV model cannot resonate with slow swings, and process-noise floors dropped
 strength: 1 Hz -11% -> +41%, 1.5 Hz 14% -> +56%, 2 Hz 33% -> +64%, 3 Hz
 54% -> +75%; deliberate 240 px pan still tracks (max lag ~25 px, view
 settles 0.5 s after the hand stops). Rebuilt, smoke-ran clean (engine
-active, exit 0), and copied the new exe into `dist/OpenZoom`.
+active, exit 0), and copied the new exe into `dist/OkuFlow`.
 
 **Still open / for the implementer:**
 - Resolved: the per-second `Stabilizer sample` stderr line was removed after
@@ -268,7 +268,7 @@ active, exit 0), and copied the new exe into `dist/OpenZoom`.
 
 The owner supplied the paired 2.97-second, 30 FPS AV1 recording
 `VID_20260724_011241_815`. The motion analysis completed before a legacy release
-bundle cleanup removed the local `dist/OpenZoom/output` tree. The numerical
+bundle cleanup removed the local `dist/OkuFlow/output` tree. The numerical
 findings below remain valid, but the source clips and generated traces must be
 restored from Google Drive Trash if another analysis pass is needed. The bundle
 script now preserves `output` and performs its lock check before deletion so

@@ -1,0 +1,36 @@
+<RCC>
+    <qresource prefix="/okuflow/icons">
+        <file alias="app.png">okuflow-icon.png</file>
+        <file alias="camera.svg">icons/lucide/camera.svg</file>
+        <file alias="record.svg">icons/lucide/circle.svg</file>
+        <file alias="record-stop.svg">icons/lucide/square-stop.svg</file>
+        <file alias="explain.svg">icons/lucide/message-circle-question.svg</file>
+        <file alias="read.svg">icons/lucide/volume-2.svg</file>
+        <file alias="draw.svg">icons/lucide/pencil.svg</file>
+        <file alias="pointer.svg">icons/lucide/mouse-pointer.svg</file>
+        <file alias="line.svg">icons/lucide/slash.svg</file>
+        <file alias="shape.svg">icons/lucide/square.svg</file>
+        <file alias="text.svg">icons/lucide/type.svg</file>
+        <file alias="eraser.svg">icons/lucide/eraser.svg</file>
+        <file alias="undo.svg">icons/lucide/undo-2.svg</file>
+        <file alias="redo.svg">icons/lucide/redo-2.svg</file>
+        <file alias="save.svg">icons/lucide/save.svg</file>
+        <file alias="clear.svg">icons/lucide/trash-2.svg</file>
+        <file alias="done.svg">icons/lucide/check.svg</file>
+        <file alias="open-settings.svg">icons/lucide/square-arrow-out-up-right.svg</file>
+        <file alias="previous.svg">icons/lucide/chevron-left.svg</file>
+        <file alias="next.svg">icons/lucide/chevron-right.svg</file>
+        <file alias="close.svg">icons/lucide/x.svg</file>
+        <file alias="help.svg">icons/lucide/circle-help.svg</file>
+        <file alias="search.svg">icons/lucide/search.svg</file>
+        <file alias="step-back.svg">icons/lucide/step-back.svg</file>
+        <file alias="pause.svg">icons/lucide/pause.svg</file>
+        <file alias="play.svg">icons/lucide/play.svg</file>
+        <file alias="step-forward.svg">icons/lucide/step-forward.svg</file>
+    </qresource>
+    <qresource prefix="/flags">
+        <file alias="us.svg">flags/us.svg</file>
+        <file alias="tr.svg">flags/tr.svg</file>
+        <file alias="de.svg">flags/de.svg</file>
+    </qresource>
+</RCC>

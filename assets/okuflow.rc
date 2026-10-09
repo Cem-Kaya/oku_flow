@@ -1,0 +1,4 @@
+#include <windows.h>
+
+#define IDI_OKUFLOW 101
+IDI_OKUFLOW ICON "okuflow.ico"

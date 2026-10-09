@@ -1,4 +1,4 @@
-# OpenZoom Contributor License Agreement (Individual)
+# OkuFlow Contributor License Agreement (Individual)
 
 Thank you for wanting to contribute. Before your first contribution is
 merged, you must agree to this document. It is deliberately explicit: it
@@ -16,7 +16,7 @@ the work is yours to give.
 
 ## 1. Definitions
 
-- **"Project"** means OpenZoom, including any renamed successor of the
+- **"Project"** means OkuFlow, including any renamed successor of the
   same code base, currently maintained by the repository owner
   ("**the Owner**").
 - **"You"** means the individual agreeing to this CLA.
@@ -88,7 +88,7 @@ it.
 In the description of your first pull request, include this sentence
 verbatim, with your name and email matching your commit authorship:
 
-> I have read the OpenZoom Contributor License Agreement (CLA.md) and I
+> I have read the OkuFlow Contributor License Agreement (CLA.md) and I
 > agree to it for this and all my future contributions to this Project.
 > — NAME <EMAIL>
 

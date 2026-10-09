@@ -1,11 +1,11 @@
 #ifdef _WIN32
 
-#include "openzoom/app/interaction_controller.hpp"
+#include "okuflow/app/interaction_controller.hpp"
 
-#include "openzoom/app/app.hpp"
-#include "openzoom/app/constants.hpp"
-#include "openzoom/ui/main_window.hpp"
-#include "openzoom/ui/ui_translation.hpp"
+#include "okuflow/app/app.hpp"
+#include "okuflow/app/constants.hpp"
+#include "okuflow/ui/main_window.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 
 #include <QCursor>
 #include <QAccessible>
@@ -19,9 +19,9 @@
 #include <algorithm>
 #include <cmath>
 
-namespace openzoom {
+namespace okuflow {
 
-InteractionController::InteractionController(OpenZoomApp& app)
+InteractionController::InteractionController(OkuFlowApp& app)
     : app_(app) {}
 
 bool InteractionController::HandlePanKey(int key, bool pressed)
@@ -397,6 +397,6 @@ void InteractionController::SetJoystickAxes(float x, float y)
     }
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

@@ -1,9 +1,9 @@
-#include "openzoom/app/ui_state_manager.hpp"
+#include "okuflow/app/ui_state_manager.hpp"
 
-#include "openzoom/app/app.hpp"
-#include "openzoom/app/constants.hpp"
-#include "openzoom/ui/color_scheme_picker.hpp"
-#include "openzoom/ui/main_window.hpp"
+#include "okuflow/app/app.hpp"
+#include "okuflow/app/constants.hpp"
+#include "okuflow/ui/color_scheme_picker.hpp"
+#include "okuflow/ui/main_window.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -21,115 +21,120 @@
 #include <cmath>
 #include <utility>
 
-namespace openzoom {
+namespace okuflow {
 
-using namespace openzoom::app_constants;
+using namespace okuflow::app_constants;
 
-UIStateManager::UIStateManager(MainWindow& window, OpenZoomApp& app)
+UIStateManager::UIStateManager(MainWindow& window, OkuFlowApp& app)
     : app_(app)
 {
-#define OPENZOOM_BIND_WIDGET(member, accessor) \
+#define OKUFLOW_BIND_WIDGET(member, accessor) \
     member = window.accessor(); \
     Q_ASSERT_X(member, "UIStateManager", #accessor " returned null")
 
-    OPENZOOM_BIND_WIDGET(renderWidget_, renderWidget);
-    OPENZOOM_BIND_WIDGET(cameraCombo_, cameraCombo);
-    OPENZOOM_BIND_WIDGET(microphoneCombo_, microphoneCombo);
-    OPENZOOM_BIND_WIDGET(presetList_, presetList);
-    OPENZOOM_BIND_WIDGET(presetDescriptionLabel_, presetDescriptionLabel);
-    OPENZOOM_BIND_WIDGET(promotePresetButton_, promotePresetButton);
-    OPENZOOM_BIND_WIDGET(cameraFormatCombo_, cameraFormatCombo);
-    OPENZOOM_BIND_WIDGET(cameraFormatNoticeLabel_, cameraFormatNoticeLabel);
-    OPENZOOM_BIND_WIDGET(bwCheckbox_, blackWhiteCheckbox);
-    OPENZOOM_BIND_WIDGET(bwSlider_, blackWhiteSlider);
-    OPENZOOM_BIND_WIDGET(zoomCheckbox_, zoomCheckbox);
-    OPENZOOM_BIND_WIDGET(zoomSlider_, zoomSlider);
-    OPENZOOM_BIND_WIDGET(debugButton_, debugButton);
-    OPENZOOM_BIND_WIDGET(capturePhotoButton_, capturePhotoButton);
-    OPENZOOM_BIND_WIDGET(recordButton_, recordButton);
-    OPENZOOM_BIND_WIDGET(focusMarkerCheckbox_, focusMarkerCheckbox);
-    OPENZOOM_BIND_WIDGET(zoomCenterXSlider_, zoomCenterXSlider);
-    OPENZOOM_BIND_WIDGET(zoomCenterYSlider_, zoomCenterYSlider);
-    OPENZOOM_BIND_WIDGET(rotationCombo_, rotationCombo);
-    OPENZOOM_BIND_WIDGET(viewportRateCombo_, viewportRateCombo);
-    OPENZOOM_BIND_WIDGET(viewportFitCombo_, viewportFitCombo);
-    OPENZOOM_BIND_WIDGET(cameraAccelerationCombo_, cameraAccelerationCombo);
-    OPENZOOM_BIND_WIDGET(cameraAccelerationStatusLabel_, cameraAccelerationStatusLabel);
-    OPENZOOM_BIND_WIDGET(testCameraAccelerationButton_, testCameraAccelerationButton);
-    OPENZOOM_BIND_WIDGET(recordingCanvasCombo_, recordingCanvasCombo);
-    OPENZOOM_BIND_WIDGET(joystickCheckbox_, joystickCheckbox);
-    OPENZOOM_BIND_WIDGET(zoomWheelAccelerationCheckbox_, zoomWheelAccelerationCheckbox);
-    OPENZOOM_BIND_WIDGET(collapseButton_, controlsToggleButton);
-    OPENZOOM_BIND_WIDGET(controlsContainer_, controlsContainer);
-    OPENZOOM_BIND_WIDGET(blurCheckbox_, blurCheckbox);
-    OPENZOOM_BIND_WIDGET(blurSigmaSlider_, blurSigmaSlider);
-    OPENZOOM_BIND_WIDGET(blurRadiusSlider_, blurRadiusSlider);
-    OPENZOOM_BIND_WIDGET(blurSigmaValueLabel_, blurSigmaValueLabel);
-    OPENZOOM_BIND_WIDGET(blurRadiusValueLabel_, blurRadiusValueLabel);
-    OPENZOOM_BIND_WIDGET(temporalSmoothCheckbox_, temporalSmoothCheckbox);
-    OPENZOOM_BIND_WIDGET(temporalSmoothSlider_, temporalSmoothSlider);
-    OPENZOOM_BIND_WIDGET(temporalSmoothValueLabel_, temporalSmoothValueLabel);
-    OPENZOOM_BIND_WIDGET(ocrAssistCheckbox_, ocrAssistCheckbox);
-    OPENZOOM_BIND_WIDGET(vlmAssistCheckbox_, vlmAssistCheckbox);
-    OPENZOOM_BIND_WIDGET(assistiveOverlayCheckbox_, assistiveOverlayCheckbox);
-    OPENZOOM_BIND_WIDGET(spatialSharpenCheckbox_, spatialSharpenCheckbox);
-    OPENZOOM_BIND_WIDGET(spatialBackendCombo_, spatialBackendCombo);
-    OPENZOOM_BIND_WIDGET(spatialSharpnessSlider_, spatialSharpnessSlider);
-    OPENZOOM_BIND_WIDGET(spatialSharpnessValueLabel_, spatialSharpnessValueLabel);
-    OPENZOOM_BIND_WIDGET(processingStatusLabel_, processingStatusLabel);
-    OPENZOOM_BIND_WIDGET(performanceDiagnosticsLabel_, performanceDiagnosticsLabel);
-    OPENZOOM_BIND_WIDGET(stabilizationCheckbox_, stabilizationCheckbox);
-    OPENZOOM_BIND_WIDGET(keystoneCheckbox_, keystoneCheckbox);
-    OPENZOOM_BIND_WIDGET(autoContrastCheckbox_, autoContrastCheckbox);
-    OPENZOOM_BIND_WIDGET(autoContrastStrengthSlider_, autoContrastStrengthSlider);
-    OPENZOOM_BIND_WIDGET(simpleTextClarityCheckbox_, simpleTextClarityCheckbox);
-    OPENZOOM_BIND_WIDGET(textClarityCheckbox_, textClarityCheckbox);
-    OPENZOOM_BIND_WIDGET(backgroundFlattenCheckbox_, backgroundFlattenCheckbox);
-    OPENZOOM_BIND_WIDGET(backgroundFlattenStrengthSlider_, backgroundFlattenStrengthSlider);
-    OPENZOOM_BIND_WIDGET(adaptiveBinarizationCheckbox_, adaptiveBinarizationCheckbox);
-    OPENZOOM_BIND_WIDGET(sauvolaStrengthSlider_, sauvolaStrengthSlider);
-    OPENZOOM_BIND_WIDGET(binarizationSoftnessSlider_, binarizationSoftnessSlider);
-    OPENZOOM_BIND_WIDGET(textPolarityCombo_, textPolarityCombo);
-    OPENZOOM_BIND_WIDGET(strokeWeightSlider_, strokeWeightSlider);
-    OPENZOOM_BIND_WIDGET(smartSharpenCheckbox_, smartSharpenCheckbox);
-    OPENZOOM_BIND_WIDGET(smartSharpenStrengthSlider_, smartSharpenStrengthSlider);
-    OPENZOOM_BIND_WIDGET(claheCheckbox_, claheCheckbox);
-    OPENZOOM_BIND_WIDGET(claheClipLimitSlider_, claheClipLimitSlider);
-    OPENZOOM_BIND_WIDGET(twoColorTextCheckbox_, twoColorTextCheckbox);
-    OPENZOOM_BIND_WIDGET(textHysteresisCheckbox_, textHysteresisCheckbox);
-    OPENZOOM_BIND_WIDGET(textHysteresisStrengthSlider_, textHysteresisStrengthSlider);
-    OPENZOOM_BIND_WIDGET(selectiveSharpenCheckbox_, selectiveSharpenCheckbox);
-    OPENZOOM_BIND_WIDGET(focusDetectionCheckbox_, focusDetectionCheckbox);
-    OPENZOOM_BIND_WIDGET(focusThresholdSlider_, focusThresholdSlider);
-    OPENZOOM_BIND_WIDGET(glareSuppressionCheckbox_, glareSuppressionCheckbox);
-    OPENZOOM_BIND_WIDGET(glareSuppressionStrengthSlider_, glareSuppressionStrengthSlider);
-    OPENZOOM_BIND_WIDGET(mlTextSuperResolutionCheckbox_, mlTextSuperResolutionCheckbox);
-    OPENZOOM_BIND_WIDGET(mlTextSuperResolutionStrengthSlider_, mlTextSuperResolutionStrengthSlider);
-    OPENZOOM_BIND_WIDGET(mlTextSuperResolutionPrefer2xCheckbox_, mlTextSuperResolutionPrefer2xCheckbox);
-    OPENZOOM_BIND_WIDGET(mlTextSuperResolutionUltra1440pCheckbox_, mlTextSuperResolutionUltra1440pCheckbox);
-    OPENZOOM_BIND_WIDGET(displayColorPicker_, displayColorPicker);
-    OPENZOOM_BIND_WIDGET(contrastSlider_, contrastSlider);
-    OPENZOOM_BIND_WIDGET(brightnessSlider_, brightnessSlider);
-    OPENZOOM_BIND_WIDGET(explainNowButton_, explainNowButton);
-    OPENZOOM_BIND_WIDGET(readTextButton_, readTextButton);
-    OPENZOOM_BIND_WIDGET(aiSettingsButton_, aiSettingsButton);
-    OPENZOOM_BIND_WIDGET(openNotesButton_, openNotesButton);
-    OPENZOOM_BIND_WIDGET(setupAssistantButton_, setupAssistantButton);
-    OPENZOOM_BIND_WIDGET(assistantConnectionLabel_, assistantConnectionLabel);
-    OPENZOOM_BIND_WIDGET(assistantUsageLabel_, assistantUsageLabel);
-    OPENZOOM_BIND_WIDGET(assistantConnectButton_, assistantConnectButton);
-    OPENZOOM_BIND_WIDGET(assistantTranscript_, assistantTranscript);
-    OPENZOOM_BIND_WIDGET(assistantPromptEdit_, assistantPromptEdit);
-    OPENZOOM_BIND_WIDGET(assistantAttachFrameCheckbox_, assistantAttachFrameCheckbox);
-    OPENZOOM_BIND_WIDGET(assistantSendButton_, assistantSendButton);
-    OPENZOOM_BIND_WIDGET(assistantStopButton_, assistantStopButton);
-    OPENZOOM_BIND_WIDGET(assistantNewButton_, assistantNewButton);
-    OPENZOOM_BIND_WIDGET(assistantHistoryList_, assistantHistoryList);
-    OPENZOOM_BIND_WIDGET(assistantRenameButton_, assistantRenameButton);
-    OPENZOOM_BIND_WIDGET(assistantExportButton_, assistantExportButton);
-    OPENZOOM_BIND_WIDGET(assistantDeleteButton_, assistantDeleteButton);
+    OKUFLOW_BIND_WIDGET(renderWidget_, renderWidget);
+    OKUFLOW_BIND_WIDGET(cameraCombo_, cameraCombo);
+    OKUFLOW_BIND_WIDGET(microphoneCombo_, microphoneCombo);
+    OKUFLOW_BIND_WIDGET(presetList_, presetList);
+    OKUFLOW_BIND_WIDGET(presetDescriptionLabel_, presetDescriptionLabel);
+    OKUFLOW_BIND_WIDGET(promotePresetButton_, promotePresetButton);
+    OKUFLOW_BIND_WIDGET(cameraFormatCombo_, cameraFormatCombo);
+    OKUFLOW_BIND_WIDGET(cameraFormatNoticeLabel_, cameraFormatNoticeLabel);
+    OKUFLOW_BIND_WIDGET(bwCheckbox_, blackWhiteCheckbox);
+    OKUFLOW_BIND_WIDGET(bwSlider_, blackWhiteSlider);
+    OKUFLOW_BIND_WIDGET(zoomCheckbox_, zoomCheckbox);
+    OKUFLOW_BIND_WIDGET(zoomSlider_, zoomSlider);
+    OKUFLOW_BIND_WIDGET(debugButton_, debugButton);
+    OKUFLOW_BIND_WIDGET(capturePhotoButton_, capturePhotoButton);
+    OKUFLOW_BIND_WIDGET(recordButton_, recordButton);
+    OKUFLOW_BIND_WIDGET(focusMarkerCheckbox_, focusMarkerCheckbox);
+    OKUFLOW_BIND_WIDGET(zoomCenterXSlider_, zoomCenterXSlider);
+    OKUFLOW_BIND_WIDGET(zoomCenterYSlider_, zoomCenterYSlider);
+    OKUFLOW_BIND_WIDGET(rotationCombo_, rotationCombo);
+    OKUFLOW_BIND_WIDGET(viewportRateCombo_, viewportRateCombo);
+    OKUFLOW_BIND_WIDGET(viewportFitCombo_, viewportFitCombo);
+    OKUFLOW_BIND_WIDGET(cameraAccelerationCombo_, cameraAccelerationCombo);
+    OKUFLOW_BIND_WIDGET(cameraAccelerationStatusLabel_, cameraAccelerationStatusLabel);
+    OKUFLOW_BIND_WIDGET(testCameraAccelerationButton_, testCameraAccelerationButton);
+    OKUFLOW_BIND_WIDGET(recordingCanvasCombo_, recordingCanvasCombo);
+    OKUFLOW_BIND_WIDGET(transcribeMicrophoneCheckbox_, transcribeMicrophoneCheckbox);
+    OKUFLOW_BIND_WIDGET(transcriptToNotesCheckbox_, transcriptToNotesCheckbox);
+    OKUFLOW_BIND_WIDGET(transcriptionStatusLabel_, transcriptionStatusLabel);
+    OKUFLOW_BIND_WIDGET(transcriptionQuotaLabel_, transcriptionQuotaLabel);
+    OKUFLOW_BIND_WIDGET(transcriptPartialLabel_, transcriptPartialLabel);
+    OKUFLOW_BIND_WIDGET(transcriptFinalsView_, transcriptFinalsView);
+    OKUFLOW_BIND_WIDGET(joystickCheckbox_, joystickCheckbox);
+    OKUFLOW_BIND_WIDGET(zoomWheelAccelerationCheckbox_, zoomWheelAccelerationCheckbox);
+    OKUFLOW_BIND_WIDGET(collapseButton_, controlsToggleButton);
+    OKUFLOW_BIND_WIDGET(controlsContainer_, controlsContainer);
+    OKUFLOW_BIND_WIDGET(blurCheckbox_, blurCheckbox);
+    OKUFLOW_BIND_WIDGET(blurSigmaSlider_, blurSigmaSlider);
+    OKUFLOW_BIND_WIDGET(blurRadiusSlider_, blurRadiusSlider);
+    OKUFLOW_BIND_WIDGET(blurSigmaValueLabel_, blurSigmaValueLabel);
+    OKUFLOW_BIND_WIDGET(blurRadiusValueLabel_, blurRadiusValueLabel);
+    OKUFLOW_BIND_WIDGET(temporalSmoothCheckbox_, temporalSmoothCheckbox);
+    OKUFLOW_BIND_WIDGET(temporalSmoothSlider_, temporalSmoothSlider);
+    OKUFLOW_BIND_WIDGET(temporalSmoothValueLabel_, temporalSmoothValueLabel);
+    OKUFLOW_BIND_WIDGET(vlmAssistCheckbox_, vlmAssistCheckbox);
+    OKUFLOW_BIND_WIDGET(assistiveOverlayCheckbox_, assistiveOverlayCheckbox);
+    OKUFLOW_BIND_WIDGET(spatialSharpenCheckbox_, spatialSharpenCheckbox);
+    OKUFLOW_BIND_WIDGET(spatialBackendCombo_, spatialBackendCombo);
+    OKUFLOW_BIND_WIDGET(spatialSharpnessSlider_, spatialSharpnessSlider);
+    OKUFLOW_BIND_WIDGET(spatialSharpnessValueLabel_, spatialSharpnessValueLabel);
+    OKUFLOW_BIND_WIDGET(processingStatusLabel_, processingStatusLabel);
+    OKUFLOW_BIND_WIDGET(performanceDiagnosticsLabel_, performanceDiagnosticsLabel);
+    OKUFLOW_BIND_WIDGET(stabilizationCheckbox_, stabilizationCheckbox);
+    OKUFLOW_BIND_WIDGET(keystoneCheckbox_, keystoneCheckbox);
+    OKUFLOW_BIND_WIDGET(autoContrastCheckbox_, autoContrastCheckbox);
+    OKUFLOW_BIND_WIDGET(autoContrastStrengthSlider_, autoContrastStrengthSlider);
+    OKUFLOW_BIND_WIDGET(simpleTextClarityCheckbox_, simpleTextClarityCheckbox);
+    OKUFLOW_BIND_WIDGET(textClarityCheckbox_, textClarityCheckbox);
+    OKUFLOW_BIND_WIDGET(backgroundFlattenCheckbox_, backgroundFlattenCheckbox);
+    OKUFLOW_BIND_WIDGET(backgroundFlattenStrengthSlider_, backgroundFlattenStrengthSlider);
+    OKUFLOW_BIND_WIDGET(adaptiveBinarizationCheckbox_, adaptiveBinarizationCheckbox);
+    OKUFLOW_BIND_WIDGET(sauvolaStrengthSlider_, sauvolaStrengthSlider);
+    OKUFLOW_BIND_WIDGET(binarizationSoftnessSlider_, binarizationSoftnessSlider);
+    OKUFLOW_BIND_WIDGET(textPolarityCombo_, textPolarityCombo);
+    OKUFLOW_BIND_WIDGET(strokeWeightSlider_, strokeWeightSlider);
+    OKUFLOW_BIND_WIDGET(smartSharpenCheckbox_, smartSharpenCheckbox);
+    OKUFLOW_BIND_WIDGET(smartSharpenStrengthSlider_, smartSharpenStrengthSlider);
+    OKUFLOW_BIND_WIDGET(claheCheckbox_, claheCheckbox);
+    OKUFLOW_BIND_WIDGET(claheClipLimitSlider_, claheClipLimitSlider);
+    OKUFLOW_BIND_WIDGET(twoColorTextCheckbox_, twoColorTextCheckbox);
+    OKUFLOW_BIND_WIDGET(textHysteresisCheckbox_, textHysteresisCheckbox);
+    OKUFLOW_BIND_WIDGET(textHysteresisStrengthSlider_, textHysteresisStrengthSlider);
+    OKUFLOW_BIND_WIDGET(selectiveSharpenCheckbox_, selectiveSharpenCheckbox);
+    OKUFLOW_BIND_WIDGET(focusDetectionCheckbox_, focusDetectionCheckbox);
+    OKUFLOW_BIND_WIDGET(focusThresholdSlider_, focusThresholdSlider);
+    OKUFLOW_BIND_WIDGET(glareSuppressionCheckbox_, glareSuppressionCheckbox);
+    OKUFLOW_BIND_WIDGET(glareSuppressionStrengthSlider_, glareSuppressionStrengthSlider);
+    OKUFLOW_BIND_WIDGET(mlTextSuperResolutionCheckbox_, mlTextSuperResolutionCheckbox);
+    OKUFLOW_BIND_WIDGET(mlTextSuperResolutionStrengthSlider_, mlTextSuperResolutionStrengthSlider);
+    OKUFLOW_BIND_WIDGET(mlTextSuperResolutionPrefer2xCheckbox_, mlTextSuperResolutionPrefer2xCheckbox);
+    OKUFLOW_BIND_WIDGET(mlTextSuperResolutionUltra1440pCheckbox_, mlTextSuperResolutionUltra1440pCheckbox);
+    OKUFLOW_BIND_WIDGET(displayColorPicker_, displayColorPicker);
+    OKUFLOW_BIND_WIDGET(contrastSlider_, contrastSlider);
+    OKUFLOW_BIND_WIDGET(brightnessSlider_, brightnessSlider);
+    OKUFLOW_BIND_WIDGET(explainNowButton_, explainNowButton);
+    OKUFLOW_BIND_WIDGET(readTextButton_, readTextButton);
+    OKUFLOW_BIND_WIDGET(aiSettingsButton_, aiSettingsButton);
+    OKUFLOW_BIND_WIDGET(openNotesButton_, openNotesButton);
+    OKUFLOW_BIND_WIDGET(setupAssistantButton_, setupAssistantButton);
+    OKUFLOW_BIND_WIDGET(assistantConnectionLabel_, assistantConnectionLabel);
+    OKUFLOW_BIND_WIDGET(assistantUsageLabel_, assistantUsageLabel);
+    OKUFLOW_BIND_WIDGET(assistantConnectButton_, assistantConnectButton);
+    OKUFLOW_BIND_WIDGET(assistantTranscript_, assistantTranscript);
+    OKUFLOW_BIND_WIDGET(assistantPromptEdit_, assistantPromptEdit);
+    OKUFLOW_BIND_WIDGET(assistantAttachFrameCheckbox_, assistantAttachFrameCheckbox);
+    OKUFLOW_BIND_WIDGET(assistantSendButton_, assistantSendButton);
+    OKUFLOW_BIND_WIDGET(assistantStopButton_, assistantStopButton);
+    OKUFLOW_BIND_WIDGET(assistantNewButton_, assistantNewButton);
+    OKUFLOW_BIND_WIDGET(assistantHistoryList_, assistantHistoryList);
+    OKUFLOW_BIND_WIDGET(assistantRenameButton_, assistantRenameButton);
+    OKUFLOW_BIND_WIDGET(assistantExportButton_, assistantExportButton);
+    OKUFLOW_BIND_WIDGET(assistantDeleteButton_, assistantDeleteButton);
 
-#undef OPENZOOM_BIND_WIDGET
+#undef OKUFLOW_BIND_WIDGET
 }
 
 void UIStateManager::RunWithSignalsBlocked(
@@ -165,7 +170,6 @@ settings::AdvancedConfig UIStateManager::ReadConfigFromUI() const
     config.spatialSharpness = app_.spatialSharpness_;
     config.debugView = app_.debugViewEnabled_;
     config.focusMarker = app_.focusMarkerEnabled_;
-    config.ocrAssistEnabled = app_.ocrAssistEnabled_;
     config.vlmAssistEnabled = app_.vlmAssistEnabled_;
     config.assistiveOverlayEnabled = app_.assistiveOverlayEnabled_;
     config.stabilizationEnabled = app_.stabilizationEnabled_;
@@ -341,7 +345,7 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
     setChecked(glareSuppressionCheckbox_, config.glareSuppressionEnabled);
     setSlider(glareSuppressionStrengthSlider_, static_cast<int>(std::round(config.glareSuppressionStrength * 100.0f)));
     app_.UpdateControlEnabledStates();
-#if OPENZOOM_ENABLE_TEXT_SR
+#if OKUFLOW_ENABLE_TEXT_SR
     setChecked(mlTextSuperResolutionCheckbox_, config.mlSuperResEnabled);
     setSlider(mlTextSuperResolutionStrengthSlider_,
               static_cast<int>(std::round(config.mlSuperResStrength * 100.0f)));
@@ -381,11 +385,6 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
     app_.OnContrastChanged(static_cast<int>(std::round(app_.contrast_ * 100.0f)));
     app_.OnBrightnessChanged(static_cast<int>(std::round(app_.brightness_ * 100.0f)));
 
-    if (ocrAssistCheckbox_) {
-        QSignalBlocker block(ocrAssistCheckbox_);
-        ocrAssistCheckbox_->setChecked(config.ocrAssistEnabled);
-    }
-    app_.ocrAssistEnabled_ = config.ocrAssistEnabled;
     if (vlmAssistCheckbox_) {
         QSignalBlocker block(vlmAssistCheckbox_);
         vlmAssistCheckbox_->setChecked(config.vlmAssistEnabled);
@@ -396,8 +395,7 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
         assistiveOverlayCheckbox_->setChecked(config.assistiveOverlayEnabled);
     }
     app_.assistiveOverlayEnabled_ = config.assistiveOverlayEnabled;
-    app_.assistiveManager_->SetModes(app_.ocrAssistEnabled_,
-                                     app_.vlmAssistEnabled_,
+    app_.assistiveManager_->SetModes(app_.vlmAssistEnabled_,
                                      app_.assistiveOverlayEnabled_);
 
     if (spatialSharpenCheckbox_) {
@@ -443,4 +441,4 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
 }
 
 
-} // namespace openzoom
+} // namespace okuflow

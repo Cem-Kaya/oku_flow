@@ -1,14 +1,14 @@
 NVIDIA Maxine integration notice
 
-OpenZoom includes only the MIT-licensed NVIDIA Maxine Video Effects SDK header
+OkuFlow includes only the MIT-licensed NVIDIA Maxine Video Effects SDK header
 snapshot under Maxine-VFX-SDK/. See Maxine-VFX-SDK/LICENSE for that license.
 
 The proprietary NVIDIA Video Effects runtime and models are not included in
-this repository or OpenZoom distributions. Users may obtain that runtime
+this repository or OkuFlow distributions. Users may obtain that runtime
 separately from NVIDIA and accept NVIDIA's applicable SDK terms:
 
 https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-sdk-license-agreement/
 https://www.nvidia.com/en-me/geforce/broadcasting/broadcast-sdk/resources/
 
-OpenZoom's use of NVIDIA names is attribution only and does not imply NVIDIA
+OkuFlow's use of NVIDIA names is attribution only and does not imply NVIDIA
 endorsement.

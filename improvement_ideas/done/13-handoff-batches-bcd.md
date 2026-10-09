@@ -28,8 +28,8 @@ report written — before starting the next.
 instrumentation, the S6b `FenceSequencer`, and the S4 threading audit) is
 already merged. Before you start, VERIFY this state instead of trusting it:
 
-1. `FenceSequencer` exists in `include/openzoom/app/app.hpp` (~line 89) and
-   `OpenZoomApp::RunCudaPipeline` in `src/app/app.cpp` (~3209–3256) issues
+1. `FenceSequencer` exists in `include/okuflow/app/app.hpp` (~line 89) and
+   `OkuFlowApp::RunCudaPipeline` in `src/app/app.cpp` (~3209–3256) issues
    tickets through it (`BeginCudaFrame` / `CudaSignaled` / `CudaFailed`).
 2. Run the app on hardware, hover the colored processing-status text in the
    corner, and confirm the tooltip shows the timing line
@@ -164,7 +164,7 @@ Sequence, fixed:
    async-readback drain consumption, disk-full messaging, output paths.
    app.cpp keeps only the button slot delegating in.
 3. **GATE:** create minimal Catch2/QtTest `settings_store` round-trip tests
-   FIRST — plan 06 item B2 — wired to the existing `OPENZOOM_ENABLE_TESTS`
+   FIRST — plan 06 item B2 — wired to the existing `OKUFLOW_ENABLE_TESTS`
    cmake option (which currently warns that `tests/` is missing,
    cmake/CMakeLists.txt ~123–128). Round-trip, legacy-v1 migration,
    corrupt-file, out-of-range-clamp cases. These tests must run CPU-only.
@@ -243,8 +243,8 @@ WSL/Linux agent shell through the PowerShell 7 bridge (per agents.md: use
    ```
 
    (same bat-file + pwsh-bridge mechanics; `msvc-cpu` configures with
-   `OPENZOOM_ENABLE_CUDA=OFF` into `build/msvc-cpu`; enable
-   `OPENZOOM_ENABLE_TESTS` for this preset when wiring the tests, and run
+   `OKUFLOW_ENABLE_CUDA=OFF` into `build/msvc-cpu`; enable
+   `OKUFLOW_ENABLE_TESTS` for this preset when wiring the tests, and run
    them via ctest from the build directory). A CPU-only compile gate has
    historically caught real breakage in this repo — do not skip it.
 

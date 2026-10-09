@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "openzoom/common/media_writer.hpp"
+#include "okuflow/common/media_writer.hpp"
 
 #include <mfapi.h>
 #include <mferror.h>
@@ -63,13 +63,13 @@ bool ContainsAudioStream(const std::filesystem::path& path)
 // Sets *skipped (and returns true) when the codec's encoder is unavailable
 // on this machine — AV1 encoding exists only as a hardware MFT, so its leg
 // must skip cleanly where H.264's software fallback always runs.
-bool RunCodecPass(openzoom::VideoRecorder::Codec codec, bool* skipped)
+bool RunCodecPass(okuflow::VideoRecorder::Codec codec, bool* skipped)
 {
     *skipped = false;
-    const char* codecName = openzoom::VideoRecorder::CodecName(codec);
+    const char* codecName = okuflow::VideoRecorder::CodecName(codec);
     const std::filesystem::path output = TemporaryMp4Path();
-    openzoom::VideoRecorder recorder;
-    const openzoom::VideoRecorder::AudioFormat audioFormat{};
+    okuflow::VideoRecorder recorder;
+    const okuflow::VideoRecorder::AudioFormat audioFormat{};
     bool passed = recorder.Start(
         output.wstring(), 320, 180, 30, 1, codec, &audioFormat);
     if (!passed) {
@@ -106,7 +106,7 @@ bool RunCodecPass(openzoom::VideoRecorder::Codec codec, bool* skipped)
                 static_cast<std::int16_t>(std::sin(phase) * 6000.0);
         }
 
-        openzoom::RecordingFrameIdentity identity;
+        okuflow::RecordingFrameIdentity identity;
         identity.captureTimestamp100ns =
             static_cast<std::int64_t>(frame) * frameDuration100ns;
         identity.captureClock100ns = identity.captureTimestamp100ns;
@@ -122,7 +122,7 @@ bool RunCodecPass(openzoom::VideoRecorder::Codec codec, bool* skipped)
             frameDuration100ns);
     }
 
-    const openzoom::VideoRecorder::FinalizeResult finalized =
+    const okuflow::VideoRecorder::FinalizeResult finalized =
         recorder.Stop();
     passed = passed && finalized.HasPlayableVideo() &&
              finalized.videoSamplesWritten == kFrameCount &&
@@ -188,7 +188,7 @@ int main()
     // codec validation, not just BeginWriting.
     bool h264Skipped = false;
     bool passed = RunCodecPass(
-        openzoom::VideoRecorder::Codec::H264, &h264Skipped);
+        okuflow::VideoRecorder::Codec::H264, &h264Skipped);
     if (h264Skipped) {
         std::cerr << "H.264 must always be available; treating the skip "
                      "as a failure\n";
@@ -196,7 +196,7 @@ int main()
     }
     bool av1Skipped = false;
     const bool av1Passed = RunCodecPass(
-        openzoom::VideoRecorder::Codec::Av1, &av1Skipped);
+        okuflow::VideoRecorder::Codec::Av1, &av1Skipped);
     std::cout << "AV1 leg: "
               << (av1Skipped
                       ? "SKIPPED (no hardware AV1 encoder)"
@@ -206,11 +206,11 @@ int main()
     std::error_code removeError;
 
     const std::filesystem::path emptyOutput = TemporaryMp4Path();
-    openzoom::VideoRecorder emptyRecorder;
+    okuflow::VideoRecorder emptyRecorder;
     bool emptyPassed = emptyRecorder.Start(
         emptyOutput.wstring(), 320, 180, 30, 1,
-        openzoom::VideoRecorder::Codec::H264);
-    const openzoom::VideoRecorder::FinalizeResult emptyFinalized =
+        okuflow::VideoRecorder::Codec::H264);
+    const okuflow::VideoRecorder::FinalizeResult emptyFinalized =
         emptyRecorder.Stop();
     emptyPassed =
         emptyPassed && !emptyFinalized.HasPlayableVideo() &&

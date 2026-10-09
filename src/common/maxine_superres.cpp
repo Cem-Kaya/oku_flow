@@ -1,6 +1,6 @@
-#include "openzoom/common/maxine_superres.hpp"
+#include "okuflow/common/maxine_superres.hpp"
 
-#if defined(_WIN32) && OPENZOOM_ENABLE_CUDA
+#if defined(_WIN32) && OKUFLOW_ENABLE_CUDA
 
 #include <windows.h>
 
@@ -19,7 +19,7 @@
 #include "nvVideoEffects.h"
 #pragma pop_macro("_MSC_VER")
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
 constexpr wchar_t kRuntimeRelativePath[] = L"NVIDIA Corporation\\NVIDIA Video Effects";
@@ -426,7 +426,7 @@ const std::wstring& MaxineSuperRes::RuntimeDirectory() const { return impl_->run
 std::wstring MaxineSuperRes::FindRuntimeDirectory(const std::wstring& overrideDirectory) {
     const std::array<std::wstring, 3> explicitCandidates{
         overrideDirectory,
-        ReadEnvironment(L"OPENZOOM_MAXINE_PATH"),
+        ReadEnvironment(L"OKUFLOW_MAXINE_PATH"),
         ReadEnvironment(L"NV_VIDEO_EFFECTS_PATH"),
     };
     for (const std::wstring& candidate : explicitCandidates) {
@@ -454,11 +454,11 @@ bool MaxineSuperRes::IsRuntimeInstalled(const std::wstring& overrideDirectory) {
     return !FindRuntimeDirectory(overrideDirectory).empty();
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #else
 
-namespace openzoom {
+namespace okuflow {
 
 class MaxineSuperRes::Impl {
 public:
@@ -480,6 +480,6 @@ const std::wstring& MaxineSuperRes::RuntimeDirectory() const { return impl_->run
 std::wstring MaxineSuperRes::FindRuntimeDirectory(const std::wstring&) { return {}; }
 bool MaxineSuperRes::IsRuntimeInstalled(const std::wstring&) { return false; }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif

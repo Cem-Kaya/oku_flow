@@ -3,9 +3,16 @@
 This module contains shared processing and output helpers that are reused across the app.
 
 Current contents:
+- shared annotation rendering preserves caller clip regions, including the
+  live Assistant exclusion, while restricting ink to the scene destination
+- on-demand Read transcribes through the vision provider, using Luna/low as
+  the Codex default; Explain retains its scene prompt. Both share bounded
+  image preparation, busy/cancel handling, notes, and manual Read Aloud
 - asynchronous assistive analysis in `assistive_runtime.cpp`, including shared
   response instructions for Codex and OpenAI-compatible requests plus
-  incrementally maintained HTML lecture notes
+  incrementally maintained HTML lecture notes; ordered bounded background
+  storage handles note creation, image encoding, appends, flushes, and closing
+  tags with asynchronous failure reporting
 - the permission-aware native `codex app-server` JSON-RPC transport in
   `codex_app_server_client.cpp`, with full image-model catalog/reasoning
   metadata forwarding, a shared built-in identity prompt, and guarded

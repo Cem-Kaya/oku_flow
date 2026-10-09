@@ -16,7 +16,7 @@ SLA verification in 08-ml-text-sr-options.md. Legal architecture is fixed:
 1. New module `src/common/maxine_superres.cpp/hpp`: wraps the SDK **via
    LoadLibrary at runtime only** — no import library, no link-time dependency.
    The GPL binary contains only MIT headers + `LoadLibraryW` probing:
-   - Discovery order: `OPENZOOM_MAXINE_PATH` env/setting → registry/default
+   - Discovery order: `OKUFLOW_MAXINE_PATH` env/setting → registry/default
      `%ProgramFiles%\NVIDIA Corporation\NVIDIA Video Effects\` → absent.
    - Resolve `NvVFX_*` / `NvCVImage_*` entry points with GetProcAddress; any
      miss → cleanly unavailable.
@@ -39,7 +39,7 @@ SLA verification in 08-ml-text-sr-options.md. Legal architecture is fixed:
 ## Settings & UI
 - `AdvancedConfig`: `mlSuperResEnabled` exists (verify name from the current
   experimental toggle); add `mlSuperResStrength` float 0..1 if absent.
-- Keep `OPENZOOM_ENABLE_TEXT_SR` semantics: the *plugin loader* compiles in
+- Keep `OKUFLOW_ENABLE_TEXT_SR` semantics: the *plugin loader* compiles in
   always (it's MIT-clean); the flag can retire or gate UI visibility.
 
 ## Compliance tasks (from the SLA — mandatory)
@@ -70,7 +70,7 @@ does not visibly beat NIS on text at 2×, the RLFN tier becomes the priority.
 
 ## REVISED DELIVERY MODEL (2026-07-22, per owner): dynamic dependency setup
 
-Do NOT bundle per-GPU runtimes or Tesseract. Instead, an in-app **Setup
+Do NOT bundle per-GPU runtimes or Codex CLI. Instead, an in-app **Setup
 Assistant** (first run + Settings entry) fetches dependencies dynamically:
 
 1. **GPU detection → correct Maxine runtime.** We already know the CUDA
@@ -82,16 +82,14 @@ Assistant** (first run + Settings entry) fetches dependencies dynamically:
    installer (silent flags if supported, else interactive). If the pinned URL
    404s (NVIDIA reshuffles), fall back to opening the download page in the
    browser with instructions.
-2. **Tesseract the same way**: download tesseract.exe build + eng.traineddata
-   (+ osd) from the pinned upstream release, hash-verify, install to
-   %LOCALAPPDATA%\OpenZoom\tools\tesseract, point the existing tesseractPath
-   setting at it. Removes 175 MB from the bundle.
+2. **Codex CLI setup**: use the verified official bootstrap for the
+   user-installed vision assistant. Luna is the default model for new settings.
 3. **Graceful offline path**: everything optional; app fully works without
-   both (no OCR, NIS/FSR upscaling). Setup Assistant shows per-dependency
+   the optional tools (vision unavailable, NIS/FSR upscaling). Setup Assistant shows per-dependency
    status (Installed / Not installed / Download), is screen-reader friendly,
    and never blocks startup.
-4. **Legal win**: OpenZoom distributions (GPL and commercial alike) contain
-   zero NVIDIA-EULA bits and zero Tesseract binaries — users obtain each
+4. **Legal win**: OkuFlow distributions (GPL and commercial alike) contain
+   zero proprietary runtime bits and zero Codex CLI binaries — users obtain each
    directly from its vendor under that vendor's license. The
    `third_party/maxine/redist/` drop dir becomes developer-convenience only.
 5. Bundle math: dist shrinks to Qt + app (~120 MB → ~60-80 MB after the
@@ -110,7 +108,7 @@ conditions above are binding. Repo: Windows-only Qt6 + D3D12 + CUDA. Build
 recipe at the end; iterate until green. Mixed CRLF/LF — ignore.
 
 ## Part 1 — Maxine SuperRes plugin (GPL-clean)
-1. New `src/common/maxine_superres.cpp` + `include/openzoom/common/maxine_superres.hpp`:
+1. New `src/common/maxine_superres.cpp` + `include/okuflow/common/maxine_superres.hpp`:
    class `MaxineSuperRes`. Include headers ONLY from
    `third_party/maxine/Maxine-VFX-SDK/nvvfx/include/` (MIT — committable).
    NEVER link an import lib: resolve `NVVideoEffects.dll` + `NvCVImage.dll`
@@ -133,16 +131,12 @@ recipe at the end; iterate until green. Mixed CRLF/LF — ignore.
    equivalence, apply/capture, per-preset like every other field.
 
 ## Part 2 — Setup Assistant (first-run installer + uninstaller)
-1. New `src/app/setup_assistant.cpp` + `include/openzoom/app/setup_assistant.hpp`:
+1. New `src/app/setup_assistant.cpp` + `include/okuflow/app/setup_assistant.hpp`:
    `class SetupAssistantDialog : public QDialog`. Two dependency rows, each
    with status (Installed / Not installed), Download/Install button, progress
    bar, and a **Remove button**:
-   - **Tesseract OCR**: download pinned release (UB Mannheim tesseract
-     installer or portable zip; pin exact URL + SHA-256 in one constants
-     table), verify hash, extract/install to
-     `%LOCALAPPDATA%\OpenZoom\tools\tesseract\`, set the existing
-     `tesseractPath` assistive setting to the installed exe. **Remove** =
-     delete that directory + clear the setting (confirm dialog first).
+   - **Codex CLI**: verify and run the official per-user bootstrap. Detect
+     the resulting executable; offer its install folder or setup guide.
    - **NVIDIA Video Effects runtime (SuperRes)**: detect GPU arch from the
      CUDA compute capability already queried at startup (7.5→Turing,
      8.6→Ampere, 8.9→Ada e.g. RTX 4090 mobile, ≥10.0→Blackwell); download the
@@ -156,7 +150,7 @@ recipe at the end; iterate until green. Mixed CRLF/LF — ignore.
    - Any pinned URL 404s → offer "Open download page in browser" fallback.
      Downloads via QNetworkAccessManager, resumable not required, transfer
      timeout 60 s, everything cancellable.
-2. **First-run trigger**: after the main window shows, if (tesseract missing
+2. **First-run trigger**: after the main window shows, if (Codex CLI missing
    OR (NVIDIA GPU present AND Maxine runtime missing)) AND
    `setupAssistantDeclined == false` → open the dialog non-modally once.
    "Don't ask me again" checkbox persists `setupAssistantDeclined` (new
@@ -177,10 +171,8 @@ runtime = NVIDIA SDK EULA 2021, obtained by the user from NVIDIA) and a short
 README note. Do not imply NVIDIA endorsement.
 
 ## Part 4 — Bundler & docs
-- `scripts/build_release_bundle.bat`: ensure NO NVIDIA runtime bits and NO
-  tesseract binaries are copied into dist (the Setup Assistant replaces
-  bundling; delete the earlier tesseract-copy logic; also drop nvrtc/nvJitLink
-  /opengl32sw from the copy list if still present).
+- `scripts/build_release_bundle.bat`: keep NVIDIA runtime and Codex CLI
+  binaries outside the bundle. Vendor tools are installed separately.
 - CHANGELOG [Unreleased] + docs/code_reference.md entries for the new classes.
 
 ## Build & verify loop (mandatory)
@@ -194,9 +186,9 @@ hint) — that path is testable on this machine before installing anything.
 ## Acceptance checklist
 - [ ] Build green; app runs with runtime absent (no crash, hint shown).
 - [ ] First run opens Setup Assistant; decline persists.
-- [ ] Tesseract installs to LOCALAPPDATA, OCR works, Remove deletes it.
+- [ ] Codex CLI setup detects the executable and Read uses vision requests.
 - [ ] GPU arch table picks Ada for compute 8.9; hash verification enforced.
 - [ ] SuperRes runs on the CUDA stream, latency guard works, toggle+strength
       persist per preset.
 - [ ] NVIDIA attribution at the very bottom of Advanced; licenses updated.
-- [ ] dist bundle contains zero NVIDIA/tesseract binaries.
+- [ ] dist bundle contains zero NVIDIA runtime/Codex CLI binaries.

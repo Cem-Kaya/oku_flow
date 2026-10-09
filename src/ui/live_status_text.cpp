@@ -1,5 +1,5 @@
-#include "openzoom/ui/live_status_text.hpp"
-#include "openzoom/ui/ui_translation.hpp"
+#include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 
 #include <QAbstractButton>
 #include <QAccessible>
@@ -13,14 +13,14 @@
 #include <QVariant>
 #include <QWidget>
 
-namespace openzoom {
+namespace okuflow {
 namespace {
 
-constexpr auto kTimerObjectName = "_openzoomLiveTextTimer";
-constexpr auto kPendingText = "_openzoomLiveTextPendingText";
-constexpr auto kPendingPrefix = "_openzoomLiveTextPendingPrefix";
-constexpr auto kPendingPoliteness = "_openzoomLiveTextPendingPoliteness";
-constexpr auto kAnnouncementHistory = "_openzoomLiveTextAnnouncementHistory";
+constexpr auto kTimerObjectName = "_okuflowLiveTextTimer";
+constexpr auto kPendingText = "_okuflowLiveTextPendingText";
+constexpr auto kPendingPrefix = "_okuflowLiveTextPendingPrefix";
+constexpr auto kPendingPoliteness = "_okuflowLiveTextPendingPoliteness";
+constexpr auto kAnnouncementHistory = "_okuflowLiveTextAnnouncementHistory";
 constexpr qint64 kAnnouncementDeduplicationMs = 5000;
 
 QString VisibleText(QWidget* widget)
@@ -174,4 +174,4 @@ void SetLiveTextCoalesced(QWidget* widget,
     timer->start(qMax(0, delayMs));
 }
 
-} // namespace openzoom
+} // namespace okuflow

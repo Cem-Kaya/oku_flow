@@ -1,6 +1,6 @@
-#include "openzoom/common/response_language.hpp"
+#include "okuflow/common/response_language.hpp"
 
-namespace openzoom {
+namespace okuflow {
 
 QString AppendResponseLanguageDirective(const QString& prompt,
                                         const QString& languageCode)
@@ -22,4 +22,4 @@ QString AppendResponseLanguageDirective(const QString& prompt,
                : QStringLiteral("%1\n\n%2").arg(trimmed, directive);
 }
 
-} // namespace openzoom
+} // namespace okuflow

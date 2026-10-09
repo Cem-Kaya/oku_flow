@@ -32,7 +32,9 @@ Simple mode is the normal operating view:
   visible. `Ctrl+H` pins the controls on screen or restores automatic hiding.
 - The current profile is flanked by previous/next buttons. The grid button or
   current-profile button opens a temporary tile grid with plain-language names
-  and number badges.
+  and number badges. The carousel paints a separate shortcut badge and elides
+  its label within the available width; an unmatched configuration shows
+  `Custom Setup` without a badge.
 - Number keys `1` through `9` apply the first nine quick modes from anywhere
   in Simple mode. `Tab` and `Shift+Tab` move across the separate corner
   clusters in a predictable order, and `Esc` closes the mode grid.
@@ -54,7 +56,7 @@ Simple mode is the normal operating view:
   viewport pan and zoom do not detach marks from lecture content. Move
   selects one item with an explicit bounding box; Erase removes whole items.
   Closing the mode clears session ink after the configured annotated snapshot.
-- A compact `Text Clarity` checkbox beside the profile carousel is the only
+- A large, button-styled `Text Clarity` checkbox beside Simple/Advanced is the only
   direct image-processing toggle in Simple mode. It automatically chooses
   paper/board/mixed behavior; all component parameters remain in Advanced.
 - Device selection and detailed numeric controls are intentionally absent.
@@ -66,13 +68,22 @@ number shortcuts.
 ## Advanced Mode
 
 Advanced mode keeps the live image visible and opens a narrow inspector on its
-right. Its top-level tabs are `Image` and `Assistant`; previous/next arrows
-wrap across current and future sections. A full-width AI Settings pop-out row
+right. Its top-level tabs are `Image`, `Assistant`, and `Transcript`;
+previous/next arrows are hidden until there are four sections. `Ctrl+Tab`
+continues to cycle tabs. A full-width AI Settings pop-out row
 sits directly below the tab strip on both pages instead of crowding navigation.
 The top-left Simple/Advanced switch remains pinned in Advanced and is restored
 after Alt-Tab or other application deactivation.
 
 The scrollable Image inspector exposes four explicit ownership scopes:
+
+Profile tuning appears first, followed by a Shared settings heading and
+Device, Recording, and Application sections. Keyboard order follows this
+visual order; settings ownership remains unchanged. Slider readouts use the
+active locale and dim with their slider. Long selector names elide in the
+middle, with full names available on hover and in the underlying Qt value.
+Focus X/Y and their labels/readouts disable when Zoom is off. Zoom, focus, and
+black-and-white rows use the responsive row component to preserve track space.
 
 1. **Device** contains the camera and physical orientation. These settings
    change capture hardware.
@@ -91,7 +102,15 @@ Profile controls use reusable, keyboard-focusable collapsible headings.
 Disclosure state persists globally, non-default groups expand automatically
 and show a changed count, and `Ctrl+F` focuses the pinned settings search.
 Search expands matching groups regardless of their saved disclosure state and
-restores that state when cleared.
+restores that state when cleared. The outlined search field has a search glyph,
+a readable placeholder, and a visible match count or `No matching settings`.
+
+Before the first presented camera frame, during reconnection, and while capture
+is stopped, a centered high-contrast placeholder explains camera state in both
+UI modes. It hides when OkuFlow is inactive. This does not yet detect a camera
+that stalls after its first frame. Setup Assistant is raised above owned chrome
+and fits its rows to the available screen; optional Maxine alone no longer
+triggers its startup prompt.
 
 The compact question-mark button in the tab header opens help without taking
 permanent camera space. The guide lists Controls before Features.
@@ -104,21 +123,38 @@ section. It shows Codex/ChatGPT connection and usage state, a camera-aware chat,
 and a history tab. A new conversation can attach the current processed frame;
 follow-up questions can keep or omit that attachment. Simple Explain creates a
 temporary thread and never appears in history. Advanced Assistant creates
-persistent threads and lists only ids created by OpenZoom, with resume, rename,
-export, and delete actions. Codex owns the transcript store while OpenZoom keeps
+persistent threads and lists only ids created by OkuFlow, with resume, rename,
+export, and delete actions. Codex owns the transcript store while OkuFlow keeps
 the small title/preview/timestamp index in `settings.json`. Internet and coding
 are explicit global Assistant permissions in AI Settings. Coding requires a
 workspace folder and affects only persistent Advanced Assistant turns; Simple
 Explain remains restricted even when those permissions are enabled.
 
-Simple Explain and OCR results use one solid floating Assistant over the
-camera. The panel preserves incremental streaming, exposes its text through a
+Simple Explain and Read results use one solid Assistant, floating over the
+camera or docked beside it. The Panel position selector offers Floating,
+Dock left, and Dock right. Docking shrinks and shifts the camera viewport;
+dragging the floating header to either app edge also shows a purple docking
+preview with a release instruction. Releasing docks to that side; moving away
+or pressing Escape cancels the docking gesture. The preview does not take
+focus or mouse input and remains visible above the native camera and Draw.
+The dock separator adjusts panel width. To drag a docked panel off its side,
+pull the header away and hold for about 350 ms; a short click or small movement
+keeps it docked.
+After releasing, move clear of that edge before docking there again. The
+highlight uses a debounced latch: 180 ms of stable edge proximity to appear,
+then 250 ms outside its wider release zone to clear. Brief boundary crossings
+keep the same highlight and drop target.
+Viewport resizing preserves image proportions while the rendering surface
+catches up with the new size. Returning to Floating restores its
+previous camera-relative geometry. Draw mode excludes the floating panel's
+current bounds from ink and native mouse input as it moves or resizes, keeping
+the chat's controls and drag handle usable. The panel preserves incremental streaming, exposes its text through a
 focusable read-only text view, and provides a high-contrast Close control and
 manual Read Aloud action. Its header is a drag handle, its edges and corners
 resize within the camera bounds, and its question field attaches the current
 view to the shared persistent Assistant conversation. Closing it (or pressing
 Escape while it has focus) keeps the current result hidden until the next
-user-requested analysis. OCR, scene explanations, and mode changes never start
+user-requested analysis. Text readings, scene explanations, and mode changes never start
 speech automatically; only Read Aloud or the AI Settings Preview action does
 so. First use positions the panel below the top Simple controls. Position and
 size are stored relative to the camera surface, restored on restart, and
@@ -157,11 +193,11 @@ Other global UI/service values also remain outside profiles:
 | Global UI or service value | Reason |
 | --- | --- |
 | Simple/Advanced state | Restores the user's preferred working view. |
-| Assistive View position and size | Restores the user's chosen floating panel layout. |
+| Assistive View dock side and floating position/size | Restores the chosen panel layout; floating geometry is retained while docked. |
 | Inspector section states | UI preference, not image treatment. |
 | Selected quick profile | Restores the active workflow. |
 | Annotation color, width, line style, shape, text size, and save-on-exit | Drawing preferences are shared across profiles; annotation strokes remain session-only. |
-| VLM/OCR endpoints, credentials, language, Read Aloud voice/speed, and note options | Service configuration is shared by profiles. |
+| VLM endpoints, credentials, language, Read Aloud voice/speed, and note options | Service configuration is shared by profiles. |
 
 Profile values describe how the current image should be treated and are saved
 when the user creates a quick option:
@@ -174,7 +210,7 @@ when the user creates a quick option:
 | Display treatment | Color mode, contrast, and brightness. |
 | Sharpening | Backend, enabled state, and strength. |
 | Text clarity | Master/individual stages, Sauvola and softness, polarity, stroke weight, CLAHE, two-color output, hysteresis, focus threshold, glare suppression. |
-| Assistive behavior | OCR, scene explanation, and assistive overlay enabled states. |
+| Assistive behavior | Scene explanation and assistive overlay enabled states. |
 | Diagnostics | Debug view and focus marker. |
 
 `AdvancedConfig::rotationQuarterTurns` remains readable from old profile JSON

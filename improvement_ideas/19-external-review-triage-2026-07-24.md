@@ -6,7 +6,7 @@ index and the verdict list; the work itself is split into plans 20-24.
 
 ## What this is
 
-An external engineering review of an `open_zoom.zip` snapshot produced a
+An external engineering review of an `oku_flow.zip` snapshot produced a
 long findings list (architecture, recording, performance, security, build).
 The review is **substantially correct** — most findings reproduce in the
 current tree — but it was written against a snapshot that predates the recent
@@ -22,8 +22,8 @@ marked with what I verified myself today, with file:line evidence.
 
 | # | Finding | Evidence I checked | Plan |
 |---|---|---|---|
-| 1 | Camera modes are display-only; no mode is ever selected | `ConfigureReader` sets only `MF_MT_MAJOR_TYPE` + `MF_MT_SUBTYPE`, never `MF_MT_FRAME_SIZE`/`MF_MT_FRAME_RATE` (src/capture/media_capture.cpp:455-461); `StartCapture` has no mode parameter (include/openzoom/capture/media_capture.hpp:62) | 20 |
-| 2 | Recording discards camera timestamps, always writes 30 FPS | `MediaFrame` has no timestamp field (include/openzoom/capture/media_capture.hpp:19-26); `ReadSample` fills `timestamp` then drops it (src/capture/media_capture.cpp:620-628); `constexpr UINT fps = 30` (src/app/recording_manager.cpp:113) | 20 |
+| 1 | Camera modes are display-only; no mode is ever selected | `ConfigureReader` sets only `MF_MT_MAJOR_TYPE` + `MF_MT_SUBTYPE`, never `MF_MT_FRAME_SIZE`/`MF_MT_FRAME_RATE` (src/capture/media_capture.cpp:455-461); `StartCapture` has no mode parameter (include/okuflow/capture/media_capture.hpp:62) | 20 |
+| 2 | Recording discards camera timestamps, always writes 30 FPS | `MediaFrame` has no timestamp field (include/okuflow/capture/media_capture.hpp:19-26); `ReadSample` fills `timestamp` then drops it (src/capture/media_capture.cpp:620-628); `constexpr UINT fps = 30` (src/app/recording_manager.cpp:113) | 20 |
 | 3 | Recording silently drops frames (single latest-frame slot + 2-slot readback ring) | latest-frame overwrite (src/app/app_pipeline_runtime.cpp:715-719) | 20 |
 | 4 | Recording output size follows the window; resize can stop recording | viewport-sized readback + dimension-change stop (src/app/recording_manager.cpp:247-256) | 20 |
 | 5 | `Finalize()` HRESULT discarded — "recording saved" can be a lie | src/common/media_writer.cpp:132-140, return value unchecked | 20 |
@@ -33,7 +33,7 @@ marked with what I verified myself today, with file:line evidence.
 | 9 | API key stored in plaintext | `object.insert("vlmApiKey", assistive.vlmApiKey)` (src/app/settings_store.cpp:480) | 23 |
 | 10 | Everything runs on the Qt UI thread | pipeline_orchestrator tick → CUDA, present, readback, two synchronous encoder writes, JPEG/PNG encode | 22 |
 | 11 | Lecture notes rewrite the whole HTML file per append | read-all + insert-at-marker + full rewrite (src/common/assistive_runtime.cpp:1015-1050) | 22 |
-| 12 | Tests off in release; test presets can report success with zero tests | `OPENZOOM_ENABLE_TESTS: OFF` in `msvc-debug`/`msvc-release`; `msvc-debug-tests`/`msvc-release-tests` point at those presets; no `noTestsAction` anywhere | **24** |
+| 12 | Tests off in release; test presets can report success with zero tests | `OKUFLOW_ENABLE_TESTS: OFF` in `msvc-debug`/`msvc-release`; `msvc-debug-tests`/`msvc-release-tests` point at those presets; no `noTestsAction` anywhere | **24** |
 | 13 | Settings load/save failures are silent; future schema versions accepted | src/app/settings_store.cpp:627-750, save result ignored in app_settings.cpp | 23 |
 | 14 | Assistant turn has no completion watchdog; unbounded protocol/transcript buffers | src/common/codex_app_server_client.cpp:325-338, 554-570 | 23 |
 | 15 | Temp OCR/Codex frames survive a crash (`setAutoRemove(false)`) | src/common/assistive_runtime.cpp:672-688, 863-875 | 23 |
@@ -43,9 +43,9 @@ marked with what I verified myself today, with file:line evidence.
 **The CUDA stabilization regression tests cannot be built or run by any
 preset in the repository.** `tests/CMakeLists.txt:47` guards
 `stabilization_cuda_tests` and `nvidia_optical_flow_tests` with
-`if (WIN32 AND OPENZOOM_ENABLE_CUDA)`. The only preset with
-`OPENZOOM_ENABLE_TESTS=ON` is `msvc-cpu`, which sets
-`OPENZOOM_ENABLE_CUDA=OFF`. `tests/README.md` documents these tests and then
+`if (WIN32 AND OKUFLOW_ENABLE_CUDA)`. The only preset with
+`OKUFLOW_ENABLE_TESTS=ON` is `msvc-cpu`, which sets
+`OKUFLOW_ENABLE_CUDA=OFF`. `tests/README.md` documents these tests and then
 gives only the `msvc-cpu` recipe to run them; `build/agent_build.bat` runs
 `ctest --preset msvc-cpu-tests`. So the regression tests written specifically
 to stop stabilization from regressing — including the one replaying the
@@ -110,7 +110,7 @@ owner's hands. Fixing this is the highest-leverage item in plan 24.
 
 1. **Plan 21 — user data locations.** Smallest, highest user-visible value,
    and the owner has already been bitten (release bundling deleted photos and
-   notes stored under `dist/OpenZoom/output`; the current fix is a preservation
+   notes stored under `dist/OkuFlow/output`; the current fix is a preservation
    hack in the bundle script that plan 21 makes unnecessary).
 2. **Plan 24 — test and build gates.** Cheap, and until the CUDA tests can run
    nothing else can be verified without the owner's hands.

@@ -1,9 +1,9 @@
-#include "openzoom/common/view_transform.hpp"
+#include "okuflow/common/view_transform.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace openzoom {
+namespace okuflow {
 
 ViewTransform ComputeViewTransform(std::uint32_t sourceWidth,
                                    std::uint32_t sourceHeight,
@@ -170,4 +170,4 @@ PixelViewMapping ComputePixelViewMapping(
     return result;
 }
 
-} // namespace openzoom
+} // namespace okuflow

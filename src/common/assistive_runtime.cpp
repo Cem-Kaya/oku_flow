@@ -1,8 +1,8 @@
 #ifdef _WIN32
 
-#include "openzoom/common/assistive_runtime.hpp"
-#include "openzoom/common/response_language.hpp"
-#include "openzoom/common/codex_app_server_client.hpp"
+#include "okuflow/common/assistive_runtime.hpp"
+#include "okuflow/common/response_language.hpp"
+#include "okuflow/common/codex_app_server_client.hpp"
 
 #include <QBuffer>
 #include <QByteArray>
@@ -21,8 +21,6 @@
 #include <QNetworkRequest>
 #include <QMetaObject>
 #include <QPointer>
-#include <QProcess>
-#include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -32,24 +30,44 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVariant>
+#include <QUuid>
+#include <mutex>
+#include <deque>
 
 #include <algorithm>
 #include <limits>
 
 #include <windows.h>
 
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
 #include <QTextToSpeech>
 #include <QVoice>
 #endif
 
-namespace openzoom {
+namespace okuflow {
+
+// A serial, byte-bounded queue. Worker closures own only immutable values;
+// receiver access is guarded during dispatch and disconnected at destruction.
+struct NotesWorkState {
+    struct Job {
+        QString path;
+        QString identity;
+        qint64 bytes;
+        std::function<bool()> work;
+    };
+    std::mutex mutex;
+    std::deque<Job> jobs;
+    qint64 bytes{};
+    size_t count{};
+    bool running{};
+    AssistiveRuntime* receiver{};
+};
+
 
 namespace {
 
 constexpr int kMinFrameEdge = 64;
 constexpr int kMaxVlmFrameEdge = 2048;
-constexpr int kOcrWatchdogMs = 10000;
 constexpr int kVlmTransferTimeoutMs = 30000;
 constexpr qint64 kMaximumVlmResponseBytes = 2 * 1024 * 1024;
 constexpr qsizetype kMaximumDisplayedAssistantCharacters = 256 * 1024;
@@ -96,7 +114,7 @@ QString ResolvedSetting(const QString& configured, const char* envName)
 QString VlmNotConfiguredMessage()
 {
     return QStringLiteral("VLM not configured. Set the server URL and model in AI Settings "
-                          "or via OPENZOOM_VLM_API_URL and OPENZOOM_VLM_MODEL. An API key is optional for local servers.");
+                          "or via OKUFLOW_VLM_API_URL and OKUFLOW_VLM_MODEL. An API key is optional for local servers.");
 }
 
 QString CodexNotAvailableMessage()
@@ -120,7 +138,7 @@ QString CreateAssistiveTemporaryFramePath(const QString& purpose,
     QTemporaryFile tempFile(
         QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
             .filePath(
-                QStringLiteral("openzoom_%1_%2_XXXXXX.%3")
+                QStringLiteral("okuflow_%1_%2_XXXXXX.%3")
                     .arg(purpose)
                     .arg(GetCurrentProcessId())
                     .arg(suffix)));
@@ -157,13 +175,12 @@ void SweepAssistiveTemporaryFrames()
     QDir temporaryDirectory(
         QStandardPaths::writableLocation(QStandardPaths::TempLocation));
     const QRegularExpression ownedFilePattern(
-        QStringLiteral(R"(^openzoom_(?:ocr|codex)_(\d+)_.*\.(?:png|jpg)$)"));
+        QStringLiteral(R"(^okuflow_codex_(\d+)_.*\.(?:png|jpg)$)"));
     const QDateTime legacyCutoff =
         QDateTime::currentDateTimeUtc().addSecs(-60 * 60);
     int removed = 0;
     for (const QString& pattern :
-         {QStringLiteral("openzoom_ocr_*.png"),
-          QStringLiteral("openzoom_codex_*.jpg")}) {
+         {QStringLiteral("okuflow_codex_*.jpg")}) {
         const QFileInfoList files =
             temporaryDirectory.entryInfoList({pattern}, QDir::Files);
         for (const QFileInfo& file : files) {
@@ -199,8 +216,7 @@ void RemoveCurrentProcessAssistiveFrames()
         QStandardPaths::writableLocation(QStandardPaths::TempLocation));
     const QString processId = QString::number(GetCurrentProcessId());
     for (const QString& pattern :
-         {QStringLiteral("openzoom_ocr_%1_*.png").arg(processId),
-          QStringLiteral("openzoom_codex_%1_*.jpg").arg(processId)}) {
+         {QStringLiteral("okuflow_codex_%1_*.jpg").arg(processId)}) {
         for (const QString& fileName :
              temporaryDirectory.entryList({pattern}, QDir::Files)) {
             QFile::remove(temporaryDirectory.filePath(fileName));
@@ -257,7 +273,8 @@ QByteArray BuildVlmRequestBody(const QByteArray& jpegBytes,
                                const QString& model,
                                const QString& prompt,
                                const QString& assistantInstructions,
-                               const QString& responseLanguageCode)
+                               const QString& responseLanguageCode,
+                               int maximumTokens)
 {
     const QString dataUri =
         QStringLiteral("data:image/jpeg;base64,%1")
@@ -295,7 +312,7 @@ QByteArray BuildVlmRequestBody(const QByteArray& jpegBytes,
     const QJsonObject requestBody{
         {QStringLiteral("model"), model},
         {QStringLiteral("messages"), messages},
-        {QStringLiteral("max_tokens"), 180}};
+        {QStringLiteral("max_tokens"), maximumTokens}};
     return QJsonDocument(requestBody).toJson(QJsonDocument::Compact);
 }
 
@@ -305,11 +322,12 @@ AssistiveRuntime::AssistiveRuntime(QObject* parent)
     : QObject(parent)
 {
     SweepAssistiveTemporaryFrames();
+    notesWork_ = std::make_shared<NotesWorkState>();
+    notesWork_->receiver = this;
     imagePreparationPool_ = std::make_unique<QThreadPool>();
     imagePreparationPool_->setMaxThreadCount(2);
     imagePreparationPool_->setExpiryTimeout(30000);
     networkManager_ = new QNetworkAccessManager(this);
-    ocrProcess_ = std::make_unique<QProcess>(this);
     codexClient_ = std::make_unique<CodexAppServerClient>(this);
 
     connect(codexClient_.get(), &CodexAppServerClient::ServerStateChanged,
@@ -355,90 +373,28 @@ AssistiveRuntime::AssistiveRuntime(QObject* parent)
                    bool interrupted,
                    bool persistent) {
                 if (interrupted) {
+                    if (persistent) {
+                        ClearPendingAssistantNote();
+                    }
                     vlmText_.clear();
                     vlmStatus_ = error.trimmed().isEmpty()
                                      ? QStringLiteral("Assistant stopped.")
                                      : SanitizeText(error);
                     RefreshOverlay();
                 } else if (!error.isEmpty()) {
+                    if (persistent) {
+                        ClearPendingAssistantNote();
+                    }
                     FinishVlmError(error);
+                } else if (persistent) {
+                    // The Advanced Assistant records the full exchange —
+                    // question, analyzed frame, and answer — keyed to its
+                    // conversation so multiple turns group together.
+                    FinishAssistantTurnSuccess(threadId, text);
                 } else {
                     FinishVlmSuccess(text);
                 }
                 emit AssistantTurnFinished(threadId, turnId, text, error, interrupted, persistent);
-            });
-
-    ocrWatchdogTimer_ = new QTimer(this);
-    ocrWatchdogTimer_->setSingleShot(true);
-    ocrWatchdogTimer_->setInterval(kOcrWatchdogMs);
-    connect(ocrWatchdogTimer_, &QTimer::timeout, this, [this]() {
-        if (!ocrProcess_ || ocrProcess_->state() == QProcess::NotRunning) {
-            return;
-        }
-        ocrTimedOut_ = true;
-        FinishOcrError(QStringLiteral("OCR timed out."));
-        // The finished/errorOccurred handlers remove the temp image once the
-        // process is gone and the file is no longer locked.
-        ocrProcess_->kill();
-    });
-
-    connect(ocrProcess_.get(),
-            qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-            this,
-            [this](int exitCode, QProcess::ExitStatus exitStatus) {
-                ocrWatchdogTimer_->stop();
-                const QString stdoutText = SanitizeText(QString::fromUtf8(ocrProcess_->readAllStandardOutput()));
-                const QString stderrText = SanitizeText(QString::fromUtf8(ocrProcess_->readAllStandardError()));
-                if (!pendingOcrImagePath_.isEmpty()) {
-                    QFile::remove(pendingOcrImagePath_);
-                    pendingOcrImagePath_.clear();
-                }
-                if (ocrTimedOut_) {
-                    // The watchdog already reported the timeout.
-                    ocrTimedOut_ = false;
-                    ocrRunForced_ = false;
-                    return;
-                }
-                if (exitStatus == QProcess::NormalExit && exitCode == 0) {
-                    FinishOcrSuccess(stdoutText);
-                    return;
-                }
-                ocrRunForced_ = false;
-                QString errorText = stderrText;
-                if (errorText.isEmpty()) {
-                    errorText = QStringLiteral("tesseract exited with code %1").arg(exitCode);
-                }
-                FinishOcrError(errorText);
-            });
-
-    connect(ocrProcess_.get(),
-            &QProcess::errorOccurred,
-            this,
-            [this](QProcess::ProcessError error) {
-                ocrWatchdogTimer_->stop();
-                if (!pendingOcrImagePath_.isEmpty()) {
-                    QFile::remove(pendingOcrImagePath_);
-                    pendingOcrImagePath_.clear();
-                }
-                if (ocrTimedOut_) {
-                    // Kill after timeout surfaces as Crashed; already reported.
-                    return;
-                }
-                ocrRunForced_ = false;
-                QString errorText;
-                switch (error) {
-                case QProcess::FailedToStart:
-                    errorText = QStringLiteral("tesseract not found. Install it or set its path in the "
-                                               "assistive settings or via OPENZOOM_TESSERACT_PATH.");
-                    break;
-                case QProcess::Crashed:
-                    errorText = QStringLiteral("tesseract crashed during OCR.");
-                    break;
-                default:
-                    errorText = QStringLiteral("tesseract OCR process failed.");
-                    break;
-                }
-                FinishOcrError(errorText);
             });
 
     RefreshOverlay();
@@ -446,9 +402,7 @@ AssistiveRuntime::AssistiveRuntime(QObject* parent)
 
 AssistiveRuntime::~AssistiveRuntime()
 {
-    ++ocrPreparationGeneration_;
     ++vlmPreparationGeneration_;
-    ocrPreparationPending_ = false;
     vlmPreparationPending_ = false;
     if (imagePreparationPool_) {
         imagePreparationPool_->clear();
@@ -457,18 +411,19 @@ AssistiveRuntime::~AssistiveRuntime()
     if (activeReply_) {
         activeReply_->abort();
     }
-    if (ocrProcess_ && ocrProcess_->state() != QProcess::NotRunning) {
-        ocrProcess_->kill();
-        if (!ocrProcess_->waitForFinished(250)) {
-            qWarning() << "Tesseract did not exit within the bounded shutdown "
-                          "window";
-        }
+    if (!pendingVlmNoteImagePath_.isEmpty()) {
+        RemoveNoteImage(pendingVlmNoteImagePath_);
     }
-    if (!pendingOcrImagePath_.isEmpty()) {
-        QFile::remove(pendingOcrImagePath_);
+    if (!pendingAssistantNoteImagePath_.isEmpty()) {
+        RemoveNoteImage(pendingAssistantNoteImagePath_);
     }
     RemoveCurrentProcessAssistiveFrames();
     FinalizeNotesFile();
+    // Accepted writes finish on the global pool without retaining this QObject.
+    // Qt waits for that pool at application shutdown; runtime teardown does not
+    // wait on a slow notes destination.
+    std::lock_guard lock(notesWork_->mutex);
+    notesWork_->receiver = nullptr;
 }
 
 void AssistiveRuntime::SetConfig(const AssistiveRuntimeConfig& config)
@@ -481,7 +436,7 @@ void AssistiveRuntime::SetConfig(const AssistiveRuntimeConfig& config)
         config.ttsRate != config_.ttsRate;
     if (speechConfigChanged) {
         StopSpeech();
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
         delete tts_;
         tts_ = nullptr;
 #endif
@@ -500,14 +455,12 @@ void AssistiveRuntime::SetConfig(const AssistiveRuntimeConfig& config)
         }
     }
 
-    // New credentials or a new tesseract path may fix a previous hard failure.
-    ocrHardUnavailable_ = false;
+    // New credentials may fix a previous hard failure.
     vlmHardUnavailable_ = false;
 
     if (notesTargetChanged) {
         FinalizeNotesFile();
         notesFilePath_.clear();
-        lastNotedOcrText_.clear();
     }
 
     if (vlmEnabled_ && vlmText_.isEmpty()) {
@@ -529,7 +482,7 @@ void AssistiveRuntime::SetResponseLanguage(const QString& languageCode)
     }
     responseLanguageCode_ = next;
     warnedMissingVoiceLanguage_.clear();
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (tts_) {
         SelectVoiceForResponseLanguage(true);
     }
@@ -540,23 +493,13 @@ QString AssistiveRuntime::AppendResponseLanguageDirective(
     const QString& prompt,
     const QString& languageCode)
 {
-    return openzoom::AppendResponseLanguageDirective(prompt, languageCode);
+    return okuflow::AppendResponseLanguageDirective(prompt, languageCode);
 }
 
-void AssistiveRuntime::SetModes(bool ocrEnabled, bool vlmEnabled)
+void AssistiveRuntime::SetModes(bool vlmEnabled)
 {
-    const bool ocrTurningOff = ocrEnabled_ && !ocrEnabled;
     const bool vlmTurningOff = vlmEnabled_ && !vlmEnabled;
 
-    if (ocrTurningOff && ocrProcess_ && ocrProcess_->state() != QProcess::NotRunning) {
-        ocrWatchdogTimer_->stop();
-        ocrProcess_->kill();
-        ocrProcess_->waitForFinished(250);
-    }
-    if (ocrTurningOff && ocrPreparationPending_) {
-        ++ocrPreparationGeneration_;
-        ocrPreparationPending_ = false;
-    }
     if (vlmTurningOff && activeReply_) {
         activeReply_->abort();
     }
@@ -567,23 +510,10 @@ void AssistiveRuntime::SetModes(bool ocrEnabled, bool vlmEnabled)
         vlmPreparationThreadId_.clear();
     }
 
-    ocrEnabled_ = ocrEnabled;
     vlmEnabled_ = vlmEnabled;
-    if (ocrEnabled_) {
-        ocrHardUnavailable_ = false;
-    }
     if (vlmEnabled_) {
         vlmHardUnavailable_ = false;
     }
-    if (ocrTurningOff) {
-        ocrForcedVisible_ = false;
-        ocrText_.clear();
-        ocrStatus_.clear();
-    } else if (ocrEnabled_ && ocrText_.isEmpty() && ocrStatus_.isEmpty()) {
-        ocrStatus_ = QStringLiteral("OCR ready. Install tesseract or set its path in the assistive "
-                                    "settings or via OPENZOOM_TESSERACT_PATH if detection fails.");
-    }
-
     if (vlmTurningOff) {
         vlmForcedVisible_ = false;
         vlmText_.clear();
@@ -615,14 +545,12 @@ bool AssistiveRuntime::WantsAnalysis() const
     // Subscription-backed Codex explanations are user initiated. This avoids
     // spending a user's Codex allowance every 1.6 seconds in an assistive mode.
     const bool automaticVlm = !UsesCodexProvider() && vlmEnabled_ && !vlmHardUnavailable_;
-    return (ocrEnabled_ && !ocrHardUnavailable_) || automaticVlm;
+    return automaticVlm;
 }
 
 bool AssistiveRuntime::IsBusy() const
 {
-    const bool ocrBusy = ocrProcess_ && ocrProcess_->state() != QProcess::NotRunning;
-    return ocrPreparationPending_ || vlmPreparationPending_ ||
-           ocrBusy || activeReply_ != nullptr ||
+    return vlmPreparationPending_ || activeReply_ != nullptr ||
            (codexClient_ && codexClient_->IsTurnActive());
 }
 
@@ -638,61 +566,36 @@ void AssistiveRuntime::SubmitFrame(const uint8_t* bgraData, int width, int heigh
         return;
     }
 
-    if (ocrEnabled_ && !ocrPreparationPending_ &&
-        ocrProcess_ && ocrProcess_->state() == QProcess::NotRunning) {
-        StartOcr(bgraData, width, height, false);
-    }
     if (vlmEnabled_ && !UsesCodexProvider() &&
         !vlmPreparationPending_ && activeReply_ == nullptr) {
         StartVlm(bgraData, width, height);
     }
 }
 
-void AssistiveRuntime::SubmitFrameForced(const uint8_t* bgraData, int width, int height, bool runOcr, bool runVlm)
+void AssistiveRuntime::SubmitFrameForced(const uint8_t* bgraData, int width, int height, bool readText)
 {
-    if ((!runOcr && !runVlm) || !ValidateFrame(bgraData, width, height)) {
+    if (!ValidateFrame(bgraData, width, height)) {
+        return;
+    }
+    // Do not overwrite the answer or note-image ownership of an active turn.
+    if (IsBusy()) {
+        emit StatusNotice(QStringLiteral("Scene explanation is busy with a previous request. Try again in a moment."));
         return;
     }
     overlayDismissed_ = false;
-
-    if (runOcr && !runVlm && !vlmEnabled_) {
-        vlmForcedVisible_ = false;
-        vlmText_.clear();
-        vlmStatus_.clear();
-    } else if (runVlm && !runOcr && !ocrEnabled_) {
-        ocrForcedVisible_ = false;
-        ocrText_.clear();
-        ocrStatus_.clear();
+    vlmForcedVisible_ = true;
+    if (!VlmConfigured()) {
+        FinishVlmError(VlmNotConfiguredMessage());
+        return;
     }
-
-    if (runOcr) {
-        ocrForcedVisible_ = true;
-        if (ocrPreparationPending_ ||
-            (ocrProcess_ && ocrProcess_->state() != QProcess::NotRunning)) {
-            FinishOcrError(QStringLiteral("OCR is busy with a previous capture. Try again in a moment."));
-        } else {
-            StartOcr(bgraData, width, height, true);
-        }
-    }
-
-    if (runVlm) {
-        vlmForcedVisible_ = true;
-        if (vlmPreparationPending_ || activeReply_ != nullptr ||
-            (codexClient_ && codexClient_->IsTurnActive())) {
-            FinishVlmError(QStringLiteral("Scene explanation is busy with a previous request. Try again in a moment."));
-        } else if (!VlmConfigured()) {
-            FinishVlmError(VlmNotConfiguredMessage());
-        } else {
-            vlmHardUnavailable_ = false;
-            StartVlm(bgraData, width, height);
-        }
-    }
+    vlmHardUnavailable_ = false;
+    StartVlm(bgraData, width, height, readText);
 }
 
 void AssistiveRuntime::NoteCapturedPhotoPair(const QString& originalPath,
                                              const QString& processedPath)
 {
-    AppendNoteMediaPair(QStringLiteral("Photo captured"),
+    AppendNoteMediaPair(QCoreApplication::translate("OkuFlow", "Photo captured"),
                         originalPath,
                         processedPath,
                         false);
@@ -701,10 +604,147 @@ void AssistiveRuntime::NoteCapturedPhotoPair(const QString& originalPath,
 void AssistiveRuntime::NoteCapturedVideoPair(const QString& originalPath,
                                              const QString& processedPath)
 {
-    AppendNoteMediaPair(QStringLiteral("Video recorded"),
+    AppendNoteMediaPair(QCoreApplication::translate("OkuFlow", "Video recorded"),
                         originalPath,
                         processedPath,
                         true);
+}
+
+namespace {
+
+bool IsSafeAttributeToken(const QString& value, const QString& extraCharacters)
+{
+    if (value.isEmpty()) {
+        return false;
+    }
+    for (const QChar character : value) {
+        if (!character.isLetterOrNumber() &&
+            !extraCharacters.contains(character)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+QString FormatClockDuration(qint64 duration100ns)
+{
+    const qint64 totalSeconds = duration100ns / 10000000LL;
+    const qint64 hours = totalSeconds / 3600;
+    const qint64 minutes = (totalSeconds / 60) % 60;
+    const qint64 seconds = totalSeconds % 60;
+    return QStringLiteral("%1:%2:%3")
+        .arg(hours, 2, 10, QLatin1Char('0'))
+        .arg(minutes, 2, 10, QLatin1Char('0'))
+        .arg(seconds, 2, 10, QLatin1Char('0'));
+}
+
+// Compact chip form: M:SS below one hour, H:MM:SS beyond.
+QString FormatShortClockDuration(qint64 duration100ns)
+{
+    const qint64 totalSeconds = duration100ns / 10000000LL;
+    const qint64 hours = totalSeconds / 3600;
+    const qint64 minutes = (totalSeconds / 60) % 60;
+    const qint64 seconds = totalSeconds % 60;
+    if (hours > 0) {
+        return QStringLiteral("%1:%2:%3")
+            .arg(hours)
+            .arg(minutes, 2, 10, QLatin1Char('0'))
+            .arg(seconds, 2, 10, QLatin1Char('0'));
+    }
+    return QStringLiteral("%1:%2")
+        .arg(minutes)
+        .arg(seconds, 2, 10, QLatin1Char('0'));
+}
+
+} // namespace
+
+bool AssistiveRuntime::NoteTranscriptSegment(const TranscriptSegment& segment)
+{
+    if (!config_.lectureNotesEnabled ||
+        config_.notesDirectory.trimmed().isEmpty()) {
+        return false;
+    }
+    const QString text = segment.text.trimmed();
+    if (text.isEmpty() ||
+        text.size() > transcript_limits::kMaximumSegmentCharacters ||
+        !IsSafeAttributeToken(segment.recordingSessionId, QStringLiteral("-")) ||
+        segment.sequence == 0) {
+        return false;
+    }
+    if (!EnsureNotesFile()) {
+        return false;
+    }
+    const QString identity = notesFilePath_ + QLatin1Char('|') +
+        segment.recordingSessionId + QLatin1Char('|') + QString::number(segment.sequence);
+    if (acceptedTranscriptIdentities_.contains(identity)) {
+        return true;
+    }
+
+    // One compact feed line per finalized phrase — no per-phrase heading.
+    // The load-time script in the document head groups consecutive lines of
+    // one recording into a single collapsible transcript block; without
+    // script the lines still render as a clean feed.
+    QString timeChip;
+    if (segment.approximateOffset100ns >= 0) {
+        const qint64 offsetSeconds =
+            segment.approximateOffset100ns / 10000000LL;
+        timeChip = QStringLiteral(
+                       " <time class=\"tr-at\" datetime=\"PT%1S\" title=\"%2\">%3</time>")
+                       .arg(QString::number(offsetSeconds),
+                            QCoreApplication::translate("OkuFlow",
+                                                        "about %1 into recording")
+                                .arg(FormatClockDuration(segment.approximateOffset100ns))
+                                .toHtmlEscaped(),
+                            FormatShortClockDuration(segment.approximateOffset100ns)
+                                .toHtmlEscaped());
+    }
+    const QString language = segment.languageCode.trimmed().left(12);
+    const QString languageAttribute =
+        IsSafeAttributeToken(language, QStringLiteral("-"))
+            ? QStringLiteral(" lang=\"%1\"").arg(language.toHtmlEscaped())
+            : QString();
+    const QString line =
+        QStringLiteral(
+            "  <p class=\"tr\" id=\"transcript-%1-%2\" data-recording-session=\"%3\""
+            " data-sequence=\"%2\" data-time-precision=\"approximate\"%4>"
+            "<span class=\"tr-text\">%5%6</span>%7</p>\n")
+            .arg(segment.recordingSessionId.left(8).toHtmlEscaped(),
+                 QString::number(segment.sequence),
+                 segment.recordingSessionId.toHtmlEscaped(),
+                 languageAttribute,
+                 text.toHtmlEscaped(),
+                 segment.truncated
+                     ? QStringLiteral(" %1").arg(
+                           QCoreApplication::translate("OkuFlow", "(truncated)")
+                               .toHtmlEscaped())
+                     : QString(),
+                 timeChip);
+    if (!AppendNoteBlock(line, identity)) {
+        return false;
+    }
+    acceptedTranscriptIdentities_.insert(identity);
+    return true;
+}
+
+bool AssistiveRuntime::NoteTranscriptGap(const QString& recordingSessionId)
+{
+    if (!config_.lectureNotesEnabled ||
+        config_.notesDirectory.trimmed().isEmpty() ||
+        !IsSafeAttributeToken(recordingSessionId, QStringLiteral("-")) ||
+        !EnsureNotesFile()) {
+        return false;
+    }
+    // A gap renders inside the transcript feed as a visually distinct line,
+    // so later text never reads as continuous across dropped audio.
+    return AppendNoteBlock(
+        QStringLiteral(
+            "  <p class=\"tr tr-gap\" data-recording-session=\"%1\">"
+            "<span class=\"tr-text\">%2</span></p>\n")
+            .arg(recordingSessionId.toHtmlEscaped(),
+                 QCoreApplication::translate(
+                     "OkuFlow",
+                     "Transcript has a gap; recording is unaffected.")
+                     .toHtmlEscaped()));
 }
 
 void AssistiveRuntime::NoteAnnotationSnapshot(const QString& filePath,
@@ -715,7 +755,7 @@ void AssistiveRuntime::NoteAnnotationSnapshot(const QString& filePath,
     }
     AppendNoteSection(
         heading.trimmed().isEmpty()
-            ? QStringLiteral("Annotated view")
+            ? QCoreApplication::translate("OkuFlow", "Annotated view")
             : heading,
         {},
         filePath);
@@ -802,11 +842,17 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
                      : QStringLiteral("blocked")));
     overlayDismissed_ = false;
     vlmForcedVisible_ = true;
+    readingText_ = false;
     vlmText_.clear();
     vlmStatus_ = attachFrame
                      ? QStringLiteral("Preparing the current view...")
                      : QStringLiteral("Thinking...");
     RefreshOverlay();
+
+    // Record the raw question (not the language-directive-appended form) so
+    // the completed answer can be noted as a full exchange.
+    ClearPendingAssistantNote();
+    pendingAssistantNotePrompt_ = prompt;
 
     if (!attachFrame) {
         codexClient_->RequestVisionTurn(responsePrompt, {}, threadId, true);
@@ -819,11 +865,15 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
                       width * 4,
                       QImage::Format_ARGB32);
     QImage copy = frameImage.copy();
+    // Retain a shared notes frame before moving the request copy into its
+    // encode worker; notes JPEG encoding waits for a completed answer.
+    pendingAssistantNoteImagePath_ = SaveAnalyzedImageForNotes(copy);
     const QString imagePath =
         CreateAssistiveTemporaryFramePath(QStringLiteral("codex"),
                                           QStringLiteral("jpg"));
     if (copy.isNull() || imagePath.isEmpty()) {
         QFile::remove(imagePath);
+        ClearPendingAssistantNote();
         FinishVlmError(
             QStringLiteral("Could not prepare the current camera view."));
         emit AssistantTurnFinished(
@@ -878,6 +928,9 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
                         generation != owner->vlmPreparationGeneration_ ||
                         !owner->vlmPreparationPending_) {
                         QFile::remove(imagePath);
+                        if (owner) {
+                            owner->ClearPendingAssistantNote();
+                        }
                         return;
                     }
                     owner->vlmPreparationPending_ = false;
@@ -887,6 +940,7 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
                         const QString error =
                             QStringLiteral(
                                 "Could not prepare the current camera view.");
+                        owner->ClearPendingAssistantNote();
                         owner->FinishVlmError(error);
                         emit owner->AssistantTurnFinished(
                             threadId, {}, {}, error, false, true);
@@ -904,6 +958,7 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
         vlmPreparationPersistent_ = false;
         vlmPreparationThreadId_.clear();
         QFile::remove(imagePath);
+        ClearPendingAssistantNote();
         const QString error =
             QStringLiteral(
                 "Could not prepare the current camera view because the image "
@@ -943,16 +998,11 @@ QString AssistiveRuntime::notesFilePath() const
 void AssistiveRuntime::RefreshOverlay()
 {
     QStringList sections;
-    if (ocrEnabled_ || ocrForcedVisible_) {
-        QString text = ocrText_.isEmpty() ? ocrStatus_ : ocrText_;
-        if (!text.isEmpty()) {
-            sections.push_back(QStringLiteral("OCR\n%1").arg(text));
-        }
-    }
     if (vlmEnabled_ || vlmForcedVisible_) {
         QString text = vlmText_.isEmpty() ? vlmStatus_ : vlmText_;
         if (!text.isEmpty()) {
-            sections.push_back(QStringLiteral("Scene Explain\n%1").arg(text));
+            sections.push_back((readingText_ ? QStringLiteral("Read Text\n%1")
+                                             : QStringLiteral("Scene Explain\n%1")).arg(text));
         }
     }
 
@@ -962,56 +1012,13 @@ void AssistiveRuntime::RefreshOverlay()
                         !overlayDismissed_ && !body.isEmpty());
 }
 
-QString AssistiveRuntime::TesseractProgram() const
-{
-    const QString resolved = ResolvedSetting(config_.tesseractPath, "OPENZOOM_TESSERACT_PATH");
-    if (!resolved.isEmpty()) {
-        const QFileInfo configured(resolved);
-        if (configured.isDir()) {
-            return QDir(configured.absoluteFilePath()).filePath(QStringLiteral("tesseract.exe"));
-        }
-        return resolved;
-    }
-
-    const QString appDirectory = QCoreApplication::applicationDirPath();
-    QStringList candidates{
-        QDir(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation))
-            .filePath(QStringLiteral("OpenZoom/tools/tesseract/tesseract.exe")),
-        QDir(appDirectory).filePath(QStringLiteral("tools/tesseract/tesseract.exe")),
-        QDir(appDirectory).filePath(QStringLiteral("tesseract/tesseract.exe")),
-        QDir(appDirectory).filePath(QStringLiteral("tesseract.exe"))};
-
-    const QString pathExecutable = QStandardPaths::findExecutable(QStringLiteral("tesseract.exe"));
-    if (!pathExecutable.isEmpty()) {
-        candidates.push_back(pathExecutable);
-    }
-
-    const QString programFiles = qEnvironmentVariable("ProgramFiles").trimmed();
-    if (!programFiles.isEmpty()) {
-        candidates.push_back(QDir(programFiles).filePath(QStringLiteral("Tesseract-OCR/tesseract.exe")));
-    }
-    const QString localAppData = qEnvironmentVariable("LOCALAPPDATA").trimmed();
-    if (!localAppData.isEmpty()) {
-        candidates.push_back(QDir(localAppData).filePath(
-            QStringLiteral("Programs/Tesseract-OCR/tesseract.exe")));
-    }
-
-    for (const QString& candidate : candidates) {
-        const QFileInfo info(candidate);
-        if (info.isFile()) {
-            return info.absoluteFilePath();
-        }
-    }
-    return QStringLiteral("tesseract");
-}
-
 bool AssistiveRuntime::VlmConfigured() const
 {
     if (UsesCodexProvider()) {
         return codexClient_ != nullptr;
     }
-    return !ResolvedSetting(config_.vlmApiUrl, "OPENZOOM_VLM_API_URL").isEmpty() &&
-           !ResolvedSetting(config_.vlmModel, "OPENZOOM_VLM_MODEL").isEmpty();
+    return !ResolvedSetting(config_.vlmApiUrl, "OKUFLOW_VLM_API_URL").isEmpty() &&
+           !ResolvedSetting(config_.vlmModel, "OKUFLOW_VLM_MODEL").isEmpty();
 }
 
 bool AssistiveRuntime::UsesCodexProvider() const
@@ -1042,123 +1049,17 @@ bool AssistiveRuntime::ValidateFrame(const uint8_t* bgraData, int width, int hei
     return true;
 }
 
-void AssistiveRuntime::StartOcr(const uint8_t* bgraData, int width, int height, bool forced)
+void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height, bool readText)
 {
-    if ((ocrHardUnavailable_ && !forced) || ocrPreparationPending_) {
-        return;
-    }
-    QImage frameImage(bgraData, width, height, width * 4, QImage::Format_ARGB32);
-    QImage copy = frameImage.copy();
-    const QString imagePath =
-        CreateAssistiveTemporaryFramePath(QStringLiteral("ocr"),
-                                          QStringLiteral("png"));
-    if (copy.isNull() || imagePath.isEmpty()) {
-        QFile::remove(imagePath);
-        FinishOcrError(QStringLiteral("Failed to create temporary image for OCR."));
-        return;
-    }
-
-    ocrRunForced_ = forced;
-    ocrTimedOut_ = false;
-    ocrPreparationPending_ = true;
-    ocrStatus_ = QStringLiteral("Preparing OCR...");
-    RefreshOverlay();
-    const QString language = config_.ocrLanguage.trimmed();
-    const QString program = TesseractProgram();
-    const std::uint64_t generation = ++ocrPreparationGeneration_;
-    QPointer<AssistiveRuntime> owner(this);
-    const bool queued = imagePreparationPool_ &&
-        imagePreparationPool_->tryStart(
-        [owner,
-         copy = std::move(copy),
-         imagePath,
-         language,
-         program,
-         generation]() mutable {
-            const bool saved = copy.save(imagePath, "PNG");
-            if (!saved) {
-                QFile::remove(imagePath);
-            }
-            if (!owner) {
-                if (saved) {
-                    QFile::remove(imagePath);
-                }
-                return;
-            }
-            QMetaObject::invokeMethod(
-                owner,
-                [owner,
-                 saved,
-                 imagePath,
-                 language,
-                 program,
-                 generation]() {
-                    if (!owner ||
-                        generation != owner->ocrPreparationGeneration_ ||
-                        !owner->ocrPreparationPending_) {
-                        QFile::remove(imagePath);
-                        return;
-                    }
-                    owner->ocrPreparationPending_ = false;
-                    if (!saved) {
-                        owner->ocrRunForced_ = false;
-                        owner->FinishOcrError(
-                            QStringLiteral(
-                                "Failed to save OCR input image."));
-                        return;
-                    }
-
-                    owner->pendingOcrImagePath_ = imagePath;
-                    owner->ocrStatus_ = QStringLiteral("Running OCR...");
-                    owner->RefreshOverlay();
-                    QStringList arguments{
-                        imagePath,
-                        QStringLiteral("stdout"),
-                        QStringLiteral("--psm"),
-                        QStringLiteral("6")};
-                    if (!language.isEmpty()) {
-                        arguments << QStringLiteral("-l") << language;
-                    }
-
-                    owner->ocrProcess_->setProgram(program);
-                    owner->ocrProcess_->setArguments(arguments);
-                    QProcessEnvironment environment =
-                        QProcessEnvironment::systemEnvironment();
-                    const QFileInfo programInfo(program);
-                    if (programInfo.isFile()) {
-                        const QString tessdataPath =
-                            QDir(programInfo.absolutePath())
-                                .filePath(QStringLiteral("tessdata"));
-                        if (QDir(tessdataPath).exists()) {
-                            environment.insert(
-                                QStringLiteral("TESSDATA_PREFIX"),
-                                QDir::toNativeSeparators(tessdataPath));
-                        }
-                        owner->ocrProcess_->setWorkingDirectory(
-                            programInfo.absolutePath());
-                    } else {
-                        owner->ocrProcess_->setWorkingDirectory(QString());
-                    }
-                    owner->ocrProcess_->setProcessEnvironment(environment);
-                    owner->ocrProcess_->start();
-                    owner->ocrWatchdogTimer_->start();
-                },
-                Qt::QueuedConnection);
-        });
-    if (!queued) {
-        ocrPreparationPending_ = false;
-        ocrRunForced_ = false;
-        QFile::remove(imagePath);
-        FinishOcrError(
-            QStringLiteral(
-                "OCR image preparation is busy. Try again in a moment."));
-    }
-}
-
-void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height)
-{
+    readingText_ = readText;
+    const QString readingPrompt = QStringLiteral(
+        "Transcribe all readable text in the attached camera view, in reading order. "
+        "Preserve the original wording, numbers, paragraph breaks, and source language. "
+        "Do not translate or summarize the text and do not guess unreadable words. "
+        "Use [unreadable] for unclear portions. Return the transcription only; "
+        "if there is no readable text, say so briefly.");
     if (UsesCodexProvider()) {
-        QString prompt = config_.vlmPrompt.trimmed();
+        QString prompt = readText ? readingPrompt : config_.vlmPrompt.trimmed();
         if (prompt.isEmpty()) {
             prompt = QStringLiteral("Describe the visible scene briefly for a low-vision user. "
                                     "Focus on readable text, controls, and major objects.");
@@ -1167,7 +1068,7 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height)
             bgraData,
             width,
             height,
-            AppendResponseLanguageDirective(prompt, responseLanguageCode_),
+            readText ? prompt : AppendResponseLanguageDirective(prompt, responseLanguageCode_),
             {},
             false);
         return;
@@ -1188,16 +1089,18 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height)
         return;
     }
 
-    const QString apiUrl = ResolvedSetting(config_.vlmApiUrl, "OPENZOOM_VLM_API_URL");
-    const QString apiKey = ResolvedSetting(config_.vlmApiKey, "OPENZOOM_VLM_API_KEY");
-    const QString model = ResolvedSetting(config_.vlmModel, "OPENZOOM_VLM_MODEL");
-    QString prompt = ResolvedSetting(config_.vlmPrompt, "OPENZOOM_VLM_PROMPT");
+    const QString apiUrl = ResolvedSetting(config_.vlmApiUrl, "OKUFLOW_VLM_API_URL");
+    const QString apiKey = ResolvedSetting(config_.vlmApiKey, "OKUFLOW_VLM_API_KEY");
+    const QString model = ResolvedSetting(config_.vlmModel, "OKUFLOW_VLM_MODEL");
+    QString prompt = readText ? readingPrompt : ResolvedSetting(config_.vlmPrompt, "OKUFLOW_VLM_PROMPT");
     if (prompt.isEmpty()) {
         prompt = QStringLiteral("Describe the visible scene briefly for a low-vision user. Focus on readable text, UI elements, and major objects.");
     }
+    // Reading copies source text verbatim, regardless of conversational
+    // language, tone, or summary preferences.
     const QString assistantInstructions =
-        config_.assistantInstructions.trimmed();
-    const QString responseLanguageCode = responseLanguageCode_;
+        readText ? QString() : config_.assistantInstructions.trimmed();
+    const QString responseLanguageCode = readText ? QString() : responseLanguageCode_;
     const QUrl endpoint(apiUrl);
     const QString endpointName =
         endpoint.host().trimmed().isEmpty()
@@ -1214,6 +1117,10 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height)
     vlmPreparationPending_ = true;
     vlmPreparationPersistent_ = false;
     vlmPreparationThreadId_.clear();
+    if (!pendingVlmNoteImagePath_.isEmpty()) {
+        RemoveNoteImage(pendingVlmNoteImagePath_);
+    }
+    pendingVlmNoteImagePath_ = SaveAnalyzedImageForNotes(copy);
     vlmStatus_ = QStringLiteral("Preparing the current view...");
     RefreshOverlay();
     const std::uint64_t generation = ++vlmPreparationGeneration_;
@@ -1228,6 +1135,7 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height)
          prompt,
          assistantInstructions,
          responseLanguageCode,
+         readText,
          generation]() mutable {
             if (copy.width() > kMaxVlmFrameEdge ||
                 copy.height() > kMaxVlmFrameEdge) {
@@ -1247,7 +1155,8 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height)
                                         model,
                                         prompt,
                                         assistantInstructions,
-                                        responseLanguageCode);
+                                        responseLanguageCode,
+                                        readText ? 4096 : 180);
             }
             if (!owner) {
                 return;
@@ -1322,7 +1231,7 @@ void AssistiveRuntime::PostVlmRequest(
             payload.size() > kMaximumVlmResponseBytes) {
             vlmResponseTooLarge_ = false;
             FinishVlmError(
-                QStringLiteral("VLM response exceeded OpenZoom's safe size limit."));
+                QStringLiteral("VLM response exceeded OkuFlow's safe size limit."));
             reply->deleteLater();
             return;
         }
@@ -1388,6 +1297,15 @@ void AssistiveRuntime::StartCodexVlm(const uint8_t* bgraData,
     vlmPreparationPending_ = true;
     vlmPreparationPersistent_ = persistent;
     vlmPreparationThreadId_ = threadId;
+    // Persistent turns are the Advanced Assistant chat, which does not write
+    // to lecture notes; only the non-persistent scene-explanation records the
+    // analyzed frame.
+    if (!persistent) {
+        if (!pendingVlmNoteImagePath_.isEmpty()) {
+            RemoveNoteImage(pendingVlmNoteImagePath_);
+        }
+        pendingVlmNoteImagePath_ = SaveAnalyzedImageForNotes(copy);
+    }
     const std::uint64_t generation = ++vlmPreparationGeneration_;
     QPointer<AssistiveRuntime> owner(this);
     const bool queued = imagePreparationPool_ &&
@@ -1458,50 +1376,108 @@ void AssistiveRuntime::StartCodexVlm(const uint8_t* bgraData,
     }
 }
 
-void AssistiveRuntime::FinishOcrSuccess(const QString& text)
-{
-    ocrRunForced_ = false;
-    const QString fullText = SanitizeText(text);
-    ocrText_ = TruncateText(fullText, 700);
-    if (ocrText_.isEmpty()) {
-        ocrStatus_ = QStringLiteral("OCR found no readable text.");
-    } else {
-        ocrStatus_.clear();
-        if (fullText != lastNotedOcrText_) {
-            lastNotedOcrText_ = fullText;
-            AppendNoteSection(QStringLiteral("Text on screen"), fullText);
-        }
-    }
-    RefreshOverlay();
-}
-
-void AssistiveRuntime::FinishOcrError(const QString& errorText)
-{
-    ocrText_.clear();
-    ocrStatus_ = SanitizeText(errorText);
-    if (ocrStatus_.contains(QStringLiteral("not found"), Qt::CaseInsensitive)) {
-        ocrHardUnavailable_ = true;
-    }
-    RefreshOverlay();
-}
-
 void AssistiveRuntime::FinishVlmSuccess(const QString& text)
 {
+    const QString analyzedImage = pendingVlmNoteImagePath_;
+    pendingVlmNoteImagePath_.clear();
     const QString fullText = SanitizeText(text);
-    vlmText_ = TruncateText(fullText, 700);
+    vlmText_ = readingText_ ? fullText.left(kMaximumDisplayedAssistantCharacters)
+                            : TruncateText(fullText, 700);
+    bool noted = false;
     if (vlmText_.isEmpty()) {
         vlmStatus_ = QStringLiteral("VLM returned an empty description.");
     } else {
         vlmStatus_.clear();
-        AppendNoteSection(QStringLiteral("Scene explanation"), fullText);
+        noted = AppendNoteSection(
+            QCoreApplication::translate("OkuFlow", readingText_ ? "Text on screen" : "Scene explanation"),
+            fullText, analyzedImage, true);
+    }
+    if (!noted && !analyzedImage.isEmpty()) {
+        RemoveNoteImage(analyzedImage);
     }
     RefreshOverlay();
 }
 
 void AssistiveRuntime::FinishVlmError(const QString& errorText)
 {
+    if (!pendingVlmNoteImagePath_.isEmpty()) {
+        RemoveNoteImage(pendingVlmNoteImagePath_);
+        pendingVlmNoteImagePath_.clear();
+    }
     vlmText_.clear();
     vlmStatus_ = SanitizeText(errorText);
+    RefreshOverlay();
+}
+
+void AssistiveRuntime::ClearPendingAssistantNote()
+{
+    if (!pendingAssistantNoteImagePath_.isEmpty()) {
+        RemoveNoteImage(pendingAssistantNoteImagePath_);
+        pendingAssistantNoteImagePath_.clear();
+    }
+    pendingAssistantNotePrompt_.clear();
+}
+
+void AssistiveRuntime::FinishAssistantTurnSuccess(const QString& threadId,
+                                                  const QString& text)
+{
+    readingText_ = false;
+    const QString question = pendingAssistantNotePrompt_.trimmed();
+    const QString analyzedImage = pendingAssistantNoteImagePath_;
+    pendingAssistantNotePrompt_.clear();
+    pendingAssistantNoteImagePath_.clear();
+
+    const QString fullText = SanitizeText(text);
+    vlmText_ = TruncateText(fullText, 700);
+    bool noted = false;
+    if (fullText.isEmpty()) {
+        vlmStatus_ = QStringLiteral("Assistant returned an empty answer.");
+    } else {
+        vlmStatus_.clear();
+        if (config_.lectureNotesEnabled &&
+            !config_.notesDirectory.trimmed().isEmpty() && EnsureNotesFile()) {
+            QString content;
+            if (!question.isEmpty()) {
+                content += QStringLiteral(
+                               "    <p class=\"note-ask\">%1</p>\n")
+                               .arg(question.toHtmlEscaped());
+            }
+            if (!analyzedImage.isEmpty()) {
+                const QString imageUrl =
+                    NotesMediaUrl(notesFilePath_, analyzedImage).toHtmlEscaped();
+                content += QStringLiteral(
+                               "    <figure class=\"ai-shot\">\n"
+                               "      <a href=\"%1\"><img src=\"%1\" alt=\"%2\" loading=\"lazy\"></a>\n"
+                               "    </figure>\n")
+                               .arg(imageUrl,
+                                    QCoreApplication::translate(
+                                        "OkuFlow", "View the assistant analyzed")
+                                        .toHtmlEscaped());
+            }
+            content += QStringLiteral("    <p class=\"note-text\">%1</p>\n")
+                           .arg(fullText.toHtmlEscaped());
+            NoteSectionMetadata metadata;
+            metadata.cssClass = QStringLiteral("ai");
+            metadata.kind = QStringLiteral("ai");
+            metadata.startCollapsed = true;
+            // The turn's title is the question so a collapsed turn is
+            // identifiable; the preview shows the answer.
+            metadata.previewText = fullText.simplified().left(160);
+            // A sanitized thread id groups all turns of one conversation.
+            QString conversation = threadId;
+            conversation.replace(QLatin1Char('_'), QLatin1Char('-'));
+            conversation.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9-]")));
+            metadata.conversationId = conversation.left(64);
+            const QString heading =
+                question.isEmpty()
+                    ? QCoreApplication::translate("OkuFlow", "Assistant")
+                    : question.simplified().left(80);
+            noted = AppendNoteHtmlSection(heading, content, metadata);
+        }
+    }
+    if (!noted && !analyzedImage.isEmpty()) {
+        RemoveNoteImage(analyzedImage);
+    }
     RefreshOverlay();
 }
 
@@ -1524,59 +1500,334 @@ bool AssistiveRuntime::EnsureNotesFile()
     if (directory.isEmpty()) {
         return false;
     }
-    if (!QDir().mkpath(directory)) {
-        qWarning("AssistiveRuntime: failed to create notes directory %s", qPrintable(directory));
-        return false;
-    }
-
     const QDateTime now = QDateTime::currentDateTime();
-    const QString fileName = QStringLiteral("NOTES_%1.html")
-                                 .arg(now.toString(QStringLiteral("yyyyMMdd_HHmmss")));
+    const QString fileName = QStringLiteral("NOTES_%1_%2.html")
+                                 .arg(now.toString(QStringLiteral("yyyyMMdd_HHmmss")),
+                                      QUuid::createUuid().toString(QUuid::Id128));
     const QString path = QDir(directory).filePath(fileName);
 
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly)) {
-        qWarning("AssistiveRuntime: failed to create notes file %s", qPrintable(path));
-        return false;
-    }
     const QString displayTime = now.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     const QString machineTime = now.toString(Qt::ISODate);
-    const QString document = QStringLiteral(
-        "<!doctype html>\n"
-        "<html lang=\"en\">\n"
-        "<head>\n"
-        "  <meta charset=\"utf-8\">\n"
-        "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        "  <title>OpenZoom Lecture Notes - %1</title>\n"
-        "  <style>\n"
-        "    :root { color-scheme: light dark; font: 18px/1.6 system-ui, sans-serif; }\n"
-        "    body { margin: 0; background: Canvas; color: CanvasText; }\n"
-        "    main { width: min(72rem, calc(100% - 2rem)); margin: 0 auto; padding: 2rem 0 4rem; }\n"
-        "    h1 { font-size: clamp(1.8rem, 5vw, 3rem); line-height: 1.15; margin: 0; }\n"
-        "    .created { color: GrayText; margin: .5rem 0 2rem; }\n"
-        "    section { border-top: 2px solid GrayText; padding: 1.5rem 0; }\n"
-        "    h2 { font-size: 1.25rem; line-height: 1.3; margin: 0 0 1rem; }\n"
-        "    time { font-variant-numeric: tabular-nums; }\n"
-        "    .note-text { white-space: pre-wrap; overflow-wrap: anywhere; }\n"
-        "    figure { margin: 0; }\n"
-        "    .media-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 1rem; }\n"
-        "    img, video { display: block; width: 100%; height: auto; border: 2px solid GrayText; background: #000; }\n"
-        "    figcaption { margin-top: .5rem; color: GrayText; }\n"
-        "    a:focus-visible { outline: 4px solid Highlight; outline-offset: 4px; }\n"
-        "    @media print { main { width: 100%; } section { break-inside: avoid; } }\n"
-        "  </style>\n"
-        "</head>\n"
-        "<body>\n"
-        "<main>\n"
-        "  <h1>OpenZoom Lecture Notes</h1>\n"
-        "  <p class=\"created\">Started <time datetime=\"%2\">%1</time></p>\n")
-                                 .arg(displayTime.toHtmlEscaped(),
-                                      machineTime.toHtmlEscaped());
-    const QByteArray documentBytes = document.toUtf8();
-    if (file.write(documentBytes) != documentBytes.size() || !file.commit()) {
-        qWarning("AssistiveRuntime: failed to finalize notes file %s", qPrintable(path));
-        return false;
+    // The document language matches the response/UI language at creation
+    // time; every appended section restates its own language so a mid-session
+    // switch cannot make a screen reader misread later sections.
+    const QString documentLanguage =
+        responseLanguageCode_.isEmpty() ? QStringLiteral("en")
+                                        : responseLanguageCode_;
+    const QString notesTitle =
+        QCoreApplication::translate("OkuFlow", "OkuFlow Lecture Notes");
+    const QString startedLine =
+        QCoreApplication::translate("OkuFlow", "Started %1")
+            .toHtmlEscaped()
+            .arg(QStringLiteral("<time datetime=\"%1\">%2</time>")
+                     .arg(machineTime.toHtmlEscaped(),
+                          displayTime.toHtmlEscaped()));
+    // The head is written exactly once; every later entry is one appended,
+    // flushed, self-contained block, so a crash mid-lecture still leaves a
+    // fully styled, fully readable page. Styling and the small viewer
+    // script are inline: the file must work offline with no external
+    // resources. Placeholders are token-replaced (never QString::arg) so
+    // literal % signs in CSS/JS stay inert.
+    QString document = QStringLiteral(R"HTML(<!doctype html>
+<html lang="@@LANG@@" data-l10n-transcript="@@TRLABEL@@" data-l10n-conversation="@@CONVOLABEL@@">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>@@TITLE@@ - @@TIME@@</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f2ee; --panel: #ffffff; --panel-2: #faf9f6; --ink: #1a1b1d; --muted: #5b6470;
+      --line: #e3ded4; --line-soft: #ece8e0; --accent: #2563eb; --accent-soft: #e8f0fe;
+      --chip: #efece5; --user-bubble: #eef2fb; --radius: 12px;
+      --shadow: 0 1px 2px rgba(20, 18, 12, .06), 0 1px 8px rgba(20, 18, 12, .04);
     }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0e1013; --panel: #181b1f; --panel-2: #1e2226; --ink: #e9ebee; --muted: #9aa2ab;
+      --line: #2a2f36; --line-soft: #23272d; --accent: #7aa7ff; --accent-soft: #1b2740;
+      --chip: #23282e; --user-bubble: #1a2237;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 2px 12px rgba(0, 0, 0, .35);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --bg: #0e1013; --panel: #181b1f; --panel-2: #1e2226; --ink: #e9ebee; --muted: #9aa2ab;
+        --line: #2a2f36; --line-soft: #23272d; --accent: #7aa7ff; --accent-soft: #1b2740;
+        --chip: #23282e; --user-bubble: #1a2237;
+        --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 2px 12px rgba(0, 0, 0, .35);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { font: 16px/1.6 system-ui, "Segoe UI", sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--ink); }
+    .topbar { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+    .topbar-inner { width: min(52rem, calc(100vw - 2rem)); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .5rem 0; flex-wrap: wrap; }
+    .brand { margin: 0; font-weight: 700; letter-spacing: .01em; font-size: 1rem; display: flex; align-items: center; gap: .5rem; }
+    .brand::before { content: ""; width: .7rem; height: .7rem; border-radius: 3px; background: var(--accent); }
+    .tools { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .tools button { font: inherit; font-size: .82rem; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .35rem .8rem; cursor: pointer; }
+    .tools button:hover { border-color: var(--accent); color: var(--accent); }
+    main { width: min(52rem, calc(100vw - 2rem)); margin: 0 auto; padding: 1.75rem 0 5rem; }
+    h1 { font-size: clamp(1.5rem, 4vw, 2rem); line-height: 1.15; margin: 0; }
+    .created { color: var(--muted); margin: .35rem 0 1.75rem; font-size: .9rem; }
+    /* Every entry is a compact chat-like card. */
+    details.note { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin: .55rem 0; box-shadow: var(--shadow); overflow: hidden; }
+    summary { cursor: pointer; padding: .55rem .85rem; list-style: none; display: flex; align-items: center; gap: .5rem; }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: "\25B8"; flex: none; color: var(--muted); font-size: .72rem; transition: transform .15s ease; }
+    details[open] > summary::before { transform: rotate(90deg); }
+    /* Type icon shows the entry kind at a glance while collapsed. */
+    .ic { flex: none; font-size: 1rem; line-height: 1; }
+    .ic::before { content: "\2022 "; color: var(--muted); }
+    [data-kind="ai"]    > summary .ic::before { content: "\1F916 "; }
+    [data-kind="video"] > summary .ic::before { content: "\1F3AC "; }
+    [data-kind="photo"] > summary .ic::before { content: "\1F4F7 "; }
+    [data-kind="draw"]  > summary .ic::before { content: "\270F "; }
+    [data-kind="talk"]  > summary .ic::before { content: "\1F4AC "; }
+    [data-kind="convo"] > summary .ic::before { content: "\1F5E8 "; }
+    /* A multi-turn conversation wraps its turn cards; nested cards are flush. */
+    details.convo > .note-body { padding: .4rem .6rem .6rem; }
+    details.convo details.note { margin: .4rem 0; box-shadow: none; }
+    details.convo details.note:first-child { margin-top: 0; }
+    details.convo details.note:last-child { margin-bottom: 0; }
+    h2.ttl { flex: none; font-size: .92rem; line-height: 1.3; margin: 0; font-weight: 600; color: var(--ink); }
+    .count { flex: none; background: var(--chip); color: var(--muted); border-radius: 999px; padding: 0 .5rem; font-size: .74rem; font-weight: 500; }
+    /* One-line preview fills the middle; hidden (but space kept) when open. */
+    .preview { flex: 1 1 auto; min-width: 0; color: var(--muted); font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    details[open] > summary .preview { visibility: hidden; }
+    /* Timestamp: least prominent, pinned to the far right. */
+    time.at { flex: none; color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
+    .note-body { padding: .1rem 1rem .85rem 2.35rem; }
+    time { font-variant-numeric: tabular-nums; }
+    .note-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; line-height: 1.55; }
+    /* The question you asked the assistant, above the analyzed frame + reply. */
+    .note-ask { margin: 0 0 .55rem; padding: .45rem .7rem; background: var(--user-bubble); border-radius: 9px; font-weight: 550; overflow-wrap: anywhere; }
+    details.ai .note-body { border-left: 2px solid var(--accent-soft); padding-left: .9rem; margin-left: 1.4rem; }
+    /* The exact frame the assistant analyzed, above its answer. */
+    figure.ai-shot { margin: 0 0 .6rem; max-width: 22rem; }
+    figure.ai-shot img { border-radius: 8px; }
+    figure { margin: 0; }
+    .media-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .7rem; }
+    img, video { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: #000; }
+    figcaption { margin-top: .35rem; color: var(--muted); font-size: .84rem; }
+    figcaption a, a { color: var(--accent); }
+    /* Single consolidated transcript block: tight chat rows, session breaks. */
+    .trbody { padding: .3rem .5rem .5rem; }
+    p.tr { display: flex; justify-content: space-between; align-items: baseline; gap: .8rem; margin: 0; padding: .32rem .65rem; }
+    .trbody p.tr { border-radius: 9px; }
+    .trbody p.tr:nth-child(odd) { background: var(--panel-2); }
+    .trbody p.tr.tr-newsession { margin-top: .5rem; padding-top: .5rem; border-top: 1px dashed var(--line); }
+    /* Standalone transcript lines (no script) still read as a card. */
+    main > p.tr { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin: .3rem 0; padding: .5rem .85rem; }
+    .tr-text { overflow-wrap: anywhere; }
+    .tr-at { flex: none; color: var(--muted); font-size: .76rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    p.tr.tr-gap { color: var(--muted); font-style: italic; }
+    p.tr.tr-gap .tr-text::before { content: "\2504 "; }
+    button:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+    @media (prefers-reduced-motion: reduce) { summary::before { transition: none; } }
+    @media print { .topbar { display: none; } main { width: 100%; } details.note { break-inside: avoid; box-shadow: none; } details:not([open]) > summary ~ * { display: revert; } }
+  </style>
+  <script>
+  (function () {
+    "use strict";
+    var storageKey = "okuflow-notes-theme";
+    function applyTheme(value) {
+      if (value === "light" || value === "dark") {
+        document.documentElement.setAttribute("data-theme", value);
+      }
+    }
+    try { applyTheme(localStorage.getItem(storageKey)); } catch (e) { /* blocked storage */ }
+    function isDark() {
+      var explicit = document.documentElement.getAttribute("data-theme");
+      if (explicit) { return explicit === "dark"; }
+      return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    }
+    document.addEventListener("DOMContentLoaded", function () {
+      var themeButton = document.getElementById("btn-theme");
+      if (themeButton) {
+        var sync = function () {
+          themeButton.setAttribute("aria-pressed", isDark() ? "true" : "false");
+        };
+        sync();
+        themeButton.addEventListener("click", function () {
+          var next = isDark() ? "light" : "dark";
+          applyTheme(next);
+          try { localStorage.setItem(storageKey, next); } catch (e) { /* blocked */ }
+          sync();
+        });
+      }
+      var setAll = function (open) {
+        var all = document.querySelectorAll("details");
+        for (var i = 0; i < all.length; i++) { all[i].open = open; }
+      };
+      var expand = document.getElementById("btn-expand");
+      var collapse = document.getElementById("btn-collapse");
+      if (expand) { expand.addEventListener("click", function () { setAll(true); }); }
+      if (collapse) { collapse.addEventListener("click", function () { setAll(false); }); }
+      // Consolidate EVERY transcript line in the document into one single
+      // collapsible block, regardless of how many times recording was
+      // started/stopped or what media sits between them. The block is placed
+      // right after the last recorded-video card (the transcript belongs to
+      // the recording, so it reads after it); with no video it stays at the
+      // first transcript line. A dashed rule marks where one recording ends
+      // and the next begins. Progressive enhancement: without script each
+      // line still renders as a readable card.
+      var label = document.documentElement.getAttribute("data-l10n-transcript") || "Transcript";
+      var main = document.querySelector("main");
+      if (!main) { return; }
+      var lines = Array.prototype.slice.call(main.children).filter(function (node) {
+        return node.nodeType === 1 && node.matches("p.tr");
+      });
+      if (lines.length > 0) {
+      var first = lines[0];
+      var wrap = document.createElement("details");
+      wrap.open = true;
+      wrap.className = "note trwrap";
+      wrap.setAttribute("data-kind", "talk");
+      var summary = document.createElement("summary");
+      var ic = document.createElement("span");
+      ic.className = "ic";
+      ic.setAttribute("aria-hidden", "true");
+      summary.appendChild(ic);
+      var heading = document.createElement("h2");
+      heading.className = "ttl";
+      heading.textContent = label;
+      summary.appendChild(heading);
+      var count = document.createElement("span");
+      count.className = "count";
+      count.textContent = String(lines.length);
+      summary.appendChild(count);
+      var preview = document.createElement("span");
+      preview.className = "preview";
+      var firstText = first.querySelector(".tr-text");
+      preview.textContent = firstText ? firstText.textContent : "";
+      summary.appendChild(preview);
+      var atTime = document.createElement("time");
+      atTime.className = "at";
+      var firstChip = first.querySelector(".tr-at");
+      if (firstChip) { atTime.textContent = firstChip.textContent; }
+      summary.appendChild(atTime);
+      wrap.appendChild(summary);
+      var body = document.createElement("div");
+      body.className = "trbody";
+      wrap.appendChild(body);
+      var videos = main.querySelectorAll(":scope > details[data-kind='video']");
+      if (videos.length) {
+        var lastVideo = videos[videos.length - 1];
+        if (lastVideo.nextSibling) {
+          main.insertBefore(wrap, lastVideo.nextSibling);
+        } else {
+          main.appendChild(wrap);
+        }
+      } else {
+        main.insertBefore(wrap, first);
+      }
+      var prevSession = null;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        var session = line.getAttribute("data-recording-session");
+        if (prevSession !== null && session !== prevSession) {
+          line.classList.add("tr-newsession");
+        }
+        prevSession = session;
+        body.appendChild(line);
+      }
+      } // end transcript consolidation
+
+      // Group Advanced Assistant turns of one conversation into a single
+      // collapsible "Conversation" block, each turn still individually
+      // collapsible inside it. A single-turn conversation stays a plain card.
+      var convoLabel =
+        document.documentElement.getAttribute("data-l10n-conversation") ||
+        "Conversation";
+      var order = [];
+      var byConversation = {};
+      var turns = main.querySelectorAll(":scope > details[data-conversation]");
+      for (var t = 0; t < turns.length; t++) {
+        var id = turns[t].getAttribute("data-conversation");
+        if (!byConversation[id]) { byConversation[id] = []; order.push(id); }
+        byConversation[id].push(turns[t]);
+      }
+      for (var c = 0; c < order.length; c++) {
+        var group = byConversation[order[c]];
+        if (group.length < 2) { continue; }
+        var cWrap = document.createElement("details");
+        cWrap.open = true;
+        cWrap.className = "note convo";
+        cWrap.setAttribute("data-kind", "convo");
+        var cSummary = document.createElement("summary");
+        var cIc = document.createElement("span");
+        cIc.className = "ic";
+        cIc.setAttribute("aria-hidden", "true");
+        cSummary.appendChild(cIc);
+        var cH2 = document.createElement("h2");
+        cH2.className = "ttl";
+        cH2.textContent = convoLabel;
+        cSummary.appendChild(cH2);
+        var cCount = document.createElement("span");
+        cCount.className = "count";
+        cCount.textContent = String(group.length);
+        cSummary.appendChild(cCount);
+        var cPrev = document.createElement("span");
+        cPrev.className = "preview";
+        cPrev.textContent = group[0].querySelector("h2.ttl")
+          ? group[0].querySelector("h2.ttl").textContent : "";
+        cSummary.appendChild(cPrev);
+        cWrap.appendChild(cSummary);
+        var cBody = document.createElement("div");
+        cBody.className = "note-body";
+        cWrap.appendChild(cBody);
+        main.insertBefore(cWrap, group[0]);
+        for (var g = 0; g < group.length; g++) { cBody.appendChild(group[g]); }
+      }
+    });
+  })();
+  </script>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <p class="brand">OkuFlow</p>
+    <div class="tools">
+      <button type="button" id="btn-expand">@@EXPAND@@</button>
+      <button type="button" id="btn-collapse">@@COLLAPSE@@</button>
+      <button type="button" id="btn-theme" aria-pressed="false">&#9681; @@THEMELABEL@@</button>
+    </div>
+  </div>
+</header>
+<main>
+  <h1>@@TITLE@@</h1>
+  <p class="created">@@CREATED@@</p>
+)HTML");
+    document.replace(QStringLiteral("@@LANG@@"),
+                     documentLanguage.toHtmlEscaped());
+    document.replace(QStringLiteral("@@TRLABEL@@"),
+                     QCoreApplication::translate("OkuFlow", "Lecture transcript")
+                         .toHtmlEscaped());
+    document.replace(QStringLiteral("@@CONVOLABEL@@"),
+                     QCoreApplication::translate("OkuFlow", "Conversation")
+                         .toHtmlEscaped());
+    document.replace(QStringLiteral("@@TITLE@@"), notesTitle.toHtmlEscaped());
+    document.replace(QStringLiteral("@@TIME@@"), displayTime.toHtmlEscaped());
+    document.replace(QStringLiteral("@@CREATED@@"), startedLine);
+    document.replace(QStringLiteral("@@EXPAND@@"),
+                     QCoreApplication::translate("OkuFlow", "Expand all")
+                         .toHtmlEscaped());
+    document.replace(QStringLiteral("@@COLLAPSE@@"),
+                     QCoreApplication::translate("OkuFlow", "Collapse all")
+                         .toHtmlEscaped());
+    document.replace(QStringLiteral("@@THEMELABEL@@"),
+                     QCoreApplication::translate("OkuFlow", "Light or dark colors")
+                         .toHtmlEscaped());
+    if (!QueueNotesWork(path, document.size() * 2,
+                        [path, directory, document] {
+        if (!QDir().mkpath(directory)) return false;
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) return false;
+        const QByteArray bytes = document.toUtf8();
+        return file.write(bytes) == bytes.size() && file.commit();
+    })) return false;
 
     notesFilePath_ = path;
     notesDocumentOpen_ = true;
@@ -1588,54 +1839,103 @@ void AssistiveRuntime::FinalizeNotesFile()
     if (!notesDocumentOpen_ || notesFilePath_.isEmpty()) {
         return;
     }
-    QFile file(notesFilePath_);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) {
-        qWarning("AssistiveRuntime: failed to finalize notes file %s",
-                 qPrintable(notesFilePath_));
-        return;
-    }
-    static constexpr auto closingDocument =
-        "</main>\n"
-        "</body>\n"
-        "</html>\n";
-    const QByteArray closingBytes(closingDocument);
-    if (file.write(closingBytes) != closingBytes.size() || !file.flush()) {
-        qWarning("AssistiveRuntime: failed to finalize notes file %s",
-                 qPrintable(notesFilePath_));
-        return;
-    }
+    AppendNoteBlock(QStringLiteral("</main>\n</body>\n</html>\n"));
     notesDocumentOpen_ = false;
 }
 
-void AssistiveRuntime::AppendNoteSection(const QString& heading,
+bool AssistiveRuntime::AppendNoteSection(const QString& heading,
                                          const QString& bodyText,
-                                         const QString& imagePath)
+                                         const QString& imagePath,
+                                         bool aiText)
 {
     if (!config_.lectureNotesEnabled || config_.notesDirectory.trimmed().isEmpty()) {
-        return;
+        RemoveNoteImage(imagePath);
+        return false;
     }
     if (bodyText.trimmed().isEmpty() && imagePath.trimmed().isEmpty()) {
-        return;
+        RemoveNoteImage(imagePath);
+        return false;
     }
     if (!EnsureNotesFile()) {
-        return;
+        RemoveNoteImage(imagePath);
+        return false;
     }
 
     QString content;
-    if (!imagePath.trimmed().isEmpty()) {
+    NoteSectionMetadata metadata;
+    if (aiText) {
+        // An AI answer: embed the exact frame the AI analyzed above its text
+        // so the note records what was seen, then the answer. Long answers
+        // start collapsed with a one-line preview to keep the page compact.
+        if (!imagePath.trimmed().isEmpty()) {
+            const QString imageUrl =
+                NotesMediaUrl(notesFilePath_, imagePath).toHtmlEscaped();
+            content += QStringLiteral(
+                           "    <figure class=\"ai-shot\">\n"
+                           "      <a href=\"%1\"><img src=\"%1\" alt=\"%2\" loading=\"lazy\"></a>\n"
+                           "    </figure>\n")
+                           .arg(imageUrl,
+                                QCoreApplication::translate(
+                                    "OkuFlow", "View the assistant analyzed")
+                                    .toHtmlEscaped());
+        }
+        content += QStringLiteral("    <p class=\"note-text\">%1</p>\n")
+                       .arg(bodyText.toHtmlEscaped());
+        metadata.cssClass = QStringLiteral("ai");
+        metadata.kind = QStringLiteral("ai");
+        metadata.startCollapsed = true;
+        metadata.previewText = bodyText.simplified().left(160);
+    } else if (!imagePath.trimmed().isEmpty()) {
         const QString imageUrl =
             NotesMediaUrl(notesFilePath_, imagePath).toHtmlEscaped();
         content = QStringLiteral(
                       "    <figure>\n"
-                      "      <a href=\"%1\"><img src=\"%1\" alt=\"Captured processed camera view\" loading=\"lazy\"></a>\n"
-                      "      <figcaption>Processed camera view</figcaption>\n"
+                      "      <a href=\"%1\"><img src=\"%1\" alt=\"%2\" loading=\"lazy\"></a>\n"
+                      "      <figcaption>%3</figcaption>\n"
                       "    </figure>\n")
-                      .arg(imageUrl);
+                      .arg(imageUrl,
+                           QCoreApplication::translate(
+                               "OkuFlow", "Captured processed camera view")
+                               .toHtmlEscaped(),
+                           QCoreApplication::translate(
+                               "OkuFlow", "Processed camera view")
+                               .toHtmlEscaped());
+        // A single processed image reaches here only for annotation
+        // snapshots; the marked-drawing icon fits better than a camera.
+        metadata.cssClass = QStringLiteral("media");
+        metadata.kind = QStringLiteral("draw");
     } else {
-        content = QStringLiteral("    <div class=\"note-text\">%1</div>\n")
+        content = QStringLiteral("    <p class=\"note-text\">%1</p>\n")
                       .arg(bodyText.toHtmlEscaped());
     }
-    AppendNoteHtmlSection(heading, content);
+    const bool accepted = AppendNoteHtmlSection(heading, content, metadata);
+    if (!accepted) RemoveNoteImage(imagePath);
+    return accepted;
+}
+
+QString AssistiveRuntime::SaveAnalyzedImageForNotes(const QImage& image)
+{
+    if (!config_.lectureNotesEnabled ||
+        config_.notesDirectory.trimmed().isEmpty() || image.isNull()) {
+        return {};
+    }
+    qint64 retainedBytes = image.sizeInBytes();
+    for (const auto& retained : noteImages_) retainedBytes += retained.sizeInBytes();
+    if (noteImages_.size() >= 3 || retainedBytes > 192LL * 1024 * 1024) {
+        emit NotesWriteFinished(config_.notesDirectory, QStringLiteral("Notes image queue is full."));
+        return {};
+    }
+    const QString path = QDir(config_.notesDirectory).filePath(
+        QStringLiteral("images/AI_%1.jpg").arg(QUuid::createUuid().toString(QUuid::Id128)));
+    noteImages_.insert(path, image);
+    return path;
+}
+
+void AssistiveRuntime::RemoveNoteImage(const QString& path)
+{
+    // Unsubmitted images exist only in memory. Submitted images belong to the
+    // writer, which removes them if the associated HTML block fails.
+    noteImages_.remove(path);
 }
 
 void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
@@ -1661,75 +1961,248 @@ void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
         originalMedia = QStringLiteral(
                             "        <video controls preload=\"metadata\">\n"
                             "          <source src=\"%1\" type=\"video/mp4\">\n"
-                            "          <a href=\"%1\">Open original video</a>\n"
+                            "          <a href=\"%1\">%2</a>\n"
                             "        </video>\n")
-                            .arg(originalUrl);
+                            .arg(originalUrl,
+                                 QCoreApplication::translate(
+                                     "OkuFlow", "Open original video")
+                                     .toHtmlEscaped());
         processedMedia = QStringLiteral(
                              "        <video controls preload=\"metadata\">\n"
                              "          <source src=\"%1\" type=\"video/mp4\">\n"
-                             "          <a href=\"%1\">Open processed video</a>\n"
+                             "          <a href=\"%1\">%2</a>\n"
                              "        </video>\n")
-                             .arg(processedUrl);
+                             .arg(processedUrl,
+                                  QCoreApplication::translate(
+                                      "OkuFlow", "Open processed video")
+                                      .toHtmlEscaped());
     } else {
         originalMedia = QStringLiteral(
-                            "        <a href=\"%1\"><img src=\"%1\" alt=\"Original camera view\" loading=\"lazy\"></a>\n")
-                            .arg(originalUrl);
+                            "        <a href=\"%1\"><img src=\"%1\" alt=\"%2\" loading=\"lazy\"></a>\n")
+                            .arg(originalUrl,
+                                 QCoreApplication::translate(
+                                     "OkuFlow", "Original camera view")
+                                     .toHtmlEscaped());
         processedMedia = QStringLiteral(
-                             "        <a href=\"%1\"><img src=\"%1\" alt=\"Processed camera view\" loading=\"lazy\"></a>\n")
-                             .arg(processedUrl);
+                             "        <a href=\"%1\"><img src=\"%1\" alt=\"%2\" loading=\"lazy\"></a>\n")
+                             .arg(processedUrl,
+                                  QCoreApplication::translate(
+                                      "OkuFlow", "Processed camera view")
+                                      .toHtmlEscaped());
     }
 
-    const QString mediaType =
-        video ? QStringLiteral("video") : QStringLiteral("photo");
+    // Full sentences per language — never compose "Original camera" + type,
+    // word order differs in Turkish and German.
+    const QString originalCaption =
+        (video ? QCoreApplication::translate("OkuFlow", "Original camera video")
+               : QCoreApplication::translate("OkuFlow", "Original camera photo"))
+            .toHtmlEscaped();
+    const QString processedCaption =
+        (video ? QCoreApplication::translate("OkuFlow", "Processed camera video")
+               : QCoreApplication::translate("OkuFlow", "Processed camera photo"))
+            .toHtmlEscaped();
     const QString content =
         QStringLiteral(
             "    <div class=\"media-grid\">\n"
             "      <figure>\n"
             "%1"
-            "        <figcaption><a href=\"%2\">Original camera %3</a></figcaption>\n"
+            "        <figcaption><a href=\"%2\">%3</a></figcaption>\n"
             "      </figure>\n"
             "      <figure>\n"
             "%4"
-            "        <figcaption><a href=\"%5\">Processed camera %3</a></figcaption>\n"
+            "        <figcaption><a href=\"%5\">%6</a></figcaption>\n"
             "      </figure>\n"
             "    </div>\n")
             .arg(originalMedia,
                  originalUrl,
-                 mediaType,
+                 originalCaption,
                  processedMedia,
-                 processedUrl);
-    AppendNoteHtmlSection(heading, content);
+                 processedUrl,
+                 processedCaption);
+    NoteSectionMetadata metadata;
+    metadata.cssClass = QStringLiteral("media");
+    metadata.kind = video ? QStringLiteral("video") : QStringLiteral("photo");
+    metadata.previewText =
+        video ? QCoreApplication::translate("OkuFlow",
+                                            "Original and processed video")
+              : QCoreApplication::translate("OkuFlow",
+                                            "Original and processed photo");
+    AppendNoteHtmlSection(heading, content, metadata);
 }
 
-void AssistiveRuntime::AppendNoteHtmlSection(const QString& heading,
-                                              const QString& contentHtml)
+bool AssistiveRuntime::QueueNotesWork(const QString& path, qint64 bytes,
+                                      std::function<bool()> work,
+                                      const QString& identity)
+{
+    const auto state = notesWork_;
+    std::unique_lock lock(state->mutex);
+    if (state->count >= 128 || bytes > 256LL * 1024 * 1024 - state->bytes) {
+        lock.unlock();
+        emit NotesWriteFinished(path, QStringLiteral("Notes storage queue is full."));
+        return false;
+    }
+    state->jobs.push_back({path, identity, bytes, std::move(work)});
+    ++pendingNotesWrites_;
+    state->bytes += bytes;
+    ++state->count;
+    if (state->running) return true;
+    state->running = true;
+    QThreadPool::globalInstance()->start([state] {
+        for (;;) {
+            NotesWorkState::Job job;
+            {
+                std::lock_guard guard(state->mutex);
+                if (state->jobs.empty()) {
+                    state->running = false;
+                    return;
+                }
+                job = std::move(state->jobs.front());
+                state->jobs.pop_front();
+            }
+            bool success = false;
+            try { success = job.work(); } catch (...) { success = false; }
+            std::lock_guard guard(state->mutex);
+            state->bytes -= job.bytes;
+            --state->count;
+            if (state->receiver) {
+                auto* receiver = state->receiver;
+                QMetaObject::invokeMethod(receiver,
+                    [receiver, path = job.path, identity = job.identity, success] {
+                        --receiver->pendingNotesWrites_;
+                        if (!success) {
+                            receiver->acceptedTranscriptIdentities_.remove(identity);
+                            if (receiver->notesFilePath_ == path) {
+                                receiver->notesFilePath_.clear();
+                                receiver->notesDocumentOpen_ = false;
+                            }
+                        }
+                        emit receiver->NotesWriteFinished(path, success ? QString() :
+                            QStringLiteral("Failed to save lecture notes."));
+                    }, Qt::QueuedConnection);
+            }
+        }
+    });
+    return true;
+}
+
+bool AssistiveRuntime::AppendNoteBlock(const QString& blockHtml, const QString& identity)
+{
+    if (!notesDocumentOpen_ || notesFilePath_.isEmpty()) return false;
+    const QString path = notesFilePath_;
+    QHash<QString, QImage> images;
+    qint64 bytes = blockHtml.size() * 2;
+    for (auto it = noteImages_.begin(); it != noteImages_.end();) {
+        if (blockHtml.contains(NotesMediaUrl(path, it.key()).toHtmlEscaped())) {
+            bytes += it.value().sizeInBytes();
+            images.insert(it.key(), it.value());
+            it = noteImages_.erase(it);
+        } else ++it;
+    }
+    return QueueNotesWork(path, bytes, [path, blockHtml, images] {
+        QStringList created;
+        auto cleanup = [&] { for (const auto& image : created) QFile::remove(image); };
+        for (auto it = images.cbegin(); it != images.cend(); ++it) {
+            QImage image = it.value();
+            if (std::max(image.width(), image.height()) > 1920)
+                image = image.scaled(1920, 1920, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            created.append(it.key());
+            if (!QDir().mkpath(QFileInfo(it.key()).absolutePath()) ||
+                !image.save(it.key(), "JPG", 88)) { cleanup(); return false; }
+        }
+        const QByteArray blockBytes = blockHtml.toUtf8();
+        QFile outputFile(path);
+        // Never create a headerless file after a failed document creation.
+        if (!outputFile.exists() || !outputFile.open(QIODevice::ReadWrite | QIODevice::Append)) {
+            cleanup(); return false;
+        }
+        const qint64 originalSize = outputFile.size();
+        if (outputFile.write(blockBytes) != blockBytes.size() || !outputFile.flush()) {
+            if (!outputFile.resize(originalSize) || !outputFile.flush())
+                qWarning("AssistiveRuntime: failed to roll back notes file %s", qPrintable(path));
+            cleanup(); return false;
+        }
+        return true;
+    }, identity);
+}
+
+bool AssistiveRuntime::AppendNoteHtmlSection(const QString& heading,
+                                             const QString& contentHtml,
+                                             const NoteSectionMetadata& metadata)
 {
     if (contentHtml.trimmed().isEmpty() || notesFilePath_.isEmpty()) {
-        return;
+        return false;
     }
     const QString timestamp = QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
+    // Sections restate the language they were written in; the document-level
+    // lang only reflects the language at file creation and the user can
+    // switch mid-session.
+    const QString sectionLanguage =
+        !metadata.languageOverride.isEmpty()
+            ? metadata.languageOverride
+            : (responseLanguageCode_.isEmpty() ? QStringLiteral("en")
+                                               : responseLanguageCode_);
+    // Attribute values are typed and validated by the callers; they are
+    // still escaped here so no caller mistake can break out of a quote.
+    QString attributes;
+    if (IsSafeAttributeToken(metadata.id, QStringLiteral("_-"))) {
+        attributes += QStringLiteral(" id=\"%1\"").arg(metadata.id.toHtmlEscaped());
+    }
+    QString classes = QStringLiteral("note");
+    if (IsSafeAttributeToken(metadata.cssClass, QStringLiteral(" _-"))) {
+        classes += QLatin1Char(' ') + metadata.cssClass;
+    }
+    attributes += QStringLiteral(" class=\"%1\"").arg(classes.toHtmlEscaped());
+    if (IsSafeAttributeToken(metadata.dataRecordingSession, QStringLiteral("-"))) {
+        attributes += QStringLiteral(" data-recording-session=\"%1\"")
+                          .arg(metadata.dataRecordingSession.toHtmlEscaped());
+    }
+    if (metadata.dataSequence >= 0) {
+        attributes += QStringLiteral(" data-sequence=\"%1\"")
+                          .arg(metadata.dataSequence);
+    }
+    if (metadata.approximateTime) {
+        attributes += QStringLiteral(" data-time-precision=\"approximate\"");
+    }
+    if (IsSafeAttributeToken(metadata.kind, QString())) {
+        attributes += QStringLiteral(" data-kind=\"%1\"").arg(metadata.kind);
+    }
+    if (IsSafeAttributeToken(metadata.conversationId, QStringLiteral("_-"))) {
+        attributes += QStringLiteral(" data-conversation=\"%1\"")
+                          .arg(metadata.conversationId.toHtmlEscaped());
+    }
+    // Native <details>/<summary> gives every note keyboard- and
+    // screen-reader-accessible collapsing with zero script dependency; the
+    // heading inside the summary keeps heading navigation working. Summary
+    // order: disclosure, type icon, title, preview (fills the middle),
+    // timestamp pinned far right (least prominent).
+    const QString preview =
+        QStringLiteral("<span class=\"preview\">%1</span>")
+            .arg(metadata.previewText.trimmed().isEmpty()
+                     ? QString()
+                     : metadata.previewText.toHtmlEscaped());
     const QString section = QStringLiteral(
-                                "  <section>\n"
-                                "    <h2><time>[%1]</time> %2</h2>\n"
+                                "  <details%5 lang=\"%4\"%6>\n"
+                                "    <summary><span class=\"ic\" aria-hidden=\"true\"></span>"
+                                "<h2 class=\"ttl\">%2</h2>%7"
+                                "<time class=\"at\">%1</time></summary>\n"
+                                "    <div class=\"note-body\">\n"
                                 "%3"
-                                "  </section>\n")
+                                "    </div>\n"
+                                "  </details>\n")
                                 .arg(timestamp.toHtmlEscaped(),
                                      heading.toHtmlEscaped(),
-                                     contentHtml);
-    const QByteArray sectionBytes = section.toUtf8();
-    QFile outputFile(notesFilePath_);
-    if (!notesDocumentOpen_ ||
-        !outputFile.open(QIODevice::WriteOnly | QIODevice::Append) ||
-        outputFile.write(sectionBytes) != sectionBytes.size() ||
-        !outputFile.flush()) {
-        qWarning("AssistiveRuntime: failed to append notes file %s",
-                 qPrintable(notesFilePath_));
-    }
+                                     contentHtml,
+                                     sectionLanguage.toHtmlEscaped(),
+                                     attributes,
+                                     metadata.startCollapsed ? QString()
+                                                             : QStringLiteral(" open"),
+                                     preview);
+    return AppendNoteBlock(section);
 }
 
 void AssistiveRuntime::SpeakText(const QString& text)
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (text.trimmed().isEmpty()) {
         return;
     }
@@ -1782,7 +2255,7 @@ void AssistiveRuntime::SpeakText(const QString& text)
 
 bool AssistiveRuntime::SelectVoiceForResponseLanguage(bool notifyMissing)
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (!tts_) {
         return false;
     }
@@ -1827,10 +2300,12 @@ bool AssistiveRuntime::SelectVoiceForResponseLanguage(bool notifyMissing)
         const QString languageName =
             responseLanguageCode_ == QStringLiteral("tr")
                 ? QStringLiteral("Türkçe")
-                : QStringLiteral("Deutsch");
+                : responseLanguageCode_ == QStringLiteral("de")
+                      ? QStringLiteral("Deutsch")
+                      : QStringLiteral("English");
         emit StatusNotice(
             QCoreApplication::translate(
-                "OpenZoom",
+                "OkuFlow",
                 "No %1 voice is installed — using the current voice. "
                 "Install one under Windows Settings → Time & Language → Speech.")
                 .arg(languageName));
@@ -1844,13 +2319,13 @@ bool AssistiveRuntime::SelectVoiceForResponseLanguage(bool notifyMissing)
 
 void AssistiveRuntime::StopSpeech()
 {
-#if OPENZOOM_HAS_TTS
+#if OKUFLOW_HAS_TTS
     if (tts_) {
         tts_->stop();
     }
 #endif
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

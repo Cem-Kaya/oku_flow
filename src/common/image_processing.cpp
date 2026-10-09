@@ -1,13 +1,13 @@
 #ifdef _WIN32
 
-#include "openzoom/common/image_processing.hpp"
+#include "okuflow/common/image_processing.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
 
-namespace openzoom {
+namespace okuflow {
 namespace processing {
 
 namespace {
@@ -32,17 +32,6 @@ bool ValidateDimensions(UINT width, UINT height, size_t& bgraBytes)
            CheckedMultiply(static_cast<size_t>(width), height, pixelCount) &&
            CheckedMultiply(pixelCount, 4u, bgraBytes) &&
            bgraBytes <= kMaxBgraFrameBytes;
-}
-
-inline int ClampToByte(int value)
-{
-    if (value < 0) {
-        return 0;
-    }
-    if (value > 255) {
-        return 255;
-    }
-    return value;
 }
 
 } // namespace
@@ -87,7 +76,8 @@ bool ConvertNv12ToBgra(const uint8_t* src,
                        UINT strideY,
                        UINT width,
                        UINT height,
-                       std::vector<uint8_t>& dst)
+                       std::vector<uint8_t>& dst,
+                       YuvColorInfo color)
 {
     size_t bgraBytes = 0;
     if (!src || !ValidateDimensions(width, height, bgraBytes)) {
@@ -123,6 +113,7 @@ bool ConvertNv12ToBgra(const uint8_t* src,
 
     const uint8_t* yPlane = src;
     const uint8_t* uvPlane = src + yPlaneSize;
+    const auto coefficients = GetYuvCoefficients(color);
 
     for (UINT y = 0; y < height; ++y) {
         const uint8_t* yRow = yPlane + static_cast<size_t>(y) * strideY;
@@ -132,25 +123,13 @@ bool ConvertNv12ToBgra(const uint8_t* src,
         for (UINT x = 0; x < width; ++x) {
             const int yValue = yRow[x];
             const int uvIndex = (x / 2) * 2;
-            const int uValue = uvRow[uvIndex] - 128;
-            const int vValue = uvRow[uvIndex + 1] - 128;
-
-            int c = yValue - 16;
-            if (c < 0) {
-                c = 0;
-            }
-
-            const int d = uValue;
-            const int e = vValue;
-
-            const int r = (298 * c + 409 * e + 128) >> 8;
-            const int g = (298 * c - 100 * d - 208 * e + 128) >> 8;
-            const int b = (298 * c + 516 * d + 128) >> 8;
+            const auto pixel = ConvertYuvPixel(yValue, uvRow[uvIndex],
+                                                uvRow[uvIndex + 1], coefficients);
 
             const UINT dstIndex = x * 4;
-            dstRow[dstIndex + 0] = static_cast<uint8_t>(ClampToByte(b));
-            dstRow[dstIndex + 1] = static_cast<uint8_t>(ClampToByte(g));
-            dstRow[dstIndex + 2] = static_cast<uint8_t>(ClampToByte(r));
+            dstRow[dstIndex + 0] = pixel.b;
+            dstRow[dstIndex + 1] = pixel.g;
+            dstRow[dstIndex + 2] = pixel.r;
             dstRow[dstIndex + 3] = 255;
         }
     }
@@ -163,7 +142,8 @@ bool ConvertYuy2ToBgra(const uint8_t* src,
                        UINT stride,
                        UINT width,
                        UINT height,
-                       std::vector<uint8_t>& dst)
+                       std::vector<uint8_t>& dst,
+                       YuvColorInfo color)
 {
     size_t bgraBytes = 0;
     if (!src || !ValidateDimensions(width, height, bgraBytes)) {
@@ -189,6 +169,8 @@ bool ConvertYuy2ToBgra(const uint8_t* src,
 
     dst.resize(bgraBytes);
 
+    const auto coefficients = GetYuvCoefficients(color);
+
     for (UINT y = 0; y < height; ++y) {
         const uint8_t* srcRow = src + static_cast<size_t>(y) * stride;
         uint8_t* dstRow = dst.data() + static_cast<size_t>(y) * width * 4;
@@ -200,33 +182,24 @@ bool ConvertYuy2ToBgra(const uint8_t* src,
             }
 
             const int y0 = srcRow[srcIndex + 0];
-            const int u = srcRow[srcIndex + 1] - 128;
+            const int u = srcRow[srcIndex + 1];
             const int y1 = srcRow[srcIndex + 2];
-            const int v = srcRow[srcIndex + 3] - 128;
-
-            const int c0 = y0 - 16;
-            const int c1 = y1 - 16;
-
-            const int r0 = (298 * c0 + 409 * v + 128) >> 8;
-            const int g0 = (298 * c0 - 100 * u - 208 * v + 128) >> 8;
-            const int b0 = (298 * c0 + 516 * u + 128) >> 8;
-
-            const int r1 = (298 * c1 + 409 * v + 128) >> 8;
-            const int g1 = (298 * c1 - 100 * u - 208 * v + 128) >> 8;
-            const int b1 = (298 * c1 + 516 * u + 128) >> 8;
+            const int v = srcRow[srcIndex + 3];
+            const auto pixel0 = ConvertYuvPixel(y0, u, v, coefficients);
+            const auto pixel1 = ConvertYuvPixel(y1, u, v, coefficients);
 
             const UINT dstIndex0 = x * 4;
-            dstRow[dstIndex0 + 0] = static_cast<uint8_t>(ClampToByte(b0));
-            dstRow[dstIndex0 + 1] = static_cast<uint8_t>(ClampToByte(g0));
-            dstRow[dstIndex0 + 2] = static_cast<uint8_t>(ClampToByte(r0));
+            dstRow[dstIndex0 + 0] = pixel0.b;
+            dstRow[dstIndex0 + 1] = pixel0.g;
+            dstRow[dstIndex0 + 2] = pixel0.r;
             dstRow[dstIndex0 + 3] = 255;
 
             if (x + 1 >= width) {
                 continue;
             }
-            dstRow[dstIndex0 + 4] = static_cast<uint8_t>(ClampToByte(b1));
-            dstRow[dstIndex0 + 5] = static_cast<uint8_t>(ClampToByte(g1));
-            dstRow[dstIndex0 + 6] = static_cast<uint8_t>(ClampToByte(r1));
+            dstRow[dstIndex0 + 4] = pixel1.b;
+            dstRow[dstIndex0 + 5] = pixel1.g;
+            dstRow[dstIndex0 + 6] = pixel1.r;
             dstRow[dstIndex0 + 7] = 255;
         }
     }
@@ -464,6 +437,6 @@ void ApplyTemporalSmoothCpu(std::vector<uint8_t>& frame,
 }
 
 } // namespace processing
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

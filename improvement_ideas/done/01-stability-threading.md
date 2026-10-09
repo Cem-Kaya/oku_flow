@@ -36,7 +36,7 @@ resources the queued work uses is.
 1. Add `if (stream_) cudaStreamSynchronize(stream_);` as the *first* statement of
    `~CudaInteropSurface()` (and of any `ReleaseDeviceBuffers()`-style teardown path that
    can run while the stream is live).
-2. In `OpenZoomApp`, add a `cameraTransitioning_` flag (or mutex): set it at the top of
+2. In `OkuFlowApp`, add a `cameraTransitioning_` flag (or mutex): set it at the top of
    `StartCameraCapture()`, have `OnFrameTick()` / `ProcessFrameWithCuda()` bail early
    while it is set, and clear it only after the new surface is fully initialized. This
    prevents a queued frame tick from racing the reset itself.
@@ -75,7 +75,7 @@ exactly when this fires — likely a second contributor to the TODO.md crash alo
 
 - **Status: DONE 2026-07-21.** The redundant `AddRef()` was removed.
 - **Priority:** MEDIUM · **Effort:** small (one-line fix) · **Status:** Confirmed
-- **Evidence:** `src/capture/media_capture.cpp:110-111`; `include/openzoom/capture/media_capture.hpp:33`
+- **Evidence:** `src/capture/media_capture.cpp:110-111`; `include/okuflow/capture/media_capture.hpp:33`
 
 **Problem.** `descriptor.activation` is a `Microsoft::WRL::ComPtr<IMFActivate>`
 (media_capture.hpp:33). The assignment `descriptor.activation = devices[i];` already
@@ -106,7 +106,7 @@ enumeration (enumeration re-runs on refresh/camera change).
     sessions are filtered by value-captured `cameraSessionId_`.
   - `MediaCapture` cross-thread flags — `running_`, `deviceLost_`,
     `lastFailureKind_` are `std::atomic`
-    (`include/openzoom/capture/media_capture.hpp:101-103`); `ConsumeDeviceLost()`
+    (`include/okuflow/capture/media_capture.hpp:101-103`); `ConsumeDeviceLost()`
     uses `exchange` (`src/capture/media_capture.cpp:402`). Verified atomic as
     the plan suspected.
   - `MediaCapture::lastError_` — written only on the control thread
@@ -166,7 +166,7 @@ over on-demand allocation inside `ProcessFrame()`.
 ## S6. D3D12↔CUDA fence protocol is implicit and unrecoverable on failure
 
 - **Status: DONE 2026-07-23 (S6b, plan 11 Wave 2).** The whole timeline now
-  lives in one `FenceSequencer` struct in `include/openzoom/app/app.hpp` with
+  lives in one `FenceSequencer` struct in `include/okuflow/app/app.hpp` with
   the contract documented on the struct: `BeginCudaFrame()` re-seeds from the
   presenter and *reserves* the CUDA signal value, `CudaSignaled()` commits it,
   `CudaFailed()` rolls the reservation back (so no one ever waits on a value
@@ -174,7 +174,7 @@ over on-demand allocation inside `ProcessFrame()`.
   sequence the present, and `ReadbackObserved()` keeps the next CUDA frame
   behind in-flight readback copies. Recovery: three consecutive `ProcessFrame`
   failures trigger `presenter_->WaitForIdle()` + `ResetCudaFenceState()` and a
-  single status message (`OpenZoomApp::HandleCudaProcessingFailure`,
+  single status message (`OkuFlowApp::HandleCudaProcessingFailure`,
   `src/app/app.cpp`) instead of the previous per-failure reset.
 - **Partially addressed 2026-07-21:** `ProcessFrameWithCuda()` now re-seeds
   `sharedFenceCounter_` from `presenter_->GetLastSignaledFenceValue()` every

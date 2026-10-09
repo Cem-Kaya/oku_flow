@@ -1,12 +1,12 @@
 #ifdef _WIN32
 
-#include "openzoom/ui/responsive_slider_row.hpp"
+#include "okuflow/ui/responsive_slider_row.hpp"
 
 #include <QGridLayout>
 #include <QResizeEvent>
 #include <QSlider>
 
-namespace openzoom {
+namespace okuflow {
 
 ResponsiveSliderRow::ResponsiveSliderRow(QWidget* leadingWidget,
                                          QSlider* slider,
@@ -64,6 +64,6 @@ void ResponsiveSliderRow::ApplyLayout(bool stacked)
     updateGeometry();
 }
 
-} // namespace openzoom
+} // namespace okuflow
 
 #endif // _WIN32

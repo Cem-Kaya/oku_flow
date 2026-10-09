@@ -1,6 +1,6 @@
 # Agent Operation Guide
 
-OpenZoom evolves as an **AI-assisted, GPU-accelerated magnifier** for people
+OkuFlow evolves as an **AI-assisted, GPU-accelerated magnifier** for people
 with low vision. Agents help us deliver that mission by building features,
 keeping the pipeline fast, and ensuring the docs stay accurate. Read this
 guide end-to-end before you touch the repo.
@@ -23,6 +23,16 @@ open while contributing and update it whenever the workflow evolves.
    plus the commercial license. Do not add third-party code unless the license
    is compatible and you note it in `docs/THIRD_PARTY_LICENSES.md`.
 
+## Naming
+- The product is **OkuFlow**, formerly OpenZoom. Website:
+  <https://okuflow.com>; repository: <https://github.com/Cem-Kaya/oku_flow>.
+- Code identifiers use `okuflow` (namespace, include directory, file
+  prefixes), `oku_flow` (executable, repository), and `OKUFLOW_` (build
+  options, environment variables).
+- The one rename record that intentionally keeps the old name is
+  `improvement_ideas/17-project-rename-plan.md`, along with the
+  `CHANGELOG.md` rename entry.
+
 ## Module Map
 - `src/app/` – Qt entry point, application wiring, settings persistence.
 - `src/cuda/` – CUDA interop surface and the GPU effect pipeline (stabilization,
@@ -31,16 +41,16 @@ open while contributing and update it whenever the workflow evolves.
 - `src/capture/` – Media Foundation camera enumeration/capture with retry and
   device-loss recovery.
 - `src/ui/` – Simple/Advanced main window, floating chrome, AI settings dialog.
-- `src/common/` – CPU frame prep, assistive runtime (OCR/VLM/TTS/notes), Codex
+- `src/common/` – CPU frame prep, assistive runtime (vision reading/TTS/notes), Codex
   app-server client, fragmented-MP4 video recorder.
-- Public headers mirror the source tree under `include/openzoom/`.
+- Public headers mirror the source tree under `include/okuflow/`.
 
 ## Workflow Expectations
 - Align every change with the mission: produce a responsive magnifier that
   helps visually impaired users read content with AI assistance (temporal
   smoothing, upcoming VLM overlays, adaptive sharpening).
 - Maintain coding style and structure; mirror the source layout in
-  `include/openzoom/…` and keep module READMEs updated as you populate them.
+  `include/okuflow/…` and keep module READMEs updated as you populate them.
 - Update `CHANGELOG.md` and licensing notices when shipping user-visible or
   legal-impacting changes.
 - Ensure build scripts (`scripts/build_and_run.bat` and
@@ -66,24 +76,24 @@ open while contributing and update it whenever the workflow evolves.
 - Use `scripts/agent_build.bat` for the tracked Windows release/CPU/CUDA test
   matrix. Do not use or recreate machine-specific test runners under the
   gitignored `build/` directory.
-- Keep `translations/openzoom_tr.ts`, `translations/openzoom_de.ts`, and
+- Keep `translations/okuflow_tr.ts`, `translations/okuflow_de.ts`, and
   `src/ui/translation_catalog.cpp` in exact source-key parity. Run
   `scripts/check_translations.ps1`; use its `-UpdateManifest` switch after
   intentionally adding or removing catalog entries.
 
 ## Locked Release Bundle Fallback
-- Never terminate or relaunch a running OpenZoom instance merely to replace
-  `dist\OpenZoom\open_zoom.exe`.
+- Never terminate or relaunch a running OkuFlow instance merely to replace
+  `dist\OkuFlow\oku_flow.exe`.
 - When Windows reports that the primary release executable is in use after a
-  successful build, create a complete sibling bundle at `dist\OpenZoom2\`.
-  Copy the deployed runtime files from `dist\OpenZoom\`, exclude its
-  user-owned `output\` captures, and replace `OpenZoom2\open_zoom.exe` with the
+  successful build, create a complete sibling bundle at `dist\OkuFlow2\`.
+  Copy the deployed runtime files from `dist\OkuFlow\`, exclude its
+  user-owned `output\` captures, and replace `OkuFlow2\oku_flow.exe` with the
   newly built executable.
-- Verify that the SHA-256 of the new `OpenZoom2\open_zoom.exe` exactly matches
-  the release-build executable. Report that `dist\OpenZoom\` remains the
+- Verify that the SHA-256 of the new `OkuFlow2\oku_flow.exe` exactly matches
+  the release-build executable. Report that `dist\OkuFlow\` remains the
   running/older bundle and give the new bundle path.
-- Use exactly `OpenZoom2`; do not create ambiguous alternatives such as
-  `OpenZoom-next`.
+- Use exactly `OkuFlow2`; do not create ambiguous alternatives such as
+  `OkuFlow-next`.
 
 ## Useful References
 - Qt moc and object model: <https://doc.qt.io/qt-6/moc.html>
@@ -96,14 +106,50 @@ open while contributing and update it whenever the workflow evolves.
 Agents that modify the workflow must append to this guide so future runs remain
 aligned with the project goals.
 
+## Lecture Test Camera Workflow
+- Use `scripts/start_lecture_camera.bat` and `scripts/stop_lecture_camera.bat`
+  for manual recorded-lecture capture testing. The harness owns a private
+  portable OBS copy under `%LOCALAPPDATA%\OkuFlow\lecture-camera\`; never
+  replace the user's ordinary OBS scenes or stop an unrelated OBS instance.
+- Native OBS Virtual Camera is DirectShow-only. On the setup machine the
+  existing modern DroidCam Video driver receives the same scene through a
+  pinned private OBS output plugin, making it visible to Media Foundation.
+  Validate actual lecture frames on that device, not its idle placeholder.
+- Downloaded lectures and OBS copies are local test assets, excluded from git
+  and release bundles. Keep sample provenance/license in
+  `scripts/lecture_camera_sample.json` and `docs/lecture_camera.md`. This
+  virtual feed does not validate camera optics, autofocus, or microphone audio.
+
+## Qt Toolchain Baseline
+- Windows presets and scripts now default to Qt 6.12.0 at
+  `C:\Qt\6.12.0\msvc2022_64`. Use that SDK for translation validation,
+  compilation, profiling, and deployment; do not install Qt 6.9.3 to satisfy
+  old cache paths. Regenerate stale Qt CMake caches during an SDK migration.
+- Keep Multimedia, TextToSpeech, SVG, Image Formats, and matching source
+  license material installed. PDF is not an OkuFlow dependency; its exact
+  SPDX document remains mandatory whenever PDF is deployed.
+- `OKUFLOW_BUNDLE_BUILD_DIR` selects a local build directory for the tracked
+  bundle script when the synced build tree has stale paths or file locks.
+  This does not skip its compilation, CTest, staging, or publishing gates.
+
 ## Validation Script Behavior
 - `scripts/agent_build.bat` compiles the shipping release configuration, then
   runs the CPU and CUDA CTest presets. Its PASS/FAIL summary is the normal
   pre-submission gate for code changes that touch shared behavior.
 - `scripts/build_release_bundle.bat` runs CTest by default and publishes only
-  from a validated staging directory. `OPENZOOM_SKIP_BUNDLE_TESTS=1` is an
+  from a validated staging directory. `OKUFLOW_SKIP_BUNDLE_TESTS=1` is an
   explicit emergency escape hatch and must remain visibly marked untested.
 - `scripts/run_minimal_test.bat` always requires the main application build to
   succeed. It runs `dx12_cuda_minimal` when
   `sandbox/dx12_cuda_minimal/CMakeLists.txt` exists and otherwise reports the
   optional harness as skipped without failing the validation run.
+
+## Optional Startup Performance Validation
+- Use tracked `scripts/profile_startup.ps1` for real-camera startup and UI
+  latency measurements. It refuses an existing OkuFlow instance and launches
+  only normally exiting profiling children with explicit isolated settings.
+  Do not terminate a user's instance to obtain a measurement.
+- `-CompareLegacy` compares camera-opening sequences in the same executable;
+  it is not a benchmark of every change against an old release. Report actual
+  arrival/presentation rates separately from negotiated camera FPS, and treat
+  first-present timing as submission timing rather than sensor-to-photon latency.

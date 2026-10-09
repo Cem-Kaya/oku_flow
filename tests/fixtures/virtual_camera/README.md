@@ -25,11 +25,11 @@ TARGET | INPUT | OUTPUT
 
 - **Target** is the known locked reference.
 - **Input** is the disturbed virtual camera.
-- **Output** applies the corrections measured by OpenZoom's Phase B CUDA
+- **Output** applies the corrections measured by OkuFlow's Phase B CUDA
   Virtual Tripod test.
 
 The measured corrections are retained in
-`clamp_bump_openzoom_corrections.csv`; the output is not an ideal
+`clamp_bump_okuflow_corrections.csv`; the output is not an ideal
 ground-truth inverse warp.
 
 After changing stabilization code, refresh the correction trace with the
@@ -37,7 +37,7 @@ Release CUDA test:
 
 ```powershell
 build\release-bundle\tests\Release\stabilization_cuda_tests.exe `
-  --export-corrections tests\fixtures\virtual_camera\clamp_bump_openzoom_corrections.csv
+  --export-corrections tests\fixtures\virtual_camera\clamp_bump_okuflow_corrections.csv
 ```
 
 Then regenerate the ignored Y4M input, both ignored MP4 files, and CSV ground

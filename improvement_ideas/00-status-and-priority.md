@@ -1,4 +1,4 @@
-# 00 — Status and Priority (2026-07-28)
+# 00 — Status and Priority (2026-08-07)
 
 **Start here.** This is the single ordered view of every plan: what is done,
 what is half-done, what is blocked, and what to work on next. Audited on
@@ -22,7 +22,52 @@ not as work. Refuted findings live in
 | **REFERENCE** | Research/direction. Not a work item until adopted. |
 | **STALE** | Document no longer matches reality; needs reconciliation before use. |
 
+## Source review notes added 2026-09-10
+
+[37 — Code review notes](37-code-review-notes-2026-09-10.md) records ten findings
+and their individual implementations, with original evidence, impact, and
+actual automated coverage. Status: **IMPLEMENTED AND VERIFIED**. The owner
+authorized Astra implementations followed by root integration, compilation,
+and tests. Release compilation passed; CPU passed 23/23 and CUDA passed 27/27,
+with no skips. Live camera performance and real driver hangs were not measured.
+
+## UI polish and checkout review added 2026-10-09
+
+[40 — UI polish and checkout review](40-ui-polish-and-checkout-review-2026-10-09.md)
+records the owner-requested UI polish backlog observed in the 2026-09-10
+bundle: Setup Assistant, Simple mode, Advanced inspector, and a central theme
+module. Its W1 blocker (a hybrid checkout that could not build) was resolved on
+2026-10-09 when the complete tree was pushed as `078cdde`.
+The first polish batch is implemented in the working tree: startup/setup,
+carousel, profile-first inspector, readouts/search, and Zoom-dependent focus.
+Final validation passed release compilation, CPU 24/24, CUDA 28/28, and 674
+translation entries. Plan 40's checkpoint lists remaining implementation and
+visual acceptance work.
+The owner subsequently changed the SDK baseline to Qt 6.12.0. The full matrix
+passed again and the independently tested Qt 6.12 bundle was published to
+`dist/OkuFlow`; SDK migration and packaging validation are recorded in plan 40.
+
+## Project review added 2026-10-09
+
+[41 — Project review and improvement priorities](41-project-review-2026-10-09.md)
+reviews the current working tree after the UI polish and Qt migration. Its
+highest-priority new finding is **R1: photo recovery/rollback can delete
+already-saved user images**. R2 identifies remaining storage waits during
+startup/shutdown. R3-R9 refine accessibility, camera acceptance, build/test
+gates, settings bounds, modularity, and build identity under existing plans.
+R10 records specific stale tracker/documentation claims, including plan 22's
+completed offloads, plan 24's now-tracked tests, and plan 34's retired local-OCR
+direction. Read this review before following the older rows/order below;
+its recommendations are not implemented by this documentation update.
+
 ## The list
+
+[39 — Startup and UI latency](39-startup-ui-latency-2026-09-10.md) records the
+follow-up performance implementation, real-camera measurements, and final
+validation. It separates advertised camera rate from observed delivery and
+presentation, and includes independent camera startup plus nonblocking GPU
+admission. The earlier review-37 statement about unmeasured camera performance
+describes that review's original validation only.
 
 | # | Plan | Status | What actually remains |
 |---|---|---|---|
@@ -36,11 +81,11 @@ not as work. Refuted findings live in
 | 14 | Stabilization v2 | **ACTIVE** | Tier 1/2 shipped and being retuned continuously. Tier 3 Screen Lock is owner-approved and **plan 25 argues it is the correct primary algorithm, not an extra mode**. |
 | 15 | Aspect-safe viewport | **VERIFY** | Implemented and smoke-verified. Outstanding: multi-monitor/DPI acceptance pass and the 2560x1440 timing gate. Owner/hardware task only. |
 | 16 | Review findings (Batch C/D) | **PARTIAL** | P0s (F1-F4 fences) fixed. Open P1/P2: M2 AssistiveFeatureManager disconnect, M3 dual ownership, release null-guards (the plan-02 A5 remnant), F3 degraded-mode stalls, swallowed photo capture, F6 no re-present when camera off, unused generation tag, color-migration/LUT tests. |
-| 17 | Project rename | **BLOCKED (owner)** | FrontRow failed clearance. Needs the owner to pick a name (OpenLoupe recommended) and run the Phase 0 checklist. Everything after is written and name-agnostic. |
+| 17 | Project rename | **EXECUTED 2026-10-09 — OWNER ITEMS REMAIN** | The owner chose **OkuFlow** (FrontRow failed clearance). Phases 2 and 3 were done together. There is no in-app legacy-data migration because the app is not widely distributed; the owner's machine was migrated once by hand on 2026-10-09. The GitHub repo is now `Cem-Kaya/oku_flow` and okuflow.com is registered. Still open for the owner: trademark search and filing for "OkuFlow", other domains (.org/.app), Microsoft Store/winget ID, announcement copy, and the social-preview image. |
 | 18 | Annotation mode | **VERIFY — R2 IMPLEMENTED** | R2 code landed 2026-07-28: transient tool flyout, right action rail, checked swatches, Shape and dashed styles, eight functional scale handles, cross-window zoom/pan forwarding, Advanced action bar, persistence, contrast/text fixes, and CPU model/settings coverage. Release build and automated tests pass; owner hardware/trackpad/screen-reader/notes acceptance remains. |
 | 19 | External review triage | **REFERENCE** | The verdict list and index for 20-24. Read before starting any of them. |
 | 20 | Capture / recording integrity | **P0-P4 IMPLEMENTED — VERIFY HARDWARE** | Implemented 2026-07-28: timestamp/sequence identity, signed stride, exact fractional-rate VFR, checked asynchronous finalization, explicit states/drop reporting, fixed Source/1080p/1440p/2160p canvas, `_partN` mode-change pairs, bounded encoder worker queue, and fail-closed CUDA/DXGI adapter matching. Release build, CPU 6/6, CUDA 8/8 pass. Remaining: P5 reconnect/device hardware matrix; eliminating preview-slot loss needs plan 22; P6 DXVA/zero-copy is now **plan 28**. |
-| 21 | User data locations | **IMPLEMENTED** | One configurable folder under Documents, dated artifact categories, Open Folder shortcut, copy-only migration, and bundle isolation. |
+| 21 | User data locations | **IMPLEMENTED** | One configurable folder under Documents, dated artifact categories, Open Folder shortcut, and bundle isolation. The legacy `output/` copy-migration was removed by owner decision 2026-07-31 (it silently skipped categories with any existing destination file, then wrote a suppress-forever marker; owner chose removal over repair). |
 | 22 | Threading / performance | **PARTIAL** | Recording worker + async finalize, zero-copy capture, capture counters, UI/capture-to-present p50/p95/p99, refresh-aware warnings, and O(1) lecture-note append are implemented. Remaining: detailed GPU/readback/encoder metrics, photo/OCR/VLM encode-and-write offload, bounded blocking-call removal, GPU-fed hardware recording encoder, and measured buffer-pool policy. |
 | 23 | Security / privacy / release | **PRIVATE/TEAM READY — PUBLIC GATED** | Credential Manager secrets (with no unnecessary legacy plaintext migration), visible privacy state, assistant watchdog/buffer limits, settings recovery, stale temp cleanup, checksums/manifest/SBOM, and optional signing are implemented. Stable app-server still lacks a full per-turn tool allow-list; public distribution additionally needs a signed installer/update channel. |
 | 24 | Test / build gates | **VERIFY COMMIT CONTENTS** | Implemented and Windows-validated 2026-07-28: release compile, CPU 4/4, CUDA 6/6, in-memory replay CTest, no false-green presets, and tested/hash-verified staged packaging all pass. Remaining: include the currently untracked test sources and `scripts/agent_build.bat` in the eventual commit/PR. Generated Y4M/MP4 media stays ignored by owner decision. |
@@ -48,13 +93,24 @@ not as work. Refuted findings live in
 | 27 | Advanced panel redesign | **VERIFY** | Phases 0–5 implemented 2026-07-26: scope separation, collapsible/searchable inspector, centralized enabled state, real camera mode requests with negotiated-format reporting, and precision geometric Ctrl+scroll. Automated builds/tests pass; owner/hardware camera negotiation and accessibility passes remain. |
 | 28 | DXVA / zero-copy capture | **STAGES 0-4 IMPLEMENTED — VERIFY CAMERA CHURN** | Production now retains validated MF DXGI samples, converts them into a reusable BGRA D3D11 texture, and maps that texture in CUDA with zero CPU copy. The ladder persists direct GPU -> accelerated copy -> compatibility per camera; raw capture reads back only while recording/photos are active. The stage-4 shutdown AV (legacy `cudaGraphicsUnregisterResource`, NVIDIA driver defect) was resolved by porting the bridge to CUDA external memory — **plan 30** records the as-built recipe. Release/CPU/CUDA gates pass and the owner completed the long moving-picture no-tear soak on 2026-07-29. Only camera switching and device-removal recovery remain in the hardware gate. |
 | 30 | External-memory capture bridge | **IMPLEMENTED — R1 VALIDATION + R3 FENCE UPGRADE REMAIN** | Gen-2 CUDA External Resource Interoperability replaces the crashing Gen-1 graphics-interop API in capture: NT-shared D3D11 texture → D3D12 `OpenSharedHandle` + `GetResourceAllocationInfo` → `cudaImportExternalMemory` (dedicated) → mapped array reused per frame; per-frame map/unmap eliminated; teardown deterministic. Remaining: R1 owner cycle/soak matrix, R2 legacy-crash repro loop for the NVIDIA report, R3 shared-fence async handoff (only after a week of synchronous soak). |
-| 29 | Idea inbox 2026-07-29 | **SEEDS — audio seed A implemented** | Product seed A landed: a persisted Windows microphone selector defaults to the system endpoint, offers explicit video-only mode, and muxes synchronized AAC into both paired MP4s. Remaining verified seeds: B focus/exposure lock, C view bookmarks, D session resume, E battery saver, F searchable notes, G acceptance day, H diagnostics, I CI, J onboarding, K i18n; lecture-day L framing assistant, M always-on-top compact view, N freeze-to-read, O change alerts, P status hotkey, Q chapter markers; **V lecture time machine — live rewind (added 2026-07-30, top feature pick)**; maintenance R main_window split, S version identity, T crash capture/logs, U CUDA graphs. Transcript seed W was dropped by owner decision on 2026-07-30. |
-| 31 | Lecture transcript | **DROPPED — owner decision 2026-07-30** | Do not implement Codex realtime audio, Whisper, transcript sidecars, transcript notes, or transcript search. Selectable microphone audio remains part of paired video recording. The historical Codex probe is retained in the plan for provenance. |
+| 29 | Idea inbox 2026-07-29 | **SEEDS — A implemented; B selected; F/W promoted** | Audio seed A is implemented. Owner-selected B now combines comprehensive capability-probed camera hardware controls, focus/exposure/white-balance anti-hunt locks, and per-camera mode/rotation/profile/view working sets. Searchable-notes seed F is promoted to plan 34 and live-transcript seed W to plan 36. Remaining seeds: C view bookmarks, D session resume, E battery saver, G acceptance day, H diagnostics, I CI, J onboarding; lecture-day L framing assistant, M always-on-top compact view, N freeze-to-read, O change alerts, P status hotkey, Q chapter markers; **V live rewind**; maintenance R main_window split, S version identity, T crash capture/logs, U CUDA graphs. K multilingual support shipped as plan 33. |
+| 31 | Lecture transcript | **REFERENCE — superseded 2026-08-07** | Historical record of the 2026-07-30 drop decision and Codex 0.145 probe. The owner's narrower reopened transcription goal is specified by plan 36. |
 | 32 | Live accessible status | **VERIFY — implementation/tests complete** | `SetLiveText` now synchronizes dynamic visible text and role-qualified accessible names, invalidates cached UIA names, applies silent/polite/assertive policy, deduplicates announcements, and coalesces diagnostics. Pipeline/camera, recording, Setup Assistant, negotiated-format, Codex, and dynamic value surfaces were converted; duplicate manual announcements were removed. The Qt accessibility event regression test passes. Remaining: the P4 owner pass with NVDA and Narrator on the real rig. |
 | 33 | Multilingual support | **IMPLEMENTED — OWNER LANGUAGE/A11Y REVIEW REMAINS** | Live-switchable English/Türkçe/Deutsch now covers UI, accessible names/announcements, AI response language, locale-formatted display values, and TTS voice preference. Embedded Qt catalogs contain 616/616 completed entries per language; release, CPU 11/11, and CUDA 13/13 gates pass. Remaining: Turkish owner wording review, German native-speaker review, and NVDA/Narrator live verification. CJK is an incremental catalog addition; RTL requires a separate mirroring/QA phase. |
+| 34 | Searchable captured notes | **READY — OWNER SELECTED** | Paired original/processed photo saving and notes embedding already ship. Add bounded local OCR associated with each saved photo/annotation, processed-first with original fallback, stable section ids, and a semantic keyboard/screen-reader index while retaining O(1) live note appends. Share the section/index contract with plan 36. |
+| 35 | PDF / image source mode | **READY — OWNER SELECTED** | Open a saved image or PDF page as a static magnifier source; reuse colour/Text Clarity/sharpening, OCR, annotation, VLM, and TTS; save a recoverable original/processed render pair without modifying the source; retain PDF page provenance in notes. |
+| 36 | Recording transcription to notes | **IMPLEMENTED 2026-08-08 — Carrier D native stack, live gate PASSED** | Live user-only transcription ships end to end behind the opt-in on the native WebRTC stack (libdatachannel v0.24.5 + opus v1.5.2 + MbedTLS 3.6.7 LTS, all commit-pinned and statically linked; no browser, no proprietary bits, no extra runtime files). Every WebView2 artifact is deleted. The live WAV gate produced correct partials and finalized user segments against real Codex (Windows codex-cli 0.147.0); loopback RTP/Opus tests run in ctest. Remaining owner acceptance: real microphone plus NVDA/Narrator pass, and quota behavior over a full lecture. |
 | 26 | Virtual Tripod strength | **PARTIAL / DEFECTIVE** | Phases A/B implemented. Saved-camera replay on 2026-07-26 proved the synthetic 97.3% gate overstates real performance: accumulated-reference alignment left 0.5-8 Hz vertical vibration almost unchanged and worsened horizontal motion. Production now uses the sharp single keyframe, which improves the saved clip by 24-38% on its main axes, but stronger real-scene correspondence/reacquisition remains open before Phase C. |
+| 40 | UI polish and checkout review | **ACTIVE — W1 resolved** | C1 theme module, S1-S5 Setup Assistant/startup, M1-M5 Simple mode, A1-A7 Advanced inspector. Also open: W2 bundle/source mismatch (build identity, inbox S) and W3 build output inside the synced Drive folder. |
+| 41 | Project review 2026-10-09 | **REVIEW COMPLETE — recommendations open** | R1 saved-photo ownership first; R2 storage lifecycle; R3-R9 refine existing implementation/acceptance work; R10 reconciles stale backlog claims. |
 
 ## Recommended order
+
+**2026-10-09 review update:** prioritize [41 R1/R2](41-project-review-2026-10-09.md)
+and use that review's suggested sequence while reconciling this historical
+order. In particular, do not restart completed plan-22 offloads or the retired
+local-recognition path, and do not mistake pending hardware acceptance for
+missing implementation.
 
 Rationale: unblock verification first, then stop losing user data, then fix what
 silently corrupts recordings, then what blocks distribution, then speed.
@@ -109,10 +165,20 @@ silently corrupts recordings, then what blocks distribution, then speed.
 12. **22 — threading and performance remainder.** The percentile instrument
    and several largest wins are shipped. Continue only from measured p95/p99:
    photo/OCR/VLM offload, blocking waits, then a GPU-fed recording encoder.
+13. **34 then 35 — searchable captures and saved-source reading.** First give
+    saved captures local OCR/index semantics, then reuse that notes contract
+    when images and PDF pages become magnifier sources.
+14. **36 — recording transcription to notes.** Implemented behind the opt-in
+    on the native Carrier D stack with the live gate passed; what remains is
+    the owner acceptance pass (real microphone plus signed-in Codex, quota
+    behavior over a full lecture, NVDA/Narrator) and
+    recording-independence spot checks on every failure path.
 
 **Owner decisions blocking work**
 
-- **17** — pick a name and run the Phase 0 clearance checklist.
+- **17** — rename executed (OkuFlow). Remaining owner items: trademark search
+  and filing for "OkuFlow", other domains (.org/.app), Microsoft Store/winget
+  ID, announcement copy, and the social-preview image.
 - **15** — run the multi-monitor/DPI and 1440p timing acceptance pass.
 - **12** (archived) — a final screenshot/screen-reader look at the colour picker.
 - **23** — lawyer review of CLA/§7 and public code-signing/installer ownership
