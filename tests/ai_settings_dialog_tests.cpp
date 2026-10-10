@@ -55,6 +55,23 @@ bool ShowDialog(AiSettingsDialog& dialog)
     return QTest::qWaitForWindowActive(&dialog);
 }
 
+void SaveDialogScreenshot(AiSettingsDialog& dialog, const QString& name)
+{
+    const QString root = qEnvironmentVariable("OKUFLOW_UI_TEST_SCREENSHOTS");
+    if (root.isEmpty()) return;
+    QDir directory(root);
+    if (!directory.exists() && !directory.mkpath(QStringLiteral("."))) {
+        qWarning().noquote() << "Cannot create dialog screenshot directory:" << root;
+        return;
+    }
+    // Widget rendering avoids capturing another application's window. These
+    // dialogs contain fixture settings and never load stored credentials.
+    QCoreApplication::processEvents();
+    if (!dialog.grab().save(directory.filePath(name + QStringLiteral(".png")))) {
+        qWarning().noquote() << "Cannot save dialog screenshot:" << name;
+    }
+}
+
 struct SaveAttempt {
     int warnings{0};
     QMessageBox::Icon icon{QMessageBox::NoIcon};
@@ -342,6 +359,8 @@ void AiSettingsDialogTests::narrowGroupsKeepFieldsReachable()
     QCOMPARE(dialog.width(), 480);
     QTRY_VERIFY(scroll->verticalScrollBar()->maximum() > 0);
     QTRY_COMPARE(scroll->horizontalScrollBar()->maximum(), 0);
+    scroll->verticalScrollBar()->setValue(0);
+    SaveDialogScreenshot(dialog, QStringLiteral("ai-settings-%1-narrow-service").arg(provider));
     const QRect contentBounds = scroll->widget()->rect();
     for (QGroupBox* group : dialog.findChildren<QGroupBox*>()) {
         if (group->isVisible()) {
@@ -396,7 +415,13 @@ void AiSettingsDialogTests::narrowGroupsKeepFieldsReachable()
             << " reachedScroll=" << scroll->verticalScrollBar()->value();
         QVERIFY2(scroll->viewport()->rect().contains(fieldBounds),
                  qPrintable(reachedGeometry));
+        if (name == QStringLiteral("Explain Prompt")) {
+            SaveDialogScreenshot(dialog,
+                QStringLiteral("ai-settings-%1-narrow-prompt").arg(provider));
+        }
     }
+    scroll->verticalScrollBar()->setValue(scroll->verticalScrollBar()->maximum());
+    SaveDialogScreenshot(dialog, QStringLiteral("ai-settings-%1-narrow-bottom").arg(provider));
 }
 
 } // namespace okuflow

@@ -101,6 +101,20 @@ Authoritative code map for the current repository state as of 2026-10-10. Update
   p95s, and negotiated camera details. `RecordStartupFirstPresent()` runs only
   after successful presentation. The timing origin excludes executable loading;
   presentation submission is not display scanout or sensor-to-photon latency.
+- `ConfigureStartupProfiling()` also schedules one opt-in native UI capture
+  when `OKUFLOW_UI_CAPTURE_PATH` is valid; `OKUFLOW_UI_CAPTURE_DELAY_MS` selects
+  its delay. Private `CaptureNativeUi()` requires a settled camera presentation,
+  an on-screen unchanged frame, and `UiCaptureRegionIsClear()` checks foreground
+  ownership and foreign-window overlap before and after `QScreen::grabWindow`.
+  Visible owned native peers repaint 100 ms before the grab to settle partial
+  layered backing-store updates; failure diagnostics omit foreign window titles.
+  The raw composed PNG includes native sibling chrome and is saved atomically;
+  no cursor movement, cursor hiding, or pixel edits are performed.
+  See [`ui_capture.md`](ui_capture.md) for the isolated-session workflow.
+- `ApplyPersistentSettings(settings::PersistentSettings settings)` takes an
+  immutable value snapshot before restoring controls. Startup handlers can
+  request saves into the controller; those reentrant writes must not overwrite
+  the saved mode, panel width, framing, or processing values still being read.
 - `pendingSceneCaptureClock100ns_` retains the capture timestamp of the newest
   processed scene through a busy presentation slot. Only its first successful
   presentation records a latency sample; camera switches/stops clear it.
@@ -1820,6 +1834,25 @@ Namespace `okuflow`
     Hide/Show button, and grid above the Draw canvas after Draw activation or
     UI restoration; `RaiseDialogsAboveChrome()` then keeps visible owned
     dialogs above those tool windows.
+  - Constructor styles mute disabled slider fills and handles; the search
+    fields' internal icon buttons retain Qt geometry without toolbar padding.
+    UI regressions compare actual enabled/disabled rendering and assert search
+    icon bounds and vertical alignment.
+  - `UpdateSimpleChromeGeometry()` gives the bottom chrome two shapes,
+    exposed as the `chromeDock` dynamic property (`corner`/`strip`) on the
+    carousel, keystone, and action panels. Corner groups hug the camera's
+    bottom corners when the carousel, any keystone strip, and all five
+    actions fit in one line. Otherwise they become full-width rows stacked
+    from the bottom edge (carousel, keystone inline or as its own row, then
+    actions), styled without side borders or radii. Actions wrap at 5/3/2/1
+    columns; a shorter final row spans proportionally wider grid cells so
+    every row shares the same edges. Strip placement pins panel sizes, which
+    each pass releases before measuring. Only Simple's visible tracking
+    controls reserve space; Advanced's hidden tracking peer does not. A
+    deferred language-change pass remeasures after the whole tree is
+    translated. Geometry regressions cover English/Turkish/German, live
+    language switching without resizing, hidden tracking, and a short
+    narrow window at its effective layout minimum.
   - Internal `ModeCarouselButton` elides at paint time and draws a separate
     shortcut badge. `EnabledMirror` dims a slider's companion readout;
     `FormatPercent`, `FormatScaled`, and `FormatSigned` use the active locale.
@@ -1951,11 +1984,15 @@ Namespace `okuflow`
   color/effect grids and a Custom editor. Yellow/black pairs and Posterize 6
   lead their grids without duplicated choices. `QuickSchemeButton` paints a
   sample and wrapping label with keyboard focus and accessible scheme names.
+  Its `paintEvent()` keeps the normal font when labels fit, reduces it once by
+  at most one point with an 11-point floor, and draws at most two lines with
+  overflow ellipsis; tooltips and accessible names retain the complete name.
 - The formatted trigger translates both `More colors` and the active scheme
   name on selection and language changes. Its live formatted argument stores
   the translated built-in name so later generic Show/Polish retranslation
   preserves the subtitle; custom names remain raw. The focused picker tests
-  cover actual German/Turkish/English `LanguageManager` roundtrips.
+  cover actual German/Turkish/English `LanguageManager` roundtrips and optionally
+  render narrow color shortcuts with the production base font without desktop focus.
 - The frameless native popover uses an opaque backing store and solid dark
   palette rather than translucent composition over the D3D/inspector surface.
 - Custom schemes support 2-8 stops, duotone/posterize/gradient modes, stepped
@@ -2179,6 +2216,22 @@ Namespace `okuflow`
   warning handling. The `ai_settings_dialog_interactions` CTest target disables
   TTS and substitutes only static built-in Codex reference text, without loading
   protected credentials or starting app-server, network, or camera services.
+- `SaveDialogScreenshot()` optionally renders fixture dialog service, shared
+  prompt, and bottom sections into `OKUFLOW_UI_TEST_SCREENSHOTS`, without
+  compositor captures of unrelated desktop windows or saved account data.
+
+### `tests/main_window_tests.cpp`
+- `SyncScreenshotState()` mirrors initial app-owned language selection and
+  Zoom enabled states in the camera-free screenshot fixture.
+- `disabledSlidersHaveDistinctAppearance()` compares actual slider fill
+  rendering when disabled directly or through the Text Clarity master.
+  `searchIconsStayInsideFields()` verifies search/clear icon containment and
+  vertical alignment. Minimum-viewport cases also capture translated color
+  shortcuts after scrolling them into view.
+- `GlobalRect()` and `ActionRowsProblem()` inspect the buttons' actual screen
+  geometry. `bottomChromeFormsRectangularGroups()` covers translated corner,
+  Advanced strip, and minimum strip layouts, returning to a wide layout after
+  wrapping, live language changes, and tracking controls hidden in Advanced.
 
 ## Entry Point
 

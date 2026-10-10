@@ -188,7 +188,10 @@ void OkuFlowApp::OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetI
     ApplyAdvancedConfig(*config);
 }
 
-void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings& settings) {
+void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings settings) {
+    // Callers can pass the controller's mutable settings. Applying controls
+    // invokes handlers that save back into that same object, so take a stable
+    // value snapshot before any handler can overwrite fields still to restore.
     if (uiState_->displayColorPicker_ && settings.customColorScheme.stops.size() >= 2) {
         uiState_->displayColorPicker_->setCustomScheme(settings.customColorScheme);
     }

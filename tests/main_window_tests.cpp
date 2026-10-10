@@ -15,8 +15,10 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QImage>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMap>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScreen>
@@ -33,6 +35,7 @@
 #include <QtTest>
 
 #include <algorithm>
+#include <cstdlib>
 #include <Windows.h>
 
 namespace okuflow {
@@ -56,6 +59,54 @@ T* Named(MainWindow& window, const char* name)
     return window.findChild<T*>(QString::fromLatin1(name));
 }
 
+QRect GlobalRect(QWidget* widget)
+{
+    return QRect(widget->mapToGlobal(QPoint(0, 0)), widget->size());
+}
+
+// Returns an empty string when the action buttons form a filled rectangle:
+// every row shares the same outer edges and buttons in a row share a width.
+QString ActionRowsProblem(MainWindow& window, int* rowCount)
+{
+    const QList<QPushButton*> actions{window.capturePhotoButton(), window.recordButton(),
+                                      window.explainNowButton(), window.readTextButton(),
+                                      window.annotationButton()};
+    QMap<int, QList<QRect>> rows;
+    for (QPushButton* button : actions) {
+        const QRect rect = GlobalRect(button);
+        if (rect.height() < 58) {
+            return QStringLiteral("%1 is only %2px tall").arg(button->text()).arg(rect.height());
+        }
+        rows[rect.y()].append(rect);
+    }
+    *rowCount = static_cast<int>(rows.size());
+    int left = 0;
+    int right = 0;
+    bool first = true;
+    for (auto it = rows.begin(); it != rows.end(); ++it) {
+        auto row = it.value();
+        std::sort(row.begin(), row.end(),
+                  [](const QRect& a, const QRect& b) { return a.x() < b.x(); });
+        if (first) {
+            left = row.first().left();
+            right = row.last().right();
+            first = false;
+        }
+        if (std::abs(row.first().left() - left) > 1 || std::abs(row.last().right() - right) > 1) {
+            return QStringLiteral("Action row at y=%1 spans %2..%3, expected %4..%5")
+                .arg(it.key()).arg(row.first().left()).arg(row.last().right())
+                .arg(left).arg(right);
+        }
+        for (const QRect& rect : row) {
+            if (std::abs(rect.width() - row.first().width()) > 4) {
+                return QStringLiteral("Action row at y=%1 has unequal widths %2 and %3")
+                    .arg(it.key()).arg(rect.width()).arg(row.first().width());
+            }
+        }
+    }
+    return {};
+}
+
 void AddQuickModes(MainWindow& window)
 {
     auto* list = window.presetList();
@@ -63,6 +114,20 @@ void AddQuickModes(MainWindow& window)
     list->addItem(QStringLiteral("High contrast"));
     list->addItem(QStringLiteral("View a board"));
     list->setCurrentRow(0);
+}
+
+// These screenshots intentionally use a camera-free window. Mirror the app's
+// initial language/Zoom state so the fixture does not depict inactive controls
+// as enabled or display English as the selected language in translated images.
+void SyncScreenshotState(MainWindow& window, const QString& languageCode)
+{
+    auto* languages = window.applicationLanguageCombo();
+    const QSignalBlocker blocked(languages);
+    languages->setCurrentIndex(languages->findData(languageCode));
+    for (auto* slider : {window.zoomSlider(), window.zoomCenterXSlider(),
+                         window.zoomCenterYSlider()}) {
+        slider->setEnabled(window.zoomCheckbox()->isChecked());
+    }
 }
 
 void SaveScreenshot(MainWindow& window, const QString& name)
@@ -107,6 +172,8 @@ private slots:
     void modesGridSearchAndGeometry();
     void dependentControls();
     void textClarityMasterPreservesRefinements();
+    void disabledSlidersHaveDistinctAppearance();
+    void searchIconsStayInsideFields();
     void gridBrowsingRequiresDeliberateActivation();
     void carouselUsesAppliedModeDuringGridBrowse();
     void searchCanHandoffBetweenTabs();
@@ -116,6 +183,8 @@ private slots:
     void assistantInspectorTabTraversal();
     void minimumViewportChromeFits_data();
     void minimumViewportChromeFits();
+    void bottomChromeFormsRectangularGroups_data();
+    void bottomChromeFormsRectangularGroups();
     void hideUiPreservesPriorModeAndStreaming_data();
     void hideUiPreservesPriorModeAndStreaming();
     void mouseFocusedChromeCanIdleFade();
@@ -145,6 +214,7 @@ void MainWindowTests::modesGridSearchAndGeometry()
 
     MainWindow window;
     window.resize(1280, 720);
+    SyncScreenshotState(window, code);
     AddQuickModes(window);
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
@@ -368,6 +438,76 @@ void MainWindowTests::textClarityMasterPreservesRefinements()
     QVERIFY(fine->headerWidget()->isEnabled());
     QVERIFY(help->isVisible() && help->isEnabled());
     QVERIFY(help->width() <= imageScroll->viewport()->width());
+}
+
+void MainWindowTests::disabledSlidersHaveDistinctAppearance()
+{
+    MainWindow window;
+    QPalette fixturePalette = window.palette();
+    // Test the active accent independently of Windows' inactive-window theme.
+    fixturePalette.setColor(QPalette::Highlight, QColor(QStringLiteral("#0078e0")));
+    window.setPalette(fixturePalette);
+    window.setAttribute(Qt::WA_DontShowOnScreen);
+    window.resize(1280, 720);
+    window.show();
+    window.setSimpleMode(false);
+    auto expanded = window.sectionStates();
+    for (auto it = expanded.begin(); it != expanded.end(); ++it) it.value() = true;
+    window.setSectionStates(expanded);
+    QCoreApplication::processEvents();
+    const auto filledColor = [](QSlider* slider) {
+        // Sample the centre of the visible filled track, away from its handle
+        // and rounded ends; account for the screenshot's device pixel ratio.
+        const QPoint point(slider->width() / 4, slider->height() / 2);
+        const QImage image = slider->grab().toImage();
+        return image.pixelColor(point * image.devicePixelRatio());
+    };
+    auto* master = window.textClarityCheckbox();
+    for (auto* slider : {window.zoomCenterXSlider(), window.backgroundFlattenStrengthSlider()}) {
+        master->setChecked(true);
+        slider->setEnabled(true);
+        slider->setValue((slider->minimum() + slider->maximum()) / 2);
+        QCoreApplication::processEvents();
+        const QColor enabled = filledColor(slider);
+        if (slider == window.backgroundFlattenStrengthSlider()) master->setChecked(false);
+        else slider->setEnabled(false);
+        QCoreApplication::processEvents();
+        QVERIFY(!slider->isEnabled());
+        const QColor disabled = filledColor(slider);
+        QVERIFY2(enabled != disabled, qPrintable(QStringLiteral(
+            "Disabled slider fill still looks enabled: enabled=%1 disabled=%2 size=%3x%4")
+            .arg(enabled.name(), disabled.name()).arg(slider->width()).arg(slider->height())));
+        QVERIFY2(disabled.hsvSaturation() < 20, "Disabled fill retains an active accent color");
+    }
+}
+
+void MainWindowTests::searchIconsStayInsideFields()
+{
+    MainWindow window;
+    window.setAttribute(Qt::WA_DontShowOnScreen);
+    window.resize(1280, 720);
+    window.show();
+    window.setSimpleMode(false);
+    auto* tabs = Named<QTabWidget>(window, "advancedPage");
+    QVERIFY(tabs);
+    for (const char* name : {"imageSettingsSearch", "sharedSettingsSearch"}) {
+        tabs->setCurrentWidget(Named<QWidget>(window,
+            QByteArray(name) == "imageSettingsSearch" ? "imageTabPage" : "settingsTabPage"));
+        auto* edit = Named<QLineEdit>(window, name);
+        QVERIFY(edit);
+        edit->setText(QStringLiteral("Zoom")); // also expose the clear button
+        QCoreApplication::processEvents();
+        const auto icons = edit->findChildren<QToolButton*>();
+        QVERIFY(!icons.isEmpty());
+        for (auto* icon : icons) {
+            const QRect bounds(icon->mapTo(edit, QPoint()), icon->size());
+            QVERIFY2(edit->rect().contains(bounds), qPrintable(QStringLiteral(
+                "%1: icon %2,%3 %4x%5 outside field %6x%7")
+                .arg(name).arg(bounds.x()).arg(bounds.y()).arg(bounds.width())
+                .arg(bounds.height()).arg(edit->width()).arg(edit->height())));
+            QVERIFY(qAbs(bounds.center().y() - edit->rect().center().y()) <= 2);
+        }
+    }
 }
 
 void MainWindowTests::gridBrowsingRequiresDeliberateActivation()
@@ -650,6 +790,7 @@ void MainWindowTests::minimumViewportChromeFits()
     MainWindow window;
     AddQuickModes(window);
     auto* list = window.presetList();
+    SyncScreenshotState(window, code);
     list->setCurrentRow(1);
     auto* item = list->item(0);
     item->setData(Qt::AccessibleTextRole, longModeName);
@@ -759,6 +900,144 @@ void MainWindowTests::minimumViewportChromeFits()
         QVERIFY2(left >= -1 && right <= viewportWidth + 1,
                  qPrintable(details));
     }
+    auto* posterize = Named<QPushButton>(window, "quickColor_posterize-6");
+    QVERIFY(posterize);
+    imageScroll->ensureWidgetVisible(posterize);
+    SaveScreenshot(window, code + QStringLiteral("-colors-minimum"));
+    QVERIFY(translations.SetLanguage(AppLanguage::English, false));
+}
+
+void MainWindowTests::bottomChromeFormsRectangularGroups_data()
+{
+    QTest::addColumn<int>("language");
+    QTest::addColumn<QString>("code");
+    QTest::newRow("english") << int(AppLanguage::English) << QStringLiteral("en");
+    QTest::newRow("turkish") << int(AppLanguage::Turkish) << QStringLiteral("tr");
+    QTest::newRow("german") << int(AppLanguage::German) << QStringLiteral("de");
+}
+
+void MainWindowTests::bottomChromeFormsRectangularGroups()
+{
+    QFETCH(int, language);
+    QFETCH(QString, code);
+    auto* application = qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application);
+    LanguageManager translations(*application);
+    QVERIFY(translations.SetLanguage(static_cast<AppLanguage>(language), false));
+    MainWindow window;
+    SyncScreenshotState(window, code);
+    // German action labels need a wider camera to retain both corner groups.
+    // Wrapping at 1280 is valid; the contract is content-fit, not a fixed width.
+    const int wideWidth = language == int(AppLanguage::German) ? 1600 : 1280;
+    window.resize(wideWidth, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto* render = window.renderWidget();
+    auto* bottomLeft = Named<QWidget>(window, "bottomLeftPanel");
+    auto* bottomRight = Named<QWidget>(window, "bottomRightPanel");
+    QVERIFY(render && bottomLeft && bottomRight);
+    QTRY_VERIFY(bottomLeft->isVisible() && bottomRight->isVisible());
+    const auto viewport = [render]() { return GlobalRect(render); };
+    int rows = 0;
+
+    // Simple at a normal size stays camera-first: two compact corner groups.
+    QTRY_COMPARE(bottomRight->property("chromeDock").toString(), QStringLiteral("corner"));
+    QCOMPARE(bottomLeft->property("chromeDock").toString(), QStringLiteral("corner"));
+    QTRY_COMPARE(GlobalRect(bottomRight).right(), viewport().right());
+    QCOMPARE(GlobalRect(bottomRight).bottom(), viewport().bottom());
+    QCOMPARE(GlobalRect(bottomLeft).left(), viewport().left());
+    QCOMPARE(GlobalRect(bottomLeft).bottom(), viewport().bottom());
+    QVERIFY(GlobalRect(bottomLeft).width() + GlobalRect(bottomRight).width() < viewport().width());
+    QString problem = ActionRowsProblem(window, &rows);
+    QVERIFY2(problem.isEmpty(), qPrintable(problem));
+    QCOMPARE(rows, 1);
+    SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-simple-corners"));
+
+    // A narrow Advanced camera gets one full-width toolbar: the action row
+    // directly above the carousel row, both exactly as wide as the camera.
+    const auto verifyStrip = [&](const QString& name) -> QString {
+        const QRect view = viewport();
+        const QRect left = GlobalRect(bottomLeft);
+        const QRect right = GlobalRect(bottomRight);
+        if (left.left() != view.left() || left.right() != view.right() ||
+            right.left() != view.left() || right.right() != view.right()) {
+            return QStringLiteral("%1: strip rows [%2..%3] and [%4..%5] do not span camera [%6..%7]")
+                .arg(name).arg(left.left()).arg(left.right()).arg(right.left())
+                .arg(right.right()).arg(view.left()).arg(view.right());
+        }
+        if (left.bottom() != view.bottom() || right.bottom() + 1 != left.top()) {
+            return QStringLiteral("%1: action row bottom %2 is not stacked on carousel top %3 at %4")
+                .arg(name).arg(right.bottom()).arg(left.top()).arg(view.bottom());
+        }
+        return {};
+    };
+    window.resize(1100, 760);
+    window.advancedModeButton()->click();
+    QTRY_VERIFY(!window.isSimpleMode());
+    window.setAdvancedPanelWidth(440);
+    QTRY_VERIFY(render->width() <= 700);
+    QTRY_COMPARE(bottomRight->property("chromeDock").toString(), QStringLiteral("strip"));
+    QCOMPARE(bottomLeft->property("chromeDock").toString(), QStringLiteral("strip"));
+    QTRY_VERIFY2(verifyStrip(QStringLiteral("advanced")).isEmpty(),
+                 qPrintable(verifyStrip(QStringLiteral("advanced"))));
+    problem = ActionRowsProblem(window, &rows);
+    QVERIFY2(problem.isEmpty(), qPrintable(problem));
+    SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-advanced-strip"));
+
+    // The narrowest camera wraps actions into balanced full-width rows.
+    window.resize(720, 720);
+    window.setAdvancedPanelWidth(360);
+    QTRY_VERIFY(render->width() <= 400);
+    QTRY_VERIFY2(verifyStrip(QStringLiteral("minimum")).isEmpty(),
+                 qPrintable(verifyStrip(QStringLiteral("minimum"))));
+    problem = ActionRowsProblem(window, &rows);
+    QVERIFY2(problem.isEmpty(), qPrintable(problem));
+    QVERIFY(rows > 1);
+    SaveScreenshot(window, code + QStringLiteral("-bottom-chrome-minimum-strip"));
+
+    // Returning to Simple at full width restores the compact corners.
+    window.simpleModeButton()->click();
+    QTRY_VERIFY(window.isSimpleMode());
+    window.resize(wideWidth, 800);
+    QTRY_COMPARE(bottomRight->property("chromeDock").toString(), QStringLiteral("corner"));
+    QTRY_VERIFY(GlobalRect(bottomRight).width() < viewport().width());
+    problem = ActionRowsProblem(window, &rows);
+    QVERIFY2(problem.isEmpty(), qPrintable(problem));
+    QCOMPARE(rows, 1);
+    // Live retranslation must reflow the same pinned strip, without a resize.
+    window.resize(720, 720);
+    window.advancedModeButton()->click();
+    window.setAdvancedPanelWidth(360);
+    QCoreApplication::processEvents();
+    const int beforeSwitchWidth = render->width();
+    for (const AppLanguage next : {AppLanguage::English, AppLanguage::Turkish,
+                                   AppLanguage::German}) {
+        QVERIFY(translations.SetLanguage(next, false));
+        QCoreApplication::processEvents();
+        QCOMPARE(render->width(), beforeSwitchWidth);
+        problem = ActionRowsProblem(window, &rows);
+        QVERIFY2(problem.isEmpty(), qPrintable(problem));
+        for (auto* button : {window.capturePhotoButton(), window.recordButton(),
+                             window.explainNowButton(), window.readTextButton(),
+                             window.annotationButton()}) {
+            QVERIFY(GlobalRect(bottomRight).contains(GlobalRect(button)));
+        }
+    }
+    // Active tracking is hidden in Advanced and must not reserve blank space.
+    window.setKeystoneTrackingControls(true, true, false, false, true, false, 1, 2);
+    QCoreApplication::processEvents();
+    QVERIFY2(verifyStrip(QStringLiteral("hidden tracking")).isEmpty(),
+             qPrintable(verifyStrip(QStringLiteral("hidden tracking"))));
+    auto* tracking = Named<QWidget>(window, "keystoneTrackingPanel");
+    QVERIFY(tracking && !tracking->isVisible());
+
+    // Native peers do not contribute their minimum sizes to the main window.
+    // A short, narrow Simple view must still keep its toolbar rows disjoint.
+    window.simpleModeButton()->click();
+    window.setKeystoneTrackingControls(false, false, false, false, false, false, 0, 0);
+    window.resize(360, 270);
+    QCoreApplication::processEvents();
+    QVERIFY(!GlobalRect(bottomRight).intersects(GlobalRect(bottomLeft)));
     QVERIFY(translations.SetLanguage(AppLanguage::English, false));
 }
 

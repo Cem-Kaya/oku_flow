@@ -1,10 +1,89 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include <QPixmap>
 #include <QSaveFile>
+#include <QScreen>
 
 namespace okuflow {
 namespace {
+
+// Read-only native checks: never raise a window or change the cursor to obtain
+// evidence. Compare Win32 rectangles with each other, not Qt logical pixels.
+bool UiCaptureRegionIsClear(HWND mainHandle, const RECT& area) {
+    DWORD foregroundProcess = 0;
+    const HWND foreground = GetForegroundWindow();
+    if (!foreground || !GetWindowThreadProcessId(foreground, &foregroundProcess) ||
+        foregroundProcess != GetCurrentProcessId()) {
+        qWarning() << "UI capture foreground process:" << foregroundProcess
+                   << "expected:" << GetCurrentProcessId();
+        return false;
+    }
+
+    HWND window = GetTopWindow(nullptr);
+    // GetWindow traversal can race window destruction. Bound the walk and
+    // reject an incomplete traversal rather than guessing that it is safe.
+    for (int count = 0; window && count < 4096; ++count) {
+        if (window == mainHandle) return true;
+        if (IsWindowVisible(window) && !IsIconic(window)) {
+            DWORD process = 0;
+            if (!GetWindowThreadProcessId(window, &process)) return false;
+            if (process != GetCurrentProcessId()) {
+                RECT bounds{}, overlap{};
+                if (!GetWindowRect(window, &bounds)) return false;
+                if (IntersectRect(&overlap, &area, &bounds)) {
+                    qWarning() << "UI capture overlapping process:" << process
+                               << "bounds:" << bounds.left << bounds.top
+                               << bounds.right << bounds.bottom;
+                    return false;
+                }
+            }
+        }
+        window = GetWindow(window, GW_HWNDNEXT);
+    }
+    return false;
+}
+
+void CaptureNativeUi(MainWindow* window, const QString& path) {
+    const auto skip = [](const char* reason) {
+        qWarning() << "UI capture skipped:" << reason;
+    };
+    if (!window || !window->isVisible() || window->isMinimized()) {
+        skip("main window is not visible");
+        return;
+    }
+    QScreen* screen = window->screen();
+    const QRect area = window->frameGeometry();
+    if (!screen || area.isEmpty() || !screen->geometry().contains(area)) {
+        skip("complete window frame must fit on one screen");
+        return;
+    }
+    const HWND mainHandle = reinterpret_cast<HWND>(window->winId());
+    RECT nativeArea{};
+    if (!GetWindowRect(mainHandle, &nativeArea) ||
+        !UiCaptureRegionIsClear(mainHandle, nativeArea)) {
+        skip("foreground or overlapping foreign window check failed");
+        return;
+    }
+    // Desktop composition includes the D3D preview and native sibling chrome.
+    // Windows QScreen coordinates are local to this screen, in logical pixels.
+    const QPoint offset = area.topLeft() - screen->geometry().topLeft();
+    const QPixmap capture = screen->grabWindow(0, offset.x(), offset.y(),
+                                               area.width(), area.height());
+    RECT after{};
+    if (capture.isNull() || window->frameGeometry() != area || window->screen() != screen ||
+        !GetWindowRect(mainHandle, &after) || !EqualRect(&nativeArea, &after) ||
+        !UiCaptureRegionIsClear(mainHandle, nativeArea)) {
+        skip("capture failed or desktop changed during capture");
+        return;
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || !capture.save(&file, "PNG") || !file.commit()) {
+        qWarning() << "Could not save UI capture:" << path << file.errorString();
+        return;
+    }
+    qInfo() << "Native UI capture saved:" << path;
+}
 
 // A startup job never owns an app pointer. Its delivery uses the same revocable
 // ingress as camera frames. A hung driver retains only this independently owned
@@ -55,6 +134,41 @@ void OkuFlowApp::ConfigureStartupProfiling() {
     if (startupProfilePath_.isEmpty()) {
         startupSynchronousProfile_ = false;
         return;
+    }
+    const QString capturePath = qEnvironmentVariable("OKUFLOW_UI_CAPTURE_PATH");
+    if (!capturePath.isEmpty()) {
+        const QFileInfo destination(capturePath);
+        bool validDelay = true;
+        const QString delayText = qEnvironmentVariable("OKUFLOW_UI_CAPTURE_DELAY_MS");
+        const int captureDelay = delayText.isEmpty() ? 15000 : delayText.toInt(&validDelay);
+        if (!destination.isAbsolute() || destination.suffix().compare(
+                QStringLiteral("png"), Qt::CaseInsensitive) != 0 ||
+            !destination.dir().exists() || !validDelay || captureDelay < 1 ||
+            captureDelay > 60000 || captureDelay + 100 >= durationMs) {
+            qWarning() << "UI capture skipped: require an absolute .png path with an existing"
+                          " parent and a 1..60000 ms delay at least 100 ms before profiling ends";
+        } else {
+            QTimer::singleShot(captureDelay, this, [this, capturePath]() {
+                if (startupFirstPresentMs_ < 0 ||
+                    startupTimer_.elapsed() - startupFirstPresentMs_ < 80) {
+                    qWarning() << "UI capture skipped: no settled camera presentation";
+                    return;
+                }
+                // Layered native peers can retain partial GDI backing-store
+                // updates even while Windows Graphics Capture looks complete.
+                // Repaint the real app surfaces and let composition settle;
+                // never rebuild or edit the captured pixels.
+                if (mainWindow_) {
+                    for (QWidget* peer : mainWindow_->findChildren<QWidget*>(
+                             QString(), Qt::FindDirectChildrenOnly)) {
+                        if (peer->isWindow() && peer->isVisible()) peer->repaint();
+                    }
+                }
+                QTimer::singleShot(100, this, [this, capturePath]() {
+                    CaptureNativeUi(mainWindow_.get(), capturePath);
+                });
+            });
+        }
     }
     startupPulseDelaysMs_.reserve(3000);
     startupPulseTimer_.start();

@@ -421,6 +421,8 @@ legacy `powershell.exe` bridge.
   SHA-256 checksums, a release manifest, and an SPDX SBOM.
 
 ## Documentation Index
+- [`docs/ui_capture.md`](ui_capture.md): opt-in composed real-app PNG captures
+  in isolated startup-profiling sessions, including native chrome and desktop checks.
 - [`docs/lecture_camera.md`](lecture_camera.md): downloadable lecture sample,
   isolated OBS Virtual Camera start/stop, and replacement-video workflow.
 - [`README.md`](../README.md): top-level project overview and usage.

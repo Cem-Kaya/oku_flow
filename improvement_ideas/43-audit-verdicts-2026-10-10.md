@@ -372,6 +372,73 @@ production MainWindow and AI Settings interaction suites. Earlier UI-only 150%
 scaling checks passed both suites. These are later validations, not retroactive
 proof of every historical audit claim or a real-camera performance benchmark.
 
+## Final Opus UI review response — outside reviewer counts
+
+Opus completed integrated review r5 against `16d8211` after the earlier rate-limit
+failure. It found no accepted-contract regressions and three remaining visual
+defects. This later review does not change the historical 294-row counts.
+
+| Finding | Verdict | Response and evidence |
+| --- | --- | --- |
+| Disabled slider fill and handle still look active. | Valid | Add muted disabled styling. Focused production-widget rendering checks pass for direct disabling and Text Clarity master disabling. |
+| Turkish quick color label clips a long word. | Valid | Limit to two lines, reduce font at most one point with an 11-point floor, and elide overflow. New narrow Turkish/German captures inspected independently by Sol; complete names remain available through accessibility and tooltips. |
+| Settings search icons sit below the text. | Valid | Prevent the generic large tool-button stylesheet from resizing Qt's search/clear side widgets. Both search fields pass containment and vertical-alignment checks. |
+| Screenshot fixtures show English selected in translated windows and active Zoom children while Zoom is off. | Valid evidence limitation | Mirror initial application-owned state in the camera-free fixtures. Add fixture AI Settings and narrow color-shortcut renders without unrelated desktop windows. |
+| Move Hide UI in the Tab order; annotate automatic Text Clarity stages. | Optional design refinements | Preserve the accepted keyboard contract and stage behavior; no additional behavior change in this response. |
+
+Release compilation and 736-key translation validation pass. Selected rendering
+checks pass (2/2), color-picker CTest passes (1/1), and the separate non-GUI
+presets pass **20/20 CPU** and **25/25 CUDA**. These filtered runs are not full
+matrix passes. The attempted native full matrix has focus/idle failures while
+Chrome owns the foreground; clean desktop verification remains pending. The
+prior 27/27 and 32/32 passes above remain historical results for `16d8211`.
+Evidence: `local_evidence/ui-polish-20261010/opus-final-r5.md`,
+`focused-rendering-results.txt`, `picker-final.log`, `cpu-opus-final-non-gui.log`,
+`cuda-opus-final.log`, and the `opus-final-matrix` / `opus-final-rendering` images.
+
+Opus r6 independently re-read the responses and inspected the new color and
+AI Settings renders. It marked F1/F2/F3 and fixture correction D3 addressed,
+with no new blocker; final acceptance remains subject to clean native desktop
+validation. All three current CMake presets compile (`final-compile-only.log`).
+At that checkpoint the user explicitly deferred desktop tests, so those
+changes stayed local and the existing published bundle was retained.
+The later desktop checkpoint below supersedes that pending status.
+Dark-theme-only disabled colors
+and stronger automated color-label layout assertions remain optional refinements.
+
+## Rectangular chrome and startup restoration — outside reviewer counts
+
+Opus's rectangular-chrome implementation replaces narrow-view corner fragments
+with full-width action and quick-mode rows. The parent added live-language
+remeasurement and excluded Advanced's hidden tracking controls from geometry.
+Native English/Turkish/German captures confirm equal action-row edges, including
+wrapped minimum-width views. Wide Simple views retain compact corner controls.
+
+The real-app screenshot sessions exposed a separate startup settings alias:
+early control handlers saved into the same settings object whose later values
+were still being restored. Sol changed `ApplyPersistentSettings()` to take an
+immutable value snapshot. Four isolated, normally exiting camera sessions
+retained saved Simple/Advanced mode, panel width, Fit framing, colors and Text
+Clarity. The original user's settings SHA-256 remained unchanged; no AI requests
+were submitted. These later findings do not alter the 294 historical claim rows.
+
+The final tracked `scripts/agent_build.bat` gate passes release compilation,
+736-key translation validation, **27/27 CPU** and **32/32 CUDA** tests, including
+native MainWindow focus/Hide UI, AI Settings and the new geometry regressions.
+Evidence: `local_evidence/ui-polish-20261010/final-release-gate.log` and
+`final-native/`. All four new 1920 × 1125 product captures were inspected for
+complete controls, genuine generated-scene camera input, and absence of a cursor
+or halo; no captured pixels were reconstructed or repaired. Camera optics,
+microphone audio and real-world performance remain outside this evidence.
+
+The tracked release-bundle gate also passed **32/32** tests and published the
+complete primary `dist/OkuFlow/` bundle. The deployed executable SHA-256 matches
+the release build and the screenshot executable:
+`BD500024347FF2282C84DB3212B119DECAC7D01BDE3701121ECEE73FDE82AB27`.
+Evidence: `final-bundle-retry.log` and `final-bundle-native/` in the same local
+evidence directory. Its first attempt safely withheld publication after Chrome
+owned foreground during focus checks; the fresh serial session passed.
+
 ## Provenance
 
 All source audit artifacts are under `build/ui-validation/audits/` (local, ignored evidence). The matching [machine-readable array](../build/ui-validation/audits/audit-verdicts.json) contains exactly the table rows and the fields `id, reviewer, area, finding, verdict, evidence, duplicate, status`.

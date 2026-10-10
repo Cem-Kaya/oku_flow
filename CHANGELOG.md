@@ -5,6 +5,20 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+- Restore startup settings from a stable snapshot so early control handlers
+  cannot replace the saved Advanced view, panel width, framing, or image
+  processing settings with partially initialized defaults.
+- Add an opt-in raw native UI capture during isolated startup-profiling
+  sessions, preserving the camera and native controls while rejecting foreign
+  overlapping windows. Document the repeatable website screenshot workflow.
+- Replace the irregular stacked corner panels in narrow camera views with one
+  full-width bottom toolbar: actions sit in equal-width rows directly above
+  the quick-mode carousel, and a wrapped 3 + 2 action grid stays rectangular.
+  Wide Simple views keep their compact corner groups. Reflow after live
+  language changes and avoid reserving space for hidden tracking controls.
+- Make disabled sliders visibly inactive, keep settings search icons centered,
+  and elide long color shortcut labels within two lines. Correct language and
+  initial Zoom state in UI screenshot fixtures and capture AI Settings layouts.
 - Correct Text Clarity's light-on-dark Sauvola threshold so chalkboard
   backgrounds remain background and bright writing stays distinct. Add GPU
   regressions for blank/noisy boards, strokes, polarity, and inverted-image symmetry.

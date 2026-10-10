@@ -21,6 +21,9 @@ Simple mode is the normal operating view:
 - Profiles that enable Straighten Screen add a fourth, contextual strip beside
   the carousel with Previous, Stop/Continue, and Next correction controls. It
   disappears for profiles that do not use keystone correction.
+- In a camera view too narrow for both bottom corner clusters on one line
+  (typically Advanced, or a small Simple window), the bottom clusters merge
+  into a full-width toolbar; see Layout Invariants.
 - The clusters are frameless windows owned by the main window. This keeps them
   above the native D3D swap chain while retaining normal Qt buttons,
   accessibility metadata, focus, and tooltips.
@@ -120,10 +123,16 @@ cleared. Active searches refresh after a language change. `Ctrl+F` reveals the
 appropriate search field, including from Simple,
 Assistant, or Transcript. Keyboard navigation stays inside dialogs and editors.
 
-Slider readouts follow the active locale and dim with their sliders. Responsive
+Slider readouts follow the active locale and dim with their sliders. Disabled
+slider fills and handles also lose the active accent, including dormant Text
+Clarity refinements. Search icons and clear buttons retain Qt's compact side-
+widget geometry instead of inheriting the large toolbar-button padding. Responsive
 rows preserve usable track space; horizontal/vertical position controls disable
 when Zoom is off. Long selector names elide in the middle, retaining the complete
 value on hover and through Qt accessibility.
+Quick color shortcut labels use at most two lines, reducing the font by at most
+one point (11-point minimum) when needed and ending overflow with an ellipsis.
+Their complete names remain available through tooltips and accessibility.
 
 Dependent options sit below their parent switch inside an indented group with
 a left border. This covers Zoom position, Extra Stable, sharpening backend and
@@ -269,7 +278,12 @@ code persists and applies orientation at the top level of
 - The bottom-right Photo/Record/Explain/Read/Draw action bar remains available
   in Advanced, positioned against the camera viewport rather than the
   inspector. Narrow camera areas use measured wrapping for the mode switch,
-  carousel, and labeled action rows. Application
+  carousel, and labeled action rows. Bottom chrome is always rectangular:
+  when the carousel, any keystone strip, and all five actions cannot share
+  one line, they become one full-width bottom toolbar of stacked rows
+  (actions above the carousel) instead of corner fragments. Wrapped action
+  rows keep equal outer edges; a shorter final row uses wider buttons, so
+  3 + 2 never forms an L shape. Application
   deactivation may temporarily hide the native tool window, but reactivation
   must restore this bar in both Simple and Advanced modes.
 - Record remains actionable while Draw is active. Vector ink is composited

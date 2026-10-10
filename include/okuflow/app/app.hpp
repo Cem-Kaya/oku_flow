@@ -279,7 +279,7 @@ private:
     void HandleCameraRuntimeFailure(uint64_t captureSession, const QString& message);
     void UpdateRotationUi();
     static void RotateNormalizedPoint(float inX, float inY, int quarterTurns, float& outX, float& outY);
-    void ApplyPersistentSettings(const settings::PersistentSettings& settings);
+    void ApplyPersistentSettings(settings::PersistentSettings settings);
     void SavePersistentSettings();
 
     QApplication* qtApp_{};

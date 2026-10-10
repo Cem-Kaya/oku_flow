@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QDir>
 #include <QEvent>
 #include <QPushButton>
 #include <QSet>
@@ -145,6 +146,20 @@ void ColorSchemePickerTests::realLanguageRoundtripRetainsTranslatedNames()
 {
     LanguageManager languages(*qApp);
     ColorSchemePicker picker;
+    picker.setAttribute(Qt::WA_DontShowOnScreen);
+    picker.setStyleSheet(QStringLiteral("QWidget { font-size: 12pt; }"));
+    picker.resize(320, 240);
+    picker.show();
+    const auto saveChoices = [&picker](const QString& code) {
+        const QString root = qEnvironmentVariable("OKUFLOW_UI_TEST_SCREENSHOTS");
+        if (root.isEmpty()) return;
+        QDir directory(root);
+        if (!directory.exists() && !directory.mkpath(QStringLiteral("."))) return;
+        QCoreApplication::processEvents();
+        if (!picker.grab().save(directory.filePath(code + QStringLiteral("-color-shortcuts.png")))) {
+            qWarning().noquote() << "Cannot save color shortcut screenshot:" << code;
+        }
+    };
     QSignalSpy changes(&picker, &ColorSchemePicker::schemeChanged);
     auto* more = picker.findChild<QPushButton*>(QStringLiteral("moreColorsButton"));
     QVERIFY(languages.SetLanguage(AppLanguage::German));
@@ -152,6 +167,7 @@ void ColorSchemePickerTests::realLanguageRoundtripRetainsTranslatedNames()
     QTRY_COMPARE(Quick(picker, "black-yellow")->text(), QStringLiteral("Schwarz auf Gelb"));
     QTRY_COMPARE(Quick(picker, "posterize-6")->text(), QStringLiteral("6 Farben posterisieren"));
     QTRY_COMPARE(more->text(), QStringLiteral("Weitere Farben\nNormale Farben"));
+    saveChoices(QStringLiteral("de"));
     // Reproduce the later generic Show/Polish retranslation that used to
     // overwrite the explicitly translated current-selection subtitle.
     RetranslateWidgetTree(&picker);
@@ -164,6 +180,7 @@ void ColorSchemePickerTests::realLanguageRoundtripRetainsTranslatedNames()
     QTRY_COMPARE(Quick(picker, "black-yellow")->text(), QStringLiteral("Sarı üzerine siyah"));
     QTRY_COMPARE(Quick(picker, "posterize-6")->text(), QStringLiteral("6 renk posterleştirme"));
     QTRY_COMPARE(more->text(), QStringLiteral("Diğer renkler\nSiyah üzerine sarı"));
+    saveChoices(QStringLiteral("tr"));
     auto custom = color_schemes::LegacyColorScheme(2);
     custom.id = QStringLiteral("custom");
     custom.name = QStringLiteral("Yellow on black");
@@ -174,6 +191,7 @@ void ColorSchemePickerTests::realLanguageRoundtripRetainsTranslatedNames()
     QTRY_COMPARE(Quick(picker, "yellow-black")->text(), QStringLiteral("Yellow on black"));
     QTRY_COMPARE(Quick(picker, "posterize-6")->text(), QStringLiteral("Posterize 6"));
     QTRY_COMPARE(more->text(), QStringLiteral("More colors\nYellow on black"));
+    saveChoices(QStringLiteral("en"));
     QCOMPARE(changes.count(), 0);
 }
 }

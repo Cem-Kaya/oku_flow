@@ -10,6 +10,8 @@
 #include <QCheckBox>
 #include <QColorDialog>
 #include <QEvent>
+#include <QFontInfo>
+#include <QFontMetrics>
 #include <QGridLayout>
 #include <QGuiApplication>
 #include <QHBoxLayout>
@@ -27,6 +29,7 @@
 #include <QSpinBox>
 #include <QStyle>
 #include <QStyleOptionButton>
+#include <QTextLayout>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -144,7 +147,48 @@ protected:
                                       QPalette::ButtonText));
         const QRect label = rtl ? QRect(8, 6, width() - 66, height() - 12)
                                 : QRect(60, 6, width() - 68, height() - 12);
-        painter.drawText(label, Qt::AlignVCenter | Qt::AlignLeading | Qt::TextWordWrap, text());
+        // Keep complete words on at most two lines. A long translated word
+        // must end with an ellipsis rather than being clipped by the tile.
+        QFont labelFont = font();
+        const auto fits = [&label, this](const QFont& candidate) {
+            const QFontMetrics metrics(candidate);
+            const QRect bounds = metrics.boundingRect(
+                label, Qt::TextWordWrap, text());
+            return bounds.width() <= label.width() &&
+                   bounds.height() <= std::min(label.height(), 2 * metrics.lineSpacing());
+        };
+        if (!fits(labelFont)) {
+            const qreal points = QFontInfo(labelFont).pointSizeF();
+            if (points > 11.0) labelFont.setPointSizeF(std::max(11.0, points - 1.0));
+        }
+        painter.save();
+        painter.setClipRect(label);
+        painter.setFont(labelFont);
+        const QFontMetrics metrics(labelFont);
+        QTextLayout layout(text(), labelFont);
+        QTextOption textOption;
+        textOption.setWrapMode(QTextOption::WordWrap);
+        textOption.setTextDirection(layoutDirection());
+        layout.setTextOption(textOption);
+        layout.beginLayout();
+        QTextLine firstLine = layout.createLine();
+        if (firstLine.isValid()) firstLine.setLineWidth(label.width());
+        layout.endLayout();
+        const int firstLength = firstLine.isValid() ? firstLine.textLength() : 0;
+        const bool twoLines = firstLength < text().size() &&
+                              2 * metrics.lineSpacing() <= label.height();
+        const int lineCount = twoLines ? 2 : 1;
+        int top = label.top() + (label.height() - lineCount * metrics.lineSpacing()) / 2;
+        for (int index = 0; index < lineCount; ++index) {
+            const QString lineText = twoLines
+                ? (index == 0 ? text().left(firstLength) : text().mid(firstLength)).trimmed()
+                : text();
+            painter.drawText(QRect(label.left(), top, label.width(), metrics.lineSpacing()),
+                             Qt::AlignVCenter | (rtl ? Qt::AlignRight : Qt::AlignLeft),
+                             metrics.elidedText(lineText, Qt::ElideRight, label.width()));
+            top += metrics.lineSpacing();
+        }
+        painter.restore();
         if (isChecked()) {
             painter.setPen(QColor(QStringLiteral("#c052d8")));
             painter.drawText(rect().adjusted(4, 0, -4, -2),

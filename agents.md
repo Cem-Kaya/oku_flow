@@ -173,3 +173,14 @@ aligned with the project goals.
   secrets. Keep it serial with other GUI tests.
 - Keep `src/ui/translation_catalog.cpp` as LF through its `.gitattributes`
   rule, matching the translation validator's generated-manifest contract.
+
+## Native Promotional Captures
+- Follow `docs/ui_capture.md` for opt-in captures during an isolated startup
+  profiling session. Use separate fixture settings and normally exiting children;
+  never replace user settings or terminate an existing instance for screenshots.
+- Inspect the raw composed capture for complete native controls, genuine camera
+  frames, and foreign overlays. Reset computer-use automation before capture to
+  remove its pointer overlay; retake unsuitable images without repairing pixels.
+- Keep public media provenance separate from real-camera quality and performance
+  claims. An original generated scene through the private OBS feed validates the
+  demonstrated UI only.

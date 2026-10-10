@@ -280,6 +280,14 @@ This document tracks machine-specific defaults, generated output locations, and 
   automatically.
 
 ## Startup Profiling Defaults
+- `OKUFLOW_UI_CAPTURE_PATH` enables one raw composed UI PNG only during an
+  explicit `--startup-profile` session. It must be an absolute `.png` path with
+  an existing parent. `OKUFLOW_UI_CAPTURE_DELAY_MS` defaults to `15000`, accepts
+  integer `1..60000`, and must precede profiling exit. Capture requires a
+  successful camera presentation at least `80 ms` earlier, a complete frame on
+  one screen, and own-process foreground with no overlapping foreign window
+  above the main frame. Z-order traversal is bounded to `4096` windows.
+  See [`ui_capture.md`](ui_capture.md) for isolation and retake instructions.
 - `scripts/profile_startup.ps1` defaults to two 15-second trials and
   `build/startup-profile/<mode>-<run>/` reports, logs, settings, and data. It
   passes an explicit report path; the app uses its sibling `settings.json`

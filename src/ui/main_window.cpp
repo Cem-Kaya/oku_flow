@@ -76,6 +76,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numeric>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -397,6 +398,14 @@ MainWindow::MainWindow()
             background: palette(base);
         }
         QLineEdit:focus { border: 3px solid palette(highlight); }
+        /* Preserve Qt's compact side-widget geometry inside search fields. */
+        QLineEdit#imageSettingsSearch QToolButton,
+        QLineEdit#sharedSettingsSearch QToolButton {
+            min-height: 0px;
+            padding: 0px;
+            border: none;
+            background: transparent;
+        }
         QCheckBox { spacing: 8px; padding: 2px; border: 3px solid transparent; border-radius: 6px; }
         QCheckBox:focus { border-color: palette(highlight); }
         QCheckBox::indicator { width: 20px; height: 20px; }
@@ -411,7 +420,13 @@ MainWindow::MainWindow()
             background: palette(button);
             border: 2px solid palette(dark);
         }
-        QSlider::handle:horizontal:hover { background: palette(midlight); }
+        QSlider::handle:horizontal:hover:enabled { background: palette(midlight); }
+        QSlider::groove:horizontal:disabled { background: #2e2e2e; }
+        QSlider::sub-page:horizontal:disabled { background: #5a5a5a; }
+        QSlider::handle:horizontal:disabled {
+            background: #2b2b2b;
+            border: 2px solid #5c5c5c;
+        }
         QListWidget { border: 2px solid palette(mid); border-radius: 6px; }
         QListWidget:focus { border: 3px solid palette(highlight); }
         QListWidget::item { padding: 6px; }
@@ -468,6 +483,13 @@ MainWindow::MainWindow()
         QWidget#bottomLeftPanel { border-bottom: 0; border-left: 0; border-top-right-radius: 8px; }
         QWidget#keystoneTrackingPanel { border-bottom: 0; border-top-left-radius: 8px; border-top-right-radius: 8px; }
         QWidget#bottomRightPanel { border-bottom: 0; border-right: 0; border-top-left-radius: 8px; }
+        QWidget#bottomLeftPanel[chromeDock="strip"], QWidget#keystoneTrackingPanel[chromeDock="strip"],
+        QWidget#bottomRightPanel[chromeDock="strip"] {
+            border-left: 0;
+            border-right: 0;
+            border-bottom: 0;
+            border-radius: 0;
+        }
         QWidget#modeGridPopup {
             border-left: 0;
             border-top-left-radius: 0;
@@ -3438,35 +3460,35 @@ void MainWindow::UpdateSimpleChromeGeometry()
         button->setMinimumWidth(88);
         button->setMaximumWidth(QWIDGETSIZE_MAX);
     }
+    // Strip placement pins bottom panel sizes; release them so every pass
+    // measures the real translated content from scratch.
+    for (QWidget* panel : {bottomLeftPanel_, keystoneTrackingPanel_, bottomRightPanel_}) {
+        panel->setMinimumSize(0, 0);
+        panel->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+    }
     for (QWidget* panel :
          {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_,
           bottomRightPanel_}) {
         panel->adjustSize();
     }
-    const int trackingWidth =
-        keystoneTrackingActive_ ? keystoneTrackingPanel_->width() : 0;
     const auto refit = [](QWidget* panel) {
         panel->layout()->invalidate();
         panel->layout()->activate();
         panel->adjustSize();
         return std::max(panel->sizeHint().width(), panel->minimumSizeHint().width());
     };
-    if (auto* actionsLayout = qobject_cast<QGridLayout*>(bottomRightPanel_->layout())) {
-        // Test the real translated button sizes, including stylesheet padding
-        // and icons. Retain readable labels even at the minimum camera width.
-        for (int columns : {5, 3, 2, 1}) {
-            for (int index = 0; index < static_cast<int>(actionButtons.size()); ++index) {
-                auto* button = actionButtons[index].first;
-                actionsLayout->removeWidget(button);
-                actionsLayout->addWidget(button, index / columns, index % columns);
-            }
-            const int requiredWidth = refit(bottomRightPanel_);
-            if (requiredWidth <= viewWidth &&
-                (columns != 5 || bottomLeftPanel_->width() + trackingWidth + requiredWidth <= viewWidth)) {
-                break;
-            }
-        }
-    }
+    // The bottom chrome has exactly two shapes. "corner": the quick-mode
+    // carousel and the action row each hug their own bottom corner when both
+    // fit on one line. "strip": otherwise every bottom group becomes a
+    // full-width row stacked from the bottom edge, so a narrow camera view
+    // gets one rectangular toolbar instead of irregular floating fragments.
+    const auto setChromeDock = [](QWidget* panel, const QString& dock) {
+        if (panel->property("chromeDock").toString() == dock) return;
+        panel->setProperty("chromeDock", dock);
+        panel->style()->unpolish(panel);
+        panel->style()->polish(panel);
+        panel->update();
+    };
     if (auto* topLayout = qobject_cast<QGridLayout*>(topLeftPanel_->layout())) {
         for (QWidget* widget : std::array<QWidget*, 3>{simpleModeButton_,
                                 advancedModeButton_, simpleTextClarityCheckbox_}) {
@@ -3497,6 +3519,10 @@ void MainWindow::UpdateSimpleChromeGeometry()
         carouselLayout->addWidget(previousModeButton_, 0, 1);
         carouselLayout->addWidget(currentModeButton_, 0, 2);
         carouselLayout->addWidget(nextModeButton_, 0, 3);
+        // Spare strip width goes to the mode name, never to the arrows.
+        for (int column = 0; column < carouselLayout->columnCount(); ++column) {
+            carouselLayout->setColumnStretch(column, column == 2 ? 1 : 0);
+        }
         if (refit(bottomLeftPanel_) > viewWidth) {
             // The current-mode button opens the same grid, so a narrow view
             // drops the separate grid button instead of wrapping it onto a
@@ -3511,14 +3537,58 @@ void MainWindow::UpdateSimpleChromeGeometry()
             carouselLayout->addWidget(previousModeButton_, 0, 0);
             carouselLayout->addWidget(currentModeButton_, 0, 1);
             carouselLayout->addWidget(nextModeButton_, 0, 2);
+            for (int column = 0; column < carouselLayout->columnCount(); ++column) {
+                carouselLayout->setColumnStretch(column, column == 1 ? 1 : 0);
+            }
             const int overhead = std::max(0, refit(bottomLeftPanel_) - currentModeButton_->width());
             currentModeButton_->setMinimumWidth(120);
             currentModeButton_->setMaximumWidth(std::max(120, viewWidth - overhead));
             refit(bottomLeftPanel_);
         }
     }
+    // Advanced hides the tracking peer; it must not leave a blank toolbar row.
+    const bool showTracking = keystoneTrackingActive_ && isSimpleMode();
+    const int trackingWidth = showTracking ? refit(keystoneTrackingPanel_) : 0;
+    auto* actionsLayout = qobject_cast<QGridLayout*>(bottomRightPanel_->layout());
+    // Lays the actions out as a filled rectangle: full rows of `columns`
+    // and a shorter final row whose buttons span proportionally wider cells,
+    // so 3 + 2 renders as two equal-width rows rather than an L shape.
+    const auto arrangeActions = [&](int columns) {
+        if (!actionsLayout) return;
+        const int count = static_cast<int>(actionButtons.size());
+        const int lastRowCount = count % columns == 0 ? columns : count % columns;
+        const int lastRow = (count - 1) / columns;
+        const int cells = std::lcm(columns, lastRowCount);
+        for (const auto& action : actionButtons) {
+            actionsLayout->removeWidget(action.first);
+        }
+        for (int column = 0; column < std::max(cells, actionsLayout->columnCount()); ++column) {
+            actionsLayout->setColumnStretch(column, column < cells ? 1 : 0);
+        }
+        for (int index = 0; index < count; ++index) {
+            const int row = index / columns;
+            const int span = cells / (row == lastRow ? lastRowCount : columns);
+            actionsLayout->addWidget(actionButtons[index].first, row,
+                                     (index % columns) * span, 1, span);
+        }
+    };
+    // Test the real translated button sizes, including stylesheet padding
+    // and icons. Retain readable labels even at the minimum camera width.
+    arrangeActions(5);
+    const bool cornerChrome =
+        bottomLeftPanel_->width() + trackingWidth + refit(bottomRightPanel_) <= viewWidth;
+    if (!cornerChrome) {
+        for (int columns : {3, 2, 1}) {
+            if (refit(bottomRightPanel_) <= viewWidth) break;
+            arrangeActions(columns);
+        }
+    }
+    const QString chromeDock = cornerChrome ? QStringLiteral("corner") : QStringLiteral("strip");
+    for (QWidget* panel : {bottomLeftPanel_, keystoneTrackingPanel_, bottomRightPanel_}) {
+        setChromeDock(panel, chromeDock);
+    }
     for (QWidget* panel : {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_, bottomRightPanel_}) {
-        panel->adjustSize();
+        refit(panel);
     }
 
     const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
@@ -3537,39 +3607,55 @@ void MainWindow::UpdateSimpleChromeGeometry()
         topLeftPanel_->width() + uiVisibilityPanel_->width() + 8 > viewWidth
             ? uiVisibilityPanel_->height() + 8 : 0;
     topLeftPanel_->move(leadingX(topLeftPanel_->width()), viewOrigin.y() + topChromeOffset);
-    bottomLeftPanel_->move(leadingX(bottomLeftPanel_->width()),
-                           viewOrigin.y() + std::max(0, viewHeight - bottomLeftPanel_->height()));
-    const bool trackingInline = keystoneTrackingActive_ &&
-                                bottomLeftPanel_->width() + keystoneTrackingPanel_->width() +
-                                        bottomRightPanel_->width() <= viewWidth;
-    const int leftChromeHeight = bottomLeftPanel_->height() +
-                                 (keystoneTrackingActive_ && !trackingInline
-                                      ? keystoneTrackingPanel_->height()
-                                      : 0);
-    const int leftChromeWidth = trackingInline
-                                    ? bottomLeftPanel_->width() + keystoneTrackingPanel_->width()
-                                    : std::max(bottomLeftPanel_->width(),
-                                               keystoneTrackingActive_ ? keystoneTrackingPanel_->width() : 0);
-    if (keystoneTrackingActive_) {
-        const int trackingX =
-            trackingInline
-                ? (rightToLeft
-                       ? viewWidth - bottomLeftPanel_->width() -
-                             keystoneTrackingPanel_->width()
-                       : bottomLeftPanel_->width())
-                : (rightToLeft
-                       ? viewWidth - keystoneTrackingPanel_->width()
-                       : 0);
-        const int trackingY = trackingInline
-                                  ? viewHeight - keystoneTrackingPanel_->height()
-                                  : viewHeight - bottomLeftPanel_->height() - keystoneTrackingPanel_->height();
-        keystoneTrackingPanel_->move(viewOrigin.x() + trackingX,
-                                     viewOrigin.y() + std::max(0, trackingY));
+    // Height of the carousel row plus any tracking row stacked above it.
+    int leftChromeHeight = 0;
+    int bottomRightY = 0;
+    if (cornerChrome) {
+        // Corner placement already reserved room for tracking beside the
+        // carousel, so it is always inline here.
+        bottomLeftPanel_->move(leadingX(bottomLeftPanel_->width()),
+                               viewOrigin.y() + std::max(0, viewHeight - bottomLeftPanel_->height()));
+        if (showTracking) {
+            const int trackingX = rightToLeft
+                                      ? viewWidth - bottomLeftPanel_->width() - trackingWidth
+                                      : bottomLeftPanel_->width();
+            keystoneTrackingPanel_->move(
+                viewOrigin.x() + trackingX,
+                viewOrigin.y() + std::max(0, viewHeight - keystoneTrackingPanel_->height()));
+        }
+        leftChromeHeight = bottomLeftPanel_->height();
+        bottomRightY = viewHeight - bottomRightPanel_->height();
+    } else {
+        // Strip placement, bottom to top: the carousel row (tracking inline
+        // at its trailing end when it fits, otherwise its own full row), then
+        // the action row. Every row spans the camera width exactly.
+        const bool trackingInline =
+            showTracking && bottomLeftPanel_->width() + trackingWidth <= viewWidth;
+        const int carouselWidth = trackingInline ? viewWidth - trackingWidth : viewWidth;
+        bottomLeftPanel_->setFixedWidth(carouselWidth);
+        int rowHeight = bottomLeftPanel_->height();
+        if (trackingInline) {
+            rowHeight = std::max(rowHeight, keystoneTrackingPanel_->height());
+            keystoneTrackingPanel_->setFixedHeight(rowHeight);
+        }
+        bottomLeftPanel_->setFixedHeight(rowHeight);
+        bottomLeftPanel_->move(leadingX(carouselWidth),
+                               viewOrigin.y() + std::max(0, viewHeight - rowHeight));
+        leftChromeHeight = rowHeight;
+        if (showTracking) {
+            if (trackingInline) {
+                keystoneTrackingPanel_->move(trailingX(trackingWidth),
+                                             viewOrigin.y() + std::max(0, viewHeight - rowHeight));
+            } else {
+                keystoneTrackingPanel_->setFixedWidth(viewWidth);
+                leftChromeHeight += keystoneTrackingPanel_->height();
+                keystoneTrackingPanel_->move(
+                    viewOrigin.x(), viewOrigin.y() + std::max(0, viewHeight - leftChromeHeight));
+            }
+        }
+        bottomRightPanel_->setFixedWidth(viewWidth);
+        bottomRightY = viewHeight - leftChromeHeight - bottomRightPanel_->height();
     }
-    const bool bottomPanelsOverlap = leftChromeWidth + bottomRightPanel_->width() > viewWidth;
-    const int bottomRightY = bottomPanelsOverlap
-                                 ? viewHeight - leftChromeHeight - bottomRightPanel_->height()
-                                 : viewHeight - bottomRightPanel_->height();
     bottomRightPanel_->move(trailingX(bottomRightPanel_->width()),
                             viewOrigin.y() + std::max(0, bottomRightY));
 
@@ -4071,6 +4157,7 @@ void MainWindow::changeEvent(QEvent* event)
         // translator. Re-match after that pass, without moving keyboard focus
         // or replacing either tab's query or saved disclosure state.
         QTimer::singleShot(0, this, [this]() {
+            UpdateSimpleChromeGeometry();
             if (imageSearchEdit_ && !imageSearchEdit_->text().trimmed().isEmpty()) {
                 FilterSettingsTab(SettingsScope::kImage, imageSearchEdit_->text());
             }
