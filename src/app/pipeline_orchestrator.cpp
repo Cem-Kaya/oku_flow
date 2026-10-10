@@ -316,22 +316,6 @@ void PipelineOrchestrator::ScheduleCameraReconnectRetry(qint64 nowMs)
     cameraReconnectNextAttemptMs_ = nowMs + delayMs;
 }
 
-FenceSequencer& PipelineOrchestrator::Fence()
-{
-    return fenceSequencer_;
-}
-
-const FenceSequencer& PipelineOrchestrator::Fence() const
-{
-    return fenceSequencer_;
-}
-
-void PipelineOrchestrator::ResetFence(std::uint64_t baseValue)
-{
-    fenceSequencer_.Reset(baseValue);
-    fenceInteropEnabled_ = false;
-}
-
 bool PipelineOrchestrator::FenceInteropEnabled() const
 {
     return fenceInteropEnabled_;

@@ -5,7 +5,7 @@ This module contains shared processing and output helpers that are reused across
 Current contents:
 - shared annotation rendering preserves caller clip regions, including the
   live Assistant exclusion, while restricting ink to the scene destination
-- on-demand Read transcribes through the vision provider, using Luna/low as
+- on-demand Read transcribes through the vision provider, using Luna 6/low as
   the Codex default; Explain retains its scene prompt. Both share bounded
   image preparation, busy/cancel handling, notes, and manual Read Aloud
 - asynchronous assistive analysis in `assistive_runtime.cpp`, including shared
@@ -15,12 +15,17 @@ Current contents:
   tags with asynchronous failure reporting
 - the permission-aware native `codex app-server` JSON-RPC transport in
   `codex_app_server_client.cpp`, with full image-model catalog/reasoning
-  metadata forwarding, a shared built-in identity prompt, and guarded
-  user-configured response preferences
+  metadata forwarding, a shared built-in identity prompt, guarded
+  user-configured response preferences, generation-owned turn opening, and
+  identity-checked cancellation/notifications. Initialization and transport
+  failures retire the failed child before a fresh request can retry
 - CPU frame conversion and image effects in `image_processing.cpp`
 - stage orchestration and debug compositing in `frame_pipeline.cpp`
 - live AV1/H.264 Media Foundation sink-writer recording in `media_writer.cpp`;
-  the app owns two instances for synchronized original/processed output
+  the app owns two instances for synchronized original/processed output. An
+  automatic stop retains its terminal result and original failure; an early
+  encoder sample release cannot recycle a D3D11 source texture until its
+  independent GPU read query completes. Nonempty failed output is preserved
 - a `LoadLibrary`/`GetProcAddress`-only NVIDIA Video Effects SuperRes adapter in
   `maxine_superres.cpp`, with validated pitched crop views, synchronous
   inference to prevent stale-frame ghosting, and clean NIS fallback when the

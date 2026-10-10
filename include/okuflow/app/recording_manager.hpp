@@ -187,7 +187,6 @@ private:
     void OnStopWatchdogFired(std::uint32_t generation);
     void OnWorkerHeartbeat();
     void AbandonWedgedWorker(const QString& trigger);
-    void RemoveStaleHeaderOnlyRecordings();
     bool StartSegment(const QueuedFrame& firstFrame);
     bool WriteFrame(QueuedFrame&& frame);
     void RecordEncoderSubmitTiming(float milliseconds);
@@ -276,6 +275,7 @@ private:
     std::size_t encoderSubmitSampleIndex_{0};
     std::size_t encoderSubmitSampleCount_{0};
     UINT processedWidth_{};
+    bool segmentFinalized_{true};
     UINT processedHeight_{};
     UINT originalWidth_{};
     UINT originalHeight_{};

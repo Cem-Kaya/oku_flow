@@ -167,7 +167,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     codexModelCombo_->setMinimumContentsLength(24);
     codexModelCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     const QString configuredModel = initial.codexModel.trimmed().isEmpty()
-                                        ? QStringLiteral("gpt-5.6-luna")
+                                        ? QStringLiteral("gpt-6-luna")
                                         : initial.codexModel.trimmed();
     codexModelCombo_->addItem(configuredModel, configuredModel);
     form->addRow("Codex model:", codexModelCombo_);
@@ -685,7 +685,7 @@ void AiSettingsDialog::SetCodexModelCatalog(const QJsonArray& models,
     }
     if (codexModelCombo_->count() == 0) {
         const QString fallback = wantedModel.isEmpty()
-                                     ? QStringLiteral("gpt-5.6-luna")
+                                     ? QStringLiteral("gpt-6-luna")
                                      : wantedModel;
         codexModelCombo_->addItem(fallback, fallback);
         selectedIndex = 0;

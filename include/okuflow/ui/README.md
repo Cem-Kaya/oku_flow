@@ -4,11 +4,16 @@ Public Qt UI interfaces live here.
 
 Currently exported:
 - `main_window.hpp`: auto-fading Simple-mode corner controls, mode
-  announcements, and the right-side Advanced Image/Assistant inspector,
-  including compact SuperRes factor and performance-guard controls
+  announcements, deliberate quick-mode activation, explicit Explain/Stop state,
+  and the right-side Advanced Image/Assistant/Transcript/Settings inspector,
+  including scoped search and compact SuperRes factor/performance controls
+  and state-preserving `setUiHidden` / `isUiHidden` controls
 - `render_widget.hpp`: native D3D12 surface with coalesced native-pixel resize
 - `assistive_overlay.hpp`: movable/resizable streaming result, follow-up,
-  manual Read Aloud, Close, left/right docking with drag previews, and floating-geometry persistence
+  prominent manual Read Aloud, secondary New Conversation, compact position
+  menu, Close, left/right docking with drag previews, larger default floating
+  geometry, saved-geometry persistence, `SetSafeArea` default-placement hint,
+  and `SetUiSuppressed` without losing streamed content
 - `annotation_overlay.hpp`: scene-anchored Draw tools with live native input
   and paint exclusion for the Assistant panel
 - `joystick_overlay.hpp`: on-canvas panning input

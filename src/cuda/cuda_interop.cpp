@@ -436,6 +436,36 @@ bool QueryDeviceLuid(int deviceId, LUID& luidOut)
     return false;
 }
 
+// Callers must have proven the stream drained. A mapped mipmapped array is a
+// separate allocation that cudaDestroyExternalMemory does not release, so it
+// is freed after its surface object and before its external-memory import.
+// The level-zero array is a non-owning view into the mipmapped array. The
+// original recording image has no surface object, so it passes nullptr.
+void ReleaseMappedExternalImage(cudaSurfaceObject_t* surfaceObject,
+                                cudaMipmappedArray_t& mipArray,
+                                cudaArray_t& level0Array,
+                                cudaExternalMemory_t& externalMemory,
+                                const char* label) noexcept
+{
+    if (surfaceObject != nullptr && *surfaceObject != 0) {
+        cudaDestroySurfaceObject(*surfaceObject);
+        *surfaceObject = 0;
+    }
+    level0Array = nullptr;
+    if (mipArray != nullptr) {
+        const cudaError_t result = cudaFreeMipmappedArray(mipArray);
+        if (result != cudaSuccess) {
+            qWarning() << "CUDA" << label << "external-memory array release failed:"
+                       << cudaGetErrorString(result);
+        }
+        mipArray = nullptr;
+    }
+    if (externalMemory != nullptr) {
+        cudaDestroyExternalMemory(externalMemory);
+        externalMemory = nullptr;
+    }
+}
+
 } // namespace
 
 CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
@@ -453,36 +483,18 @@ CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
         valid_ = false;
         lastError_ = e.what();
         if (!SynchronizeStream()) { QuarantineGpuResources(); return; }
-        if (surfaceObject_ != 0) {
-            cudaDestroySurfaceObject(surfaceObject_);
-            surfaceObject_ = 0;
-        }
-        if (externalMemory_ != nullptr) {
-            cudaDestroyExternalMemory(externalMemory_);
-            externalMemory_ = nullptr;
-        }
-        if (superResSurfaceObject_ != 0) {
-            cudaDestroySurfaceObject(superResSurfaceObject_);
-            superResSurfaceObject_ = 0;
-        }
-        if (superResExternalMemory_ != nullptr) {
-            cudaDestroyExternalMemory(superResExternalMemory_);
-            superResExternalMemory_ = nullptr;
-        }
-        if (originalExternalMemory_ != nullptr) {
-            cudaDestroyExternalMemory(originalExternalMemory_);
-            originalExternalMemory_ = nullptr;
-        }
+        ReleaseMappedExternalImage(&surfaceObject_, mipArray_, level0Array_,
+                                   externalMemory_, "scene");
+        ReleaseMappedExternalImage(&superResSurfaceObject_, superResMipArray_,
+                                   superResLevel0Array_, superResExternalMemory_,
+                                   "SuperRes cache");
+        ReleaseMappedExternalImage(nullptr, originalMipArray_,
+                                   originalLevel0Array_, originalExternalMemory_,
+                                   "original recording");
         if (externalSemaphore_ != nullptr) {
             cudaDestroyExternalSemaphore(externalSemaphore_);
             externalSemaphore_ = nullptr;
         }
-        mipArray_ = nullptr;
-        level0Array_ = nullptr;
-        superResMipArray_ = nullptr;
-        superResLevel0Array_ = nullptr;
-        originalMipArray_ = nullptr;
-        originalLevel0Array_ = nullptr;
         if (stream_ != nullptr) {
             cudaStreamDestroy(stream_);
             stream_ = nullptr;
@@ -562,30 +574,14 @@ CudaInteropSurface::~CudaInteropSurface() {
     }
     processTimingPending_ = false;
 
-    if (surfaceObject_ != 0) {
-        cudaDestroySurfaceObject(surfaceObject_);
-        surfaceObject_ = 0;
-    }
-
-    if (externalMemory_ != nullptr) {
-        cudaDestroyExternalMemory(externalMemory_);
-        externalMemory_ = nullptr;
-    }
-
-    if (superResSurfaceObject_ != 0) {
-        cudaDestroySurfaceObject(superResSurfaceObject_);
-        superResSurfaceObject_ = 0;
-    }
-
-    if (superResExternalMemory_ != nullptr) {
-        cudaDestroyExternalMemory(superResExternalMemory_);
-        superResExternalMemory_ = nullptr;
-    }
-
-    if (originalExternalMemory_ != nullptr) {
-        cudaDestroyExternalMemory(originalExternalMemory_);
-        originalExternalMemory_ = nullptr;
-    }
+    ReleaseMappedExternalImage(&surfaceObject_, mipArray_, level0Array_,
+                               externalMemory_, "scene");
+    ReleaseMappedExternalImage(&superResSurfaceObject_, superResMipArray_,
+                               superResLevel0Array_, superResExternalMemory_,
+                               "SuperRes cache");
+    ReleaseMappedExternalImage(nullptr, originalMipArray_,
+                               originalLevel0Array_, originalExternalMemory_,
+                               "original recording");
 
     if (externalSemaphore_ != nullptr) {
         cudaDestroyExternalSemaphore(externalSemaphore_);
@@ -2528,6 +2524,7 @@ bool CudaInteropSurface::EnsureTextClarityBuffers(unsigned int width, unsigned i
     focusFrameCounter_ = 0;
     textMaskHistoryValid_ = false;
     focusCopyPending_ = false;
+    discardFocusCopy_ = false;
     focusScoreValid_ = false;
     latestFocusScore_ = 0.0f;
     return true;
@@ -2567,6 +2564,7 @@ void CudaInteropSurface::ReleaseTextClarity() {
     focusFrameCounter_ = 0;
     textMaskHistoryValid_ = false;
     focusCopyPending_ = false;
+    discardFocusCopy_ = false;
     focusScoreValid_ = false;
     latestFocusScore_ = 0.0f;
 }
@@ -2967,8 +2965,21 @@ bool CudaInteropSurface::UploadD3D11Frame(
 }
 
 bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
-                                      const ProcessingSettings& settings,
+                                      const ProcessingSettings& requestedSettings,
                                       const FenceSyncParams& fenceSync) {
+    ProcessingSettings settings = requestedSettings;
+    settings.ApplyTextClarityMaster();
+    if (lastTextClarityMasterEnabled_ != settings.enableAutoTextClarity) {
+        lastTextClarityMasterEnabled_ = settings.enableAutoTextClarity;
+        ResetTemporalHistory(); // Text-colored pixels cannot linger after a master edge.
+        ResetTextClarityHistory();
+        focusScoreValid_ = false;
+        focusFrameCounter_ = 0;
+        // Keep the pending slot owned until its event completes, then discard
+        // its old measurement; never reuse host/device storage while busy.
+        discardFocusCopy_ = focusCopyPending_;
+    }
+    if (!settings.enableAutoTextClarity) focusScoreValid_ = false;
     const bool deviceResidentInput = input.d3d11Texture != nullptr;
     captureInteropFailed_ = false;
     if (!valid_ || (!deviceResidentInput && !input.hostPixels) ||
@@ -3861,12 +3872,15 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             // Focus is reduced on-device every frame but copied as two floats
             // only about twice per second. Event polling never stalls rendering.
             if (focusCopyPending_ && cudaEventQuery(focusCopyEvent_) == cudaSuccess) {
-                const int sampleWidth = static_cast<int>(procWidth / 4u);
-                const int sampleHeight = static_cast<int>(procHeight / 4u);
-                const float count = static_cast<float>(std::max(sampleWidth * sampleHeight, 1));
-                const float meanLap = hostFocusStats_->x / count;
-                latestFocusScore_ = std::max(hostFocusStats_->y / count - meanLap * meanLap, 0.0f);
-                focusScoreValid_ = true;
+                if (!discardFocusCopy_) {
+                    const int sampleWidth = static_cast<int>(procWidth / 4u);
+                    const int sampleHeight = static_cast<int>(procHeight / 4u);
+                    const float count = static_cast<float>(std::max(sampleWidth * sampleHeight, 1));
+                    const float meanLap = hostFocusStats_->x / count;
+                    latestFocusScore_ = std::max(hostFocusStats_->y / count - meanLap * meanLap, 0.0f);
+                    focusScoreValid_ = true;
+                }
+                discardFocusCopy_ = false;
                 focusCopyPending_ = false;
             }
             if (focusActive && !focusCopyPending_ && (++focusFrameCounter_ % 15u) == 0u) {

@@ -1,4 +1,5 @@
 #pragma once
+#include "okuflow/d3d12/shared_timeline.hpp"
 
 #ifdef _WIN32
 
@@ -106,6 +107,11 @@ public:
     ID3D12Device* GetDevice() const;
     ID3D12Fence* GetFence() const;
     UINT64 GetLastSignaledFenceValue() const;
+    UINT64 ReserveExternalSignal();
+    bool CommitExternalSignal(UINT64 value);
+    bool CancelExternalSignal(UINT64 value);
+    UINT64 LastGraphicsSignal() const;
+    UINT64 LastExternalSignal() const;
 
     // Wait at most 1000 ms for submitted work. False latches a terminal fault:
     // callers must retain CUDA/shared resources, stop submitting, and offer an
@@ -159,7 +165,11 @@ private:
     UINT sceneSrvDescriptorSize_{};
 
     Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
-    UINT64 fenceValue_{};
+    UINT64 fenceValue_{}; // Last successfully submitted graphics signal.
+    SharedFenceTimeline sharedTimeline_;
+    bool QueueExternalDependency() noexcept;
+    UINT64 ReserveGraphicsSignal();
+    void GraphicsSignalSubmitted(UINT64 value) noexcept;
     UINT64 frameFenceValues_[kFrameCount]{};
     HANDLE fenceEvent_{nullptr};
     HANDLE frameLatencyWaitableObject_{nullptr};

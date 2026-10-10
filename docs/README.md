@@ -61,11 +61,15 @@ The current frame flow is:
 5. `D3D12Presenter` keeps its swap chain at the render window's native pixel
    size and draws the persistent scene through one canonical `ViewTransform`.
    Fill crops uniformly and Fit letterboxes uniformly, so camera frames are
-   never independently stretched on X or Y. Its frame-slot signal is folded
-   back into the same strictly increasing CUDA/D3D12 fence timeline after
-   every present, including viewport-only motion. Busy frame-slot admission
+   never independently stretched on X or Y. The presenter exclusively owns
+   the shared CUDA/D3D12 fence timeline: CUDA reserves and commits producer
+   signals through it, and every graphics submission waits for the latest
+   committed producer, including after a skipped viewport present. Canceled
+   reservations are never waited upon. Busy frame-slot admission
    returns immediately and retains the scene for a later Qt tick. Recording
    clones queue their own CUDA dependency even when the viewport is busy.
+   Recording textures require both producer completion and consumer lease
+   retirement before reuse or obsolete-size eviction.
    Recording reads the completed
    processed scene before viewport scaling; periodic assistive grabs use the
    asynchronous readback ring (`RequestReadback` /
@@ -89,11 +93,39 @@ discovery, graphics resource creation, and manual device changes still include
 synchronous work; ordinary frame-slot admission and initial device opening no
 longer add blocking waits to the Qt event loop.
 
+6. `RecordingManager` maps those matched pairs into a fixed processed-video
+   canvas and sends them through a bounded worker queue. Two `VideoRecorder`
+   instances encode synchronized original/processed output live through Media
+   Foundation using the camera timestamps and exact negotiated fractional
+   rate. A selected `AudioCapture` endpoint is normalized to 48 kHz mono PCM
+   on its own capture thread, mapped onto the same monotonic clock, and encoded
+   as AAC into both MP4 files. Both recorders probe AV1 first, fall back
+   together to H.264, write fragmented MP4 with free-disk-space guards, check
+   finalization, report drops by cause, and start matching `_partN` files after
+   a camera-format change. Nonempty failed output from either writer is
+   retained independently; only a fully finalized pair enters notes. Cleanup
+   removes only session-owned regular zero-byte files with no accepted video
+   samples, and there is no startup sweep of old recordings. Incomplete output
+   is not claimed playable without checking it.
+   Microphone callbacks cross an independently owned, generation-tagged target
+   that Stop cancels before waiting; a detached reader can therefore deliver
+   to neither a destroyed app nor a later recording session. Recorder
+   abandonment is sticky into process teardown even when the worker later
+   recovers and joins, so intentionally leaked MF objects are never followed
+   by `MFShutdown`.
+7. Paired photos reserve an unused timestamp stem under a process lock and
+   encode both JPEGs to exclusively created `.writing` files. A
+   `.pair.pending` marker certifies completed encoding before the two-rename
+   commit. Startup completes a marked interrupted second rename when possible,
+   cleans abandoned temps, and reports unresolved marked pairs. It never
+   deletes existing final JPEGs, including a user-retained half of a pair.
+
+
 ## Language And Locale
 
 `LanguageManager` installs an embedded `QTranslator` before the main window is
 constructed and re-translates existing widgets when the user changes
-`Advanced > Image > Application > Application language`. The stable persisted
+`Advanced > Settings > Language > Application language`. The stable persisted
 values are `en`, `tr`, and `de`; a profile without that key adopts a supported
 Windows locale once. The language setting is global and never part of a quick
 image profile.
@@ -125,27 +157,6 @@ validation; none is currently shown in the language picker.
 Catalog source parity, complete translations, LF endings, and `lrelease`
 success are enforced by `scripts/check_translations.ps1`, which runs at the
 start of `scripts/agent_build.bat`.
-6. `RecordingManager` maps those matched pairs into a fixed processed-video
-   canvas and sends them through a bounded worker queue. Two `VideoRecorder`
-   instances encode synchronized original/processed output live through Media
-   Foundation using the camera timestamps and exact negotiated fractional
-   rate. A selected `AudioCapture` endpoint is normalized to 48 kHz mono PCM
-   on its own capture thread, mapped onto the same monotonic clock, and encoded
-   as AAC into both MP4 files. Both recorders probe AV1 first, fall back
-   together to H.264, write fragmented MP4 with free-disk-space guards, check
-   finalization, report drops by cause, and start matching `_partN` files after
-   a camera-format change.
-   Microphone callbacks cross an independently owned, generation-tagged target
-   that Stop cancels before waiting; a detached reader can therefore deliver
-   to neither a destroyed app nor a later recording session. Recorder
-   abandonment is sticky into process teardown even when the worker later
-   recovers and joins, so intentionally leaked MF objects are never followed
-   by `MFShutdown`.
-7. Paired photos encode both JPEGs to `.writing` names before the two-rename
-   commit. Startup reconciles every stale transaction: it completes the
-   missing second rename when the counterpart temp proves both encodes
-   finished, otherwise it removes the whole partial set and reports anything
-   the filesystem would not let it clean.
 
 CUDA is the processing path and the CPU effects pipeline is deprecated: when the GPU pipeline is unavailable the app presents unprocessed passthrough video with a persistent "GPU required" notice instead of running effects on the CPU. The debug composite view remains CPU-only as a diagnostic.
 
@@ -153,10 +164,11 @@ The UI now has two states:
 - Simple: a full-size live view with three flush, auto-fading primary clusters,
   contextual keystone history controls, a numbered quick-mode grid, and large
   visual/accessibility mode announcements
-- Advanced: the same live view beside a narrow inspector with separate `Image`
-  and `Assistant` tabs, wrapping section arrows, a full-width AI Settings row
-  below the tabs, and Image-side pipeline diagnostics; Assistant provides subscription
-  status, camera-aware chat, and OkuFlow-owned history
+- Advanced: the same live view beside an inspector with `Image`, `Assistant`,
+  `Transcript`, and `Settings` tabs. Image contains mode-owned tuning and
+  diagnostics; Settings contains shared camera, recording, navigation, files,
+  language, and AI setup. Assistant provides subscription status, camera-aware
+  chat, and OkuFlow-owned history.
 
 ## Module Map
 - `src/app` / `include/okuflow/app`: composition root plus focused pipeline,
@@ -184,7 +196,7 @@ The UI now has two states:
   `dist/OkuFlow/output` user captures are preserved. A locked primary bundle
   produces the complete sibling `dist/OkuFlow2` without stopping the app.
 - `scripts/agent_build.bat`: tracked Windows compile/test matrix. It locates
-  Visual Studio with `vswhere`, compiles `msvc-release`, then runs the CPU and
+  Visual Studio 2022 (17.x) with `vswhere`, compiles `msvc-release`, then runs the CPU and
   CUDA-enabled CTest presets with explicit PASS/FAIL summaries.
 - `scripts/run_minimal_test.bat`: builds the app without launching it, then
   runs the DX12/CUDA sandbox harness when its `CMakeLists.txt` is present;
@@ -227,13 +239,17 @@ legacy `powershell.exe` bridge.
 - Simple chrome fades after about five seconds idle and returns on mouse,
   keyboard, focus, or application activity. Mode changes produce a centered
   toast plus a Qt accessibility announcement; they do not start speech.
+  The persistent Hide UI button or `Ctrl+H` hides chrome and the Assistant
+  without discarding its answer; Show UI restores the prior mode and inspector
+  layout. Mouse movement cannot undo explicit hiding. F6 and Ctrl+F restore
+  the controls for keyboard navigation.
   Qt and native activity notifications share a fast path while chrome is
   already visible, so high-frequency pointer input does not repeatedly move
   or raise its owned tool windows and starve viewport presentation.
 - Advanced edits update a live config and can be promoted into user-defined quick modes without hiding the camera.
 - Advanced places the global Virtual Joystick control near the top, provides a
   question-mark Help window ordered as Controls then Features, and offers
-  Reset Tuning for restoring profile-owned values without changing global
+  Reset Mode for restoring profile-owned values without changing global
   device or interaction choices.
 - Keystone correction retains up to 32 accepted warps. Previous freezes and
   restores older history, Stop/Continue controls live detection, and Next
@@ -284,7 +300,7 @@ legacy `powershell.exe` bridge.
   the last correction and never auto-replace the reference. Reference capture
   and rebuild occur automatically when stabilization starts or the camera
   pipeline resets.
-- Optional `Extra Stable` is a second transient layer available with
+- Optional `Extra Stable (hold on shake)` is a second transient layer available with
   stabilization. It continuously runs
   registration while presenting a full-resolution CUDA copy of the last
   model-valid, sharp, settled stabilized frame whenever tracking rejects,
@@ -329,7 +345,7 @@ legacy `powershell.exe` bridge.
   its width. Text-clarity and display sliders reflow beneath their labels when
   the inspector is narrow, and feature status labels wrap within the panel.
 - Read transcribes the current view through the configured vision provider.
-  New Codex settings select Luna with low reasoning; existing explicit model
+  New Codex settings select Luna 6 with low reasoning; existing explicit model
   choices remain available. There is no separate local recognition engine,
   language-data installation, or automatic text-recognition toggle.
 - The non-blocking first-run Setup Assistant installs or updates the official
@@ -347,7 +363,10 @@ legacy `powershell.exe` bridge.
   depth. OpenAI-compatible HTTP servers remain an optional fallback.
 - The streamed result panel is an owned floating tool window with native
   move/resize handling over the D3D camera surface. Streamed fragments update
-  its text without reapplying geometry. Its camera-relative geometry persists
+  its 20-point, 135%-spaced text without reapplying geometry. Its prominent
+  Read Aloud control sits below the answer; New Conversation is secondary,
+  Panel position opens a compact menu, and Escape clears a draft or returns
+  focus to the camera. Its camera-relative geometry persists
   across restarts, and its first-use position clears the top Simple controls.
   Its follow-up field remains editable during a streamed answer while Ask and
   Enter submission remain blocked; once ready, it attaches the current view
@@ -385,10 +404,13 @@ legacy `powershell.exe` bridge.
   manually reopening it. Only missing Codex triggers startup prompting;
   optional Maxine remains a manual setup choice. The dialog fits the screen
   and stays above the floating control windows.
-- Advanced Image leads with profile tuning, then shared settings. Slider
-  readouts follow the active locale, Focus X/Y disable with Zoom, and search
-  displays match feedback. The carousel separates its shortcut badge from its
-  elided label; long device selectors expose their full value on hover.
+- Advanced separates mode tuning in Image from shared setup in Settings, each
+  with its own search and cross-tab match feedback. Slider readouts follow the
+  active locale; position controls disable with Zoom. Ordinary edits update
+  changed counts without reopening collapsed groups. The grid supports arrow
+  browsing followed by Enter, Space, or a click to apply; Escape cancels browsing.
+  The carousel separates its shortcut badge from its elided label; long device
+  selectors expose their full value on hover.
 - Codex camera-frame temporary files include the owning process id, are
   removed on completion/cancellation/shutdown, and stale files from dead
   OkuFlow processes are swept on the next startup.
@@ -411,6 +433,15 @@ legacy `powershell.exe` bridge.
   the single implementation tracker — status of every plan and what to do next.
 - [`improvement_ideas/08-ml-text-sr-options.md`](../improvement_ideas/08-ml-text-sr-options.md):
   ML text super-resolution research (supersedes the old GPU upscaling to-do).
+- [`improvement_ideas/42-pipeline-audit-2026-10-10.md`](../improvement_ideas/42-pipeline-audit-2026-10-10.md):
+  source-backed pipeline/security repair backlog, candidate validation, and
+  quality/performance measurement plans.
+- [`improvement_ideas/43-audit-verdicts-2026-10-10.md`](../improvement_ideas/43-audit-verdicts-2026-10-10.md):
+  finding-by-finding verdicts for Astra, Opus, Daybreak, and Gemini, including
+  counterevidence, duplicates, and separate implementation/validation status.
+- [`improvement_ideas/44-pipeline-optimization-plan-2026-10-10.md`](../improvement_ideas/44-pipeline-optimization-plan-2026-10-10.md):
+  current algorithms across 20 pipeline stages, Gaussian/Kawase alternatives,
+  and optimization candidates with quality and measurement requirements.
 - [`docs/THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md): third-party attribution and redistribution notes.
 
 ## Current Gaps

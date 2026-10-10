@@ -236,8 +236,8 @@
         <translation>Görüntüyü Sabitle</translation>
     </message>
     <message>
-        <source>Extra Stable</source>
-        <translation>Ekstra Sabit</translation>
+        <source>Extra Stable (hold on shake)</source>
+        <translation>Ekstra Sabit (sarsıntıda tut)</translation>
     </message>
     <message>
         <source>Straighten Screen (Keystone)</source>
@@ -2714,6 +2714,224 @@ Oturum açmak için AI Ayarları&apos;nda ChatGPT&apos;ye Bağlan seçeneğini k
     <message>
         <source>Settings search</source>
         <translation>Ayar araması</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>Ayarlar</translation>
+    </message>
+    <message>
+        <source>Search image settings…</source>
+        <translation>Görüntü ayarlarında ara…</translation>
+    </message>
+    <message>
+        <source>Search settings…</source>
+        <translation>Ayarlarda ara…</translation>
+    </message>
+    <message>
+        <source>Mode: %1</source>
+        <translation>Mod: %1</translation>
+    </message>
+    <message>
+        <source>Current mode</source>
+        <translation>Geçerli mod</translation>
+    </message>
+    <message>
+        <source>Changes apply now. Save to keep them.</source>
+        <translation>Değişiklikler hemen uygulanır. Saklamak için kaydedin.</translation>
+    </message>
+    <message>
+        <source>Shared by all modes. Not saved into quick modes.</source>
+        <translation>Tüm modlarda ortak. Hızlı modlara kaydedilmez.</translation>
+    </message>
+    <message>
+        <source>Fine-tune text</source>
+        <translation>Metin ince ayarları</translation>
+    </message>
+    <message>
+        <source>Notes and files</source>
+        <translation>Notlar ve dosyalar</translation>
+    </message>
+    <message>
+        <source>AI and downloads</source>
+        <translation>Yapay zekâ ve indirmeler</translation>
+    </message>
+    <message>
+        <source>Troubleshooting</source>
+        <translation>Sorun giderme</translation>
+    </message>
+    <message>
+        <source>View and navigation</source>
+        <translation>Görünüm ve gezinme</translation>
+    </message>
+    <message>
+        <source>Colors and contrast</source>
+        <translation>Renkler ve kontrast</translation>
+    </message>
+    <message>
+        <source>Steady image</source>
+        <translation>Sabit görüntü</translation>
+    </message>
+    <message>
+        <source>Straighten screen</source>
+        <translation>Ekranı düzelt</translation>
+    </message>
+    <message>
+        <source>Soften image (blur)</source>
+        <translation>Görüntüyü yumuşat (bulanıklaştır)</translation>
+    </message>
+    <message>
+        <source>Horizontal position</source>
+        <translation>Yatay konum</translation>
+    </message>
+    <message>
+        <source>Vertical position</source>
+        <translation>Dikey konum</translation>
+    </message>
+    <message>
+        <source>Camera resolution &amp;&amp; frame rate</source>
+        <translation>Kamera çözünürlüğü ve kare hızı</translation>
+    </message>
+    <message>
+        <source>Save as Quick Mode</source>
+        <translation>Hızlı Mod Olarak Kaydet</translation>
+    </message>
+    <message>
+        <source>Reset Mode</source>
+        <translation>Modu Sıfırla</translation>
+    </message>
+    <message>
+        <source>Quick mode name:</source>
+        <translation>Hızlı mod adı:</translation>
+    </message>
+    <message>
+        <source>No matches here. %1 in Settings. Press Enter to show them.</source>
+        <translation>Burada eşleşme yok. Ayarlar’da %1 eşleşme var. Göstermek için Enter’a basın.</translation>
+    </message>
+    <message>
+        <source>No matches here. %1 in Image. Press Enter to show them.</source>
+        <translation>Burada eşleşme yok. Görüntü’de %1 eşleşme var. Göstermek için Enter’a basın.</translation>
+    </message>
+    <message>
+        <source>Saved with the current quick mode.</source>
+        <translation>Geçerli hızlı modla kaydedilir.</translation>
+    </message>
+    <message>
+        <source>Shared setting, used by all modes.</source>
+        <translation>Tüm modların kullandığı ortak ayar.</translation>
+    </message>
+    <message>
+        <source>Reset current mode to defaults</source>
+        <translation>Geçerli modu varsayılan ayarlarına sıfırla</translation>
+    </message>
+    <message>
+        <source>Resets this mode's image and assistant settings. Settings on the Settings tab are not changed.</source>
+        <translation>Bu modun görüntü ve asistan ayarlarını sıfırlar. Ayarlar sekmesindeki ayarlar değiştirilmez.</translation>
+    </message>
+    <message>
+        <source>Connect a camera, then choose it under Settings, Camera.</source>
+        <translation>Bir kamera bağlayın, ardından Ayarlar, Kamera bölümünden seçin.</translation>
+    </message>
+    <message>
+        <source>Choose a camera under Settings, Camera, or check that it is connected.</source>
+        <translation>Ayarlar, Kamera bölümünden bir kamera seçin veya bağlantısını kontrol edin.</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Dil</translation>
+    </message>
+    <message>
+        <source>Search image settings</source>
+        <translation>Görüntü ayarlarında ara</translation>
+    </message>
+    <message>
+        <source>Search shared settings</source>
+        <translation>Ortak ayarlarda ara</translation>
+    </message>
+    <message>
+        <source>Describe the current camera view</source>
+        <translation>Mevcut kamera görüntüsünü açıkla</translation>
+    </message>
+    <message>
+        <source>Explain scene</source>
+        <translation>Sahneyi açıkla</translation>
+    </message>
+    <message>
+        <source>Stop scene explanation</source>
+        <translation>Sahne açıklamasını durdur</translation>
+    </message>
+    <message>
+        <source>Stop the current scene explanation</source>
+        <translation>Mevcut sahne açıklamasını durdur</translation>
+    </message>
+    <message>
+        <source>Reset this mode's image and assistant settings?
+
+Shared settings on the Settings tab will stay unchanged.</source>
+        <translation>Bu modun görüntü ve asistan ayarları sıfırlansın mı?
+
+Ayarlar sekmesindeki ortak ayarlar değişmeyecek.</translation>
+    </message>
+    <message>
+        <source>Hide UI</source>
+        <translation>Arayüzü gizle</translation>
+    </message>
+    <message>
+        <source>Show UI</source>
+        <translation>Arayüzü göster</translation>
+    </message>
+    <message>
+        <source>Hide controls and assistant</source>
+        <translation>Denetimleri ve asistanı gizle</translation>
+    </message>
+    <message>
+        <source>Show controls and assistant</source>
+        <translation>Denetimleri ve asistanı göster</translation>
+    </message>
+    <message>
+        <source>Show or hide controls and assistant (Ctrl+H)</source>
+        <translation>Denetimleri ve asistanı göster veya gizle (Ctrl+H)</translation>
+    </message>
+    <message>
+        <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
+        <translation>%1 son parçasını tamamlayamadı (0x%2). Dosya korundu; oynatılabilirliği doğrulanmadı.</translation>
+    </message>
+    <message>
+        <source>Recording output path already exists; it was preserved.</source>
+        <translation>Kayıt çıktı yolu zaten var; mevcut dosya korundu.</translation>
+    </message>
+    <message>
+        <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
+        <translation>Metin Netliği otomatik iyileştirme uygular. İnce ayar seçenekleri yalnızca Metin Netliği açıkken uygulanır.</translation>
+    </message>
+    <message>
+        <source>More colors
+%1</source>
+        <translation>Diğer renkler
+%1</translation>
+    </message>
+    <message>
+        <source>Yellow on black</source>
+        <translation>Siyah üzerine sarı</translation>
+    </message>
+    <message>
+        <source>Black on yellow</source>
+        <translation>Sarı üzerine siyah</translation>
+    </message>
+    <message>
+        <source>Posterize 6</source>
+        <translation>6 renk posterleştirme</translation>
+    </message>
+    <message>
+        <source>Yellow text on black background</source>
+        <translation>Siyah arka plan üzerinde sarı metin</translation>
+    </message>
+    <message>
+        <source>Black text on yellow background</source>
+        <translation>Sarı arka plan üzerinde siyah metin</translation>
+    </message>
+    <message>
+        <source>Six color posterize effect</source>
+        <translation>Altı renk posterleştirme efekti</translation>
     </message>
 </context>
 </TS>

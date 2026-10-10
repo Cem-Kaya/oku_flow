@@ -178,6 +178,45 @@ void VideoRecorder::LeakComForProcessExit()
     recording_ = false;
 }
 
+void VideoRecorder::PollGpuReadLeases(bool allowFlush)
+{
+    if (abandoned_.load()) return;
+    for (auto it = pendingGpuReads_.begin(); it != pendingGpuReads_.end();) {
+        const auto& backing = it->backing;
+        const auto result = it->retirement->PollCompletion([&] {
+            if (!backing->queryRecorded) {
+                SetError("GPU recording reader completion is unknown after an interrupted submission.");
+                return GpuReadCompletion::Unknown;
+            }
+            const HRESULT deviceHr = backing->device->GetDeviceRemovedReason();
+            lastReaderDeviceHr_ = deviceHr;
+            lastReaderProducerCompleted_ = backing->producerFence->GetCompletedValue();
+            lastReaderProducerRequired_ = backing->producerValue;
+            if (FAILED(deviceHr)) {
+                SetError("GPU recording device was removed while retiring a reader (" + HrToString(deviceHr) + ").");
+                return GpuReadCompletion::Unknown;
+            }
+            BOOL complete = FALSE;
+            const HRESULT hr = backing->context->GetData(
+                backing->query.Get(), &complete, sizeof(complete),
+                allowFlush ? 0 : D3D11_ASYNC_GETDATA_DONOTFLUSH);
+            lastReaderQueryHr_ = hr;
+            lastReaderQueryComplete_ = complete;
+            if (FAILED(hr)) {
+                SetError("GPU recording reader completion query failed (" + HrToString(hr) + ").");
+                return GpuReadCompletion::Unknown;
+            }
+            return hr == S_OK && complete
+                ? GpuReadCompletion::Complete : GpuReadCompletion::Pending;
+        });
+        if (result == GpuReadCompletion::Complete) it = pendingGpuReads_.erase(it);
+        else {
+            if (result == GpuReadCompletion::Unknown) gpuReadFaulted_ = true;
+            ++it;
+        }
+    }
+}
+
 void VideoRecorder::SetError(const std::string& err)
 {
     lastError_ = err;
@@ -206,6 +245,12 @@ bool VideoRecorder::Start(const std::wstring& filePath,
     Stop();
 
     ULONGLONG freeBytes = 0;
+    terminalResult_.Reset();
+    writeFailureHr_ = S_OK;
+    if (GetFileAttributesW(filePath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        SetError("Recording output path already exists; it was preserved.");
+        return false;
+    }
     if (QueryFreeBytesForPath(filePath, freeBytes) && freeBytes < kMinFreeBytesToStart) {
         SetError("Not enough free disk space to start recording (less than 500 MB available). "
                  "Free up some space and try again.");
@@ -443,6 +488,12 @@ bool VideoRecorder::StartGpu(
         return false;
     }
     Stop();
+    terminalResult_.Reset();
+    writeFailureHr_ = S_OK;
+    if (GetFileAttributesW(filePath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        SetError("Recording output path already exists; it was preserved.");
+        return false;
+    }
     if (!probeFrame.IsValid() ||
         probeFrame.width != width || probeFrame.height != height) {
         SetError("GPU recording probe dimensions do not match the output.");
@@ -490,7 +541,19 @@ bool VideoRecorder::StartGpu(
             sinkWriter_.Reset();
             pendingSample_.Reset();
             ResetGpuVideoProcessor();
-            DeleteFileW(filePath.c_str());
+            WIN32_FILE_ATTRIBUTE_DATA failedOutput{};
+            if (GetFileAttributesExW(filePath.c_str(), GetFileExInfoStandard,
+                                     &failedOutput)) {
+                if (failedOutput.nFileSizeHigh != 0 ||
+                    failedOutput.nFileSizeLow != 0 ||
+                    (failedOutput.dwFileAttributes &
+                     (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) {
+                    throw; // Preserve nonempty/unknown output; do not retry.
+                }
+                if (!DeleteFileW(filePath.c_str())) {
+                    throw;
+                }
+            }
             InitializeSink(filePath,
                            width,
                            height,
@@ -551,8 +614,8 @@ VideoRecorder::FinalizeResult VideoRecorder::FinalizeAndStop(StopReason reason)
         return abandoned;
     }
     StageResetGuard stageGuard(stage_);
-    FinalizeResult result;
-    result.videoSamplesWritten = videoSamplesWritten_;
+    const bool hadSink = sinkWriter_ != nullptr;
+    FinalizeResult result = terminalResult_.Last();
     if (sinkWriter_) {
         HRESULT trailingWriteHr = S_OK;
         try {
@@ -573,8 +636,10 @@ VideoRecorder::FinalizeResult VideoRecorder::FinalizeAndStop(StopReason reason)
         stage_.store(WriterStage::kFinalize, std::memory_order_relaxed);
         const HRESULT finalizeHr = sinkWriter_->Finalize();
         stage_.store(WriterStage::kIdle, std::memory_order_relaxed);
-        const HRESULT outcomeHr =
-            FAILED(trailingWriteHr) ? trailingWriteHr : finalizeHr;
+        const HRESULT outcomeHr = FAILED(writeFailureHr_)
+            ? static_cast<HRESULT>(writeFailureHr_)
+            : (reason == StopReason::WriteFailed ? E_FAIL
+               : (FAILED(trailingWriteHr) ? trailingWriteHr : finalizeHr));
         result.hresult = static_cast<long>(finalizeHr);
         result.disposition =
             SUCCEEDED(outcomeHr)
@@ -585,11 +650,13 @@ VideoRecorder::FinalizeResult VideoRecorder::FinalizeAndStop(StopReason reason)
             SetError(
                 "The recording's final fragment could not be completed (" +
                 HrToString(outcomeHr) +
-                "). Earlier fragments remain playable.");
+                "). The file was retained; playback has not been verified.");
         }
     }
-    result.playableSeconds = DurationSeconds();
-    result.videoSamplesWritten = videoSamplesWritten_;
+    if (hadSink) {
+        result.playableSeconds = DurationSeconds();
+        result.videoSamplesWritten = videoSamplesWritten_;
+    }
     sinkWriter_.Reset();
     pendingSample_.Reset();
     pendingSampleTime100ns_ = -1;
@@ -600,6 +667,20 @@ VideoRecorder::FinalizeResult VideoRecorder::FinalizeAndStop(StopReason reason)
     audioEnabled_ = false;
     gpuInputEnabled_ = false;
     gpuCompatibilityReadback_ = false;
+    PollGpuReadLeases();
+    // A rejected last sample may not have reached the encoder. Give already
+    // flushed conversion queries a short bounded retirement window on this
+    // worker; never wait indefinitely, submit another copy, or signal a fence.
+    const ULONGLONG readerDeadline = GetTickCount64() + 100;
+    while (!pendingGpuReads_.empty() && !gpuReadFaulted_ &&
+           !abandoned_.load() && GetTickCount64() < readerDeadline) {
+        Sleep(1);
+        PollGpuReadLeases(true);
+    }
+    // Finalization normally retires these reads. Any still pending/unknown
+    // owns a self-retaining graph, independent of encoder sample lifetime.
+    pendingGpuReads_.clear();
+    gpuReadFaulted_ = false;
     gpuFence_.Reset();
     gpuReadbackTexture_.Reset();
     ResetGpuVideoProcessor();
@@ -608,6 +689,7 @@ VideoRecorder::FinalizeResult VideoRecorder::FinalizeAndStop(StopReason reason)
     gpuDevice_.Reset();
     gpuResetToken_ = 0;
     videoSamplesWritten_ = 0;
+    terminalResult_.Remember(result);
     return result;
 }
 
@@ -832,10 +914,12 @@ bool VideoRecorder::AddAudioFrame(
         StageResetGuard stageGuard(stage_);
         stage_.store(WriterStage::kWriteAudioSample,
                      std::memory_order_relaxed);
-        ThrowIfFailed(
-            sinkWriter_->WriteSample(
-                audioStreamIndex_, sample.Get()),
-            "Write audio sample");
+        const HRESULT audioWriteHr =
+            sinkWriter_->WriteSample(audioStreamIndex_, sample.Get());
+        if (FAILED(audioWriteHr)) {
+            writeFailureHr_ = static_cast<long>(audioWriteHr);
+        }
+        ThrowIfFailed(audioWriteHr, "Write audio sample");
         timelineEnd100ns_ =
             std::max(
                 timelineEnd100ns_,
@@ -864,6 +948,13 @@ bool VideoRecorder::WritePendingSample(std::int64_t duration100ns)
     const HRESULT writeHr =
         sinkWriter_->WriteSample(streamIndex_, pendingSample_.Get());
     stage_.store(WriterStage::kIdle, std::memory_order_relaxed);
+    if (FAILED(writeHr)) {
+        // Never retry an already rejected sample during teardown. Preserve
+        // the original HRESULT even if Finalize subsequently succeeds.
+        writeFailureHr_ = static_cast<long>(writeHr);
+        pendingSample_.Reset();
+        pendingSampleTime100ns_ = -1;
+    }
     if (IsDiskFullError(writeHr)) {
         SetError(kDiskFullMessage);
         return false;
@@ -964,6 +1055,30 @@ bool VideoRecorder::AddGpuFrame(
         return false;
     }
 
+    PollGpuReadLeases();
+    if (gpuReadFaulted_) return false;
+    // Offline/bursty callers can fill this bounded reader ring faster than
+    // already-flushed work retires. Backpressure belongs on the recorder
+    // worker, never the UI/producer, and must not discard an unfinished lease.
+    if (pendingGpuReads_.size() >= 48) {
+        const ULONGLONG readerDeadline = GetTickCount64() + 100;
+        while (pendingGpuReads_.size() >= 48 && !gpuReadFaulted_ &&
+               !abandoned_.load() && GetTickCount64() < readerDeadline) {
+            Sleep(1);
+            PollGpuReadLeases(true);
+        }
+        if (abandoned_.load() || gpuReadFaulted_) return false;
+        if (pendingGpuReads_.size() >= 48) {
+            SetError("GPU recording reader completion exceeded the 100 ms admission deadline (48 pending reads retained; query " +
+                     HrToString(lastReaderQueryHr_) + ", complete=" +
+                     std::to_string(lastReaderQueryComplete_) + ", device " +
+                     HrToString(lastReaderDeviceHr_) + ", producer=" +
+                     std::to_string(lastReaderProducerCompleted_) + "/" +
+                     std::to_string(lastReaderProducerRequired_) + ").");
+            return false;
+        }
+    }
+
     StageResetGuard stageGuard(stage_);
     try {
         Microsoft::WRL::ComPtr<ID3D11Device1> device1;
@@ -991,7 +1106,8 @@ bool VideoRecorder::AddGpuFrame(
         Microsoft::WRL::ComPtr<ID3D11DeviceContext4> context4;
         ThrowIfFailed(gpuContext_.As(&context4), "Query D3D11 context4");
         stage_.store(WriterStage::kGpuSync, std::memory_order_relaxed);
-        context4->Wait(gpuFence_.Get(), frame.readyFenceValue);
+        ThrowIfFailed(context4->Wait(gpuFence_.Get(), frame.readyFenceValue),
+                      "Queue recording producer fence wait");
 
         D3D11_TEXTURE2D_DESC desc{};
         texture->GetDesc(&desc);
@@ -1025,8 +1141,27 @@ bool VideoRecorder::AddGpuFrame(
                     "Create worker recording readback texture");
             }
 
+            auto reader = std::make_shared<GpuReadLease>();
+            reader->device = gpuDevice_;
+            reader->context = gpuContext_;
+            reader->input = texture;
+            reader->output = gpuReadbackTexture_;
+            reader->source = frame.lifetime;
+            reader->producerFence = gpuFence_;
+            reader->producerValue = frame.readyFenceValue;
+            const D3D11_QUERY_DESC queryDesc{D3D11_QUERY_EVENT, 0};
+            ThrowIfFailed(gpuDevice_->CreateQuery(&queryDesc, &reader->query),
+                          "Create recording copy completion query");
+            auto retirement = std::make_shared<GpuReadRetirement>(reader);
+            std::vector<std::uint8_t> compact(
+                static_cast<std::size_t>(frameWidth_) *
+                frameHeight_ * 4u);
+            pendingGpuReads_.push_back({reader, retirement});
+            retirement->Arm(retirement);
             gpuContext_->CopyResource(
                 gpuReadbackTexture_.Get(), texture.Get());
+            gpuContext_->End(reader->query.Get());
+            reader->queryRecorded = true;
             D3D11_MAPPED_SUBRESOURCE mapped{};
             stage_.store(WriterStage::kReadbackMap,
                          std::memory_order_relaxed);
@@ -1038,9 +1173,6 @@ bool VideoRecorder::AddGpuFrame(
                     0,
                     &mapped),
                 "Map worker recording readback texture");
-            std::vector<std::uint8_t> compact(
-                static_cast<std::size_t>(frameWidth_) *
-                frameHeight_ * 4u);
             const std::size_t rowBytes =
                 static_cast<std::size_t>(frameWidth_) * 4u;
             for (UINT row = 0; row < frameHeight_; ++row) {
@@ -1052,6 +1184,7 @@ bool VideoRecorder::AddGpuFrame(
                     rowBytes);
             }
             gpuContext_->Unmap(gpuReadbackTexture_.Get(), 0);
+            PollGpuReadLeases();
             return AddFrame(
                 compact.data(), rowBytes, identity);
         }
@@ -1126,6 +1259,25 @@ bool VideoRecorder::AddGpuFrame(
         stream.OutputIndex = 0;
         stream.InputFrameOrField = 0;
         stream.pInputSurface = inputView.Get();
+        auto reader = std::make_shared<GpuReadLease>();
+        reader->device = gpuDevice_;
+        reader->context = gpuContext_;
+        reader->input = texture;
+        reader->output = encoderTexture;
+        reader->inputView = inputView;
+        reader->outputView = outputView;
+        reader->processor = gpuVideoProcessor_;
+        reader->source = frame.lifetime;
+        reader->producerFence = gpuFence_;
+        reader->producerValue = frame.readyFenceValue;
+        const D3D11_QUERY_DESC queryDesc{D3D11_QUERY_EVENT, 0};
+        ThrowIfFailed(gpuDevice_->CreateQuery(&queryDesc, &reader->query),
+                      "Create recording reader completion query");
+        auto retirement = std::make_shared<GpuReadRetirement>(reader);
+        // Every allocation happens before submission. Arm before Blt: failure
+        // can leave partial work queued, whose completion is then unknown.
+        pendingGpuReads_.push_back({reader, retirement});
+        retirement->Arm(retirement);
         stage_.store(WriterStage::kConvertNv12, std::memory_order_relaxed);
         ThrowIfFailed(
             gpuVideoContext_->VideoProcessorBlt(
@@ -1135,6 +1287,8 @@ bool VideoRecorder::AddGpuFrame(
                 1,
                 &stream),
             "Convert recording canvas to NV12");
+        gpuContext_->End(reader->query.Get());
+        reader->queryRecorded = true;
         // The NVIDIA encoder can consume the texture on a different internal
         // command path. Submit the video-processor work before handing the
         // texture to Media Foundation so the encoder never observes an

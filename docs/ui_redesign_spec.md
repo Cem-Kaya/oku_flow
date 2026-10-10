@@ -1,6 +1,11 @@
 # UI Redesign Spec — "Option 7 Plus" (agreed 2026-07-21, refined 2026-07-22)
 
-> **Status: implemented and review-verified, 2026-07-22.** Kept as the design contract; hotkeys have since been extended to `1`–`9`.
+> **Historical design: 2026-07-22.** The current contract is
+> [Simple and Advanced UI Design](ui_modes_design.md), including the
+> 2026-10-10 separation of Image and Settings. The historical instructions
+> below do not override that document: lower camera controls remain available
+> in Advanced, quick-mode shortcuts extend to `1`–`9`, and reading never
+> starts speech automatically.
 
 Decision from reviewing `ui ideas/ui-option-01..15.png`: **option 7 is the base**
 (full-bleed video, floating corner clusters), upgraded with the strongest ideas

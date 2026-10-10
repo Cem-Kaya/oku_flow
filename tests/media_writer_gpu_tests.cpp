@@ -341,6 +341,7 @@ bool RunGpuCodecPass(okuflow::VideoRecorder::Codec codec,
     constexpr std::int64_t frameDuration100ns = 333'333;
     constexpr double pi = 3.14159265358979323846;
     constexpr int kFrameCount = 90;
+    int framesSubmitted = 0;
     for (int index = 0; passed && index < kFrameCount; ++index) {
         for (std::size_t sample = 0; sample < audio.size(); ++sample) {
             const double phase =
@@ -358,6 +359,9 @@ bool RunGpuCodecPass(okuflow::VideoRecorder::Codec codec,
         identity.frameRateDenominator = 1;
         lastFrame.store(index);
         passed = recorder.AddGpuFrame(frame, identity);
+        if (passed) {
+            ++framesSubmitted;
+        }
         passed = passed && recorder.AddAudioFrame(
             reinterpret_cast<const std::uint8_t*>(audio.data()),
             audio.size() * sizeof(std::int16_t),
@@ -377,7 +381,18 @@ bool RunGpuCodecPass(okuflow::VideoRecorder::Codec codec,
     if (!passed) {
         std::cerr << "GPU-fed " << codecName
                   << "/AAC MP4 validation failed: "
-                  << recorder.LastError() << '\n';
+                  << recorder.LastError()
+                  << " | submitted=" << framesSubmitted
+                  << " | finalized samples=" << finalized.videoSamplesWritten
+                  << " | disposition=" << static_cast<int>(finalized.disposition)
+                  << " | HRESULT=" << finalized.hresult
+                  << " | duration=" << finalized.playableSeconds
+                  << " | exists=" << std::filesystem::exists(output);
+        if (std::filesystem::exists(output)) {
+            std::cerr << " | bytes=" << std::filesystem::file_size(output)
+                      << " | audio=" << ContainsAudioStream(output);
+        }
+        std::cerr << '\n';
     }
     if (passed) {
         const std::size_t moofCount = CountMoofBoxes(output);

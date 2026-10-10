@@ -767,7 +767,8 @@ bool AnnotationOverlay::nativeEvent(const QByteArray& eventType,
                  {QStringLiteral("topLeftPanel"),
                   QStringLiteral("bottomLeftPanel"),
                   QStringLiteral("keystoneTrackingPanel"),
-                  QStringLiteral("bottomRightPanel")}) {
+                  QStringLiteral("bottomRightPanel"),
+                  QStringLiteral("uiVisibilityPanel")}) {
                 QWidget* panel = owner->findChild<QWidget*>(name);
                 if (!panel || !panel->isVisible()) {
                     continue;

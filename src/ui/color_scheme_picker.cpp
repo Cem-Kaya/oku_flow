@@ -3,6 +3,7 @@
 #include "okuflow/ui/color_scheme_picker.hpp"
 
 #include "okuflow/ui/wheel_safe_combo_box.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 
 #include <QAccessible>
 #include <QApplication>
@@ -20,6 +21,8 @@
 #include <QPalette>
 #include <QPushButton>
 #include <QScreen>
+#include <QResizeEvent>
+#include <QTimer>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStyle>
@@ -108,6 +111,49 @@ QPixmap SchemePixmap(const color_schemes::ColorScheme& scheme,
     painter.drawRoundedRect(area.adjusted(0, 0, -1, -1), kSwatchRadius, kSwatchRadius);
     return image;
 }
+
+class QuickSchemeButton final : public QPushButton {
+public:
+    explicit QuickSchemeButton(const color_schemes::ColorScheme& scheme, QWidget* parent)
+        : QPushButton(scheme.name, parent), scheme_(scheme)
+    {
+        setCheckable(true);
+        setFocusPolicy(Qt::StrongFocus);
+        setMinimumSize(100, 64);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setAccessibleName(scheme.accessibleName);
+        setToolTip(scheme.name);
+        setProperty("schemeId", scheme.id);
+        setStyleSheet(QStringLiteral("QPushButton:checked { border:3px solid #c052d8; }"));
+    }
+    QSize sizeHint() const override { return QSize(148, 64); }
+    QSize minimumSizeHint() const override { return QSize(100, 64); }
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        option.text.clear();
+        option.icon = {};
+        QPainter painter(this);
+        style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
+        const bool rtl = layoutDirection() == Qt::RightToLeft;
+        const QRect swatch(rtl ? width() - 52 : 8, (height() - 28) / 2, 44, 28);
+        painter.drawPixmap(swatch, SchemePixmap(scheme_, swatch.size()));
+        painter.setPen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled,
+                                      QPalette::ButtonText));
+        const QRect label = rtl ? QRect(8, 6, width() - 66, height() - 12)
+                                : QRect(60, 6, width() - 68, height() - 12);
+        painter.drawText(label, Qt::AlignVCenter | Qt::AlignLeading | Qt::TextWordWrap, text());
+        if (isChecked()) {
+            painter.setPen(QColor(QStringLiteral("#c052d8")));
+            painter.drawText(rect().adjusted(4, 0, -4, -2),
+                             Qt::AlignBottom | Qt::AlignTrailing, QStringLiteral("✓"));
+        }
+    }
+private:
+    color_schemes::ColorScheme scheme_;
+};
 
 class SchemeTile final : public QToolButton {
 public:
@@ -227,10 +273,28 @@ ColorSchemePicker::ColorSchemePicker(QWidget* parent)
 {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    quickChoicesLayout_ = new QGridLayout();
+    quickChoicesLayout_->setContentsMargins(0, 0, 0, 0);
+    quickChoicesLayout_->setSpacing(6);
+    for (const QString& id : {QStringLiteral("posterize-6"), QStringLiteral("yellow-black"),
+                              QStringLiteral("normal"), QStringLiteral("black-yellow")}) {
+        const auto* scheme = color_schemes::FindBuiltInColorScheme(id);
+        if (!scheme) continue;
+        quickSchemes_.push_back(*scheme);
+        auto* button = new QuickSchemeButton(*scheme, this);
+        button->setObjectName(QStringLiteral("quickColor_%1").arg(id));
+        quickChoices_.push_back(button);
+        connect(button, &QPushButton::clicked, this, [this, scheme = *scheme]() {
+            SelectScheme(scheme);
+        });
+    }
+    layout->addLayout(quickChoicesLayout_);
+    ArrangeQuickChoices();
     trigger_ = new ColorSchemeTrigger(currentScheme_.name, this);
+    trigger_->setObjectName(QStringLiteral("moreColorsButton"));
     trigger_->setIcon(QIcon(SchemePixmap(currentScheme_)));
     trigger_->setIconSize(QSize(64, 28));
-    trigger_->setMinimumHeight(48);
+    trigger_->setMinimumHeight(64);
     trigger_->setStyleSheet(QStringLiteral("QPushButton { padding-right: 30px; }"));
     trigger_->setAccessibleName(QStringLiteral("Display colors, Normal colors"));
     trigger_->setToolTip(QStringLiteral("Choose display colors"));
@@ -239,9 +303,31 @@ ColorSchemePicker::ColorSchemePicker(QWidget* parent)
 
     editorStops_ = {QColor("#000000"), QColor("#ffffff")};
     BuildPopup();
+    setCurrentScheme(currentScheme_);
     if (qApp) {
         qApp->installEventFilter(this);
     }
+}
+
+void ColorSchemePicker::ArrangeQuickChoices()
+{
+    const int columns = width() >= 720 ? 4 : 2;
+    if (!quickChoicesLayout_ || columns == quickColumns_) return;
+    quickColumns_ = columns;
+    for (auto* button : quickChoices_) quickChoicesLayout_->removeWidget(button);
+    for (int column = 0; column < 4; ++column) {
+        quickChoicesLayout_->setColumnStretch(column, column < columns ? 1 : 0);
+    }
+    for (size_t index = 0; index < quickChoices_.size(); ++index) {
+        quickChoicesLayout_->addWidget(quickChoices_[index], static_cast<int>(index) / columns,
+                                       static_cast<int>(index) % columns);
+    }
+}
+
+void ColorSchemePicker::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    ArrangeQuickChoices();
 }
 
 ColorSchemePicker::~ColorSchemePicker()
@@ -292,6 +378,7 @@ void ColorSchemePicker::BuildPopup()
     root->setSpacing(8);
 
     auto* reset = new QPushButton(QStringLiteral("Reset to Normal colors"), popup_);
+    reset->setProperty("schemeId", QStringLiteral("normal"));
     reset->setIcon(style()->standardIcon(QStyle::SP_DialogResetButton));
     reset->setIconSize(QSize(24, 24));
     reset->setAccessibleName(QStringLiteral("Reset display colors to Normal colors"));
@@ -311,6 +398,7 @@ void ColorSchemePicker::BuildPopup()
         int index = 0;
         for (const auto& scheme : schemes) {
             auto* tile = new SchemeTile(scheme, popup_);
+            tile->setProperty("schemeId", scheme.id);
             schemeTiles_.push_back(tile);
             tile->installEventFilter(this);
             connect(tile, &QToolButton::clicked, this, [this, scheme]() {
@@ -331,6 +419,15 @@ void ColorSchemePicker::BuildPopup()
         }
         (scheme.effect ? effects : pairs).push_back(scheme);
     }
+    const auto prioritize = [](std::vector<color_schemes::ColorScheme>& schemes,
+                               const QString& id) {
+        const auto found = std::find_if(schemes.begin(), schemes.end(),
+            [&id](const auto& scheme) { return scheme.id == id; });
+        if (found != schemes.end()) std::rotate(schemes.begin(), found, found + 1);
+    };
+    prioritize(pairs, QStringLiteral("black-yellow"));
+    prioritize(pairs, QStringLiteral("yellow-black"));
+    prioritize(effects, QStringLiteral("posterize-6"));
     addSection(QStringLiteral("Reading colors"), pairs);
     addSection(QStringLiteral("Effects"), effects);
 
@@ -485,7 +582,14 @@ void ColorSchemePicker::SelectScheme(const color_schemes::ColorScheme& scheme)
 void ColorSchemePicker::setCurrentScheme(const color_schemes::ColorScheme& scheme)
 {
     currentScheme_ = color_schemes::NormalizeColorScheme(scheme);
-    trigger_->setText(currentScheme_.name);
+    const QString displayName = currentScheme_.id == QStringLiteral("custom")
+        ? currentScheme_.name : TranslateUi(currentScheme_.name);
+    // The generic tree translator preserves formatted arguments verbatim.
+    // Store the translated built-in name so later Show/Polish passes cannot
+    // replace it with English. User-defined names are never translated.
+    SetLiveTranslationSource(trigger_, QStringLiteral("More colors\n%1").arg(displayName));
+    trigger_->setText(TranslateUi(QStringLiteral("More colors\n%1"))
+                         .arg(displayName));
     trigger_->setIcon(QIcon(SchemePixmap(currentScheme_)));
     trigger_->setAccessibleName(QStringLiteral("Display colors, %1")
                                     .arg(currentScheme_.accessibleName));
@@ -515,6 +619,11 @@ void ColorSchemePicker::setCustomScheme(const color_schemes::ColorScheme& scheme
 
 void ColorSchemePicker::RefreshSelection()
 {
+    for (size_t index = 0; index < quickChoices_.size(); ++index) {
+        const QSignalBlocker blocker(quickChoices_[index]);
+        quickChoices_[index]->setChecked(quickSchemes_[index].id == currentScheme_.id &&
+            color_schemes::SchemesEquivalent(quickSchemes_[index], currentScheme_));
+    }
     for (QToolButton* button : schemeTiles_) {
         auto* tile = static_cast<SchemeTile*>(button);
         tile->setSelected(tile->scheme().id == currentScheme_.id &&
@@ -601,6 +710,9 @@ void ColorSchemePicker::Announce(const QString& message)
 
 bool ColorSchemePicker::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == this && event->type() == QEvent::LanguageChange) {
+        QTimer::singleShot(0, this, [this]() { setCurrentScheme(currentScheme_); });
+    }
     // While the color-stop dialog (a modal child of the popup) is open, the
     // popup loses activation but must stay visible, and Escape belongs to the
     // dialog — otherwise picking a custom color dismisses the whole popover.

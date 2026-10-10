@@ -6,7 +6,7 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
 
 ## Current Capabilities
 - Live-switchable English, Turkish, and German UI under
-  `Advanced > Image > Application`. The flag-and-native-name selector changes
+  `Advanced > Settings > Language`. The flag-and-native-name selector changes
   visible labels, accessible names, status announcements, AI response
   language, locale-formatted values, and the preferred Read Aloud voice
   immediately without restarting. Debug logs, file names, device names, model
@@ -39,6 +39,10 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   Sauvola thresholding, automatic text polarity, stroke weight, smart
   sharpening, CLAHE, two-color reading, anti-shimmer hysteresis, selective
   text-edge sharpening, glare suppression, and asynchronous focus detection.
+  Text Clarity is the master switch in both Simple and Advanced views. When
+  off, its nested Fine-tune text options are inactive and disabled; their
+  saved choices return when it is enabled. Independent Colors and contrast
+  controls and NVIDIA Super Resolution keep their own switches.
 - Optional NVIDIA Maxine SuperRes replaces NIS/FSR for zoomed text when the
   separately installed Video Effects runtime is available. It runs on the
   existing CUDA stream, discards 10 warmup samples, and automatically falls
@@ -48,9 +52,13 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
 - Two-speed UI: Simple mode gives the full client area to the live view and overlays three auto-fading primary clusters plus contextual screen-correction controls; Advanced keeps the camera visible beside a narrow inspector containing every parameter and pipeline diagnostics. The chosen mode persists.
 - Stage-1 quick modes backed by full stage-2 advanced configurations, including promotion of advanced tuning into user-defined quick options.
 - Text reading and scene explanations use a signed-in Codex CLI/ChatGPT
-  subscription (Luna with low reasoning by default) or the configured
+  subscription (Luna 6 with low reasoning by default) or the configured
   OpenAI-compatible vision endpoint. Results stream into the assistive panel,
   support manual Read Aloud, and can be saved in `Documents\OkuFlow\Notes\`.
+  The larger floating panel presents 20-point text with 135% line spacing,
+  keeps Read Aloud prominent below the answer, and offers panel placement in
+  a compact menu. Escape clears an unfinished question or returns focus to
+  the camera; the answer remains available until Close.
 - Vision frame preparation is bounded and asynchronous: resizing, JPEG
   encoding, base64/JSON creation, and temporary image writes happen outside
   the UI thread. Cancellation prevents stale work from starting a request.
@@ -116,7 +124,7 @@ prompt with:
 scripts\agent_build.bat
 ```
 
-The tracked helper locates Visual Studio with `vswhere`, compiles the shipping
+The tracked helper locates Visual Studio 2022 (17.x) with `vswhere`, compiles the shipping
 CUDA configuration, runs the CPU suite, and then builds and runs the
 CUDA-enabled suite. The two real CTest presets treat an empty test directory as
 an error:
@@ -206,7 +214,7 @@ vendor's alternate host without weakening verification.
 
 Double-click `scripts/start_lecture_camera.bat` to loop a downloaded lecture
 through OBS Virtual Camera and open OkuFlow. On first use select
-`Advanced > Image > Device > Camera > DroidCam Video`. OBS's standard virtual
+`Advanced > Settings > Camera > DroidCam Video`. OBS's standard virtual
 camera runs alongside this Media Foundation output used by OkuFlow.
 Double-click `scripts/stop_lecture_camera.bat` to stop the test feed.
 The video remains available for replacement at
@@ -256,7 +264,7 @@ profiling flags for ordinary operation.
   frame slots return control to the UI for a later presentation attempt.
   Camera selectors are temporarily disabled while the initial device opens.
 - `Simple` / `Advanced` switches between a full-view overlay UI and a right-side inspector. The live camera remains visible in both states.
-- `Application language` under the Advanced Image tab's `Application`
+- `Application language` under the Advanced Settings tab's `Language`
   section offers `English`, `Türkçe`, and `Deutsch` with their flags. The
   selection is global, persists across restarts, and updates the open windows
   in place. On first run OkuFlow follows a supported Windows display
@@ -266,26 +274,26 @@ profiling flags for ordinary operation.
   catalogs can use the same picker and persistence path. RTL languages are not
   offered yet because each still needs native wording, typography, and
   screen-reader validation.
-- `Viewport framing` under `Advanced > Image > Device > More device options`
+- `Viewport framing` under `Advanced > Settings > View and navigation`
   is a global viewport preference:
   `Fill (crop)` fills the camera area without distorting it, while `Fit (show
   all)` preserves the complete frame with symmetric black bars. Resizing,
   rotating, or dragging the Advanced divider always preserves the camera
   aspect ratio.
-- `Viewport motion rate`, beside framing under `More device options`, controls
+- `Viewport motion rate`, beside framing under `Settings > View and navigation`, controls
   how smoothly pan and animated zoom move over
   the latest processed scene: Auto (up to 120 FPS), 60, 90, 120, or Match
   display. The active monitor clamps unsupported choices and OkuFlow reports
   the effective rate. This does not invent camera frames: a 30 FPS camera is
   still 30 FPS; only navigation over its newest completed frame is refreshed
   more often. Auto reduces to the camera rate while idle.
-- `Processed recording resolution`, in the global `Recording` section, keeps
+- `Processed recording resolution`, under `Settings > Recording`, keeps
   the processed video independent of window, monitor, DPI, and inspector size.
   `Match camera (recommended)` follows the rotation-correct source; fixed
   640x360, 854x480, 1280x720, 1920x1080, 2560x1440, and 3840x2160 choices
   retain their dimensions for the entire segment. Portrait input swaps each
-  fixed canvas to portrait orientation. The adjacent `Camera and original
-  recording resolution & frame rate` selector controls the live camera,
+  fixed canvas to portrait orientation. The `Camera resolution & frame rate`
+  selector under `Settings > Camera` controls the live camera,
   original photo, and original video dimensions.
 - `Microphone`, in the same global Recording section,
   selects which Windows audio capture endpoint is recorded. New settings use
@@ -356,7 +364,7 @@ profiling flags for ordinary operation.
   annotated processed recording, and pressing Draw again leaves drawing mode.
   The bar compresses to icons when the viewport is narrow. Tool/state changes
   use screen-reader announcements and never start TTS.
-- `Ctrl+H` pins the Simple controls on screen or restores automatic hiding; `Esc` closes the quick-mode grid.
+- `Hide UI` at the top-right or `Ctrl+H` hides controls and the assistant for a clear camera view. `Show UI` restores the previous layout and answer. Simple controls also fade after five idle seconds; keyboard navigation keeps them visible. `Esc` closes the quick-mode grid.
 - The grid button or current profile opens all quick modes as large tiles. Built-in modes use plain-language labels such as `Read a Page`, `High Contrast`, `Sharpen Text`, `Keep It Steady`, `See in Low Light`, `Projector Screen`, and `Whiteboard`.
 - Number keys `1` through `9` apply the first nine quick modes except while an
   editable text field has focus. A mode change shows a large centered
@@ -366,7 +374,7 @@ profiling flags for ordinary operation.
   page-reading stack; use the carousel/grid to reach it after the numbered
   first nine modes.
 - `NVIDIA Super Resolution` and its strength slider are profile-owned Advanced
-  controls under `Advanced > Image > Text Clarity`. Enabling
+  controls under `Advanced > Image > Sharpness`. Enabling
   it restores a useful strength when needed and raises zoom to the 1.33x
   minimum. Maxine runs its supported 4/3x AI pass, with any additional zoom
   applied afterward on the GPU. The result is consumed synchronously on the
@@ -390,21 +398,23 @@ profiling flags for ordinary operation.
   turned off.
 - The bottom-left quick-mode carousel and its full preset grid remain available
   in Advanced mode, so presets can be changed without returning to Simple.
-- Advanced has separate `Image`, `Assistant`, and `Transcript` tabs. Tab arrows
-  appear only for four or more sections; `Ctrl+Tab` cycles tabs. Image puts
-  profile tuning first, followed by shared Device, Recording, and Application
-  settings. Sliders show locale-formatted values. `Ctrl+F` focuses the outlined
-  settings search, which reveals matching controls and displays a match count.
-  Non-default groups expand and show a changed count. Each page places the
-  labeled `AI Settings` pop-out below the tab strip. Drag the inspector's left
+- Advanced has separate `Image`, `Assistant`, `Transcript`, and `Settings`
+  tabs; `Ctrl+Tab` cycles them. Image contains the current mode's adjustments,
+  while Settings contains shared camera, recording, navigation, language,
+  files, and AI setup. Detailed text algorithms sit under `Fine-tune text`.
+  Sliders show locale-formatted values. `Ctrl+F` opens the relevant search,
+  revealing Advanced when needed. Image and Settings each have a search field
+  with match feedback and a link to results on the other tab. Changed counts
+  identify modified groups without reopening groups you have collapsed.
+  `F6` and `Shift+F6` move between control regions. Drag the inspector's left
   divider to resize it; OkuFlow remembers the width. Long selector names show
   their complete text on hover.
 - A centered camera-state panel explains startup, reconnection, and stopped
   capture until a frame is presented. Setup Assistant no longer opens solely
   because optional NVIDIA Super Resolution is missing; `Setup & Downloads`
   remains available in Advanced.
-- `Save As Quick Option` promotes the current advanced setup into a reusable stage-1 preset.
-- `Reset Tuning` restores profile-owned image and assistive controls to their
+- `Save as Quick Mode` promotes the current advanced setup into a reusable stage-1 preset.
+- `Reset Mode` restores profile-owned image and assistive controls to their
   defaults after confirmation. It deliberately keeps the selected camera,
   orientation, viewport motion/framing, and Virtual Joystick preference.
 - The question-mark button in the Advanced tab header opens a compact guide
@@ -415,7 +425,7 @@ profiling flags for ordinary operation.
 - `Resolution & frame rate` requests an actual Media Foundation capture mode.
   OkuFlow reads back the negotiated format and reports when the driver
   selected a different mode. `Automatic` preserves the driver's choice.
-- `Camera acceleration`, under `Device > More device options`, defaults to
+- `Camera acceleration`, under `Settings > Troubleshooting`, defaults to
   Automatic. OkuFlow tries the lower-latency Media Foundation GPU path,
   validates the first 30 frames, and reopens the same camera in compatibility
   mode if negotiation fails or the image is blank. The decision and reason are
@@ -458,7 +468,7 @@ profiling flags for ordinary operation.
   control.
 - `Straighten Screen (Keystone)` automatically detects a projected slide or screen viewed at an angle and warps it fronto-parallel. Its Previous control freezes tracking and restores an earlier accepted correction; Stop/Continue holds or resumes the live detector; Next restores newer history or samples exactly one fresh correction while stopped. Used by the `Projector Screen` and `Whiteboard` quick modes.
 - `Auto Contrast` stretches washed-out projector colors using a percentile level analysis; its strength slider blends toward the full stretch.
-- `Text clarity` in Advanced exposes profile-owned controls for background
+- `Image > Text clarity > Fine-tune text` exposes profile-owned controls for background
   flattening, adaptive text, edge softness, text polarity, stroke weight,
   smart sharpen, CLAHE, two-color reading, steady text edges, selective
   sharpening, focus warnings, and glare suppression.
@@ -471,7 +481,7 @@ profiling flags for ordinary operation.
 - `Ctrl+scroll` zoom uses fractional precision-trackpad deltas and geometric
   10% steps. Rapid same-direction wheel events accelerate up to 3x; reversing
   direction resets acceleration. The global `Zoom wheel acceleration` option
-  under `Device > More device options` disables only the acceleration, while
+  under `Settings > View and navigation` disables only the acceleration, while
   `Ctrl+=` and `Ctrl+-` always use reproducible unaccelerated geometric steps.
 - `Scene Explain` and `Assistive Overlay` drive asynchronous assistive analysis and on-screen text overlays.
 - `Read Text`, identified by a speaker icon, asks the vision assistant to transcribe the current view verbatim. It preserves source language and marks unreadable portions; it does not summarize the page. Read Aloud speaks the result only when clicked. `Explain` sends one temporary, non-history camera question and changes to `Stop` while Codex is working.
@@ -513,17 +523,19 @@ profiling flags for ordinary operation.
   `Documents\OkuFlow\Photos\YYYY-MM-DD\`. The original is decoded,
   rotation-corrected camera output without OkuFlow's enhancement stack; it is
   not the camera sensor's raw Bayer or compressed USB bitstream. Both JPEGs
-  encode to `.writing` files before their paired commit. On the next startup,
-  OkuFlow finishes an interrupted second rename or removes the entire
-  incomplete set, so a crash-created final orphan is not kept as a successful
-  capture.
+  encode to exclusively created `.writing` files before their paired commit.
+  An occupied timestamp gets a unique suffix instead of overwriting another
+  capture. A `.pair.pending` marker records that both encodes finished. On the
+  next startup, OkuFlow can finish a marked interrupted second rename and
+  remove abandoned temporary files. Existing final JPEGs are always preserved;
+  a marked incomplete pair that cannot be completed is reported for review.
 - Annotation Save, Clear, and optional Save on exit write a lossless
   `ANNOTATION_<timestamp>.png` of the exact visible viewport to the same dated
   Photos folder
   and append the marked image to the current HTML lecture notes. The
   persistent Photo action remains a clean paired capture without ink.
   Annotation color, width, line style, shape choice, text size, and the
-  Advanced Assistant `Save drawing to notes when leaving Draw` preference
+  `Settings > Notes and files > Save drawing to notes when leaving Draw` preference
   persist globally; strokes are session-only and are discarded after exit.
 - `Start Recording` writes synchronized `VID_<timestamp>_original.mp4` and
   `VID_<timestamp>_processed.mp4` files to
@@ -534,12 +546,16 @@ profiling flags for ordinary operation.
   48 kHz mono AAC track is embedded in both files. Choosing
   `No microphone (video only)` omits the audio stream.
   OkuFlow tries AV1 first and falls back to H.264 when AV1 is unavailable. It
-  does not transcode after Stop. Fragmented MP4 keeps each file playable up to
-  its last completed fragment, the duration cap is 12 hours, and disk-space
+  does not transcode after Stop. Fragmented MP4 limits how much recent media a
+  process failure can lose, but playback of an incomplete file is not assumed
+  without checking it. The duration cap is 12 hours, and disk-space
   guards stop both files together. Stop discards queued frames and finalizes
-  after the sample currently being encoded. A segment is kept and added to
-  notes only when both files committed video samples and finalized; empty
-  placeholders and incomplete pairs are removed. Paired capture approximately
+  after the sample currently being encoded. Each nonempty original or
+  processed file is retained independently after an encoder or finalization
+  failure, including when its partner is missing. Only a fully finalized pair
+  is added to lecture notes. OkuFlow removes only its own regular, zero-byte
+  output with no accepted video samples; it does not sweep old recording
+  folders at startup. Paired capture approximately
   doubles output storage and adds CPU camera-format conversion while
   recording.
 
@@ -550,6 +566,11 @@ profiling flags for ordinary operation.
 - Arrow keys: nudge the zoom focus.
 - `1` through `9` in Simple mode: apply the corresponding numbered quick mode.
 - `Tab` / `Shift+Tab` in Simple mode: move through the corner controls.
+- `Ctrl+H` or the persistent Hide UI button: clear controls and the assistant
+  from the camera, then restore the previous mode, tab, panel width, and
+  answer with Show UI. Mouse movement does not undo an explicit hide.
+- `F6` / `Shift+F6`: move between camera and control regions; `Ctrl+F` opens
+  the relevant Advanced settings search. Either shortcut restores hidden UI.
 - In annotation mode: `P` Pen, `L` Line, `S` Shape, `T` Text, `V` Move,
   `E` Erase, `Ctrl+Z` undo, and `Ctrl+Shift+Z` redo. Arrows nudge a selection,
   `Ctrl++`/`Ctrl+-` resize a single item, and `Delete` removes the selected
@@ -638,7 +659,8 @@ profiling flags for ordinary operation.
   that folder.
 
 ## Assistive Runtime Configuration
-The in-app `AI Settings` dialog is the primary way to configure the assistive
+The in-app `AI Settings` dialog, opened from `Settings > AI and downloads`,
+is the primary way to configure the assistive
 features; values are stored in `settings.json`. The default provider starts the
 local `codex app-server` process and reuses Codex's ChatGPT-managed login. The
 fallback provider accepts any OpenAI-compatible `chat/completions` server,
@@ -671,7 +693,7 @@ dialog:
   the official standalone
   `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe`, or
   `%LOCALAPPDATA%\Microsoft\WinGet\Links\codex.exe`. New configurations default
-  to `gpt-5.6-luna` with `low` reasoning. The former misspelled
+  to `gpt-6-luna` with `low` reasoning. The former misspelled
   `gpt-5.6-tera` value is migrated automatically; other explicit saved
   choices are preserved.
 - Configure VLM with:

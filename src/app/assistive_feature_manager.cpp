@@ -32,6 +32,7 @@ AssistiveFeatureManager::AssistiveFeatureManager(QWidget& renderWidget,
                      overlay_, [this](const QString& title,
                                       const QString& body,
                                       bool visible) {
+                         focusWarningShown_ = false;
                          overlay_->SetContent(title, body, visible && overlayEnabled_);
                      });
     QObject::connect(overlay_, &AssistiveOverlay::Dismissed,
@@ -80,7 +81,8 @@ void AssistiveFeatureManager::SetModes(bool vlmEnabled,
                                        bool overlayEnabled) {
     overlayEnabled_ = overlayEnabled;
     runtime_->SetModes(vlmEnabled && overlayEnabled_);
-    overlay_->setVisible(overlayEnabled_ && vlmEnabled);
+    // Runtime emits OverlayUpdated synchronously; SetContent applies Hide UI
+    // suppression and remains the single authority for visibility.
 }
 
 void AssistiveFeatureManager::ApplySettings(const settings::AssistiveSettings& settings) {
@@ -114,7 +116,14 @@ void AssistiveFeatureManager::MaybeRequestAnalysis(const std::uint8_t* data,
 }
 
 void AssistiveFeatureManager::ShowFocusWarning() {
+    focusWarningShown_ = true;
     overlay_->SetContent(QStringLiteral("Focus"), kFocusWarning, true);
+}
+
+void AssistiveFeatureManager::ClearFocusWarning() {
+    if (!focusWarningShown_) return;
+    focusWarningShown_ = false;
+    overlay_->SetContent({}, {}, false);
 }
 
 void AssistiveFeatureManager::RestoreOverlayGeometry(const QRect& geometry) {

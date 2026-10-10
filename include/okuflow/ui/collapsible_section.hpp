@@ -17,8 +17,10 @@ public:
     explicit CollapsibleSection(const QString& title, QWidget* parent = nullptr);
 
     QWidget* contentWidget() const { return contentWidget_; }
+    QToolButton* headerWidget() const { return header_; }
     void setExpanded(bool expanded);
     bool isExpanded() const;
+    bool persistedExpanded() const { return searchExpanded_ ? expandedBeforeSearch_ : isExpanded(); }
     void setChangedCount(int count);
     int changedCount() const { return changedCount_; }
     void setPersistKey(const QString& key) { persistKey_ = key; }

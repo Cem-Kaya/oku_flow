@@ -94,6 +94,7 @@ struct PhotoPairFiles {
     QString originalTemp;
     QString processedTemp;
     QString transactionLock;
+    QString ownershipMarker;
     QDateTime newestModification;
 };
 
@@ -299,6 +300,94 @@ QString UserDataPaths::Debug(QString* error) const
     return EnsureRelative(QStringLiteral("Debug"), error);
 }
 
+PhotoPairWriteResult UserDataPaths::WritePhotoPair(
+    const QString& directory, const QString& preferredStem,
+    const std::function<bool(QIODevice*)>& encodeOriginal,
+    const std::function<bool(QIODevice*)>& encodeProcessed)
+{
+    PhotoPairWriteResult result;
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        const QString stem = attempt == 0 ? preferredStem
+            : preferredStem + QStringLiteral("_") +
+                  QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QDir dir(directory);
+        const QString original = dir.filePath(stem + QStringLiteral("_original.jpg"));
+        const QString processed = dir.filePath(stem + QStringLiteral("_processed.jpg"));
+        const QString originalTemp = original + QStringLiteral(".writing");
+        const QString processedTemp = processed + QStringLiteral(".writing");
+        const QString markerPath = dir.filePath(stem + QStringLiteral(".pair.pending"));
+        const QString lockPath = dir.filePath(stem + QStringLiteral(".pair.lock"));
+        // Existing lock metadata belongs to recovery, even if its owner died.
+        if (QFileInfo::exists(lockPath)) {
+            continue;
+        }
+        QLockFile lock(lockPath);
+        lock.setStaleLockTime(0);
+        if (!lock.tryLock(0)) {
+            continue;
+        }
+        bool occupied = false;
+        for (const QString& path : {original, processed, originalTemp,
+                                    processedTemp, markerPath}) {
+            occupied = occupied || QFileInfo::exists(path);
+        }
+        if (occupied) {
+            continue;
+        }
+        result.originalPath = original;
+        result.processedPath = processed;
+        QStringList owned;
+        const auto encode = [&owned](const QString& path,
+                                     const std::function<bool(QIODevice*)>& writer) {
+            QFile file(path);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+                return false;
+            }
+            owned.append(path);
+            const bool saved = writer(&file) && file.flush();
+            file.close();
+            return saved;
+        };
+        bool markerCreated = false;
+        const auto publishMarker = [&markerCreated, &markerPath]() {
+            QFile marker(markerPath);
+            if (!marker.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+                return false;
+            }
+            markerCreated = true;
+            const QByteArray signature("OkuFlow photo pair v1\n");
+            return marker.write(signature) == signature.size() && marker.flush();
+        };
+        // A valid marker certifies that both encodes have finished, never
+        // merely that this writer reserved the stem.
+        if (encode(processedTemp, encodeProcessed) &&
+            encode(originalTemp, encodeOriginal) && publishMarker() &&
+            QFile::rename(processedTemp, processed)) {
+            owned.removeAll(processedTemp);
+            owned.append(processed);
+            if (QFile::rename(originalTemp, original)) {
+                owned.removeAll(originalTemp);
+                owned.append(original);
+                result.committed = true;
+            }
+        }
+        if (!result.committed) {
+            for (const QString& path : owned) {
+                if (QFileInfo::exists(path) && !QFile::remove(path)) {
+                    result.leftoverPaths.append(path);
+                }
+            }
+        }
+        // Retain the completed-encode record when rollback could not finish.
+        if (markerCreated && (result.committed || result.leftoverPaths.isEmpty()) &&
+            !QFile::remove(markerPath)) {
+            result.leftoverPaths.append(markerPath);
+        }
+        return result;
+    }
+    return result;
+}
+
 PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
     const QDateTime& staleBefore) const
 {
@@ -316,8 +405,8 @@ PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
         QDir(root).entryList(QDir::Dirs | QDir::NoDotAndDotDot,
                              QDir::Name | QDir::Reversed);
     // Scan every dated directory: an app may not be reopened promptly after
-    // a crash, so limiting recovery to the newest dates would let an old
-    // final orphan survive indefinitely.
+    // a crash, so limiting recovery to the newest dates would leave old
+    // temporary files and incomplete transactions unexamined.
     directories.prepend(QString()); // Also cover the legacy Photos root.
 
     for (const QString& child : directories) {
@@ -328,15 +417,19 @@ PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
              QStringLiteral("IMG_*_processed.jpg"),
              QStringLiteral("IMG_*_original.jpg.writing"),
              QStringLiteral("IMG_*_processed.jpg.writing"),
-             QStringLiteral("IMG_*.pair.lock")},
+             QStringLiteral("IMG_*.pair.lock"),
+             QStringLiteral("IMG_*.pair.pending")},
             QDir::Files);
         QHash<QString, PhotoPairFiles> pairs;
         for (const QFileInfo& file : files) {
             const QString fileName = file.fileName();
             if (fileName.startsWith(QStringLiteral("IMG_")) &&
-                fileName.endsWith(QStringLiteral(".pair.lock"))) {
+                (fileName.endsWith(QStringLiteral(".pair.lock")) ||
+                 fileName.endsWith(QStringLiteral(".pair.pending")))) {
+                const QString suffix = fileName.endsWith(QStringLiteral(".pair.lock"))
+                    ? QStringLiteral(".pair.lock") : QStringLiteral(".pair.pending");
                 const QString key = fileName.left(
-                    fileName.size() - QStringLiteral(".pair.lock").size());
+                    fileName.size() - suffix.size());
                 PhotoPairFiles& pair = pairs[key];
                 pair.originalFinal = directory.filePath(
                     key + QStringLiteral("_original.jpg"));
@@ -346,7 +439,8 @@ PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
                                     QStringLiteral(".writing");
                 pair.processedTemp = pair.processedFinal +
                                      QStringLiteral(".writing");
-                pair.transactionLock = file.absoluteFilePath();
+                pair.transactionLock = directory.filePath(key + QStringLiteral(".pair.lock"));
+                pair.ownershipMarker = directory.filePath(key + QStringLiteral(".pair.pending"));
                 TrackNewestModification(pair, file);
                 continue;
             }
@@ -370,6 +464,8 @@ PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
                                  QStringLiteral(".writing");
             pair.transactionLock = directory.filePath(
                 key + QStringLiteral(".pair.lock"));
+            pair.ownershipMarker = directory.filePath(
+                key + QStringLiteral(".pair.pending"));
             QString& slot = original
                                 ? (temporary ? pair.originalTemp
                                              : pair.originalFinal)
@@ -385,7 +481,7 @@ PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
                 return !path.isEmpty() && QFileInfo::exists(path);
             };
             std::unique_ptr<QLockFile> recoveryLock;
-            if (exists(pair.transactionLock)) {
+            if (exists(pair.transactionLock) || exists(pair.ownershipMarker)) {
                 recoveryLock =
                     std::make_unique<QLockFile>(pair.transactionLock);
                 // A live owner, regardless of duration, must never have its
@@ -414,11 +510,29 @@ PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
                 }
             };
 
+            QFile marker(pair.ownershipMarker);
+            const QByteArray signature("OkuFlow photo pair v1\n");
+            const bool encodedPair = marker.open(QIODevice::ReadOnly) &&
+                marker.read(signature.size() + 1) == signature;
+            marker.close();
+            if (!encodedPair) {
+                // A user may deliberately keep just one half of a capture.
+                // Legacy temp names are disposable; finals are not evidence
+                // that an interrupted transaction owns those files.
+                removeFile(pair.originalTemp);
+                removeFile(pair.processedTemp);
+                if (exists(pair.ownershipMarker)) {
+                    result.unresolvedPaths.append(pair.ownershipMarker);
+                }
+                continue;
+            }
+
             bool originalFinal = exists(pair.originalFinal);
             bool processedFinal = exists(pair.processedFinal);
             if (originalFinal && processedFinal) {
                 removeFile(pair.originalTemp);
                 removeFile(pair.processedTemp);
+                removeFile(pair.ownershipMarker);
                 continue;
             }
 
@@ -449,15 +563,23 @@ PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
             if (completed) {
                 removeFile(pair.originalTemp);
                 removeFile(pair.processedTemp);
+                removeFile(pair.ownershipMarker);
                 continue;
             }
 
-            // No recoverable commit exists. Remove the whole partial set so
-            // a lone final JPEG can never masquerade as a completed capture.
+            // Existing finals may have been retained or replaced by the user
+            // after a marker cleanup failure. Recovery never deletes them.
             removeFile(pair.originalTemp);
             removeFile(pair.processedTemp);
-            removeFile(pair.originalFinal);
-            removeFile(pair.processedFinal);
+            for (const QString& path : {pair.originalFinal, pair.processedFinal}) {
+                if (exists(path) && !result.unresolvedPaths.contains(path)) {
+                    result.unresolvedPaths.append(path);
+                }
+            }
+            if (!exists(pair.originalTemp) && !exists(pair.processedTemp) &&
+                !exists(pair.originalFinal) && !exists(pair.processedFinal)) {
+                removeFile(pair.ownershipMarker);
+            }
         }
     }
     return result;

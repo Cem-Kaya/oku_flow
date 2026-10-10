@@ -38,6 +38,9 @@ public:
                    const QString& workspaceDirectory);
     void Start();
     void Shutdown();
+    // Per-request JSON-RPC reply deadline (default 60 s). Tests shorten it to
+    // exercise initialization timeouts without waiting for the default.
+    void SetRequestTimeoutMs(int timeoutMs);
 
     bool IsReady() const;
     bool IsSignedIn() const;
@@ -84,12 +87,17 @@ signals:
 private:
     using ReplyHandler = CodexJsonRpcProcess::ReplyHandler;
 
+    // A request owns one generation from admission to its single TurnFinished.
+    // Reply handlers capture it, so a late reply for a finished request can
+    // neither resurrect it nor consume a replacement request.
     struct PendingTurn {
         QString prompt;
         QString imagePath;
         QString threadId;
+        quint64 generation{0};
         bool persistent{false};
         bool valid{false};
+        bool opening{false}; // thread/start or thread/resume already sent
     };
 
     QString ResolveExecutable() const;
@@ -106,10 +114,13 @@ private:
                              const QJsonObject& params);
     void FinishInitialization(const QJsonObject& result,
                               const QJsonObject& error);
+    bool PendingTurnCurrent(quint64 generation) const;
+    bool NotificationTargetsActiveTurn(const QJsonObject& params) const;
+    void RetireTurnId(const QString& turnId);
     void SubmitPendingTurn();
     void StartNewThreadForPendingTurn();
     void ResumeThreadForPendingTurn();
-    void StartTurnOnThread(const QString& threadId);
+    void StartTurnOnThread(QString threadId);
     void FinishActiveTurn(const QString& text,
                           const QString& error,
                           bool interrupted);
@@ -128,6 +139,7 @@ private:
     static constexpr qsizetype kMaximumAnswerCharacters = 256 * 1024;
     static constexpr qsizetype kMaximumTranscriptMessageCharacters = 32 * 1024;
     static constexpr qsizetype kMaximumTranscriptMessages = 200;
+    static constexpr qsizetype kMaximumRetiredTurnIds = 16;
 
     std::unique_ptr<CodexJsonRpcProcess> rpc_;
     QTimer* turnWatchdogTimer_{nullptr};
@@ -144,8 +156,16 @@ private:
     bool loginWhenReady_{false};
     bool internetEnabled_{false};
     bool codingEnabled_{false};
+    bool retiringFailedServer_{false};
+    bool accountReadInFlight_{false};
 
+    quint64 lastRequestGeneration_{0};
     PendingTurn pendingTurn_;
+    quint64 activeGeneration_{0};
+    bool activeTurnStartPending_{false};
+    // Finished, canceled, or orphaned turns whose late notifications must not
+    // touch a newer turn (bounded FIFO).
+    QStringList retiredTurnIds_;
     QString activeThreadId_;
     QString activeTurnId_;
     QString activeText_;

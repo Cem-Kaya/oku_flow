@@ -11,7 +11,7 @@
 
 QT_BEGIN_NAMESPACE
 class QEvent;
-class QComboBox;
+class QAction;
 class QMainWindow;
 class QLabel;
 class QLineEdit;
@@ -33,6 +33,10 @@ public:
     explicit AssistiveOverlay(QWidget* parent = nullptr);
 
     void SetContent(const QString& title, const QString& body, bool visible);
+    // Temporarily hide all presentation while retaining content and the
+    // latest requested visibility. This does not dismiss or cancel a turn.
+    void SetUiSuppressed(bool suppressed);
+    void SetSafeArea(const QRect& relativeSafeArea);
     void SetBusy(bool busy);
     void RestoreRelativeGeometry(const QRect& geometry);
     QRect RelativeGeometry() const;
@@ -87,7 +91,8 @@ private:
     QLineEdit* questionEdit_{};
     QPushButton* askButton_{};
     QPushButton* readAloudButton_{};
-    QComboBox* dockPositionCombo_{};
+    QToolButton* dockPositionButton_{};
+    std::array<QAction*, 3> dockPositionActions_{};
     QToolButton* closeButton_{};
     QLabel* dockPreview_{};
     QString dockCandidate_;
@@ -111,9 +116,14 @@ private:
     quint64 dragSerial_{};
     bool resizing_{};
     bool busy_{};
+    bool desiredVisible_{};
+    bool uiSuppressed_{};
+    int suppressedDockWidth_{};
     bool placementInitialized_{};
+    bool usingDefaultPlacement_{true};
     bool changingDockPosition_{};
     QRect restoredRelativeGeometry_;
+    QRect safeArea_;
 };
 
 } // namespace okuflow

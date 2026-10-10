@@ -28,6 +28,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QEvent>
+#include <QFocusEvent>
 #include <QAbstractItemView>
 #include <QFrame>
 #include <QGridLayout>
@@ -60,6 +61,10 @@
 #include <QStyleOptionButton>
 #include <QStylePainter>
 #include <QTabWidget>
+#include <QTabBar>
+#include <QScopedValueRollback>
+#include <QLayout>
+#include <QBoxLayout>
 #include <QTextBrowser>
 #include <QTimer>
 #include <QToolButton>
@@ -214,6 +219,92 @@ private:
     QWidget* target_{};
 };
 
+// A wrapping companion retains the complete setting label when the native
+// checkbox's single-line size hint would widen the inspector.
+class CheckBoxLabel final : public QLabel {
+public:
+    explicit CheckBoxLabel(QCheckBox* checkbox)
+        : QLabel(checkbox->text()), checkbox_(checkbox)
+    {
+        setWordWrap(true);
+        setBuddy(checkbox);
+        setToolTip(checkbox->toolTip());
+        new EnabledMirror(checkbox, this);
+    }
+protected:
+    void mouseReleaseEvent(QMouseEvent* event) override
+    {
+        if (event->button() == Qt::LeftButton && rect().contains(event->position().toPoint()) && isEnabled()) {
+            checkbox_->setFocus(Qt::MouseFocusReason);
+            checkbox_->click();
+            event->accept();
+            return;
+        }
+        QLabel::mouseReleaseEvent(event);
+    }
+private:
+    QCheckBox* checkbox_{};
+};
+
+class TrackingButtonRow final : public QWidget {
+public:
+    TrackingButtonRow(const QString& caption, const std::array<QPushButton*, 3>& buttons)
+        : buttons_(buttons)
+    {
+        layout_ = new QGridLayout(this);
+        layout_->setContentsMargins(0, 0, 0, 0);
+        layout_->setSpacing(8);
+        layout_->setSizeConstraint(QLayout::SetNoConstraint);
+        caption_ = new QLabel(caption);
+        caption_->setWordWrap(true);
+        Reflow(3);
+    }
+    QSize minimumSizeHint() const override
+    {
+        int minimumWidth = caption_->minimumSizeHint().width();
+        for (auto* button : buttons_) {
+            minimumWidth = std::max(minimumWidth,
+                button->minimumSizeHint().expandedTo(button->minimumSize()).width());
+        }
+        return QSize(minimumWidth, layout_->minimumSize().height());
+    }
+protected:
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QWidget::resizeEvent(event);
+        for (int columns : {3, 2, 1}) {
+            std::array<int, 3> widths{};
+            for (int index = 0; index < 3; ++index) {
+                widths[index % columns] = std::max(widths[index % columns],
+                    buttons_[index]->sizeHint().expandedTo(buttons_[index]->minimumSize()).width());
+            }
+            int required = (columns - 1) * layout_->horizontalSpacing();
+            for (int column = 0; column < columns; ++column) required += widths[column];
+            if (required <= event->size().width() || columns == 1) {
+                Reflow(columns);
+                break;
+            }
+        }
+    }
+private:
+    void Reflow(int columns)
+    {
+        if (columns_ == columns) return;
+        columns_ = columns;
+        layout_->removeWidget(caption_);
+        for (auto* button : buttons_) layout_->removeWidget(button);
+        layout_->addWidget(caption_, 0, 0, 1, columns);
+        for (int index = 0; index < 3; ++index) {
+            layout_->addWidget(buttons_[index], 1 + index / columns, index % columns);
+        }
+        updateGeometry();
+    }
+    std::array<QPushButton*, 3> buttons_{};
+    int columns_{};
+    QLabel* caption_{};
+    QGridLayout* layout_{};
+};
+
 // Slider readouts in display units, formatted for the active locale.
 QString FormatPercent(int value)
 {
@@ -331,6 +422,8 @@ MainWindow::MainWindow()
             background: palette(button);
         }
         QLabel#scopeSubtitle { color: #b3b3b3; }
+        QLabel#currentModeCaption { font-size: 11pt; font-weight: 600; color: #e6e6e6; }
+        QLabel#currentModeSummaryLabel { font-size: 15pt; font-weight: 700; color: #ffffff; }
         QLabel#formatWarningLabel { color: #ffd166; font-weight: 600; }
         QPushButton#simpleModeButton, QPushButton#advancedModeButton {
             font-size: 13pt;
@@ -366,7 +459,7 @@ MainWindow::MainWindow()
             border-bottom-left-radius: 0;
         }
         QWidget#topLeftPanel, QWidget#bottomLeftPanel, QWidget#keystoneTrackingPanel, QWidget#bottomRightPanel,
-        QWidget#modeGridPopup, QWidget#modeToast {
+        QWidget#modeGridPopup, QWidget#modeToast, QWidget#uiVisibilityPanel {
             background: #111111;
             border: 3px solid #f4f4f4;
         }
@@ -393,7 +486,7 @@ MainWindow::MainWindow()
         QLabel#processingStatusLabel { font-size: 11pt; font-weight: 700; }
         QLabel#modeToastTitle { font-size: 34pt; font-weight: 800; color: #ffffff; }
         QLabel#modeToastSubtitle { font-size: 16pt; font-weight: 600; color: #ffffff; }
-        QPushButton#currentModeButton { font-size: 15pt; font-weight: 700; min-width: 220px; }
+        QPushButton#currentModeButton { font-size: 15pt; font-weight: 700; }
         QPushButton#previousModeButton, QPushButton#nextModeButton,
         QToolButton#modeGridButton { min-width: 52px; min-height: 52px; padding: 2px; }
         QWidget#keystoneTrackingPanel QPushButton { min-width: 52px; min-height: 52px; padding: 2px; }
@@ -439,6 +532,27 @@ MainWindow::MainWindow()
         }
         QTextBrowser:focus, QPlainTextEdit:focus { border: 3px solid palette(highlight); }
         QTabBar::tab { min-height: 34px; min-width: 92px; padding: 4px 10px; }
+        /* Separate tabs with a gap and give the selected tab a solid fill so
+           the current section is obvious. Horizontal cost stays small (about
+           10 px per tab) so the elided strip still fits a 360 px inspector. */
+        QTabBar#advancedTabBar::tab {
+            min-width: 0px;
+            padding: 4px 4px;
+            margin-right: 2px;
+            border: 2px solid palette(mid);
+            border-bottom: 0;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            background: palette(button);
+            color: palette(button-text);
+        }
+        QTabBar#advancedTabBar::tab:hover:!selected { background: palette(midlight); }
+        QTabBar#advancedTabBar::tab:selected {
+            background: palette(highlight);
+            color: palette(highlighted-text);
+            border-color: #ffffff;
+            font-weight: 700;
+        }
         QLabel#sectionLabel {
             font-size: 13pt;
             font-weight: 600;
@@ -532,95 +646,569 @@ MainWindow::MainWindow()
     explainNowButton_->setToolTip("Explain the current view");
     readTextButton_->setToolTip("Read text in the current view");
 
-    // Advanced mode uses a right-side inspector so detailed controls do not
-    // push the live image below the fold.
-    auto* advancedPage = new QWidget();
-    advancedPage->setObjectName("advancedPage");
-    auto* advancedLayout = new QVBoxLayout(advancedPage);
-    advancedLayout->setContentsMargins(10, 4, 10, 10);
-    advancedLayout->setSpacing(8);
-
-    auto makeSectionLabel = [](const QString& text) {
+    // Advanced is a right-side inspector where each tab answers one question.
+    // Image holds mode-owned tuning that quick modes save; Settings holds the
+    // shared setup no quick mode changes. Every control keeps its binding and
+    // persistence path; only its placement differs between the two tabs.
+    const auto sectionLayout = [](CollapsibleSection* section) {
+        return qobject_cast<QVBoxLayout*>(section->contentWidget()->layout());
+    };
+    const auto makeSection = [this](const QString& title, const QString& key,
+                                     bool expanded) {
+        auto* section = new CollapsibleSection(title);
+        section->setPersistKey(key);
+        // First-run disclosure; restored states replace it later.
+        section->setExpanded(expanded);
+        connect(section, &CollapsibleSection::expandedChanged,
+                this, &MainWindow::sectionStatesChanged);
+        return section;
+    };
+    const auto makeSearchEdit = [](const QString& objectName,
+                                   const QString& placeholder,
+                                   const QString& accessibleName) {
+        auto* edit = new QLineEdit();
+        edit->setObjectName(objectName);
+        edit->setPlaceholderText(placeholder);
+        edit->setClearButtonEnabled(true);
+        edit->setAccessibleName(accessibleName);
+        edit->setAccessibleDescription(QStringLiteral(
+            "Type part of a setting name to reveal and focus matching controls."));
+        edit->addAction(QIcon(QStringLiteral(":/okuflow/icons/search.svg")),
+                        QLineEdit::LeadingPosition);
+        return edit;
+    };
+    // Visible counterpart of the match count the search field already reports
+    // through its accessible description, so it stays silent.
+    const auto makeSearchStatus = [](const QString& objectName) {
+        auto* label = new QLabel();
+        label->setObjectName(objectName);
+        label->setWordWrap(true);
+        label->setVisible(false);
+        return label;
+    };
+    const auto makeScopeSubtitle = [](const QString& text) {
         auto* label = new QLabel(text);
-        label->setObjectName("sectionLabel");
+        label->setObjectName(QStringLiteral("scopeSubtitle"));
+        label->setWordWrap(true);
+        return label;
+    };
+    const auto makeSettingsScroll = [](const QString& objectName, QWidget* content) {
+        auto* scroll = new QScrollArea();
+        scroll->setObjectName(objectName);
+        scroll->setWidget(content);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        scroll->setFocusPolicy(Qt::NoFocus);
+        scroll->setMinimumWidth(0);
+        scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        return scroll;
+    };
+
+    // Every inspector slider shows its value in display units next to it.
+    const auto addSliderReadout = [this](QSlider* slider,
+                                         std::function<QString(int)> format) {
+        auto* readout = new QLabel();
+        readout->setObjectName(QStringLiteral("sliderValueLabel"));
+        readout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        readout->setMinimumWidth(64);
+        new EnabledMirror(slider, readout);
+        const auto refresh = [readout, slider, format]() {
+            readout->setText(format(slider->value()));
+        };
+        connect(slider, &QSlider::valueChanged, readout, refresh);
+        refresh();
+        sliderReadoutRefreshers_.push_back(refresh);
+        return readout;
+    };
+    // Readouts the application writes itself. They share the inspector look,
+    // and are re-rendered here only when the locale changes.
+    const auto adoptAppReadout = [this](QLabel* readout, QSlider* slider,
+                                        const QString& role,
+                                        std::function<QString(int)> format) {
+        readout->setObjectName(QStringLiteral("sliderValueLabel"));
+        readout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        readout->setMinimumWidth(64);
+        sliderReadoutRefreshers_.push_back([readout, slider, role, format]() {
+            SetLiveText(readout, format(slider->value()),
+                        LivePoliteness::kSilent, role);
+        });
+        return readout;
+    };
+    const auto percent = [](int value) { return FormatPercent(value); };
+    const auto makeSlider = [](int minimum, int maximum, int value, int pageStep) {
+        auto* slider = new WheelSafeSlider(Qt::Horizontal);
+        slider->setRange(minimum, maximum);
+        slider->setPageStep(pageStep);
+        slider->setValue(value);
+        return slider;
+    };
+    const auto wrapCheckBox = [](QCheckBox* checkbox) {
+        auto* row = new QWidget();
+        auto* layout = new QHBoxLayout(row);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(8);
+        auto* label = new CheckBoxLabel(checkbox);
+        checkbox->setText(QString());
+        layout->addWidget(checkbox, 0, Qt::AlignTop);
+        layout->addWidget(label, 1);
+        return row;
+    };
+    const auto labelFor = [](const QString& text, QWidget* buddy) {
+        auto* label = new QLabel(text);
+        label->setBuddy(buddy);
+        new EnabledMirror(buddy, label);
         return label;
     };
 
-    settingsSearchEdit_ = new QLineEdit();
-    settingsSearchEdit_->setPlaceholderText(QStringLiteral("Search settings..."));
-    settingsSearchEdit_->setClearButtonEnabled(true);
-    settingsSearchEdit_->setAccessibleName(QStringLiteral("Search Advanced settings"));
-    settingsSearchEdit_->setAccessibleDescription(
-        QStringLiteral("Type part of a setting name to reveal and focus matching controls."));
-    settingsSearchEdit_->addAction(QIcon(QStringLiteral(":/okuflow/icons/search.svg")),
-                                   QLineEdit::LeadingPosition);
-    advancedLayout->addWidget(settingsSearchEdit_);
-    // Visible counterpart of the match count the search field already
-    // reports through its accessible description, so it stays silent.
-    settingsSearchStatusLabel_ = new QLabel();
-    settingsSearchStatusLabel_->setObjectName(QStringLiteral("scopeSubtitle"));
-    settingsSearchStatusLabel_->setVisible(false);
-    advancedLayout->addWidget(settingsSearchStatusLabel_);
+    // ---- Image tab: pinned header -------------------------------------
+    imageTabPage_ = new QWidget();
+    imageTabPage_->setObjectName(QStringLiteral("imageTabPage"));
+    auto* imageTabLayout = new QVBoxLayout(imageTabPage_);
+    imageTabLayout->setContentsMargins(10, 8, 10, 0);
+    imageTabLayout->setSpacing(6);
 
-    applicationSection_ =
-        new CollapsibleSection(QStringLiteral("Application"));
-    applicationSection_->setPersistKey(QStringLiteral("application"));
-    auto* applicationLayout =
-        qobject_cast<QVBoxLayout*>(
-            applicationSection_->contentWidget()->layout());
-    auto* languageLabel =
-        new QLabel(QStringLiteral("Application language"));
-    applicationLanguageCombo_ = new WheelSafeComboBox();
-    applicationLanguageCombo_->setIconSize(QSize(30, 20));
-    for (AppLanguage language : SupportedAppLanguages()) {
-        applicationLanguageCombo_->addItem(
-            QIcon(AppLanguageFlagResource(language)),
-            AppLanguageNativeName(language),
-            AppLanguageCode(language));
+    imageSearchEdit_ = makeSearchEdit(QStringLiteral("imageSettingsSearch"),
+                                      QStringLiteral("Search image settings…"),
+                                      QStringLiteral("Search image settings"));
+    imageSearchStatusLabel_ = makeSearchStatus(QStringLiteral("imageSettingsSearchStatus"));
+    imageTabLayout->addWidget(imageSearchEdit_);
+    imageTabLayout->addWidget(imageSearchStatusLabel_);
+
+    // The mode being edited is the key fact for Save / Reset, so it reads as
+    // a heading under a small caption rather than as a plain status line.
+    auto* currentModeCaption = new QLabel(QStringLiteral("Current quick mode"));
+    currentModeCaption->setObjectName(QStringLiteral("currentModeCaption"));
+    currentModeCaption->setWordWrap(true);
+    imageTabLayout->addWidget(currentModeCaption);
+    currentModeSummaryLabel_ = new QLabel();
+    currentModeSummaryLabel_->setObjectName(QStringLiteral("currentModeSummaryLabel"));
+    currentModeSummaryLabel_->setWordWrap(true);
+    currentModeCaption->setBuddy(currentModeSummaryLabel_);
+    imageTabLayout->addWidget(currentModeSummaryLabel_);
+    imageTabLayout->addWidget(
+        makeScopeSubtitle(QStringLiteral("Changes apply now. Save to keep them.")));
+
+    // The old all-or-nothing Advanced Tuning gate is retained as a hidden
+    // compatibility accessor while individual sections own disclosure.
+    controlsToggleButton_ = new QToolButton(imageTabPage_);
+    controlsToggleButton_->setText("Advanced Tuning");
+    controlsToggleButton_->setCheckable(true);
+    controlsToggleButton_->setChecked(true);
+    controlsToggleButton_->hide();
+
+    promotePresetButton_ = new QPushButton(QStringLiteral("Save as Quick Mode"));
+    promotePresetButton_->setObjectName(QStringLiteral("promotePresetButton"));
+    promotePresetButton_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    resetProfileButton_ = new QPushButton(QStringLiteral("Reset Mode"));
+    resetProfileButton_->setObjectName(QStringLiteral("resetProfileButton"));
+    resetProfileButton_->setToolTip(QStringLiteral(
+        "Resets this mode's image and assistant settings. Settings on the "
+        "Settings tab are not changed."));
+    resetProfileButton_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    // Side by side when there is room; stacked on a narrow inspector so
+    // neither label is clipped (see UpdateProfileButtonLayout).
+    profileButtonsLayout_ = new QBoxLayout(QBoxLayout::LeftToRight);
+    profileButtonsLayout_->setSpacing(6);
+    profileButtonsLayout_->addWidget(promotePresetButton_);
+    profileButtonsLayout_->addWidget(resetProfileButton_);
+    imageTabLayout->addLayout(profileButtonsLayout_);
+    connect(resetProfileButton_, &QPushButton::clicked,
+            this, &MainWindow::resetCurrentProfileRequested);
+
+    controlsContainer_ = new QWidget();
+    controlsContainer_->setObjectName(QStringLiteral("imageSettingsContent"));
+    auto* controlsLayout = new QVBoxLayout(controlsContainer_);
+    controlsLayout->setContentsMargins(0, 4, 0, 12);
+    controlsLayout->setSpacing(8);
+
+    // ---- 1. Zoom -------------------------------------------------------
+    magnificationSection_ =
+        makeSection(QStringLiteral("Zoom"), QStringLiteral("magnification"), true);
+    auto* magnificationLayout = sectionLayout(magnificationSection_);
+    controlsLayout->addWidget(magnificationSection_);
+
+    zoomCheckbox_ = new QCheckBox("Zoom");
+    zoomSlider_ = makeSlider(kZoomSliderScale, kZoomSliderMaxMultiplier * kZoomSliderScale,
+                             kZoomSliderScale, 10);
+    zoomSlider_->setEnabled(false);
+    magnificationLayout->addWidget(new ResponsiveSliderRow(
+        zoomCheckbox_, zoomSlider_, addSliderReadout(zoomSlider_, [](int value) {
+            return FormatScaled(value, kZoomSliderScale, 2) + QStringLiteral("×");
+        })));
+
+    zoomCenterXSlider_ = makeSlider(0, kZoomFocusSliderScale, kZoomFocusSliderScale / 2, 5);
+    magnificationLayout->addWidget(new ResponsiveSliderRow(
+        labelFor(QStringLiteral("Horizontal position"), zoomCenterXSlider_),
+        zoomCenterXSlider_, addSliderReadout(zoomCenterXSlider_, percent)));
+    zoomCenterYSlider_ = makeSlider(0, kZoomFocusSliderScale, kZoomFocusSliderScale / 2, 5);
+    magnificationLayout->addWidget(new ResponsiveSliderRow(
+        labelFor(QStringLiteral("Vertical position"), zoomCenterYSlider_),
+        zoomCenterYSlider_, addSliderReadout(zoomCenterYSlider_, percent)));
+
+    focusMarkerCheckbox_ = new QCheckBox("Show Focus Point");
+    focusMarkerCheckbox_->setChecked(false);
+    focusMarkerCheckbox_->setToolTip("Overlay a red marker at the current zoom focus");
+    magnificationLayout->addWidget(focusMarkerCheckbox_);
+
+    // ---- 2. Colors and contrast ----------------------------------------
+    readabilitySection_ = makeSection(QStringLiteral("Colors and contrast"),
+                                      QStringLiteral("readability"), true);
+    auto* readabilityLayout = sectionLayout(readabilitySection_);
+    controlsLayout->addWidget(readabilitySection_);
+
+    displayColorPicker_ = new ColorSchemePicker();
+    auto* displayColorLabel = new QLabel("Display colors");
+    displayColorLabel->setBuddy(displayColorPicker_);
+    readabilityLayout->addWidget(displayColorLabel);
+    readabilityLayout->addWidget(displayColorPicker_);
+    contrastSlider_ = makeSlider(25, 400, 100, 25);
+    readabilityLayout->addWidget(new ResponsiveSliderRow(
+        labelFor(QStringLiteral("Contrast"), contrastSlider_), contrastSlider_,
+        addSliderReadout(contrastSlider_, percent)));
+    brightnessSlider_ = makeSlider(-100, 100, 0, 10);
+    readabilityLayout->addWidget(new ResponsiveSliderRow(
+        labelFor(QStringLiteral("Brightness"), brightnessSlider_), brightnessSlider_,
+        addSliderReadout(brightnessSlider_, FormatSigned)));
+
+    autoContrastCheckbox_ = new QCheckBox("Auto Contrast");
+    autoContrastStrengthSlider_ = makeSlider(0, 100, 70, 5);
+    autoContrastStrengthSlider_->setEnabled(false);
+    readabilityLayout->addWidget(new ResponsiveSliderRow(
+        autoContrastCheckbox_, autoContrastStrengthSlider_,
+        addSliderReadout(autoContrastStrengthSlider_, percent)));
+
+    bwCheckbox_ = new QCheckBox("Black && White");
+    bwSlider_ = makeSlider(0, 255, 128, 8);
+    bwSlider_->setEnabled(false);
+    readabilityLayout->addWidget(new ResponsiveSliderRow(
+        bwCheckbox_, bwSlider_, addSliderReadout(
+            bwSlider_, [](int value) { return QLocale().toString(value); })));
+
+    // ---- 3. Text clarity (master switch + nested expert controls) -------
+    textClaritySection_ = makeSection(QStringLiteral("Text clarity"),
+                                      QStringLiteral("textClarity"), true);
+    auto* textClaritySectionLayout = sectionLayout(textClaritySection_);
+    controlsLayout->addWidget(textClaritySection_);
+    textClarityCheckbox_ = new QCheckBox("Text Clarity");
+    textClaritySectionLayout->addWidget(textClarityCheckbox_);
+
+    textClarityFineSection_ = makeSection(QStringLiteral("Fine-tune text"),
+                                          QStringLiteral("textClarityFine"), false);
+    auto* textClarityLayout = sectionLayout(textClarityFineSection_);
+    auto* refinements = new QWidget();
+    refinements->setObjectName(QStringLiteral("textClarityRefinements"));
+    refinements->setStyleSheet(QStringLiteral(
+        "QWidget#textClarityRefinements { border-left: 2px solid palette(mid); }"));
+    auto* refinementsLayout = new QVBoxLayout(refinements);
+    refinementsLayout->setContentsMargins(12, 4, 0, 4);
+    textClarityHelp_ = new QLabel(QStringLiteral(
+        "Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on."));
+    textClarityHelp_->setObjectName(QStringLiteral("textClarityHelp"));
+    textClarityHelp_->setWordWrap(true);
+    textClarityHelp_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    refinementsLayout->addWidget(textClarityHelp_);
+    refinementsLayout->addWidget(textClarityFineSection_);
+    textClaritySectionLayout->addWidget(refinements);
+    connect(textClarityCheckbox_, &QCheckBox::toggled, this,
+            &MainWindow::refreshTextClarityUi);
+
+    auto addTextSliderRow = [textClarityLayout, &addSliderReadout](
+                                QCheckBox*& checkbox,
+                                const QString& label,
+                                QSlider*& slider,
+                                int minimum, int maximum, int value,
+                                std::function<QString(int)> format) {
+        checkbox = new QCheckBox(label);
+        slider = new WheelSafeSlider(Qt::Horizontal);
+        slider->setRange(minimum, maximum);
+        slider->setPageStep(std::max(1, (maximum - minimum) / 10));
+        slider->setValue(value);
+        textClarityLayout->addWidget(new ResponsiveSliderRow(
+            checkbox, slider, addSliderReadout(slider, std::move(format))));
+    };
+    addTextSliderRow(backgroundFlattenCheckbox_, "Flatten Background",
+                     backgroundFlattenStrengthSlider_, 0, 100, 80, percent);
+    addTextSliderRow(adaptiveBinarizationCheckbox_, "Adaptive Text",
+                     sauvolaStrengthSlider_, 10, 50, 28,
+                     [](int value) { return FormatScaled(value, 100.0, 2); });
+
+    binarizationSoftnessSlider_ = makeSlider(0, 25, 6, 3);
+    textClarityLayout->addWidget(new ResponsiveSliderRow(
+        labelFor(QStringLiteral("Edge softness"), binarizationSoftnessSlider_),
+        binarizationSoftnessSlider_,
+        addSliderReadout(binarizationSoftnessSlider_, [](int value) {
+            return FormatScaled(value, 100.0, 2);
+        })));
+
+    textPolarityCombo_ = new WheelSafeComboBox();
+    textPolarityCombo_->addItems({"Auto", "Dark on light", "Light on dark"});
+    textClarityLayout->addWidget(labelFor(QStringLiteral("Text polarity"), textPolarityCombo_));
+    textClarityLayout->addWidget(textPolarityCombo_);
+
+    strokeWeightSlider_ = makeSlider(-3, 3, 0, 1);
+    strokeWeightSlider_->setTickInterval(1);
+    strokeWeightSlider_->setTickPosition(QSlider::TicksBelow);
+    textClarityLayout->addWidget(new ResponsiveSliderRow(
+        labelFor(QStringLiteral("Stroke weight"), strokeWeightSlider_),
+        strokeWeightSlider_, addSliderReadout(strokeWeightSlider_, FormatSigned)));
+
+    addTextSliderRow(smartSharpenCheckbox_, "Smart Sharpen",
+                     smartSharpenStrengthSlider_, 0, 100, 45, percent);
+    addTextSliderRow(claheCheckbox_, "Local Contrast (CLAHE)",
+                     claheClipLimitSlider_, 10, 80, 20,
+                     [](int value) { return FormatScaled(value, 10.0, 1); });
+    twoColorTextCheckbox_ = new QCheckBox("Two-Color Reading");
+    textClarityLayout->addWidget(twoColorTextCheckbox_);
+    addTextSliderRow(textHysteresisCheckbox_, "Steady Text Edges",
+                     textHysteresisStrengthSlider_, 0, 25, 8,
+                     [](int value) { return FormatScaled(value, 100.0, 2); });
+    selectiveSharpenCheckbox_ = new QCheckBox("Sharpen Text Only");
+    textClarityLayout->addWidget(selectiveSharpenCheckbox_);
+    addTextSliderRow(focusDetectionCheckbox_, "Warn When Out of Focus",
+                     focusThresholdSlider_, 1, 100, 12,
+                     [](int value) { return FormatScaled(value, 1000.0, 3); });
+    addTextSliderRow(glareSuppressionCheckbox_, "Suppress Glare",
+                     glareSuppressionStrengthSlider_, 0, 100, 50, percent);
+
+    refreshTextClarityUi();
+
+    // ---- 4. Steady image -----------------------------------------------
+    stabilitySection_ = makeSection(QStringLiteral("Steady image"),
+                                    QStringLiteral("stability"), false);
+    auto* stabilityLayout = sectionLayout(stabilitySection_);
+    controlsLayout->addWidget(stabilitySection_);
+    stabilizationCheckbox_ = new QCheckBox("Stabilize Image");
+    stabilizationCheckbox_->setToolTip(
+        "Lock the mounted camera view using full-strength CUDA stabilization");
+    stabilityLayout->addWidget(stabilizationCheckbox_);
+    bumpHoldCheckbox_ = new QCheckBox("Extra Stable (hold on shake)");
+    bumpHoldCheckbox_->setChecked(false);
+    bumpHoldCheckbox_->setEnabled(false);
+    bumpHoldCheckbox_->setToolTip(
+        "Freeze on the last sharp frame during a bump, then smoothly return to live video");
+    stabilityLayout->addWidget(wrapCheckBox(bumpHoldCheckbox_));
+    temporalSmoothCheckbox_ = new QCheckBox("Temporal Smooth");
+    temporalSmoothCheckbox_->setChecked(false);
+    temporalSmoothSlider_ = makeSlider(5, 100, 25, 5);
+    temporalSmoothSlider_->setEnabled(false);
+    temporalSmoothValueLabel_ = new QLabel(QLocale().toString(0.25, 'f', 2));
+    stabilityLayout->addWidget(new ResponsiveSliderRow(
+        temporalSmoothCheckbox_, temporalSmoothSlider_,
+        adoptAppReadout(temporalSmoothValueLabel_, temporalSmoothSlider_,
+                        QStringLiteral("Temporal blend"),
+                        [](int value) { return FormatScaled(value, 100.0, 2); })));
+
+    // ---- 5. Straighten screen ------------------------------------------
+    screenFixSection_ = makeSection(QStringLiteral("Straighten screen"),
+                                    QStringLiteral("screenFix"), false);
+    auto* screenFixLayout = sectionLayout(screenFixSection_);
+    controlsLayout->addWidget(screenFixSection_);
+    keystoneCheckbox_ = new QCheckBox("Straighten Screen (Keystone)");
+    screenFixLayout->addWidget(wrapCheckBox(keystoneCheckbox_));
+
+    advancedKeystoneBackButton_ = new QPushButton("Back");
+    advancedKeystonePauseButton_ = new QPushButton("Stop");
+    advancedKeystoneNextButton_ = new QPushButton("Next");
+    advancedKeystoneBackButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/step-back.svg")));
+    advancedKeystonePauseButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/pause.svg")));
+    advancedKeystoneNextButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/step-forward.svg")));
+    for (auto* button : {advancedKeystoneBackButton_, advancedKeystonePauseButton_, advancedKeystoneNextButton_}) {
+        button->setIconSize(QSize(22, 22));
     }
-    applicationLanguageCombo_->setAccessibleName(
-        QStringLiteral("Application language"));
-    applicationLanguageCombo_->setAccessibleDescription(
-        QStringLiteral(
-            "Changes OkuFlow's interface language immediately. "
-            "An assistant request already in progress keeps its original "
-            "response language."));
-    applicationLanguageCombo_->setToolTip(
-        QStringLiteral(
-            "Changes the interface immediately. In-progress assistant "
-            "requests use the language selected when they started."));
-    SetComboItemsAreData(applicationLanguageCombo_);
-    languageLabel->setBuddy(applicationLanguageCombo_);
-    applicationLayout->addWidget(languageLabel);
-    applicationLayout->addWidget(applicationLanguageCombo_);
-    advancedLayout->addWidget(applicationSection_);
-    connect(applicationLanguageCombo_,
-            &QComboBox::currentIndexChanged,
-            this,
-            [this](int index) {
-                if (index >= 0) {
-                    emit applicationLanguageRequested(
-                        applicationLanguageCombo_->itemData(index).toString());
-                }
-            });
+    advancedKeystoneTrackingRow_ = new TrackingButtonRow(QStringLiteral("Correction tracking:"),
+        {advancedKeystoneBackButton_, advancedKeystonePauseButton_, advancedKeystoneNextButton_});
+    advancedKeystoneTrackingRow_->setEnabled(false);
+    screenFixLayout->addWidget(advancedKeystoneTrackingRow_);
 
-    deviceSection_ = new CollapsibleSection(QStringLiteral("Device"));
-    deviceSection_->setPersistKey(QStringLiteral("device"));
-    auto* deviceLayout =
-        qobject_cast<QVBoxLayout*>(deviceSection_->contentWidget()->layout());
-    auto* deviceScopeLabel = new QLabel(QStringLiteral("Shared by every profile"));
-    deviceScopeLabel->setObjectName(QStringLiteral("scopeSubtitle"));
-    deviceLayout->addWidget(deviceScopeLabel);
-    auto* cameraLabel = new QLabel("Camera");
+    // ---- 6. Sharpness --------------------------------------------------
+    sharpeningSection_ = makeSection(QStringLiteral("Sharpness"),
+                                     QStringLiteral("sharpening"), false);
+    auto* sharpeningLayout = sectionLayout(sharpeningSection_);
+    controlsLayout->addWidget(sharpeningSection_);
+    spatialSharpenCheckbox_ = new QCheckBox("Spatial Sharpen");
+    spatialSharpenCheckbox_->setChecked(false);
+    sharpeningLayout->addWidget(spatialSharpenCheckbox_);
+    spatialBackendCombo_ = new WheelSafeComboBox();
+    spatialBackendCombo_->addItem("AMD FSR 1.0 (EASU + RCAS)");
+    spatialBackendCombo_->addItem("NVIDIA Image Scaling (default)");
+    spatialBackendCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    spatialBackendCombo_->setMinimumContentsLength(12);
+    spatialBackendCombo_->setEnabled(false);
+    sharpeningLayout->addWidget(labelFor(QStringLiteral("Backend"), spatialBackendCombo_));
+    sharpeningLayout->addWidget(spatialBackendCombo_);
+    spatialSharpnessSlider_ = makeSlider(0, 100, 25, 5);
+    spatialSharpnessSlider_->setEnabled(false);
+    spatialSharpnessValueLabel_ = new QLabel(QLocale().toString(0.25, 'f', 2));
+    sharpeningLayout->addWidget(new ResponsiveSliderRow(
+        labelFor(QStringLiteral("Sharpness"), spatialSharpnessSlider_),
+        spatialSharpnessSlider_,
+        adoptAppReadout(spatialSharpnessValueLabel_, spatialSharpnessSlider_,
+                        QStringLiteral("Sharpness"),
+                        [](int value) { return FormatScaled(value, 100.0, 2); })));
+
+    mlTextSuperResolutionCheckbox_ = new QCheckBox("NVIDIA Super Resolution");
+    mlTextSuperResolutionStrengthSlider_ = makeSlider(0, 100, 65, 10);
+    sharpeningLayout->addWidget(new ResponsiveSliderRow(
+        mlTextSuperResolutionCheckbox_, mlTextSuperResolutionStrengthSlider_,
+        addSliderReadout(mlTextSuperResolutionStrengthSlider_, percent)));
+    mlTextSuperResolutionUltra1440pCheckbox_ =
+        new QCheckBox(QStringLiteral("Ultra quality (full frame, up to 1440p)"));
+    mlTextSuperResolutionUltra1440pCheckbox_->setToolTip(
+        QStringLiteral("Build a separate high-resolution AI scene from the full "
+                       "camera frame, then apply viewport zoom and cropping. "
+                       "720p cameras upscale 2x to 1440p; 1080p cameras upscale "
+                       "4/3x to 1440p; 1440p cameras remain native."));
+    sharpeningLayout->addWidget(wrapCheckBox(mlTextSuperResolutionUltra1440pCheckbox_));
+    mlTextSuperResolutionPrefer2xCheckbox_ =
+        new QCheckBox(QStringLiteral("Faster 2x mode (narrower view)"));
+    mlTextSuperResolutionPrefer2xCheckbox_->setToolTip(
+        QStringLiteral("Optional speed mode. Raises magnification to at least "
+                       "2x, narrowing the visible source crop from 960x540 to "
+                       "640x360 for a 1280x720 target. Leave off for maximum "
+                       "source detail and a wider view."));
+    sharpeningLayout->addWidget(wrapCheckBox(mlTextSuperResolutionPrefer2xCheckbox_));
+    mlTextSuperResolutionStatusLabel_ = new QLabel(QStringLiteral("Off"));
+    mlTextSuperResolutionStatusLabel_->setObjectName(QStringLiteral("featureStatusLabel"));
+    mlTextSuperResolutionStatusLabel_->setWordWrap(true);
+    mlTextSuperResolutionStatusLabel_->setMinimumWidth(0);
+    mlTextSuperResolutionStatusLabel_->setSizePolicy(QSizePolicy::Ignored,
+                                                     QSizePolicy::Preferred);
+    mlTextSuperResolutionStatusLabel_->setAccessibleName(
+        QStringLiteral("NVIDIA Super Resolution status"));
+    sharpeningLayout->addWidget(mlTextSuperResolutionStatusLabel_);
+    mlTextSuperResolutionOverrideCheckbox_ =
+        new QCheckBox(QStringLiteral("Ignore 24 ms performance limit"));
+    mlTextSuperResolutionOverrideCheckbox_->setVisible(false);
+    mlTextSuperResolutionOverrideCheckbox_->setAccessibleName(
+        QStringLiteral("Ignore NVIDIA Super Resolution performance limit"));
+    mlTextSuperResolutionOverrideCheckbox_->setAccessibleDescription(
+        QStringLiteral("Keep NVIDIA Super Resolution active when its measured "
+                       "latency exceeds 24 milliseconds. This can reduce camera frame rate."));
+    mlTextSuperResolutionOverrideCheckbox_->setToolTip(
+        QStringLiteral("Keep SuperRes active even when its average GPU time exceeds 24 ms"));
+    connect(mlTextSuperResolutionOverrideCheckbox_,
+            &QCheckBox::toggled,
+            this,
+            &MainWindow::superResPerformanceOverrideChanged);
+    sharpeningLayout->addWidget(mlTextSuperResolutionOverrideCheckbox_);
+#if OKUFLOW_ENABLE_TEXT_SR
+    mlTextSuperResolutionCheckbox_->setToolTip(
+        "Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically");
+    mlTextSuperResolutionStrengthSlider_->setToolTip(
+        "Set the NVIDIA SuperRes enhancement strength for this preset");
+#else
+    mlTextSuperResolutionCheckbox_->setEnabled(false);
+    mlTextSuperResolutionStrengthSlider_->setEnabled(false);
+    mlTextSuperResolutionUltra1440pCheckbox_->setEnabled(false);
+    mlTextSuperResolutionPrefer2xCheckbox_->setEnabled(false);
+    mlTextSuperResolutionCheckbox_->setToolTip(
+        "Unavailable in this build; requires OKUFLOW_ENABLE_TEXT_SR");
+#endif
+
+    blurCheckbox_ = new QCheckBox("Soften image (blur)");
+    sharpeningLayout->addWidget(blurCheckbox_);
+    blurSigmaSlider_ = makeSlider(kBlurSigmaSliderMin, kBlurSigmaSliderMax, 10, 2);
+    blurSigmaSlider_->setSingleStep(1);
+    blurSigmaSlider_->setEnabled(false);
+    blurSigmaValueLabel_ = new QLabel(QLocale().toString(1.0, 'f', 1));
+    sharpeningLayout->addWidget(new ResponsiveSliderRow(
+        labelFor(QStringLiteral("Sigma"), blurSigmaSlider_), blurSigmaSlider_,
+        adoptAppReadout(blurSigmaValueLabel_, blurSigmaSlider_,
+                        QStringLiteral("Blur sigma"),
+                        [](int value) { return FormatScaled(value, 10.0, 1); })));
+    blurRadiusSlider_ = makeSlider(kSupportedBlurRadii.front(), kSupportedBlurRadii.back(), 3, 1);
+    blurRadiusSlider_->setSingleStep(1);
+    blurRadiusSlider_->setTickInterval(1);
+    blurRadiusSlider_->setTickPosition(QSlider::TicksBelow);
+    blurRadiusSlider_->setEnabled(false);
+    blurRadiusValueLabel_ = new QLabel(QLocale().toString(3));
+    sharpeningLayout->addWidget(new ResponsiveSliderRow(
+        labelFor(QStringLiteral("Radius"), blurRadiusSlider_), blurRadiusSlider_,
+        adoptAppReadout(blurRadiusValueLabel_, blurRadiusSlider_,
+                        QStringLiteral("Blur radius"),
+                        [](int value) { return QLocale().toString(value); })));
+
+    // ---- 7. Assistant behavior -----------------------------------------
+    assistantSection_ = makeSection(QStringLiteral("Assistant behavior"),
+                                    QStringLiteral("assistant"), false);
+    auto* assistantSectionLayout = sectionLayout(assistantSection_);
+    controlsLayout->addWidget(assistantSection_);
+    vlmAssistCheckbox_ = new QCheckBox("Scene Explain");
+    assistiveOverlayCheckbox_ = new QCheckBox("Assistive Overlay");
+    assistiveOverlayCheckbox_->setChecked(true);
+    assistantSectionLayout->addWidget(vlmAssistCheckbox_);
+    assistantSectionLayout->addWidget(assistiveOverlayCheckbox_);
+
+    // ---- 8. Diagnostics ------------------------------------------------
+    diagnosticsSection_ = makeSection(QStringLiteral("Diagnostics"),
+                                      QStringLiteral("diagnostics"), false);
+    auto* diagnosticsLayout = sectionLayout(diagnosticsSection_);
+    controlsLayout->addWidget(diagnosticsSection_);
+    debugButton_ = new QPushButton("Debug View");
+    debugButton_->setCheckable(true);
+    debugButton_->setChecked(false);
+    auto* debugLayout = new QHBoxLayout();
+    debugLayout->addWidget(debugButton_);
+    debugLayout->addStretch(1);
+    diagnosticsLayout->addLayout(debugLayout);
+    auto* pipelineStatusCaption = new QLabel(QStringLiteral("Pipeline status"));
+    pipelineStatusCaption->setBuddy(processingStatusLabel_);
+    diagnosticsLayout->addWidget(pipelineStatusCaption);
+    diagnosticsLayout->addWidget(processingStatusLabel_);
+    auto* performanceCaption = new QLabel(QStringLiteral("Performance percentiles"));
+    performanceCaption->setBuddy(performanceDiagnosticsLabel_);
+    diagnosticsLayout->addWidget(performanceCaption);
+    diagnosticsLayout->addWidget(performanceDiagnosticsLabel_);
+#if OKUFLOW_ENABLE_TEXT_SR
+    maxineAttribution_ = new QLabel(QStringLiteral("SuperRes powered by NVIDIA Maxine™"));
+    maxineAttribution_->setWordWrap(true);
+    maxineAttribution_->setObjectName(QStringLiteral("vendorAttribution"));
+    maxineAttribution_->setAccessibleName(QStringLiteral("NVIDIA Maxine attribution"));
+    diagnosticsLayout->addWidget(maxineAttribution_);
+#endif
+
+    // QScrollArea expands short content to the viewport. Keep the sections
+    // packed at the top when most of them are collapsed.
+    controlsLayout->addStretch(1);
+    advancedScroll_ = makeSettingsScroll(QStringLiteral("imageSettingsScroll"),
+                                         controlsContainer_);
+    imageTabLayout->addWidget(advancedScroll_, 1);
+
+    // ---- Settings tab: pinned header -----------------------------------
+    settingsTabPage_ = new QWidget();
+    settingsTabPage_->setObjectName(QStringLiteral("settingsTabPage"));
+    auto* settingsTabLayout = new QVBoxLayout(settingsTabPage_);
+    settingsTabLayout->setContentsMargins(10, 8, 10, 0);
+    settingsTabLayout->setSpacing(6);
+    sharedSearchEdit_ = makeSearchEdit(QStringLiteral("sharedSettingsSearch"),
+                                       QStringLiteral("Search settings…"),
+                                       QStringLiteral("Search shared settings"));
+    sharedSearchStatusLabel_ = makeSearchStatus(QStringLiteral("sharedSettingsSearchStatus"));
+    settingsTabLayout->addWidget(sharedSearchEdit_);
+    settingsTabLayout->addWidget(sharedSearchStatusLabel_);
+    settingsTabLayout->addWidget(makeScopeSubtitle(
+        QStringLiteral("Shared by all modes. Not saved into quick modes.")));
+
+    sharedSettingsContent_ = new QWidget();
+    sharedSettingsContent_->setObjectName(QStringLiteral("sharedSettingsContent"));
+    auto* sharedLayout = new QVBoxLayout(sharedSettingsContent_);
+    sharedLayout->setContentsMargins(0, 4, 0, 12);
+    sharedLayout->setSpacing(8);
+
+    // ---- 1. Camera -----------------------------------------------------
+    deviceSection_ = makeSection(QStringLiteral("Camera"), QStringLiteral("device"), true);
+    auto* deviceLayout = sectionLayout(deviceSection_);
+    sharedLayout->addWidget(deviceSection_);
     cameraCombo_ = new WheelSafeComboBox();
     SetComboItemsAreData(cameraCombo_);
     cameraCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     cameraCombo_->setMinimumContentsLength(20);
+    auto* cameraLabel = new QLabel("Camera");
     cameraLabel->setBuddy(cameraCombo_);
     deviceLayout->addWidget(cameraLabel);
     deviceLayout->addWidget(cameraCombo_);
 
-    auto* rotationLabel = new QLabel("Orientation");
     rotationCombo_ = new WheelSafeComboBox();
     rotationCombo_->addItem("0°");
     rotationCombo_->addItem("90°");
@@ -630,58 +1218,43 @@ MainWindow::MainWindow()
     rotationCombo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     rotationCombo_->setEditable(false);
     rotationCombo_->setToolTip("Rotate input/output clockwise");
+    auto* rotationLabel = new QLabel("Orientation");
     rotationLabel->setBuddy(rotationCombo_);
     deviceLayout->addWidget(rotationLabel);
     deviceLayout->addWidget(rotationCombo_);
 
-    deviceMoreSection_ =
-        new CollapsibleSection(QStringLiteral("More device options"));
-    deviceMoreSection_->setPersistKey(QStringLiteral("deviceMore"));
-    deviceMoreSection_->setExpanded(false);
-    auto* deviceMoreLayout =
-        qobject_cast<QVBoxLayout*>(deviceMoreSection_->contentWidget()->layout());
+    cameraFormatCombo_ = new WheelSafeComboBox();
+    SetComboItemsAreData(cameraFormatCombo_);
+    cameraFormatCombo_->addItem(QStringLiteral("Automatic (driver's choice)"),
+                                QString());
+    cameraFormatCombo_->setToolTip(
+        QStringLiteral("Controls the live camera plus original photos and "
+                       "original video. Processed video uses the resolution above."));
+    auto* cameraFormatLabel =
+        new QLabel(QStringLiteral("Camera resolution && frame rate"));
+    cameraFormatLabel->setBuddy(cameraFormatCombo_);
+    cameraFormatNoticeLabel_ = new QLabel();
+    cameraFormatNoticeLabel_->setObjectName(QStringLiteral("formatWarningLabel"));
+    cameraFormatNoticeLabel_->setWordWrap(true);
+    cameraFormatNoticeLabel_->setVisible(false);
+    deviceLayout->addWidget(cameraFormatLabel);
+    deviceLayout->addWidget(cameraFormatCombo_);
+    deviceLayout->addWidget(cameraFormatNoticeLabel_);
 
-    auto* cameraAccelerationLabel = new QLabel(QStringLiteral("Camera acceleration"));
-    cameraAccelerationCombo_ = new WheelSafeComboBox();
-    cameraAccelerationCombo_->addItem(
-        QStringLiteral("Automatic (recommended)"), 0);
-    cameraAccelerationCombo_->addItem(
-        QStringLiteral("Always use GPU acceleration"), 1);
-    cameraAccelerationCombo_->addItem(
-        QStringLiteral("Compatibility mode"), 2);
-    cameraAccelerationCombo_->setToolTip(
-        QStringLiteral(
-            "Automatic uses hardware acceleration when the camera and driver "
-            "pass startup validation, then falls back safely if needed."));
-    cameraAccelerationCombo_->setAccessibleName(
-        QStringLiteral("Camera acceleration mode"));
-    cameraAccelerationLabel->setBuddy(cameraAccelerationCombo_);
-    deviceMoreLayout->addWidget(cameraAccelerationLabel);
-    deviceMoreLayout->addWidget(cameraAccelerationCombo_);
-
-    cameraAccelerationStatusLabel_ = new QLabel(
-        QStringLiteral("Camera acceleration has not started yet."));
-    cameraAccelerationStatusLabel_->setObjectName(QStringLiteral("scopeSubtitle"));
-    cameraAccelerationStatusLabel_->setWordWrap(true);
-    cameraAccelerationStatusLabel_->setAccessibleName(
-        QStringLiteral("Camera acceleration status"));
-    deviceMoreLayout->addWidget(cameraAccelerationStatusLabel_);
-
-    testCameraAccelerationButton_ =
-        new QPushButton(QStringLiteral("Test this camera"));
-    testCameraAccelerationButton_->setToolTip(
-        QStringLiteral(
-            "Tests GPU and compatibility capture in a separate process. "
-            "The test cannot freeze OkuFlow if a camera driver hangs."));
-    testCameraAccelerationButton_->setAccessibleName(
-        QStringLiteral("Test camera acceleration"));
-    testCameraAccelerationButton_->setAccessibleDescription(
-        QStringLiteral(
-            "Runs an isolated camera test and updates this camera's "
-            "automatic acceleration decision."));
-    deviceMoreLayout->addWidget(testCameraAccelerationButton_);
-
-    auto* viewportRateLabel = new QLabel("Viewport motion rate");
+    // ---- 2. View and navigation ----------------------------------------
+    deviceMoreSection_ = makeSection(QStringLiteral("View and navigation"),
+                                     QStringLiteral("deviceMore"), false);
+    auto* deviceMoreLayout = sectionLayout(deviceMoreSection_);
+    sharedLayout->addWidget(deviceMoreSection_);
+    viewportFitCombo_ = new WheelSafeComboBox();
+    viewportFitCombo_->addItem("Fill (crop)", 0);
+    viewportFitCombo_->addItem("Fit (show all)", 1);
+    viewportFitCombo_->setToolTip(
+        "Fill uses the full viewport without stretching; Fit preserves the entire image with bars");
+    auto* viewportFitLabel = new QLabel("Viewport framing");
+    viewportFitLabel->setBuddy(viewportFitCombo_);
+    deviceMoreLayout->addWidget(viewportFitLabel);
+    deviceMoreLayout->addWidget(viewportFitCombo_);
     viewportRateCombo_ = new WheelSafeComboBox();
     viewportRateCombo_->addItem("Auto (up to 120 FPS)", 0);
     viewportRateCombo_->addItem("60 FPS", 1);
@@ -690,27 +1263,10 @@ MainWindow::MainWindow()
     viewportRateCombo_->addItem("Match display", 4);
     viewportRateCombo_->setToolTip(
         "Controls smooth pan and zoom presentation; camera frame rate is unchanged");
+    auto* viewportRateLabel = new QLabel("Viewport motion rate");
     viewportRateLabel->setBuddy(viewportRateCombo_);
     deviceMoreLayout->addWidget(viewportRateLabel);
     deviceMoreLayout->addWidget(viewportRateCombo_);
-
-    auto* viewportFitLabel = new QLabel("Viewport framing");
-    viewportFitCombo_ = new WheelSafeComboBox();
-    viewportFitCombo_->addItem("Fill (crop)", 0);
-    viewportFitCombo_->addItem("Fit (show all)", 1);
-    viewportFitCombo_->setToolTip(
-        "Fill uses the full viewport without stretching; Fit preserves the entire image with bars");
-    viewportFitLabel->setBuddy(viewportFitCombo_);
-    deviceMoreLayout->addWidget(viewportFitLabel);
-    deviceMoreLayout->addWidget(viewportFitCombo_);
-
-    controlsToggleButton_ = new QToolButton();
-    controlsToggleButton_->setText("Advanced Tuning");
-    controlsToggleButton_->setCheckable(true);
-    controlsToggleButton_->setChecked(false);
-    controlsToggleButton_->setArrowType(Qt::RightArrow);
-    controlsToggleButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    promotePresetButton_ = new QPushButton("Save As Quick Option");
     joystickCheckbox_ = new QCheckBox("Virtual Joystick");
     joystickCheckbox_->setToolTip(
         QStringLiteral("Show an on-screen control for moving the zoomed view"));
@@ -721,20 +1277,12 @@ MainWindow::MainWindow()
     zoomWheelAccelerationCheckbox_->setToolTip(
         QStringLiteral("Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact"));
     deviceMoreLayout->addWidget(zoomWheelAccelerationCheckbox_);
-    deviceLayout->addWidget(deviceMoreSection_);
-    advancedLayout->addWidget(deviceSection_);
 
-    recordingSection_ = new CollapsibleSection(QStringLiteral("Recording"));
-    recordingSection_->setPersistKey(QStringLiteral("recording"));
-    auto* recordingLayout =
-        qobject_cast<QVBoxLayout*>(recordingSection_->contentWidget()->layout());
-    auto* recordingScopeLabel =
-        new QLabel(QStringLiteral("Shared by original and processed recordings"));
-    recordingScopeLabel->setObjectName(QStringLiteral("scopeSubtitle"));
-    recordingLayout->addWidget(recordingScopeLabel);
-
-    auto* recordingCanvasLabel =
-        new QLabel(QStringLiteral("Processed recording resolution"));
+    // ---- 3. Recording --------------------------------------------------
+    recordingSection_ = makeSection(QStringLiteral("Recording"),
+                                    QStringLiteral("recording"), false);
+    auto* recordingLayout = sectionLayout(recordingSection_);
+    sharedLayout->addWidget(recordingSection_);
     recordingCanvasCombo_ = new WheelSafeComboBox();
     recordingCanvasCombo_->addItem(
         "Match camera (recommended)",
@@ -760,29 +1308,12 @@ MainWindow::MainWindow()
     recordingCanvasCombo_->setToolTip(
         "Controls the processed MP4 resolution. The original MP4 always uses "
         "the selected camera mode resolution.");
+    auto* recordingCanvasLabel =
+        new QLabel(QStringLiteral("Processed recording resolution"));
     recordingCanvasLabel->setBuddy(recordingCanvasCombo_);
     recordingLayout->addWidget(recordingCanvasLabel);
     recordingLayout->addWidget(recordingCanvasCombo_);
 
-    auto* cameraFormatLabel =
-        new QLabel(QStringLiteral("Camera and original recording resolution && frame rate"));
-    cameraFormatCombo_ = new WheelSafeComboBox();
-    SetComboItemsAreData(cameraFormatCombo_);
-    cameraFormatCombo_->addItem(QStringLiteral("Automatic (driver's choice)"),
-                                QString());
-    cameraFormatCombo_->setToolTip(
-        QStringLiteral("Controls the live camera plus original photos and "
-                       "original video. Processed video uses the resolution above."));
-    cameraFormatLabel->setBuddy(cameraFormatCombo_);
-    cameraFormatNoticeLabel_ = new QLabel();
-    cameraFormatNoticeLabel_->setObjectName(QStringLiteral("formatWarningLabel"));
-    cameraFormatNoticeLabel_->setWordWrap(true);
-    cameraFormatNoticeLabel_->setVisible(false);
-    recordingLayout->addWidget(cameraFormatLabel);
-    recordingLayout->addWidget(cameraFormatCombo_);
-    recordingLayout->addWidget(cameraFormatNoticeLabel_);
-
-    auto* microphoneLabel = new QLabel(QStringLiteral("Microphone"));
     microphoneCombo_ = new WheelSafeComboBox();
     SetComboItemsAreData(microphoneCombo_);
     microphoneCombo_->addItem(
@@ -792,6 +1323,7 @@ MainWindow::MainWindow()
         QStringLiteral(
             "Select sound for both original and processed video recordings. "
             "The microphone is used only while recording."));
+    auto* microphoneLabel = new QLabel(QStringLiteral("Microphone"));
     microphoneLabel->setBuddy(microphoneCombo_);
     recordingLayout->addWidget(microphoneLabel);
     recordingLayout->addWidget(microphoneCombo_);
@@ -821,560 +1353,144 @@ MainWindow::MainWindow()
     transcriptionQuotaLabel_->setWordWrap(true);
     transcriptionQuotaLabel_->setVisible(false);
     recordingLayout->addWidget(transcriptionQuotaLabel_);
-    advancedLayout->addWidget(recordingSection_);
 
-    advancedLayout->addWidget(makeSectionLabel("Profile"));
-    auto* profileScopeLabel =
-        new QLabel(QStringLiteral("Saved into the selected quick option"));
-    profileScopeLabel->setObjectName(QStringLiteral("scopeSubtitle"));
-    advancedLayout->addWidget(profileScopeLabel);
-    auto* advancedHeaderLayout = new QVBoxLayout();
-    advancedHeaderLayout->setSpacing(6);
-    controlsToggleButton_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    promotePresetButton_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    resetProfileButton_ = new QPushButton(QStringLiteral("Reset Tuning"));
-    resetProfileButton_->setToolTip(
-        QStringLiteral("Reset profile-owned image and assistive tuning to defaults"));
-    resetProfileButton_->setAccessibleName(QStringLiteral("Reset current profile tuning"));
-    resetProfileButton_->setAccessibleDescription(
-        QStringLiteral("Reset profile-owned settings while keeping the camera, orientation, "
-                       "viewport rate, framing, and virtual joystick unchanged"));
-    resetProfileButton_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    advancedHeaderLayout->addWidget(controlsToggleButton_);
-    advancedHeaderLayout->addWidget(promotePresetButton_);
-    advancedHeaderLayout->addWidget(resetProfileButton_);
-    advancedLayout->addLayout(advancedHeaderLayout);
-    connect(resetProfileButton_, &QPushButton::clicked,
-            this, &MainWindow::resetCurrentProfileRequested);
-
-    controlsContainer_ = new QWidget();
-    auto* controlsLayout = new QVBoxLayout(controlsContainer_);
-    controlsLayout->setContentsMargins(0, 0, 0, 12);
-    controlsLayout->setSpacing(8);
-
-    magnificationSection_ = new CollapsibleSection(QStringLiteral("Magnification"));
-    magnificationSection_->setPersistKey(QStringLiteral("magnification"));
-    auto* magnificationLayout =
-        qobject_cast<QVBoxLayout*>(magnificationSection_->contentWidget()->layout());
-    controlsLayout->addWidget(magnificationSection_);
-
-    readabilitySection_ = new CollapsibleSection(QStringLiteral("Readability"));
-    readabilitySection_->setPersistKey(QStringLiteral("readability"));
-    auto* readabilityLayout =
-        qobject_cast<QVBoxLayout*>(readabilitySection_->contentWidget()->layout());
-    controlsLayout->addWidget(readabilitySection_);
-
-    // Every inspector slider shows its value in display units next to it.
-    const auto addSliderReadout = [this](QSlider* slider,
-                                         std::function<QString(int)> format) {
-        auto* readout = new QLabel();
-        readout->setObjectName(QStringLiteral("sliderValueLabel"));
-        readout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        readout->setMinimumWidth(64);
-        new EnabledMirror(slider, readout);
-        const auto refresh = [readout, slider, format]() {
-            readout->setText(format(slider->value()));
-        };
-        connect(slider, &QSlider::valueChanged, readout, refresh);
-        refresh();
-        sliderReadoutRefreshers_.push_back(refresh);
-        return readout;
-    };
-    const auto percent = [](int value) { return FormatPercent(value); };
-
-    bwCheckbox_ = new QCheckBox("Black && White");
-    bwSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    bwSlider_->setRange(0, 255);
-    bwSlider_->setPageStep(8);
-    bwSlider_->setValue(128);
-    bwSlider_->setEnabled(false);
-    readabilityLayout->addWidget(new ResponsiveSliderRow(
-        bwCheckbox_, bwSlider_, addSliderReadout(
-            bwSlider_, [](int value) { return QLocale().toString(value); })));
-
-    zoomCheckbox_ = new QCheckBox("Zoom");
-    zoomSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    zoomSlider_->setRange(kZoomSliderScale, kZoomSliderMaxMultiplier * kZoomSliderScale);
-    zoomSlider_->setPageStep(10);
-    zoomSlider_->setValue(kZoomSliderScale);
-    zoomSlider_->setEnabled(false);
-    magnificationLayout->addWidget(new ResponsiveSliderRow(
-        zoomCheckbox_, zoomSlider_, addSliderReadout(zoomSlider_, [](int value) {
-            return FormatScaled(value, kZoomSliderScale, 2) + QStringLiteral("×");
-        })));
-
-    auto* blurLayout = new QVBoxLayout();
-    blurLayout->setSpacing(8);
-    blurCheckbox_ = new QCheckBox("Gaussian Blur");
-    blurSigmaSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    blurSigmaSlider_->setRange(kBlurSigmaSliderMin, kBlurSigmaSliderMax);
-    blurSigmaSlider_->setPageStep(2);
-    blurSigmaSlider_->setSingleStep(1);
-    blurSigmaSlider_->setValue(10);
-    blurSigmaSlider_->setEnabled(false);
-    blurSigmaValueLabel_ = new QLabel("1.0");
-    blurSigmaValueLabel_->setMinimumWidth(40);
-
-    blurRadiusSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    blurRadiusSlider_->setRange(kSupportedBlurRadii.front(), kSupportedBlurRadii.back());
-    blurRadiusSlider_->setPageStep(1);
-    blurRadiusSlider_->setSingleStep(1);
-    blurRadiusSlider_->setTickInterval(1);
-    blurRadiusSlider_->setTickPosition(QSlider::TicksBelow);
-    blurRadiusSlider_->setValue(3);
-    blurRadiusSlider_->setEnabled(false);
-    blurRadiusValueLabel_ = new QLabel("3");
-    blurRadiusValueLabel_->setMinimumWidth(40);
-
-    blurLayout->addWidget(blurCheckbox_);
-    auto* blurSigmaLayout = new QHBoxLayout();
-    blurSigmaLayout->addWidget(new QLabel("Sigma"));
-    blurSigmaLayout->addWidget(blurSigmaSlider_, 1);
-    blurSigmaLayout->addWidget(blurSigmaValueLabel_);
-    blurLayout->addLayout(blurSigmaLayout);
-    auto* blurRadiusLayout = new QHBoxLayout();
-    blurRadiusLayout->addWidget(new QLabel("Radius"));
-    blurRadiusLayout->addWidget(blurRadiusSlider_, 1);
-    blurRadiusLayout->addWidget(blurRadiusValueLabel_);
-    blurLayout->addLayout(blurRadiusLayout);
-    readabilityLayout->addLayout(blurLayout);
-
-    stabilitySection_ = new CollapsibleSection(QStringLiteral("Stability"));
-    stabilitySection_->setPersistKey(QStringLiteral("stability"));
-    auto* stabilityLayout =
-        qobject_cast<QVBoxLayout*>(stabilitySection_->contentWidget()->layout());
-    controlsLayout->addWidget(stabilitySection_);
-    auto* temporalLayout = new QHBoxLayout();
-    temporalLayout->setSpacing(8);
-    temporalSmoothCheckbox_ = new QCheckBox("Temporal Smooth");
-    temporalSmoothCheckbox_->setChecked(false);
-    temporalSmoothSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    temporalSmoothSlider_->setRange(5, 100);
-    temporalSmoothSlider_->setPageStep(5);
-    temporalSmoothSlider_->setValue(25);
-    temporalSmoothSlider_->setEnabled(false);
-    temporalSmoothValueLabel_ = new QLabel("0.25");
-    temporalSmoothValueLabel_->setMinimumWidth(40);
-    temporalLayout->addWidget(temporalSmoothCheckbox_);
-    temporalLayout->addSpacing(12);
-    temporalLayout->addWidget(new QLabel("Blend:"));
-    temporalLayout->addWidget(temporalSmoothSlider_, 1);
-    temporalLayout->addWidget(temporalSmoothValueLabel_);
-    stabilityLayout->addLayout(temporalLayout);
-
-    auto* stabilizationLayout = new QHBoxLayout();
-    stabilizationLayout->setSpacing(8);
-    stabilizationCheckbox_ = new QCheckBox("Stabilize Image");
-    stabilizationCheckbox_->setToolTip(
-        "Lock the mounted camera view using full-strength CUDA stabilization");
-    stabilizationLayout->addWidget(stabilizationCheckbox_);
-    stabilizationLayout->addStretch(1);
-    stabilityLayout->addLayout(stabilizationLayout);
-
-    bumpHoldCheckbox_ = new QCheckBox("Extra Stable");
-    bumpHoldCheckbox_->setChecked(false);
-    bumpHoldCheckbox_->setEnabled(false);
-    bumpHoldCheckbox_->setToolTip(
-        "Freeze on the last sharp frame during a bump, then smoothly return to live video");
-    stabilityLayout->addWidget(bumpHoldCheckbox_);
-
-    screenFixSection_ = new CollapsibleSection(QStringLiteral("Screen fix"));
-    screenFixSection_->setPersistKey(QStringLiteral("screenFix"));
-    auto* screenFixLayout =
-        qobject_cast<QVBoxLayout*>(screenFixSection_->contentWidget()->layout());
-    controlsLayout->addWidget(screenFixSection_);
-    auto* keystoneLayout = new QHBoxLayout();
-    keystoneLayout->setSpacing(8);
-    keystoneCheckbox_ = new QCheckBox("Straighten Screen (Keystone)");
-    keystoneLayout->addWidget(keystoneCheckbox_);
-    keystoneLayout->addStretch(1);
-    screenFixLayout->addLayout(keystoneLayout);
-
-    advancedKeystoneTrackingRow_ = new QWidget();
-    auto* advancedTrackingLayout = new QHBoxLayout(advancedKeystoneTrackingRow_);
-    advancedTrackingLayout->setContentsMargins(0, 0, 0, 0);
-    advancedTrackingLayout->setSpacing(8);
-    advancedTrackingLayout->addWidget(new QLabel("Correction tracking:"));
-    advancedKeystoneBackButton_ = new QPushButton("Back");
-    advancedKeystonePauseButton_ = new QPushButton("Stop");
-    advancedKeystoneNextButton_ = new QPushButton("Next");
-    advancedKeystoneBackButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/step-back.svg")));
-    advancedKeystonePauseButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/pause.svg")));
-    advancedKeystoneNextButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/step-forward.svg")));
-    for (QPushButton* button : {advancedKeystoneBackButton_, advancedKeystonePauseButton_,
-                                advancedKeystoneNextButton_}) {
-        button->setIconSize(QSize(22, 22));
-        advancedTrackingLayout->addWidget(button);
-    }
-    advancedTrackingLayout->addStretch(1);
-    advancedKeystoneTrackingRow_->setEnabled(false);
-    screenFixLayout->addWidget(advancedKeystoneTrackingRow_);
-
-    auto* autoContrastLayout = new QHBoxLayout();
-    autoContrastLayout->setSpacing(8);
-    autoContrastCheckbox_ = new QCheckBox("Auto Contrast");
-    autoContrastStrengthSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    autoContrastStrengthSlider_->setRange(0, 100);
-    autoContrastStrengthSlider_->setPageStep(5);
-    autoContrastStrengthSlider_->setValue(70);
-    autoContrastStrengthSlider_->setEnabled(false);
-    autoContrastLayout->addWidget(autoContrastCheckbox_);
-    autoContrastLayout->addSpacing(12);
-    autoContrastLayout->addWidget(new QLabel("Strength:"));
-    autoContrastLayout->addWidget(autoContrastStrengthSlider_, 1);
-    autoContrastLayout->addWidget(addSliderReadout(autoContrastStrengthSlider_, percent));
-    readabilityLayout->addLayout(autoContrastLayout);
-
-    textClaritySection_ = new CollapsibleSection(QStringLiteral("Text clarity"));
-    textClaritySection_->setPersistKey(QStringLiteral("textClarity"));
-    auto* textClaritySectionLayout =
-        qobject_cast<QVBoxLayout*>(textClaritySection_->contentWidget()->layout());
-    controlsLayout->addWidget(textClaritySection_);
-    auto* textClarityLayout = new QVBoxLayout();
-    textClarityLayout->setSpacing(8);
-    textClarityCheckbox_ = new QCheckBox("Auto Text Clarity");
-    textClarityLayout->addWidget(textClarityCheckbox_);
-
-    auto addTextSliderRow = [textClarityLayout, &addSliderReadout](
-                                QCheckBox*& checkbox,
-                                const QString& label,
-                                QSlider*& slider,
-                                int minimum, int maximum, int value,
-                                std::function<QString(int)> format) {
-        checkbox = new QCheckBox(label);
-        slider = new WheelSafeSlider(Qt::Horizontal);
-        slider->setRange(minimum, maximum);
-        slider->setPageStep(std::max(1, (maximum - minimum) / 10));
-        slider->setValue(value);
-        textClarityLayout->addWidget(new ResponsiveSliderRow(
-            checkbox, slider, addSliderReadout(slider, std::move(format))));
-    };
-    addTextSliderRow(backgroundFlattenCheckbox_, "Flatten Background",
-                     backgroundFlattenStrengthSlider_, 0, 100, 80, percent);
-    addTextSliderRow(adaptiveBinarizationCheckbox_, "Adaptive Text",
-                     sauvolaStrengthSlider_, 10, 50, 28,
-                     [](int value) { return FormatScaled(value, 100.0, 2); });
-
-    auto* softRow = new QHBoxLayout();
-    softRow->addWidget(new QLabel("Edge softness"));
-    binarizationSoftnessSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    binarizationSoftnessSlider_->setRange(0, 25);
-    binarizationSoftnessSlider_->setValue(6);
-    softRow->addWidget(binarizationSoftnessSlider_, 1);
-    softRow->addWidget(addSliderReadout(binarizationSoftnessSlider_, [](int value) {
-        return FormatScaled(value, 100.0, 2);
-    }));
-    textClarityLayout->addLayout(softRow);
-
-    auto* polarityRow = new QHBoxLayout();
-    polarityRow->addWidget(new QLabel("Text polarity"));
-    textPolarityCombo_ = new WheelSafeComboBox();
-    textPolarityCombo_->addItems({"Auto", "Dark on light", "Light on dark"});
-    polarityRow->addWidget(textPolarityCombo_, 1);
-    textClarityLayout->addLayout(polarityRow);
-
-    auto* strokeRow = new QHBoxLayout();
-    strokeRow->addWidget(new QLabel("Stroke weight"));
-    strokeWeightSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    strokeWeightSlider_->setRange(-3, 3);
-    strokeWeightSlider_->setValue(0);
-    strokeWeightSlider_->setTickInterval(1);
-    strokeWeightSlider_->setTickPosition(QSlider::TicksBelow);
-    strokeRow->addWidget(strokeWeightSlider_, 1);
-    strokeRow->addWidget(addSliderReadout(strokeWeightSlider_, FormatSigned));
-    textClarityLayout->addLayout(strokeRow);
-
-    addTextSliderRow(smartSharpenCheckbox_, "Smart Sharpen",
-                     smartSharpenStrengthSlider_, 0, 100, 45, percent);
-    addTextSliderRow(claheCheckbox_, "Local Contrast (CLAHE)",
-                     claheClipLimitSlider_, 10, 80, 20,
-                     [](int value) { return FormatScaled(value, 10.0, 1); });
-    twoColorTextCheckbox_ = new QCheckBox("Two-Color Reading");
-    textClarityLayout->addWidget(twoColorTextCheckbox_);
-    addTextSliderRow(textHysteresisCheckbox_, "Steady Text Edges",
-                     textHysteresisStrengthSlider_, 0, 25, 8,
-                     [](int value) { return FormatScaled(value, 100.0, 2); });
-    selectiveSharpenCheckbox_ = new QCheckBox("Sharpen Text Only");
-    textClarityLayout->addWidget(selectiveSharpenCheckbox_);
-    addTextSliderRow(focusDetectionCheckbox_, "Warn When Out of Focus",
-                     focusThresholdSlider_, 1, 100, 12,
-                     [](int value) { return FormatScaled(value, 1000.0, 3); });
-    addTextSliderRow(glareSuppressionCheckbox_, "Suppress Glare",
-                     glareSuppressionStrengthSlider_, 0, 100, 50, percent);
-    addTextSliderRow(mlTextSuperResolutionCheckbox_, "NVIDIA Super Resolution",
-                     mlTextSuperResolutionStrengthSlider_, 0, 100, 65, percent);
-    mlTextSuperResolutionUltra1440pCheckbox_ =
-        new QCheckBox(QStringLiteral("Ultra quality (full frame, up to 1440p)"));
-    mlTextSuperResolutionUltra1440pCheckbox_->setToolTip(
-        QStringLiteral("Build a separate high-resolution AI scene from the full "
-                       "camera frame, then apply viewport zoom and cropping. "
-                       "720p cameras upscale 2x to 1440p; 1080p cameras upscale "
-                       "4/3x to 1440p; 1440p cameras remain native."));
-    textClarityLayout->addWidget(mlTextSuperResolutionUltra1440pCheckbox_);
-    mlTextSuperResolutionPrefer2xCheckbox_ =
-        new QCheckBox(QStringLiteral("Faster 2x mode (narrower view)"));
-    mlTextSuperResolutionPrefer2xCheckbox_->setToolTip(
-        QStringLiteral("Optional speed mode. Raises magnification to at least "
-                       "2x, narrowing the visible source crop from 960x540 to "
-                       "640x360 for a 1280x720 target. Leave off for maximum "
-                       "source detail and a wider view."));
-    textClarityLayout->addWidget(mlTextSuperResolutionPrefer2xCheckbox_);
-    mlTextSuperResolutionStatusLabel_ = new QLabel(QStringLiteral("Off"));
-    mlTextSuperResolutionStatusLabel_->setObjectName(QStringLiteral("featureStatusLabel"));
-    mlTextSuperResolutionStatusLabel_->setWordWrap(true);
-    mlTextSuperResolutionStatusLabel_->setMinimumWidth(0);
-    mlTextSuperResolutionStatusLabel_->setSizePolicy(QSizePolicy::Ignored,
-                                                     QSizePolicy::Preferred);
-    mlTextSuperResolutionStatusLabel_->setAccessibleName(
-        QStringLiteral("NVIDIA Super Resolution status"));
-    textClarityLayout->addWidget(mlTextSuperResolutionStatusLabel_);
-    mlTextSuperResolutionOverrideCheckbox_ =
-        new QCheckBox(QStringLiteral("Ignore 24 ms performance limit"));
-    mlTextSuperResolutionOverrideCheckbox_->setVisible(false);
-    mlTextSuperResolutionOverrideCheckbox_->setAccessibleName(
-        QStringLiteral("Ignore NVIDIA Super Resolution performance limit"));
-    mlTextSuperResolutionOverrideCheckbox_->setAccessibleDescription(
-        QStringLiteral("Keep NVIDIA Super Resolution active when its measured "
-                       "latency exceeds 24 milliseconds. This can reduce camera frame rate."));
-    mlTextSuperResolutionOverrideCheckbox_->setToolTip(
-        QStringLiteral("Keep SuperRes active even when its average GPU time exceeds 24 ms"));
-    connect(mlTextSuperResolutionOverrideCheckbox_,
-            &QCheckBox::toggled,
-            this,
-            &MainWindow::superResPerformanceOverrideChanged);
-    textClarityLayout->addWidget(mlTextSuperResolutionOverrideCheckbox_);
-#if OKUFLOW_ENABLE_TEXT_SR
-    mlTextSuperResolutionCheckbox_->setToolTip(
-        "Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically");
-    mlTextSuperResolutionStrengthSlider_->setToolTip(
-        "Set the NVIDIA SuperRes enhancement strength for this preset");
-#else
-    mlTextSuperResolutionCheckbox_->setEnabled(false);
-    mlTextSuperResolutionStrengthSlider_->setEnabled(false);
-    mlTextSuperResolutionUltra1440pCheckbox_->setEnabled(false);
-    mlTextSuperResolutionPrefer2xCheckbox_->setEnabled(false);
-    mlTextSuperResolutionCheckbox_->setToolTip(
-        "Unavailable in this build; requires OKUFLOW_ENABLE_TEXT_SR");
-#endif
-    textClaritySectionLayout->addLayout(textClarityLayout);
-
-    auto* displayColorLayout = new QVBoxLayout();
-    displayColorLayout->setSpacing(8);
-    displayColorLayout->addWidget(new QLabel("Display colors"));
-    displayColorPicker_ = new ColorSchemePicker();
-    displayColorLayout->addWidget(displayColorPicker_);
-    contrastSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    contrastSlider_->setRange(25, 400);
-    contrastSlider_->setPageStep(25);
-    contrastSlider_->setValue(100);
-    displayColorLayout->addWidget(new ResponsiveSliderRow(
-        new QLabel("Contrast"), contrastSlider_,
-        addSliderReadout(contrastSlider_, percent)));
-    brightnessSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    brightnessSlider_->setRange(-100, 100);
-    brightnessSlider_->setPageStep(10);
-    brightnessSlider_->setValue(0);
-    displayColorLayout->addWidget(new ResponsiveSliderRow(
-        new QLabel("Brightness"), brightnessSlider_,
-        addSliderReadout(brightnessSlider_, FormatSigned)));
-    readabilityLayout->addLayout(displayColorLayout);
-
-    assistantSection_ = new CollapsibleSection(QStringLiteral("Assistant"));
-    assistantSection_->setPersistKey(QStringLiteral("assistant"));
-    auto* assistantSectionLayout =
-        qobject_cast<QVBoxLayout*>(assistantSection_->contentWidget()->layout());
-    controlsLayout->addWidget(assistantSection_);
-    auto* assistiveLayout = new QVBoxLayout();
-    assistiveLayout->setSpacing(6);
-    vlmAssistCheckbox_ = new QCheckBox("Scene Explain");
-    assistiveOverlayCheckbox_ = new QCheckBox("Assistive Overlay");
-    assistiveOverlayCheckbox_->setChecked(true);
+    // ---- 4. Notes and files --------------------------------------------
+    notesFilesSection_ = makeSection(QStringLiteral("Notes and files"),
+                                     QStringLiteral("notesFiles"), false);
+    auto* notesFilesLayout = sectionLayout(notesFilesSection_);
+    sharedLayout->addWidget(notesFilesSection_);
+    openNotesButton_ = new QPushButton("Open Notes");
     annotationCaptureOnExitCheckbox_ =
         new QCheckBox(QStringLiteral("Save drawing to notes when leaving Draw"));
     annotationCaptureOnExitCheckbox_->setChecked(true);
-    annotationCaptureOnExitCheckbox_->setAccessibleName(
-        QStringLiteral("Save drawing to notes when leaving Draw"));
-    annotationCaptureOnExitCheckbox_->setAccessibleDescription(
-        QStringLiteral("Save an annotated snapshot to lecture notes when Draw mode closes."));
+    openUserDataFolderButton_ =
+        new QPushButton(QStringLiteral("Open my OkuFlow folder"));
+    changeUserDataFolderButton_ =
+        new QPushButton(QStringLiteral("Change OkuFlow folder..."));
+    notesFilesLayout->addWidget(openNotesButton_);
+    notesFilesLayout->addWidget(annotationCaptureOnExitCheckbox_);
+    notesFilesLayout->addWidget(openUserDataFolderButton_);
+    notesFilesLayout->addWidget(changeUserDataFolderButton_);
+
+    // ---- 5. Language ---------------------------------------------------
+    // Expanded on first run so someone stuck in an unfamiliar language finds
+    // the flag list without opening anything.
+    applicationSection_ = makeSection(QStringLiteral("Language"),
+                                      QStringLiteral("application"), true);
+    auto* applicationLayout = sectionLayout(applicationSection_);
+    sharedLayout->addWidget(applicationSection_);
+    applicationLanguageCombo_ = new WheelSafeComboBox();
+    applicationLanguageCombo_->setIconSize(QSize(30, 20));
+    for (AppLanguage language : SupportedAppLanguages()) {
+        applicationLanguageCombo_->addItem(
+            QIcon(AppLanguageFlagResource(language)),
+            AppLanguageNativeName(language),
+            AppLanguageCode(language));
+    }
+    applicationLanguageCombo_->setAccessibleName(
+        QStringLiteral("Application language"));
+    applicationLanguageCombo_->setAccessibleDescription(
+        QStringLiteral(
+            "Changes OkuFlow's interface language immediately. "
+            "An assistant request already in progress keeps its original "
+            "response language."));
+    applicationLanguageCombo_->setToolTip(
+        QStringLiteral(
+            "Changes the interface immediately. In-progress assistant "
+            "requests use the language selected when they started."));
+    SetComboItemsAreData(applicationLanguageCombo_);
+    auto* languageLabel = new QLabel(QStringLiteral("Application language"));
+    languageLabel->setBuddy(applicationLanguageCombo_);
+    applicationLayout->addWidget(languageLabel);
+    applicationLayout->addWidget(applicationLanguageCombo_);
+    connect(applicationLanguageCombo_,
+            &QComboBox::currentIndexChanged,
+            this,
+            [this](int index) {
+                if (index >= 0) {
+                    emit applicationLanguageRequested(
+                        applicationLanguageCombo_->itemData(index).toString());
+                }
+            });
+
+    // ---- 6. AI and downloads -------------------------------------------
+    aiDownloadsSection_ = makeSection(QStringLiteral("AI and downloads"),
+                                      QStringLiteral("aiDownloads"), false);
+    auto* aiDownloadsLayout = sectionLayout(aiDownloadsSection_);
+    sharedLayout->addWidget(aiDownloadsSection_);
     aiSettingsButton_ = new QPushButton(QStringLiteral("AI Settings"));
     aiSettingsButton_->setObjectName(QStringLiteral("advancedNavButton"));
     aiSettingsButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/open-settings.svg")));
     aiSettingsButton_->setIconSize(QSize(26, 26));
     aiSettingsButton_->setToolTip(QStringLiteral("Open AI Settings dialog"));
     aiSettingsButton_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    openNotesButton_ = new QPushButton("Open Notes");
-    openUserDataFolderButton_ =
-        new QPushButton(QStringLiteral("Open my OkuFlow folder"));
-    changeUserDataFolderButton_ =
-        new QPushButton(QStringLiteral("Change OkuFlow folder..."));
     setupAssistantButton_ = new QPushButton(QStringLiteral("Setup && Downloads..."));
     setupAssistantButton_->setToolTip(
         QStringLiteral("Set up Codex CLI and NVIDIA Video Effects"));
-    assistiveLayout->addWidget(vlmAssistCheckbox_);
-    assistiveLayout->addWidget(assistiveOverlayCheckbox_);
-    assistiveLayout->addWidget(annotationCaptureOnExitCheckbox_);
-    assistiveLayout->addWidget(openNotesButton_);
-    assistiveLayout->addWidget(openUserDataFolderButton_);
-    assistiveLayout->addWidget(changeUserDataFolderButton_);
-    assistiveLayout->addWidget(setupAssistantButton_);
-    assistantSectionLayout->addLayout(assistiveLayout);
+    aiDownloadsLayout->addWidget(aiSettingsButton_);
+    aiDownloadsLayout->addWidget(setupAssistantButton_);
 
-    sharpeningSection_ = new CollapsibleSection(QStringLiteral("Sharpening"));
-    sharpeningSection_->setPersistKey(QStringLiteral("sharpening"));
-    auto* sharpeningSectionLayout =
-        qobject_cast<QVBoxLayout*>(sharpeningSection_->contentWidget()->layout());
-    controlsLayout->addWidget(sharpeningSection_);
-    auto* spatialLayout = new QVBoxLayout();
-    spatialLayout->setSpacing(6);
-    spatialSharpenCheckbox_ = new QCheckBox("Spatial Sharpen");
-    spatialSharpenCheckbox_->setChecked(false);
-    spatialBackendCombo_ = new WheelSafeComboBox();
-    spatialBackendCombo_->addItem("AMD FSR 1.0 (EASU + RCAS)");
-    spatialBackendCombo_->addItem("NVIDIA Image Scaling (default)");
-    spatialBackendCombo_->setEnabled(false);
-    spatialSharpnessSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    spatialSharpnessSlider_->setRange(0, 100);
-    spatialSharpnessSlider_->setPageStep(5);
-    spatialSharpnessSlider_->setValue(25);
-    spatialSharpnessSlider_->setEnabled(false);
-    spatialSharpnessValueLabel_ = new QLabel("0.25");
-    spatialSharpnessValueLabel_->setMinimumWidth(40);
+    // ---- 7. Troubleshooting --------------------------------------------
+    troubleshootingSection_ = makeSection(QStringLiteral("Troubleshooting"),
+                                          QStringLiteral("troubleshooting"), false);
+    auto* troubleshootingLayout = sectionLayout(troubleshootingSection_);
+    sharedLayout->addWidget(troubleshootingSection_);
+    cameraAccelerationCombo_ = new WheelSafeComboBox();
+    cameraAccelerationCombo_->addItem(
+        QStringLiteral("Automatic (recommended)"), 0);
+    cameraAccelerationCombo_->addItem(
+        QStringLiteral("Always use GPU acceleration"), 1);
+    cameraAccelerationCombo_->addItem(
+        QStringLiteral("Compatibility mode"), 2);
+    cameraAccelerationCombo_->setToolTip(
+        QStringLiteral(
+            "Automatic uses hardware acceleration when the camera and driver "
+            "pass startup validation, then falls back safely if needed."));
+    cameraAccelerationCombo_->setAccessibleName(
+        QStringLiteral("Camera acceleration mode"));
+    auto* cameraAccelerationLabel = new QLabel(QStringLiteral("Camera acceleration"));
+    cameraAccelerationLabel->setBuddy(cameraAccelerationCombo_);
+    troubleshootingLayout->addWidget(cameraAccelerationLabel);
+    troubleshootingLayout->addWidget(cameraAccelerationCombo_);
+    cameraAccelerationStatusLabel_ = new QLabel(
+        QStringLiteral("Camera acceleration has not started yet."));
+    cameraAccelerationStatusLabel_->setObjectName(QStringLiteral("scopeSubtitle"));
+    cameraAccelerationStatusLabel_->setWordWrap(true);
+    cameraAccelerationStatusLabel_->setAccessibleName(
+        QStringLiteral("Camera acceleration status"));
+    troubleshootingLayout->addWidget(cameraAccelerationStatusLabel_);
+    testCameraAccelerationButton_ =
+        new QPushButton(QStringLiteral("Test this camera"));
+    testCameraAccelerationButton_->setToolTip(
+        QStringLiteral(
+            "Tests GPU and compatibility capture in a separate process. "
+            "The test cannot freeze OkuFlow if a camera driver hangs."));
+    testCameraAccelerationButton_->setAccessibleName(
+        QStringLiteral("Test camera acceleration"));
+    testCameraAccelerationButton_->setAccessibleDescription(
+        QStringLiteral(
+            "Runs an isolated camera test and updates this camera's "
+            "automatic acceleration decision."));
+    troubleshootingLayout->addWidget(testCameraAccelerationButton_);
 
-    spatialLayout->addWidget(spatialSharpenCheckbox_);
-    spatialLayout->addWidget(new QLabel("Backend"));
-    spatialLayout->addWidget(spatialBackendCombo_);
-    auto* sharpnessLayout = new QHBoxLayout();
-    sharpnessLayout->addWidget(new QLabel("Sharpness"));
-    sharpnessLayout->addWidget(spatialSharpnessSlider_, 1);
-    sharpnessLayout->addWidget(spatialSharpnessValueLabel_);
-    spatialLayout->addLayout(sharpnessLayout);
-    sharpeningSectionLayout->addLayout(spatialLayout);
+    sharedLayout->addStretch(1);
+    sharedSettingsScroll_ = makeSettingsScroll(QStringLiteral("sharedSettingsScroll"),
+                                               sharedSettingsContent_);
+    settingsTabLayout->addWidget(sharedSettingsScroll_, 1);
 
-    auto* focusLayout = new QVBoxLayout();
-    focusLayout->setSpacing(8);
-    auto* focusXLabel = new QLabel("Focus X:");
-    zoomCenterXSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    zoomCenterXSlider_->setRange(0, kZoomFocusSliderScale);
-    zoomCenterXSlider_->setPageStep(5);
-    zoomCenterXSlider_->setValue(kZoomFocusSliderScale / 2);
-    new EnabledMirror(zoomCenterXSlider_, focusXLabel);
-    focusLayout->addWidget(new ResponsiveSliderRow(
-        focusXLabel, zoomCenterXSlider_,
-        addSliderReadout(zoomCenterXSlider_, percent)));
-
-    auto* focusYLabel = new QLabel("Focus Y:");
-    zoomCenterYSlider_ = new WheelSafeSlider(Qt::Horizontal);
-    zoomCenterYSlider_->setRange(0, kZoomFocusSliderScale);
-    zoomCenterYSlider_->setPageStep(5);
-    zoomCenterYSlider_->setValue(kZoomFocusSliderScale / 2);
-    new EnabledMirror(zoomCenterYSlider_, focusYLabel);
-    focusLayout->addWidget(new ResponsiveSliderRow(
-        focusYLabel, zoomCenterYSlider_,
-        addSliderReadout(zoomCenterYSlider_, percent)));
-    magnificationLayout->addLayout(focusLayout);
-
-    diagnosticsSection_ = new CollapsibleSection(QStringLiteral("Diagnostics"));
-    diagnosticsSection_->setPersistKey(QStringLiteral("diagnostics"));
-    diagnosticsSection_->setExpanded(false);
-    auto* diagnosticsLayout =
-        qobject_cast<QVBoxLayout*>(diagnosticsSection_->contentWidget()->layout());
-    controlsLayout->addWidget(diagnosticsSection_);
-    auto* debugLayout = new QHBoxLayout();
-    debugLayout->setSpacing(8);
-    debugButton_ = new QPushButton("Debug View");
-    debugButton_->setCheckable(true);
-    debugButton_->setChecked(false);
-    debugLayout->addWidget(debugButton_);
-    focusMarkerCheckbox_ = new QCheckBox("Show Focus Point");
-    focusMarkerCheckbox_->setChecked(false);
-    focusMarkerCheckbox_->setToolTip("Overlay a red marker at the current zoom focus");
-    debugLayout->addWidget(focusMarkerCheckbox_);
-    debugLayout->addStretch(1);
-    diagnosticsLayout->addLayout(debugLayout);
-    auto* processingStatusLayout = new QVBoxLayout();
-    processingStatusLayout->setSpacing(3);
-    processingStatusLayout->addWidget(new QLabel(QStringLiteral("Pipeline status")));
-    processingStatusLayout->addWidget(processingStatusLabel_);
-    processingStatusLayout->addWidget(
-        new QLabel(QStringLiteral("Performance percentiles")));
-    processingStatusLayout->addWidget(performanceDiagnosticsLabel_);
-    diagnosticsLayout->addLayout(processingStatusLayout);
-#if OKUFLOW_ENABLE_TEXT_SR
-    maxineAttribution_ = new QLabel(QStringLiteral("SuperRes powered by NVIDIA Maxine\u2122"));
-    maxineAttribution_->setWordWrap(true);
-    maxineAttribution_->setObjectName(QStringLiteral("vendorAttribution"));
-    maxineAttribution_->setAccessibleName(QStringLiteral("NVIDIA Maxine attribution"));
-    diagnosticsLayout->addWidget(maxineAttribution_);
-#endif
-
-    const std::array<CollapsibleSection*, 11> advancedSections{
-        applicationSection_, deviceSection_, recordingSection_, magnificationSection_, readabilitySection_,
-        stabilitySection_, screenFixSection_, textClaritySection_,
-        assistantSection_, sharpeningSection_, diagnosticsSection_};
-    for (CollapsibleSection* section : advancedSections) {
-        connect(section, &CollapsibleSection::expandedChanged,
-                this, &MainWindow::sectionStatesChanged);
-    }
-    connect(deviceMoreSection_, &CollapsibleSection::expandedChanged,
-            this, &MainWindow::sectionStatesChanged);
-    connect(settingsSearchEdit_, &QLineEdit::textChanged,
-            this, &MainWindow::FilterAdvancedSettings);
-    connect(settingsSearchEdit_, &QLineEdit::returnPressed, this, [this]() {
-        if (firstSettingsSearchMatch_) {
-            firstSettingsSearchMatch_->setFocus(Qt::ShortcutFocusReason);
-            if (advancedScroll_) {
-                advancedScroll_->ensureWidgetVisible(firstSettingsSearchMatch_, 8, 8);
-            }
-        }
+    // ---- Search wiring (both tabs) -------------------------------------
+    connect(imageSearchEdit_, &QLineEdit::textChanged, this, [this](const QString& text) {
+        FilterSettingsTab(SettingsScope::kImage, text);
     });
-    auto* searchShortcut =
-        new QShortcut(QKeySequence::Find, this);
-    connect(searchShortcut, &QShortcut::activated, this, [this]() {
-        if (settingsSearchEdit_) {
-            settingsSearchEdit_->setFocus(Qt::ShortcutFocusReason);
-            settingsSearchEdit_->selectAll();
-        }
+    connect(sharedSearchEdit_, &QLineEdit::textChanged, this, [this](const QString& text) {
+        FilterSettingsTab(SettingsScope::kShared, text);
     });
-
-    // The old all-or-nothing Advanced Tuning gate is retained as a hidden
-    // compatibility accessor while individual sections own disclosure.
-    controlsToggleButton_->setChecked(true);
-    controlsToggleButton_->hide();
-    controlsContainer_->show();
-    advancedLayout->addWidget(controlsContainer_);
-
-    // Profile tuning is what Advanced is opened for, so it leads. Settings
-    // shared by every profile follow under their own scope heading, ordered
-    // from most to least often changed.
-    advancedLayout->addWidget(makeSectionLabel(QStringLiteral("Shared settings")));
-    auto* sharedScopeLabel =
-        new QLabel(QStringLiteral("Not saved into quick options"));
-    sharedScopeLabel->setObjectName(QStringLiteral("scopeSubtitle"));
-    advancedLayout->addWidget(sharedScopeLabel);
-    for (QWidget* section : {static_cast<QWidget*>(deviceSection_),
-                             static_cast<QWidget*>(recordingSection_),
-                             static_cast<QWidget*>(applicationSection_)}) {
-        advancedLayout->removeWidget(section);
-        advancedLayout->addWidget(section);
-    }
-    // QScrollArea expands short content to the viewport. Keep all inspector
-    // rows packed at the top when Advanced Tuning is collapsed.
-    advancedLayout->addStretch(1);
-
-    advancedScroll_ = new QScrollArea();
-    advancedScroll_->setWidget(advancedPage);
-    advancedScroll_->setWidgetResizable(true);
-    advancedScroll_->setFrameShape(QFrame::NoFrame);
-    advancedScroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    advancedScroll_->setMinimumWidth(0);
-    advancedScroll_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-
-    auto* imageTabPage = new QWidget();
-    auto* imageTabLayout = new QVBoxLayout(imageTabPage);
-    imageTabLayout->setContentsMargins(8, 8, 8, 0);
-    imageTabLayout->setSpacing(8);
-    imageTabLayout->addWidget(aiSettingsButton_);
-    imageTabLayout->addWidget(advancedScroll_, 1);
+    connect(imageSearchEdit_, &QLineEdit::returnPressed, this, [this]() {
+        ActivateSearchResult(SettingsScope::kImage);
+    });
+    connect(sharedSearchEdit_, &QLineEdit::returnPressed, this, [this]() {
+        ActivateSearchResult(SettingsScope::kShared);
+    });
 
     auto* assistantPage = new QWidget();
     auto* assistantLayout = new QVBoxLayout(assistantPage);
@@ -1478,10 +1594,23 @@ MainWindow::MainWindow()
     transcriptLayout->addWidget(transcriptFinalsCaption);
     transcriptLayout->addWidget(transcriptFinalsView_, 1);
 
+    assistantPage->setObjectName(QStringLiteral("assistantTabPage"));
+    transcriptPage->setObjectName(QStringLiteral("transcriptTabPage"));
     auto* advancedTabs = new QTabWidget();
-    advancedTabs->addTab(imageTabPage, "Image");
+    advancedTabs->setObjectName(QStringLiteral("advancedPage"));
+    advancedTabs->addTab(imageTabPage_, "Image");
     advancedTabs->addTab(assistantPage, "Assistant");
     advancedTabs->addTab(transcriptPage, "Transcript");
+    advancedTabs->addTab(settingsTabPage_, "Settings");
+    // Four tabs must fit a 360 px inspector in every language: tabs share the
+    // strip and elide, with the full text kept in the tooltip and in the
+    // accessible name (QTabBar exposes the unelided text).
+    advancedTabs->tabBar()->setObjectName(QStringLiteral("advancedTabBar"));
+    advancedTabs->tabBar()->setExpanding(true);
+    advancedTabs->setElideMode(Qt::ElideRight);
+    advancedTabs->setUsesScrollButtons(false);
+    advancedTabs_ = advancedTabs;
+    UpdateAdvancedTabToolTips();
     previousAdvancedTabButton_ = new QToolButton();
     previousAdvancedTabButton_->setObjectName(QStringLiteral("advancedTabArrow"));
     previousAdvancedTabButton_->setIconSize(QSize(26, 26));
@@ -1523,7 +1652,7 @@ MainWindow::MainWindow()
     // With only a few sections every tab is already a large visible target
     // (and Ctrl+Tab cycles them); the wrap-around arrows earn their space
     // only once sections outgrow the strip.
-    constexpr int kTabArrowMinimumSections = 4;
+    constexpr int kTabArrowMinimumSections = 5;
     previousAdvancedTabButton_->setVisible(advancedTabs->count() >= kTabArrowMinimumSections);
     nextAdvancedTabButton_->setVisible(advancedTabs->count() >= kTabArrowMinimumSections);
     UpdateDirectionalUi();
@@ -1564,18 +1693,27 @@ MainWindow::MainWindow()
                                         Qt::NoDropShadowWindowHint;
     topLeftPanel_ = new QWidget(this, chromeFlags);
     topLeftPanel_->setObjectName("topLeftPanel");
-    auto* topLeftLayout = new QHBoxLayout(topLeftPanel_);
+    uiVisibilityPanel_ = new QWidget(this, chromeFlags);
+    uiVisibilityPanel_->setObjectName(QStringLiteral("uiVisibilityPanel"));
+    auto* visibilityLayout = new QHBoxLayout(uiVisibilityPanel_);
+    visibilityLayout->setContentsMargins(4, 4, 4, 4);
+    uiVisibilityButton_ = new QToolButton(uiVisibilityPanel_);
+    uiVisibilityButton_->setObjectName(QStringLiteral("uiVisibilityButton"));
+    uiVisibilityButton_->setMinimumHeight(40);
+    visibilityLayout->addWidget(uiVisibilityButton_);
+    uiVisibilityPanel_->setAttribute(Qt::WA_ShowWithoutActivating);
+    uiVisibilityPanel_->hide();
+    connect(uiVisibilityButton_, &QToolButton::clicked, this,
+            [this]() { setUiHidden(!uiHidden_); });
+    auto* topLeftLayout = new QGridLayout(topLeftPanel_);
     topLeftLayout->setContentsMargins(10, 8, 8, 8);
     topLeftLayout->setSpacing(8);
-    auto* brandLabel = new QLabel("OkuFlow");
-    brandLabel->setObjectName("brandLabel");
-    topLeftLayout->addWidget(brandLabel);
-    topLeftLayout->addWidget(simpleModeButton_);
-    topLeftLayout->addWidget(advancedModeButton_);
+    topLeftLayout->addWidget(simpleModeButton_, 0, 0);
+    topLeftLayout->addWidget(advancedModeButton_, 0, 1);
 
     bottomLeftPanel_ = new QWidget(this, chromeFlags);
     bottomLeftPanel_->setObjectName("bottomLeftPanel");
-    auto* bottomLeftLayout = new QHBoxLayout(bottomLeftPanel_);
+    auto* bottomLeftLayout = new QGridLayout(bottomLeftPanel_);
     bottomLeftLayout->setContentsMargins(8, 8, 10, 10);
     bottomLeftLayout->setSpacing(6);
     modeGridButton_ = new QToolButton();
@@ -1596,14 +1734,14 @@ MainWindow::MainWindow()
     nextModeButton_->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
     nextModeButton_->setIconSize(QSize(30, 30));
     nextModeButton_->setToolTip("Next quick mode");
-    bottomLeftLayout->addWidget(modeGridButton_);
-    bottomLeftLayout->addWidget(previousModeButton_);
-    bottomLeftLayout->addWidget(currentModeButton_);
-    bottomLeftLayout->addWidget(nextModeButton_);
+    bottomLeftLayout->addWidget(modeGridButton_, 0, 0);
+    bottomLeftLayout->addWidget(previousModeButton_, 0, 1);
+    bottomLeftLayout->addWidget(currentModeButton_, 0, 2);
+    bottomLeftLayout->addWidget(nextModeButton_, 0, 3);
     simpleTextClarityCheckbox_ = new QCheckBox("Text Clarity");
     simpleTextClarityCheckbox_->setObjectName(QStringLiteral("simpleTextClarityToggle"));
     simpleTextClarityCheckbox_->setToolTip("Automatically clarify text in the camera view");
-    topLeftLayout->addWidget(simpleTextClarityCheckbox_);
+    topLeftLayout->addWidget(simpleTextClarityCheckbox_, 0, 2);
 
     keystoneTrackingPanel_ = new QWidget(this, chromeFlags);
     keystoneTrackingPanel_->setObjectName("keystoneTrackingPanel");
@@ -1625,7 +1763,7 @@ MainWindow::MainWindow()
 
     bottomRightPanel_ = new QWidget(this, chromeFlags);
     bottomRightPanel_->setObjectName("bottomRightPanel");
-    auto* bottomRightLayout = new QHBoxLayout(bottomRightPanel_);
+    auto* bottomRightLayout = new QGridLayout(bottomRightPanel_);
     bottomRightLayout->setContentsMargins(10, 8, 8, 10);
     bottomRightLayout->setSpacing(6);
     capturePhotoButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/camera.svg")));
@@ -1646,11 +1784,11 @@ MainWindow::MainWindow()
         new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+O")), this);
     connect(openFolderShortcut, &QShortcut::activated, this,
             &MainWindow::openUserDataFolderRequested);
-    bottomRightLayout->addWidget(capturePhotoButton_);
-    bottomRightLayout->addWidget(recordButton_);
-    bottomRightLayout->addWidget(explainNowButton_);
-    bottomRightLayout->addWidget(readTextButton_);
-    bottomRightLayout->addWidget(annotationButton_);
+    bottomRightLayout->addWidget(capturePhotoButton_, 0, 0);
+    bottomRightLayout->addWidget(recordButton_, 0, 1);
+    bottomRightLayout->addWidget(explainNowButton_, 0, 2);
+    bottomRightLayout->addWidget(readTextButton_, 0, 3);
+    bottomRightLayout->addWidget(annotationButton_, 0, 4);
 
     // Simple-mode live transcript overlay (plan 36): never activates, never
     // takes input or focus, and never announces per-delta — screen-reader
@@ -1789,6 +1927,7 @@ MainWindow::MainWindow()
     }
 
     simpleChromeIdleTimer_ = new QTimer(this);
+    simpleChromeIdleTimer_->setObjectName(QStringLiteral("simpleChromeIdleTimer"));
     simpleChromeIdleTimer_->setSingleShot(true);
     simpleChromeIdleTimer_->setInterval(kSimpleChromeIdleMs);
     connect(simpleChromeIdleTimer_, &QTimer::timeout, this, &MainWindow::FadeSimpleChrome);
@@ -1812,11 +1951,12 @@ MainWindow::MainWindow()
     for (QPushButton* button : {simpleKeystoneNextButton_, advancedKeystoneNextButton_}) {
         connect(button, &QPushButton::clicked, this, &MainWindow::keystoneStepForwardRequested);
     }
-    connect(presetList_, &QListWidget::currentItemChanged,
-            this, &MainWindow::UpdateCurrentPresetUi);
-    connect(presetList_, &QListWidget::itemClicked, this, [this]() {
-        modeGridPopup_->hide();
-        RevealSimpleChrome();
+    connect(presetList_, &QListWidget::currentItemChanged, this,
+            [this](QListWidgetItem* current, QListWidgetItem* previous) {
+                if (!gridBrowsing_) UpdateCurrentPresetUi(current, previous);
+            });
+    connect(presetList_, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) {
+        if (item) ActivatePresetRow(presetList_->row(item));
     });
     connect(presetList_->model(), &QAbstractItemModel::rowsInserted,
             this, [this](const QModelIndex&, int first, int last) {
@@ -1869,35 +2009,33 @@ MainWindow::MainWindow()
     // Screen-reader metadata for every interactive control. Static accessible
     // names belong only on controls whose label never changes; dynamic text is
     // initialized and updated through SetLiveText so UIA receives its value.
+    // Controls on the two settings tabs also state who owns their value, so a
+    // screen-reader user hears the same scope a sighted user reads in the tab.
     auto setA11y = [this](QWidget* widget, const QString& name,
                           const QString& description) {
-        QString scopedDescription = description;
-        if (!description.contains(QStringLiteral("setting shared by all profiles"),
-                                  Qt::CaseInsensitive) &&
-            !description.contains(QStringLiteral("setting saved with"),
-                                  Qt::CaseInsensitive)) {
-            if (deviceMoreSection_ && deviceMoreSection_->isAncestorOf(widget)) {
-                scopedDescription =
-                    QStringLiteral("Viewport setting shared by all profiles. ") +
-                    description;
-            } else if (deviceSection_ && deviceSection_->isAncestorOf(widget)) {
-                scopedDescription =
-                    QStringLiteral("Device setting shared by all profiles. ") +
-                    description;
-            } else if (controlsContainer_ &&
-                       controlsContainer_->isAncestorOf(widget)) {
-                scopedDescription =
-                    QStringLiteral("Profile setting saved with the current quick option. ") +
-                    description;
+        widget->setAccessibleName(name);
+        QString scope;
+        if (!qobject_cast<QLabel*>(widget)) {
+            if (sharedSettingsContent_ && sharedSettingsContent_->isAncestorOf(widget)) {
+                scope = QStringLiteral("Shared setting, used by all modes.");
+            } else if (controlsContainer_ && controlsContainer_->isAncestorOf(widget)) {
+                scope = QStringLiteral("Saved with the current quick mode.");
             }
         }
-        widget->setAccessibleName(name);
-        widget->setAccessibleDescription(scopedDescription);
+        if (scope.isEmpty()) {
+            widget->setAccessibleDescription(description);
+            return;
+        }
+        scopedDescriptions_.push_back({widget, scope, description});
+        widget->setAccessibleDescription(ScopedDescriptionText(scope, description));
     };
     setA11y(controlsToggleButton_, "Advanced Tuning",
             "Show or hide the advanced tuning controls");
-    setA11y(promotePresetButton_, "Save As Quick Option",
+    setA11y(promotePresetButton_, "Save as Quick Mode",
             "Save the current advanced settings as a reusable quick mode");
+    setA11y(resetProfileButton_, "Reset current mode to defaults",
+            "Resets this mode's image and assistant settings. Settings on the "
+            "Settings tab are not changed.");
     setA11y(capturePhotoButton_, "Capture Photo",
             "Save synchronized original and processed camera photos");
     setA11y(recordButton_, "Record Video",
@@ -1905,26 +2043,26 @@ MainWindow::MainWindow()
     setA11y(annotationButton_, "Draw on camera view",
             "Open annotation mode to mark the lecture view with scene-anchored ink.");
     setA11y(joystickCheckbox_, "Virtual Joystick",
-            "Viewport setting shared by all profiles. Show an on-screen joystick overlay for panning the zoom focus.");
+            "Show an on-screen joystick overlay for panning the zoom focus.");
     setA11y(rotationCombo_, "Rotation",
-            "Device setting shared by all profiles. Rotate the camera image clockwise in 90 degree steps.");
+            "Rotate the camera image clockwise in 90 degree steps.");
     setA11y(viewportRateCombo_, "Viewport motion rate",
-            "Viewport setting shared by all profiles. Choose how smoothly pan and zoom move without changing the camera frame rate.");
+            "Choose how smoothly pan and zoom move without changing the camera frame rate.");
     setA11y(viewportFitCombo_, "Viewport framing",
-            "Viewport setting shared by all profiles. Choose Fill to crop without stretching or Fit to show the entire camera image.");
+            "Choose Fill to crop without stretching or Fit to show the entire camera image.");
     setA11y(recordingCanvasCombo_, "Processed recording resolution",
-            "Global recording setting. Choose Match camera or a fixed "
-            "resolution from 360p through Ultra HD for the processed MP4. "
-            "The original MP4 uses the selected camera mode resolution.");
+            "Choose Match camera or a fixed resolution from 360p through Ultra HD "
+            "for the processed MP4. The original MP4 uses the selected camera "
+            "mode resolution.");
     setA11y(cameraCombo_, "Camera",
-            "Device setting shared by all profiles. Select the active camera device.");
+            "Select the active camera device.");
     setA11y(microphoneCombo_, "Recording microphone",
-            "Global recording setting. Select microphone audio for both "
-            "original and processed MP4 recordings, or choose no microphone.");
+            "Select microphone audio for both original and processed MP4 "
+            "recordings, or choose no microphone.");
     setA11y(transcribeMicrophoneCheckbox_, "Transcribe microphone while recording",
-            "Global recording setting. Sends microphone audio to Codex Voice "
-            "for live transcription only while recording. Requires Codex "
-            "signed in with ChatGPT. Recording works without it.");
+            "Sends microphone audio to Codex Voice for live transcription only "
+            "while recording. Requires Codex signed in with ChatGPT. Recording "
+            "works without it.");
     setA11y(transcriptToNotesCheckbox_, "Add finalized transcript to lecture notes",
             "Appends each finalized phrase to the HTML lecture notes. "
             "Effective only while lecture notes are enabled.");
@@ -1941,23 +2079,22 @@ MainWindow::MainWindow()
             "Read-only list of finalized transcript phrases from the "
             "current recording. Text is selectable.");
     setA11y(cameraFormatCombo_, "Resolution and frame rate",
-            "Device setting shared by all profiles. Select the camera capture "
-            "mode used by original photos and original video.");
+            "Select the camera capture mode used by original photos and original video.");
     setA11y(cameraFormatNoticeLabel_, "Camera format notice",
             "Reports when the camera driver selected a different mode.");
     setA11y(zoomWheelAccelerationCheckbox_, "Zoom wheel acceleration",
-            "Viewport setting shared by all profiles. Accelerate fast Control scroll gestures.");
+            "Accelerate fast Control scroll gestures.");
     setA11y(presetList_, "Quick Modes",
             "Choose a task-oriented preset such as reading or high contrast");
     setA11y(bwCheckbox_, "Black and White",
-            "Profile setting saved with the current quick option. Convert the image to thresholded black and white.");
+            "Convert the image to thresholded black and white.");
     setA11y(bwSlider_, "Black and White Threshold",
             "Brightness threshold for the black and white conversion");
     setA11y(zoomCheckbox_, "Zoom",
-            "Profile setting saved with the current quick option. Enable the magnifier.");
+            "Enable the magnifier.");
     setA11y(zoomSlider_, "Zoom Amount",
             "Magnification level");
-    setA11y(blurCheckbox_, "Gaussian Blur",
+    setA11y(blurCheckbox_, "Soften image (blur)",
             "Smooth the image with a Gaussian blur");
     setA11y(blurSigmaSlider_, "Blur Sigma",
             "Strength of the Gaussian blur");
@@ -1971,15 +2108,17 @@ MainWindow::MainWindow()
             "Describe the magnified scene using an AI vision model");
     setA11y(assistiveOverlayCheckbox_, "Assistive Overlay",
             "Show assistant results in an on-screen panel");
+    setA11y(annotationCaptureOnExitCheckbox_, "Save drawing to notes when leaving Draw",
+            "Save an annotated snapshot to lecture notes when Draw mode closes.");
     setA11y(spatialSharpenCheckbox_, "Spatial Sharpen",
             "Sharpen and upscale the image on the GPU");
     setA11y(spatialBackendCombo_, "Sharpen Backend",
             "Choose the GPU sharpening algorithm");
     setA11y(spatialSharpnessSlider_, "Sharpness",
             "Strength of the spatial sharpening");
-    setA11y(zoomCenterXSlider_, "Focus X",
+    setA11y(zoomCenterXSlider_, "Horizontal position",
             "Horizontal position of the zoom focus");
-    setA11y(zoomCenterYSlider_, "Focus Y",
+    setA11y(zoomCenterYSlider_, "Vertical position",
             "Vertical position of the zoom focus");
     setA11y(debugButton_, "Debug View",
             "Show the intermediate processing stages in a grid");
@@ -1991,13 +2130,11 @@ MainWindow::MainWindow()
             "Show the simple view with quick modes and large controls");
     setA11y(advancedModeButton_, "Advanced Mode",
             "Show the advanced view with every tuning control");
-    setA11y(explainNowButton_, "Explain Now",
-            "Describe the current camera view once using the AI vision model");
     setA11y(readTextButton_, "Read Text",
             "Read the current camera text with the vision assistant");
     setA11y(stabilizationCheckbox_, "Stabilize Image",
             "Lock the mounted camera view with full-strength CUDA stabilization");
-    setA11y(bumpHoldCheckbox_, "Extra Stable",
+    setA11y(bumpHoldCheckbox_, "Extra Stable (hold on shake)",
             "During a mounted-camera bump, temporarily show the last sharp stabilized frame and crossfade back when tracking recovers; moving people or content can be hidden while the frame is held");
     setA11y(keystoneCheckbox_, "Straighten Screen (Keystone)",
             "Automatically straighten a projected screen viewed at an angle");
@@ -2019,7 +2156,7 @@ MainWindow::MainWindow()
             "How strongly the automatic contrast correction is applied");
     setA11y(simpleTextClarityCheckbox_, "Text Clarity",
             "Automatically select the text clarity processing stack");
-    setA11y(textClarityCheckbox_, "Auto Text Clarity",
+    setA11y(textClarityCheckbox_, "Text Clarity",
             "Automatically clarify text using local document analysis");
     setA11y(backgroundFlattenCheckbox_, "Flatten Background",
             "Remove shadows and uneven page lighting");
@@ -2101,6 +2238,8 @@ MainWindow::MainWindow()
             "Show all premade quick modes");
     setA11y(nextModeButton_, "Next Quick Mode",
             "Apply the next premade image setting");
+    // Explain's name, tooltip, and icon follow the explicit busy state.
+    ApplyExplainBusyUi();
     SetLiveText(recordButton_, recordButton_->text(),
                 LivePoliteness::kSilent, QStringLiteral("Record"));
     SetLiveText(cameraFormatNoticeLabel_, cameraFormatNoticeLabel_->text(),
@@ -2128,54 +2267,18 @@ MainWindow::MainWindow()
     QWidget::setTabOrder(currentModeButton_, nextModeButton_);
     QWidget::setTabOrder(simpleKeystoneBackButton_, simpleKeystonePauseButton_);
     QWidget::setTabOrder(simpleKeystonePauseButton_, simpleKeystoneNextButton_);
-    QWidget::setTabOrder(advancedKeystoneBackButton_, advancedKeystonePauseButton_);
-    QWidget::setTabOrder(advancedKeystonePauseButton_, advancedKeystoneNextButton_);
     QWidget::setTabOrder(capturePhotoButton_, recordButton_);
     QWidget::setTabOrder(recordButton_, explainNowButton_);
     QWidget::setTabOrder(explainNowButton_, readTextButton_);
     QWidget::setTabOrder(readTextButton_, annotationButton_);
-    QWidget::setTabOrder(cameraCombo_, rotationCombo_);
-    QWidget::setTabOrder(rotationCombo_, recordingCanvasCombo_);
-    QWidget::setTabOrder(recordingCanvasCombo_, cameraFormatCombo_);
-    QWidget::setTabOrder(cameraFormatCombo_, microphoneCombo_);
-    QWidget::setTabOrder(microphoneCombo_, transcribeMicrophoneCheckbox_);
-    QWidget::setTabOrder(transcribeMicrophoneCheckbox_, transcriptToNotesCheckbox_);
 
-    // Keyboard order follows the inspector's visual order: search, profile
-    // tuning, then the shared settings moved below it. Walking the existing
-    // focus chain keeps every section's internal order, including the explicit
-    // device/recording links above.
-    {
-        std::vector<QWidget*> chain;
-        for (QWidget* widget = settingsSearchEdit_->nextInFocusChain();
-             widget && widget != settingsSearchEdit_;
-             widget = widget->nextInFocusChain()) {
-            if (advancedPage->isAncestorOf(widget) &&
-                (widget->focusPolicy() & Qt::TabFocus)) {
-                chain.push_back(widget);
-            }
-        }
-        const std::array<QWidget*, 3> sharedSections{
-            deviceSection_, recordingSection_, applicationSection_};
-        const auto inSection = [](QWidget* section, QWidget* widget) {
-            return section == widget || section->isAncestorOf(widget);
-        };
-        std::vector<QWidget*> ordered{settingsSearchEdit_};
-        for (QWidget* widget : chain) {
-            if (std::none_of(sharedSections.begin(), sharedSections.end(),
-                             [&](QWidget* section) { return inSection(section, widget); })) {
-                ordered.push_back(widget);
-            }
-        }
-        for (QWidget* section : sharedSections) {
-            for (QWidget* widget : chain) {
-                if (inSection(section, widget)) {
-                    ordered.push_back(widget);
-                }
-            }
-        }
-        for (std::size_t i = 1; i < ordered.size(); ++i) {
-            QWidget::setTabOrder(ordered[i - 1], ordered[i]);
+    // Inside the inspector, keyboard order is each tab's visual order: its
+    // search field, header controls, then section headers and contents
+    // top to bottom (nested "Fine-tune text" right after Auto Text Clarity).
+    for (QWidget* page : {imageTabPage_, settingsTabPage_}) {
+        const std::vector<QWidget*> order = InspectorFocusOrder(page);
+        for (std::size_t i = 1; i < order.size(); ++i) {
+            QWidget::setTabOrder(order[i - 1], order[i]);
         }
     }
 
@@ -2183,7 +2286,18 @@ MainWindow::MainWindow()
     // matches no preset leaves the current item null, which emits no change
     // signal, so the carousel must not depend on one to leave its placeholder.
     UpdateCurrentPresetUi(presetList_->currentItem(), nullptr);
+    UpdateProfileButtonLayout();
 
+    auto* searchShortcut = new QShortcut(QKeySequence::Find, this);
+    connect(searchShortcut, &QShortcut::activated, this, [this]() {
+        setUiHidden(false);
+        setSimpleMode(false);
+        if (advancedTabs_->currentWidget() != settingsTabPage_) advancedTabs_->setCurrentWidget(imageTabPage_);
+        auto* edit = advancedTabs_->currentWidget() == settingsTabPage_ ? sharedSearchEdit_ : imageSearchEdit_;
+        activateWindow();
+        edit->setFocus(Qt::ShortcutFocusReason);
+        edit->selectAll();
+    });
     setCentralWidget(central);
     setSimpleMode(true);
 }
@@ -2199,14 +2313,15 @@ MainWindow::~MainWindow()
 QMap<QString, bool> MainWindow::sectionStates() const
 {
     QMap<QString, bool> states;
-    const std::array<CollapsibleSection*, 12> sections{
+    const std::array<CollapsibleSection*, 16> sections{
         applicationSection_, deviceSection_, deviceMoreSection_, recordingSection_, magnificationSection_,
         readabilitySection_, stabilitySection_, screenFixSection_,
         textClaritySection_, assistantSection_, sharpeningSection_,
-        diagnosticsSection_};
+        diagnosticsSection_, textClarityFineSection_, notesFilesSection_,
+        aiDownloadsSection_, troubleshootingSection_};
     for (const CollapsibleSection* section : sections) {
         if (section && !section->persistKey().isEmpty()) {
-            states.insert(section->persistKey(), section->isExpanded());
+            states.insert(section->persistKey(), section->persistedExpanded());
         }
     }
     return states;
@@ -2214,11 +2329,12 @@ QMap<QString, bool> MainWindow::sectionStates() const
 
 void MainWindow::setSectionStates(const QMap<QString, bool>& states)
 {
-    const std::array<CollapsibleSection*, 12> sections{
+    const std::array<CollapsibleSection*, 16> sections{
         applicationSection_, deviceSection_, deviceMoreSection_, recordingSection_, magnificationSection_,
         readabilitySection_, stabilitySection_, screenFixSection_,
         textClaritySection_, assistantSection_, sharpeningSection_,
-        diagnosticsSection_};
+        diagnosticsSection_, textClarityFineSection_, notesFilesSection_,
+        aiDownloadsSection_, troubleshootingSection_};
     for (CollapsibleSection* section : sections) {
         if (section && states.contains(section->persistKey())) {
             const QSignalBlocker blocker(section);
@@ -2249,9 +2365,6 @@ void MainWindow::updateSectionChangedCounts(
     const int readabilityChanges =
         different(current.blackWhiteEnabled, defaults.blackWhiteEnabled) +
         different(current.blackWhiteThreshold, defaults.blackWhiteThreshold) +
-        different(current.blurEnabled, defaults.blurEnabled) +
-        different(current.blurSigma, defaults.blurSigma) +
-        different(current.blurRadius, defaults.blurRadius) +
         different(current.autoContrastEnabled, defaults.autoContrastEnabled) +
         different(current.autoContrastStrength, defaults.autoContrastStrength) +
         different(current.displayColorMode, defaults.displayColorMode) +
@@ -2291,6 +2404,8 @@ void MainWindow::updateSectionChangedCounts(
         different(current.glareSuppressionStrength,
                   defaults.glareSuppressionStrength);
     textClaritySection_->setChangedCount(textChanges);
+    textClarityFineSection_->setChangedCount(textChanges -
+        different(current.autoTextClarityEnabled, defaults.autoTextClarityEnabled));
 
     const int assistantChanges =
         different(current.vlmAssistEnabled, defaults.vlmAssistEnabled) +
@@ -2299,6 +2414,9 @@ void MainWindow::updateSectionChangedCounts(
     assistantSection_->setChangedCount(assistantChanges);
 
     const int sharpeningChanges =
+        different(current.blurEnabled, defaults.blurEnabled) +
+        different(current.blurSigma, defaults.blurSigma) +
+        different(current.blurRadius, defaults.blurRadius) +
         different(current.spatialSharpenEnabled, defaults.spatialSharpenEnabled) +
         different(current.spatialUpscaler, defaults.spatialUpscaler) +
         different(current.spatialSharpness, defaults.spatialSharpness) +
@@ -2328,99 +2446,309 @@ void MainWindow::updateSectionChangedCounts(
     }
     deviceMoreSection_->setChangedCount(deviceMoreChanges);
 
-    for (CollapsibleSection* section :
-         {deviceMoreSection_, recordingSection_, magnificationSection_, readabilitySection_,
-          stabilitySection_, screenFixSection_, textClaritySection_,
-          assistantSection_, sharpeningSection_, diagnosticsSection_}) {
-        if (section && section->changedCount() > 0) {
-            section->setExpanded(true);
-        }
-    }
+    refreshSliderReadouts();
+
 }
 
-void MainWindow::FilterAdvancedSettings(const QString& query)
+std::vector<CollapsibleSection*> MainWindow::SettingsSections(SettingsScope scope) const
+{
+    if (scope == SettingsScope::kImage) {
+        return {magnificationSection_, readabilitySection_, textClaritySection_,
+                stabilitySection_, screenFixSection_, sharpeningSection_,
+                assistantSection_, diagnosticsSection_};
+    }
+    return {deviceSection_, deviceMoreSection_, recordingSection_, notesFilesSection_,
+            applicationSection_, aiDownloadsSection_, troubleshootingSection_};
+}
+
+std::vector<QWidget*> MainWindow::InspectorFocusOrder(QWidget* page) const
+{
+    std::vector<QWidget*> order;
+    const std::function<void(QWidget*)> visit = [&](QWidget* widget) {
+        if (!widget) return;
+        if ((widget->focusPolicy() & Qt::TabFocus) &&
+            std::find(order.begin(), order.end(), widget) == order.end()) {
+            order.push_back(widget);
+        }
+        if (auto* tabs = qobject_cast<QTabWidget*>(widget)) {
+            visit(tabs->tabBar());
+            visit(tabs->currentWidget());
+            return;
+        }
+        if (auto* scroll = qobject_cast<QScrollArea*>(widget)) {
+            visit(scroll->widget());
+            return;
+        }
+        const std::function<void(QLayout*)> walk = [&](QLayout* layout) {
+            if (!layout) return;
+            for (int i = 0; i < layout->count(); ++i) {
+                auto* item = layout->itemAt(i);
+                if (item->widget()) visit(item->widget());
+                else if (item->layout()) walk(item->layout());
+            }
+        };
+        walk(widget->layout());
+    };
+    visit(page);
+    return order;
+}
+
+void MainWindow::FilterSettingsTab(SettingsScope scope, const QString& query)
 {
     const QString needle = query.trimmed().toCaseFolded();
     const bool searching = !needle.isEmpty();
-    firstSettingsSearchMatch_ = nullptr;
-    int matchCount = 0;
-
-    const std::array<CollapsibleSection*, 11> sections{
-        applicationSection_, deviceSection_, recordingSection_, magnificationSection_, readabilitySection_,
-        stabilitySection_, screenFixSection_, textClaritySection_,
-        assistantSection_, sharpeningSection_, diagnosticsSection_};
-    for (CollapsibleSection* section : sections) {
-        if (!section) {
-            continue;
-        }
-        bool sectionMatches = !searching;
-        const auto descendants = section->contentWidget()->findChildren<QWidget*>();
-        for (QWidget* widget : descendants) {
-            if (widget->objectName() == QStringLiteral("sliderValueLabel")) {
-                continue;  // numeric readouts are values, not setting names
-            }
-            QString text = widget->accessibleName() + QLatin1Char(' ') +
-                           widget->toolTip();
-            if (auto* label = qobject_cast<QLabel*>(widget)) {
-                text += QLatin1Char(' ') + label->text();
-            } else if (auto* button = qobject_cast<QAbstractButton*>(widget)) {
-                text += QLatin1Char(' ') + button->text();
-            } else if (auto* combo = qobject_cast<QComboBox*>(widget)) {
-                text += QLatin1Char(' ') + combo->currentText();
-            }
-            if (searching && text.toCaseFolded().contains(needle)) {
-                sectionMatches = true;
-                ++matchCount;
-                if (!firstSettingsSearchMatch_ && widget->focusPolicy() != Qt::NoFocus) {
-                    firstSettingsSearchMatch_ = widget;
+    QWidget*& firstMatch = scope == SettingsScope::kImage
+                              ? firstImageSearchMatch_ : firstSharedSearchMatch_;
+    firstMatch = nullptr;
+    int matches = 0;
+    const auto widgetText = [](QWidget* widget) {
+        QString text = widget->accessibleName() + QLatin1Char(' ') + widget->toolTip();
+        if (auto* label = qobject_cast<QLabel*>(widget)) text += QLatin1Char(' ') + label->text();
+        if (auto* button = qobject_cast<QAbstractButton*>(widget)) text += QLatin1Char(' ') + button->text();
+        if (auto* combo = qobject_cast<QComboBox*>(widget)) text += QLatin1Char(' ') + combo->currentText();
+        return text.toCaseFolded();
+    };
+    const auto eligible = [](QWidget* widget) {
+        return widget && widget->isEnabled() && !widget->isHidden() &&
+               (widget->focusPolicy() & Qt::TabFocus);
+    };
+    for (auto* section : SettingsSections(scope)) {
+        if (!section) continue;
+        const bool headingMatch = searching && widgetText(section->headerWidget()).contains(needle);
+        bool sectionMatch = !searching || headingMatch;
+        QWidget* target = headingMatch ? section->headerWidget() : nullptr;
+        bool fineMatch = false;
+        if (headingMatch) ++matches;
+        const auto widgets = section->contentWidget()->findChildren<QWidget*>();
+        for (auto* widget : widgets) {
+            if (widget->objectName() == QStringLiteral("sliderValueLabel")) continue;
+            if (!searching || !widgetText(widget).contains(needle)) continue;
+            sectionMatch = true;
+            ++matches;
+            if (textClarityFineSection_ && textClarityFineSection_->isAncestorOf(widget)) fineMatch = true;
+            if (!target && eligible(widget)) target = widget;
+            if (!target) {
+                if (auto* label = qobject_cast<QLabel*>(widget); label && eligible(label->buddy())) {
+                    target = label->buddy();
                 }
             }
         }
-        section->setVisible(sectionMatches);
-        section->setSearchExpanded(searching && sectionMatches);
-        if (section == deviceSection_ && deviceMoreSection_) {
-            bool moreMatches = false;
-            const auto moreWidgets =
-                deviceMoreSection_->contentWidget()->findChildren<QWidget*>();
-            for (QWidget* widget : moreWidgets) {
-                QString text = widget->accessibleName() + QLatin1Char(' ') +
-                               widget->toolTip();
-                if (auto* label = qobject_cast<QLabel*>(widget)) {
-                    text += QLatin1Char(' ') + label->text();
-                } else if (auto* button =
-                               qobject_cast<QAbstractButton*>(widget)) {
-                    text += QLatin1Char(' ') + button->text();
-                } else if (auto* combo = qobject_cast<QComboBox*>(widget)) {
-                    text += QLatin1Char(' ') + combo->currentText();
-                }
-                if (searching && text.toCaseFolded().contains(needle)) {
-                    moreMatches = true;
-                    break;
-                }
-            }
-            deviceMoreSection_->setSearchExpanded(searching && moreMatches);
+        section->setVisible(sectionMatch);
+        section->setSearchExpanded(searching && sectionMatch);
+        if (section == textClaritySection_) {
+            textClarityFineSection_->setSearchExpanded(searching && fineMatch);
+        }
+        if (searching && sectionMatch && !firstMatch) {
+            firstMatch = target ? target : section->headerWidget();
         }
     }
-
-    if (settingsSearchEdit_) {
-        const QString resultText =
-            searching
-                ? QStringLiteral("%1 settings match").arg(matchCount)
-                : QStringLiteral("Search Advanced settings");
-        settingsSearchEdit_->setAccessibleDescription(resultText);
-        QAccessibleEvent event(settingsSearchEdit_, QAccessible::DescriptionChanged);
+    auto* edit = scope == SettingsScope::kImage ? imageSearchEdit_ : sharedSearchEdit_;
+    auto* status = scope == SettingsScope::kImage ? imageSearchStatusLabel_ : sharedSearchStatusLabel_;
+    QString result = matches > 0 ? QStringLiteral("%1 settings match").arg(matches)
+                                 : QStringLiteral("No matching settings");
+    if (searching && matches == 0) {
+        // Inspect the other scope without changing its query, disclosure, or
+        // visibility. Only Enter performs the cross-tab handoff.
+        const auto otherScope = scope == SettingsScope::kImage
+                                    ? SettingsScope::kShared : SettingsScope::kImage;
+        int otherMatches = 0;
+        for (auto* section : SettingsSections(otherScope)) {
+            if (!section) continue;
+            if (widgetText(section->headerWidget()).contains(needle)) ++otherMatches;
+            for (auto* widget : section->contentWidget()->findChildren<QWidget*>()) {
+                if (widget->objectName() != QStringLiteral("sliderValueLabel") &&
+                    widgetText(widget).contains(needle)) ++otherMatches;
+            }
+        }
+        if (otherMatches > 0) {
+            result = (scope == SettingsScope::kImage
+                ? QStringLiteral("No matches here. %1 in Settings. Press Enter to show them.")
+                : QStringLiteral("No matches here. %1 in Image. Press Enter to show them."))
+                .arg(otherMatches);
+        }
+    }
+    if (edit) {
+        SetLiveAccessibleDescription(edit, searching ? result
+            : QStringLiteral("Type part of a setting name to reveal and focus matching controls."));
+        QAccessibleEvent event(edit, QAccessible::DescriptionChanged);
         QAccessible::updateAccessibility(&event);
     }
-    if (settingsSearchStatusLabel_) {
-        settingsSearchStatusLabel_->setVisible(searching);
-        if (searching) {
-            SetLiveText(settingsSearchStatusLabel_,
-                        matchCount > 0
-                            ? QStringLiteral("%1 settings match").arg(matchCount)
-                            : QStringLiteral("No matching settings"),
-                        LivePoliteness::kSilent,
-                        QStringLiteral("Settings search"));
+    if (status) {
+        status->setVisible(searching);
+        if (searching) SetLiveText(status, result, LivePoliteness::kSilent,
+                                  QStringLiteral("Settings search"));
+    }
+}
+
+void MainWindow::ActivateSearchResult(SettingsScope scope)
+{
+    QWidget* target = scope == SettingsScope::kImage ? firstImageSearchMatch_ : firstSharedSearchMatch_;
+    if (!target) {
+        const auto other = scope == SettingsScope::kImage ? SettingsScope::kShared : SettingsScope::kImage;
+        auto* source = scope == SettingsScope::kImage ? imageSearchEdit_ : sharedSearchEdit_;
+        auto* destination = other == SettingsScope::kImage ? imageSearchEdit_ : sharedSearchEdit_;
+        if (!source || source->text().trimmed().isEmpty()) return;
+        destination->setText(source->text());
+        FilterSettingsTab(other, source->text());
+        target = other == SettingsScope::kImage ? firstImageSearchMatch_ : firstSharedSearchMatch_;
+        if (!target) return;
+        scope = other;
+    }
+    advancedTabs_->setCurrentWidget(scope == SettingsScope::kImage ? imageTabPage_ : settingsTabPage_);
+    if (target->isVisible() && target->isEnabled() && (target->focusPolicy() & Qt::TabFocus)) {
+        target->window()->activateWindow();
+        target->setFocus(Qt::ShortcutFocusReason);
+        auto* scroll = scope == SettingsScope::kImage ? advancedScroll_ : sharedSettingsScroll_;
+        scroll->ensureWidgetVisible(target, 8, 8);
+    }
+}
+
+QString MainWindow::ScopedDescriptionText(const QString& scope, const QString& description) const
+{
+    return TranslateUi(scope) + QLatin1Char(' ') + TranslateUi(description);
+}
+
+void MainWindow::UpdateAdvancedTabToolTips()
+{
+    if (!advancedTabs_) return;
+    for (int index = 0; index < advancedTabs_->count(); ++index) {
+        advancedTabs_->setTabToolTip(index, advancedTabs_->tabText(index));
+    }
+}
+
+void MainWindow::UpdateProfileButtonLayout()
+{
+    if (!profileButtonsLayout_ || !imageTabPage_) return;
+    const int required = promotePresetButton_->sizeHint().width() +
+                         resetProfileButton_->sizeHint().width() + 32;
+    profileButtonsLayout_->setDirection(imageTabPage_->width() < required
+        ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+}
+
+void MainWindow::refreshTextClarityUi()
+{
+    if (!textClarityCheckbox_ || !textClarityFineSection_) return;
+    const QString explanation = TranslateUi(QStringLiteral(
+        "Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on."));
+    if (textClarityHelp_) textClarityHelp_->setText(explanation);
+    textClarityCheckbox_->setToolTip(explanation);
+    textClarityFineSection_->headerWidget()->setToolTip(explanation);
+    textClarityFineSection_->contentWidget()->setAccessibleDescription(explanation);
+    textClarityFineSection_->contentWidget()->setEnabled(textClarityCheckbox_->isChecked());
+}
+
+void MainWindow::refreshSliderReadouts()
+{
+    for (const auto& refresh : sliderReadoutRefreshers_) refresh();
+}
+
+void MainWindow::setExplainBusy(bool busy)
+{
+    if (explainBusy_ == busy) return;
+    explainBusy_ = busy;
+    ApplyExplainBusyUi();
+    UpdateSimpleChromeGeometry();
+}
+
+void MainWindow::ApplyExplainBusyUi()
+{
+    if (!explainNowButton_) return;
+    const QString title = explainBusy_ ? QStringLiteral("Stop") : QStringLiteral("Explain");
+    explainNowButton_->setIcon(QIcon(explainBusy_ ? QStringLiteral(":/okuflow/icons/record-stop.svg")
+                                                : QStringLiteral(":/okuflow/icons/explain.svg")));
+    SetLiveText(explainNowButton_, title, LivePoliteness::kSilent,
+                explainBusy_ ? QStringLiteral("Stop scene explanation") : QStringLiteral("Explain scene"));
+    explainNowButton_->setToolTip(TranslateUi(explainBusy_
+        ? QStringLiteral("Stop the current scene explanation")
+        : QStringLiteral("Describe the current camera view")));
+}
+
+void MainWindow::CloseModeGrid(bool restoreSelection)
+{
+    if (!modeGridPopup_) return;
+    const bool hadVisibleGrid = modeGridPopup_->isVisible();
+    if (restoreSelection && presetList_) {
+        const QSignalBlocker blocker(presetList_);
+        presetList_->setCurrentRow(gridOriginalRow_);
+    }
+    gridBrowsing_ = false;
+    if (hadVisibleGrid && !uiHidden_) {
+        // Keep an owned window active while the native grid disappears.
+        DWORD foregroundProcess = 0;
+        const HWND foreground = GetForegroundWindow();
+        if (foreground && GetWindowThreadProcessId(foreground, &foregroundProcess) &&
+            foregroundProcess == GetCurrentProcessId()) {
+            auto* owner = currentModeButton_->window();
+            SetForegroundWindow(reinterpret_cast<HWND>(owner->winId()));
+            owner->activateWindow();
+            QApplication::setActiveWindow(owner);
+            currentModeButton_->setFocus(Qt::PopupFocusReason);
         }
+    }
+    modeGridPopup_->hide();
+    RevealSimpleChrome();
+    if (!hadVisibleGrid) return;
+    const auto restoreFocus = [this]() {
+        if (uiHidden_ || !isVisible() || !currentModeButton_ ||
+            modeGridPopup_->isVisible() || QApplication::activeModalWidget() ||
+            QApplication::activePopupWidget()) return;
+        // A tool-window hide may temporarily leave Qt without an active
+        // window. Only restore when the foreground still belongs to OkuFlow.
+        DWORD foregroundProcess = 0;
+        const HWND foreground = GetForegroundWindow();
+        if (!foreground || !GetWindowThreadProcessId(foreground, &foregroundProcess) ||
+            foregroundProcess != GetCurrentProcessId()) return;
+        QWidget* active = QApplication::activeWindow();
+        if (active && active != this && active != topLeftPanel_ &&
+            active != bottomLeftPanel_ && active != bottomRightPanel_ &&
+            active != keystoneTrackingPanel_ && active != modeGridPopup_ &&
+            active != uiVisibilityPanel_) return;
+        if (!bottomLeftPanel_->isVisible()) {
+            bottomLeftPanel_->setWindowOpacity(1.0);
+            bottomLeftPanel_->show();
+        }
+        currentModeButton_->window()->activateWindow();
+        currentModeButton_->setFocus(Qt::PopupFocusReason);
+    };
+    // Native Tool-window hiding may post an activation event after hide()
+    // returns. Restore after that transition and again after activation settles.
+    QTimer::singleShot(0, this, [this, restoreFocus]() {
+        restoreFocus();
+        QTimer::singleShot(0, this, restoreFocus);
+    });
+}
+
+void MainWindow::FocusRegion(bool backwards)
+{
+    // A narrow carousel hides the grid button; its region then starts at
+    // the current-mode button, which opens the same grid.
+    QWidget* carouselRegion = modeGridButton_->isVisibleTo(bottomLeftPanel_)
+        ? static_cast<QWidget*>(modeGridButton_) : currentModeButton_;
+    std::vector<QWidget*> regions{renderWidget_, simpleModeButton_, carouselRegion, capturePhotoButton_};
+    if (!isSimpleMode() && advancedTabs_) regions.push_back(advancedTabs_->tabBar());
+    if (annotationOverlay_ && annotationOverlay_->IsActive()) {
+        const auto targets = annotationOverlay_->FocusTargets();
+        if (!targets.empty()) regions.push_back(targets.front());
+    }
+    if (auto* overlay = findChild<AssistiveOverlay*>(); overlay && overlay->isVisible()) {
+        const auto targets = overlay->FocusTargets();
+        if (!targets.empty()) regions.push_back(targets.front());
+    }
+    regions.push_back(uiVisibilityButton_);
+    QWidget* focus = QApplication::focusWidget();
+    int current = -1;
+    for (int i = 0; i < static_cast<int>(regions.size()); ++i) {
+        if (focus && regions[i] && (focus->window() == regions[i]->window())) current = i;
+    }
+    if (!isSimpleMode() && focus && advancedPanel_->isAncestorOf(focus)) current = 4;
+    else if (focus == renderWidget_) current = 0;
+    const int count = static_cast<int>(regions.size());
+    for (int step = 1; step <= count; ++step) {
+        auto* target = regions[(current + (backwards ? -step : step) + count * 2) % count];
+        if (!target || !target->isVisible() || !target->isEnabled()) continue;
+        target->window()->activateWindow();
+        target->setFocus(Qt::ShortcutFocusReason);
+        return;
     }
 }
 
@@ -2516,7 +2844,7 @@ QPlainTextEdit* MainWindow::transcriptFinalsView() const { return transcriptFina
 void MainWindow::SetSimpleTranscriptActive(bool active)
 {
     if (simpleTranscriptActive_ == active && simpleTranscriptPanel_ &&
-        simpleTranscriptPanel_->isVisible() == (active && isSimpleMode())) {
+        simpleTranscriptPanel_->isVisible() == (active && isSimpleMode() && !uiHidden_)) {
         return;
     }
     simpleTranscriptActive_ = active;
@@ -2526,7 +2854,7 @@ void MainWindow::SetSimpleTranscriptActive(bool active)
         RefreshSimpleTranscriptText();
     }
     if (simpleTranscriptPanel_) {
-        simpleTranscriptPanel_->setVisible(active && isSimpleMode());
+        simpleTranscriptPanel_->setVisible(active && isSimpleMode() && !uiHidden_);
         if (simpleTranscriptPanel_->isVisible()) {
             UpdateSimpleChromeGeometry();
         }
@@ -2610,6 +2938,10 @@ void MainWindow::setAnnotationMode(bool enabled)
     annotationButton_->setChecked(enabled);
     changingAnnotationMode_ = false;
     annotationOverlay_->SetActive(enabled);
+    if (uiHidden_) {
+        annotationOverlay_->hide();
+        return;
+    }
     if (enabled) {
         chromePinned_ = true;
         RevealSimpleChrome();
@@ -2620,7 +2952,7 @@ void MainWindow::setAnnotationMode(bool enabled)
             bottomRightPanel_->show();
             bottomRightPanel_->raise();
         }
-        RaiseDialogsAboveChrome();
+        RaiseChromeAboveCanvas();
     } else {
         chromePinned_ = false;
         annotationButton_->setFocus(Qt::OtherFocusReason);
@@ -2760,11 +3092,13 @@ void MainWindow::ShowHelpDialog()
         "<h2>Controls</h2>"
         "<p><b>Simple</b> maximizes the camera view. Use the corner carousel "
         "or number keys 1 through 9 to change quick modes.</p>"
+        "<p><b>Hide UI</b> or <b>Ctrl+H</b> clears controls and the assistant from "
+        "the camera view. <b>Show UI</b> restores them and the existing answer.</p>"
         "<p><b>Advanced</b> opens detailed image and Assistant settings. Drag "
         "the divider at the panel edge to resize it.</p>"
         "<p>Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. "
-        "Enable <b>Virtual Joystick</b> at the top of the Image panel for an "
-        "on-screen movement control.</p>"
+        "Enable <b>Virtual Joystick</b> under <b>Settings &gt; View and navigation</b> "
+        "for an on-screen movement control.</p>"
         "<p>Photo and Record save both original and processed versions. Explain "
         "describes the scene; Read recognizes text. Press <b>Ctrl+Shift+O</b> "
         "to open the folder containing your OkuFlow files.</p>"
@@ -2897,7 +3231,7 @@ void MainWindow::setKeystoneTrackingControls(bool active,
 
     if (!active || !isSimpleMode()) {
         keystoneTrackingPanel_->hide();
-    } else if (simpleChromeVisible_) {
+    } else if (simpleChromeVisible_ && !uiHidden_) {
         keystoneTrackingPanel_->show();
         keystoneTrackingPanel_->raise();
         RaiseDialogsAboveChrome();
@@ -2914,15 +3248,16 @@ void MainWindow::ActivatePresetRow(int row)
     }
 
     QListWidgetItem* item = presetList_->item(row);
-    if (presetList_->currentRow() == row && item) {
-        const QString label = item->data(Qt::AccessibleTextRole).toString();
-        ShowModeAnnouncement(label, item->data(Qt::StatusTipRole).toString());
-    } else {
-        presetList_->setCurrentRow(row);
+    gridBrowsing_ = false;
+    presetList_->setCurrentRow(row);
+    UpdateCurrentPresetUi(item, nullptr);
+    emit quickModeActivated(row);
+    if (isSimpleMode()) {
+        ShowModeAnnouncement(item->data(Qt::AccessibleTextRole).toString(),
+                             item->data(Qt::StatusTipRole).toString());
     }
     presetList_->scrollToItem(item, QAbstractItemView::PositionAtCenter);
-    modeGridPopup_->hide();
-    RevealSimpleChrome();
+    CloseModeGrid(false);
 }
 
 void MainWindow::ActivateRelativePreset(int offset)
@@ -2931,7 +3266,9 @@ void MainWindow::ActivateRelativePreset(int offset)
         return;
     }
     const int count = presetList_->count();
-    int row = presetList_->currentRow();
+    // Arrow browsing is only a candidate. Carousel navigation starts from
+    // the mode still displayed/applied when the grid was opened.
+    int row = gridBrowsing_ ? gridOriginalRow_ : presetList_->currentRow();
     if (row < 0) {
         row = 0;
     } else {
@@ -2942,11 +3279,13 @@ void MainWindow::ActivateRelativePreset(int offset)
 
 void MainWindow::ToggleModeGrid()
 {
-    if (!modeGridPopup_) {
+    if (!modeGridPopup_ || uiHidden_) {
         return;
     }
     const bool show = !modeGridPopup_->isVisible();
     if (show) {
+        gridOriginalRow_ = presetList_->currentRow();
+        gridBrowsing_ = true;
         if (isSimpleMode()) {
             RevealSimpleChrome();
         } else if (bottomLeftPanel_) {
@@ -2958,18 +3297,13 @@ void MainWindow::ToggleModeGrid()
         UpdateSimpleChromeGeometry();
         modeGridPopup_->show();
         modeGridPopup_->raise();
+        modeGridPopup_->activateWindow();
         presetList_->setFocus(Qt::ShortcutFocusReason);
         if (QListWidgetItem* current = presetList_->currentItem()) {
             presetList_->scrollToItem(current, QAbstractItemView::PositionAtCenter);
         }
     } else {
-        modeGridPopup_->hide();
-        if (isSimpleMode()) {
-            RevealSimpleChrome();
-        }
-        if (currentModeButton_) {
-            currentModeButton_->setFocus(Qt::PopupFocusReason);
-        }
+        CloseModeGrid(true);
     }
 }
 
@@ -2981,6 +3315,9 @@ void MainWindow::UpdateCurrentPresetUi(QListWidgetItem* current, QListWidgetItem
 
     auto* carousel = static_cast<ModeCarouselButton*>(currentModeButton_);
     if (!current) {
+        if (currentModeSummaryLabel_) SetLiveText(currentModeSummaryLabel_,
+            QStringLiteral("Custom Setup"), LivePoliteness::kSilent,
+            QStringLiteral("Current quick mode"));
         carousel->setShortcutNumber(0);
         SetLiveAccessibleDescription(currentModeButton_, QString());
         SetLiveText(currentModeButton_, QStringLiteral("Custom Setup"),
@@ -2992,6 +3329,10 @@ void MainWindow::UpdateCurrentPresetUi(QListWidgetItem* current, QListWidgetItem
     QString label = current->data(Qt::AccessibleTextRole).toString();
     if (label.isEmpty()) {
         label = PlainPresetLabel(current->data(Qt::StatusTipRole).toString());
+    }
+    if (currentModeSummaryLabel_) {
+        SetLiveText(currentModeSummaryLabel_, label, LivePoliteness::kSilent,
+                    QStringLiteral("Current quick mode"));
     }
     const int row = presetList_->row(current);
     const int shortcut = row >= 0 && row < kSimpleShortcutCount ? row + 1 : 0;
@@ -3013,15 +3354,13 @@ void MainWindow::UpdateCurrentPresetUi(QListWidgetItem* current, QListWidgetItem
 
 void MainWindow::ShowModeAnnouncement(const QString& label, const QString& profileName)
 {
-    if (label.trimmed().isEmpty() || !modeToast_) {
+    if (uiHidden_ || label.trimmed().isEmpty() || !modeToast_) {
         return;
     }
 
     modeToastTitle_->setText(label);
-    modeToastSubtitle_->setText(
-        profileName.trimmed().isEmpty()
-            ? TranslateUi(QStringLiteral("Quick mode"))
-            : TranslateUi(QStringLiteral("%1 profile")).arg(profileName));
+    Q_UNUSED(profileName);
+    modeToastSubtitle_->setText(TranslateUi(QStringLiteral("Quick mode")));
     modeToast_->setAccessibleName(
         TranslateUi(QStringLiteral("Quick mode changed to %1")).arg(label));
     UpdateSimpleChromeGeometry();
@@ -3036,6 +3375,8 @@ void MainWindow::ShowModeAnnouncement(const QString& label, const QString& profi
 
 void MainWindow::UpdateSimpleChromeGeometry()
 {
+    if (updatingChromeGeometry_) return;
+    QScopedValueRollback<bool> geometryGuard(updatingChromeGeometry_, true);
     if (!renderWidget_ || !topLeftPanel_ || renderWidget_->width() <= 0 || renderWidget_->height() <= 0) {
         return;
     }
@@ -3043,6 +3384,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
     const int viewWidth = renderWidget_->width();
     const int viewHeight = renderWidget_->height();
     const QPoint viewOrigin = renderWidget_->mapToGlobal(QPoint(0, 0));
+    UpdateUiVisibilityControl();
     currentModeButton_->setMinimumWidth(220);
     currentModeButton_->setMaximumWidth(QWIDGETSIZE_MAX);
     const std::array<std::pair<QPushButton*, QString>, 5> actionButtons{{
@@ -3052,14 +3394,14 @@ void MainWindow::UpdateSimpleChromeGeometry()
                             : recordButton_->isChecked()
                                   ? QStringLiteral("Stop")
                                   : QStringLiteral("Record")},
-        {explainNowButton_, explainNowButton_->text() == QStringLiteral("Stop")
+        {explainNowButton_, explainBusy_
                                 ? QStringLiteral("Stop")
                                 : QStringLiteral("Explain")},
         {readTextButton_, QStringLiteral("Read")},
         {annotationButton_, QStringLiteral("Draw")},
     }};
     for (const auto& [button, label] : actionButtons) {
-        button->setText(label);
+        button->setText(TranslateUi(label));
         button->setMinimumWidth(88);
         button->setMaximumWidth(QWIDGETSIZE_MAX);
     }
@@ -3070,33 +3412,80 @@ void MainWindow::UpdateSimpleChromeGeometry()
     }
     const int trackingWidth =
         keystoneTrackingActive_ ? keystoneTrackingPanel_->width() : 0;
-    const bool compactActions =
-        bottomLeftPanel_->width() + trackingWidth +
-            bottomRightPanel_->width() >
-        viewWidth;
-    if (compactActions) {
-        for (const auto& [button, label] : actionButtons) {
-            button->setProperty("fullChromeText", label);
-            button->setText(QString());
-            button->setFixedWidth(58);
+    const auto refit = [](QWidget* panel) {
+        panel->layout()->invalidate();
+        panel->layout()->activate();
+        panel->adjustSize();
+        return std::max(panel->sizeHint().width(), panel->minimumSizeHint().width());
+    };
+    if (auto* actionsLayout = qobject_cast<QGridLayout*>(bottomRightPanel_->layout())) {
+        // Test the real translated button sizes, including stylesheet padding
+        // and icons. Retain readable labels even at the minimum camera width.
+        for (int columns : {5, 3, 2, 1}) {
+            for (int index = 0; index < static_cast<int>(actionButtons.size()); ++index) {
+                auto* button = actionButtons[index].first;
+                actionsLayout->removeWidget(button);
+                actionsLayout->addWidget(button, index / columns, index % columns);
+            }
+            const int requiredWidth = refit(bottomRightPanel_);
+            if (requiredWidth <= viewWidth &&
+                (columns != 5 || bottomLeftPanel_->width() + trackingWidth + requiredWidth <= viewWidth)) {
+                break;
+            }
+        }
+    }
+    if (auto* topLayout = qobject_cast<QGridLayout*>(topLeftPanel_->layout())) {
+        for (QWidget* widget : std::array<QWidget*, 3>{simpleModeButton_,
+                                advancedModeButton_, simpleTextClarityCheckbox_}) {
+            topLayout->removeWidget(widget);
+        }
+        topLayout->addWidget(simpleModeButton_, 0, 0);
+        topLayout->addWidget(advancedModeButton_, 0, 1);
+        topLayout->addWidget(simpleTextClarityCheckbox_, 0, 2);
+        if (refit(topLeftPanel_) > viewWidth) {
+            topLayout->removeWidget(simpleTextClarityCheckbox_);
+            topLayout->addWidget(simpleTextClarityCheckbox_, 1, 0, 1, 2);
+            if (refit(topLeftPanel_) > viewWidth) {
+                topLayout->removeWidget(advancedModeButton_);
+                topLayout->removeWidget(simpleTextClarityCheckbox_);
+                topLayout->addWidget(advancedModeButton_, 1, 0);
+                topLayout->addWidget(simpleTextClarityCheckbox_, 2, 0);
+                refit(topLeftPanel_);
+            }
+        }
+    }
+    if (auto* carouselLayout = qobject_cast<QGridLayout*>(bottomLeftPanel_->layout())) {
+        for (QWidget* widget : std::array<QWidget*, 4>{modeGridButton_, previousModeButton_,
+                                currentModeButton_, nextModeButton_}) {
+            carouselLayout->removeWidget(widget);
+        }
+        modeGridButton_->setVisible(true);
+        carouselLayout->addWidget(modeGridButton_, 0, 0);
+        carouselLayout->addWidget(previousModeButton_, 0, 1);
+        carouselLayout->addWidget(currentModeButton_, 0, 2);
+        carouselLayout->addWidget(nextModeButton_, 0, 3);
+        if (refit(bottomLeftPanel_) > viewWidth) {
+            // The current-mode button opens the same grid, so a narrow view
+            // drops the separate grid button instead of wrapping it onto a
+            // second chrome row over the camera.
+            const bool gridHadFocus = modeGridButton_->hasFocus();
+            carouselLayout->removeWidget(modeGridButton_);
+            carouselLayout->removeWidget(previousModeButton_);
+            carouselLayout->removeWidget(currentModeButton_);
+            carouselLayout->removeWidget(nextModeButton_);
+            modeGridButton_->setVisible(false);
+            if (gridHadFocus) currentModeButton_->setFocus(Qt::OtherFocusReason);
+            carouselLayout->addWidget(previousModeButton_, 0, 0);
+            carouselLayout->addWidget(currentModeButton_, 0, 1);
+            carouselLayout->addWidget(nextModeButton_, 0, 2);
+            const int overhead = std::max(0, refit(bottomLeftPanel_) - currentModeButton_->width());
+            currentModeButton_->setMinimumWidth(120);
+            currentModeButton_->setMaximumWidth(std::max(120, viewWidth - overhead));
+            refit(bottomLeftPanel_);
         }
     }
     for (QWidget* panel : {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_, bottomRightPanel_}) {
         panel->adjustSize();
-    }
-    if (bottomLeftPanel_->width() + trackingWidth +
-            bottomRightPanel_->width() >
-        viewWidth) {
-        // Give the carousel label whatever width the other chrome leaves; it
-        // elides itself while painting when that is still too narrow.
-        const int modeWidth = std::max(currentModeButton_->sizeHint().width(),
-                                       currentModeButton_->minimumWidth());
-        const int otherLeftWidth = bottomLeftPanel_->sizeHint().width() - modeWidth;
-        const int availableWidth = viewWidth - trackingWidth -
-                                   bottomRightPanel_->width() - otherLeftWidth - 8;
-        currentModeButton_->setMinimumWidth(120);
-        currentModeButton_->setMaximumWidth(std::max(120, availableWidth));
-        bottomLeftPanel_->adjustSize();
     }
 
     const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
@@ -3111,7 +3500,10 @@ void MainWindow::UpdateSimpleChromeGeometry()
                    : viewOrigin.x() + std::max(0, viewWidth - itemWidth);
     };
 
-    topLeftPanel_->move(leadingX(topLeftPanel_->width()), viewOrigin.y());
+    const int topChromeOffset = uiVisibilityPanel_ &&
+        topLeftPanel_->width() + uiVisibilityPanel_->width() + 8 > viewWidth
+            ? uiVisibilityPanel_->height() + 8 : 0;
+    topLeftPanel_->move(leadingX(topLeftPanel_->width()), viewOrigin.y() + topChromeOffset);
     bottomLeftPanel_->move(leadingX(bottomLeftPanel_->width()),
                            viewOrigin.y() + std::max(0, viewHeight - bottomLeftPanel_->height()));
     const bool trackingInline = keystoneTrackingActive_ &&
@@ -3199,6 +3591,27 @@ void MainWindow::UpdateSimpleChromeGeometry()
             viewOrigin.x() + std::max(0, (viewWidth - placeholderWidth) / 2),
             viewOrigin.y() + std::max(0, (viewHeight - cameraPlaceholder_->height()) / 2));
     }
+    // Reserve the actual visible native chrome, in render-relative coordinates.
+    // SetSafeArea changes only untouched default assistant placement; saved or
+    // user-adjusted geometry is retained by the overlay.
+    if (auto* overlay = findChild<AssistiveOverlay*>()) {
+        int safeTop = 8;
+        int safeBottom = viewHeight - 8;
+        for (QWidget* panel : {topLeftPanel_, uiVisibilityPanel_}) {
+            if (panel && panel->isVisible()) {
+                safeTop = std::max(safeTop, panel->geometry().bottom() - viewOrigin.y() + 9);
+            }
+        }
+        for (QWidget* panel : {bottomLeftPanel_, bottomRightPanel_, keystoneTrackingPanel_,
+                              simpleTranscriptPanel_}) {
+            if (panel && panel->isVisible()) {
+                safeBottom = std::min(safeBottom, panel->geometry().top() - viewOrigin.y() - 8);
+            }
+        }
+        const int sideMargin = std::min(20, std::max(0, viewWidth / 30));
+        overlay->SetSafeArea(QRect(sideMargin, safeTop,
+            std::max(1, viewWidth - sideMargin * 2), std::max(1, safeBottom - safeTop)));
+    }
 }
 
 void MainWindow::setCameraPlaceholder(const QString& title, const QString& detail)
@@ -3231,7 +3644,7 @@ void MainWindow::UpdateCameraPlaceholderVisibility()
     }
     // Like the corner chrome, this tool window would float above other
     // applications, so it only shows while OkuFlow is the active application.
-    const bool show = !cameraPlaceholderTitle_->text().isEmpty() &&
+    const bool show = !uiHidden_ && !cameraPlaceholderTitle_->text().isEmpty() &&
                       isVisible() && !isMinimized() &&
                       QGuiApplication::applicationState() == Qt::ApplicationActive;
     if (show == cameraPlaceholder_->isVisible()) {
@@ -3246,8 +3659,67 @@ void MainWindow::UpdateCameraPlaceholderVisibility()
     }
 }
 
+void MainWindow::UpdateUiVisibilityControl()
+{
+    if (!uiVisibilityPanel_ || !uiVisibilityButton_ || !renderWidget_) return;
+    SetLiveText(uiVisibilityButton_, uiHidden_ ? QStringLiteral("Show UI") : QStringLiteral("Hide UI"),
+                LivePoliteness::kSilent,
+                uiHidden_ ? QStringLiteral("Show controls and assistant")
+                          : QStringLiteral("Hide controls and assistant"));
+    uiVisibilityButton_->setToolTip(TranslateUi(QStringLiteral("Show or hide controls and assistant (Ctrl+H)")));
+    uiVisibilityPanel_->adjustSize();
+    const QPoint origin = renderWidget_->mapToGlobal(QPoint(0, 0));
+    const int offset = layoutDirection() == Qt::RightToLeft ? 4
+        : std::max(4, renderWidget_->width() - uiVisibilityPanel_->width() - 4);
+    uiVisibilityPanel_->move(origin.x() + offset, origin.y() + 4);
+    const bool visible = isVisible() && !isMinimized() &&
+        QApplication::applicationState() == Qt::ApplicationActive;
+    uiVisibilityPanel_->setVisible(visible);
+    if (visible) {
+        RaiseChromeAboveCanvas();
+    }
+}
+
+void MainWindow::setUiHidden(bool hidden)
+{
+    if (uiHidden_ == hidden) return;
+    if (hidden) {
+        modeBeforeUiHiddenSimple_ = isSimpleMode();
+        if (!modeBeforeUiHiddenSimple_) advancedPanelPreferredWidth_ = advancedPanelWidth();
+        if (modeGridPopup_->isVisible()) CloseModeGrid(true);
+        uiHidden_ = true;
+        simpleChromeIdleTimer_->stop();
+        modeToastTimer_->stop();
+        if (chromeAnimation_) chromeAnimation_->stop();
+        simpleChromeVisible_ = false;
+        advancedPanel_->hide();
+        for (QWidget* panel : {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_,
+                              bottomRightPanel_, modeGridPopup_, modeToast_, simpleTranscriptPanel_,
+                              cameraPlaceholder_}) {
+            if (panel) panel->hide();
+        }
+        if (annotationOverlay_ && annotationOverlay_->IsActive()) annotationOverlay_->hide();
+    } else {
+        uiHidden_ = false;
+        setSimpleMode(modeBeforeUiHiddenSimple_);
+        if (annotationOverlay_ && annotationOverlay_->IsActive()) {
+            annotationOverlay_->show();
+            annotationOverlay_->raise();
+        }
+        UpdateCameraPlaceholderVisibility();
+    }
+    if (auto* overlay = findChild<AssistiveOverlay*>()) overlay->SetUiSuppressed(hidden);
+    UpdateSimpleChromeGeometry();
+    UpdateUiVisibilityControl();
+    if (hidden && uiVisibilityButton_->isVisible()) {
+        uiVisibilityPanel_->activateWindow();
+        uiVisibilityButton_->setFocus(Qt::ShortcutFocusReason);
+    }
+}
+
 void MainWindow::SetChromeOpacity(qreal opacity, int durationMs, bool hideWhenFinished)
 {
+    if (uiHidden_) return;
     if (chromeAnimation_) {
         chromeAnimation_->stop();
         chromeAnimation_->deleteLater();
@@ -3296,6 +3768,16 @@ void MainWindow::SetChromeOpacity(qreal opacity, int durationMs, bool hideWhenFi
 // Chrome panels and dialogs are sibling windows owned by this window, so the
 // most recently raised one wins. Raising chrome on reveal/activation must not
 // bury an open dialog (Setup Assistant, AI Settings) beneath it.
+void MainWindow::RaiseChromeAboveCanvas()
+{
+    for (QWidget* panel : {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_,
+                          bottomRightPanel_, uiVisibilityPanel_, modeGridPopup_,
+                          modeToast_, simpleTranscriptPanel_}) {
+        if (panel && panel->isVisible()) panel->raise();
+    }
+    RaiseDialogsAboveChrome();
+}
+
 void MainWindow::RaiseDialogsAboveChrome()
 {
     const QList<QDialog*> dialogs =
@@ -3323,7 +3805,7 @@ bool MainWindow::SimpleChromeHasFocus() const
 
 void MainWindow::RevealSimpleChrome()
 {
-    if (!isSimpleMode()) {
+    if (uiHidden_ || !isSimpleMode()) {
         return;
     }
     const bool alreadyVisible =
@@ -3371,10 +3853,12 @@ void MainWindow::RevealSimpleChrome()
 
 void MainWindow::FadeSimpleChrome()
 {
-    if (!isSimpleMode() || chromePinned_) {
+    if (uiHidden_ || !isSimpleMode() || chromePinned_) {
         return;
     }
-    if (modeGridPopup_->isVisible() || SimpleChromeHasFocus()) {
+    if (modeGridPopup_->isVisible() || QApplication::activeModalWidget() ||
+        QApplication::activePopupWidget() ||
+        (chromeKeyboardFocus_ && SimpleChromeHasFocus())) {
         simpleChromeIdleTimer_->start();
         return;
     }
@@ -3384,6 +3868,10 @@ void MainWindow::FadeSimpleChrome()
 
 void MainWindow::setSimpleMode(bool simple)
 {
+    if (uiHidden_) {
+        modeBeforeUiHiddenSimple_ = simple;
+        return;
+    }
     if (advancedPanel_) {
         advancedPanel_->setVisible(!simple);
     }
@@ -3436,7 +3924,8 @@ void MainWindow::setSimpleMode(bool simple)
 
 bool MainWindow::isSimpleMode() const
 {
-    return !advancedPanel_ || !advancedPanel_->isVisible();
+    return uiHidden_ ? modeBeforeUiHiddenSimple_
+                     : !advancedPanel_ || !advancedPanel_->isVisible();
 }
 
 int MainWindow::advancedPanelWidth() const
@@ -3509,9 +3998,26 @@ void MainWindow::changeEvent(QEvent* event)
     if (event && event->type() == QEvent::LanguageChange) {
         // The language manager switches the default locale with the
         // translator, so decimal marks and percent placement change too.
-        for (const auto& refresh : sliderReadoutRefreshers_) {
-            refresh();
+        refreshSliderReadouts();
+        refreshTextClarityUi();
+        UpdateUiVisibilityControl();
+        ApplyExplainBusyUi();
+        UpdateAdvancedTabToolTips();
+        UpdateProfileButtonLayout();
+        for (const auto& item : scopedDescriptions_) {
+            item.widget->setAccessibleDescription(ScopedDescriptionText(item.scope, item.description));
         }
+        // LanguageManager retranslates the whole tree after installing the
+        // translator. Re-match after that pass, without moving keyboard focus
+        // or replacing either tab's query or saved disclosure state.
+        QTimer::singleShot(0, this, [this]() {
+            if (imageSearchEdit_ && !imageSearchEdit_->text().trimmed().isEmpty()) {
+                FilterSettingsTab(SettingsScope::kImage, imageSearchEdit_->text());
+            }
+            if (sharedSearchEdit_ && !sharedSearchEdit_->text().trimmed().isEmpty()) {
+                FilterSettingsTab(SettingsScope::kShared, sharedSearchEdit_->text());
+            }
+        });
     }
     if (event && event->type() == QEvent::LayoutDirectionChange) {
         UpdateDirectionalUi();
@@ -3566,18 +4072,35 @@ void MainWindow::UpdateDirectionalUi()
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 {
     const QEvent::Type type = event->type();
+    if (type == QEvent::MouseButtonPress) {
+        chromeKeyboardFocus_ = false;
+    } else if (type == QEvent::FocusIn && SimpleChromeHasFocus()) {
+        const auto reason = static_cast<QFocusEvent*>(event)->reason();
+        // Native activation and grid restoration preserve the input modality.
+        // Only an actual mouse press above clears the keyboard-focus latch.
+        if (reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason ||
+            reason == Qt::ShortcutFocusReason) {
+            chromeKeyboardFocus_ = true;
+        }
+    } else if (type == QEvent::KeyPress && SimpleChromeHasFocus()) {
+        chromeKeyboardFocus_ = true;
+    }
+    const bool keyboardFocusActivity = type == QEvent::FocusIn &&
+        (static_cast<QFocusEvent*>(event)->reason() == Qt::TabFocusReason ||
+         static_cast<QFocusEvent*>(event)->reason() == Qt::BacktabFocusReason ||
+         static_cast<QFocusEvent*>(event)->reason() == Qt::ShortcutFocusReason);
     const bool userActivity = type == QEvent::MouseMove ||
                               type == QEvent::MouseButtonPress ||
                               type == QEvent::Wheel ||
                               type == QEvent::KeyPress ||
-                              type == QEvent::FocusIn ||
+                              keyboardFocusActivity ||
                               type == QEvent::Enter ||
                               type == QEvent::TouchBegin ||
                               type == QEvent::ApplicationActivate;
     if (isSimpleMode() && userActivity) {
         RevealSimpleChrome();
     }
-    if (!isSimpleMode() && type == QEvent::ApplicationActivate) {
+    if (!uiHidden_ && !isSimpleMode() && type == QEvent::ApplicationActivate) {
         simpleChromeVisible_ = true;
         topLeftPanel_->setWindowOpacity(1.0);
         bottomLeftPanel_->setWindowOpacity(1.0);
@@ -3592,6 +4115,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         RaiseDialogsAboveChrome();
     }
     if (type == QEvent::ApplicationActivate) {
+        UpdateUiVisibilityControl();
         UpdateCameraPlaceholderVisibility();
     }
 
@@ -3601,6 +4125,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         // switches away (e.g. to take notes); reactivation reveals them again
         // via the ApplicationActivate branch above.
         simpleChromeIdleTimer_->stop();
+        if (uiVisibilityPanel_) uiVisibilityPanel_->hide();
         if (modeToastTimer_) {
             modeToastTimer_->stop();
         }
@@ -3608,6 +4133,11 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
             modeToast_->hide();
         }
         if (modeGridPopup_) {
+            if (gridBrowsing_) {
+                const QSignalBlocker blocker(presetList_);
+                presetList_->setCurrentRow(gridOriginalRow_);
+                gridBrowsing_ = false;
+            }
             modeGridPopup_->hide();
         }
         if (cameraPlaceholder_) {
@@ -3621,39 +4151,64 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         simpleChromeVisible_ = false;
     }
 
+    // Tool windows share the application's filter, but dialogs and transient
+    // editors own their keyboard handling even when parented to this window.
+    bool ownKeyboardSurface = false;
     if (type == QEvent::KeyPress) {
+    auto* eventWidget = qobject_cast<QWidget*>(watched);
+    auto* assistiveOverlay = findChild<AssistiveOverlay*>();
+    const auto onSurface = [eventWidget](QWidget* surface) {
+        return eventWidget && surface && eventWidget->window() == surface->window();
+    };
+    ownKeyboardSurface =
+        !QApplication::activeModalWidget() && !QApplication::activePopupWidget() &&
+        (onSurface(this) || onSurface(topLeftPanel_) || onSurface(bottomLeftPanel_) ||
+         onSurface(bottomRightPanel_) || onSurface(keystoneTrackingPanel_) ||
+         onSurface(annotationOverlay_) || onSurface(assistiveOverlay) ||
+         onSurface(modeGridPopup_) || onSurface(uiVisibilityPanel_));
+    }
+
+    if (ownKeyboardSurface && type == QEvent::KeyPress) {
         auto* key = static_cast<QKeyEvent*>(event);
         if (key->key() == Qt::Key_Escape && modeGridPopup_->isVisible()) {
-            modeGridPopup_->hide();
-            if (isSimpleMode()) {
-                RevealSimpleChrome();
-            }
-            if (currentModeButton_) {
-                currentModeButton_->setFocus(Qt::PopupFocusReason);
-            }
+            CloseModeGrid(true);
             event->accept();
             return true;
         }
     }
 
-    if (isSimpleMode() && type == QEvent::KeyPress) {
+    if (ownKeyboardSurface && type == QEvent::KeyPress) {
         auto* key = static_cast<QKeyEvent*>(event);
-        if (key->key() == Qt::Key_H && key->modifiers() == Qt::ControlModifier) {
-            chromePinned_ = !chromePinned_;
-            RevealSimpleChrome();
-            if (chromePinned_) {
-                simpleChromeIdleTimer_->stop();
-            }
-            QAccessibleAnnouncementEvent announcement(
-                this,
-                chromePinned_ ? QStringLiteral("Controls pinned")
-                              : QStringLiteral("Controls will hide automatically"));
-            announcement.setPoliteness(QAccessible::AnnouncementPoliteness::Assertive);
-            QAccessible::updateAccessibility(&announcement);
+        if (modeGridPopup_->isVisible() &&
+            (watched == presetList_ || presetList_->isAncestorOf(qobject_cast<QWidget*>(watched))) &&
+            (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter || key->key() == Qt::Key_Space)) {
+            ActivatePresetRow(presetList_->currentRow());
             event->accept();
             return true;
         }
-        if (key->key() == Qt::Key_Tab &&
+        if (key->key() == Qt::Key_F && key->modifiers() == Qt::ControlModifier) {
+            setUiHidden(false);
+            setSimpleMode(false);
+            if (advancedTabs_->currentWidget() != settingsTabPage_) advancedTabs_->setCurrentWidget(imageTabPage_);
+            auto* edit = advancedTabs_->currentWidget() == settingsTabPage_ ? sharedSearchEdit_ : imageSearchEdit_;
+            activateWindow();
+            edit->setFocus(Qt::ShortcutFocusReason);
+            edit->selectAll();
+            event->accept();
+            return true;
+        }
+        if (key->key() == Qt::Key_F6 && !(key->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
+            setUiHidden(false);
+            FocusRegion(key->modifiers() & Qt::ShiftModifier);
+            event->accept();
+            return true;
+        }
+        if (key->key() == Qt::Key_H && key->modifiers() == Qt::ControlModifier) {
+            setUiHidden(!uiHidden_);
+            event->accept();
+            return true;
+        }
+        if ((key->key() == Qt::Key_Tab || key->key() == Qt::Key_Backtab) &&
             !(key->modifiers() & (Qt::ControlModifier | Qt::AltModifier)) &&
             !modeGridPopup_->isVisible()) {
             std::vector<QWidget*> focusOrder{
@@ -3662,6 +4217,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
                 simpleKeystoneBackButton_, simpleKeystonePauseButton_, simpleKeystoneNextButton_,
                 capturePhotoButton_, recordButton_, explainNowButton_, readTextButton_,
                 annotationButton_};
+            focusOrder.push_back(uiVisibilityButton_);
             if (annotationOverlay_ && annotationOverlay_->IsActive()) {
                 const auto annotationTargets = annotationOverlay_->FocusTargets();
                 focusOrder.insert(focusOrder.end(),
@@ -3673,6 +4229,12 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
                 const auto overlayTargets = overlay->FocusTargets();
                 focusOrder.insert(focusOrder.end(), overlayTargets.begin(), overlayTargets.end());
             }
+            if (!isSimpleMode() && advancedTabs_) {
+                focusOrder.push_back(advancedTabs_->tabBar());
+                focusOrder.push_back(helpButton_);
+                const auto inspector = InspectorFocusOrder(advancedTabs_->currentWidget());
+                focusOrder.insert(focusOrder.end(), inspector.begin(), inspector.end());
+            }
             QWidget* current = QApplication::focusWidget();
             int currentIndex = -1;
             for (int i = 0; i < static_cast<int>(focusOrder.size()); ++i) {
@@ -3681,7 +4243,8 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
                     break;
                 }
             }
-            const int direction = key->modifiers() & Qt::ShiftModifier ? -1 : 1;
+            const int direction = key->key() == Qt::Key_Backtab ||
+                                  (key->modifiers() & Qt::ShiftModifier) ? -1 : 1;
             if (currentIndex < 0) {
                 currentIndex = direction > 0 ? -1 : 0;
             }
@@ -3690,7 +4253,16 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
                                        static_cast<int>(focusOrder.size())) %
                                       static_cast<int>(focusOrder.size());
                 QWidget* target = focusOrder[candidate];
-                if (target && target->isVisible() && target->isEnabled()) {
+                if (target && target->isVisible() && target->isEnabled() &&
+                    (target->focusPolicy() & Qt::TabFocus)) {
+                    // Preserve native traversal inside the inspector. Only
+                    // bridge its boundaries to the separate chrome windows.
+                    if (!isSimpleMode() && current &&
+                        advancedPanel_->isAncestorOf(current) &&
+                        advancedPanel_->isAncestorOf(target)) {
+                        break;
+                    }
+                    target->window()->activateWindow();
                     target->setFocus(direction > 0 ? Qt::TabFocusReason
                                                    : Qt::BacktabFocusReason);
                     event->accept();
@@ -3699,7 +4271,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
             }
         }
         const bool plainKey = key->modifiers() == Qt::NoModifier || key->modifiers() == Qt::KeypadModifier;
-        if (plainKey && !HasEditableTextFocus() &&
+        if (isSimpleMode() && plainKey && !HasEditableTextFocus() &&
             key->key() >= Qt::Key_1 && key->key() <= Qt::Key_9) {
             ActivatePresetRow(key->key() - Qt::Key_1);
             event->accept();
@@ -3707,6 +4279,13 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         }
     }
 
+    if (watched == this && (type == QEvent::Show || type == QEvent::Hide ||
+                            type == QEvent::WindowStateChange)) {
+        QTimer::singleShot(0, this, &MainWindow::UpdateUiVisibilityControl);
+    }
+    if (type == QEvent::Resize && (watched == imageTabPage_ || watched == advancedPanel_)) {
+        UpdateProfileButtonLayout();
+    }
     if ((watched == this || watched == centralWidget() || watched == contentSplitter_) &&
                            (type == QEvent::Move ||
                             type == QEvent::Resize ||
@@ -3736,8 +4315,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         case QEvent::MouseButtonPress: {
             auto* mouse = static_cast<QMouseEvent*>(event);
             if (modeGridPopup_ && modeGridPopup_->isVisible()) {
-                modeGridPopup_->hide();
-                RevealSimpleChrome();
+                CloseModeGrid(true);
             }
             if (mouse->button() == Qt::MiddleButton) {
                 if (app_) {
@@ -3789,7 +4367,6 @@ bool MainWindow::nativeEventFilter(const QByteArray&, void* message, qintptr*)
     case WM_MOUSEWHEEL:
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
-    case WM_SETFOCUS:
         RevealSimpleChrome();
         break;
     default:

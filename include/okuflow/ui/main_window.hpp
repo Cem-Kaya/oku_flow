@@ -20,6 +20,8 @@
 
 QT_BEGIN_NAMESPACE
 class QAbstractButton;
+class QBoxLayout;
+class QTabWidget;
 class QComboBox;
 class QCheckBox;
 class QListWidgetItem;
@@ -213,8 +215,15 @@ public:
     // picture is presented (starting, offline, reconnecting). An empty title
     // hides it. Visual only: the pipeline status label owns announcements.
     void setCameraPlaceholder(const QString& title, const QString& detail);
+    void setExplainBusy(bool busy);
+    void refreshSliderReadouts();
+    void refreshTextClarityUi();
+    void setUiHidden(bool hidden);
+    bool isUiHidden() const { return uiHidden_; }
+    QToolButton* uiVisibilityButton() const { return uiVisibilityButton_; }
 
 signals:
+    void quickModeActivated(int row);
     void openUserDataFolderRequested();
     void changeUserDataFolderRequested();
     void keystoneStepBackRequested();
@@ -246,16 +255,29 @@ private:
     void ToggleModeGrid();
     void UpdateCurrentPresetUi(QListWidgetItem* current, QListWidgetItem* previous);
     void ShowModeAnnouncement(const QString& label, const QString& profileName);
+    bool updatingChromeGeometry_{false};
     void UpdateSimpleChromeGeometry();
     void UpdateCameraPlaceholderVisibility();
     void RevealSimpleChrome();
     void FadeSimpleChrome();
     void SetChromeOpacity(qreal opacity, int durationMs, bool hideWhenFinished);
     bool SimpleChromeHasFocus() const;
+    void RaiseChromeAboveCanvas();
     void RaiseDialogsAboveChrome();
     void ApplyAdvancedPanelWidth();
     void ShowHelpDialog();
-    void FilterAdvancedSettings(const QString& query);
+    enum class SettingsScope { kImage, kShared };
+    void FilterSettingsTab(SettingsScope scope, const QString& query);
+    void ActivateSearchResult(SettingsScope scope);
+    std::vector<QWidget*> InspectorFocusOrder(QWidget* page) const;
+    void UpdateAdvancedTabToolTips();
+    void UpdateProfileButtonLayout();
+    void ApplyExplainBusyUi();
+    QString ScopedDescriptionText(const QString& scope, const QString& description) const;
+    void FocusRegion(bool backwards);
+    void CloseModeGrid(bool restoreSelection);
+    void UpdateUiVisibilityControl();
+    std::vector<CollapsibleSection*> SettingsSections(SettingsScope scope) const;
     void UpdateDirectionalUi();
 
     RenderWidget* renderWidget_{};
@@ -276,8 +298,24 @@ private:
     QComboBox* cameraFormatCombo_{};
     QLabel* cameraFormatNoticeLabel_{};
     QCheckBox* zoomWheelAccelerationCheckbox_{};
-    QLineEdit* settingsSearchEdit_{};
-    QLabel* settingsSearchStatusLabel_{};
+    QWidget* imageTabPage_{};
+    QWidget* settingsTabPage_{};
+    QTabWidget* advancedTabs_{};
+    QLineEdit* imageSearchEdit_{};
+    QLineEdit* sharedSearchEdit_{};
+    QLabel* imageSearchStatusLabel_{};
+    QLabel* sharedSearchStatusLabel_{};
+    QWidget* sharedSettingsContent_{};
+    QScrollArea* sharedSettingsScroll_{};
+    QLabel* currentModeSummaryLabel_{};
+    QBoxLayout* profileButtonsLayout_{};
+    QWidget* firstImageSearchMatch_{};
+    QWidget* firstSharedSearchMatch_{};
+    bool explainBusy_{};
+    int gridOriginalRow_{-1};
+    bool gridBrowsing_{};
+    struct ScopedDescription { QWidget* widget; QString scope; QString description; };
+    std::vector<ScopedDescription> scopedDescriptions_;
     QPushButton* capturePhotoButton_{};
     QPushButton* recordButton_{};
     QPushButton* annotationButton_{};
@@ -340,10 +378,13 @@ private:
     CollapsibleSection* stabilitySection_{};
     CollapsibleSection* screenFixSection_{};
     CollapsibleSection* textClaritySection_{};
+    CollapsibleSection* textClarityFineSection_{};
+    CollapsibleSection* notesFilesSection_{};
+    CollapsibleSection* aiDownloadsSection_{};
+    CollapsibleSection* troubleshootingSection_{};
     CollapsibleSection* assistantSection_{};
     CollapsibleSection* sharpeningSection_{};
     CollapsibleSection* diagnosticsSection_{};
-    QWidget* firstSettingsSearchMatch_{};
     QWidget* advancedPanel_{};
     QScrollArea* advancedScroll_{};
     QSplitter* contentSplitter_{};
@@ -371,6 +412,11 @@ private:
     QParallelAnimationGroup* chromeAnimation_{};
     bool simpleChromeVisible_{true};
     bool chromePinned_{};
+    bool chromeKeyboardFocus_{};
+    bool uiHidden_{};
+    bool modeBeforeUiHiddenSimple_{true};
+    QWidget* uiVisibilityPanel_{};
+    QToolButton* uiVisibilityButton_{};
     bool keystoneTrackingActive_{};
     QPushButton* simpleModeButton_{};
     QPushButton* advancedModeButton_{};
@@ -387,6 +433,7 @@ private:
     QSlider* autoContrastStrengthSlider_{};
     QCheckBox* simpleTextClarityCheckbox_{};
     QCheckBox* textClarityCheckbox_{};
+    QLabel* textClarityHelp_{};
     QCheckBox* backgroundFlattenCheckbox_{};
     QSlider* backgroundFlattenStrengthSlider_{};
     QCheckBox* adaptiveBinarizationCheckbox_{};

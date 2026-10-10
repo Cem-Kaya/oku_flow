@@ -1,5 +1,6 @@
 #include "okuflow/common/frame_pipeline.hpp"
 #include "okuflow/common/recording_contract.hpp"
+#include "okuflow/common/recording_preservation.hpp"
 
 #include <QtTest>
 
@@ -24,6 +25,8 @@ private slots:
     void missingAndBackwardTimestampsStayMonotonic();
     void dropCountsExcludeEstimatedTimestamps();
     void completionNeverSavesAfterFinalizeFailure();
+    void recordingCleanupPreservesRecoverableOutput();
+    void automaticFinalizationSurvivesLaterStop();
     void stateMachineRejectsIllegalTransitions();
     void recordingCanvasModesAreFixedAndOrientationAware();
     void canvasResamplerPreservesIdentityAndFitBars();
@@ -120,6 +123,50 @@ void RecordingIntegrityTests::completionNeverSavesAfterFinalizeFailure()
     QCOMPARE(okuflow::ClassifyRecordingCompletion(
                  true, false, true, false),
              RecordingCompletionOutcome::FailedBeforeFirstFrame);
+}
+
+void RecordingIntegrityTests::recordingCleanupPreservesRecoverableOutput()
+{
+    // Model the filesystem evidence from a one-leg encoder failure: the
+    // rejected leg may report zero accepted samples yet contain fragments.
+    QVERIFY(!okuflow::CanRemoveEmptyRecording(true, true, false, 8192, 0));
+    QVERIFY(!okuflow::CanRemoveEmptyRecording(true, true, false, 8192, 120));
+    // Even a tiny nonempty file has no safe size-based deletion threshold.
+    QVERIFY(!okuflow::CanRemoveEmptyRecording(true, true, false, 83, 0));
+    QVERIFY(!okuflow::CanRemoveEmptyRecording(true, true, false, 1, 0));
+    // Only this session's proven empty regular file is disposable.
+    QVERIFY(okuflow::CanRemoveEmptyRecording(true, true, false, 0, 0));
+    QVERIFY(!okuflow::CanRemoveEmptyRecording(false, true, false, 0, 0));
+    QVERIFY(!okuflow::CanRemoveEmptyRecording(true, false, false, 0, 0));
+    QVERIFY(!okuflow::CanRemoveEmptyRecording(true, true, true, 0, 0));
+    QVERIFY(!okuflow::CanRemoveEmptyRecording(true, true, false, -1, 0));
+    QVERIFY(!okuflow::CanRemoveEmptyRecording(true, true, false, 0, 120));
+}
+
+void RecordingIntegrityTests::automaticFinalizationSurvivesLaterStop()
+{
+    struct Evidence {
+        std::uint64_t samples{0};
+        long error{0};
+        bool completed{false};
+    };
+    okuflow::RecordingTerminalResult<Evidence> failedLeg;
+    failedLeg.Remember({120, -1, false});
+    // The same production history used by VideoRecorder::Stop survives
+    // teardown, repeated Stop, and an asymmetric counterpart's result.
+    const Evidence stop = failedLeg.Last();
+    QCOMPARE(stop.samples, 120ULL);
+    QCOMPARE(stop.error, -1L);
+    QVERIFY(!stop.completed);
+    QCOMPARE(failedLeg.Last().samples, stop.samples);
+    QVERIFY(!okuflow::CanRemoveEmptyRecording(true, true, false, 0,
+                                             stop.samples));
+    QCOMPARE(okuflow::ClassifyRecordingCompletion(
+                 false, stop.samples > 0, stop.completed, false),
+             RecordingCompletionOutcome::FailedTruncated);
+    failedLeg.Reset();
+    QCOMPARE(failedLeg.Last().samples, 0ULL);
+    QCOMPARE(failedLeg.Last().error, 0L);
 }
 
 void RecordingIntegrityTests::stateMachineRejectsIllegalTransitions()

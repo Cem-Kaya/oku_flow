@@ -122,10 +122,8 @@ void OkuFlowApp::ResetCurrentConfigToDefaults()
 
     const auto answer = QMessageBox::question(
         mainWindow_.get(),
-        QStringLiteral("Reset Tuning"),
-        QStringLiteral("Reset profile-owned image and assistive tuning to defaults?\n\n"
-                       "Camera, orientation, viewport rate, framing, and the virtual "
-                       "joystick will stay unchanged."),
+        QStringLiteral("Reset Mode"),
+        QStringLiteral("Reset this mode's image and assistant settings?\n\nShared settings on the Settings tab will stay unchanged."),
         QMessageBox::Reset | QMessageBox::Cancel,
         QMessageBox::Cancel);
     if (answer != QMessageBox::Reset) {
@@ -158,8 +156,8 @@ void OkuFlowApp::PromoteCurrentConfigToPreset()
 
     bool ok = false;
     const QString name = QInputDialog::getText(mainWindow_.get(),
-                                               QStringLiteral("Save As Quick Option"),
-                                               QStringLiteral("Quick option name:"),
+                                               QStringLiteral("Save as Quick Mode"),
+                                               QStringLiteral("Quick mode name:"),
                                                QLineEdit::Normal,
                                                settingsController_->DefaultPromotedPresetName(),
                                                &ok).trimmed();

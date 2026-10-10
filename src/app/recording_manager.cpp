@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "okuflow/app/recording_manager.hpp"
+#include "okuflow/common/recording_preservation.hpp"
 #include "okuflow/ui/live_status_text.hpp"
 
 #include <QDate>
@@ -92,15 +93,24 @@ QString FinalizeFailureText(
         return {};
     }
     return QStringLiteral(
-               "%1 could not finish its final fragment (0x%2); it remains "
-               "playable up to approximately %3 seconds.")
+               "%1 could not finish its final fragment (0x%2). The file "
+               "was retained; playback has not been verified.")
         .arg(label)
         .arg(static_cast<qulonglong>(
                  static_cast<unsigned long>(result.hresult)),
              8,
              16,
-             QLatin1Char('0'))
-        .arg(result.playableSeconds, 0, 'f', 1);
+             QLatin1Char('0'));
+}
+
+void RemoveEmptySessionRecording(const QString& path,
+                                 std::uint64_t acceptedSamples = 0)
+{
+    const QFileInfo file(path);
+    if (CanRemoveEmptyRecording(true, file.isFile(), file.isSymLink(),
+                                file.size(), acceptedSamples)) {
+        QFile::remove(path);
+    }
 }
 
 } // namespace
@@ -166,49 +176,7 @@ RecordingManager::RecordingManager(QPushButton* recordButton,
         QObject::connect(heartbeatTimer_, &QTimer::timeout, recordButton_,
                          [this]() { OnWorkerHeartbeat(); });
     }
-    RemoveStaleHeaderOnlyRecordings();
     UpdateButton();
-}
-
-void RecordingManager::RemoveStaleHeaderOnlyRecordings()
-{
-    // A machine crash or a wedged encoder can leave header-only MP4 pairs
-    // (~83 bytes: ftyp + uuid + pdin, no samples) that the in-session
-    // cleanup never got to delete because their handles were open. Sweep
-    // recent dated folders at startup so the recordings folder stays
-    // trustworthy. Live files are protected twice: by the age check and by
-    // Windows refusing to delete a file with an open exclusive handle.
-    if (!userDataPaths_) {
-        return;
-    }
-    QString error;
-    const QString root = userDataPaths_->Recordings(&error);
-    if (root.isEmpty()) {
-        return;
-    }
-    const QDateTime cutoff = QDateTime::currentDateTime().addSecs(-120);
-    QStringList dates =
-        QDir(root).entryList(QDir::Dirs | QDir::NoDotAndDotDot,
-                             QDir::Name | QDir::Reversed);
-    // Bounded work: crash leftovers are recent by nature.
-    while (dates.size() > 14) {
-        dates.removeLast();
-    }
-    for (const QString& date : dates) {
-        const QDir dayDir(QDir(root).filePath(date));
-        const QFileInfoList files = dayDir.entryInfoList(
-            {QStringLiteral("VID_*.mp4")}, QDir::Files);
-        for (const QFileInfo& file : files) {
-            if (file.size() >= 1024 ||
-                file.lastModified() >= cutoff) {
-                continue;
-            }
-            if (QFile::remove(file.absoluteFilePath())) {
-                qInfo() << "Removed header-only recording leftover:"
-                        << file.fileName();
-            }
-        }
-    }
 }
 
 bool RecordingManager::ShutdownForProcessExit()
@@ -424,6 +392,7 @@ void RecordingManager::SetRequested(bool requested)
         sessionHadOutput_ = false;
         sessionFinalizationFailed_ = false;
         processedWidth_ = 0;
+        segmentFinalized_ = true;
         processedHeight_ = 0;
         originalWidth_ = 0;
         originalHeight_ = 0;
@@ -875,11 +844,23 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
         VideoRecorder::Codec::Av1, VideoRecorder::Codec::H264};
     QStringList failures;
 
+    // Never overwrite or clean a pre-existing path, including a user-owned
+    // zero-byte file. The paths below belong to this segment only after this.
+    if (QFileInfo::exists(processedPath) || QFileInfo::exists(originalPath)) {
+        FinishSession(false, QStringLiteral("Recording could not start."));
+        return false;
+    }
+
     for (const VideoRecorder::Codec codec : codecs) {
         processedRecorder_.Stop();
         originalRecorder_.Stop();
-        QFile::remove(processedPath);
-        QFile::remove(originalPath);
+        RemoveEmptySessionRecording(processedPath);
+        RemoveEmptySessionRecording(originalPath);
+        // A failed initialization can already have written metadata or
+        // fragments. Retain it instead of reusing the filename for a retry.
+        if (QFileInfo::exists(processedPath) || QFileInfo::exists(originalPath)) {
+            break;
+        }
 
         const bool processedStarted =
             firstFrame.processedGpuScene.IsValid()
@@ -970,11 +951,12 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
                          QString::fromStdString(
                              originalRecorder_.LastError())));
             processedRecorder_.Stop();
-            QFile::remove(processedPath);
+            RemoveEmptySessionRecording(processedPath);
             continue;
         }
 
         processedWidth_ = parameters.processedWidth;
+        segmentFinalized_ = false;
         processedHeight_ = parameters.processedHeight;
         originalWidth_ = parameters.originalWidth;
         originalHeight_ = parameters.originalHeight;
@@ -1050,8 +1032,8 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
 
     processedRecorder_.Stop();
     originalRecorder_.Stop();
-    QFile::remove(processedPath);
-    QFile::remove(originalPath);
+    RemoveEmptySessionRecording(processedPath);
+    RemoveEmptySessionRecording(originalPath);
     FinishSession(
         false,
         failures.isEmpty()
@@ -1256,8 +1238,7 @@ bool RecordingManager::WriteAudioFrame(AudioFrame&& frame)
 
 bool RecordingManager::FinalizeSegment(bool terminal)
 {
-    if (!processedRecorder_.IsRecording() &&
-        !originalRecorder_.IsRecording()) {
+    if (segmentFinalized_) {
         return true;
     }
     if (terminal) {
@@ -1280,6 +1261,7 @@ bool RecordingManager::FinalizeSegment(bool terminal)
         processedRecorder_.Stop();
     const VideoRecorder::FinalizeResult original =
         originalRecorder_.Stop();
+    segmentFinalized_ = true;
     if (RecordingConsoleDiagnosticsEnabled()) {
         qInfo().noquote()
             << QStringLiteral(
@@ -1302,14 +1284,18 @@ bool RecordingManager::FinalizeSegment(bool terminal)
         processed.videoSamplesWritten > 0;
     const bool originalHasSamples =
         original.videoSamplesWritten > 0;
+    RemoveEmptySessionRecording(processedPath, processed.videoSamplesWritten);
+    RemoveEmptySessionRecording(originalPath, original.videoSamplesWritten);
+    sessionHadOutput_ = sessionHadOutput_ || processedHasSamples ||
+        originalHasSamples;
     if (!processedHasSamples && !originalHasSamples) {
-        QFile::remove(processedPath);
-        QFile::remove(originalPath);
-        return true;
+        if (processed.FullyCompleted() && original.FullyCompleted()) {
+            return true;
+        }
+        sessionFinalizationFailed_ = true;
+        return false;
     }
     if (processedHasSamples != originalHasSamples) {
-        QFile::remove(processedPath);
-        QFile::remove(originalPath);
         sessionFinalizationFailed_ = true;
         PostStatus(
             QStringLiteral(
@@ -1427,8 +1413,7 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
     }
     ClearPendingReadbacks();
     bool finalized = true;
-    if (processedRecorder_.IsRecording() ||
-        originalRecorder_.IsRecording()) {
+    if (!segmentFinalized_) {
         finalized = FinalizeSegment(true);
     }
     const RecordingCompletionOutcome outcome =
@@ -1589,8 +1574,7 @@ void RecordingManager::WorkerLoop()
         }
 
         if (shouldShutdown) {
-            if (processedRecorder_.IsRecording() ||
-                originalRecorder_.IsRecording()) {
+            if (!segmentFinalized_) {
                 FinalizeSegment(false);
             }
             break;

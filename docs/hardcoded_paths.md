@@ -26,6 +26,12 @@ This document tracks machine-specific defaults, generated output locations, and 
   deadline. Shutdown allows 10 seconds for normal exit before a verified
   owned-process force-stop. Files remain local and outside release bundles.
 
+## Assistant Capture Deadline
+- Queued Explain/Read and Advanced Assistant frame captures expire after
+  5 seconds, independently of rendering. Individual GPU readbacks retry after
+  1 second inside that deadline. A generation token invalidates deadlines on
+  completion, cancellation, camera shutdown, and presenter faults.
+
 ## Qt
 - Default Qt prefix: `C:\Qt\6.12.0\msvc2022_64`
 - Referenced by:
@@ -93,7 +99,10 @@ This document tracks machine-specific defaults, generated output locations, and 
 - Snapshot output: paired
   `Photos\YYYY-MM-DD\IMG_*_original.jpg` and `IMG_*_processed.jpg`
   (commit temps append `.writing`, and an active transaction uses
-  `IMG_*.pair.lock`; startup completes or rolls back abandoned pairs)
+  `IMG_*.pair.lock`; `.pair.pending` certifies both encodes completed before
+  renaming. Occupied stems receive a UUID suffix, with at most 32 reservation
+  attempts. Recovery completes marked pairs where possible, removes abandoned
+  temps, and preserves final JPEGs while reporting unresolved marked pairs.)
 - Recording output: paired
   `Recordings\YYYY-MM-DD\VID_*_original.mp4` and `VID_*_processed.mp4`
 - Lecture notes output: `Notes\NOTES_<timestamp>_<UUID>.html`; captured-image URLs are stored
@@ -155,7 +164,7 @@ This document tracks machine-specific defaults, generated output locations, and 
   capture-to-present latency; the processing warning budget is the negotiated
   camera frame period.
 - Codex scene explanations are on-demand only; periodic assistive polling does not spend Codex subscription usage.
-- Default Codex model: `gpt-5.6-luna`; the client uses the current image-capable
+- Default Codex model: `gpt-6-luna`; the client uses the current image-capable
   app-server default when that id is unavailable.
 - Default Codex reasoning effort: `low`.
 - Default Assistant Instructions: reply in the request's language unless asked

@@ -136,6 +136,8 @@ aligned with the project goals.
 - `scripts/agent_build.bat` compiles the shipping release configuration, then
   runs the CPU and CUDA CTest presets. Its PASS/FAIL summary is the normal
   pre-submission gate for code changes that touch shared behavior.
+  Automatic Visual Studio discovery is limited to 17.x (2022), preventing
+  newer installed headers from being mixed with the cached 2022 compiler.
 - `scripts/build_release_bundle.bat` runs CTest by default and publishes only
   from a validated staging directory. `OKUFLOW_SKIP_BUNDLE_TESTS=1` is an
   explicit emergency escape hatch and must remain visibly marked untested.
@@ -153,3 +155,15 @@ aligned with the project goals.
   it is not a benchmark of every change against an old release. Report actual
   arrival/presentation rates separately from negotiated camera FPS, and treat
   first-present timing as submission timing rather than sensor-to-photon latency.
+
+## UI Regression Validation
+- `main_window_interactions` exercises the production Qt window without
+  opening a camera or submitting AI requests. Run it through the tracked CPU
+  and CUDA CTest presets in an interactive Windows desktop session.
+- Set `OKUFLOW_UI_TEST_SCREENSHOTS` to an evidence directory when reviewing
+  layouts. Captures include the native corner-control windows; inspect them
+  alongside the assertions. Use separate output directories for each
+  `QT_SCALE_FACTOR` run and avoid concurrent GUI test runs.
+- Preserve the four-tab ownership contract in `docs/ui_modes_design.md` and
+  keep keyboard order, collapsed-section persistence, and English/Turkish/
+  German regression coverage aligned when moving controls.

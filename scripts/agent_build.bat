@@ -25,7 +25,7 @@ if errorlevel 1 (
 )
 
 if exist "%VSWHERE%" (
-    for /f "usebackq delims=" %%V in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find **\VsDevCmd.bat`) do (
+    for /f "usebackq delims=" %%V in (`call "%VSWHERE%" -latest -version "[17.0,18.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find **\VsDevCmd.bat`) do (
         if not defined VSDEVCMD set "VSDEVCMD=%%V"
     )
 )

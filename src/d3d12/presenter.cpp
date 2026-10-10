@@ -3,6 +3,7 @@
 #include "okuflow/d3d12/presenter.hpp"
 #include "okuflow/d3d12/fence_wait.hpp"
 #include "okuflow/d3d12/frame_readiness.hpp"
+#include "okuflow/d3d12/recording_slot_policy.hpp"
 
 #include <QDebug>
 
@@ -92,6 +93,7 @@ struct RecordingFramePoolState {
         UINT64 allocationBytes{};
         bool supportsAnnotations{};
         bool inUse{};
+        UINT64 producerValue{};
 
         ~Slot()
         {
@@ -129,8 +131,19 @@ struct RecordingFramePoolState {
                                   bool needsAnnotations)
     {
         std::lock_guard lock(mutex_);
+        if (fence_->GetCompletedValue() == UINT64_MAX || FAILED(device_->GetDeviceRemovedReason())) {
+            throw std::runtime_error("Device lost while polling recording pool");
+        }
+        const auto reusable = [&](const auto& slot) {
+            const auto readiness = PollRecordingSlot(slot->inUse, slot->producerValue,
+                [&] { return fence_->GetCompletedValue(); },
+                [&] { return FAILED(device_->GetDeviceRemovedReason()); });
+            if (readiness == FrameReadiness::DeviceLost)
+                throw std::runtime_error("Device lost while polling recording slot");
+            return readiness == FrameReadiness::Ready;
+        };
         for (const auto& slot : slots_) {
-            if (!slot->inUse &&
+            if (reusable(slot) &&
                 slot->width == width &&
                 slot->height == height &&
                 (!needsAnnotations || slot->supportsAnnotations)) {
@@ -187,7 +200,7 @@ struct RecordingFramePoolState {
                   kRecordingPoolBudgetBytes ||
               slots_.size() >= kRecordingPoolMaxSlots);) {
             const auto& slot = *it;
-            if (!slot->inUse &&
+            if (reusable(slot) &&
                 (slot->width != width || slot->height != height ||
                  (needsAnnotations && !slot->supportsAnnotations))) {
                 allocatedBytes_ -= slot->allocationBytes;
@@ -529,12 +542,14 @@ try
     ThrowIfFailed(commandList_->Close(), "Failed to close command list");
 
     ID3D12CommandList* lists[] = { commandList_.Get() };
+    if (!QueueExternalDependency()) return;
     commandQueue_->ExecuteCommandLists(static_cast<UINT>(std::size(lists)), lists);
 
     ThrowIfFailed(swapChain_->Present(1, 0), "Failed to present swap chain");
 
-    const UINT64 signalValue = ++fenceValue_;
+    const UINT64 signalValue = ReserveGraphicsSignal();
     ThrowIfFailed(commandQueue_->Signal(fence_.Get(), signalValue), "Failed to signal fence");
+    GraphicsSignalSubmitted(signalValue);
     frameFenceValues_[backIndex] = signalValue;
     scenePresentNeeded_ = false;
 }
@@ -709,24 +724,24 @@ try
 
     ID3D12CommandList* lists[] = { commandList_.Get() };
     if (!KeepSubmittedResource(texture)) return false;
+    if (!QueueExternalDependency()) return false;
     commandQueue_->ExecuteCommandLists(static_cast<UINT>(std::size(lists)), lists);
 
     if (useFenceSync) {
         // Signal the shared fence as soon as the sampled draw is queued so
         // CUDA can begin its next frame once texture reads have retired.
         const UINT64 textureSignal =
-            std::max({fenceValue_ + 1,
-                      fenceSync->waitValue + 1,
-                      fenceSync->signalValue});
+            ReserveGraphicsSignal();
         ThrowIfFailed(commandQueue_->Signal(fence_.Get(), textureSignal),
                       "Failed to signal shared fence");
-        fenceValue_ = textureSignal;
+        GraphicsSignalSubmitted(textureSignal);
 
         ThrowIfFailed(swapChain_->Present(1, 0), "Failed to present swap chain");
 
         // Extra internal signal after Present paces this frame slot's reuse.
-        const UINT64 slotSignal = ++fenceValue_;
+        const UINT64 slotSignal = ReserveGraphicsSignal();
         ThrowIfFailed(commandQueue_->Signal(fence_.Get(), slotSignal), "Failed to signal fence");
+        GraphicsSignalSubmitted(slotSignal);
         frameFenceValues_[backIndex] = slotSignal;
         if (readbackSlot) {
             readbackSlot->fenceValue = slotSignal;
@@ -773,6 +788,39 @@ ID3D12Device* D3D12Presenter::GetDevice() const
 ID3D12Fence* D3D12Presenter::GetFence() const
 {
     return fence_.Get();
+}
+
+UINT64 D3D12Presenter::ReserveExternalSignal() {
+    if (faulted_) return 0;
+    const auto value = sharedTimeline_.ReserveExternal();
+    if (!value) MarkFenceFault("External fence reservation unavailable");
+    return value;
+}
+bool D3D12Presenter::CommitExternalSignal(UINT64 value) {
+    if (faulted_) return false;
+    return sharedTimeline_.CommitExternal(value) || MarkFenceFault("Invalid external fence commit");
+}
+bool D3D12Presenter::CancelExternalSignal(UINT64 value) {
+    if (faulted_) return false;
+    return sharedTimeline_.CancelExternal(value) || MarkFenceFault("Invalid external fence cancellation");
+}
+UINT64 D3D12Presenter::LastGraphicsSignal() const { return sharedTimeline_.LastGraphics(); }
+UINT64 D3D12Presenter::LastExternalSignal() const { return sharedTimeline_.LastExternal(); }
+bool D3D12Presenter::QueueExternalDependency() noexcept {
+    if (faulted_) return false;
+    if (!sharedTimeline_.QueueDependency([&](std::uint64_t value) {
+        return SUCCEEDED(commandQueue_->Wait(fence_.Get(), value));
+    })) return MarkFenceFault("Failed to order graphics after external producer");
+    return true;
+}
+UINT64 D3D12Presenter::ReserveGraphicsSignal() {
+    const auto value = sharedTimeline_.ReserveGraphics();
+    if (!value) throw std::runtime_error("Graphics fence timeline unavailable or exhausted");
+    return value;
+}
+void D3D12Presenter::GraphicsSignalSubmitted(UINT64 value) noexcept {
+    sharedTimeline_.GraphicsSubmitted(value);
+    fenceValue_ = value;
 }
 
 UINT64 D3D12Presenter::GetLastSignaledFenceValue() const
@@ -1274,11 +1322,12 @@ try
         // still-active CUDA stream.
         ThrowIfFailed(commandQueue_->Wait(fence_.Get(), waitFenceValue),
                       "Failed to queue CUDA wait before texture readback");
-        fenceValue_ = std::max(fenceValue_, waitFenceValue);
+
     }
 
     ID3D12CommandList* lists[] = { commandList_.Get() };
     if (!KeepSubmittedResource(texture)) return false;
+    if (!QueueExternalDependency()) return false;
     commandQueue_->ExecuteCommandLists(static_cast<UINT>(std::size(lists)), lists);
 
     if (!WaitForGpu()) return false;
@@ -1426,10 +1475,12 @@ try
 
     ID3D12CommandList* lists[] = { commandList_.Get() };
     if (!KeepSubmittedResource(texture)) return false;
+    if (!QueueExternalDependency()) return false;
     commandQueue_->ExecuteCommandLists(static_cast<UINT>(std::size(lists)), lists);
 
-    const UINT64 signalValue = ++fenceValue_;
+    const UINT64 signalValue = ReserveGraphicsSignal();
     ThrowIfFailed(commandQueue_->Signal(fence_.Get(), signalValue), "Failed to signal fence");
+    GraphicsSignalSubmitted(signalValue);
     slot->fenceValue = signalValue;
     slot->inFlight = true;
     if (outRequestId) {
@@ -1670,12 +1721,15 @@ GpuVideoFrame D3D12Presenter::RequestRecordingFrame(
             ThrowIfFailed(commandQueue_->Wait(fence_.Get(), waitFenceValue),
                           "Failed to queue recording wait on CUDA fence");
         }
+        if (!QueueExternalDependency()) return {};
+        slot->producerValue = kRecordingProducerPending;
         commandQueue_->ExecuteCommandLists(1, lists);
-        const UINT64 readyValue = std::max(fenceValue_, waitFenceValue) + 1;
-        fenceValue_ = readyValue;
+        const UINT64 readyValue = ReserveGraphicsSignal();
         ThrowIfFailed(
             commandQueue_->Signal(fence_.Get(), readyValue),
             "Failed to signal GPU recording frame");
+        GraphicsSignalSubmitted(readyValue);
+        slot->producerValue = readyValue;
 
         frame.textureSharedHandle = slot->textureHandle;
         frame.fenceSharedHandle = recordingFramePool_->FenceHandle();
@@ -1784,12 +1838,12 @@ bool D3D12Presenter::WaitForGpu() noexcept
     if (faulted_) return false;
     if (!commandQueue_ || !fence_ || !fenceEvent_)
         return MarkFenceFault("Fence objects unavailable");
-    if (fenceValue_ >= UINT64_MAX - 1)
-        return MarkFenceFault("Fence timeline exhausted");
-    const UINT64 value = fenceValue_ + 1;
+    if (!QueueExternalDependency()) return false;
+    const UINT64 value = sharedTimeline_.ReserveGraphics();
+    if (!value) return MarkFenceFault("Fence timeline unavailable or exhausted");
     if (FAILED(commandQueue_->Signal(fence_.Get(), value)))
         return MarkFenceFault("Failed to signal drain fence");
-    fenceValue_ = value;
+    GraphicsSignalSubmitted(value);
     if (!WaitForFenceValue(value)) return false;
     submittedSourceTextures_.clear();
     return true;

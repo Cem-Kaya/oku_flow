@@ -2,10 +2,13 @@
 
 #include "okuflow/ui/assistive_overlay.hpp"
 #include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/ui_translation.hpp"
 
 #include <QEvent>
 #include <QApplication>
-#include <QComboBox>
+#include <QActionGroup>
+#include <QMenu>
+#include <QTextBlockFormat>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
@@ -101,7 +104,7 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
             color: #f5f5f5;
             background: transparent;
             border: none;
-            font-size: 13pt;
+            font-size: 20pt;
             selection-background-color: #a84bc1;
             selection-color: #ffffff;
         }
@@ -115,6 +118,22 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
         QPushButton#assistiveReadButton:focus, QPushButton#assistiveAskButton:focus {
             border: 3px solid #bd52d3;
         }
+        QPushButton#assistiveReadButton {
+            background: #74328b;
+            border-color: #e5b5f2;
+            font-size: 16pt;
+            font-weight: 600;
+            min-height: 48px;
+            padding: 2px 12px;
+        }
+        QToolButton#assistiveDockPosition {
+            color: #ffffff;
+            background: #303030;
+            border: 2px solid #9a9a9a;
+            border-radius: 6px;
+            font-size: 20pt;
+        }
+        QToolButton#assistiveDockPosition:focus { border-color: #e5b5f2; }
         QLineEdit#assistiveQuestion {
             color: #ffffff;
             background: #202020;
@@ -150,19 +169,51 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     auto* header = new QHBoxLayout(headerWidget_);
     header->setContentsMargins(14, 10, 14, 0);
     header->setSpacing(8);
-    newChatButton_ = new QPushButton(QStringLiteral("New chat"));
+    newChatButton_ = new QPushButton(QStringLiteral("New Conversation"));
     newChatButton_->setObjectName(QStringLiteral("assistiveNewChatButton"));
     newChatButton_->setCursor(Qt::ArrowCursor);
-    newChatButton_->setAccessibleName(QStringLiteral("New chat"));
+    newChatButton_->setAccessibleName(QStringLiteral("New Conversation"));
     newChatButton_->setAccessibleDescription(
         QStringLiteral("Start a fresh assistant conversation. The next answer "
                        "begins a new conversation section in the lecture notes."));
-    header->addWidget(newChatButton_);
+    // Reading controls take precedence; New Conversation is secondary below.
 
     titleLabel_ = new QLabel();
     titleLabel_->setObjectName(QStringLiteral("assistiveTitle"));
+    titleLabel_->setWordWrap(true);
     titleLabel_->setAccessibleName(QStringLiteral("Assistive result title"));
     header->addWidget(titleLabel_, 1);
+
+    dockPositionButton_ = new QToolButton();
+    dockPositionButton_->setObjectName(QStringLiteral("assistiveDockPosition"));
+    dockPositionButton_->setText(QStringLiteral("⋯"));
+    dockPositionButton_->setAccessibleName(QStringLiteral("Panel position"));
+    dockPositionButton_->setToolTip(QStringLiteral("Panel position"));
+    dockPositionButton_->setFixedSize(48, 48);
+    dockPositionButton_->setCursor(Qt::ArrowCursor);
+    dockPositionButton_->setPopupMode(QToolButton::InstantPopup);
+    auto* placementMenu = new QMenu(dockPositionButton_);
+    auto* placementGroup = new QActionGroup(placementMenu);
+    const std::array<QString, 3> positions{QStringLiteral("floating"),
+        QStringLiteral("left"), QStringLiteral("right")};
+    const std::array<QString, 3> labels{QStringLiteral("Floating"),
+        QStringLiteral("Dock left"), QStringLiteral("Dock right")};
+    for (size_t index = 0; index < positions.size(); ++index) {
+        QAction* action = placementMenu->addAction(TranslateUi(labels[index]));
+        action->setProperty("_okuflowPlacementSource", labels[index]);
+        action->setData(positions[index]);
+        action->setCheckable(true);
+        placementGroup->addAction(action);
+        dockPositionActions_[index] = action;
+        connect(action, &QAction::triggered, this, [this, position = positions[index]]() {
+            SetDockPosition(position);
+        });
+    }
+    dockPositionButton_->setMenu(placementMenu);
+    connect(placementMenu, &QMenu::aboutToShow,
+            this, &AssistiveOverlay::UpdateDockPositionControl);
+    dockPositionButton_->setVisible(dockHost_ != nullptr);
+    header->addWidget(dockPositionButton_);
 
     closeButton_ = new QToolButton();
     closeButton_->setObjectName(QStringLiteral("assistiveCloseButton"));
@@ -186,6 +237,9 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     bodyView_->setAccessibleDescription(
         QStringLiteral("Streaming assistant result. Use arrow keys to read the text."));
     layout->addWidget(bodyView_, 1);
+    QFont answerFont = bodyView_->font();
+    answerFont.setPointSize(20);
+    bodyView_->setFont(answerFont);
 
     auto* questionRow = new QHBoxLayout();
     questionRow->setSpacing(8);
@@ -195,6 +249,7 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     questionEdit_->setAccessibleName(QStringLiteral("Question about the current view"));
     questionEdit_->setAccessibleDescription(
         QStringLiteral("Type a follow-up question at any time. Sending becomes available when the current answer finishes."));
+    questionEdit_->installEventFilter(this);
     askButton_ = new QPushButton(QStringLiteral("Ask"));
     askButton_->setObjectName(QStringLiteral("assistiveAskButton"));
     askButton_->setEnabled(false);
@@ -206,17 +261,6 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     layout->addLayout(questionRow);
 
     auto* footer = new QHBoxLayout();
-    dockPositionCombo_ = new QComboBox();
-    dockPositionCombo_->setObjectName(QStringLiteral("assistiveDockPosition"));
-    dockPositionCombo_->setAccessibleName(QStringLiteral("Panel position"));
-    dockPositionCombo_->setToolTip(QStringLiteral("Panel position"));
-    dockPositionCombo_->addItem(QStringLiteral("Floating"), QStringLiteral("floating"));
-    dockPositionCombo_->addItem(QStringLiteral("Dock left"), QStringLiteral("left"));
-    dockPositionCombo_->addItem(QStringLiteral("Dock right"), QStringLiteral("right"));
-    dockPositionCombo_->setMinimumHeight(40);
-    dockPositionCombo_->setVisible(dockHost_ != nullptr);
-    footer->addWidget(dockPositionCombo_);
-    footer->addStretch(1);
     readAloudButton_ = new QPushButton(QStringLiteral("Read Aloud"));
     readAloudButton_->setObjectName(QStringLiteral("assistiveReadButton"));
     readAloudButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/read.svg")));
@@ -225,8 +269,14 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     readAloudButton_->setAccessibleDescription(
         QStringLiteral("Speak the current assistant result"));
     footer->addWidget(readAloudButton_);
+    footer->addStretch(1);
+    footer->addWidget(newChatButton_);
     layout->addLayout(footer);
     setWidget(content);
+    const auto focusTargets = FocusTargets();
+    for (size_t index = 1; index < focusTargets.size(); ++index) {
+        QWidget::setTabOrder(focusTargets[index - 1], focusTargets[index]);
+    }
     setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     // Header gestures are owned below. Qt's automatic dock dragging otherwise
     // competes with native floating moves and can repeatedly plug/unplug the dock.
@@ -243,9 +293,7 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
         dockHost_->addDockWidget(Qt::LeftDockWidgetArea, this);
     }
     setFloating(true);
-    connect(dockPositionCombo_, &QComboBox::currentIndexChanged, this, [this]() {
-        SetDockPosition(dockPositionCombo_->currentData().toString());
-    });
+    UpdateDockPositionControl();
     connect(this, &QDockWidget::topLevelChanged, this, [this](bool floating) {
         if (floating && !changingDockPosition_) {
             placementInitialized_ = false;
@@ -257,6 +305,7 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
             this, &AssistiveOverlay::UpdateDockPositionControl);
 
     connect(closeButton_, &QToolButton::clicked, this, [this]() {
+        desiredVisible_ = false;
         hide();
         emit Dismissed();
     });
@@ -278,7 +327,14 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     connect(askButton_, &QPushButton::clicked, this, &AssistiveOverlay::SubmitQuestion);
     auto* closeShortcut = new QShortcut(QKeySequence::Cancel, this);
     closeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(closeShortcut, &QShortcut::activated, closeButton_, &QToolButton::click);
+    connect(closeShortcut, &QShortcut::activated, this, [this]() {
+        if (questionEdit_->hasFocus() && !questionEdit_->text().isEmpty()) {
+            questionEdit_->clear();
+        } else if (renderTarget_) {
+            renderTarget_->window()->activateWindow();
+            renderTarget_->setFocus(Qt::ShortcutFocusReason);
+        }
+    });
 
     headerWidget_->installEventFilter(this);
     titleLabel_->installEventFilter(this);
@@ -316,6 +372,7 @@ void AssistiveOverlay::SetBusy(bool busy)
 void AssistiveOverlay::RestoreRelativeGeometry(const QRect& geometry)
 {
     restoredRelativeGeometry_ = geometry;
+    usingDefaultPlacement_ = !geometry.isValid();
     placementInitialized_ = false;
     if (isVisible()) {
         UpdatePlacement();
@@ -363,6 +420,24 @@ void AssistiveOverlay::SetDockPosition(const QString& position)
     placementInitialized_ = false;
     UpdatePlacement();
     UpdateDockPositionControl();
+    if (uiSuppressed_) {
+        hide();
+    }
+}
+
+void AssistiveOverlay::SetSafeArea(const QRect& relativeSafeArea)
+{
+    if (safeArea_ == relativeSafeArea) {
+        return;
+    }
+    safeArea_ = relativeSafeArea;
+    // A restored or user-moved panel must not be repositioned by chrome.
+    if (usingDefaultPlacement_ && !restoredRelativeGeometry_.isValid()) {
+        placementInitialized_ = false;
+    }
+    if (!placementInitialized_ && isVisible()) {
+        UpdatePlacement();
+    }
 }
 
 QString AssistiveOverlay::DockPosition() const
@@ -377,8 +452,14 @@ QString AssistiveOverlay::DockPosition() const
 
 void AssistiveOverlay::UpdateDockPositionControl()
 {
-    const QSignalBlocker blocker(dockPositionCombo_);
-    dockPositionCombo_->setCurrentIndex(dockPositionCombo_->findData(DockPosition()));
+    for (QAction* action : dockPositionActions_) {
+        if (!action) {
+            continue;
+        }
+        const QSignalBlocker blocker(action);
+        action->setText(TranslateUi(action->property("_okuflowPlacementSource").toString()));
+        action->setChecked(action->data().toString() == DockPosition());
+    }
 }
 
 void AssistiveOverlay::SetContent(const QString& title, const QString& body, bool visible)
@@ -389,6 +470,8 @@ void AssistiveOverlay::SetContent(const QString& title, const QString& body, boo
                     QStringLiteral("Assistive result"));
     }
     if (body_ != body) {
+        const int formattingStart = !body_.isEmpty() && body.startsWith(body_)
+            ? static_cast<int>(body_.size()) : 0;
         if (!body_.isEmpty() && body.startsWith(body_)) {
             QTextCursor cursor = bodyView_->textCursor();
             cursor.movePosition(QTextCursor::End);
@@ -398,9 +481,16 @@ void AssistiveOverlay::SetContent(const QString& title, const QString& body, boo
             bodyView_->setPlainText(body);
         }
         body_ = body;
+        QTextCursor formatCursor(bodyView_->document());
+        formatCursor.setPosition(formattingStart);
+        formatCursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+        QTextBlockFormat format;
+        format.setLineHeight(135, QTextBlockFormat::ProportionalHeight);
+        formatCursor.mergeBlockFormat(format);
         bodyView_->ensureCursorVisible();
     }
-    const bool shouldShow = visible && (!title_.isEmpty() || !body_.isEmpty());
+    desiredVisible_ = visible && (!title_.isEmpty() || !body_.isEmpty());
+    const bool shouldShow = desiredVisible_ && !uiSuppressed_;
     const bool wasVisible = isVisible();
     if (shouldShow != wasVisible) {
         setVisible(shouldShow);
@@ -410,8 +500,53 @@ void AssistiveOverlay::SetContent(const QString& title, const QString& body, boo
     }
 }
 
+void AssistiveOverlay::SetUiSuppressed(bool suppressed)
+{
+    if (uiSuppressed_ == suppressed) {
+        return;
+    }
+    uiSuppressed_ = suppressed;
+    if (suppressed) {
+        if (!isFloating() && isVisible()) {
+            suppressedDockWidth_ = width();
+        }
+        // Hiding a dock releases its reserved camera area; its docking mode
+        // and the floating placement remain intact for the next show.
+        hide();
+        return;
+    }
+    if (!desiredVisible_) {
+        return;
+    }
+    show();
+    if (!isFloating() && dockHost_ && suppressedDockWidth_ > 0) {
+        dockHost_->resizeDocks({this}, {suppressedDockWidth_}, Qt::Horizontal);
+    }
+    raise();
+}
+
 bool AssistiveOverlay::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == questionEdit_ &&
+        (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress)) {
+        auto* key = static_cast<QKeyEvent*>(event);
+        if (key->key() == Qt::Key_Escape && key->modifiers() == Qt::NoModifier &&
+            !QApplication::activePopupWidget()) {
+            if (event->type() == QEvent::KeyPress) {
+                if (dragging_ || dockHeaderPressed_) {
+                    CancelDockedDrag();
+                    FinishDrag(false);
+                } else if (!questionEdit_->text().isEmpty()) {
+                    questionEdit_->clear();
+                } else if (renderTarget_) {
+                    renderTarget_->window()->activateWindow();
+                    renderTarget_->setFocus(Qt::ShortcutFocusReason);
+                }
+            }
+            event->accept();
+            return true;
+        }
+    }
     auto* geometryWidget = qobject_cast<QWidget*>(watched);
     const bool parentGeometryChanged = renderTarget_ && geometryWidget &&
                                        (geometryWidget == renderTarget_ ||
@@ -461,10 +596,14 @@ bool AssistiveOverlay::eventFilter(QObject* watched, QEvent* event)
 
 bool AssistiveOverlay::event(QEvent* event)
 {
+    if (event->type() == QEvent::LanguageChange) {
+        UpdateDockPositionControl();
+    }
     if ((dragging_ || dockHeaderPressed_) &&
         (event->type() == QEvent::ShortcutOverride ||
                       event->type() == QEvent::KeyPress) &&
-        static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape) {
+        static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape &&
+        static_cast<QKeyEvent*>(event)->modifiers() == Qt::NoModifier) {
         if (event->type() == QEvent::KeyPress) {
             CancelDockedDrag();
             FinishDrag(false);
@@ -506,6 +645,9 @@ void AssistiveOverlay::moveEvent(QMoveEvent* event)
 
 void AssistiveOverlay::hideEvent(QHideEvent* event)
 {
+    if (!isFloating() && width() > 0) {
+        suppressedDockWidth_ = width();
+    }
     ++dragSerial_;
     CancelDockedDrag();
     FinishDrag(false);
@@ -520,7 +662,8 @@ void AssistiveOverlay::showEvent(QShowEvent* event)
 
 void AssistiveOverlay::UpdatePlacement()
 {
-    if (!renderTarget_ || !isFloating() || changingDockPosition_ || dragging_) {
+    if (!renderTarget_ || !isFloating() || changingDockPosition_ || dragging_ ||
+        uiSuppressed_) {
         return;
     }
     const int parentWidth = renderTarget_->width();
@@ -534,9 +677,23 @@ void AssistiveOverlay::UpdatePlacement()
         } else {
             const int sideMargin = std::min(20, std::max(0, parentWidth / 30));
             const int topClearance = std::clamp(parentHeight / 9, 96, 132);
-            const int overlayWidth = std::clamp(parentWidth * 3 / 5, 360, 760);
-            const int overlayHeight = std::clamp(parentHeight * 2 / 5, 260, 520);
-            requested = QRect(parentOrigin + QPoint(sideMargin, topClearance),
+            const QRect viewport(QPoint(), renderTarget_->size());
+            const QRect fallback(sideMargin, topClearance,
+                std::max(0, parentWidth - sideMargin * 2),
+                std::max(0, parentHeight - topClearance - 96));
+            const QRect safe = safeArea_.isValid() ? safeArea_.intersected(viewport) : fallback;
+            // Qt enforces the content layout minimum after setGeometry.
+            // Include it before anchoring, especially on the RTL edge.
+            const QSize layoutMinimum = minimumSizeHint();
+            const int minimumDefaultWidth = std::max(360, layoutMinimum.width());
+            const int minimumDefaultHeight = std::max(260, layoutMinimum.height());
+            const int overlayWidth = std::min(std::max(minimumDefaultWidth, parentWidth * 43 / 100),
+                                               std::max(minimumDefaultWidth, safe.width()));
+            const int overlayHeight = std::min(std::max(minimumDefaultHeight, parentHeight * 3 / 4),
+                                                std::max(minimumDefaultHeight, safe.height()));
+            const int x = layoutDirection() == Qt::RightToLeft
+                ? safe.right() - overlayWidth + 1 : safe.left();
+            requested = QRect(parentOrigin + QPoint(x, safe.top()),
                               QSize(overlayWidth, overlayHeight));
         }
         setGeometry(ConstrainedGeometry(requested));
@@ -619,6 +776,7 @@ void AssistiveOverlay::leaveEvent(QEvent* event)
 
 void AssistiveOverlay::BeginDrag(const QPoint& globalPosition)
 {
+    usingDefaultPlacement_ = false;
     CancelDockedDrag();
     resizing_ = false;
     dragging_ = true;
@@ -835,6 +993,7 @@ void AssistiveOverlay::FinishDrag(bool commit)
 
 void AssistiveOverlay::BeginResize(const QPoint& localPosition, const QPoint& globalPosition)
 {
+    usingDefaultPlacement_ = false;
     ++dragSerial_;
     FinishDrag(false);
     resizeEdges_ = ResizeEdgesAt(localPosition);
@@ -930,8 +1089,8 @@ void AssistiveOverlay::SubmitQuestion()
 
 std::array<QWidget*, 7> AssistiveOverlay::FocusTargets() const
 {
-    return {newChatButton_, bodyView_, questionEdit_, askButton_,
-            dockPositionCombo_, readAloudButton_, closeButton_};
+    return {bodyView_, readAloudButton_, questionEdit_, askButton_,
+            newChatButton_, dockPositionButton_, closeButton_};
 }
 
 

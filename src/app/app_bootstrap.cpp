@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include <QLocale>
 #include "debug_log.hpp"
 
 #include <QSaveFile>
@@ -241,7 +242,7 @@ bool OkuFlowApp::Initialize()
         });
     // Fence state belongs to the orchestrator, so seed it only after the
     // manager exists; the presenter itself is intentionally created first.
-    ResetCudaFenceState();
+    InvalidateRecordingFramePairing();
     // Startup is a cross-function latch: ApplyAdvancedConfig releases it
     // after the first complete UI/config synchronization.
     configTrackingSuspended_ = true;
@@ -308,7 +309,7 @@ bool OkuFlowApp::Initialize()
         }
     }
     if (uiState_->blurRadiusValueLabel_) {
-        uiState_->blurRadiusValueLabel_->setText(QString::number(blurRadius_));
+        uiState_->blurRadiusValueLabel_->setText(QLocale().toString(blurRadius_));
     }
     blurEnabled_ = uiState_->blurCheckbox_ ? uiState_->blurCheckbox_->isChecked() : false;
     temporalSmoothEnabled_ = uiState_->temporalSmoothCheckbox_ ? uiState_->temporalSmoothCheckbox_->isChecked() : false;
@@ -354,8 +355,10 @@ bool OkuFlowApp::Initialize()
     connect(uiState_->microphoneCombo_, &QComboBox::currentIndexChanged,
             this, &OkuFlowApp::OnMicrophoneSelectionChanged);
     if (uiState_->presetList_) {
-        connect(uiState_->presetList_, &QListWidget::currentItemChanged,
-                this, &OkuFlowApp::OnPresetSelectionChanged);
+        connect(mainWindow_.get(), &MainWindow::quickModeActivated,
+                this, [this](int row) {
+                    OnPresetSelectionChanged(uiState_->presetList_->item(row), nullptr);
+                });
     }
     if (uiState_->promotePresetButton_) {
         connect(uiState_->promotePresetButton_, &QPushButton::clicked,
@@ -737,15 +740,36 @@ bool OkuFlowApp::Initialize()
             }
         });
     }
+    // Explain shows Stop only while a temporary Explain/Read request is in
+    // flight and cancellable (frame preparation, VLM HTTP reply, or Codex
+    // turn). Advanced Assistant chat work (open response or queued frame
+    // prompt) is a different action and never flips this button.
+    const auto explainIsCancellable = [this]() {
+        return pendingOnDemandAnalysis_ ||
+               (assistiveManager_->Runtime().IsBusy() &&
+                !assistantResponseOpen_ &&
+                !pendingAssistantFramePrompt_);
+    };
+    const auto syncExplainBusy = [this, explainIsCancellable]() {
+        if (mainWindow_) {
+            mainWindow_->setExplainBusy(explainIsCancellable());
+        }
+    };
+    connect(&assistiveManager_->Runtime(), &AssistiveRuntime::OverlayUpdated,
+            this, [syncExplainBusy](const QString&, const QString&, bool) {
+                // Overlay text can precede the associated busy-state write.
+                // Observe the completed transition on the next event turn.
+                syncExplainBusy();
+            }, Qt::QueuedConnection);
     if (uiState_->explainNowButton_) {
         connect(uiState_->explainNowButton_, &QPushButton::clicked,
-                this, [this]() {
-                    if (assistiveManager_->Runtime().IsCodexTurnActive() ||
-                        pendingAssistantFramePrompt_) {
+                this, [this, explainIsCancellable, syncExplainBusy]() {
+                    if (explainIsCancellable()) {
                         StopAssistantRequest();
                     } else {
                         SubmitOnDemandAnalysis(false);
                     }
+                    syncExplainBusy();
                 });
     }
     if (uiState_->readTextButton_) {
@@ -1002,14 +1026,9 @@ bool OkuFlowApp::Initialize()
                 SavePersistentSettings();
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTurnStarted,
-            this, [this](const QString&, const QString&, bool persistent) {
+            this, [this, syncExplainBusy](const QString&, const QString&, bool) {
                 SetAssistantBusy(true);
-                if (!persistent && uiState_->explainNowButton_) {
-                    SetLiveText(uiState_->explainNowButton_,
-                                QStringLiteral("Stop"),
-                                LivePoliteness::kSilent,
-                                QStringLiteral("Explain"));
-                }
+                syncExplainBusy();
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTextDelta,
             this, [this](const QString& threadId, const QString&, const QString& delta) {
@@ -1026,19 +1045,17 @@ bool OkuFlowApp::Initialize()
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTurnFinished,
             this,
-            [this](const QString& threadId,
+            [this, syncExplainBusy](const QString& threadId,
                    const QString&,
                    const QString& text,
                    const QString& error,
                    bool interrupted,
                    bool persistent) {
                 SetAssistantBusy(false);
-                if (uiState_->explainNowButton_) {
-                    SetLiveText(uiState_->explainNowButton_,
-                                QStringLiteral("Explain"),
-                                LivePoliteness::kSilent,
-                                QStringLiteral("Explain"));
-                }
+                // The runtime has already cleared its turn state; resync so a
+                // finished temporary turn releases Stop while an unrelated
+                // persistent chat turn leaves the button alone.
+                syncExplainBusy();
                 if (!persistent) {
                     return;
                 }

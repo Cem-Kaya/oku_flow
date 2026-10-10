@@ -1,6 +1,6 @@
 # OkuFlow Code Reference
 
-Authoritative code map for the current repository state as of 2026-10-09. Update this file whenever classes, public structs, or significant functions change.
+Authoritative code map for the current repository state as of 2026-10-10. Update this file whenever classes, public structs, or significant functions change.
 
 ## App Module
 
@@ -69,8 +69,12 @@ Authoritative code map for the current repository state as of 2026-10-09. Update
   - `src/app/app_assistant.cpp` — Assistant and assistive actions
   - `src/app/app.cpp` — intentionally empty compatibility translation unit
 - The low-level CUDA/presentation entry points remain private `OkuFlowApp`
-  methods; `PipelineOrchestrator` owns their scheduling and synchronization
-  policy through callbacks.
+  methods; `PipelineOrchestrator` schedules them through callbacks. The
+  presenter owns GPU fence ordering. `InvalidateRecordingFramePairing()`
+  clears pending original/processed pairing after camera or rotation changes
+  without resetting that live fence timeline or CUDA interop. Repeated CUDA
+  failures drain both APIs before recovery; surface teardown disables interop
+  only after the drain succeeds.
 - `StartCameraCapture(..., bool backgroundStartup = false)` starts the initial
   device on a worker after settings/UI construction and before window show,
   overlapping device opening with native presenter initialization. Manual
@@ -143,20 +147,11 @@ Authoritative code map for the current repository state as of 2026-10-09. Update
   `CudaSubmission` measures the host call duration only; sampled CUDA events
   provide actual GPU execution boundaries.
 
-`okuflow::FenceSequencer`
-- Owns the single monotonic D3D12/CUDA fence timeline. CUDA reservations are
-  committed only after submission; failed submissions roll back so no queue
-  waits on a value that will never be signaled.
-- `BeginGraphicsFrame(presenterSignaledValue)` reserves above the presenter's
-  latest internal frame-slot signal. `GraphicsSignaled(actualValue)` adopts
-  the actual last value after every successful present, so viewport-only draws
-  and camera processing cannot reuse or rewind a fence value.
-
 `okuflow::PipelineOrchestrator`
 - Owns the two-clock scheduler, active/idle viewport rate policy, elapsed-time
   tick timing at nanosecond precision, dirty/presentation generation state, display-rate clamp
-  reporting, camera reconnect backoff, fence sequencing, and repeated CUDA
-  failure count.
+  reporting, camera reconnect backoff, and repeated CUDA failure count. The
+  D3D12 presenter owns the shared fence timeline.
 - Camera-clock work runs only when `tick(...)` consumes a fresh capture frame.
   Viewport motion can present the last completed CPU or GPU scene at the
   effective display rate without advancing temporal effects, recording,
@@ -164,7 +159,7 @@ Authoritative code map for the current repository state as of 2026-10-09. Update
 - Public controls include `Start()`, `Stop()`, `UpdateTimerPolicy()`,
   `NotifyCameraFrameAvailable(int delayMs = 0)`,
   viewport rate/fit setters, dirty/motion/present notifications, measured rate
-  and timing accessors, reconnect methods, and fence/failure methods.
+  and timing accessors, reconnect methods, and CUDA-failure methods.
   `FrameTickPercentiles()`, `CaptureToPresentPercentiles()`, and
   `StagePercentiles(...)` summarize independent 240-sample windows;
   `RecordCaptureToPresentSample(...)` and `RecordStageSample(...)` accept only
@@ -210,9 +205,12 @@ Authoritative code map for the current repository state as of 2026-10-09. Update
   D3D11-completion retries, and true capture safe-copy frames. These
   diagnostics remain silent for an ordinary packaged GUI launch.
 - `Stop(...)` immediately releases queued frame/audio leases and finalizes
-  after the sample currently owned by the worker. A segment is retained only
-  when both original and processed recorders report committed video samples;
-  zero-frame placeholders and incomplete pairs are removed.
+  after the sample currently owned by the worker. Each started segment is
+  finalized once even when a writer stopped itself after an error. Each
+  nonempty original or processed file is preserved independently, including
+  an asymmetric pair or a failed finalization; only session-owned regular,
+  non-symlink zero-byte output with no accepted video samples is removed.
+  Only a fully finalized pair is registered in lecture notes.
 - Stop is bounded: an independent UI-thread watchdog fires when
   Stopping/Finalizing has not reached a terminal state within 8 seconds,
   reports the exact blocked call via `DescribeWorkerStage()` (worker
@@ -257,7 +255,7 @@ Authoritative code map for the current repository state as of 2026-10-09. Update
   `UserDataPaths` output, and paired asynchronous teardown.
 
 ### `include/okuflow/app/user_data_paths.hpp`
-`okuflow::UserDataValidationResult`, `okuflow::PhotoPairRecoveryResult`,
+`okuflow::UserDataValidationResult`, `okuflow::PhotoPairRecoveryResult`, `okuflow::PhotoPairWriteResult`,
 `okuflow::UserDataPaths`
 - Owns every user-created artifact location independently of the executable.
   An empty configured root resolves through
@@ -274,12 +272,21 @@ Authoritative code map for the current repository state as of 2026-10-09. Update
   `Recordings`, `Notes`, `Analysis`, and `Debug`; photo and recording
   accessors add ISO-date subfolders. `Debug()` is used only by
   console-attached diagnostic launches.
+- `WritePhotoPair(directory, preferredStem, encodeOriginal, encodeProcessed)`
+  reserves an unused stem with a `QLockFile`, tries UUID-suffixed stems on
+  collisions, and creates temps with `NewOnly`. Encoder callbacks write to
+  `QIODevice`; successful encodes/flushes precede a signed `.pair.pending`
+  marker and the two-rename commit. Rollback removes only paths this writer
+  created. `PhotoPairWriteResult` returns commit success, the selected final
+  paths, and cleanup leftovers. `SaveCapturedPhotoPair` uses this helper on
+  the existing image-I/O pool.
 - `RecoverInterruptedPhotoPairs(staleBefore)` scans the Photos root and every
-  dated subdirectory for stale `IMG_*` transactions. A processed final plus
-  intact original `.writing` file completes the second rename (with symmetric
-  handling if order changes); any other incomplete final/temp set is removed
-  together. Each active writer holds `IMG_*.pair.lock`, allowing immediate
-  crash recovery without racing a second live OkuFlow process.
+  dated subdirectory for stale `IMG_*` transactions. A valid, bounded-read
+  `.pair.pending` marker and intact counterpart temp allow completion of an
+  interrupted second rename. Otherwise recovery cleans disposable temps and
+  preserves all final JPEGs, reporting incomplete marked pairs or invalid
+  markers. Unmarked lone finals remain user-owned. Each active writer holds
+  `IMG_*.pair.lock`, preventing recovery from racing a live writer.
   `PhotoPairRecoveryResult` reports completed pairs, removed files, and paths
   that could not be reconciled for a user-visible warning.
 - The legacy install-relative `output` migration (copy-on-first-run prompt)
@@ -318,6 +325,9 @@ Authoritative code map for the current repository state as of 2026-10-09. Update
 
 ### `include/okuflow/app/assistive_feature_manager.hpp`
 `okuflow::AssistiveFeatureManager`
+- `ClearFocusWarning()` clears only the manager-owned Focus warning. Runtime
+  answer updates relinquish that ownership, so turning Text Clarity off does
+  not dismiss an explanation that replaced the warning.
 - Owns `AssistiveRuntime` plus the floating `AssistiveOverlay`, periodic
   analysis cadence, vision mode state, focus warnings, TTS/result routing,
   persisted camera-relative overlay geometry, and lecture-note routing through
@@ -439,7 +449,7 @@ Namespace `okuflow::settings`
     persisted `vlmCredentialId`, `vlmModel`, `vlmPrompt`,
     `ttsEngine`, `ttsVoiceName`, `ttsVoiceLocale`, `ttsRate`,
     and `lectureNotesEnabled`
-  - defaults to Codex model `gpt-5.6-luna`; the former misspelled
+  - defaults to Codex model `gpt-6-luna`; the former misspelled
     `gpt-5.6-tera` value is normalized during load
   - `vlmApiKey` is never serialized and a JSON field with that name is
     ignored. `SettingsController` resolves `vlmCredentialId` through Windows
@@ -729,6 +739,8 @@ Types:
 - Diagnostics never contain raw payload bytes — malformed lines are reported
   by size and parse offset only, because protocol lines can carry speech
   transcripts, SDP, or account details.
+- `SetRequestTimeoutMs(int)` adjusts the per-request deadline; the Assistant
+  client exposes the same control while leaving the normal 60-second default.
 - Framing or size violations emit `ProtocolFailed`, fail pending replies, and
   kill the child. Clients fail their own pending replies on `Finished` with a
   client-appropriate message.
@@ -900,9 +912,19 @@ Types:
   cap, 30-minute persistent-turn cap, and a five-second interrupt grace before
   forced local reset. Protocol buffers/messages, answers, and loaded
   transcripts have explicit size/count ceilings and mark truncation.
+- An admitted turn carries a generation through account, thread opening, and
+  turn start. Stop retains an in-flight start until its turn id can be
+  interrupted, and a canceled opening cannot create or mutate a replacement.
+  Stale notifications and approvals require matching thread/turn identity;
+  recognized approval requests are still declined. Failed initialization or
+  transport timeout retires the child before publishing one terminal result,
+  so a later request can start a fresh process. The watchdog starts at
+  admission, covering initialization as well as execution.
 - Public API:
   - `Configure(const QString& executablePath, const QString& preferredModel, const QString& reasoningEffort, const QString& assistantInstructions, bool internetEnabled, bool codingEnabled, const QString& workspaceDirectory)`
   - `Start()` / `Shutdown()`
+  - `SetRequestTimeoutMs(int)` changes the JSON-RPC request deadline for
+    controlled testing or integration; the default remains 60 seconds
   - `IsReady()`, `IsSignedIn()`, `IsTurnActive()`, `SelectedModel()`
   - `BuiltInAssistantInstructions()` returns the read-only OkuFlow identity
     prompt shown in AI Settings
@@ -951,7 +973,15 @@ Supporting types:
   without clearing the active answer or its retained notes image. Codex
   requests remain user-initiated; enabling scene mode does not spend allowance
   periodically. `OkuFlowApp::SubmitOnDemandAnalysis(bool readText)` retains
-  the requested action across asynchronous GPU readback.
+  the requested action across asynchronous GPU readback. Explain and Advanced
+  Assistant submissions exclude each other's pending captures and active work.
+  `CancelPendingAssistantCaptures()` clears queued captures and readback ids
+  on Stop, camera shutdown, or a presenter fault without interrupting an
+  already-dispatched chat. `ArmAssistantCaptureDeadline()` bounds capture
+  preparation to five seconds independently of presentation ticks;
+  `assistantCaptureGeneration_` prevents an old deadline from cancelling a
+  later request. Overlay-driven Explain/Stop updates are queued so they read
+  busy state after the runtime finishes its transition.
 - VLM path:
   - default: saves a temporary JPEG and submits it as `localImage` through `CodexAppServerClient`; Codex explanations are on-demand rather than periodic
   - fallback: JPEG-encodes the frame and posts an OpenAI-compatible `chat/completions` request; API keys are optional for local servers
@@ -1089,17 +1119,19 @@ Namespace `okuflow::processing`
 - Media Foundation sink-writer wrapper for live AV1 or H.264 output with an
   optional AAC audio stream. The
   container is fragmented MP4 (fMP4): fragments flush to disk while recording,
-  so the file stays playable up to the last completed fragment even if the
-  process dies before finalization. Files keep the `.mp4` extension.
+  limiting potential loss after a process failure. A retained incomplete file
+  is never described as playable without verification. Files keep `.mp4`.
 - `enum class Codec` — `Av1`, `H264`
 - `struct AudioFormat` — 48 kHz mono 16-bit PCM input description used to
   configure the AAC sink stream
 - `enum class StopReason` — `None`, `Manual`, `DiskFull`, `WriteFailed`; why
   the recorder last transitioned from recording to stopped.
 - `enum class FinalizeDisposition` and `struct FinalizeResult` — distinguish
-  nothing-to-finalize, fully completed, and playable-but-truncated outcomes;
-  include the final HRESULT, playable duration, committed
-  `videoSamplesWritten`, and `HasPlayableVideo()` predicate.
+  nothing-to-finalize, completed, and truncated outcomes; include the original
+  failure HRESULT, estimated duration, accepted `videoSamplesWritten`, and
+  `HasPlayableVideo()` predicate. Accepted samples do not verify playback.
+  The terminal result is cached across automatic writer stop and repeated
+  `Stop()` calls until the next `Start()`.
 - Public API:
   - `VideoRecorder()`
   - `~VideoRecorder()`
@@ -1107,8 +1139,8 @@ Namespace `okuflow::processing`
     frameRateNumerator, UINT frameRateDenominator, Codec codec, const
     AudioFormat* audioFormat = nullptr)` — starts the requested live video
     encoder and optional AAC stream with the exact negotiated rate; refuses to
-    start with under 500 MB free on the target volume (`LastError()` explains
-    why)
+    overwrite an existing output or start with under 500 MB free on the target
+    volume (`LastError()` explains why)
   - `bool StartGpu(..., const GpuVideoFrame& probeFrame, ...)` — starts the
     same writer with an adapter-matched D3D11 device manager; unsupported
     hardware routes use the existing CPU writer
@@ -1118,16 +1150,24 @@ Namespace `okuflow::processing`
     encoder-native NV12 through a D3D11 VideoProcessor, and submits the NV12
     `IMFDXGIBuffer` without reading pixels into system memory. This avoids
     placing a D3D-unaware BGRA color converter ahead of the hardware encoder.
+    A nonblocking D3D11 event query retains the source texture lease and
+    conversion resource graph independently of Media Foundation sample
+    ownership until the GPU read completes. Normal admission polls without
+    flushing; at the 48-reader limit, the recording worker allows query
+    progress for at most 100 ms before reporting a failure. Finalization
+    uses the same bounded, flush-capable retirement poll; unresolved or
+    unknown reads remain retained rather than authorizing premature reuse.
+    `PollGpuReadLeases(bool allowFlush = false)` selects that polling mode;
+    only an actual completed query releases a reader graph.
     Before `WriteSample`, the D3D11 video context is flushed and the DXGI
     media buffer's current length is set to its maximum length. Media
     Foundation creates a DXGI buffer with zero valid bytes initially, and the
     NVIDIA encoder rejects that nominally empty sample with `E_INVALIDARG`.
     A worker-side compatibility readback remains the permanent fallback when
     the adapter cannot create the video-processor path.
-  - `FinalizeResult Stop()` — checks sink finalization and reports whether the
-    file completed fully or only its earlier fragments remain playable;
-    callers use committed-sample accounting rather than file size to reject
-    an empty writer
+  - `FinalizeResult Stop()` — returns the cached terminal result after an
+    automatic stop, preserving the original write/finalization error. A failed
+    pending sample is discarded rather than retried during teardown
   - `bool IsRecording() const`
   - `bool AddFrame(const uint8_t* bgraData, size_t strideBytes, const RecordingFrameIdentity& identity)` — writes a variable-frame-rate sample from the normalized camera timestamp; unknown timestamps advance using the exact negotiated ratio. Free space is re-checked every ~5 seconds; below 200 MB the recording is finalized cleanly and `AddFrame` returns false with `StopReason::DiskFull` (the file is already intact on disk)
   - `bool AddAudioFrame(const std::uint8_t* pcmData, std::size_t byteCount,
@@ -1143,6 +1183,21 @@ Namespace `okuflow::processing`
   - `InitializeSink(...)`
   - `FinalizeAndStop(StopReason reason)`
   - `SetError(const std::string& err)`
+
+### `include/okuflow/common/recording_preservation.hpp`
+`okuflow::RecordingTerminalResult`, `okuflow::CanRemoveEmptyRecording`
+- `RecordingTerminalResult<Result>` retains the first terminal writer result
+  through teardown and repeated Stop calls; `Reset()` begins a new recording.
+- `CanRemoveEmptyRecording(...)` permits cleanup only for a session-owned,
+  regular, non-symlink zero-byte output with no accepted video samples. Small
+  or header-only nonempty files and unknown-size files are preserved.
+
+### `include/okuflow/common/gpu_read_retirement.hpp`
+`okuflow::GpuReadRetirement`
+- Tracks an independently armed GPU source-reader lease. Completed queries
+  release it, pending queries retain it, and unknown completion latches
+  retention. The writer uses this policy in addition to encoder-held sample
+  leases so an early sample release cannot recycle a texture still being read.
 
 ### `include/okuflow/common/recording_contract.hpp`
 `okuflow::RecordingFrameIdentity`, `okuflow::RecordingTimeline`,
@@ -1247,10 +1302,13 @@ Namespace `okuflow::processing`
   and retains dirty state without resetting an allocator or submitting work.
   `NeedsScenePresent()`, viewport dimensions, and
   `MissedPresentCount()` expose scheduler/diagnostic state.
-- Shared-fence presentation chooses values above the presenter's current
-  value, the queued CUDA wait, and the caller reservation; the actual
-  post-Present frame-slot value is the authoritative value returned by
-  `GetLastSignaledFenceValue()`.
+- The presenter alone owns the monotonic shared fence. CUDA reserves an
+  external value through `ReserveExternalSignal()`, then commits it only after
+  enqueue or cancels a failed reservation after a bounded drain. A canceled
+  hole is never a wait target. Every graphics Execute/drain path queues the
+  latest committed CUDA dependency before reserving a graphics value, even
+  when a viewport present was skipped. `GetLastSignaledFenceValue()` remains
+  the latest graphics submission, not the latest CUDA reservation.
 - Native resize requests are coalesced by `RenderWidget`. `Resize(...)` drains
   in-flight back buffers before `ResizeBuffers`, while CPU upload buffers are
   recreated lazily only if the CPU path next presents at the new size.
@@ -1281,13 +1339,21 @@ Namespace `okuflow::processing`
     recordings remain clean.
     Its final optional `UINT64 waitFenceValue = 0` queues the CUDA producer
     dependency explicitly, so recording clones remain valid when viewport
-    admission is busy. The app adopts the actual clone completion on its
-    shared fence timeline. The no-semaphore fallback retains its bounded
-    completion drain before the next CUDA overwrite.
+    admission is busy. The presenter reserves and publishes the actual clone
+    completion on its timeline. The no-semaphore fallback retains its bounded
+    completion drain before the next CUDA overwrite. Pool reuse and
+    obsolete-dimension eviction both require the producer fence to retire,
+    as well as encoder/reader lease release; pending or device-lost completion
+    cannot authorize reuse.
   - `bool TryGetCompletedReadback(std::vector<uint8_t>& outBgra, UINT& outWidth, UINT& outHeight, UINT64* outRequestId = nullptr)` — moves the oldest completed request's tightly packed BGRA8 pixels out and optionally returns the matching request id. Pending requests are silently dropped by `Resize`
   - `ID3D12Device* GetDevice() const`
   - `ID3D12Fence* GetFence() const`
   - `UINT64 GetLastSignaledFenceValue() const`
+  - `ReserveExternalSignal()`, `CommitExternalSignal(UINT64)`,
+    `CancelExternalSignal(UINT64)`, `LastGraphicsSignal()`, and
+    `LastExternalSignal()` are the presenter-thread CUDA/graphics timeline
+    contract. A failed or unknown CUDA drain leaves the pending reservation
+    unavailable rather than allowing a conflicting graphics submission.
   - `bool WaitForIdle() noexcept` drains submitted GPU work with a 1000 ms
     deadline and device-removal probes. False latches `IsFaulted()` and never
     grants resource reuse/release. Presentation, resize, and readback catch
@@ -1300,6 +1366,10 @@ Namespace `okuflow::processing`
   - `FrameReadiness` / `PollFrameReadiness` in `d3d12/frame_readiness.hpp`
     distinguish Ready, Busy, DeviceLost, and WaitFailed without consuming a
     latency signal while the selected allocator is still in flight.
+  - `SharedFenceTimeline` in `d3d12/shared_timeline.hpp` implements monotonic
+    external reservation/commit/cancel and one queued dependency per committed
+    value; `PollRecordingSlot` in `d3d12/recording_slot_policy.hpp` applies
+    producer completion and device-loss checks to pool reuse and eviction.
   - `OkuFlowApp::HandlePresenterFault` also handles CUDA terminal faults:
     it stops frame processing and reports that restarting is required.
 
@@ -1329,6 +1399,13 @@ Supporting types:
   - `kInvert` preserves the legacy per-channel inversion path
   - `kLumaLut` maps byte luma through the active 256-entry table
 - `struct ProcessingSettings`
+  - `ApplyTextClarityMaster()` suppresses all nine child text-stage flags on
+    an effective frame settings copy when Text Clarity is off. Saved options,
+    independent Black & White, display colors, and Maxine remain unchanged.
+    Both the application builder and direct `ProcessFrame` entry apply it.
+    Master transitions reset text-mask and temporal color history; pending
+    focus copies keep their owned slot until completion and discard stale
+    results instead of republishing them after re-enabling.
   - toggles and parameters for BW, zoom, blur, focus marker, spatial sharpening, temporal smoothing, and staging format
   - `zoomAmount` describes viewing magnification independently of `enableZoom`,
     which controls only the legacy CUDA image-zoom stage.
@@ -1340,7 +1417,7 @@ Supporting types:
     requested zoom. `spatialViewTransform` and `spatialViewportWidth/Height`
     supply canonical geometry to the spatial enlargement stage.
   - stabilization: `enableStabilization` selects the one full-strength CUDA
-    fixed-reference path. Transient `enableBumpHold`, presented to users as `Extra Stable`,
+    fixed-reference path. Transient `enableBumpHold`, presented to users as `Extra Stable (hold on shake)`,
     retains the last sharp stabilized GPU frame through rejected/blurred
     impacts and crossfades back after a stable recovery window
   - display grading: `displayColorTransform`, host-owned `displayColorLut`, and
@@ -1369,6 +1446,10 @@ Supporting types:
 - Teardown and buffer reallocation use bounded stream completion polling;
   failed drains latch a terminal fault and preserve allocations, owning CUDA
   state, and retained D3D resources/fence until process exit.
+- After a proven drain, file-local `ReleaseMappedExternalImage(...)` destroys
+  each surface object, clears its non-owning level-zero view, frees its mapped
+  mipmapped array, then destroys external memory. Normal teardown and partial
+  construction cleanup apply this to scene, SuperRes, and original imports.
 - Host upload uses two `cudaMallocHost` staging slots shared by BGRA, NV12,
   and YUY2. Only the Qt tick writes/rotates the slots. A per-slot CUDA event,
   recorded immediately after the final H2D copy, guards the next host write;
@@ -1692,6 +1773,7 @@ Namespace `okuflow`
   Persistent corner controls are excluded from the annotation window's native
   hit-test surface using Win32 window rectangles, keeping physical
   `WM_NCHITTEST` coordinates correct at per-monitor DPI scales above 100%.
+  The persistent Hide UI control is also excluded so Draw cannot intercept it.
   Explicit event forwarding keeps drag-pan available over the canvas. Text
   creates an inline editor at the clicked scene coordinate and commits on
   Enter; Escape cancels it. Slider wheel input is ignored.
@@ -1703,49 +1785,56 @@ Namespace `okuflow`
 - Builds the UI shell and exposes widget accessors used by `OkuFlowApp`.
 - Installs both Qt and Win32-native event filters for reliable activity
   detection across the native swap-chain surface and its owned control windows.
-- Two-speed UI around one persistent render widget: Simple keeps the render
-  widget full-size and places three solid, high-contrast primary control
-  windows plus a contextual keystone strip flush to its edges; Advanced keeps
-  the bottom-left quick-mode carousel available and opens a 420-580 pixel
-  tabbed inspector to the right of the camera. `Image`
-  presents profile tuning first, followed by shared Device, Recording, and
-  Application settings; `Assistant` contains Chat and History views. The Recording
-  section groups processed resolution, camera/original resolution and frame
-  rate, and microphone selection. Section arrows are hidden for three or fewer
-  tabs; the outlined Help button presents Controls before
-  Features; a full-width AI Settings pop-out row appears below it. The top-left
-  mode switch is restored on application activation in both UI modes. The
-  collapsed tuning panel keeps its remaining controls packed at the top.
+- Two-speed UI around one persistent render widget: Simple uses three native
+  corner-control windows plus contextual keystone controls. Advanced keeps
+  the carousel and actions available beside a tabbed inspector (520 logical
+  pixels by default, 360 minimum, saved preference capped at 1200).
+  `Image` holds quick-mode tuning with nested Fine-tune text; `Settings`
+  holds shared Camera, View and navigation, Recording, Notes and files,
+  Language, AI and downloads, and Troubleshooting groups. `Assistant` keeps
+  Chat/History; `Transcript` keeps transcription. Existing widget getters
+  remain valid after reparenting. Help and keyboard tab cycling stay available.
   - `setCameraPlaceholder(...)` / `UpdateCameraPlaceholderVisibility()` show
     source-tracked startup/reconnect/stopped-capture text only while the app is
     active. `OkuFlowApp::UpdateCameraPlaceholder()` derives it from capture
     state and `cameraFramePresented_`, reset at camera start/stop.
   - `OkuFlowApp::UpdateControlEnabledStates()` disables Focus X/Y along with
     the Zoom slider when Zoom is off; companion labels mirror that state.
-  - `RaiseDialogsAboveChrome()` restores visible owned dialogs above tool
-    windows whenever chrome is raised.
+  - `RaiseChromeAboveCanvas()` restores visible corner controls, the persistent
+    Hide/Show button, and grid above the Draw canvas after Draw activation or
+    UI restoration; `RaiseDialogsAboveChrome()` then keeps visible owned
+    dialogs above those tool windows.
   - Internal `ModeCarouselButton` elides at paint time and draws a separate
     shortcut badge. `EnabledMirror` dims a slider's companion readout;
     `FormatPercent`, `FormatScaled`, and `FormatSigned` use the active locale.
-    Readout refreshers run on language changes. Search excludes numeric
-    readouts and displays a silent match count or empty-result message.
+    `refreshSliderReadouts()` runs refreshers after language changes and
+    blocked-signal configuration restores. `FilterSettingsTab(SettingsScope,
+    const QString&)` searches Image or shared Settings, excluding numeric
+    readouts. `ActivateSearchResult(SettingsScope)` focuses the match or
+    transfers the query to the other tab when only it has a result. Language
+    changes reapply active queries after widget labels have been translated.
+    `InspectorFocusOrder(QWidget*)` follows the visible layout order and
+    `FocusRegion(bool)` bridges native control windows for F6 navigation.
   - `void setSimpleMode(bool simple)` / `bool isSimpleMode() const`
+  - `void setExplainBusy(bool busy)` retains explicit cancellable-request
+    state, independent of the localized or compact button label. App startup
+    wiring synchronizes it across GPU capture, preparation, temporary AI
+    requests, completion, and cancellation; persistent chat is separate.
   - `int advancedPanelWidth() const` / `void setAdvancedPanelWidth(int width)`
     expose the persisted splitter width while preserving minimum camera and
     inspector widths
   - `QAbstractButton* simpleModeButton() const` / `QAbstractButton* advancedModeButton() const` — checkable and mutually exclusive; state switching is wired internally, while the app connects only for persistence
 - Public API includes getters for:
-  - camera selection; the Recording section's requested camera/original
-    resolution and frame-rate combo, negotiated mode notice, processed-video
-    resolution combo, and microphone selector; Device > More includes the
-    per-camera acceleration selector, status, global compatibility escape
-    hatch, and watchdog-isolated camera test action
+  - camera selection, orientation, capture resolution/frame rate and negotiated
+    mode notice under Settings > Camera; processed-video resolution and
+    microphone under Recording; acceleration, status and camera test under
+    Troubleshooting
   - quick-mode preset list, preset description label, quick-option promotion,
-    and Reset Tuning; reset emits `resetCurrentProfileRequested()` so the app
+    and Reset Mode; reset emits `resetCurrentProfileRequested()` so the app
     can restore profile-owned defaults without altering global controls
   - BW, zoom, blur, temporal smoothing, and spatial sharpening controls
   - visible `stabilizationCheckbox()`, `bumpHoldCheckbox()` (the internal
-    getter for the user-facing `Extra Stable` control)
+    getter for the user-facing `Extra Stable (hold on shake)` control)
   - screen-fix controls: `keystoneCheckbox()` ("Straighten Screen (Keystone)"), `autoContrastCheckbox()` ("Auto Contrast"), and `autoContrastStrengthSlider()` (0–100, default 70, enabled with its checkbox); `setKeystoneTrackingControls(...)` updates the shared Simple/Advanced Previous, Stop/Continue, and Next controls and their accessible state
   - Simple and Advanced Text Clarity master controls plus component checkboxes,
     sliders, polarity selector, and profile-owned NVIDIA Super Resolution
@@ -1761,7 +1850,7 @@ Namespace `okuflow`
     `setupAssistantButton()`)
   - Assistant status, sign-in, transcript, prompt, camera attachment, send/stop/new, and history resume/rename/export/delete widgets
   - focus sliders, rotation combo, debug toggle, focus marker, and global
-    viewport preferences under Device > More device options
+    viewport preferences under Settings > View and navigation
   - capture and recording buttons
   - annotation mode button/overlay plus preference and viewport-transform
     setters; activation raises the persistent Photo/Record/Explain/Read/Draw
@@ -1781,6 +1870,11 @@ Namespace `okuflow`
     fallback state plus compact wrapping source-crop, viewport-target,
     final-zoom, and measured-latency details; a latency-only failure exposes a
     compact `Ignore 24 ms performance limit` checkbox
+- `quickModeActivated(int row)` represents deliberate mode application.
+  App wiring uses it instead of raw list highlight changes, so browsing does
+  not repeatedly change the camera and applying the current row still works.
+  `ActivateRelativePreset(int)` advances from the applied mode even while the
+  grid highlights an uncommitted candidate.
 - Signals `annotationSnapshotRequested(int)`,
   `annotationPreferencesChanged(...)`, `keystoneStepBackRequested()`,
   `keystonePauseResumeRequested()`,
@@ -1788,18 +1882,31 @@ Namespace `okuflow`
   `superResPerformanceOverrideChanged(bool)` bridge UI commands to
   `OkuFlowApp`.
 - Event handling:
+  - private `CheckBoxLabel` companions wrap long Image-option captions while
+    preserving the checkbox's accessible name, focus target, and label clicks;
+    the backend selector keeps a bounded minimum width for translated values
+  - private `TrackingButtonRow` measures translated Back/Stop/Next buttons and
+    reflows them into three, two, or one column at narrow inspector widths
   - arrow-key routing for panning
-  - global Qt activity detection plus native render-window mouse/focus
+  - global Qt activity detection plus native render-window mouse
     detection that reveals chrome, restarts the five-second idle timer, and
-    preserves focused controls; while chrome is already visible this is a
+    preserves keyboard-focused controls; mouse-click focus does not pin chrome.
+    While chrome is already visible this is a
     deadline-only fast path and never recomputes or raises tool-window geometry
   - number keys `1`-`9` for the first nine quick modes (grid tiles show matching number badges)
-  - `Esc` closes the quick-mode grid and `Ctrl+H` toggles pinned chrome
-  - explicit `Tab` / `Shift+Tab` traversal across the separate corner windows
+  - `Esc` closes the quick-mode grid and `Ctrl+H` toggles explicit UI hiding.
+    `setUiHidden(bool)` preserves mode, tab, inspector width, drawing, and
+    assistant content; `isUiHidden()` reports the state. `uiVisibilityButton()`
+    exposes the persistent top-right restore control. Hidden UI stays hidden
+    during mouse activity and incoming answers; Ctrl+F/F6 restore it.
+  - explicit `Tab` / `Shift+Tab` traversal across separate corner windows,
+    `F6` / `Shift+F6` region navigation, and modal/popup keyboard isolation
   - previous/next wrapping profile activation and a temporary numbered tile grid
   - large centered mode toast plus assertive `QAccessibleAnnouncementEvent`
   - event filter on the render widget for Ctrl+wheel zoom, plain-wheel pan,
-    middle-button drag pan, and corner-window repositioning on resize/move
+    middle-button drag pan, and corner-window repositioning on resize/move.
+    Default assistant safe-area updates use a recursion guard because a
+    resulting overlay resize can itself trigger native layout events
 
 ### `include/okuflow/ui/collapsible_section.hpp`
 `okuflow::CollapsibleSection`
@@ -1808,7 +1915,10 @@ Namespace `okuflow`
   and temporary search expansion that restores the prior state.
 - Public API:
   - `QWidget* contentWidget() const`
+  - `QToolButton* headerWidget() const` exposes the focusable search destination
   - `void setExpanded(bool)` / `bool isExpanded() const`
+  - `bool persistedExpanded() const` returns the user's disclosure state,
+    excluding temporary expansion caused by a search
   - `void setChangedCount(int)` / `int changedCount() const`
   - `void setPersistKey(const QString&)` / `const QString& persistKey() const`
   - `void setSearchExpanded(bool)`
@@ -1816,8 +1926,20 @@ Namespace `okuflow`
 
 ### `include/okuflow/ui/color_scheme_picker.hpp`
 `okuflow::ColorSchemePicker`
-- Replaces the old full-width combo list with a compact trigger and owned tool
-  popover containing six-column reading-color/effect grids and a Custom editor.
+- Offers labeled quick buttons for Posterize 6, Yellow on black, Normal colors,
+  and Black on yellow above a large `More colors` trigger showing the current
+  choice. `ArrangeQuickChoices()` and `resizeEvent()` use two columns below
+  720 logical pixels and four above. Quick buttons show the active selection;
+  programmatic changes refresh their checks without emitting `schemeChanged()`.
+- The owned tool popover retains all built-in choices in six-column reading-
+  color/effect grids and a Custom editor. Yellow/black pairs and Posterize 6
+  lead their grids without duplicated choices. `QuickSchemeButton` paints a
+  sample and wrapping label with keyboard focus and accessible scheme names.
+- The formatted trigger translates both `More colors` and the active scheme
+  name on selection and language changes. Its live formatted argument stores
+  the translated built-in name so later generic Show/Polish retranslation
+  preserves the subtitle; custom names remain raw. The focused picker tests
+  cover actual German/Turkish/English `LanguageManager` roundtrips.
 - The frameless native popover uses an opaque backing store and solid dark
   palette rather than translucent composition over the D3D/inspector surface.
 - Custom schemes support 2-8 stops, duotone/posterize/gradient modes, stepped
@@ -1867,17 +1989,28 @@ Namespace `okuflow`
 - Solid Assistant `QDockWidget`, floating on top of the render
   surface. Its header and edges use the native window-system move/resize path;
   streamed result updates never reapply window geometry. A
-  read-only `QTextBrowser` exposes incrementally streamed text to screen
+  read-only 20-point `QTextBrowser` with 135% line spacing exposes incrementally streamed text to screen
   readers and keyboard selection; the question field stays editable while a
   response streams, while `SetBusy(true)` blocks Ask and Enter submission
   without discarding the draft. When ready, it sends the current view to the
   shared persistent Assistant conversation. Read Aloud remains manual
   and strips the visible `Read Text` / `Scene Explain` section labels from its speech
-  payload, while the Close control uses a high-contrast white icon and border.
-- The Panel position selector docks left/right through the owning `QMainWindow`,
+  payload. Read Aloud is the prominent footer action; New Conversation is
+  secondary. The question field handles unmodified Escape directly: its first
+  press clears a nonempty draft, and an empty-field press returns focus to the
+  camera without dismissing the answer. An active header drag still cancels
+  before either action; open placement menus retain their own Escape handling.
+  The Close control
+  uses a high-contrast white icon and border.
+- The compact Panel position `QToolButton` menu docks left/right through the owning `QMainWindow`,
   which resizes the central camera layout, or returns to floating mode. Floating
   geometry is preserved separately from dock placement. Header/edge movement
   stays native while floating; dock separators still use Qt layout sizing.
+  Placement actions retain their English source labels and use `TranslateUi`
+  at construction, on `LanguageChange`, and before each menu opening; the
+  persisted `floating`/`left`/`right` tokens remain unchanged.
+  Default sizing includes the content layout's minimum before RTL anchoring,
+  so font-dependent minimum sizes remain inside a safe area that can fit them.
 - `BeginDrag()` tracks the native Windows move session. `moveEvent()` and
   `UpdateDockPreview()` calculate left/right targets in Qt logical coordinates
   with a 36-pixel edge zone, retaining the highlight while the grabbed title
@@ -1906,13 +2039,23 @@ Namespace `okuflow`
 - Public API:
   - `explicit AssistiveOverlay(QWidget* parent = nullptr)`
   - `void SetContent(const QString& title, const QString& body, bool visible)`
+  - `void SetUiSuppressed(bool)` temporarily hides the panel without dismissal
+    or content loss. Incoming content retains its requested visibility until
+    restoration; docked panels release camera space and preserve dock width.
+    Unsaved floating placement uses 43% viewport width and 75% height, clamped
+    to available space below top controls; saved or resized geometry wins.
+  - `void SetSafeArea(const QRect& relativeSafeArea)` provides camera-relative
+    space clear of Simple chrome for untouched default placement. MainWindow
+    updates it from current native panel geometry; user-restored or moved
+    geometry is never repositioned by this hint.
   - `void SetBusy(bool busy)`
   - `void RestoreRelativeGeometry(const QRect& geometry)`
   - `QRect RelativeGeometry() const`
   - `void SetDockPosition(const QString& position)` — floating/left/right layout;
     `QString DockPosition() const` returns the stable setting token
-  - `std::array<QWidget*, 7> FocusTargets() const` — New chat, result text,
-    question field, Ask, panel position, Read Aloud, and Close for the Simple-mode focus loop
+  - `std::array<QWidget*, 7> FocusTargets() const` — result text, Read Aloud,
+    question field, Ask, New Conversation, panel position, and Close in
+    reading-first keyboard order for the Simple-mode focus loop
 - Signals:
   - `Dismissed()`
   - `ReadAloudRequested(const QString& text)`
@@ -1924,6 +2067,9 @@ Namespace `okuflow`
 - Reusable settings row that moves its slider to a full-width second line when
   the inspector is too narrow. This keeps labels wrapped and every point of
   the slider track reachable during live splitter resizing.
+- `minimumSizeHint()` advertises the stacked row's minimum width instead of
+  forcing the inline layout to overflow a narrow scroll viewport. Layout
+  selection accounts for the minimum width of the numeric readout.
 
 ### `include/okuflow/capture/capture_buffer.hpp`
 - `CopyCaptureBuffer(IMFMediaBuffer*, subtype, width, height,
@@ -1986,3 +2132,5 @@ Namespace `okuflow`
 - On Windows, constructs `OkuFlowApp`, calls fallible `Initialize()`, then
   enters `Run()` inside a `try`/`catch`.
 - On non-Windows platforms, exits with an unsupported-platform message.
+
+`MainWindow::refreshTextClarityUi()` updates the master-dependent Fine-tune text enabled state and explanatory accessibility text. Constructor/toggle/language refresh calls keep standalone widgets consistent; application settings restoration must explicitly call it after blocked master updates. The nested `textClarityRefinements` wrapper provides a visual guide and indentation while leaving the disclosure header available.

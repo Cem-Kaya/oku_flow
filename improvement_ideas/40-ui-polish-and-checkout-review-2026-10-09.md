@@ -105,8 +105,8 @@ top of `main`'s old tracked files.
   `cmake/NativeRtc.cmake`.
 - `scripts/agent_build.bat` calls the `msvc-cuda-tests` preset, which the
   checked-out `CMakePresets.json` does not define.
-- `build/CMakeCache.txt` points at
-  `W:/Google_drive/sync/UU/projects/open_zoom`. That path did not exist on
+- `build/CMakeCache.txt` points at a stale checkout under
+  `W:/Google_drive/sync/UU/projects/`. That checkout did not exist on
   this machine on 2026-10-09. It is presumably where the complete 2026-09-10
   tree and the `dist/` bundle came from.
 

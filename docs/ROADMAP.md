@@ -35,7 +35,7 @@ keystone and text processing:
    attempt to restore the same absolute coordinate frame.
 
 All tracking, fitting, path state, and warping remain on the CUDA stream.
-Advanced exposes one `Stabilize Image` switch and optional `Extra Stable`
+Advanced exposes one `Stabilize Image` switch and optional `Extra Stable (hold on shake)`
 impact hold. Reference capture and rebuild are automatic.
 
 ### Low-vision display modes (CUDA)

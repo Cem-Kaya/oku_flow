@@ -6,12 +6,14 @@
 // visual inspection.
 
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 #include <QtTest>
 #include <QThreadPool>
 #include <QSemaphore>
 #include <QScopeGuard>
 
 #include "okuflow/common/assistive_runtime.hpp"
+#include "okuflow/common/codex_app_server_client.hpp"
 #include "okuflow/common/transcript.hpp"
 
 using namespace okuflow;
@@ -63,6 +65,144 @@ class NotesHtmlTests : public QObject {
     }
 
 private slots:
+    void clientOpeningCancellation_data()
+    {
+        QTest::addColumn<QString>("scenario");
+        QTest::addColumn<QString>("thread");
+        QTest::addColumn<bool>("replacement");
+        QTest::newRow("start-replacement") << QStringLiteral("vision-lifecycle-hold-start") << QString() << true;
+        QTest::newRow("start-no-replacement") << QStringLiteral("vision-lifecycle-hold-start") << QString() << false;
+        QTest::newRow("resume-replacement") << QStringLiteral("vision-lifecycle-hold-resume") << QStringLiteral("thr_saved") << true;
+    }
+
+    void clientOpeningCancellation()
+    {
+        QFETCH(QString, scenario); QFETCH(QString, thread); QFETCH(bool, replacement);
+        const QByteArray previous = qgetenv("OKUFLOW_FAKE_CODEX_SCENARIO");
+        const auto restore = qScopeGuard([previous]() { if (previous.isNull()) qunsetenv("OKUFLOW_FAKE_CODEX_SCENARIO"); else qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", previous); });
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", scenario.toUtf8());
+        CodexAppServerClient client;
+        client.Configure(QCoreApplication::applicationDirPath() + QStringLiteral("/fake_codex_app_server.exe"), {}, {}, {}, false, false, {});
+        QSignalSpy status(&client, &CodexAppServerClient::ServerStateChanged);
+        QSignalSpy finished(&client, &CodexAppServerClient::TurnFinished);
+        QSignalSpy started(&client, &CodexAppServerClient::TurnStarted);
+        QString imageAPath;
+        {
+            QTemporaryFile imageA; QVERIFY(imageA.open());
+            imageA.setAutoRemove(false);
+            imageAPath = imageA.fileName();
+        } // Destroy the fixture handle before handing ownership to the client.
+        client.RequestVisionTurn(QStringLiteral("A"), imageAPath, thread, !thread.isEmpty());
+        auto held = [&]() { for (const auto& row : status) if (row.at(1).toString() == QStringLiteral("held opening")) return true; return false; };
+        QTRY_VERIFY_WITH_TIMEOUT(held(), 5000);
+        client.RefreshAccount(); // Duplicate readiness cannot issue a second opening.
+        client.InterruptTurn();
+        QCOMPARE(finished.size(), 1);
+        QVERIFY(!QFileInfo::exists(imageAPath));
+        QVERIFY(!client.IsTurnActive());
+        if (replacement) {
+            QString imageBPath;
+            {
+                QTemporaryFile imageB; QVERIFY(imageB.open());
+                imageB.setAutoRemove(false);
+                imageBPath = imageB.fileName();
+            }
+            client.RequestVisionTurn(QStringLiteral("B"), imageBPath, thread, !thread.isEmpty());
+            QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 2, 5000);
+            QCOMPARE(finished.last().at(2).toString(), QStringLiteral("B"));
+            QCOMPARE(finished.last().at(3).toString(), QString());
+            QCOMPARE(started.size(), 1);
+            QVERIFY(!QFileInfo::exists(imageBPath));
+        } else {
+            client.RefreshAccount();
+            QTest::qWait(100);
+            QCOMPARE(finished.size(), 1);
+            QCOMPARE(started.size(), 0);
+        }
+        client.InterruptTurn();
+        QCOMPARE(finished.size(), replacement ? 2 : 1); // Idle Stop emits nothing.
+    }
+
+    void clientDuplicateReadinessDoesNotOpenTwice()
+    {
+        const QByteArray previous = qgetenv("OKUFLOW_FAKE_CODEX_SCENARIO");
+        const auto restore = qScopeGuard([previous]() { if (previous.isNull()) qunsetenv("OKUFLOW_FAKE_CODEX_SCENARIO"); else qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", previous); });
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "vision-lifecycle-hold-duplicate");
+        CodexAppServerClient client;
+        client.Configure(QCoreApplication::applicationDirPath() + QStringLiteral("/fake_codex_app_server.exe"), {}, {}, {}, false, false, {});
+        QSignalSpy status(&client, &CodexAppServerClient::ServerStateChanged);
+        QSignalSpy finished(&client, &CodexAppServerClient::TurnFinished);
+        client.RequestVisionTurn(QStringLiteral("one opening"), {}, {}, false);
+        auto held = [&]() { for (const auto& row : status) if (row.at(1).toString() == QStringLiteral("held opening")) return true; return false; };
+        QTRY_VERIFY_WITH_TIMEOUT(held(), 5000);
+        client.RefreshAccount();
+        client.RefreshAccount();
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 5000);
+        QCOMPARE(finished.first().at(2).toString(), QStringLiteral("one opening"));
+        QCOMPARE(finished.first().at(3).toString(), QString());
+    }
+
+    void clientStartingCancellationWaitsForInterrupt()
+    {
+        const QByteArray previous = qgetenv("OKUFLOW_FAKE_CODEX_SCENARIO");
+        const auto restore = qScopeGuard([previous]() { if (previous.isNull()) qunsetenv("OKUFLOW_FAKE_CODEX_SCENARIO"); else qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", previous); });
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "vision-lifecycle-hold-turn");
+        CodexAppServerClient client;
+        client.Configure(QCoreApplication::applicationDirPath() + QStringLiteral("/fake_codex_app_server.exe"), {}, {}, {}, false, false, {});
+        QSignalSpy status(&client, &CodexAppServerClient::ServerStateChanged);
+        QSignalSpy finished(&client, &CodexAppServerClient::TurnFinished);
+        QSignalSpy started(&client, &CodexAppServerClient::TurnStarted);
+        client.RequestVisionTurn(QStringLiteral("A"), {}, {}, true);
+        auto held = [&]() { for (const auto& row : status) if (row.at(1).toString() == QStringLiteral("held turn")) return true; return false; };
+        QTRY_VERIFY_WITH_TIMEOUT(held(), 5000);
+        client.InterruptTurn();
+        QVERIFY(client.IsTurnActive());
+        QCOMPARE(finished.size(), 0);
+        client.RefreshAccount(); // Release delayed turn/start, then acknowledge interrupt.
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 5000);
+        QVERIFY(finished.first().at(4).toBool());
+        QCOMPARE(started.size(), 0);
+        QVERIFY(!client.IsTurnActive());
+    }
+
+    void clientControlPlaneFailureRetry_data()
+    {
+        QTest::addColumn<QByteArray>("scenario");
+        QTest::newRow("error") << QByteArray("vision-lifecycle-init-error");
+        QTest::newRow("init-timeout") << QByteArray("vision-lifecycle-init-timeout");
+        QTest::newRow("turn-start-timeout") << QByteArray("vision-lifecycle-hold-turn");
+    }
+
+    void clientControlPlaneFailureRetry()
+    {
+        QFETCH(QByteArray, scenario);
+        const QByteArray previous = qgetenv("OKUFLOW_FAKE_CODEX_SCENARIO");
+        const auto restore = qScopeGuard([previous]() { if (previous.isNull()) qunsetenv("OKUFLOW_FAKE_CODEX_SCENARIO"); else qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", previous); });
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", scenario);
+        CodexAppServerClient client;
+        client.Configure(QCoreApplication::applicationDirPath() + QStringLiteral("/fake_codex_app_server.exe"), {}, {}, {}, false, false, {});
+        client.SetRequestTimeoutMs(100);
+        QSignalSpy status(&client, &CodexAppServerClient::ServerStateChanged);
+        QSignalSpy finished(&client, &CodexAppServerClient::TurnFinished);
+        client.RequestVisionTurn(QStringLiteral("A"), {}, {}, false);
+        // Transport deadlines are checked at a 5 s cadence; allow one poll
+        // plus event-loop/process shutdown overhead for the 100 ms deadline.
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 7000);
+        QVERIFY(!finished.first().at(3).toString().isEmpty());
+        if (scenario.endsWith("hold-turn")) {
+            bool reachedTurnStart = false;
+            for (const auto& row : status) reachedTurnStart |= row.at(1).toString() == QStringLiteral("held turn");
+            QVERIFY(reachedTurnStart);
+        }
+        QVERIFY(!client.IsTurnActive());
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "vision-lifecycle-happy");
+        client.SetRequestTimeoutMs(5000);
+        client.RequestVisionTurn(QStringLiteral("B"), {}, {}, false);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 2, 5000);
+        QCOMPARE(finished.last().at(2).toString(), QStringLiteral("B"));
+        QCOMPARE(finished.last().at(3).toString(), QString());
+    }
+
     void onDemandVisionUsesLunaAndPreservesReading_data()
     {
         QTest::addColumn<bool>("readText");

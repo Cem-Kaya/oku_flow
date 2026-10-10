@@ -16,69 +16,6 @@
 
 namespace okuflow {
 
-// One monotonic D3D12/CUDA fence timeline. Values only become wait targets
-// after their corresponding signal has been submitted.
-struct FenceSequencer {
-    struct CudaTicket {
-        std::uint64_t waitValue{0};
-        std::uint64_t signalValue{0};
-    };
-
-    void Reset(std::uint64_t baseValue)
-    {
-        nextValue_ = baseValue + 1;
-        lastCudaSignal_ = 0;
-        lastGraphicsSignal_ = baseValue;
-        lastReadbackSignal_ = 0;
-        pendingCudaSignal_ = 0;
-    }
-
-    CudaTicket BeginCudaFrame(std::uint64_t presenterSignaledValue)
-    {
-        if (nextValue_ <= presenterSignaledValue) {
-            nextValue_ = presenterSignaledValue + 1;
-        }
-        pendingCudaSignal_ = nextValue_;
-        return {std::max(lastGraphicsSignal_, lastReadbackSignal_),
-                pendingCudaSignal_};
-    }
-
-    void CudaSignaled()
-    {
-        lastCudaSignal_ = pendingCudaSignal_;
-        nextValue_ = pendingCudaSignal_ + 1;
-        pendingCudaSignal_ = 0;
-    }
-
-    void CudaFailed() { pendingCudaSignal_ = 0; }
-    std::uint64_t BeginGraphicsFrame(std::uint64_t presenterSignaledValue)
-    {
-        nextValue_ = std::max(nextValue_, presenterSignaledValue + 1);
-        return nextValue_;
-    }
-
-    void GraphicsSignaled(std::uint64_t presenterSignaledValue)
-    {
-        lastGraphicsSignal_ =
-            std::max(lastGraphicsSignal_, presenterSignaledValue);
-        nextValue_ = std::max(nextValue_, presenterSignaledValue + 1);
-    }
-
-    void ReadbackObserved(std::uint64_t fenceValue)
-    {
-        lastReadbackSignal_ = std::max(lastReadbackSignal_, fenceValue);
-    }
-
-    std::uint64_t LastCudaSignal() const { return lastCudaSignal_; }
-
-private:
-    std::uint64_t nextValue_{1};
-    std::uint64_t lastCudaSignal_{0};
-    std::uint64_t lastGraphicsSignal_{0};
-    std::uint64_t lastReadbackSignal_{0};
-    std::uint64_t pendingCudaSignal_{0};
-};
-
 struct TimingPercentiles {
     float p50Ms{-1.0f};
     float p95Ms{-1.0f};
@@ -158,9 +95,6 @@ public:
     int CameraReconnectAttempt() const;
     void ScheduleCameraReconnectRetry(qint64 nowMs);
 
-    FenceSequencer& Fence();
-    const FenceSequencer& Fence() const;
-    void ResetFence(std::uint64_t baseValue);
     bool FenceInteropEnabled() const;
     void SetFenceInteropEnabled(bool enabled);
     int RecordCudaFailure();
@@ -213,7 +147,6 @@ private:
     qint64 cameraReconnectStartedMs_{0};
     qint64 cameraReconnectNextAttemptMs_{0};
 
-    FenceSequencer fenceSequencer_;
     bool fenceInteropEnabled_{false};
     int consecutiveCudaFailures_{0};
 };

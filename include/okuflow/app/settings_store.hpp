@@ -103,7 +103,7 @@ struct AdvancedConfig {
 struct AssistiveSettings {
     QString aiProvider{QStringLiteral("codex")};
     QString codexExecutablePath;
-    QString codexModel{QStringLiteral("gpt-5.6-luna")};
+    QString codexModel{QStringLiteral("gpt-6-luna")};
     QString codexReasoningEffort{QStringLiteral("low")};
     bool codexInternetEnabled{false};
     bool codexCodingEnabled{false};

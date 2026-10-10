@@ -1,11 +1,56 @@
 # OkuFlow Tests
 
+`main_window_interactions` creates the production MainWindow and native control
+windows without initializing a camera, AI account, or GPU presenter. It checks
+tab ownership/order, quick-mode browsing and activation, carousel navigation
+from the applied mode, search disclosure and refresh after language changes,
+keyboard focus boundaries, dependent controls, and translated Explain/Stop
+state. Run GUI tests serially in an interactive Windows desktop session.
+For layout evidence, set `OKUFLOW_UI_TEST_SCREENSHOTS` to an output directory;
+the fixture saves English, Turkish, and German views including native tool
+windows only while its process owns the foreground. Otherwise it warns and
+skips the image instead of saving another app's desktop. Use distinct
+directories when repeating with `QT_SCALE_FACTOR=1.5`
+or `2`, and inspect the images for clipping as well as checking CTest results.
+These tests do not validate live AI responses or screen-reader speech.
+
+`textClarityMasterPreservesRefinements` also checks the disabled-but-preserved
+child settings, master refresh after blocked settings restoration, explanatory
+text, and nested layout at a narrow inspector width. Settings-store tests cover
+the matching effective processing gate and preservation of explicit model
+choices when the new default is `gpt-6-luna`.
+
+`color_scheme_picker` checks direct favorite selection without duplicate
+signals, programmatic check-state refresh, two/four-column reflow, the complete
+More colors catalog, and trigger translation. Run it serially with other GUI
+tests; it does not change persisted application settings.
+
+The focused annotation tests `assistantReadingActionsAndSafeDefault`,
+`assistantPlacementActionsRetranslate`, `assistiveModesCannotBypassUiSuppression`,
+and `suppressedChatRetainsStreamingContentAndDock` can run with
+`QT_QPA_PLATFORM=offscreen` and `QT_FORCE_STDERR_LOGGING=1`. They cover readable
+answer controls, chrome-safe/RTL defaults, valid saved geometry, Escape draft
+clearing after activation/focus settles, placement-menu translation, and mode
+changes during UI suppression. Offscreen fonts and window behavior differ
+from Windows; this subset does not validate native stacking, hit testing,
+desktop focus transfers, or rendered appearance.
+
+`user_data_paths` tests photo-pair reservation and recovery using temporary
+directories: retained lone originals/processed images, filename collisions,
+failed encodes/renames, interrupted commits, invalid markers, and active
+writers. It verifies that existing final JPEG bytes survive recovery and
+rollback. No user photos are used by these tests.
+
 The startup/presentation work extends `fence_wait` with nonblocking slot
 admission, allocator-before-latency-signal ordering, device removal, and failed
 wait handling. `pipeline_orchestrator` keeps an independent Qt heartbeat alive
 while a simulated allocator is busy and checks eventual presentation after
-completion. `view_transform` checks that an abandoned graphics reservation
-never becomes a future CUDA wait and that actual recording completion does.
+completion. `fence_wait` and `view_transform` exercise the presenter-owned
+shared timeline: canceled external reservations never become waits, graphics
+submissions queue committed CUDA dependencies, busy presents retain that
+dependency, and recording slots require producer completion even after an
+encoder lease drops. `fence_wait` also models independent D3D11 reader lease
+retirement, including pending and unknown completion.
 `scripts/profile_startup.ps1` additionally exercises normal launch/capture/exit
 against an available physical camera using isolated settings; it is optional
 hardware measurement, separate from the deterministic CTest matrix.
@@ -28,7 +73,7 @@ worker/event policies; they do not intentionally wedge a physical camera/GPU.
 
 The hardware-independent targets cover settings persistence, canonical
 Fill/Fit viewport geometry, cached SuperRes ROI registration, monotonic
-CUDA/D3D12 fence sequencing, and annotation model/render geometry. Annotation
+presenter-owned CUDA/D3D12 fence reservations, and annotation model/render geometry. Annotation
 tests exercise freehand/line/rectangle/ellipse/text creation and rendering,
 matched dashed halo/core output, shape-outline hit testing, edit undo/redo,
 selection/move/scale/erase, one undo record per scale gesture, permanent
@@ -75,7 +120,10 @@ long-run fractional-rate drift, real timestamp gaps, missing/backward timestamp
 recovery, drop accounting, terminal completion truthfulness, legal recording
 state transitions, fixed-canvas orientation and Fit bars, bilinear resampling,
 and negative-stride normalization without requiring a camera or Media
-Foundation encoder.
+Foundation encoder. It also checks cached automatic-stop results and
+conservative session-owned zero-byte cleanup, including asymmetric,
+small-but-nonempty, symlink, and unknown-size cases. These policy tests do
+not inject a real Media Foundation sink failure or prove a retained MP4 plays.
 
 `media_writer_audio_tests` creates a short synthetic video plus 48 kHz mono
 PCM tone, encodes them into one fragmented MP4, finalizes it, and verifies
@@ -155,8 +203,19 @@ Camera capture, D3D12 presentation, encoder availability/finalization on real
 storage, mid-recording device-mode changes, and reconnect behavior still
 require manual testing on Windows hardware.
 
+UI regressions cover explicit Hide UI/Show UI restoration, mouse-idle fading,
+streaming while the assistant is suppressed, larger unsaved floating defaults,
+saved and docked geometry retention, and native Draw hit-test exclusion for
+both camera actions and the persistent Hide UI control. Keyboard navigation
+checks that focus transferred between native control windows keeps chrome
+visible at the idle deadline and that F6 restores an explicitly hidden UI.
+Assistant overlay checks cover reading-size text, the primary Read Aloud
+action, compact placement menu, draft-clearing Escape behavior, and default
+placement below live chrome. Native GUI cases must be run on an available
+interactive desktop; authored assertions alone are not a passing run.
+
 `notes_html` also runs Read and Explain against the fake Codex app-server.
-It validates the Luna/low default, transcription versus scene prompts across
+It validates the Luna 6/low default, transcription versus scene prompts across
 English/Turkish/German interface settings without translating source text, real
 prepared-image attachment, ephemeral read-only/no-network policy despite
 Advanced opt-ins, busy-request ownership, and full reading text in the overlay

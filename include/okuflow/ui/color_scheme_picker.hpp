@@ -13,6 +13,7 @@ class QGridLayout;
 class QPushButton;
 class QSpinBox;
 class QToolButton;
+class QResizeEvent;
 QT_END_NAMESPACE
 
 namespace okuflow {
@@ -34,6 +35,7 @@ signals:
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     void BuildPopup();
@@ -41,6 +43,7 @@ private:
     void HidePopup(bool restoreFocus = true);
     void SelectScheme(const color_schemes::ColorScheme& scheme);
     void RefreshSelection();
+    void ArrangeQuickChoices();
     void RefreshCustomEditor();
     void RefreshCustomTile();
     void ApplyCustomScheme();
@@ -49,6 +52,10 @@ private:
     color_schemes::ColorScheme currentScheme_;
     color_schemes::ColorScheme customScheme_;
     QPushButton* trigger_{};
+    QGridLayout* quickChoicesLayout_{};
+    std::vector<QPushButton*> quickChoices_;
+    std::vector<color_schemes::ColorScheme> quickSchemes_;
+    int quickColumns_{};
     QWidget* popup_{};
     std::vector<QToolButton*> schemeTiles_;
     std::vector<QToolButton*> colorWells_;

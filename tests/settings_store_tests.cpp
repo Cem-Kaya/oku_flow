@@ -1,7 +1,12 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include "okuflow/app/color_schemes.hpp"
 #include "okuflow/app/protected_secret_store.hpp"
 #include "okuflow/app/settings_controller.hpp"
 #include "okuflow/app/settings_store.hpp"
+#include "okuflow/cuda/cuda_interop.hpp"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -102,8 +107,11 @@ class SettingsStoreTests : public QObject {
 
 private slots:
     void defaultsUseLunaLow();
+    void modelDefaultsPreserveExplicitSelections();
     void migratesMisspelledTerraModel();
     void roundTripPreservesAdvancedConfig();
+    void textClarityMasterPreservesDormantPreferences();
+    void textClarityEffectiveSettingsGateEntireFamily();
     void invalidLanguageFallsBackToMigrationDefault();
     void loadsRemovedGlobalCompatibilityForMigration();
     void migratesLegacyV1();
@@ -116,12 +124,102 @@ private slots:
     void equivalenceUsesUiTolerances();
 };
 
+void SettingsStoreTests::textClarityMasterPreservesDormantPreferences()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    PersistentSettings expected;
+    expected.currentConfig = MakePopulatedConfig();
+    expected.currentConfig.autoTextClarityEnabled = false;
+    expected.customConfigs.push_back(expected.currentConfig);
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    QVERIFY(Save(path, expected));
+    const auto loaded = Load(path);
+    QVERIFY(loaded.has_value());
+    QVERIFY(!loaded->currentConfig.autoTextClarityEnabled);
+    QVERIFY(AreConfigsEquivalent(loaded->currentConfig, expected.currentConfig));
+    QCOMPARE(loaded->customConfigs.size(), expected.customConfigs.size());
+    QVERIFY(AreConfigsEquivalent(loaded->customConfigs.front(), expected.customConfigs.front()));
+    // Re-enabling the existing master never resets saved refinements.
+    auto restored = loaded->currentConfig;
+    restored.autoTextClarityEnabled = true;
+    auto enabled = expected.currentConfig;
+    enabled.autoTextClarityEnabled = true;
+    QVERIFY(AreConfigsEquivalent(restored, enabled));
+}
+
+void SettingsStoreTests::textClarityEffectiveSettingsGateEntireFamily()
+{
+    ProcessingSettings preferences;
+    preferences.enableBackgroundFlatten = true;
+    preferences.enableAdaptiveBinarization = true;
+    preferences.enableSmartSharpen = true;
+    preferences.enableClahe = true;
+    preferences.enableTwoColorText = true;
+    preferences.enableTextHysteresis = true;
+    preferences.enableSelectiveSharpen = true;
+    preferences.enableFocusDetection = true;
+    preferences.enableGlareSuppression = true;
+    preferences.strokeWeight = 3;
+    preferences.sauvolaStrength = 0.4f;
+    preferences.enableBlackWhite = true;
+    preferences.displayColorTransform = DisplayColorTransform::kInvert;
+    preferences.enableMlSuperRes = true;
+    auto effective = preferences;
+    effective.ApplyTextClarityMaster();
+    QVERIFY(!effective.enableBackgroundFlatten && !effective.enableAdaptiveBinarization &&
+            !effective.enableSmartSharpen && !effective.enableClahe && !effective.enableTwoColorText &&
+            !effective.enableTextHysteresis && !effective.enableSelectiveSharpen &&
+            !effective.enableFocusDetection && !effective.enableGlareSuppression);
+    QVERIFY(effective.enableBlackWhite); // Dormant Adaptive cannot suppress independent B&W.
+    QCOMPARE(effective.displayColorTransform, DisplayColorTransform::kInvert);
+    QVERIFY(effective.enableMlSuperRes);
+    QCOMPARE(effective.strokeWeight, preferences.strokeWeight);
+    QCOMPARE(effective.sauvolaStrength, preferences.sauvolaStrength);
+    QVERIFY(preferences.enableAdaptiveBinarization); // Effective copy never mutates saved flags.
+    preferences.enableAutoTextClarity = true;
+    effective = preferences;
+    effective.ApplyTextClarityMaster();
+    QVERIFY(effective.enableAutoTextClarity && effective.enableBackgroundFlatten &&
+            effective.enableAdaptiveBinarization && effective.enableSmartSharpen &&
+            effective.enableClahe && effective.enableTwoColorText && effective.enableTextHysteresis &&
+            effective.enableSelectiveSharpen && effective.enableFocusDetection && effective.enableGlareSuppression);
+}
+
 void SettingsStoreTests::defaultsUseLunaLow()
 {
     const PersistentSettings settings;
-    QCOMPARE(settings.assistive.codexModel, QStringLiteral("gpt-5.6-luna"));
+    QCOMPARE(settings.assistive.codexModel, QStringLiteral("gpt-6-luna"));
     QCOMPARE(settings.assistive.codexReasoningEffort, QStringLiteral("low"));
     QCOMPARE(settings.currentConfig.spatialUpscaler, 1);
+}
+
+void SettingsStoreTests::modelDefaultsPreserveExplicitSelections()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    QVERIFY(WriteJson(path, QJsonObject{
+        {QStringLiteral("version"), 16},
+        {QStringLiteral("assistive"), QJsonObject{}}}));
+    const LoadResult missingModel = LoadDetailed(path);
+    QVERIFY(missingModel.settings.has_value());
+    QCOMPARE(missingModel.settings->assistive.codexModel,
+             QStringLiteral("gpt-6-luna"));
+    QVERIFY(!missingModel.migrationApplied);
+
+    for (const QString& model : {QStringLiteral("gpt-5.6-luna"),
+                                 QStringLiteral("gpt-6-luna"),
+                                 QStringLiteral("custom-model")}) {
+        QVERIFY(WriteJson(path, QJsonObject{
+            {QStringLiteral("version"), 16},
+            {QStringLiteral("assistive"), QJsonObject{
+                {QStringLiteral("codexModel"), model}}}}));
+        const LoadResult loaded = LoadDetailed(path);
+        QVERIFY(loaded.settings.has_value());
+        QCOMPARE(loaded.settings->assistive.codexModel, model);
+        QVERIFY(!loaded.migrationApplied);
+    }
 }
 
 void SettingsStoreTests::migratesMisspelledTerraModel()

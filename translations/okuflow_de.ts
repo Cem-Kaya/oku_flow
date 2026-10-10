@@ -236,8 +236,8 @@
         <translation>Bild stabilisieren</translation>
     </message>
     <message>
-        <source>Extra Stable</source>
-        <translation>Besonders stabil</translation>
+        <source>Extra Stable (hold on shake)</source>
+        <translation>Besonders stabil (bei Erschütterung halten)</translation>
     </message>
     <message>
         <source>Straighten Screen (Keystone)</source>
@@ -2714,6 +2714,224 @@ Verwenden Sie „ChatGPT verbinden“ in den KI-Einstellungen, um sich anzumelde
     <message>
         <source>Settings search</source>
         <translation>Einstellungssuche</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>Einstellungen</translation>
+    </message>
+    <message>
+        <source>Search image settings…</source>
+        <translation>Bildeinstellungen suchen…</translation>
+    </message>
+    <message>
+        <source>Search settings…</source>
+        <translation>Einstellungen suchen…</translation>
+    </message>
+    <message>
+        <source>Mode: %1</source>
+        <translation>Modus: %1</translation>
+    </message>
+    <message>
+        <source>Current mode</source>
+        <translation>Aktueller Modus</translation>
+    </message>
+    <message>
+        <source>Changes apply now. Save to keep them.</source>
+        <translation>Änderungen gelten sofort. Zum Behalten speichern.</translation>
+    </message>
+    <message>
+        <source>Shared by all modes. Not saved into quick modes.</source>
+        <translation>Gilt für alle Modi. Wird nicht in Schnellmodi gespeichert.</translation>
+    </message>
+    <message>
+        <source>Fine-tune text</source>
+        <translation>Text feinabstimmen</translation>
+    </message>
+    <message>
+        <source>Notes and files</source>
+        <translation>Notizen und Dateien</translation>
+    </message>
+    <message>
+        <source>AI and downloads</source>
+        <translation>KI und Downloads</translation>
+    </message>
+    <message>
+        <source>Troubleshooting</source>
+        <translation>Fehlerbehebung</translation>
+    </message>
+    <message>
+        <source>View and navigation</source>
+        <translation>Ansicht und Navigation</translation>
+    </message>
+    <message>
+        <source>Colors and contrast</source>
+        <translation>Farben und Kontrast</translation>
+    </message>
+    <message>
+        <source>Steady image</source>
+        <translation>Ruhiges Bild</translation>
+    </message>
+    <message>
+        <source>Straighten screen</source>
+        <translation>Bildschirm entzerren</translation>
+    </message>
+    <message>
+        <source>Soften image (blur)</source>
+        <translation>Bild weichzeichnen</translation>
+    </message>
+    <message>
+        <source>Horizontal position</source>
+        <translation>Horizontale Position</translation>
+    </message>
+    <message>
+        <source>Vertical position</source>
+        <translation>Vertikale Position</translation>
+    </message>
+    <message>
+        <source>Camera resolution &amp;&amp; frame rate</source>
+        <translation>Kameraauflösung und Bildrate</translation>
+    </message>
+    <message>
+        <source>Save as Quick Mode</source>
+        <translation>Als Schnellmodus speichern</translation>
+    </message>
+    <message>
+        <source>Reset Mode</source>
+        <translation>Modus zurücksetzen</translation>
+    </message>
+    <message>
+        <source>Quick mode name:</source>
+        <translation>Name des Schnellmodus:</translation>
+    </message>
+    <message>
+        <source>No matches here. %1 in Settings. Press Enter to show them.</source>
+        <translation>Hier keine Treffer. %1 in Einstellungen. Zum Anzeigen Eingabe drücken.</translation>
+    </message>
+    <message>
+        <source>No matches here. %1 in Image. Press Enter to show them.</source>
+        <translation>Hier keine Treffer. %1 in Bild. Zum Anzeigen Eingabe drücken.</translation>
+    </message>
+    <message>
+        <source>Saved with the current quick mode.</source>
+        <translation>Wird mit dem aktuellen Schnellmodus gespeichert.</translation>
+    </message>
+    <message>
+        <source>Shared setting, used by all modes.</source>
+        <translation>Gemeinsame Einstellung für alle Modi.</translation>
+    </message>
+    <message>
+        <source>Reset current mode to defaults</source>
+        <translation>Aktuellen Modus auf Standardwerte zurücksetzen</translation>
+    </message>
+    <message>
+        <source>Resets this mode's image and assistant settings. Settings on the Settings tab are not changed.</source>
+        <translation>Setzt die Bild- und Assistenteneinstellungen dieses Modus zurück. Die Einstellungen auf der Registerkarte Einstellungen bleiben unverändert.</translation>
+    </message>
+    <message>
+        <source>Connect a camera, then choose it under Settings, Camera.</source>
+        <translation>Schließen Sie eine Kamera an und wählen Sie sie unter Einstellungen, Kamera aus.</translation>
+    </message>
+    <message>
+        <source>Choose a camera under Settings, Camera, or check that it is connected.</source>
+        <translation>Wählen Sie unter Einstellungen, Kamera eine Kamera aus oder prüfen Sie die Verbindung.</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Sprache</translation>
+    </message>
+    <message>
+        <source>Search image settings</source>
+        <translation>Bildeinstellungen durchsuchen</translation>
+    </message>
+    <message>
+        <source>Search shared settings</source>
+        <translation>Gemeinsame Einstellungen durchsuchen</translation>
+    </message>
+    <message>
+        <source>Describe the current camera view</source>
+        <translation>Aktuelle Kameraansicht beschreiben</translation>
+    </message>
+    <message>
+        <source>Explain scene</source>
+        <translation>Szene beschreiben</translation>
+    </message>
+    <message>
+        <source>Stop scene explanation</source>
+        <translation>Szenenbeschreibung stoppen</translation>
+    </message>
+    <message>
+        <source>Stop the current scene explanation</source>
+        <translation>Aktuelle Szenenbeschreibung stoppen</translation>
+    </message>
+    <message>
+        <source>Reset this mode's image and assistant settings?
+
+Shared settings on the Settings tab will stay unchanged.</source>
+        <translation>Bild- und Assistenteneinstellungen dieses Modus zurücksetzen?
+
+Gemeinsame Einstellungen auf der Registerkarte Einstellungen bleiben unverändert.</translation>
+    </message>
+    <message>
+        <source>Hide UI</source>
+        <translation>UI ausblenden</translation>
+    </message>
+    <message>
+        <source>Show UI</source>
+        <translation>UI anzeigen</translation>
+    </message>
+    <message>
+        <source>Hide controls and assistant</source>
+        <translation>Bedienelemente und Assistent ausblenden</translation>
+    </message>
+    <message>
+        <source>Show controls and assistant</source>
+        <translation>Bedienelemente und Assistent anzeigen</translation>
+    </message>
+    <message>
+        <source>Show or hide controls and assistant (Ctrl+H)</source>
+        <translation>Bedienelemente und Assistent ein- oder ausblenden (Strg+H)</translation>
+    </message>
+    <message>
+        <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
+        <translation>%1 konnte das letzte Fragment nicht abschließen (0x%2). Die Datei wurde beibehalten; die Wiedergabe wurde nicht überprüft.</translation>
+    </message>
+    <message>
+        <source>Recording output path already exists; it was preserved.</source>
+        <translation>Der Aufnahmepfad existiert bereits; die vorhandene Datei wurde beibehalten.</translation>
+    </message>
+    <message>
+        <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
+        <translation>Textklarheit verbessert das Bild automatisch. Feinabstimmungen werden nur angewendet, wenn Textklarheit eingeschaltet ist.</translation>
+    </message>
+    <message>
+        <source>More colors
+%1</source>
+        <translation>Weitere Farben
+%1</translation>
+    </message>
+    <message>
+        <source>Yellow on black</source>
+        <translation>Gelb auf Schwarz</translation>
+    </message>
+    <message>
+        <source>Black on yellow</source>
+        <translation>Schwarz auf Gelb</translation>
+    </message>
+    <message>
+        <source>Posterize 6</source>
+        <translation>6 Farben posterisieren</translation>
+    </message>
+    <message>
+        <source>Yellow text on black background</source>
+        <translation>Gelber Text auf schwarzem Hintergrund</translation>
+    </message>
+    <message>
+        <source>Black text on yellow background</source>
+        <translation>Schwarzer Text auf gelbem Hintergrund</translation>
+    </message>
+    <message>
+        <source>Six color posterize effect</source>
+        <translation>Posterisierungseffekt mit sechs Farben</translation>
     </message>
 </context>
 </TS>

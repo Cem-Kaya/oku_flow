@@ -55,6 +55,7 @@ public:
                               bool focusGateEnabled,
                               bool focusAcceptable);
     void ShowFocusWarning();
+    void ClearFocusWarning();
 
     void RestoreOverlayGeometry(const QRect& geometry);
     QRect OverlayGeometry() const;
@@ -69,6 +70,7 @@ private:
     QElapsedTimer analysisTimer_;
     const UserDataPaths* userDataPaths_{};
     bool overlayEnabled_{true};
+    bool focusWarningShown_{false};
 };
 
 } // namespace okuflow

@@ -41,11 +41,12 @@ void OkuFlowApp::OpenNotesFile()
 
 void OkuFlowApp::SubmitOnDemandAnalysis(bool readText)
 {
-    if (pendingOnDemandAnalysis_ || assistiveManager_->Runtime().IsBusy()) {
+    if (pendingOnDemandAnalysis_ || pendingAssistantFramePrompt_ ||
+        assistantResponseOpen_ || assistiveManager_->Runtime().IsBusy()) {
         ShowStatusMessage(QStringLiteral("Scene explanation is busy with a previous request. Try again in a moment."));
         return;
     }
-    if (readText && (focusDetectionEnabled_ || autoTextClarityEnabled_) && cudaSurface_ &&
+    if (readText && autoTextClarityEnabled_ && cudaSurface_ &&
         !cudaSurface_->IsFocusAcceptable(focusThreshold_)) {
         const QString message = QStringLiteral(
             "Image out of focus. Tap the phone screen to refocus before reading text.");
@@ -61,6 +62,10 @@ void OkuFlowApp::SubmitOnDemandAnalysis(bool readText)
         processedFrameWidth_ > 0 && processedFrameHeight_ > 0) {
         pendingOnDemandAnalysis_ = true;
         pendingOnDemandReadText_ = readText;
+        ArmAssistantCaptureDeadline();
+        if (mainWindow_) {
+            mainWindow_->setExplainBusy(true);
+        }
         pipelineOrchestrator_->MarkViewportDirty();
         ShowStatusMessage(QStringLiteral("Capturing the current view..."), 3000);
         return;
@@ -133,7 +138,8 @@ void OkuFlowApp::SubmitAssistantPromptText(const QString& prompt,
                                             bool forceAttachFrame)
 {
     if (prompt.trimmed().isEmpty() ||
-        assistiveManager_->Runtime().IsCodexTurnActive() ||
+        pendingOnDemandAnalysis_ || assistantResponseOpen_ ||
+        assistiveManager_->Runtime().IsBusy() ||
         pendingAssistantFramePrompt_) {
         return;
     }
@@ -144,6 +150,7 @@ void OkuFlowApp::SubmitAssistantPromptText(const QString& prompt,
         processedFrameWidth_ > 0 && processedFrameHeight_ > 0) {
         pendingAssistantFramePrompt_ = PendingAssistantFramePrompt{
             prompt.trimmed(), clearAdvancedEditor};
+        ArmAssistantCaptureDeadline();
         SetAssistantBusy(true);
         pipelineOrchestrator_->MarkViewportDirty();
         ShowStatusMessage(QStringLiteral("Attaching the current view..."), 3000);
@@ -197,15 +204,49 @@ void OkuFlowApp::DispatchAssistantPrompt(const QString& prompt,
 
 void OkuFlowApp::StopAssistantRequest()
 {
-    if (pendingAssistantFramePrompt_) {
-        pendingAssistantFramePrompt_.reset();
-        pendingAssistantFrameReadbackId_ = 0;
-        pendingAssistantFrameReadbackTimer_.invalidate();
-        SetAssistantBusy(false);
+    if (pendingOnDemandAnalysis_ || pendingAssistantFramePrompt_) {
+        CancelPendingAssistantCaptures();
         ShowStatusMessage(QStringLiteral("Assistant request stopped."), 3000);
         return;
     }
     assistiveManager_->Runtime().StopAssistant();
+}
+
+void OkuFlowApp::CancelPendingAssistantCaptures()
+{
+    ++assistantCaptureGeneration_;
+    const bool hadAssistantFrame = pendingAssistantFramePrompt_.has_value();
+    pendingOnDemandAnalysis_ = false;
+    pendingOnDemandReadText_ = false;
+    pendingOnDemandReadbackId_ = 0;
+    pendingOnDemandReadbackTimer_.invalidate();
+    pendingAssistantFramePrompt_.reset();
+    pendingAssistantFrameReadbackId_ = 0;
+    pendingAssistantFrameReadbackTimer_.invalidate();
+    if (!assistiveManager_) {
+        return;
+    }
+    // Cancel queued camera captures without interrupting a dispatched chat.
+    if (hadAssistantFrame && !assistiveManager_->Runtime().IsBusy()) {
+        SetAssistantBusy(false);
+    }
+    if (mainWindow_) {
+        mainWindow_->setExplainBusy(assistiveManager_->Runtime().IsBusy() &&
+                                    !assistantResponseOpen_);
+    }
+}
+
+void OkuFlowApp::ArmAssistantCaptureDeadline()
+{
+    const std::uint64_t generation = ++assistantCaptureGeneration_;
+    QTimer::singleShot(5000, this, [this, generation]() {
+        if (generation != assistantCaptureGeneration_ ||
+            (!pendingOnDemandAnalysis_ && !pendingAssistantFramePrompt_)) {
+            return;
+        }
+        CancelPendingAssistantCaptures();
+        ShowStatusMessage(QStringLiteral("No camera frame is available to attach."), 5000);
+    });
 }
 
 void OkuFlowApp::PopulateAssistantHistory()

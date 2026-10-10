@@ -91,16 +91,29 @@ CodexAppServerClient::CodexAppServerClient(QObject* parent)
     });
     connect(rpc_.get(), &CodexJsonRpcProcess::Finished, this, [this](int exitCode) {
         const bool wasInitialized = initialized_;
+        const quint64 finishedGeneration = pendingTurn_.valid
+                                               ? pendingTurn_.generation : activeGeneration_;
         initialized_ = false;
         signedIn_ = false;
         rpc_->FailAllPendingReplies(QStringLiteral("Codex stopped before replying."));
+        if (retiringFailedServer_) {
+            // FinishInitialization reports the failure and owns the request.
+            return;
+        }
         if (wasInitialized || exitCode != 0) {
             emit ServerStateChanged(
                 false,
                 QStringLiteral("Codex stopped (exit code %1).").arg(exitCode));
         }
-        if (!activeThreadId_.isEmpty() || pendingTurn_.valid) {
-            FinishActiveTurn({}, QStringLiteral("Codex stopped before the answer completed."), false);
+        const quint64 currentGeneration = pendingTurn_.valid
+                                              ? pendingTurn_.generation : activeGeneration_;
+        if (finishedGeneration != 0 && currentGeneration == finishedGeneration && IsTurnActive()) {
+            if (interruptRequested_) {
+                // Exiting while cancellation was pending completes it.
+                FinishActiveTurn({}, interruptReason_, true);
+            } else {
+                FinishActiveTurn({}, QStringLiteral("Codex stopped before the answer completed."), false);
+            }
         }
     });
 }
@@ -156,6 +169,8 @@ void CodexAppServerClient::Start()
     }
 
     initialized_ = false;
+    accountReadInFlight_ = false;
+    retiredTurnIds_.clear();
     rpc_->SetProgram(ResolveExecutable(),
                      {QStringLiteral("app-server"),
                       QStringLiteral("--listen"),
@@ -174,6 +189,11 @@ void CodexAppServerClient::Shutdown()
         InterruptTurn();
     }
     rpc_->Shutdown();
+}
+
+void CodexAppServerClient::SetRequestTimeoutMs(int timeoutMs)
+{
+    rpc_->SetRequestTimeoutMs(timeoutMs);
 }
 
 bool CodexAppServerClient::IsReady() const { return initialized_; }
@@ -195,9 +215,13 @@ void CodexAppServerClient::RefreshAccount()
         Start();
         return;
     }
+    if (accountReadInFlight_) return;
+    accountReadInFlight_ = true;
     SendRequest(QStringLiteral("account/read"),
                 QJsonObject{{QStringLiteral("refreshToken"), false}},
                 [this](const QJsonObject& result, const QJsonObject& error) {
+                    accountReadInFlight_ = false;
+                    if (retiringFailedServer_) return;
                     if (!error.isEmpty()) {
                         signedIn_ = false;
                         emit AccountChanged(false, ErrorMessage(error, QStringLiteral("Sign-in check failed.")), {});
@@ -294,6 +318,11 @@ void CodexAppServerClient::RequestVisionTurn(const QString& prompt,
             return;
         }
     }
+    pendingTurn_.generation = ++lastRequestGeneration_;
+    pendingTurn_.opening = false;
+    turnStartedAtMs_ = QDateTime::currentMSecsSinceEpoch();
+    lastTurnActivityMs_ = turnStartedAtMs_;
+    turnWatchdogTimer_->start();
     pendingTurn_.prompt = prompt.trimmed();
     pendingTurn_.imagePath = imagePath;
     pendingTurn_.threadId = threadId.trimmed();
@@ -319,7 +348,7 @@ void CodexAppServerClient::InterruptTurn()
 
 void CodexAppServerClient::RequestInterrupt(const QString& reason)
 {
-    if (interruptRequested_) {
+    if (!IsTurnActive() || interruptRequested_) {
         return;
     }
     interruptRequested_ = true;
@@ -333,6 +362,9 @@ void CodexAppServerClient::RequestInterrupt(const QString& reason)
         FinishActiveTurn({}, reason, true);
         return;
     }
+    if (activeTurnStartPending_ && activeTurnId_.isEmpty()) {
+        return; // Keep ownership until start supplies a turn id or grace expires.
+    }
     if (activeThreadId_.isEmpty() || activeTurnId_.isEmpty()) {
         FinishActiveTurn({}, reason, true);
         return;
@@ -340,8 +372,8 @@ void CodexAppServerClient::RequestInterrupt(const QString& reason)
     SendRequest(QStringLiteral("turn/interrupt"),
                 QJsonObject{{QStringLiteral("threadId"), activeThreadId_},
                             {QStringLiteral("turnId"), activeTurnId_}},
-                [this](const QJsonObject&, const QJsonObject& error) {
-                    if (!error.isEmpty() && IsTurnActive()) {
+                [this, generation = activeGeneration_](const QJsonObject&, const QJsonObject& error) {
+                    if (!error.isEmpty() && activeGeneration_ == generation && IsTurnActive()) {
                         emit ServerStateChanged(
                             initialized_,
                             ErrorMessage(error,
@@ -510,6 +542,12 @@ qint64 CodexAppServerClient::SendRequest(const QString& method,
 
 void CodexAppServerClient::HandleNotification(const QString& method, const QJsonObject& params)
 {
+    const bool turnEvent = method.startsWith(QStringLiteral("item/")) ||
+                           method.startsWith(QStringLiteral("turn/")) ||
+                           method == QStringLiteral("error");
+    if (turnEvent && !NotificationTargetsActiveTurn(params)) {
+        return;
+    }
     if (IsTurnActive() &&
         (method.startsWith(QStringLiteral("item/")) ||
          method.startsWith(QStringLiteral("turn/")))) {
@@ -542,6 +580,12 @@ void CodexAppServerClient::HandleNotification(const QString& method, const QJson
         }
         if (threadId == activeThreadId_ && (activeTurnId_.isEmpty() || turnId == activeTurnId_)) {
             activeTurnId_ = turnId;
+            if (interruptRequested_) {
+                SendRequest(QStringLiteral("turn/interrupt"),
+                            QJsonObject{{QStringLiteral("threadId"), threadId},
+                                        {QStringLiteral("turnId"), turnId}}, {});
+                return;
+            }
             const QString delta = params.value(QStringLiteral("delta")).toString();
             const QString accepted = AppendActiveText(delta);
             if (!accepted.isEmpty()) {
@@ -569,6 +613,7 @@ void CodexAppServerClient::HandleNotification(const QString& method, const QJson
         if (threadId != activeThreadId_ || (!activeTurnId_.isEmpty() && turnId != activeTurnId_)) {
             return;
         }
+        activeTurnId_ = turnId;
         const QString status = turn.value(QStringLiteral("status")).toString();
         QString error;
         if (status == QStringLiteral("failed")) {
@@ -602,7 +647,7 @@ void CodexAppServerClient::HandleNotification(const QString& method, const QJson
 
 bool CodexAppServerClient::HandleServerRequest(const QJsonValue& id,
                                                const QString& method,
-                                               const QJsonObject&)
+                                               const QJsonObject& params)
 {
     QJsonObject result;
     if (method == QStringLiteral("item/permissions/requestApproval")) {
@@ -622,7 +667,7 @@ bool CodexAppServerClient::HandleServerRequest(const QJsonValue& id,
         return false;
     }
     rpc_->SendResult(id, result);
-    if (IsTurnActive()) {
+    if (NotificationTargetsActiveTurn(params)) {
         InterruptTurn();
     }
     return true;
@@ -631,9 +676,18 @@ bool CodexAppServerClient::HandleServerRequest(const QJsonValue& id,
 void CodexAppServerClient::FinishInitialization(const QJsonObject& result,
                                                 const QJsonObject& error)
 {
+    if (retiringFailedServer_) return;
     if (!error.isEmpty()) {
         initialized_ = false;
-        emit ServerStateChanged(false, ErrorMessage(error, QStringLiteral("Codex initialization failed.")));
+        signedIn_ = false;
+        const QString reason = ErrorMessage(error, QStringLiteral("Codex initialization failed."));
+        retiringFailedServer_ = true;
+        // Retire the child before publishing completion: a completion listener
+        // may immediately admit a replacement and start a fresh child.
+        rpc_->Shutdown();
+        retiringFailedServer_ = false;
+        emit ServerStateChanged(false, reason);
+        FinishActiveTurn({}, reason, false);
         return;
     }
     initialized_ = true;
@@ -690,9 +744,33 @@ void CodexAppServerClient::FinishInitialization(const QJsonObject& result,
     }
 }
 
+bool CodexAppServerClient::PendingTurnCurrent(quint64 generation) const
+{
+    return !retiringFailedServer_ && pendingTurn_.valid && pendingTurn_.generation == generation;
+}
+
+bool CodexAppServerClient::NotificationTargetsActiveTurn(const QJsonObject& params) const
+{
+    if (retiringFailedServer_ || activeGeneration_ == 0 || activeThreadId_.isEmpty()) return false;
+    const QString thread = params.value(QStringLiteral("threadId")).toString();
+    QString turn = params.value(QStringLiteral("turnId")).toString();
+    if (turn.isEmpty()) turn = params.value(QStringLiteral("turn")).toObject().value(QStringLiteral("id")).toString();
+    if (!turn.isEmpty() && retiredTurnIds_.contains(turn)) return false;
+    // Unknown/unscoped traffic is diagnostic-only; it cannot own a turn.
+    return thread == activeThreadId_ && !turn.isEmpty() &&
+           (activeTurnId_.isEmpty() || turn == activeTurnId_);
+}
+
+void CodexAppServerClient::RetireTurnId(const QString& turnId)
+{
+    if (turnId.isEmpty() || retiredTurnIds_.contains(turnId)) return;
+    retiredTurnIds_.append(turnId);
+    while (retiredTurnIds_.size() > kMaximumRetiredTurnIds) retiredTurnIds_.removeFirst();
+}
+
 void CodexAppServerClient::SubmitPendingTurn()
 {
-    if (!pendingTurn_.valid || !initialized_ || !signedIn_) {
+    if (!pendingTurn_.valid || pendingTurn_.opening || !initialized_ || !signedIn_) {
         return;
     }
     if (pendingTurn_.threadId.isEmpty()) {
@@ -704,6 +782,8 @@ void CodexAppServerClient::SubmitPendingTurn()
 
 void CodexAppServerClient::StartNewThreadForPendingTurn()
 {
+    pendingTurn_.opening = true;
+    const quint64 generation = pendingTurn_.generation;
     const bool persistent = pendingTurn_.persistent;
     const bool allowCoding = persistent && codingEnabled_;
     QJsonObject params{
@@ -718,7 +798,8 @@ void CodexAppServerClient::StartNewThreadForPendingTurn()
         params.insert(QStringLiteral("model"), selectedModel_);
     }
     SendRequest(QStringLiteral("thread/start"), params,
-                [this](const QJsonObject& result, const QJsonObject& error) {
+                [this, generation](const QJsonObject& result, const QJsonObject& error) {
+                    if (!PendingTurnCurrent(generation)) return;
                     if (!error.isEmpty()) {
                         FinishActiveTurn({}, ErrorMessage(error, QStringLiteral("Could not start assistant conversation.")), false);
                         return;
@@ -739,6 +820,8 @@ void CodexAppServerClient::StartNewThreadForPendingTurn()
 
 void CodexAppServerClient::ResumeThreadForPendingTurn()
 {
+    pendingTurn_.opening = true;
+    const quint64 generation = pendingTurn_.generation;
     const bool persistent = pendingTurn_.persistent;
     const bool allowCoding = persistent && codingEnabled_;
     QJsonObject params{
@@ -752,17 +835,22 @@ void CodexAppServerClient::ResumeThreadForPendingTurn()
         params.insert(QStringLiteral("model"), selectedModel_);
     }
     SendRequest(QStringLiteral("thread/resume"), params,
-                [this](const QJsonObject&, const QJsonObject& error) {
+                [this, generation, threadId = pendingTurn_.threadId](const QJsonObject&, const QJsonObject& error) {
+                    if (!PendingTurnCurrent(generation) || pendingTurn_.threadId != threadId) return;
                     if (!error.isEmpty()) {
                         FinishActiveTurn({}, ErrorMessage(error, QStringLiteral("Could not resume assistant conversation.")), false);
                         return;
                     }
-                    StartTurnOnThread(pendingTurn_.threadId);
+                    StartTurnOnThread(threadId);
                 });
 }
 
-void CodexAppServerClient::StartTurnOnThread(const QString& threadId)
+void CodexAppServerClient::StartTurnOnThread(QString threadId)
 {
+    if (!pendingTurn_.valid || pendingTurn_.threadId != threadId) return;
+    const quint64 generation = pendingTurn_.generation;
+    activeGeneration_ = generation;
+    activeTurnStartPending_ = true;
     const bool persistent = pendingTurn_.persistent;
     const QString workingDirectory = AssistantWorkingDirectory(persistent);
     const QJsonObject sandboxPolicy = SandboxPolicy(persistent);
@@ -782,8 +870,7 @@ void CodexAppServerClient::StartTurnOnThread(const QString& threadId)
     activeText_.clear();
     activeTextTruncated_ = false;
     activeTurnId_.clear();
-    turnStartedAtMs_ = QDateTime::currentMSecsSinceEpoch();
-    lastTurnActivityMs_ = turnStartedAtMs_;
+    lastTurnActivityMs_ = QDateTime::currentMSecsSinceEpoch();
     interruptRequested_ = false;
     interruptDeadlineMs_ = 0;
     interruptReason_.clear();
@@ -801,13 +888,46 @@ void CodexAppServerClient::StartTurnOnThread(const QString& threadId)
         params.insert(QStringLiteral("model"), selectedModel_);
     }
     SendRequest(QStringLiteral("turn/start"), params,
-                [this, threadId, persistent](const QJsonObject& result, const QJsonObject& error) {
+                [this, threadId, persistent, generation](const QJsonObject& result, const QJsonObject& error) {
+                    if (retiringFailedServer_) return;
+                    const QString returnedId = result.value(QStringLiteral("turn")).toObject()
+                                                   .value(QStringLiteral("id")).toString();
+                    if (activeGeneration_ != generation || activeThreadId_ != threadId) {
+                        if (error.isEmpty() && !returnedId.isEmpty()) {
+                            RetireTurnId(returnedId);
+                            SendRequest(QStringLiteral("turn/interrupt"),
+                                        QJsonObject{{QStringLiteral("threadId"), threadId},
+                                                    {QStringLiteral("turnId"), returnedId}}, {});
+                        }
+                        return;
+                    }
+                    activeTurnStartPending_ = false;
                     if (!error.isEmpty()) {
-                        FinishActiveTurn({}, ErrorMessage(error, QStringLiteral("Could not start assistant request.")), false);
+                        const QString reason = ErrorMessage(error, QStringLiteral("Could not start assistant request."));
+                        const bool interrupted = interruptRequested_;
+                        if (error.value(QStringLiteral("code")).toInt() == -32001) {
+                            // A missing acknowledgement does not prove that the
+                            // remote turn did not start. Retire its child before
+                            // making this thread available to a replacement.
+                            retiringFailedServer_ = true;
+                            rpc_->Shutdown();
+                            retiringFailedServer_ = false;
+                        }
+                        FinishActiveTurn({}, reason, interrupted);
                         return;
                     }
                     activeTurnId_ = result.value(QStringLiteral("turn")).toObject()
                                             .value(QStringLiteral("id")).toString();
+                    if (activeTurnId_.isEmpty()) {
+                        FinishActiveTurn({}, QStringLiteral("Codex returned no turn identifier."), false);
+                        return;
+                    }
+                    if (interruptRequested_) {
+                        SendRequest(QStringLiteral("turn/interrupt"),
+                                    QJsonObject{{QStringLiteral("threadId"), threadId},
+                                                {QStringLiteral("turnId"), activeTurnId_}}, {});
+                        return;
+                    }
                     emit TurnStarted(threadId, activeTurnId_, persistent);
                 });
 }
@@ -816,6 +936,10 @@ void CodexAppServerClient::FinishActiveTurn(const QString& text,
                                             const QString& error,
                                             bool interrupted)
 {
+    if (!IsTurnActive()) return;
+    RetireTurnId(activeTurnId_);
+    activeGeneration_ = 0;
+    activeTurnStartPending_ = false;
     // text can alias activeText_; copy it before clearing the active state.
     const QString finishedText = text.trimmed();
     const QString finishedError = error.trimmed();
@@ -880,16 +1004,21 @@ void CodexAppServerClient::CheckTurnWatchdog()
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (interruptRequested_) {
         if (interruptDeadlineMs_ > 0 && now >= interruptDeadlineMs_) {
-            FinishActiveTurn({}, interruptReason_.isEmpty()
+            const QString reason = interruptReason_;
+            retiringFailedServer_ = true;
+            rpc_->Shutdown();
+            retiringFailedServer_ = false;
+            FinishActiveTurn({}, reason.isEmpty()
                                      ? QStringLiteral("Assistant cancellation timed out.")
-                                     : interruptReason_,
+                                     : reason,
                              true);
         }
         return;
     }
 
     const qint64 maximum =
-        activePersistent_ ? kPersistentTurnMaximumMs : kVisionTurnMaximumMs;
+        (pendingTurn_.valid ? pendingTurn_.persistent : activePersistent_)
+            ? kPersistentTurnMaximumMs : kVisionTurnMaximumMs;
     if (turnStartedAtMs_ > 0 && now - turnStartedAtMs_ >= maximum) {
         RequestInterrupt(QStringLiteral("Assistant request reached its maximum duration."));
         return;

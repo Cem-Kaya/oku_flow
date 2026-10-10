@@ -5,6 +5,7 @@
 #include <QGridLayout>
 #include <QResizeEvent>
 #include <QSlider>
+#include <algorithm>
 
 namespace okuflow {
 
@@ -21,17 +22,35 @@ ResponsiveSliderRow::ResponsiveSliderRow(QWidget* leadingWidget,
     layout_->setContentsMargins(0, 0, 0, 0);
     layout_->setHorizontalSpacing(8);
     layout_->setVerticalSpacing(4);
+    // Inline layout is a preference, not a hard minimum. Otherwise the parent
+    // scroll area widens its content before resizeEvent can select stacking.
+    layout_->setSizeConstraint(QLayout::SetNoConstraint);
     slider_->setMinimumWidth(120);
     ApplyLayout(false);
+}
+
+QSize ResponsiveSliderRow::minimumSizeHint() const
+{
+    const QSize leading = leadingWidget_->minimumSizeHint().expandedTo(leadingWidget_->minimumSize());
+    const QSize slider = slider_->minimumSizeHint().expandedTo(slider_->minimumSize());
+    const QSize trailing = trailingWidget_
+        ? trailingWidget_->minimumSizeHint().expandedTo(trailingWidget_->minimumSize())
+        : QSize(0, 0);
+    const int controlsWidth = slider.width() +
+        (trailingWidget_ ? trailing.width() + layout_->horizontalSpacing() : 0);
+    return QSize(std::max(leading.width(), controlsWidth),
+                 layout_->minimumSize().height());
 }
 
 void ResponsiveSliderRow::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
-    const int trailingWidth =
-        trailingWidget_ ? trailingWidget_->sizeHint().width() + 8 : 0;
+    const int trailingWidth = trailingWidget_
+        ? std::max(trailingWidget_->sizeHint().width(), trailingWidget_->minimumWidth()) + 8
+        : 0;
     const int inlineWidth = leadingWidget_->sizeHint().width() +
-                            slider_->minimumWidth() + trailingWidth + 8;
+                            std::max(slider_->minimumSizeHint().width(), slider_->minimumWidth()) +
+                            trailingWidth + 8;
     ApplyLayout(event->size().width() < inlineWidth);
 }
 

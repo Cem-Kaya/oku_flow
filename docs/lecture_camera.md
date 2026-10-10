@@ -4,7 +4,7 @@ Double-click `scripts/start_lecture_camera.bat`. It starts a private OBS
 instance, loops the downloaded lecture through **OBS Virtual Camera** and the
 **DroidCam Video** Media Foundation output, and
 opens `dist/OkuFlow/oku_flow.exe` if OkuFlow is closed. On first use select
-**Advanced > Image > Device > Camera > DroidCam Video** in OkuFlow.
+**Advanced > Settings > Camera > DroidCam Video** in OkuFlow.
 OkuFlow remembers that camera selection normally.
 
 Double-click `scripts/stop_lecture_camera.bat` to stop the test camera. The

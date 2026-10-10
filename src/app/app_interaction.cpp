@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include <QLocale>
 
 namespace okuflow {
 
@@ -68,7 +69,7 @@ void OkuFlowApp::UpdateJoystickVisibility() {
 }
 
 void OkuFlowApp::UpdateBlurUiLabels() {
-    const QString sigmaText = QString::number(blurSigma_, 'f', 1);
+    const QString sigmaText = QLocale().toString(blurSigma_, 'f', 1);
     const bool blurActive = blurEnabled_;
     if (uiState_->blurSigmaValueLabel_) {
         SetLiveText(uiState_->blurSigmaValueLabel_, sigmaText,
@@ -77,7 +78,7 @@ void OkuFlowApp::UpdateBlurUiLabels() {
     }
     if (uiState_->blurRadiusValueLabel_) {
         SetLiveText(uiState_->blurRadiusValueLabel_,
-                    QString::number(blurRadius_),
+                    QLocale().toString(blurRadius_),
                     LivePoliteness::kSilent,
                     QStringLiteral("Blur radius"));
         uiState_->blurRadiusValueLabel_->setEnabled(blurActive);
@@ -113,7 +114,7 @@ void OkuFlowApp::UpdateTemporalSmoothUi() {
     if (uiState_->temporalSmoothValueLabel_) {
         uiState_->temporalSmoothValueLabel_->setEnabled(temporalSmoothEnabled_);
         SetLiveText(uiState_->temporalSmoothValueLabel_,
-                    QString::number(temporalSmoothAlpha_, 'f', 2),
+                    QLocale().toString(temporalSmoothAlpha_, 'f', 2),
                     LivePoliteness::kSilent,
                     QStringLiteral("Temporal blend"));
     }
@@ -186,7 +187,7 @@ void OkuFlowApp::UpdateSpatialSharpenUi() {
     if (uiState_->spatialSharpnessValueLabel_) {
         uiState_->spatialSharpnessValueLabel_->setEnabled(enabled);
         SetLiveText(uiState_->spatialSharpnessValueLabel_,
-                    QString::number(spatialSharpness_, 'f', 2),
+                    QLocale().toString(spatialSharpness_, 'f', 2),
                     LivePoliteness::kSilent,
                     QStringLiteral("Sharpness"));
     }
@@ -206,8 +207,8 @@ void OkuFlowApp::UpdateCameraPlaceholder() {
     } else if (!cameraActive_) {
         title = QStringLiteral("No camera picture");
         detail = cameras_.empty()
-                     ? QStringLiteral("Connect a camera, then choose it under Advanced, Device.")
-                     : QStringLiteral("Choose a camera under Advanced, Device, or check that it is connected.");
+                     ? QStringLiteral("Connect a camera, then choose it under Settings, Camera.")
+                     : QStringLiteral("Choose a camera under Settings, Camera, or check that it is connected.");
     }
     mainWindow_->setCameraPlaceholder(title, detail);
 }
@@ -224,8 +225,7 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
     LivePoliteness politeness = LivePoliteness::kPolite;
 
     auto backendLabel = [this]() -> QString {
-        if (autoTextClarityEnabled_ || backgroundFlattenEnabled_ ||
-            adaptiveBinarizationEnabled_ || smartSharpenEnabled_ || claheEnabled_) {
+        if (autoTextClarityEnabled_) {
             return QStringLiteral("Text Clarity");
         }
         if (cudaSurface_ && cudaSurface_->IsSuperResActive() &&
@@ -271,7 +271,7 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         } else {
             detail = QStringLiteral("Processing: GPU (%1)").arg(backend);
         }
-        if ((focusDetectionEnabled_ || autoTextClarityEnabled_) && cudaSurface_ &&
+        if (autoTextClarityEnabled_ && cudaSurface_ &&
             cudaSurface_->HasFocusScore()) {
             detail.append(QStringLiteral(", focus %1")
                               .arg(cudaSurface_->LatestFocusScore(), 0, 'f', 4));

@@ -10,12 +10,15 @@
 #include <wrl/client.h>
 
 #include "okuflow/common/recording_contract.hpp"
+#include "okuflow/common/gpu_read_retirement.hpp"
+#include "okuflow/common/recording_preservation.hpp"
 
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace okuflow {
 
@@ -188,6 +191,30 @@ private:
     FinalizeResult FinalizeAndStop(StopReason reason);
     bool WritePendingSample(std::int64_t duration100ns);
     void LeakComForProcessExit();
+    void PollGpuReadLeases(bool allowFlush = false);
+    struct GpuReadLease {
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
+        Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+        Microsoft::WRL::ComPtr<ID3D11Query> query;
+        Microsoft::WRL::ComPtr<ID3D11Fence> producerFence;
+        UINT64 producerValue{};
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> input, output;
+        Microsoft::WRL::ComPtr<ID3D11VideoProcessorInputView> inputView;
+        Microsoft::WRL::ComPtr<ID3D11VideoProcessorOutputView> outputView;
+        Microsoft::WRL::ComPtr<ID3D11VideoProcessor> processor;
+        std::shared_ptr<void> source;
+        bool queryRecorded{};
+    };
+    struct PendingGpuRead {
+        std::shared_ptr<GpuReadLease> backing;
+        std::shared_ptr<GpuReadRetirement> retirement;
+    };
+    std::vector<PendingGpuRead> pendingGpuReads_;
+    bool gpuReadFaulted_{};
+    HRESULT lastReaderQueryHr_{S_OK};
+    HRESULT lastReaderDeviceHr_{S_OK};
+    BOOL lastReaderQueryComplete_{};
+    UINT64 lastReaderProducerCompleted_{}, lastReaderProducerRequired_{};
     void SetError(const std::string& err);
 
     IMFTransform* colorConverter_{nullptr}; // unused for now; reserved.
@@ -223,6 +250,9 @@ private:
     bool gpuInputEnabled_{false};
     bool gpuCompatibilityReadback_{false};
     std::uint64_t videoSamplesWritten_{0};
+    // Stop is idempotent until the next Start, including automatic stops.
+    RecordingTerminalResult<FinalizeResult> terminalResult_;
+    long writeFailureHr_{0};
     std::atomic<WriterStage> stage_{WriterStage::kIdle};
     std::atomic<bool> abandoned_{false};
     std::string lastError_;

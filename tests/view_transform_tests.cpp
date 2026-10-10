@@ -1,5 +1,5 @@
 #include "okuflow/common/view_transform.hpp"
-#include "okuflow/app/pipeline_orchestrator.hpp"
+#include "okuflow/d3d12/shared_timeline.hpp"
 
 #include <QtTest/QTest>
 
@@ -82,8 +82,8 @@ private slots:
     void pixelMappingUsesCanonicalTransform();
     void cachedRoiRemapsWithoutChangingDestinationGeometry();
     void cachedRoiRejectsUncoveredViewport();
-    void fenceSequencerAdoptsPresenterSlotSignals();
-    void fenceSequencerIgnoresMissedAdmission();
+    void sharedTimelineAdoptsPresenterSlotSignals();
+    void sharedTimelineIgnoresMissedAdmission();
 };
 
 void ViewTransformTests::fillPreservesUniformScaleAcrossAspectRatios() {
@@ -311,57 +311,41 @@ void ViewTransformTests::cachedRoiRejectsUncoveredViewport() {
     QVERIFY(!remapped.valid);
 }
 
-void ViewTransformTests::fenceSequencerAdoptsPresenterSlotSignals() {
-    FenceSequencer sequencer;
-    sequencer.Reset(10);
-
-    const FenceSequencer::CudaTicket cuda = sequencer.BeginCudaFrame(10);
-    QCOMPARE(cuda.waitValue, 10u);
-    QCOMPARE(cuda.signalValue, 11u);
-    sequencer.CudaSignaled();
-    QCOMPARE(sequencer.LastCudaSignal(), 11u);
-
-    const std::uint64_t requestedGraphics =
-        sequencer.BeginGraphicsFrame(10);
-    QCOMPARE(requestedGraphics, 12u);
-
-    // The presenter emits the requested shared-texture signal followed by a
-    // second signal used to retire its back-buffer slot.
-    sequencer.GraphicsSignaled(13);
-
-    // A viewport-only present must reserve beyond that internal slot signal.
-    const std::uint64_t viewportOnlyGraphics =
-        sequencer.BeginGraphicsFrame(13);
-    QCOMPARE(viewportOnlyGraphics, 14u);
-    sequencer.GraphicsSignaled(15);
-
-    // The next CUDA frame waits for the newest completed texture reader and
-    // receives a value that has never already been signaled.
-    const FenceSequencer::CudaTicket nextCuda =
-        sequencer.BeginCudaFrame(15);
-    QCOMPARE(nextCuda.waitValue, 15u);
-    QCOMPARE(nextCuda.signalValue, 16u);
+void ViewTransformTests::sharedTimelineAdoptsPresenterSlotSignals() {
+    SharedFenceTimeline timeline;
+    const auto firstCuda = timeline.ReserveExternal();
+    QVERIFY(timeline.CommitExternal(firstCuda));
+    QVERIFY(timeline.QueueDependency([](auto) { return true; }));
+    const auto sceneReader = timeline.ReserveGraphics();
+    timeline.GraphicsSubmitted(sceneReader);
+    const auto backBufferSlot = timeline.ReserveGraphics();
+    timeline.GraphicsSubmitted(backBufferSlot);
+    const auto viewportReader = timeline.ReserveGraphics();
+    timeline.GraphicsSubmitted(viewportReader);
+    const auto nextCudaWait = timeline.LastGraphics();
+    const auto nextCudaSignal = timeline.ReserveExternal();
+    QCOMPARE(nextCudaWait, viewportReader);
+    QVERIFY(nextCudaSignal > viewportReader);
+    QVERIFY(viewportReader > backBufferSlot && backBufferSlot > sceneReader);
 }
 
-void ViewTransformTests::fenceSequencerIgnoresMissedAdmission() {
-    FenceSequencer sequencer;
-    sequencer.Reset(10);
-    const auto first = sequencer.BeginCudaFrame(10);
-    QCOMPARE(first.signalValue, 11u);
-    sequencer.CudaSignaled();
-    QCOMPARE(sequencer.BeginGraphicsFrame(10), 12u);
-    // Admission was busy: no draw or signal was submitted. The next CUDA
-    // frame must not wait for that unsubmitted graphics value.
-    const auto next = sequencer.BeginCudaFrame(10);
-    QCOMPARE(next.waitValue, 10u);
-    QCOMPARE(next.signalValue, 12u);
-    sequencer.CudaSignaled();
-    // Independent recording waits on CUDA 12 and signals graphics 13 even
-    // when the viewport remains busy. That real reader must be respected.
-    sequencer.GraphicsSignaled(13);
-    const auto afterRecording = sequencer.BeginCudaFrame(13);
-    QCOMPARE(afterRecording.waitValue, 13u);
-    QCOMPARE(afterRecording.signalValue, 14u);
+void ViewTransformTests::sharedTimelineIgnoresMissedAdmission() {
+    SharedFenceTimeline timeline;
+    const auto first = timeline.ReserveExternal();
+    QVERIFY(timeline.CommitExternal(first));
+    // Busy admission creates no graphics wait target, while a recording clone
+    // submitted independently must become the next CUDA reader dependency.
+    QCOMPARE(timeline.LastGraphics(), std::uint64_t{0});
+    const auto second = timeline.ReserveExternal();
+    QVERIFY(second > first);
+    QVERIFY(timeline.CommitExternal(second));
+    std::uint64_t waited = 0;
+    QVERIFY(timeline.QueueDependency([&](auto value) { waited = value; return true; }));
+    QCOMPARE(waited, second);
+    const auto clone = timeline.ReserveGraphics();
+    timeline.GraphicsSubmitted(clone);
+    QCOMPARE(timeline.LastGraphics(), clone);
+    QVERIFY(timeline.ReserveExternal() > clone);
 }
 
 } // namespace okuflow

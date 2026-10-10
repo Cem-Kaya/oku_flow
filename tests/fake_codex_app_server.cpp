@@ -21,6 +21,9 @@ namespace {
 
 QString gScenario;
 QString gThreadId = QStringLiteral("thr_fake");
+QJsonValue gHeldId(QJsonValue::Undefined);
+QString gHeldMethod;
+int gLifecycleOpenings = 0;
 
 void WriteObject(const QJsonObject& object)
 {
@@ -126,10 +129,77 @@ void HandleMessage(const QJsonObject& message)
     const QString method = message.value(QStringLiteral("method")).toString();
     const QJsonObject params = message.value(QStringLiteral("params")).toObject();
 
+    if (gScenario.startsWith(QStringLiteral("vision-lifecycle"))) {
+        if (method == QStringLiteral("initialize")) {
+            if (gScenario.endsWith(QStringLiteral("init-timeout"))) return;
+            if (gScenario.endsWith(QStringLiteral("init-error"))) {
+                WriteError(id, -32000, QStringLiteral("fake initialization failure"));
+                return;
+            }
+        }
+        if (method == QStringLiteral("thread/start") || method == QStringLiteral("thread/resume")) {
+            ++gLifecycleOpenings;
+            const QString holdMethod = gScenario.endsWith(QStringLiteral("resume"))
+                                           ? QStringLiteral("thread/resume") : QStringLiteral("thread/start");
+            const bool holdOpening = gScenario == QStringLiteral("vision-lifecycle-hold-start") ||
+                                     gScenario == QStringLiteral("vision-lifecycle-hold-resume") ||
+                                     gScenario == QStringLiteral("vision-lifecycle-hold-duplicate");
+            if (holdOpening && method == holdMethod && gHeldId.isUndefined()) {
+                gHeldId = id;
+                gHeldMethod = method;
+                WriteNotification(QStringLiteral("warning"), QJsonObject{{QStringLiteral("message"), QStringLiteral("held opening")}});
+                return;
+            }
+            if (!gHeldId.isUndefined() && gHeldMethod != QStringLiteral("turn/start")) {
+                WriteResult(gHeldId, QJsonObject{{QStringLiteral("thread"), QJsonObject{{QStringLiteral("id"), gScenario.endsWith(QStringLiteral("duplicate")) ? QStringLiteral("thr_new") : QStringLiteral("thr_old")}}}});
+            }
+            gThreadId = params.value(QStringLiteral("threadId")).toString(QStringLiteral("thr_new"));
+            WriteResult(id, QJsonObject{{QStringLiteral("thread"), QJsonObject{{QStringLiteral("id"), gThreadId}}}});
+            return;
+        }
+        if (method == QStringLiteral("turn/start")) {
+            if (gScenario.endsWith(QStringLiteral("hold-turn")) && gHeldId.isUndefined()) {
+                gHeldId = id;
+                gHeldMethod = method;
+                WriteNotification(QStringLiteral("warning"), QJsonObject{{QStringLiteral("message"), QStringLiteral("held turn")}});
+                return;
+            }
+            const QJsonArray input = params.value(QStringLiteral("input")).toArray();
+            const QString prompt = input.isEmpty() ? QString() : input.first().toObject().value(QStringLiteral("text")).toString();
+            const QString thread = params.value(QStringLiteral("threadId")).toString();
+            if ((gScenario.endsWith(QStringLiteral("duplicate")) && gLifecycleOpenings != 1) ||
+                thread == QStringLiteral("thr_old") || input.isEmpty() ||
+                (input.size() > 1 && !QFileInfo(input.at(1).toObject().value(QStringLiteral("path")).toString()).isFile())) {
+                WriteError(id, -32602, QStringLiteral("stale opening consumed request"));
+                return;
+            }
+            gThreadId = thread;
+            WriteResult(id, QJsonObject{{QStringLiteral("turn"), QJsonObject{{QStringLiteral("id"), QStringLiteral("turn_new")}}}});
+            // Old non-delta traffic must not finish or contaminate this turn.
+            WriteNotification(QStringLiteral("item/completed"), QJsonObject{{QStringLiteral("turnId"), QStringLiteral("turn_old")}, {QStringLiteral("item"), QJsonObject{{QStringLiteral("type"), QStringLiteral("agentMessage")}, {QStringLiteral("text"), QStringLiteral("wrong answer")}}}});
+            WriteNotification(QStringLiteral("error"), QJsonObject{{QStringLiteral("turnId"), QStringLiteral("turn_old")}});
+            WriteNotification(QStringLiteral("item/agentMessage/delta"), QJsonObject{{QStringLiteral("turnId"), QStringLiteral("turn_new")}, {QStringLiteral("delta"), prompt}});
+            WriteNotification(QStringLiteral("turn/completed"), QJsonObject{{QStringLiteral("turn"), QJsonObject{{QStringLiteral("id"), QStringLiteral("turn_new")}, {QStringLiteral("status"), QStringLiteral("completed")}}}});
+            return;
+        }
+        if (method == QStringLiteral("account/read") && !gHeldId.isUndefined()) {
+            if (gHeldMethod == QStringLiteral("turn/start")) {
+                WriteResult(gHeldId, QJsonObject{{QStringLiteral("turn"), QJsonObject{{QStringLiteral("id"), QStringLiteral("turn_old")}}}});
+            } else {
+                WriteResult(gHeldId, QJsonObject{{QStringLiteral("thread"), QJsonObject{{QStringLiteral("id"), gScenario.endsWith(QStringLiteral("duplicate")) ? QStringLiteral("thr_new") : QStringLiteral("thr_old")}}}});
+            }
+        }
+        if (method == QStringLiteral("turn/interrupt")) {
+            WriteResult(id, {});
+            WriteNotification(QStringLiteral("turn/completed"), QJsonObject{{QStringLiteral("turn"), QJsonObject{{QStringLiteral("id"), params.value(QStringLiteral("turnId"))}, {QStringLiteral("status"), QStringLiteral("interrupted")}}}});
+            return;
+        }
+        if (method == QStringLiteral("model/list")) { WriteResult(id, {}); return; }
+    }
     if (gScenario.startsWith(QStringLiteral("vision-"))) {
         if (method == QStringLiteral("model/list")) {
             WriteResult(id, QJsonObject{{QStringLiteral("data"), QJsonArray{
-                QJsonObject{{QStringLiteral("id"), QStringLiteral("gpt-5.6-luna")},
+                QJsonObject{{QStringLiteral("id"), QStringLiteral("gpt-6-luna")},
                             {QStringLiteral("inputModalities"), QJsonArray{QStringLiteral("text"), QStringLiteral("image")}},
                             {QStringLiteral("isDefault"), true}}}}});
             return;
@@ -140,7 +210,7 @@ void HandleMessage(const QJsonObject& message)
                   params.value(QStringLiteral("sandbox")).toString() != QStringLiteral("read-only") ||
                   !params.value(QStringLiteral("developerInstructions")).toString().contains(
                       QStringLiteral("For verbatim reading or transcription requests, preserve the source wording and language")) ||
-                  params.value(QStringLiteral("model")).toString() != QStringLiteral("gpt-5.6-luna")) {
+                  params.value(QStringLiteral("model")).toString() != QStringLiteral("gpt-6-luna")) {
                 WriteError(id, -32602, QStringLiteral("incorrect vision thread policy or model"));
             } else {
                 WriteResult(id, QJsonObject{{QStringLiteral("thread"),
@@ -162,7 +232,7 @@ void HandleMessage(const QJsonObject& message)
                   prompt.contains(QStringLiteral("Respond in German.")) != german ||
                 image.value(QStringLiteral("type")).toString() != QStringLiteral("localImage") ||
                 !QFileInfo(image.value(QStringLiteral("path")).toString()).isFile() ||
-                params.value(QStringLiteral("model")).toString() != QStringLiteral("gpt-5.6-luna") ||
+                params.value(QStringLiteral("model")).toString() != QStringLiteral("gpt-6-luna") ||
                 params.value(QStringLiteral("effort")).toString() != QStringLiteral("low") ||
                 sandbox.value(QStringLiteral("type")).toString() != QStringLiteral("readOnly") ||
                 sandbox.value(QStringLiteral("networkAccess")).toBool()) {

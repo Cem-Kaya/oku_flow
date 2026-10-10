@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include <QLocale>
 
 namespace okuflow {
 
@@ -538,7 +539,7 @@ void OkuFlowApp::OnRotationSelectionChanged(int index) {
         cudaSurface_->ResetTextClarityHistory();
     }
     UpdateKeystoneTrackingUi();
-    ResetCudaFenceState();
+    InvalidateRecordingFramePairing();
 
     processedFrameWidth_ = 0;
     processedFrameHeight_ = 0;
@@ -635,7 +636,7 @@ void OkuFlowApp::OnSpatialSharpnessChanged(int value) {
     spatialSharpness_ = std::clamp(static_cast<float>(value) / 100.0f, 0.0f, 1.0f);
     if (uiState_->spatialSharpnessValueLabel_) {
         SetLiveText(uiState_->spatialSharpnessValueLabel_,
-                    QString::number(spatialSharpness_, 'f', 2),
+                    QLocale().toString(spatialSharpness_, 'f', 2),
                     LivePoliteness::kSilent,
                     QStringLiteral("Sharpness"));
     }
@@ -665,7 +666,7 @@ void OkuFlowApp::OnTemporalSmoothStrengthChanged(int value) {
     temporalSmoothAlpha_ = std::clamp(static_cast<float>(clamped) / 100.0f, 0.0f, 1.0f);
     if (uiState_->temporalSmoothValueLabel_) {
         SetLiveText(uiState_->temporalSmoothValueLabel_,
-                    QString::number(temporalSmoothAlpha_, 'f', 2),
+                    QLocale().toString(temporalSmoothAlpha_, 'f', 2),
                     LivePoliteness::kSilent,
                     QStringLiteral("Temporal blend"));
     }
@@ -887,6 +888,7 @@ void OkuFlowApp::OnAutoContrastStrengthChanged(int value) {
 void OkuFlowApp::OnTextClarityControlsChanged() {
     const bool wasSuperResEnabled = mlTextSuperResolutionEnabled_;
     autoTextClarityEnabled_ = uiState_->textClarityCheckbox_ && uiState_->textClarityCheckbox_->isChecked();
+    if (!autoTextClarityEnabled_ && assistiveManager_) assistiveManager_->ClearFocusWarning();
     backgroundFlattenEnabled_ = uiState_->backgroundFlattenCheckbox_ && uiState_->backgroundFlattenCheckbox_->isChecked();
     backgroundFlattenStrength_ = uiState_->backgroundFlattenStrengthSlider_
                                      ? std::clamp(uiState_->backgroundFlattenStrengthSlider_->value() / 100.0f, 0.0f, 1.0f) : 0.8f;
@@ -1043,6 +1045,7 @@ void OkuFlowApp::UpdateControlEnabledStates() {
                superResAvailable);
     setEnabled(uiState_->mlTextSuperResolutionUltra1440pCheckbox_,
                superResAvailable);
+    if (mainWindow_) mainWindow_->refreshTextClarityUi();
     UpdateSectionChangedCounts();
 }
 

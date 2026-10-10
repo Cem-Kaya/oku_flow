@@ -167,6 +167,8 @@ private:
                                  int height,
                                  bool attachFrame);
     void StopAssistantRequest();
+    void CancelPendingAssistantCaptures();
+    void ArmAssistantCaptureDeadline();
     void SubmitFloatingAssistantPrompt(const QString& prompt);
     // Starts a fresh Advanced Assistant conversation (from the floating
     // overlay's New chat button); the next answer opens a new conversation
@@ -269,7 +271,7 @@ private:
     bool RunFrameTick(double elapsedSeconds);
     void PresentLatestCudaScene(bool newCameraFrame,
                                 CapturedFrame* originalFrame);
-    void ResetCudaFenceState();
+    void InvalidateRecordingFramePairing();
     void HandleCudaProcessingFailure();
     bool HandlePresenterFault();
     void ResolveCudaBufferFormatFromOptions();
@@ -430,6 +432,7 @@ private:
     std::vector<uint8_t> assistiveBuffer_;
     std::vector<uint8_t> asyncReadbackBuffer_;
     bool pendingOnDemandAnalysis_{};
+    std::uint64_t assistantCaptureGeneration_{};
     bool pendingOnDemandReadText_{};
     UINT64 pendingOnDemandReadbackId_{};
     QElapsedTimer pendingOnDemandReadbackTimer_;

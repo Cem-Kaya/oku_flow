@@ -5,6 +5,60 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+- Handle Escape directly in the floating assistant's question field so it
+  reliably clears a draft, then returns focus to the camera without losing
+  the answer.
+- Default new Assistant configurations to GPT-6 Luna, retaining explicitly
+  saved model selections. Clarify Extra Stable as holding the view on shake.
+- Put Posterize 6 and yellow/black reading colors among visible shortcuts,
+  with a large More colors button opening the complete picker.
+- Make Text Clarity a master switch for its automatic treatment and nested
+  refinements. Turning it off now suppresses Adaptive Text and the other text
+  stages even when their saved options are checked. Keep those choices for
+  re-enabling, and indent and disable the child controls while off. Existing
+  saved manual options with Text Clarity off remain stored but inactive.
+- Keep each nonempty failed recording output, even when its original/processed
+  partner is absent; only fully finalized pairs enter notes. Remove the
+  startup recording sweep and restrict cleanup to session-owned, regular,
+  zero-byte files without accepted samples. Preserve the original encoder
+  error and terminal result through automatic stop; retained incomplete MP4s
+  are not claimed playable until checked.
+- Give the D3D12 presenter sole ownership of the CUDA/graphics fence timeline.
+  Completed producer writes and source-reader leases now gate recording-canvas
+  reuse, including after skipped presentation, rotation, and device faults.
+- Make streamed Assistant answers easier to read with 20-point text and 135%
+  line spacing. Put Read Aloud below the answer, move New Conversation to a
+  secondary action, replace the position selector with a compact menu, and
+  keep the default floating panel clear of live controls without moving a
+  saved placement. Account for the actual layout minimum before anchoring the
+  default panel, including right-to-left layouts. Escape clears a draft or
+  returns focus to the camera.
+- Guard canceled or timed-out Codex turn opening and start callbacks by
+  request generation and turn identity, preventing stale replies from
+  replacing a newer request. Retry uses a fresh child after transport failure.
+- Free mapped CUDA arrays for the scene, SuperRes cache, and original recording
+  on safe teardown and partial-construction failure, preserving fault quarantine.
+- Add persistent Hide UI/Show UI and Ctrl+H for a clear camera view, preserving
+  assistant answers, drawing, and the previous layout. Restore Simple idle
+  fading after mouse use while keeping keyboard navigation visible.
+- Start the floating assistant at a larger default size while preserving saved
+  panel sizes and dock placement.
+- Allow slider rows to stack at narrow inspector widths without forcing
+  numeric readouts outside the visible settings panel.
+- Separate image tuning from shared Camera, Recording, Language, and service
+  settings in a dedicated Settings tab. Group advanced text algorithms under
+  Fine-tune text and use consistent Quick Mode terminology.
+- Make mode-grid browsing deliberate, add keyboard region navigation, keep
+  dialog focus isolated, and make settings search reveal the matching tab.
+- Keep Explain's Stop state independent of translated button text or window
+  size, including cancellation while waiting for the captured GPU image.
+  Prevent overlapping Explain/chat requests and bound frame attachment to five
+  seconds; camera shutdown and GPU faults clear queued capture requests.
+- Preserve user-retained photo JPEGs during startup recovery. Reserve unique
+  capture names on collisions, roll back only files created by the active
+  writer, and complete interrupted pairs only after a completed-encode marker.
+- Keep the Windows validation script on Visual Studio 2022 when newer Visual
+  Studio versions are also installed, avoiding mixed compiler/header builds.
 - Rename the product from OpenZoom to OkuFlow. The website is
   <https://okuflow.com> and the repository is now
   <https://github.com/Cem-Kaya/oku_flow> (old `open_zoom` URLs redirect). The
@@ -395,8 +449,9 @@
   hardware AV1 encoder exists and skips cleanly elsewhere (verified on the
   RTX 4090: both codecs produced identical fragment cadence). This bounds
   what a process crash can lose to roughly the last 2 seconds of encoded
-  media once the first fragment has landed. On startup OkuFlow now sweeps recent recording
-  folders for header-only leftover pairs from crashed or wedged sessions.
+  media once the first fragment has landed. This release introduced a startup
+  sweep of recent header-only recording pairs; the Unreleased preservation
+  rule removes that sweep.
 - Hardened the abandoned-recording path found by a full-codebase audit: after
   the stop watchdog declares the worker blocked, both recorders are marked
   abandoned so no thread can ever call Finalize on a sink writer that a
@@ -429,6 +484,7 @@
 - Added committed-video-sample accounting to MP4 finalization. Zero-frame
   placeholders and incomplete original/processed pairs are deleted instead of
   being announced, linked in notes, or left behind as corrupt 83-byte files.
+  The Unreleased preservation rule supersedes that deletion policy.
 - Fixed GPU-fed recording failing on its first video sample after the MP4
   writer and AAC stream had started. The recording worker now converts the
   shareable BGRA canvas to encoder-native NV12 with the D3D11 VideoProcessor
@@ -866,8 +922,10 @@
   rolls its reserved signal value back so nothing ever waits on a value that
   will not be signaled, and three consecutive ProcessFrame failures trigger a
   full resync (queue drain + fence re-seed) with one status message instead of
-  per-frame spam. An S4 audit of capture-thread vs UI-thread state found no
-  unguarded shared access (findings recorded in improvement_ideas/01).
+  per-frame spam. The Unreleased presenter-owned timeline replaces this
+  sequencer and the fence re-seed path. An S4 audit of capture-thread vs
+  UI-thread state found no unguarded shared access (findings recorded in
+  improvement_ideas/01).
 - NVIDIA Super Resolution now snaps to the full set of supported scale factors
   (4/3, 1.5, 2, 3, 4), choosing the largest factor at or below the current
   zoom whose source crop maps exactly onto the viewport; the remaining zoom is

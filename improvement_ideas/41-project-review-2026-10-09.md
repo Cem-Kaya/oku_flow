@@ -345,8 +345,8 @@ to have completed that wider reconciliation.
   28/28. All CTest targets executed; the Qt test summaries reported zero
   skipped cases. This is a fresh incremental validation of the existing
   working tree, not a clean-clone or fresh-machine test.
-- Full matrix log (local, outside git):
-  `%TEMP%/OpenZoom-review-2026-10-09-agent-build-4fb4b6ac0b4c44fd80f6a6dc88f2ffd7.log`.
+- Full matrix log (local, outside git): the `%TEMP%` agent-build log with
+  run id `4fb4b6ac0b4c44fd80f6a6dc88f2ffd7`.
   Per-case output remains in each preset's `Testing/Temporary/LastTest.log`.
   Both suites emitted a temporary-directory cleanup warning in the notes
   failed-storage test; the test itself passed. No compiler warnings were

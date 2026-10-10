@@ -19,6 +19,8 @@ public:
                         QWidget* trailingWidget = nullptr,
                         QWidget* parent = nullptr);
 
+    QSize minimumSizeHint() const override;
+
 protected:
     void resizeEvent(QResizeEvent* event) override;
 

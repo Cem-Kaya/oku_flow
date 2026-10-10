@@ -24,3 +24,11 @@ Current responsibilities:
 - recording clones wait explicitly on the source CUDA signal and publish a
   newer graphics signal, allowing recording to continue when only viewport
   admission is busy without allowing CUDA to overwrite a texture being read
+- exclusively own the shared D3D12/CUDA fence timeline: external CUDA values
+  are reserved, committed after enqueue, or canceled after a bounded drain;
+  every graphics submission queues the latest committed external dependency.
+  Canceled reservation holes are never waited upon, including after a busy
+  viewport present or resize
+- require producer fence completion as well as consumer lease release before
+  reusing or evicting a recording canvas. Pending submission, device removal,
+  or unknown completion cannot make a slot available

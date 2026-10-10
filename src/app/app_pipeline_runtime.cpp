@@ -311,19 +311,15 @@ void OkuFlowApp::RefreshCameraFormats(size_t index) {
     }
 }
 
-void OkuFlowApp::ResetCudaFenceState() {
-    const UINT64 baseValue = presenter_ ? presenter_->GetLastSignaledFenceValue() : 0;
-    pipelineOrchestrator_->ResetFence(baseValue);
+void OkuFlowApp::InvalidateRecordingFramePairing() {
+    // Recording pairing changes do not reset a live shared GPU timeline.
     if (recordingManager_) {
         recordingManager_->ClearPendingReadbacks();
     }
 }
 
-// S6b recovery policy: one failed ProcessFrame only rolls the fence
-// reservation back (RunCudaPipeline calls CudaFailed() before this). Three
-// consecutive failures trigger a full resync — drain the graphics queue and
-// re-seed the fence timeline — plus a single status message, so a persistent
-// CUDA failure can neither wedge the present loop nor spam the user.
+// Failed submissions cancel only their reservation. Repeated failures drain
+// both APIs without resetting the presenter-owned live timeline.
 void OkuFlowApp::HandleCudaProcessingFailure() {
     if (pipelineOrchestrator_->RecordCudaFailure() == 3) {
         if (presenter_) {
@@ -332,8 +328,12 @@ void OkuFlowApp::HandleCudaProcessingFailure() {
                 return;
             }
         }
-        ResetCudaFenceState();
-        qWarning() << "CUDA processing failed 3 times in a row; fence state resynced";
+        if (cudaSurface_ && !cudaSurface_->WaitForIdle()) {
+            HandlePresenterFault();
+            return;
+        }
+        InvalidateRecordingFramePairing();
+        qWarning() << "CUDA processing failed 3 times in a row; GPU queues drained";
         ShowStatusMessage(QStringLiteral(
             "GPU processing keeps failing - showing unprocessed video."));
     }
@@ -342,6 +342,7 @@ void OkuFlowApp::HandleCudaProcessingFailure() {
 bool OkuFlowApp::HandlePresenterFault() {
     if ((!presenter_ || !presenter_->IsFaulted()) &&
         (!cudaSurface_ || !cudaSurface_->IsFaulted())) return false;
+    CancelPendingAssistantCaptures();
     usingCudaLastFrame_ = false;
     cudaSceneReady_ = false;
     cpuSceneReady_ = false;
@@ -398,6 +399,7 @@ bool OkuFlowApp::EnsureCudaSurface(UINT width, UINT height) {
         HandlePresenterFault();
         return false;
     }
+    pipelineOrchestrator_->SetFenceInteropEnabled(false);
     cudaSurface_.reset();
     cudaSharedTexture_.Reset();
     cudaSuperResTexture_.Reset();
@@ -407,7 +409,7 @@ bool OkuFlowApp::EnsureCudaSurface(UINT width, UINT height) {
     cudaSurfaceHeight_ = 0;
     cudaSuperResWidth_ = 0;
     cudaSuperResHeight_ = 0;
-    ResetCudaFenceState();
+    InvalidateRecordingFramePairing();
 
     try {
         D3D12_RESOURCE_DESC desc{};
@@ -489,8 +491,6 @@ bool OkuFlowApp::EnsureCudaSurface(UINT width, UINT height) {
             cudaSurface_->HasExternalSemaphore());
         if (pipelineOrchestrator_->FenceInteropEnabled()) {
             const UINT64 baseValue = presenter_->GetLastSignaledFenceValue();
-            pipelineOrchestrator_->ResetFence(baseValue);
-            pipelineOrchestrator_->SetFenceInteropEnabled(true);
             qInfo() << "CUDA fence interop enabled; base fence value"
                     << static_cast<unsigned long long>(baseValue);
         } else {
@@ -513,7 +513,7 @@ bool OkuFlowApp::EnsureCudaSurface(UINT width, UINT height) {
         cudaSuperResHeight_ = 0;
         cudaPipelineAvailable_ = false;
         UpdateKeystoneTrackingUi();
-        ResetCudaFenceState();
+        InvalidateRecordingFramePairing();
         qWarning() << "CUDA surface creation exception triggered fallback";
         cudaSurfaceRetry_.RecordFailure(CudaSurfaceRetry::Clock::now());
         return false;
@@ -865,23 +865,20 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     settings.enableMlSuperRes = mlTextSuperResolutionEnabled_;
     settings.mlSuperResStrength = mlTextSuperResolutionStrength_;
     settings.mlSuperResUltra1440p = mlTextSuperResolutionUltra1440p_;
+    settings.ApplyTextClarityMaster();
 
-    // Fence choreography is owned by FenceSequencer (S6b contract in
-    // pipeline_orchestrator.hpp):
-    // BeginCudaFrame() re-seeds from the presenter and reserves the CUDA
-    // signal value; the reservation is committed only after ProcessFrame
-    // actually enqueued the signal.
+    // The presenter owns reservations and queue dependencies for both APIs.
     FenceSyncParams cudaSyncParams{};
     if (pipelineOrchestrator_->FenceInteropEnabled()) {
-        const FenceSequencer::CudaTicket ticket =
-            pipelineOrchestrator_->Fence().BeginCudaFrame(
-                presenter_->GetLastSignaledFenceValue());
+        const auto waitValue = presenter_->LastGraphicsSignal();
+        const auto signalValue = presenter_->ReserveExternalSignal();
+        if (!signalValue) { HandlePresenterFault(); return false; }
         cudaSyncParams.enable = true;
         // Async readbacks copy from the shared texture on the graphics queue;
         // CUDA must not write the next frame until both the present and the
         // newest readback copy have retired (GPU-side wait only).
-        cudaSyncParams.waitValue = ticket.waitValue;
-        cudaSyncParams.signalValue = ticket.signalValue;
+        cudaSyncParams.waitValue = waitValue;
+        cudaSyncParams.signalValue = signalValue;
     }
 
     QElapsedTimer cudaSubmissionTimer;
@@ -894,7 +891,19 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
             HandlePresenterFault();
             return false;
         }
-        pipelineOrchestrator_->Fence().CudaFailed();
+        // A failed enqueue can leave earlier stream work in flight without
+        // its promised signal. Retire it before cancelling the reservation;
+        // unknown completion leaves the reservation and backing quarantined.
+        if (!cudaSurface_->WaitForIdle()) {
+            HandlePresenterFault();
+            return false;
+        }
+        if (cudaSyncParams.enable) {
+            if (!presenter_->CancelExternalSignal(cudaSyncParams.signalValue)) {
+                HandlePresenterFault();
+                return false;
+            }
+        }
         if (input.d3d11Texture &&
             cudaSurface_->LastFailureWasCaptureInterop()) {
             // This failure belongs only to the zero-copy top rung. Keep the
@@ -917,7 +926,9 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     pipelineOrchestrator_->ResetCudaFailures();
 
     if (cudaSyncParams.enable) {
-        pipelineOrchestrator_->Fence().CudaSignaled();
+        if (!presenter_->CommitExternalSignal(cudaSyncParams.signalValue)) {
+            HandlePresenterFault(); return false;
+        }
     }
 
     cudaPipelineAvailable_ = true;
@@ -1061,10 +1072,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     if (pipelineOrchestrator_->FenceInteropEnabled()) {
         presentSync.enable = true;
         presentSync.waitValue =
-            pipelineOrchestrator_->Fence().LastCudaSignal();
-        presentSync.signalValue =
-            pipelineOrchestrator_->Fence().BeginGraphicsFrame(
-                presenter_->GetLastSignaledFenceValue());
+            presenter_->LastExternalSignal();
     }
     ViewportPresentationOptions presentationOptions{};
     presentationOptions.drawFocusMarker = focusMarkerEnabled_;
@@ -1089,14 +1097,10 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         static_cast<float>(presentationTimer.nsecsElapsed()) * 1e-6f);
     if (!presented) {
         pipelineOrchestrator_->MarkViewportDirty();
-        if (presenter_->IsFaulted()) return;
-    }
-    if (presented && presentSync.enable) {
-        // PresentSceneTexture also signals its internal frame-slot value.
-        // Adopt the actual newest value after every present so viewport-only
-        // draws and the next CUDA frame share one strictly monotonic timeline.
-        pipelineOrchestrator_->Fence().GraphicsSignaled(
-            presenter_->GetLastSignaledFenceValue());
+        if (presenter_->IsFaulted()) {
+            HandlePresenterFault();
+            return;
+        }
     }
     if (presented) {
         cameraFramePresented_ = true;
@@ -1130,8 +1134,6 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
             pendingAssistantFrameReadbackId_ = readbackRequestId;
             pendingAssistantFrameReadbackTimer_.restart();
         }
-        pipelineOrchestrator_->Fence().ReadbackObserved(
-            presenter_->GetLastSignaledFenceValue());
     } else if (presentationOptions.requestReadback) {
         // The four-slot readback ring was temporarily full. Keep the viewport
         // dirty so user-triggered requests retry instead of blocking.
@@ -1204,10 +1206,8 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
                     &originalPoolExhausted,
                     presentSync.enable ? presentSync.waitValue : 0);
         }
-        if (pipelineOrchestrator_->FenceInteropEnabled()) {
-            pipelineOrchestrator_->Fence().GraphicsSignaled(
-                presenter_->GetLastSignaledFenceValue());
-        } else if (!presenter_->WaitForIdle()) {
+        if (!pipelineOrchestrator_->FenceInteropEnabled() &&
+            !presenter_->WaitForIdle()) {
             // Without a shared semaphore the next CUDA frame cannot wait on
             // these recording readers. Completion must precede source reuse.
             return;
@@ -1283,9 +1283,11 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                 pipelineOrchestrator_->MarkViewportDirty();
             }
         }
-        if (requestId == pendingOnDemandReadbackId_) {
+        if (pendingOnDemandAnalysis_ && pendingOnDemandReadbackId_ != 0 &&
+            requestId == pendingOnDemandReadbackId_) {
             const bool readText = pendingOnDemandReadText_;
             pendingOnDemandAnalysis_ = false;
+            ++assistantCaptureGeneration_;
             pendingOnDemandReadText_ = false;
             pendingOnDemandReadbackId_ = 0;
             pendingOnDemandReadbackTimer_.invalidate();
@@ -1294,12 +1296,18 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                 static_cast<int>(readbackWidth),
                 static_cast<int>(readbackHeight),
                 readText);
+            if (mainWindow_) {
+                mainWindow_->setExplainBusy(assistiveManager_->Runtime().IsBusy() &&
+                                            !assistantResponseOpen_ &&
+                                            !pendingAssistantFramePrompt_);
+            }
         }
         if (requestId == pendingAssistantFrameReadbackId_ &&
             pendingAssistantFramePrompt_) {
             const PendingAssistantFramePrompt prompt =
                 std::move(*pendingAssistantFramePrompt_);
             pendingAssistantFramePrompt_.reset();
+            ++assistantCaptureGeneration_;
             pendingAssistantFrameReadbackId_ = 0;
             pendingAssistantFrameReadbackTimer_.invalidate();
             DispatchAssistantPrompt(
@@ -1317,7 +1325,7 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                 readbackWidth,
                 readbackHeight);
         }
-        const bool focusGateEnabled = focusDetectionEnabled_ || autoTextClarityEnabled_;
+        const bool focusGateEnabled = autoTextClarityEnabled_;
         const bool focusAcceptable =
             !focusGateEnabled || !cudaSurface_ ||
             cudaSurface_->IsFocusAcceptable(focusThreshold_);
@@ -1643,6 +1651,7 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
 }
 
 void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
+    CancelPendingAssistantCaptures();
     pendingSceneCaptureClock100ns_.reset();
     currentCameraCaptureClock100ns_ = -1;
     const bool startupWasPending = cameraStartupPending_;
@@ -2296,7 +2305,7 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
                                capture.heading);
     }
 
-    const bool focusGateEnabled = focusDetectionEnabled_ || autoTextClarityEnabled_;
+    const bool focusGateEnabled = autoTextClarityEnabled_;
     const bool focusAcceptable =
         !focusGateEnabled || !cudaSurface_ ||
         cudaSurface_->IsFocusAcceptable(focusThreshold_);
@@ -2454,12 +2463,7 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
     }
     const QString timestamp =
         QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss_zzz"));
-    const QString processedPath = QDir(dirPath).filePath(
-        QStringLiteral("IMG_%1_processed.jpg").arg(timestamp));
-    const QString originalPath = QDir(dirPath).filePath(
-        QStringLiteral("IMG_%1_original.jpg").arg(timestamp));
-    const QString transactionLockPath = QDir(dirPath).filePath(
-        QStringLiteral("IMG_%1.pair.lock").arg(timestamp));
+    const QString preferredStem = QStringLiteral("IMG_%1").arg(timestamp);
 
     QImage processedImage(processedData,
                           static_cast<int>(processedWidth),
@@ -2486,73 +2490,22 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
         [owner,
          processedImage = std::move(processedImage),
          originalImage = std::move(originalImage),
-         processedPath,
-         originalPath,
-         transactionLockPath]() mutable {
-            // Encode both files before entering the two-rename commit. The
-            // runtime rolls back a failed commit; after a process crash,
-            // startup completes the remaining rename from the intact temp or
-            // removes the entire incomplete set.
-            const QString processedTemp =
-                processedPath + QStringLiteral(".writing");
-            const QString originalTemp =
-                originalPath + QStringLiteral(".writing");
-            QLockFile transactionLock(transactionLockPath);
-            // Do not age out a valid but slow network/removable-drive write.
-            // Owner-process death still makes the lock stale and immediately
-            // recoverable at the next startup.
-            transactionLock.setStaleLockTime(0);
-            const bool lockAcquired = transactionLock.tryLock(0);
-            if (!lockAcquired) {
-                qWarning() << "Could not lock paired snapshot transaction"
-                           << transactionLockPath;
-            }
-            const bool processedSaved =
-                lockAcquired && processedImage.save(processedTemp, "JPG", 90);
-            const bool originalSaved =
-                lockAcquired && originalImage.save(originalTemp, "JPG", 90);
-            if (lockAcquired && !processedSaved) {
-                qWarning() << "Failed to save snapshot to" << processedTemp;
-            }
-            if (lockAcquired && !originalSaved) {
-                qWarning() << "Failed to save snapshot to" << originalTemp;
-            }
-            // Processed renames first. If the process dies between renames,
-            // the processed final plus fully encoded original .writing file
-            // form an unambiguous recovery record; startup finishes the
-            // original rename. A final without its counterpart temp is
-            // rolled back instead of being presented as a complete capture.
-            bool committed = false;
-            if (processedSaved && originalSaved) {
-                if (QFile::rename(processedTemp, processedPath)) {
-                    if (QFile::rename(originalTemp, originalPath)) {
-                        committed = true;
-                    } else {
-                        qWarning() << "Failed to finalize snapshot"
-                                   << originalPath;
-                        if (!QFile::remove(processedPath)) {
-                            qWarning() << "Rollback could not remove"
-                                       << processedPath;
-                        }
-                    }
-                } else {
-                    qWarning() << "Failed to finalize snapshot"
-                               << processedPath;
-                }
-            }
+         dirPath,
+         preferredStem]() mutable {
+            const PhotoPairWriteResult saved = UserDataPaths::WritePhotoPair(
+                dirPath, preferredStem,
+                [&originalImage](QIODevice* file) {
+                    return originalImage.save(file, "JPG", 90);
+                },
+                [&processedImage](QIODevice* file) {
+                    return processedImage.save(file, "JPG", 90);
+                });
+            const bool committed = saved.committed;
+            const QString originalPath = saved.originalPath;
+            const QString processedPath = saved.processedPath;
             QStringList leftoverPaths;
-            if (!committed && lockAcquired) {
-                // Every removal is checked; anything that survives rollback
-                // is reported to the user instead of pretending the folder
-                // is clean. A caller that did not acquire the pair lock must
-                // not touch paths owned by another process with the same
-                // millisecond timestamp.
-                for (const QString& path : {processedTemp, originalTemp,
-                                            processedPath, originalPath}) {
-                    if (QFileInfo::exists(path) && !QFile::remove(path)) {
-                        leftoverPaths.append(QDir::toNativeSeparators(path));
-                    }
-                }
+            for (const QString& path : saved.leftoverPaths) {
+                leftoverPaths.append(QDir::toNativeSeparators(path));
             }
             if (!owner) {
                 return;

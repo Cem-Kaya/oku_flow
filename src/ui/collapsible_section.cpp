@@ -75,8 +75,8 @@ void CollapsibleSection::setSearchExpanded(bool searching)
         searchExpanded_ = true;
         setExpanded(true);
     } else {
-        searchExpanded_ = false;
         setExpanded(expandedBeforeSearch_);
+        searchExpanded_ = false;
     }
 }
 

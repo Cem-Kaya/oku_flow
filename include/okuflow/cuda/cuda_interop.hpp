@@ -137,7 +137,7 @@ struct ProcessingSettings {
     bool enableKeystone{false};          // auto-detect projected slide quad, warp fronto-parallel
     bool enableAutoContrast{false};      // percentile-based level stretch before contrast/brightness
     float autoContrastStrength{0.7f};    // 0..1, blend toward full stretch
-    bool enableAutoTextClarity{false};
+    bool enableAutoTextClarity{false}; // Entire text-effects family master; child preferences may remain dormant.
     bool enableBackgroundFlatten{false};
     float backgroundFlattenStrength{0.8f};
     bool enableAdaptiveBinarization{false};
@@ -160,6 +160,21 @@ struct ProcessingSettings {
     bool enableMlSuperRes{false};
     float mlSuperResStrength{0.65f};
     bool mlSuperResUltra1440p{false};
+
+    // Apply only to an effective per-frame copy, never persisted preferences.
+    // Independent Black & White, display colors, and Maxine remain unchanged.
+    void ApplyTextClarityMaster() {
+        if (enableAutoTextClarity) return;
+        enableBackgroundFlatten = false;
+        enableAdaptiveBinarization = false;
+        enableSmartSharpen = false;
+        enableClahe = false;
+        enableTwoColorText = false;
+        enableTextHysteresis = false;
+        enableSelectiveSharpen = false;
+        enableFocusDetection = false;
+        enableGlareSuppression = false;
+    }
 
     float EffectiveViewingMagnification() const {
         return std::isfinite(zoomAmount) && zoomAmount > 1.0f
@@ -532,6 +547,8 @@ private:
     unsigned int focusFrameCounter_{};
     bool textMaskHistoryValid_{};
     bool focusCopyPending_{};
+    bool discardFocusCopy_{};
+    bool lastTextClarityMasterEnabled_{};
     bool focusScoreValid_{};
     float latestFocusScore_{};
 

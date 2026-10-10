@@ -4,6 +4,8 @@
 #include <QDateTime>
 #include <QString>
 #include <QStringList>
+#include <QIODevice>
+#include <functional>
 
 namespace okuflow {
 
@@ -19,6 +21,13 @@ struct PhotoPairRecoveryResult {
     // Paths that could neither be committed nor removed. The caller should
     // surface these because an incomplete capture may remain visible.
     QStringList unresolvedPaths;
+};
+
+struct PhotoPairWriteResult {
+    bool committed{};
+    QString originalPath;
+    QString processedPath;
+    QStringList leftoverPaths;
 };
 
 // Owns every user-created OkuFlow artifact path. Configuration and downloaded
@@ -45,10 +54,19 @@ public:
     QString Analysis(QString* error = nullptr) const;
     QString Debug(QString* error = nullptr) const;
 
+    // Reserves an unused pair stem under a process lock, creates temps
+    // exclusively, and rolls back only files created by this writer.
+    static PhotoPairWriteResult WritePhotoPair(
+        const QString& directory, const QString& preferredStem,
+        const std::function<bool(QIODevice*)>& encodeOriginal,
+        const std::function<bool(QIODevice*)>& encodeProcessed);
+
     // Reconciles stale IMG_* original/processed transactions after an
     // interrupted process. If one final rename succeeded and the other
-    // fully encoded .writing file remains, the pair is completed; otherwise
-    // incomplete finals and temps are rolled back together.
+    // fully encoded .writing file remains, the pair is completed only when
+    // a marker published after both encodes completed certifies the temps.
+    // Existing final JPEGs are always preserved; marked incomplete finals
+    // that cannot be completed are reported for user review.
     PhotoPairRecoveryResult RecoverInterruptedPhotoPairs(
         const QDateTime& staleBefore) const;
 

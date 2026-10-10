@@ -27,17 +27,26 @@ Simple mode is the normal operating view:
 - Each cluster uses an opaque background and a 3 px high-contrast border so it
   remains legible over every possible camera image.
 - Chrome fades after five seconds without input. Mouse movement, a mouse
-  button, wheel input, a key press, focus entry, or application activation
-  reveals it immediately. Focused controls and an open mode grid remain
-  visible. `Ctrl+H` pins the controls on screen or restores automatic hiding.
+  button, wheel input, a key press, or application activation reveals it.
+  Keyboard-focused controls, dialogs, and an open mode grid remain visible;
+  focus left on a button by a mouse click does not prevent idle hiding.
+- The persistent top-right `Hide UI` / `Show UI` button and `Ctrl+H` hide or
+  restore controls and the assistant together in either mode. Hiding retains
+  the mode, inspector tab and width, answer, and drawing. Streamed answers
+  continue updating without reopening hidden UI. Ordinary idle fading leaves
+  the assistant readable. `Ctrl+F` and `F6` also restore hidden controls.
 - The current profile is flanked by previous/next buttons. The grid button or
   current-profile button opens a temporary tile grid with plain-language names
   and number badges. The carousel paints a separate shortcut badge and elides
   its label within the available width; an unmatched configuration shows
   `Custom Setup` without a badge.
-- Number keys `1` through `9` apply the first nine quick modes from anywhere
-  in Simple mode. `Tab` and `Shift+Tab` move across the separate corner
-  clusters in a predictable order, and `Esc` closes the mode grid.
+- Number keys `1` through `9` apply the first nine quick modes from the
+  Simple camera controls, without intercepting typing or dialog input.
+  `Tab` and `Shift+Tab` move across the separate corner clusters. `F6` and
+  `Shift+F6` move between regions in both modes. In the grid, arrows browse;
+  Enter, Space, or a click applies the highlighted mode. `Esc` cancels.
+  Carousel arrows always advance from the applied mode, even while the grid
+  highlights another choice.
 - View navigation (wheel, keyboard, joystick, and middle-drag pan/zoom) updates
   the live focus without reclassifying the active mode as a custom setup. A
   real processing-control edit in Advanced still creates a custom setup.
@@ -67,43 +76,50 @@ number shortcuts.
 
 ## Advanced Mode
 
-Advanced mode keeps the live image visible and opens a narrow inspector on its
-right. Its top-level tabs are `Image`, `Assistant`, and `Transcript`;
-previous/next arrows are hidden until there are four sections. `Ctrl+Tab`
-continues to cycle tabs. A full-width AI Settings pop-out row
-sits directly below the tab strip on both pages instead of crowding navigation.
-The top-left Simple/Advanced switch remains pinned in Advanced and is restored
-after Alt-Tab or other application deactivation.
+Advanced mode keeps the live image visible beside an inspector with four tabs:
+`Image`, `Assistant`, `Transcript`, and `Settings`. Image changes how the
+picture looks; Settings changes how OkuFlow is set up. The tab labels can elide
+at narrow widths while retaining their complete tooltips and accessible text.
+`Ctrl+Tab` cycles tabs. The Simple/Advanced switch and camera actions remain
+available after Alt-Tab and when moving between tabs.
 
-The scrollable Image inspector exposes four explicit ownership scopes:
+Image starts with a pinned search field, current-mode summary, and
+`Save as Quick Mode` / `Reset Mode` actions. Its groups follow everyday tasks:
 
-Profile tuning appears first, followed by a Shared settings heading and
-Device, Recording, and Application sections. Keyboard order follows this
-visual order; settings ownership remains unchanged. Slider readouts use the
-active locale and dim with their slider. Long selector names elide in the
-middle, with full names available on hover and in the underlying Qt value.
-Focus X/Y and their labels/readouts disable when Zoom is off. Zoom, focus, and
-black-and-white rows use the responsive row component to preserve track space.
+1. **Zoom** — magnification, horizontal/vertical position, and focus marker.
+2. **Colors and contrast** — display colors, contrast, brightness, automatic
+   contrast, and black-and-white thresholding.
+3. **Text clarity** — automatic text treatment first; individual algorithms
+   sit inside a collapsed **Fine-tune text** group.
+4. **Steady image** — stabilization, Extra Stable (hold on shake), and temporal smoothing.
+5. **Straighten screen** — keystone correction and history controls.
+6. **Sharpness** — spatial sharpening, NVIDIA Super Resolution, and blur.
+7. **Assistant behavior** — profile-owned explanation and overlay switches.
+8. **Diagnostics** — debug view and pipeline/performance status.
 
-1. **Device** contains the camera and physical orientation. These settings
-   change capture hardware.
-2. **Viewport** lives under `Device > More device options` and contains
-   motion rate, Fill/Fit framing, Virtual Joystick visibility, and optional
-   wheel acceleration. These settings change presentation and interaction,
-   never profile pixels.
-3. **Recording** contains processed-video resolution, camera/original-media
-   resolution and frame rate, and microphone selection. These are global
-   recording/capture choices, never quick-profile image treatment.
-4. **Profile** contains image-processing and assistive-mode values, plus
-   commands that save the current configuration as a quick option or reset
-   profile-owned tuning to defaults.
+Settings contains shared controls, never saved into quick modes:
 
-Profile controls use reusable, keyboard-focusable collapsible headings.
-Disclosure state persists globally, non-default groups expand automatically
-and show a changed count, and `Ctrl+F` focuses the pinned settings search.
-Search expands matching groups regardless of their saved disclosure state and
-restores that state when cleared. The outlined search field has a search glyph,
-a readable placeholder, and a visible match count or `No matching settings`.
+1. **Camera** — source, orientation, capture resolution and frame rate.
+2. **View and navigation** — framing, motion rate, joystick, wheel acceleration.
+3. **Recording** — processed resolution, microphone, and transcription options.
+4. **Notes and files** — lecture notes, save drawing on exit, and output folder.
+5. **Language** — application language.
+6. **AI and downloads** — AI Settings and dependency setup.
+7. **Troubleshooting** — camera acceleration and camera test.
+
+Existing persistence keys and settings ownership are preserved. Changed-count
+badges describe controls actually inside their group. Ordinary edits preserve
+the user's collapsed groups. Each tab searches its own groups in visual order;
+when only the other tab matches, Enter transfers the search there. Search
+temporarily expands matching groups and restores disclosure choices when
+cleared. Active searches refresh after a language change. `Ctrl+F` reveals the
+appropriate search field, including from Simple,
+Assistant, or Transcript. Keyboard navigation stays inside dialogs and editors.
+
+Slider readouts follow the active locale and dim with their sliders. Responsive
+rows preserve usable track space; horizontal/vertical position controls disable
+when Zoom is off. Long selector names elide in the middle, retaining the complete
+value on hover and through Qt accessibility.
 
 Before the first presented camera frame, during reconnection, and while capture
 is stopped, a centered high-contrast placeholder explains camera state in both
@@ -115,8 +131,9 @@ triggers its startup prompt.
 The compact question-mark button in the tab header opens help without taking
 permanent camera space. The guide lists Controls before Features.
 
-The inspector is constrained to 380-520 pixels. Detailed controls scroll
-inside it instead of increasing the height of the main control area.
+The inspector defaults to 520 logical pixels, with a 360-pixel minimum and a
+saved preferred width capped at 1200 pixels. The camera retains its minimum
+size. Detailed controls scroll within the inspector.
 
 Assistant is a separate work surface rather than another image-processing
 section. It shows Codex/ChatGPT connection and usage state, a camera-aware chat,
@@ -131,7 +148,9 @@ workspace folder and affects only persistent Advanced Assistant turns; Simple
 Explain remains restricted even when those permissions are enabled.
 
 Simple Explain and Read results use one solid Assistant, floating over the
-camera or docked beside it. The Panel position selector offers Floating,
+camera. Without saved geometry it occupies about 43% of viewport width and
+75% of height, constrained below top controls; saved placement takes priority.
+The panel can also dock beside the camera. The Panel position selector offers Floating,
 Dock left, and Dock right. Docking shrinks and shifts the camera viewport;
 dragging the floating header to either app edge also shows a purple docking
 preview with a release instruction. Releasing docks to that side; moving away
@@ -211,7 +230,7 @@ when the user creates a quick option:
 | Sharpening | Backend, enabled state, and strength. |
 | Text clarity | Master/individual stages, Sauvola and softness, polarity, stroke weight, CLAHE, two-color output, hysteresis, focus threshold, glare suppression. |
 | Assistive behavior | Scene explanation and assistive overlay enabled states. |
-| Diagnostics | Debug view and focus marker. |
+| Diagnostics | Debug view; the focus marker remains profile-owned under Zoom. |
 
 `AdvancedConfig::rotationQuarterTurns` remains readable from old profile JSON
 only for backward migration and is no longer written into profiles. Current
@@ -226,8 +245,8 @@ code persists and applies orientation at the top level of
 - Advanced controls live beside the camera, never above it as a tall form.
 - The bottom-right Photo/Record/Explain/Read/Draw action bar remains available
   in Advanced, positioned against the camera viewport rather than the
-  inspector. If the camera area is too narrow, it compresses to icon-only
-  buttons with unchanged accessible names instead of disappearing. Application
+  inspector. Narrow camera areas use measured wrapping for the mode switch,
+  carousel, and labeled action rows. Application
   deactivation may temporarily hide the native tool window, but reactivation
   must restore this bar in both Simple and Advanced modes.
 - Record remains actionable while Draw is active. Vector ink is composited
@@ -256,8 +275,10 @@ code persists and applies orientation at the top level of
   Camera loss is assertive; normal status changes are polite; slider values,
   usage counters, and high-frequency diagnostics are silent. Repeated
   announcements must be deduplicated and diagnostic updates coalesced.
-- New camera mounting/selection controls belong in Device. New recording
-  format and audio controls belong in Recording. New presentation and
-  interaction preferences belong in Device > More device options. New
-  processing controls belong in Profile and must participate in config
+- New camera mounting/selection controls belong in Settings > Camera. New
+  recording format and audio controls belong in Settings > Recording. New
+  presentation preferences belong in Settings > View and navigation. New
+  processing controls belong in Image and must participate in config
   persistence, changed counts, and equivalence checks.
+
+Text Clarity is the master for automatic enhancement and its stored refinements. The indented Fine-tune text group remains inspectable while off, but its controls are disabled; switching off retains their values.

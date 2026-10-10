@@ -354,6 +354,15 @@ if (WIN32)
 
     add_executable(annotation_overlay_tests
         annotation_overlay_tests.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/assistive_runtime.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
+        ${PROJECT_SOURCE_DIR}/src/app/assistive_feature_manager.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/user_data_paths.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/assistive_runtime.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/codex_app_server_client.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/codex_json_rpc_process.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/response_language.cpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistive_overlay.hpp
         ${PROJECT_SOURCE_DIR}/src/ui/assistive_overlay.cpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/annotation_overlay.hpp
@@ -376,8 +385,11 @@ if (WIN32)
         Qt6::Core
         Qt6::Gui
         Qt6::Widgets
+        Qt6::Network
         Qt6::Test
     )
+    target_compile_definitions(annotation_overlay_tests PRIVATE
+        NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 
     add_test(NAME annotation_overlay_interactions COMMAND annotation_overlay_tests)
     set_tests_properties(annotation_overlay_interactions PROPERTIES
@@ -401,6 +413,76 @@ if (WIN32)
         d3d12 dxgi d3dcompiler)
     add_test(NAME viewport_resize_presentation COMMAND render_widget_tests)
     set_tests_properties(viewport_resize_presentation PROPERTIES TIMEOUT 30 LABELS "gui;gpu"
+        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+
+    add_executable(color_scheme_picker_tests
+        color_scheme_picker_tests.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/color_scheme_picker.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/app/language_manager.hpp
+        ${PROJECT_SOURCE_DIR}/src/ui/color_scheme_picker.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/color_schemes.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/language_manager.cpp
+    )
+    target_include_directories(color_scheme_picker_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_compile_definitions(color_scheme_picker_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(color_scheme_picker_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
+    qt_add_resources(color_scheme_picker_tests "okuflow_color_picker_test_translations"
+        PREFIX "/i18n"
+        BASE "${CMAKE_CURRENT_BINARY_DIR}/../cmake"
+        FILES ${OKUFLOW_QM_FILES}
+    )
+    add_test(NAME color_scheme_picker COMMAND color_scheme_picker_tests)
+    set_tests_properties(color_scheme_picker PROPERTIES TIMEOUT 30 LABELS "gui"
+        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+
+    # Exercise the real MainWindow widget tree without constructing OkuFlowApp
+    # or starting camera, account, and recording services. The test translation
+    # resources come from the same lrelease output as the shipping application.
+    add_executable(main_window_tests
+        main_window_tests.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/main_window.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/render_widget.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistive_overlay.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/annotation_overlay.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/joystick_overlay.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/color_scheme_picker.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/collapsible_section.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/responsive_slider_row.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/app/language_manager.hpp
+        ${PROJECT_SOURCE_DIR}/src/ui/main_window.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/render_widget.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/assistive_overlay.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/annotation_overlay.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/joystick_overlay.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/color_scheme_picker.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/collapsible_section.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/responsive_slider_row.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/language_manager.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/color_schemes.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/annotation_model.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
+        ${PROJECT_SOURCE_DIR}/src/d3d12/presenter.cpp
+        ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
+    )
+    target_include_directories(main_window_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_compile_definitions(main_window_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
+        UNICODE _UNICODE OKUFLOW_HAS_CUDA_EXT_MEMORY=0 OKUFLOW_ENABLE_TEXT_SR=0)
+    target_link_libraries(main_window_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets
+        Qt6::Test d3d12 dxgi d3dcompiler)
+    qt_add_resources(main_window_tests "okuflow_main_window_test_translations"
+        PREFIX "/i18n"
+        BASE "${CMAKE_CURRENT_BINARY_DIR}/../cmake"
+        FILES ${OKUFLOW_QM_FILES}
+    )
+    add_test(NAME main_window_interactions COMMAND main_window_tests)
+    set_tests_properties(main_window_interactions PROPERTIES TIMEOUT 90 LABELS "gui"
         ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
