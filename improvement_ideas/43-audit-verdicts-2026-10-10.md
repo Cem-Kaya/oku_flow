@@ -353,6 +353,25 @@ Security follow-ups remain open: protect verified installer identity through lau
 
 The recurring external-API qualifications are supported by [MF input-media-type contracts](https://learn.microsoft.com/en-us/windows/win32/api/mfreadwrite/nf-mfreadwrite-imfsinkwriter-setinputmediatype), [MF image stride](https://learn.microsoft.com/en-us/windows/win32/medfound/image-stride), [D3D11 color-space fields](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_video_processor_color_space), [automatic video processing](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11videocontext-videoprocessorsetstreamautoprocessingmode), and [D3D11 Flush submission semantics](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-flush). Missing explicit metadata is not proof of one universal encoded bitstream or player result.
 
+## Later UI and Sauvola checkpoint — outside reviewer counts
+
+A subsequent website-capture session on the production app exposed a light-on-dark
+Sauvola defect: reversing the comparison without inverting the local mean marked
+uniform dark boards as foreground. Astra independently traced the threshold;
+Sol corrected inverted luma and mean while retaining variance and dark-text behavior.
+`text_clarity_sauvola_cuda` now exercises the actual GPU launcher with uniform/noisy
+boards, bright and dark strokes, explicit/automatic polarity, image-complement
+symmetry, soft masks, and padded-buffer guards. This is a later finding and does
+not change the 294 historical reviewer rows or counts above.
+
+The tracked `scripts/agent_build.bat` gate passes on the corrected tree: release
+compile, **27/27 CPU** and **32/32 CUDA** tests; the new GPU test passed on a real
+CUDA device (not skipped). Evidence is local at
+`local_evidence/ui-polish-20261010/agent-build-kernel.log`. The same matrix includes
+production MainWindow and AI Settings interaction suites. Earlier UI-only 150%
+scaling checks passed both suites. These are later validations, not retroactive
+proof of every historical audit claim or a real-camera performance benchmark.
+
 ## Provenance
 
 All source audit artifacts are under `build/ui-validation/audits/` (local, ignored evidence). The matching [machine-readable array](../build/ui-validation/audits/audit-verdicts.json) contains exactly the table rows and the fields `id, reviewer, area, finding, verdict, evidence, duplicate, status`.

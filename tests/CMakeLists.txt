@@ -668,6 +668,18 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     set_tests_properties(yuv_color_conversion_cuda PROPERTIES
         TIMEOUT 30 SKIP_RETURN_CODE 77 LABELS "gpu")
 
+    add_executable(text_clarity_cuda_tests
+        text_clarity_cuda_tests.cu
+        ${PROJECT_SOURCE_DIR}/src/cuda/cuda_kernels.cu
+    )
+    target_include_directories(text_clarity_cuda_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(text_clarity_cuda_tests PRIVATE CUDA::cudart_static)
+    set_target_properties(text_clarity_cuda_tests PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "75;86;89")
+    add_test(NAME text_clarity_sauvola_cuda COMMAND text_clarity_cuda_tests)
+    set_tests_properties(text_clarity_sauvola_cuda PROPERTIES
+        TIMEOUT 30 SKIP_RETURN_CODE 77 LABELS "gpu")
+
     add_executable(stabilization_cuda_tests
         stabilization_cuda_tests.cu
         ${PROJECT_SOURCE_DIR}/src/cuda/cuda_kernels.cu

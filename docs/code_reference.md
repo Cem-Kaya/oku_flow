@@ -1654,6 +1654,14 @@ Kernel launch wrappers:
   `LaunchSauvolaMask(...)`, `LaunchStrokeWeight(...)`,
   `LaunchTextMaskHysteresis(...)`, `LaunchTextMaskComposite(...)`,
   `LaunchSmartSharpenLinear(...)`, and `LaunchFocusMetric(...)`
+- `SauvolaMaskKernel` / `LaunchSauvolaMask(...)` create an ink mask from local
+  mean and variance. Light-on-dark text applies the ordinary dark-ink Sauvola
+  formula to inverted luma and mean, retaining the original variance; reversing
+  only the comparison would falsely mark uniform dark backgrounds as ink.
+  Explicit polarity and the device analysis flag select the same branches.
+  Algorithm reference: Sauvola and Pietikainen,
+  [Adaptive document image binarization](https://www.sciencedirect.com/science/article/pii/S0031320399000552)
+  (2000); intensity inversion is OkuFlow's light-text adaptation.
 - `bool UploadGaussianKernel(int radius, float sigma, cudaStream_t stream)` —
   normalizes exact Gaussian weights and queues the live weight/radius symbols
   on `stream`; no unused size symbol or device-wide synchronization remains
@@ -2143,6 +2151,19 @@ Namespace `okuflow`
   circular-target GPU readback across Fill/Fit viewport sizes. It retries
   nonblocking presentation for at most two seconds, remembers the first
   successful submission, and matches its readback request before measuring.
+
+### `tests/text_clarity_cuda_tests.cu`
+- `MaskRunner::Run()` launches the production Sauvola kernel with padded luma,
+  independently accumulated clamped 9x9 moments, and device polarity analysis.
+  Output row padding and the extra bottom row remain guarded.
+- `UniformBackgroundIsNotInk()`, `StrokesAndAutoPolarity()`, and
+  `ComplementaryInputsHaveTheSameInkMask()` verify blank/noisy dark boards,
+  bright/dark strokes, explicit and automatic polarity selection, missing-analysis
+  fallback, and complementary-image symmetry within one byte, including soft
+  edges. `MakeLightStrokes()`, `Complement()`, and `RequireEqual()` construct
+  image fixtures and report pixel mismatches without reproducing the threshold
+  formula. The `text_clarity_sauvola_cuda` target runs in CUDA-enabled Windows
+  tests and skips with code 77 when no CUDA device is available.
 
 ### `tests/ai_settings_dialog_tests.cpp`
 - `AiSettingsDialogTests` exercises the production dialog through accessible

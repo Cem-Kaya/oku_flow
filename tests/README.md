@@ -158,6 +158,15 @@ cmake --build --preset msvc-cuda-tests-build
 ctest --preset msvc-cuda-tests
 ```
 
+`text_clarity_sauvola_cuda` launches the production Sauvola mask kernel on
+pitched, generated luma and independent local-statistics fixtures. It checks
+uniform and slightly noisy dark backgrounds, bright and complementary dark
+strokes, explicit and device-analysis-selected polarities, and complementary
+input symmetry including soft edges. Row padding and a bottom guard must stay
+unchanged. The fixture does not duplicate the threshold formula or require a
+camera, graphics interop, or stored image. It skips with code 77 when no CUDA
+device is available and runs only in the tracked CUDA CTest preset.
+
 CUDA-enabled builds add `stabilization_cuda_tests`. It exercises the
 single fixed-reference CUDA path with known translations, rotation, scale,
 brightness changes, moving-foreground outliers, clamp impacts, and rejected

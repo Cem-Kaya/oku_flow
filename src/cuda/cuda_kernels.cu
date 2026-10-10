@@ -3380,10 +3380,15 @@ __global__ void SauvolaMaskKernel(unsigned char* mask, size_t maskPitch,
     const float lum = FloatRow(luma, floatPitch, y)[x];
     const float m = FloatRow(mean, floatPitch, y)[x];
     const float variance = fmaxf(FloatRow(sqMean, floatPitch, y)[x] - m * m, 0.0f);
-    const float threshold = m * (1.0f + fminf(fmaxf(k, 0.1f), 0.5f) * (sqrtf(variance) / 0.5f - 1.0f));
+    const float sauvolaFactor = 1.0f + fminf(fmaxf(k, 0.1f), 0.5f) * (sqrtf(variance) / 0.5f - 1.0f);
+    const float threshold = m * sauvolaFactor;
     const float s = fminf(fmaxf(softness, 0.002f), 0.25f);
     const bool lightText = polarityMode == 2 || (polarityMode == 0 && analysis && analysis->x != 0);
-    const float ink = lightText ? SmoothStep(threshold - s, threshold + s, lum)
+    // Sauvola assumes dark ink on a light background. Apply it to inverted
+    // intensity and mean for light text; variance is unchanged by inversion.
+    // Reversing only the comparison would classify a uniform dark field as ink.
+    const float invertedThreshold = (1.0f - m) * sauvolaFactor;
+    const float ink = lightText ? 1.0f - SmoothStep(invertedThreshold - s, invertedThreshold + s, 1.0f - lum)
                                 : 1.0f - SmoothStep(threshold - s, threshold + s, lum);
     ByteRow(mask, maskPitch, y)[x] = FloatToByte(ink);
 }

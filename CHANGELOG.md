@@ -5,6 +5,9 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+- Correct Text Clarity's light-on-dark Sauvola threshold so chalkboard
+  backgrounds remain background and bright writing stays distinct. Add GPU
+  regressions for blank/noisy boards, strokes, polarity, and inverted-image symmetry.
 - Fix Simple controls reappearing during idle fading when native hover events
   or active-window handoff were mistaken for fresh user input.
 - Make dependent Image and Recording options visibly subordinate to their
