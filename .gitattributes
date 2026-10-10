@@ -1,2 +1,3 @@
 # check_translations.ps1 requires LF catalogs regardless of core.autocrlf.
 translations/*.ts text eol=lf
+src/ui/translation_catalog.cpp text eol=lf

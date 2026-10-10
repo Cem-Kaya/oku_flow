@@ -60,6 +60,57 @@ protected:
     }
 };
 
+// Read Aloud and New Conversation sit side by side when both fit and stack at
+// full width otherwise. The minimum width is the stacked one, so the side-by-
+// side layout never holds a docked or floating panel wider than it must be.
+class AnswerActionRow final : public QWidget {
+public:
+    AnswerActionRow(QPushButton* primary, QPushButton* secondary)
+        : primary_(primary),
+          secondary_(secondary),
+          layout_(new QBoxLayout(QBoxLayout::LeftToRight, this))
+    {
+        layout_->setContentsMargins(0, 0, 0, 0);
+        layout_->setSpacing(8);
+        layout_->addWidget(primary_);
+        layout_->addStretch(1);
+        layout_->addWidget(secondary_);
+    }
+
+    QSize minimumSizeHint() const override
+    {
+        QSize hint = QWidget::minimumSizeHint();
+        hint.setWidth(std::max(primary_->sizeHint().width(),
+                               secondary_->sizeHint().width()));
+        return hint;
+    }
+
+protected:
+    bool event(QEvent* event) override
+    {
+        const bool handled = QWidget::event(event);
+        // Resizes and button label changes (language, style) can both change
+        // whether the pair fits. The choice depends only on the given width
+        // and the buttons' own hints, never on the current direction, so it
+        // cannot oscillate.
+        if (event->type() == QEvent::Resize || event->type() == QEvent::LayoutRequest) {
+            const int sideBySide = primary_->sizeHint().width() + layout_->spacing() +
+                                   secondary_->sizeHint().width();
+            const QBoxLayout::Direction direction = width() >= sideBySide
+                ? QBoxLayout::LeftToRight : QBoxLayout::TopToBottom;
+            if (layout_->direction() != direction) {
+                layout_->setDirection(direction);
+            }
+        }
+        return handled;
+    }
+
+private:
+    QPushButton* primary_;
+    QPushButton* secondary_;
+    QBoxLayout* layout_;
+};
+
 QString SpokenAssistiveText(QString body)
 {
     const std::array<QString, 2> sectionLabels{
@@ -96,7 +147,7 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
         }
         QLabel#assistiveTitle {
             color: #fff7d6;
-            font-size: 14pt;
+            font-size: 16pt;
             font-weight: 700;
             border: none;
         }
@@ -108,24 +159,39 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
             selection-background-color: #a84bc1;
             selection-color: #ffffff;
         }
-        QPushButton#assistiveReadButton, QPushButton#assistiveAskButton {
+        QPushButton#assistiveReadButton, QPushButton#assistiveAskButton,
+        QPushButton#assistiveNewChatButton {
             color: #ffffff;
             background: #3d3d3d;
-            border: 2px solid #737373;
+            border: 2px solid #8c8c8c;
             border-radius: 6px;
-            min-height: 36px;
+            min-height: 40px;
+            padding: 2px 14px;
         }
-        QPushButton#assistiveReadButton:focus, QPushButton#assistiveAskButton:focus {
-            border: 3px solid #bd52d3;
+        QPushButton#assistiveAskButton:hover,
+        QPushButton#assistiveNewChatButton:hover { background: #4d4d4d; }
+        QPushButton#assistiveAskButton:focus,
+        QPushButton#assistiveNewChatButton:focus { border: 3px solid #d27be6; }
+        QPushButton#assistiveAskButton {
+            font-size: 14pt;
+            font-weight: 600;
         }
+        QPushButton#assistiveAskButton:disabled {
+            color: #a6a6a6;
+            background: #242424;
+            border-color: #4d4d4d;
+        }
+        QPushButton#assistiveNewChatButton { font-size: 13pt; }
         QPushButton#assistiveReadButton {
             background: #74328b;
             border-color: #e5b5f2;
             font-size: 16pt;
             font-weight: 600;
             min-height: 48px;
-            padding: 2px 12px;
+            padding: 2px 16px;
         }
+        QPushButton#assistiveReadButton:hover { background: #87409f; }
+        QPushButton#assistiveReadButton:focus { border: 3px solid #ffffff; }
         QToolButton#assistiveDockPosition {
             color: #ffffff;
             background: #303030;
@@ -133,16 +199,20 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
             border-radius: 6px;
             font-size: 20pt;
         }
-        QToolButton#assistiveDockPosition:focus { border-color: #e5b5f2; }
+        QToolButton#assistiveDockPosition:hover { background: #474747; }
+        QToolButton#assistiveDockPosition:focus { border: 3px solid #e5b5f2; }
+        QToolButton#assistiveDockPosition::menu-indicator { image: none; width: 0px; }
         QLineEdit#assistiveQuestion {
             color: #ffffff;
             background: #202020;
             border: 2px solid #9a9a9a;
             border-radius: 6px;
-            min-height: 38px;
+            font-size: 14pt;
+            min-height: 40px;
             padding: 2px 8px;
+            placeholder-text-color: #c8c8c8;
         }
-        QLineEdit#assistiveQuestion:focus { border: 3px solid #bd52d3; }
+        QLineEdit#assistiveQuestion:focus { border: 3px solid #d27be6; }
         QToolButton#assistiveCloseButton {
             background: #080808;
             border: 3px solid #ffffff;
@@ -169,14 +239,6 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     auto* header = new QHBoxLayout(headerWidget_);
     header->setContentsMargins(14, 10, 14, 0);
     header->setSpacing(8);
-    newChatButton_ = new QPushButton(QStringLiteral("New Conversation"));
-    newChatButton_->setObjectName(QStringLiteral("assistiveNewChatButton"));
-    newChatButton_->setCursor(Qt::ArrowCursor);
-    newChatButton_->setAccessibleName(QStringLiteral("New Conversation"));
-    newChatButton_->setAccessibleDescription(
-        QStringLiteral("Start a fresh assistant conversation. The next answer "
-                       "begins a new conversation section in the lecture notes."));
-    // Reading controls take precedence; New Conversation is secondary below.
 
     titleLabel_ = new QLabel();
     titleLabel_->setObjectName(QStringLiteral("assistiveTitle"));
@@ -241,6 +303,25 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     answerFont.setPointSize(20);
     bodyView_->setFont(answerFont);
 
+    // Answer actions sit directly below the answer, ahead of the follow-up
+    // question, so the visual order matches the reading-first focus order.
+    // Read Aloud is the prominent action; New Conversation is secondary.
+    readAloudButton_ = new QPushButton(QStringLiteral("Read Aloud"));
+    readAloudButton_->setObjectName(QStringLiteral("assistiveReadButton"));
+    readAloudButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/read.svg")));
+    readAloudButton_->setIconSize(QSize(24, 24));
+    readAloudButton_->setAccessibleName(QStringLiteral("Read assistive result aloud"));
+    readAloudButton_->setAccessibleDescription(
+        QStringLiteral("Speak the current assistant result"));
+    newChatButton_ = new QPushButton(QStringLiteral("New Conversation"));
+    newChatButton_->setObjectName(QStringLiteral("assistiveNewChatButton"));
+    newChatButton_->setCursor(Qt::ArrowCursor);
+    newChatButton_->setAccessibleName(QStringLiteral("New Conversation"));
+    newChatButton_->setAccessibleDescription(
+        QStringLiteral("Start a fresh assistant conversation. The next answer "
+                       "begins a new conversation section in the lecture notes."));
+    layout->addWidget(new AnswerActionRow(readAloudButton_, newChatButton_));
+
     auto* questionRow = new QHBoxLayout();
     questionRow->setSpacing(8);
     questionEdit_ = new QLineEdit();
@@ -259,19 +340,6 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     questionRow->addWidget(questionEdit_, 1);
     questionRow->addWidget(askButton_);
     layout->addLayout(questionRow);
-
-    auto* footer = new QHBoxLayout();
-    readAloudButton_ = new QPushButton(QStringLiteral("Read Aloud"));
-    readAloudButton_->setObjectName(QStringLiteral("assistiveReadButton"));
-    readAloudButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/read.svg")));
-    readAloudButton_->setIconSize(QSize(24, 24));
-    readAloudButton_->setAccessibleName(QStringLiteral("Read assistive result aloud"));
-    readAloudButton_->setAccessibleDescription(
-        QStringLiteral("Speak the current assistant result"));
-    footer->addWidget(readAloudButton_);
-    footer->addStretch(1);
-    footer->addWidget(newChatButton_);
-    layout->addLayout(footer);
     setWidget(content);
     const auto focusTargets = FocusTargets();
     for (size_t index = 1; index < focusTargets.size(); ++index) {
@@ -1089,8 +1157,8 @@ void AssistiveOverlay::SubmitQuestion()
 
 std::array<QWidget*, 7> AssistiveOverlay::FocusTargets() const
 {
-    return {bodyView_, readAloudButton_, questionEdit_, askButton_,
-            newChatButton_, dockPositionButton_, closeButton_};
+    return {bodyView_, readAloudButton_, newChatButton_, questionEdit_,
+            askButton_, dockPositionButton_, closeButton_};
 }
 
 

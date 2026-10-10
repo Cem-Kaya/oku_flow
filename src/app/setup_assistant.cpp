@@ -462,7 +462,7 @@ void SetupAssistantDialog::RefreshStatus() {
     SetDependencyStatus(
         codexRow_, codexInstalled,
         codexInstalled
-            ? QStringLiteral("Installed\n%1\nUse Connect ChatGPT in AI Settings to sign in.")
+            ? QStringLiteral("Installed\n%1\nUse Connect ChatGPT on the Advanced Assistant tab to sign in.")
                   .arg(QDir::toNativeSeparators(codex))
             : QStringLiteral("Not installed"));
     codexRow_.install->setText(

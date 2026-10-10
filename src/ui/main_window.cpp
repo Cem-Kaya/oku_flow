@@ -25,6 +25,7 @@
 #include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
+#include <QCursor>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QEvent>
@@ -760,6 +761,20 @@ MainWindow::MainWindow()
         new EnabledMirror(buddy, label);
         return label;
     };
+    // Options that refine a master switch sit in an indented, left-ruled
+    // group directly under it. The group is purely visual: it never changes
+    // enabled state, so each control keeps the state the application sets.
+    const auto makeDependentGroup = [](const QString& objectName,
+                                       QVBoxLayout*& groupLayout) {
+        auto* group = new QWidget();
+        group->setObjectName(objectName);
+        group->setAttribute(Qt::WA_StyledBackground, true);
+        group->setStyleSheet(QStringLiteral(
+            "QWidget#%1 { border-left: 2px solid palette(mid); }").arg(objectName));
+        groupLayout = new QVBoxLayout(group);
+        groupLayout->setContentsMargins(12, 4, 0, 4);
+        return group;
+    };
 
     // ---- Image tab: pinned header -------------------------------------
     imageTabPage_ = new QWidget();
@@ -837,12 +852,15 @@ MainWindow::MainWindow()
             return FormatScaled(value, kZoomSliderScale, 2) + QStringLiteral("×");
         })));
 
+    QVBoxLayout* zoomPositionLayout = nullptr;
+    magnificationLayout->addWidget(
+        makeDependentGroup(QStringLiteral("zoomPositionOptions"), zoomPositionLayout));
     zoomCenterXSlider_ = makeSlider(0, kZoomFocusSliderScale, kZoomFocusSliderScale / 2, 5);
-    magnificationLayout->addWidget(new ResponsiveSliderRow(
+    zoomPositionLayout->addWidget(new ResponsiveSliderRow(
         labelFor(QStringLiteral("Horizontal position"), zoomCenterXSlider_),
         zoomCenterXSlider_, addSliderReadout(zoomCenterXSlider_, percent)));
     zoomCenterYSlider_ = makeSlider(0, kZoomFocusSliderScale, kZoomFocusSliderScale / 2, 5);
-    magnificationLayout->addWidget(new ResponsiveSliderRow(
+    zoomPositionLayout->addWidget(new ResponsiveSliderRow(
         labelFor(QStringLiteral("Vertical position"), zoomCenterYSlider_),
         zoomCenterYSlider_, addSliderReadout(zoomCenterYSlider_, percent)));
 
@@ -896,12 +914,9 @@ MainWindow::MainWindow()
     textClarityFineSection_ = makeSection(QStringLiteral("Fine-tune text"),
                                           QStringLiteral("textClarityFine"), false);
     auto* textClarityLayout = sectionLayout(textClarityFineSection_);
-    auto* refinements = new QWidget();
-    refinements->setObjectName(QStringLiteral("textClarityRefinements"));
-    refinements->setStyleSheet(QStringLiteral(
-        "QWidget#textClarityRefinements { border-left: 2px solid palette(mid); }"));
-    auto* refinementsLayout = new QVBoxLayout(refinements);
-    refinementsLayout->setContentsMargins(12, 4, 0, 4);
+    QVBoxLayout* refinementsLayout = nullptr;
+    auto* refinements =
+        makeDependentGroup(QStringLiteral("textClarityRefinements"), refinementsLayout);
     textClarityHelp_ = new QLabel(QStringLiteral(
         "Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on."));
     textClarityHelp_->setObjectName(QStringLiteral("textClarityHelp"));
@@ -987,7 +1002,10 @@ MainWindow::MainWindow()
     bumpHoldCheckbox_->setEnabled(false);
     bumpHoldCheckbox_->setToolTip(
         "Freeze on the last sharp frame during a bump, then smoothly return to live video");
-    stabilityLayout->addWidget(wrapCheckBox(bumpHoldCheckbox_));
+    QVBoxLayout* stabilizationOptionsLayout = nullptr;
+    stabilityLayout->addWidget(makeDependentGroup(
+        QStringLiteral("stabilizationOptions"), stabilizationOptionsLayout));
+    stabilizationOptionsLayout->addWidget(wrapCheckBox(bumpHoldCheckbox_));
     temporalSmoothCheckbox_ = new QCheckBox("Temporal Smooth");
     temporalSmoothCheckbox_->setChecked(false);
     temporalSmoothSlider_ = makeSlider(5, 100, 25, 5);
@@ -1035,12 +1053,16 @@ MainWindow::MainWindow()
     spatialBackendCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     spatialBackendCombo_->setMinimumContentsLength(12);
     spatialBackendCombo_->setEnabled(false);
-    sharpeningLayout->addWidget(labelFor(QStringLiteral("Backend"), spatialBackendCombo_));
-    sharpeningLayout->addWidget(spatialBackendCombo_);
+    QVBoxLayout* spatialSharpenOptionsLayout = nullptr;
+    sharpeningLayout->addWidget(makeDependentGroup(
+        QStringLiteral("spatialSharpenOptions"), spatialSharpenOptionsLayout));
+    spatialSharpenOptionsLayout->addWidget(
+        labelFor(QStringLiteral("Backend"), spatialBackendCombo_));
+    spatialSharpenOptionsLayout->addWidget(spatialBackendCombo_);
     spatialSharpnessSlider_ = makeSlider(0, 100, 25, 5);
     spatialSharpnessSlider_->setEnabled(false);
     spatialSharpnessValueLabel_ = new QLabel(QLocale().toString(0.25, 'f', 2));
-    sharpeningLayout->addWidget(new ResponsiveSliderRow(
+    spatialSharpenOptionsLayout->addWidget(new ResponsiveSliderRow(
         labelFor(QStringLiteral("Sharpness"), spatialSharpnessSlider_),
         spatialSharpnessSlider_,
         adoptAppReadout(spatialSharpnessValueLabel_, spatialSharpnessSlider_,
@@ -1052,6 +1074,9 @@ MainWindow::MainWindow()
     sharpeningLayout->addWidget(new ResponsiveSliderRow(
         mlTextSuperResolutionCheckbox_, mlTextSuperResolutionStrengthSlider_,
         addSliderReadout(mlTextSuperResolutionStrengthSlider_, percent)));
+    QVBoxLayout* superResolutionOptionsLayout = nullptr;
+    sharpeningLayout->addWidget(makeDependentGroup(
+        QStringLiteral("superResolutionOptions"), superResolutionOptionsLayout));
     mlTextSuperResolutionUltra1440pCheckbox_ =
         new QCheckBox(QStringLiteral("Ultra quality (full frame, up to 1440p)"));
     mlTextSuperResolutionUltra1440pCheckbox_->setToolTip(
@@ -1059,7 +1084,8 @@ MainWindow::MainWindow()
                        "camera frame, then apply viewport zoom and cropping. "
                        "720p cameras upscale 2x to 1440p; 1080p cameras upscale "
                        "4/3x to 1440p; 1440p cameras remain native."));
-    sharpeningLayout->addWidget(wrapCheckBox(mlTextSuperResolutionUltra1440pCheckbox_));
+    superResolutionOptionsLayout->addWidget(
+        wrapCheckBox(mlTextSuperResolutionUltra1440pCheckbox_));
     mlTextSuperResolutionPrefer2xCheckbox_ =
         new QCheckBox(QStringLiteral("Faster 2x mode (narrower view)"));
     mlTextSuperResolutionPrefer2xCheckbox_->setToolTip(
@@ -1067,7 +1093,8 @@ MainWindow::MainWindow()
                        "2x, narrowing the visible source crop from 960x540 to "
                        "640x360 for a 1280x720 target. Leave off for maximum "
                        "source detail and a wider view."));
-    sharpeningLayout->addWidget(wrapCheckBox(mlTextSuperResolutionPrefer2xCheckbox_));
+    superResolutionOptionsLayout->addWidget(
+        wrapCheckBox(mlTextSuperResolutionPrefer2xCheckbox_));
     mlTextSuperResolutionStatusLabel_ = new QLabel(QStringLiteral("Off"));
     mlTextSuperResolutionStatusLabel_->setObjectName(QStringLiteral("featureStatusLabel"));
     mlTextSuperResolutionStatusLabel_->setWordWrap(true);
@@ -1076,7 +1103,7 @@ MainWindow::MainWindow()
                                                      QSizePolicy::Preferred);
     mlTextSuperResolutionStatusLabel_->setAccessibleName(
         QStringLiteral("NVIDIA Super Resolution status"));
-    sharpeningLayout->addWidget(mlTextSuperResolutionStatusLabel_);
+    superResolutionOptionsLayout->addWidget(mlTextSuperResolutionStatusLabel_);
     mlTextSuperResolutionOverrideCheckbox_ =
         new QCheckBox(QStringLiteral("Ignore 24 ms performance limit"));
     mlTextSuperResolutionOverrideCheckbox_->setVisible(false);
@@ -1091,7 +1118,7 @@ MainWindow::MainWindow()
             &QCheckBox::toggled,
             this,
             &MainWindow::superResPerformanceOverrideChanged);
-    sharpeningLayout->addWidget(mlTextSuperResolutionOverrideCheckbox_);
+    superResolutionOptionsLayout->addWidget(mlTextSuperResolutionOverrideCheckbox_);
 #if OKUFLOW_ENABLE_TEXT_SR
     mlTextSuperResolutionCheckbox_->setToolTip(
         "Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically");
@@ -1108,11 +1135,14 @@ MainWindow::MainWindow()
 
     blurCheckbox_ = new QCheckBox("Soften image (blur)");
     sharpeningLayout->addWidget(blurCheckbox_);
+    QVBoxLayout* blurOptionsLayout = nullptr;
+    sharpeningLayout->addWidget(
+        makeDependentGroup(QStringLiteral("blurOptions"), blurOptionsLayout));
     blurSigmaSlider_ = makeSlider(kBlurSigmaSliderMin, kBlurSigmaSliderMax, 10, 2);
     blurSigmaSlider_->setSingleStep(1);
     blurSigmaSlider_->setEnabled(false);
     blurSigmaValueLabel_ = new QLabel(QLocale().toString(1.0, 'f', 1));
-    sharpeningLayout->addWidget(new ResponsiveSliderRow(
+    blurOptionsLayout->addWidget(new ResponsiveSliderRow(
         labelFor(QStringLiteral("Sigma"), blurSigmaSlider_), blurSigmaSlider_,
         adoptAppReadout(blurSigmaValueLabel_, blurSigmaSlider_,
                         QStringLiteral("Blur sigma"),
@@ -1123,7 +1153,7 @@ MainWindow::MainWindow()
     blurRadiusSlider_->setTickPosition(QSlider::TicksBelow);
     blurRadiusSlider_->setEnabled(false);
     blurRadiusValueLabel_ = new QLabel(QLocale().toString(3));
-    sharpeningLayout->addWidget(new ResponsiveSliderRow(
+    blurOptionsLayout->addWidget(new ResponsiveSliderRow(
         labelFor(QStringLiteral("Radius"), blurRadiusSlider_), blurRadiusSlider_,
         adoptAppReadout(blurRadiusValueLabel_, blurRadiusSlider_,
                         QStringLiteral("Blur radius"),
@@ -1334,25 +1364,28 @@ MainWindow::MainWindow()
         "Sends microphone audio to Codex Voice for live transcription, only "
         "while recording. Requires Codex signed in with ChatGPT."));
     recordingLayout->addWidget(transcribeMicrophoneCheckbox_);
+    QVBoxLayout* transcriptionOptionsLayout = nullptr;
+    recordingLayout->addWidget(makeDependentGroup(
+        QStringLiteral("transcriptionOptions"), transcriptionOptionsLayout));
     transcriptToNotesCheckbox_ =
         new QCheckBox(QStringLiteral("Add finalized transcript to lecture notes"));
     transcriptToNotesCheckbox_->setToolTip(QStringLiteral(
         "Appends each finalized phrase to the HTML lecture notes. Effective "
         "only while lecture notes are enabled."));
     transcriptToNotesCheckbox_->setEnabled(false);
-    recordingLayout->addWidget(transcriptToNotesCheckbox_);
+    transcriptionOptionsLayout->addWidget(transcriptToNotesCheckbox_);
     connect(transcribeMicrophoneCheckbox_, &QCheckBox::toggled,
             transcriptToNotesCheckbox_, &QWidget::setEnabled);
     transcriptionStatusLabel_ = new QLabel();
     transcriptionStatusLabel_->setObjectName(QStringLiteral("transcriptionStatusLabel"));
     transcriptionStatusLabel_->setWordWrap(true);
     transcriptionStatusLabel_->setVisible(false);
-    recordingLayout->addWidget(transcriptionStatusLabel_);
+    transcriptionOptionsLayout->addWidget(transcriptionStatusLabel_);
     transcriptionQuotaLabel_ = new QLabel();
     transcriptionQuotaLabel_->setObjectName(QStringLiteral("transcriptionQuotaLabel"));
     transcriptionQuotaLabel_->setWordWrap(true);
     transcriptionQuotaLabel_->setVisible(false);
-    recordingLayout->addWidget(transcriptionQuotaLabel_);
+    transcriptionOptionsLayout->addWidget(transcriptionQuotaLabel_);
 
     // ---- 4. Notes and files --------------------------------------------
     notesFilesSection_ = makeSection(QStringLiteral("Notes and files"),
@@ -3751,6 +3784,23 @@ void MainWindow::SetChromeOpacity(qreal opacity, int durationMs, bool hideWhenFi
     connect(animationGroup, &QParallelAnimationGroup::finished, this,
             [this, animationGroup, hideWhenFinished]() {
                 if (hideWhenFinished && !simpleChromeVisible_ && isSimpleMode()) {
+                    QWidget* active = QApplication::activeWindow();
+                    if (active && (active == topLeftPanel_ || active == bottomLeftPanel_ ||
+                                   active == keystoneTrackingPanel_ || active == bottomRightPanel_)) {
+                        // Hiding the active native tool window can otherwise
+                        // hand activation to another application and reveal
+                        // our chrome again when Windows activates its owner.
+                        DWORD foregroundProcess = 0;
+                        const HWND foreground = GetForegroundWindow();
+                        const HWND mainHandle = reinterpret_cast<HWND>(internalWinId());
+                        if (mainHandle && foreground &&
+                            GetWindowThreadProcessId(foreground, &foregroundProcess) &&
+                            foregroundProcess == GetCurrentProcessId()) {
+                            SetForegroundWindow(mainHandle);
+                            activateWindow();
+                            QApplication::setActiveWindow(this);
+                        }
+                    }
                     for (QWidget* panel : {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_, bottomRightPanel_}) {
                         if (panel) {
                             panel->hide();
@@ -3861,6 +3911,16 @@ void MainWindow::FadeSimpleChrome()
         (chromeKeyboardFocus_ && SimpleChromeHasFocus())) {
         simpleChromeIdleTimer_->start();
         return;
+    }
+    // Hide/opacity changes can generate enter and stationary mouse messages.
+    // Qt reports logical coordinates; native MSG::pt uses physical pixels.
+    // Keep independent baselines rather than mixing them at scaled DPI.
+    chromeMouseGlobalPosition_ = QCursor::pos();
+    chromeMousePositionKnown_ = true;
+    POINT nativePosition{};
+    chromeNativeMousePositionKnown_ = GetCursorPos(&nativePosition) != FALSE;
+    if (chromeNativeMousePositionKnown_) {
+        chromeNativeMousePosition_ = QPoint(nativePosition.x, nativePosition.y);
     }
     simpleChromeVisible_ = false;
     SetChromeOpacity(0.0, kSimpleChromeFadeMs, true);
@@ -4089,12 +4149,18 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         (static_cast<QFocusEvent*>(event)->reason() == Qt::TabFocusReason ||
          static_cast<QFocusEvent*>(event)->reason() == Qt::BacktabFocusReason ||
          static_cast<QFocusEvent*>(event)->reason() == Qt::ShortcutFocusReason);
-    const bool userActivity = type == QEvent::MouseMove ||
+    bool pointerMoved = false;
+    if (type == QEvent::MouseMove) {
+        const QPointF position = static_cast<QMouseEvent*>(event)->globalPosition();
+        pointerMoved = !chromeMousePositionKnown_ || position != chromeMouseGlobalPosition_;
+        chromeMouseGlobalPosition_ = position;
+        chromeMousePositionKnown_ = true;
+    }
+    const bool userActivity = pointerMoved ||
                               type == QEvent::MouseButtonPress ||
                               type == QEvent::Wheel ||
                               type == QEvent::KeyPress ||
                               keyboardFocusActivity ||
-                              type == QEvent::Enter ||
                               type == QEvent::TouchBegin ||
                               type == QEvent::ApplicationActivate;
     if (isSimpleMode() && userActivity) {
@@ -4364,6 +4430,47 @@ bool MainWindow::nativeEventFilter(const QByteArray&, void* message, qintptr*)
     case WM_LBUTTONDOWN:
     case WM_MBUTTONDOWN:
     case WM_RBUTTONDOWN:
+    case WM_MOUSEWHEEL:
+    case WM_KEYDOWN:
+    case WM_SYSKEYDOWN:
+        break;
+    default:
+        return false;
+    }
+
+    // The application-wide native filter also sees dialogs and other Qt
+    // windows. Only accept messages on the magnifier's existing surfaces;
+    // looking up HWNDs must not create native windows as a side effect.
+    const HWND rootHandle = GetAncestor(nativeMessage->hwnd, GA_ROOT);
+    QWidget* messageWindow = rootHandle
+        ? QWidget::find(reinterpret_cast<WId>(rootHandle)) : nullptr;
+    auto* assistant = findChild<AssistiveOverlay*>();
+    const auto onSurface = [messageWindow](QWidget* surface) {
+        return messageWindow && surface && messageWindow == surface->window();
+    };
+    if (!onSurface(this) && !onSurface(renderWidget_) &&
+        !onSurface(topLeftPanel_) && !onSurface(bottomLeftPanel_) &&
+        !onSurface(keystoneTrackingPanel_) && !onSurface(bottomRightPanel_) &&
+        !onSurface(modeGridPopup_) && !onSurface(uiVisibilityPanel_) &&
+        !onSurface(annotationOverlay_) && !onSurface(assistant)) {
+        return false;
+    }
+
+    switch (nativeMessage->message) {
+    case WM_MOUSEMOVE: {
+        const QPoint position(nativeMessage->pt.x, nativeMessage->pt.y);
+        const bool moved = !chromeNativeMousePositionKnown_ || position != chromeNativeMousePosition_;
+        chromeNativeMousePosition_ = position;
+        chromeNativeMousePositionKnown_ = true;
+        if (moved) RevealSimpleChrome();
+        break;
+    }
+    case WM_LBUTTONDOWN:
+    case WM_MBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+        chromeKeyboardFocus_ = false;
+        RevealSimpleChrome();
+        break;
     case WM_MOUSEWHEEL:
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:

@@ -5,6 +5,19 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+- Fix Simple controls reappearing during idle fading when native hover events
+  or active-window handoff were mistaken for fresh user input.
+- Make dependent Image and Recording options visibly subordinate to their
+  parent switches while preserving their saved values and enabled states.
+- Add isolated AI Settings regressions for provider switching, workspace
+  validation, protected credential ids, prompt editing, and narrow keyboard layouts.
+- Group AI Settings around the selected service, shared instructions, saved-chat
+  permissions, speech, and notes. Keep Explain instructions editable for either
+  provider, preserve the API-key credential id when saving or clearing a key,
+  and stack labels in narrow dialogs. Point sign-in help to Advanced Assistant.
+- Put Read Aloud and New Conversation below the floating Assistant's answer,
+  with responsive action rows, clearer focus and disabled states, and a bottom
+  question field that follows the same keyboard order.
 - Handle Escape directly in the floating assistant's question field so it
   reliably clears a draft, then returns focus to the camera without losing
   the answer.

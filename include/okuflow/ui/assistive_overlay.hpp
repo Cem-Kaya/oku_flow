@@ -42,6 +42,8 @@ public:
     QRect RelativeGeometry() const;
     void SetDockPosition(const QString& position);
     QString DockPosition() const;
+    // Reading-first order matching the visual layout: answer, Read Aloud,
+    // New Conversation, question, Ask, panel position, Close.
     std::array<QWidget*, 7> FocusTargets() const;
 
 signals:

@@ -30,6 +30,10 @@ Simple mode is the normal operating view:
   button, wheel input, a key press, or application activation reveals it.
   Keyboard-focused controls, dialogs, and an open mode grid remain visible;
   focus left on a button by a mouse click does not prevent idle hiding.
+  Stationary pointer notifications caused by native panel hiding do not reveal
+  controls. Fading an active control window returns activation to the magnifier
+  before hiding it, preserving application focus. Native wake input is scoped
+  to magnifier-owned surfaces.
 - The persistent top-right `Hide UI` / `Show UI` button and `Ctrl+H` hide or
   restore controls and the assistant together in either mode. Hiding retains
   the mode, inspector tab and width, answer, and drawing. Streamed answers
@@ -121,6 +125,12 @@ rows preserve usable track space; horizontal/vertical position controls disable
 when Zoom is off. Long selector names elide in the middle, retaining the complete
 value on hover and through Qt accessibility.
 
+Dependent options sit below their parent switch inside an indented group with
+a left border. This covers Zoom position, Extra Stable, sharpening backend and
+strength, Super Resolution modes, blur parameters, and finalized microphone
+transcripts. These visual containers preserve each control's application-owned
+enabled state and saved preferences.
+
 Before the first presented camera frame, during reconnection, and while capture
 is stopped, a centered high-contrast placeholder explains camera state in both
 UI modes. It hides when OkuFlow is inactive. This does not yet detect a camera
@@ -146,6 +156,14 @@ the small title/preview/timestamp index in `settings.json`. Internet and coding
 are explicit global Assistant permissions in AI Settings. Coding requires a
 workspace folder and affects only persistent Advanced Assistant turns; Simple
 Explain remains restricted even when those permissions are enabled.
+
+AI Settings groups service selection, the selected provider's connection,
+shared Assistant instructions and Explain prompt, Advanced Assistant permissions,
+Read Aloud, and lecture notes in that order. The built-in Codex prompt is a
+collapsed read-only reference. The Explain prompt is editable for both providers.
+Hidden provider preferences are retained; saving a server configuration does not
+validate an inactive Codex workspace. Active Codex coding requires an existing
+absolute workspace directory. On narrow dialogs, form labels move above fields.
 
 Simple Explain and Read results use one solid Assistant, floating over the
 camera. Without saved geometry it occupies about 43% of viewport width and
@@ -178,6 +196,11 @@ speech automatically; only Read Aloud or the AI Settings Preview action does
 so. First use positions the panel below the top Simple controls. Position and
 size are stored relative to the camera surface, restored on restart, and
 clamped when the available view changes.
+
+Read Aloud and New Conversation sit directly below the answer, with the
+question and Ask controls below them. The two answer actions stack when a narrow
+floating or docked panel cannot fit their natural widths. Keyboard order follows
+this visual sequence before Panel position and Close.
 
 ## Settings Ownership
 

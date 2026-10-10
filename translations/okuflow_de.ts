@@ -588,10 +588,6 @@
         <translation>Abschnitte der KI-Einstellungen</translation>
     </message>
     <message>
-        <source>Codex subscription</source>
-        <translation>Codex-Abonnement</translation>
-    </message>
-    <message>
         <source>OpenAI-compatible server</source>
         <translation>OpenAI-kompatibler Server</translation>
     </message>
@@ -636,10 +632,6 @@
         <translation>Programmierarbeitsbereich:</translation>
     </message>
     <message>
-        <source>Built-in prompt:</source>
-        <translation>Integrierte Anweisung:</translation>
-    </message>
-    <message>
         <source>Assistant behavior</source>
         <translation>Assistentenverhalten</translation>
     </message>
@@ -662,10 +654,6 @@
     <message>
         <source>Vision model:</source>
         <translation>Vision-Modell:</translation>
-    </message>
-    <message>
-        <source>Scene prompt:</source>
-        <translation>Szenenanweisung:</translation>
     </message>
     <message>
         <source>Read aloud</source>
@@ -1278,10 +1266,6 @@
         <translation>KI-Anbieter</translation>
     </message>
     <message>
-        <source>Choose Codex subscription or an OpenAI-compatible server</source>
-        <translation>Wählen Sie ein Codex-Abonnement oder einen OpenAI-kompatiblen Server</translation>
-    </message>
-    <message>
         <source>Codex CLI Path</source>
         <translation>Codex-CLI-Pfad</translation>
     </message>
@@ -1312,10 +1296,6 @@
     <message>
         <source>Model</source>
         <translation>Modell</translation>
-    </message>
-    <message>
-        <source>Scene Prompt</source>
-        <translation>Szenenanweisung</translation>
     </message>
     <message>
         <source>Read Aloud Voice</source>
@@ -2288,14 +2268,6 @@ Die Entfernung wird von Windows verwaltet.</translation>
         <translation>%1 entfernen</translation>
     </message>
     <message>
-        <source>Installed
-%1
-Use Connect ChatGPT in AI Settings to sign in.</source>
-        <translation>Installiert
-%1
-Verwenden Sie „ChatGPT verbinden“ in den KI-Einstellungen, um sich anzumelden.</translation>
-    </message>
-    <message>
         <source>Display colors, Normal colors</source>
         <translation>Anzeigefarben, Normale Farben</translation>
     </message>
@@ -2932,6 +2904,70 @@ Gemeinsame Einstellungen auf der Registerkarte Einstellungen bleiben unveränder
     <message>
         <source>Six color posterize effect</source>
         <translation>Posterisierungseffekt mit sechs Farben</translation>
+    </message>
+    <message>
+        <source>AI service</source>
+        <translation>KI-Dienst</translation>
+    </message>
+    <message>
+        <source>ChatGPT subscription (Codex)</source>
+        <translation>ChatGPT-Abonnement (Codex)</translation>
+    </message>
+    <message>
+        <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
+        <translation>Lesen, Erklären und Assistent nutzen Ihr ChatGPT-Abonnement über die Codex CLI. Melden Sie sich im erweiterten Modus auf der Registerkarte Assistent über ChatGPT verbinden an.</translation>
+    </message>
+    <message>
+        <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
+        <translation>Lesen und Erklären senden die Kameraansicht an die unten angegebene Server-URL. Bilder bleiben nur auf diesem Computer, wenn der Server darauf läuft, etwa LM Studio oder Ollama auf localhost. Gespeicherte Assistentengespräche benötigen das ChatGPT-Abonnement.</translation>
+    </message>
+    <message>
+        <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
+        <translation>OkuFlow sendet diese Anweisung immer an Codex, gefolgt von Ihren Anweisungen und den Berechtigungsregeln.</translation>
+    </message>
+    <message>
+        <source>Assistant instructions</source>
+        <translation>Assistentenanweisungen</translation>
+    </message>
+    <message>
+        <source>Explain prompt:</source>
+        <translation>Erklärungsanweisung:</translation>
+    </message>
+    <message>
+        <source>Advanced Assistant permissions</source>
+        <translation>Erweiterte Assistentenberechtigungen</translation>
+    </message>
+    <message>
+        <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
+        <translation>Diese gelten nur für gespeicherte Assistentengespräche, einschließlich Fragen im schwebenden Assistenten. Lesen und Erklären bleiben immer eingeschränkt.</translation>
+    </message>
+    <message>
+        <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
+        <translation>Wählen Sie ChatGPT über Codex oder einen OpenAI-kompatiblen Server</translation>
+    </message>
+    <message>
+        <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
+        <translation>Wählen Sie die Denktiefe von Codex. Höhere Stufen können die Antwortzeit verlängern.</translation>
+    </message>
+    <message>
+        <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
+        <translation>Zeigen oder verbergen Sie die schreibgeschützte Anweisung, die OkuFlow immer an Codex sendet</translation>
+    </message>
+    <message>
+        <source>Explain Prompt</source>
+        <translation>Erklärungsanweisung</translation>
+    </message>
+    <message>
+        <source>Optional instructions sent with the camera view when you press Explain</source>
+        <translation>Optionale Anweisungen, die beim Drücken von Erklären mit der Kameraansicht gesendet werden</translation>
+    </message>
+    <message>
+        <source>Installed
+%1
+Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
+        <translation>Installiert
+%1
+Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbinden an.</translation>
     </message>
 </context>
 </TS>

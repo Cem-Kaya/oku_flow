@@ -413,6 +413,10 @@ private:
     bool simpleChromeVisible_{true};
     bool chromePinned_{};
     bool chromeKeyboardFocus_{};
+    QPointF chromeMouseGlobalPosition_{};
+    QPoint chromeNativeMousePosition_{};
+    bool chromeMousePositionKnown_{};
+    bool chromeNativeMousePositionKnown_{};
     bool uiHidden_{};
     bool modeBeforeUiHiddenSimple_{true};
     QWidget* uiVisibilityPanel_{};

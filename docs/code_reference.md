@@ -1785,6 +1785,10 @@ Namespace `okuflow`
 - Builds the UI shell and exposes widget accessors used by `OkuFlowApp`.
 - Installs both Qt and Win32-native event filters for reliable activity
   detection across the native swap-chain surface and its owned control windows.
+  Separate logical/physical pointer baselines ignore stationary hide-induced
+  messages; native activity is restricted to existing magnifier surface HWNDs.
+  `FadeSimpleChrome()` snapshots the pointer after pinning checks, and
+  `SetChromeOpacity()` retains in-process activation before hiding active chrome.
 - Two-speed UI around one persistent render widget: Simple uses three native
   corner-control windows plus contextual keystone controls. Advanced keeps
   the carousel and actions available beside a tabbed inspector (520 logical
@@ -1794,6 +1798,10 @@ Namespace `okuflow`
   Language, AI and downloads, and Troubleshooting groups. `Assistant` keeps
   Chat/History; `Transcript` keeps transcription. Existing widget getters
   remain valid after reparenting. Help and keyboard tab cycling stay available.
+  - Constructor helper `makeDependentGroup` creates indented, left-ruled
+    visual containers for Zoom position, Extra Stable, spatial sharpening,
+    Super Resolution modes, blur parameters, and microphone transcript options.
+    It preserves application-owned child enabled states and saved preferences.
   - `setCameraPlaceholder(...)` / `UpdateCameraPlaceholderVisibility()` show
     source-tracked startup/reconnect/stopped-capture text only while the app is
     active. `OkuFlowApp::UpdateCameraPlaceholder()` derives it from capture
@@ -1970,9 +1978,15 @@ Namespace `okuflow`
   and workspace-scoped coding permissions, and an
   OpenAI-compatible server mode, including local servers without an API key.
   Its fixed action row surrounds a vertically scrollable content area with
-  separate Codex, OpenAI-compatible VLM, Read Aloud, and notes sections.
-  It shows the built-in Codex prompt read-only and exposes separate user
-  instructions for response language, tone, and detail. `SetCodexModelCatalog`
+  AI service, provider-specific connection, shared Assistant instructions and
+  Explain prompt, Advanced Assistant permissions, Read Aloud, and notes groups.
+  Only the selected provider's connection and permissions are shown.
+  `UpdateFormWrapping()` stacks labels above fields at narrow widths; tab order
+  follows the visible groups. The built-in Codex prompt is read-only and
+  initially collapsed. User instructions and the Explain prompt remain editable
+  for both providers. `result()` preserves initial fields not edited by the
+  dialog, including the saved credential id needed to replace or delete a key.
+  `SetCodexModelCatalog`
   fills the model selector and model-specific reasoning selector from the live
   app-server catalog while keeping an unavailable saved selection visible.
   It also enumerates all voices and locales exposed by Qt's selected Windows
@@ -1995,8 +2009,12 @@ Namespace `okuflow`
   without discarding the draft. When ready, it sends the current view to the
   shared persistent Assistant conversation. Read Aloud remains manual
   and strips the visible `Read Text` / `Scene Explain` section labels from its speech
-  payload. Read Aloud is the prominent footer action; New Conversation is
-  secondary. The question field handles unmodified Escape directly: its first
+  payload. Read Aloud and the secondary New Conversation action sit directly
+  below the answer, stacking at narrow widths. The question field and Ask
+  form the bottom row. Focus order follows answer, Read Aloud, New Conversation,
+  question, Ask, panel position, and Close. Disabled Ask is visually dimmed;
+  Read Aloud uses a white focus ring against its purple background.
+  The question field handles unmodified Escape directly: its first
   press clears a nonempty draft, and an empty-field press returns focus to the
   camera without dismissing the answer. An active header drag still cancels
   before either action; open placement menus retain their own Escape handling.
@@ -2125,6 +2143,21 @@ Namespace `okuflow`
   circular-target GPU readback across Fill/Fit viewport sizes. It retries
   nonblocking presentation for at most two seconds, remembers the first
   successful submission, and matches its readback request before measuring.
+
+### `tests/ai_settings_dialog_tests.cpp`
+- `AiSettingsDialogTests` exercises the production dialog through accessible
+  controls and its save button: protected credential-id retention after key
+  clearing, editable Codex Explain prompts, and provider switching with hidden
+  coding preferences preserved. Workspace cases reject an existing relative
+  folder or nonexistent absolute folder, then accept a temporary absolute folder
+  in the same dialog. The fixture dismisses only its own validation warnings.
+- Keyboard cases verify Tab/Shift+Tab moves between the shared text editors
+  without inserting tabs; narrow-layout cases check scroll reachability and
+  horizontal containment for both providers. `ShowDialog`, `Accessible`, and
+  `ClickSave` provide focused widget lookup, desktop activation, and bounded
+  warning handling. The `ai_settings_dialog_interactions` CTest target disables
+  TTS and substitutes only static built-in Codex reference text, without loading
+  protected credentials or starting app-server, network, or camera services.
 
 ## Entry Point
 

@@ -16,6 +16,7 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QFrame>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -23,16 +24,20 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScopedValueRollback>
+#include <QScreen>
 #include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <utility>
 
 #if OKUFLOW_HAS_TTS
 #include <QTextToSpeech>
@@ -86,15 +91,38 @@ QString ReasoningLabel(const QString& effort)
 } // namespace
 
 AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, QWidget* parent)
-    : QDialog(parent)
+    : QDialog(parent),
+      initial_(initial)
 {
     setWindowTitle("AI Settings");
-    setMinimumSize(620, 480);
-    resize(780, 820);
+    // Form rows stack their labels above the fields at narrow widths, so a
+    // small minimum stays usable on compact or highly scaled screens.
+    setMinimumSize(480, 420);
+    QSize preferredSize(760, 820);
+    if (QScreen* screen = parent ? parent->screen() : QGuiApplication::primaryScreen()) {
+        const QRect available = screen->availableGeometry();
+        preferredSize = preferredSize.boundedTo(
+            QSize(available.width() * 9 / 10, available.height() * 9 / 10));
+    }
+    resize(preferredSize.expandedTo(minimumSize()));
 
     // Large-ish fonts and clear focus outlines, matching the main window.
+    // Framed groups separate provider, instruction, permission, voice, and
+    // notes settings at a glance.
     setStyleSheet(QStringLiteral(R"(
         QWidget { font-size: 12pt; }
+        QGroupBox {
+            border: 2px solid palette(mid);
+            border-radius: 8px;
+            margin-top: 14px;
+            padding: 16px 12px 12px 12px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            left: 12px;
+            padding: 0 6px;
+        }
         QLineEdit, QPlainTextEdit, QComboBox {
             padding: 6px;
             border: 2px solid palette(mid);
@@ -105,6 +133,16 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             border-color: palette(highlight);
         }
         QPushButton { min-height: 32px; padding: 4px 14px; }
+        QToolButton#aiSettingsDisclosure,
+        QToolButton#aiSettingsDisclosure:checked {
+            color: palette(window-text);
+            background: transparent;
+            border: 3px solid transparent;
+            border-radius: 6px;
+            padding: 2px 6px;
+        }
+        QToolButton#aiSettingsDisclosure:hover { background: palette(midlight); }
+        QToolButton#aiSettingsDisclosure:focus { border-color: palette(highlight); }
         QCheckBox { spacing: 8px; }
         QCheckBox::indicator { width: 20px; height: 20px; }
     )"));
@@ -112,38 +150,79 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     auto* outerLayout = new QVBoxLayout(this);
     outerLayout->setSpacing(12);
 
-    auto* scrollArea = new QScrollArea(this);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setAccessibleName(QStringLiteral("AI settings sections"));
+    scrollArea_ = new QScrollArea(this);
+    scrollArea_->setWidgetResizable(true);
+    scrollArea_->setFrameShape(QFrame::NoFrame);
+    scrollArea_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea_->setAccessibleName(QStringLiteral("AI settings sections"));
 
-    auto* scrollContent = new QWidget(scrollArea);
+    auto* scrollContent = new QWidget(scrollArea_);
     auto* contentLayout = new QVBoxLayout(scrollContent);
     contentLayout->setContentsMargins(4, 4, 8, 4);
     contentLayout->setSpacing(14);
 
-    auto* introLabel = new QLabel(
-        "Use a signed-in Codex CLI with a ChatGPT subscription, or select an "
-        "OpenAI-compatible server such as LM Studio or Ollama.");
-    introLabel->setWordWrap(true);
-    contentLayout->addWidget(introLabel);
+    const auto addForm = [this](QGroupBox* group) {
+        auto* form = new QFormLayout(group);
+        form->setSpacing(10);
+        form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+        forms_.push_back(form);
+        return form;
+    };
+    const auto pathRow = [](QLineEdit* edit, QPushButton* browseButton) {
+        auto* row = new QHBoxLayout();
+        row->setSpacing(8);
+        row->addWidget(edit, 1);
+        row->addWidget(browseButton);
+        return row;
+    };
 
-    auto* providerForm = new QFormLayout();
-    providerForm->setSpacing(10);
-
+    // 1. Where Read, Explain, and Assistant requests are sent.
+    auto* providerGroup = new QGroupBox(QStringLiteral("AI service"));
+    auto* providerForm = addForm(providerGroup);
     providerCombo_ = new WheelSafeComboBox();
-    providerCombo_->addItem("Codex subscription", QStringLiteral("codex"));
+    providerCombo_->addItem("ChatGPT subscription (Codex)", QStringLiteral("codex"));
     providerCombo_->addItem("OpenAI-compatible server", QStringLiteral("openai-compatible"));
+    providerCombo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     const int providerIndex = providerCombo_->findData(initial.aiProvider);
     providerCombo_->setCurrentIndex(providerIndex >= 0 ? providerIndex : 0);
     providerForm->addRow("AI provider:", providerCombo_);
-    contentLayout->addLayout(providerForm);
+    providerHintLabel_ = new QLabel();
+    providerHintLabel_->setObjectName(QStringLiteral("aiProviderHint"));
+    providerHintLabel_->setTextFormat(Qt::PlainText);
+    providerHintLabel_->setWordWrap(true);
+    providerForm->addRow(providerHintLabel_);
+    contentLayout->addWidget(providerGroup);
 
-    auto* codexGroup = new QGroupBox(QStringLiteral("Codex subscription"));
-    auto* form = new QFormLayout(codexGroup);
-    form->setSpacing(10);
-    contentLayout->addWidget(codexGroup);
+    // 2a. Codex connection, shown only for the subscription provider.
+    codexGroup_ = new QGroupBox(QStringLiteral("ChatGPT subscription (Codex)"));
+    auto* codexForm = addForm(codexGroup_);
+
+    codexModelCombo_ = new WheelSafeComboBox();
+    SetComboItemsAreData(codexModelCombo_);
+    codexModelCombo_->setMinimumContentsLength(24);
+    codexModelCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    codexModelCombo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    const QString configuredModel = initial.codexModel.trimmed().isEmpty()
+                                        ? QStringLiteral("gpt-6-luna")
+                                        : initial.codexModel.trimmed();
+    codexModelCombo_->addItem(configuredModel, configuredModel);
+    codexForm->addRow("Codex model:", codexModelCombo_);
+
+    codexReasoningCombo_ = new WheelSafeComboBox();
+    // Items are relabeled from their effort data in changeEvent; the generic
+    // pass would otherwise capture an already translated label as source.
+    SetComboItemsAreData(codexReasoningCombo_);
+    codexReasoningCombo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    preferredReasoningEffort_ = initial.codexReasoningEffort.trimmed().toLower();
+    for (const QString& effort : {QStringLiteral("low"), QStringLiteral("medium"),
+                                  QStringLiteral("high"), QStringLiteral("xhigh")}) {
+        codexReasoningCombo_->addItem(TranslateUi(ReasoningLabel(effort)),
+                                      effort);
+    }
+    const int reasoningIndex =
+        codexReasoningCombo_->findData(preferredReasoningEffort_);
+    codexReasoningCombo_->setCurrentIndex(reasoningIndex >= 0 ? reasoningIndex : 0);
+    codexForm->addRow("Reasoning:", codexReasoningCombo_);
 
     codexPathEdit_ = new QLineEdit(initial.codexExecutablePath);
     codexPathEdit_->setPlaceholderText("Auto-detect codex.exe");
@@ -156,41 +235,99 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             codexPathEdit_->setText(path);
         }
     });
-    auto* codexPathRow = new QHBoxLayout();
-    codexPathRow->setSpacing(8);
-    codexPathRow->addWidget(codexPathEdit_, 1);
-    codexPathRow->addWidget(codexBrowseButton);
-    form->addRow("Codex CLI path:", codexPathRow);
+    codexForm->addRow("Codex CLI path:", pathRow(codexPathEdit_, codexBrowseButton));
 
-    codexModelCombo_ = new WheelSafeComboBox();
-    SetComboItemsAreData(codexModelCombo_);
-    codexModelCombo_->setMinimumContentsLength(24);
-    codexModelCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    const QString configuredModel = initial.codexModel.trimmed().isEmpty()
-                                        ? QStringLiteral("gpt-6-luna")
-                                        : initial.codexModel.trimmed();
-    codexModelCombo_->addItem(configuredModel, configuredModel);
-    form->addRow("Codex model:", codexModelCombo_);
+    // The fixed OkuFlow prompt is reference material; it stays collapsed so
+    // the editable settings remain prominent.
+    builtInInstructionsToggle_ = new QToolButton();
+    builtInInstructionsToggle_->setObjectName(QStringLiteral("aiSettingsDisclosure"));
+    builtInInstructionsToggle_->setText("Built-in Codex Prompt");
+    builtInInstructionsToggle_->setCheckable(true);
+    builtInInstructionsToggle_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    const Qt::ArrowType collapsedArrow =
+        layoutDirection() == Qt::RightToLeft ? Qt::LeftArrow : Qt::RightArrow;
+    builtInInstructionsToggle_->setArrowType(collapsedArrow);
+    codexForm->addRow(builtInInstructionsToggle_);
+    builtInInstructionsEdit_ = new QPlainTextEdit(
+        CodexAppServerClient::BuiltInAssistantInstructions());
+    builtInInstructionsEdit_->setReadOnly(true);
+    builtInInstructionsEdit_->setTextInteractionFlags(Qt::TextSelectableByKeyboard |
+                                                      Qt::TextSelectableByMouse);
+    builtInInstructionsEdit_->setTabChangesFocus(true);
+    builtInInstructionsEdit_->setMaximumHeight(140);
+    builtInInstructionsEdit_->setToolTip(
+        QStringLiteral("OkuFlow always sends this instruction to Codex, followed by "
+                       "your instructions and the permission rules."));
+    codexForm->addRow(builtInInstructionsEdit_);
+    codexForm->setRowVisible(builtInInstructionsEdit_, false);
+    connect(builtInInstructionsToggle_, &QToolButton::toggled, this,
+            [this, codexForm, collapsedArrow](bool expanded) {
+                builtInInstructionsToggle_->setArrowType(expanded ? Qt::DownArrow
+                                                                  : collapsedArrow);
+                codexForm->setRowVisible(builtInInstructionsEdit_, expanded);
+                if (expanded) {
+                    QTimer::singleShot(0, this, [this]() {
+                        scrollArea_->ensureWidgetVisible(builtInInstructionsEdit_);
+                    });
+                }
+            });
+    contentLayout->addWidget(codexGroup_);
 
-    codexReasoningCombo_ = new WheelSafeComboBox();
-    preferredReasoningEffort_ = initial.codexReasoningEffort.trimmed().toLower();
-    for (const QString& effort : {QStringLiteral("low"), QStringLiteral("medium"),
-                                  QStringLiteral("high"), QStringLiteral("xhigh")}) {
-        codexReasoningCombo_->addItem(TranslateUi(ReasoningLabel(effort)),
-                                      effort);
-    }
-    const int reasoningIndex =
-        codexReasoningCombo_->findData(preferredReasoningEffort_);
-    codexReasoningCombo_->setCurrentIndex(reasoningIndex >= 0 ? reasoningIndex : 0);
-    form->addRow("Reasoning:", codexReasoningCombo_);
+    // 2b. OpenAI-compatible connection, shown only for that provider.
+    serverGroup_ = new QGroupBox(QStringLiteral("OpenAI-compatible vision server"));
+    auto* serverForm = addForm(serverGroup_);
+
+    apiUrlEdit_ = new QLineEdit(initial.vlmApiUrl);
+    apiUrlEdit_->setPlaceholderText(
+        "https://api.openai.com/v1/chat/completions or http://localhost:11434/v1/chat/completions");
+    serverForm->addRow("Server URL:", apiUrlEdit_);
+
+    apiKeyEdit_ = new QLineEdit(initial.vlmApiKey);
+    apiKeyEdit_->setEchoMode(QLineEdit::Password);
+    apiKeyEdit_->setPlaceholderText("Optional for local servers");
+    serverForm->addRow("API key:", apiKeyEdit_);
+
+    modelEdit_ = new QLineEdit(initial.vlmModel);
+    modelEdit_->setPlaceholderText("gpt-4o-mini or llava");
+    serverForm->addRow("Vision model:", modelEdit_);
+    contentLayout->addWidget(serverGroup_);
+
+    // 3. Answer preferences. Both providers use them, so they never hide.
+    auto* instructionsGroup = new QGroupBox(QStringLiteral("Assistant instructions"));
+    auto* instructionsForm = addForm(instructionsGroup);
+
+    assistantInstructionsEdit_ = new QPlainTextEdit(initial.assistantInstructions);
+    assistantInstructionsEdit_->setPlaceholderText(
+        "Example: Always answer in Turkish. Use short sentences and explain technical terms.");
+    assistantInstructionsEdit_->setTabChangesFocus(true);
+    assistantInstructionsEdit_->setMaximumHeight(120);
+    instructionsForm->addRow("Your instructions:", assistantInstructionsEdit_);
+
+    promptEdit_ = new QPlainTextEdit(initial.vlmPrompt);
+    promptEdit_->setPlaceholderText(
+        "Instructions for the vision model, e.g. describe the lecture slide briefly.");
+    promptEdit_->setTabChangesFocus(true);
+    promptEdit_->setMaximumHeight(110);
+    instructionsForm->addRow("Explain prompt:", promptEdit_);
+    contentLayout->addWidget(instructionsGroup);
+
+    // 4. Global Advanced Assistant permissions, Codex only.
+    permissionsGroup_ = new QGroupBox(QStringLiteral("Advanced Assistant permissions"));
+    auto* permissionsForm = addForm(permissionsGroup_);
+    auto* permissionsNote = new QLabel(QStringLiteral(
+        "These apply only to saved Assistant conversations, including questions "
+        "asked from the floating Assistant. Read and Explain always stay restricted."));
+    permissionsNote->setTextFormat(Qt::PlainText);
+    permissionsNote->setWordWrap(true);
+    permissionsForm->addRow(permissionsNote);
 
     codexInternetCheckbox_ = new QCheckBox("Allow internet access");
     codexInternetCheckbox_->setChecked(initial.codexInternetEnabled);
-    form->addRow("Advanced Assistant:", codexInternetCheckbox_);
+    permissionsForm->addRow(codexInternetCheckbox_);
 
     codexCodingCheckbox_ = new QCheckBox("Allow coding commands and file changes");
     codexCodingCheckbox_->setChecked(initial.codexCodingEnabled);
-    form->addRow(QString(), codexCodingCheckbox_);
+    permissionsForm->addRow(codexCodingCheckbox_);
 
     codexWorkspaceEdit_ = new QLineEdit(initial.codexWorkspaceDirectory);
     codexWorkspaceEdit_->setPlaceholderText("Required when coding is enabled");
@@ -207,55 +344,9 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             codexWorkspaceEdit_->setText(QDir::toNativeSeparators(QDir::cleanPath(path)));
         }
     });
-    auto* codexWorkspaceRow = new QHBoxLayout();
-    codexWorkspaceRow->setSpacing(8);
-    codexWorkspaceRow->addWidget(codexWorkspaceEdit_, 1);
-    codexWorkspaceRow->addWidget(codexWorkspaceBrowseButton_);
-    form->addRow("Coding workspace:", codexWorkspaceRow);
-
-    builtInInstructionsEdit_ = new QPlainTextEdit(
-        CodexAppServerClient::BuiltInAssistantInstructions());
-    builtInInstructionsEdit_->setReadOnly(true);
-    builtInInstructionsEdit_->setMaximumHeight(120);
-    builtInInstructionsEdit_->setToolTip(
-        QStringLiteral("OkuFlow always sends this instruction to Codex. "
-                       "Permission rules are appended from the controls above."));
-    form->addRow("Built-in prompt:", builtInInstructionsEdit_);
-
-    assistantInstructionsEdit_ = new QPlainTextEdit(initial.assistantInstructions);
-    assistantInstructionsEdit_->setPlaceholderText(
-        "Example: Always answer in Turkish. Use short sentences and explain technical terms.");
-    assistantInstructionsEdit_->setMaximumHeight(110);
-    auto* assistantBehaviorGroup = new QGroupBox("Assistant behavior");
-    auto* assistantBehaviorLayout = new QFormLayout(assistantBehaviorGroup);
-    assistantBehaviorLayout->addRow("Your instructions:", assistantInstructionsEdit_);
-    form->addRow(assistantBehaviorGroup);
-
-    auto* vlmGroup =
-        new QGroupBox(QStringLiteral("OpenAI-compatible vision server"));
-    auto* vlmForm = new QFormLayout(vlmGroup);
-    vlmForm->setSpacing(10);
-    contentLayout->addWidget(vlmGroup);
-
-    apiUrlEdit_ = new QLineEdit(initial.vlmApiUrl);
-    apiUrlEdit_->setPlaceholderText(
-        "https://api.openai.com/v1/chat/completions or http://localhost:11434/v1/chat/completions");
-    vlmForm->addRow("Server URL:", apiUrlEdit_);
-
-    apiKeyEdit_ = new QLineEdit(initial.vlmApiKey);
-    apiKeyEdit_->setEchoMode(QLineEdit::Password);
-    apiKeyEdit_->setPlaceholderText("Optional for local servers");
-    vlmForm->addRow("API key:", apiKeyEdit_);
-
-    modelEdit_ = new QLineEdit(initial.vlmModel);
-    modelEdit_->setPlaceholderText("gpt-4o-mini or llava");
-    vlmForm->addRow("Vision model:", modelEdit_);
-
-    promptEdit_ = new QPlainTextEdit(initial.vlmPrompt);
-    promptEdit_->setPlaceholderText(
-        "Instructions for the vision model, e.g. describe the lecture slide briefly.");
-    promptEdit_->setMaximumHeight(100);
-    vlmForm->addRow("Scene prompt:", promptEdit_);
+    permissionsForm->addRow("Coding workspace:",
+                            pathRow(codexWorkspaceEdit_, codexWorkspaceBrowseButton_));
+    contentLayout->addWidget(permissionsGroup_);
 
     connect(providerCombo_, qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this]() { UpdateProviderFields(); });
@@ -274,15 +365,15 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     preferredVoiceLocale_ = initial.ttsVoiceLocale;
     ttsEngine_ = initial.ttsEngine;
 
+    // 5. Read Aloud voice. Speech still starts only on request.
     auto* speechGroup = new QGroupBox(QStringLiteral("Read aloud"));
-    auto* speechForm = new QFormLayout(speechGroup);
-    speechForm->setSpacing(10);
-    contentLayout->addWidget(speechGroup);
+    auto* speechForm = addForm(speechGroup);
 
     ttsVoiceCombo_ = new WheelSafeComboBox();
     SetComboItemsAreData(ttsVoiceCombo_);
-    ttsVoiceCombo_->setMinimumContentsLength(30);
+    ttsVoiceCombo_->setMinimumContentsLength(24);
     ttsVoiceCombo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    ttsVoiceCombo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     speechForm->addRow("Voice:", ttsVoiceCombo_);
 
     ttsRateSlider_ = new WheelSafeSlider(Qt::Horizontal);
@@ -301,8 +392,11 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     speechRateRow->setSpacing(8);
     speechRateRow->addWidget(ttsRateSlider_, 1);
     speechRateRow->addWidget(ttsRateValueLabel_);
-    speechRateRow->addWidget(ttsPreviewButton_);
     speechForm->addRow("Speed:", speechRateRow);
+    // Preview has its own row so the speed track keeps its width when the
+    // dialog is narrow.
+    speechForm->addRow(QString(), ttsPreviewButton_);
+    contentLayout->addWidget(speechGroup);
 
     connect(ttsRateSlider_, &QSlider::valueChanged, this, [this]() {
         UpdateSpeechRateLabel();
@@ -351,6 +445,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     ttsPreviewButton_->setEnabled(false);
 #endif
 
+    // 6. Lecture notes.
     auto* notesGroup = new QGroupBox(QStringLiteral("Lecture notes"));
     auto* notesLayout = new QVBoxLayout(notesGroup);
     lectureNotesCheckbox_ = new QCheckBox("Write lecture notes file");
@@ -359,18 +454,24 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     contentLayout->addWidget(notesGroup);
     contentLayout->addStretch(1);
 
-    scrollArea->setWidget(scrollContent);
-    outerLayout->addWidget(scrollArea, 1);
+    scrollArea_->setWidget(scrollContent);
+    scrollArea_->viewport()->installEventFilter(this);
+    outerLayout->addWidget(scrollArea_, 1);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
+        // Only an active Codex coding permission needs a workspace. Hidden
+        // Codex preferences stay saved as entered and never block saving an
+        // OpenAI-compatible configuration; Codex rechecks the folder at use.
         if (providerCombo_->currentData().toString() == QStringLiteral("codex") &&
             codexCodingCheckbox_->isChecked()) {
+            // A relative path would resolve against the app's working folder.
             const QFileInfo workspace(codexWorkspaceEdit_->text().trimmed());
-            if (!workspace.exists() || !workspace.isDir()) {
+            if (!workspace.isAbsolute() || !workspace.isDir()) {
                 QMessageBox::warning(this,
                                      QStringLiteral("Coding Workspace Required"),
                                      QStringLiteral("Choose an existing workspace folder before enabling coding."));
+                scrollArea_->ensureWidgetVisible(codexWorkspaceEdit_);
                 codexWorkspaceEdit_->setFocus();
                 return;
             }
@@ -380,12 +481,28 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     outerLayout->addWidget(buttons);
 
+    // Keyboard order follows the visual order. Qt's focus navigation skips
+    // the hidden provider group and the collapsed built-in prompt.
+    const std::array<QWidget*, 22> tabOrder{
+        providerCombo_, codexModelCombo_, codexReasoningCombo_, codexPathEdit_,
+        codexBrowseButton, builtInInstructionsToggle_, builtInInstructionsEdit_,
+        apiUrlEdit_, apiKeyEdit_, modelEdit_, assistantInstructionsEdit_, promptEdit_,
+        codexInternetCheckbox_, codexCodingCheckbox_, codexWorkspaceEdit_,
+        codexWorkspaceBrowseButton_, ttsVoiceCombo_, ttsRateSlider_, ttsPreviewButton_,
+        lectureNotesCheckbox_, buttons->button(QDialogButtonBox::Ok),
+        buttons->button(QDialogButtonBox::Cancel)};
+    for (size_t index = 1; index < tabOrder.size(); ++index) {
+        if (tabOrder[index - 1] && tabOrder[index]) {
+            QWidget::setTabOrder(tabOrder[index - 1], tabOrder[index]);
+        }
+    }
+
     auto setA11y = [](QWidget* widget, const QString& name, const QString& description) {
         widget->setAccessibleName(name);
         widget->setAccessibleDescription(description);
     };
     setA11y(providerCombo_, "AI Provider",
-            "Choose Codex subscription or an OpenAI-compatible server");
+            "Choose ChatGPT through Codex or an OpenAI-compatible server");
     setA11y(codexPathEdit_, "Codex CLI Path",
             "Optional location of codex.exe; leave blank for automatic detection");
     setA11y(codexBrowseButton, "Browse for Codex CLI",
@@ -393,7 +510,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     setA11y(codexModelCombo_, "Codex Model",
             "Choose an image-capable model reported by the connected Codex app server");
     setA11y(codexReasoningCombo_, "Codex Reasoning",
-            "Choose how much reasoning Codex uses; extra high is the default");
+            "Choose how much reasoning Codex uses. Higher levels can take longer to answer.");
     setA11y(codexInternetCheckbox_, "Allow Assistant Internet Access",
             "Allow persistent Advanced Assistant conversations to use web search and network access");
     setA11y(codexCodingCheckbox_, "Allow Assistant Coding",
@@ -404,6 +521,8 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             "Choose the folder available to Codex coding commands and file changes");
     setA11y(assistantInstructionsEdit_, "Assistant Instructions",
             "Set the response language, tone, detail, and other response preferences");
+    setA11y(builtInInstructionsToggle_, "Built-in Codex Prompt",
+            "Show or hide the read-only instruction OkuFlow always sends to Codex");
     setA11y(builtInInstructionsEdit_, "Built-in Codex Prompt",
             "Read-only OkuFlow instruction always sent to Codex before your instructions");
     setA11y(apiUrlEdit_, "VLM Server URL",
@@ -412,8 +531,8 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
             "Secret key for the vision server, optional for local servers");
     setA11y(modelEdit_, "Model",
             "Name of the vision model, for example gpt-4o-mini or llava");
-    setA11y(promptEdit_, "Scene Prompt",
-            "Scene-specific instructions sent with each camera frame");
+    setA11y(promptEdit_, "Explain Prompt",
+            "Optional instructions sent with the camera view when you press Explain");
     setA11y(ttsVoiceCombo_, "Read Aloud Voice",
             "Choose an installed Windows voice for the Read Aloud button");
     setA11y(ttsRateSlider_, "Read Aloud Speed",
@@ -445,11 +564,56 @@ void AiSettingsDialog::changeEvent(QEvent* event)
     }
     UpdateSpeechRateLabel();
     PopulateSpeechVoices();
+    // Translated labels change width; recheck whether rows still fit.
+    UpdateFormWrapping();
+}
+
+bool AiSettingsDialog::eventFilter(QObject* watched, QEvent* event)
+{
+    // The viewport, not the dialog, reports the width the groups actually
+    // receive, including the initial show and vertical scroll bar changes.
+    if (scrollArea_ && watched == scrollArea_->viewport() &&
+        event->type() == QEvent::Resize) {
+        UpdateFormWrapping();
+    }
+    return QDialog::eventFilter(watched, event);
+}
+
+void AiSettingsDialog::UpdateFormWrapping()
+{
+    if (!scrollArea_) {
+        return;
+    }
+    int labelWidth = 0;
+    for (QFormLayout* form : std::as_const(forms_)) {
+        for (int row = 0; row < form->rowCount(); ++row) {
+            const QLayoutItem* item = form->itemAt(row, QFormLayout::LabelRole);
+            if (item && item->widget()) {
+                labelWidth = std::max(labelWidth, item->widget()->sizeHint().width());
+            }
+        }
+    }
+    // Side-by-side rows need the widest label plus a comfortably wide field.
+    // Otherwise every label moves above its field, so all groups stay aligned
+    // and long voice, model, and path values keep their full width.
+    constexpr int kMinimumFieldWidth = 320;
+    constexpr int kGroupChrome = 64;
+    const bool stacked = scrollArea_->viewport()->width() <
+                         labelWidth + kMinimumFieldWidth + kGroupChrome;
+    const QFormLayout::RowWrapPolicy policy =
+        stacked ? QFormLayout::WrapAllRows : QFormLayout::DontWrapRows;
+    for (QFormLayout* form : std::as_const(forms_)) {
+        if (form->rowWrapPolicy() != policy) {
+            form->setRowWrapPolicy(policy);
+        }
+    }
 }
 
 settings::AssistiveSettings AiSettingsDialog::result() const
 {
-    settings::AssistiveSettings out;
+    // Start from the initial values so the Credential Manager id survives;
+    // SettingsController needs it to replace or delete the stored API key.
+    settings::AssistiveSettings out = initial_;
     out.aiProvider = providerCombo_->currentData().toString();
     out.codexExecutablePath = codexPathEdit_->text().trimmed();
     out.codexModel = codexModelCombo_->currentData().toString().trimmed();
@@ -627,18 +791,26 @@ void AiSettingsDialog::PreviewSpeech()
 void AiSettingsDialog::UpdateProviderFields()
 {
     const bool codex = providerCombo_->currentData().toString() == QStringLiteral("codex");
-    codexPathEdit_->setEnabled(codex);
-    codexModelCombo_->setEnabled(codex);
-    codexReasoningCombo_->setEnabled(codex);
-    codexInternetCheckbox_->setEnabled(codex);
-    codexCodingCheckbox_->setEnabled(codex);
+    // Show only the selected provider's connection and permission settings.
+    // Instructions and the Explain prompt stay visible because both providers
+    // use them. Hidden values are kept and saved unchanged.
+    codexGroup_->setVisible(codex);
+    permissionsGroup_->setVisible(codex);
+    serverGroup_->setVisible(!codex);
     const bool coding = codex && codexCodingCheckbox_->isChecked();
     codexWorkspaceEdit_->setEnabled(coding);
     codexWorkspaceBrowseButton_->setEnabled(coding);
-    apiUrlEdit_->setEnabled(!codex);
-    apiKeyEdit_->setEnabled(!codex);
-    modelEdit_->setEnabled(!codex);
-    promptEdit_->setEnabled(!codex);
+    SetLiveText(providerHintLabel_,
+                codex ? QStringLiteral(
+                            "Read, Explain, and Assistant use your ChatGPT subscription "
+                            "through the Codex CLI. Sign in with Connect ChatGPT on the "
+                            "Assistant tab in Advanced mode.")
+                      : QStringLiteral(
+                            "Read and Explain send the camera view to the server URL "
+                            "below. Images stay on this computer only if that server "
+                            "runs on it, such as LM Studio or Ollama at localhost. Saved "
+                            "Assistant conversations need the ChatGPT subscription."),
+                LivePoliteness::kSilent);
 }
 
 void AiSettingsDialog::SetCodexModelCatalog(const QJsonArray& models,

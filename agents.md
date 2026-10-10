@@ -167,3 +167,9 @@ aligned with the project goals.
 - Preserve the four-tab ownership contract in `docs/ui_modes_design.md` and
   keep keyboard order, collapsed-section persistence, and English/Turkish/
   German regression coverage aligned when moving controls.
+- `ai_settings_dialog_interactions` validates provider switching, credential-id
+  retention, workspace validation, keyboard order, and narrow dialog layouts
+  using fixture settings only. It never submits AI requests or changes stored
+  secrets. Keep it serial with other GUI tests.
+- Keep `src/ui/translation_catalog.cpp` as LF through its `.gitattributes`
+  rule, matching the translation validator's generated-manifest contract.

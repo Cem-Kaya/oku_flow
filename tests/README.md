@@ -1,5 +1,19 @@
 # OkuFlow Tests
 
+`ai_settings_dialog_interactions` exercises the production AI Settings dialog:
+clearing a placeholder API key retains the opaque credential id in its result,
+the Codex Explain prompt remains editable, switching to a server preserves
+hidden Codex preferences without validating its workspace, and active Codex
+coding rejects relative or missing folders before accepting an existing
+temporary folder. It also checks Tab/Shift+Tab through the shared text editors
+and field reachability in the narrow scrollable layout for both providers.
+The fixture closes its own validation warnings, uses no protected-secret
+storage, account, camera, network, or speech services, and compiles speech
+discovery out. Only the unrelated static built-in Codex reference text is
+substituted; dialog validation and result handling are production code. Run
+it serially with other GUI tests in an interactive Windows desktop session
+through `scripts/agent_build.bat` or the tracked CPU/CUDA CTest presets.
+
 `main_window_interactions` creates the production MainWindow and native control
 windows without initializing a camera, AI account, or GPU presenter. It checks
 tab ownership/order, quick-mode browsing and activation, carousel navigation

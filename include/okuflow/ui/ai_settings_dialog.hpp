@@ -4,6 +4,7 @@
 
 #include <QDialog>
 #include <QJsonArray>
+#include <QList>
 
 #include "okuflow/app/settings_store.hpp"
 
@@ -11,11 +12,15 @@ QT_BEGIN_NAMESPACE
 class QCheckBox;
 class QComboBox;
 class QEvent;
+class QFormLayout;
+class QGroupBox;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
+class QScrollArea;
 class QSlider;
+class QToolButton;
 #if OKUFLOW_HAS_TTS
 class QTextToSpeech;
 #endif
@@ -25,7 +30,9 @@ namespace okuflow {
 
 // Modal editor for Codex subscription permissions and OpenAI-compatible
 // assistive configuration, including local servers such as LM Studio or
-// Ollama so image-to-text can run fully offline.
+// Ollama so image-to-text can run fully offline. Only the selected
+// provider's groups are shown, and hidden values are still saved unchanged;
+// instructions, Read Aloud, and lecture notes apply to both providers.
 class AiSettingsDialog : public QDialog {
     Q_OBJECT
 public:
@@ -38,15 +45,26 @@ public:
 
 protected:
     void changeEvent(QEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     void UpdateProviderFields();
+    void UpdateFormWrapping();
     void PopulateSpeechVoices();
     void UpdateSpeechRateLabel();
     void ApplySpeechPreviewSettings();
     void PreviewSpeech();
     void UpdateCodexReasoningOptions();
 
+    // Fields the dialog does not edit, such as the protected credential id,
+    // are carried through result() unchanged.
+    okuflow::settings::AssistiveSettings initial_;
+    QScrollArea* scrollArea_{};
+    QList<QFormLayout*> forms_;
+    QLabel* providerHintLabel_{};
+    QGroupBox* codexGroup_{};
+    QGroupBox* permissionsGroup_{};
+    QGroupBox* serverGroup_{};
     QComboBox* providerCombo_{};
     QLineEdit* codexPathEdit_{};
     QComboBox* codexModelCombo_{};
@@ -56,6 +74,7 @@ private:
     QLineEdit* codexWorkspaceEdit_{};
     QPushButton* codexWorkspaceBrowseButton_{};
     QPlainTextEdit* assistantInstructionsEdit_{};
+    QToolButton* builtInInstructionsToggle_{};
     QPlainTextEdit* builtInInstructionsEdit_{};
     QJsonArray codexModelCatalog_;
     QString preferredReasoningEffort_;

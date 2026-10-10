@@ -588,10 +588,6 @@
         <translation>Yapay Zekâ ayar bölümleri</translation>
     </message>
     <message>
-        <source>Codex subscription</source>
-        <translation>Codex aboneliği</translation>
-    </message>
-    <message>
         <source>OpenAI-compatible server</source>
         <translation>OpenAI uyumlu sunucu</translation>
     </message>
@@ -636,10 +632,6 @@
         <translation>Kodlama çalışma alanı:</translation>
     </message>
     <message>
-        <source>Built-in prompt:</source>
-        <translation>Yerleşik istem:</translation>
-    </message>
-    <message>
         <source>Assistant behavior</source>
         <translation>Asistan davranışı</translation>
     </message>
@@ -662,10 +654,6 @@
     <message>
         <source>Vision model:</source>
         <translation>Görüntü modeli:</translation>
-    </message>
-    <message>
-        <source>Scene prompt:</source>
-        <translation>Sahne istemi:</translation>
     </message>
     <message>
         <source>Read aloud</source>
@@ -1278,10 +1266,6 @@
         <translation>Yapay Zekâ Sağlayıcısı</translation>
     </message>
     <message>
-        <source>Choose Codex subscription or an OpenAI-compatible server</source>
-        <translation>Codex aboneliğini veya OpenAI uyumlu bir sunucuyu seçin</translation>
-    </message>
-    <message>
         <source>Codex CLI Path</source>
         <translation>Codex CLI Yolu</translation>
     </message>
@@ -1312,10 +1296,6 @@
     <message>
         <source>Model</source>
         <translation>Model</translation>
-    </message>
-    <message>
-        <source>Scene Prompt</source>
-        <translation>Sahne İstemi</translation>
     </message>
     <message>
         <source>Read Aloud Voice</source>
@@ -2288,14 +2268,6 @@ Kaldırma Windows tarafından yönetilir.</translation>
         <translation>%1 kaldır</translation>
     </message>
     <message>
-        <source>Installed
-%1
-Use Connect ChatGPT in AI Settings to sign in.</source>
-        <translation>Yüklendi
-%1
-Oturum açmak için AI Ayarları&apos;nda ChatGPT&apos;ye Bağlan seçeneğini kullanın.</translation>
-    </message>
-    <message>
         <source>Display colors, Normal colors</source>
         <translation>Görüntü renkleri, Normal renkler</translation>
     </message>
@@ -2932,6 +2904,70 @@ Ayarlar sekmesindeki ortak ayarlar değişmeyecek.</translation>
     <message>
         <source>Six color posterize effect</source>
         <translation>Altı renk posterleştirme efekti</translation>
+    </message>
+    <message>
+        <source>AI service</source>
+        <translation>Yapay zekâ hizmeti</translation>
+    </message>
+    <message>
+        <source>ChatGPT subscription (Codex)</source>
+        <translation>ChatGPT aboneliği (Codex)</translation>
+    </message>
+    <message>
+        <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
+        <translation>Oku, Açıkla ve Asistan, Codex CLI üzerinden ChatGPT aboneliğinizi kullanır. Gelişmiş moddaki Asistan sekmesinde ChatGPT Bağlantısı ile giriş yapın.</translation>
+    </message>
+    <message>
+        <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
+        <translation>Oku ve Açıkla, kamera görüntüsünü aşağıdaki sunucu adresine gönderir. Görüntüler yalnızca sunucu bu bilgisayarda çalışıyorsa burada kalır; örneğin localhost üzerindeki LM Studio veya Ollama. Kaydedilen Asistan konuşmaları ChatGPT aboneliği gerektirir.</translation>
+    </message>
+    <message>
+        <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
+        <translation>OkuFlow bu talimatı her zaman Codex’e gönderir; ardından sizin talimatlarınız ve izin kuralları gelir.</translation>
+    </message>
+    <message>
+        <source>Assistant instructions</source>
+        <translation>Asistan talimatları</translation>
+    </message>
+    <message>
+        <source>Explain prompt:</source>
+        <translation>Açıklama istemi:</translation>
+    </message>
+    <message>
+        <source>Advanced Assistant permissions</source>
+        <translation>Gelişmiş Asistan izinleri</translation>
+    </message>
+    <message>
+        <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
+        <translation>Bunlar yalnızca kaydedilen Asistan konuşmalarına ve yüzen Asistan’dan sorulan sorulara uygulanır. Oku ve Açıkla her zaman kısıtlı kalır.</translation>
+    </message>
+    <message>
+        <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
+        <translation>Codex üzerinden ChatGPT veya OpenAI uyumlu bir sunucu seçin</translation>
+    </message>
+    <message>
+        <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
+        <translation>Codex’in akıl yürütme düzeyini seçin. Yüksek düzeylerde yanıt daha uzun sürebilir.</translation>
+    </message>
+    <message>
+        <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
+        <translation>OkuFlow’un Codex’e her zaman gönderdiği salt okunur talimatı gösterin veya gizleyin</translation>
+    </message>
+    <message>
+        <source>Explain Prompt</source>
+        <translation>Açıklama İstemi</translation>
+    </message>
+    <message>
+        <source>Optional instructions sent with the camera view when you press Explain</source>
+        <translation>Açıkla’ya bastığınızda kamera görüntüsüyle gönderilen isteğe bağlı talimatlar</translation>
+    </message>
+    <message>
+        <source>Installed
+%1
+Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
+        <translation>Yüklü
+%1
+Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı kullanın.</translation>
     </message>
 </context>
 </TS>

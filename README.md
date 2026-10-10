@@ -489,10 +489,12 @@ profiling flags for ordinary operation.
 - The Advanced Assistant can attach the current processed view, stream answers, stop a response, and manage persistent OkuFlow conversations with resume, rename, export, and delete actions.
 - The Advanced Assistant subscription label reports the percentage left in the current Codex usage window.
 - `Connect ChatGPT` uses the Codex app-server browser login flow. Existing Codex CLI sign-in is reused automatically.
-- `AI Settings` is vertically scrollable and separates Codex subscription,
-  OpenAI-compatible vision server, Read Aloud, and lecture-note controls.
-  It shows OkuFlow's built-in Codex prompt read-only beside editable user
-  instructions. The Codex model dropdown and its reasoning dropdown are
+- `AI Settings` groups the AI service, the selected provider's connection,
+  shared Assistant instructions and Explain prompt, Advanced Assistant
+  permissions, Read Aloud, and lecture notes. Codex and server-specific groups
+  appear only for the selected provider. The built-in Codex prompt is read-only
+  and collapsed by default; narrow dialogs place labels above their fields.
+  The Codex model dropdown and its reasoning dropdown are
   populated from the signed-in app-server's `model/list` response, including
   each model's supported efforts and default; the saved model remains visible
   as unavailable when it is absent from the current catalog. Assistant
@@ -680,7 +682,7 @@ defense in depth; it does not claim that developer instructions alone are a
 protocol-level guarantee.
 Codex app-server is still a local coding-agent process. `Setup & Downloads`
 can install or update the official per-user distribution; ChatGPT sign-in is
-then completed separately through `Connect ChatGPT` in AI Settings.
+then completed separately through `Connect ChatGPT` on the Advanced Assistant tab.
 
 Environment variables remain as fallback for any field left empty in the
 dialog:

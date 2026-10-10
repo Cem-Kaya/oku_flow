@@ -439,6 +439,28 @@ if (WIN32)
         ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
+    # The production settings dialog needs only static Codex reference text;
+    # the fixture supplies that seam and disables speech engine discovery.
+    add_executable(ai_settings_dialog_tests
+        ai_settings_dialog_tests.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ai_settings_dialog.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/live_status_text.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ui_translation.hpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ai_settings_dialog.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
+    )
+    target_include_directories(ai_settings_dialog_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_compile_definitions(ai_settings_dialog_tests PRIVATE
+        NOMINMAX WIN32_LEAN_AND_MEAN OKUFLOW_HAS_TTS=0)
+    target_link_libraries(ai_settings_dialog_tests PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
+    add_test(NAME ai_settings_dialog_interactions COMMAND ai_settings_dialog_tests)
+    set_tests_properties(ai_settings_dialog_interactions PROPERTIES TIMEOUT 60 LABELS "gui"
+        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+
     # Exercise the real MainWindow widget tree without constructing OkuFlowApp
     # or starting camera, account, and recording services. The test translation
     # resources come from the same lrelease output as the shipping application.

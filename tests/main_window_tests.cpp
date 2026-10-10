@@ -9,6 +9,7 @@
 #include <QAbstractButton>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCursor>
 #include <QDialog>
 #include <QDir>
 #include <QFileInfo>
@@ -118,6 +119,7 @@ private slots:
     void hideUiPreservesPriorModeAndStreaming_data();
     void hideUiPreservesPriorModeAndStreaming();
     void mouseFocusedChromeCanIdleFade();
+    void unrelatedNativeInputCannotRevealChrome();
     void keyboardFocusedChromeSurvivesNativeHandoff();
     void simpleBackwardFocusCrossesPanels();
     void modalDialogKeepsTabAndNumberKeys();
@@ -846,16 +848,71 @@ void MainWindowTests::mouseFocusedChromeCanIdleFade()
     QTest::mouseClick(window.simpleModeButton(), Qt::LeftButton);
     QTRY_VERIFY(window.simpleModeButton()->hasFocus());
     QVERIFY(idle->isActive());
+    // A real single-shot timeout is no longer active when its signal runs.
+    idle->stop();
     QVERIFY(QMetaObject::invokeMethod(idle, "timeout", Qt::DirectConnection));
     QTRY_VERIFY(!top->isVisible());
-    QTest::qWait(100);
+    QTest::qWait(300);
     QVERIFY(!top->isVisible());
 
-    const QPointF local(20, 20);
+    // Hover changes caused by hiding native panels are not pointer input.
+    const QPointF stationaryGlobal(QCursor::pos());
+    const QPointF stationaryLocal = window.renderWidget()->mapFromGlobal(
+        stationaryGlobal.toPoint());
+    QEnterEvent enter(stationaryLocal, stationaryLocal, stationaryGlobal);
+    QCoreApplication::sendEvent(window.renderWidget(), &enter);
+    QMouseEvent stationary(QEvent::MouseMove, stationaryLocal, stationaryLocal,
+                           stationaryGlobal, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(window.renderWidget(), &stationary);
+    QTest::qWait(100);
+    QVERIFY(!top->isVisible());
+    QCOMPARE(QGuiApplication::applicationState(), Qt::ApplicationActive);
+
+    const QPointF local = window.renderWidget()->mapToGlobal(QPoint(20, 20)) == QCursor::pos()
+                              ? QPointF(40, 40) : QPointF(20, 20);
     const QPointF global = window.renderWidget()->mapToGlobal(local.toPoint());
     QMouseEvent move(QEvent::MouseMove, local, local, global,
                      Qt::NoButton, Qt::NoButton, Qt::NoModifier);
     QCoreApplication::sendEvent(window.renderWidget(), &move);
+    QTRY_VERIFY(top->isVisible());
+}
+
+void MainWindowTests::unrelatedNativeInputCannotRevealChrome()
+{
+    class NativeInputWindow final : public MainWindow {
+    public:
+        using MainWindow::nativeEventFilter;
+    };
+    NativeInputWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+    auto* top = Named<QWidget>(window, "topLeftPanel");
+    auto* idle = Named<QTimer>(window, "simpleChromeIdleTimer");
+    QVERIFY(top && idle);
+    QTRY_VERIFY(top->isVisible());
+    window.renderWidget()->setFocus(Qt::MouseFocusReason);
+    idle->stop();
+    QVERIFY(QMetaObject::invokeMethod(idle, "timeout", Qt::DirectConnection));
+    QTRY_VERIFY(!top->isVisible());
+
+    QWidget unrelated;
+    MSG message{};
+    message.hwnd = reinterpret_cast<HWND>(unrelated.winId());
+    message.message = WM_MOUSEMOVE;
+    QVERIFY(GetCursorPos(&message.pt));
+    message.pt.x += 40;
+    window.nativeEventFilter({}, &message, nullptr);
+    message.message = WM_KEYDOWN;
+    message.wParam = 'A';
+    window.nativeEventFilter({}, &message, nullptr);
+    QVERIFY(!top->isVisible());
+
+    message.hwnd = reinterpret_cast<HWND>(window.winId());
+    message.message = WM_MOUSEMOVE;
+    message.pt.x += 40;
+    window.nativeEventFilter({}, &message, nullptr);
     QTRY_VERIFY(top->isVisible());
 }
 
