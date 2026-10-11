@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep values-tr and values-de in exact key parity with this file. -->
+<resources>
+    <string name="app_name">OkuFlow Camera</string>
+
+    <string name="step_counter">Step %1$d of %2$d</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="action_allow_camera">Allow camera</string>
+
+    <string name="developer_title">Turn on Developer mode</string>
+    <string name="developer_hint_generic">Tap “Build number” 7 times. If you can’t see it, open “Software information” first.</string>
+    <string name="developer_hint_samsung">Open “Software information”, then tap “Build number” 7 times.</string>
+    <string name="developer_hint_xiaomi">Tap “OS version” (or “MIUI version”) 7 times.</string>
+    <string name="developer_hint_oneplus">Open “Version”, then tap “Build number” 7 times.</string>
+
+    <string name="usb_debugging_title">Turn on USB debugging</string>
+    <string name="usb_debugging_hint">Find “USB debugging” and switch it on.</string>
+    <string name="check_usb_title">Check the USB connection</string>
+    <string name="check_usb_hint">Open OkuFlow on your computer. If it cannot connect, check that USB debugging is on and allow this computer when asked. If Developer options are missing, open About phone and tap Build number 7 times.</string>
+
+    <string name="camera_title">Allow the camera</string>
+    <string name="camera_hint">OkuFlow shows this camera on your computer. Nothing is sent to the internet.</string>
+    <string name="camera_hint_settings">Open settings, choose “Permissions”, then allow “Camera”.</string>
+
+    <string name="connect_usb_title">Plug this phone into your computer</string>
+    <string name="connect_usb_hint">Use a USB cable that can transfer data.</string>
+
+    <string name="open_okuflow_title">Open OkuFlow on your computer</string>
+    <string name="open_okuflow_hint">If your phone asks “Allow USB debugging?”, tick “Always allow” and tap “Allow”.</string>
+
+    <string name="streaming_title">Streaming to OkuFlow</string>
+    <string name="streaming_hint">Keep this screen open.</string>
+    <string name="advanced_settings">Advanced settings</string>
+    <string name="action_back">Back to camera</string>
+    <string name="advanced_hint">Changes apply automatically. Your phone may use a lower resolution or frame rate.</string>
+    <string name="settings_video">Camera and video</string>
+    <string name="settings_image">Image controls</string>
+    <string name="setting_auto">Automatic</string>
+    <string name="setting_off">Off</string>
+    <string name="setting_camera">Camera</string>
+    <string name="camera_front">Front camera</string>
+    <string name="camera_back">Rear camera</string>
+    <string name="setting_mode">Resolution and frame rate</string>
+    <string name="setting_mode_format">%1$d × %2$d @ %3$d FPS</string>
+    <string name="setting_modes_loading">Finding camera modes…</string>
+    <string name="setting_modes_unavailable">No recording modes available</string>
+    <string name="settings_more">More options</string>
+    <string name="action_back_settings">Back to settings</string>
+    <string name="setting_all_modes">All camera modes</string>
+    <string name="setting_all_modes_hint">Every mode detected on this phone, including below 720p and 24 FPS.</string>
+    <string name="setting_main_modes_hint">720p or higher · 24 FPS or higher.</string>
+    <string name="setting_extra_mode_selected">Using a mode from More options.</string>
+    <string name="setting_bitrate">Video bitrate</string>
+    <string name="setting_codec">Preferred codec</string>
+    <string name="setting_stabilization">Phone stabilization</string>
+    <string name="setting_optical">Optical, if available</string>
+    <string name="setting_electronic">Electronic, if available</string>
+    <string name="stabilization_hint">Electronic stabilization can crop the image. Choose Off or Optical when using fixed-reference stabilization in OkuFlow.</string>
+    <string name="setting_autofocus">Autofocus</string>
+    <string name="focus_hint">When autofocus is off, focus is set to infinity for distant content.</string>
+    <string name="setting_torch">Camera light</string>
+    <string name="torch_host_hint">Starts off. Use the phone light button under Camera settings in OkuFlow on your computer.</string>
+    <string name="setting_exposure">Exposure: %1$d</string>
+    <string name="exposure_hint">Move left for a darker image, right for a brighter image.</string>
+    <string name="setting_status">Stream status</string>
+    <string name="settings_reset">Restore automatic settings</string>
+    <string name="service_notification">Ready for the USB camera connection</string>
+    <string name="thermal_stopped">The camera stopped to protect the phone. Let it cool down, then choose the phone again in OkuFlow’s camera list.</string>
+    <string name="connected_title">Connected to OkuFlow</string>
+    <string name="connected_hint">Your computer is connected. Waiting for camera video.</string>
+    <string name="problem_busy_title">The camera is busy</string>
+    <string name="problem_busy_hint">Close other apps that use the camera. OkuFlow tries again for a short time. If the picture does not return, choose the phone again in OkuFlow’s camera list.</string>
+    <string name="problem_blocked_title">Camera access is blocked</string>
+    <string name="problem_blocked_hint">Turn on camera access in privacy settings or quick settings. Then choose the phone again in OkuFlow’s camera list.</string>
+    <string name="problem_mode_title">This video mode is not available</string>
+    <string name="problem_mode_hint">Open Advanced settings and set resolution and frame rate to Automatic.</string>
+    <string name="problem_failed_title">The camera stopped</string>
+    <string name="problem_failed_hint">OkuFlow tries again for a short time. If the picture does not return, choose the phone again in OkuFlow’s camera list. If this keeps happening, restart the phone.</string>
+    <string name="problem_hot_title">The phone is too hot</string>
+    <string name="problem_service_title">The USB camera could not start</string>
+    <string name="problem_service_hint">Close OkuFlow Camera and open it again. If this keeps happening, restart the phone.</string>
+</resources>

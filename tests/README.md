@@ -1,5 +1,134 @@
 # OkuFlow Tests
 
+`phone_camera_contract` checks USB connection-type protobuf parsing without
+a Windows bus path, malformed lengths/varints, saved webcam/phone/lens-fallback
+selection and actual NV12 output from Windows H.264 and optional HEVC decoders.
+First-run selection prefers only a companion that answered its handshake;
+saved webcam and legacy numeric preferences still win. Android settings tests
+verify a new host session clears only the light. The transcription controller's
+disabled test also verifies recording audio is refused without a service/carrier
+session. Native main-window checks cover phone-light and Transcript tab ownership
+and off defaults; those GUI checks require the interactive desktop gate.
+The HEVC row explicitly skips only when the optional decoder probe fails;
+H.264 remains required.
+It uses no real camera, adb server or GUI. The original gray-scene fixture
+`data/phone-camera.h264` was generated locally with:
+
+```text
+ffmpeg -f lavfi -i color=c=gray:s=64x48:r=30 -frames:v 4 -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p -g 1 -bf 0 -x264-params aud=1:repeat-headers=1 -f h264 phone-camera.h264
+```
+
+The matching original HEVC fixture `data/phone-camera.hevc` was generated with:
+
+```text
+ffmpeg -f lavfi -i color=c=gray:s=64x48:r=30 -frames:v 4 -c:v libx265 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 1 -bf 0 -x265-params aud=1:repeat-headers=1:log-level=error -f hevc phone-camera.hevc
+```
+
+The generation tool is separately installed and is not a runtime/test dependency.
+The scene contains no third-party media. `python -B -m unittest discover -s
+android/tests -v` runs seven standard-library host-probe tests with a private
+fake adb server; it does not change the live server. Android JVM tests and lint
+run through `scripts/build_android.ps1 -Lint`. Actual phone images, thermal
+behavior, TalkBack and unplug/replug acceptance still need a USB phone.
+
+`annotation_key_routing_headless` covers active/inactive Draw key ownership and
+single owner delivery from owner/render/overlay inputs, including ignored keys,
+Ctrl zoom, auto-repeat metadata, press/release and hide/deactivation pairing,
+slider acceptance, inline editing, selected-ink precedence and missing targets.
+Actual offscreen Qt focus transfers check that untouched empty/whitespace
+entries close, typed text commits once and empty entries release owner navigation.
+Its main selects Qt's offscreen platform
+before constructing QApplication; it is safe in the desktop-restricted matrix.
+A test-only redispatch fence bounds the broken pre-fix loop. It verifies event
+routing, not Windows focus, screenshots or native overlay geometry.
+
+When the desktop is reserved, set `OKUFLOW_AGENT_EXCLUDE_GUI=1` before running
+`scripts/agent_build.bat`. It compiles the same release/CPU/CUDA matrix and
+excludes only tests labelled `gui`; its summary explicitly marks partial
+validation. Leave it unset for the full gate. A filtered pass does not verify
+native focus, layouts or auto-hide. Audit 49 removes only unused APIs and
+preserves the 17 test-only seams, including recording and CUDA observability.
+
+Audit-47 extends `recording_manager` with AAC packet-versus-PCM accounting,
+failed/stale statistics, bounded input duration/bytes, stereo alignment,
+200,000-block clock-drift sequences, and audio-only queue overflow. The latter
+fills the 512-block pre-worker queue without opening a camera or encoder;
+the separate writer admission limit is 128 outstanding blocks. Audio losses
+must not increase dropped-video totals.
+
+`media_writer_codecs_aac` now decodes each complete H.264/AV1 audio stream and
+checks PCM length and timestamps, rather than accepting audio headers alone.
+Invalid PCM layout, duration, timestamp arithmetic, and oversized buffers are
+rejected before submission. The opt-in `OKUFLOW_TEST_AAC_GAP_DIAGNOSTIC=1`
+branch retains a strict reproducer for the still-open playback-gap defect;
+it is expected to fail on the tested machine and is not part of the ordinary
+codec gate. See [review 47](../improvement_ideas/47-sequential-priority-fixes-2026-10-11.md)
+for results, exact scope, and the diagnostic command.
+
+Audit-46 adds deterministic encoder-statistics/admission and exact capture-loss
+accounting, including exact 64 MiB startup boundaries, payload-overflow rejection
+and failed oversized startup that creates no output file; saturated burst
+retirement; fallback preference retention; completed
+photo-library/legacy-staleness recovery; transcription failure tails; and current/
+stale history errors. CUDA fixtures cover opaque-alpha RGB/padding guards, soft
+hysteresis/jitter, exact composite alias parity, and automatic document
+sharpening skip/chain parity with mixed-scene preservation. Coalescer, translation and
+presenter-readback additions remain in GUI targets for serial desktop execution.
+Generated codec fixtures use bounded test-only admission retries; production
+does not wait for credit. See [review 46](../improvement_ideas/46-additional-opus-review-2026-10-11.md)
+for actual results and limitations.
+
+Audit-45 regressions extend the tracked release/CPU/CUDA matrix. See
+[the implementation checkpoint](../improvement_ideas/45-codebase-audit-2026-10-11.md)
+for actual passes, native focus failures, and deferred checks. A non-GUI subset
+does not replace the full release gate; decoded codec fixtures remain separate
+from camera/optics validation.
+
+- `recording_manager` constructs/shuts down the real null-button manager 256
+  times, checks active/next-session canvas selection, CPU ink snapshot/clear/
+  undo/pan with clean originals, and BGRA-to-NV12 layout/color/padding rejection.
+  It uses temporary user-data paths and no camera or encoder submission.
+- `media_writer_gpu_codecs` now exercises GPU → CPU red fallback → GPU in one
+  writer, decodes 90 frames, checks increasing timestamps and fallback color,
+  and retains AAC/finalization checks. Hardware absence retains the existing
+  skip behavior; a supported encoder failure is a failure, not a skip.
+  On native NV12 it also checks that the first source lease retires through
+  worker-only, flush-capable idle polling while its encoder sample remains pending, before any
+  next video/audio frame or Stop. Compatibility mode explicitly skips this
+  ownership assertion. This small-frame fixture does not validate large-mode
+  camera/driver support or reproduce the full presenter-pool pressure case.
+- `assistive_preparation` uses fixture runtime state and the fake Codex child
+  to cover mode-off/explicit cancellation, late preparation isolation, and
+  history replies after newer loads/answers. No provider request is submitted.
+  Preparation cancellation isolates TEMP/TMP before runtime construction so its
+  production stale-file sweep is confined to the fixture directory.
+- Capture regressions check requested retry identity after failed opens,
+  padded NV12 allocation/chroma, RGBA normalization, and invalid layouts.
+  Settings regressions cover physical identity serialization/migration and
+  injected credential deletion/settings failures with durable opaque ids.
+  They also cover the 16 MiB settings limit. That includes exact-limit and
+  one-byte-over files with CRLF counted, `Serialize` matching the bytes on
+  disk, a save at the limit round-tripping through the backup, and a refused
+  save leaving the primary and backup byte-identical. Oversized primaries fall
+  back to a valid backup or defaults and are preserved as `.too-large-*`, and
+  a 10,000-conversation capacity case fits. A growing file during the bounded
+  read is covered by construction only.
+- CUDA regressions cover recovery-keyframe ROI, rejected relative-motion
+  continuity, CLAHE edge behavior, and mean-only/full-statistics equivalence.
+  View-transform fixtures cover SuperRes containing/canonical crop geometry.
+  These assertions do not establish vendor fidelity or measured speed gains.
+  CLAHE keeps grayscale cases but reads their device-produced luma to avoid
+  host/CUDA fused-arithmetic bin-boundary disagreement; colored cases use an
+  independent host luma/bin crosscheck. Spatial interpolation remains independently
+  computed with a one-byte output tolerance and exact alpha/padding checks.
+- `pipeline_timing_percentiles` checks scene-only arrivals do not restart the
+  user-motion tail: a settled 30 FPS camera returns to a 33 ms interval while
+  interaction retains 8 ms scheduling on an injected 120 Hz display.
+- UI fixtures extend selection/scroll preservation, short Draw rail reachability,
+  bounded plain-text captions, rotated ink/edit history, and missing-voice
+  retention. Realtime fixtures retain Stop-window transcript deltas. Native
+  GUI tests remain serial in an interactive Windows desktop session.
+
 `ai_settings_dialog_interactions` exercises the production AI Settings dialog:
 clearing a placeholder API key retains the opaque credential id in its result,
 the Codex Explain prompt remains editable, switching to a server preserves
@@ -243,3 +372,16 @@ English/Turkish/German interface settings without translating source text, real
 prepared-image attachment, ephemeral read-only/no-network policy despite
 Advanced opt-ins, busy-request ownership, and full reading text in the overlay
 and notes. These checks require no account or external service.
+
+Audit-50 settings publication regressions cover read-only oversized/normal
+primaries, a read-only backup, an open primary that denies rename, actual
+commit refusal with retained current settings, and startup with a missing
+primary plus absent/valid/corrupt backup. They assert no temporary-file leak.
+Oversized-original rollback after a forced late commit error is verified
+separately through an ignored build of production copies. Controlled insertion
+of another writer's replacement primary verifies no-replace restoration;
+removing rollback makes the same original-preservation probe fail. Native
+disk-full, crash, concurrent-process and file-growth races are not simulated
+by the normal gate.
+Rotation checks 264 padded/changing frames byte-for-byte against independent
+forward scatter; the optimized allocation probe separately establishes reuse.

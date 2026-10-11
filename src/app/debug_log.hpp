@@ -12,7 +12,6 @@ void InstallIfConsoleAttached();
 bool SetOutputDirectory(const QString& directory, QString* error = nullptr);
 
 bool IsEnabled();
-QString CurrentPath();
 
 // Restores the prior Qt message handler and closes the current log.
 void Shutdown();

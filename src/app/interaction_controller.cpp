@@ -4,6 +4,7 @@
 
 #include "okuflow/app/app.hpp"
 #include "okuflow/app/constants.hpp"
+#include "okuflow/app/pipeline_orchestrator.hpp"
 #include "okuflow/ui/main_window.hpp"
 #include "okuflow/ui/ui_translation.hpp"
 
@@ -174,6 +175,9 @@ void InteractionController::ApplyZoom(float target, const QPointF* localPos) {
     } else {
         app_.SyncCurrentConfigToPersistence(true);
     }
+    // Slider signals are blocked above, so keyboard zoom must invalidate the
+    // cached scene explicitly even when no pointer focus is available.
+    app_.pipelineOrchestrator_->MarkViewportDirty();
     ScheduleZoomAnnouncement();
 }
 

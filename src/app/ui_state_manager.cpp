@@ -34,6 +34,7 @@ UIStateManager::UIStateManager(MainWindow& window, OkuFlowApp& app)
 
     OKUFLOW_BIND_WIDGET(renderWidget_, renderWidget);
     OKUFLOW_BIND_WIDGET(cameraCombo_, cameraCombo);
+    OKUFLOW_BIND_WIDGET(phoneLightButton_, phoneLightButton);
     OKUFLOW_BIND_WIDGET(microphoneCombo_, microphoneCombo);
     OKUFLOW_BIND_WIDGET(presetList_, presetList);
     OKUFLOW_BIND_WIDGET(presetDescriptionLabel_, presetDescriptionLabel);
@@ -135,14 +136,6 @@ UIStateManager::UIStateManager(MainWindow& window, OkuFlowApp& app)
     OKUFLOW_BIND_WIDGET(assistantDeleteButton_, assistantDeleteButton);
 
 #undef OKUFLOW_BIND_WIDGET
-}
-
-void UIStateManager::RunWithSignalsBlocked(
-    QObject* object, const std::function<void()>& operation) const
-{
-    Q_ASSERT(object);
-    const QSignalBlocker blocker(object);
-    operation();
 }
 
 QSignalBlocker UIStateManager::BlockSignals(QObject* object) const

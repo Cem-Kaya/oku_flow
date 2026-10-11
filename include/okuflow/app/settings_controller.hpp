@@ -3,15 +3,29 @@
 #include "okuflow/app/settings_store.hpp"
 
 #include <optional>
+#include <functional>
+#include <QStringList>
+#include "okuflow/app/protected_secret_store.hpp"
 
 namespace okuflow {
 
 class SettingsController {
 public:
+    struct StorageOperations {
+        std::function<ProtectedSecretResult(const QString&)> readSecret;
+        std::function<bool(const QString&, const QString&, QString*)> writeSecret;
+        std::function<bool(const QString&, QString*)> removeSecret;
+        std::function<bool(const QString&, const settings::PersistentSettings&)> saveSettings;
+    };
     explicit SettingsController(QString settingsPath = {});
+    SettingsController(QString settingsPath, StorageOperations storage);
 
     const settings::PersistentSettings& Settings() const noexcept;
     settings::PersistentSettings& MutableSettings() noexcept;
+
+    // Successful automatic starts initialize index-only legacy profiles once.
+    // An existing preferred device survives a temporary fallback.
+    bool InitializeLegacyCameraIdentity(int openedIndex, const QString& openedLink);
 
     settings::AdvancedConfig DecorateLiveConfig(
         settings::AdvancedConfig config) const;
@@ -30,8 +44,10 @@ public:
 private:
     void InitializeDefaults();
     void LoadProtectedSecrets();
-    bool PrepareProtectedSecrets(QString* credentialToRemove);
+    bool PrepareProtectedSecrets();
 
+    StorageOperations storage_;
+    QStringList pendingCredentialRemovals_;
     QString settingsPath_;
     settings::PersistentSettings settings_;
     QString startupNotice_;

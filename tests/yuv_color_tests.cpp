@@ -5,12 +5,64 @@
 
 #include <QtTest/QtTest>
 #include <wrl/client.h>
+#include <utility>
 
 class YuvColorTests : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase() { QVERIFY(SUCCEEDED(MFStartup(MF_VERSION))); }
     void cleanupTestCase() { QVERIFY(SUCCEEDED(MFShutdown())); }
+
+
+    void rotationPreservesPixelsAcrossFrames()
+    {
+        // Non-square, narrow and changing frames with padded source rows.
+        // Scatter the source coordinates independently of the production
+        // inverse lookup, and check all four bytes including non-opaque alpha.
+        okuflow::processing::CpuFramePipeline pipeline;
+        const std::pair<UINT, UINT> sizes[] = {{7, 3}, {1, 5}, {9, 2}, {2, 9}, {12, 8}, {3, 7}};
+        for (int pass = 0; pass < 4; ++pass) {
+            for (const auto& [width, height] : sizes) {
+                for (int requested : {0, 1, 2, 3, -1, -2, -3, 4, 5, -5, 11}) {
+                    const UINT stride = width * 4 + 8;
+                    std::vector<std::uint8_t> input(std::size_t(stride) * height, 0xee);
+                    std::vector<std::uint8_t> packed(std::size_t(width) * height * 4);
+                    for (UINT y = 0; y < height; ++y) {
+                        for (UINT x = 0; x < width; ++x) {
+                            for (UINT c = 0; c < 4; ++c) {
+                                const auto value = std::uint8_t((x * 17 + y * 29 + c * 43 + pass * 7) % 251);
+                                input[std::size_t(y) * stride + x * 4 + c] = value;
+                                packed[(std::size_t(y) * width + x) * 4 + c] = value;
+                            }
+                        }
+                    }
+                    QVERIFY(pipeline.ConvertFrameToBgra(input, MFVideoFormat_ARGB32,
+                        width, height, LONG(stride), input.size()));
+                    const int turns = ((requested % 4) + 4) % 4;
+                    const UINT outWidth = turns % 2 ? height : width;
+                    const UINT outHeight = turns % 2 ? width : height;
+                    std::vector<std::uint8_t> expected(packed.size());
+                    for (UINT y = 0; y < height; ++y) {
+                        for (UINT x = 0; x < width; ++x) {
+                            UINT dx = x, dy = y;
+                            if (turns == 1) { dx = height - 1 - y; dy = x; }
+                            if (turns == 2) { dx = width - 1 - x; dy = height - 1 - y; }
+                            if (turns == 3) { dx = y; dy = width - 1 - x; }
+                            for (UINT c = 0; c < 4; ++c) {
+                                expected[(std::size_t(dy) * outWidth + dx) * 4 + c] =
+                                    packed[(std::size_t(y) * width + x) * 4 + c];
+                            }
+                        }
+                    }
+                    UINT w = width, h = height;
+                    QCOMPARE(pipeline.RotateRawBuffer(requested, w, h), turns != 0);
+                    QCOMPARE(w, outWidth);
+                    QCOMPARE(h, outHeight);
+                    QVERIFY(pipeline.StageRaw() == expected);
+                }
+            }
+        }
+    }
 
     void metadataDefaultsAndExplicitValues()
     {

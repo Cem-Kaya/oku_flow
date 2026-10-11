@@ -454,10 +454,26 @@ private slots:
         controller.SetEnabled(true);
         QSignalSpy states(&controller, &TranscriptionSessionController::StateChanged);
         QSignalSpy finished(&controller, &TranscriptionSessionController::SessionFinished);
+        QSignalSpy segments(&controller, &TranscriptionSessionController::SegmentFinalized);
+        QSignalSpy gaps(&controller, &TranscriptionSessionController::GapDetected);
+        QStringList order;
+        connect(&controller, &TranscriptionSessionController::SegmentFinalized,
+                &controller, [&order]() { order.append(QStringLiteral("segment")); });
+        connect(&controller, &TranscriptionSessionController::SessionFinished,
+                &controller, [&order]() { order.append(QStringLiteral("finished")); });
         const quint64 generation = Negotiate(controller, service, carrier);
+        service.EmitDelta(generation, QStringLiteral("  retained fatal tail  "));
         service.EmitFailed(generation, QStringLiteral("account policy rejected"));
         QCOMPARE(controller.State(), TranscriptionState::Failed);
         QCOMPARE(finished.count(), 1);
+        QCOMPARE(segments.count(), 1);
+        QCOMPARE(segments.first().first().value<TranscriptSegment>().text,
+                 QStringLiteral("retained fatal tail"));
+        QCOMPARE(order, (QStringList{QStringLiteral("segment"), QStringLiteral("finished")}));
+        QCOMPARE(gaps.count(), 0); // Fatal failure ends; recovery alone inserts a gap.
+        service.EmitDone(generation, QStringLiteral("retained fatal tail"));
+        service.EmitDelta(generation, QStringLiteral("late fatal text"));
+        QCOMPARE(segments.count(), 1);
         // Teardown reached both sides.
         QVERIFY(!service.endGenerations.empty());
         QVERIFY(!carrier.stopGenerations.empty());
@@ -472,10 +488,21 @@ private slots:
         TranscriptionSessionController controller(&service, &carrier);
         controller.SetEnabled(true);
         QSignalSpy gaps(&controller, &TranscriptionSessionController::GapDetected);
+        QSignalSpy segments(&controller, &TranscriptionSessionController::SegmentFinalized);
+        QStringList order;
+        connect(&controller, &TranscriptionSessionController::SegmentFinalized,
+                &controller, [&order]() { order.append(QStringLiteral("segment")); });
+        connect(&controller, &TranscriptionSessionController::GapDetected,
+                &controller, [&order]() { order.append(QStringLiteral("gap")); });
         const quint64 firstGeneration = Negotiate(controller, service, carrier);
+        service.EmitDelta(firstGeneration, QStringLiteral("retained reconnect tail"));
         service.EmitFailed(firstGeneration, QStringLiteral("network connection lost"));
         QCOMPARE(controller.State(), TranscriptionState::Starting);
         QCOMPARE(gaps.count(), 1);
+        QCOMPARE(segments.count(), 1);
+        QCOMPARE(segments.first().first().value<TranscriptSegment>().text,
+                 QStringLiteral("retained reconnect tail"));
+        QCOMPARE(order, (QStringList{QStringLiteral("segment"), QStringLiteral("gap")}));
         QVERIFY(controller.TryEnqueueAudio(MakeFrame(960, 10000000LL)));
         QTRY_COMPARE_WITH_TIMEOUT(service.beginGenerations.size(), std::size_t(2), 2500);
         const quint64 recoveredGeneration = service.beginGenerations.back();
@@ -488,6 +515,38 @@ private slots:
         carrier.EmitChannelOpen(recoveredGeneration);
         service.EmitRealtimeStarted(recoveredGeneration);
         QCOMPARE(controller.State(), TranscriptionState::Listening);
+        service.EmitDone(firstGeneration, QStringLiteral("retained reconnect tail"));
+        service.EmitDone(firstGeneration, QStringLiteral("different stale final"));
+        QCOMPARE(segments.count(), 1);
+        service.EmitDone(recoveredGeneration, QStringLiteral("recovered phrase"));
+        QCOMPARE(segments.count(), 2);
+        QCOMPARE(segments.last().first().value<TranscriptSegment>().sequence, quint64(2));
+    }
+
+    void failureTailRemainsBounded_data()
+    {
+        QTest::addColumn<QString>("failure");
+        QTest::newRow("fatal") << QStringLiteral("account policy rejected");
+        QTest::newRow("transient") << QStringLiteral("network connection lost");
+    }
+
+    void failureTailRemainsBounded()
+    {
+        QFETCH(QString, failure);
+        FakeService service;
+        FakeCarrier carrier;
+        TranscriptionSessionController controller(&service, &carrier);
+        controller.SetEnabled(true);
+        QSignalSpy segments(&controller, &TranscriptionSessionController::SegmentFinalized);
+        const quint64 generation = Negotiate(controller, service, carrier);
+        service.EmitDelta(generation,
+                          QString(transcript_limits::kMaximumSegmentCharacters + 100, QLatin1Char('x')));
+        service.EmitFailed(generation, failure);
+        QCOMPARE(segments.count(), 1);
+        const TranscriptSegment segment = segments.first().first().value<TranscriptSegment>();
+        QCOMPARE(segment.text.size(), transcript_limits::kMaximumSegmentCharacters);
+        QVERIFY(segment.truncated);
+        controller.Cancel();
     }
 
     void finishForSessionMatchesOnlyCurrentRecording()
@@ -511,6 +570,12 @@ private slots:
         controller.StartSession(TestSession(), QStringLiteral("en"));
         QCOMPARE(service.beginGenerations.size(), std::size_t(0));
         QCOMPARE(controller.State(), TranscriptionState::Off);
+        QVERIFY(!controller.TryEnqueueAudio(MakeFrame(960, 10000000)));
+        controller.FinishInput();
+        QVERIFY(service.startGenerations.empty());
+        QVERIFY(service.stopGenerations.empty());
+        QVERIFY(carrier.prepareGenerations.empty());
+        QCOMPARE(carrier.sentBytes, qsizetype{0});
     }
 
     void unavailableOverridesEnabled()

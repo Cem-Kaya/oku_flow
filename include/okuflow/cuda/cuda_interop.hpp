@@ -233,12 +233,12 @@ public:
     bool IsFaulted() const { return streamFaulted_; }
     bool HasExternalSemaphore() const { return externalSemaphore_ != nullptr; }
 
-    void RunGradientDemoKernel(unsigned int width, unsigned int height, float timeSeconds);
 
     bool ProcessFrame(const ProcessingInput& input,
                       const ProcessingSettings& settings,
                       const FenceSyncParams& fenceSync);
     const std::string& LastError() const { return lastError_; }
+    bool LastFailureWasBusy() const { return uploadAdmissionBusy_; }
     bool LastFailureWasCaptureInterop() const {
         return captureInteropFailed_;
     }
@@ -265,7 +265,6 @@ public:
     // outputWidth/Height can occupy only the allocation's top-left rectangle.
     SuperResRoiMetadata SuperResRoi() const { return superResRoi_; }
     bool IsSuperResPerformanceLimited() const { return superResAutoDisabled_; }
-    float SuperResAverageMs() const { return superResLastAverageMs_; }
     void SetSuperResPerformanceOverride(bool enabled);
     void ResetSuperRes();
     // Releases per-camera imports only after a nonblocking copy-completion
@@ -494,6 +493,7 @@ private:
         bool uploadPending{};
     };
     std::array<PinnedUploadSlot, 3> pinnedUploadSlots_{};
+    bool uploadAdmissionBusy_{};
     size_t pinnedUploadCapacity_{};
     size_t pinnedUploadNextSlot_{};
 
@@ -559,6 +559,12 @@ private:
     cudaEvent_t superResStartEvent_{};
     cudaEvent_t superResStopEvent_{};
     bool superResTimingPending_{};
+    bool discardSuperResTiming_{};
+    unsigned int superResTimingSourceWidth_{};
+    unsigned int superResTimingSourceHeight_{};
+    unsigned int superResTimingOutputWidth_{};
+    unsigned int superResTimingOutputHeight_{};
+    float superResTimingStrength_{-1.0f};
     bool superResAutoDisabled_{};
     bool superResPerformanceOverride_{};
     // Setup/Load failures latch on the (source extent, factor) key so a broken
@@ -615,14 +621,13 @@ public:
     bool IsFaulted() const { return false; }
     bool HasExternalSemaphore() const { return false; }
 
-    void RunGradientDemoKernel(unsigned int /*width*/, unsigned int /*height*/, float /*timeSeconds*/) {}
-
     bool ProcessFrame(const ProcessingInput& /*input*/,
                       const ProcessingSettings& /*settings*/,
                       const FenceSyncParams& /*fenceSync*/) { return false; }
 
     const std::string& LastError() const { static std::string dummy; return dummy; }
     bool LastFailureWasCaptureInterop() const { return false; }
+    bool LastFailureWasBusy() const { return false; }
     void ResetTemporalHistory() {}
     void ResetStabilization() {}
     void ResetKeystone() {}
@@ -640,7 +645,6 @@ public:
     float SuperResFactor() const { return 0.0f; }
     SuperResRoiMetadata SuperResRoi() const { return {}; }
     bool IsSuperResPerformanceLimited() const { return false; }
-    float SuperResAverageMs() const { return -1.0f; }
     void SetSuperResPerformanceOverride(bool /*enabled*/) {}
     void ResetSuperRes() {}
     void ResetCaptureInterop(bool /*atProcessExit*/ = false) {}

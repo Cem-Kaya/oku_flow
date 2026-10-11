@@ -176,6 +176,7 @@ private:
     void StartNewAssistantConversation();
     void PopulateAssistantHistory();
     void LoadSelectedAssistantConversation();
+    void CancelAssistantHistoryLoad();
     void SetAssistantBusy(bool busy);
     void AppendAssistantMessage(const QString& speaker, const QString& text);
     void InitializePlatform();
@@ -192,6 +193,7 @@ private:
     void OnTranscriptionStateChanged(TranscriptionState state,
                                      const QString& status);
     void RefreshCameraFormats(size_t index);
+    void UpdatePhoneLightUi();
     bool StartCameraCapture(size_t index,
                             bool interactive = true,
                             bool forceCompatibility = false,
@@ -231,6 +233,7 @@ private:
     void HandleKeyboardZoom(float notches);
     void UpdateBlurUiLabels();
     void UpdateProcessingStatusLabel();
+    void UpdatePerformanceDiagnosticsLabel();
     void UpdateCameraPlaceholder();
     void UpdateKeystoneTrackingUi();
     void UpdateSpatialSharpenUi();
@@ -271,7 +274,6 @@ private:
     bool RunFrameTick(double elapsedSeconds);
     void PresentLatestCudaScene(bool newCameraFrame,
                                 CapturedFrame* originalFrame);
-    void InvalidateRecordingFramePairing();
     void HandleCudaProcessingFailure();
     bool HandlePresenterFault();
     void ResolveCudaBufferFormatFromOptions();
@@ -289,6 +291,7 @@ private:
     std::unique_ptr<UIStateManager> uiState_;
     std::unique_ptr<PipelineOrchestrator> pipelineOrchestrator_;
     QString currentAssistantThreadId_;
+    QString pendingAssistantHistoryThreadId_;
     QString pendingAssistantPrompt_;
     struct PendingAssistantFramePrompt {
         QString prompt;
@@ -357,6 +360,8 @@ private:
     int selectedCameraIndex_{-1};
     UINT processedFrameWidth_{};
     UINT processedFrameHeight_{};
+    // Per-attempt queue pressure; the previous scene remains presentable.
+    bool cudaSubmissionBusy_{};
 
     bool comInitialized_{};
     bool mfInitialized_{};

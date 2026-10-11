@@ -64,8 +64,6 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
 {
     auto rejectFrame = [this]() {
         stageRaw_.clear();
-        rawWidth_ = 0;
-        rawHeight_ = 0;
         return false;
     };
 
@@ -102,8 +100,6 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
             CopyArgbToBgra(
                 frame.data(), effectiveStride, width, height, stageRaw_);
         }
-        rawWidth_ = width;
-        rawHeight_ = height;
         return true;
     }
 
@@ -128,8 +124,6 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
             CopyRgbxToBgra(
                 frame.data(), effectiveStride, width, height, stageRaw_);
         }
-        rawWidth_ = width;
-        rawHeight_ = height;
         return true;
     }
 
@@ -142,8 +136,6 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
                                           nv12Stride,
                                           width, height, stageRaw_, color);
         if (ok) {
-            rawWidth_ = width;
-            rawHeight_ = height;
         } else {
             return rejectFrame();
         }
@@ -158,8 +150,6 @@ bool CpuFramePipeline::ConvertFrameToBgra(const std::vector<uint8_t>& frame,
         const bool ok = ConvertYuy2ToBgra(frame.data(), availableBytes,
                                           packedStride, width, height, stageRaw_, color);
         if (ok) {
-            rawWidth_ = width;
-            rawHeight_ = height;
         } else {
             return rejectFrame();
         }
@@ -190,7 +180,10 @@ bool CpuFramePipeline::RotateRawBuffer(int quarterTurns, UINT& width, UINT& heig
     const UINT srcHeight = height;
     const UINT dstWidth = (turns % 2 == 0) ? srcWidth : srcHeight;
     const UINT dstHeight = (turns % 2 == 0) ? srcHeight : srcWidth;
-    rotatedStageBuffer_.assign(static_cast<std::size_t>(dstWidth) * dstHeight * 4u, 0u);
+    // Every destination byte is overwritten. Keep both vector allocations
+    // between frames instead of zeroing a full frame and discarding the
+    // previous input allocation after each rotation.
+    rotatedStageBuffer_.resize(static_cast<std::size_t>(dstWidth) * dstHeight * 4u);
 
     const uint8_t* src = stageRaw_.data();
     uint8_t* dst = rotatedStageBuffer_.data();
@@ -229,12 +222,9 @@ bool CpuFramePipeline::RotateRawBuffer(int quarterTurns, UINT& width, UINT& heig
         }
     }
 
-    stageRaw_ = std::move(rotatedStageBuffer_);
-    rotatedStageBuffer_.clear();
+    stageRaw_.swap(rotatedStageBuffer_);
     width = dstWidth;
     height = dstHeight;
-    rawWidth_ = dstWidth;
-    rawHeight_ = dstHeight;
     return true;
 }
 
@@ -393,95 +383,6 @@ CpuPipelineOutput CpuFramePipeline::BuildStages(UINT width,
     output.height = displayHeight;
     output.isComposite = useComposite;
     return output;
-}
-
-bool CpuFramePipeline::ResampleToFill(UINT targetWidth,
-                                      UINT targetHeight,
-                                      float centerXNorm,
-                                      float centerYNorm)
-{
-    if (stageRaw_.empty() || rawWidth_ == 0 || rawHeight_ == 0 ||
-        targetWidth == 0 || targetHeight == 0) {
-        return false;
-    }
-
-    std::vector<uint8_t> destination(static_cast<std::size_t>(targetWidth) * targetHeight * 4u, 0u);
-
-    const float srcWidthF = static_cast<float>(rawWidth_);
-    const float srcHeightF = static_cast<float>(rawHeight_);
-    const float targetAspect = static_cast<float>(targetWidth) / static_cast<float>(targetHeight);
-    const float srcAspect = srcWidthF / srcHeightF;
-
-    float cropWidth = srcWidthF;
-    float cropHeight = srcHeightF;
-
-    if (targetAspect > srcAspect) {
-        cropHeight = srcWidthF / targetAspect;
-        cropHeight = std::min(cropHeight, srcHeightF);
-    } else {
-        cropWidth = srcHeightF * targetAspect;
-        cropWidth = std::min(cropWidth, srcWidthF);
-    }
-
-    cropWidth = std::clamp(cropWidth, 1.0f, srcWidthF);
-    cropHeight = std::clamp(cropHeight, 1.0f, srcHeightF);
-
-    float centerX = std::clamp(centerXNorm, 0.0f, 1.0f) * (srcWidthF - 1.0f);
-    float centerY = std::clamp(centerYNorm, 0.0f, 1.0f) * (srcHeightF - 1.0f);
-
-    const float halfCropWidth = cropWidth * 0.5f;
-    const float halfCropHeight = cropHeight * 0.5f;
-
-    const float minCenterX = std::max(0.0f, halfCropWidth - 0.5f);
-    const float maxCenterX = std::max(minCenterX, (srcWidthF - 1.0f) - (halfCropWidth - 0.5f));
-    const float minCenterY = std::max(0.0f, halfCropHeight - 0.5f);
-    const float maxCenterY = std::max(minCenterY, (srcHeightF - 1.0f) - (halfCropHeight - 0.5f));
-
-    if (minCenterX <= maxCenterX) {
-        centerX = std::clamp(centerX, minCenterX, maxCenterX);
-    } else {
-        centerX = (srcWidthF - 1.0f) * 0.5f;
-    }
-
-    if (minCenterY <= maxCenterY) {
-        centerY = std::clamp(centerY, minCenterY, maxCenterY);
-    } else {
-        centerY = (srcHeightF - 1.0f) * 0.5f;
-    }
-
-    float startX = centerX - halfCropWidth + 0.5f;
-    float startY = centerY - halfCropHeight + 0.5f;
-    startX = std::clamp(startX, 0.0f, srcWidthF - cropWidth);
-    startY = std::clamp(startY, 0.0f, srcHeightF - cropHeight);
-
-    const float stepX = cropWidth / static_cast<float>(targetWidth);
-    const float stepY = cropHeight / static_cast<float>(targetHeight);
-    const std::size_t srcStride = static_cast<std::size_t>(rawWidth_) * 4u;
-
-    for (UINT y = 0; y < targetHeight; ++y) {
-        const float sampleY = startY + static_cast<float>(y) * stepY;
-        int srcYIndex = static_cast<int>(std::lround(sampleY));
-        srcYIndex = std::clamp(srcYIndex, 0, static_cast<int>(rawHeight_) - 1);
-        const uint8_t* srcRow = stageRaw_.data() + static_cast<std::size_t>(srcYIndex) * srcStride;
-        uint8_t* dstRow = destination.data() + static_cast<std::size_t>(y) * targetWidth * 4u;
-
-        for (UINT x = 0; x < targetWidth; ++x) {
-            const float sampleX = startX + static_cast<float>(x) * stepX;
-            int srcXIndex = static_cast<int>(std::lround(sampleX));
-            srcXIndex = std::clamp(srcXIndex, 0, static_cast<int>(rawWidth_) - 1);
-            const uint8_t* srcPixel = srcRow + static_cast<std::size_t>(srcXIndex) * 4u;
-            uint8_t* dstPixel = dstRow + static_cast<std::size_t>(x) * 4u;
-            dstPixel[0] = srcPixel[0];
-            dstPixel[1] = srcPixel[1];
-            dstPixel[2] = srcPixel[2];
-            dstPixel[3] = srcPixel[3];
-        }
-    }
-
-    stageRaw_.swap(destination);
-    rawWidth_ = targetWidth;
-    rawHeight_ = targetHeight;
-    return true;
 }
 
 void CpuFramePipeline::ResetTemporalHistory()

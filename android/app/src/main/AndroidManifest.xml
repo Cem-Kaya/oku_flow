@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OkuFlow Camera deliberately declares no INTERNET permission: the camera
+  stream only leaves the phone through the USB debugging (adb) tunnel to the
+  OkuFlow Windows app. See improvement_ideas/51-okuflow-camera-android.md.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="true" />
+
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.OkuFlowCamera">
+
+        <service android:name=".camera.CameraStreamService"
+            android:exported="false" android:foregroundServiceType="camera" />
+
+        <!--
+          singleTask: the OkuFlow Windows app starts this activity over adb
+          (`am start -n com.okuflow.camera/.MainActivity`); repeated starts
+          must reuse the running instance instead of stacking new ones.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

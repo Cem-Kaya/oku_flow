@@ -7,8 +7,11 @@
 #include <QAccessibleAnnouncementEvent>
 #include <QButtonGroup>
 #include <QCoreApplication>
+#include <QScopedValueRollback>
 #include <QEvent>
 #include <QFrame>
+#include <QFocusEvent>
+#include <QHideEvent>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QIcon>
@@ -22,6 +25,8 @@
 #include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -222,7 +227,20 @@ void AnnotationOverlay::BuildToolbar()
     toolbar_->setObjectName(QStringLiteral("annotationToolbar"));
     toolbar_->setAttribute(Qt::WA_StyledBackground, true);
     toolbar_->setStyleSheet(chromeStyle);
-    auto* toolLayout = new QVBoxLayout(toolbar_);
+    auto makeRail = [](QFrame* frame) {
+        auto* outer = new QVBoxLayout(frame);
+        outer->setContentsMargins(0, 0, 0, 0);
+        auto* scroll = new QScrollArea(frame);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setWidgetResizable(true);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        auto* content = new QWidget();
+        scroll->setWidget(content);
+        outer->addWidget(scroll);
+        frame->setFixedWidth(98 + scroll->verticalScrollBar()->sizeHint().width());
+        return new QVBoxLayout(content);
+    };
+    auto* toolLayout = makeRail(toolbar_);
     toolLayout->setContentsMargins(7, 7, 7, 7);
     toolLayout->setSpacing(5);
 
@@ -354,6 +372,7 @@ void AnnotationOverlay::BuildToolbar()
 
     textInput_ = new QLineEdit(this);
     textInput_->setObjectName(QStringLiteral("annotationInlineTextEditor"));
+    textInput_->installEventFilter(this);
     textInput_->setPlaceholderText(QStringLiteral("Type text, then press Enter"));
     textInput_->setClearButtonEnabled(true);
     textInput_->setStyleSheet(chromeStyle);
@@ -364,7 +383,7 @@ void AnnotationOverlay::BuildToolbar()
     actionToolbar_->setObjectName(QStringLiteral("annotationActions"));
     actionToolbar_->setAttribute(Qt::WA_StyledBackground, true);
     actionToolbar_->setStyleSheet(chromeStyle);
-    auto* actionLayout = new QVBoxLayout(actionToolbar_);
+    auto* actionLayout = makeRail(actionToolbar_);
     actionLayout->setContentsMargins(7, 7, 7, 7);
     actionLayout->setSpacing(5);
     auto makeAction = [actionLayout](const QString& text,
@@ -532,6 +551,7 @@ void AnnotationOverlay::SetActive(bool active)
         setFocus(Qt::OtherFocusReason);
         Announce(QStringLiteral("Annotation mode on. Pen tool."));
     } else {
+        ReleaseForwardedPanKeys();
         CancelPendingText();
         forwardingMiddleDrag_ = false;
         pointerDragging_ = false;
@@ -572,11 +592,6 @@ void AnnotationOverlay::SetViewTransform(const ViewTransform& transform)
     transform_ = transform;
     PositionTextEditor();
     update();
-}
-
-ViewTransform AnnotationOverlay::CurrentViewTransform() const noexcept
-{
-    return transform_;
 }
 
 void AnnotationOverlay::SetPreferences(const QColor& color,
@@ -628,8 +643,6 @@ QString AnnotationOverlay::ShapeKind() const
                : QStringLiteral("rectangle");
 }
 int AnnotationOverlay::TextSizePixels() const noexcept { return textSizePixels_; }
-AnnotationTool AnnotationOverlay::CurrentTool() const noexcept { return tool_; }
-
 QVector<QWidget*> AnnotationOverlay::FocusTargets() const
 {
     QVector<QWidget*> targets{
@@ -707,8 +720,25 @@ bool AnnotationOverlay::CommitPendingText()
     return true;
 }
 
+bool AnnotationOverlay::event(QEvent* event)
+{
+    if (event->type() == QEvent::WindowDeactivate) {
+        ReleaseForwardedPanKeys();
+    }
+    return QWidget::event(event);
+}
+
 bool AnnotationOverlay::eventFilter(QObject* watched, QEvent* event)
 {
+    if (event->type() == QEvent::FocusOut) {
+        ReleaseForwardedPanKeys();
+        // QLineEdit does not emit editingFinished for an untouched empty
+        // editor. Retire that pending entry as well as committing typed text
+        // when actual focus leaves, so it cannot keep consuming camera keys.
+        if (watched == textInput_ && pendingTextScenePoint_ && !committingText_) {
+            CommitPendingText();
+        }
+    }
     if (watched == excludedWidget_) {
         if (event->type() == QEvent::Move || event->type() == QEvent::Resize ||
             event->type() == QEvent::Show || event->type() == QEvent::Hide ||
@@ -723,16 +753,26 @@ bool AnnotationOverlay::eventFilter(QObject* watched, QEvent* event)
         event->accept();
         return true;
     }
-    if (event->type() == QEvent::KeyPress) {
+    if (active_ && isVisible() && !forwardingKey_ &&
+        event->type() == QEvent::KeyPress) {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
         if (watched == textInput_ && keyEvent->key() != Qt::Key_Escape) {
             return QWidget::eventFilter(watched, event);
         }
         if (qobject_cast<QWidget*>(watched)) {
+            const bool originallyAccepted = keyEvent->isAccepted();
+            // An ignored filtered key continues along its original QWidget
+            // route. Sending it to the owner here would deliver it twice or
+            // recursively enter this filter before sendEvent can return.
+            const QScopedValueRollback<bool> filtering(filteringKey_, true);
             keyPressEvent(keyEvent);
             if (keyEvent->isAccepted()) {
                 return true;
             }
+            // Native controls such as QSlider rely on the incoming accepted
+            // state when they handle a key; do not force their handled key
+            // to propagate to the camera as well.
+            keyEvent->setAccepted(originallyAccepted);
         }
     }
     auto* geometryWidget = qobject_cast<QWidget*>(watched);
@@ -823,6 +863,18 @@ void AnnotationOverlay::changeEvent(QEvent* event)
     }
 }
 
+void AnnotationOverlay::hideEvent(QHideEvent* event)
+{
+    ReleaseForwardedPanKeys();
+    QWidget::hideEvent(event);
+}
+
+void AnnotationOverlay::focusOutEvent(QFocusEvent* event)
+{
+    ReleaseForwardedPanKeys();
+    QWidget::focusOutEvent(event);
+}
+
 void AnnotationOverlay::SyncGeometryToRenderTarget()
 {
     if (!renderTarget_) {
@@ -882,13 +934,26 @@ bool AnnotationOverlay::IsExcluded(const QPoint& position) const
                .contains(mapToGlobal(position));
 }
 
+void AnnotationOverlay::RotateClockwise(int quarterTurns)
+{
+    CancelPendingText();
+    pointerDragging_ = false;
+    scalingSelection_ = false;
+    marqueeSelecting_ = false;
+    marqueeRectView_ = {};
+    model_.EndStroke();
+    model_.EndMoveSelection();
+    model_.EndScaleSelection();
+    model_.RotateClockwise(quarterTurns);
+    UpdateUndoButtons();
+    update();
+}
+
 void AnnotationOverlay::PositionToolbar()
 {
     if (!toolbar_ || !optionsPanel_ || !actionToolbar_) {
         return;
     }
-    toolbar_->adjustSize();
-    actionToolbar_->adjustSize();
     int safeTop = 8;
     int safeBottom = height() - 8;
     if (QWidget* owner = parentWidget()) {
@@ -915,6 +980,11 @@ void AnnotationOverlay::PositionToolbar()
         }
     }
     const int safeHeight = std::max(1, safeBottom - safeTop);
+    for (QFrame* rail : {toolbar_, actionToolbar_}) {
+        if (auto* scroll = rail->findChild<QScrollArea*>()) {
+            rail->setFixedHeight(std::min(safeHeight, scroll->widget()->sizeHint().height()));
+        }
+    }
     const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
     toolbar_->move(
         rightToLeft ? std::max(0, width() - toolbar_->width()) : 0,
@@ -966,7 +1036,7 @@ void AnnotationOverlay::PositionToolbar()
     if (tool_ == AnnotationTool::kText) activeButton = textButton_;
     if (tool_ == AnnotationTool::kEraser) activeButton = eraserButton_;
     const int optionsY = std::clamp(
-        toolbar_->y() + activeButton->geometry().top(),
+        activeButton->mapTo(this, QPoint()).y(),
         safeTop,
         std::max(safeTop, safeBottom - optionsPanel_->height()));
     const int optionsX =
@@ -1494,7 +1564,7 @@ void AnnotationOverlay::wheelEvent(QWheelEvent* event)
 bool AnnotationOverlay::ForwardKeyToOwner(QKeyEvent* event)
 {
     QWidget* owner = parentWidget();
-    if (!owner) {
+    if (!owner || filteringKey_ || forwardingKey_) {
         return false;
     }
     QKeyEvent forwarded(event->type(),
@@ -1503,12 +1573,43 @@ bool AnnotationOverlay::ForwardKeyToOwner(QKeyEvent* event)
                         event->text(),
                         event->isAutoRepeat(),
                         event->count());
+    forwarded.ignore();
+    const QScopedValueRollback<bool> forwarding(forwardingKey_, true);
     QCoreApplication::sendEvent(owner, &forwarded);
+    if (event->type() == QEvent::KeyPress && forwarded.isAccepted() &&
+        (event->key() == Qt::Key_Left || event->key() == Qt::Key_Right ||
+         event->key() == Qt::Key_Up || event->key() == Qt::Key_Down)) {
+        forwardedPanKeys_.insert(event->key());
+    }
     return forwarded.isAccepted();
+}
+
+void AnnotationOverlay::ReleaseForwardedPanKeys()
+{
+    // The OS release may go to a different Tool window after hide/focus loss.
+    // Remove held state before delivery so nested focus/hide events cannot
+    // release it twice.
+    const QSet<int> held = std::move(forwardedPanKeys_);
+    forwardedPanKeys_.clear();
+    for (int key : held) {
+        QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier);
+        ForwardKeyToOwner(&release);
+    }
 }
 
 void AnnotationOverlay::keyPressEvent(QKeyEvent* event)
 {
+    if (!active_ || !isVisible()) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+    // QLineEdit ignores some navigation keys (e.g. Up/Down); keep those
+    // bubbled keys local while editing instead of panning or changing tools.
+    // Escape still cancels the pending entry below.
+    if (pendingTextScenePoint_ && event->key() != Qt::Key_Escape) {
+        event->accept();
+        return;
+    }
     const bool control = event->modifiers() & Qt::ControlModifier;
     const bool shift = event->modifiers() & Qt::ShiftModifier;
     if (control && event->key() == Qt::Key_Z) {
@@ -1544,10 +1645,8 @@ void AnnotationOverlay::keyPressEvent(QKeyEvent* event)
             event->accept();
             return;
         }
-        if (ForwardKeyToOwner(event)) {
-            event->accept();
-            return;
-        }
+        event->setAccepted(ForwardKeyToOwner(event));
+        return;
     }
     if (!control) {
         if (event->key() == Qt::Key_P) penButton_->click();
@@ -1601,10 +1700,8 @@ not_a_tool_shortcut:
             event->accept();
             return;
         }
-        if (ForwardKeyToOwner(event)) {
-            event->accept();
-            return;
-        }
+        event->setAccepted(ForwardKeyToOwner(event));
+        return;
     }
     if (!model_.selectedStrokeId() &&
         (event->key() == Qt::Key_PageUp ||
@@ -1612,12 +1709,27 @@ not_a_tool_shortcut:
          event->key() == Qt::Key_Plus ||
          event->key() == Qt::Key_Equal ||
          event->key() == Qt::Key_Minus)) {
-        if (ForwardKeyToOwner(event)) {
+        event->setAccepted(ForwardKeyToOwner(event));
+        return;
+    }
+    QWidget::keyPressEvent(event);
+}
+
+void AnnotationOverlay::keyReleaseEvent(QKeyEvent* event)
+{
+    // This Tool window does not naturally propagate releases to its owner.
+    // Retire only arrows actually forwarded, regardless of current selection.
+    // Auto-repeat releases must not end a physical hold.
+    if (forwardedPanKeys_.contains(event->key())) {
+        if (event->isAutoRepeat()) {
             event->accept();
             return;
         }
+        forwardedPanKeys_.remove(event->key());
+        event->setAccepted(ForwardKeyToOwner(event));
+        return;
     }
-    QWidget::keyPressEvent(event);
+    QWidget::keyReleaseEvent(event);
 }
 
 void AnnotationOverlay::SetTool(AnnotationTool tool)

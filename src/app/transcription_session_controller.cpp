@@ -75,7 +75,7 @@ TranscriptionSessionController::TranscriptionSessionController(
                         return;
                     }
                     // Keep one bounded current-turn copy for local tail
-                    // preservation at clean close. The visible partial is a
+                    // preservation at close or failure. The visible partial is a
                     // shorter rolling tail, so long unfinalized turns cannot
                     // make the overlay grow without bound.
                     const qsizetype pendingAvailable =
@@ -413,6 +413,9 @@ void TranscriptionSessionController::EnterListeningIfNegotiated()
 void TranscriptionSessionController::FailWith(const QString& message)
 {
     const QString endedSessionId = session_.id;
+    // Retain words already received even when no server final can arrive.
+    // The reducer consumes the pending tail before teardown clears it.
+    FinalizeTranscriptText(pendingTranscriptText_, pendingTranscriptTruncated_);
     TearDownSession();
     SetState(TranscriptionState::Failed, message);
     emit SessionFinished(endedSessionId);
@@ -444,6 +447,9 @@ bool TranscriptionSessionController::RecoverIfTransient(const QString& message)
 void TranscriptionSessionController::BeginRecovery()
 {
     const QString sessionId = session_.id;
+    // Preserve this generation's tail before the reconnect gap. A late final
+    // for the retired generation cannot replay it into the recovered session.
+    FinalizeTranscriptText(pendingTranscriptText_, pendingTranscriptTruncated_);
     TearDownSession();
     ++recoveryAttempts_;
     ++generation_;

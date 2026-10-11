@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
+#include <QUuid>
 
 #include <utility>
 
@@ -18,26 +19,65 @@ QString MakeCustomEntityId(const QString& prefix)
         .arg(QDateTime::currentMSecsSinceEpoch());
 }
 
+// Save reports only success; the size limit is the one refusal with a
+// user-actionable cause, so name it rather than a generic I/O failure.
+bool ExceedsSettingsLimit(const settings::PersistentSettings& value)
+{
+    return settings::Serialize(value).size() > settings::kMaxSettingsFileBytes;
+}
+
+QString SettingsLimitMessage()
+{
+    return QStringLiteral("Settings would exceed the %1 MiB settings file limit. "
+                          "Delete old Assistant conversations to reduce them.")
+        .arg(settings::kMaxSettingsFileBytes / (1024 * 1024));
+}
+
 } // namespace
 
 SettingsController::SettingsController(QString settingsPath)
-    : settingsPath_(settingsPath.trimmed().isEmpty()
+    : SettingsController(std::move(settingsPath), StorageOperations{})
+{
+}
+
+SettingsController::SettingsController(QString settingsPath, StorageOperations storage)
+    : storage_(std::move(storage))
+    , settingsPath_(settingsPath.trimmed().isEmpty()
                         ? settings::ResolveSettingsPath()
                         : std::move(settingsPath))
 {
+    if (!storage_.readSecret) storage_.readSecret = ProtectedSecretStore::Read;
+    if (!storage_.writeSecret) storage_.writeSecret = ProtectedSecretStore::Write;
+    if (!storage_.removeSecret) storage_.removeSecret = ProtectedSecretStore::Remove;
+    if (!storage_.saveSettings) storage_.saveSettings = settings::Save;
     bool restoreBackupAfterSecretLoad = false;
     bool rewriteMigratedSettings = false;
+    const QString backupPath = settingsPath_ + QStringLiteral(".backup");
     const settings::LoadResult primary = settings::LoadDetailed(settingsPath_);
     if (primary.status == settings::LoadStatus::Loaded && primary.settings) {
         settings_ = *primary.settings;
         rewriteMigratedSettings = primary.migrationApplied;
     } else if (primary.status == settings::LoadStatus::Missing) {
-        InitializeDefaults();
+        // First run has no backup. A backup without its primary means an
+        // interrupted save or recovery write-back; keep those settings rather
+        // than silently starting from defaults.
+        const settings::LoadResult backup = settings::LoadDetailed(backupPath);
+        if (backup.status == settings::LoadStatus::Loaded && backup.settings) {
+            settings_ = *backup.settings;
+            restoreBackupAfterSecretLoad = true;
+            rewriteMigratedSettings = backup.migrationApplied;
+            startupNotice_ = QStringLiteral(
+                "The settings file was missing. Recovered the last valid settings backup.");
+        } else {
+            InitializeDefaults();
+        }
     } else {
         const QString suffix =
             primary.status == settings::LoadStatus::UnsupportedVersion
                 ? QStringLiteral(".unsupported-")
-                : QStringLiteral(".corrupt-");
+                : primary.status == settings::LoadStatus::TooLarge
+                      ? QStringLiteral(".too-large-")
+                      : QStringLiteral(".corrupt-");
         const QString preservedPath =
             settingsPath_ + suffix +
             QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmsszzz"));
@@ -46,7 +86,6 @@ SettingsController::SettingsController(QString settingsPath)
             preserved = QFile::copy(settingsPath_, preservedPath);
         }
 
-        const QString backupPath = settingsPath_ + QStringLiteral(".backup");
         const settings::LoadResult backup = settings::LoadDetailed(backupPath);
         if (backup.status == settings::LoadStatus::Loaded && backup.settings) {
             settings_ = *backup.settings;
@@ -69,12 +108,16 @@ SettingsController::SettingsController(QString settingsPath)
         }
     }
 
+    pendingCredentialRemovals_ = settings_.assistive.pendingCredentialRemovals;
     LoadProtectedSecrets();
     if ((restoreBackupAfterSecretLoad || rewriteMigratedSettings) &&
-        !settings::Save(settingsPath_, settings_)) {
+        !storage_.saveSettings(settingsPath_, settings_)) {
         startupNotice_ +=
             (startupNotice_.isEmpty() ? QString() : QStringLiteral(" ")) +
             QStringLiteral("The recovered or migrated settings could not be written back to disk.");
+        if (ExceedsSettingsLimit(settings_)) {
+            startupNotice_ += QStringLiteral(" ") + SettingsLimitMessage();
+        }
     }
 }
 
@@ -88,6 +131,17 @@ void SettingsController::InitializeDefaults()
     }
 }
 
+bool SettingsController::InitializeLegacyCameraIdentity(
+    int openedIndex, const QString& openedLink)
+{
+    if (!settings_.cameraSymbolicLink.isEmpty() || openedIndex < 0 || openedLink.isEmpty()) {
+        return false;
+    }
+    settings_.cameraIndex = openedIndex;
+    settings_.cameraSymbolicLink = openedLink;
+    return true;
+}
+
 void SettingsController::LoadProtectedSecrets()
 {
     auto& assistive = settings_.assistive;
@@ -95,7 +149,7 @@ void SettingsController::LoadProtectedSecrets()
         return;
     }
     const ProtectedSecretResult secret =
-        ProtectedSecretStore::Read(assistive.vlmCredentialId);
+        storage_.readSecret(assistive.vlmCredentialId);
     switch (secret.status) {
     case ProtectedSecretResult::Status::Found:
         assistive.vlmApiKey = secret.value;
@@ -225,27 +279,49 @@ bool SettingsController::Save(const settings::AdvancedConfig& current)
 {
     lastError_.clear();
     settings_.currentConfig = DecorateLiveConfig(current);
-    QString credentialToRemove;
-    if (!PrepareProtectedSecrets(&credentialToRemove)) {
+    if (!PrepareProtectedSecrets()) {
         return false;
     }
-    if (!settings::Save(settingsPath_, settings_)) {
-        lastError_ =
-            QStringLiteral("OkuFlow could not save settings. The previous settings file "
-                           "and its backup were left intact.");
+    auto persisted = settings_;
+    persisted.assistive.pendingCredentialRemovals = pendingCredentialRemovals_;
+    if (pendingCredentialRemovals_.contains(persisted.assistive.vlmCredentialId.trimmed())) {
+        persisted.assistive.vlmCredentialId.clear();
+    }
+    if (!storage_.saveSettings(settingsPath_, persisted)) {
+        // A late commit failure can leave the backup rotated to the current
+        // primary, so do not promise that both generations are unchanged.
+        lastError_ = QStringLiteral("OkuFlow could not save settings.");
+        if (ExceedsSettingsLimit(persisted)) {
+            lastError_ += QStringLiteral(" ") + SettingsLimitMessage();
+        } else {
+            lastError_ += QStringLiteral(
+                " Check that the settings folder is writable and try again.");
+        }
         return false;
     }
-    if (!credentialToRemove.isEmpty()) {
+    settings_.assistive.vlmCredentialId = persisted.assistive.vlmCredentialId;
+    settings_.assistive.pendingCredentialRemovals = pendingCredentialRemovals_;
+    for (const QString& credentialToRemove : pendingCredentialRemovals_) {
         QString removeError;
-        if (!ProtectedSecretStore::Remove(credentialToRemove, &removeError)) {
+        if (!storage_.removeSecret(credentialToRemove, &removeError)) {
             lastError_ = removeError;
             return false;
         }
+
+    }
+    if (!pendingCredentialRemovals_.isEmpty()) {
+        persisted.assistive.pendingCredentialRemovals.clear();
+        if (!storage_.saveSettings(settingsPath_, persisted)) {
+            lastError_ = QStringLiteral("Credential deletion completed, but its settings cleanup could not be saved. It will be retried.");
+            return false;
+        }
+        pendingCredentialRemovals_.clear();
+        settings_.assistive.pendingCredentialRemovals.clear();
     }
     return true;
 }
 
-bool SettingsController::PrepareProtectedSecrets(QString* credentialToRemove)
+bool SettingsController::PrepareProtectedSecrets()
 {
     auto& assistive = settings_.assistive;
     if (protectedSecretReadFailed_ && assistive.vlmApiKey.isEmpty()) {
@@ -260,8 +336,16 @@ bool SettingsController::PrepareProtectedSecrets(QString* credentialToRemove)
             assistive.vlmCredentialId =
                 ProtectedSecretStore::DefaultVlmCredentialId();
         }
+        if (pendingCredentialRemovals_.contains(assistive.vlmCredentialId.trimmed())) {
+            // A durable tombstone must never identify a newly written key:
+            // settings publication may fail and a later process will still
+            // execute the old deletion intent from disk.
+            assistive.vlmCredentialId =
+                ProtectedSecretStore::DefaultVlmCredentialId() + QLatin1Char('/') +
+                QUuid::createUuid().toString(QUuid::WithoutBraces);
+        }
         QString error;
-        if (!ProtectedSecretStore::Write(assistive.vlmCredentialId,
+        if (!storage_.writeSecret(assistive.vlmCredentialId,
                                          assistive.vlmApiKey,
                                          &error)) {
             lastError_ = error;
@@ -272,10 +356,10 @@ bool SettingsController::PrepareProtectedSecrets(QString* credentialToRemove)
     }
 
     if (!assistive.vlmCredentialId.trimmed().isEmpty()) {
-        if (credentialToRemove) {
-            *credentialToRemove = assistive.vlmCredentialId.trimmed();
+        const QString credentialId = assistive.vlmCredentialId.trimmed();
+        if (!pendingCredentialRemovals_.contains(credentialId)) {
+            pendingCredentialRemovals_.append(credentialId);
         }
-        assistive.vlmCredentialId.clear();
     }
     return true;
 }

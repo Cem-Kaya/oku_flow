@@ -9,17 +9,185 @@
 #include <dxgi1_6.h>
 
 #include <wrl/client.h>
-#include <wrl/implements.h>
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace okuflow {
+
+bool RecordingEncoderBacklog::CanStart(std::uint64_t sampleBytes,
+                                       std::uint64_t sampleLimit,
+                                       std::uint64_t byteLimit)
+{
+    return sampleLimit >= 2 && sampleBytes > 0 && sampleBytes <= byteLimit / 2;
+}
+
+void RecordingEncoderBacklog::Reset()
+{
+    encodedSamples_ = 0;
+    queuedBytes_ = 0;
+    largestSampleBytes_ = 0;
+    statisticsConfirmed_ = false;
+}
+
+bool RecordingEncoderBacklog::CanAccept(
+    const MF_SINK_WRITER_STATISTICS* statistics,
+    std::uint64_t submittedSamples,
+    std::uint64_t pendingSamples,
+    std::uint64_t sampleBytes)
+{
+    // Encoded is encoder output, whereas Processed only means delivery to the
+    // media sink. Use neither sink delivery nor a failed query as retirement.
+    // Restrict this policy to AV1/H.264 video: AAC packet counts need not have
+    // a one-input-block/one-output-sample relationship.
+    statisticsConfirmed_ = statistics &&
+        statistics->qwNumSamplesEncoded <= statistics->qwNumSamplesReceived &&
+        statistics->qwNumSamplesReceived <= submittedSamples &&
+        statistics->qwNumSamplesEncoded >= encodedSamples_;
+    if (statisticsConfirmed_) {
+        encodedSamples_ = statistics->qwNumSamplesEncoded;
+        queuedBytes_ = statistics->dwByteCountQueued;
+    }
+    largestSampleBytes_ = std::max(largestSampleBytes_, sampleBytes);
+    if (!CanStart(largestSampleBytes_, sampleLimit_, byteLimit_) ||
+        submittedSamples < encodedSamples_ ||
+        pendingSamples >= sampleLimit_) {
+        return false;
+    }
+    const std::uint64_t outstanding = submittedSamples - encodedSamples_;
+    const std::uint64_t additional = pendingSamples + 1; // includes arrival
+    if (outstanding > sampleLimit_ - additional ||
+        outstanding > byteLimit_ / largestSampleBytes_ ||
+        additional > byteLimit_ / largestSampleBytes_) {
+        return false;
+    }
+    const std::uint64_t retainedBytes = std::max(
+        queuedBytes_, outstanding * largestSampleBytes_);
+    return retainedBytes <= byteLimit_ - additional * largestSampleBytes_;
+}
+
+void RecordingAudioBacklog::Reset(std::uint64_t bytesPerPcmFrame)
+{
+    blocks_.clear();
+    submittedBlocks_ = encodedPackets_ = outstandingBytes_ = queuedBytes_ = 0;
+    outstandingDuration100ns_ = 0;
+    bytesPerPcmFrame_ = bytesPerPcmFrame;
+    submittedPcmFrames_ = 0;
+    statisticsConfirmed_ = false;
+}
+
+bool RecordingAudioBacklog::Fits(std::int64_t time, std::int64_t duration,
+                                 std::uint64_t bytes) const
+{
+    return time >= 0 && duration > 0 && bytesPerPcmFrame_ > 0 &&
+        duration <= durationLimit100ns_ &&
+        time <= std::numeric_limits<std::int64_t>::max() - duration &&
+        bytes > 0 && bytes % bytesPerPcmFrame_ == 0 && bytes <= byteLimit_ &&
+        bytes / bytesPerPcmFrame_ <=
+            std::numeric_limits<std::uint64_t>::max() - submittedPcmFrames_ &&
+        blocks_.size() < blockLimit_ &&
+        outstandingDuration100ns_ <= durationLimit100ns_ - duration &&
+        std::max(outstandingBytes_, queuedBytes_) <= byteLimit_ - bytes;
+}
+
+bool RecordingAudioBacklog::CanAccept(
+    const MF_SINK_WRITER_STATISTICS* statistics,
+    std::int64_t sampleTime100ns, std::int64_t duration100ns,
+    std::uint64_t bytes)
+{
+    constexpr std::uint64_t pcmFramesPerPacket = 1024;
+    constexpr std::uint64_t retainedPackets = 2;
+    const std::uint64_t possiblePackets = submittedPcmFrames_ / pcmFramesPerPacket +
+        (submittedPcmFrames_ % pcmFramesPerPacket != 0);
+    statisticsConfirmed_ = statistics &&
+        statistics->qwNumSamplesReceived <= submittedBlocks_ &&
+        statistics->qwNumSamplesEncoded >= encodedPackets_ &&
+        statistics->qwNumSamplesEncoded <= possiblePackets + retainedPackets;
+    if (statisticsConfirmed_) {
+        const bool outputAdvanced = statistics->qwNumSamplesEncoded > encodedPackets_;
+        encodedPackets_ = statistics->qwNumSamplesEncoded;
+        queuedBytes_ = statistics->dwByteCountQueued;
+        // Use the documented 1024-frame raw LC AAC output contract, not
+        // input-block count or the microphone/encoder timestamp domains.
+        const std::uint64_t packets = encodedPackets_ > retainedPackets
+            ? encodedPackets_ - retainedPackets : 0;
+        const std::uint64_t retiredFrames = packets >
+            std::numeric_limits<std::uint64_t>::max() / pcmFramesPerPacket
+            ? submittedPcmFrames_
+            : std::min(submittedPcmFrames_, packets * pcmFramesPerPacket);
+        // Freeze padding/partial-packet credit at the submitted PCM present
+        // when output advances. Reusing unchanged output after a later input
+        // must not expand its clamped watermark into newly submitted PCM.
+        while (outputAdvanced && !blocks_.empty() &&
+               blocks_.front().cumulativePcmEnd <= retiredFrames) {
+            outstandingBytes_ -= blocks_.front().bytes;
+            outstandingDuration100ns_ -= blocks_.front().duration;
+            blocks_.pop_front();
+        }
+    }
+    return Fits(sampleTime100ns, duration100ns, bytes);
+}
+
+bool RecordingAudioBacklog::RecordAccepted(std::int64_t sampleTime100ns,
+                                           std::int64_t duration100ns,
+                                           std::uint64_t bytes)
+{
+    if (!Fits(sampleTime100ns, duration100ns, bytes)) return false;
+    const auto cumulativeEnd = submittedPcmFrames_ + bytes / bytesPerPcmFrame_;
+    blocks_.push_back({duration100ns, bytes, cumulativeEnd});
+    outstandingBytes_ += bytes;
+    outstandingDuration100ns_ += duration100ns;
+    submittedPcmFrames_ = cumulativeEnd;
+    ++submittedBlocks_;
+    return true;
+}
+
+bool ConvertRecordingBgraToNv12(const std::uint8_t* bgra,
+                                std::size_t strideBytes,
+                                UINT width, UINT height,
+                                std::vector<std::uint8_t>& nv12)
+{
+    if (!bgra || !width || !height || (width & 1u) || (height & 1u) ||
+        strideBytes < static_cast<std::size_t>(width) * 4u ||
+        strideBytes > std::numeric_limits<std::size_t>::max() / height) {
+        return false;
+    }
+    const std::size_t lumaBytes = static_cast<std::size_t>(width) * height;
+    if (lumaBytes > std::numeric_limits<DWORD>::max() / 3u * 2u) {
+        return false;
+    }
+    nv12.resize(lumaBytes + lumaBytes / 2u);
+    const auto byte = [](int value) {
+        return static_cast<std::uint8_t>(std::clamp(value, 0, 255));
+    };
+    for (UINT y = 0; y < height; y += 2) {
+        for (UINT x = 0; x < width; x += 2) {
+            int red = 0, green = 0, blue = 0;
+            for (UINT dy = 0; dy < 2; ++dy) {
+                for (UINT dx = 0; dx < 2; ++dx) {
+                    const auto* p = bgra + (y + dy) * strideBytes +
+                                    static_cast<std::size_t>(x + dx) * 4u;
+                    blue += p[0]; green += p[1]; red += p[2];
+                    nv12[static_cast<std::size_t>(y + dy) * width + x + dx] =
+                        byte(((66 * p[2] + 129 * p[1] + 25 * p[0] + 128) >> 8) + 16);
+                }
+            }
+            red = (red + 2) / 4; green = (green + 2) / 4;
+            blue = (blue + 2) / 4;
+            const std::size_t uv = lumaBytes +
+                static_cast<std::size_t>(y / 2) * width + x;
+            nv12[uv] = byte(((-38 * red - 74 * green + 112 * blue + 128) >> 8) + 128);
+            nv12[uv + 1] = byte(((112 * red - 94 * green - 18 * blue + 128) >> 8) + 128);
+        }
+    }
+    return true;
+}
 
 namespace {
 
@@ -42,30 +210,6 @@ constexpr ULONGLONG kMinFreeBytesWhileRecording = 200ull * 1024ull * 1024ull;
 constexpr ULONGLONG kSpaceCheckIntervalMs = 5000;
 
 const char kDiskFullMessage[] = "Recording stopped: disk almost full. The recording so far was saved.";
-
-// Keeps the D3D12 allocation, descriptors, and command allocator alive until
-// Media Foundation releases the sample. Sink writers may consume samples
-// asynchronously after WriteSample returns.
-class FrameLifetimeHolder final
-    : public Microsoft::WRL::RuntimeClass<
-          Microsoft::WRL::RuntimeClassFlags<
-              Microsoft::WRL::ClassicCom>,
-          IUnknown> {
-public:
-    explicit FrameLifetimeHolder(std::shared_ptr<void> lifetime)
-        : lifetime_(std::move(lifetime))
-    {
-    }
-
-private:
-    std::shared_ptr<void> lifetime_;
-};
-
-constexpr GUID kOkuFlowFrameLifetimeAttribute{
-    0x0d433dd5,
-    0xc1ba,
-    0x4698,
-    {0xaa, 0x5a, 0x78, 0x4d, 0xa5, 0x60, 0x09, 0xcf}};
 
 bool QueryFreeBytesForPath(const std::wstring& filePath, ULONGLONG& outFreeBytes)
 {
@@ -141,6 +285,10 @@ const char* VideoRecorder::StageName(WriterStage stage)
         return "writing a video sample to the encoder";
     case WriterStage::kWriteAudioSample:
         return "writing an audio sample to the encoder";
+    case WriterStage::kQueryEncoderStatistics:
+        return "checking the encoder input backlog";
+    case WriterStage::kRetireGpuReaders:
+        return "retiring completed GPU recording inputs";
     case WriterStage::kFinalize:
         return "finalizing the file";
     }
@@ -217,6 +365,22 @@ void VideoRecorder::PollGpuReadLeases(bool allowFlush)
     }
 }
 
+bool VideoRecorder::PollGpuInputReads(bool allowFlush)
+{
+    if (abandoned_.load() || gpuReadFaulted_) {
+        return false;
+    }
+    StageResetGuard stageGuard(stage_);
+    stage_.store(WriterStage::kRetireGpuReaders,
+                 std::memory_order_relaxed);
+    // Ordinary admission uses DONOTFLUSH. An idle worker permits query-command
+    // flushing because non-flushing polls alone did not report completion on
+    // the tested driver, even without a new frame or encoder write.
+    // Either mode makes one asynchronous query per lease, with no wait/retry.
+    PollGpuReadLeases(allowFlush);
+    return !gpuReadFaulted_ && !abandoned_.load();
+}
+
 void VideoRecorder::SetError(const std::string& err)
 {
     lastError_ = err;
@@ -225,6 +389,27 @@ void VideoRecorder::SetError(const std::string& err)
 const char* VideoRecorder::CodecName(Codec codec)
 {
     return codec == Codec::Av1 ? "AV1" : "H.264";
+}
+
+std::uint64_t VideoRecorder::InputPayloadBytes(UINT width, UINT height,
+                                              bool nativeNv12)
+{
+    if (!width || !height) {
+        return 0;
+    }
+    const std::uint64_t pixels = static_cast<std::uint64_t>(width) * height;
+    const auto maximum = std::numeric_limits<std::uint64_t>::max();
+    if (nativeNv12) {
+        return pixels > maximum - pixels / 2 ? 0 : pixels + pixels / 2;
+    }
+    return pixels > maximum / 4 ? 0 : pixels * 4;
+}
+
+bool VideoRecorder::InputFitsEncoderBudget(UINT width, UINT height,
+                                          bool nativeNv12)
+{
+    return RecordingEncoderBacklog::CanStart(
+        InputPayloadBytes(width, height, nativeNv12));
 }
 
 bool VideoRecorder::Start(const std::wstring& filePath,
@@ -247,6 +432,12 @@ bool VideoRecorder::Start(const std::wstring& filePath,
     ULONGLONG freeBytes = 0;
     terminalResult_.Reset();
     writeFailureHr_ = S_OK;
+    if (!InputFitsEncoderBudget(width, height, false)) {
+        SetError("Recording input cannot fit the encoder backlog budget. "
+                 "Use a smaller camera mode or recording resolution; each "
+                 "input frame must be at most 64 MiB.");
+        return false;
+    }
     if (GetFileAttributesW(filePath.c_str()) != INVALID_FILE_ATTRIBUTES) {
         SetError("Recording output path already exists; it was preserved.");
         return false;
@@ -278,6 +469,10 @@ bool VideoRecorder::Start(const std::wstring& filePath,
         pendingSampleTime100ns_ = -1;
         timelineEnd100ns_ = 0;
         videoSamplesWritten_ = 0;
+        videoBacklog_.Reset();
+        audioBacklog_.Reset(audioFormat && audioFormat->IsValid() ?
+                            static_cast<std::uint64_t>(audioFormat->channels) * 2 : 2);
+        lastEncoderStatisticsError_ = S_OK;
         targetPath_ = filePath;
         lastSpaceCheckTicks_ = GetTickCount64();
         stopReason_ = StopReason::None;
@@ -467,6 +662,20 @@ bool VideoRecorder::InitializeGpuVideoProcessor(
         ResetGpuVideoProcessor();
         return false;
     }
+    // Match CPU fallback normalization: full-range RGB to BT.601 limited
+    // NV12. Explicit settings prevent adapter defaults changing that contract.
+    gpuVideoContext_->VideoProcessorSetStreamAutoProcessingMode(
+        gpuVideoProcessor_.Get(), 0, FALSE);
+    D3D11_VIDEO_PROCESSOR_COLOR_SPACE inputColor{};
+    inputColor.RGB_Range = 0;
+    inputColor.Nominal_Range = D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_0_255;
+    D3D11_VIDEO_PROCESSOR_COLOR_SPACE outputColor{};
+    outputColor.YCbCr_Matrix = 0;
+    outputColor.Nominal_Range = D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_16_235;
+    gpuVideoContext_->VideoProcessorSetStreamColorSpace(
+        gpuVideoProcessor_.Get(), 0, &inputColor);
+    gpuVideoContext_->VideoProcessorSetOutputColorSpace(
+        gpuVideoProcessor_.Get(), &outputColor);
     return true;
 }
 
@@ -490,6 +699,12 @@ bool VideoRecorder::StartGpu(
     Stop();
     terminalResult_.Reset();
     writeFailureHr_ = S_OK;
+    if (!InputFitsEncoderBudget(width, height, true)) {
+        SetError("GPU recording input cannot fit the encoder backlog budget. "
+                 "Use a smaller camera mode or recording resolution; each "
+                 "NV12 input frame must be at most 64 MiB.");
+        return false;
+    }
     if (GetFileAttributesW(filePath.c_str()) != INVALID_FILE_ATTRIBUTES) {
         SetError("Recording output path already exists; it was preserved.");
         return false;
@@ -519,6 +734,13 @@ bool VideoRecorder::StartGpu(
                 height,
                 frameRateNumerator,
                 frameRateDenominator);
+        if (useCompatibilityReadback &&
+            !InputFitsEncoderBudget(width, height, false)) {
+            throw std::runtime_error(
+                "GPU compatibility recording input cannot fit the encoder "
+                "backlog budget. Use a smaller camera mode or recording "
+                "resolution; each BGRA input frame must be at most 64 MiB.");
+        }
         try {
             InitializeSink(filePath,
                            width,
@@ -554,6 +776,12 @@ bool VideoRecorder::StartGpu(
                     throw;
                 }
             }
+            if (!InputFitsEncoderBudget(width, height, false)) {
+                throw std::runtime_error(
+                    "GPU compatibility recording input cannot fit the encoder "
+                    "backlog budget. Use a smaller camera mode or recording "
+                    "resolution; each BGRA input frame must be at most 64 MiB.");
+            }
             InitializeSink(filePath,
                            width,
                            height,
@@ -574,6 +802,10 @@ bool VideoRecorder::StartGpu(
         pendingSampleTime100ns_ = -1;
         timelineEnd100ns_ = 0;
         videoSamplesWritten_ = 0;
+        videoBacklog_.Reset();
+        audioBacklog_.Reset(audioFormat && audioFormat->IsValid() ?
+                            static_cast<std::uint64_t>(audioFormat->channels) * 2 : 2);
+        lastEncoderStatisticsError_ = S_OK;
         targetPath_ = filePath;
         lastSpaceCheckTicks_ = GetTickCount64();
         stopReason_ = StopReason::None;
@@ -707,6 +939,13 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
     ThrowIfFailed(MFCreateAttributes(attrs.GetAddressOf(), 4), "Create sink attributes");
     attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
     attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
+    // Bounded live admission must not depend on an encoder collecting a long
+    // lookahead window before its first output. Windows 8+ sink writers accept
+    // this request; actual driver support remains conditional and is covered
+    // by the generated-media fixtures. Low latency can trade encoding quality
+    // for prompt output, which is appropriate for this live capture route.
+    ThrowIfFailed(attrs->SetUINT32(MF_LOW_LATENCY, TRUE),
+                  "Request low-latency recording");
     if (d3dManager) {
         ThrowIfFailed(
             attrs->SetUnknown(MF_SINK_WRITER_D3D_MANAGER, d3dManager),
@@ -761,6 +1000,12 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
     ThrowIfFailed(MFCreateMediaType(inType.GetAddressOf()), "Create input type");
     ThrowIfFailed(inType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Set in major type");
     ThrowIfFailed(inType->SetGUID(MF_MT_SUBTYPE, inputSubtype), "Set in subtype");
+    if (inputSubtype == MFVideoFormat_NV12) {
+        ThrowIfFailed(inType->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT601),
+                      "Set NV12 matrix");
+        ThrowIfFailed(inType->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235),
+                      "Set NV12 range");
+    }
     ThrowIfFailed(inType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive), "Set in interlace");
     ThrowIfFailed(MFSetAttributeSize(inType.Get(), MF_MT_FRAME_SIZE, width, height), "Set in frame size");
     ThrowIfFailed(MFSetAttributeRatio(inType.Get(),
@@ -875,8 +1120,8 @@ bool VideoRecorder::AddAudioFrame(
     std::int64_t sampleTime100ns,
     std::int64_t duration100ns)
 {
-    if (abandoned_.load() || !recording_ || !sinkWriter_ || !audioEnabled_ ||
-        !pcmData || byteCount == 0 || sampleTime100ns < 0) {
+    if (!pcmData || !CanAcceptAudioFrame(byteCount, sampleTime100ns, duration100ns)) {
+        SetError("Recording audio input is invalid or its encoder backlog budget is exhausted.");
         return false;
     }
     try {
@@ -920,6 +1165,10 @@ bool VideoRecorder::AddAudioFrame(
             writeFailureHr_ = static_cast<long>(audioWriteHr);
         }
         ThrowIfFailed(audioWriteHr, "Write audio sample");
+        if (!audioBacklog_.RecordAccepted(sampleTime100ns, duration100ns, byteCount)) {
+            SetError("Recording audio accounting could not accept the submitted block.");
+            return false;
+        }
         timelineEnd100ns_ =
             std::max(
                 timelineEnd100ns_,
@@ -967,6 +1216,67 @@ bool VideoRecorder::WritePendingSample(std::int64_t duration100ns)
     pendingSample_.Reset();
     pendingSampleTime100ns_ = -1;
     return true;
+}
+
+bool VideoRecorder::QueryEncoderAdmission(
+    DWORD streamIndex,
+    RecordingEncoderBacklog& backlog,
+    std::uint64_t submittedSamples,
+    std::uint64_t pendingSamples,
+    std::uint64_t sampleBytes)
+{
+    if (abandoned_.load() || !recording_ || !sinkWriter_) {
+        return false;
+    }
+    StageResetGuard stageGuard(stage_);
+    stage_.store(WriterStage::kQueryEncoderStatistics,
+                 std::memory_order_relaxed);
+    MF_SINK_WRITER_STATISTICS statistics{};
+    statistics.cb = sizeof(statistics);
+    const HRESULT result = sinkWriter_->GetStatistics(streamIndex, &statistics);
+    const bool admitted = backlog.CanAccept(
+        SUCCEEDED(result) ? &statistics : nullptr,
+        submittedSamples, pendingSamples, sampleBytes);
+    lastEncoderStatisticsError_ = FAILED(result) ? result
+        : (backlog.StatisticsConfirmed() ? S_OK : E_UNEXPECTED);
+    return admitted;
+}
+
+bool VideoRecorder::CanAcceptVideoFrame()
+{
+    // GPU and CPU fallback input share the writer's negotiated NV12 contract.
+    // The worker-readback compatibility writer instead accepts packed BGRA.
+    const std::uint64_t sampleBytes =
+        InputPayloadBytes(frameWidth_, frameHeight_, gpuInputEnabled_);
+    return QueryEncoderAdmission(streamIndex_, videoBacklog_,
+                                 videoSamplesWritten_, pendingSample_ ? 1 : 0,
+                                 sampleBytes);
+}
+
+bool VideoRecorder::CanAcceptAudioFrame(std::size_t byteCount,
+                                        std::int64_t sampleTime100ns,
+                                        std::int64_t duration100ns)
+{
+    if (abandoned_.load() || !recording_ || !sinkWriter_ || !audioEnabled_ ||
+        byteCount == 0 || byteCount > std::numeric_limits<DWORD>::max() ||
+        byteCount > RecordingAudioBacklog::kByteLimit || sampleTime100ns < 0 ||
+        duration100ns <= 0 || duration100ns > RecordingAudioBacklog::kDurationLimit100ns ||
+        sampleTime100ns > std::numeric_limits<std::int64_t>::max() - duration100ns)
+        return false;
+    const std::uint64_t alignment = static_cast<std::uint64_t>(audioFormat_.channels) * 2;
+    if (!alignment || byteCount % alignment != 0) return false;
+    const std::int64_t pcmDuration = static_cast<std::int64_t>(
+        (byteCount / alignment) * 10'000'000ull / audioFormat_.sampleRate);
+    // The capture block duration is rounded to whole 100ns units. Do not let
+    // inconsistent duration metadata evade the PCM-duration bound.
+    if (duration100ns < pcmDuration || duration100ns - pcmDuration > 1) return false;
+    StageResetGuard stageGuard(stage_);
+    stage_.store(WriterStage::kQueryEncoderStatistics, std::memory_order_relaxed);
+    MF_SINK_WRITER_STATISTICS statistics{};
+    statistics.cb = sizeof(statistics);
+    const HRESULT result = sinkWriter_->GetStatistics(audioStreamIndex_, &statistics);
+    return audioBacklog_.CanAccept(SUCCEEDED(result) ? &statistics : nullptr,
+                                  sampleTime100ns, duration100ns, byteCount);
 }
 
 bool VideoRecorder::CheckDiskSpace()
@@ -1019,7 +1329,21 @@ bool VideoRecorder::AddFrame(const uint8_t* bgraData,
 
     StageResetGuard stageGuard(stage_);
     try {
-        const size_t bufferSize = strideBytes * frameHeight_;
+        std::vector<std::uint8_t> normalized;
+        const uint8_t* input = bgraData;
+        if (gpuInputEnabled_) {
+            if (!ConvertRecordingBgraToNv12(bgraData, strideBytes,
+                                           frameWidth_, frameHeight_, normalized)) {
+                throw std::runtime_error("Invalid BGRA fallback for NV12 recording input");
+            }
+            input = normalized.data();
+        }
+        if (strideBytes < static_cast<std::size_t>(frameWidth_) * 4u ||
+            strideBytes > std::numeric_limits<DWORD>::max() / frameHeight_) {
+            throw std::runtime_error("Invalid recording frame stride");
+        }
+        const size_t bufferSize = gpuInputEnabled_
+            ? normalized.size() : strideBytes * frameHeight_;
         Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
         ThrowIfFailed(MFCreateMemoryBuffer(static_cast<DWORD>(bufferSize), buffer.GetAddressOf()),
                       "CreateMemoryBuffer");
@@ -1027,7 +1351,7 @@ bool VideoRecorder::AddFrame(const uint8_t* bgraData,
         BYTE* dest = nullptr;
         DWORD maxLen = 0;
         ThrowIfFailed(buffer->Lock(&dest, &maxLen, nullptr), "Lock buffer");
-        std::memcpy(dest, bgraData, bufferSize);
+        std::memcpy(dest, input, bufferSize);
         ThrowIfFailed(buffer->Unlock(), "Unlock buffer");
         ThrowIfFailed(buffer->SetCurrentLength(static_cast<DWORD>(bufferSize)), "SetCurrentLength");
 
@@ -1055,8 +1379,7 @@ bool VideoRecorder::AddGpuFrame(
         return false;
     }
 
-    PollGpuReadLeases();
-    if (gpuReadFaulted_) return false;
+    if (!PollGpuInputReads()) return false;
     // Offline/bursty callers can fill this bounded reader ring faster than
     // already-flushed work retires. Backpressure belongs on the recorder
     // worker, never the UI/producer, and must not discard an unfinished lease.
@@ -1325,16 +1648,11 @@ bool VideoRecorder::AddGpuFrame(
         ThrowIfFailed(
             sample->AddBuffer(buffer.Get()),
             "Attach DXGI video buffer");
-        auto lifetime = Microsoft::WRL::Make<FrameLifetimeHolder>(
-            frame.lifetime);
-        if (!lifetime) {
-            throw std::runtime_error(
-                "Could not retain the shared recording frame");
-        }
-        ThrowIfFailed(
-            sample->SetUnknown(
-                kOkuFlowFrameLifetimeAttribute, lifetime.Get()),
-            "Retain shared recording frame");
+        // This sample owns the separate NV12 encoderTexture through its DXGI
+        // buffer. Only the post-Blt GpuReadLease needs the BGRA source canvas;
+        // retaining it in a pending encoder sample can exhaust the presenter
+        // pool before the next sample arrives to trigger WritePendingSample.
+        // Pending/unknown GPU reads keep their existing retirement quarantine.
         return QueueVideoSample(std::move(sample), identity);
     } catch (const std::exception& error) {
         SetError(error.what());

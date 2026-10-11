@@ -37,11 +37,15 @@ QString VisibleText(QWidget* widget)
 bool ApplyVisibleText(QWidget* widget, const QString& text)
 {
     if (auto* label = qobject_cast<QLabel*>(widget)) {
-        label->setText(text);
+        if (label->text() != text) {
+            label->setText(text);
+        }
         return true;
     }
     if (auto* button = qobject_cast<QAbstractButton*>(widget)) {
-        button->setText(text);
+        if (button->text() != text) {
+            button->setText(text);
+        }
         return true;
     }
     return false;
@@ -109,6 +113,13 @@ void SetLiveText(QWidget* widget,
     Q_ASSERT(QThread::currentThread() ==
              QCoreApplication::instance()->thread());
 
+    // An immediate status transition supersedes a queued diagnostic value.
+    if (QTimer* timer = widget->findChild<QTimer*>(
+            QString::fromLatin1(kTimerObjectName),
+            Qt::FindDirectChildrenOnly)) {
+        timer->stop();
+    }
+
     SetLiveTranslationSource(widget, text, rolePrefix);
     const QString translatedText = TranslateUi(text);
     const QString accessibleText =
@@ -124,7 +135,9 @@ void SetLiveText(QWidget* widget,
         return;
     }
 
-    widget->setAccessibleName(accessibleText);
+    if (nameChanged) {
+        widget->setAccessibleName(accessibleText);
+    }
     if (visibleChanged && qobject_cast<QLabel*>(widget)) {
         QAccessibleTextUpdateEvent textEvent(
             widget, 0, previousVisibleText, translatedText);
@@ -171,7 +184,12 @@ void SetLiveTextCoalesced(QWidget* widget,
                 widget->property(kPendingPrefix).toString());
         });
     }
-    timer->start(qMax(0, delayMs));
+    // Keep the first deadline during a continuous stream. Later calls replace
+    // only the pending value, otherwise frame-rate updates can postpone this
+    // single-shot forever.
+    if (!timer->isActive()) {
+        timer->start(qMax(0, delayMs));
+    }
 }
 
 } // namespace okuflow

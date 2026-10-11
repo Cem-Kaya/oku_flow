@@ -4,6 +4,22 @@
 <context>
     <name>OkuFlow</name>
     <message>
+        <source>Turn on phone light</source>
+        <translation>Telefonlicht einschalten</translation>
+    </message>
+    <message>
+        <source>Turn off phone light</source>
+        <translation>Telefonlicht ausschalten</translation>
+    </message>
+    <message>
+        <source>Phone light</source>
+        <translation>Telefonlicht</translation>
+    </message>
+    <message>
+        <source>Starts off on each connection. Press to turn the phone light on or off.</source>
+        <translation>Beginnt bei jeder Verbindung ausgeschaltet. Drücken Sie, um das Telefonlicht ein- oder auszuschalten.</translation>
+    </message>
+    <message>
         <source>Application</source>
         <translation>Anwendung</translation>
     </message>
@@ -1124,6 +1140,14 @@
     <message>
         <source>No frames were dropped.</source>
         <translation>Es wurden keine Frames verworfen.</translation>
+    </message>
+    <message>
+        <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
+        <translation>Die Aufnahme wurde gestoppt, weil die Audioverarbeitung nicht Schritt halten konnte oder die Eingabe ungültig war.</translation>
+    </message>
+    <message>
+        <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
+        <translation>Audio: %1 Blöcke vor der Codierung verworfen, %2 durch die Eingabegrenze abgewiesen.</translation>
     </message>
     <message>
         <source>%1 frames were dropped (%2).</source>
@@ -2968,6 +2992,26 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <translation>Installiert
 %1
 Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbinden an.</translation>
+    </message>
+    <message>
+        <source>Could not load conversation.</source>
+        <translation>Die Unterhaltung konnte nicht geladen werden.</translation>
+    </message>
+    <message>
+        <source>GPU upload busy %1</source>
+        <translation>GPU-Upload ausgelastet %1</translation>
+    </message>
+    <message>
+        <source>encoder backlog %1</source>
+        <translation>Encoder-Rückstau %1</translation>
+    </message>
+    <message>
+        <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
+        <translation>Aufnahme-Samples werden übersprungen, weil der Encoder-Fortschritt nicht geprüft werden konnte. Stoppen und starten Sie die Aufnahme erneut, wenn dies anhält.</translation>
+    </message>
+    <message>
+        <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
+        <translation>Videobilder werden übersprungen, weil die Encoder-Warteschlange voll ist. Verringern Sie die Aufnahmeauflösung oder stoppen und starten Sie die Aufnahme erneut, wenn dies anhält.</translation>
     </message>
 </context>
 </TS>

@@ -9,6 +9,78 @@ Completed plans have moved to [`done/`](done/README.md) — kept for provenance,
 not as work. Refuted findings live in
 [`verified-non-issues.md`](verified-non-issues.md); read it before analyzing.
 
+## Current codebase review added 2026-10-11
+
+[50 — Alternating Opus repairs](50-alternating-opus-repairs-2026-10-11.md)
+implements recursive Draw keyboard routing, held-pan ownership, bounded
+settings ingestion/publication and retained CPU rotation buffers. Opus accepts
+the original keyboard scope; root completes settings failure recovery, late
+commit probes and an empty-editor focus fix after Opus's rate limit. Targeted
+suites pass 94 keyboard, 41 settings and six color/rotation checks. Rotation
+allocations fall from 20 to zero over 20 warmed probe frames; application FPS
+benefit is unmeasured. Native focus checks and Opus's unfinished follow-up
+reviews remain deferred. The final tracked matrix passes release compilation, CPU 23/23, CUDA 28/28
+non-GUI groups and 743-key translation parity. Its evidence is in review 50.
+
+[49 — Unused-code census](49-unused-code-census-2026-10-11.md)
+records the verified cleanup of 34 definitions, four unlaunched CUDA kernels,
+and the obsolete recording pairing map/state. First-party code drops by 396
+noncomment lines, while all 17 test-only APIs remain. The rerun reports zero
+remaining no-reference candidates within its documented parser/dispatch limits;
+this is not proof of zero dead code or a measured performance gain. Fresh
+release compilation, CPU 22/22 and CUDA 27/27 non-GUI tests passed. Desktop
+checks remain deferred at the owner's instruction.
+
+[48 — Independent Gemini verification](48-gemini-independent-review-2026-10-11.md)
+contains individual verdicts for all four reports and their 20 main findings.
+Console probes confirm CPU rotation and isolated bottom-up allocation churn but
+reject the claimed AAC timestamp failure. Production capture already normalizes
+bottom-up input. The GPU report's re-registration, partial Maxine cache,
+percentile and RCAS mapping claims are refuted by current source/math contracts;
+asynchronous Maxine remains a known benchmark candidate.
+Source also identifies a key-forwarding feedback cycle and pending-capture/
+recording lifecycle gaps on camera or GPU failure. Keyboard routing moves to
+review 50; capture/recording lifecycle gaps remain follow-ups. Speed claims and
+native acceptance remain unverified.
+
+[47 — Sequential priority repairs](47-sequential-priority-fixes-2026-10-11.md)
+tracks the owner's resumed root/one-Opus implementation cycle. Cumulative PCM
+admission and separate microphone-loss accounting are implemented; targeted
+accounting and actual H.264/AV1 audio-decode checks passed. Opus's independent
+review hit Claude's rate limit before its report; root replaced timestamp credit
+after the clock-domain objection. Final shipping release build and non-GUI
+CPU 22/22 / CUDA 27/27 checks passed. An opt-in native AAC/MP4 gap reproducer
+still fails against the final code and remains open. Desktop acceptance is
+still deferred; no final Opus approval is claimed.
+
+[45 — Current codebase audit](45-codebase-audit-2026-10-11.md) reviews
+`8c07e0b` across seven scopes. The requested Opus reviews returned rate-limit
+failures; seven Astra fallback reviewers completed the source audit. It records
+34 entries with explicit prior-claim status, conditional triggers, fix directions
+and proposed acceptance checks. The top new issue is a recording worker launched
+before its mutex and queues are constructed. Other findings cover Maxine viewport
+containment, capture identity/layout, recording route contracts, assistant request
+ownership and UI accessibility. Performance gains remain unmeasured.
+
+Status: **IMPLEMENTED IN WORKING TREE — native acceptance pending**. Plan 45 now
+tracks each repair and coverage limit separately. Release compilation and all
+22 non-GUI CPU groups and 27 non-GUI CUDA groups pass.
+Native focus/auto-hide acceptance remains pending after the owner requested
+code/build checks only. Encoder pooling and NIS coefficient initialization
+remain deferred. The three additional Opus reviews completed (the GPU scope
+needed a rate-limit continuation) and are recorded in
+[46 — Additional Opus review](46-additional-opus-review-2026-10-11.md).
+That follow-up batch passed release compilation and non-GUI CPU 22/22 and CUDA
+27/27 after two independently detected repair regressions were corrected.
+Seven native GUI groups remain deferred. The further GPU double-check's bounded
+recording-source retirement and discarded-sharpening fixes passed a corrected
+release/non-GUI CPU 22/22 and CUDA 27/27 rerun. The first idle-retirement fixture
+failed under DONOTFLUSH-only polling; flush-capable idle query progress repaired
+it before the final pass. The resumed Opus source verification completed and
+approved both fixes. Root corrected explanatory comments only afterward;
+behavior and the recorded validation remain unchanged. Review 46 records the
+remaining optional hardening, quarantine-cost and coverage limits.
+
 ## Status vocabulary
 
 | Tag | Meaning |
@@ -103,6 +175,7 @@ describes that review's original validation only.
 | 26 | Virtual Tripod strength | **PARTIAL / DEFECTIVE** | Phases A/B implemented. Saved-camera replay on 2026-07-26 proved the synthetic 97.3% gate overstates real performance: accumulated-reference alignment left 0.5-8 Hz vertical vibration almost unchanged and worsened horizontal motion. Production now uses the sharp single keyframe, which improves the saved clip by 24-38% on its main axes, but stronger real-scene correspondence/reacquisition remains open before Phase C. |
 | 40 | UI polish and checkout review | **ACTIVE — W1 resolved** | C1 theme module, S1-S5 Setup Assistant/startup, M1-M5 Simple mode, A1-A7 Advanced inspector. Also open: W2 bundle/source mismatch (build identity, inbox S) and W3 build output inside the synced Drive folder. |
 | 41 | Project review 2026-10-09 | **REVIEW COMPLETE — recommendations open** | R1 saved-photo ownership first; R2 storage lifecycle; R3-R9 refine existing implementation/acceptance work; R10 reconciles stale backlog claims. |
+| 51 | OkuFlow Camera (Android) | **STREAMING/SETTINGS + INITIAL WINDOWS SOURCE IMPLEMENTED — HARDWARE ACCEPTANCE PENDING** | APK, 28 JVM tests, 44-key EN/TR/DE parity and lint pass; seven fake-adb/protocol tests and actual Windows decoder/source-policy checks. Native Windows receives AVC; probe also receives HEVC. Release/CPU/CUDA validation without GUI passes; full GUI runs had external focus interference. No phone attached. Viewport zoom bridge, quality/motion research and packaging remain pending. Normal USB cameras keep their source path and explicit saved selection. |
 
 ## Recommended order
 

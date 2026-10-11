@@ -3,6 +3,7 @@
 #include <QAccessible>
 #include <QAccessibleAnnouncementEvent>
 #include <QLabel>
+#include <QTimer>
 #include <QtTest>
 
 #include <algorithm>
@@ -60,6 +61,8 @@ private slots:
     void announcementCarriesRequestedPoliteness();
     void repeatedAnnouncementIsDeduplicatedAcrossFlapping();
     void coalescerPublishesOnlyTheTrailingValue();
+    void coalescerPublishesDuringContinuousUpdates();
+    void immediateStatusSupersedesPendingValue();
 
 private:
     QAccessible::UpdateHandler previousHandler_{};
@@ -174,6 +177,56 @@ void LiveStatusTextTests::coalescerPublishesOnlyTheTrailingValue()
     QCOMPARE(label.accessibleName(),
              QStringLiteral("Performance: p95 21 ms"));
     QVERIFY(CountEvents(records_, QAccessible::NameChanged) >= 1);
+    QCOMPARE(CountEvents(records_, QAccessible::Announcement), 1);
+}
+
+void LiveStatusTextTests::coalescerPublishesDuringContinuousUpdates()
+{
+    QLabel label;
+    g_target = &label;
+    QTimer producer;
+    producer.setInterval(5);
+    QString latestSource;
+    int updateCount = 0;
+    connect(&producer, &QTimer::timeout, &label, [&]() {
+        latestSource = QStringLiteral("Sample %1").arg(++updateCount);
+        SetLiveTextCoalesced(&label, latestSource,
+                            LivePoliteness::kSilent,
+                            QStringLiteral("Performance"), 80);
+    });
+    producer.start();
+
+    // The source stays active throughout both publications. A debounce that
+    // restarts its timer on each update cannot satisfy even the first check.
+    QTRY_VERIFY_WITH_TIMEOUT(!label.text().isEmpty(), 1000);
+    const QString firstPublished = label.text();
+    QVERIFY(producer.isActive());
+    QTRY_VERIFY_WITH_TIMEOUT(label.text() != firstPublished, 1000);
+    QVERIFY(producer.isActive());
+    QVERIFY(updateCount > 2);
+    producer.stop();
+
+    QTRY_COMPARE_WITH_TIMEOUT(label.text(), latestSource, 1000);
+    QCOMPARE(label.accessibleName(),
+             QStringLiteral("Performance: %1").arg(latestSource));
+    QCOMPARE(CountEvents(records_, QAccessible::Announcement), 0);
+}
+
+void LiveStatusTextTests::immediateStatusSupersedesPendingValue()
+{
+    QLabel label;
+    g_target = &label;
+    SetLiveTextCoalesced(&label, QStringLiteral("GPU Ready"),
+                         LivePoliteness::kSilent,
+                         QStringLiteral("Pipeline status"), 30);
+    SetLiveText(&label, QStringLiteral("Camera Offline"),
+                LivePoliteness::kAssertive,
+                QStringLiteral("Pipeline status"));
+    QCOMPARE(label.text(), QStringLiteral("Camera Offline"));
+    QTest::qWait(80);
+    QCOMPARE(label.text(), QStringLiteral("Camera Offline"));
+    QCOMPARE(label.accessibleName(),
+             QStringLiteral("Pipeline status: Camera Offline"));
     QCOMPARE(CountEvents(records_, QAccessible::Announcement), 1);
 }
 

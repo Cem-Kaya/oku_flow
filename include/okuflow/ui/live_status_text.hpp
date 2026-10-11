@@ -23,7 +23,9 @@ void SetLiveText(QWidget* widget,
                  LivePoliteness politeness,
                  const QString& rolePrefix = {});
 
-// Trailing-edge variant for rapidly changing labels. The latest update wins.
+// Bounded-delay variant for rapidly changing labels. The latest update wins
+// at the first pending deadline, including during a continuous update stream.
+// SetLiveText supersedes any pending coalesced value immediately.
 void SetLiveTextCoalesced(QWidget* widget,
                           const QString& text,
                           LivePoliteness politeness,

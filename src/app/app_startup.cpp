@@ -291,6 +291,9 @@ void OkuFlowApp::QueueInitialCameraStart(
     // symbolic link; never pass the UI apartment's IMFActivate into this thread.
     const std::wstring name = descriptor.name;
     const std::wstring symbolicLink = descriptor.symbolicLink;
+    const std::string phoneSerial = descriptor.phoneSerial;
+    const std::string phoneCameraId = descriptor.phoneCameraId;
+    const auto phoneTransportId = descriptor.phoneTransportId;
     cameraStartupPending_ = true;
     UpdateCameraPlaceholder();
     UpdateCameraAccelerationUi();
@@ -298,7 +301,7 @@ void OkuFlowApp::QueueInitialCameraStart(
     if (uiState_->cameraFormatCombo_) uiState_->cameraFormatCombo_->setEnabled(false);
     qInfo() << "Startup timing: camera worker dispatched" << startupTimer_.elapsed() << "ms";
     try {
-        std::thread([job, name, symbolicLink, requestedStableId,
+        std::thread([job, name, symbolicLink, phoneSerial, phoneCameraId, phoneTransportId, requestedStableId,
                      requestAcceleration, interactive, captureSession]() mutable {
             const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
             try {
@@ -306,17 +309,22 @@ void OkuFlowApp::QueueInitialCameraStart(
                 CameraDescriptor localDescriptor;
                 localDescriptor.name = name;
                 localDescriptor.symbolicLink = symbolicLink;
-                Microsoft::WRL::ComPtr<IMFAttributes> attributes;
-                ThrowIfFailed(MFCreateAttributes(&attributes, 2), "Create camera attributes");
-                ThrowIfFailed(attributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-                                                   MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID),
-                              "Set video source type");
-                ThrowIfFailed(attributes->SetString(
-                                  MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
-                                  symbolicLink.c_str()), "Set camera symbolic link");
-                ThrowIfFailed(MFCreateDeviceSourceActivate(attributes.Get(),
-                                                           &localDescriptor.activation),
-                              "Create camera activation");
+                localDescriptor.phoneSerial = phoneSerial;
+                localDescriptor.phoneCameraId = phoneCameraId;
+                localDescriptor.phoneTransportId = phoneTransportId;
+                if (phoneSerial.empty()) {
+                    Microsoft::WRL::ComPtr<IMFAttributes> attributes;
+                    ThrowIfFailed(MFCreateAttributes(&attributes, 2), "Create camera attributes");
+                    ThrowIfFailed(attributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+                                                       MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID),
+                                  "Set video source type");
+                    ThrowIfFailed(attributes->SetString(
+                                      MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
+                                      symbolicLink.c_str()), "Set camera symbolic link");
+                    ThrowIfFailed(MFCreateDeviceSourceActivate(attributes.Get(),
+                                                               &localDescriptor.activation),
+                                  "Create camera activation");
+                }
                 const auto start = [&](CaptureAccelerationMode mode) {
                     return job->capture->StartCapture(localDescriptor, nullptr, job->callback,
                         mode == CaptureAccelerationMode::Accelerated ? MFVideoFormat_ARGB32

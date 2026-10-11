@@ -22,7 +22,6 @@ public:
     bool isExpanded() const;
     bool persistedExpanded() const { return searchExpanded_ ? expandedBeforeSearch_ : isExpanded(); }
     void setChangedCount(int count);
-    int changedCount() const { return changedCount_; }
     void setPersistKey(const QString& key) { persistKey_ = key; }
     const QString& persistKey() const { return persistKey_; }
     void setSearchExpanded(bool searching);

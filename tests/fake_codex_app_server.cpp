@@ -24,6 +24,8 @@ QString gThreadId = QStringLiteral("thr_fake");
 QJsonValue gHeldId(QJsonValue::Undefined);
 QString gHeldMethod;
 int gLifecycleOpenings = 0;
+QJsonValue gHistoryId(QJsonValue::Undefined);
+QString gHistoryThread;
 
 void WriteObject(const QJsonObject& object)
 {
@@ -123,6 +125,28 @@ void HandleRealtimeStart(const QJsonValue& id, const QJsonObject& params)
                     QStringLiteral("text"), QStringLiteral("hello world"));
 }
 
+void WriteHistory(const QJsonValue& id, const QString& thread)
+{
+    const QJsonObject item{{QStringLiteral("type"), QStringLiteral("agentMessage")},
+                           {QStringLiteral("text"), thread + QStringLiteral(" history")}};
+    const QJsonObject turn{{QStringLiteral("items"), QJsonArray{item}}};
+    const QJsonObject history{{QStringLiteral("id"), thread},
+                             {QStringLiteral("turns"), QJsonArray{turn}}};
+    WriteResult(id, QJsonObject{{QStringLiteral("thread"), history}});
+}
+
+void ReleaseHistory()
+{
+    if (gHistoryId.isUndefined()) return;
+    if (gScenario == QStringLiteral("vision-lifecycle-history-error")) {
+        WriteError(gHistoryId, -32000, QStringLiteral("fake history read failure"));
+    } else {
+        WriteHistory(gHistoryId, gHistoryThread);
+    }
+    gHistoryId = QJsonValue(QJsonValue::Undefined);
+    WriteNotification(QStringLiteral("warning"), QJsonObject{{QStringLiteral("message"), QStringLiteral("released history")}});
+}
+
 void HandleMessage(const QJsonObject& message)
 {
     const QJsonValue id = message.value(QStringLiteral("id"));
@@ -130,6 +154,24 @@ void HandleMessage(const QJsonObject& message)
     const QJsonObject params = message.value(QStringLiteral("params")).toObject();
 
     if (gScenario.startsWith(QStringLiteral("vision-lifecycle"))) {
+        if (gScenario.startsWith(QStringLiteral("vision-lifecycle-history")) && method == QStringLiteral("thread/read")) {
+            const QString thread = params.value(QStringLiteral("threadId")).toString();
+            if (thread == QStringLiteral("A")) {
+                gHistoryId = id;
+                gHistoryThread = thread;
+                WriteNotification(QStringLiteral("warning"), QJsonObject{{QStringLiteral("message"), QStringLiteral("held history")}});
+            } else {
+                if (thread == QStringLiteral("error")) {
+                    WriteError(id, -32000, QStringLiteral("fake history read failure"));
+                } else if (thread == QStringLiteral("empty-error")) {
+                    WriteError(id, -32000, {});
+                } else {
+                    WriteHistory(id, thread);
+                }
+                ReleaseHistory();
+            }
+            return;
+        }
         if (method == QStringLiteral("initialize")) {
             if (gScenario.endsWith(QStringLiteral("init-timeout"))) return;
             if (gScenario.endsWith(QStringLiteral("init-error"))) {
@@ -179,6 +221,7 @@ void HandleMessage(const QJsonObject& message)
             WriteNotification(QStringLiteral("item/completed"), QJsonObject{{QStringLiteral("turnId"), QStringLiteral("turn_old")}, {QStringLiteral("item"), QJsonObject{{QStringLiteral("type"), QStringLiteral("agentMessage")}, {QStringLiteral("text"), QStringLiteral("wrong answer")}}}});
             WriteNotification(QStringLiteral("error"), QJsonObject{{QStringLiteral("turnId"), QStringLiteral("turn_old")}});
             WriteNotification(QStringLiteral("item/agentMessage/delta"), QJsonObject{{QStringLiteral("turnId"), QStringLiteral("turn_new")}, {QStringLiteral("delta"), prompt}});
+            if (gScenario.startsWith(QStringLiteral("vision-lifecycle-history"))) ReleaseHistory();
             WriteNotification(QStringLiteral("turn/completed"), QJsonObject{{QStringLiteral("turn"), QJsonObject{{QStringLiteral("id"), QStringLiteral("turn_new")}, {QStringLiteral("status"), QStringLiteral("completed")}}}});
             return;
         }
@@ -309,12 +352,19 @@ void HandleMessage(const QJsonObject& message)
     }
     if (method == QStringLiteral("thread/realtime/stop")) {
         WriteResult(id, {});
-        // A phrase can finish naturally while the client is stopping; it must
-        // still be published.
-        WriteTranscript(QStringLiteral("done"), QStringLiteral("user"),
-                        QStringLiteral("text"), QStringLiteral("final during stop"));
+        if (gScenario == QStringLiteral("stop-delta-no-final")) {
+            WriteTranscript(QStringLiteral("delta"), QStringLiteral("user"),
+                            QStringLiteral("delta"), QStringLiteral(" stop tail"));
+            WriteTranscript(QStringLiteral("delta"), QStringLiteral("assistant"),
+                            QStringLiteral("delta"), QStringLiteral("ignored"));
+        } else {
+            WriteTranscript(QStringLiteral("done"), QStringLiteral("user"),
+                            QStringLiteral("text"), QStringLiteral("final during stop"));
+        }
         WriteNotification(QStringLiteral("thread/realtime/closed"),
                           QJsonObject{{QStringLiteral("reason"), QStringLiteral("requested")}});
+        WriteTranscript(QStringLiteral("delta"), QStringLiteral("user"),
+                        QStringLiteral("delta"), QStringLiteral(" after closure"));
         return;
     }
     if (!id.isUndefined()) {

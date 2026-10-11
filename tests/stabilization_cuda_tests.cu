@@ -881,6 +881,48 @@ int main(int argc, char** argv)
                   "tripod recovery-map state");
     }
 
+    // Recovery coordinates must be transformed back to the common anchor
+    // before ROI membership. Raw x=600 belongs to the visible crop only
+    // after removing the +400 recovery origin; raw x=200 is outside it.
+    const auto savedState = state;
+    for (float centerX : {0.15f, 0.25f}) {
+        std::vector<float4> competingPairs;
+        const float commonCenter = centerX * (width - 1);
+        for (int y = 270; y <= 450; y += 30) {
+            for (int dx = -90; dx <= 90; dx += 30) {
+                const float x = commonCenter + dx;
+                competingPairs.push_back(make_float4(x + 400.0f, static_cast<float>(y),
+                                                     x + 403.0f, static_cast<float>(y) - 2.0f));
+                competingPairs.push_back(make_float4(x, static_cast<float>(y),
+                                                     x - 12.0f, static_cast<float>(y) + 7.0f));
+            }
+        }
+        const float4 origin = make_float4(400.0f, 0.0f, 0.0f, 0.0f);
+        const unsigned int count = static_cast<unsigned int>(competingPairs.size());
+        ok = ok && CheckCuda(cudaMemcpy(deviceKeyframeOrigins + 1, &origin, sizeof(origin),
+                                       cudaMemcpyHostToDevice), "upload shifted ROI origin") &&
+             CheckCuda(cudaMemcpy(devicePairs, competingPairs.data(), count * sizeof(float4),
+                                  cudaMemcpyHostToDevice), "upload competing ROI pairs") &&
+             CheckCuda(cudaMemcpy(devicePairCount, &count, sizeof(count), cudaMemcpyHostToDevice),
+                       "upload competing ROI count");
+        if (ok) {
+            okuflow::LaunchVirtualTripodMatchCandidate(devicePairs, devicePairCount, count,
+                width, height, 1.0f, centerX, 0.5f, 8.0f, deviceKeyframeOrigins,
+                deviceKeyframeValid, 1u, deviceCandidates, nullptr);
+            okuflow::TripodMatchCandidate candidate{};
+            ok = CheckCuda(cudaMemcpy(&candidate, deviceCandidates + 1, sizeof(candidate),
+                                      cudaMemcpyDeviceToHost), "read shifted ROI candidate") &&
+                 Near(candidate.diagnostics.y, 1.0f, 0.001f, "shifted ROI accepted") &&
+                 Near(candidate.motion.x, 403.0f, 0.05f, "shifted ROI common motion x") &&
+                 Near(candidate.motion.y, -2.0f, 0.05f, "shifted ROI common motion y");
+        }
+    }
+    ok = ok && CheckCuda(cudaMemcpy(deviceKeyframeOrigins, keyframeOrigins.data(),
+                                   keyframeCount * sizeof(float4), cudaMemcpyHostToDevice),
+                        "restore recovery origins") &&
+         CheckCuda(cudaMemcpy(deviceState, &savedState, sizeof(savedState), cudaMemcpyHostToDevice),
+                   "restore recovery state");
+
     // When every absolute reference is rejected, pairwise tracking may bridge
     // a short dropout but may not redefine the absolute anchor.
     const float4 absoluteCorrection = state.correction;
@@ -928,6 +970,79 @@ int main(int argc, char** argv)
                   "tripod relative fallback state");
     }
 
+    // Rejected pairwise tracking holds the accepted relative displacement.
+    // A later accepted zero-motion frame must not undo/reapply that offset.
+    const float4 heldCorrection = state.correction;
+    const float4 heldRelative = state.tripodRelativeMotion;
+    const unsigned int rejectedRelativePairCount = 0u;
+    ok = ok && CheckCuda(cudaMemcpy(devicePairCount, &rejectedRelativePairCount, sizeof(rejectedRelativePairCount),
+                                   cudaMemcpyHostToDevice), "upload rejected relative count");
+    if (ok) {
+        okuflow::LaunchSelectVirtualTripodMatch(deviceCandidates, keyframeCount,
+            1.0f, 0.45f, 1.0f, width, height, deviceState, nullptr);
+        okuflow::LaunchVirtualTripodRelativeFallback(devicePairs, devicePairCount,
+            fallbackPairCount, width, height, 1.0f, 0.45f, deviceState, nullptr);
+        ok = CheckCuda(cudaMemcpy(&state, deviceState, sizeof(state), cudaMemcpyDeviceToHost),
+                       "read rejected relative state") &&
+             Near(state.correction.x, heldCorrection.x, 0.001f, "rejection holds x") &&
+             Near(state.correction.y, heldCorrection.y, 0.001f, "rejection holds y") &&
+             Near(state.tripodRelativeMotion.x, heldRelative.x, 0.001f, "rejection holds offset");
+    }
+    // Enough pairs but no consistent hypothesis exercises the second reject path.
+    for (size_t index = 0; index < fallbackPairs.size(); ++index) {
+        fallbackPairs[index].z = fallbackPairs[index].x + 4.0f * static_cast<float>(index);
+        fallbackPairs[index].w = fallbackPairs[index].y;
+    }
+    ok = ok && CheckCuda(cudaMemcpy(devicePairs, fallbackPairs.data(),
+                                   fallbackPairs.size() * sizeof(float4), cudaMemcpyHostToDevice),
+                        "upload inconsistent relative pairs") &&
+         CheckCuda(cudaMemcpy(devicePairCount, &fallbackPairCount, sizeof(fallbackPairCount),
+                              cudaMemcpyHostToDevice), "upload inconsistent relative count");
+    if (ok) {
+        okuflow::LaunchVirtualTripodRelativeFallback(devicePairs, devicePairCount,
+            fallbackPairCount, width, height, 1.0f, 0.45f, deviceState, nullptr);
+        ok = CheckCuda(cudaMemcpy(&state, deviceState, sizeof(state), cudaMemcpyDeviceToHost),
+                       "read inconsistent relative state") &&
+             Near(state.correction.x, heldCorrection.x, 0.001f, "inconsistent estimate holds x") &&
+             Near(state.correction.y, heldCorrection.y, 0.001f, "inconsistent estimate holds y");
+    }
+    for (float4& pair : fallbackPairs) { pair.z = pair.x; pair.w = pair.y; }
+    ok = ok && CheckCuda(cudaMemcpy(devicePairs, fallbackPairs.data(),
+                                   fallbackPairs.size() * sizeof(float4), cudaMemcpyHostToDevice),
+                        "upload stationary relative pairs") &&
+         CheckCuda(cudaMemcpy(devicePairCount, &fallbackPairCount, sizeof(fallbackPairCount),
+                              cudaMemcpyHostToDevice), "upload stationary relative count");
+    if (ok) {
+        okuflow::LaunchVirtualTripodRelativeFallback(devicePairs, devicePairCount,
+            fallbackPairCount, width, height, 1.0f, 0.45f, deviceState, nullptr);
+        ok = CheckCuda(cudaMemcpy(&state, deviceState, sizeof(state), cudaMemcpyDeviceToHost),
+                       "read stationary relative state") &&
+             Near(state.correction.x, heldCorrection.x, 0.001f, "zero motion holds x") &&
+             Near(state.correction.y, heldCorrection.y, 0.001f, "zero motion holds y");
+    }
+
+    // Reacquire the absolute keyframe without resetting state: accepted
+    // relative motion must be cleared by the production absolute update.
+    ok = ok && CheckCuda(cudaMemcpy(devicePairs, recoveryPairs.data(),
+                                   recoveryPairs.size() * sizeof(float4), cudaMemcpyHostToDevice),
+                        "upload absolute reacquisition pairs") &&
+         CheckCuda(cudaMemcpy(devicePairCount, &recoveryPairCount, sizeof(recoveryPairCount),
+                              cudaMemcpyHostToDevice), "upload absolute reacquisition count");
+    if (ok) {
+        okuflow::LaunchVirtualTripodMatchCandidate(devicePairs, devicePairCount, recoveryPairCount,
+            width, height, 1.0f, 0.5f, 0.5f, 1.0f, deviceKeyframeOrigins,
+            deviceKeyframeValid, 1u, deviceCandidates, nullptr);
+        okuflow::LaunchSelectVirtualTripodMatch(deviceCandidates, keyframeCount,
+            1.0f, 0.45f, 1.0f, width, height, deviceState, nullptr);
+        ok = CheckCuda(cudaMemcpy(&state, deviceState, sizeof(state), cudaMemcpyDeviceToHost),
+                       "read absolute reacquisition state") &&
+             Near(state.diagnostics.y, 1.0f, 0.001f, "absolute reacquisition accepted") &&
+             Near(state.tripodRelativeMotion.x, 0.0f, 0.001f, "absolute reacquisition clears relative x") &&
+             Near(state.tripodRelativeMotion.y, 0.0f, 0.001f, "absolute reacquisition clears relative y") &&
+             Near(state.actualPath.x, 43.0f, 0.05f, "absolute reacquisition restores anchor x") &&
+             Near(state.actualPath.y, -17.0f, 0.05f, "absolute reacquisition restores anchor y");
+    }
+
     // The correction budget limits what can be displayed without exposing an
     // edge; it must not limit the absolute motion fed back into the next LK
     // prediction. Otherwise a gradual move past the crop reserve permanently
@@ -963,6 +1078,10 @@ int main(int argc, char** argv)
     if (ok) {
         ok = Near(state.lastFrameMotion.x, 500.0f, 0.05f,
                   "tripod unclamped tracker seed") &&
+             Near(state.tripodRelativeMotion.x, 0.0f, 0.001f,
+                  "absolute reacquisition clears relative x") &&
+             Near(state.tripodRelativeMotion.y, 0.0f, 0.001f,
+                  "absolute reacquisition clears relative y") &&
              Near(state.correction.x, -320.0f, 0.05f,
                   "tripod clamped display correction");
     }

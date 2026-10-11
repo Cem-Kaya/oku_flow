@@ -48,9 +48,32 @@ set_tests_properties(user_data_paths PROPERTIES
 )
 
 if (WIN32)
-    add_executable(capture_shutdown_tests capture_shutdown_tests.cpp)
+    add_executable(phone_camera_tests
+        phone_camera_tests.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/phone_camera.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/media_capture_facade.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/media_capture.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/capture_buffer.cpp)
+    target_include_directories(phone_camera_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(phone_camera_tests PRIVATE
+        Qt6::Core Qt6::Network Qt6::Test d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
+    target_compile_definitions(phone_camera_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    add_test(NAME phone_camera_contract COMMAND phone_camera_tests)
+    set_tests_properties(phone_camera_contract PROPERTIES TIMEOUT 30
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+
+    add_executable(capture_shutdown_tests
+        capture_shutdown_tests.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/media_capture_facade.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/media_capture.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/phone_camera.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/capture_buffer.cpp
+    )
     target_include_directories(capture_shutdown_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
-    target_link_libraries(capture_shutdown_tests PRIVATE Qt6::Test)
+    target_link_libraries(capture_shutdown_tests PRIVATE
+        Qt6::Core Qt6::Network Qt6::Test d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
+    target_compile_definitions(capture_shutdown_tests PRIVATE
+        NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
     add_test(NAME capture_shutdown COMMAND capture_shutdown_tests)
     set_tests_properties(capture_shutdown PROPERTIES TIMEOUT 30
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
@@ -280,6 +303,30 @@ if (WIN32)
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
     )
 
+    add_executable(recording_manager_tests
+        recording_manager_tests.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/live_status_text.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ui_translation.hpp
+        ${PROJECT_SOURCE_DIR}/src/app/recording_manager.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/user_data_paths.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/media_writer.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/recording_contract.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/annotation_model.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
+    )
+    target_include_directories(recording_manager_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(recording_manager_tests PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test
+        d3d11 dxgi mf mfplat mfreadwrite mfuuid ole32)
+    target_compile_definitions(recording_manager_tests PRIVATE
+        NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    add_test(NAME recording_manager COMMAND recording_manager_tests)
+    set_tests_properties(recording_manager PROPERTIES TIMEOUT 30
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+
     add_executable(media_writer_audio_tests
         media_writer_audio_tests.cpp
         ${PROJECT_SOURCE_DIR}/src/common/media_writer.cpp
@@ -351,6 +398,33 @@ if (WIN32)
         SKIP_RETURN_CODE 77
         LABELS "codec"
     )
+
+    # Deterministic event routing only; the offscreen platform never takes
+    # desktop focus. Native annotation layouts remain a separate GUI gate.
+    add_executable(annotation_key_routing_tests
+        annotation_key_routing_tests.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/annotation_overlay.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/live_status_text.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ui_translation.hpp
+        ${PROJECT_SOURCE_DIR}/src/ui/annotation_overlay.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/annotation_model.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
+        ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
+    )
+    target_include_directories(annotation_key_routing_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(annotation_key_routing_tests PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
+    target_compile_definitions(annotation_key_routing_tests PRIVATE
+        NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    add_test(NAME annotation_key_routing_headless COMMAND annotation_key_routing_tests)
+    set_tests_properties(annotation_key_routing_headless PROPERTIES
+        TIMEOUT 30
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
     add_executable(annotation_overlay_tests
         annotation_overlay_tests.cpp
@@ -546,6 +620,27 @@ if (WIN32)
     )
     target_link_libraries(fake_codex_app_server PRIVATE Qt6::Core)
     add_dependencies(notes_html_tests fake_codex_app_server)
+
+    add_executable(assistive_preparation_tests
+        assistive_preparation_tests.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/assistive_runtime.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
+        ${PROJECT_SOURCE_DIR}/src/common/assistive_runtime.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/codex_app_server_client.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/codex_json_rpc_process.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/response_language.cpp
+    )
+    target_include_directories(assistive_preparation_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(assistive_preparation_tests PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Network Qt6::Test)
+    target_compile_definitions(assistive_preparation_tests PRIVATE
+        NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE OKUFLOW_HAS_TTS=0)
+    add_dependencies(assistive_preparation_tests fake_codex_app_server)
+    add_test(NAME assistive_preparation COMMAND assistive_preparation_tests)
+    set_tests_properties(assistive_preparation PROPERTIES TIMEOUT 30
+        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
     add_executable(codex_realtime_client_tests
         codex_realtime_client_tests.cpp

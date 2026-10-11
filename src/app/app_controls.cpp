@@ -13,6 +13,8 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
     // A manual camera pick always wins over an in-flight automatic reconnect.
     pipelineOrchestrator_->CancelCameraReconnect();
     settingsController_->MutableSettings().cameraIndex = index;
+    settingsController_->MutableSettings().cameraSymbolicLink =
+        QString::fromStdWString(cameras_[static_cast<size_t>(index)].symbolicLink);
     StartCameraCapture(static_cast<size_t>(index));
 }
 
@@ -71,6 +73,21 @@ void OkuFlowApp::UpdateCameraAccelerationUi()
                 LivePoliteness::kSilent,
                 QStringLiteral("Camera acceleration status"));
     uiState_->cameraAccelerationStatusLabel_->setToolTip(status);
+}
+
+void OkuFlowApp::UpdatePhoneLightUi()
+{
+    if (!uiState_ || !uiState_->phoneLightButton_) return;
+    const bool phoneSelected = selectedCameraIndex_ >= 0 &&
+        static_cast<size_t>(selectedCameraIndex_) < cameras_.size() &&
+        !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
+    auto* button = uiState_->phoneLightButton_;
+    button->setVisible(phoneSelected);
+    button->setEnabled(phoneSelected && cameraActive_ && !cameraStartupPending_ &&
+                       mediaCapture_.PhoneTorchAvailable());
+    SetLiveText(button, mediaCapture_.PhoneTorchEnabled()
+        ? QStringLiteral("Turn off phone light") : QStringLiteral("Turn on phone light"),
+        LivePoliteness::kSilent, QStringLiteral("Phone light"));
 }
 
 void OkuFlowApp::OnTestCameraAcceleration()
@@ -530,6 +547,7 @@ void OkuFlowApp::OnRotationSelectionChanged(int index) {
     float rotatedY = zoomCenterY_;
     RotateNormalizedPoint(zoomCenterX_, zoomCenterY_, delta, rotatedX, rotatedY);
     SetZoomCenter(rotatedX, rotatedY, true, true);
+    if (mainWindow_) mainWindow_->rotateAnnotationsClockwise(delta);
 
     cpuPipeline_.ResetTemporalHistory();
     if (cudaSurface_) {
@@ -539,7 +557,6 @@ void OkuFlowApp::OnRotationSelectionChanged(int index) {
         cudaSurface_->ResetTextClarityHistory();
     }
     UpdateKeystoneTrackingUi();
-    InvalidateRecordingFramePairing();
 
     processedFrameWidth_ = 0;
     processedFrameHeight_ = 0;
@@ -547,6 +564,10 @@ void OkuFlowApp::OnRotationSelectionChanged(int index) {
     cpuSceneWidth_ = 0;
     cpuSceneHeight_ = 0;
     cpuSceneReady_ = false;
+
+    presentationBuffer_.clear();
+    presentationWidth_ = 0;
+    presentationHeight_ = 0;
 
     UpdateRotationUi();
     SyncCurrentConfigToPersistence();
@@ -991,10 +1012,11 @@ void OkuFlowApp::OnTextClarityControlsChanged() {
     UpdateControlEnabledStates();
     if (cudaSurface_) {
         cudaSurface_->ResetTextClarityHistory();
-        // SuperRes strength/mode are load-time SDK parameters. Recreate the
-        // effect under the surface's stream-synchronization discipline after
-        // profile or Advanced Text Clarity changes.
-        cudaSurface_->ResetSuperRes();
+        // The CUDA surface reloads changed model parameters with proper stream
+        // retirement. Unrelated text controls retain the model and timing state.
+        if (wasSuperResEnabled != mlTextSuperResolutionEnabled_) {
+            cudaSurface_->ResetSuperRes();
+        }
         cudaSurface_->SetSuperResPerformanceOverride(superResPerformanceOverride_);
     }
     UpdateProcessingStatusLabel();

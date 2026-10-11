@@ -25,6 +25,7 @@
 #include <QSignalBlocker>
 #include <QTextBrowser>
 #include <QTextCursor>
+#include <QScrollBar>
 #include <QToolButton>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -538,13 +539,16 @@ void AssistiveOverlay::SetContent(const QString& title, const QString& body, boo
                     QStringLiteral("Assistive result"));
     }
     if (body_ != body) {
+        QScrollBar* scroll = bodyView_->verticalScrollBar();
+        const int scrollPosition = scroll->value();
+        const bool followTail = !bodyView_->textCursor().hasSelection() &&
+                                scrollPosition >= scroll->maximum() - 2;
         const int formattingStart = !body_.isEmpty() && body.startsWith(body_)
             ? static_cast<int>(body_.size()) : 0;
         if (!body_.isEmpty() && body.startsWith(body_)) {
-            QTextCursor cursor = bodyView_->textCursor();
+            QTextCursor cursor(bodyView_->document());
             cursor.movePosition(QTextCursor::End);
             cursor.insertText(body.mid(body_.size()));
-            bodyView_->setTextCursor(cursor);
         } else {
             bodyView_->setPlainText(body);
         }
@@ -555,7 +559,7 @@ void AssistiveOverlay::SetContent(const QString& title, const QString& body, boo
         QTextBlockFormat format;
         format.setLineHeight(135, QTextBlockFormat::ProportionalHeight);
         formatCursor.mergeBlockFormat(format);
-        bodyView_->ensureCursorVisible();
+        scroll->setValue(followTail ? scroll->maximum() : scrollPosition);
     }
     desiredVisible_ = visible && (!title_.isEmpty() || !body_.isEmpty());
     const bool shouldShow = desiredVisible_ && !uiSuppressed_;

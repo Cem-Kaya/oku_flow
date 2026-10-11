@@ -6,6 +6,10 @@ contains the image conversion, stabilization, grading, and Text Clarity kernels;
 `spatial_upscalers.cu` implements the pinned NIS and FSR paths. Public launch
 interfaces mirror this directory under `include/okuflow/cuda/`.
 
+The old gradient demo, surface-based black/white and zoom, and unused blend
+kernel/launcher chains were removed after source and release-symbol review.
+Current linear-buffer effects and viewport zoom remain the active paths.
+
 Text Clarity's Sauvola mask marks foreground ink using local luma mean and
 variance. The light-on-dark branch applies the dark-ink formula to inverted
 intensity and mean; variance stays unchanged. This keeps an ordinary dark

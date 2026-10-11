@@ -14,6 +14,11 @@ set "ROOT_DIR=%CD%"
 set "RELEASE_RESULT=SKIP"
 set "CPU_RESULT=SKIP"
 set "CUDA_RESULT=SKIP"
+set "TEST_FILTER="
+if "%OKUFLOW_AGENT_EXCLUDE_GUI%"=="1" (
+    set "TEST_FILTER=-LE gui"
+    echo PARTIAL VALIDATION: desktop tests are explicitly excluded.
+)
 set "VSDEVCMD="
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 
@@ -45,12 +50,23 @@ if errorlevel 1 (
 )
 
 echo ===== RELEASE COMPILE GATE =====
-cmake --preset msvc-release
+rem An isolated release build avoids replacing a running development executable.
+set "AGENT_RELEASE_BUILD_DIR="
+if defined OKUFLOW_AGENT_RELEASE_BUILD_DIR for %%I in ("%OKUFLOW_AGENT_RELEASE_BUILD_DIR%") do set "AGENT_RELEASE_BUILD_DIR=%%~fI"
+if defined AGENT_RELEASE_BUILD_DIR (
+    cmake --preset msvc-release -B "%AGENT_RELEASE_BUILD_DIR%"
+) else (
+    cmake --preset msvc-release
+)
 if errorlevel 1 (
     set "RELEASE_RESULT=FAIL"
     goto :summary
 )
-cmake --build --preset msvc-release-build
+if defined AGENT_RELEASE_BUILD_DIR (
+    cmake --build "%AGENT_RELEASE_BUILD_DIR%"
+) else (
+    cmake --build --preset msvc-release-build
+)
 if errorlevel 1 (
     set "RELEASE_RESULT=FAIL"
     goto :summary
@@ -68,7 +84,7 @@ if errorlevel 1 (
     set "CPU_RESULT=FAIL"
     goto :summary
 )
-ctest --preset msvc-cpu-tests
+ctest --preset msvc-cpu-tests %TEST_FILTER%
 if errorlevel 1 (
     set "CPU_RESULT=FAIL"
     goto :summary
@@ -86,7 +102,7 @@ if errorlevel 1 (
     set "CUDA_RESULT=FAIL"
     goto :summary
 )
-ctest --preset msvc-cuda-tests
+ctest --preset msvc-cuda-tests %TEST_FILTER%
 if errorlevel 1 (
     set "CUDA_RESULT=FAIL"
     goto :summary
@@ -99,6 +115,7 @@ echo ===== OKUFLOW BUILD GATE SUMMARY =====
 echo %RELEASE_RESULT%: release compile
 echo %CPU_RESULT%: CPU test suite
 echo %CUDA_RESULT%: CUDA test suite
+if defined TEST_FILTER echo PARTIAL VALIDATION: GUI checks remain pending; this is not the full release gate.
 
 set "FINAL_RESULT=0"
 if not "%RELEASE_RESULT%"=="PASS" set "FINAL_RESULT=1"

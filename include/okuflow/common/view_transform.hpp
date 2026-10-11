@@ -31,6 +31,26 @@ struct NormalizedSourceRect {
     float height{1.0f};
 };
 
+// Finds an integer camera crop that contains the entire requested viewport.
+// Returns false when SDK crop dimensions cannot cover fractional boundaries.
+bool ComputeContainingSourceCrop(const ViewTransform& requested,
+                                 std::uint32_t sceneWidth,
+                                 std::uint32_t sceneHeight,
+                                 std::uint32_t cropWidth,
+                                 std::uint32_t cropHeight,
+                                 std::uint32_t& originX,
+                                 std::uint32_t& originY);
+
+// SR-only viewport contract. Snaps at most one source pixel of pan and the
+// advertised 1.33 scale to exact 4/3; callers use this for both inference and
+// presentation. Ordinary/non-SR transforms must not call this helper.
+ViewTransform CanonicalizeSuperResViewTransform(const ViewTransform& requested,
+                                               std::uint32_t sceneWidth,
+                                               std::uint32_t sceneHeight,
+                                               std::uint32_t outputWidth,
+                                               std::uint32_t outputHeight,
+                                               float zoom);
+
 // Integer destination bounds and source sampling increments derived from a
 // ViewTransform. CPU fallback presentation uses this instead of maintaining a
 // second aspect/crop implementation.

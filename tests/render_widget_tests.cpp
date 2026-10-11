@@ -26,7 +26,7 @@ QSize NativeSize(QWidget& widget)
 
 // Upload a known circular target through a separate queue, then wait for it
 // before handing the COMMON-state texture to the production presenter.
-ComPtr<ID3D12Resource> CircleTexture(ID3D12Device* device)
+ComPtr<ID3D12Resource> CircleTexture(ID3D12Device* device, std::uint8_t alpha = 255)
 {
     ComPtr<ID3D12Resource> texture, upload;
     ComPtr<ID3D12CommandQueue> queue;
@@ -70,7 +70,7 @@ ComPtr<ID3D12Resource> CircleTexture(ID3D12Device* device)
             const int dy = y - 90;
             const std::uint8_t value = dx * dx + dy * dy <= 24 * 24 ? 255 : 0;
             row[x * 4] = row[x * 4 + 1] = row[x * 4 + 2] = value;
-            row[x * 4 + 3] = 255;
+            row[x * 4 + 3] = alpha;
         }
     }
     upload->Unmap(0, nullptr);
@@ -120,6 +120,7 @@ private slots:
     void continuousResizingDoesNotStarvePresenter();
     void circleKeepsItsAspectAcrossViewportResizes_data();
     void circleKeepsItsAspectAcrossViewportResizes();
+    void recordingAnnotationsPreserveTransparency();
 };
 
 void RenderWidgetTests::continuousResizingDoesNotStarvePresenter()
@@ -153,13 +154,17 @@ void RenderWidgetTests::continuousResizingDoesNotStarvePresenter()
 void RenderWidgetTests::circleKeepsItsAspectAcrossViewportResizes_data()
 {
     QTest::addColumn<bool>("fit");
-    QTest::newRow("fill") << false;
-    QTest::newRow("fit") << true;
+    QTest::addColumn<int>("sourceAlpha");
+    QTest::newRow("fill") << false << 255;
+    QTest::newRow("fit") << true << 255;
+    QTest::newRow("fill-zero-alpha") << false << 0;
+    QTest::newRow("fit-zero-alpha") << true << 0;
 }
 
 void RenderWidgetTests::circleKeepsItsAspectAcrossViewportResizes()
 {
     QFETCH(bool, fit);
+    QFETCH(int, sourceAlpha);
     if (!D3D12Available()) QSKIP("D3D12 is unavailable");
     D3D12Presenter presenter;
     RenderWidget widget;
@@ -167,7 +172,7 @@ void RenderWidgetTests::circleKeepsItsAspectAcrossViewportResizes()
     widget.resize(800, 450);
     widget.show();
     QVERIFY(widget.isPresenterReady());
-    auto texture = CircleTexture(presenter.GetDevice());
+    auto texture = CircleTexture(presenter.GetDevice(), static_cast<std::uint8_t>(sourceAlpha));
     QVERIFY(texture);
     for (const QSize size : {QSize(800, 450), QSize(500, 450), QSize(1000, 450), QSize(320, 500)}) {
         widget.resize(size);
@@ -198,7 +203,9 @@ void RenderWidgetTests::circleKeepsItsAspectAcrossViewportResizes()
         int minX = static_cast<int>(width), minY = static_cast<int>(height), maxX = -1, maxY = -1;
         for (UINT y = 0; y < height; ++y) {
             for (UINT x = 0; x < width; ++x) {
-                if (pixels[(static_cast<std::size_t>(y) * width + x) * 4] > 180) {
+                const std::size_t offset = (static_cast<std::size_t>(y) * width + x) * 4;
+                QCOMPARE(pixels[offset + 3], std::uint8_t{255});
+                if (pixels[offset] > 180) {
                     minX = std::min(minX, static_cast<int>(x));
                     maxX = std::max(maxX, static_cast<int>(x));
                     minY = std::min(minY, static_cast<int>(y));
@@ -213,6 +220,88 @@ void RenderWidgetTests::circleKeepsItsAspectAcrossViewportResizes()
     }
     QVERIFY(presenter.WaitForIdle());
 }
+void RenderWidgetTests::recordingAnnotationsPreserveTransparency()
+{
+    if (!D3D12Available()) QSKIP("D3D12 is unavailable");
+    D3D12Presenter presenter;
+    RenderWidget widget;
+    widget.setPresenter(&presenter);
+    widget.resize(640, 360);
+    widget.show();
+    QVERIFY(widget.isPresenterReady());
+    // The camera may have bogus alpha; recording still needs an opaque scene.
+    auto scene = CircleTexture(presenter.GetDevice(), 0);
+    QVERIFY(scene);
+    constexpr UINT width = 320, height = 180;
+    RecordingViewTransform transform;
+    transform.valid = true;
+    auto cleanFrame = presenter.RequestRecordingFrame(scene.Get(), width, height,
+                                                       transform, width, height);
+    QVERIFY(cleanFrame.IsValid());
+    ComPtr<ID3D12Resource> cleanTexture;
+    QVERIFY(SUCCEEDED(presenter.GetDevice()->OpenSharedHandle(cleanFrame.textureSharedHandle,
+                                                               IID_PPV_ARGS(&cleanTexture))));
+    std::vector<std::uint8_t> clean;
+    QVERIFY(presenter.ReadbackTexture(cleanTexture.Get(), width, height, clean,
+                                      cleanFrame.readyFenceValue));
+
+    std::vector<std::uint8_t> annotation(static_cast<std::size_t>(width) * height * 4u, 0);
+    for (UINT y = 0; y < height; ++y) {
+        for (UINT x = 0; x < width; ++x) {
+            const std::size_t offset = (static_cast<std::size_t>(y) * width + x) * 4;
+            if (x >= 152 && x < 169 && y >= 82 && y < 99) {
+                // Half-opacity red over the white camera target.
+                annotation[offset + 2] = 255;
+                annotation[offset + 3] = 128;
+            } else if (x >= 16 && x < 32 && y >= 16 && y < 32) {
+                annotation[offset] = 10;
+                annotation[offset + 1] = 80;
+                annotation[offset + 2] = 220;
+                annotation[offset + 3] = 255;
+            } else if (x < 8 && y < 8) {
+                // Transparent RGB must have no influence on the camera.
+                annotation[offset] = 7;
+                annotation[offset + 1] = 230;
+                annotation[offset + 2] = 61;
+            }
+        }
+    }
+    auto inkFrame = presenter.RequestRecordingFrame(scene.Get(), width, height,
+        transform, width, height, annotation.data(), width * 4u);
+    QVERIFY(inkFrame.IsValid());
+    ComPtr<ID3D12Resource> inkTexture;
+    QVERIFY(SUCCEEDED(presenter.GetDevice()->OpenSharedHandle(inkFrame.textureSharedHandle,
+                                                               IID_PPV_ARGS(&inkTexture))));
+    std::vector<std::uint8_t> composed;
+    QVERIFY(presenter.ReadbackTexture(inkTexture.Get(), width, height, composed,
+                                      inkFrame.readyFenceValue));
+    QCOMPARE(clean.size(), annotation.size());
+    QCOMPARE(composed.size(), annotation.size());
+    for (UINT y = 0; y < height; ++y) {
+        for (UINT x = 0; x < width; ++x) {
+            const std::size_t offset = (static_cast<std::size_t>(y) * width + x) * 4;
+            QCOMPARE(clean[offset + 3], std::uint8_t{255});
+            QCOMPARE(composed[offset + 3], std::uint8_t{255});
+            const int alpha = annotation[offset + 3];
+            for (int channel = 0; channel < 3; ++channel) {
+                const double expected = (annotation[offset + channel] * alpha +
+                    clean[offset + channel] * (255 - alpha)) / 255.0;
+                QVERIFY2(std::abs(composed[offset + channel] - expected) <= 1.0,
+                         "Recording changed transparent background or translucent/opaque ink blending");
+            }
+        }
+    }
+    // Explicit samples distinguish a transparent canvas from opaque black,
+    // and translucent red from the fully opaque red produced by the regression.
+    const std::size_t clearWhite = (90u * width + 142u) * 4u;
+    QCOMPARE(composed[clearWhite], std::uint8_t{255});
+    const std::size_t translucent = (90u * width + 160u) * 4u;
+    QVERIFY(composed[translucent] >= 126 && composed[translucent] <= 128);
+    QVERIFY(composed[translucent + 1] >= 126 && composed[translucent + 1] <= 128);
+    QCOMPARE(composed[translucent + 2], std::uint8_t{255});
+    QVERIFY(presenter.WaitForIdle());
+}
+
 } // namespace okuflow
 
 QTEST_MAIN(okuflow::RenderWidgetTests)

@@ -62,7 +62,20 @@ struct CameraDescriptor {
     std::wstring name;
     std::wstring symbolicLink;
     Microsoft::WRL::ComPtr<IMFActivate> activation;
+    // Nonempty only for the optional USB-debugging companion source.
+    std::string phoneSerial;
+    std::string phoneCameraId;
+    std::uint64_t phoneTransportId{0};
+    // True only after the running companion answers its capability handshake.
+    bool phoneAppReady{false};
 };
+
+// Resolve physical identity before legacy enumeration position. A missing
+// saved device falls back to the first available camera; an empty list is -1.
+// With no saved identity/index, prefer a ready companion over the physical default.
+int ResolveSavedCameraIndex(const std::vector<CameraDescriptor>& cameras,
+                            const std::wstring& savedSymbolicLink,
+                            int legacyIndex);
 
 struct VideoFormat {
     GUID subtype{GUID_NULL};
@@ -117,7 +130,6 @@ public:
     // Already-entered frame/error callbacks must independently own their target.
     bool StopCapture(const std::function<void(bool quiesced)>& beforeAccelerationRelease = {});
     bool WasAbandoned() const { return abandonedForExit_; }
-    bool LastStopCompleted() const { return lastStopCompleted_; }
     const std::string& LastError() const { return lastError_; }
     const std::string& FormatNotice() const { return formatNotice_; }
     const VideoFormat& NegotiatedFormat() const { return negotiatedFormat_; }
@@ -129,6 +141,7 @@ public:
     bool ConsumeAccelerationValidated();
     bool ConsumeAccelerationRejected();
     bool ConsumeDeviceLost();
+    // Requested physical device for retry, including a failed initial open.
     const std::wstring& LastSymbolicLink() const { return lastSymbolicLink_; }
     double CurrentFrameRate() const;
     // A Ready result supplies a lease. The producer cannot overwrite its BGRA
@@ -138,6 +151,12 @@ public:
         Microsoft::WRL::ComPtr<ID3D11Texture2D>& outTexture,
         std::shared_ptr<void>& outLease);
     bool ReadbackGpuFrame(MediaFrame& frame);
+    // No-op for ordinary Media Foundation webcams; writes are queued, never block the UI.
+    void SetPhoneZoom(float ratio);
+    void SetPhoneCamera(const std::string& id);
+    void SetPhoneTorch(bool enabled);
+    bool PhoneTorchAvailable() const;
+    bool PhoneTorchEnabled() const;
 private:
     std::shared_ptr<MediaCaptureSession> session_;
     bool abandonedForExit_{false};

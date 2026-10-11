@@ -3,10 +3,30 @@
 #ifdef _WIN32
 #include <mfapi.h>
 #include <mfidl.h>
+#include <d3d11.h>
 #include <cstdint>
 #include <vector>
+#include <deque>
+#include <cstddef>
 
 namespace okuflow {
+
+struct MediaFrame;
+// Caller holds the ingress lock. Retired frames are released after that lock.
+// Retain short recording bursts; overflow catches up to the newest arrival.
+std::size_t EnqueueCaptureFrame(std::deque<MediaFrame>& pending, MediaFrame&& frame,
+                               bool retainBurst, std::size_t burstCapacity,
+                               std::deque<MediaFrame>& retired);
+
+bool IsSupportedCaptureLayout(const GUID& subtype, UINT width, UINT height,
+                              LONG stride);
+// Packs a mapped GPU subresource, using allocationHeight for the NV12 UV
+// origin. Only explicit RGBA textures swap red/blue into MF RGB32 order.
+bool CopyMappedCaptureTexture(const D3D11_MAPPED_SUBRESOURCE& mapped,
+                              DXGI_FORMAT format, UINT allocationWidth,
+                              UINT allocationHeight, UINT width, UINT height,
+                              std::vector<std::uint8_t>& output, LONG& stride,
+                              GUID& subtype);
 
 // Copies visible pixels into tightly packed, top-down storage. Actual 2D
 // pitch takes precedence over negotiatedStride. Plain buffers use that signed

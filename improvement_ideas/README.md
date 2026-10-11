@@ -2,8 +2,30 @@
 
 Actionable improvement backlog for OkuFlow (formerly OpenZoom), written for AI agents (or humans) picking up
 future work. Produced from a full-codebase analysis on 2026-07-21 at commit `9e069d9`
-("Add assistive runtime and harden Windows builds"). All `file:line` references are
-relative to that commit — re-locate by symbol name if the files have since changed.
+("Add assistive runtime and harden Windows builds"). Original `file:line` references
+are relative to that commit; later dated reviews state their own baseline.
+Re-locate by symbol name if the files have since changed.
+
+Latest source/implementation follow-up:
+[50 — Alternating Opus repairs](50-alternating-opus-repairs-2026-10-11.md)
+records root and Opus alternating authors and reviewers on verified issues,
+with explicit code/build evidence and native acceptance limits.
+
+[49 — Unused-code census](49-unused-code-census-2026-10-11.md)
+measures 26 unreferenced definitions (23 names) and verifies their removal,
+including complete unused CUDA chains and obsolete recording pairing state.
+The cleanup removes 34 definitions and preserves all 17 test-only APIs.
+The census is not an exhaustive dead-code percentage.
+[48 — Independently verified Gemini reviews](48-gemini-independent-review-2026-10-11.md)
+adjudicates all four returned reports, including all 20 main findings and their
+non-issue assertions. It distinguishes confirmed allocation work and lifecycle
+gaps from fabricated failure contracts, unreachable cases, known issues and
+unmeasured speed claims.
+[47 — Sequential priority repairs](47-sequential-priority-fixes-2026-10-11.md)
+records bounded AAC input, separate microphone losses, the unresolved playback-gap
+reproducer, and the Opus rate-limit interruption.
+[46 — Additional Opus review](46-additional-opus-review-2026-10-11.md), including
+completed capture, UI and GPU results with individual root verdicts and limits.
 
 ## How to use this directory
 
@@ -68,6 +90,12 @@ that document is authoritative.
 | [`39-startup-ui-latency-2026-09-10.md`](39-startup-ui-latency-2026-09-10.md) | Concurrent camera startup, nonblocking presentation admission, accurate latency and delivery profiling | **IMPLEMENTED — measurement and validation recorded in the note** |
 | [`40-ui-polish-and-checkout-review-2026-10-09.md`](40-ui-polish-and-checkout-review-2026-10-09.md) | UI polish backlog (Setup Assistant, Simple, Advanced, theme module) plus the resolved hybrid-checkout blocker | **ACTIVE — W1 resolved** |
 | [`41-project-review-2026-10-09.md`](41-project-review-2026-10-09.md) | Current project review: saved-photo ownership, storage lifecycle, accessibility, hardware acceptance, build gates, settings, and backlog drift | **REVIEW COMPLETE — recommendations open** |
+| [`45-codebase-audit-2026-10-11.md`](45-codebase-audit-2026-10-11.md) | Seven-scope audit and individual repairs; remaining source/quality candidates | **IMPLEMENTED IN WORKING TREE — native acceptance and measurements remain** |
+| [`46-additional-opus-review-2026-10-11.md`](46-additional-opus-review-2026-10-11.md) | Additional capture/UI/GPU reviews and recording-source retirement repair | **REVIEW/REPAIRS COMPLETE — native and benchmark follow-ups remain** |
+| [`47-sequential-priority-fixes-2026-10-11.md`](47-sequential-priority-fixes-2026-10-11.md) | PCM admission, audio drop accounting, real AAC decode and playback-gap reproducer | **IMPLEMENTED IN WORKING TREE — playback gap and native gate remain** |
+| [`48-gemini-independent-review-2026-10-11.md`](48-gemini-independent-review-2026-10-11.md) | Four Gemini audits with independent root verdicts and console probes | **REVIEW COMPLETE — all 20 findings adjudicated; implementation follow-ups open** |
+| [`49-unused-code-census-2026-10-11.md`](49-unused-code-census-2026-10-11.md) | Verified unused-code cleanup, before/after census and CUDA binary evidence | **CLEANED — release + CPU 22/22 + CUDA 27/27; desktop deferred** |
+| [`51-okuflow-camera-android.md`](51-okuflow-camera-android.md) | Optional OkuFlow Camera Android source, USB streaming, Advanced settings and initial Windows receiver; normal cameras remain independent | **IMPLEMENTED PROTOTYPE — local contract/decoder checks pass; real-phone/full GUI acceptance and zoom bridge pending** |
 | [`verified-non-issues.md`](verified-non-issues.md) | Refuted findings — do not "fix" these | Read before analyzing |
 | [`done/`](done/README.md) | Completed plans (01, 02, 09, 11, 12, 13) | Provenance only |
 

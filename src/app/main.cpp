@@ -1,9 +1,12 @@
 #include <cstdlib>
 #include <iostream>
 #include <exception>
+#include <cstring>
 
 #ifdef _WIN32
 #include <QDebug>
+#include <windows.h>
+#include <cstdio>
 
 #include "debug_log.hpp"
 #include "okuflow/app/app.hpp"
@@ -11,6 +14,15 @@
 
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
+    for (int index = 1; index < argc; ++index) {
+        if (std::strcmp(argv[index], "--console") == 0 &&
+            AttachConsole(ATTACH_PARENT_PROCESS)) {
+            FILE* stream = nullptr;
+            freopen_s(&stream, "CONOUT$", "w", stdout);
+            freopen_s(&stream, "CONOUT$", "w", stderr);
+            break;
+        }
+    }
     int exitCode = EXIT_FAILURE;
     try {
         okuflow::OkuFlowApp app(argc, argv);

@@ -16,11 +16,19 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace okuflow {
+
+// Normalizes a CPU BGRA fallback to the GPU writer's tightly packed,
+// BT.601 limited-range NV12 input contract. Never relabel BGRA as NV12.
+bool ConvertRecordingBgraToNv12(const std::uint8_t* bgra,
+                                std::size_t strideBytes,
+                                UINT width, UINT height,
+                                std::vector<std::uint8_t>& nv12);
 
 // A completed, shareable BGRA GPU texture. The opaque lifetime token owns the
 // D3D allocation and its NT handles until Media Foundation has opened them.
@@ -40,6 +48,82 @@ struct GpuVideoFrame {
                readyFenceValue > 0 && width > 0 && height > 0 &&
                lifetime != nullptr;
     }
+};
+
+// Bounds samples accepted by an unthrottled sink writer using locally counted
+// successful submissions and the last confirmed encoder output count. A failed
+// or inconsistent statistics query never grants new completion credit. This
+// policy is independent of COM so tests can supply delayed/failing statistics.
+class RecordingEncoderBacklog {
+public:
+    static constexpr std::uint64_t kVideoSampleLimit = 12;
+    static constexpr std::uint64_t kVideoByteLimit = 128ull * 1024 * 1024;
+
+    RecordingEncoderBacklog(std::uint64_t sampleLimit = kVideoSampleLimit,
+                            std::uint64_t byteLimit = kVideoByteLimit)
+        : sampleLimit_(sampleLimit), byteLimit_(byteLimit) {}
+
+    // One sample stays pending until the next arrives. Both must fit before
+    // starting, or no sample could ever reach WriteSample during recording.
+    static bool CanStart(std::uint64_t sampleBytes,
+                         std::uint64_t sampleLimit = kVideoSampleLimit,
+                         std::uint64_t byteLimit = kVideoByteLimit);
+
+    bool CanAccept(const MF_SINK_WRITER_STATISTICS* statistics,
+                   std::uint64_t submittedSamples,
+                   std::uint64_t pendingSamples,
+                   std::uint64_t sampleBytes);
+    void Reset();
+    bool StatisticsConfirmed() const { return statisticsConfirmed_; }
+
+private:
+    std::uint64_t sampleLimit_;
+    std::uint64_t byteLimit_;
+    std::uint64_t encodedSamples_{};
+    std::uint64_t queuedBytes_{};
+    std::uint64_t largestSampleBytes_{};
+    bool statisticsConfirmed_{};
+};
+
+// Microsoft's configured raw LC AAC emits one packet per 1024 PCM frames,
+// independently of input block sizes/timestamps. Retire cumulative PCM frames,
+// retaining two packets of credit as a conservative encoder-delay allowance.
+// Worker-confined; this pure accounting seam opens no encoder or camera.
+class RecordingAudioBacklog {
+public:
+    static constexpr std::uint64_t kBlockLimit = 128;
+    static constexpr std::uint64_t kByteLimit = 4ull * 1024 * 1024;
+    static constexpr std::int64_t kDurationLimit100ns = 20'000'000;
+
+    RecordingAudioBacklog(std::uint64_t blockLimit = kBlockLimit,
+                          std::uint64_t byteLimit = kByteLimit,
+                          std::int64_t durationLimit100ns = kDurationLimit100ns)
+        : blockLimit_(blockLimit), byteLimit_(byteLimit),
+          durationLimit100ns_(durationLimit100ns) {}
+    bool CanAccept(const MF_SINK_WRITER_STATISTICS* statistics,
+                   std::int64_t sampleTime100ns, std::int64_t duration100ns,
+                   std::uint64_t bytes);
+    // Call only after successful WriteSample. A failed write earns no credit.
+    bool RecordAccepted(std::int64_t sampleTime100ns,
+                        std::int64_t duration100ns, std::uint64_t bytes);
+    void Reset(std::uint64_t bytesPerPcmFrame = 2);
+    bool StatisticsConfirmed() const { return statisticsConfirmed_; }
+    std::uint64_t OutstandingBytes() const { return outstandingBytes_; }
+    std::size_t OutstandingBlocks() const { return blocks_.size(); }
+
+private:
+    struct Block {
+        std::int64_t duration;
+        std::uint64_t bytes, cumulativePcmEnd;
+    };
+    bool Fits(std::int64_t time, std::int64_t duration,
+              std::uint64_t bytes) const;
+    std::deque<Block> blocks_;
+    std::uint64_t blockLimit_, byteLimit_, submittedBlocks_{}, encodedPackets_{};
+    std::int64_t durationLimit100ns_, outstandingDuration100ns_{};
+    std::uint64_t outstandingBytes_{}, queuedBytes_{};
+    std::uint64_t bytesPerPcmFrame_{2}, submittedPcmFrames_{};
+    bool statisticsConfirmed_{};
 };
 
 // Media Foundation sink-writer wrapper for live AV1 or H.264 recording.
@@ -103,6 +187,8 @@ public:
         kCreateSampleBuffer,
         kWriteVideoSample,
         kWriteAudioSample,
+        kQueryEncoderStatistics,
+        kRetireGpuReaders,
         kFinalize,
     };
     static const char* StageName(WriterStage stage);
@@ -158,15 +244,39 @@ public:
                        std::int64_t sampleTime100ns,
                        std::int64_t duration100ns);
 
+    // Worker-thread-only check for the negotiated NV12 or packed BGRA input.
+    // Call for BOTH recorders before admitting a
+    // matched video pair. False means drop this pair, not writer failure;
+    // it leaves timelines and pending samples untouched. Do not call from UI
+    // watchdogs, or concurrently with WriteSample/Finalize on this writer.
+    bool CanAcceptVideoFrame();
+    // Check BOTH writers before submitting either PCM block. False means the
+    // finite audio budget is exhausted or input is invalid; the manager ends
+    // the session explicitly rather than silently dropping recorded speech.
+    bool CanAcceptAudioFrame(std::size_t byteCount, std::int64_t sampleTime100ns,
+                             std::int64_t duration100ns);
+    // Recording-worker-only retirement, including while no new frame can be
+    // admitted. PollGpuInputReads performs one nonblocking query per lease;
+    // it never writes/finalizes a sample or waits. An idle worker may allow
+    // query-command flushing for progress; ordinary admission does not.
+    // False reports a reader fault/abandonment; Pending retains the source.
+    bool HasPendingGpuReads() const { return !pendingGpuReads_.empty(); }
+    bool PollGpuInputReads(bool allowFlush = false);
+    long LastEncoderStatisticsError() const {
+        return lastEncoderStatisticsError_;
+    }
+
     double DurationSeconds() const;
     const std::string& LastError() const { return lastError_; }
-    StopReason LastStopReason() const { return stopReason_; }
-    Codec ActiveCodec() const { return activeCodec_; }
     bool UsesGpuInput() const { return gpuInputEnabled_; }
     bool UsesWorkerGpuReadback() const {
         return gpuCompatibilityReadback_;
     }
     static const char* CodecName(Codec codec);
+    // Pure startup-configuration seam, also used before any output sink is
+    // created. nativeNv12 selects the actual negotiated input payload.
+    static bool InputFitsEncoderBudget(UINT width, UINT height,
+                                       bool nativeNv12);
 
 private:
     bool InitializeSink(const std::wstring& filePath,
@@ -178,6 +288,8 @@ private:
                         const AudioFormat* audioFormat,
                         IUnknown* d3dManager,
                         const GUID& inputSubtype);
+    static std::uint64_t InputPayloadBytes(UINT width, UINT height,
+                                           bool nativeNv12);
     bool InitializeGpuDevice(HANDLE probeTextureHandle);
     bool InitializeGpuVideoProcessor(UINT width,
                                      UINT height,
@@ -190,6 +302,11 @@ private:
     bool CheckDiskSpace();
     FinalizeResult FinalizeAndStop(StopReason reason);
     bool WritePendingSample(std::int64_t duration100ns);
+    bool QueryEncoderAdmission(DWORD streamIndex,
+                               RecordingEncoderBacklog& backlog,
+                               std::uint64_t submittedSamples,
+                               std::uint64_t pendingSamples,
+                               std::uint64_t sampleBytes);
     void LeakComForProcessExit();
     void PollGpuReadLeases(bool allowFlush = false);
     struct GpuReadLease {
@@ -250,6 +367,9 @@ private:
     bool gpuInputEnabled_{false};
     bool gpuCompatibilityReadback_{false};
     std::uint64_t videoSamplesWritten_{0};
+    RecordingEncoderBacklog videoBacklog_;
+    RecordingAudioBacklog audioBacklog_;
+    long lastEncoderStatisticsError_{0};
     // Stop is idempotent until the next Start, including automatic stops.
     RecordingTerminalResult<FinalizeResult> terminalResult_;
     long writeFailureHr_{0};

@@ -383,96 +383,28 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
 
     SetLiveText(uiState_->processingStatusLabel_, text, politeness,
                 QStringLiteral("Pipeline status"));
-    uiState_->processingStatusLabel_->setToolTip(detail);
-    uiState_->processingStatusLabel_->setStyleSheet(QStringLiteral("color: %1;").arg(color));
+    if (uiState_->processingStatusLabel_->toolTip() != detail) {
+        uiState_->processingStatusLabel_->setToolTip(detail);
+    }
+    const QString statusStyle = QStringLiteral("color: %1;").arg(color);
+    if (uiState_->processingStatusLabel_->styleSheet() != statusStyle) {
+        uiState_->processingStatusLabel_->setStyleSheet(statusStyle);
+    }
 
-    if (uiState_->performanceDiagnosticsLabel_) {
-        const TimingPercentiles frame =
-            pipelineOrchestrator_->FrameTickPercentiles();
-        const TimingPercentiles latency =
-            pipelineOrchestrator_->CaptureToPresentPercentiles();
-        const TimingPercentiles captureHandoff =
-            pipelineOrchestrator_->StagePercentiles(
-                FrameTimingStage::CaptureHandoff);
-        const TimingPercentiles cpuPreparation =
-            pipelineOrchestrator_->StagePercentiles(
-                FrameTimingStage::CpuPreparation);
-        const TimingPercentiles cudaSubmission =
-            pipelineOrchestrator_->StagePercentiles(
-                FrameTimingStage::CudaSubmission);
-        const TimingPercentiles presentation =
-            pipelineOrchestrator_->StagePercentiles(
-                FrameTimingStage::Presentation);
-        const TimingPercentiles recordingClone =
-            pipelineOrchestrator_->StagePercentiles(
-                FrameTimingStage::RecordingClone);
-        const auto format = [](const QString& name,
-                               const TimingPercentiles& values) {
-            if (!values.IsValid()) {
-                return QStringLiteral("%1: collecting\u2026").arg(name);
-            }
-            return QStringLiteral("%1: p50 %2 | p95 %3 | p99 %4 ms (%5)")
-                .arg(name)
-                .arg(static_cast<double>(values.p50Ms), 0, 'f', 1)
-                .arg(static_cast<double>(values.p95Ms), 0, 'f', 1)
-                .arg(static_cast<double>(values.p99Ms), 0, 'f', 1)
-                .arg(values.sampleCount);
-        };
-        QStringList performanceLines{
-            format(QStringLiteral("Camera processing"), frame),
-            format(QStringLiteral("Capture to present"), latency),
-            format(QStringLiteral("Capture handoff CPU"), captureHandoff),
-        };
-        if (cpuPreparation.IsValid()) {
-            performanceLines.append(
-                format(QStringLiteral("CPU frame preparation"),
-                       cpuPreparation));
+    if (QLabel* label = uiState_->performanceDiagnosticsLabel_) {
+        constexpr auto timerName = "_okuflowPerformanceDiagnosticsTimer";
+        QTimer* timer = label->findChild<QTimer*>(
+            QString::fromLatin1(timerName), Qt::FindDirectChildrenOnly);
+        if (!timer) {
+            timer = new QTimer(label);
+            timer->setObjectName(QString::fromLatin1(timerName));
+            timer->setInterval(400);
+            connect(timer, &QTimer::timeout,
+                    this, &OkuFlowApp::UpdatePerformanceDiagnosticsLabel);
+            // Stay scheduled while hidden so showing diagnostics refreshes
+            // even when the camera is offline and produces no more frames.
+            timer->start();
         }
-        performanceLines.append(
-            format(QStringLiteral("CUDA submission CPU"), cudaSubmission));
-        performanceLines.append(
-            format(QStringLiteral("Presentation CPU"), presentation));
-        if (recordingClone.IsValid()) {
-            performanceLines.append(
-                format(QStringLiteral("Recording clone CPU"),
-                       recordingClone));
-        }
-        if (cudaSurface_) {
-            const GpuStageTimings gpu = cudaSurface_->LastGpuStageTimings();
-            if (gpu.IsValid()) {
-                performanceLines.append(
-                    QStringLiteral(
-                        "Sampled GPU: input %1 | geometry %2 | effects %3 | "
-                        "output %4 ms")
-                        .arg(static_cast<double>(gpu.inputMs), 0, 'f', 2)
-                        .arg(static_cast<double>(gpu.geometryMs), 0, 'f', 2)
-                        .arg(static_cast<double>(gpu.effectsMs), 0, 'f', 2)
-                        .arg(static_cast<double>(gpu.outputMs), 0, 'f', 2));
-            }
-        }
-        if (recordingManager_) {
-            const RecordingTimingSnapshot encoder =
-                recordingManager_->EncoderSubmitTiming();
-            if (encoder.IsValid()) {
-                performanceLines.append(
-                    QStringLiteral(
-                        "Encoder submit CPU: p50 %1 | p95 %2 | p99 %3 ms "
-                        "(%4)")
-                        .arg(static_cast<double>(encoder.p50Ms), 0, 'f', 1)
-                        .arg(static_cast<double>(encoder.p95Ms), 0, 'f', 1)
-                        .arg(static_cast<double>(encoder.p99Ms), 0, 'f', 1)
-                        .arg(encoder.sampleCount));
-            }
-        }
-        const QString performanceText =
-            performanceLines.join(QLatin1Char('\n'));
-        SetLiveTextCoalesced(
-            uiState_->performanceDiagnosticsLabel_,
-            performanceText,
-            LivePoliteness::kSilent,
-            QStringLiteral("Performance timing percentiles"));
-        uiState_->performanceDiagnosticsLabel_->setAccessibleDescription(
-            performanceText);
     }
 
     QString superResStatus = QStringLiteral("Off");
@@ -568,6 +500,107 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         qInfo().noquote() << "NVIDIA Super Resolution:"
                           << superResLogMessage;
         lastSuperResLogState_ = superResLogState;
+    }
+}
+
+void OkuFlowApp::UpdatePerformanceDiagnosticsLabel()
+{
+    // Percentile collection copies and sorts bounded timing windows. Do that
+    // only on this slow refresh, and only while the diagnostics are visible.
+    if (!uiState_ || !pipelineOrchestrator_ ||
+        !uiState_->performanceDiagnosticsLabel_ ||
+        !uiState_->performanceDiagnosticsLabel_->isVisible()) {
+        return;
+    }
+
+    const TimingPercentiles frame =
+        pipelineOrchestrator_->FrameTickPercentiles();
+    const TimingPercentiles latency =
+        pipelineOrchestrator_->CaptureToPresentPercentiles();
+    const TimingPercentiles captureHandoff =
+        pipelineOrchestrator_->StagePercentiles(
+            FrameTimingStage::CaptureHandoff);
+    const TimingPercentiles cpuPreparation =
+        pipelineOrchestrator_->StagePercentiles(
+            FrameTimingStage::CpuPreparation);
+    const TimingPercentiles cudaSubmission =
+        pipelineOrchestrator_->StagePercentiles(
+            FrameTimingStage::CudaSubmission);
+    const TimingPercentiles presentation =
+        pipelineOrchestrator_->StagePercentiles(
+            FrameTimingStage::Presentation);
+    const TimingPercentiles recordingClone =
+        pipelineOrchestrator_->StagePercentiles(
+            FrameTimingStage::RecordingClone);
+    const auto format = [](const QString& name,
+                           const TimingPercentiles& values) {
+        if (!values.IsValid()) {
+            return QStringLiteral("%1: collecting\u2026").arg(name);
+        }
+        return QStringLiteral("%1: p50 %2 | p95 %3 | p99 %4 ms (%5)")
+            .arg(name)
+            .arg(static_cast<double>(values.p50Ms), 0, 'f', 1)
+            .arg(static_cast<double>(values.p95Ms), 0, 'f', 1)
+            .arg(static_cast<double>(values.p99Ms), 0, 'f', 1)
+            .arg(values.sampleCount);
+    };
+    QStringList performanceLines{
+        format(QStringLiteral("Camera processing"), frame),
+        format(QStringLiteral("Capture to present"), latency),
+        format(QStringLiteral("Capture handoff CPU"), captureHandoff),
+    };
+    if (cpuPreparation.IsValid()) {
+        performanceLines.append(
+            format(QStringLiteral("CPU frame preparation"),
+                   cpuPreparation));
+    }
+    performanceLines.append(
+        format(QStringLiteral("CUDA submission CPU"), cudaSubmission));
+    performanceLines.append(
+        format(QStringLiteral("Presentation CPU"), presentation));
+    if (recordingClone.IsValid()) {
+        performanceLines.append(
+            format(QStringLiteral("Recording clone CPU"),
+                   recordingClone));
+    }
+    if (cudaSurface_) {
+        const GpuStageTimings gpu = cudaSurface_->LastGpuStageTimings();
+        if (gpu.IsValid()) {
+            performanceLines.append(
+                QStringLiteral(
+                    "Sampled GPU: input %1 | geometry %2 | effects %3 | "
+                    "output %4 ms")
+                    .arg(static_cast<double>(gpu.inputMs), 0, 'f', 2)
+                    .arg(static_cast<double>(gpu.geometryMs), 0, 'f', 2)
+                    .arg(static_cast<double>(gpu.effectsMs), 0, 'f', 2)
+                    .arg(static_cast<double>(gpu.outputMs), 0, 'f', 2));
+        }
+    }
+    if (recordingManager_) {
+        const RecordingTimingSnapshot encoder =
+            recordingManager_->EncoderSubmitTiming();
+        if (encoder.IsValid()) {
+            performanceLines.append(
+                QStringLiteral(
+                    "Encoder submit CPU: p50 %1 | p95 %2 | p99 %3 ms "
+                    "(%4)")
+                    .arg(static_cast<double>(encoder.p50Ms), 0, 'f', 1)
+                    .arg(static_cast<double>(encoder.p95Ms), 0, 'f', 1)
+                    .arg(static_cast<double>(encoder.p99Ms), 0, 'f', 1)
+                    .arg(encoder.sampleCount));
+        }
+    }
+    const QString performanceText =
+        performanceLines.join(QLatin1Char('\n'));
+    SetLiveText(
+        uiState_->performanceDiagnosticsLabel_,
+        performanceText,
+        LivePoliteness::kSilent,
+        QStringLiteral("Performance timing percentiles"));
+    if (uiState_->performanceDiagnosticsLabel_->accessibleDescription() !=
+        performanceText) {
+        uiState_->performanceDiagnosticsLabel_->setAccessibleDescription(
+            performanceText);
     }
 }
 

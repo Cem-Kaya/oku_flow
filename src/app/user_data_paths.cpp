@@ -413,9 +413,7 @@ PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
         const QDir directory(
             child.isEmpty() ? root : QDir(root).filePath(child));
         const QFileInfoList files = directory.entryInfoList(
-            {QStringLiteral("IMG_*_original.jpg"),
-             QStringLiteral("IMG_*_processed.jpg"),
-             QStringLiteral("IMG_*_original.jpg.writing"),
+            {QStringLiteral("IMG_*_original.jpg.writing"),
              QStringLiteral("IMG_*_processed.jpg.writing"),
              QStringLiteral("IMG_*.pair.lock"),
              QStringLiteral("IMG_*.pair.pending")},
@@ -473,6 +471,15 @@ PhotoPairRecoveryResult UserDataPaths::RecoverInterruptedPhotoPairs(
                                              : pair.processedFinal);
             slot = file.absoluteFilePath();
             TrackNewestModification(pair, file);
+        }
+
+        // Transaction artifacts nominate pairs; completed JPEGs alone are
+        // user-owned. Keep the nominated finals' times in the legacy stale rule.
+        for (PhotoPairFiles& pair : pairs) {
+            for (const QString& path : {pair.originalFinal, pair.processedFinal}) {
+                const QFileInfo finalFile(path);
+                if (finalFile.exists()) TrackNewestModification(pair, finalFile);
+            }
         }
 
         for (auto pairIt = pairs.begin(); pairIt != pairs.end(); ++pairIt) {

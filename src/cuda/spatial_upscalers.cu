@@ -348,22 +348,17 @@ __device__ float4 Float4Lerp(float4 a, float4 b, float t) {
                        a.w + (b.w - a.w) * t);
 }
 
-__device__ float4 NisEdgeMap(const uchar4* src, size_t pitchBytes,
-                             int centerX, int centerY, int width, int height,
+__device__ float4 NisEdgeMap(const float neighborhood[6][6],
+                             int offsetX, int offsetY,
                              const NisDeviceConfig& config) {
     float p[3][3];
 #pragma unroll
     for (int row = 0; row < 3; ++row) {
 #pragma unroll
         for (int column = 0; column < 3; ++column) {
-            p[row][column] =
-                NisLuma(ReadRgb(src, pitchBytes,
-                                centerX + column - 1,
-                                centerY + row - 1,
-                                width, height));
+            p[row][column] = neighborhood[row + offsetY + 1][column + offsetX + 1];
         }
     }
-
     const float g0 = fabsf(p[0][0] + p[0][1] + p[0][2] -
                            p[2][0] - p[2][1] - p[2][2]);
     const float g45 = fabsf(p[1][0] + p[0][0] + p[0][1] -
@@ -591,14 +586,10 @@ __global__ void NisScalerKernel(uchar4* dst, size_t dstPitchBytes,
     }
 
     float4 edges[2][2];
-    edges[0][0] = NisEdgeMap(src, srcPitchBytes, sourceFloorX,
-                             sourceFloorY, srcWidth, srcHeight, config);
-    edges[0][1] = NisEdgeMap(src, srcPitchBytes, sourceFloorX + 1,
-                             sourceFloorY, srcWidth, srcHeight, config);
-    edges[1][0] = NisEdgeMap(src, srcPitchBytes, sourceFloorX,
-                             sourceFloorY + 1, srcWidth, srcHeight, config);
-    edges[1][1] = NisEdgeMap(src, srcPitchBytes, sourceFloorX + 1,
-                             sourceFloorY + 1, srcWidth, srcHeight, config);
+    edges[0][0] = NisEdgeMap(p, 0, 0, config);
+    edges[0][1] = NisEdgeMap(p, 1, 0, config);
+    edges[1][0] = NisEdgeMap(p, 0, 1, config);
+    edges[1][1] = NisEdgeMap(p, 1, 1, config);
     const float4 top = Float4Lerp(edges[0][0], edges[0][1], phaseX);
     const float4 bottom = Float4Lerp(edges[1][0], edges[1][1], phaseX);
     const float4 weights = Float4Lerp(top, bottom, phaseY);

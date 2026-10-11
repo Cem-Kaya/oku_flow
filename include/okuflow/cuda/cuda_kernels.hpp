@@ -10,9 +10,10 @@
 
 namespace okuflow {
 
-void LaunchGradientKernel(cudaSurfaceObject_t surface, int width, int height, float timeSeconds);
-void LaunchBlackWhiteKernel(cudaSurfaceObject_t surface, int width, int height, float threshold);
-void LaunchZoomKernel(cudaSurfaceObject_t surface, int width, int height, float zoomAmount);
+
+// Enforce opaque camera BGRA without reading/writing RGB or row padding.
+void LaunchOpaqueAlphaLinear(uchar4* buffer, size_t pitchBytes,
+                             int width, int height, cudaStream_t stream);
 
 void LaunchBlackWhiteLinear(uchar4* dst, size_t dstPitchBytes,
                             const uchar4* src, size_t srcPitchBytes,
@@ -24,11 +25,6 @@ void LaunchZoomLinear(uchar4* dst, size_t dstPitchBytes,
                       float zoomAmount, float centerXNorm, float centerYNorm,
                       cudaStream_t stream);
 
-void LaunchBlendLinear(uchar4* dst, size_t dstPitchBytes,
-                       const uchar4* base, size_t basePitchBytes,
-                       const uchar4* enhanced, size_t enhancedPitchBytes,
-                       int width, int height, float strength,
-                       cudaStream_t stream);
 
 void LaunchGaussianBlurLinear(uchar4* dst, size_t dstPitchBytes,
                               uchar4* scratch, size_t scratchPitchBytes,
@@ -385,6 +381,12 @@ void LaunchAutoContrastAnalysis(const unsigned int* histogram256,
 // Text-clarity kernels share a full-resolution float workspace and byte masks.
 // `analysis` is device-resident: x=auto light-text flag, y=scene class
 // (0=mixed, 1=paper, 2=board), z=mean luma x10000, w=contrast x10000.
+// Mean-only initial pass; identical luma/mean without squared workspace.
+void LaunchTextLocalMean(float* luma, size_t floatPitchBytes,
+                         float* horizontal, float* mean,
+                         const uchar4* src, size_t srcPitchBytes,
+                         int width, int height, int radius,
+                         cudaStream_t stream);
 void LaunchTextLocalStatistics(float* luma, size_t floatPitchBytes,
                                float* horizontal, float* mean,
                                float* sqHorizontal, float* sqMean,
@@ -415,10 +417,15 @@ void LaunchStrokeWeight(unsigned char* dst, size_t dstPitchBytes,
                         const unsigned char* src, size_t srcPitchBytes,
                         int width, int height, int strokeWeight,
                         cudaStream_t stream);
+// Preserve soft coverage; uncertain values hold the previous soft byte.
+// Binary inputs remain binary. Mask and history share maskPitchBytes.
 void LaunchTextMaskHysteresis(unsigned char* mask, size_t maskPitchBytes,
                               unsigned char* history, int width, int height,
                               float strength, bool historyValid,
                               cudaStream_t stream);
+// Modes: 0=ink-weighted blend, 1=opaque two-color replacement, 2=replace
+// documents or preserve mixed scenes. Exact src/dst aliasing with equal pitch
+// is supported; partial overlap is not. Mode 2 mixed scenes need no mask.
 void LaunchTextMaskComposite(uchar4* dst, size_t dstPitchBytes,
                              const uchar4* src, size_t srcPitchBytes,
                              const unsigned char* mask, size_t maskPitchBytes,
@@ -427,12 +434,15 @@ void LaunchTextMaskComposite(uchar4* dst, size_t dstPitchBytes,
                              std::uint32_t backgroundBgra,
                              int compositeMode, const int4* analysis,
                              cudaStream_t stream);
+// Non-null replacementAnalysis: pixels write nothing to dst or scratch when
+// analysis.y != 0, because a following mode-2 composite replaces documents.
 void LaunchSmartSharpenLinear(uchar4* dst, size_t dstPitchBytes,
                               uchar4* scratch, size_t scratchPitchBytes,
                               const uchar4* src, size_t srcPitchBytes,
                               const unsigned char* mask, size_t maskPitchBytes,
                               int width, int height, float strength,
-                              bool selective, cudaStream_t stream);
+                              bool selective, cudaStream_t stream,
+                              const int4* replacementAnalysis = nullptr);
 void LaunchFocusMetric(const float* luma, size_t floatPitchBytes,
                        int width, int height, float2* stats,
                        cudaStream_t stream);

@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "media_capture_session.hpp"
+#include "okuflow/capture/phone_camera.hpp"
 #include "okuflow/capture/capture_texture.hpp"
 #include "okuflow/capture/capture_buffer.hpp"
 #include "okuflow/capture/capture_color.hpp"
@@ -169,28 +170,6 @@ static const GUID kPreferredSubtypes[] = {
     MFVideoFormat_ARGB32,
     MFVideoFormat_RGB32,
 };
-
-std::size_t PackedRowBytes(const GUID& subtype, UINT width)
-{
-    if (IsEqualGUID(subtype, MFVideoFormat_ARGB32) ||
-        IsEqualGUID(subtype, MFVideoFormat_RGB32)) {
-        return static_cast<std::size_t>(width) * 4u;
-    }
-    if (IsEqualGUID(subtype, MFVideoFormat_YUY2)) {
-        return static_cast<std::size_t>(width) * 2u;
-    }
-    if (IsEqualGUID(subtype, MFVideoFormat_NV12)) {
-        return width;
-    }
-    return 0;
-}
-
-UINT PackedRowCount(const GUID& subtype, UINT height)
-{
-    return IsEqualGUID(subtype, MFVideoFormat_NV12)
-               ? height + ((height + 1u) / 2u)
-               : height;
-}
 
 double FrameSpatialRange(const MediaFrame& frame)
 {
@@ -402,6 +381,7 @@ bool MediaCaptureSession::StartCapture(const CameraDescriptor& descriptor,
                                 const std::wstring& requestedStableId)
 {
     lastError_.clear();
+    lastSymbolicLink_ = descriptor.symbolicLink;
     formatNotice_.clear();
     negotiatedFormat_ = {};
     nativeFormats_.clear();
@@ -415,6 +395,37 @@ bool MediaCaptureSession::StartCapture(const CameraDescriptor& descriptor,
     startupPreviousTimestamp_ = -1;
     startupAdvancingTimestamps_ = 0;
     startupValidationComplete_ = false;
+
+    if (!descriptor.phoneSerial.empty()) {
+        if (accelerationMode == CaptureAccelerationMode::Accelerated && !CreateAccelerationDeviceManager())
+            accelerationMode_ = CaptureAccelerationMode::Compatibility;
+        phoneTransport_ = std::make_shared<PhoneCameraTransport>();
+        running_.store(true);
+        const auto owner = shared_from_this();
+        const bool started = phoneTransport_->Start(descriptor, dxgiDeviceManager_.Get(),
+            [owner, callback = std::move(callback)](MediaFrame&& frame) {
+                owner->frameRateNumerator_.store(frame.frameRateNumerator);
+                owner->frameRateDenominator_.store(frame.frameRateDenominator);
+                auto delivery = owner->shutdown_->TryEnterDelivery();
+                if (delivery && owner->running_.load() && callback) callback(std::move(frame));
+            }, [owner, errorCallback = std::move(errorCallback)](const std::string& message) {
+                owner->deviceLost_.store(true);
+                owner->lastFailureKind_.store(CameraFailureKind::DeviceMissing);
+                auto delivery = owner->shutdown_->TryEnterDelivery();
+                if (delivery && errorCallback) errorCallback(message);
+            });
+        if (!started) {
+            lastError_ = phoneTransport_->Error();
+            lastFailureKind_.store(CameraFailureKind::DeviceMissing);
+            return false;
+        }
+        negotiatedFormat_ = phoneTransport_->Format();
+        nativeFormats_ = {negotiatedFormat_};
+        frameRateNumerator_.store(negotiatedFormat_.numerator);
+        frameRateDenominator_.store(negotiatedFormat_.denominator);
+        startupValidationComplete_ = true;
+        return true;
+    }
 
     if (!descriptor.activation) {
         lastError_ = "Invalid camera activation";
@@ -537,6 +548,13 @@ bool MediaCaptureSession::StartCapture(const CameraDescriptor& descriptor,
     }
 
     return false;
+}
+
+void MediaCaptureSession::Cancel()
+{
+    shutdown_->Cancel();
+    running_.store(false);
+    if (phoneTransport_) phoneTransport_->Cancel();
 }
 
 HRESULT MediaCaptureSession::TryOpenDevice(const CameraDescriptor& descriptor,
@@ -725,6 +743,7 @@ double MediaCaptureSession::CurrentFrameRate() const
 void MediaCaptureSession::Quiesce()
 {
     running_ = false;
+    if (phoneTransport_) phoneTransport_->Stop();
 
     if (sourceReader_) {
         sourceReader_->Flush(MF_SOURCE_READER_ALL_STREAMS);
@@ -748,6 +767,7 @@ void MediaCaptureSession::ReleaseResources()
     }
     if (shutdown_->IsAbandoned()) return;
     sourceReader_.Reset();
+    phoneTransport_.reset();
     if (activeActivation_) {
         const HRESULT hr = activeActivation_->ShutdownObject();
         if (FAILED(hr)) {
@@ -916,6 +936,7 @@ bool MediaCaptureSession::ReadCurrentFormat(IMFSourceReader* reader, FrameFormat
         }
     }
 
+    if (!IsSupportedCaptureLayout(subtype, width, height, rawStride)) return false;
     outFormat.subtype = subtype;
     outFormat.yuvColor = {};
     if ((IsEqualGUID(subtype, MFVideoFormat_NV12) ||
@@ -1055,18 +1076,13 @@ bool MediaCaptureSession::CopyGpuFrame(const FrameFormat& format, MediaFrame& fr
     std::scoped_lock lock(d3d11Mutex_);
     D3D11_TEXTURE2D_DESC sourceDescription{};
     frame.gpuTexture->GetDesc(&sourceDescription);
-    GUID readbackSubtype = format.subtype;
-    if (sourceDescription.Format == DXGI_FORMAT_NV12) {
-        readbackSubtype = MFVideoFormat_NV12;
-    } else if (sourceDescription.Format == DXGI_FORMAT_YUY2) {
-        readbackSubtype = MFVideoFormat_YUY2;
-    } else if (sourceDescription.Format ==
-               DXGI_FORMAT_B8G8R8A8_UNORM) {
-        readbackSubtype = MFVideoFormat_ARGB32;
-    } else if (sourceDescription.Format ==
-               DXGI_FORMAT_R8G8B8A8_UNORM) {
-        readbackSubtype = MFVideoFormat_RGB32;
-    }
+    const UINT mipLevels = std::max(1u, sourceDescription.MipLevels);
+    const UINT mip = frame.gpuSubresource % mipLevels;
+    if (mip >= 32 || frame.gpuSubresource / mipLevels >= sourceDescription.ArraySize ||
+        sourceDescription.SampleDesc.Count != 1) return false;
+    sourceDescription.Width = std::max(1u, sourceDescription.Width >> mip);
+    sourceDescription.Height = std::max(1u, sourceDescription.Height >> mip);
+    GUID readbackSubtype{};
     bool recreate = !dxgiReadbackTexture_;
     if (!recreate) {
         D3D11_TEXTURE2D_DESC existing{};
@@ -1102,25 +1118,12 @@ bool MediaCaptureSession::CopyGpuFrame(const FrameFormat& format, MediaFrame& fr
         return false;
     }
 
-    const std::size_t rowBytes =
-        PackedRowBytes(readbackSubtype, format.width);
-    const UINT rowCount =
-        PackedRowCount(readbackSubtype, format.height);
-    if (rowBytes == 0 || mapped.RowPitch < rowBytes) {
-        d3d11Context_->Unmap(dxgiReadbackTexture_.Get(), 0);
-        return false;
-    }
-    frame.data.resize(rowBytes * rowCount);
-    const auto* source = static_cast<const std::uint8_t*>(mapped.pData);
-    for (UINT row = 0; row < rowCount; ++row) {
-        std::memcpy(
-            frame.data.data() + static_cast<std::size_t>(row) * rowBytes,
-            source + static_cast<std::size_t>(row) * mapped.RowPitch,
-            rowBytes);
-    }
+    const bool copied = CopyMappedCaptureTexture(mapped, sourceDescription.Format,
+        sourceDescription.Width, sourceDescription.Height, format.width,
+        format.height, frame.data, frame.stride, readbackSubtype);
     d3d11Context_->Unmap(dxgiReadbackTexture_.Get(), 0);
+    if (!copied) return false;
     frame.subtype = readbackSubtype;
-    frame.stride = static_cast<LONG>(rowBytes);
     frame.dataSize = frame.data.size();
     return true;
 }
@@ -1238,6 +1241,10 @@ bool MediaCaptureSession::EnsureVideoProcessor(const MediaFrame& frame)
         return false;
     }
 
+    // Keep driver enhancement out of the camera's conversion-only stage.
+    d3d11VideoContext_->VideoProcessorSetStreamAutoProcessingMode(
+        d3d11VideoProcessor_.Get(), 0, FALSE);
+
     D3D11_TEXTURE2D_DESC outputDescription{};
     outputDescription.Width = frame.width;
     outputDescription.Height = frame.height;
@@ -1342,11 +1349,15 @@ GpuFramePreparationResult MediaCaptureSession::PrepareGpuFrameForCuda(
         const std::uint64_t pendingSequence =
             d3d11CudaPendingSequence_;
         BOOL complete = FALSE;
+        // Let the driver submit pending query work on subsequent polls.
+        // DONOTFLUSH here stalled the shared hardware-decoder context until
+        // the safe-copy deadline on the tested NVIDIA path, despite the
+        // initial End/Flush. Poll once; S_FALSE still returns to Qt for retry.
         const HRESULT pendingResult = d3d11Context_->GetData(
             d3d11CudaReadyQuery_.Get(),
             &complete,
             sizeof(complete),
-            D3D11_ASYNC_GETDATA_DONOTFLUSH);
+            0);
         if (pendingResult == S_FALSE) {
             return GpuFramePreparationResult::Retry;
         }
@@ -1612,6 +1623,8 @@ void MediaCaptureSession::CaptureLoop(FrameCallback callback, CaptureErrorCallba
                 FrameFormat updatedFormat;
                 if (!ReadCurrentFormat(reader.Get(), updatedFormat)) {
                     running_ = false;
+                    lastFailureKind_.store(CameraFailureKind::Other);
+                    deviceLost_.store(true);
                     reportFailure("The camera changed to an unsupported media format");
                     break;
                 }
@@ -1621,6 +1634,8 @@ void MediaCaptureSession::CaptureLoop(FrameCallback callback, CaptureErrorCallba
                 frameRateDenominator_.store(updatedFormat.frameRateDenominator);
             } catch (const std::exception& e) {
                 running_ = false;
+                lastFailureKind_.store(CameraFailureKind::Other);
+                deviceLost_.store(true);
                 reportFailure(std::string("Failed to read the camera's changed media format: ") + e.what());
                 break;
             }

@@ -65,6 +65,7 @@ public:
 
     RenderWidget* renderWidget() const;
     QComboBox* cameraCombo() const;
+    QPushButton* phoneLightButton() const;
     QComboBox* microphoneCombo() const;
     QListWidget* presetList() const;
     QLabel* presetDescriptionLabel() const;
@@ -203,6 +204,7 @@ public:
     void setSectionStates(const QMap<QString, bool>& states);
     void updateSectionChangedCounts(const settings::AdvancedConfig& current,
                                     const settings::AdvancedConfig& defaults);
+    void rotateAnnotationsClockwise(int quarterTurns);
     void setAnnotationPreferences(const QColor& color,
                                   int widthPixels,
                                   bool captureOnExit,
@@ -282,6 +284,7 @@ private:
 
     RenderWidget* renderWidget_{};
     QComboBox* cameraCombo_{};
+    QPushButton* phoneLightButton_{};
     QComboBox* microphoneCombo_{};
     QListWidget* presetList_{};
     QLabel* presetDescriptionLabel_{};
@@ -368,6 +371,8 @@ private:
     QStringList simpleTranscriptFinals_;
     bool simpleTranscriptActive_{false};
     void RefreshSimpleTranscriptText();
+    void UpdateSimpleTranscriptGeometry();
+    bool simpleTranscriptGeometryPending_{};
     QComboBox* applicationLanguageCombo_{};
     CollapsibleSection* applicationSection_{};
     CollapsibleSection* deviceSection_{};

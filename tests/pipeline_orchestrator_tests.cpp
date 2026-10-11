@@ -16,6 +16,7 @@ private slots:
     void rejectsInvalidLatencySamples();
     void coalescesCameraFrameWakeups();
     void busyFrameRetriesLeaveQtHeartbeatResponsive();
+    void sceneArrivalsDoNotExtendUserMotionTail();
 };
 
 void PipelineOrchestratorTests::reportsNearestRankPercentiles()
@@ -136,6 +137,35 @@ void PipelineOrchestratorTests::busyFrameRetriesLeaveQtHeartbeatResponsive()
     QVERIFY(busyTicks > 0);
     QCOMPARE(admissionPolls, 1);
     QVERIFY(!orchestrator.IsViewportDirty());
+}
+
+void PipelineOrchestratorTests::sceneArrivalsDoNotExtendUserMotionTail()
+{
+    PipelineOrchestrator orchestrator(*this,
+        PipelineOrchestrator::Callbacks{
+            .cameraActive = [] { return true; },
+            .cameraFrameRate = [] { return 30.0; },
+            .usingCuda = [] { return true; },
+            .queryDisplayRefreshRate = [] { return 120; },
+        });
+    orchestrator.SetFenceInteropEnabled(true);
+    orchestrator.displayRefreshHz_ = 120;
+    // Represent an expired interaction tail without a wall-clock sleep.
+    orchestrator.viewportMotionTailTimer_.invalidate();
+    for (int frame = 0; frame < 20; ++frame) {
+        orchestrator.MarkSceneDirty();
+        QVERIFY(orchestrator.IsViewportDirty());
+        QVERIFY(!orchestrator.viewportMotionTailTimer_.isValid());
+        orchestrator.MarkViewportPresented();
+        orchestrator.UpdateTimerPolicy();
+        QCOMPARE(orchestrator.timer_.interval(), 33);
+    }
+    orchestrator.MarkViewportDirty();
+    QVERIFY(orchestrator.viewportMotionTailTimer_.isValid());
+    QCOMPARE(orchestrator.timer_.interval(), 8);
+    orchestrator.MarkViewportPresented();
+    orchestrator.UpdateTimerPolicy();
+    QCOMPARE(orchestrator.timer_.interval(), 8);
 }
 
 } // namespace okuflow

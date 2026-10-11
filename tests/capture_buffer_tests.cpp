@@ -1,5 +1,6 @@
 #include "okuflow/capture/capture_buffer.hpp"
 #include "okuflow/capture/capture_texture.hpp"
+#include "okuflow/capture/media_capture.hpp"
 
 #include <QtTest/QtTest>
 #include <wrl/client.h>
@@ -13,6 +14,30 @@ class CaptureBufferTests : public QObject {
 private slots:
     void initTestCase() { QVERIFY(SUCCEEDED(MFStartup(MF_VERSION))); }
     void cleanupTestCase() { QVERIFY(SUCCEEDED(MFShutdown())); }
+
+    void captureBurstKeepsJitterAndCatchesUpOnOverflow()
+    {
+        std::deque<okuflow::MediaFrame> pending, retired;
+        const auto enqueue = [&pending, &retired](std::uint64_t sequence, bool burst) {
+            okuflow::MediaFrame frame;
+            frame.sequenceNumber = sequence;
+            return okuflow::EnqueueCaptureFrame(pending, std::move(frame), burst, 6, retired);
+        };
+        for (std::uint64_t sequence = 1; sequence <= 6; ++sequence) {
+            QCOMPARE(enqueue(sequence, true), std::size_t(0));
+        }
+        QCOMPARE(pending.size(), std::size_t(6));
+        QCOMPARE(pending.front().sequenceNumber, std::uint64_t(1));
+        QCOMPARE(enqueue(7, true), std::size_t(6));
+        QCOMPARE(pending.size(), std::size_t(1));
+        QCOMPARE(pending.front().sequenceNumber, std::uint64_t(7));
+        QCOMPARE(retired.size(), std::size_t(6));
+        QCOMPARE(retired.front().sequenceNumber, std::uint64_t(1));
+        QCOMPARE(retired.back().sequenceNumber, std::uint64_t(6));
+        QCOMPARE(enqueue(8, false), std::size_t(1));
+        QCOMPARE(pending.front().sequenceNumber, std::uint64_t(8));
+        QCOMPARE(retired.size(), std::size_t(7));
+    }
 
     void bgraGpuCopyPreservesChannelsFromCroppedArrayMip()
     {
@@ -119,6 +144,66 @@ private slots:
         QVERIFY(!okuflow::CopyCaptureBuffer(buffer.Get(), MFVideoFormat_NV12,
                                               4, 2, 8, result, stride));
         QVERIFY(result == previous);
+    }
+
+    void mappedGpuPackingUsesAllocationPlanesAndChannels_data()
+    {
+        QTest::addColumn<int>("format");
+        QTest::newRow("padded-nv12") << int(DXGI_FORMAT_NV12);
+        QTest::newRow("rgba") << int(DXGI_FORMAT_R8G8B8A8_UNORM);
+        QTest::newRow("bgra") << int(DXGI_FORMAT_B8G8R8A8_UNORM);
+    }
+
+    void mappedGpuPackingUsesAllocationPlanesAndChannels()
+    {
+        QFETCH(int, format);
+        ComPtr<ID3D11Device> device;
+        ComPtr<ID3D11DeviceContext> context;
+        QVERIFY(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP,
+            nullptr, 0, nullptr, 0, D3D11_SDK_VERSION,
+            device.GetAddressOf(), nullptr, context.GetAddressOf())));
+        const bool nv12 = format == int(DXGI_FORMAT_NV12);
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = 8;
+        description.Height = 8;
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = static_cast<DXGI_FORMAT>(format);
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_STAGING;
+        description.CPUAccessFlags = D3D11_CPU_ACCESS_READ | D3D11_CPU_ACCESS_WRITE;
+        ComPtr<ID3D11Texture2D> texture;
+        QVERIFY(SUCCEEDED(device->CreateTexture2D(&description, nullptr, texture.GetAddressOf())));
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        QVERIFY(SUCCEEDED(context->Map(texture.Get(), 0, D3D11_MAP_WRITE, 0, &mapped)));
+        auto* bytes = static_cast<BYTE*>(mapped.pData);
+        for (UINT row = 0; row < (nv12 ? 12u : 8u); ++row) {
+            std::memset(bytes + row * mapped.RowPitch, row >= 8 ? 91 : row < 4 ? 17 : 0xee, nv12 ? 8 : 32);
+            if (!nv12) for (UINT x = 0; x < 8; ++x) {
+                BYTE* pixel = bytes + row * mapped.RowPitch + x * 4;
+                pixel[0] = 11; pixel[1] = 37; pixel[2] = 93; pixel[3] = 177;
+            }
+        }
+        context->Unmap(texture.Get(), 0);
+        QVERIFY(SUCCEEDED(context->Map(texture.Get(), 0, D3D11_MAP_READ, 0, &mapped)));
+        std::vector<std::uint8_t> packed;
+        LONG stride = 0;
+        GUID subtype{};
+        const bool copied = okuflow::CopyMappedCaptureTexture(mapped, description.Format,
+            8, 8, 4, 4, packed, stride, subtype);
+        context->Unmap(texture.Get(), 0);
+        QVERIFY(copied);
+        QCOMPARE(stride, LONG(nv12 ? 4 : 16));
+        if (nv12) {
+            QCOMPARE(packed.size(), std::size_t(24));
+            for (int i = 0; i < 16; ++i) QCOMPARE(packed[i], std::uint8_t(17));
+            for (int i = 16; i < 24; ++i) QCOMPARE(packed[i], std::uint8_t(91));
+        } else {
+            QCOMPARE(packed[0], std::uint8_t(format == int(DXGI_FORMAT_R8G8B8A8_UNORM) ? 93 : 11));
+            QCOMPARE(packed[1], std::uint8_t(37));
+            QCOMPARE(packed[2], std::uint8_t(format == int(DXGI_FORMAT_R8G8B8A8_UNORM) ? 11 : 93));
+            QCOMPARE(packed[3], std::uint8_t(177));
+        }
     }
 
     void bottomUpLinearRgbBecomesTopDown()
@@ -235,6 +320,9 @@ private slots:
 
     void invalidLayoutsAreRejected()
     {
+        QVERIFY(!okuflow::IsSupportedCaptureLayout(MFVideoFormat_RGB24, 4, 2, 12));
+        QVERIFY(!okuflow::IsSupportedCaptureLayout(MFVideoFormat_NV12, 4, 3, 4));
+        QVERIFY(okuflow::IsSupportedCaptureLayout(MFVideoFormat_RGB32, 4, 2, -16));
         ComPtr<IMFMediaBuffer> buffer;
         QVERIFY(SUCCEEDED(MFCreateMemoryBuffer(64, buffer.GetAddressOf())));
         QVERIFY(SUCCEEDED(buffer->SetCurrentLength(64)));

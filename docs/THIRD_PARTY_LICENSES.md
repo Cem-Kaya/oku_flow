@@ -153,6 +153,49 @@ Servicing: these pins are recorded in the SBOM; each release reviews
 upstream security advisories (Mbed TLS in particular) and bumps the pins as
 ordinary changes re-validated by the loopback and live test matrices.
 
+## Android Companion Dependencies (development scaffold)
+
+The standalone `android/` Gradle project uses GPL-3.0-compatible Apache-2.0
+runtime libraries: AndroidX Core KTX 1.19.1, Activity Compose 1.13.0,
+Lifecycle Compose 2.11.0, Compose UI/Foundation 1.12.1 (BOM 2026.09.00),
+Material 3 1.4.0, Kotlin standard library and transitive coroutines.
+Exact direct pins are in `android/gradle/libs.versions.toml`; dependency
+versions and installed tools are recorded in `android/BUILDING.md`.
+Upstreams: [AndroidX](https://android.googlesource.com/platform/frameworks/support/),
+[Kotlin](https://github.com/JetBrains/kotlin), and
+[kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines).
+
+AGP 9.4.1, Kotlin/Compose compiler 2.4.21, the Gradle 9.8.1 wrapper jar,
+and Compose preview tooling are Apache-2.0 development dependencies. The
+generated wrapper jar is checked against its official upstream checksum.
+JUnit 4.13.2 (EPL-1.0) and its Hamcrest dependency (BSD-3-Clause) are JVM
+test-only dependencies; they are not included in the application APK.
+Their test-only use does not add an EPL runtime component to the GPL app.
+
+Temurin JDK 21 uses GPL-2.0 with the Classpath exception. The Android SDK,
+NDK, platform-tools and CMake are separately installed tools governed by
+their own vendor licenses/notices, not copied into the Windows bundle.
+Redistribution of adb binaries, exact resolved runtime notices in a release
+APK, and the companion's release dependency inventory remain explicit
+Phase 7 packaging gates. The Windows release script currently ships neither
+the APK nor adb. Contributions to the companion follow the repository's
+GPL-3.0 plus commercial contribution terms.
+
+The phone engine uses Android platform Camera2/MediaCodec/LocalSocket APIs;
+the desktop receiver uses the Windows system H.264 decoder, an optional installed
+Windows HEVC decoder/extension, and the existing Qt Network dependency. Windows
+codec extensions remain separately licensed and are never downloaded or bundled
+by this receiver. No new third-party library or codec binary is bundled.
+The adb protobuf reader is original code implementing the public AOSP field
+contract; no generated protobuf source/runtime is imported. Python's standard
+library provides the optional probe and fake-server tests.
+
+`tests/data/phone-camera.h264` and `tests/data/phone-camera.hevc` are original
+64×48 gray-scene fixtures generated locally with separately installed
+FFmpeg/libx264 and FFmpeg/libx265, not third-party footage.
+The generation command is recorded in `tests/README.md`; the fixture follows
+the project's contribution/license terms. Neither generation tool is redistributed.
+
 ## Not Currently Bundled
 - OpenCV DNN
 - TensorRT

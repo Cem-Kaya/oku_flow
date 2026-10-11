@@ -26,9 +26,12 @@ void SetLiveTranslationSource(QWidget* widget,
 // on every language change, including formatted values such as "Number key 3".
 void SetLiveAccessibleDescription(QWidget* widget, const QString& sourceText);
 
-// Captures source-language properties the first time a widget is seen, then
-// reapplies their translations. This lets the existing hand-built Qt UI react
-// to QEvent::LanguageChange without recreating widgets or losing selection.
+// Captures and reapplies one widget's source-language properties. Show/Polish
+// events use this bounded pass; descendants receive their own widget events.
+void RetranslateWidget(QWidget* widget);
+
+// Reapplies translations to a root and all descendants for explicit language
+// changes, without recreating widgets or losing selection.
 void RetranslateWidgetTree(QWidget* root);
 
 // Excludes data-driven combo entries (camera names, model ids, voices) from

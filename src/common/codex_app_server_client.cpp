@@ -197,13 +197,10 @@ void CodexAppServerClient::SetRequestTimeoutMs(int timeoutMs)
 }
 
 bool CodexAppServerClient::IsReady() const { return initialized_; }
-bool CodexAppServerClient::IsSignedIn() const { return signedIn_; }
 bool CodexAppServerClient::IsTurnActive() const
 {
     return pendingTurn_.valid || !activeThreadId_.isEmpty();
 }
-QString CodexAppServerClient::SelectedModel() const { return selectedModel_; }
-
 QString CodexAppServerClient::BuiltInAssistantInstructions()
 {
     return QString::fromLatin1(kAssistantIdentity).trimmed();
@@ -318,6 +315,7 @@ void CodexAppServerClient::RequestVisionTurn(const QString& prompt,
             return;
         }
     }
+    CancelConversationLoad();
     pendingTurn_.generation = ++lastRequestGeneration_;
     pendingTurn_.opening = false;
     turnStartedAtMs_ = QDateTime::currentMSecsSinceEpoch();
@@ -382,18 +380,27 @@ void CodexAppServerClient::RequestInterrupt(const QString& reason)
                 });
 }
 
+void CodexAppServerClient::CancelConversationLoad()
+{
+    ++conversationLoadGeneration_;
+}
+
 void CodexAppServerClient::LoadConversation(const QString& threadId)
 {
+    const quint64 generation = ++conversationLoadGeneration_;
     if (!initialized_) {
-        emit ConversationTranscriptLoaded(threadId, {});
+        emit ConversationTranscriptLoadFailed(threadId, QStringLiteral("Could not load conversation."));
         return;
     }
     SendRequest(QStringLiteral("thread/read"),
                 QJsonObject{{QStringLiteral("threadId"), threadId},
                             {QStringLiteral("includeTurns"), true}},
-                [this, threadId](const QJsonObject& result, const QJsonObject& error) {
+                [this, threadId, generation](const QJsonObject& result, const QJsonObject& error) {
+                    if (generation != conversationLoadGeneration_) return;
                     if (!error.isEmpty()) {
-                        emit ServerStateChanged(true, ErrorMessage(error, QStringLiteral("Could not load conversation.")));
+                        const QString message = ErrorMessage(error, QStringLiteral("Could not load conversation."));
+                        emit ConversationTranscriptLoadFailed(threadId, message);
+                        emit ServerStateChanged(initialized_, message);
                         return;
                     }
                     emit ConversationTranscriptLoaded(

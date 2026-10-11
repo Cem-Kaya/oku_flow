@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include <QScrollBar>
 
 namespace okuflow {
 
@@ -116,6 +117,7 @@ void OkuFlowApp::StartNewAssistantConversation()
             5000);
         return;
     }
+    CancelAssistantHistoryLoad();
     // Dropping the thread id makes the next turn open a fresh Codex thread,
     // which the notes writer records as a new Conversation section.
     currentAssistantThreadId_.clear();
@@ -143,6 +145,7 @@ void OkuFlowApp::SubmitAssistantPromptText(const QString& prompt,
         pendingAssistantFramePrompt_) {
         return;
     }
+    CancelAssistantHistoryLoad();
     const bool attachFrame = forceAttachFrame ||
                              (uiState_->assistantAttachFrameCheckbox_ && uiState_->assistantAttachFrameCheckbox_->isChecked());
 
@@ -184,10 +187,14 @@ void OkuFlowApp::DispatchAssistantPrompt(const QString& prompt,
     const QString submittedPrompt = prompt.trimmed();
     pendingAssistantPrompt_ = submittedPrompt;
     AppendAssistantMessage(QStringLiteral("You"), submittedPrompt);
-    QTextCursor cursor = uiState_->assistantTranscript_->textCursor();
+    QScrollBar* scroll = uiState_->assistantTranscript_->verticalScrollBar();
+    const int scrollPosition = scroll->value();
+    const bool followTail = !uiState_->assistantTranscript_->textCursor().hasSelection() &&
+                            scrollPosition >= scroll->maximum() - 2;
+    QTextCursor cursor(uiState_->assistantTranscript_->document());
     cursor.movePosition(QTextCursor::End);
     cursor.insertText(QStringLiteral("OkuFlow Assistant\n"));
-    uiState_->assistantTranscript_->setTextCursor(cursor);
+    scroll->setValue(followTail ? scroll->maximum() : scrollPosition);
     assistantResponseOpen_ = true;
     assistantResponseReceivedText_ = false;
     if (clearAdvancedEditor && uiState_->assistantPromptEdit_) {
@@ -294,7 +301,8 @@ void OkuFlowApp::PopulateAssistantHistory()
 
 void OkuFlowApp::LoadSelectedAssistantConversation()
 {
-    if (!uiState_->assistantHistoryList_ || assistiveManager_->Runtime().IsCodexTurnActive()) {
+    if (!uiState_->assistantHistoryList_ || assistantResponseOpen_ ||
+        pendingAssistantFramePrompt_ || assistiveManager_->Runtime().IsCodexTurnActive()) {
         return;
     }
     QListWidgetItem* item = uiState_->assistantHistoryList_->currentItem();
@@ -306,8 +314,22 @@ void OkuFlowApp::LoadSelectedAssistantConversation()
         return;
     }
     currentAssistantThreadId_ = threadId;
-    uiState_->assistantTranscript_->setPlainText(QStringLiteral("Loading conversation..."));
+    pendingAssistantHistoryThreadId_ = threadId;
+    uiState_->assistantTranscript_->setPlainText(TranslateUi(QStringLiteral("Loading conversation...")));
     assistiveManager_->Runtime().LoadAssistantConversation(threadId);
+}
+
+void OkuFlowApp::CancelAssistantHistoryLoad()
+{
+    if (!pendingAssistantHistoryThreadId_.isEmpty() &&
+        pendingAssistantHistoryThreadId_ == currentAssistantThreadId_ &&
+        uiState_->assistantTranscript_) {
+        // A pending load owns only its placeholder. Clear it before a new
+        // prompt appends You, while retaining the selected conversation id.
+        uiState_->assistantTranscript_->clear();
+    }
+    pendingAssistantHistoryThreadId_.clear();
+    assistiveManager_->Runtime().CancelAssistantConversationLoad();
 }
 
 void OkuFlowApp::SetAssistantBusy(bool busy)
@@ -343,14 +365,17 @@ void OkuFlowApp::AppendAssistantMessage(const QString& speaker, const QString& t
     if (!uiState_->assistantTranscript_ || text.trimmed().isEmpty()) {
         return;
     }
-    QTextCursor cursor = uiState_->assistantTranscript_->textCursor();
+    QScrollBar* scroll = uiState_->assistantTranscript_->verticalScrollBar();
+    const int scrollPosition = scroll->value();
+    const bool followTail = !uiState_->assistantTranscript_->textCursor().hasSelection() &&
+                            scrollPosition >= scroll->maximum() - 2;
+    QTextCursor cursor(uiState_->assistantTranscript_->document());
     cursor.movePosition(QTextCursor::End);
     if (!uiState_->assistantTranscript_->document()->isEmpty()) {
         cursor.insertText(QStringLiteral("\n"));
     }
     cursor.insertText(QStringLiteral("%1\n%2\n").arg(speaker, text.trimmed()));
-    uiState_->assistantTranscript_->setTextCursor(cursor);
-    uiState_->assistantTranscript_->ensureCursorVisible();
+    scroll->setValue(followTail ? scroll->maximum() : scrollPosition);
 }
 
 void OkuFlowApp::OnVlmAssistToggled(bool checked)

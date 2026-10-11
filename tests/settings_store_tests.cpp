@@ -1,3 +1,5 @@
+#include <limits>
+#include <memory>
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -8,10 +10,13 @@
 #include "okuflow/app/settings_store.hpp"
 #include "okuflow/cuda/cuda_interop.hpp"
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
+#include <QScopeGuard>
 #include <QUuid>
 #include <QtTest>
 
@@ -100,6 +105,58 @@ bool WriteJson(const QString& path, const QJsonObject& object)
     return file.write(QJsonDocument(object).toJson()) >= 0;
 }
 
+QByteArray ReadBytes(const QString& path)
+{
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+}
+
+bool WriteBytes(const QString& path, const QByteArray& bytes)
+{
+    QFile file(path);
+    return file.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+           file.write(bytes) == bytes.size();
+}
+
+// Pads an ASCII string field so Serialize() is exactly `bytes` long.
+PersistentSettings SettingsOfSerializedSize(qint64 bytes, int cameraIndex = 5)
+{
+    PersistentSettings settings;
+    settings.cameraIndex = cameraIndex;
+    settings.assistive.assistantInstructions.clear();
+    const qint64 base = Serialize(settings).size();
+    settings.assistive.assistantInstructions =
+        QString(static_cast<qsizetype>(bytes - base), QLatin1Char('a'));
+    return settings;
+}
+
+int StoredCameraIndex(const QString& path)
+{
+    const auto loaded = Load(path);
+    return loaded ? loaded->cameraIndex : std::numeric_limits<int>::min();
+}
+
+QStringList TooLargeSidecars(const QTemporaryDir& directory)
+{
+    return QDir(directory.path())
+        .entryList({QStringLiteral("settings.json.too-large-*")}, QDir::Files);
+}
+
+// Includes QSaveFile temporaries, so a failed save must leave no trace.
+QStringList FileEntries(const QTemporaryDir& directory)
+{
+    return QDir(directory.path()).entryList(QDir::Files | QDir::Hidden, QDir::Name);
+}
+
+void MakeFilesWritable(const QTemporaryDir& directory)
+{
+    for (const QString& name : FileEntries(directory)) {
+        QFile::setPermissions(directory.filePath(name),
+                              QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ReadUser | QFileDevice::WriteUser);
+    }
+}
+
 } // namespace
 
 class SettingsStoreTests : public QObject {
@@ -107,6 +164,7 @@ class SettingsStoreTests : public QObject {
 
 private slots:
     void defaultsUseLunaLow();
+    void automaticFallbackPreservesPreferredCamera();
     void modelDefaultsPreserveExplicitSelections();
     void migratesMisspelledTerraModel();
     void roundTripPreservesAdvancedConfig();
@@ -118,11 +176,60 @@ private slots:
     void rejectsCorruptJson();
     void rejectsFutureSettingsVersion();
     void saveCreatesValidBackup();
-    void protectedSecretRoundTrip();
+    void serializedBytesAreWhatSaveWrites();
+    void loadCountsRawBytesAtCap();
+    void saveAtExactCapRoundTripsThroughBackup();
+    void saveOverCapLeavesFilesUntouched();
+    void oversizePrimaryRecoversValidBackup_data();
+    void oversizePrimaryRecoversValidBackup();
+    void saveSetsAsideOversizePrimaryWithoutRotation();
+    void refusedOversizeReplacementKeepsOriginal();
+    void refusedStagingKeepsBackupGeneration_data();
+    void refusedStagingKeepsBackupGeneration();
+    void lockedOversizePrimaryStaysInPlace();
+    void commitFailureKeepsCurrentPrimary();
+    void missingPrimaryRecoversBackup_data();
+    void missingPrimaryRecoversBackup();
+    void controllerReportsSizeLimitAndKeepsValidPrimary();
+    void capHoldsDocumentedCapacity();
+    void credentialDeletionRetries_data();
+    void credentialDeletionRetries();
+    void pendingDeletionNeverReusesReplacementKey_data();
+    void pendingDeletionNeverReusesReplacementKey();
     void ignoresPlaintextApiKeyField();
     void clampsOutOfRangeValues();
     void equivalenceUsesUiTolerances();
 };
+
+void SettingsStoreTests::automaticFallbackPreservesPreferredCamera()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("settings.json"));
+    PersistentSettings preferred;
+    preferred.cameraIndex = 1;
+    preferred.cameraSymbolicLink = QStringLiteral("fixture-camera-B");
+    QVERIFY(Save(path, preferred));
+    SettingsController controller(path);
+    QVERIFY(!controller.InitializeLegacyCameraIdentity(0, QStringLiteral("fixture-camera-A")));
+    QVERIFY(controller.Save(controller.Settings().currentConfig));
+    const auto reloaded = Load(path);
+    QVERIFY(reloaded.has_value());
+    QCOMPARE(reloaded->cameraSymbolicLink, preferred.cameraSymbolicLink);
+    QCOMPARE(reloaded->cameraIndex, 1);
+
+    preferred.cameraSymbolicLink.clear();
+    QVERIFY(Save(path, preferred));
+    SettingsController legacy(path);
+    QVERIFY(legacy.InitializeLegacyCameraIdentity(1, QStringLiteral("fixture-camera-B")));
+    QVERIFY(!legacy.InitializeLegacyCameraIdentity(0, QStringLiteral("fixture-camera-A")));
+    QCOMPARE(legacy.Settings().cameraSymbolicLink, QStringLiteral("fixture-camera-B"));
+    QCOMPARE(legacy.Settings().cameraIndex, 1);
+    QVERIFY(legacy.Save(legacy.Settings().currentConfig));
+    const auto migrated = Load(path);
+    QVERIFY(migrated.has_value());
+    QCOMPARE(migrated->cameraSymbolicLink, QStringLiteral("fixture-camera-B"));
+}
 
 void SettingsStoreTests::textClarityMasterPreservesDormantPreferences()
 {
@@ -192,6 +299,8 @@ void SettingsStoreTests::defaultsUseLunaLow()
     QCOMPARE(settings.assistive.codexModel, QStringLiteral("gpt-6-luna"));
     QCOMPARE(settings.assistive.codexReasoningEffort, QStringLiteral("low"));
     QCOMPARE(settings.currentConfig.spatialUpscaler, 1);
+    QVERIFY(!settings.liveTranscriptionEnabled);
+    QVERIFY(!settings.appendTranscriptToNotes);
 }
 
 void SettingsStoreTests::modelDefaultsPreserveExplicitSelections()
@@ -270,6 +379,7 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     expected.language = QStringLiteral("tr");
     expected.userDataRoot = QStringLiteral("D:/OkuFlow Data");
     expected.cameraIndex = 4;
+    expected.cameraSymbolicLink = QStringLiteral("fixture-camera-stable-link");
     expected.microphoneEndpointId =
         QStringLiteral("{0.0.1.00000000}.test-microphone");
     expected.cameraFormatStableId =
@@ -320,6 +430,7 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     expected.assistive.vlmApiUrl = QStringLiteral("https://example.invalid/v1");
     expected.assistive.vlmApiKey = QStringLiteral("secret");
     expected.assistive.vlmCredentialId = QStringLiteral("OkuFlow/Test Round Trip");
+    expected.assistive.pendingCredentialRemovals = {QStringLiteral("fixture-delete-id")};
     expected.assistive.vlmModel = QStringLiteral("vision");
     expected.assistive.vlmPrompt = QStringLiteral("Describe.");
     expected.assistive.ttsEngine = QStringLiteral("winrt");
@@ -340,6 +451,8 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QVERIFY(loaded->assistive.vlmApiKey.isEmpty());
     QCOMPARE(loaded->assistive.vlmCredentialId,
              expected.assistive.vlmCredentialId);
+    QCOMPARE(loaded->assistive.pendingCredentialRemovals,
+             expected.assistive.pendingCredentialRemovals);
 
     QFile savedFile(path);
     QVERIFY(savedFile.open(QIODevice::ReadOnly));
@@ -348,6 +461,7 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QVERIFY(!savedJson.contains("\"vlmApiKey\""));
 
     QCOMPARE(loaded->cameraIndex, expected.cameraIndex);
+    QCOMPARE(loaded->cameraSymbolicLink, expected.cameraSymbolicLink);
     QCOMPARE(loaded->microphoneEndpointId,
              expected.microphoneEndpointId);
     QCOMPARE(loaded->language, expected.language);
@@ -621,25 +735,605 @@ void SettingsStoreTests::saveCreatesValidBackup()
     QCOMPARE(current->cameraIndex, 7);
 }
 
-void SettingsStoreTests::protectedSecretRoundTrip()
+void SettingsStoreTests::serializedBytesAreWhatSaveWrites()
 {
-    const QString credentialId =
-        QStringLiteral("OkuFlow/Test/%1")
-            .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
-    QString error;
-    QVERIFY2(ProtectedSecretStore::Write(
-                 credentialId, QStringLiteral("test-secret-value"), &error),
-             qPrintable(error));
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    PersistentSettings settings;
+    settings.assistive.assistantInstructions = QStringLiteral("Line one\nline two\r\n");
+    QCOMPARE(SaveDetailed(path, settings), SaveStatus::Saved);
+    const QByteArray written = ReadBytes(path);
+    QCOMPARE(written, Serialize(settings));
+    QCOMPARE(QFileInfo(path).size(), Serialize(settings).size());
+    // Every line break is CRLF on disk; the size limit counts the CR bytes.
+    QVERIFY(written.contains("\r\n"));
+    QCOMPARE(written.count('\n'), written.count("\r\n"));
+    const auto loaded = Load(path);
+    QVERIFY(loaded.has_value());
+    QCOMPARE(loaded->assistive.assistantInstructions,
+             settings.assistive.assistantInstructions);
+}
 
-    const ProtectedSecretResult read =
-        ProtectedSecretStore::Read(credentialId);
-    QCOMPARE(read.status, ProtectedSecretResult::Status::Found);
-    QCOMPARE(read.value, QStringLiteral("test-secret-value"));
+void SettingsStoreTests::loadCountsRawBytesAtCap()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    // CRLF padding: a Text-mode read would strip the CRs and undercount.
+    QByteArray bytes("{\"version\":16,\"cameraIndex\":2}");
+    const qint64 padding = kMaxSettingsFileBytes - bytes.size();
+    bytes += QByteArray("\r\n").repeated(static_cast<qsizetype>(padding / 2));
+    if (padding % 2 != 0) {
+        bytes += ' ';
+    }
+    QCOMPARE(bytes.size(), kMaxSettingsFileBytes);
+    QVERIFY(WriteBytes(path, bytes));
+    const LoadResult atCap = LoadDetailed(path);
+    QCOMPARE(atCap.status, LoadStatus::Loaded);
+    QVERIFY(atCap.settings.has_value());
+    QCOMPARE(atCap.settings->cameraIndex, 2);
 
-    QVERIFY2(ProtectedSecretStore::Remove(credentialId, &error),
-             qPrintable(error));
-    QCOMPARE(ProtectedSecretStore::Read(credentialId).status,
-             ProtectedSecretResult::Status::NotFound);
+    QVERIFY(WriteBytes(path, bytes + ' '));
+    QCOMPARE(QFileInfo(path).size(), kMaxSettingsFileBytes + 1);
+    const LoadResult overCap = LoadDetailed(path);
+    QCOMPARE(overCap.status, LoadStatus::TooLarge);
+    QVERIFY(!overCap.settings.has_value());
+    QVERIFY(overCap.error.contains(QStringLiteral("16 MiB")));
+    QVERIFY(!Load(path).has_value());
+}
+
+void SettingsStoreTests::saveAtExactCapRoundTripsThroughBackup()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const PersistentSettings atCap = SettingsOfSerializedSize(kMaxSettingsFileBytes, 4);
+    QCOMPARE(Serialize(atCap).size(), kMaxSettingsFileBytes);
+    QCOMPARE(SaveDetailed(path, atCap), SaveStatus::Saved);
+    QCOMPARE(QFileInfo(path).size(), kMaxSettingsFileBytes);
+    const LoadResult loaded = LoadDetailed(path);
+    QCOMPARE(loaded.status, LoadStatus::Loaded);
+    QCOMPARE(loaded.settings->assistive.assistantInstructions,
+             atCap.assistive.assistantInstructions);
+
+    // Saving again inspects and rotates the at-cap document into a backup
+    // that Load also accepts.
+    PersistentSettings next;
+    next.cameraIndex = 8;
+    QCOMPARE(SaveDetailed(path, next), SaveStatus::Saved);
+    const QString backupPath = path + QStringLiteral(".backup");
+    QCOMPARE(QFileInfo(backupPath).size(), kMaxSettingsFileBytes);
+    const LoadResult backup = LoadDetailed(backupPath);
+    QCOMPARE(backup.status, LoadStatus::Loaded);
+    QCOMPARE(backup.settings->cameraIndex, 4);
+    QCOMPARE(StoredCameraIndex(path), 8);
+}
+
+void SettingsStoreTests::saveOverCapLeavesFilesUntouched()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const QString backupPath = path + QStringLiteral(".backup");
+    PersistentSettings first;
+    first.cameraIndex = 3;
+    QVERIFY(Save(path, first));
+    PersistentSettings second;
+    second.cameraIndex = 7;
+    QVERIFY(Save(path, second));
+    const QByteArray primaryBefore = ReadBytes(path);
+    const QByteArray backupBefore = ReadBytes(backupPath);
+    const QStringList entriesBefore =
+        QDir(dir.path()).entryList(QDir::Files | QDir::Hidden, QDir::Name);
+
+    const PersistentSettings overCap =
+        SettingsOfSerializedSize(kMaxSettingsFileBytes + 1);
+    QCOMPARE(Serialize(overCap).size(), kMaxSettingsFileBytes + 1);
+    QCOMPARE(SaveDetailed(path, overCap), SaveStatus::TooLarge);
+    QVERIFY(!Save(path, overCap));
+
+    QCOMPARE(ReadBytes(path), primaryBefore);
+    QCOMPARE(ReadBytes(backupPath), backupBefore);
+    QCOMPARE(QDir(dir.path()).entryList(QDir::Files | QDir::Hidden, QDir::Name),
+             entriesBefore);
+    QCOMPARE(StoredCameraIndex(path), 7);
+    QCOMPARE(StoredCameraIndex(backupPath), 3);
+}
+
+void SettingsStoreTests::oversizePrimaryRecoversValidBackup_data()
+{
+    QTest::addColumn<bool>("withBackup");
+    QTest::newRow("valid-backup") << true;
+    QTest::newRow("no-backup") << false;
+}
+
+void SettingsStoreTests::oversizePrimaryRecoversValidBackup()
+{
+    QFETCH(bool, withBackup);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const QString backupPath = path + QStringLiteral(".backup");
+    PersistentSettings first;
+    first.cameraIndex = 3;
+    QVERIFY(Save(path, first));
+    PersistentSettings second;
+    second.cameraIndex = 7;
+    QVERIFY(Save(path, second));
+    if (!withBackup) {
+        QVERIFY(QFile::remove(backupPath));
+    }
+    const QByteArray backupBefore = ReadBytes(backupPath);
+    // Otherwise valid JSON, one byte over the limit.
+    const QByteArray oversize =
+        Serialize(SettingsOfSerializedSize(kMaxSettingsFileBytes + 1, 11));
+    QVERIFY(WriteBytes(path, oversize));
+
+    SettingsController controller(path);
+    const QString notice = controller.TakeStartupNotice();
+    QVERIFY2(notice.contains(QStringLiteral("16 MiB limit")), qPrintable(notice));
+    QVERIFY2(notice.contains(QStringLiteral("original file was preserved")),
+             qPrintable(notice));
+    const QStringList sidecars = TooLargeSidecars(dir);
+    QCOMPARE(sidecars.size(), 1);
+    QCOMPARE(ReadBytes(dir.filePath(sidecars.front())), oversize);
+
+    if (withBackup) {
+        QVERIFY2(notice.contains(QStringLiteral("Recovered the last valid settings backup")),
+                 qPrintable(notice));
+        QCOMPARE(controller.Settings().cameraIndex, 3);
+        // Written back from the backup, which itself is not rotated or touched.
+        QCOMPARE(ReadBytes(backupPath), backupBefore);
+        QCOMPARE(StoredCameraIndex(path), 3);
+    } else {
+        QVERIFY2(notice.contains(QStringLiteral("safe defaults")), qPrintable(notice));
+        QCOMPARE(controller.Settings().cameraIndex, -1);
+        QVERIFY(!QFileInfo::exists(path));
+    }
+    QVERIFY(controller.Save(controller.Settings().currentConfig));
+    QCOMPARE(ReadBytes(dir.filePath(sidecars.front())), oversize);
+}
+
+void SettingsStoreTests::saveSetsAsideOversizePrimaryWithoutRotation()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const QString backupPath = path + QStringLiteral(".backup");
+    PersistentSettings first;
+    first.cameraIndex = 3;
+    QVERIFY(Save(path, first));
+    PersistentSettings second;
+    second.cameraIndex = 7;
+    QVERIFY(Save(path, second));
+    const QByteArray backupBefore = ReadBytes(backupPath);
+    // The primary grows past the limit after startup, outside OkuFlow.
+    const QByteArray oversize =
+        Serialize(SettingsOfSerializedSize(kMaxSettingsFileBytes + 1, 11));
+    QVERIFY(WriteBytes(path, oversize));
+
+    PersistentSettings next;
+    next.cameraIndex = 9;
+    QCOMPARE(SaveDetailed(path, next), SaveStatus::Saved);
+    QCOMPARE(ReadBytes(backupPath), backupBefore);
+    const QStringList sidecars = TooLargeSidecars(dir);
+    QCOMPARE(sidecars.size(), 1);
+    QCOMPARE(ReadBytes(dir.filePath(sidecars.front())), oversize);
+    QCOMPARE(StoredCameraIndex(path), 9);
+}
+
+void SettingsStoreTests::refusedOversizeReplacementKeepsOriginal()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const QString backupPath = path + QStringLiteral(".backup");
+    PersistentSettings first;
+    first.cameraIndex = 3;
+    QVERIFY(Save(path, first));
+    PersistentSettings second;
+    second.cameraIndex = 7;
+    QVERIFY(Save(path, second));
+    const QByteArray backupBefore = ReadBytes(backupPath);
+    const QByteArray oversize =
+        Serialize(SettingsOfSerializedSize(kMaxSettingsFileBytes + 1, 11));
+    QVERIFY(WriteBytes(path, oversize));
+    const auto cleanup = qScopeGuard([&dir]() {
+        // The pre-fix path can move the read-only original into a sidecar.
+        for (const QString& name : QDir(dir.path()).entryList(QDir::Files)) {
+            QFile::setPermissions(dir.filePath(name), QFileDevice::ReadOwner |
+                QFileDevice::WriteOwner | QFileDevice::ReadUser | QFileDevice::WriteUser);
+        }
+    });
+    QVERIFY(QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::ReadUser));
+
+    PersistentSettings next;
+    next.cameraIndex = 9;
+    QCOMPARE(SaveDetailed(path, next), SaveStatus::Failed);
+    QCOMPARE(ReadBytes(path), oversize);
+    QCOMPARE(ReadBytes(backupPath), backupBefore);
+    QVERIFY(TooLargeSidecars(dir).isEmpty());
+}
+
+void SettingsStoreTests::refusedStagingKeepsBackupGeneration_data()
+{
+    QTest::addColumn<QString>("readOnlyName");
+    QTest::newRow("read-only-primary") << QStringLiteral("settings.json");
+    QTest::newRow("read-only-backup") << QStringLiteral("settings.json.backup");
+}
+
+void SettingsStoreTests::refusedStagingKeepsBackupGeneration()
+{
+    QFETCH(QString, readOnlyName);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const QString backupPath = path + QStringLiteral(".backup");
+    PersistentSettings first;
+    first.cameraIndex = 3;
+    QVERIFY(Save(path, first));
+    PersistentSettings second;
+    second.cameraIndex = 7;
+    QVERIFY(Save(path, second));
+    const QByteArray primaryBefore = ReadBytes(path);
+    const QByteArray backupBefore = ReadBytes(backupPath);
+    const QStringList entriesBefore = FileEntries(dir);
+    const auto cleanup = qScopeGuard([&dir]() { MakeFilesWritable(dir); });
+    QVERIFY(QFile::setPermissions(dir.filePath(readOnlyName),
+                                  QFileDevice::ReadOwner | QFileDevice::ReadUser));
+
+    // A refused save must not rotate the older generation out of the backup
+    // first, and the staged replacement must not survive the refusal.
+    PersistentSettings next;
+    next.cameraIndex = 9;
+    QCOMPARE(SaveDetailed(path, next), SaveStatus::Failed);
+    QCOMPARE(ReadBytes(path), primaryBefore);
+    QCOMPARE(ReadBytes(backupPath), backupBefore);
+    QCOMPARE(FileEntries(dir), entriesBefore);
+}
+
+void SettingsStoreTests::lockedOversizePrimaryStaysInPlace()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const QString backupPath = path + QStringLiteral(".backup");
+    PersistentSettings first;
+    first.cameraIndex = 3;
+    QVERIFY(Save(path, first));
+    PersistentSettings second;
+    second.cameraIndex = 7;
+    QVERIFY(Save(path, second));
+    const QByteArray backupBefore = ReadBytes(backupPath);
+    const QByteArray oversize =
+        Serialize(SettingsOfSerializedSize(kMaxSettingsFileBytes + 1, 11));
+    QVERIFY(WriteBytes(path, oversize));
+    const QStringList entriesBefore = FileEntries(dir);
+
+    PersistentSettings next;
+    next.cameraIndex = 9;
+    {
+        // QFile opens without FILE_SHARE_DELETE, so setting the file aside
+        // fails after the replacement was staged.
+        QFile holder(path);
+        QVERIFY(holder.open(QIODevice::ReadOnly));
+        QCOMPARE(SaveDetailed(path, next), SaveStatus::Failed);
+        QCOMPARE(ReadBytes(path), oversize);
+        QCOMPARE(ReadBytes(backupPath), backupBefore);
+        QCOMPARE(FileEntries(dir), entriesBefore);
+    }
+
+    // Once released, the same save sets the original aside and succeeds.
+    QCOMPARE(SaveDetailed(path, next), SaveStatus::Saved);
+    const QStringList sidecars = TooLargeSidecars(dir);
+    QCOMPARE(sidecars.size(), 1);
+    QCOMPARE(ReadBytes(dir.filePath(sidecars.front())), oversize);
+    QCOMPARE(ReadBytes(backupPath), backupBefore);
+    QCOMPARE(StoredCameraIndex(path), 9);
+}
+
+void SettingsStoreTests::commitFailureKeepsCurrentPrimary()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const QString backupPath = path + QStringLiteral(".backup");
+    PersistentSettings first;
+    first.cameraIndex = 3;
+    QVERIFY(Save(path, first));
+    PersistentSettings second;
+    second.cameraIndex = 7;
+    QVERIFY(Save(path, second));
+    const QByteArray primaryBefore = ReadBytes(path);
+    const QStringList entriesBefore = FileEntries(dir);
+
+    // Staging and the backup copy succeed; the final replace fails because
+    // the open handle does not share deletion.
+    QFile holder(path);
+    QVERIFY(holder.open(QIODevice::ReadOnly));
+    PersistentSettings next;
+    next.cameraIndex = 9;
+    QCOMPARE(SaveDetailed(path, next), SaveStatus::Failed);
+    holder.close();
+    QCOMPARE(ReadBytes(path), primaryBefore);
+    // The backup was rotated before the commit, so it now holds the unchanged
+    // current document; QSaveFile removed its temporary file.
+    QCOMPARE(ReadBytes(backupPath), primaryBefore);
+    QCOMPARE(FileEntries(dir), entriesBefore);
+}
+
+void SettingsStoreTests::missingPrimaryRecoversBackup_data()
+{
+    QTest::addColumn<QString>("backupState");
+    QTest::newRow("first-run") << QStringLiteral("none");
+    QTest::newRow("valid-backup") << QStringLiteral("valid");
+    QTest::newRow("corrupt-backup") << QStringLiteral("corrupt");
+}
+
+void SettingsStoreTests::missingPrimaryRecoversBackup()
+{
+    QFETCH(QString, backupState);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const QString backupPath = path + QStringLiteral(".backup");
+    if (backupState != QStringLiteral("none")) {
+        PersistentSettings first;
+        first.cameraIndex = 3;
+        QVERIFY(Save(path, first));
+        PersistentSettings second;
+        second.cameraIndex = 7;
+        QVERIFY(Save(path, second));
+        // A save interrupted after setting an oversized primary aside leaves
+        // only the backup behind.
+        QVERIFY(QFile::remove(path));
+        if (backupState == QStringLiteral("corrupt")) {
+            QVERIFY(WriteBytes(backupPath, "{ this is not json"));
+        }
+    }
+    const QByteArray backupBefore = ReadBytes(backupPath);
+
+    SettingsController controller(path);
+    const QString notice = controller.TakeStartupNotice();
+    if (backupState == QStringLiteral("valid")) {
+        QVERIFY2(notice.contains(QStringLiteral("settings file was missing")),
+                 qPrintable(notice));
+        QVERIFY2(notice.contains(QStringLiteral("Recovered the last valid settings backup")),
+                 qPrintable(notice));
+        QCOMPARE(controller.Settings().cameraIndex, 3);
+        QCOMPARE(StoredCameraIndex(path), 3);
+    } else {
+        QVERIFY2(notice.isEmpty(), qPrintable(notice));
+        QCOMPARE(controller.Settings().cameraIndex, -1);
+        QCOMPARE(controller.Settings().selectedPresetId, DefaultPresetId());
+        QVERIFY(!QFileInfo::exists(path));
+    }
+    QCOMPARE(ReadBytes(backupPath), backupBefore);
+}
+
+void SettingsStoreTests::controllerReportsSizeLimitAndKeepsValidPrimary()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    const QString backupPath = path + QStringLiteral(".backup");
+    PersistentSettings first;
+    first.cameraIndex = 3;
+    QVERIFY(Save(path, first));
+    PersistentSettings second;
+    second.cameraIndex = 7;
+    QVERIFY(Save(path, second));
+    const QByteArray primaryBefore = ReadBytes(path);
+    const QByteArray backupBefore = ReadBytes(backupPath);
+
+    SettingsController controller(path);
+    QCOMPARE(controller.Settings().cameraIndex, 7);
+    controller.MutableSettings().assistive.assistantInstructions =
+        QString(static_cast<qsizetype>(kMaxSettingsFileBytes), QLatin1Char('a'));
+    QVERIFY(!controller.Save(controller.Settings().currentConfig));
+    QVERIFY2(controller.LastError().contains(QStringLiteral("16 MiB settings file limit")),
+             qPrintable(controller.LastError()));
+    QCOMPARE(ReadBytes(path), primaryBefore);
+    QCOMPARE(ReadBytes(backupPath), backupBefore);
+    QVERIFY(TooLargeSidecars(dir).isEmpty());
+
+    controller.MutableSettings().assistive.assistantInstructions = QStringLiteral("Short.");
+    QVERIFY(controller.Save(controller.Settings().currentConfig));
+    QVERIFY(controller.LastError().isEmpty());
+    const auto saved = Load(path);
+    QVERIFY(saved.has_value());
+    QCOMPARE(saved->cameraIndex, 7);
+    QCOMPARE(saved->assistive.assistantInstructions, QStringLiteral("Short."));
+}
+
+void SettingsStoreTests::capHoldsDocumentedCapacity()
+{
+    // Index entries are created with at most 60 title and 160 preview UTF-16
+    // units; three-byte UTF-8 characters are the realistic worst case.
+    PersistentSettings settings;
+    const QString title(60, QChar(0x20AC));
+    const QString preview(160, QChar(0x20AC));
+    for (int i = 0; i < 10000; ++i) {
+        settings.codexConversations.push_back(
+            {QUuid::createUuid().toString(QUuid::WithoutBraces), title, preview,
+             1790000000 + i, 1790000000 + i});
+    }
+    for (int i = 0; i < 500; ++i) {
+        AdvancedConfig config = MakePopulatedConfig();
+        config.id = QStringLiteral("custom-config-%1").arg(1790000000000LL + i);
+        config.name = QStringLiteral("Custom quick option %1").arg(i);
+        config.description = QStringLiteral("Custom quick option created from Advanced Tuning.");
+        settings.customConfigs.push_back(config);
+        settings.customPresets.push_back(
+            {QStringLiteral("custom-preset-%1").arg(1790000000000LL + i),
+             config.name, config.description, config.id, false});
+    }
+    const qint64 bytes = Serialize(settings).size();
+    qInfo("10000 max-length conversations + 500 custom quick modes: %lld bytes (limit %lld)",
+          bytes, kMaxSettingsFileBytes);
+    QVERIFY(bytes < kMaxSettingsFileBytes);
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    QCOMPARE(SaveDetailed(path, settings), SaveStatus::Saved);
+    const auto loaded = Load(path);
+    QVERIFY(loaded.has_value());
+    QCOMPARE(loaded->codexConversations.size(), settings.codexConversations.size());
+    QCOMPARE(loaded->codexConversations.back().preview, preview);
+    QCOMPARE(loaded->customConfigs.size(), settings.customConfigs.size());
+    QCOMPARE(loaded->customPresets.size(), settings.customPresets.size());
+}
+
+void SettingsStoreTests::credentialDeletionRetries_data()
+{
+    QTest::addColumn<bool>("failSave");
+    QTest::addColumn<bool>("restart");
+    QTest::newRow("settings-save-failure-same-controller") << true << false;
+    QTest::newRow("settings-save-failure-restart") << true << true;
+    QTest::newRow("secret-remove-failure-same-controller") << false << false;
+    QTest::newRow("secret-remove-failure-restart") << false << true;
+}
+
+void SettingsStoreTests::credentialDeletionRetries()
+{
+    QFETCH(bool, failSave);
+    QFETCH(bool, restart);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    PersistentSettings initial;
+    initial.assistive.vlmCredentialId = QStringLiteral("fixture-secret-id");
+    QVERIFY(Save(path, initial));
+    int readCalls = 0;
+    int removeCalls = 0;
+    int saveCalls = 0;
+    bool secretExists = true;
+    SettingsController::StorageOperations storage;
+    storage.readSecret = [&](const QString& id) {
+        ++readCalls;
+        if (id != QStringLiteral("fixture-secret-id"))
+            return ProtectedSecretResult{ProtectedSecretResult::Status::Error, {}, QStringLiteral("wrong fixture id")};
+        return ProtectedSecretResult{ProtectedSecretResult::Status::Found,
+                                     QStringLiteral("fixture-secret"), {}};
+    };
+    storage.writeSecret = [](const QString&, const QString&, QString*) { return false; };
+    storage.removeSecret = [&](const QString& id, QString* error) {
+        ++removeCalls;
+        if (id != QStringLiteral("fixture-secret-id")) return false;
+        if (!failSave && removeCalls == 1) {
+            *error = QStringLiteral("fixture removal failure");
+            return false;
+        }
+        secretExists = false;
+        return true;
+    };
+    storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
+        ++saveCalls;
+        if (!value.assistive.vlmCredentialId.isEmpty()) return false;
+        if (failSave && saveCalls == 1) return false;
+        return Save(target, value);
+    };
+    SettingsController controller(path, storage);
+    QCOMPARE(readCalls, 1);
+    controller.MutableSettings().assistive.vlmApiKey.clear();
+    QVERIFY(!controller.Save(controller.Settings().currentConfig));
+    QVERIFY(secretExists);
+    QCOMPARE(removeCalls, failSave ? 0 : 1);
+    QCOMPARE(controller.Settings().assistive.vlmCredentialId,
+             failSave ? QStringLiteral("fixture-secret-id") : QString());
+    std::unique_ptr<SettingsController> restarted;
+    SettingsController* retryController = &controller;
+    if (restart) {
+        restarted = std::make_unique<SettingsController>(path, storage);
+        restarted->MutableSettings().assistive.vlmApiKey.clear();
+        retryController = restarted.get();
+    }
+    QVERIFY(retryController->Save(retryController->Settings().currentConfig));
+    QVERIFY(!secretExists);
+    QCOMPARE(removeCalls, failSave ? 1 : 2);
+    QVERIFY(retryController->Settings().assistive.vlmCredentialId.isEmpty());
+    const auto loaded = Load(path);
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->assistive.vlmCredentialId.isEmpty());
+    QVERIFY(loaded->assistive.pendingCredentialRemovals.isEmpty());
+    QVERIFY(retryController->Save(retryController->Settings().currentConfig));
+    QCOMPARE(removeCalls, failSave ? 1 : 2);
+}
+
+void SettingsStoreTests::pendingDeletionNeverReusesReplacementKey_data()
+{
+    QTest::addColumn<bool>("restart");
+    QTest::newRow("same-controller-retry") << false;
+    QTest::newRow("restart-after-failed-publication") << true;
+}
+
+void SettingsStoreTests::pendingDeletionNeverReusesReplacementKey()
+{
+    QFETCH(bool, restart);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("settings.json"));
+    const QString oldId = ProtectedSecretStore::DefaultVlmCredentialId();
+    PersistentSettings initial;
+    initial.assistive.pendingCredentialRemovals = {oldId};
+    QVERIFY(Save(path, initial));
+    QMap<QString, QString> secrets;
+    secrets.insert(oldId, QStringLiteral("old fixture key"));
+    QStringList removedIds;
+    QString replacementId;
+    bool failPublication = true;
+    SettingsController::StorageOperations storage;
+    storage.readSecret = [&](const QString& id) {
+        if (!secrets.contains(id)) return ProtectedSecretResult{};
+        return ProtectedSecretResult{ProtectedSecretResult::Status::Found, secrets.value(id), {}};
+    };
+    storage.writeSecret = [&](const QString& id, const QString& key, QString*) {
+        replacementId = id;
+        secrets.insert(id, key);
+        return true;
+    };
+    storage.removeSecret = [&](const QString& id, QString*) {
+        removedIds.append(id);
+        secrets.remove(id);
+        return true;
+    };
+    storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
+        if (failPublication) return false;
+        return Save(target, value);
+    };
+    SettingsController controller(path, storage);
+    controller.MutableSettings().assistive.vlmApiKey = QStringLiteral("new fixture key");
+    QVERIFY(!controller.Save(controller.Settings().currentConfig));
+    QVERIFY(!replacementId.isEmpty());
+    QVERIFY(replacementId != oldId);
+    QCOMPARE(secrets.value(oldId), QStringLiteral("old fixture key"));
+    QCOMPARE(secrets.value(replacementId), QStringLiteral("new fixture key"));
+    QVERIFY(removedIds.isEmpty());
+    const QString firstReplacementId = replacementId;
+    QVERIFY(!controller.Save(controller.Settings().currentConfig));
+    QCOMPARE(replacementId, firstReplacementId);
+    QCOMPARE(secrets.size(), 2);
+    const auto failedDisk = Load(path);
+    QVERIFY(failedDisk.has_value());
+    QCOMPARE(failedDisk->assistive.pendingCredentialRemovals, QStringList{oldId});
+    QVERIFY(failedDisk->assistive.vlmCredentialId.isEmpty());
+    failPublication = false;
+    if (restart) {
+        SettingsController restarted(path, storage);
+        QVERIFY(restarted.Save(restarted.Settings().currentConfig));
+    } else {
+        QVERIFY(controller.Save(controller.Settings().currentConfig));
+        QCOMPARE(controller.Settings().assistive.vlmCredentialId, replacementId);
+    }
+    QCOMPARE(removedIds, QStringList{oldId});
+    QVERIFY(!secrets.contains(oldId));
+    QCOMPARE(secrets.value(replacementId), QStringLiteral("new fixture key"));
+    const auto savedDisk = Load(path);
+    QVERIFY(savedDisk.has_value());
+    QVERIFY(savedDisk->assistive.pendingCredentialRemovals.isEmpty());
+    QCOMPARE(savedDisk->assistive.vlmCredentialId, restart ? QString() : replacementId);
 }
 
 void SettingsStoreTests::ignoresPlaintextApiKeyField()

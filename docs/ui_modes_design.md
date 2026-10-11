@@ -106,13 +106,22 @@ Image starts with a pinned search field, current-mode summary, and
 
 Settings contains shared controls, never saved into quick modes:
 
-1. **Camera** — source, orientation, capture resolution and frame rate.
+1. **Camera** — source, session-only phone-light button, orientation, capture resolution and frame rate.
 2. **View and navigation** — framing, motion rate, joystick, wheel acceleration.
-3. **Recording** — processed resolution, microphone, and transcription options.
+3. **Recording** — processed resolution and microphone.
 4. **Notes and files** — lecture notes, save drawing on exit, and output folder.
 5. **Language** — application language.
 6. **AI and downloads** — AI Settings and dependency setup.
 7. **Troubleshooting** — camera acceleration and camera test.
+
+The Transcript tab owns the explicit **Transcribe microphone while recording**
+opt-in and **Add finalized transcript to lecture notes** option, both off by
+default. Recording a lecture does not enable transcription. Turning transcription
+on during an active recording starts it; turning it off stops transcription while
+video/audio recording continues. An explicit saved opt-in is retained across
+launches. The phone-light button appears only for a selected phone, enables only
+after the phone reports an available light, and reflects actual capture metadata.
+It always starts off after reconnect and is never saved into preferences or modes.
 
 Existing persistence keys and settings ownership are preserved. Changed-count
 badges describe controls actually inside their group. Ordinary edits preserve

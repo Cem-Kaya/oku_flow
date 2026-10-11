@@ -565,23 +565,6 @@ catch (...)
     return;
 }
 
-void D3D12Presenter::PresentFromTexture(ID3D12Resource* texture,
-                                        UINT width,
-                                        UINT height,
-                                        const FenceSyncParams* fenceSync)
-{
-    const ViewTransform transform =
-        ComputeViewTransform(width,
-                             height,
-                             width_,
-                             height_,
-                             1.0f,
-                             0.5f,
-                             0.5f,
-                             ViewportFitMode::kFill);
-    PresentSceneTexture(texture, width, height, transform, fenceSync);
-}
-
 bool D3D12Presenter::PresentSceneTexture(ID3D12Resource* texture,
                                         UINT sourceWidth,
                                         UINT sourceHeight,
@@ -1077,7 +1060,7 @@ VertexOutput VSMain(uint vertexId : SV_VertexID) {
     return output;
 }
 
-float4 PSMain(VertexOutput input) : SV_Target {
+float4 ScenePSMain(VertexOutput input) : SV_Target {
     const float2 destinationMin = destinationRect.xy;
     const float2 destinationMax = destinationRect.xy + destinationRect.zw;
     if (any(input.viewportUv < destinationMin) ||
@@ -1088,6 +1071,9 @@ float4 PSMain(VertexOutput input) : SV_Target {
         (input.viewportUv - destinationRect.xy) / destinationRect.zw;
     const float2 sourceUv = sourceRect.xy + localUv * sourceRect.zw;
     float4 color = sceneTexture.Sample(sceneSampler, sourceUv);
+    // Camera scenes are opaque, including driver/runtime BGRA with stale alpha.
+    // The annotation entry point below preserves its sampled alpha.
+    color.a = 1.0;
 
     if (overlayOptions.x > 0.5) {
         const float2 focusLocal =
@@ -1105,12 +1091,27 @@ float4 PSMain(VertexOutput input) : SV_Target {
     }
     return color;
 }
+
+float4 AnnotationPSMain(VertexOutput input) : SV_Target {
+    const float2 destinationMin = destinationRect.xy;
+    const float2 destinationMax = destinationRect.xy + destinationRect.zw;
+    if (any(input.viewportUv < destinationMin) ||
+        any(input.viewportUv > destinationMax)) {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
+    const float2 localUv =
+        (input.viewportUv - destinationRect.xy) / destinationRect.zw;
+    const float2 sourceUv = sourceRect.xy + localUv * sourceRect.zw;
+    return sceneTexture.Sample(sceneSampler, sourceUv);
+}
 )";
 
     const Microsoft::WRL::ComPtr<ID3DBlob> vertexShader =
         CompileShader(kSceneShader, "VSMain", "vs_5_0");
     const Microsoft::WRL::ComPtr<ID3DBlob> pixelShader =
-        CompileShader(kSceneShader, "PSMain", "ps_5_0");
+        CompileShader(kSceneShader, "ScenePSMain", "ps_5_0");
+    const Microsoft::WRL::ComPtr<ID3DBlob> annotationPixelShader =
+        CompileShader(kSceneShader, "AnnotationPSMain", "ps_5_0");
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDesc{};
     pipelineDesc.pRootSignature = sceneRootSignature_.Get();
@@ -1134,6 +1135,9 @@ float4 PSMain(VertexOutput input) : SV_Target {
                       &pipelineDesc, IID_PPV_ARGS(&scenePipelineState_)),
                   "Failed to create viewport pipeline state");
 
+    // Recording ink needs its original alpha for SRC_ALPHA/INV_SRC_ALPHA.
+    pipelineDesc.PS = {annotationPixelShader->GetBufferPointer(),
+                       annotationPixelShader->GetBufferSize()};
     D3D12_RENDER_TARGET_BLEND_DESC& annotationBlend =
         pipelineDesc.BlendState.RenderTarget[0];
     annotationBlend.BlendEnable = TRUE;

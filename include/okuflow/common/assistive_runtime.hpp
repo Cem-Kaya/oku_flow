@@ -32,6 +32,7 @@ class QTextToSpeech;
 QT_END_NAMESPACE
 
 class NotesHtmlTests;
+class AssistivePreparationTests;
 
 namespace okuflow {
 
@@ -73,7 +74,6 @@ public:
     // voice selection. In-flight requests keep the language they started
     // with.
     void SetResponseLanguage(const QString& languageCode);
-    QString responseLanguage() const { return responseLanguageCode_; }
     static QString AppendResponseLanguageDirective(
         const QString& prompt,
         const QString& languageCode);
@@ -100,6 +100,7 @@ public:
                                int height,
                                bool attachFrame);
     void LoadAssistantConversation(const QString& threadId);
+    void CancelAssistantConversationLoad();
     void RenameAssistantConversation(const QString& threadId, const QString& name);
     void DeleteAssistantConversation(const QString& threadId);
 
@@ -141,6 +142,7 @@ signals:
     void PrivacyNotice(const QString& summary);
     void AssistantConversationCreated(const QJsonObject& thread);
     void AssistantTranscriptLoaded(const QString& threadId, const QJsonArray& messages);
+    void AssistantTranscriptLoadFailed(const QString& threadId, const QString& error);
     void AssistantConversationRenamed(const QString& threadId, const QString& name);
     void AssistantConversationDeleted(const QString& threadId);
     void AssistantTurnStarted(const QString& threadId, const QString& turnId, bool persistent);
@@ -158,6 +160,7 @@ signals:
 
 private:
     friend class ::NotesHtmlTests;
+    friend class ::AssistivePreparationTests;
     void RefreshOverlay();
     void StartVlm(const uint8_t* bgraData, int width, int height, bool readText = false);
     void StartCodexVlm(const uint8_t* bgraData,
@@ -176,6 +179,10 @@ private:
     // updates the overlay text.
     void FinishAssistantTurnSuccess(const QString& threadId, const QString& text);
     void ClearPendingAssistantNote();
+    bool CancelVlmPreparation();
+    void CompleteAssistantPreparation(std::uint64_t generation, bool saved,
+                                      const QString& imagePath, const QString& prompt,
+                                      const QString& threadId);
     bool VlmConfigured() const;
     bool UsesCodexProvider() const;
     bool ValidateFrame(const uint8_t* bgraData, int width, int height);

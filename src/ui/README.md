@@ -2,6 +2,11 @@
 
 This module owns the Qt widget layer.
 
+The Advanced Transcript tab owns the explicit live-transcription opt-in and
+append-to-notes option; both default off. Recording alone does not enable them.
+Settings > Camera provides a phone-only light button whose label follows capture
+metadata. The light starts off each connection and is never a saved preference.
+
 Current contents:
 - `MainWindow` for the persistent render surface, three auto-fading Simple-mode
   corner clusters, the shared Simple/Advanced quick-mode carousel and numbered
@@ -44,6 +49,11 @@ Current contents:
   Windows voice/speed selection, and manual speech preview. Its content
   scrolls independently from the fixed confirmation buttons
 - `RenderWidget` for native D3D12 presentation
+- Draw keyboard routing distinguishes filtered propagation from explicit owner
+  forwarding. Inactive/hidden Draw leaves owner shortcuts alone; inline text
+  entry owns navigation. Forwarded held pan arrows are released on hide,
+  Draw-off, focus loss or window deactivation. Offscreen routing regressions
+  supplement the deferred native focus gate.
 - `AnnotationOverlay` for scene-anchored drawing, selection, text entry, and
   annotation capture. Its native Windows hit test uses physical panel
   rectangles so persistent camera actions remain clickable at non-100% DPI
@@ -90,3 +100,7 @@ The UI layout and settings-ownership contract is recorded in
 Input routing from the window into app-level behavior stays split between this module and `src/app/interaction_controller.cpp`.
 
 `MainWindow::refreshTextClarityUi()` gates Fine-tune text content from the Text Clarity master without clearing stored refinement values. Call it after signal-blocked settings restoration.
+
+The Draw inline text editor retires pending entry on actual FocusOut,
+including unchanged empty input. The guarded commit path inserts typed text
+once and cancels empty input, then releases keyboard ownership to the camera.

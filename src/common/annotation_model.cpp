@@ -630,6 +630,30 @@ void AnnotationModel::ResetSession()
     nextId_ = 1;
 }
 
+void AnnotationModel::RotateClockwise(int quarterTurns)
+{
+    const int turns = ((quarterTurns % 4) + 4) % 4;
+    if (turns == 0) return;
+    EndStroke();
+    EndMoveSelection();
+    EndScaleSelection();
+    const auto rotate = [turns](QVector<AnnotationStroke>& strokes) {
+        for (auto& stroke : strokes) {
+            for (QPointF& point : stroke.points) {
+                for (int turn = 0; turn < turns; ++turn) {
+                    point = QPointF(1.0 - point.y(), point.x());
+                }
+            }
+        }
+    };
+    rotate(strokes_);
+    for (Snapshot& snapshot : undo_) rotate(snapshot.strokes);
+    for (Snapshot& snapshot : redo_) rotate(snapshot.strokes);
+    // Rotation is a coordinate-system change, not an undoable ink edit.
+    moveStartStrokes_.clear();
+    scaleStartStroke_.reset();
+}
+
 bool AnnotationModel::Undo()
 {
     if (undo_.isEmpty()) {

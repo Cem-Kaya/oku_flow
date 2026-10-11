@@ -5,6 +5,19 @@ OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository:
 OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- Camera selection follows the saved physical device rather than its changing
+  enumeration index; older settings use their numeric index until an identity
+  is saved. Failed opens retry the requested camera. Unsupported live format
+  changes report failure and enter recovery.
+  A first launch with no saved camera prefers an authorized USB phone whose
+  OkuFlow Camera app answers discovery. Existing camera choices stay intact;
+  select the phone once under Settings → Camera to replace a saved DroidCam
+  or webcam preference. Phone light starts off on every connection and is
+  controlled by the explicit phone-light button in the same section.
+- Streamed Assistant answers preserve selected text and a scrolled reading
+  position. Draw rails scroll in short views; Simple live captions show the
+  trailing text that fits above controls while Advanced retains the transcript.
+  An unavailable speech voice retains its saved choice.
 - Live-switchable English, Turkish, and German UI under
   `Advanced > Settings > Language`. The flag-and-native-name selector changes
   visible labels, accessible names, status announcements, AI response
@@ -16,8 +29,10 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
 - Direct3D 12 presenter for swap-chain output plus GPU texture readback.
   Processed and rotation-correct unenhanced video recording use a bounded
   384 MiB pool of shareable GPU canvases and feed Media Foundation hardware
-  encoders without a GPU-to-CPU-to-GPU round trip. Encoder sample release
-  recycles each texture; pool pressure drops and counts a recording frame
+  encoders without a GPU-to-CPU-to-GPU round trip. Confirmed GPU conversion
+  completion releases the source lease; encoder samples own their separate
+  NV12 output. The recording worker retires readers even without new frames.
+  Pool pressure drops and counts a recording frame
   instead of stalling preview. DXGI recording samples are converted to
   encoder-native NV12 and submitted with an explicit valid-buffer length, as
   required by hardware Media Foundation encoders. Photos and on-demand
@@ -127,7 +142,18 @@ scripts\agent_build.bat
 The tracked helper locates Visual Studio 2022 (17.x) with `vswhere`, compiles the shipping
 CUDA configuration, runs the CPU suite, and then builds and runs the
 CUDA-enabled suite. The two real CTest presets treat an empty test directory as
-an error:
+an error.
+
+If the desktop is reserved, `set OKUFLOW_AGENT_EXCLUDE_GUI=1` before running the
+helper excludes tests labelled `gui` and marks the summary as partial validation.
+Leave it unset for the complete release gate.
+
+Set `OKUFLOW_AGENT_RELEASE_BUILD_DIR` to an isolated build directory when the
+development executable is running. The tracked helper applies the same release
+preset there and keeps the CPU/CUDA test presets unchanged; it never closes the
+running app to replace its executable.
+
+You can also run each preset directly:
 
 ```powershell
 cmake --preset msvc-cpu
@@ -210,6 +236,38 @@ never intentionally removed by packaging.
 If Qt's transfer fails, Setup retries with the Windows downloader and then the
 vendor's alternate host without weakening verification.
 
+## OkuFlow Camera Android Companion (in development)
+
+The new [`android/`](android/README.md) project contains native Kotlin/Compose
+setup screens for Developer mode, USB debugging, camera permission, and
+connecting the cable. It follows the phone's English/Turkish/German language
+and shows one instruction and one large action at a time.
+
+The local Android toolchain is ready. Build the debug APK and run JVM tests
+with `pwsh -NoProfile -File scripts/build_android.ps1 -Lint`; see
+[`android/BUILDING.md`](android/BUILDING.md) for local output paths and
+device installation. [`Plan 51`](improvement_ideas/51-okuflow-camera-android.md)
+describes Camera2/MediaCodec USB streaming, Windows decoding, remote phone
+zoom/camera switching, sustained-quality selection, and motion compensation.
+The companion now streams Camera2/MediaCodec video through separate adb video
+and control channels. Native Windows receives H.264 or optional HEVC through
+Media Foundation, with capability-checked HEVC and an H.264 fallback; the Python
+probe supports both codecs. Advanced phone settings save
+a combined resolution/FPS mode, camera, stabilization, focus, exposure and light preferences.
+See the [current protocol and limits](android/PROTOCOL.md). A running local
+adb server is required by this prototype; automatic viewport-to-phone zoom
+handoff and packaging are still pending. Pixel 9 Pro Fold streaming, remote
+controls, codecs and native Windows integration have been exercised; see the
+[device validation record](android/DEVICE_VALIDATION.md) for measurements and
+remaining hardware acceptance. The phone discovers combined resolution/FPS
+choices locally from Camera2 and hardware encoder capabilities; host and thermal
+limits can still reduce the actual stream mode. The main picker starts at
+720p / 24 FPS; a separate More options screen retains all locally detected modes.
+The companion is optional: normal USB cameras must work without Android
+components, and an explicit webcam selection must survive phone hot-plug.
+Phone sources are appended without changing the physical-camera default or
+an explicitly saved webcam choice. Plan 51 retains the full hardware regression gate.
+
 ## Lecture Video Test Camera
 
 Double-click `scripts/start_lecture_camera.bat` to loop a downloaded lecture
@@ -291,21 +349,25 @@ profiling flags for ordinary operation.
   the processed video independent of window, monitor, DPI, and inspector size.
   `Match camera (recommended)` follows the rotation-correct source; fixed
   640x360, 854x480, 1280x720, 1920x1080, 2560x1440, and 3840x2160 choices
-  retain their dimensions for the entire segment. Portrait input swaps each
-  fixed canvas to portrait orientation. The `Camera resolution & frame rate`
+  retain their dimensions for the entire segment. Changes to this selection
+  during recording apply to the next session. Portrait input swaps each fixed
+  canvas to portrait orientation. The `Camera resolution & frame rate`
   selector under `Settings > Camera` controls the live camera,
   original photo, and original video dimensions.
 - `Microphone`, in the same global Recording section,
   selects which Windows audio capture endpoint is recorded. New settings use
   the Windows system-default microphone; `No microphone (video only)` records
   silent video. OkuFlow opens the microphone only while recording.
-- `Transcribe microphone while recording`, in the same section, is an opt-in
+- `Transcribe microphone while recording`, in the **Transcript** tab, is an opt-in
   that sends microphone audio to Codex Voice for live transcription while a
   recording is active. It requires the Codex CLI signed in with ChatGPT,
   shows the current phrase and
   finalized text in a read-only Transcript tab (plus a Simple-mode overlay),
   and `Add finalized transcript to lecture notes` appends each finalized
-  phrase to the HTML lecture notes. Transcription problems never stop,
+  phrase to the HTML lecture notes. Both options default off; video recording
+  does not enable them. Explicit saved choices are retained. Enabling transcription
+  during a recording starts it immediately; disabling it stops transcription
+  while recording continues. Transcription problems never stop,
   delay, or invalidate the recording; the shown quota is the general Codex
   window, not voice minutes.
   The five-second value is negotiation pre-roll/backpressure capacity, not an
@@ -544,6 +606,9 @@ profiling flags for ordinary operation.
   `Documents\OkuFlow\Recordings\YYYY-MM-DD\`. Both are encoded live:
   the original follows the selected camera mode and the processed file follows
   `Processed recording resolution`.
+  Processed recordings include Draw ink on both GPU and CPU routes; originals
+  remain clean. CPU fallback within a GPU-started writer converts to its NV12
+  input contract without resetting the paired timeline.
   When a microphone is selected, the same capture-clock-synchronized
   48 kHz mono AAC track is embedded in both files. Choosing
   `No microphone (video only)` omits the audio stream.
@@ -586,6 +651,10 @@ profiling flags for ordinary operation.
 - Wheel, arrow-key, joystick, and middle-drag panning keep the active quick mode selected; changing an actual Advanced processing control still creates a custom setup.
 
 ## Persistence And Output Paths
+A missing primary settings file now restores a valid `.backup`. Deleting only
+`settings.json` therefore does not reset saved preferences; a deliberate
+manual reset requires removing both primary and backup.
+
 - Settings persist to `%APPDATA%\OkuFlow\OkuFlow\settings.json`. Camera and
   orientation are global; stabilization, colors, contrast, sharpening, zoom,
   and the other image treatments are stored in the current profile and
@@ -595,10 +664,17 @@ profiling flags for ordinary operation.
   entered in AI Settings is stored in Windows Credential Manager; the JSON
   contains only the credential identifier and ignores any plaintext
   `vlmApiKey` field. OkuFlow has never distributed or bundled an API key.
+  Clearing a key first persists its opaque id for deletion retry; failed
+  deletion or settings cleanup remains pending across later saves/restarts.
   OkuFlow stores
   only an index of the persistent
   Codex conversations it created; Codex stores their transcripts. Temporary
   Simple explanations are ephemeral and do not enter history.
+  The settings file is limited to 16 MiB. That holds more than 10,000
+  conversation index entries. If a file exceeds the limit, OkuFlow keeps it as
+  `settings.json.too-large-<timestamp>` and restores the last valid backup. A
+  save that would exceed the limit changes nothing and asks you to delete old
+  Assistant conversations.
 - User-created files share one root: `Documents\OkuFlow\` by default.
   Advanced Assistant can change it to another writable folder outside the
   application directory. The choice persists as `paths.userDataRoot`.
@@ -609,22 +685,43 @@ profiling flags for ordinary operation.
   Console-attached launches also tee Qt diagnostics to one timestamped file
   under `Debug\`, retaining the newest 20 logs. Relative image references keep
   the complete OkuFlow root portable.
-- Recording uses the camera's timestamps and exact negotiated fractional frame
+- Recording uses capture delivery-clock timestamps (not verified sensor exposure
+  timestamps) and the exact negotiated fractional frame
   rate, so a capture stall becomes a real time gap instead of fabricated
   duplicate frames or wrong-speed playback. Encoding runs on a bounded worker
   queue. Camera frame arrival wakes processing directly, and a bounded
-  six-frame recording burst queue absorbs short scheduling stalls while normal
+  six-frame recording burst queue absorbs short scheduling stalls and catches
+  up to the newest arrival on saturation, while normal
   preview continues to prefer the newest frame. Recording reports any capture,
-  readback, recording-texture-pool, pairing, queue, or encoder losses when it
+  readback, GPU-upload, recording-texture-pool, queue, or encoder losses when it
   stops. Camera format changes finalize the current playable pair and continue
   in matching `_part2`, `_part3`, and later segment pairs.
+- Video writers admit a 12-sample / 128 MiB estimated input backlog each,
+  including pending/incoming samples. Startup requires two payloads to fit,
+  so each negotiated input frame must be at most 64 MiB (BGRA for CPU or
+  compatibility readback, NV12 for native GPU input). Larger inputs fail with
+  a clear error instead of starting a recording that cannot advance. Native
+  NV12 eligibility still depends on the separate texture pool and driver limits.
+  Pressure drops original/processed pairs
+  together; audio continues. Failed statistics retain finite admission credit
+  and show a notice when exhausted. Low-latency encoding is requested and may
+  affect codec quality. Audio uses a separate PCM sample-count input budget per
+  writer: 128 PCM blocks, 4 MiB, or two seconds of outstanding PCM duration.
+  If exhausted, recording stops with an explicit message, preserving existing
+  artifacts rather than silently omitting speech. Confirmed statistics are
+  required for sustained audio recording, using the configured Microsoft raw LC
+  AAC format's 1024-sample packets. Audio losses are counted separately
+  from video frames. These policies do not bound internal MFT/driver allocations
+  or blocking finalization time. See [review 47](improvement_ideas/47-sequential-priority-fixes-2026-10-11.md).
 - When OkuFlow is launched with a Windows console attached, recording prints
   one route line per segment and one completion summary. The output names the
   processed and original MP4 paths and distinguishes direct-GPU input,
   GPU-source worker readback, and CPU/system-memory input. Its final summary
   also separates asynchronous GPU-completion retries from frames that actually
   used the safe-copy capture rung. Ordinary Start-menu or Explorer launches
-  remain quiet. All Qt console output from that diagnostic launch is also saved to
+  remain quiet. Use `oku_flow.exe --console` from an existing terminal to attach
+  diagnostics; this never creates a new terminal. Redirected diagnostic output
+  also enables logging. All Qt console output from that diagnostic launch is also saved to
   `Documents\OkuFlow\Debug\OkuFlow_<timestamp>_pid<id>.log` (or the selected
   user-data root). Debug logs can include local paths, device names, camera
   identifiers, and timing/error details; review them before sharing.

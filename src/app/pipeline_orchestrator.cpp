@@ -124,8 +124,13 @@ settings::ViewportFitModeSetting PipelineOrchestrator::ViewportFitMode() const
 
 void PipelineOrchestrator::MarkViewportDirty()
 {
-    viewportDirty_ = true;
     NotifyViewportMotion();
+    MarkSceneDirty();
+}
+
+void PipelineOrchestrator::MarkSceneDirty()
+{
+    viewportDirty_ = true;
     UpdateTimerPolicy();
 }
 

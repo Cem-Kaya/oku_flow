@@ -2,8 +2,81 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace okuflow {
+
+ViewTransform CanonicalizeSuperResViewTransform(const ViewTransform& requested,
+                                               std::uint32_t sceneWidth,
+                                               std::uint32_t sceneHeight,
+                                               std::uint32_t outputWidth,
+                                               std::uint32_t outputHeight,
+                                               float zoom) {
+    if (!requested.valid || !sceneWidth || !sceneHeight || !outputWidth || !outputHeight) return requested;
+    for (const auto scale : {std::pair{4u, 1u}, std::pair{3u, 1u},
+                             std::pair{2u, 1u}, std::pair{3u, 2u}, std::pair{4u, 3u}}) {
+        const auto [num, den] = scale;
+        if (zoom + 0.005f < static_cast<float>(num) / den ||
+            (outputWidth * den) % num || (outputHeight * den) % num) continue;
+        const auto cropWidth = outputWidth * den / num;
+        const auto cropHeight = outputHeight * den / num;
+        if (cropWidth > sceneWidth || cropHeight > sceneHeight ||
+            cropWidth < 160 || cropHeight < 90 || (cropWidth & 1) || (cropHeight & 1)) continue;
+        const float cropW = static_cast<float>(cropWidth) / sceneWidth;
+        const float cropH = static_cast<float>(cropHeight) / sceneHeight;
+        if (requested.sourceWidth > cropW + 0.005f || requested.sourceHeight > cropH + 0.005f) continue;
+        ViewTransform result = requested;
+        const float extentScale = std::min({1.0f, cropW / result.sourceWidth,
+                                           cropH / result.sourceHeight});
+        result.sourceWidth *= extentScale;
+        result.sourceHeight *= extentScale;
+        const auto snap = [](float origin, float extent, float crop, std::uint32_t scene) {
+            const float cropOrigin = std::clamp(std::round((origin + (extent - crop) * 0.5f) * scene),
+                                              0.0f, std::round((1.0f - crop) * scene)) / scene;
+            // Float subtraction can put the upper bound slightly below the
+            // lower bound when extent equals crop (notably denominators720).
+            const float maximumOrigin = std::max(cropOrigin, cropOrigin + (crop - extent));
+            return std::clamp(origin, cropOrigin, maximumOrigin);
+        };
+        result.sourceX = snap(result.sourceX, result.sourceWidth, cropW, sceneWidth);
+        result.sourceY = snap(result.sourceY, result.sourceHeight, cropH, sceneHeight);
+        return result;
+    }
+    return requested;
+}
+
+bool ComputeContainingSourceCrop(const ViewTransform& requested,
+                                 std::uint32_t sceneWidth,
+                                 std::uint32_t sceneHeight,
+                                 std::uint32_t cropWidth,
+                                 std::uint32_t cropHeight,
+                                 std::uint32_t& originX,
+                                 std::uint32_t& originY) {
+    if (!requested.valid || !sceneWidth || !sceneHeight || !cropWidth ||
+        !cropHeight || cropWidth > sceneWidth || cropHeight > sceneHeight) {
+        return false;
+    }
+    const auto axis = [](float start, float extent, std::uint32_t scene,
+                         std::uint32_t crop, std::uint32_t& origin) {
+        if (!std::isfinite(start) || !std::isfinite(extent) ||
+            start < 0.0f || extent <= 0.0f || start + extent > 1.00001f) {
+            return false;
+        }
+        // Match RemapViewTransformToSourceRect's normalized tolerance.
+        const double epsilon = 1.0e-5 * scene;
+        const double left = static_cast<double>(start) * scene;
+        const double right = static_cast<double>(start + extent) * scene;
+        const double minimum = std::max(0.0, std::ceil(right - crop - epsilon));
+        const double maximum = std::min(static_cast<double>(scene - crop),
+                                        std::floor(left + epsilon));
+        if (minimum > maximum) return false;
+        origin = static_cast<std::uint32_t>(std::clamp(
+            std::round((left + right - crop) * 0.5), minimum, maximum));
+        return true;
+    };
+    return axis(requested.sourceX, requested.sourceWidth, sceneWidth, cropWidth, originX) &&
+           axis(requested.sourceY, requested.sourceHeight, sceneHeight, cropHeight, originY);
+}
 
 ViewTransform ComputeViewTransform(std::uint32_t sourceWidth,
                                    std::uint32_t sourceHeight,

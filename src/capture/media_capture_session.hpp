@@ -4,6 +4,7 @@
 
 #ifdef _WIN32
 namespace okuflow {
+class PhoneCameraTransport;
 class MediaCaptureSession : public std::enable_shared_from_this<MediaCaptureSession> {
 public:
     MediaCaptureSession();
@@ -52,7 +53,8 @@ public:
     // loss, clearing the flag. Poll from the app's frame tick to drive reconnection.
     bool ConsumeDeviceLost();
 
-    // Symbolic link of the device from the most recent StartCapture. Kept across
+    // Requested symbolic link from the most recent StartCapture, even if open
+    // failed. Kept across
     // device loss and StopCapture so the app can re-enumerate and find the same
     // physical camera again when reconnecting.
     const std::wstring& LastSymbolicLink() const { return lastSymbolicLink_; }
@@ -89,12 +91,13 @@ private:
     void ReleaseAccelerationResources();
     bool ValidateStartupFrame(const MediaFrame& frame);
     void CaptureLoop(FrameCallback callback, CaptureErrorCallback errorCallback);
-    void Cancel() { shutdown_->Cancel(); running_.store(false); }
+    void Cancel();
     friend class MediaCapture;
     std::vector<VideoFormat> ExtractFormats(IMFSourceReader* reader);
     static std::string HrToString(HRESULT hr);
 
     Microsoft::WRL::ComPtr<IMFMediaSource> mediaSource_;
+    std::shared_ptr<PhoneCameraTransport> phoneTransport_;
     Microsoft::WRL::ComPtr<IMFSourceReader> sourceReader_;
     Microsoft::WRL::ComPtr<IMFActivate> activeActivation_;
     Microsoft::WRL::ComPtr<ID3D11Device> d3d11Device_;

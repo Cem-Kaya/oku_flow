@@ -44,6 +44,9 @@ open while contributing and update it whenever the workflow evolves.
 - `src/common/` – CPU frame prep, assistive runtime (vision reading/TTS/notes), Codex
   app-server client, fragmented-MP4 video recorder.
 - Public headers mirror the source tree under `include/okuflow/`.
+- `android/` – OkuFlow Camera, the Android companion app (Kotlin, Compose,
+  Camera2, MediaCodec) that streams the phone camera over USB debugging. Its
+  own Gradle project; see `android/README.md` and plan 51.
 
 ## Workflow Expectations
 - Align every change with the mission: produce a responsive magnifier that
@@ -184,3 +187,45 @@ aligned with the project goals.
 - Keep public media provenance separate from real-camera quality and performance
   claims. An original generated scene through the private OBS feed validates the
   demonstrated UI only.
+
+## Desktop-Restricted Build Validation
+- When the owner reserves the desktop, set `OKUFLOW_AGENT_EXCLUDE_GUI=1`
+  before running `scripts/agent_build.bat`. The script still compiles release,
+  CPU and CUDA configurations and runs all tests without the `gui` label.
+  Its summary explicitly marks partial validation. The default remains the
+  complete test matrix; a filtered pass never substitutes for the full release
+  gate or permits claiming that desktop interactions were verified.
+
+- Set `OKUFLOW_AGENT_RELEASE_BUILD_DIR` to an isolated local build directory
+  when the development executable is running. `scripts/agent_build.bat` applies
+  the same shipping release preset there and still runs the tracked CPU/CUDA
+  test presets. Never terminate the user's process to unlock build output.
+
+## Android Companion Validation
+- Run `pwsh -NoProfile -File scripts/build_android.ps1 -Lint` for phone code,
+  and `python -B -m unittest discover -s android/tests -v` for host protocol
+  changes. `-B` keeps Python bytecode caches off the synced checkout.
+- Run the tracked Windows matrix for receiver/facade changes; the
+  `phone_camera_contract` fixture checks the system decoder without using a
+  real camera or adb server. Preserve saved physical-camera selection when
+  adding phone entries or changing discovery.
+- Follow `android/PROTOCOL.md`; never replace/kill a foreign adb server to test
+  the companion. Query structured USB transport type and use its transport ID;
+  unknown/Wi-Fi transports must not become cable-camera sources. The probe's
+  recordings belong in local app data, not release bundles or the synced tree.
+- Report local fixtures separately from real-phone quality, disconnect and
+  long-soak acceptance. A debug APK is not a signed public release.
+
+- Keep Android outputs, Gradle project caches and Kotlin persistent data outside
+  Drive; see `android/BUILDING.md`. `-Install` requires one authorized device.
+- Android 17 redacts developer/debugging settings. Preserve unknown versus off,
+  retain older-version checks and verify with current USB/session evidence.
+- Keep real-device validation in `android/DEVICE_VALIDATION.md`; do not infer
+  older-phone or long-soak acceptance from the connected development phone.
+- Inspect actual phone screenshots after Android UI changes. A UI hierarchy
+  can report labels that render invisibly; text presence alone does not verify
+  contrast, layout or visible switch/slider labels. Report offline-device
+  installation or visual-validation limits explicitly.
+- If Android screenshots intermittently omit system chrome as well as app text,
+  compare an independent native screen recording before changing UI code. Keep
+  the original evidence and report capture limitations separately from app bugs.

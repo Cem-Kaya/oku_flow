@@ -73,6 +73,8 @@ public:
     settings::ViewportFitModeSetting ViewportFitMode() const;
 
     void MarkViewportDirty();
+    // A camera arrival changes the scene without extending the user-motion tail.
+    void MarkSceneDirty();
     bool IsViewportDirty() const;
     void NotifyViewportMotion();
     void MarkViewportPresented();
@@ -101,6 +103,7 @@ public:
     void ResetCudaFailures();
 
 private:
+    friend class PipelineOrchestratorTests;
     void OnTick();
     void RecordFrameTickSample(qint64 elapsedNanos);
     int RequestedViewportRate() const;

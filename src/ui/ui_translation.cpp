@@ -14,6 +14,7 @@
 #include <QMap>
 #include <QPlainTextEdit>
 #include <QRegularExpression>
+#include <QSet>
 #include <QTextEdit>
 #include <QTabWidget>
 #include <QVariant>
@@ -47,6 +48,7 @@ constexpr auto kLiveDescriptionSource =
 
 struct TranslationTemplate {
     QString source;
+    QByteArray sourceUtf8;
     QRegularExpression expression;
     QVector<int> placeholderIndexes;
     int literalCharacters{};
@@ -105,6 +107,7 @@ QVector<TranslationTemplate> BuildTranslationTemplates()
         }
         templates.push_back(
             {source,
+             source.toUtf8(),
              QRegularExpression(
                  expression,
                  QRegularExpression::DotMatchesEverythingOption),
@@ -125,6 +128,19 @@ QString TranslateFormattedUi(const QString& formattedSource)
 {
     static const QVector<TranslationTemplate> templates =
         BuildTranslationTemplates();
+    // In the English source UI every template is untranslated, so no regular
+    // expression can produce a different result. Inspect the actual catalog
+    // rather than the locale: callers may install independent translators.
+    const bool hasTranslatedTemplate = std::any_of(
+        templates.cbegin(), templates.cend(),
+        [](const TranslationTemplate& candidate) {
+            return QCoreApplication::translate(
+                       "OkuFlow", candidate.sourceUtf8.constData()) !=
+                   candidate.source;
+        });
+    if (!hasTranslatedTemplate) {
+        return formattedSource;
+    }
     for (const TranslationTemplate& candidate : templates) {
         const QRegularExpressionMatch match =
             candidate.expression.match(formattedSource);
@@ -132,11 +148,9 @@ QString TranslateFormattedUi(const QString& formattedSource)
             continue;
         }
 
-        const QByteArray sourceUtf8 =
-            candidate.source.toUtf8();
         QString translated =
             QCoreApplication::translate(
-                "OkuFlow", sourceUtf8.constData());
+                "OkuFlow", candidate.sourceUtf8.constData());
         if (translated == candidate.source) {
             return formattedSource;
         }
@@ -357,9 +371,24 @@ QString TranslateUi(const QString& sourceText)
     const QByteArray utf8 = sourceText.toUtf8();
     const QString translated =
         QCoreApplication::translate("OkuFlow", utf8.constData());
-    return translated == sourceText
-               ? TranslateFormattedUi(sourceText)
-               : translated;
+    if (translated != sourceText) {
+        return translated;
+    }
+    // An exact catalog key has already been looked up. Only a formatted
+    // source with substituted arguments needs template identification.
+    static const QSet<QByteArray> sourceKeys = []() {
+        std::size_t count = 0;
+        const char* const* sources = TranslationCatalogSources(&count);
+        QSet<QByteArray> keys;
+        keys.reserve(static_cast<qsizetype>(count));
+        for (std::size_t i = 0; i < count; ++i) {
+            keys.insert(QByteArray(sources[i]));
+        }
+        return keys;
+    }();
+    return sourceKeys.contains(utf8)
+               ? sourceText
+               : TranslateFormattedUi(sourceText);
 }
 
 void SetLiveTranslationSource(QWidget* widget,
@@ -369,8 +398,14 @@ void SetLiveTranslationSource(QWidget* widget,
     if (!widget) {
         return;
     }
-    widget->setProperty(kLiveSourceText, sourceText);
-    widget->setProperty(kLiveRolePrefix, rolePrefix);
+    const QVariant previousSource = widget->property(kLiveSourceText);
+    if (!previousSource.isValid() || previousSource.toString() != sourceText) {
+        widget->setProperty(kLiveSourceText, sourceText);
+    }
+    const QVariant previousPrefix = widget->property(kLiveRolePrefix);
+    if (!previousPrefix.isValid() || previousPrefix.toString() != rolePrefix) {
+        widget->setProperty(kLiveRolePrefix, rolePrefix);
+    }
 }
 
 void SetLiveAccessibleDescription(QWidget* widget, const QString& sourceText)
@@ -385,6 +420,11 @@ void SetLiveAccessibleDescription(QWidget* widget, const QString& sourceText)
         QAccessibleEvent event(widget, QAccessible::DescriptionChanged);
         QAccessible::updateAccessibility(&event);
     }
+}
+
+void RetranslateWidget(QWidget* widget)
+{
+    TranslateWidget(widget);
 }
 
 void RetranslateWidgetTree(QWidget* root)

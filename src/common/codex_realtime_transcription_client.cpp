@@ -533,7 +533,7 @@ void CodexRealtimeTranscriptionClient::HandleNotification(const QString& method,
         return;
     }
     if (method == QStringLiteral("thread/realtime/transcript/delta")) {
-        if (phase_ != Phase::RealtimeActive) {
+        if (phase_ != Phase::RealtimeActive && phase_ != Phase::Stopping) {
             return;
         }
         if (params.value(QStringLiteral("role")).toString() != QStringLiteral("user")) {

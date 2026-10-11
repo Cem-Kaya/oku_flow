@@ -5,9 +5,12 @@
 
 #include <QAccessible>
 #include <QApplication>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QShowEvent>
+#include <QVBoxLayout>
 #include <QtTest>
 
 #include <algorithm>
@@ -26,6 +29,21 @@ void CaptureAccessibilityEvent(QAccessibleEvent* event)
     }
 }
 
+class ShortcutTranslator final : public QTranslator {
+public:
+    bool isEmpty() const override { return false; }
+    QString translate(const char* context,
+                      const char* source,
+                      const char*, int) const override
+    {
+        if (QByteArray(context) == "OkuFlow" &&
+            QByteArray(source) == "Number key %1") {
+            return QStringLiteral("Shortcut %1");
+        }
+        return {};
+    }
+};
+
 } // namespace
 
 class LanguageManagerTests final : public QObject {
@@ -37,6 +55,9 @@ private slots:
     void catalogsLoadAndTranslateSentinels();
     void liveStatusRetranslatesAccessibly();
     void codeChangedTextSurvivesRetranslation();
+    void polishTranslatesOnlyEventWidget();
+    void newlyShownDescendantsAndToolWindowsTranslate();
+    void formattedSourceUsesCurrentCatalog();
     void responseLanguageDirectivePreservesPrompt();
     void rtlDirectionPlumbing();
 
@@ -159,6 +180,117 @@ void LanguageManagerTests::codeChangedTextSurvivesRetranslation()
     QCOMPARE(button.text(), QStringLiteral("Recording"));
     QCOMPARE(button.toolTip(), QStringLiteral("Recording"));
     QVERIFY(button.accessibleDescription().isEmpty());
+}
+
+void LanguageManagerTests::polishTranslatesOnlyEventWidget()
+{
+    auto* application = qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application);
+    LanguageManager manager(*application);
+    QVERIFY(manager.SetLanguage(AppLanguage::Turkish, false));
+
+    QLabel parent(QStringLiteral("Recording"));
+    QLabel child(QStringLiteral("Recording"), &parent);
+    QEvent polish(QEvent::Polish);
+    QCoreApplication::sendEvent(&parent, &polish);
+    QCOMPARE(parent.text(), QStringLiteral("Kayıt"));
+    QCOMPARE(child.text(), QStringLiteral("Recording"));
+    QVERIFY(!child.property("_okuflowTranslationSourceText").isValid());
+
+    QShowEvent show;
+    QCoreApplication::sendEvent(&parent, &show);
+    QCOMPARE(child.text(), QStringLiteral("Recording"));
+    QVERIFY(!child.property("_okuflowTranslationSourceText").isValid());
+
+    child.ensurePolished();
+    QCOMPARE(child.text(), QStringLiteral("Kayıt"));
+    QVERIFY(manager.SetLanguage(AppLanguage::German, false));
+    QCOMPARE(parent.text(), QStringLiteral("Aufnahme"));
+    QCOMPARE(child.text(), QStringLiteral("Aufnahme"));
+    QVERIFY(manager.SetLanguage(AppLanguage::English, false));
+    QCOMPARE(parent.text(), QStringLiteral("Recording"));
+    QCOMPARE(child.text(), QStringLiteral("Recording"));
+}
+
+void LanguageManagerTests::newlyShownDescendantsAndToolWindowsTranslate()
+{
+    auto* application = qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application);
+    LanguageManager manager(*application);
+    QVERIFY(manager.SetLanguage(AppLanguage::Turkish, false));
+
+    QWidget window;
+    window.setWindowTitle(QStringLiteral("Application language"));
+    auto* windowLayout = new QVBoxLayout(&window);
+    auto* nested = new QWidget(&window);
+    auto* nestedLayout = new QVBoxLayout(nested);
+    auto* button = new QPushButton(QStringLiteral("Recording"), nested);
+    button->setToolTip(QStringLiteral("Recording"));
+    button->setAccessibleName(QStringLiteral("Recording"));
+    SetLiveAccessibleDescription(button, QStringLiteral("Number key 3"));
+    nestedLayout->addWidget(button);
+    windowLayout->addWidget(nested);
+
+    // OkuFlow's floating chrome is an owned native top-level tool window;
+    // it receives its own Polish/Show events rather than its owner's Show.
+    QWidget tool(&window, Qt::Tool);
+    tool.setAttribute(Qt::WA_NativeWindow);
+    tool.setWindowTitle(QStringLiteral("Application language"));
+    auto* toolLayout = new QVBoxLayout(&tool);
+    auto* toolLabel = new QLabel(QStringLiteral("Recording"), &tool);
+    toolLayout->addWidget(toolLabel);
+    window.show();
+    tool.show();
+    QTRY_COMPARE(button->text(), QStringLiteral("Kayıt"));
+    QTRY_COMPARE(toolLabel->text(), QStringLiteral("Kayıt"));
+    QCOMPARE(window.windowTitle(), QStringLiteral("Uygulama dili"));
+    QCOMPARE(tool.windowTitle(), QStringLiteral("Uygulama dili"));
+    QCOMPARE(button->accessibleDescription(), QStringLiteral("Sayı tuşu 3"));
+
+    // Also cover a child constructed after its ancestors are already shown.
+    auto* lateLabel = new QLabel(QStringLiteral("Recording"), nested);
+    nestedLayout->addWidget(lateLabel);
+    lateLabel->show();
+    QTRY_COMPARE(lateLabel->text(), QStringLiteral("Kayıt"));
+
+    QVERIFY(manager.SetLanguage(AppLanguage::German, false));
+    QCOMPARE(button->text(), QStringLiteral("Aufnahme"));
+    QCOMPARE(button->toolTip(), QStringLiteral("Aufnahme"));
+    QCOMPARE(button->accessibleName(), QStringLiteral("Aufnahme"));
+    QCOMPARE(button->accessibleDescription(), QStringLiteral("Zifferntaste 3"));
+    QCOMPARE(toolLabel->text(), QStringLiteral("Aufnahme"));
+    QCOMPARE(lateLabel->text(), QStringLiteral("Aufnahme"));
+
+    QVERIFY(manager.SetLanguage(AppLanguage::English, false));
+    QCOMPARE(button->text(), QStringLiteral("Recording"));
+    QCOMPARE(button->toolTip(), QStringLiteral("Recording"));
+    QCOMPARE(button->accessibleName(), QStringLiteral("Recording"));
+    QCOMPARE(button->accessibleDescription(), QStringLiteral("Number key 3"));
+    QCOMPARE(toolLabel->text(), QStringLiteral("Recording"));
+    QCOMPARE(lateLabel->text(), QStringLiteral("Recording"));
+}
+
+void LanguageManagerTests::formattedSourceUsesCurrentCatalog()
+{
+    auto* application = qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application);
+    LanguageManager manager(*application);
+    const QString source = QStringLiteral("Number key 3");
+    QCOMPARE(TranslateUi(source), source);
+    QVERIFY(manager.SetLanguage(AppLanguage::Turkish, false));
+    QCOMPARE(TranslateUi(source), QStringLiteral("Sayı tuşu 3"));
+    QVERIFY(manager.SetLanguage(AppLanguage::German, false));
+    QCOMPARE(TranslateUi(source), QStringLiteral("Zifferntaste 3"));
+    QVERIFY(manager.SetLanguage(AppLanguage::English, false));
+    QCOMPARE(TranslateUi(source), source);
+
+    // The fast path follows actual translator contents, including a partial
+    // independent translator installed while the application locale is EN.
+    ShortcutTranslator translator;
+    QVERIFY(application->installTranslator(&translator));
+    QCOMPARE(TranslateUi(source), QStringLiteral("Shortcut 3"));
+    application->removeTranslator(&translator);
+    QCOMPARE(TranslateUi(source), source);
 }
 
 void LanguageManagerTests::responseLanguageDirectivePreservesPrompt()

@@ -83,6 +83,29 @@ private slots:
         QVERIFY(!client.IsSessionActive());
     }
 
+    void stopAcceptsDeltaWithoutFinalAndRejectsAfterClosure()
+    {
+        qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "stop-delta-no-final");
+        CodexRealtimeTranscriptionClient client;
+        client.SetExecutablePath(FakeServerPath());
+        QSignalSpy ready(&client, &CodexRealtimeTranscriptionClient::SessionReady);
+        QSignalSpy started(&client, &CodexRealtimeTranscriptionClient::RealtimeStarted);
+        QSignalSpy deltas(&client, &CodexRealtimeTranscriptionClient::UserTranscriptDelta);
+        QSignalSpy dones(&client, &CodexRealtimeTranscriptionClient::UserTranscriptDone);
+        QSignalSpy closed(&client, &CodexRealtimeTranscriptionClient::RealtimeClosed);
+        client.BeginSession(17);
+        QTRY_COMPARE(ready.count(), 1);
+        client.StartRealtime(17, QStringLiteral("v=0\r\nfake offer"));
+        QTRY_COMPARE(started.count(), 1);
+        QTRY_COMPARE(dones.count(), 1);
+        client.StopRealtime(17);
+        QTRY_COMPARE(closed.count(), 1);
+        QCOMPARE(deltas.count(), 3);
+        QCOMPARE(deltas.last().at(1).toString(), QStringLiteral(" stop tail"));
+        QCOMPARE(dones.count(), 1);
+        QVERIFY(!client.IsSessionActive());
+    }
+
     void nonChatGptAccountFails()
     {
         qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", "notchatgpt");

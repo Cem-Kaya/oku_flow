@@ -187,7 +187,7 @@ public:
         }
         if (effect_ && sourceWidth_ == sourceWidth && sourceHeight_ == sourceHeight &&
             destinationWidth_ == destinationWidth && destinationHeight_ == destinationHeight &&
-            stream_ == cudaStream) {
+            stream_ == cudaStream && loadedStrength_ == strength_) {
             return true;
         }
 
@@ -239,6 +239,7 @@ public:
                                 reinterpret_cast<CUstream>(cudaStream));
         if (status != NVCV_SUCCESS) return failSetup("CUDA stream binding", status);
         status = setF32_(effect_, NVVFX_STRENGTH, strength_);
+        loadedStrength_ = strength_;
         if (status != NVCV_SUCCESS) return failSetup("strength setup", status);
         status = setU32_(effect_, NVVFX_MODE, strength_ >= 0.66f ? 1u : 0u);
         if (status != NVCV_SUCCESS) return failSetup("mode setup", status);
@@ -379,6 +380,7 @@ public:
     unsigned int destinationHeight_{};
     void* stream_{};
     float strength_{0.65f};
+    float loadedStrength_{-1.0f};
     std::wstring runtimeDirectory_;
     std::string lastError_;
     bool runtimeProbeAttempted_{};
@@ -419,7 +421,6 @@ void MaxineSuperRes::SetStrength(float strength) {
 
 void MaxineSuperRes::Teardown() { impl_->Teardown(); }
 bool MaxineSuperRes::IsReady() const { return impl_->effect_ != nullptr; }
-bool MaxineSuperRes::IsAvailable() { return impl_->LoadRuntime(); }
 const std::string& MaxineSuperRes::LastError() const { return impl_->lastError_; }
 const std::wstring& MaxineSuperRes::RuntimeDirectory() const { return impl_->runtimeDirectory_; }
 
@@ -474,7 +475,6 @@ bool MaxineSuperRes::Run(const void*, std::size_t, void*, std::size_t) { return 
 void MaxineSuperRes::SetStrength(float) {}
 void MaxineSuperRes::Teardown() {}
 bool MaxineSuperRes::IsReady() const { return false; }
-bool MaxineSuperRes::IsAvailable() { return false; }
 const std::string& MaxineSuperRes::LastError() const { return impl_->error; }
 const std::wstring& MaxineSuperRes::RuntimeDirectory() const { return impl_->runtimeDirectory; }
 std::wstring MaxineSuperRes::FindRuntimeDirectory(const std::wstring&) { return {}; }

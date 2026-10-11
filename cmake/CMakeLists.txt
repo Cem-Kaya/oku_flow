@@ -92,10 +92,9 @@ target_include_directories(oku_flow PRIVATE
 )
 set_target_properties(oku_flow PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-    # Keep the console in Release while stabilization tuning is active. Runtime
-    # diagnostics are rate-limited, and the console gives field testers enough
-    # evidence to distinguish estimator, filter, and performance failures.
-    WIN32_EXECUTABLE FALSE
+    # Explorer/Start-menu launches are GUI-only; --console attaches an existing
+    # terminal for opt-in diagnostics without creating a console window.
+    WIN32_EXECUTABLE $<BOOL:${WIN32}>
 )
 
 target_compile_definitions(oku_flow PRIVATE
@@ -144,6 +143,7 @@ if (WIN32)
         dxgi
         mfplat
         mfreadwrite
+        wmcodecdspuuid
         mfuuid
         dxguid
         d3dcompiler

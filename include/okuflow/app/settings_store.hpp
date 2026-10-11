@@ -1,7 +1,9 @@
 #pragma once
 
+#include <QByteArray>
 #include <QRect>
 #include <QString>
+#include <QStringList>
 #include <QMap>
 
 #include "okuflow/app/color_schemes.hpp"
@@ -116,6 +118,7 @@ struct AssistiveSettings {
     // value; SettingsController loads it from Windows Credential Manager.
     QString vlmApiKey;
     QString vlmCredentialId;
+    QStringList pendingCredentialRemovals;
     QString vlmModel;
     QString vlmPrompt;
     QString ttsEngine;
@@ -151,6 +154,7 @@ struct PersistentSettings {
     // settings lets the Documents folder follow Windows account policy.
     QString userDataRoot;
     int cameraIndex{-1};
+    QString cameraSymbolicLink;
     QString cameraFormatStableId;
     QString microphoneEndpointId;
     // Load-only bridge for the removed global compatibility checkbox. The
@@ -170,7 +174,7 @@ struct PersistentSettings {
     // Live transcription (plan 36): privacy-safe defaults — microphone audio
     // is only sent to the realtime service after an explicit opt-in.
     bool liveTranscriptionEnabled{false};
-    bool appendTranscriptToNotes{true};
+    bool appendTranscriptToNotes{false};
     QMap<QString, bool> uiSectionStates;
     QRect assistiveOverlayGeometry;
     QString assistiveOverlayDockPosition{QStringLiteral("floating")};
@@ -193,12 +197,21 @@ struct PersistentSettings {
 QString ResolveSettingsPath();
 void EnsureSettingsDirectory(const QString& path);
 
+// Raw on-disk byte limit for settings.json and its .backup, CRLF included.
+// Load reads at most one byte past it, so a file that grows after any size
+// query cannot bypass the bound. Save refuses larger documents before touching
+// existing files. The OkuFlow-created conversation index has no count limit;
+// 16 MiB holds more than 10,000 maximum-length entries plus hundreds of custom
+// quick modes (see settings_store_tests capHoldsDocumentedCapacity).
+inline constexpr qint64 kMaxSettingsFileBytes = 16 * 1024 * 1024;
+
 enum class LoadStatus {
     Loaded,
     Missing,
     Unreadable,
     InvalidJson,
     UnsupportedVersion,
+    TooLarge,
 };
 
 struct LoadResult {
@@ -208,8 +221,18 @@ struct LoadResult {
     bool migrationApplied{false};
 };
 
+enum class SaveStatus {
+    Saved,
+    // Serialized bytes exceed kMaxSettingsFileBytes; no file was changed.
+    TooLarge,
+    Failed,
+};
+
 LoadResult LoadDetailed(const QString& path);
 std::optional<PersistentSettings> Load(const QString& path);
+// Exact bytes Save writes (Windows CRLF line endings), for size accounting.
+QByteArray Serialize(const PersistentSettings& settings);
+SaveStatus SaveDetailed(const QString& path, const PersistentSettings& settings);
 bool Save(const QString& path, const PersistentSettings& settings);
 
 const std::vector<AdvancedConfig>& BuiltInConfigs();

@@ -14,6 +14,8 @@
 #include <QFrame>
 #include <QToolButton>
 #include <QSplitter>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QTemporaryDir>
 #include <QTranslator>
 #include <QScopeGuard>
@@ -179,6 +181,7 @@ class AnnotationOverlayTests final : public QObject {
 
 private slots:
     void middleDragCrossesTheToolWindowBoundary();
+    void shortViewportKeepsDrawRailsReachable();
     void textPlacementIsClickThenType();
     void moveToolMarqueeSelectsAndMovesMultipleAnnotations();
     void persistentActionPanelUsesNativeScreenCoordinates_data();
@@ -206,6 +209,33 @@ private slots:
     void releasingOrCancelingThePullKeepsTheDockLatched_data();
     void releasingOrCancelingThePullKeepsTheDockLatched();
 };
+
+void AnnotationOverlayTests::shortViewportKeepsDrawRailsReachable()
+{
+    QMainWindow owner;
+    auto* render = new MouseSink;
+    owner.setCentralWidget(render);
+    owner.resize(800, 320);
+    owner.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&owner));
+    AnnotationOverlay overlay(render, &owner);
+    overlay.SetActive(true);
+    QCoreApplication::processEvents();
+    for (const char* name : {"annotationToolbar", "annotationActions"}) {
+        auto* rail = overlay.findChild<QFrame*>(QString::fromLatin1(name));
+        QVERIFY(rail);
+        QVERIFY(overlay.rect().contains(rail->geometry()));
+        auto* scroll = rail->findChild<QScrollArea*>();
+        QVERIFY(scroll);
+        QVERIFY(scroll->verticalScrollBar()->maximum() > 0);
+        const auto buttons = scroll->widget()->findChildren<QToolButton*>();
+        QVERIFY(!buttons.isEmpty());
+        scroll->ensureWidgetVisible(buttons.last());
+        QCoreApplication::processEvents();
+        const QRect lastButton(buttons.last()->mapTo(scroll->viewport(), QPoint()), buttons.last()->size());
+        QVERIFY(scroll->viewport()->rect().contains(lastButton));
+    }
+}
 
 void AnnotationOverlayTests::floatingChatDefaultsTallAndKeepsRestoredSize()
 {

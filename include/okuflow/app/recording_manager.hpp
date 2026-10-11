@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
 #include "okuflow/common/media_writer.hpp"
+#include "okuflow/common/annotation_model.hpp"
 #include "okuflow/common/recording_contract.hpp"
 #include "okuflow/common/transcript.hpp"
 #include "okuflow/app/user_data_paths.hpp"
@@ -19,7 +20,6 @@
 #include <mutex>
 #include <optional>
 #include <thread>
-#include <unordered_map>
 #include <vector>
 
 QT_BEGIN_NAMESPACE
@@ -28,6 +28,11 @@ class QTimer;
 QT_END_NAMESPACE
 
 namespace okuflow {
+
+void ComposeRecordingAnnotations(std::vector<std::uint8_t>& processedCanvas,
+                                  UINT width, UINT height,
+                                  const RecordingViewTransform& transform,
+                                  const QVector<AnnotationStroke>& strokes);
 
 struct RecordingTimingSnapshot {
     float p50Ms{-1.0f};
@@ -120,6 +125,9 @@ public:
     QString DescribeWorkerStage() const;
 
     void NotifyCaptureFrame(bool overwrotePendingPreview);
+    // Notifications can coalesce different arrival and overwrite counts.
+    void NotifyCaptureFrames(std::uint64_t received,
+                             std::uint64_t overwritten);
     // Counts asynchronous D3D11 completion deferrals separately from drops.
     // A retry remains GPU-resident and should normally complete on the next
     // event-loop turn.
@@ -127,37 +135,31 @@ public:
     // Counts frames that crossed system memory because the GPU completion
     // retry budget expired or the accelerated path was unavailable.
     void NotifyCaptureSafeCopyFallback();
+    // The caller reports once when a fresh camera arrival is dropped because
+    // upload slots are busy; completion retries and viewport presents do not
+    // represent another dropped recording frame.
+    void NotifyCaptureGpuUploadBusy();
+    RecordingDropCounts DropCounts() const;
     void NotifyReadbackSkipped();
     void NotifyRecordingPoolSkipped();
-    void StorePendingOriginal(UINT64 requestId,
-                              CapturedFrame frame,
-                              const RecordingViewTransform& transform);
-    bool HandleProcessedReadback(UINT64 requestId,
-                                 const uint8_t* processedData,
-                                 UINT processedWidth,
-                                 UINT processedHeight);
-    void ClearPendingReadbacks();
     void AddSceneFrame(const uint8_t* processedSceneData,
                        UINT processedSceneWidth,
                        UINT processedSceneHeight,
                        const RecordingViewTransform& transform,
-                       CapturedFrame originalFrame);
+                       CapturedFrame originalFrame,
+                       QVector<AnnotationStroke> strokes = {});
     void AddGpuSceneFrame(GpuVideoFrame processedScene,
                           const RecordingViewTransform& transform,
                           CapturedFrame originalFrame);
 
 private:
-    struct PendingOriginal {
-        CapturedFrame frame;
-        RecordingViewTransform transform;
-    };
-
     struct QueuedFrame {
         std::vector<uint8_t> processedScene;
         GpuVideoFrame processedGpuScene;
         UINT processedSceneWidth{};
         UINT processedSceneHeight{};
         RecordingViewTransform transform;
+        QVector<AnnotationStroke> strokes;
         CapturedFrame original;
     };
 
@@ -178,11 +180,13 @@ private:
         kProcessedVideo,
         kOriginalVideo,
         kAudio,
+        kRetireGpuReaders,
         kFinalize,
     };
     static const char* WorkerOpName(WorkerOp op);
 
     void WorkerLoop();
+    void RetireGpuInputReads();
     void SetWorkerOp(WorkerOp op, std::uint64_t frameSequence);
     void OnStopWatchdogFired(std::uint32_t generation);
     void OnWorkerHeartbeat();
@@ -191,6 +195,7 @@ private:
     bool WriteFrame(QueuedFrame&& frame);
     void RecordEncoderSubmitTiming(float milliseconds);
     bool WriteAudioFrame(AudioFrame&& frame);
+    void ReportEncoderStatisticsUnavailable();
     bool FinalizeSegment(bool terminal);
     void FinishSession(bool success, const QString& detail = {});
     void SetState(RecordingState state);
@@ -200,7 +205,6 @@ private:
                           const QString& processedPath) const;
     QString BuildDropSummary() const;
     QString SegmentPath(bool processed) const;
-    RecordingDropCounts DropCounts() const;
     QString EnsureOutputDirectory() const;
     void ShowStatus(const QString& message, int durationMs = 7000) const;
     void UpdateButton();
@@ -212,10 +216,10 @@ private:
     const UserDataPaths* userDataPaths_{};
     VideoRecorder processedRecorder_;
     VideoRecorder originalRecorder_;
-    std::unordered_map<UINT64, PendingOriginal> pendingOriginalReadbacks_;
-    mutable std::mutex pendingMutex_;
     std::atomic<RecordingState> state_{RecordingState::Idle};
     std::atomic<RecordingCanvasMode> canvasMode_{
+        RecordingCanvasMode::Source};
+    std::atomic<RecordingCanvasMode> activeCanvasMode_{
         RecordingCanvasMode::Source};
     QString sessionTimestamp_;
     RecordingSessionInfo sessionInfo_;  // guarded by queueMutex_
@@ -233,15 +237,19 @@ private:
     bool workerDone_{false};
     static constexpr std::size_t kMaxQueuedFrames = 12;
     static constexpr std::size_t kMaxQueuedAudioFrames = 512;
+    // Only wake an otherwise idle worker while conversion readers still hold
+    // source leases. No polling timer runs for idle/CPU-only recording.
+    static constexpr int kGpuReaderPollIntervalMs = 10;
     // Stop must complete or fail visibly within a bounded time: normal stops
-    // finish in well under 5 s; the watchdog fires at 8 s so it can never
-    // race a legitimately slow-but-progressing finalize.
+    // finish in well under 5 s. This deadline is a response policy, not proof
+    // of a driver hang: blocking Finalize exposes no worker-side progress, and
+    // querying the same COM object from the UI would race the active call.
     static constexpr int kStopWatchdogMs = 8000;
     static constexpr int kShutdownJoinMs = 3000;
     // A live-session heartbeat covers wedges the stop watchdog cannot see
     // (for example a mode-change finalize blocking mid-recording): any
-    // single recorder call still running after 10 s is a wedge — normal
-    // submits are milliseconds.
+    // single recorder call still running after 10 s triggers abandonment.
+    // Even with bounded admission a slow Finalize can reach this deadline.
     static constexpr int kHeartbeatIntervalMs = 2000;
     static constexpr int kWorkerWedgeMs = 10000;
     QTimer* heartbeatTimer_{};
@@ -259,11 +267,17 @@ private:
     std::atomic<std::uint64_t> captureSlotOverwrite_{0};
     std::atomic<std::uint64_t> captureGpuRetry_{0};
     std::atomic<std::uint64_t> captureSafeCopyFallback_{0};
+    std::atomic<std::uint64_t> captureGpuUploadBusy_{0};
     std::atomic<std::uint64_t> readbackRingBusy_{0};
     std::atomic<std::uint64_t> recordingPoolBusy_{0};
-    std::atomic<std::uint64_t> pairingMiss_{0};
     std::atomic<std::uint64_t> queueOverflow_{0};
+    std::atomic<std::uint64_t> audioQueueOverflow_{0};
+    std::atomic<std::uint64_t> audioEncoderBacklog_{0};
     std::atomic<std::uint64_t> encoderReject_{0};
+    std::atomic<std::uint64_t> encoderBacklog_{0};
+    std::atomic<std::uint64_t> encoderStatisticsUnavailable_{0};
+    std::atomic<bool> encoderStatisticsWarningActive_{false};
+    std::atomic<bool> encoderBacklogWarningReported_{false};
     std::atomic<std::uint64_t> unknownTimestamp_{0};
     std::atomic<std::uint64_t> gpuFramesWritten_{0};
     std::atomic<std::uint64_t> gpuInputFallbacks_{0};

@@ -100,9 +100,9 @@ void RecordingIntegrityTests::missingAndBackwardTimestampsStayMonotonic()
 void RecordingIntegrityTests::dropCountsExcludeEstimatedTimestamps()
 {
     const okuflow::RecordingDropCounts drops{
-        1, 2, 3, 4, 5, 6, 99,
+        1, 2, 3, 5, 6, 99,
     };
-    QCOMPARE(drops.Total(), 21ULL);
+    QCOMPARE(drops.Total(), 17ULL);
     QCOMPARE(drops.unknownTimestamp, 99ULL);
 }
 

@@ -5,6 +5,7 @@
 #include "debug_log.hpp"
 
 #include <QSaveFile>
+#include <QScrollBar>
 #include <QThreadPool>
 
 namespace okuflow {
@@ -240,9 +241,6 @@ bool OkuFlowApp::Initialize()
                     7000);
             },
         });
-    // Fence state belongs to the orchestrator, so seed it only after the
-    // manager exists; the presenter itself is intentionally created first.
-    InvalidateRecordingFramePairing();
     // Startup is a cross-function latch: ApplyAdvancedConfig releases it
     // after the first complete UI/config synchronization.
     configTrackingSuspended_ = true;
@@ -352,6 +350,10 @@ bool OkuFlowApp::Initialize()
 
     connect(uiState_->cameraCombo_, &QComboBox::currentIndexChanged,
             this, &OkuFlowApp::OnCameraSelectionChanged);
+    connect(uiState_->phoneLightButton_, &QPushButton::clicked, this, [this]() {
+        if (cameraActive_ && mediaCapture_.PhoneTorchAvailable())
+            mediaCapture_.SetPhoneTorch(!mediaCapture_.PhoneTorchEnabled());
+    });
     connect(uiState_->microphoneCombo_, &QComboBox::currentIndexChanged,
             this, &OkuFlowApp::OnMicrophoneSelectionChanged);
     if (uiState_->presetList_) {
@@ -511,6 +513,8 @@ bool OkuFlowApp::Initialize()
                         // immediately; recording continues untouched.
                         transcriptionController_->Cancel();
                         transcriptionController_->SetEnabled(false);
+                    } else if (checked && recordingManager_ && recordingManager_->IsActive()) {
+                        StartTranscriptionForActiveRecording();
                     }
                     SavePersistentSettings();
                 });
@@ -806,16 +810,11 @@ bool OkuFlowApp::Initialize()
     }
     if (uiState_->assistantNewButton_) {
         connect(uiState_->assistantNewButton_, &QPushButton::clicked, this, [this]() {
-            if (assistiveManager_->Runtime().IsCodexTurnActive()) {
-                return;
+            StartNewAssistantConversation();
+            if (!assistiveManager_->Runtime().IsCodexTurnActive() &&
+                !pendingAssistantFramePrompt_ && uiState_->assistantPromptEdit_) {
+                uiState_->assistantPromptEdit_->setFocus();
             }
-            currentAssistantThreadId_.clear();
-            pendingAssistantPrompt_.clear();
-            assistantResponseOpen_ = false;
-            assistantResponseReceivedText_ = false;
-            uiState_->assistantTranscript_->clear();
-            uiState_->assistantHistoryList_->clearSelection();
-            uiState_->assistantPromptEdit_->setFocus();
         });
     }
     if (uiState_->assistantHistoryList_) {
@@ -904,6 +903,9 @@ bool OkuFlowApp::Initialize()
                                       QStringLiteral("Delete Conversation"),
                                       QStringLiteral("Permanently delete this OkuFlow assistant conversation?"))
                 == QMessageBox::Yes) {
+                if (currentAssistantThreadId_ == threadId) {
+                    CancelAssistantHistoryLoad();
+                }
                 assistiveManager_->Runtime().DeleteAssistantConversation(threadId);
             }
         });
@@ -987,7 +989,12 @@ bool OkuFlowApp::Initialize()
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTranscriptLoaded,
             this, [this](const QString& threadId, const QJsonArray& messages) {
-                currentAssistantThreadId_ = threadId;
+                if (threadId != currentAssistantThreadId_ ||
+                    threadId != pendingAssistantHistoryThreadId_ || assistantResponseOpen_ ||
+                    pendingAssistantFramePrompt_ || assistiveManager_->Runtime().IsCodexTurnActive()) {
+                    return;
+                }
+                pendingAssistantHistoryThreadId_.clear();
                 uiState_->assistantTranscript_->clear();
                 for (const QJsonValue& value : messages) {
                     const QJsonObject message = value.toObject();
@@ -999,6 +1006,21 @@ bool OkuFlowApp::Initialize()
                 }
                 assistantResponseOpen_ = false;
                 assistantResponseReceivedText_ = false;
+            });
+    connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTranscriptLoadFailed,
+            this, [this](const QString& threadId, const QString& error) {
+                if (threadId != currentAssistantThreadId_ ||
+                    threadId != pendingAssistantHistoryThreadId_ || assistantResponseOpen_ ||
+                    pendingAssistantFramePrompt_ || assistiveManager_->Runtime().IsCodexTurnActive()) {
+                    return;
+                }
+                pendingAssistantHistoryThreadId_.clear();
+                const QString failure = QStringLiteral("Could not load conversation.");
+                QString text = TranslateUi(failure);
+                if (!error.trimmed().isEmpty() && error.trimmed() != failure) {
+                    text += QStringLiteral("\n") + TranslateUi(error.trimmed());
+                }
+                uiState_->assistantTranscript_->setPlainText(text);
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantConversationRenamed,
             this, [this](const QString& threadId, const QString& name) {
@@ -1019,6 +1041,7 @@ bool OkuFlowApp::Initialize()
                                   return conversation.threadId == threadId;
                               });
                 if (currentAssistantThreadId_ == threadId) {
+                    CancelAssistantHistoryLoad();
                     currentAssistantThreadId_.clear();
                     uiState_->assistantTranscript_->clear();
                 }
@@ -1036,11 +1059,14 @@ bool OkuFlowApp::Initialize()
                     (!currentAssistantThreadId_.isEmpty() && threadId != currentAssistantThreadId_)) {
                     return;
                 }
-                QTextCursor cursor = uiState_->assistantTranscript_->textCursor();
+                QScrollBar* scroll = uiState_->assistantTranscript_->verticalScrollBar();
+                const int scrollPosition = scroll->value();
+                const bool followTail = !uiState_->assistantTranscript_->textCursor().hasSelection() &&
+                                        scrollPosition >= scroll->maximum() - 2;
+                QTextCursor cursor(uiState_->assistantTranscript_->document());
                 cursor.movePosition(QTextCursor::End);
                 cursor.insertText(delta);
-                uiState_->assistantTranscript_->setTextCursor(cursor);
-                uiState_->assistantTranscript_->ensureCursorVisible();
+                scroll->setValue(followTail ? scroll->maximum() : scrollPosition);
                 assistantResponseReceivedText_ = true;
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTurnFinished,
@@ -1060,7 +1086,11 @@ bool OkuFlowApp::Initialize()
                     return;
                 }
                 if (assistantResponseOpen_) {
-                    QTextCursor cursor = uiState_->assistantTranscript_->textCursor();
+                    QScrollBar* scroll = uiState_->assistantTranscript_->verticalScrollBar();
+                    const int scrollPosition = scroll->value();
+                    const bool followTail = !uiState_->assistantTranscript_->textCursor().hasSelection() &&
+                                            scrollPosition >= scroll->maximum() - 2;
+                    QTextCursor cursor(uiState_->assistantTranscript_->document());
                     cursor.movePosition(QTextCursor::End);
                     if (!assistantResponseReceivedText_ && !text.trimmed().isEmpty()) {
                         cursor.insertText(text.trimmed());
@@ -1073,7 +1103,7 @@ bool OkuFlowApp::Initialize()
                             TranslateUi(QStringLiteral("Stopped.")));
                     }
                     cursor.insertText(QStringLiteral("\n\n"));
-                    uiState_->assistantTranscript_->setTextCursor(cursor);
+                    scroll->setValue(followTail ? scroll->maximum() : scrollPosition);
                 }
                 assistantResponseOpen_ = false;
                 assistantResponseReceivedText_ = false;
@@ -1099,11 +1129,9 @@ bool OkuFlowApp::Initialize()
     assistiveManager_->SetModes(
         vlmAssistEnabled_, assistiveOverlayEnabled_);
 
-    int initialCameraIndex = 0;
-    const int candidate = settingsController_->MutableSettings().cameraIndex;
-    if (candidate >= 0 && static_cast<size_t>(candidate) < cameras_.size()) {
-        initialCameraIndex = candidate;
-    }
+    const auto& savedCamera = settingsController_->MutableSettings();
+    const int initialCameraIndex = ResolveSavedCameraIndex(cameras_,
+        savedCamera.cameraSymbolicLink.toStdWString(), savedCamera.cameraIndex);
     if (!cameras_.empty()) {
         auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
         uiState_->cameraCombo_->setCurrentIndex(initialCameraIndex);

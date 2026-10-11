@@ -346,6 +346,8 @@ AssistiveRuntime::AssistiveRuntime(QObject* parent)
             this, &AssistiveRuntime::AssistantConversationCreated);
     connect(codexClient_.get(), &CodexAppServerClient::ConversationTranscriptLoaded,
             this, &AssistiveRuntime::AssistantTranscriptLoaded);
+    connect(codexClient_.get(), &CodexAppServerClient::ConversationTranscriptLoadFailed,
+            this, &AssistiveRuntime::AssistantTranscriptLoadFailed);
     connect(codexClient_.get(), &CodexAppServerClient::ConversationRenamed,
             this, &AssistiveRuntime::AssistantConversationRenamed);
     connect(codexClient_.get(), &CodexAppServerClient::ConversationDeleted,
@@ -503,11 +505,8 @@ void AssistiveRuntime::SetModes(bool vlmEnabled)
     if (vlmTurningOff && activeReply_) {
         activeReply_->abort();
     }
-    if (vlmTurningOff && vlmPreparationPending_) {
-        ++vlmPreparationGeneration_;
-        vlmPreparationPending_ = false;
-        vlmPreparationPersistent_ = false;
-        vlmPreparationThreadId_.clear();
+    if (vlmTurningOff) {
+        CancelVlmPreparation();
     }
 
     vlmEnabled_ = vlmEnabled;
@@ -769,26 +768,38 @@ void AssistiveRuntime::StartCodexLogin()
     }
 }
 
+bool AssistiveRuntime::CancelVlmPreparation()
+{
+    if (!vlmPreparationPending_) {
+        return false;
+    }
+    const QString threadId = vlmPreparationThreadId_;
+    const bool persistent = vlmPreparationPersistent_;
+    // Retire ownership before publishing the terminal event: a receiver may
+    // immediately submit the next request from its completion handler.
+    ++vlmPreparationGeneration_;
+    vlmPreparationPending_ = false;
+    vlmPreparationPersistent_ = false;
+    vlmPreparationThreadId_.clear();
+    if (persistent) {
+        ClearPendingAssistantNote();
+    } else if (!pendingVlmNoteImagePath_.isEmpty()) {
+        RemoveNoteImage(pendingVlmNoteImagePath_);
+        pendingVlmNoteImagePath_.clear();
+    }
+    vlmText_.clear();
+    vlmStatus_ = QStringLiteral("Assistant stopped.");
+    RefreshOverlay();
+    if (persistent) {
+        emit AssistantTurnFinished(threadId, {}, {},
+                                   QStringLiteral("Assistant stopped."), true, true);
+    }
+    return true;
+}
+
 void AssistiveRuntime::StopAssistant()
 {
-    if (vlmPreparationPending_) {
-        const QString threadId = vlmPreparationThreadId_;
-        const bool persistent = vlmPreparationPersistent_;
-        ++vlmPreparationGeneration_;
-        vlmPreparationPending_ = false;
-        vlmPreparationPersistent_ = false;
-        vlmPreparationThreadId_.clear();
-        vlmText_.clear();
-        vlmStatus_ = QStringLiteral("Assistant stopped.");
-        RefreshOverlay();
-        if (persistent) {
-            emit AssistantTurnFinished(threadId,
-                                       {},
-                                       {},
-                                       QStringLiteral("Assistant stopped."),
-                                       true,
-                                       true);
-        }
+    if (CancelVlmPreparation()) {
         return;
     }
     if (activeReply_) {
@@ -849,6 +860,7 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
                      : QStringLiteral("Thinking...");
     RefreshOverlay();
 
+    CancelAssistantConversationLoad();
     // Record the raw question (not the language-directive-appended form) so
     // the completed answer can be noted as a full exchange.
     ClearPendingAssistantNote();
@@ -924,32 +936,12 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
                  prompt,
                  threadId,
                  generation]() {
-                    if (!owner ||
-                        generation != owner->vlmPreparationGeneration_ ||
-                        !owner->vlmPreparationPending_) {
+                    if (!owner) {
                         QFile::remove(imagePath);
-                        if (owner) {
-                            owner->ClearPendingAssistantNote();
-                        }
                         return;
                     }
-                    owner->vlmPreparationPending_ = false;
-                    owner->vlmPreparationPersistent_ = false;
-                    owner->vlmPreparationThreadId_.clear();
-                    if (!saved) {
-                        const QString error =
-                            QStringLiteral(
-                                "Could not prepare the current camera view.");
-                        owner->ClearPendingAssistantNote();
-                        owner->FinishVlmError(error);
-                        emit owner->AssistantTurnFinished(
-                            threadId, {}, {}, error, false, true);
-                        return;
-                    }
-                    owner->vlmStatus_ = QStringLiteral("Thinking...");
-                    owner->RefreshOverlay();
-                    owner->codexClient_->RequestVisionTurn(
-                        prompt, imagePath, threadId, true);
+                    owner->CompleteAssistantPreparation(
+                        generation, saved, imagePath, prompt, threadId);
                 },
                 Qt::QueuedConnection);
         });
@@ -967,6 +959,36 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
         emit AssistantTurnFinished(
             threadId, {}, {}, error, false, true);
     }
+}
+
+void AssistiveRuntime::CompleteAssistantPreparation(
+    std::uint64_t generation, bool saved, const QString& imagePath,
+    const QString& prompt, const QString& threadId)
+{
+    if (generation != vlmPreparationGeneration_ || !vlmPreparationPending_) {
+        // Cancellation already released this request's notes payload. A late
+        // worker owns only its temporary file, never a newer request's notes.
+        QFile::remove(imagePath);
+        return;
+    }
+    vlmPreparationPending_ = false;
+    vlmPreparationPersistent_ = false;
+    vlmPreparationThreadId_.clear();
+    if (!saved) {
+        const QString error = QStringLiteral("Could not prepare the current camera view.");
+        ClearPendingAssistantNote();
+        FinishVlmError(error);
+        emit AssistantTurnFinished(threadId, {}, {}, error, false, true);
+        return;
+    }
+    vlmStatus_ = QStringLiteral("Thinking...");
+    RefreshOverlay();
+    codexClient_->RequestVisionTurn(prompt, imagePath, threadId, true);
+}
+
+void AssistiveRuntime::CancelAssistantConversationLoad()
+{
+    if (codexClient_) codexClient_->CancelConversationLoad();
 }
 
 void AssistiveRuntime::LoadAssistantConversation(const QString& threadId)

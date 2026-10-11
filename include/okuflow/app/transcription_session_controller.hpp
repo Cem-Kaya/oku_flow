@@ -122,7 +122,7 @@ private:
     bool finalizeGraceStarted_{false};
     int recoveryAttempts_{0};
     quint64 nextSequence_{1};
-    // Full current service turn retained only so a clean close can preserve a
+    // Full current service turn retained so close or failure can preserve a
     // tail that never received transcript/done. The shorter partialText_ is a
     // presentation tail and may be trimmed without losing durable text.
     QString pendingTranscriptText_;

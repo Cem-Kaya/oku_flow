@@ -21,6 +21,8 @@ Current contents:
   failures retire the failed child before a fresh request can retry
 - CPU frame conversion and image effects in `image_processing.cpp`
 - stage orchestration and debug compositing in `frame_pipeline.cpp`
+  (the unused `ResampleToFill` path and its private dimension cache were removed;
+  presentation uses the canonical viewport transform)
 - live AV1/H.264 Media Foundation sink-writer recording in `media_writer.cpp`;
   the app owns two instances for synchronized original/processed output. An
   automatic stop retains its terminal result and original failure; an early
@@ -36,3 +38,10 @@ Current contents:
   derive from the same uniform transform
 
 If additional cross-cutting helpers land later, keep them small and explicitly reusable rather than turning this directory into a misc bucket.
+
+CPU quarter-turn rotation keeps its two BGRA vector allocations between
+frames, swaps the completed destination into the raw stage, and overwrites
+all destination pixels. No bulk zero-fill is required for an equal-size
+frame. The byte-exact regression includes padded source rows, changing
+non-square dimensions, alpha, negative turns and no-op turns. Peak capacities
+remain retained; this does not establish an application FPS improvement.

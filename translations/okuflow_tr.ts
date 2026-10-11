@@ -4,6 +4,22 @@
 <context>
     <name>OkuFlow</name>
     <message>
+        <source>Turn on phone light</source>
+        <translation>Telefon ışığını aç</translation>
+    </message>
+    <message>
+        <source>Turn off phone light</source>
+        <translation>Telefon ışığını kapat</translation>
+    </message>
+    <message>
+        <source>Phone light</source>
+        <translation>Telefon ışığı</translation>
+    </message>
+    <message>
+        <source>Starts off on each connection. Press to turn the phone light on or off.</source>
+        <translation>Her bağlantıda kapalı başlar. Telefon ışığını açmak veya kapatmak için basın.</translation>
+    </message>
+    <message>
         <source>Application</source>
         <translation>Uygulama</translation>
     </message>
@@ -1124,6 +1140,14 @@
     <message>
         <source>No frames were dropped.</source>
         <translation>Hiç kare düşürülmedi.</translation>
+    </message>
+    <message>
+        <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
+        <translation>Ses işleme hıza yetişemediği veya girdi geçersiz olduğu için kayıt durduruldu.</translation>
+    </message>
+    <message>
+        <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
+        <translation>Ses: Kodlamadan önce %1 blok düşürüldü, girdi sınırı %2 bloğu reddetti.</translation>
     </message>
     <message>
         <source>%1 frames were dropped (%2).</source>
@@ -2968,6 +2992,26 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <translation>Yüklü
 %1
 Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı kullanın.</translation>
+    </message>
+    <message>
+        <source>Could not load conversation.</source>
+        <translation>Konuşma yüklenemedi.</translation>
+    </message>
+    <message>
+        <source>GPU upload busy %1</source>
+        <translation>GPU yükleme meşgul %1</translation>
+    </message>
+    <message>
+        <source>encoder backlog %1</source>
+        <translation>kodlayıcı birikmesi %1</translation>
+    </message>
+    <message>
+        <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
+        <translation>Kodlayıcının ilerlemesi denetlenemediği için kayıt örnekleri atlanıyor. Devam ederse kaydı durdurup yeniden başlatın.</translation>
+    </message>
+    <message>
+        <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
+        <translation>Kodlayıcı kuyruğu dolu olduğu için video kareleri atlanıyor. Devam ederse kayıt çözünürlüğünü düşürün veya kaydı durdurup yeniden başlatın.</translation>
     </message>
 </context>
 </TS>

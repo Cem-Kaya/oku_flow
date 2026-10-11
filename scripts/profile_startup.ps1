@@ -13,7 +13,11 @@ param(
 $ErrorActionPreference = "Stop"
 $repository = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $application = (Resolve-Path -LiteralPath $Executable).Path
-$destination = [IO.Path]::GetFullPath((Join-Path $repository $OutputDirectory))
+$destination = if ([IO.Path]::IsPathFullyQualified($OutputDirectory)) {
+    [IO.Path]::GetFullPath($OutputDirectory)
+} else {
+    [IO.Path]::GetFullPath((Join-Path $repository $OutputDirectory))
+}
 if (Get-Process -Name oku_flow -ErrorAction SilentlyContinue) {
     throw "An OkuFlow instance is already running. Close it before profiling to avoid competing for its camera."
 }

@@ -30,6 +30,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -72,6 +73,60 @@ bool ContainsAudioStream(const std::filesystem::path& path)
         }
     }
     return false;
+}
+
+bool ValidateMixedRouteVideo(const std::filesystem::path& path)
+{
+    ComPtr<IMFAttributes> attributes;
+    ComPtr<IMFSourceReader> reader;
+    ComPtr<IMFMediaType> output;
+    if (FAILED(MFCreateAttributes(&attributes, 1)) ||
+        FAILED(attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE)) ||
+        FAILED(MFCreateSourceReaderFromURL(path.c_str(), attributes.Get(), &reader)) ||
+        FAILED(MFCreateMediaType(&output)) ||
+        FAILED(output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)) ||
+        FAILED(output->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32)) ||
+        FAILED(reader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE)) ||
+        FAILED(reader->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE)) ||
+        FAILED(reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                                          nullptr, output.Get()))) {
+        return false;
+    }
+    int count = 0;
+    LONGLONG previous = -1;
+    bool sawFallbackRed = false;
+    for (;;) {
+        DWORD flags = 0;
+        LONGLONG timestamp = 0;
+        ComPtr<IMFSample> sample;
+        if (FAILED(reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                                     0, nullptr, &flags, &timestamp, &sample))) {
+            return false;
+        }
+        if (sample) {
+            if (timestamp <= previous) return false;
+            previous = timestamp;
+            if (count >= 35 && count < 55) {
+                ComPtr<IMFMediaBuffer> buffer;
+                BYTE* bytes = nullptr;
+                DWORD length = 0;
+                if (FAILED(sample->ConvertToContiguousBuffer(&buffer)) ||
+                    FAILED(buffer->Lock(&bytes, nullptr, &length))) return false;
+                const std::size_t center =
+                    (static_cast<std::size_t>(kHeight / 2) * kWidth + kWidth / 2) * 4u;
+                const bool red = length >= center + 4 &&
+                    bytes[center + 2] > 180 && bytes[center] < 70 &&
+                    bytes[center + 1] < 70;
+                buffer->Unlock();
+                if (!red) return false;
+                sawFallbackRed = true;
+            }
+            ++count;
+        }
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) break;
+        if (flags & MF_SOURCE_READERF_ERROR) return false;
+    }
+    return count == 90 && sawFallbackRed;
 }
 
 std::size_t CountMoofBoxes(const std::filesystem::path& path)
@@ -337,7 +392,18 @@ bool RunGpuCodecPass(okuflow::VideoRecorder::Codec codec,
         return true;
     }
 
+    if (!recorder.UsesGpuInput()) {
+        std::cout << "SKIP: " << codecName
+                  << " pending-sample source-retirement check requires native "
+                     "NV12 input; this writer uses compatibility readback.\n";
+    }
+
     std::vector<std::int16_t> audio(1600u, 0);
+    std::vector<std::uint8_t> cpuFallback(kWidth * kHeight * 4u, 0);
+    for (std::size_t pixel = 0; pixel < cpuFallback.size(); pixel += 4) {
+        cpuFallback[pixel + 2] = 255;
+        cpuFallback[pixel + 3] = 255;
+    }
     constexpr std::int64_t frameDuration100ns = 333'333;
     constexpr double pi = 3.14159265358979323846;
     constexpr int kFrameCount = 90;
@@ -358,9 +424,74 @@ bool RunGpuCodecPass(okuflow::VideoRecorder::Codec codec,
         identity.frameRateNumerator = 30;
         identity.frameRateDenominator = 1;
         lastFrame.store(index);
-        passed = recorder.AddGpuFrame(frame, identity);
+        const auto admissionDeadline = std::chrono::steady_clock::now() +
+            std::chrono::seconds(2);
+        bool admitted = recorder.CanAcceptVideoFrame();
+        while (!admitted && std::chrono::steady_clock::now() < admissionDeadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            admitted = recorder.CanAcceptVideoFrame();
+        }
+        if (!admitted) {
+            std::cerr << codecName << " video admission did not recover; frame="
+                      << index << " statistics HRESULT="
+                      << recorder.LastEncoderStatisticsError() << '\n';
+            passed = false;
+            break;
+        }
+        // A live session can temporarily lose its shareable surface. These
+        // CPU samples must retain the NV12 sink contract and then return to
+        // GPU submission without segmenting or resetting the timeline.
+        std::weak_ptr<void> firstSourceLifetime;
+        if (index == 0 && recorder.UsesGpuInput()) {
+            // Keep the real D3D allocation/handles owned by the original
+            // fixture, but observe a distinct source lease for this sample.
+            auto sourceLease =
+                std::make_shared<std::shared_ptr<void>>(frame.lifetime);
+            firstSourceLifetime = sourceLease;
+            auto firstFrame = frame;
+            firstFrame.lifetime = std::move(sourceLease);
+            passed = recorder.AddGpuFrame(firstFrame, identity);
+            firstFrame.lifetime.reset();
+        } else {
+            passed = index >= 30 && index < 60
+                ? recorder.AddFrame(cpuFallback.data(), kWidth * 4u, identity)
+                : recorder.AddGpuFrame(frame, identity);
+        }
         if (passed) {
             ++framesSubmitted;
+        }
+        if (passed && index == 0 && recorder.UsesGpuInput()) {
+            // The first video sample is still pending: no next AddFrame,
+            // WriteSample, audio submission or Stop has occurred. Conversion
+            // completion alone must retire its BGRA source lease. The NV12
+            // sample/output buffer remains available for the following frame.
+            passed = !firstSourceLifetime.expired() &&
+                     recorder.HasPendingGpuReads();
+            const auto retirementDeadline = std::chrono::steady_clock::now() +
+                std::chrono::seconds(2);
+            while (passed && !firstSourceLifetime.expired() &&
+                   std::chrono::steady_clock::now() < retirementDeadline) {
+                passed = recorder.PollGpuInputReads(true);
+                if (passed && !firstSourceLifetime.expired()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+            }
+            passed = passed && firstSourceLifetime.expired() &&
+                     !recorder.HasPendingGpuReads();
+            if (!passed) {
+                std::cerr << codecName
+                          << " first pending video sample retained its BGRA "
+                             "source or GPU retirement failed: "
+                          << recorder.LastError()
+                          << " | pending readers=" << recorder.HasPendingGpuReads()
+                          << " | source expired=" << firstSourceLifetime.expired()
+                          << " | source owners=" << firstSourceLifetime.use_count()
+                          << '\n';
+            } else {
+                std::cout << codecName
+                          << ": first pending NV12 sample released its BGRA "
+                             "source before the next sample or Stop.\n";
+            }
         }
         passed = passed && recorder.AddAudioFrame(
             reinterpret_cast<const std::uint8_t*>(audio.data()),
@@ -377,7 +508,7 @@ bool RunGpuCodecPass(okuflow::VideoRecorder::Codec codec,
              finalized.videoSamplesWritten == kFrameCount &&
              std::filesystem::exists(output) &&
              std::filesystem::file_size(output) > 1024u &&
-             ContainsAudioStream(output);
+             ContainsAudioStream(output) && ValidateMixedRouteVideo(output);
     if (!passed) {
         std::cerr << "GPU-fed " << codecName
                   << "/AAC MP4 validation failed: "

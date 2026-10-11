@@ -1,5 +1,6 @@
 #ifdef _WIN32
 #include "okuflow/capture/capture_buffer.hpp"
+#include "okuflow/capture/media_capture.hpp"
 
 #include <wrl/client.h>
 #include <cstddef>
@@ -19,6 +20,73 @@ struct BufferUnlock {
     }
 };
 } // namespace
+
+std::size_t EnqueueCaptureFrame(std::deque<MediaFrame>& pending, MediaFrame&& frame,
+                               bool retainBurst, std::size_t burstCapacity,
+                               std::deque<MediaFrame>& retired)
+{
+    std::size_t dropped = 0;
+    if (!retainBurst || pending.size() >= burstCapacity) {
+        dropped = pending.size();
+        while (!pending.empty()) {
+            retired.push_back(std::move(pending.front()));
+            pending.pop_front();
+        }
+    }
+    pending.push_back(std::move(frame));
+    return dropped;
+}
+
+bool IsSupportedCaptureLayout(const GUID& subtype, UINT width, UINT height,
+                              LONG stride)
+{
+    const bool nv12 = IsEqualGUID(subtype, MFVideoFormat_NV12);
+    const bool yuy2 = IsEqualGUID(subtype, MFVideoFormat_YUY2);
+    const bool rgb = IsEqualGUID(subtype, MFVideoFormat_RGB32) ||
+                     IsEqualGUID(subtype, MFVideoFormat_ARGB32);
+    const std::uint64_t bytes = std::uint64_t(width) * (rgb ? 4 : yuy2 ? 2 : 1);
+    const std::uint64_t pitch = stride < 0 ? -std::int64_t(stride) : stride;
+    return width && height && (nv12 || yuy2 || rgb) &&
+        (!(nv12 || yuy2) || !(width & 1)) && (!nv12 || !(height & 1)) &&
+        (rgb || stride > 0) && pitch >= bytes &&
+        bytes <= std::numeric_limits<LONG>::max();
+}
+
+bool CopyMappedCaptureTexture(const D3D11_MAPPED_SUBRESOURCE& mapped,
+                              DXGI_FORMAT format, UINT allocationWidth,
+                              UINT allocationHeight, UINT width, UINT height,
+                              std::vector<std::uint8_t>& output, LONG& stride,
+                              GUID& subtype)
+{
+    GUID packedSubtype{};
+    if (format == DXGI_FORMAT_NV12) packedSubtype = MFVideoFormat_NV12;
+    else if (format == DXGI_FORMAT_YUY2) packedSubtype = MFVideoFormat_YUY2;
+    else if (format == DXGI_FORMAT_B8G8R8A8_UNORM) packedSubtype = MFVideoFormat_ARGB32;
+    else if (format == DXGI_FORMAT_R8G8B8A8_UNORM) packedSubtype = MFVideoFormat_RGB32;
+    else return false;
+    if (!mapped.pData || width > allocationWidth || height > allocationHeight ||
+        mapped.RowPitch > std::numeric_limits<LONG>::max() ||
+        !IsSupportedCaptureLayout(packedSubtype, width, height, static_cast<LONG>(mapped.RowPitch))) return false;
+    const bool nv12 = format == DXGI_FORMAT_NV12;
+    if (nv12 && (allocationHeight & 1)) return false;
+    const std::size_t bytes = std::size_t(width) * (nv12 ? 1 : format == DXGI_FORMAT_YUY2 ? 2 : 4);
+    const std::size_t rows = std::size_t(height) + (nv12 ? height / 2 : 0);
+    if (rows > std::numeric_limits<std::size_t>::max() / bytes) return false;
+    const auto* source = static_cast<const std::uint8_t*>(mapped.pData);
+    std::vector<std::uint8_t> packed(bytes * rows);
+    for (std::size_t row = 0; row < rows; ++row) {
+        const std::size_t sourceRow = nv12 && row >= height ? allocationHeight + row - height : row;
+        auto* destination = packed.data() + row * bytes;
+        std::memcpy(destination, source + sourceRow * mapped.RowPitch, bytes);
+        if (format == DXGI_FORMAT_R8G8B8A8_UNORM) {
+            for (UINT x = 0; x < width; ++x) std::swap(destination[x * 4], destination[x * 4 + 2]);
+        }
+    }
+    output = std::move(packed);
+    stride = static_cast<LONG>(bytes);
+    subtype = packedSubtype;
+    return true;
+}
 
 bool CopyCaptureBuffer(IMFMediaBuffer* buffer, const GUID& subtype,
                        UINT width, UINT height, LONG negotiatedStride,

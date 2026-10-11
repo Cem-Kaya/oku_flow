@@ -31,7 +31,6 @@ public:
     void Teardown();
 
     bool IsReady() const;
-    bool IsAvailable();
     const std::string& LastError() const;
     const std::wstring& RuntimeDirectory() const;
 

@@ -24,7 +24,31 @@ private slots:
     void recordingInkRetainsSceneCoordinatesWithSuperResCrop();
     void sceneToleranceTightensAsViewportZooms();
     void renderingHonorsTheCallersExclusionRegion();
+    void cameraRotationRebasesInkAndUndoRedo();
 };
+
+void AnnotationModelTests::cameraRotationRebasesInkAndUndoRedo()
+{
+    AnnotationModel model;
+    model.BeginStroke({0.25, 0.5}, Qt::yellow, 0.01);
+    model.AppendStrokePoint({0.5, 0.75}, 0.001);
+    model.EndStroke();
+    model.AddText({0.125, 0.25}, QStringLiteral("label"), Qt::white, 0.04);
+    QVERIFY(model.Undo()); // Keep text in redo while rebasing both histories.
+    model.RotateClockwise(1);
+    QCOMPARE(model.strokes()[0].points[0], QPointF(0.5, 0.25));
+    QVERIFY(model.Redo());
+    QCOMPARE(model.strokes()[1].points[0], QPointF(0.75, 0.125));
+    QCOMPARE(model.strokes()[1].text, QStringLiteral("label"));
+    model.RotateClockwise(1);
+    QCOMPARE(model.strokes()[0].points[0], QPointF(0.75, 0.5));
+    QVERIFY(model.Undo());
+    QCOMPARE(model.strokes()[0].points[0], QPointF(0.75, 0.5));
+    QVERIFY(model.Redo());
+    model.RotateClockwise(2);
+    QCOMPARE(model.strokes()[0].points[0], QPointF(0.25, 0.5));
+    QCOMPARE(model.strokes()[1].points[0], QPointF(0.125, 0.25));
+}
 
 void AnnotationModelTests::renderingHonorsTheCallersExclusionRegion()
 {

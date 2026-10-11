@@ -23,6 +23,8 @@
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollArea>
+#include <QScrollBar>
+#include <QTextCursor>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSplitter>
@@ -192,7 +194,54 @@ private slots:
     void keyboardFocusedChromeSurvivesNativeHandoff();
     void simpleBackwardFocusCrossesPanels();
     void modalDialogKeepsTabAndNumberKeys();
+    void streamingPreservesReadingState();
+    void simpleCaptionHasViewportBudget();
 };
+
+void MainWindowTests::streamingPreservesReadingState()
+{
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    AssistiveOverlay overlay(window.renderWidget());
+    const QString answer = QStringLiteral("A long answer line for reading.\n").repeated(100);
+    overlay.SetContent(QStringLiteral("Answer"), answer, true);
+    auto* body = overlay.findChild<QTextBrowser*>(QStringLiteral("assistiveBody"));
+    QVERIFY(body);
+    QCoreApplication::processEvents();
+    QTextCursor reading(body->document());
+    reading.setPosition(3);
+    reading.setPosition(18, QTextCursor::KeepAnchor);
+    body->setTextCursor(reading);
+    body->verticalScrollBar()->setValue(0);
+    overlay.SetContent(QStringLiteral("Answer"), answer + QStringLiteral("New streamed text"), true);
+    QCOMPARE(body->textCursor().selectedText(), reading.selectedText());
+    QCOMPARE(body->verticalScrollBar()->value(), 0);
+    reading.clearSelection();
+    body->setTextCursor(reading);
+    body->verticalScrollBar()->setValue(body->verticalScrollBar()->maximum());
+    overlay.SetContent(QStringLiteral("Answer"), answer + QStringLiteral("New streamed text\nMore text"), true);
+    QCOMPARE(body->verticalScrollBar()->value(), body->verticalScrollBar()->maximum());
+}
+
+void MainWindowTests::simpleCaptionHasViewportBudget()
+{
+    MainWindow window;
+    window.resize(800, 600);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.SetSimpleTranscriptActive(true);
+    const QString phrase = QStringLiteral("Long transcript phrase ").repeated(300);
+    window.SetSimpleTranscriptPartial(phrase);
+    QCoreApplication::processEvents();
+    auto* panel = Named<QWidget>(window, "simpleTranscriptPanel");
+    auto* label = Named<QLabel>(window, "simpleTranscriptLabel");
+    QVERIFY(panel && label);
+    QVERIFY(panel->height() <= window.renderWidget()->height() / 3);
+    QVERIFY(GlobalRect(window.renderWidget()).contains(GlobalRect(panel)));
+    QVERIFY(label->text().size() < phrase.size());
+    QVERIFY(label->text().endsWith(QStringLiteral("phrase ")));
+}
 
 void MainWindowTests::modesGridSearchAndGeometry_data()
 {
@@ -301,6 +350,13 @@ void MainWindowTests::modesGridSearchAndGeometry()
     QVERIFY(imagePage->isAncestorOf(window.zoomCheckbox()));
     QVERIFY(imagePage->isAncestorOf(window.textClarityCheckbox()));
     QVERIFY(settingsPage->isAncestorOf(window.cameraCombo()));
+    QVERIFY(settingsPage->isAncestorOf(window.phoneLightButton()));
+    QVERIFY(!window.phoneLightButton()->isVisible());
+    QVERIFY(!window.phoneLightButton()->isEnabled());
+    QVERIFY(transcriptPage->isAncestorOf(window.transcribeMicrophoneCheckbox()));
+    QVERIFY(transcriptPage->isAncestorOf(window.transcriptToNotesCheckbox()));
+    QVERIFY(!window.transcribeMicrophoneCheckbox()->isChecked());
+    QVERIFY(!window.transcriptToNotesCheckbox()->isChecked());
     QVERIFY(settingsPage->isAncestorOf(window.viewportFitCombo()));
     QVERIFY(settingsPage->isAncestorOf(window.recordingCanvasCombo()));
     QVERIFY(settingsPage->isAncestorOf(window.applicationLanguageCombo()));

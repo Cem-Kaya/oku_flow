@@ -634,8 +634,8 @@ settings::AssistiveSettings AiSettingsDialog::result() const
     out.ttsRate = static_cast<double>(ttsRateSlider_->value()) / 100.0;
 #if OKUFLOW_HAS_TTS
     const QVoice voice = ttsVoiceCombo_->currentData().value<QVoice>();
-    out.ttsVoiceName = voice.name();
-    out.ttsVoiceLocale = voice.locale().name();
+    out.ttsVoiceName = voice.name().isEmpty() ? initial_.ttsVoiceName : voice.name();
+    out.ttsVoiceLocale = voice.name().isEmpty() ? initial_.ttsVoiceLocale : voice.locale().name();
 #else
     out.ttsVoiceName = preferredVoiceName_;
     out.ttsVoiceLocale = preferredVoiceLocale_;

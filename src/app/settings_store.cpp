@@ -4,6 +4,7 @@
 #include "okuflow/app/constants.hpp"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -12,6 +13,11 @@
 #include <QJsonObject>
 #include <QSaveFile>
 #include <QStandardPaths>
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 
 #include <algorithm>
 #include <cmath>
@@ -455,6 +461,13 @@ QJsonObject AssistiveToJson(const AssistiveSettings& assistive)
         object.insert(QStringLiteral("vlmCredentialId"),
                       assistive.vlmCredentialId.trimmed());
     }
+    QJsonArray pendingRemovals;
+    for (const auto& id : assistive.pendingCredentialRemovals) {
+        if (!id.trimmed().isEmpty()) pendingRemovals.append(id.trimmed());
+    }
+    if (!pendingRemovals.isEmpty()) {
+        object.insert(QStringLiteral("pendingCredentialRemovals"), pendingRemovals);
+    }
     object.insert(QStringLiteral("vlmModel"), assistive.vlmModel);
     object.insert(QStringLiteral("vlmPrompt"), assistive.vlmPrompt);
     object.insert(QStringLiteral("ttsEngine"), assistive.ttsEngine);
@@ -491,6 +504,12 @@ AssistiveSettings AssistiveFromJson(const QJsonObject& object)
     assistive.vlmApiUrl = object.value(QStringLiteral("vlmApiUrl")).toString(assistive.vlmApiUrl);
     assistive.vlmCredentialId =
         object.value(QStringLiteral("vlmCredentialId")).toString();
+    for (const auto& value : object.value(QStringLiteral("pendingCredentialRemovals")).toArray()) {
+        const QString id = value.toString().trimmed();
+        if (!id.isEmpty() && !assistive.pendingCredentialRemovals.contains(id)) {
+            assistive.pendingCredentialRemovals.append(id);
+        }
+    }
     assistive.vlmModel = object.value(QStringLiteral("vlmModel")).toString(assistive.vlmModel);
     assistive.vlmPrompt = object.value(QStringLiteral("vlmPrompt")).toString(assistive.vlmPrompt);
     assistive.ttsEngine = object.value(QStringLiteral("ttsEngine")).toString();
@@ -623,6 +642,7 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
             .value(QStringLiteral("userDataRoot"))
             .toString();
     settings.cameraIndex = root.value(QStringLiteral("cameraIndex")).toInt(settings.cameraIndex);
+    settings.cameraSymbolicLink = root.value(QStringLiteral("cameraSymbolicLink")).toString();
     settings.cameraFormatStableId =
         root.value(QStringLiteral("cameraFormatStableId")).toString();
     settings.microphoneEndpointId =
@@ -819,6 +839,24 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
     return settings;
 }
 
+QString TooLargeMessage()
+{
+    return QStringLiteral("Settings are larger than the %1 MiB limit.")
+        .arg(kMaxSettingsFileBytes / (1024 * 1024));
+}
+
+// Atomic same-directory rename that fails without changing anything when the
+// destination exists. QFile::rename would fall back to copying and removing,
+// which is slow for an oversized file and can truncate a destination created
+// after its existence check.
+bool RenameWithoutReplacing(const QString& from, const QString& to)
+{
+    const QString nativeFrom = QDir::toNativeSeparators(QFileInfo(from).absoluteFilePath());
+    const QString nativeTo = QDir::toNativeSeparators(QFileInfo(to).absoluteFilePath());
+    return ::MoveFileExW(reinterpret_cast<LPCWSTR>(nativeFrom.utf16()),
+                         reinterpret_cast<LPCWSTR>(nativeTo.utf16()), 0) != 0;
+}
+
 } // namespace
 
 LoadResult LoadDetailed(const QString& path)
@@ -829,18 +867,42 @@ LoadResult LoadDetailed(const QString& path)
         result.status = LoadStatus::Missing;
         return result;
     }
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    // Binary mode: the limit counts the same raw bytes Save writes. JSON
+    // treats the CR of each CRLF as whitespace.
+    if (!file.open(QIODevice::ReadOnly)) {
         result.status = LoadStatus::Unreadable;
         result.error = QStringLiteral("Could not read settings: %1")
                            .arg(file.errorString());
         return result;
     }
 
-    const QByteArray data = file.readAll();
+    // Read at most one byte past the limit. The size query is only an
+    // allocation hint: the file may grow after it, so the decision uses the
+    // bytes actually read.
+    QByteArray data;
+    data.reserve(static_cast<qsizetype>(
+        std::clamp<qint64>(file.size(), 0, kMaxSettingsFileBytes) + 1));
+    constexpr qint64 kReadChunkBytes = 64 * 1024;
+    while (data.size() <= kMaxSettingsFileBytes) {
+        const qsizetype offset = data.size();
+        const qint64 wanted =
+            std::min<qint64>(kReadChunkBytes, kMaxSettingsFileBytes + 1 - offset);
+        data.resize(offset + static_cast<qsizetype>(wanted));
+        const qint64 received = file.read(data.data() + offset, wanted);
+        data.resize(offset + static_cast<qsizetype>(std::max<qint64>(received, 0)));
+        if (received <= 0) {
+            break;
+        }
+    }
     if (file.error() != QFileDevice::NoError) {
         result.status = LoadStatus::Unreadable;
         result.error = QStringLiteral("Could not read settings: %1")
                            .arg(file.errorString());
+        return result;
+    }
+    if (data.size() > kMaxSettingsFileBytes) {
+        result.status = LoadStatus::TooLarge;
+        result.error = TooLargeMessage();
         return result;
     }
 
@@ -887,10 +949,8 @@ std::optional<PersistentSettings> Load(const QString& path)
     return LoadDetailed(path).settings;
 }
 
-bool Save(const QString& path, const PersistentSettings& settings)
+QByteArray Serialize(const PersistentSettings& settings)
 {
-    EnsureSettingsDirectory(path);
-
     QJsonObject root;
     const QString language = settings.language.trimmed().toLower();
     root.insert(QStringLiteral("language"),
@@ -903,6 +963,7 @@ bool Save(const QString& path, const PersistentSettings& settings)
                 QJsonObject{{QStringLiteral("userDataRoot"),
                              settings.userDataRoot}});
     root.insert(QStringLiteral("cameraIndex"), settings.cameraIndex);
+    root.insert(QStringLiteral("cameraSymbolicLink"), settings.cameraSymbolicLink);
     root.insert(QStringLiteral("cameraFormatStableId"),
                 settings.cameraFormatStableId);
     root.insert(QStringLiteral("microphoneEndpointId"),
@@ -1009,36 +1070,75 @@ bool Save(const QString& path, const PersistentSettings& settings)
     }
     root.insert(QStringLiteral("customPresets"), presetArray);
 
-    const QJsonDocument doc(root);
-    const QByteArray serialized = doc.toJson(QJsonDocument::Indented);
+    // Same CRLF bytes the former Text-mode write produced on Windows, made
+    // explicit so the size limit counts exactly what reaches the disk.
+    // QJsonDocument escapes CR/LF inside strings, so only line breaks change.
+    QByteArray serialized = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    serialized.replace("\n", "\r\n");
+    return serialized;
+}
 
-    if (QFileInfo::exists(path)) {
-        const LoadResult existing = LoadDetailed(path);
-        if (existing.status == LoadStatus::Loaded) {
-            const QString backupPath = path + QStringLiteral(".backup");
-            if (QFileInfo::exists(backupPath) && !QFile::remove(backupPath)) {
-                return false;
-            }
-            if (!QFile::copy(path, backupPath)) {
-                return false;
-            }
+SaveStatus SaveDetailed(const QString& path, const PersistentSettings& settings)
+{
+    const QByteArray serialized = Serialize(settings);
+    // Refuse before inspecting, rotating, or replacing anything on disk, so
+    // the current valid file and its backup stay exactly as they were.
+    if (serialized.size() > kMaxSettingsFileBytes) {
+        return SaveStatus::TooLarge;
+    }
+
+    EnsureSettingsDirectory(path);
+
+    const LoadStatus existing =
+        QFileInfo::exists(path) ? LoadDetailed(path).status : LoadStatus::Missing;
+
+    // Stage the complete replacement before rotating the backup or setting
+    // anything aside. QSaveFile refuses a read-only current file here, and an
+    // open, write, or flush failure only discards its temporary file.
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        return SaveStatus::Failed;
+    }
+    if (file.write(serialized) != serialized.size() || !file.flush()) {
+        file.cancelWriting();
+        return SaveStatus::Failed;
+    }
+
+    QString setAsidePath;
+    if (existing == LoadStatus::Loaded) {
+        const QString backupPath = path + QStringLiteral(".backup");
+        if ((QFileInfo::exists(backupPath) && !QFile::remove(backupPath)) ||
+            !QFile::copy(path, backupPath)) {
+            file.cancelWriting();
+            return SaveStatus::Failed;
+        }
+    } else if (existing == LoadStatus::TooLarge) {
+        // Never rotate an oversized document over the valid backup, and never
+        // replace it in place: set it aside like startup recovery.
+        setAsidePath = path + QStringLiteral(".too-large-") +
+                       QDateTime::currentDateTimeUtc().toString(
+                           QStringLiteral("yyyyMMdd-HHmmsszzz"));
+        if (!RenameWithoutReplacing(path, setAsidePath)) {
+            file.cancelWriting();
+            return SaveStatus::Failed;
         }
     }
 
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        return false;
-    }
-
-    if (file.write(serialized) != serialized.size()) {
-        file.cancelWriting();
-        return false;
-    }
     if (!file.commit()) {
-        return false;
+        // QSaveFile has removed its temporary file. Put the oversized original
+        // back unless another writer has created the path in the meantime.
+        if (!setAsidePath.isEmpty()) {
+            RenameWithoutReplacing(setAsidePath, path);
+        }
+        return SaveStatus::Failed;
     }
 
-    return true;
+    return SaveStatus::Saved;
+}
+
+bool Save(const QString& path, const PersistentSettings& settings)
+{
+    return SaveDetailed(path, settings) == SaveStatus::Saved;
 }
 
 const std::vector<AdvancedConfig>& BuiltInConfigs()

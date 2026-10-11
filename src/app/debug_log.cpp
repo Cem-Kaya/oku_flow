@@ -203,13 +203,6 @@ bool IsEnabled()
     return state.enabled;
 }
 
-QString CurrentPath()
-{
-    DebugLogState& state = State();
-    std::lock_guard lock(state.mutex);
-    return state.path;
-}
-
 void Shutdown()
 {
     DebugLogState& state = State();

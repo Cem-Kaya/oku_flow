@@ -33,7 +33,6 @@ public:
     void GraphicsSubmitted(std::uint64_t value) noexcept { graphics_ = value; }
     std::uint64_t LastGraphics() const noexcept { return graphics_; }
     std::uint64_t LastExternal() const noexcept { return external_; }
-    std::uint64_t LastReserved() const noexcept { return value_; }
 private:
     std::uint64_t value_{}, pending_{}, external_{}, waited_{}, graphics_{};
 };

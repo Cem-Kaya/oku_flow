@@ -88,15 +88,22 @@ struct RecordingDropCounts {
     std::uint64_t captureSlotOverwrite{0};
     std::uint64_t readbackRingBusy{0};
     std::uint64_t recordingPoolBusy{0};
-    std::uint64_t pairingMiss{0};
     std::uint64_t queueOverflow{0};
     std::uint64_t encoderReject{0};
     std::uint64_t unknownTimestamp{0};
+    std::uint64_t captureGpuUploadBusy{0};
+    std::uint64_t encoderBacklog{0};
+    // Subset of encoderBacklog where progress statistics were unavailable or
+    // inconsistent; do not count the same dropped frame twice in Total().
+    std::uint64_t encoderStatisticsUnavailable{0};
+    // Audio blocks are not video frames and never contribute to Total().
+    std::uint64_t audioQueueOverflow{0};
+    std::uint64_t audioEncoderBacklog{0};
 
     std::uint64_t Total() const {
         return captureSlotOverwrite + readbackRingBusy +
-               recordingPoolBusy + pairingMiss + queueOverflow +
-               encoderReject;
+               recordingPoolBusy + queueOverflow +
+               encoderReject + captureGpuUploadBusy + encoderBacklog;
     }
 };
 

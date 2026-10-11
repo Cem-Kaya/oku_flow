@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OkuFlow Kamera</string>
+
+    <string name="step_counter">Schritt %1$d von %2$d</string>
+    <string name="action_open_settings">Einstellungen öffnen</string>
+    <string name="action_allow_camera">Kamera erlauben</string>
+
+    <string name="developer_title">Entwickleroptionen aktivieren</string>
+    <string name="developer_hint_generic">Tippen Sie 7-mal auf „Build-Nummer“. Wenn Sie sie nicht sehen, öffnen Sie zuerst „Softwareinformationen“.</string>
+    <string name="developer_hint_samsung">Öffnen Sie „Softwareinformationen“ und tippen Sie dann 7-mal auf „Buildnummer“.</string>
+    <string name="developer_hint_xiaomi">Tippen Sie 7-mal auf „OS-Version“ (oder „MIUI-Version“).</string>
+    <string name="developer_hint_oneplus">Öffnen Sie „Version“ und tippen Sie dann 7-mal auf „Build-Nummer“.</string>
+
+    <string name="usb_debugging_title">USB-Debugging aktivieren</string>
+    <string name="usb_debugging_hint">Suchen Sie „USB-Debugging“ und schalten Sie es ein.</string>
+    <string name="check_usb_title">USB-Verbindung prüfen</string>
+    <string name="check_usb_hint">Öffnen Sie OkuFlow auf dem Computer. Wenn keine Verbindung möglich ist, prüfen Sie, ob USB-Debugging aktiviert ist, und erlauben Sie den Computer bei der Nachfrage. Fehlen die Entwickleroptionen, öffnen Sie Telefoninfo und tippen Sie 7-mal auf Build-Nummer.</string>
+
+    <string name="camera_title">Kamera erlauben</string>
+    <string name="camera_hint">OkuFlow zeigt diese Kamera auf Ihrem Computer. Es wird nichts ins Internet gesendet.</string>
+    <string name="camera_hint_settings">Öffnen Sie die Einstellungen, wählen Sie „Berechtigungen“ und erlauben Sie „Kamera“.</string>
+
+    <string name="connect_usb_title">Telefon mit dem Computer verbinden</string>
+    <string name="connect_usb_hint">Verwenden Sie ein USB-Kabel, das Daten übertragen kann.</string>
+
+    <string name="open_okuflow_title">OkuFlow auf dem Computer öffnen</string>
+    <string name="open_okuflow_hint">Wenn Ihr Telefon „USB-Debugging zulassen?“ fragt, setzen Sie den Haken bei „Immer zulassen“ und tippen Sie auf „Zulassen“.</string>
+
+    <string name="streaming_title">Überträgt an OkuFlow</string>
+    <string name="streaming_hint">Lassen Sie diesen Bildschirm geöffnet.</string>
+    <string name="advanced_settings">Erweiterte Einstellungen</string>
+    <string name="action_back">Zurück zur Kamera</string>
+    <string name="advanced_hint">Änderungen gelten automatisch. Ihr Telefon kann eine niedrigere Auflösung oder Bildrate verwenden.</string>
+    <string name="settings_video">Kamera und Video</string>
+    <string name="settings_image">Bildeinstellungen</string>
+    <string name="setting_auto">Automatisch</string>
+    <string name="setting_off">Aus</string>
+    <string name="setting_camera">Kamera</string>
+    <string name="camera_front">Frontkamera</string>
+    <string name="camera_back">Rückkamera</string>
+    <string name="setting_mode">Auflösung und Bildrate</string>
+    <string name="setting_mode_format">%1$d × %2$d @ %3$d FPS</string>
+    <string name="setting_modes_loading">Kameramodi werden ermittelt…</string>
+    <string name="setting_modes_unavailable">Keine Aufnahmemodi verfügbar</string>
+    <string name="settings_more">Weitere Optionen</string>
+    <string name="action_back_settings">Zurück zu den Einstellungen</string>
+    <string name="setting_all_modes">Alle Kameramodi</string>
+    <string name="setting_all_modes_hint">Alle auf diesem Telefon ermittelten Modi, auch unter 720p und 24 FPS.</string>
+    <string name="setting_main_modes_hint">Ab 720p · Ab 24 FPS.</string>
+    <string name="setting_extra_mode_selected">Ein Modus aus Weitere Optionen ist aktiv.</string>
+    <string name="setting_bitrate">Video-Bitrate</string>
+    <string name="setting_codec">Bevorzugter Codec</string>
+    <string name="setting_stabilization">Bildstabilisierung des Telefons</string>
+    <string name="setting_optical">Optisch, falls verfügbar</string>
+    <string name="setting_electronic">Elektronisch, falls verfügbar</string>
+    <string name="stabilization_hint">Elektronische Stabilisierung kann das Bild zuschneiden. Wählen Sie Aus oder Optisch, wenn Sie die Stabilisierung mit fester Referenz in OkuFlow verwenden.</string>
+    <string name="setting_autofocus">Kontinuierlicher Autofokus</string>
+    <string name="focus_hint">Bei ausgeschaltetem Autofokus wird für entfernte Inhalte auf unendlich fokussiert.</string>
+    <string name="setting_torch">Kameralicht</string>
+    <string name="torch_host_hint">Beginnt ausgeschaltet. Verwenden Sie die Telefonlicht-Taste in den Kameraeinstellungen von OkuFlow auf Ihrem Computer.</string>
+    <string name="setting_exposure">Belichtung: %1$d</string>
+    <string name="exposure_hint">Nach links wird das Bild dunkler, nach rechts heller.</string>
+    <string name="setting_status">Stream-Status</string>
+    <string name="settings_reset">Automatische Einstellungen wiederherstellen</string>
+    <string name="service_notification">Bereit für die USB-Kameraverbindung</string>
+    <string name="thermal_stopped">Die Kamera wurde zum Schutz des Telefons angehalten. Lassen Sie es abkühlen und wählen Sie das Telefon dann erneut in der Kameraliste von OkuFlow.</string>
+    <string name="connected_title">Mit OkuFlow verbunden</string>
+    <string name="connected_hint">Ihr Computer ist verbunden. Warten auf das Kamerabild.</string>
+    <string name="problem_busy_title">Die Kamera ist belegt</string>
+    <string name="problem_busy_hint">Schließen Sie andere Apps, die die Kamera verwenden. OkuFlow versucht es kurze Zeit erneut. Kommt das Bild nicht zurück, wählen Sie das Telefon erneut in der Kameraliste von OkuFlow.</string>
+    <string name="problem_blocked_title">Kamerazugriff ist blockiert</string>
+    <string name="problem_blocked_hint">Aktivieren Sie den Kamerazugriff in den Datenschutz- oder Schnelleinstellungen. Wählen Sie das Telefon dann erneut in der Kameraliste von OkuFlow.</string>
+    <string name="problem_mode_title">Dieser Videomodus ist nicht verfügbar</string>
+    <string name="problem_mode_hint">Öffnen Sie die erweiterten Einstellungen und stellen Sie Auflösung und Bildrate auf Automatisch.</string>
+    <string name="problem_failed_title">Die Kamera wurde angehalten</string>
+    <string name="problem_failed_hint">OkuFlow versucht es kurze Zeit erneut. Kommt das Bild nicht zurück, wählen Sie das Telefon erneut in der Kameraliste von OkuFlow. Passiert das häufig, starten Sie das Telefon neu.</string>
+    <string name="problem_hot_title">Das Telefon ist zu heiß</string>
+    <string name="problem_service_title">Die USB-Kamera konnte nicht starten</string>
+    <string name="problem_service_hint">Schließen Sie OkuFlow Kamera und öffnen Sie die App erneut. Passiert das häufig, starten Sie das Telefon neu.</string>
+</resources>

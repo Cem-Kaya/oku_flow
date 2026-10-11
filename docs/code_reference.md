@@ -1,6 +1,242 @@
 # OkuFlow Code Reference
 
-Authoritative code map for the current repository state as of 2026-10-10. Update this file whenever classes, public structs, or significant functions change.
+Authoritative code map for the current repository state as of 2026-10-11. Update this file whenever classes, public structs, or significant functions change.
+
+## GUI launch and explicit capture controls
+
+- The Windows `oku_flow` target uses the GUI subsystem. `main` attaches only an
+  existing parent console when `--console` is present, then restores its CRT
+  output streams for diagnostics; ordinary launch never allocates a console.
+- `CameraDescriptor.phoneAppReady` records a successful companion capability
+  handshake. `ResolveSavedCameraIndex` still honors saved identity/legacy index;
+  only an unconfigured first launch prefers a ready companion over index zero.
+- `PhoneCameraTransport.SetTorch` coalesces a session-only Boolean command;
+  `TorchAvailable`/`TorchEnabled` expose atomics from capture metadata. A fresh
+  connection clears pending light requests and sends explicit light-off before
+  Start, including HEVC fallback. `MediaCapture.SetPhoneTorch`,
+  `PhoneTorchAvailable` and `PhoneTorchEnabled` provide UI-facing no-op/false
+  behavior for webcams. `MainWindow.phoneLightButton` is bound through
+  `UIStateManager`; `OkuFlowApp.UpdatePhoneLightUi` shows it only for a selected
+  phone, enables it from hardware availability, and reflects actual state.
+- `CameraSettings.forNewHostSession` clears only torch. Store reads always start
+  with light off, updates remove the legacy persisted torch key, and service
+  startup/binding/Stop/disconnect reset it. The Android settings show a Windows
+  control hint; only an explicit host command requests light on. `CameraEngine`
+  emits optional `torchAvailable`/`torchEnabled` metadata from Camera2 results.
+- The Transcript tab owns the existing transcription and append-to-notes
+  checkboxes. Both `PersistentSettings` defaults are false; explicit stored
+  choices survive. The recording-start opt-in guard remains in
+  `StartTranscriptionForActiveRecording`. Turning transcription on mid-recording
+  now invokes it; turning it off cancels the controller without stopping recording.
+- `scripts/agent_build.bat` accepts `OKUFLOW_AGENT_RELEASE_BUILD_DIR` for the
+  same release preset in an isolated directory. CPU/CUDA presets are unchanged.
+
+## Audit-49 unused-code cleanup
+
+- Removed 34 reviewed function definitions: the 26 census candidates, five
+  exclusively unused CUDA helpers, and three obsolete recording/application
+  pairing functions. Declarations, CPU/Maxine fallback variants, pairing state,
+  and write-only CPU raw dimensions were removed together.
+- Recording uses `AddSceneFrame` / `AddGpuSceneFrame` and `QueuedFrame`
+  snapshots. Completed photo/assistant readbacks no longer enter an empty
+  recording map. `RecordingDropCounts` no longer contains `pairingMiss`.
+- Current linear-buffer effects, canonical viewport presentation, shared fence
+  ordering, and the 17 test-only APIs remain. The removed gradient, surface
+  black/white, surface zoom and blend kernels had no active launcher.
+- `OKUFLOW_AGENT_EXCLUDE_GUI=1` selects explicitly partial desktop-free
+  validation in `scripts/agent_build.bat`; the default still runs every test.
+  See [review 49](../improvement_ideas/49-unused-code-census-2026-10-11.md)
+  for the measured baseline, removal set and validation limits.
+
+## Audit-50 alternating repairs
+
+- `AnnotationOverlay::eventFilter` intercepts keyboard input only while Draw is
+  active and visible. Scoped `filteringKey_` / `forwardingKey_` distinguish an original
+  filtered delivery from an explicit owner forward. An unhandled filtered
+  navigation key follows Qt's original route; an explicit forward reaches
+  the owner once, even when ignored. Unhandled filtered keys retain their
+  original acceptance for native child controls. Inline text entry owns
+  bubbled navigation. `forwardedPanKeys_` pairs accepted pan presses with
+  physical releases, ignores auto-repeat releases, and
+  `ReleaseForwardedPanKeys` flushes them on disable/hide/focus loss or window
+  deactivation. Local Draw shortcuts and selected-ink edits retain ownership.
+  The inline editor installs this filter and retires pending text on actual
+  FocusOut, including untouched empty editors that emit no editingFinished.
+  CommitPendingText guards retire state before hiding; typed labels commit once.
+- `annotation_key_routing_headless` exercises the production overlay using
+  Qt's offscreen platform. A bounded redispatch fence reproduces the previous
+  feedback loop without exhausting the stack. This test is desktop-free;
+  native focus/layout validation remains in the separate GUI group.
+- Author/reviewer evidence and remaining priorities are recorded in
+  [review 50](../improvement_ideas/50-alternating-opus-repairs-2026-10-11.md).
+
+## Audit-47 sequential repair contracts
+
+- `RecordingAudioBacklog` bounds outstanding PCM by block count (128), bytes
+  (4 MiB) and accumulated PCM duration (2 s), separately from video admission.
+  The configured Microsoft raw LC AAC contract emits 1024 PCM frames per output
+  packet. Confirmed packets retire cumulative PCM frames (not input blocks),
+  retaining two packets of conservative credit. Retirement requires fresh
+  output progress: unchanged padded/partial-packet credit cannot expand into
+  later tiny PCM blocks. Failed/regressed/impossible statistics cannot earn
+  credit. Capture-clock/encoded-clock gaps and drift do
+  not influence admission; they remain a separate playback-quality issue.
+  `RecordAccepted` follows successful submission; `Reset(bytesPerPcmFrame)` runs
+  on CPU/native-GPU startup with the negotiated channel alignment.
+- Worker-only `VideoRecorder::CanAcceptAudioFrame` validates PCM size,
+  alignment, duration and arithmetic before querying encoder statistics.
+  `RecordingManager::WriteAudioFrame` checks both budgets first and ends the
+  session explicitly at exhausted/invalid admission, preserving the existing
+  paired-finalization/watchdog contract. `AddAudioFrame` also checks admission
+  for direct callers. Estimated input backlog is bounded; internal MFT/driver
+  allocations and synchronous COM/finalization latency remain outside this
+  contract. Statistics must confirm progress for sustained recording.
+  `AudioFormat` remains validated by sink negotiation; alternative AAC MFTs
+  with a different packet contract are outside this policy's verified scope.
+- `RecordingDropCounts::audioQueueOverflow` / `audioEncoderBacklog` describe
+  microphone blocks and remain excluded from video `Total()`. Session reset,
+  `DropCounts` and `BuildDropSummary` preserve this distinction.
+
+## Audit-46 follow-up contracts
+
+- `InitializeLegacyCameraIdentity` records the actual opened index/link only
+  after a successful automatic start of an index-only profile; an existing
+  preferred link survives fallback. Explicit selection replaces the preference.
+- `EnqueueCaptureFrame` retains bursts up to six pending arrivals, then retires
+  the saturated queue and retains the newest arrival. Its exact retired count
+  and caller-owned retired storage keep lease release outside the ingress lock.
+  `NotifyCaptureFrames(received, overwritten)` counts arrivals and losses
+  independently, including losses of earlier batches.
+- Capture/recording D3D11 video processors explicitly disable driver automatic
+  enhancement; requested color conversion remains active.
+- `RecordingEncoderBacklog` admits AV1/H.264 video with a 12-sample / 128 MiB
+  estimated input-payload budget per writer. `CanAcceptVideoFrame` queries
+  encoded progress on the worker and includes pending/incoming samples; failed
+  or inconsistent statistics grant no new completion credit. The manager checks
+  both writers before writing either timeline and drops pressured pairs together.
+  `MF_LOW_LATENCY` is requested with conditional driver/quality behavior. AAC
+  input admission is now separately bounded by audit 47; internal AAC/driver
+  allocation and blocking finalization time remain separate limits.
+- `RecordingEncoderBacklog::CanStart` requires two slots and two input payloads
+  to fit; `VideoRecorder::InputPayloadBytes` computes BGRA/NV12 sizes without
+  overflow. `InputFitsEncoderBudget` applies the 64 MiB per-input ceiling
+  before CPU/native-GPU startup and before compatibility fallback creates a
+  sink. Oversized inputs fail explicitly; this is separate from pool/driver
+  capability checks. Failed native output is preserved unless confirmed empty.
+- Native GPU samples own a separate NV12 output, rather than retaining the
+  source BGRA pool lease through encoder buffering. `HasPendingGpuReads` and
+  worker-only `PollGpuInputReads` retain source/reader graphs until confirmed
+  conversion completion; Pending/Unknown remain quarantined. The manager's
+  `RetireGpuInputReads` also polls while no frame can arrive, waking an idle
+  worker at 10 ms only when pending readers exist. Writer/worker stage tags keep
+  those driver calls visible to the existing watchdog; the UI never polls COM.
+  Ordinary admission uses `DONOTFLUSH`; when no video is queued, the worker
+  allows asynchronous query-command flushing to avoid stalled reader progress.
+  This adds no completion wait or sink-sample submission.
+- `NotifyCaptureGpuUploadBusy` counts each definitively dropped arrival once.
+  `RecordingDropCounts::captureGpuUploadBusy` and `encoderBacklog` join `Total`;
+  `encoderStatisticsUnavailable` is a diagnostic subset excluded from `Total`.
+  Full/unobservable queues produce visible notices.
+- `SetLiveTextCoalesced` keeps its first deadline while replacing the pending
+  value; immediate `SetLiveText` cancels pending publication. Percentile work
+  moves to `UpdatePerformanceDiagnosticsLabel`, a widget-owned 400 ms timer
+  that skips hidden diagnostics and refreshes after show even without new frames.
+- `RetranslateWidget` visits only the receiving widget for Show/Polish; full-tree
+  translation remains for explicit language changes. Exact keys skip formatted
+  matching; untranslated templates skip regex while preserving other translators.
+- Transcription finalizes its bounded pending tail before failure/recovery
+  teardown. Recovery emits its gap afterward; fatal completion semantics remain.
+  Old-generation final events are rejected.
+- `ConversationTranscriptLoadFailed` forwards as `AssistantTranscriptLoadFailed`.
+  `pendingAssistantHistoryThreadId_` owns the loading placeholder; matching
+  terminals retire it. `CancelAssistantHistoryLoad` clears it before prompt/New/
+  delete while preserving the thread used for follow-up prompts.
+- Photo recovery lists transaction artifacts only. Nominated finals' timestamps
+  still participate in legacy staleness checks; ownership/locking rules remain.
+- `LaunchOpaqueAlphaLinear` sets only alpha after a successful Maxine transfer,
+  before cache publication. The camera-scene shader is opaque; annotation
+  composition retains its texture alpha. Private allocations are not exposed
+  before the successful transfer and alpha pass.
+- Mask hysteresis retains soft coverage, holding prior values in the uncertainty
+  band. Text composite permits exact equal-pitch src/dst aliasing; automatic mixed
+  scenes in place return before pixel loads. Replacement consumes only the mask,
+  and the existing mode-0 blend API remains.
+
+Actual validation/limits: [review 46](../improvement_ideas/46-additional-opus-review-2026-10-11.md).
+
+## Audit-45 implementation contracts
+
+- `PersistentSettings::cameraSymbolicLink` serializes physical selection;
+  `ResolveSavedCameraIndex(...)` resolves case-insensitive device identity,
+  handles a missing preferred device, and migrates legacy index-only settings.
+  startup prefers it over `cameraIndex`, retaining the legacy index when no
+  link exists. `MediaCapture::LastSymbolicLink()` now snapshots the requested
+  descriptor before open, including failure, and survives Stop for retry.
+- `IsSupportedCaptureLayout(...)` rejects unsupported subtype/extent/stride
+  before dynamic format adoption. `CopyMappedCaptureTexture(...)` uses the
+  texture's allocation height for NV12 UV, validates visible bounds/pitch, and
+  swaps channels only for explicit RGBA. `CopyGpuFrame` accounts for source
+  mip/subresource extent; unsupported changed formats enter error/recovery.
+- `CudaInteropSurface::LastFailureWasBusy()` reports an upload-admission
+  outcome separately from faults. Three `PinnedUploadSlot`s are queried
+  before work submission; `OkuFlowApp::cudaSubmissionBusy_` retains the prior
+  scene and cancels only the unused fence reservation, without CPU recovery.
+- `ComputeContainingSourceCrop(...)` requires a supported integer crop to
+  contain the whole requested view. `CanonicalizeSuperResViewTransform(...)`
+  gives inference/presentation one SR-only geometry, snapping pan by at most
+  one source pixel and mapping advertised 1.33 to exact 4/3. Unsupported crops
+  use existing fallback. Maxine `loadedStrength_` participates in load reuse.
+  `UpdateSuperResCache` restarts timing by source/output extent and strength;
+  `discardSuperResTiming_` excludes an old pending sample after configuration
+  or override changes. Unrelated text controls do not reload the effect.
+- `VirtualTripodPairInsideRoi` subtracts recovery keyframe origin for anchor
+  ROI selection. `VirtualTripodRelativeFallbackKernel` rejection holds both
+  correction and relative motion. CLAHE clamps both independently derived
+  neighbor tile indices. `LaunchTextLocalMean` uses squared-workspace-free
+  box-kernel specializations when later processing replaces statistics;
+  full statistics remain when consumed. Explicit Adaptive Text skips replaced
+  Smart Sharpen output; automatic mixed mode retains it. NIS edge maps reuse
+  the already loaded 6x6 luma neighborhood.
+- `PipelineOrchestrator::MarkSceneDirty()` marks camera output without starting
+  the user-motion tail; `MarkViewportDirty()` retains motion behavior.
+  `InteractionController::ApplyZoom` explicitly invalidates keyboard zoom.
+  `RunFrameTick` drains completed readbacks before idle early returns; GPU
+  publication/rotation/stop clear stale CPU presentation buffers.
+- `AnnotationModel::RotateClockwise`, `AnnotationOverlay::RotateClockwise`,
+  and `MainWindow::rotateAnnotationsClockwise` rebase ink and undo/redo on
+  image rotation, end active gestures, and retain upright text labels.
+- `RecordingManager` launches its worker after full member/UI setup.
+  `QueuedFrame` carries value snapshots of annotation strokes;
+  `AddSceneFrame` accepts these snapshots on the live recording path, and
+  `ComposeRecordingAnnotations` renders only processed output after resampling.
+  Review 49 removed the unused pending-original map and its readback pairing
+  callbacks; photo and assistant readbacks retain their independent handling.
+  `activeCanvasMode_` captures selected mode at session start for both clone
+  resolution and worker setup. `ConvertRecordingBgraToNv12` normalizes CPU
+  fallback into the GPU writer's BT.601 limited-range NV12 contract, averaging
+  2x2 chroma; `AddFrame` never labels BGRA bytes as NV12.
+- `AssistiveRuntime::CancelVlmPreparation` retires request ownership before its
+  terminal event; `CompleteAssistantPreparation` rejects stale generations and
+  removes only their temporary files. `CancelAssistantConversationLoad` delegates
+  to `CodexAppServerClient::CancelConversationLoad`; `conversationLoadGeneration_`
+  rejects history replies after newer loads/turns. App callbacks also validate
+  selected thread and pending answer/capture state. Realtime Stop accepts deltas.
+- `SettingsController::StorageOperations` injects read/write/remove/save adapters
+  for deterministic regressions. `PrepareProtectedSecrets` queues deletion ids;
+  `AssistiveSettings::pendingCredentialRemovals` persists them before deletion
+  and clears them only after successful removal and settings cleanup.
+  A replacement key uses a fresh opaque id if the old id is still pending
+  deletion, preventing a persisted old intent from deleting the new key.
+- Assistant append cursors no longer replace selected editor cursors; scroll
+  follows only an unselected tail. Draw tool/action rails use bounded scroll
+  areas. `MainWindow::UpdateSimpleTranscriptGeometry` coalesces caption updates,
+  fits trailing plain text above controls, and preserves Advanced content.
+  `AiSettingsDialog::result` retains saved voice fields without a discovered voice.
+
+Validation results and remaining native/hardware acceptance limits are recorded
+in [audit 45](../improvement_ideas/45-codebase-audit-2026-10-11.md). Encoder-resource
+pooling and per-device NIS coefficient initialization remain deferred; these
+source changes make no measured throughput or latency claim.
 
 ## App Module
 
@@ -70,9 +306,8 @@ Authoritative code map for the current repository state as of 2026-10-10. Update
   - `src/app/app.cpp` — intentionally empty compatibility translation unit
 - The low-level CUDA/presentation entry points remain private `OkuFlowApp`
   methods; `PipelineOrchestrator` schedules them through callbacks. The
-  presenter owns GPU fence ordering. `InvalidateRecordingFramePairing()`
-  clears pending original/processed pairing after camera or rotation changes
-  without resetting that live fence timeline or CUDA interop. Repeated CUDA
+  presenter owns GPU fence ordering. Camera or rotation changes never reset
+  that live fence timeline. Repeated CUDA
   failures drain both APIs before recovery; surface teardown disables interop
   only after the drain succeeds.
 - `StartCameraCapture(..., bool backgroundStartup = false)` starts the initial
@@ -80,7 +315,9 @@ Authoritative code map for the current repository state as of 2026-10-10. Update
   overlapping device opening with native presenter initialization. Manual
   camera changes and reconnects retain the existing synchronous path.
   `QueueInitialCameraStart(...)` recreates the camera activation in its worker
-  COM apartment using the camera's symbolic link. Native modes are obtained
+  COM apartment using the camera's symbolic link for physical cameras. Phone
+  serial, camera ID and transport ID are copied as values and bypass MF device
+  activation, preserving the optional phone branch at initial startup. Native modes are obtained
   from that same streaming reader; startup no longer opens a preliminary reader.
 - `CameraStartupJob` owns an independent `MediaCapture`; `CameraIngress` revokes
   completion delivery when a session ends. `CompleteCameraCaptureStart(...)`
@@ -210,7 +447,7 @@ Authoritative code map for the current repository state as of 2026-10-10. Update
 - Probes AV1 then H.264 for the synchronized pair, maps the processed scene
   into a persistent Match-camera/360p/480p/720p/1080p/1440p/2160p canvas,
   starts `_partN` pairs when the camera format changes, and reports
-  capture/readback/recording-pool/pairing/queue/encoder drops by cause. A
+  capture/readback/recording-pool/queue/encoder drops by cause. A
   failed finalization can never produce a "saved" result.
 - When OkuFlow has an attached Windows console, each segment prints its exact
   processed/original input route (direct GPU, GPU source with worker readback,
@@ -317,10 +554,14 @@ Authoritative code map for the current repository state as of 2026-10-10. Update
   keeping only its credential id in the settings document. A credential read
   error prevents an unrelated save from silently erasing the protected
   secret.
-- Distinguishes first run from invalid, unreadable, and future-version
-  settings; preserves the failed document, restores a valid `.backup` when
-  possible, and exposes a startup notice suitable for the visible status
-  area.
+- Distinguishes first run from invalid, unreadable, oversized, and
+  future-version settings. It preserves the failed document (oversized files
+  as `.too-large-<timestamp>`), restores a valid `.backup` when possible, and
+  exposes a startup notice suitable for the visible status area. A save
+  refused by the 16 MiB limit reports that cause in `LastError()`.
+  A missing primary also recovers a valid bounded backup; absent/invalid
+  backups keep first-run defaults. Late publication failure reports an I/O
+  retry message without falsely promising an unchanged backup generation.
 
 ### `include/okuflow/app/protected_secret_store.hpp`
 `okuflow::ProtectedSecretResult`, `okuflow::ProtectedSecretStore`
@@ -499,20 +740,39 @@ Namespace `okuflow::settings`
     reusable `customColorScheme`,
     the `assistive` settings block,
     OkuFlow-created `codexConversations`, and user-created configs/presets
+- `kMaxSettingsFileBytes`
+  - 16 MiB raw on-disk limit for `settings.json` and `.backup`, counting CRLF
+    bytes; see `docs/hardcoded_paths.md` for the capacity rationale
 - `enum class LoadStatus`, `struct LoadResult`
-  - classify `Loaded`, `Missing`, `Unreadable`, `InvalidJson`, and
-    `UnsupportedVersion`, with an optional settings payload, error text, and
-    `migrationApplied` write-back flag
+  - classify `Loaded`, `Missing`, `Unreadable`, `InvalidJson`,
+    `UnsupportedVersion`, and `TooLarge`, with an optional settings payload,
+    error text, and `migrationApplied` write-back flag
+- `enum class SaveStatus`
+  - `Saved`, `TooLarge` (refused before any file changed), or `Failed`
 - Functions:
   - `QString ResolveSettingsPath()`
   - `void EnsureSettingsDirectory(const QString& path)`
-  - `LoadResult LoadDetailed(const QString& path)` — rejects versions newer
-    than schema 16, preserves the reason, and reports the model-id migration
+  - `LoadResult LoadDetailed(const QString& path)`. It reads in binary mode,
+    at most one byte past `kMaxSettingsFileBytes`, so a growing file cannot
+    bypass the bound. It rejects versions newer than schema 16, preserves the
+    reason, and reports the model-id migration.
   - `std::optional<PersistentSettings> Load(const QString& path)` —
     compatibility wrapper around `LoadDetailed`
+  - `QByteArray Serialize(const PersistentSettings& settings)` — the exact
+    indented CRLF bytes that `Save` writes, used for size accounting
+  - `SaveStatus SaveDetailed(const QString& path, const PersistentSettings& settings)`.
+    It refuses a document over the limit before inspecting or replacing
+    anything. It uses `QSaveFile` in binary mode, checks commit success, and
+    stages and flushes the replacement before rotating a valid prior document
+    or setting an oversized document aside. `RenameWithoutReplacing` uses a
+    same-directory Win32 rename with no copy/replacement fallback for the
+    oversized sidecar and rollback. A commit failure attempts to restore that
+    original without overwriting another writer. The ordinary valid-primary
+    backup can already be rotated when a late commit fails; both file
+    generations are not guaranteed unchanged. Runtime secrets are never
+    serialized.
   - `bool Save(const QString& path, const PersistentSettings& settings)` —
-    uses `QSaveFile`, checks commit success, backs up a valid prior document,
-    and never serializes runtime secrets
+    `SaveDetailed(...) == SaveStatus::Saved`
   - `const std::vector<AdvancedConfig>& BuiltInConfigs()`
   - `const std::vector<PresetDefinition>& BuiltInPresets()`
   - `QString DefaultPresetId()`
@@ -668,7 +928,6 @@ Types:
     A failed stop retains the entire session until process exit.
   - `bool WasAbandoned() const` is sticky: further capture starts/enumeration
     are refused and app shutdown skips `MFShutdown` / `CoUninitialize`.
-    `LastStopCompleted()` reports the last stop result.
   - `const std::string& LastError() const`
   - `const std::string& FormatNotice() const` — reports a requested versus
     negotiated mismatch in plain language
@@ -686,7 +945,9 @@ Types:
     ComPtr<ID3D11Texture2D>&, std::shared_ptr<void>& outLease)` — converts a retained accelerated sample into a
     reusable NT-shareable BGRA D3D11 texture without crossing system memory.
     The viewport thread polls the D3D11 completion query once without sleeping. A
-    delayed query returns `Retry`; the caller must retain and resubmit that
+    delayed query returns `Retry`; subsequent polls permit runtime flushing
+    (`GetData` flags zero) to prevent pending-query starvation observed with
+    shared hardware-decoder output. The caller must retain and resubmit that
     exact `MediaFrame`, allowing the same conversion to complete
     asynchronously without issuing a duplicate blit or crossing system
     memory. The application permits up to 25 ms of event-loop retries before
@@ -702,7 +963,7 @@ Types:
   - `double CurrentFrameRate() const` — reports the negotiated capture rate;
     diagnostics do not claim viewport re-presentation as camera FPS
   - `bool ConsumeDeviceLost()` — atomically returns and clears the mid-stream device-loss flag; polled from the app's frame tick to drive reconnection
-  - `const std::wstring& LastSymbolicLink() const` — symbolic link of the most recently started device, kept across loss/stop so reconnection can re-find the same physical camera
+  - `const std::wstring& LastSymbolicLink() const` — symbolic link of the most recently requested device, including failed opens; kept across loss/stop so reconnection retries that physical camera
 - Internal helpers belong to independently shared `MediaCaptureSession`:
   - `ConfigureReader(...)`
     Optional capture diagnostics compare the media source's native mode with
@@ -939,7 +1200,7 @@ Types:
   - `Start()` / `Shutdown()`
   - `SetRequestTimeoutMs(int)` changes the JSON-RPC request deadline for
     controlled testing or integration; the default remains 60 seconds
-  - `IsReady()`, `IsSignedIn()`, `IsTurnActive()`, `SelectedModel()`
+  - `IsReady()`, `IsTurnActive()`
   - `BuiltInAssistantInstructions()` returns the read-only OkuFlow identity
     prompt shown in AI Settings
   - `RefreshAccount()` / `StartChatGptLogin()`
@@ -1117,19 +1378,21 @@ Namespace `okuflow::processing`
 - Public API:
   - `bool ConvertFrameToBgra(...)`
   - `bool RotateRawBuffer(int quarterTurns, UINT& width, UINT& height)`
+    - Normalizes positive/negative quarter turns, preserves every BGRA byte,
+      and swaps retained input/rotation vectors. Every destination pixel is
+      overwritten; equal-size rotated frames reuse both allocations after
+      warm-up. Resolution growth can allocate; buffers retain peak capacity.
   - `CpuPipelineOutput BuildStages(UINT width, UINT height, const CpuPipelineConfig& config, bool debugViewEnabled)`
-  - `bool ResampleToFill(UINT targetWidth, UINT targetHeight, float centerXNorm, float centerYNorm)`
   - `void ResetTemporalHistory()`
   - `const std::vector<uint8_t>& StageRaw() const`
-  - `UINT RawWidth() const`
-  - `UINT RawHeight() const`
 
 ### `include/okuflow/common/media_writer.hpp`
 `okuflow::GpuVideoFrame`, `okuflow::VideoRecorder`
 - `GpuVideoFrame` identifies one shareable BGRA D3D texture, the shared fence
   value that completes its producer write, its dimensions, and an opaque
-  lifetime lease. Media Foundation retains that lease on the submitted sample
-  until the encoder releases it, which is the recording-pool recycle signal.
+  lifetime lease. The independently armed conversion-reader graph retains that
+  lease until confirmed GPU completion. Media Foundation owns the separate
+  NV12 encoder output and does not keep the BGRA pool slot for encoder latency.
 - Media Foundation sink-writer wrapper for live AV1 or H.264 output with an
   optional AAC audio stream. The
   container is fragmented MP4 (fMP4): fragments flush to disk while recording,
@@ -1173,6 +1436,14 @@ Namespace `okuflow::processing`
     unknown reads remain retained rather than authorizing premature reuse.
     `PollGpuReadLeases(bool allowFlush = false)` selects that polling mode;
     only an actual completed query releases a reader graph.
+    Public worker-only `PollGpuInputReads(bool allowFlush = false)` allows the
+    manager to retire readers
+    without waiting for another video/audio arrival; `HasPendingGpuReads()`
+    selects a timed idle wake while such queries remain. With no queued video,
+    the manager permits query-command flushing: `DONOTFLUSH` alone failed to
+    retire the first conversion on the tested device. Each call still performs
+    one asynchronous query per lease, without a completion wait or retry loop.
+    These methods never submit or finalize a sink sample.
     Before `WriteSample`, the D3D11 video context is flushed and the DXGI
     media buffer's current length is set to its maximum length. Media
     Foundation creates a DXGI buffer with zero valid bytes initially, and the
@@ -1190,8 +1461,6 @@ Namespace `okuflow::processing`
     manager's segment-relative monotonic timestamp
   - `double DurationSeconds() const`
   - `const std::string& LastError() const`
-  - `StopReason LastStopReason() const`
-  - `Codec ActiveCodec() const`
   - `static const char* CodecName(Codec codec)`
 - Internal helpers:
   - `InitializeSink(...)`
@@ -1250,7 +1519,7 @@ Namespace `okuflow::processing`
     device destination, preventing previous-frame output from appearing as a
     moving ghost layer
   - `void SetStrength(float strength)` / `void Teardown()`
-  - `bool IsReady() const` / `bool IsAvailable()`
+  - `bool IsReady() const`
   - `const std::string& LastError() const`
   - `const std::wstring& RuntimeDirectory() const`
   - `static std::wstring FindRuntimeDirectory(...)`
@@ -1333,7 +1602,6 @@ Namespace `okuflow::processing`
   - `bool IsInitialized() const`
   - `void Resize(UINT width, UINT height)`
   - `void Present(const uint8_t* data, UINT width, UINT height)`
-  - `void PresentFromTexture(ID3D12Resource* texture, UINT width, UINT height, const FenceSyncParams* fenceSync = nullptr)`
   - `bool PresentSceneTexture(ID3D12Resource*, UINT sourceWidth,
     UINT sourceHeight, const ViewTransform&, const FenceSyncParams*,
     const ViewportPresentationOptions*, UINT64* outReadbackRequestId)`
@@ -1347,7 +1615,7 @@ Namespace `okuflow::processing`
     pool is capped at 384 MiB and 48 slots; a null result with
     `outPoolExhausted=true` lets recording count a drop rather than block or
     allocate without limit. The producer fence remains mandatory in addition
-    to the encoder-held lifetime lease. Optional BGRA annotation pixels are
+    to the source-reader lifetime lease. Optional BGRA annotation pixels are
     uploaded into a per-lease texture and alpha-composited after scene
     framing. Only the processed caller supplies this layer, so original
     recordings remain clean.
@@ -1357,7 +1625,7 @@ Namespace `okuflow::processing`
     completion on its timeline. The no-semaphore fallback retains its bounded
     completion drain before the next CUDA overwrite. Pool reuse and
     obsolete-dimension eviction both require the producer fence to retire,
-    as well as encoder/reader lease release; pending or device-lost completion
+    as well as consumer-reader lease release; pending or device-lost completion
     cannot authorize reuse.
   - `bool TryGetCompletedReadback(std::vector<uint8_t>& outBgra, UINT& outWidth, UINT& outHeight, UINT64* outRequestId = nullptr)` — moves the oldest completed request's tightly packed BGRA8 pixels out and optionally returns the matching request id. Pending requests are silently dropped by `Resize`
   - `ID3D12Device* GetDevice() const`
@@ -1521,7 +1789,7 @@ Supporting types:
     and `void ResetSuperRes()` expose/reset the optional runtime tier;
     `SuperResSourceWidth()/SuperResSourceHeight()/SuperResFactor()` report the
     crop and the fixed scale factor of the active AI stage
-  - `IsSuperResPerformanceLimited()` and `SuperResAverageMs()` report a latency
+  - `IsSuperResPerformanceLimited()` reports a latency
     guard decision against the 24 ms target;
     `SetSuperResPerformanceOverride(bool)` explicitly enables or restores the
     guard
@@ -1533,8 +1801,9 @@ Supporting types:
     event durations for input/upload, stabilization and geometry, image
     effects, and output/SuperRes-cache publication. The boundaries share the
     existing every-30th-frame sample and add no stream synchronization.
-- Profile and Advanced Text Clarity changes synchronize and reset SuperRes so
-  the SDK's load-time strength/mode selectors are applied on the next frame.
+- SuperRes configuration changes retire prior work before reloading the SDK's
+  load-time strength/mode selectors; unrelated Text Clarity controls retain
+  the loaded model and its timing history.
   Enabling viewport-target mode restores the default 0.65 strength when zero
   and enforces its 1.33x minimum zoom before the next frame. The CUDA path
   snaps to the largest supported Maxine factor (4/3, 1.5, 2, 3 or 4) at or
@@ -1555,7 +1824,7 @@ Supporting types:
   sharpening when no enlargement is needed → blur → temporal → auto-contrast
   → color grade → focus marker → full-scene interop copy → Maxine or bounded
   spatial ROI cache. Maxine discards 10 warmup timings, averages the next
-  60 effect runs with CUDA events, and disables itself for the surface above
+  60 effect runs with CUDA events, and disables that inference configuration above
   the 24 ms target unless the user explicitly overrides the guard.
 - Stabilization uses a dedicated analysis surface capped at 640x360 (keystone
   remains capped at 320x180). The one on-stream path tracks a fixed reference
@@ -1602,9 +1871,6 @@ Supporting types:
   full-resolution frame has been captured.
 
 Kernel launch wrappers:
-- `LaunchGradientKernel(...)`
-- `LaunchBlackWhiteKernel(...)`
-- `LaunchZoomKernel(...)`
 - `LaunchBlackWhiteLinear(...)`
 - `LaunchZoomLinear(...)`
 - `LaunchGaussianBlurLinear(...)`
@@ -1668,6 +1934,12 @@ Kernel launch wrappers:
   `LaunchSauvolaMask(...)`, `LaunchStrokeWeight(...)`,
   `LaunchTextMaskHysteresis(...)`, `LaunchTextMaskComposite(...)`,
   `LaunchSmartSharpenLinear(...)`, and `LaunchFocusMetric(...)`
+- `LaunchSmartSharpenLinear(...)` accepts a trailing optional device
+  `replacementAnalysis` pointer. Both bilateral and sharpening kernels leave
+  destination and scratch untouched when its scene class is nonzero, matching
+  the following mode-2 document composite's complete RGB replacement. The
+  pipeline passes it only when that composite follows; mixed scenes retain
+  ordinary sharpening. No host readback or synchronization is added.
 - `SauvolaMaskKernel` / `LaunchSauvolaMask(...)` create an ink mask from local
   mean and variance. Light-on-dark text applies the ordinary dark-ink Sauvola
   formula to inverted luma and mean, retaining the original variance; reversing
@@ -1968,7 +2240,7 @@ Namespace `okuflow`
   - `void setExpanded(bool)` / `bool isExpanded() const`
   - `bool persistedExpanded() const` returns the user's disclosure state,
     excluding temporary expansion caused by a search
-  - `void setChangedCount(int)` / `int changedCount() const`
+  - `void setChangedCount(int)` updates the disclosure header
   - `void setPersistKey(const QString&)` / `const QString& persistKey() const`
   - `void setSearchExpanded(bool)`
 - Signal: `expandedChanged(bool)`.
@@ -2232,6 +2504,104 @@ Namespace `okuflow`
   geometry. `bottomChromeFormsRectangularGroups()` covers translated corner,
   Advanced strip, and minimum strip layouts, returning to a wide layout after
   wrapping, live language changes, and tracking controls hidden in Advanced.
+
+## Android Companion
+
+This separate Kotlin/Compose project sends encoded camera frames over USB.
+Native Windows consumes AVC and optional HEVC through the phone source below. See
+`android/README.md`, `android/PROTOCOL.md` and plan 51.
+
+| Source under `android/app/src/main/java/com/okuflow/camera/` | Contract |
+| --- | --- |
+| `MainActivity.kt` | `MainActivity.onCreate` sets dark edge-to-edge system bars, applies `FLAG_KEEP_SCREEN_ON` to every visible app panel, retains the normal lock-screen boundary, and installs `OkuFlowCameraTheme` / `OkuFlowCameraApp`. Launcher and adb starts reuse the `singleTask` activity. |
+| `setup/SetupStep.kt` | `DeviceSetupSnapshot` carries nullable developer/debugging settings, permission/USB flags and current `usbAdbActive` evidence. `canListenForHost` keeps permission/USB gates while allowing unknown debugging status. `debuggingSettingEnabled` maps Android 17 redacted zeros to unknown and preserves older disabled values. `SetupStep` includes optional `CheckUsbSetup` help, `HostConnected` (session open, camera starting/paused) and `Problem`. `resolveSetupStep(snapshot, link, problem)` accepts active USB adb evidence and never labels unknown settings disabled; a live Connected/Streaming session outranks the coarse USB reading, and a problem outranks an open session but never streaming, a missing cable or a setup prerequisite. |
+| `setup/DeviceSetupMonitor.kt` | `DeviceSetupMonitor.start/stop` register/unregister global-setting observers and USB/battery receivers; `start` reads both sticky values synchronously to avoid a false disconnected snapshot during service startup. `refresh` rereads settings/permission; `readDebuggingSetting` handles Android 17 redaction/read failure without a false disabled state. The protected USB broadcast adb flag is cleared on disconnect. `snapshot` is a read-only StateFlow. USB-state broadcasts are an OEM-dependent heuristic, not proof of an authorized OkuFlow session. |
+| `setup/SetupViewModel.kt` | Combines the monitor with `HostLink.state` and `HostLink.problem` (also exposed as `problem`). `refresh` clears saved denial and calls `startServiceIfReady`; only the resumed activity invokes service startup. `onCameraPermissionResult` retains denial across restart. `settings`, `diagnostics`, `updateSettings` bridge preferences/service. `onCleared` unregisters the monitor. |
+| `setup/SystemSettingsLauncher.kt` | `openAboutPhone`, `openDeveloperOptions`, `openPrivacySettings` (camera access switch) and `openAppDetails` try specific public Settings intents, then broader fallbacks for missing/restricted OEM activities. |
+| `setup/OemFamily.kt` | `OemFamily.fromManufacturer` chooses Samsung, Xiaomi/Redmi/POCO, OnePlus/OPPO/realme, or generic Build-number wording without changing the intent target. |
+| `link/HostLink.kt` | `HostLinkState` has Disconnected/Connected/Streaming. `HostProblem` names user-fixable failures (CameraBusy, CameraBlocked, NoCompatibleMode, CameraFailed, TooHot, ServiceFailed). `state`, `problem` and `details` (negotiated mode while connected) are published by the camera service through internal `publish`/`report`. A problem survives the host's disconnect after its ERROR packet and is cleared by a new session, the first streamed frame, cooling below CRITICAL (TooHot) or unplugging. |
+| `ui/HostProblemText.kt` | `problemTitle` / `problemHint` map each `HostProblem` to localized title and remedy strings. |
+| `ui/OkuFlowCameraApp.kt` | `OkuFlowCameraApp` collects state with lifecycle, refreshes on resume, auto-requests camera once per saved activity state, and builds one `StepContent` (title/hint/optional action) per step. The same title, plus the negotiated mode while connected, becomes the Advanced settings status. The root applies safe-drawing insets once, above an outlined Advanced settings entry. Problem actions open Advanced settings (NoCompatibleMode) or privacy settings (CameraBlocked). `developerHintFor` resolves localized OEM wording; `StepChangeHaptics` confirms changes after initial composition, skips the transient HostConnected state and uses the rejection pattern for problems. |
+| `ui/SetupPanels.kt` | `ActionPanel` provides one large clickable panel; `WaitingPanel` has no action; `StreamingPanel` renders stream status; `MainActivity` owns keep-awake behavior for all panels. `StepHeader` shows the decorative amber `WarningBadge` for problems. `PanelScaffold` applies merged semantics, pane titles and scroll/minimum-height layout. `PanelText` centers full-width headings and justifies instructions; `StepHeader` centers step text and progress. `StreamingPanel` centers its status row and justifies its hint. `ProgressDots` and `ActionPill` provide shared progress/action rendering. Compose previews cover all states, denied permission, narrow German at 200% and landscape. |
+| `ui/theme/Theme.kt` | `OkuFlowCameraTheme` installs a black/white palette, scalable type and an explicit light `LocalContentColor` for text outside Material surfaces. Magenta/dim gray are decorative; hint text uses high-contrast gray. `OkuFlowWarningAmber` marks problems only. |
+| `settings/CameraSettings.kt` | `DEFAULT_CODEC` is `hevc`, the preferred codec for new installations and Reset; capture still falls back to AVC. `storedCodec` gives a missing stored codec that default while keeping an explicit saved `avc`; unknown values sanitize to AVC. `CameraSettings.hasExplicitMode` identifies a saved size/rate pair; `sanitized` validates paired dimensions, locally reported rates up to 60, legacy resolution ceilings, enums and exposure. Shared `CameraSettingsStore.get`, `update`, `read` persist/publish installation-local preferences. |
+| `ui/AdvancedSettingsPanel.kt` | Dark `Surface` supplies explicit content color. A persistent back/title area sits above bounded-width scrolling cards. `SettingsSection`, `SettingsDivider`, and `SettingsHint` group camera/video and image controls. The back control and section headings are centered; the back control uses the same bright 2-dp outline as other controls. A `Stream status` card first on both levels shows the caller's `status` (current state title, plus the negotiated mode while connected). The main level holds camera, size/rate and preferred codec; a separate More options screen, with its own scroll position and one-level Back handling, contains all modes, bitrate and reset. Shared `ModeSetting` displays the exact saved pair even when the filtered main list omits it; `ChoiceSetting` keeps labels/values together inside bright 2-dp outlines, sizes the menu to its control, enlarges item padding without enlarging text, and scrolls to the selected item using measured row heights. Camera/codec-keyed background discovery populates the single size/rate picker and reconciles legacy or unavailable selections without overwriting concurrent image edits; `ToggleSetting` pairs visible labels with one accessible row switch. Exposure includes its value, brightness guidance and slider semantics. `AdvancedSettingsPreview` covers standard and 200% German layouts. The app handles Back to restore the setup/streaming pane. |
+| `camera/ModeSelection.kt` | `StreamMode` holds size/FPS/bitrate and a size/rate `key`; `everydayModes` filters only the main picker to short edge ≥720 and FPS ≥24 without modifying the capture catalog; `fits` applies legacy, exact-dimension and rate bounds. `chooseMode` selects maximum detail then FPS, rejecting an empty intersection. `CameraSettings.withAvailableModes` preserves Automatic, migrates legacy ceilings and reconciles unavailable pairs while retaining image controls. |
+| `camera/CameraCatalog.kt` | `CameraChoice`, `EncoderChoice`, `CameraConfiguration` describe device/encoder/output/range. `cameras` orders rear first; `encoders` requires hardware/surface support; `recordingConfigurations` intersects Camera2 sizes/minimum durations/AE upper rates with hardware encoder limits; `modes` exposes unique locally supported pairs for the picker; `configurations` applies saved dimensions, host decoder and thermal bounds to order runtime candidates; `capabilities` reports camera controls and codecs. |
+| `camera/AnnexB.kt` | `annexB` preserves start-code NALs and validates/converts four-byte length-prefixed compressed output. |
+| `camera/CameraFailures.kt` | `problemForDeviceError`, `problemForAccessReason` and `problemFor` classify Camera2 device errors, `CameraAccessException` reasons and `SecurityException` as `HostProblem` busy/blocked/failed. |
+| `camera/CameraEngine.kt` | `start` uses locally discovered fallback candidates, bounded to six startup attempts, and reports an empty intersection as `NoCompatibleMode`; `onError` receives a `HostProblem` and the raw diagnostic for the host. `begin` creates a generation. `createEncoder` publishes CSD/frames; `openCamera` creates the recording session and SENSOR timestamps on API 33+. `repeatRequest` applies zoom/focus/exposure/light/OIS/EIS and capture-result metadata. `setZoom`, `requestKeyFrame`, `stop`, `fail`, `stopInternal`, `close` serialize hardware ownership; atomic tokens invalidate old callbacks before queued teardown. |
+| `camera/CameraStreamService.kt` | Non-exported camera foreground service. `onCreate` owns notification/monitor/server/engine/preferences and thermal listener, and publishes the actual stream codec in status; `command` handles the control allowlist with separate camera selection/request IDs; `restart` avoids unchanged settings and respects host/thermal state. `publishIdle` clears stale mode details and reports Connected while the host session remains, otherwise Disconnected. Engine failures, CRITICAL thermal status and service/socket startup failures report a `HostProblem`; the raw diagnostic still goes to the host in an ERROR packet. `notification` builds the foreground notification. `onDestroy` retires resources; `startVisible` retains Android's visible-start permission gate and reports `ServiceFailed` on refusal. |
+| `link/WireProtocol.kt` | `Hello`/`Packet`, `readHello`, `readPacket`, `writePacket`, `framePayload`, `readExact` implement bounded little-endian v1 framing: control 64 KiB, video 16 MiB. |
+| `link/UsbSocketServer.kt` | Authenticates shell/root peers and binds one control/video pair with a random token; `onConnect` runs after the video channel is bound and before its ACK permits the first start request. `Channel.send/close` own bounded writer queues; `readChannel`, `control`, `state`, `metadata`, `frame`, `disconnect`, `close` handle generation gating, ping, EOF/timeouts and pressure without blocking the camera on network writes. The watchdog reads its volatile write-start timestamp once per check and logs transport/queue failure categories without session tokens. `HostLimits` holds decoder ceilings. |
+
+`app/src/main/res/values{,-tr,-de}/strings.xml` have exact source-key parity.
+The manifest declares CAMERA and camera foreground-service permissions without INTERNET, disables backup, and uses
+`res/xml/data_extraction_rules.xml` to exclude device-specific setup history.
+`SetupStepTest`, `OemFamilyTest`, `WireProtocolTest`, `StreamPolicyTest`,
+`CameraSettingsTest` and `CameraFailuresTest` provide 49 JVM checks, including older-setting behavior,
+Android 17 redaction, USB evidence, connected/problem step priority, camera
+failure classification, the HEVC default with explicit-AVC preservation, exact dimension/rate bounds, legacy preference
+migration and camera-mode reconciliation. `CameraEngine.start` uses actual
+camera/encoder modes instead of a hardcoded resolution fallback ladder. Real-device results and hardware limits
+are recorded in `android/DEVICE_VALIDATION.md`.
+
+`scripts/build_android.ps1` is the tracked Android validation entry point:
+`Assert-AndroidTranslations` rejects empty/duplicate/missing/extra locale keys;
+it then runs `assembleDebug` / `testDebugUnitTest`, plus optional `lintDebug`.
+`Read-AdbAscii` reads bounded responses and `Assert-AdbServerCompatible`
+inspects the running server without killing it. `-Install` installs/launches
+only with one authorized device. Environment values are restored on exit;
+outputs/caches remain outside Drive. The Gradle files pin dependencies,
+JVM 17 output, API levels and local output paths, with wrapper checksum
+verification. `android/design/setup-panels.html` illustrates the panels with
+translated app strings; it is an HTML draft, not a native-device screenshot.
+
+### Optional Windows phone source and host probe
+
+- `CameraDescriptor.phoneSerial/phoneCameraId/phoneTransportId` distinguish the
+  companion without changing MF activation. `MediaCapture.EnumerateCameras`
+  appends phone entries; `ResolveSavedCameraIndex` retains saved webcam/phone
+  identity and falls back from a busy/unavailable lens to that phone's default
+  entry. `EnumerateFormats` leaves phone negotiation automatic. `SetPhoneZoom`
+  and `SetPhoneCamera` enqueue controls and are no-ops for webcams.
+- `MediaCaptureSession.StartCapture` isolates phone deliveries with
+  `CaptureShutdown` and shares its DXGI manager. `Cancel`, `Quiesce`,
+  `ReleaseResources` cancel/join/reset the transport through the existing
+  bounded stop coordinator; a hung decoder retains its session. Frame-rate
+  atomics follow decoded generation metadata.
+- `phone_camera.hpp` / `phone_camera.cpp`: `ParseAdbUsbDevices` reads bounded
+  public protobuf fields without a runtime dependency. `PhoneCameraTransport`
+  `Enumerate` uses USB connection type, with explicit-USB legacy fallback, and
+  optionally lists camera IDs. `Start` waits for first decoded output; `Run`
+  revalidates USB transport ID, launches the installed activity, binds channels,
+  negotiates AVC plus probed HEVC, polls controls/video, checks generation/sequence/PTS
+  and maintains keepalive. Its session lambda can reconnect once offering only AVC
+  after `HevcDecoderError` (creation/processing failure or four seconds without a
+  first decoded frame), retaining monotonic output timing/sequence and saved preferences. `SetZoom`/`SetCamera` coalesce writes; `Cancel`/`Stop`
+  revoke/join; `Format`/`Error` return synchronized snapshots. Helpers `Read`,
+  `Write`, `Connect`, `AdbRequest`, `Transport`, `ReadPacket`, `Json`, `Hello`,
+  `Command`, `ControlHello` bound off-UI network/parser work.
+- `PhoneVideoCodec` identifies AVC/HEVC. `PhoneVideoDecoder` owns the system
+  transform through `Impl`; `IsSupported` probes activation and 1080p/60 input/NV12
+  configuration with the optional DXGI manager; `Decode` submits bounded Annex B.
+  `CreatePhoneDecoder` uses the built-in H.264 CLSID or enumerates/activates a
+  synchronous HEVC MFT, releasing activation arrays and detaching the owned transform. Internal `Decoder.SelectOutput`, `Input`, `Drain`
+  negotiate NV12, handle stream changes, pin GPU samples or normalize CPU
+  buffers. Sequence/time remain continuous across encoder generations;
+  `captureClock100ns` explicitly measures host arrival.
+- `scripts/android_camera_probe.py`: `AdbServer` reads a structured snapshot
+  and opens verified USB transport IDs without owning adb's lifecycle.
+  `protobuf_fields`, `protobuf_usb_devices`, `usb_devices`, `read_exact`,
+  `read_packet`, `adb_request`, `send_hello`, `json_bytes` validate framing.
+  `PhoneCameraClient.connect/command/close` own the two channels. `capture`
+  records per-generation video/metadata, reports arrival cadence and runs
+  keepalive/optional JSON stdin controls; `main` selects USB serial/local output.
+- `tests/phone_camera_tests.cpp` checks USB identity without Windows bus paths,
+  malformed protobuf, actual AVC/HEVC system-decoder NV12 and saved source selection.
+  The HEVC data row skips explicitly when the optional decoder is unavailable.
+  `android/tests/test_host_probe.py` supplies seven fake-server/parser/control
+  checks with no live adb changes. Viewport-to-phone zoom handoff remains pending.
 
 ## Entry Point
 

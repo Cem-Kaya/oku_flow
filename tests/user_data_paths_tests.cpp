@@ -20,6 +20,7 @@ private slots:
     void constructorRejectsPersistedRootInsideInstall();
     void completesInterruptedPhotoPairCommit();
     void preservesUnmarkedPhotoFinals();
+    void recoveryIgnoresCompletedLibraryAndKeepsLegacyStaleness();
     void avoidsExistingPhotoNames();
     void rollsBackOnlyWriterOwnedFiles();
     void preservesMarkedInterruptedPhotoOrphan();
@@ -27,6 +28,48 @@ private slots:
     void reportsInvalidPhotoMarker();
     void leavesActivePhotoPairTransactionAlone();
 };
+
+void UserDataPathsTests::recoveryIgnoresCompletedLibraryAndKeepsLegacyStaleness()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    UserDataPaths paths(temporary.filePath(QStringLiteral("OkuFlow")),
+                        temporary.filePath(QStringLiteral("install")));
+    const QDir day(paths.PhotosForDate(QDate::currentDate()));
+    const auto write = [&day](const QString& name, const QByteArray& data) {
+        QFile file(day.filePath(name));
+        return file.open(QIODevice::WriteOnly) && file.write(data) == data.size();
+    };
+    for (int index = 0; index < 128; ++index) {
+        const QString stem = QStringLiteral("IMG_complete_%1").arg(index);
+        QVERIFY(write(stem + QStringLiteral("_original.jpg"), "original"));
+        QVERIFY(write(stem + QStringLiteral("_processed.jpg"), "processed"));
+    }
+    QVERIFY(write(QStringLiteral("IMG_interrupted_processed.jpg"), "processed"));
+    QVERIFY(write(QStringLiteral("IMG_interrupted_original.jpg.writing"), "original"));
+    QVERIFY(write(QStringLiteral("IMG_interrupted.pair.pending"), "OkuFlow photo pair v1\n"));
+    const auto result = paths.RecoverInterruptedPhotoPairs(QDateTime::currentDateTime().addSecs(60));
+    QCOMPARE(result.completedPairs, 1);
+    QVERIFY(result.unresolvedPaths.isEmpty());
+    for (int index = 0; index < 128; ++index) {
+        QFile original(day.filePath(QStringLiteral("IMG_complete_%1_original.jpg").arg(index)));
+        QVERIFY(original.open(QIODevice::ReadOnly));
+        QCOMPARE(original.readAll(), QByteArray("original"));
+    }
+    QVERIFY(write(QStringLiteral("IMG_legacy_original.jpg.writing"), "legacy temp"));
+    QVERIFY(write(QStringLiteral("IMG_legacy_processed.jpg"), "user final"));
+    QFile legacyTemp(day.filePath(QStringLiteral("IMG_legacy_original.jpg.writing")));
+    QVERIFY(legacyTemp.open(QIODevice::ReadWrite));
+    QVERIFY(legacyTemp.setFileTime(QDateTime::currentDateTime().addSecs(-120),
+                                   QFileDevice::FileModificationTime));
+    legacyTemp.close();
+    const auto recent = paths.RecoverInterruptedPhotoPairs(QDateTime::currentDateTime().addSecs(-60));
+    QCOMPARE(recent.removedFiles, 0);
+    QVERIFY(QFileInfo::exists(day.filePath(QStringLiteral("IMG_legacy_original.jpg.writing"))));
+    const auto stale = paths.RecoverInterruptedPhotoPairs(QDateTime::currentDateTime().addSecs(60));
+    QCOMPARE(stale.removedFiles, 1);
+    QVERIFY(QFileInfo::exists(day.filePath(QStringLiteral("IMG_legacy_processed.jpg"))));
+}
 
 void UserDataPathsTests::createsStableCategoryAndDateFolders()
 {

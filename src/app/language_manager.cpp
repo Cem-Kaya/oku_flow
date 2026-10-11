@@ -180,11 +180,19 @@ bool LanguageManager::eventFilter(QObject* watched, QEvent* event)
     if (!event || applyingLanguage_) {
         return QObject::eventFilter(watched, event);
     }
-    if (event->type() == QEvent::LanguageChange ||
-        event->type() == QEvent::Show ||
-        event->type() == QEvent::Polish) {
-        if (auto* widget = qobject_cast<QWidget*>(watched)) {
+    if (event->type() != QEvent::LanguageChange &&
+        event->type() != QEvent::Show &&
+        event->type() != QEvent::Polish) {
+        return QObject::eventFilter(watched, event);
+    }
+    if (auto* widget = qobject_cast<QWidget*>(watched)) {
+        if (event->type() == QEvent::LanguageChange) {
             RetranslateWidgetTree(widget);
+        } else if (event->type() == QEvent::Show ||
+                   event->type() == QEvent::Polish) {
+            // Qt polishes/shows descendants individually. Walking their
+            // subtrees here repeats translation for every ancestor event.
+            RetranslateWidget(widget);
         }
     }
     return QObject::eventFilter(watched, event);

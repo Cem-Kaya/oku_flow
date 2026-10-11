@@ -51,17 +51,10 @@ public:
                                   const CpuPipelineConfig& config,
                                   bool debugViewEnabled);
 
-    bool ResampleToFill(UINT targetWidth,
-                        UINT targetHeight,
-                        float centerXNorm,
-                        float centerYNorm);
 
     void ResetTemporalHistory();
 
     const std::vector<uint8_t>& StageRaw() const { return stageRaw_; }
-
-    UINT RawWidth() const { return rawWidth_; }
-    UINT RawHeight() const { return rawHeight_; }
 
 private:
     std::vector<uint8_t> stageRaw_;
@@ -74,8 +67,6 @@ private:
     std::vector<uint8_t> rotatedStageBuffer_;
     std::vector<float> temporalHistoryCpu_;
     bool temporalHistoryValid_{false};
-    UINT rawWidth_{0};
-    UINT rawHeight_{0};
 };
 
 } // namespace okuflow::processing

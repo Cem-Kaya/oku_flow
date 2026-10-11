@@ -87,38 +87,6 @@ __device__ float3 BoxBlur3x3(const uchar4* src, size_t pitchBytes,
     return accum;
 }
 
-__global__ void GradientFillKernel(cudaSurfaceObject_t surface, int width, int height, float timeSeconds) {
-    const int x = blockIdx.x * blockDim.x + threadIdx.x;
-    const int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x >= width || y >= height) {
-        return;
-    }
-
-    const float fx = static_cast<float>(x) / static_cast<float>(width);
-    const float fy = static_cast<float>(y) / static_cast<float>(height);
-    const float phase = timeSeconds * 0.25f;
-
-    const float r = 0.5f + 0.5f * sinf((fx + phase) * 6.28318f);
-    const float g = 0.5f + 0.5f * sinf((fy + phase) * 6.28318f + 2.09439f);
-    const float b = 0.5f + 0.5f * sinf(((fx + fy) * 0.5f + phase) * 6.28318f + 4.18878f);
-
-    uchar4 color = make_uchar4(FloatToByte(b), FloatToByte(g), FloatToByte(r), 255);
-    surf2Dwrite(color, surface, x * sizeof(uchar4), y);
-}
-
-} // namespace
-
-void LaunchGradientKernel(cudaSurfaceObject_t surface, int width, int height, float timeSeconds) {
-    const dim3 blockSize(16, 16);
-    const dim3 gridSize((width + blockSize.x - 1) / blockSize.x,
-                        (height + blockSize.y - 1) / blockSize.y);
-
-    GradientFillKernel<<<gridSize, blockSize>>>(surface, width, height, timeSeconds);
-}
-
-namespace {
-
 __device__ unsigned char ToGrayscaleChannel(const uchar4& pixel) {
     const float r = static_cast<float>(pixel.z) / 255.0f;
     const float g = static_cast<float>(pixel.y) / 255.0f;
@@ -126,76 +94,6 @@ __device__ unsigned char ToGrayscaleChannel(const uchar4& pixel) {
     const float luminance = 0.299f * r + 0.587f * g + 0.114f * b;
     return FloatToByte(luminance);
 }
-
-__global__ void BlackWhiteKernel(cudaSurfaceObject_t surface, int width, int height, float threshold) {
-    const int x = blockIdx.x * blockDim.x + threadIdx.x;
-    const int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x >= width || y >= height) {
-        return;
-    }
-
-    const uchar4 pixel = surf2Dread<uchar4>(surface, x * static_cast<int>(sizeof(uchar4)), y);
-    const float thresholdClamped = fminf(fmaxf(threshold, 0.0f), 1.0f);
-    const unsigned char luminance = ToGrayscaleChannel(pixel);
-    const unsigned char value = (static_cast<float>(luminance) / 255.0f) >= thresholdClamped ? 255 : 0;
-    const uchar4 bwPixel = make_uchar4(value, value, value, pixel.w);
-    surf2Dwrite(bwPixel, surface, x * sizeof(uchar4), y);
-}
-
-__global__ void ZoomKernel(cudaSurfaceObject_t surface, int width, int height, float zoomAmount) {
-    const int x = blockIdx.x * blockDim.x + threadIdx.x;
-    const int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x >= width || y >= height) {
-        return;
-    }
-
-    const float zoom = fmaxf(zoomAmount, 1.0f);
-
-    const float nx = (static_cast<float>(x) + 0.5f) / static_cast<float>(width);
-    const float ny = (static_cast<float>(y) + 0.5f) / static_cast<float>(height);
-
-    const float cx = 0.5f;
-    const float cy = 0.5f;
-
-    const float srcX = (nx - cx) / zoom + cx;
-    const float srcY = (ny - cy) / zoom + cy;
-
-    if (srcX < 0.0f || srcX > 1.0f || srcY < 0.0f || srcY > 1.0f) {
-        surf2Dwrite(make_uchar4(0, 0, 0, 255), surface, x * sizeof(uchar4), y);
-        return;
-    }
-
-    const int sampleX = static_cast<int>(srcX * static_cast<float>(width));
-    const int sampleY = static_cast<int>(srcY * static_cast<float>(height));
-
-    const int clampedX = max(0, min(width - 1, sampleX));
-    const int clampedY = max(0, min(height - 1, sampleY));
-
-    const uchar4 sampled = surf2Dread<uchar4>(surface, clampedX * static_cast<int>(sizeof(uchar4)), clampedY);
-    surf2Dwrite(sampled, surface, x * sizeof(uchar4), y);
-}
-
-} // namespace
-
-void LaunchBlackWhiteKernel(cudaSurfaceObject_t surface, int width, int height, float threshold) {
-    const dim3 blockSize(16, 16);
-    const dim3 gridSize((width + blockSize.x - 1) / blockSize.x,
-                        (height + blockSize.y - 1) / blockSize.y);
-
-    BlackWhiteKernel<<<gridSize, blockSize>>>(surface, width, height, threshold);
-}
-
-void LaunchZoomKernel(cudaSurfaceObject_t surface, int width, int height, float zoomAmount) {
-    const dim3 blockSize(16, 16);
-    const dim3 gridSize((width + blockSize.x - 1) / blockSize.x,
-                        (height + blockSize.y - 1) / blockSize.y);
-
-    ZoomKernel<<<gridSize, blockSize>>>(surface, width, height, zoomAmount);
-}
-
-namespace {
 
 __device__ inline const uchar4* RowAt(const uchar4* base, size_t pitchBytes, int y) {
     return reinterpret_cast<const uchar4*>(reinterpret_cast<const char*>(base) + static_cast<size_t>(y) * pitchBytes);
@@ -207,6 +105,16 @@ __device__ inline uchar4* RowAt(uchar4* base, size_t pitchBytes, int y) {
 
 __device__ inline float4* RowAt(float4* base, size_t pitchBytes, int y) {
     return reinterpret_cast<float4*>(reinterpret_cast<char*>(base) + static_cast<size_t>(y) * pitchBytes);
+}
+
+__global__ void OpaqueAlphaLinearKernel(uchar4* buffer, size_t pitch,
+                                        int width, int height) {
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= width || y >= height) return;
+    // Write only alpha: RGB can be uninitialized before a three-channel transfer.
+    auto* row = reinterpret_cast<unsigned char*>(buffer) + static_cast<size_t>(y) * pitch;
+    row[static_cast<size_t>(x) * sizeof(uchar4) + 3u] = 255u;
 }
 
 __global__ void BlackWhiteLinearKernel(uchar4* dst, size_t dstPitch,
@@ -283,26 +191,6 @@ __global__ void ZoomLinearKernel(uchar4* dst, size_t dstPitch,
 
     uchar4* dstRow = RowAt(dst, dstPitch, y);
     dstRow[x] = sampled;
-}
-
-__global__ void BlendLinearKernel(uchar4* dst, size_t dstPitch,
-                                  const uchar4* base, size_t basePitch,
-                                  const uchar4* enhanced, size_t enhancedPitch,
-                                  int width, int height, float strength) {
-    const int x = blockIdx.x * blockDim.x + threadIdx.x;
-    const int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= width || y >= height) {
-        return;
-    }
-    const float amount = fminf(fmaxf(strength, 0.0f), 1.0f);
-    const uchar4 a = RowAt(base, basePitch, y)[x];
-    const uchar4 b = RowAt(enhanced, enhancedPitch, y)[x];
-    uchar4 output;
-    output.x = static_cast<unsigned char>(roundf(a.x + amount * (b.x - a.x)));
-    output.y = static_cast<unsigned char>(roundf(a.y + amount * (b.y - a.y)));
-    output.z = static_cast<unsigned char>(roundf(a.z + amount * (b.z - a.z)));
-    output.w = static_cast<unsigned char>(roundf(a.w + amount * (b.w - a.w)));
-    RowAt(dst, dstPitch, y)[x] = output;
 }
 
 constexpr int kMaxBlurRadius = 50;
@@ -465,6 +353,13 @@ inline void CheckCuda(const char* message) {
 
 } // namespace
 
+void LaunchOpaqueAlphaLinear(uchar4* buffer, size_t pitchBytes,
+                             int width, int height, cudaStream_t stream) {
+    const dim3 block(16, 16), grid((width + 15) / 16, (height + 15) / 16);
+    OpaqueAlphaLinearKernel<<<grid, block, 0, stream>>>(buffer, pitchBytes, width, height);
+    CheckCuda("opaque-alpha launch failed");
+}
+
 void LaunchBlackWhiteLinear(uchar4* dst, size_t dstPitchBytes,
                             const uchar4* src, size_t srcPitchBytes,
                             int width, int height, float threshold, cudaStream_t stream) {
@@ -487,23 +382,6 @@ void LaunchZoomLinear(uchar4* dst, size_t dstPitchBytes,
     ZoomLinearKernel<<<gridSize, blockSize, 0, stream>>>(dst, dstPitchBytes, src, srcPitchBytes,
                                                         width, height, zoomAmount, centerXNorm, centerYNorm);
     CheckCuda("ZoomLinearKernel launch failed");
-}
-
-void LaunchBlendLinear(uchar4* dst, size_t dstPitchBytes,
-                       const uchar4* base, size_t basePitchBytes,
-                       const uchar4* enhanced, size_t enhancedPitchBytes,
-                       int width, int height, float strength,
-                       cudaStream_t stream) {
-    if (width <= 0 || height <= 0) {
-        return;
-    }
-    const dim3 blockSize(16, 16);
-    const dim3 gridSize((width + blockSize.x - 1) / blockSize.x,
-                        (height + blockSize.y - 1) / blockSize.y);
-    BlendLinearKernel<<<gridSize, blockSize, 0, stream>>>(
-        dst, dstPitchBytes, base, basePitchBytes, enhanced, enhancedPitchBytes,
-        width, height, strength);
-    CheckCuda("BlendLinearKernel launch failed");
 }
 
 void LaunchGaussianBlurLinear(uchar4* dst, size_t dstPitchBytes,
@@ -1732,13 +1610,16 @@ __global__ void ResetVirtualTripodStateKernel(StabilizationState* state,
 
 __device__ bool VirtualTripodPairInsideRoi(
     const float4& pair, int fullWidth, int fullHeight,
-    float focusCenterX, float focusCenterY, float zoomAmount) {
+    float focusCenterX, float focusCenterY, float zoomAmount,
+    float4 keyframeOrigin) {
     const float halfSpan =
         fminf(0.5f, fmaxf(0.15f, 1.0f / fmaxf(zoomAmount, 1.0f)));
+    // Recovery keyframes store displaced camera coordinates; ROI centers
+    // belong to the fixed anchor, so remove the capture-time translation.
     const float normalizedX =
-        pair.x / fmaxf(static_cast<float>(fullWidth - 1), 1.0f);
+        (pair.x - keyframeOrigin.x) / fmaxf(static_cast<float>(fullWidth - 1), 1.0f);
     const float normalizedY =
-        pair.y / fmaxf(static_cast<float>(fullHeight - 1), 1.0f);
+        (pair.y - keyframeOrigin.y) / fmaxf(static_cast<float>(fullHeight - 1), 1.0f);
     return fabsf(normalizedX - focusCenterX) <= halfSpan &&
            fabsf(normalizedY - focusCenterY) <= halfSpan;
 }
@@ -1746,7 +1627,8 @@ __device__ bool VirtualTripodPairInsideRoi(
 __device__ unsigned int SelectVirtualTripodPair(
     const float4* pairs, unsigned int count, unsigned int seed,
     bool useRoi, int fullWidth, int fullHeight,
-    float focusCenterX, float focusCenterY, float zoomAmount) {
+    float focusCenterX, float focusCenterY, float zoomAmount,
+    float4 keyframeOrigin) {
     if (!useRoi) {
         return seed % count;
     }
@@ -1754,7 +1636,7 @@ __device__ unsigned int SelectVirtualTripodPair(
         const unsigned int index = (seed + offset) % count;
         if (VirtualTripodPairInsideRoi(
                 pairs[index], fullWidth, fullHeight,
-                focusCenterX, focusCenterY, zoomAmount)) {
+                focusCenterX, focusCenterY, zoomAmount, keyframeOrigin)) {
             return index;
         }
     }
@@ -1785,6 +1667,9 @@ __global__ void VirtualTripodSimilarityEstimateKernel(
     __shared__ int useRoi;
     const int tid = static_cast<int>(threadIdx.x);
     const unsigned int count = min(*pairCount, maxPairs);
+    const float4 keyframeOrigin = keyframeOrigins != nullptr
+        ? keyframeOrigins[keyframeIndex]
+        : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
     if (tid == 0) {
         if (candidates != nullptr) {
             candidates[keyframeIndex].motion =
@@ -1799,7 +1684,7 @@ __global__ void VirtualTripodSimilarityEstimateKernel(
         for (unsigned int index = 0; index < count; ++index) {
             if (VirtualTripodPairInsideRoi(
                     pairs[index], fullWidth, fullHeight,
-                    focusCenterX, focusCenterY, zoomAmount)) {
+                    focusCenterX, focusCenterY, zoomAmount, keyframeOrigin)) {
                 ++roiPairCount;
             }
         }
@@ -1828,7 +1713,7 @@ __global__ void VirtualTripodSimilarityEstimateKernel(
                 pairs, count,
                 static_cast<unsigned int>(tid) * 2654435761u + 17u,
                 preferRoi, fullWidth, fullHeight,
-                focusCenterX, focusCenterY, zoomAmount);
+                focusCenterX, focusCenterY, zoomAmount, keyframeOrigin);
             valid = firstIndex < count;
             if (valid) {
                 const float4 pair = pairs[firstIndex];
@@ -1847,7 +1732,7 @@ __global__ void VirtualTripodSimilarityEstimateKernel(
                 if (preferRoi &&
                     !VirtualTripodPairInsideRoi(
                         pairs[index], fullWidth, fullHeight,
-                        focusCenterX, focusCenterY, zoomAmount)) {
+                        focusCenterX, focusCenterY, zoomAmount, keyframeOrigin)) {
                     continue;
                 }
                 const float residual = SimilarityResidualSquared(
@@ -1908,7 +1793,7 @@ __global__ void VirtualTripodSimilarityEstimateKernel(
         if (useRoi != 0 &&
             !VirtualTripodPairInsideRoi(
                 pair, fullWidth, fullHeight,
-                focusCenterX, focusCenterY, zoomAmount)) {
+                focusCenterX, focusCenterY, zoomAmount, keyframeOrigin)) {
             continue;
         }
         if (SimilarityResidualSquared(pair,
@@ -2082,7 +1967,7 @@ __global__ void VirtualTripodRelativeFallbackKernel(
     }
     const unsigned int count = min(*pairCount, maxPairs);
     if (count < static_cast<unsigned int>(kStabMinSimilarityInliers)) {
-        state->correction = state->tripodAbsoluteCorrection;
+        // Rejection holds correction and tripodRelativeMotion together.
         return;
     }
     const float thresholdSquared = thresholdPixels * thresholdPixels;
@@ -2123,7 +2008,7 @@ __global__ void VirtualTripodRelativeFallbackKernel(
         static_cast<float>(bestInliers) /
                 static_cast<float>(count) <
             0.12f) {
-        state->correction = state->tripodAbsoluteCorrection;
+        // Rejection holds correction and tripodRelativeMotion together.
         return;
     }
 
@@ -3172,6 +3057,7 @@ __global__ void TextLumaKernel(float* luma, size_t floatPitch,
 
 // One thread per row/column gives an O(N) sliding window without integral-image
 // overflow or a wide per-pixel loop. Camera rows/columns run independently.
+template<bool WithSquares>
 __global__ void TextBoxHorizontalKernel(const float* luma, size_t pitch,
                                         float* horizontal, float* sqHorizontal,
                                         int width, int height, int radius) {
@@ -3179,25 +3065,26 @@ __global__ void TextBoxHorizontalKernel(const float* luma, size_t pitch,
     if (y >= height) return;
     const float* in = FloatRow(luma, pitch, y);
     float* out = FloatRow(horizontal, pitch, y);
-    float* sqOut = FloatRow(sqHorizontal, pitch, y);
+    float* sqOut = WithSquares ? FloatRow(sqHorizontal, pitch, y) : nullptr;
     float sum = 0.0f;
     float sq = 0.0f;
     int count = 0;
     for (int i = 0; i <= min(radius, width - 1); ++i) {
-        sum += in[i]; sq += in[i] * in[i]; ++count;
+        sum += in[i]; if constexpr (WithSquares) sq += in[i] * in[i]; ++count;
     }
     for (int x = 0; x < width; ++x) {
         if (x > 0) {
             const int add = x + radius;
             const int remove = x - radius - 1;
-            if (add < width) { sum += in[add]; sq += in[add] * in[add]; ++count; }
-            if (remove >= 0) { sum -= in[remove]; sq -= in[remove] * in[remove]; --count; }
+            if (add < width) { sum += in[add]; if constexpr (WithSquares) sq += in[add] * in[add]; ++count; }
+            if (remove >= 0) { sum -= in[remove]; if constexpr (WithSquares) sq -= in[remove] * in[remove]; --count; }
         }
         out[x] = sum / static_cast<float>(max(count, 1));
-        sqOut[x] = sq / static_cast<float>(max(count, 1));
+        if constexpr (WithSquares) sqOut[x] = sq / static_cast<float>(max(count, 1));
     }
 }
 
+template<bool WithSquares>
 __global__ void TextBoxVerticalKernel(const float* horizontal,
                                       const float* sqHorizontal,
                                       size_t pitch, float* mean, float* sqMean,
@@ -3209,7 +3096,7 @@ __global__ void TextBoxVerticalKernel(const float* horizontal,
     int count = 0;
     for (int i = 0; i <= min(radius, height - 1); ++i) {
         sum += FloatRow(horizontal, pitch, i)[x];
-        sq += FloatRow(sqHorizontal, pitch, i)[x];
+        if constexpr (WithSquares) sq += FloatRow(sqHorizontal, pitch, i)[x];
         ++count;
     }
     for (int y = 0; y < height; ++y) {
@@ -3218,17 +3105,17 @@ __global__ void TextBoxVerticalKernel(const float* horizontal,
             const int remove = y - radius - 1;
             if (add < height) {
                 sum += FloatRow(horizontal, pitch, add)[x];
-                sq += FloatRow(sqHorizontal, pitch, add)[x];
+                if constexpr (WithSquares) sq += FloatRow(sqHorizontal, pitch, add)[x];
                 ++count;
             }
             if (remove >= 0) {
                 sum -= FloatRow(horizontal, pitch, remove)[x];
-                sq -= FloatRow(sqHorizontal, pitch, remove)[x];
+                if constexpr (WithSquares) sq -= FloatRow(sqHorizontal, pitch, remove)[x];
                 --count;
             }
         }
         FloatRow(mean, pitch, y)[x] = sum / static_cast<float>(max(count, 1));
-        FloatRow(sqMean, pitch, y)[x] = sq / static_cast<float>(max(count, 1));
+        if constexpr (WithSquares) FloatRow(sqMean, pitch, y)[x] = sq / static_cast<float>(max(count, 1));
     }
 }
 
@@ -3348,8 +3235,8 @@ __global__ void ClaheApplyKernel(uchar4* dst, size_t dstPitch,
     const float gy = (static_cast<float>(y) + 0.5f) * kClaheTilesY / max(height, 1) - 0.5f;
     const int x0 = max(0, min(kClaheTilesX - 1, static_cast<int>(floorf(gx))));
     const int y0 = max(0, min(kClaheTilesY - 1, static_cast<int>(floorf(gy))));
-    const int x1 = min(x0 + 1, kClaheTilesX - 1);
-    const int y1 = min(y0 + 1, kClaheTilesY - 1);
+    const int x1 = max(0, min(static_cast<int>(floorf(gx)) + 1, kClaheTilesX - 1));
+    const int y1 = max(0, min(static_cast<int>(floorf(gy)) + 1, kClaheTilesY - 1));
     const float tx = fminf(fmaxf(gx - floorf(gx), 0.0f), 1.0f);
     const float ty = fminf(fmaxf(gy - floorf(gy), 0.0f), 1.0f);
     const float a = maps[(y0 * 8 + x0) * 256 + bin];
@@ -3418,9 +3305,10 @@ __global__ void TextHysteresisKernel(unsigned char* mask, size_t pitch,
     if (x >= width || y >= height) return;
     unsigned char* current = ByteRow(mask, pitch, y);
     unsigned char* previous = ByteRow(history, pitch, y);
-    float value = current[x] / 255.0f;
-    if (historyValid && fabsf(value - 0.5f) < strength) value = previous[x] / 255.0f;
-    const unsigned char stable = value >= 0.5f ? 255u : 0u;
+    // Preserve Sauvola's soft coverage. Only an uncertain classification holds
+    // its previous coverage, so anti-shimmer does not erase edge softness.
+    unsigned char stable = current[x];
+    if (historyValid && fabsf(stable / 255.0f - 0.5f) < strength) stable = previous[x];
     current[x] = stable;
     previous[x] = stable;
 }
@@ -3446,16 +3334,22 @@ __global__ void TextMaskCompositeKernel(uchar4* dst, size_t dstPitch,
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height) return;
-    const float ink = ByteRow(mask, maskPitch, y)[x] / 255.0f;
-    const uchar4 mapped = TextColors(ink, foregroundBgra, backgroundBgra);
     const bool replaceImage = compositeMode == 1 ||
                               (compositeMode == 2 && analysis && analysis->y != 0);
+    if (compositeMode == 2 && !replaceImage) {
+        // Mixed scenes already contain the flattened/sharpened image. Exact
+        // in-place aliasing needs no pixel or mask access; out-of-place keeps
+        // the public copy behavior. Partial overlap is not supported.
+        if (dst != src || dstPitch != srcPitch) {
+            RowAt(dst, dstPitch, y)[x] = RowAt(src, srcPitch, y)[x];
+        }
+        return;
+    }
+    const float ink = ByteRow(mask, maskPitch, y)[x] / 255.0f;
+    const uchar4 mapped = TextColors(ink, foregroundBgra, backgroundBgra);
     if (replaceImage) {
+        // Replacement consumes only the mask and always produces opaque BGRA.
         RowAt(dst, dstPitch, y)[x] = mapped;
-    } else if (compositeMode == 2) {
-        // Mixed content: background flattening plus selective smart sharpen
-        // already improved text; leave photos and diagrams in natural color.
-        RowAt(dst, dstPitch, y)[x] = RowAt(src, srcPitch, y)[x];
     } else {
         const uchar4 p = RowAt(src, srcPitch, y)[x];
         const float blend = 0.7f * ink;
@@ -3468,10 +3362,14 @@ __global__ void TextMaskCompositeKernel(uchar4* dst, size_t dstPitch,
 
 __global__ void Bilateral3x3Kernel(uchar4* dst, size_t dstPitch,
                                    const uchar4* src, size_t srcPitch,
-                                   int width, int height) {
+                                   int width, int height,
+                                   const int4* replacementAnalysis) {
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height) return;
+    // Same class test as composite mode 2, which then rewrites every pixel
+    // from the mask alone; sharpening a document scene would be discarded.
+    if (replacementAnalysis && replacementAnalysis->y != 0) return;
     const float3 center = ReadPixelLinear(src, srcPitch, x, y, width, height);
     float3 sum = make_float3(0.0f, 0.0f, 0.0f);
     float weights = 0.0f;
@@ -3494,10 +3392,12 @@ __global__ void Bilateral3x3Kernel(uchar4* dst, size_t dstPitch,
 __global__ void SmartSharpenKernel(uchar4* dst, size_t dstPitch,
                                    const uchar4* src, size_t srcPitch,
                                    const unsigned char* mask, size_t maskPitch,
-                                   int width, int height, float strength, int selective) {
+                                   int width, int height, float strength, int selective,
+                                   const int4* replacementAnalysis) {
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height) return;
+    if (replacementAnalysis && replacementAnalysis->y != 0) return;
     const float3 center = ReadPixelLinear(src, srcPitch, x, y, width, height);
     const float3 blurred = BoxBlur3x3(src, srcPitch, x, y, width, height);
     float factor = fminf(fmaxf(strength, 0.0f), 1.0f) * 1.6f;
@@ -3537,6 +3437,21 @@ __global__ void FocusMetricKernel(const float* luma, size_t pitch,
 
 } // namespace
 
+void LaunchTextLocalMean(float* luma, size_t floatPitchBytes,
+                         float* horizontal, float* mean,
+                         const uchar4* src, size_t srcPitchBytes,
+                         int width, int height, int radius,
+                         cudaStream_t stream) {
+    const dim3 block(16, 16);
+    const dim3 grid((width + 15) / 16, (height + 15) / 16);
+    TextLumaKernel<<<grid, block, 0, stream>>>(luma, floatPitchBytes, src, srcPitchBytes, width, height);
+    TextBoxHorizontalKernel<false><<<(height + 127) / 128, 128, 0, stream>>>(luma, floatPitchBytes,
+        horizontal, nullptr, width, height, max(1, radius));
+    TextBoxVerticalKernel<false><<<(width + 127) / 128, 128, 0, stream>>>(horizontal, nullptr,
+        floatPitchBytes, mean, nullptr, width, height, max(1, radius));
+    CheckCuda("text local-mean launch failed");
+}
+
 void LaunchTextLocalStatistics(float* luma, size_t floatPitchBytes,
                                float* horizontal, float* mean,
                                float* sqHorizontal, float* sqMean,
@@ -3546,9 +3461,9 @@ void LaunchTextLocalStatistics(float* luma, size_t floatPitchBytes,
     const dim3 block(16, 16);
     const dim3 grid((width + 15) / 16, (height + 15) / 16);
     TextLumaKernel<<<grid, block, 0, stream>>>(luma, floatPitchBytes, src, srcPitchBytes, width, height);
-    TextBoxHorizontalKernel<<<(height + 127) / 128, 128, 0, stream>>>(luma, floatPitchBytes,
+    TextBoxHorizontalKernel<true><<<(height + 127) / 128, 128, 0, stream>>>(luma, floatPitchBytes,
         horizontal, sqHorizontal, width, height, max(1, radius));
-    TextBoxVerticalKernel<<<(width + 127) / 128, 128, 0, stream>>>(horizontal, sqHorizontal,
+    TextBoxVerticalKernel<true><<<(width + 127) / 128, 128, 0, stream>>>(horizontal, sqHorizontal,
         floatPitchBytes, mean, sqMean, width, height, max(1, radius));
     CheckCuda("text local-statistics launch failed");
 }
@@ -3639,11 +3554,13 @@ void LaunchSmartSharpenLinear(uchar4* dst, size_t dstPitchBytes,
                               const uchar4* src, size_t srcPitchBytes,
                               const unsigned char* mask, size_t maskPitchBytes,
                               int width, int height, float strength,
-                              bool selective, cudaStream_t stream) {
+                              bool selective, cudaStream_t stream,
+                              const int4* replacementAnalysis) {
     const dim3 block(16, 16), grid((width + 15) / 16, (height + 15) / 16);
-    Bilateral3x3Kernel<<<grid, block, 0, stream>>>(scratch, scratchPitchBytes, src, srcPitchBytes, width, height);
+    Bilateral3x3Kernel<<<grid, block, 0, stream>>>(scratch, scratchPitchBytes, src, srcPitchBytes,
+        width, height, replacementAnalysis);
     SmartSharpenKernel<<<grid, block, 0, stream>>>(dst, dstPitchBytes, scratch, scratchPitchBytes,
-        mask, maskPitchBytes, width, height, strength, selective ? 1 : 0);
+        mask, maskPitchBytes, width, height, strength, selective ? 1 : 0, replacementAnalysis);
     CheckCuda("smart-sharpen launch failed");
 }
 

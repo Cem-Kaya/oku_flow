@@ -5,6 +5,156 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-10-11
+
+- Windows OkuFlow now launches as a GUI app without a terminal. `--console`
+  attaches an existing parent terminal for diagnostic launches.
+- First-run camera selection prefers a ready USB OkuFlow Camera companion;
+  saved webcam/phone identities and legacy numeric choices are retained.
+- Phone camera light is off on every new connection and is no longer persisted.
+  Add an explicit phone-light action under Settings → Camera, reflecting actual
+  hardware availability/state. Phone settings direct users to that button.
+- Move transcription opt-in controls to the Transcript tab. Transcription and
+  appending transcripts to lecture notes default off; recording does not enable
+  them. Explicitly enabling transcription during a recording starts it, and
+  turning it off leaves recording running.
+
+- OkuFlow Camera now names its connection state and actionable problems.
+  It shows a **Connected to OkuFlow** screen while the camera starts. Raw
+  English engine errors are replaced by translated problem screens: camera
+  busy, access blocked, mode unavailable, camera stopped, phone too hot and
+  service startup failure. Each has a remedy, and two include direct actions.
+  Problems persist after Windows disconnects and clear on the next
+  session/stream, cooling or unplugging. The raw diagnostic still reaches
+  Windows. Advanced settings shows the current status, with the negotiated
+  mode, first on both levels. The setup screen applies system insets once,
+  removing a doubled status-bar gap. Settings entry/back controls use 2-dp
+  outlines, and section headings are centered. Connected-but-idle wording
+  also covers a paused host, and stopped streams clear stale mode details.
+- Make HEVC the preferred phone codec for new installations and **Restore
+  automatic settings**, with the existing AVC fallback when the host or phone
+  lacks HEVC. Saved explicit H.264 preferences are preserved.
+- Limit the main Android mode picker to 720p or higher and at least 24 FPS.
+  Put the complete detected list and bitrate controls on a separate
+  More options screen one level down; preserve low-mode selections and capture
+  fallback for older phones. Include the actual codec in phone stream status.
+- Add optional Windows HEVC reception using an installed system decoder, with
+  capability-checked negotiation and one H.264 reconnect after HEVC decoder
+  failure. Preserve normal webcam capture and add an original HEVC decoder fixture.
+
+- Fix invisible Android Advanced settings labels by explicitly providing light
+  content colors on dark surfaces. Group labeled dropdown rows, switches and
+  exposure controls in bounded-width cards with a persistent back/header area;
+  shorten guidance and keep English/Turkish/German strings aligned.
+- Fix Android 17 setup detection without removing older-Android settings checks;
+  recognize active USB adb and show help for hidden settings. Keep all visible
+  phone-app screens awake. Preserve phone identity during Windows background
+  startup, separate camera selection from command IDs, and snapshot the USB
+  writer watchdog timestamp to avoid a reset race. Real-device checks are
+  recorded in `android/DEVICE_VALIDATION.md`.
+- Allow absolute local output directories in the startup profiling script.
+- Replace separate Android resolution/FPS ceilings with one locally discovered
+  size/rate picker (for example, 1920 × 1080 @ 60 FPS). Persist exact pairs,
+  migrate older preferences, refresh on camera/codec changes, and retain host/
+  thermal/startup fallback. Enlarge dropdown controls and choices with bright
+  outlines while preserving text size; open menus at the selected value.
+- Allow runtime flushing when polling pending D3D11 camera-conversion queries;
+  this removes the reproduced hardware-decoder handoff timeouts and keeps
+  direct GPU transfer active on the tested Pixel/RTX 4090 setup. Display
+  backpressure is measured separately and is not claimed eliminated.
+
+- Add OkuFlow Camera USB streaming with a Camera2 hardware-encoder surface,
+  separate bounded control/video channels, remote camera/zoom/focus/light/
+  exposure commands, startup fallback and thermal stop/step-down. Add saved
+  Advanced phone settings in English, Turkish and German.
+- Add an optional native Windows phone source using USB-typed adb discovery
+  and the system H.264 decoder, plus a standard-library recording/control
+  probe. Preserve physical-camera ordering and saved webcam/phone identities.
+  Native viewport-to-phone zoom handoff and real-device acceptance remain pending.
+
+- Center OkuFlow Camera setup headings and progress indicators, and justify
+  instruction paragraphs in both the native Android panels and screen drafts.
+
+- Close untouched empty Draw text entries on focus loss so they cannot keep
+  swallowing camera navigation; commit typed labels once.
+- Stage settings replacements before backup rotation or oversized-file rename,
+  respect read-only originals, and recover valid backups when the primary is
+  missing after an interrupted save.
+
+
+- Add the OkuFlow Camera Android companion app scaffold under `android/`:
+  a one-step-at-a-time onboarding screen (Developer mode, USB debugging,
+  camera permission, plug in) with one-tap system-settings shortcuts, live
+  setting observers, English/Turkish/German strings and JVM tests. Plan 51
+  records its implementation and remaining hardware acceptance.
+- Finish the companion's user-owned Android toolchain, checksum-pinned
+  Gradle scaffold and off-Drive build/test/lint helper. Retain the camera
+  permission Settings shortcut after restart, exclude setup history from
+  backup/transfer, and add all-state Compose previews and interactive screen
+  drafts. Android validation covers 28 JVM tests; real-phone acceptance remains pending.
+
+- Reuse CPU rotation buffers across frames instead of allocating and clearing
+  a full BGRA payload every rotated frame; preserve pixel values and alpha.
+
+- Bound settings ingestion at 16 MiB. Loading reads at most one byte past the
+  limit, so a growing file cannot bypass it. An oversized primary is preserved
+  as `.too-large-<timestamp>` and the valid backup is restored. Saves count
+  the exact CRLF bytes they write and refuse a larger document before touching
+  the current file or backup, with an explicit message.
+- Prevent recursive camera navigation through inactive Draw filters. Keep
+  hidden Draw shortcuts and text-entry navigation local, preserve child control
+  acceptance, and release forwarded pan keys on hide or focus loss.
+- Remove verified unused processing APIs, four unlaunched CUDA kernels, and
+  obsolete recording-readback pairing state. Preserve current recording,
+  viewport processing, and test observability APIs.
+- Bound paired AAC input with cumulative PCM accounting and stop explicitly
+  if its finite budget is exhausted. Separate audio queue losses from video
+  frame-drop totals; strengthen codec fixtures to decode the complete track.
+- Preserve a saved camera when startup temporarily opens a fallback, and only
+  initialize legacy identity after a successful open. Disable automatic driver
+  enhancement in capture/recording video conversion.
+- Catch up saturated recording capture queues with exact loss counts. Admit
+  original/processed video pairs under a finite encoder-progress budget, report
+  GPU-upload/encoder pressure, and request low-latency encoding. Codec quality,
+  internal AAC/driver buffering and blocking finalization remain separate limits.
+- Reject recording input payloads over 64 MiB at startup so the pending and
+  next samples can both fit the fixed encoder budget without stalling.
+- Release GPU recording source leases after confirmed conversion completion,
+  with worker retirement independent of new frame arrival, preventing pool
+  pressure from keeping completed reads and pending encoder samples coupled.
+- Publish diagnostics without timer starvation, reduce redundant translation
+  traversal, preserve pending speech during failures, retire failed history
+  placeholders, and avoid recovery probes for completed photo pairs.
+- Preserve text edge softness through hysteresis, enforce opaque SuperRes/scene
+  pixels while retaining annotation alpha, and compose text masks in place.
+  Follow-up evidence and verification limits are recorded in review 46.
+- Skip discarded bilateral/smart-sharpen work in automatic Text Clarity when
+  the following paper/board composite replaces every RGB pixel. Mixed scenes
+  keep sharpening; measured speed gains remain unverified.
+- Persist physical camera selection and retry the requested device after a
+  failed open. Validate live format changes, copy NV12 chroma from its real
+  allocation-height origin, and normalize explicit RGBA readback to BGRA.
+- Treat busy CUDA uploads as nonblocking admission, retain the completed
+  preview, drain readbacks on idle ticks, repaint keyboard zoom, separate
+  camera arrivals from user motion, and invalidate stale CPU snapshots.
+- Rotate Draw ink and undo/redo with the image while keeping text upright.
+  Include ink snapshots in CPU processed recordings, preserve clean originals,
+  normalize mixed GPU/CPU writer input to NV12, freeze resolution selection
+  per recording session, and launch its worker after member initialization.
+- Contain requested SuperRes views in supported crops, share crop/presentation
+  geometry, apply changed strength, and restart timing for changed inference
+  configurations. Unrelated text controls retain the loaded model. Correct
+  stabilization recovery ROI/held motion and CLAHE edge interpolation; avoid
+  discarded statistics, overwritten sharpening, and repeated NIS edge loads.
+- Retire canceled Assistant preparation and late history replies. Persist
+  opaque pending credential-deletion ids until deletion/settings cleanup succeeds.
+  Preserve answer selection/scroll, bound Draw rails and Simple captions,
+  accept transcription deltas during Stop, and retain unavailable saved voices.
+- Add regressions and a decoded mixed-route recording fixture. Audit 45 records
+  actual validation and the remaining native/hardware checks; no measured speed
+  improvement is claimed. Encoder-resource pooling and NIS coefficient
+  initialization remain deferred.
 - Restore startup settings from a stable snapshot so early control handlers
   cannot replace the saved Advanced view, panel width, framing, or image
   processing settings with partially initialized defaults.

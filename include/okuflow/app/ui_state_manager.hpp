@@ -4,8 +4,6 @@
 
 #include <QSignalBlocker>
 
-#include <functional>
-
 QT_BEGIN_NAMESPACE
 class QCheckBox;
 class QComboBox;
@@ -32,12 +30,11 @@ public:
 
     settings::AdvancedConfig ReadConfigFromUI() const;
     void ApplyConfigToUI(const settings::AdvancedConfig& config);
-    void RunWithSignalsBlocked(QObject* object,
-                               const std::function<void()>& operation) const;
     QSignalBlocker BlockSignals(QObject* object) const;
 
     RenderWidget* renderWidget_{};
     QComboBox* cameraCombo_{};
+    QPushButton* phoneLightButton_{};
     QComboBox* microphoneCombo_{};
     QListWidget* presetList_{};
     QLabel* presetDescriptionLabel_{};

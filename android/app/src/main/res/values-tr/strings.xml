@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OkuFlow Kamera</string>
+
+    <string name="step_counter">Adım %1$d / %2$d</string>
+    <string name="action_open_settings">Ayarları aç</string>
+    <string name="action_allow_camera">Kameraya izin ver</string>
+
+    <string name="developer_title">Geliştirici modunu açın</string>
+    <string name="developer_hint_generic">“Yapım numarası”na 7 kez dokunun. Göremiyorsanız önce “Yazılım bilgileri”ni açın.</string>
+    <string name="developer_hint_samsung">“Yazılım bilgileri”ni açın, ardından “Yapım numarası”na 7 kez dokunun.</string>
+    <string name="developer_hint_xiaomi">“OS sürümü”ne (veya “MIUI sürümü”ne) 7 kez dokunun.</string>
+    <string name="developer_hint_oneplus">“Sürüm”ü açın, ardından “Yapım numarası”na 7 kez dokunun.</string>
+
+    <string name="usb_debugging_title">USB hata ayıklamayı açın</string>
+    <string name="usb_debugging_hint">“USB hata ayıklama” seçeneğini bulun ve açın.</string>
+    <string name="check_usb_title">USB bağlantısını kontrol edin</string>
+    <string name="check_usb_hint">Bilgisayarınızda OkuFlow’u açın. Bağlanamıyorsa USB hata ayıklamanın açık olduğunu kontrol edin ve sorulduğunda bu bilgisayara izin verin. Geliştirici seçenekleri yoksa Telefon hakkında bölümünü açıp Yapım numarası’na 7 kez dokunun.</string>
+
+    <string name="camera_title">Kameraya izin verin</string>
+    <string name="camera_hint">OkuFlow bu kamerayı bilgisayarınızda gösterir. İnternete hiçbir şey gönderilmez.</string>
+    <string name="camera_hint_settings">Ayarları açın, “İzinler”i seçin ve “Kamera”ya izin verin.</string>
+
+    <string name="connect_usb_title">Bu telefonu bilgisayarınıza takın</string>
+    <string name="connect_usb_hint">Veri aktarabilen bir USB kablosu kullanın.</string>
+
+    <string name="open_okuflow_title">Bilgisayarınızda OkuFlow’u açın</string>
+    <string name="open_okuflow_hint">Telefonunuz “USB hata ayıklamaya izin verilsin mi?” diye sorarsa “Her zaman izin ver”i işaretleyip “İzin ver”e dokunun.</string>
+
+    <string name="streaming_title">OkuFlow’a aktarılıyor</string>
+    <string name="streaming_hint">Bu ekranı açık tutun.</string>
+    <string name="advanced_settings">Gelişmiş ayarlar</string>
+    <string name="action_back">Kameraya dön</string>
+    <string name="advanced_hint">Değişiklikler otomatik uygulanır. Telefonunuz daha düşük çözünürlük veya kare hızı kullanabilir.</string>
+    <string name="settings_video">Kamera ve video</string>
+    <string name="settings_image">Görüntü ayarları</string>
+    <string name="setting_auto">Otomatik</string>
+    <string name="setting_off">Kapalı</string>
+    <string name="setting_camera">Kamera</string>
+    <string name="camera_front">Ön kamera</string>
+    <string name="camera_back">Arka kamera</string>
+    <string name="setting_mode">Çözünürlük ve kare hızı</string>
+    <string name="setting_mode_format">%1$d × %2$d @ %3$d FPS</string>
+    <string name="setting_modes_loading">Kamera modları aranıyor…</string>
+    <string name="setting_modes_unavailable">Kayıt modu bulunamadı</string>
+    <string name="settings_more">Diğer seçenekler</string>
+    <string name="action_back_settings">Ayarlara dön</string>
+    <string name="setting_all_modes">Tüm kamera modları</string>
+    <string name="setting_all_modes_hint">720p ve 24 FPS altındakiler dahil, bu telefonda bulunan tüm modlar.</string>
+    <string name="setting_main_modes_hint">720p veya üzeri · 24 FPS veya üzeri.</string>
+    <string name="setting_extra_mode_selected">Diğer seçeneklerden bir mod kullanılıyor.</string>
+    <string name="setting_bitrate">Video bit hızı</string>
+    <string name="setting_codec">Tercih edilen kodlayıcı</string>
+    <string name="setting_stabilization">Telefon görüntü sabitleme</string>
+    <string name="setting_optical">Varsa optik</string>
+    <string name="setting_electronic">Varsa elektronik</string>
+    <string name="stabilization_hint">Elektronik sabitleme görüntüyü kırpabilir. OkuFlow sabit referanslı sabitlemesini kullanırken Kapalı veya Optik seçin.</string>
+    <string name="setting_autofocus">Sürekli otomatik odaklama</string>
+    <string name="focus_hint">Otomatik odaklama kapalıyken uzak içerik için odak sonsuza ayarlanır.</string>
+    <string name="setting_torch">Kamera ışığı</string>
+    <string name="torch_host_hint">Başlangıçta kapalıdır. Bilgisayarınızdaki OkuFlow’da Kamera ayarları altındaki telefon ışığı düğmesini kullanın.</string>
+    <string name="setting_exposure">Pozlama: %1$d</string>
+    <string name="exposure_hint">Daha karanlık görüntü için sola, daha aydınlık görüntü için sağa kaydırın.</string>
+    <string name="setting_status">Yayın durumu</string>
+    <string name="settings_reset">Otomatik ayarları geri yükle</string>
+    <string name="service_notification">USB kamera bağlantısına hazır</string>
+    <string name="thermal_stopped">Kamera telefonu korumak için durdu. Telefonun soğumasını bekleyin, ardından OkuFlow’un kamera listesinden telefonu yeniden seçin.</string>
+    <string name="connected_title">OkuFlow’a bağlandı</string>
+    <string name="connected_hint">Bilgisayarınız bağlı. Kamera görüntüsü bekleniyor.</string>
+    <string name="problem_busy_title">Kamera meşgul</string>
+    <string name="problem_busy_hint">Kamerayı kullanan diğer uygulamaları kapatın. OkuFlow kısa bir süre yeniden dener. Görüntü gelmezse OkuFlow’un kamera listesinden telefonu yeniden seçin.</string>
+    <string name="problem_blocked_title">Kamera erişimi engellendi</string>
+    <string name="problem_blocked_hint">Gizlilik ayarlarından veya hızlı ayarlardan kamera erişimini açın. Ardından OkuFlow’un kamera listesinden telefonu yeniden seçin.</string>
+    <string name="problem_mode_title">Bu video modu kullanılamıyor</string>
+    <string name="problem_mode_hint">Gelişmiş ayarları açın ve çözünürlük ile kare hızını Otomatik yapın.</string>
+    <string name="problem_failed_title">Kamera durdu</string>
+    <string name="problem_failed_hint">OkuFlow kısa bir süre yeniden dener. Görüntü gelmezse OkuFlow’un kamera listesinden telefonu yeniden seçin. Bu sık oluyorsa telefonu yeniden başlatın.</string>
+    <string name="problem_hot_title">Telefon çok sıcak</string>
+    <string name="problem_service_title">USB kamera başlatılamadı</string>
+    <string name="problem_service_hint">OkuFlow Kamera’yı kapatıp yeniden açın. Bu sık oluyorsa telefonu yeniden başlatın.</string>
+</resources>

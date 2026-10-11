@@ -38,8 +38,10 @@ The current frame flow is:
    synchronize the processing stream and the conversion texture cannot be
    reused early. Lower rungs
    upload compact NV12/YUY2 planes; conversion and rotation still run in CUDA.
-   Host uploads use a two-slot page-locked ring whose per-slot event guards
-   reuse. `CpuFramePipeline` converts/rotates only remaining formats, debug
+   Host uploads use a three-slot page-locked ring whose per-slot event guards
+   reuse. Busy admission queues no GPU work and drops the arriving camera
+   frame while retaining the completed preview, without recovery or CPU fallback.
+   `CpuFramePipeline` converts/rotates only remaining formats, debug
    composite view, GPU-unavailable passthrough, and fallback frames.
 3. `CudaInteropSurface` runs the GPU effect chain when the interop surface is
    valid and publishes the completed camera generation as a persistent scene
@@ -88,6 +90,8 @@ that transcription was saved.
 `scripts/profile_startup.ps1` profiles first-camera presentation, Qt heartbeat
 delays, actual camera arrival FPS, application drops, and processing/presentation
 timings. It uses explicit isolated settings and normal child-process shutdown.
+`-OutputDirectory` accepts either a repository-relative directory or an absolute
+local path, so phone-test evidence can stay outside the synced checkout.
 See the root README for invocation and measurement limits. Initial platform
 discovery, graphics resource creation, and manual device changes still include
 synchronous work; ordinary frame-slot admission and initial device opening no
@@ -120,6 +124,75 @@ longer add blocking waits to the Qt event loop.
    cleans abandoned temps, and reports unresolved marked pairs. It never
    deletes existing final JPEGs, including a user-retained half of a pair.
 
+Completed readbacks drain on idle ticks independently of new presentations.
+Camera arrivals mark scene dirtiness without extending the user-motion tail;
+keyboard zoom explicitly requests a new viewport presentation. GPU publication,
+rotation, and capture stop invalidate old CPU presentation pixels. Annotation
+rotation rebases ink and edit history; text anchors rotate with upright labels.
+
+CPU recording jobs retain immutable ink and view-transform snapshots, then
+paint only the processed canvas using the shared annotation renderer. Resolution
+selection freezes at session start and changes apply to the next session.
+GPU-started writers convert CPU fallback BGRA to BT.601 limited-range NV12
+instead of changing the sink contract; the synchronized timeline continues.
+
+Assistant preparation cancellation retires its notes payload and emits one
+terminal event; late workers remove only their own temporary file. History
+loads have a separate generation canceled by newer loads/turns. Credential
+deletions persist opaque pending ids before removal and retain them on failure.
+Streamed answers preserve selection/scroll; short Draw rails scroll, Simple
+captions fit a bounded trailing view, and Stop still accepts transcription deltas.
+
+See [audit 45](../improvement_ideas/45-codebase-audit-2026-10-11.md) for actual
+validation results and native/hardware checks still pending. Source work
+reduction does not establish an application speed improvement; encoder resource
+pooling and NIS coefficient initialization remain deferred.
+
+
+### Additional quality/performance review
+
+[Review 46](../improvement_ideas/46-additional-opus-review-2026-10-11.md) records
+completed Opus capture, UI, and resumed GPU reports with root validation.
+Follow-ups retain camera preference during fallback, disable driver enhancement
+in conversion, catch up saturated capture bursts, and add paired video admission
+with explicit loss accounting. Diagnostics publish without starvation; recovery
+retains transcript tails; history errors retire placeholders; photo recovery
+ignores completed pairs. GPU soft-mask/opaque-scene contracts and in-place text
+composition address quality and redundant traffic. Measured speed and vendor
+fidelity remain unverified; native desktop checks remain deferred by the owner.
+Codec low latency may affect quality; internal AAC/driver allocations and
+blocking finalization remain separate limits.
+
+[Review 47](../improvement_ideas/47-sequential-priority-fixes-2026-10-11.md) adds
+separate bounded AAC input accounting in PCM frames, including stale/padded
+packet progress, and audio-only loss counters. H.264/AV1 codec fixtures decode
+the complete audio track. A strict opt-in playback-gap diagnostic still fails
+and is retained as an open quality issue; admission does not depend on the
+broken timestamp mapping. Opus hit Claude's rate limit before its final review.
+
+[Review 48](../improvement_ideas/48-gemini-independent-review-2026-10-11.md)
+records independent source/probe verdicts for all four returned Gemini reports
+and their 20 main findings. Confirmed CPU allocations and failure-lifecycle
+follow-ups are separated from known candidates, unreachable GPU scenarios,
+false error contracts and unsupported speed estimates. No application change
+or new native desktop validation is claimed by that audit.
+
+[Review 49](../improvement_ideas/49-unused-code-census-2026-10-11.md) measures
+unused-code candidates in current first-party C++/CUDA, separating test-only
+APIs and optional configurations. Exact linker/CUDA binary evidence distinguishes
+functions already discarded from retained kernel code and the live obsolete
+recording map check. Its implementation follow-up removes the verified unused
+APIs, helper kernels and pairing state, while preserving test-only APIs and
+documenting the partial desktop-free build/test gate.
+
+[Review 50](../improvement_ideas/50-alternating-opus-repairs-2026-10-11.md)
+tracks alternating root/Opus implementation and independent review. The first
+round fixes camera-navigation recursion and Draw keyboard ownership with Opus
+acceptance for its original 91-check headless scope. An empty-editor focus
+follow-up brings the suite to 94 checks. Bounded 16 MiB settings reads/saves,
+failure recovery and retained CPU rotation buffers are also implemented and
+root-verified. Opus's final follow-up hit its rate limit; independent review of
+the rotation/focus follow-ups and native desktop acceptance remain deferred.
 
 ## Language And Locale
 
@@ -198,6 +271,9 @@ The UI now has two states:
 - `scripts/agent_build.bat`: tracked Windows compile/test matrix. It locates
   Visual Studio 2022 (17.x) with `vswhere`, compiles `msvc-release`, then runs the CPU and
   CUDA-enabled CTest presets with explicit PASS/FAIL summaries.
+  Set `OKUFLOW_AGENT_EXCLUDE_GUI=1` only when desktop use is restricted; the
+  explicitly partial matrix then excludes tests labelled `gui` and leaves
+  native interaction validation pending.
 - `scripts/run_minimal_test.bat`: builds the app without launching it, then
   runs the DX12/CUDA sandbox harness when its `CMakeLists.txt` is present;
   otherwise it reports a successful optional-harness skip. It also builds the
@@ -267,7 +343,12 @@ legacy `powershell.exe` bridge.
   a supported 4/3x pass on the shared CUDA stream; additional magnification is
   applied afterward. It performs no host frame readback and returns to NIS
   when unavailable or when its 60-frame steady-state average exceeds the 24 ms
-  latency target. Ten warmup samples are excluded. Advanced shows the source
+  latency target. Ten warmup samples are excluded. Inference uses a supported
+  integer crop only when it contains the complete requested view;
+  inference and presentation share SR geometry, including exact 4/3 for the
+  advertised 1.33 step. Changed source/output extent or strength restarts the
+  timing window and retires old work before reload; unrelated text controls
+  retain the effect. Advanced shows the source
   crop, viewport target, final zoom, and measured average. Maximum source
   detail is the default. Optional `Faster 2x mode (narrower view)` uses at
   least a 2x stage, changing a 1280x720 target's visible source crop from
@@ -322,7 +403,10 @@ legacy `powershell.exe` bridge.
   key entered in AI Settings is protected by Windows Credential Manager; JSON
   stores only an opaque credential id and ignores plaintext `vlmApiKey`
   fields. The environment override remains available for local development
-  and is never persisted.
+  and is never persisted. Settings files are limited to 16 MiB on disk. An
+  oversized file is preserved beside the original and the last valid backup is
+  restored. A save that would exceed the limit leaves both files unchanged
+  and reports the cause.
 - Snapshots are saved as timestamp-matched `_original.jpg` and `_processed.jpg`
   pairs under `Documents\OkuFlow\Photos\YYYY-MM-DD\` by default.
 - Recordings are saved as timestamp-matched `_original.mp4` and
@@ -421,6 +505,13 @@ legacy `powershell.exe` bridge.
   SHA-256 checksums, a release manifest, and an SPDX SBOM.
 
 ## Documentation Index
+- [`android/README.md`](../android/README.md): native Android companion setup,
+  USB streaming, Advanced settings, current limits, and interactive drafts.
+  [`PROTOCOL.md`](../android/PROTOCOL.md) freezes the implemented wire contract.
+  [`BUILDING.md`](../android/BUILDING.md)
+  records the installed user-owned toolchain, off-Drive outputs, build/test/lint,
+  and optional one-device installation. [`Plan 51`](../improvement_ideas/51-okuflow-camera-android.md)
+  tracks hardware acceptance and remaining phone zoom, quality and packaging work.
 - [`docs/ui_capture.md`](ui_capture.md): opt-in composed real-app PNG captures
   in isolated startup-profiling sessions, including native chrome and desktop checks.
 - [`docs/lecture_camera.md`](lecture_camera.md): downloadable lecture sample,

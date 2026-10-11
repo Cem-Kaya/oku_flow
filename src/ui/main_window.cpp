@@ -1261,6 +1261,12 @@ MainWindow::MainWindow()
     deviceLayout->addWidget(cameraLabel);
     deviceLayout->addWidget(cameraCombo_);
 
+    phoneLightButton_ = new QPushButton(QStringLiteral("Turn on phone light"));
+    phoneLightButton_->setObjectName(QStringLiteral("phoneLightButton"));
+    phoneLightButton_->setEnabled(false);
+    phoneLightButton_->setVisible(false);
+    deviceLayout->addWidget(phoneLightButton_);
+
     rotationCombo_ = new WheelSafeComboBox();
     rotationCombo_->addItem("0°");
     rotationCombo_->addItem("90°");
@@ -1385,10 +1391,9 @@ MainWindow::MainWindow()
     transcribeMicrophoneCheckbox_->setToolTip(QStringLiteral(
         "Sends microphone audio to Codex Voice for live transcription, only "
         "while recording. Requires Codex signed in with ChatGPT."));
-    recordingLayout->addWidget(transcribeMicrophoneCheckbox_);
     QVBoxLayout* transcriptionOptionsLayout = nullptr;
-    recordingLayout->addWidget(makeDependentGroup(
-        QStringLiteral("transcriptionOptions"), transcriptionOptionsLayout));
+    auto* transcriptionOptions = makeDependentGroup(
+        QStringLiteral("transcriptionOptions"), transcriptionOptionsLayout);
     transcriptToNotesCheckbox_ =
         new QCheckBox(QStringLiteral("Add finalized transcript to lecture notes"));
     transcriptToNotesCheckbox_->setToolTip(QStringLiteral(
@@ -1626,12 +1631,14 @@ MainWindow::MainWindow()
     assistantTabs->addTab(historyPage, "History");
     assistantLayout->addWidget(assistantTabs, 1);
 
-    // Read-only live transcript view (plan 36): no send button and no
-    // implied Assistant conversation. Finalized text stays selectable.
+    // Explicit opt-in controls and a read-only live transcript; no Assistant
+    // conversation is implied. Finalized text stays selectable.
     auto* transcriptPage = new QWidget();
     auto* transcriptLayout = new QVBoxLayout(transcriptPage);
     transcriptLayout->setContentsMargins(10, 10, 10, 10);
     transcriptLayout->setSpacing(6);
+    transcriptLayout->addWidget(transcribeMicrophoneCheckbox_);
+    transcriptLayout->addWidget(transcriptionOptions);
     auto* transcriptPartialCaption = new QLabel(QStringLiteral("Current phrase"));
     transcriptPartialCaption->setObjectName(QStringLiteral("scopeSubtitle"));
     transcriptPartialLabel_ = new QLabel();
@@ -1857,6 +1864,7 @@ MainWindow::MainWindow()
     simpleTranscriptLabel_ = new QLabel();
     simpleTranscriptLabel_->setObjectName(QStringLiteral("simpleTranscriptLabel"));
     simpleTranscriptLabel_->setWordWrap(true);
+    simpleTranscriptLabel_->setTextFormat(Qt::PlainText);
     simpleTranscriptLabel_->setTextInteractionFlags(Qt::NoTextInteraction);
     simpleTranscriptLayout->addWidget(simpleTranscriptLabel_);
     simpleTranscriptPanel_->hide();
@@ -2111,6 +2119,8 @@ MainWindow::MainWindow()
             "mode resolution.");
     setA11y(cameraCombo_, "Camera",
             "Select the active camera device.");
+    setA11y(phoneLightButton_, "Phone light",
+            "Starts off on each connection. Press to turn the phone light on or off.");
     setA11y(microphoneCombo_, "Recording microphone",
             "Select microphone audio for both original and processed MP4 "
             "recordings, or choose no microphone.");
@@ -2818,6 +2828,7 @@ RenderWidget* MainWindow::renderWidget() const
 }
 
 QComboBox* MainWindow::cameraCombo() const { return cameraCombo_; }
+QPushButton* MainWindow::phoneLightButton() const { return phoneLightButton_; }
 QComboBox* MainWindow::microphoneCombo() const { return microphoneCombo_; }
 QListWidget* MainWindow::presetList() const { return presetList_; }
 QLabel* MainWindow::presetDescriptionLabel() const { return presetDescriptionLabel_; }
@@ -2942,15 +2953,64 @@ void MainWindow::RefreshSimpleTranscriptText()
     if (!simpleTranscriptLabel_) {
         return;
     }
+    // Coalesce deltas without assigning an unbounded label/layout minimum.
+    if (!simpleTranscriptGeometryPending_) {
+        simpleTranscriptGeometryPending_ = true;
+        QTimer::singleShot(0, this, [this] {
+            simpleTranscriptGeometryPending_ = false;
+            UpdateSimpleTranscriptGeometry();
+        });
+    }
+}
+
+void MainWindow::rotateAnnotationsClockwise(int quarterTurns)
+{
+    if (annotationOverlay_) annotationOverlay_->RotateClockwise(quarterTurns);
+}
+
+void MainWindow::UpdateSimpleTranscriptGeometry()
+{
+    if (!renderWidget_ || !simpleTranscriptPanel_ || !simpleTranscriptPanel_->isVisible()) return;
+    const int viewWidth = renderWidget_->width();
+    const int viewHeight = renderWidget_->height();
+    const QPoint origin = renderWidget_->mapToGlobal(QPoint());
+    int chromeTop = viewHeight;
+    for (QWidget* panel : {bottomLeftPanel_, bottomRightPanel_}) {
+        if (panel && panel->isVisible()) chromeTop = std::min(chromeTop, panel->y() - origin.y());
+    }
+    const int panelWidth = std::max(1, std::min(viewWidth - 24, 900));
+    const int budget = std::max(1, std::min(viewHeight / 3, chromeTop - 16));
+    const QMargins margins = simpleTranscriptPanel_->layout()->contentsMargins();
+    const int textWidth = std::max(1, panelWidth - margins.left() - margins.right());
+    const int textHeight = std::max(1, budget - margins.top() - margins.bottom());
     QStringList lines = simpleTranscriptFinals_;
-    if (!simpleTranscriptPartial_.trimmed().isEmpty()) {
-        lines.append(simpleTranscriptPartial_);
+    if (!simpleTranscriptPartial_.trimmed().isEmpty()) lines.append(simpleTranscriptPartial_);
+    QString text = lines.join(QStringLiteral("\n"));
+    const QFontMetrics metrics(simpleTranscriptLabel_->font());
+    // Show the trailing caption that fits; the Advanced transcript retains every phrase.
+    const auto fits = [&](const QString& candidate) {
+        return metrics.boundingRect(QRect(0, 0, textWidth, 1000000),
+                                    Qt::TextWordWrap, candidate).height() <= textHeight;
+    };
+    if (!fits(text)) {
+        int low = 0, high = text.size();
+        while (low < high) {
+            const int middle = low + (high - low) / 2;
+            if (fits(QStringLiteral("\u2026") + text.mid(middle))) high = middle;
+            else low = middle + 1;
+        }
+        if (low < text.size() && text.at(low).isLowSurrogate()) ++low;
+        text = QStringLiteral("\u2026") + text.mid(low);
     }
-    // Silent update: plain text only, no accessible announcement per delta.
-    simpleTranscriptLabel_->setText(lines.join(QStringLiteral("\n")));
-    if (simpleTranscriptPanel_ && simpleTranscriptPanel_->isVisible()) {
-        UpdateSimpleChromeGeometry();
-    }
+    simpleTranscriptLabel_->setMaximumHeight(textHeight);
+    simpleTranscriptLabel_->setText(text);
+    simpleTranscriptPanel_->setFixedWidth(panelWidth);
+    simpleTranscriptPanel_->setMaximumHeight(budget);
+    simpleTranscriptLabel_->setMinimumHeight(0);
+    simpleTranscriptPanel_->adjustSize();
+    simpleTranscriptPanel_->resize(panelWidth, std::min(budget, simpleTranscriptPanel_->height()));
+    simpleTranscriptPanel_->move(origin.x() + std::max(0, (viewWidth - panelWidth) / 2),
+                                 origin.y() + std::max(0, chromeTop - simpleTranscriptPanel_->height() - 8));
 }
 
 void MainWindow::setAnnotationPreferences(const QColor& color,
@@ -3659,20 +3719,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
     bottomRightPanel_->move(trailingX(bottomRightPanel_->width()),
                             viewOrigin.y() + std::max(0, bottomRightY));
 
-    if (simpleTranscriptPanel_ && simpleTranscriptPanel_->isVisible()) {
-        const int overlayWidth = std::min(viewWidth - 24, 900);
-        simpleTranscriptPanel_->setFixedWidth(std::max(240, overlayWidth));
-        simpleTranscriptPanel_->adjustSize();
-        const int chromeTop =
-            std::min(viewHeight - leftChromeHeight,
-                     std::min(bottomRightY, viewHeight - bottomRightPanel_->height()));
-        const int overlayY =
-            std::max(0, chromeTop - simpleTranscriptPanel_->height() - 8);
-        simpleTranscriptPanel_->move(
-            viewOrigin.x() +
-                std::max(0, (viewWidth - simpleTranscriptPanel_->width()) / 2),
-            viewOrigin.y() + overlayY);
-    }
+    UpdateSimpleTranscriptGeometry();
 
     if (modeGridPopup_) {
         const int popupWidth = std::min(viewWidth, std::max(420, std::min(860, viewWidth * 3 / 4)));

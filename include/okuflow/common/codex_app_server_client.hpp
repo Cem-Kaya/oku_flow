@@ -43,9 +43,7 @@ public:
     void SetRequestTimeoutMs(int timeoutMs);
 
     bool IsReady() const;
-    bool IsSignedIn() const;
     bool IsTurnActive() const;
-    QString SelectedModel() const;
     static QString BuiltInAssistantInstructions();
     // Shared Codex CLI discovery (configured path, OKUFLOW_CODEX_PATH, PATH,
     // then known install locations). Also used by the realtime client.
@@ -59,6 +57,7 @@ public:
                            bool persistent);
     void InterruptTurn();
     void LoadConversation(const QString& threadId);
+    void CancelConversationLoad();
     void RenameConversation(const QString& threadId, const QString& name);
     void DeleteConversation(const QString& threadId);
 
@@ -72,6 +71,8 @@ signals:
 
     void ConversationCreated(const QJsonObject& thread);
     void ConversationTranscriptLoaded(const QString& threadId, const QJsonArray& messages);
+    // Only the current load generation may publish either terminal signal.
+    void ConversationTranscriptLoadFailed(const QString& threadId, const QString& error);
     void ConversationRenamed(const QString& threadId, const QString& name);
     void ConversationDeleted(const QString& threadId);
 
@@ -159,6 +160,7 @@ private:
     bool retiringFailedServer_{false};
     bool accountReadInFlight_{false};
 
+    quint64 conversationLoadGeneration_{0};
     quint64 lastRequestGeneration_{0};
     PendingTurn pendingTurn_;
     quint64 activeGeneration_{0};

@@ -1,4 +1,5 @@
 #include "okuflow/capture/capture_shutdown.hpp"
+#include "okuflow/capture/media_capture.hpp"
 
 #include <QtTest/QtTest>
 #include <atomic>
@@ -11,6 +12,47 @@ using namespace std::chrono_literals;
 class CaptureShutdownTests : public QObject {
     Q_OBJECT
 private slots:
+    void savedCameraSelectionFollowsPhysicalIdentity()
+    {
+        const auto camera = [](const wchar_t* link) {
+            okuflow::CameraDescriptor descriptor;
+            descriptor.name = L"Identical friendly name";
+            descriptor.symbolicLink = link;
+            return descriptor;
+        };
+        const auto a = camera(L"fixture-A");
+        const auto b = camera(L"fixture-B");
+        const auto c = camera(L"fixture-C");
+        using okuflow::ResolveSavedCameraIndex;
+        QCOMPARE(ResolveSavedCameraIndex({a, b}, L"fixture-B", 1), 1);
+        QCOMPARE(ResolveSavedCameraIndex({b, a}, L"FIXTURE-b", 1), 0);
+        QCOMPARE(ResolveSavedCameraIndex({c, a, b}, L"fixture-B", 1), 2);
+        QCOMPARE(ResolveSavedCameraIndex({b, c}, L"fixture-B", 1), 0);
+        QCOMPARE(ResolveSavedCameraIndex({a, c}, L"fixture-B", 1), 0);
+        QCOMPARE(ResolveSavedCameraIndex({a, b}, L"", 1), 1);
+        QCOMPARE(ResolveSavedCameraIndex({a, b}, L"", -1), 0);
+        QCOMPARE(ResolveSavedCameraIndex({a, b}, L"", 2), 0);
+        QCOMPARE(ResolveSavedCameraIndex({}, L"fixture-B", 1), -1);
+    }
+
+    void failedCameraSelectionRetainsRequestedRetryIdentity()
+    {
+        // Invalid activation is a deterministic failed open, without touching
+        // a real camera. Retry identity must follow each request, not success.
+        okuflow::MediaCapture capture;
+        okuflow::CameraDescriptor first;
+        first.symbolicLink = L"fixture-camera-A";
+        QVERIFY(!capture.StartCapture(first, nullptr, {}));
+        QVERIFY(capture.LastSymbolicLink() == first.symbolicLink);
+        QVERIFY(capture.StopCapture());
+        okuflow::CameraDescriptor second;
+        second.symbolicLink = L"fixture-camera-B";
+        QVERIFY(!capture.StartCapture(second, nullptr, {}));
+        QVERIFY(capture.LastSymbolicLink() == second.symbolicLink);
+        QVERIFY(capture.StopCapture());
+        QVERIFY(capture.LastSymbolicLink() == second.symbolicLink);
+    }
+
     void blockedReaderReturnsAtDeadlineAndOwnsItsState()
     {
         struct Session {

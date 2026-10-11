@@ -5,6 +5,42 @@ separately from the media source's nominal format and reader output rate.
 
 This module owns Media Foundation camera discovery and frame acquisition.
 
+It also contains the optional `PhoneCameraTransport` / `PhoneVideoDecoder`.
+Phone entries are appended after physical cameras and retain stable USB serial
+and optional camera-ID identities. Structured adb connection types distinguish
+USB from Wi-Fi even when Windows supplies no bus address. The existing local
+adb server is queried without starting, replacing or killing it. Absence or
+failure of that optional server leaves normal camera discovery intact.
+
+On first launch, an authorized phone with a successful companion handshake is
+preferred. Saved webcam/phone identities and valid legacy indices take precedence.
+
+Selecting a phone opens independent video/control channels on a private worker,
+launches the installed companion, and feeds a system AVC or HEVC decoder.
+`PhoneVideoCodec` identifies the compressed input. AVC uses the built-in decoder;
+HEVC enumerates synchronous MFTs accepting HEVC/NV12, including the installed
+Microsoft HEVC extension. This synchronous transform may internally use DXVA.
+HEVC is advertised only after activation and an input/output configuration probe.
+A failed HEVC decoder or four seconds without its first decoded frame closes the
+session and reconnects once advertising only AVC. Phone preferences survive,
+and frame sequence/timestamps remain continuous through the fallback. Hardware
+output can share the capture DXGI manager and pins its samples; CPU NV12 uses
+the normal buffer normalization path. Phone stop follows the same bounded
+shutdown coordinator. `SetPhoneZoom` / `SetPhoneCamera` coalesce commands and
+are no-ops for webcams; automatic viewport-to-phone zoom is later work.
+`SetPhoneTorch` also coalesces requests. Every stream connection explicitly
+requests the light off; capture metadata reports actual availability and state.
+The Camera settings button is enabled only when that live phone supports a light.
+See [`android/PROTOCOL.md`](../../android/PROTOCOL.md) for limits and hardware gates.
+
+Pending D3D11 conversion-query polls allow the runtime to flush submission
+work, after the initial explicit End/Flush. This prevents the repeated 25 ms
+handoff timeouts observed with phone hardware decoding on the tested NVIDIA
+adapter. Each attempt still polls once and returns to Qt on `S_FALSE`; the
+retained-frame, producer-lease and bounded fallback rules remain in force.
+See [`android/DEVICE_VALIDATION.md`](../../android/DEVICE_VALIDATION.md) for
+the measured comparison and its limits.
+
 Current responsibilities:
 - enumerate available video devices
 - list native capture modes for the selected device

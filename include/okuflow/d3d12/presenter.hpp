@@ -48,10 +48,6 @@ public:
     std::uint64_t MissedPresentCount() const;
     void Resize(UINT width, UINT height);
     void Present(const uint8_t* data, UINT width, UINT height);
-    void PresentFromTexture(ID3D12Resource* texture,
-                            UINT width,
-                            UINT height,
-                            const FenceSyncParams* fenceSync = nullptr);
     bool PresentSceneTexture(ID3D12Resource* texture,
                              UINT sourceWidth,
                              UINT sourceHeight,

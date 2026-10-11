@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose draws everything; the window theme only avoids a white flash at launch. -->
+    <style name="Theme.OkuFlowCamera" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/okuflow_black</item>
+    </style>
+</resources>

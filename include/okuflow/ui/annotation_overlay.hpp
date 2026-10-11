@@ -7,6 +7,7 @@
 #include <QColor>
 #include <QPointer>
 #include <QRegion>
+#include <QSet>
 #include <QWidget>
 
 #include <optional>
@@ -15,6 +16,8 @@ QT_BEGIN_NAMESPACE
 class QCheckBox;
 class QEvent;
 class QFrame;
+class QFocusEvent;
+class QHideEvent;
 class QKeyEvent;
 class QLabel;
 class QLineEdit;
@@ -40,7 +43,6 @@ public:
     bool HasInk() const noexcept;
     const QVector<AnnotationStroke>& Strokes() const noexcept;
     void SetViewTransform(const ViewTransform& transform);
-    ViewTransform CurrentViewTransform() const noexcept;
 
     void SetPreferences(const QColor& color,
                         int widthPixels,
@@ -54,10 +56,10 @@ public:
     bool Dashed() const noexcept;
     QString ShapeKind() const;
     int TextSizePixels() const noexcept;
-    AnnotationTool CurrentTool() const noexcept;
     QVector<QWidget*> FocusTargets() const;
     void SetExcludedWidget(QWidget* widget);
 
+    void RotateClockwise(int quarterTurns);
     void ClearInk();
     bool Undo();
     bool Redo();
@@ -77,6 +79,7 @@ signals:
     void ToolChanged(const QString& accessibleToolName);
 
 protected:
+    bool event(QEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
     bool nativeEvent(const QByteArray& eventType,
                      void* message,
@@ -84,11 +87,14 @@ protected:
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void changeEvent(QEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void keyReleaseEvent(QKeyEvent* event) override;
 
 private:
     void BuildToolbar();
@@ -105,6 +111,7 @@ private:
     bool ForwardMouseToRenderTarget(QMouseEvent* event);
     bool ForwardWheelToRenderTarget(QWheelEvent* event);
     bool ForwardKeyToOwner(QKeyEvent* event);
+    void ReleaseForwardedPanKeys();
     void EmitPreferences();
     bool MapViewPointToScene(const QPointF& viewPoint, QPointF& scenePoint) const;
     QPointF MapScenePointToView(const QPointF& scenePoint) const;
@@ -134,6 +141,9 @@ private:
     bool marqueeSelecting_{};
     bool marqueeAdditive_{};
     bool forwardingMiddleDrag_{};
+    bool filteringKey_{};
+    bool forwardingKey_{};
+    QSet<int> forwardedPanKeys_;
     bool committingText_{};
     int activeScaleHandle_{-1};
     QPointF previousPointerScene_;

@@ -17,6 +17,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSignalSpy>
+#include <QSignalBlocker>
 #include <QStringList>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -114,6 +115,7 @@ class AiSettingsDialogTests final : public QObject {
     Q_OBJECT
 private slots:
     void clearedApiKeyRetainsProtectedCredentialId();
+    void unavailableVoicePreservesSavedChoice();
     void codexExplainPromptIsEditableAndReturned();
     void serverProviderPreservesHiddenCodexPreferences();
     void codingWorkspaceRejectsInvalidPathThenAcceptsCorrection_data();
@@ -123,6 +125,24 @@ private slots:
     void narrowGroupsKeepFieldsReachable_data();
     void narrowGroupsKeepFieldsReachable();
 };
+
+void AiSettingsDialogTests::unavailableVoicePreservesSavedChoice()
+{
+    settings::AssistiveSettings initial;
+    initial.ttsVoiceName = QStringLiteral("Saved fixture voice");
+    initial.ttsVoiceLocale = QStringLiteral("tr_TR");
+    AiSettingsDialog dialog(initial);
+    auto* voice = Accessible<QComboBox>(dialog, "Read Aloud Voice");
+    // Disabled TTS builds also preserve the same preference fields.
+    if (voice) {
+        const QSignalBlocker blocker(voice);
+        voice->clear();
+        voice->addItem(QStringLiteral("No installed Windows voices found"));
+    }
+    const auto result = dialog.result();
+    QCOMPARE(result.ttsVoiceName, initial.ttsVoiceName);
+    QCOMPARE(result.ttsVoiceLocale, initial.ttsVoiceLocale);
+}
 
 void AiSettingsDialogTests::clearedApiKeyRetainsProtectedCredentialId()
 {

@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include "okuflow/capture/capture_buffer.hpp"
 
 #include <QAccessible>
 #include <QLockFile>
@@ -311,13 +312,6 @@ void OkuFlowApp::RefreshCameraFormats(size_t index) {
     }
 }
 
-void OkuFlowApp::InvalidateRecordingFramePairing() {
-    // Recording pairing changes do not reset a live shared GPU timeline.
-    if (recordingManager_) {
-        recordingManager_->ClearPendingReadbacks();
-    }
-}
-
 // Failed submissions cancel only their reservation. Repeated failures drain
 // both APIs without resetting the presenter-owned live timeline.
 void OkuFlowApp::HandleCudaProcessingFailure() {
@@ -332,7 +326,6 @@ void OkuFlowApp::HandleCudaProcessingFailure() {
             HandlePresenterFault();
             return;
         }
-        InvalidateRecordingFramePairing();
         qWarning() << "CUDA processing failed 3 times in a row; GPU queues drained";
         ShowStatusMessage(QStringLiteral(
             "GPU processing keeps failing - showing unprocessed video."));
@@ -409,7 +402,6 @@ bool OkuFlowApp::EnsureCudaSurface(UINT width, UINT height) {
     cudaSurfaceHeight_ = 0;
     cudaSuperResWidth_ = 0;
     cudaSuperResHeight_ = 0;
-    InvalidateRecordingFramePairing();
 
     try {
         D3D12_RESOURCE_DESC desc{};
@@ -513,7 +505,6 @@ bool OkuFlowApp::EnsureCudaSurface(UINT width, UINT height) {
         cudaSuperResHeight_ = 0;
         cudaPipelineAvailable_ = false;
         UpdateKeystoneTrackingUi();
-        InvalidateRecordingFramePairing();
         qWarning() << "CUDA surface creation exception triggered fallback";
         cudaSurfaceRetry_.RecordFailure(CudaSurfaceRetry::Clock::now());
         return false;
@@ -521,6 +512,7 @@ bool OkuFlowApp::EnsureCudaSurface(UINT width, UINT height) {
 }
 
 bool OkuFlowApp::ProcessFrameWithCuda(UINT width, UINT height) {
+    cudaSubmissionBusy_ = false;
     const auto& stageRaw = cpuPipeline_.StageRaw();
     if (stageRaw.empty()) {
         qWarning() << "CUDA pipeline skipped: stage raw empty";
@@ -555,6 +547,7 @@ bool OkuFlowApp::ProcessFrameWithCuda(UINT width, UINT height) {
 bool OkuFlowApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
                                              CapturedFrame* originalFrame,
                                              CaptureGpuPending* outGpuCompletionPending) {
+    cudaSubmissionBusy_ = false;
     if (outGpuCompletionPending) {
         *outGpuCompletionPending = CaptureGpuPending::None;
     }
@@ -758,6 +751,7 @@ bool OkuFlowApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
         recordingManager_ && recordingManager_->IsActive();
 
     if (!RunCudaPipeline(hostInput, outWidth, outHeight)) {
+        if (cudaSubmissionBusy_) return false;
         if (!rawCudaPathWarned_) {
             qWarning() << "GPU raw-format path failed; falling back to CPU conversion for"
                        << (isNv12 ? "NV12" : "YUY2") << "frames";
@@ -788,6 +782,7 @@ bool OkuFlowApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
 // state, runs ProcessFrame with the fence dance, and presents the result.
 // The interop surface must already exist at presentWidth x presentHeight.
 bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth, UINT presentHeight) {
+    cudaSubmissionBusy_ = false;
     if (!cudaSurface_) {
         qWarning() << "CUDA pipeline disabled: surface not available";
         usingCudaLastFrame_ = false;
@@ -865,6 +860,12 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     settings.enableMlSuperRes = mlTextSuperResolutionEnabled_;
     settings.mlSuperResStrength = mlTextSuperResolutionStrength_;
     settings.mlSuperResUltra1440p = mlTextSuperResolutionUltra1440p_;
+    if (settings.enableMlSuperRes && !settings.mlSuperResUltra1440p &&
+        settings.zoomAmount >= 1.33f) {
+        settings.spatialViewTransform = CanonicalizeSuperResViewTransform(
+            settings.spatialViewTransform, presentWidth, presentHeight,
+            cudaSuperResWidth_, cudaSuperResHeight_, settings.zoomAmount);
+    }
     settings.ApplyTextClarityMaster();
 
     // The presenter owns reservations and queue dependencies for both APIs.
@@ -887,6 +888,17 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
         pipelineOrchestrator_->RecordStageSample(
             FrameTimingStage::CudaSubmission,
             static_cast<float>(cudaSubmissionTimer.nsecsElapsed()) * 1e-6f);
+        if (cudaSurface_->LastFailureWasBusy()) {
+            cudaSubmissionBusy_ = true;
+            // Admission queued nothing, so only the unused fence reservation
+            // is canceled. Keep the last scene and all failure policy intact.
+            if (cudaSyncParams.enable &&
+                !presenter_->CancelExternalSignal(cudaSyncParams.signalValue)) {
+                cudaSubmissionBusy_ = false;
+                HandlePresenterFault();
+            }
+            return false;
+        }
         if (cudaSurface_->IsFaulted()) {
             HandlePresenterFault();
             return false;
@@ -937,7 +949,11 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     Q_UNUSED(presentHeight);
     usingCudaLastFrame_ = true;
     cudaSceneReady_ = true;
-    pipelineOrchestrator_->MarkViewportDirty();
+    // CPU pixels belong to the last CPU presentation, not this GPU scene.
+    presentationBuffer_.clear();
+    presentationWidth_ = 0;
+    presentationHeight_ = 0;
+    pipelineOrchestrator_->MarkSceneDirty();
     return true;
 }
 
@@ -965,6 +981,13 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
                                  : ViewportFitMode::kFill);
     if (!transform.valid) {
         return;
+    }
+    if (mlTextSuperResolutionEnabled_ && !mlTextSuperResolutionUltra1440p_ &&
+        zoomEnabled_ && zoomAmount_ >= 1.33f &&
+        pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fill) {
+        transform = CanonicalizeSuperResViewTransform(
+            transform, processedFrameWidth_, processedFrameHeight_,
+            cudaSuperResWidth_, cudaSuperResHeight_, zoomAmount_);
     }
     const ViewTransform annotationTransform = transform;
     if (mainWindow_) {
@@ -1014,7 +1037,6 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     presentationFocusX = std::clamp(presentationFocusX, 0.0f, 1.0f);
     presentationFocusY = std::clamp(presentationFocusY, 0.0f, 1.0f);
 
-    DrainCompletedGpuReadbacks();
     if (pendingPhotoReadbackId_ != 0 &&
         pendingPhotoReadbackTimer_.isValid() &&
         pendingPhotoReadbackTimer_.elapsed() > 1000) {
@@ -1318,13 +1340,6 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                 static_cast<int>(readbackHeight),
                 true);
         }
-        if (recordingManager_) {
-            recordingManager_->HandleProcessedReadback(
-                requestId,
-                asyncReadbackBuffer_.data(),
-                readbackWidth,
-                readbackHeight);
-        }
         const bool focusGateEnabled = autoTextClarityEnabled_;
         const bool focusAcceptable =
             !focusGateEnabled || !cudaSurface_ ||
@@ -1429,20 +1444,11 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
                 ingress->maxArrivalIntervalMs = std::max(ingress->maxArrivalIntervalMs, interval);
             }
             ingress->lastArrivalMs = GetTickCount64();
-            if (!ingress->retainBurst) {
-                if (!ingress->frames.empty()) {
-                    ++ingress->dropped;
-                    ++ingress->profileDropped;
-                }
-                retired.swap(ingress->frames);
-            } else if (ingress->frames.size() >=
-                       kMaxRecordingCameraFrames) {
-                retired.push_back(std::move(ingress->frames.front()));
-                ingress->frames.pop_front();
-                ++ingress->dropped;
-                ++ingress->profileDropped;
-            }
-            ingress->frames.push_back(std::move(frame));
+            const auto dropped = EnqueueCaptureFrame(
+                ingress->frames, std::move(frame), ingress->retainBurst,
+                kMaxRecordingCameraFrames, retired);
+            ingress->dropped += dropped;
+            ingress->profileDropped += dropped;
             if (!ingress->wakeQueued && ingress->receiver) {
                 ingress->wakeQueued = true;
                 auto* app = ingress->receiver;
@@ -1457,8 +1463,7 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
                         ingress->retainBurst = app->recordingManager_ && app->recordingManager_->IsActive();
                     }
                     if (app->recordingManager_) {
-                        for (std::uint64_t i = 0; i < received; ++i)
-                            app->recordingManager_->NotifyCaptureFrame(i < dropped);
+                        app->recordingManager_->NotifyCaptureFrames(received, dropped);
                     }
                     if (app->pipelineOrchestrator_)
                         app->pipelineOrchestrator_->NotifyCameraFrameAvailable();
@@ -1599,6 +1604,8 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
     cpuSceneHeight_ = 0;
     cpuSceneReady_ = false;
     cameraActive_ = true;
+    settingsController_->InitializeLegacyCameraIdentity(
+        selectedCameraIndex_, currentCameraAccelerationKey_);
     cameraFramePresented_ = false;
     pendingSceneCaptureClock100ns_.reset();
     currentCameraCaptureClock100ns_ = -1;
@@ -1707,6 +1714,9 @@ void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
     }
     cameraActive_ = false;
     cameraFramePresented_ = false;
+    presentationBuffer_.clear();
+    presentationWidth_ = 0;
+    presentationHeight_ = 0;
     currentCaptureAccelerated_ = false;
     currentCaptureZeroCopyActive_ = false;
     captureZeroCopyAvailable_ = true;
@@ -1880,7 +1890,11 @@ void OkuFlowApp::DriveCameraReconnect() {
 
 
 bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
+    UpdatePhoneLightUi();
     if (HandlePresenterFault()) return false;
+    // A completed capture is independent of another camera arrival or present.
+    // Poll on idle ticks too, before any camera/readiness early return.
+    DrainCompletedGpuReadbacks();
     // Camera loss / reconnect state machine. ConsumeDeviceLost() is polled
     // here in addition to the capture error callback so the reconnect starts
     // no matter which side notices the loss first.
@@ -2005,6 +2019,16 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
             return true;
         }
         if (HandlePresenterFault()) return false;
+        if (cudaSubmissionBusy_) {
+            // Drop this camera arrival rather than retrying or converting it;
+            // viewport movement can still present the previous completed scene.
+            if (recordingManager_) recordingManager_->NotifyCaptureGpuUploadBusy();
+            if (cudaSceneReady_ && (pipelineOrchestrator_->IsViewportDirty() ||
+                                    presenter_->NeedsScenePresent())) {
+                PresentLatestCudaScene(false, nullptr);
+            }
+            return false;
+        }
         if (gpuCompletionPending != CaptureGpuPending::None) {
             if (!deferredGpuSequence_ ||
                 *deferredGpuSequence_ != frame.sequenceNumber) {
@@ -2082,10 +2106,11 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
     pipelineOrchestrator_->RecordStageSample(
         FrameTimingStage::CpuPreparation,
         static_cast<float>(cpuPreparationTimer.nsecsElapsed()) * 1e-6f);
-    processedFrameWidth_ = width;
-    processedFrameHeight_ = height;
-
     BuildCompositeAndPresent(width, height, &originalFrame);
+    if (cudaSubmissionBusy_) {
+        if (recordingManager_) recordingManager_->NotifyCaptureGpuUploadBusy();
+        return false;
+    }
     if (photoCapturePending_ && !usingCudaLastFrame_) {
         CapturePendingPhoto(originalFrame);
     }
@@ -2094,10 +2119,10 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
 void OkuFlowApp::BuildCompositeAndPresent(UINT width,
                                            UINT height,
                                            CapturedFrame* originalFrame) {
-    processedFrameWidth_ = width;
-    processedFrameHeight_ = height;
-    usingCudaLastFrame_ = false;
+    cudaSubmissionBusy_ = false;
     if (!debugViewEnabled_ && ProcessFrameWithCuda(width, height)) {
+        processedFrameWidth_ = width;
+        processedFrameHeight_ = height;
         usingCudaLastFrame_ = true;
         // Recording and the periodic assistive grab both use the async
         // readback ring; nothing on this path blocks on the GPU anymore.
@@ -2106,6 +2131,17 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
         PresentLatestCudaScene(true, originalFrame);
         return;
     }
+
+    if (cudaSubmissionBusy_) {
+        if (cudaSceneReady_ && (pipelineOrchestrator_->IsViewportDirty() ||
+                                presenter_->NeedsScenePresent())) {
+            PresentLatestCudaScene(false, nullptr);
+        }
+        return;
+    }
+    processedFrameWidth_ = width;
+    processedFrameHeight_ = height;
+    usingCudaLastFrame_ = false;
 
     if (!debugViewEnabled_) {
         // The CPU effects pipeline is deprecated: without CUDA the app
@@ -2324,7 +2360,10 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
                 srcWidth,
                 srcHeight,
                 ToRecordingTransform(transform),
-                std::move(*originalFrame));
+                std::move(*originalFrame),
+                mainWindow_ && mainWindow_->annotationOverlay()
+                    ? mainWindow_->annotationOverlay()->Strokes()
+                    : QVector<AnnotationStroke>{});
         }
     }
     presenter_->Present(presentationBuffer_.data(), mapping.targetWidth, mapping.targetHeight);

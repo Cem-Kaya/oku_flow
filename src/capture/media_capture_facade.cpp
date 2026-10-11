@@ -1,5 +1,6 @@
 #ifdef _WIN32
 #include "media_capture_session.hpp"
+#include "okuflow/capture/phone_camera.hpp"
 
 #include <QDebug>
 #include <chrono>
@@ -17,6 +18,34 @@ void RetainAbandonedSession(const std::shared_ptr<MediaCaptureSession>& session)
 } // namespace
 
 MediaCapture::MediaCapture() : session_(std::make_shared<MediaCaptureSession>()) {}
+int ResolveSavedCameraIndex(const std::vector<CameraDescriptor>& cameras,
+                            const std::wstring& savedSymbolicLink,
+                            int legacyIndex)
+{
+    if (cameras.empty()) return -1;
+    if (!savedSymbolicLink.empty()) {
+        for (size_t index = 0; index < cameras.size(); ++index) {
+            if (CompareStringOrdinal(cameras[index].symbolicLink.c_str(), -1,
+                    savedSymbolicLink.c_str(), -1, TRUE) == CSTR_EQUAL) {
+                return static_cast<int>(index);
+            }
+        }
+        // A busy phone may expose only its stable default entry during discovery.
+        // Preserve that phone when a previously selected lens cannot be queried.
+        for (size_t index = 0; index < cameras.size(); ++index) {
+            if (!cameras[index].phoneSerial.empty() && cameras[index].phoneCameraId.empty() &&
+                savedSymbolicLink.starts_with(cameras[index].symbolicLink + L"/"))
+                return static_cast<int>(index);
+        }
+        return 0;
+    }
+    if (legacyIndex >= 0 && static_cast<size_t>(legacyIndex) < cameras.size()) return legacyIndex;
+    for (size_t index = 0; index < cameras.size(); ++index) {
+        if (!cameras[index].phoneSerial.empty() && cameras[index].phoneAppReady)
+            return static_cast<int>(index);
+    }
+    return 0;
+}
 MediaCapture::~MediaCapture() { StopCapture(); }
 void MediaCapture::Swap(MediaCapture& other) noexcept
 {
@@ -41,7 +70,11 @@ std::vector<CameraDescriptor> MediaCapture::EnumerateCameras()
     }
     // Enumeration state is separate even if an old session is still stopping.
     auto enumerator = std::make_shared<MediaCaptureSession>();
-    return enumerator->EnumerateCameras();
+    auto cameras = enumerator->EnumerateCameras();
+    auto phones = PhoneCameraTransport::Enumerate();
+    // Physical ordering stays stable; the selection resolver honors saved cameras.
+    cameras.insert(cameras.end(), std::make_move_iterator(phones.begin()), std::make_move_iterator(phones.end()));
+    return cameras;
 }
 
 std::vector<VideoFormat> MediaCapture::EnumerateFormats(const CameraDescriptor& descriptor)
@@ -51,6 +84,7 @@ std::vector<VideoFormat> MediaCapture::EnumerateFormats(const CameraDescriptor& 
         return {};
     }
     auto enumerator = std::make_shared<MediaCaptureSession>();
+    if (!descriptor.phoneSerial.empty()) return {}; // Phone negotiates its live mode automatically.
     auto formats = enumerator->EnumerateFormats(descriptor);
     lastError_ = enumerator->LastError();
     return formats;
@@ -70,6 +104,8 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
     }
     session_ = std::make_shared<MediaCaptureSession>();
     lastStopCompleted_ = true;
+    // Retry the requested physical device even when its first open fails.
+    lastSymbolicLink_ = descriptor.symbolicLink;
     const bool started = session_->StartCapture(descriptor, requestedFormat,
         std::move(callback), preferredSubtype, std::move(errorCallback), accelerationMode,
         requestedStableId);
@@ -79,8 +115,7 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
     formatNotice_ = session_->FormatNotice();
     negotiatedFormat_ = session_->NegotiatedFormat();
     nativeFormats_ = session_->NativeFormats();
-    if (started) lastSymbolicLink_ = session_->LastSymbolicLink();
-    else if (!StopCapture()) {
+    if (!started && !StopCapture()) {
         lastError_ = "The camera could not start and its driver did not stop safely. Restart OkuFlow before trying again.";
         session_->lastFailureKind_.store(CameraFailureKind::Other);
     }
@@ -168,5 +203,15 @@ GpuFramePreparationResult MediaCapture::PrepareGpuFrameForCuda(
 }
 bool MediaCapture::ReadbackGpuFrame(MediaFrame& frame)
 { return session_ && !session_->releaseNotified_ && session_->ReadbackGpuFrame(frame); }
+void MediaCapture::SetPhoneZoom(float ratio)
+{ if (session_ && !session_->releaseNotified_ && session_->phoneTransport_) session_->phoneTransport_->SetZoom(ratio); }
+void MediaCapture::SetPhoneCamera(const std::string& id)
+{ if (session_ && !session_->releaseNotified_ && session_->phoneTransport_) session_->phoneTransport_->SetCamera(id); }
+void MediaCapture::SetPhoneTorch(bool enabled)
+{ if (session_ && !session_->releaseNotified_ && session_->phoneTransport_) session_->phoneTransport_->SetTorch(enabled); }
+bool MediaCapture::PhoneTorchAvailable() const
+{ return session_ && !session_->releaseNotified_ && session_->phoneTransport_ && session_->phoneTransport_->TorchAvailable(); }
+bool MediaCapture::PhoneTorchEnabled() const
+{ return session_ && !session_->releaseNotified_ && session_->phoneTransport_ && session_->phoneTransport_->TorchEnabled(); }
 } // namespace okuflow
 #endif

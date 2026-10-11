@@ -1694,6 +1694,8 @@ void CudaInteropSurface::ReleaseSuperRes() {
         superResStopEvent_ = nullptr;
     }
     superResTimingPending_ = false;
+    discardSuperResTiming_ = false;
+    superResTimingStrength_ = -1.0f;
     superResAutoDisabled_ = false;
     superResFailureLatched_ = false;
     superResFailSrcWidth_ = 0;
@@ -1743,6 +1745,7 @@ void CudaInteropSurface::SetSuperResPerformanceOverride(bool enabled) {
     superResPerformanceOverride_ = enabled;
     if (enabled) {
         superResAutoDisabled_ = false;
+        discardSuperResTiming_ = superResTimingPending_;
         superResWarmupSamples_ = 0;
         superResTimingSamples_ = 0;
         superResTimingTotalMs_ = 0.0f;
@@ -1769,6 +1772,11 @@ void CudaInteropSurface::ConsumeSuperResTiming() {
         return;
     }
     if (query != cudaSuccess) {
+        superResTimingPending_ = false;
+        return;
+    }
+    if (discardSuperResTiming_) {
+        discardSuperResTiming_ = false;
         superResTimingPending_ = false;
         return;
     }
@@ -1808,7 +1816,6 @@ void CudaInteropSurface::UpdateSuperResCache(
     unsigned int width,
     unsigned int height,
     const ProcessingSettings& settings) {
-    ConsumeSuperResTiming();
     superResActive_ = false;
     superResRoi_.valid = false;
 
@@ -1824,6 +1831,7 @@ void CudaInteropSurface::UpdateSuperResCache(
          (!settings.mlSuperResUltra1440p &&
           settings.zoomAmount >= 1.33f));
     if (!requested && superResRequestedLastFrame_) {
+        discardSuperResTiming_ = superResTimingPending_;
         superResAutoDisabled_ = false;
         superResFailureLatched_ = false;
         superResWarmupSamples_ = 0;
@@ -1838,9 +1846,6 @@ void CudaInteropSurface::UpdateSuperResCache(
             superResStatus_ =
                 "Ultra uses the native full frame; the camera is already 1440p or higher";
         }
-        return;
-    }
-    if (superResAutoDisabled_) {
         return;
     }
 
@@ -1859,6 +1864,13 @@ void CudaInteropSurface::UpdateSuperResCache(
     unsigned int factorDen = 0;
     unsigned int sourceWidth = 0;
     unsigned int sourceHeight = 0;
+    unsigned int sourceX = 0;
+    unsigned int sourceY = 0;
+    const ViewTransform requestedView = settings.spatialViewTransform.valid
+        ? settings.spatialViewTransform
+        : ComputeViewTransform(width, height, width, height,
+                               settings.zoomAmount, settings.zoomCenterX,
+                               settings.zoomCenterY, ViewportFitMode::kFill);
     const unsigned int outputWidth = superResWidth_;
     const unsigned int outputHeight = superResHeight_;
     for (const SuperResScale& scale : kSupportedScales) {
@@ -1897,6 +1909,12 @@ void CudaInteropSurface::UpdateSuperResCache(
             candidateWidth < 160u || candidateHeight < 90u) {
             continue;
         }
+        if (!settings.mlSuperResUltra1440p &&
+            !ComputeContainingSourceCrop(requestedView, width, height,
+                                         candidateWidth, candidateHeight,
+                                         sourceX, sourceY)) {
+            continue;
+        }
         factorNum = scale.numerator;
         factorDen = scale.denominator;
         sourceWidth = candidateWidth;
@@ -1908,7 +1926,8 @@ void CudaInteropSurface::UpdateSuperResCache(
         (superResFailSrcWidth_ != sourceWidth ||
          superResFailSrcHeight_ != sourceHeight ||
          superResFailFactorNum_ != factorNum ||
-         superResFailFactorDen_ != factorDen)) {
+         superResFailFactorDen_ != factorDen ||
+         superResTimingStrength_ != std::clamp(settings.mlSuperResStrength, 0.0f, 1.0f))) {
         superResFailureLatched_ = false;
     }
     const auto latchFailure = [&]() {
@@ -1928,28 +1947,31 @@ void CudaInteropSurface::UpdateSuperResCache(
         return;
     }
 
-    const float centerX =
-        std::clamp(settings.zoomCenterX, 0.0f, 1.0f) *
-        static_cast<float>(width - 1u);
-    const float centerY =
-        std::clamp(settings.zoomCenterY, 0.0f, 1.0f) *
-        static_cast<float>(height - 1u);
-    const unsigned int sourceX = settings.mlSuperResUltra1440p
-        ? 0u
-        : static_cast<unsigned int>(std::clamp(
-              static_cast<int>(std::lround(
-                  centerX -
-                  (static_cast<float>(sourceWidth) - 1.0f) * 0.5f)),
-              0,
-              static_cast<int>(width - sourceWidth)));
-    const unsigned int sourceY = settings.mlSuperResUltra1440p
-        ? 0u
-        : static_cast<unsigned int>(std::clamp(
-              static_cast<int>(std::lround(
-                  centerY -
-                  (static_cast<float>(sourceHeight) - 1.0f) * 0.5f)),
-              0,
-              static_cast<int>(height - sourceHeight)));
+    const float effectiveStrength = std::clamp(settings.mlSuperResStrength, 0.0f, 1.0f);
+    const bool configurationChanged = superResTimingSourceWidth_ != sourceWidth ||
+        superResTimingSourceHeight_ != sourceHeight ||
+        superResTimingOutputWidth_ != outputWidth ||
+        superResTimingOutputHeight_ != outputHeight ||
+        superResTimingStrength_ != effectiveStrength;
+    if (configurationChanged) {
+        // Ensure reloads SDK image/effect resources only for a changed load
+        // configuration; retire their previous transfers before deallocation.
+        if (maxineSuperRes_ && maxineSuperRes_->IsReady() && !SynchronizeStream()) return;
+        superResTimingSourceWidth_ = sourceWidth;
+        superResTimingSourceHeight_ = sourceHeight;
+        superResTimingOutputWidth_ = outputWidth;
+        superResTimingOutputHeight_ = outputHeight;
+        superResTimingStrength_ = effectiveStrength;
+        discardSuperResTiming_ = superResTimingPending_;
+        superResWarmupSamples_ = 0;
+        superResTimingSamples_ = 0;
+        superResTimingTotalMs_ = 0.0f;
+        superResLastAverageMs_ = -1.0f;
+        superResAutoDisabled_ = false;
+    }
+    ConsumeSuperResTiming();
+    if (superResAutoDisabled_) return;
+
     const auto* sourceRoi =
         reinterpret_cast<const unsigned char*>(source) +
         static_cast<size_t>(sourceY) * sourcePitch +
@@ -1989,8 +2011,9 @@ void CudaInteropSurface::UpdateSuperResCache(
         superResDestination = deviceSuperResOutput_;
         superResDestinationPitch = devicePitchSuperResOutput_;
     }
-    // NvCVImage_Transfer writes the complete BGRA destination after inference,
-    // so clearing the destination first only consumes bandwidth.
+    // Maxine converts three-channel output to BGRA; NvCVImage_Transfer does
+    // not guarantee alpha. The allocation stays private until Run succeeds
+    // and the alpha-only pass below completes on this same stream.
     if (!maxineSuperRes_->Run(
             sourceRoi,
             sourcePitch,
@@ -2001,6 +2024,8 @@ void CudaInteropSurface::UpdateSuperResCache(
         latchFailure();
         return;
     }
+    LaunchOpaqueAlphaLinear(superResDestination, superResDestinationPitch,
+                            static_cast<int>(outputWidth), static_cast<int>(outputHeight), stream_);
     if (measure) {
         ThrowIfCudaFailed(cudaEventRecord(superResStopEvent_, stream_),
                           "cudaEventRecord SuperRes stop failed");
@@ -2732,23 +2757,6 @@ bool CudaInteropSurface::EnsureDisplayColorLut(const std::uint32_t* lut,
     return true;
 }
 
-void CudaInteropSurface::RunGradientDemoKernel(unsigned int width, unsigned int height, float timeSeconds) {
-    if (!valid_) {
-        return;
-    }
-
-    if (cudaDeviceId_ >= 0) {
-        ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "cudaSetDevice failed");
-    }
-
-    const unsigned int targetWidth = (width == 0) ? width_ : width;
-    const unsigned int targetHeight = (height == 0) ? height_ : height;
-
-    LaunchGradientKernel(surfaceObject_, static_cast<int>(targetWidth), static_cast<int>(targetHeight), timeSeconds);
-    ThrowIfCudaFailed(cudaGetLastError(), "Gradient kernel launch failed");
-    if (!SynchronizeStream()) return;
-}
-
 bool CudaInteropSurface::PollCaptureCopy() {
     if (streamFaulted_) return false;
     if (!d3d11Interop_ || !d3d11Interop_->copyLease.Pending()) return true;
@@ -2982,6 +2990,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
     if (!settings.enableAutoTextClarity) focusScoreValid_ = false;
     const bool deviceResidentInput = input.d3d11Texture != nullptr;
     captureInteropFailed_ = false;
+    uploadAdmissionBusy_ = false;
     if (!valid_ || (!deviceResidentInput && !input.hostPixels) ||
         input.width == 0 || input.height == 0) {
         return false;
@@ -3071,6 +3080,25 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
     }
 
     try {
+        // Admission must precede fence waits, timing events, LUT uploads and
+        // device allocations: ordinary backpressure has no work to drain.
+        if (!deviceResidentInput && pinnedUploadCapacity_ != 0) {
+            bool available = false;
+            for (auto& slot : pinnedUploadSlots_) {
+                if (!slot.uploadPending) { available = true; break; }
+                const auto status = cudaEventQuery(slot.uploadComplete);
+                if (status == cudaErrorNotReady) continue;
+                ThrowIfCudaFailed(status, "cudaEventQuery upload admission failed");
+                slot.uploadPending = false;
+                available = true;
+                break;
+            }
+            if (!available) {
+                uploadAdmissionBusy_ = true;
+                lastError_.clear();
+                return false;
+            }
+        }
         if (fenceSync.enable && externalSemaphore_ != nullptr) {
             cudaExternalSemaphoreWaitParams waitParams{};
             waitParams.params.fence.value = fenceSync.waitValue;
@@ -3862,12 +3890,21 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             LaunchTextSceneAnalysis(deviceHistogram_, static_cast<int>(procWidth * procHeight),
                                     deviceTextAnalysis_, stream_);
             const int localRadius = std::clamp(static_cast<int>(procWidth / 32u), 8, 128);
-            LaunchTextLocalStatistics(deviceTextLuma_, deviceTextFloatPitch_,
+            const bool recomputeTextStatistics = backgroundActive || glareActive || settings.enableClahe;
+            if (recomputeTextStatistics) {
+                LaunchTextLocalMean(deviceTextLuma_, deviceTextFloatPitch_,
+                                    deviceTextHorizontal_, deviceTextMean_,
+                                    current, currentPitch,
+                                    static_cast<int>(procWidth), static_cast<int>(procHeight),
+                                    localRadius, stream_);
+            } else {
+                LaunchTextLocalStatistics(deviceTextLuma_, deviceTextFloatPitch_,
                                       deviceTextHorizontal_, deviceTextMean_,
                                       deviceTextSqHorizontal_, deviceTextSqMean_,
                                       current, currentPitch,
                                       static_cast<int>(procWidth), static_cast<int>(procHeight),
                                       localRadius, stream_);
+            }
 
             // Focus is reduced on-device every frame but copied as two floats
             // only about twice per second. Event polling never stalls rendering.
@@ -3965,7 +4002,12 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 textMaskHistoryValid_ = false;
             }
 
-            if (smartSharpenActive) {
+            // Explicit Adaptive Text replaces every RGB pixel with its mask;
+            // automatic mode consumes the sharpened scene only for mixed
+            // content. Its scene class is device-resident, so for paper/board
+            // the kernels exit and the mode-2 composite below replaces all.
+            const bool compositeFollows = binarizationActive && activeTextMask;
+            if (smartSharpenActive && !settings.enableAdaptiveBinarization) {
                 LaunchSmartSharpenLinear(alternate, alternatePitch,
                                          deviceScratch_, devicePitchScratch_,
                                          current, currentPitch,
@@ -3973,12 +4015,15 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                                          static_cast<int>(procWidth), static_cast<int>(procHeight),
                                          std::clamp(settings.smartSharpenStrength, 0.0f, 1.0f),
                                          settings.enableSelectiveSharpen || textMaster,
-                                         stream_);
+                                         stream_,
+                                         compositeFollows ? deviceTextAnalysis_ : nullptr);
                 swapBuffers();
             }
 
             if (binarizationActive && activeTextMask) {
-                LaunchTextMaskComposite(alternate, alternatePitch, current, currentPitch,
+                // Per-pixel operation: current can be replaced in place. The
+                // alternate image remains scratch, never temporal/mask history.
+                LaunchTextMaskComposite(current, currentPitch, current, currentPitch,
                                         activeTextMask, deviceTextMaskPitch_,
                                         static_cast<int>(procWidth), static_cast<int>(procHeight),
                                         settings.enableTwoColorText
@@ -3987,7 +4032,6 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                                             ? settings.textBackgroundBgra : 0xffffffffu,
                                         settings.enableAdaptiveBinarization ? 1 : 2,
                                         deviceTextAnalysis_, stream_);
-                swapBuffers();
             }
         } else {
             textMaskHistoryValid_ = false;
@@ -4135,6 +4179,13 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                             procWidth,
                             procHeight,
                             settings);
+        if (streamFaulted_) {
+            // A configuration reload may fail to retire prior SDK transfers.
+            // Do not enqueue another cache write, timing marker or success
+            // fence; the caller retains its reservation and quarantines storage.
+            lastError_ = "CUDA stream could not retire the previous SuperRes configuration";
+            return false;
+        }
         // Only a new camera frame reaches this point. Temporal effects have
         // already completed on the full scene; viewport-only presents reuse
         // the cache or fall back to the scene when panning outside its ROI.

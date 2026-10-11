@@ -82,6 +82,8 @@ private slots:
     void pixelMappingUsesCanonicalTransform();
     void cachedRoiRemapsWithoutChangingDestinationGeometry();
     void cachedRoiRejectsUncoveredViewport();
+    void superResCanonicalViewportFitsFreshIntegerCrop();
+    void superResDefault720pViewportRemainsUniform();
     void sharedTimelineAdoptsPresenterSlotSignals();
     void sharedTimelineIgnoresMissedAdmission();
 };
@@ -309,6 +311,63 @@ void ViewTransformTests::cachedRoiRejectsUncoveredViewport() {
     QVERIFY(!RemapViewTransformToSourceRect(
         requested, staleCenterRoi, remapped));
     QVERIFY(!remapped.valid);
+}
+
+void ViewTransformTests::superResCanonicalViewportFitsFreshIntegerCrop() {
+    for (float zoom : {1.33f, 1.5f, 2.0f, 3.0f, 4.0f}) {
+        for (float focus : {0.0f, 0.253f, 0.317f, 0.5f, 0.999f, 1.0f}) {
+            const auto requested = ComputeViewTransform(1920, 1080, 1920, 1080,
+                zoom, focus, focus, ViewportFitMode::kFill);
+            const auto canonical = CanonicalizeSuperResViewTransform(
+                requested, 1920, 1080, 1920, 1080, zoom);
+            const unsigned int numerator = zoom >= 4.0f ? 4u : zoom >= 3.0f ? 3u :
+                zoom >= 2.0f ? 2u : zoom >= 1.5f ? 3u : 4u;
+            const unsigned int denominator = zoom >= 2.0f ? 1u : zoom >= 1.5f ? 2u : 3u;
+            const auto cropW = 1920u * denominator / numerator;
+            const auto cropH = 1080u * denominator / numerator;
+            unsigned int x = 0, y = 0;
+            QVERIFY(ComputeContainingSourceCrop(canonical, 1920, 1080, cropW, cropH, x, y));
+            const NormalizedSourceRect roi{float(x)/1920.0f, float(y)/1080.0f,
+                float(cropW)/1920.0f, float(cropH)/1080.0f};
+            ViewTransform remapped;
+            QVERIFY(RemapViewTransformToSourceRect(canonical, roi, remapped));
+            QCOMPARE(remapped.destinationWidth, requested.destinationWidth);
+            QCOMPARE(remapped.destinationHeight, requested.destinationHeight);
+            QVERIFY(std::abs(canonical.sourceX-requested.sourceX) <= 1.0f/1920.0f + 0.005f);
+        }
+    }
+}
+
+void ViewTransformTests::superResDefault720pViewportRemainsUniform() {
+    for (float zoom : {1.33f, 2.0f}) {
+    const float cropFraction = zoom == 1.33f ? 0.75f : 0.5f;
+    const unsigned int cropWidth = zoom == 1.33f ? 960u : 640u;
+    const unsigned int cropHeight = zoom == 1.33f ? 540u : 360u;
+    for (const auto viewport : {std::pair{1280u, 720u}, std::pair{1024u, 768u},
+                                std::pair{720u, 1280u}}) {
+        for (float focus : {0.0f, 0.253f, 0.317f, 0.5f, 0.999f, 1.0f}) {
+            const auto requested = ComputeViewTransform(1280, 720,
+                viewport.first, viewport.second, zoom, focus, focus, ViewportFitMode::kFill);
+            const auto canonical = CanonicalizeSuperResViewTransform(
+                requested, 1280, 720, 1280, 720, zoom);
+            unsigned int x = 0, y = 0;
+            QVERIFY(ComputeContainingSourceCrop(canonical, 1280, 720, cropWidth, cropHeight, x, y));
+            ViewTransform remapped;
+            QVERIFY(RemapViewTransformToSourceRect(canonical,
+                {float(x)/1280.0f, float(y)/720.0f, cropFraction, cropFraction}, remapped));
+            const float stepX = canonical.sourceWidth * 1280.0f / viewport.first;
+            const float stepY = canonical.sourceHeight * 720.0f / viewport.second;
+            QVERIFY(std::abs(stepX-stepY) < 0.0001f);
+            const auto moved = ComputeViewTransform(1280, 720,
+                viewport.first, viewport.second, zoom, focus < 0.5f ? 1.0f : 0.0f,
+                focus < 0.5f ? 1.0f : 0.0f, ViewportFitMode::kFill);
+            if (viewport.first == 1280) {
+                QVERIFY(!RemapViewTransformToSourceRect(moved,
+                    {float(x)/1280.0f, float(y)/720.0f, cropFraction, cropFraction}, remapped));
+            }
+        }
+    }
+    }
 }
 
 void ViewTransformTests::sharedTimelineAdoptsPresenterSlotSignals() {
