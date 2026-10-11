@@ -222,17 +222,19 @@ certificate's private key. Setting `OKUFLOW_PUBLIC_RELEASE=1` makes a missing
 or invalid signature a packaging failure rather than silently publishing an
 unsigned public build.
 
-Release currently retains a diagnostics terminal while stabilization
-is being field-tuned. Stabilizer output is rate-limited to one detailed sample
-per 30 camera frames rather than printing per frame. The CUDA runtime is linked
+Normal Windows launch opens the GUI without a terminal. `--console` attaches
+an existing parent terminal for diagnostics; debug logs also remain available
+under the user's OkuFlow documents directory. Stabilizer output is rate-limited
+to one detailed sample per 30 camera frames. The CUDA runtime is linked
 statically. NVIDIA Video Effects and Codex CLI binaries are obtained from
 vendors through Setup Assistant and are never copied into the bundle.
 OpenAI's Codex bootstrap script is pinned and SHA-256 verified before execution;
 that bootstrap verifies the selected official release package against OpenAI's
 checksum manifest.
-An existing `dist\OkuFlow\output\` is preserved and restored around the
-rebuild; photos, recordings, notes, and analysis files are user data and are
-never intentionally removed by packaging.
+An existing `dist\OkuFlow\output\` leaves that bundle untouched; the new bundle
+is published beside it as `dist\OkuFlow2\`. The same fallback applies when the
+primary bundle is locked. Photos, recordings, notes and analysis files are user
+data and are never intentionally removed by packaging.
 If Qt's transfer fails, Setup retries with the Windows downloader and then the
 vendor's alternate host without weakening verification.
 
