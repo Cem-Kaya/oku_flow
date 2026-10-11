@@ -9,8 +9,12 @@ This document describes the current wire contract. Plan 51 describes later work.
 The phone listens on the abstract Unix socket `okuflow_camera`. It accepts only
 Android shell (uid 2000) or root (uid 0) peers. The camera foreground service
 starts from the resumed activity after camera permission, USB debugging and
-the USB connection heuristic are satisfied. Turning debugging off, removing
-permission or disconnecting USB stops the service. No INTERNET permission is
+the USB connection heuristic are satisfied; the resumed activity retries every
+three seconds while the service is not running, including after a listener
+failure. Turning debugging off or removing permission stops the service at
+once; a USB disconnect stops it only after two seconds without the cable.
+A peer whose credentials cannot be read is closed without affecting the
+listener. No INTERNET permission is
 declared. The peer uid alone does not prove that a connection uses a cable.
 
 Both hosts connect directly to the running adb server at `127.0.0.1:5037`.
@@ -19,12 +23,19 @@ The initial `host:track-devices-proto-binary` snapshot identifies
 native Windows adb supplies no bus address. Connections select that
 `host:transport-id:<id>` and then `localabstract:okuflow_camera`. Older servers
 fall back to `host:devices-l`, accepting only entries with explicit `usb:`
-evidence. Wi-Fi, emulators and unknown transports are excluded. Neither host
-starts, upgrades, kills or reconfigures the server or adds adb forwards.
+evidence. Wi-Fi, emulators and unknown transports are excluded. The Python probe never owns the server lifecycle. Windows polls in the
+background every five seconds and, without an existing listener or endpoint
+override, may directly start a hidden local `adb server nodaemon`. It never
+runs client start-server/kill-server commands, upgrades or replaces another
+tool's server, or adds adb forwards. Local TCP endpoint overrides are honored;
+remote or unsupported endpoints are refused. Bootstrap retries wait at least
+30 seconds. The detached server remains shared after Windows app exit.
 Schema reference: [AOSP devices.proto](https://android.googlesource.com/platform/packages/modules/adb/+/7806e425e18a48a0f9e580e381cdc86ed5478a4c/proto/devices.proto).
 
 One control connection and one video connection form a session. A second
-control host is rejected. The service generates a random session token for
+control host receives ERROR `{"error":…,"code":"sessionBusy"}` and is closed.
+The video connection must bind within five seconds of the control ACK, or the
+phone closes the control connection and frees the slot. The service generates a random session token for
 binding the video channel. The token is installation/session-local, never
 included in probe logs. Closing either connection retires both and releases
 the camera. An authorized computer has the normal privileges of USB debugging.
@@ -40,6 +51,21 @@ All integers are little-endian. Each connection starts with:
 | Role | u16 | `1` control, `2` video |
 | JSON length | u32 | 2–65536 bytes |
 | Body | UTF-8 JSON | Object |
+
+Probe hello (role 1): `{"probe":true}`. It never claims the session, allocates
+a token or touches an active session. The phone replies with one ACK and closes:
+the capability fields below plus `protocol`, `probe: true`, `busy` (another
+control session exists) and `problem` (current problem code or `null`). Hosts
+use it for discovery and back off while `busy` or `problem` is `hot`/`busy`/`blocked`.
+Capabilities are built once per listener (warmed in the background) and copied
+per reply.
+
+While the activity is resumed, it refreshes host/service state every three
+seconds. A disconnected `busy` or `failed` camera problem remains visible for
+at least 30 seconds, then clears to permit a fresh host attempt. A blocked
+camera clears after access returns; `noMode` clears after camera settings change.
+Thermal recovery remains tied to the actual thermal state. These transitions
+avoid a stale probe problem permanently preventing Windows from reconnecting.
 
 Control hello: `{"codecs":["avc","hevc"]}`. Optional decoder ceilings are
 `maxWidth`, `maxHeight`, `maxPixelsPerSecond`. The native Windows receiver
@@ -65,13 +91,19 @@ Subsequent packets have an eight-byte header:
 | COMMAND | 2 | JSON host command |
 | STATE | 3 | JSON phone event |
 | METADATA | 4 | JSON capture result |
-| ERROR | 5 | `{"error":"diagnostic"}` |
+| ERROR | 5 | `{"error":"diagnostic","code":"…"}` |
 | FRAME | 6 | Binary encoded video |
 
 Control payloads are at most 64 KiB; a FRAME payload is at most 16 MiB,
 including its prefix. JSON packets require flags zero. FRAME flags are bit 0
 key frame, bit 1 codec configuration; other bits are invalid. Parsers reject
 truncation, invalid versions and lengths before allocating the payload.
+
+ERROR `code` is optional (older phones omit it; hosts treat absence as
+unclassified): `busy` camera held elsewhere, `blocked` policy/privacy/permission,
+`noMode` no compatible mode, `failed` other camera/encoder/service failure,
+`hot` thermal stop, `sessionBusy` another host holds the session. `error` stays
+free text for logs only; hosts must not parse it.
 
 Golden COMMAND vector for `{}`:
 `02 00 00 00 02 00 00 00 7B 7D`.

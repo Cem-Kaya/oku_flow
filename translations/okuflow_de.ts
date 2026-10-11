@@ -3013,5 +3013,13 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
         <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
         <translation>Videobilder werden übersprungen, weil die Encoder-Warteschlange voll ist. Verringern Sie die Aufnahmeauflösung oder stoppen und starten Sie die Aufnahme erneut, wenn dies anhält.</translation>
     </message>
+    <message>
+        <source>Waiting for phone…</source>
+        <translation>Warten auf das Telefon…</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
+        <translation>Öffnen Sie OkuFlow Camera auf dem Telefon, schließen Sie das USB-Kabel an und erlauben Sie USB-Debugging. OkuFlow prüft die Verbindung automatisch.</translation>
+    </message>
 </context>
 </TS>

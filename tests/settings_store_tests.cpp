@@ -209,6 +209,7 @@ void SettingsStoreTests::automaticFallbackPreservesPreferredCamera()
     PersistentSettings preferred;
     preferred.cameraIndex = 1;
     preferred.cameraSymbolicLink = QStringLiteral("fixture-camera-B");
+    preferred.cameraSelectionExplicit = true;
     QVERIFY(Save(path, preferred));
     SettingsController controller(path);
     QVERIFY(!controller.InitializeLegacyCameraIdentity(0, QStringLiteral("fixture-camera-A")));
@@ -217,8 +218,10 @@ void SettingsStoreTests::automaticFallbackPreservesPreferredCamera()
     QVERIFY(reloaded.has_value());
     QCOMPARE(reloaded->cameraSymbolicLink, preferred.cameraSymbolicLink);
     QCOMPARE(reloaded->cameraIndex, 1);
+    QVERIFY(reloaded->cameraSelectionExplicit);
 
     preferred.cameraSymbolicLink.clear();
+    preferred.cameraSelectionExplicit = false;
     QVERIFY(Save(path, preferred));
     SettingsController legacy(path);
     QVERIFY(legacy.InitializeLegacyCameraIdentity(1, QStringLiteral("fixture-camera-B")));
@@ -229,6 +232,7 @@ void SettingsStoreTests::automaticFallbackPreservesPreferredCamera()
     const auto migrated = Load(path);
     QVERIFY(migrated.has_value());
     QCOMPARE(migrated->cameraSymbolicLink, QStringLiteral("fixture-camera-B"));
+    QVERIFY(!migrated->cameraSelectionExplicit);
 }
 
 void SettingsStoreTests::textClarityMasterPreservesDormantPreferences()

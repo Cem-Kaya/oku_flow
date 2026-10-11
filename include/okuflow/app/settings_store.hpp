@@ -155,6 +155,8 @@ struct PersistentSettings {
     QString userDataRoot;
     int cameraIndex{-1};
     QString cameraSymbolicLink;
+    // Automatic fallback is not an explicit user choice of webcam.
+    bool cameraSelectionExplicit{false};
     QString cameraFormatStableId;
     QString microphoneEndpointId;
     // Load-only bridge for the removed global compatibility checkbox. The

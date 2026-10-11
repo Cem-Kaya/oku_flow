@@ -108,6 +108,7 @@ struct CameraStartupJob final {
     std::shared_ptr<StartupWorkerTracker> tracker;
     std::unique_ptr<MediaCapture> capture;
     std::shared_ptr<CameraIngress> ingress;
+    std::shared_ptr<std::atomic<bool>> canceled = std::make_shared<std::atomic<bool>>(false);
     FrameCallback callback;
     CaptureErrorCallback errorCallback;
     bool started{};
@@ -285,6 +286,7 @@ void OkuFlowApp::QueueInitialCameraStart(
     bool requestAcceleration, bool interactive, uint64_t captureSession) {
     auto job = std::make_shared<CameraStartupJob>(startupWorkers_);
     job->ingress = cameraIngress_;
+    pendingCameraStartupCancel_ = job->canceled;
     job->callback = std::move(callback);
     job->errorCallback = std::move(errorCallback);
     // Recreate the activation on its owning worker apartment from the opaque
@@ -326,10 +328,11 @@ void OkuFlowApp::QueueInitialCameraStart(
                                   "Create camera activation");
                 }
                 const auto start = [&](CaptureAccelerationMode mode) {
+                    if (job->canceled->load()) return false;
                     return job->capture->StartCapture(localDescriptor, nullptr, job->callback,
                         mode == CaptureAccelerationMode::Accelerated ? MFVideoFormat_ARGB32
                                                                     : MFVideoFormat_NV12,
-                        job->errorCallback, mode, requestedStableId.toStdWString());
+                        job->errorCallback, mode, requestedStableId.toStdWString(), job->canceled.get());
                 };
                 job->started = start(requestAcceleration ? CaptureAccelerationMode::Accelerated
                                                          : CaptureAccelerationMode::Compatibility);
@@ -337,7 +340,7 @@ void OkuFlowApp::QueueInitialCameraStart(
                     job->acceleratedFailed = true;
                     job->acceleratedError = QString::fromStdString(job->capture->LastError());
                     const auto failure = job->capture->LastFailureKind();
-                    job->transientAcceleratedFailure = failure == CameraFailureKind::DeviceBusy ||
+                    job->transientAcceleratedFailure = !phoneSerial.empty() || failure == CameraFailureKind::DeviceBusy ||
                                                        failure == CameraFailureKind::DeviceMissing;
                     if (!job->transientAcceleratedFailure && !job->capture->WasAbandoned()) {
                         job->started = start(CaptureAccelerationMode::Compatibility);
@@ -358,6 +361,7 @@ void OkuFlowApp::QueueInitialCameraStart(
                         if (app->cameraSessionId_ != captureSession || app->cameraIngress_ != job->ingress) return;
                         app->mediaCapture_.Swap(*job->capture);
                         app->cameraStartupPending_ = false;
+                        app->pendingCameraStartupCancel_.reset();
                         app->UpdateCameraAccelerationUi();
                         if (app->uiState_->cameraCombo_) app->uiState_->cameraCombo_->setEnabled(true);
                         if (app->uiState_->cameraFormatCombo_) app->uiState_->cameraFormatCombo_->setEnabled(true);

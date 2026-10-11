@@ -229,3 +229,29 @@ aligned with the project goals.
 - If Android screenshots intermittently omit system chrome as well as app text,
   compare an independent native screen recording before changing UI code. Keep
   the original evidence and report capture limitations separately from app bugs.
+
+## USB Companion Discovery Validation
+- Keep real phone discovery/startup off the UI thread. Use non-claiming probes
+  and retain saved camera intent through delayed arrival; never encode a phone
+  serial/model as a default. Explicit webcam selection must survive sessions.
+- Fake-adb tests must set `PhoneAdbTestHooks` to a private local port with server
+  launch disabled. Never probe the owner's port 5037 from unit tests or kill an
+  unrelated adb server. Runtime bootstrap uses a direct loopback bind only
+  when no listener/endpoint override exists, with a 30-second throttle.
+- The pinned adb staging helper retains exact notices. Before public release,
+  resolve any open source/relinking obligations in `THIRD_PARTY_LICENSES.md`;
+  a local successful staging test does not clear a redistribution gate.
+
+## Source-built adb and unattended GUI validation
+- Build adb with `scripts/build_adb_from_source.ps1`; retain its complete runtime,
+  notices and source/relinking ZIP. Review the generated manifest and update
+  `scripts/adb-source/distribution.json` before staging a new build. The staging
+  helper accepts the source build-output root, never an arbitrary SDK binary.
+  Follow `docs/adb_distribution.md` when changing inputs or licensing.
+- Test source-built server startup with `scripts/test_adb_source_build.ps1`.
+  It owns a private loopback child and stops only that exact child; do not stop
+  a foreign shared adb server to obtain a clean-server measurement.
+- GUI fixtures must acquire and verify native Windows foreground focus before
+  keyboard/idle assertions. Never ask the owner to click test windows to make
+  assertions pass. Run GUI tests serially on a free interactive desktop; preserve
+  behavior assertions and distinguish harness activation failures from app bugs.

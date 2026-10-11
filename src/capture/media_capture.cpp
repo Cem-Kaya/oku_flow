@@ -378,7 +378,8 @@ bool MediaCaptureSession::StartCapture(const CameraDescriptor& descriptor,
                                 GUID preferredSubtype,
                                 CaptureErrorCallback errorCallback,
                                 CaptureAccelerationMode accelerationMode,
-                                const std::wstring& requestedStableId)
+                                const std::wstring& requestedStableId,
+                                const std::atomic<bool>* startupCanceled)
 {
     lastError_.clear();
     lastSymbolicLink_ = descriptor.symbolicLink;
@@ -413,7 +414,7 @@ bool MediaCaptureSession::StartCapture(const CameraDescriptor& descriptor,
                 owner->lastFailureKind_.store(CameraFailureKind::DeviceMissing);
                 auto delivery = owner->shutdown_->TryEnterDelivery();
                 if (delivery && errorCallback) errorCallback(message);
-            });
+            }, startupCanceled);
         if (!started) {
             lastError_ = phoneTransport_->Error();
             lastFailureKind_.store(CameraFailureKind::DeviceMissing);

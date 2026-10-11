@@ -26,7 +26,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import com.okuflow.camera.setup.listenerStopDelayMs
 import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Starts only from the visible app after prerequisites; camera runs only for an active USB host. */
 class CameraStreamService : Service() {
@@ -48,7 +50,7 @@ class CameraStreamService : Service() {
             engine.stop()
             publishIdle()
             HostLink.report(HostProblem.TooHot)
-            server.error("Phone is too hot; streaming stopped. Let it cool, then start again.")
+            server.error("Phone is too hot; streaming stopped. Let it cool, then start again.", HostProblem.TooHot.wireCode)
         } else {
             // Cooling below CRITICAL makes a new start possible; drop the stale warning.
             if (HostLink.problem.value == HostProblem.TooHot) HostLink.report(null)
@@ -71,8 +73,6 @@ class CameraStreamService : Service() {
             stopSelf()
             return
         }
-        // A fresh listener starts without the previous attempt's problem; heat persists until cooling.
-        if (HostLink.problem.value != HostProblem.TooHot) HostLink.report(null)
         store = CameraSettingsStore.get(this)
         store.update(store.state.value.forNewHostSession())
         monitor = DeviceSetupMonitor(this).also { it.start() }
@@ -95,7 +95,7 @@ class CameraStreamService : Service() {
                 lastSettings = null
                 publishIdle()
                 HostLink.report(problem)
-                server.error(message)
+                server.error(message, problem.wireCode)
             })
         try {
             server = UsbSocketServer(catalog::capabilities, ::command, onConnect = {
@@ -103,6 +103,9 @@ class CameraStreamService : Service() {
                 // A new host session is a fresh attempt; its own failure reports again.
                 if (HostLink.problem.value != HostProblem.TooHot) HostLink.report(null)
                 HostLink.publish(HostLinkState.Connected)
+            }, problem = { HostLink.problem.value?.wireCode }, onListenerFailed = {
+                // The resumed activity retries; a dead listener must not leave a silent running service.
+                mainExecutor.execute { HostLink.report(HostProblem.ServiceFailed); stopSelf() }
             }) {
                 requested = false
                 lastSettings = null
@@ -116,17 +119,22 @@ class CameraStreamService : Service() {
             stopSelf()
             return
         }
+        // A fresh listener starts without the previous attempt's problem; heat persists until cooling.
+        // Cleared only once listening, so periodic retries of a failing listener do not flicker.
+        if (HostLink.problem.value != HostProblem.TooHot) HostLink.report(null)
         power.addThermalStatusListener(mainExecutor, thermalListener)
         scope.launch {
             monitor.snapshot.collectLatest { snapshot ->
-                if (!snapshot.canListenForHost) {
-                    // Unplugging ends this attempt; the next cable connection starts clean.
-                    if (!snapshot.usbConnectedToComputer) HostLink.report(null)
-                    stopSelf()
-                }
+                val stopAfter = listenerStopDelayMs(snapshot) ?: return@collectLatest
+                // collectLatest cancels this wait if the cable reports connected again.
+                kotlinx.coroutines.delay(stopAfter)
+                // Unplugging ends this attempt; the next cable connection starts clean.
+                if (!snapshot.usbConnectedToComputer) HostLink.report(null)
+                stopSelf()
             }
         }
         scope.launch { store.state.collectLatest { kotlinx.coroutines.delay(350); restart() } }
+        running.set(true)
     }
 
     private fun command(command: JSONObject) {
@@ -135,7 +143,8 @@ class CameraStreamService : Service() {
                 "start" -> {
                     if (power.currentThermalStatus >= PowerManager.THERMAL_STATUS_CRITICAL) {
                         HostLink.report(HostProblem.TooHot)
-                        error("Phone is too hot")
+                        server.error("Phone is too hot", HostProblem.TooHot.wireCode)
+                        return
                     }
                     requested = true
                     restart()
@@ -163,7 +172,8 @@ class CameraStreamService : Service() {
         } catch (exception: Exception) { server.error(exception.message ?: "Command failed") }
     }
 
-    private fun restart() {
+    // Settings, thermal and command threads all restart; serialize the compare-and-start.
+    @Synchronized private fun restart() {
         if (!requested || !::server.isInitialized || server.hostCodecs().isEmpty()) return
         val settings = store.state.value
         if (settings == lastSettings && thermalFps == lastThermalFps) return
@@ -188,6 +198,7 @@ class CameraStreamService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_NOT_STICKY
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
+        running.set(false)
         scope.cancel()
         if (::power.isInitialized) power.removeThermalStatusListener(thermalListener)
         if (::monitor.isInitialized) monitor.stop()
@@ -198,6 +209,11 @@ class CameraStreamService : Service() {
         super.onDestroy()
     }
     companion object {
+        private val running = AtomicBoolean(false)
+
+        /** True from a successful listener start until onDestroy; the activity retries while false. */
+        val isRunning: Boolean get() = running.get()
+
         fun startVisible(context: Context) {
             runCatching { androidx.core.content.ContextCompat.startForegroundService(context,
                 Intent(context, CameraStreamService::class.java)) }.onFailure { HostLink.report(HostProblem.ServiceFailed) }

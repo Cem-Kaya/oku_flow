@@ -1,6 +1,88 @@
 # OkuFlow Code Reference
 
-Authoritative code map for the current repository state as of 2026-10-11. Update this file whenever classes, public structs, or significant functions change.
+Authoritative code map for the current repository state as of 2026-10-12. Update this file whenever classes, public structs, or significant functions change.
+
+## USB phone discovery and recovery
+
+- `CameraDescriptor.phoneAppReady`, `phoneBusy` and `phoneProblem` describe the
+  companion's non-claiming capability probe. Serial and camera ID identify a
+  saved choice; adb transport IDs belong only to the current cable connection.
+- `MediaCapture.EnumerateCameras(includePhones)` can list only Media Foundation
+  cameras. App startup and webcam reconnect pass `false`; phone socket work
+  runs on a background discovery worker. `MergePhoneCameraDiscovery` preserves
+  physical order, known lens identities and a live phone across a transient
+  listing. An unknown adb result keeps the previous snapshot untouched.
+- `ResolveAutomaticPhoneIndex` preserves explicit webcam choices and requires
+  phone readiness before replacing a working camera. With no working source,
+  a saved attached phone can be retried before its listener starts.
+- `OkuFlowApp.PollPhoneCameraDiscovery` consumes an asynchronous USB snapshot
+  every five seconds, reconciles by stable identity, and rebuilds the picker
+  only when visible names/identities change. A running phone is never probed;
+  a starting phone is excluded inside the transport. Recording permits only
+  recovery of the same source, without switching to a fallback.
+- `StartCameraCapture` always dispatches phone startup off the UI thread.
+  `StartFallbackCamera` restores a temporary webcam after phone startup/loss;
+  it does not overwrite the phone preference. Phone errors are nonmodal.
+  `PhoneRetryPolicy.Observe/Failed/Succeeded/CanAttempt` tracks per-transport
+  readiness and 5/10/20/60-second failure backoff (at least 30 seconds for busy
+  or hot errors). Replug, recovery or changed problem resets that backoff.
+- `PersistentSettings.cameraSelectionExplicit` distinguishes a user pick from
+  an implicit first-run webcam. `OnCameraSelectionChanged` sets it and saves
+  the stable link. `settings::LoadDetailed` infers an explicit preference for
+  old files with a saved identity/index; serialization retains the flag.
+- `CameraStartupJob.canceled` is shared independently of the app lifetime.
+  `StopCameraCapture` revokes it; `MediaCapture.StartCapture`,
+  `MediaCaptureSession.StartCapture` and `PhoneCameraTransport.Start` forward
+  that cancellation to the first-frame wait. Socket reads/writes also check
+  cancellation. `PhoneProblemCode` / `ProblemCode` expose optional wire errors.
+- `ParseAdbServerEndpoint` accepts only local TCP adb overrides; remote,
+  unsupported and malformed overrides disable phone support. `Endpoint`,
+  `FindAdbExecutable` and `EnsureAdbServer` select an explicit path, bundled
+  `platform-tools`, environment-owned SDK or PATH. Without an existing listener
+  or endpoint override, a hidden `server nodaemon` process binds loopback;
+  starts are throttled to 30 seconds. No adb client command can replace another
+  tool's server. The server remains available to other clients after exit.
+- `PhoneAdbTestHooks` / `SetPhoneAdbTestHooks` isolate fake-socket tests on a
+  private random port and disable real bootstrap. `OccupiedPhone`, `MayLaunch`
+  and `AllowAppLaunch` prevent overlapping probes and repeated automatic
+  activity launches for one USB transport. A manual camera pick renews the
+  launch allowance. `ControlHello` accepts a token-free `probe:true` ACK,
+  supports older tokened ACKs and reads coded ERROR packets. Real hello and
+  video binding are retried together within a bounded connection window.
+- Android `UsbSocketServer.capabilityJson` warms a capability snapshot;
+  `readChannel` answers probes without claiming a session. `writeDirect`
+  returns discovery/busy replies, while `peerAllowed` and `videoBindExpired`
+  isolate a dead peer and retire control-only hosts after five seconds.
+  `HostProblem.wireCode` and `SESSION_BUSY_CODE` identify recoverable errors.
+  `CameraStreamService.isRunning` and the resumed activity's three-second
+  retry restore the listener; `serviceStopDelayMs` debounces USB loss for two
+  seconds, while permission/debugging loss stops immediately. `restart` is
+  synchronized across the socket and UI callers.
+- `HostLink.retryTransientProblem` uses `canRetryProblem` to clear disconnected
+  busy/failed camera problems after 30 seconds. `SetupViewModel.onResumed`
+  clears blocked camera problems after access returns; changed settings clear
+  an incompatible-mode problem. Foreground refresh drives these retries.
+- `scripts/build_adb_from_source.ps1` / `Get-VerifiedInput` verify pinned source,
+  patches and development libraries, prepare retained source and compile adb
+  with isolated MSYS2 UCRT64 plus the two USB DLLs with MSVC 2022.
+- `scripts/package_adb_source_build.ps1` resolves the PE import closure, stages
+  exact notices and complete source/relinking inputs, and creates `adb-build.json`.
+  `scripts/stage_platform_tools.ps1` validates the reviewed manifest pin and
+  every input/staged checksum. The metadata generator inventories adb and its
+  distinct static/dynamic dependencies, including BoringSSL's extracted license.
+- `scripts/test_adb_source_build.ps1` / `Read-Exact` / `Request-PrivateAdb` test
+  protocol 41, device listing, loopback binding and hidden startup on a private
+  port. Only its own child is stopped; the shared server remains untouched.
+- `ActivateFixtureWindow` in `main_window_tests.cpp` temporarily attaches the
+  fixture thread's native input queue to obtain Windows foreground focus, then
+  detaches immediately. Its bounded wait verifies both Win32 foreground and Qt
+  activation before keyboard/idle assertions. GUI tests remain serial and need
+  no human clicks; their original behavior assertions remain intact.
+- `phone_camera_contract`, `phone_retry_policy` and settings tests cover
+  delayed arrival, replacement devices, explicit selection, cached lenses,
+  endpoint overrides, old/new probes, busy probes and cancellation against
+  isolated sockets. `LinkPolicyTest` adds peer, bind deadline and wire-code
+  and transient retry checks; Android now has 54 JVM tests.
 
 ## GUI launch and explicit capture controls
 
@@ -2516,7 +2598,7 @@ Native Windows consumes AVC and optional HEVC through the phone source below. Se
 | `MainActivity.kt` | `MainActivity.onCreate` sets dark edge-to-edge system bars, applies `FLAG_KEEP_SCREEN_ON` to every visible app panel, retains the normal lock-screen boundary, and installs `OkuFlowCameraTheme` / `OkuFlowCameraApp`. Launcher and adb starts reuse the `singleTask` activity. |
 | `setup/SetupStep.kt` | `DeviceSetupSnapshot` carries nullable developer/debugging settings, permission/USB flags and current `usbAdbActive` evidence. `canListenForHost` keeps permission/USB gates while allowing unknown debugging status. `debuggingSettingEnabled` maps Android 17 redacted zeros to unknown and preserves older disabled values. `SetupStep` includes optional `CheckUsbSetup` help, `HostConnected` (session open, camera starting/paused) and `Problem`. `resolveSetupStep(snapshot, link, problem)` accepts active USB adb evidence and never labels unknown settings disabled; a live Connected/Streaming session outranks the coarse USB reading, and a problem outranks an open session but never streaming, a missing cable or a setup prerequisite. |
 | `setup/DeviceSetupMonitor.kt` | `DeviceSetupMonitor.start/stop` register/unregister global-setting observers and USB/battery receivers; `start` reads both sticky values synchronously to avoid a false disconnected snapshot during service startup. `refresh` rereads settings/permission; `readDebuggingSetting` handles Android 17 redaction/read failure without a false disabled state. The protected USB broadcast adb flag is cleared on disconnect. `snapshot` is a read-only StateFlow. USB-state broadcasts are an OEM-dependent heuristic, not proof of an authorized OkuFlow session. |
-| `setup/SetupViewModel.kt` | Combines the monitor with `HostLink.state` and `HostLink.problem` (also exposed as `problem`). `refresh` clears saved denial and calls `startServiceIfReady`; only the resumed activity invokes service startup. `onCameraPermissionResult` retains denial across restart. `settings`, `diagnostics`, `updateSettings` bridge preferences/service. `onCleared` unregisters the monitor. |
+| `setup/SetupViewModel.kt` | Combines the monitor with `HostLink.state` and `HostLink.problem` (also exposed as `problem`). `onResumed` refreshes prerequisites and `refreshHost` retries expired transient failures; granted access and changed settings clear their corresponding blocked/no-mode problems. `refresh` clears saved denial and calls `startServiceIfReady`; only the resumed activity invokes service startup. `onCameraPermissionResult` retains denial across restart. `settings`, `diagnostics`, `updateSettings` bridge preferences/service. `onCleared` unregisters the monitor. |
 | `setup/SystemSettingsLauncher.kt` | `openAboutPhone`, `openDeveloperOptions`, `openPrivacySettings` (camera access switch) and `openAppDetails` try specific public Settings intents, then broader fallbacks for missing/restricted OEM activities. |
 | `setup/OemFamily.kt` | `OemFamily.fromManufacturer` chooses Samsung, Xiaomi/Redmi/POCO, OnePlus/OPPO/realme, or generic Build-number wording without changing the intent target. |
 | `link/HostLink.kt` | `HostLinkState` has Disconnected/Connected/Streaming. `HostProblem` names user-fixable failures (CameraBusy, CameraBlocked, NoCompatibleMode, CameraFailed, TooHot, ServiceFailed). `state`, `problem` and `details` (negotiated mode while connected) are published by the camera service through internal `publish`/`report`. A problem survives the host's disconnect after its ERROR packet and is cleared by a new session, the first streamed frame, cooling below CRITICAL (TooHot) or unplugging. |
@@ -2539,7 +2621,7 @@ Native Windows consumes AVC and optional HEVC through the phone source below. Se
 The manifest declares CAMERA and camera foreground-service permissions without INTERNET, disables backup, and uses
 `res/xml/data_extraction_rules.xml` to exclude device-specific setup history.
 `SetupStepTest`, `OemFamilyTest`, `WireProtocolTest`, `StreamPolicyTest`,
-`CameraSettingsTest` and `CameraFailuresTest` provide 49 JVM checks, including older-setting behavior,
+`CameraSettingsTest`, `CameraFailuresTest` and `LinkPolicyTest` provide 54 JVM checks, including older-setting behavior,
 Android 17 redaction, USB evidence, connected/problem step priority, camera
 failure classification, the HEVC default with explicit-AVC preservation, exact dimension/rate bounds, legacy preference
 migration and camera-mode reconciliation. `CameraEngine.start` uses actual
@@ -2594,7 +2676,7 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   and opens verified USB transport IDs without owning adb's lifecycle.
   `protobuf_fields`, `protobuf_usb_devices`, `usb_devices`, `read_exact`,
   `read_packet`, `adb_request`, `send_hello`, `json_bytes` validate framing.
-  `PhoneCameraClient.connect/command/close` own the two channels. `capture`
+  `PhoneCameraClient.probe/connect/command/close` own the two channels. `capture`
   records per-generation video/metadata, reports arrival cadence and runs
   keepalive/optional JSON stdin controls; `main` selects USB serial/local output.
 - `tests/phone_camera_tests.cpp` checks USB identity without Windows bus paths,

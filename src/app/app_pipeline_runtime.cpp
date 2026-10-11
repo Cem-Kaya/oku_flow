@@ -2,6 +2,7 @@
 
 #include "app_internal.hpp"
 #include "okuflow/capture/capture_buffer.hpp"
+#include "okuflow/capture/phone_camera.hpp"
 
 #include <QAccessible>
 #include <QLockFile>
@@ -139,7 +140,7 @@ SuperResCacheExtent ComputeSuperResCacheExtent(UINT sceneWidth,
 } // namespace
 
 void OkuFlowApp::EnumerateCameras() {
-    cameras_ = mediaCapture_.EnumerateCameras();
+    cameras_ = mediaCapture_.EnumerateCameras(false);
     if (cameras_.empty()) {
         selectedCameraIndex_ = -1;
         return;
@@ -163,6 +164,111 @@ void OkuFlowApp::PopulateCameraCombo() {
     uiState_->cameraCombo_->clear();
     for (const auto& camera : cameras_) {
         uiState_->cameraCombo_->addItem(QString::fromWCharArray(camera.name.c_str()));
+    }
+}
+
+void OkuFlowApp::PollPhoneCameraDiscovery()
+{
+    if (!initialized_ || phoneDiscoveryCanceled_.load() || cameraStartupPending_ ||
+        (startupWorkers_ && startupWorkers_->active.load() != 0)) return;
+
+    if (phoneDiscovery_.valid()) {
+        if (phoneDiscovery_.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) return;
+        try {
+            auto [listed, discovered] = phoneDiscovery_.get();
+            if (listed) {
+                const std::wstring selectedLink = selectedCameraIndex_ >= 0 &&
+                        static_cast<size_t>(selectedCameraIndex_) < cameras_.size()
+                    ? cameras_[static_cast<size_t>(selectedCameraIndex_)].symbolicLink : std::wstring();
+                auto merged = MergePhoneCameraDiscovery(cameras_, discovered,
+                    cameraActive_ ? selectedLink : std::wstring());
+                const bool changed = merged.size() != cameras_.size() ||
+                    !std::equal(merged.begin(), merged.end(), cameras_.begin(),
+                        [](const auto& a, const auto& b) {
+                            return a.symbolicLink == b.symbolicLink && a.name == b.name;
+                        });
+                cameras_ = std::move(merged);
+                selectedCameraIndex_ = -1;
+                for (size_t i = 0; i < cameras_.size(); ++i) {
+                    if (cameras_[i].symbolicLink == selectedLink) selectedCameraIndex_ = static_cast<int>(i);
+                }
+                // Keep an open picker and screen-reader focus stable on unchanged snapshots.
+                if (changed && uiState_->cameraCombo_) {
+                    auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
+                    PopulateCameraCombo();
+                    uiState_->cameraCombo_->setCurrentIndex(selectedCameraIndex_);
+                }
+                UpdatePhoneLightUi();
+                for (const auto& phone : discovered) {
+                    if (!phone.phoneSerial.empty() && phone.phoneCameraId.empty())
+                        phoneRetries_[phone.phoneSerial].Observe(phone.phoneTransportId,
+                            phone.phoneAppReady, phone.phoneProblem);
+                }
+                const bool streamingPhone = cameraActive_ && selectedCameraIndex_ >= 0 &&
+                    !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
+                const int target = ResolveAutomaticPhoneIndex(cameras_, preferredPhoneCamera_.toStdWString(),
+                    automaticPhoneSelectionAllowed_, cameraActive_);
+                const bool recording = recordingManager_ && recordingManager_->IsActive();
+                const bool sameRecordedSource = target >= 0 &&
+                    cameras_[static_cast<size_t>(target)].symbolicLink == mediaCapture_.LastSymbolicLink();
+                if (!streamingPhone && target >= 0 && !mediaCapture_.WasAbandoned() &&
+                    (!recording || sameRecordedSource) &&
+                    phoneRetries_[cameras_[static_cast<size_t>(target)].phoneSerial]
+                        .CanAttempt(static_cast<std::int64_t>(GetTickCount64()))) {
+                    pipelineOrchestrator_->CancelCameraReconnect();
+                    if (uiState_->cameraCombo_) {
+                        auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
+                        uiState_->cameraCombo_->setCurrentIndex(target);
+                    }
+                    if (preferredPhoneCamera_.isEmpty()) {
+                        auto& saved = settingsController_->MutableSettings();
+                        saved.cameraSymbolicLink = QString::fromStdWString(
+                            cameras_[static_cast<size_t>(target)].symbolicLink);
+                        preferredPhoneCamera_ = saved.cameraSymbolicLink;
+                    }
+                    qInfo() << "Automatically connecting to USB phone camera";
+                    StartCameraCapture(static_cast<size_t>(target), false, false, true);
+                } else if (!cameraActive_) {
+                    StartFallbackCamera();
+                    UpdateCameraPlaceholder();
+                }
+            }
+        } catch (const std::exception& error) {
+            qWarning() << "Background phone discovery failed:" << error.what();
+        }
+    }
+    if (cameraStartupPending_ || (phoneDiscoveryTimer_.isValid() &&
+                                  phoneDiscoveryTimer_.elapsed() < 5000)) return;
+    std::string connectedSerial;
+    if (cameraActive_ && selectedCameraIndex_ >= 0 &&
+        static_cast<size_t>(selectedCameraIndex_) < cameras_.size())
+        connectedSerial = cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial;
+    phoneDiscoveryTimer_.start();
+    try {
+        phoneDiscovery_ = std::async(std::launch::async, [connectedSerial, canceled = &phoneDiscoveryCanceled_]() {
+            bool listed = false;
+            auto phones = PhoneCameraTransport::Enumerate(connectedSerial, canceled, &listed);
+            return std::make_pair(listed, std::move(phones));
+        });
+    } catch (const std::exception& error) {
+        qWarning() << "Cannot dispatch phone discovery:" << error.what();
+    }
+}
+
+void OkuFlowApp::StartFallbackCamera()
+{
+    if (!automaticPhoneSelectionAllowed_ || cameraActive_ || cameraStartupPending_ ||
+        mediaCapture_.WasAbandoned() || (startupWorkers_ && startupWorkers_->active.load() != 0) ||
+        (recordingManager_ && recordingManager_->IsActive())) return;
+    // A fallback is temporary; only an explicit camera pick changes the saved intent.
+    for (size_t i = 0; i < cameras_.size(); ++i) {
+        if (!cameras_[i].phoneSerial.empty()) continue;
+        if (uiState_->cameraCombo_) {
+            auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
+            uiState_->cameraCombo_->setCurrentIndex(static_cast<int>(i));
+        }
+        StartCameraCapture(i, false, false, true);
+        return;
     }
 }
 
@@ -1380,6 +1486,7 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
     UpdateKeystoneTrackingUi();
 
     const CameraDescriptor& descriptor = cameras_[index];
+    backgroundStartup = backgroundStartup || !descriptor.phoneSerial.empty();
     auto& persistent = settingsController_->MutableSettings();
     currentCameraAccelerationKey_ =
         QString::fromStdWString(descriptor.symbolicLink);
@@ -1558,6 +1665,9 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
                                       ? mediaCapture_.LastError()
                                       : startupError.toStdString();
         const CameraFailureKind kind = mediaCapture_.LastFailureKind();
+        const bool phone = selectedCameraIndex_ >= 0 &&
+            static_cast<size_t>(selectedCameraIndex_) < cameras_.size() &&
+            !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
         QString message;
         if (!detail.empty() && (kind == CameraFailureKind::DeviceBusy ||
                                 kind == CameraFailureKind::DeviceMissing ||
@@ -1571,7 +1681,19 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
                 message += QStringLiteral(" (%1)").arg(QString::fromStdString(detail));
             }
         }
-        if (interactive &&
+        if (phone) {
+            const auto& descriptor = cameras_[static_cast<size_t>(selectedCameraIndex_)];
+            phoneRetries_[descriptor.phoneSerial].Failed(
+                static_cast<std::int64_t>(GetTickCount64()), kind == CameraFailureKind::DeviceBusy ||
+                    mediaCapture_.PhoneProblemCode() == "busy" || mediaCapture_.PhoneProblemCode() == "sessionBusy" ||
+                    mediaCapture_.PhoneProblemCode() == "hot");
+            qWarning() << "Phone camera start delayed:" << message;
+            lastCameraError_ = message;
+            StopCameraCapture();
+            UpdateProcessingStatusLabel();
+            if (interactive) ShowStatusMessage(message, 12000, LivePoliteness::kAssertive);
+            QTimer::singleShot(100, this, &OkuFlowApp::StartFallbackCamera);
+        } else if (interactive &&
             (kind == CameraFailureKind::DeviceBusy ||
              kind == CameraFailureKind::DeviceMissing)) {
             qWarning() << "Camera start delayed:" << message;
@@ -1604,6 +1726,11 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
     cpuSceneHeight_ = 0;
     cpuSceneReady_ = false;
     cameraActive_ = true;
+    if (selectedCameraIndex_ >= 0 && static_cast<size_t>(selectedCameraIndex_) < cameras_.size() &&
+        !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty()) {
+        phoneRetries_[cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial].Succeeded();
+        pipelineOrchestrator_->CancelCameraReconnect();
+    }
     settingsController_->InitializeLegacyCameraIdentity(
         selectedCameraIndex_, currentCameraAccelerationKey_);
     cameraFramePresented_ = false;
@@ -1662,6 +1789,8 @@ void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
     pendingSceneCaptureClock100ns_.reset();
     currentCameraCaptureClock100ns_ = -1;
     const bool startupWasPending = cameraStartupPending_;
+    if (pendingCameraStartupCancel_) pendingCameraStartupCancel_->store(true);
+    pendingCameraStartupCancel_.reset();
     cameraStartupPending_ = false;
     pendingCameraStartupError_.clear();
     if (!atProcessExit && uiState_) {
@@ -1827,9 +1956,17 @@ void OkuFlowApp::BeginCameraReconnect() {
         return;
     }
     qWarning() << "Camera connection lost; reconnecting automatically";
+    const bool phone = selectedCameraIndex_ >= 0 &&
+        static_cast<size_t>(selectedCameraIndex_) < cameras_.size() &&
+        !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
+    if (phone) {
+        phoneRetries_[cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial]
+            .Failed(static_cast<std::int64_t>(GetTickCount64()));
+    }
     lastCameraError_ = QStringLiteral("Reconnecting to camera…");
     StopCameraCapture();
     UpdateProcessingStatusLabel();
+    if (phone) QTimer::singleShot(100, this, &OkuFlowApp::StartFallbackCamera);
 }
 
 void OkuFlowApp::DriveCameraReconnect() {
@@ -1840,7 +1977,14 @@ void OkuFlowApp::DriveCameraReconnect() {
 
     // Re-enumerate and look for the same physical device again.
     const std::wstring targetLink = mediaCapture_.LastSymbolicLink();
-    cameras_ = mediaCapture_.EnumerateCameras();
+    // Phone recovery is reconciled indefinitely by the background five-second
+    // discovery task; do not perform its socket/decoder startup on the UI tick.
+    if (targetLink.starts_with(L"okuflow-phone:")) return;
+    const auto previous = cameras_;
+    cameras_ = mediaCapture_.EnumerateCameras(false);
+    for (const auto& camera : previous) {
+        if (!camera.phoneSerial.empty()) cameras_.push_back(camera);
+    }
     {
         auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
         PopulateCameraCombo();

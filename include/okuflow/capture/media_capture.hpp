@@ -68,6 +68,8 @@ struct CameraDescriptor {
     std::uint64_t phoneTransportId{0};
     // True only after the running companion answers its capability handshake.
     bool phoneAppReady{false};
+    bool phoneBusy{false};
+    std::string phoneProblem;
 };
 
 // Resolve physical identity before legacy enumeration position. A missing
@@ -76,6 +78,18 @@ struct CameraDescriptor {
 int ResolveSavedCameraIndex(const std::vector<CameraDescriptor>& cameras,
                             const std::wstring& savedSymbolicLink,
                             int legacyIndex);
+
+// Reconcile only the optional phone entries, retaining live/known lens identities.
+std::vector<CameraDescriptor> MergePhoneCameraDiscovery(
+    const std::vector<CameraDescriptor>& previous,
+    const std::vector<CameraDescriptor>& discovered,
+    const std::wstring& activeSymbolicLink);
+// -1 means wait or keep an explicitly selected webcam. A saved phone can be
+// retried before its app endpoint is ready; first-run picks require readiness.
+int ResolveAutomaticPhoneIndex(const std::vector<CameraDescriptor>& cameras,
+                              const std::wstring& preferredSymbolicLink,
+                              bool allowPhoneSelection,
+                              bool requireReady = false);
 
 struct VideoFormat {
     GUID subtype{GUID_NULL};
@@ -114,7 +128,7 @@ public:
     void Swap(MediaCapture& other) noexcept;
     bool Initialize();
     void Shutdown();
-    std::vector<CameraDescriptor> EnumerateCameras();
+    std::vector<CameraDescriptor> EnumerateCameras(bool includePhones = true);
     std::vector<VideoFormat> EnumerateFormats(const CameraDescriptor& descriptor);
     bool StartCapture(const CameraDescriptor& descriptor,
                       const VideoFormat* requestedFormat,
@@ -122,7 +136,8 @@ public:
                       GUID preferredSubtype = MFVideoFormat_NV12,
                       CaptureErrorCallback errorCallback = {},
                       CaptureAccelerationMode accelerationMode = CaptureAccelerationMode::Compatibility,
-                      const std::wstring& requestedStableId = {});
+                      const std::wstring& requestedStableId = {},
+                      const std::atomic<bool>* startupCanceled = nullptr);
     // Revokes new callback entries, then allows at most 1500 ms total for
     // driver stop/quiescence and resource teardown. Callback runs on the caller
     // while backing resources remain alive: true means producer quiesced,
@@ -157,6 +172,7 @@ public:
     void SetPhoneTorch(bool enabled);
     bool PhoneTorchAvailable() const;
     bool PhoneTorchEnabled() const;
+    std::string PhoneProblemCode() const;
 private:
     std::shared_ptr<MediaCaptureSession> session_;
     bool abandonedForExit_{false};

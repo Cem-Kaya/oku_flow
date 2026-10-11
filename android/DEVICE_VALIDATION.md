@@ -393,3 +393,34 @@ Windows release compilation and the desktop-restricted tracked matrix pass:
 The owner reports completing Windows GUI testing and explicitly approved
 publication as tested. The automated GUI suite was not run for this publication;
 `OKUFLOW_SKIP_BUNDLE_TESTS=1` explicitly bypasses the bundle's full CTest rerun.
+
+## Automatic connection and source-built transport — 2026-10-12
+
+The updated debug APK was assembled, linted, installed and launched on the
+authorized Pixel 9 Pro Fold. Validation passed 54 JVM tests, 71-key
+English/Turkish/German resource parity and eight Python protocol tests.
+Discovery twice returned capabilities without a stream token, session claim
+or busy state. Transient camera errors now permit a later retry without replug.
+
+The tracked Windows startup profile used isolated settings and a normally
+exiting child. Windows automatically selected the ready phone; it negotiated
+HEVC 1920×1080/60. Over 20 seconds, measured arrival was 59.511 FPS and viewport
+presentation was 59.055 FPS, with 1075 received and 1066 presented frames.
+Ingress reported six drops and 43 presentation attempts encountered a busy
+queue; these are separate counters, not a claim of zero dropped frames.
+Capture-arrival-to-presentation submission p95 was 6.831 ms, not measured
+sensor-to-photon latency. First phone presentation was submitted at 2071 ms.
+The existing shared adb server remained running and unchanged.
+
+The full unattended Windows matrix passed: release compilation, 32 CPU and
+37 CUDA tests including seven GUI tests in each suite. The test harness now
+verifies native Windows foreground focus before keyboard/idle assertions;
+no owner clicks were required.
+
+The bundled adb and USB DLLs were compiled from pinned source. Dependency
+closure, source/notice staging and a hidden private-port server smoke test
+passed. That test verified loopback binding, protocol 41 and device listing
+while preserving the shared server. It does not establish clean-PC USB driver
+installation or a cold source-built server taking over the already attached
+phone. Exact rebuild/source materials are included in the release; see
+[adb_distribution.md](../docs/adb_distribution.md).

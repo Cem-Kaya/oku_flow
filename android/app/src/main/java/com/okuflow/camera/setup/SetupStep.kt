@@ -20,6 +20,21 @@ data class DeviceSetupSnapshot(
             (usbAdbActive || usbDebuggingEnabled != false)
 }
 
+/** A brief USB dropout (cable wiggle, USB mode renegotiation) keeps the listener alive this long. */
+const val USB_DISCONNECT_GRACE_MS = 2_000L
+
+/**
+ * How long the running listener waits before stopping for [snapshot]: null keeps
+ * it, 0 stops now. Lost camera permission or debugging explicitly turned off
+ * stop immediately; a missing cable is debounced.
+ */
+fun listenerStopDelayMs(snapshot: DeviceSetupSnapshot): Long? = when {
+    snapshot.canListenForHost -> null
+    !snapshot.cameraPermissionGranted -> 0L
+    !snapshot.usbAdbActive && snapshot.usbDebuggingEnabled == false -> 0L
+    else -> USB_DISCONNECT_GRACE_MS
+}
+
 /** Android 17 redacts both settings to zero. Unknown must not mean disabled. */
 internal fun debuggingSettingEnabled(value: Int, settingsRedacted: Boolean): Boolean? = when {
     value == 1 -> true

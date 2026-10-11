@@ -199,7 +199,12 @@ void OkuFlowApp::UpdateCameraPlaceholder() {
     }
     QString title;
     QString detail;
-    if (!cameraActive_ && pipelineOrchestrator_->IsCameraReconnectPending()) {
+    if (!cameraActive_ && !cameraStartupPending_ && !preferredPhoneCamera_.isEmpty() &&
+        automaticPhoneSelectionAllowed_) {
+        title = QStringLiteral("Waiting for phone…");
+        detail = QStringLiteral("Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.");
+        if (!lastCameraError_.isEmpty()) detail = lastCameraError_ + QStringLiteral(" ") + detail;
+    } else if (!cameraActive_ && pipelineOrchestrator_->IsCameraReconnectPending()) {
         title = QStringLiteral("Reconnecting to camera…");
         detail = QStringLiteral("The camera connection was lost. OkuFlow is reconnecting automatically.");
     } else if (cameraStartupPending_ || (cameraActive_ && !cameraFramePresented_)) {

@@ -82,6 +82,9 @@ class FakeAdb:
             if (magic, version) != (b"OKUF", 1):
                 raise AssertionError("Wrong hello")
             hello = json.loads(probe.read_exact(stream, size))
+            if role == 1 and hello.get("probe"):
+                self.send(stream, probe.ACK, {"protocol": 1, "probe": True, "busy": False, "problem": None, "cameras": []})
+                return
             if role == 1:
                 self.control = stream
                 self.send(stream, probe.ACK, {"protocol": 1, "token": self.token, "cameras": [], "codecs": ["avc"]})
@@ -123,6 +126,19 @@ class FakeAdb:
 
 
 class HostProbeTests(unittest.TestCase):
+    def test_probe_does_not_claim_session(self):
+        server = FakeAdb()
+        try:
+            client = probe.PhoneCameraClient(probe.AdbServer(server.port), "usb-phone")
+            reply = client.probe()
+            self.assertTrue(reply["probe"])
+            self.assertFalse(reply["busy"])
+            self.assertNotIn("token", reply)
+            self.assertIsNone(server.control)
+            self.assertEqual(server.commands, [])
+        finally:
+            server.close()
+
     def test_golden_packet_and_fragmentation(self):
         self.assertEqual(probe.read_packet(FragmentedStream(bytes([2, 0, 0, 0, 2, 0, 0, 0, 123, 125]))), (2, 0, b"{}"))
 

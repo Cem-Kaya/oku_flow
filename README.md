@@ -840,3 +840,21 @@ Contributions are accepted under the contributor license agreement in
 the GPL and commercial distributions, and it always remains available under
 the GPL. Third-party notices are summarized in
 [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md).
+
+### Android camera connection recovery
+
+Windows discovers authorized USB phones in the background every five seconds.
+Open OkuFlow Camera on the phone, connect a data cable and approve USB debugging.
+A phone selected in Settings remains the preferred source across sessions;
+choosing a webcam explicitly keeps that webcam selected. If a phone is late or
+unavailable, a temporary webcam can run until the phone is ready. Normal USB
+webcams retain their Media Foundation capture path. Device/lens discovery comes
+from the connected phone, with no built-in model or serial list.
+
+The Windows ZIP includes source-built adb, its USB support/dependency DLLs,
+license notices and corresponding source/relinking materials. Users do not
+need Android Studio or the SDK. OkuFlow starts a missing local adb server
+without a terminal and preserves an existing server. The Android APK is built
+and installed separately; some phone vendors require a separately installed
+Windows USB debugging driver. See [`docs/adb_distribution.md`](docs/adb_distribution.md)
+for build provenance and redistribution terms.

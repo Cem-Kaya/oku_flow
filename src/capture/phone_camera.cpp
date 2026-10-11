@@ -7,6 +7,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QDebug>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
+#include <QProcess>
+#include <QProcessEnvironment>
+#include <QStandardPaths>
 #include <QtEndian>
 #include <codecapi.h>
 #include <mferror.h>
@@ -19,6 +25,8 @@
 #include <map>
 #include <limits>
 #include <optional>
+#include <set>
+#include <charconv>
 #include <stdexcept>
 
 namespace okuflow {
@@ -28,6 +36,43 @@ using Clock = std::chrono::steady_clock;
 constexpr int kControlLimit = 64 * 1024;
 constexpr int kVideoLimit = 16 * 1024 * 1024;
 struct Packet { quint16 type{}, flags{}; QByteArray data; };
+struct PhoneProtocolError : std::runtime_error {
+    PhoneProtocolError(std::string code, const std::string& message)
+        : std::runtime_error(message), code(std::move(code)) {}
+    std::string code;
+};
+struct AdbRuntime {
+    std::mutex mutex;
+    std::optional<PhoneAdbTestHooks> hooks;
+    Clock::time_point nextServerStart{};
+    std::map<std::string, std::uint64_t> launched;
+    std::set<std::string> occupied;
+};
+AdbRuntime& Runtime() { static AdbRuntime runtime; return runtime; }
+AdbServerEndpoint Endpoint() {
+    auto& runtime = Runtime();
+    std::lock_guard lock(runtime.mutex);
+    if (runtime.hooks) return {runtime.hooks->port != 0, true, runtime.hooks->port};
+    return ParseAdbServerEndpoint(qEnvironmentVariable("ADB_SERVER_SOCKET").toStdString(),
+        qEnvironmentVariable("ANDROID_ADB_SERVER_PORT").toStdString(),
+        qEnvironmentVariable("ANDROID_ADB_SERVER_ADDRESS").toStdString());
+}
+struct OccupiedPhone {
+    explicit OccupiedPhone(std::string serial) : serial(std::move(serial)) {
+        auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); runtime.occupied.insert(this->serial);
+    }
+    ~OccupiedPhone() {
+        auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); runtime.occupied.erase(serial);
+    }
+    std::string serial;
+};
+bool MayLaunch(const std::string& serial, std::uint64_t transport) {
+    auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+    const auto previous = runtime.launched.find(serial);
+    if (previous != runtime.launched.end() && previous->second == transport) return false;
+    runtime.launched[serial] = transport;
+    return true;
+}
 
 void Check(HRESULT hr, const char* operation)
 {
@@ -67,8 +112,66 @@ void Write(QTcpSocket& socket, const QByteArray& bytes, const std::atomic<bool>*
 void Connect(QTcpSocket& socket, int timeout)
 {
     socket.setReadBufferSize(32 * 1024 * 1024);
-    socket.connectToHost(QHostAddress::LocalHost, 5037);
+    const auto endpoint = Endpoint();
+    if (!endpoint.supported) throw std::runtime_error("USB phone support requires a local TCP adb server");
+    socket.connectToHost(QHostAddress::LocalHost, endpoint.port);
     if (!socket.waitForConnected(timeout)) throw std::runtime_error("The local adb server is unavailable");
+}
+
+QString FindAdbExecutable()
+{
+    QStringList candidates;
+    candidates << qEnvironmentVariable("OKUFLOW_ADB_PATH")
+        << QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("platform-tools/adb.exe"));
+    for (const auto& variable : {"ANDROID_HOME", "ANDROID_SDK_ROOT"}) {
+        const QString sdk = qEnvironmentVariable(variable);
+        if (!sdk.isEmpty()) candidates << QDir(sdk).filePath(QStringLiteral("platform-tools/adb.exe"));
+    }
+    candidates << QStandardPaths::findExecutable(QStringLiteral("adb.exe"));
+    const QString localData = qEnvironmentVariable("LOCALAPPDATA");
+    if (!localData.isEmpty())
+        candidates << QDir(localData).filePath(QStringLiteral("Android/Sdk/platform-tools/adb.exe"));
+    for (const QString& candidate : candidates) {
+        const QFileInfo file(candidate);
+        if (!candidate.isEmpty() && file.isFile()) return file.absoluteFilePath();
+    }
+    return {};
+}
+
+void EnsureAdbServer(const std::atomic<bool>* canceled)
+{
+    CheckCanceled(canceled);
+    const auto endpoint = Endpoint();
+    if (!endpoint.supported) return;
+    QTcpSocket existing;
+    existing.connectToHost(QHostAddress::LocalHost, endpoint.port);
+    if (existing.waitForConnected(100)) return; // Never replace any listener, including non-adb.
+    std::optional<PhoneAdbTestHooks> hooks;
+    {
+        auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+        hooks = runtime.hooks;
+        if (Clock::now() < runtime.nextServerStart) return;
+        if (!hooks && endpoint.overridden) return; // The owner manages a custom server.
+        runtime.nextServerStart = Clock::now() + std::chrono::seconds(30);
+    }
+    if (hooks) { if (hooks->launchServer) hooks->launchServer(endpoint.port); return; }
+    const QString executable = FindAdbExecutable();
+    if (executable.isEmpty()) return;
+    QProcess server;
+    server.setProgram(executable);
+    // Direct exclusive bind; no client version check and no kill/start-server commands.
+    // An empty hostname binds loopback unless -a is requested. Numeric
+    // hostnames in -L are unsupported by the upstream socket listener.
+    server.setArguments({QStringLiteral("-L"), QStringLiteral("tcp:%1").arg(endpoint.port),
+                         QStringLiteral("server"), QStringLiteral("nodaemon")});
+    server.setWorkingDirectory(QFileInfo(executable).absolutePath());
+    server.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* arguments) {
+        arguments->flags |= CREATE_NO_WINDOW;
+    });
+    server.setStandardOutputFile(QProcess::nullDevice());
+    server.setStandardErrorFile(QProcess::nullDevice());
+    // Keep this server available to other adb clients on exit; never kill a shared server.
+    if (!server.startDetached()) qWarning() << "Could not start local Android USB support";
 }
 void AdbRequest(QTcpSocket& socket, const QByteArray& service, int timeout = 3000,
                 const std::atomic<bool>* canceled = nullptr)
@@ -107,7 +210,8 @@ QJsonObject Json(const Packet& packet)
     if (error.error != QJsonParseError::NoError || !document.isObject()) throw std::runtime_error("Invalid phone JSON");
     return document.object();
 }
-void Hello(QTcpSocket& socket, quint16 role, const QJsonObject& json)
+void Hello(QTcpSocket& socket, quint16 role, const QJsonObject& json,
+           const std::atomic<bool>* canceled = nullptr)
 {
     const auto body = QJsonDocument(json).toJson(QJsonDocument::Compact);
     QByteArray header(12, 0);
@@ -115,7 +219,7 @@ void Hello(QTcpSocket& socket, quint16 role, const QJsonObject& json)
     qToLittleEndian<quint16>(1, header.data() + 4);
     qToLittleEndian(role, header.data() + 6);
     qToLittleEndian<quint32>(static_cast<quint32>(body.size()), header.data() + 8);
-    Write(socket, header + body);
+    Write(socket, header + body, canceled);
 }
 void Command(QTcpSocket& socket, QJsonObject json, const std::atomic<bool>* canceled = nullptr)
 {
@@ -126,20 +230,27 @@ void Command(QTcpSocket& socket, QJsonObject json, const std::atomic<bool>* canc
     qToLittleEndian<quint32>(static_cast<quint32>(body.size()), header.data() + 4);
     Write(socket, header + body, canceled);
 }
-QJsonObject ControlHello(QTcpSocket& socket, int timeout = 3000, bool hevcSupported = false)
+QJsonObject ControlHello(QTcpSocket& socket, int timeout = 3000, bool hevcSupported = false,
+                         const std::atomic<bool>* canceled = nullptr, bool probe = false)
 {
     QJsonArray codecs{"avc"};
     if (hevcSupported) codecs.append("hevc");
-    Hello(socket, 1, {{"codecs", codecs}, {"maxWidth", 4096}, {"maxHeight", 2304},
-                     {"maxPixelsPerSecond", 251658240}});
-    const auto header = Read(socket, 8, timeout);
+    QJsonObject request{{"codecs", codecs}, {"maxWidth", 4096}, {"maxHeight", 2304},
+                        {"maxPixelsPerSecond", 251658240}};
+    if (probe) request.insert("probe", true);
+    Hello(socket, 1, request, canceled);
+    const auto header = Read(socket, 8, timeout, canceled);
     const auto size = qFromLittleEndian<quint32>(header.constData() + 4);
     if (size > kControlLimit) throw std::runtime_error("Oversized phone acknowledgement");
     const Packet packet{qFromLittleEndian<quint16>(header.constData()), qFromLittleEndian<quint16>(header.constData() + 2),
-        Read(socket, static_cast<int>(size), timeout)};
-    if (packet.type != 1 || packet.flags) throw std::runtime_error("Missing phone acknowledgement");
+        Read(socket, static_cast<int>(size), timeout, canceled)};
     const auto json = Json(packet);
-    if (json["protocol"].toInt() != 1 || json["token"].toString().isEmpty()) throw std::runtime_error("Unsupported phone protocol");
+    if (packet.type == 5 && !packet.flags)
+        throw PhoneProtocolError(json["code"].toString().toStdString(), json["error"].toString().toStdString());
+    if (packet.type != 1 || packet.flags) throw std::runtime_error("Missing phone acknowledgement");
+    if (json["protocol"].toInt() != 1 ||
+        (!(probe && json["probe"].toBool()) && json["token"].toString().isEmpty()))
+        throw std::runtime_error("Unsupported phone protocol");
     return json;
 }
 
@@ -299,6 +410,44 @@ private:
 };
 } // namespace
 
+AdbServerEndpoint ParseAdbServerEndpoint(std::string_view serverSocket, std::string_view serverPort,
+                                         std::string_view serverAddress)
+{
+    AdbServerEndpoint endpoint;
+    endpoint.overridden = !serverSocket.empty() || !serverPort.empty() || !serverAddress.empty();
+    const auto local = [](std::string_view host) { return host.empty() || host == "localhost" || host == "127.0.0.1"; };
+    std::string_view port = serverPort;
+    if (!serverSocket.empty()) {
+        if (!serverSocket.starts_with("tcp:")) return {false, true, 5037};
+        const auto address = serverSocket.substr(4);
+        const auto separator = address.rfind(':');
+        if (separator == std::string_view::npos) port = address;
+        else {
+            if (!local(address.substr(0, separator))) return {false, true, 5037};
+            port = address.substr(separator + 1);
+        }
+        if (port.empty()) return {false, true, 5037};
+    } else if (!local(serverAddress)) return {false, true, 5037};
+    if (!port.empty()) {
+        unsigned value = 0;
+        const auto parsed = std::from_chars(port.data(), port.data() + port.size(), value);
+        if (parsed.ec != std::errc() || parsed.ptr != port.data() + port.size() || value == 0 || value > 65535)
+            return {false, true, 5037};
+        endpoint.port = static_cast<std::uint16_t>(value);
+    }
+    return endpoint;
+}
+void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks)
+{
+    auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex);
+    runtime.hooks = std::move(hooks); runtime.nextServerStart = {};
+    runtime.launched.clear();
+}
+void PhoneCameraTransport::AllowAppLaunch(const std::string& serial)
+{
+    auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); runtime.launched.erase(serial);
+}
+
 struct PhoneVideoDecoder::Impl {
     Decoder decoder;
     UINT fps;
@@ -384,18 +533,22 @@ std::vector<CameraDescriptor> ParseAdbUsbDevices(std::span<const std::uint8_t> p
     return devices;
 }
 
-std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate()
+std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate(
+    const std::string& connectedSerial, const std::atomic<bool>* canceled, bool* listingSucceeded)
 {
+    if (listingSucceeded) *listingSucceeded = false;
     std::vector<CameraDescriptor> devices;
     try {
-        const auto listing = [](const QByteArray& service) {
+        EnsureAdbServer(canceled);
+        const auto listing = [canceled](const QByteArray& service) {
+            CheckCanceled(canceled);
             QTcpSocket socket;
             Connect(socket, 100);
-            AdbRequest(socket, service, 150);
+            AdbRequest(socket, service, 150, canceled);
             bool valid = false;
-            const int size = Read(socket, 4, 150).toInt(&valid, 16);
+            const int size = Read(socket, 4, 150, canceled).toInt(&valid, 16);
             if (!valid || size < 0 || size > 65535) throw std::runtime_error("Invalid adb listing length");
-            return Read(socket, size, 150);
+            return Read(socket, size, 150, canceled);
         };
         std::vector<CameraDescriptor> attached;
         try {
@@ -419,22 +572,33 @@ std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate()
             attached.push_back(std::move(descriptor));
           }
         }
+        if (listingSucceeded) *listingSucceeded = true;
         for (const auto& descriptor : attached) {
+            CheckCanceled(canceled);
             if (devices.size() >= 32) break;
             // Keep this identity even after lens discovery so a saved phone choice never falls back to a webcam.
             devices.push_back(descriptor);
+            bool occupied = false;
+            { auto& runtime = Runtime(); std::lock_guard lock(runtime.mutex); occupied = runtime.occupied.contains(descriptor.phoneSerial); }
+            if (descriptor.phoneSerial == connectedSerial || occupied) {
+                devices.back().phoneAppReady = true;
+                continue; // Discovery must never bind another control host to the live phone.
+            }
             try {
                 QTcpSocket capabilitiesSocket;
-                Transport(capabilitiesSocket, descriptor.phoneSerial, "localabstract:okuflow_camera", nullptr, 150, descriptor.phoneTransportId);
-                const auto capabilities = ControlHello(capabilitiesSocket, 150);
-                devices.back().phoneAppReady = true;
+                Transport(capabilitiesSocket, descriptor.phoneSerial, "localabstract:okuflow_camera", canceled, 150, descriptor.phoneTransportId);
+                const auto capabilities = ControlHello(capabilitiesSocket, 1500, false, canceled, true);
+                devices.back().phoneBusy = capabilities["busy"].toBool();
+                devices.back().phoneProblem = capabilities["problem"].toString().toStdString();
+                devices.back().phoneAppReady = !devices.back().phoneBusy && devices.back().phoneProblem.empty();
+                const auto discoveredPhone = devices.back();
                 const auto cameras = capabilities["cameras"].toArray();
                 if (!cameras.empty()) {
                     for (const auto& camera : cameras) {
+                        if (devices.size() >= 32) break;
                         const auto id = camera.toObject()["id"].toString();
                         if (id.isEmpty() || id.size() > 128) continue;
-                        auto lens = descriptor;
-                        lens.phoneAppReady = true;
+                        auto lens = discoveredPhone;
                         lens.phoneCameraId = id.toStdString();
                         lens.symbolicLink += L"/" + id.toStdWString();
                         lens.name += L" · " + id.toStdWString();
@@ -442,7 +606,10 @@ std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate()
                     }
                     if (!devices.empty() && devices.back().phoneSerial == descriptor.phoneSerial) continue;
                 }
-            } catch (...) { /* App absent/busy: retain the saved-camera entry for later startup. */ }
+            } catch (const PhoneProtocolError& error) {
+                auto& phone = devices.back(); phone.phoneProblem = error.code;
+                phone.phoneBusy = error.code == "sessionBusy" || error.code == "busy";
+            } catch (...) { /* App absent: retain the saved-camera entry for later startup. */ }
         }
     } catch (...) { /* Optional companion discovery never makes webcam enumeration fail. */ }
     return devices;
@@ -450,21 +617,27 @@ std::vector<CameraDescriptor> PhoneCameraTransport::Enumerate()
 
 PhoneCameraTransport::~PhoneCameraTransport() { Stop(); }
 bool PhoneCameraTransport::Start(const CameraDescriptor& descriptor, IMFDXGIDeviceManager* manager,
-                                 FrameCallback callback, CaptureErrorCallback errorCallback)
+                                 FrameCallback callback, CaptureErrorCallback errorCallback,
+                                 const std::atomic<bool>* startupCanceled)
 {
     ComPtr<IMFDXGIDeviceManager> retained = manager;
     worker_ = std::thread([this, descriptor, retained, callback = std::move(callback), errorCallback = std::move(errorCallback)] {
         Run(descriptor, retained, callback, errorCallback);
     });
     std::unique_lock lock(mutex_);
-    if (!ready_.wait_for(lock, std::chrono::seconds(12), [this] { return opened_ || failed_; })) {
-        error_ = "Phone camera startup timed out. Open OkuFlow Camera and authorize USB debugging.";
-        canceled_.store(true);
-        return false;
+    const auto deadline = Clock::now() + std::chrono::seconds(12);
+    while (!opened_ && !failed_ && !canceled_.load()) {
+        if ((startupCanceled && startupCanceled->load()) || Clock::now() >= deadline) {
+            error_ = startupCanceled && startupCanceled->load() ? "Phone camera canceled" :
+                "Phone camera startup timed out. Open OkuFlow Camera and authorize USB debugging.";
+            canceled_.store(true);
+            return false;
+        }
+        ready_.wait_for(lock, std::chrono::milliseconds(20));
     }
-    return opened_ && !failed_;
+    return opened_ && !failed_ && !canceled_.load();
 }
-void PhoneCameraTransport::Cancel() { canceled_.store(true); }
+void PhoneCameraTransport::Cancel() { canceled_.store(true); ready_.notify_all(); }
 void PhoneCameraTransport::Stop() { Cancel(); if (worker_.joinable()) worker_.join(); }
 void PhoneCameraTransport::SetZoom(float ratio)
 {
@@ -477,10 +650,12 @@ void PhoneCameraTransport::SetTorch(bool enabled)
 { std::lock_guard lock(mutex_); pendingTorch_ = enabled; }
 VideoFormat PhoneCameraTransport::Format() const { std::lock_guard lock(mutex_); return format_; }
 std::string PhoneCameraTransport::Error() const { std::lock_guard lock(mutex_); return error_; }
+std::string PhoneCameraTransport::ProblemCode() const { std::lock_guard lock(mutex_); return problemCode_; }
 
 void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDeviceManager> manager,
                                FrameCallback callback, CaptureErrorCallback errorCallback)
 {
+    OccupiedPhone occupied(descriptor.phoneSerial);
     const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     try {
         Check(apartment, "Initialize phone decoder COM");
@@ -493,38 +668,48 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             torchAvailable_.store(false);
             torchEnabled_.store(false);
             // Revalidate positive USB evidence immediately before selecting a transport.
-            const auto attached = Enumerate();
+            const auto attached = Enumerate(descriptor.phoneSerial, &canceled_);
             const auto selected = std::find_if(attached.begin(), attached.end(), [&](const auto& item) { return item.phoneSerial == descriptor.phoneSerial; });
             if (selected == attached.end())
                 throw std::runtime_error("The selected phone is not connected and authorized over USB");
             descriptor.phoneTransportId = selected->phoneTransportId;
-            {
-                QTcpSocket launcher;
-                Transport(launcher, descriptor.phoneSerial, "shell:am start -n com.okuflow.camera/.MainActivity", &canceled_, 3000, descriptor.phoneTransportId);
-                QByteArray response;
-                const auto deadline = Clock::now() + std::chrono::seconds(3);
-                while (launcher.state() == QAbstractSocket::ConnectedState && Clock::now() < deadline) {
-                    CheckCanceled(&canceled_);
-                    launcher.waitForReadyRead(20);
-                    response += launcher.readAll();
-                    if (response.size() > kControlLimit) throw std::runtime_error("Oversized app launch response");
-                }
-                if (response.contains("Error") || response.contains("Exception")) throw std::runtime_error("Install OkuFlow Camera on the selected USB phone first");
-            }
             QTcpSocket control, video;
+            QJsonObject capabilities;
             const auto connectionDeadline = Clock::now() + std::chrono::seconds(5);
             for (;;) {
                 CheckCanceled(&canceled_);
-                try { Transport(control, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 3000, descriptor.phoneTransportId); break; }
-                catch (...) {
-                    control.abort();
-                    if (Clock::now() >= connectionDeadline) throw std::runtime_error("Open OkuFlow Camera, allow camera access and authorize USB debugging");
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                bool endpointOpened = false;
+                try {
+                    Transport(control, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 1000, descriptor.phoneTransportId);
+                    endpointOpened = true;
+                    capabilities = ControlHello(control, 1500, hevcSupported, &canceled_);
+                    Transport(video, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 1000, descriptor.phoneTransportId);
+                    Hello(video, 2, {{"token", capabilities["token"]}}, &canceled_);
+                    break;
+                } catch (const PhoneProtocolError& error) {
+                    control.abort(); video.abort();
+                    if (error.code != "sessionBusy" || Clock::now() >= connectionDeadline) throw;
+                } catch (const std::exception&) {
+                    control.abort(); video.abort(); CheckCanceled(&canceled_);
+                    // Only an absent listener gets a single launch per USB attachment.
+                    if (!endpointOpened && MayLaunch(descriptor.phoneSerial, descriptor.phoneTransportId)) {
+                        QTcpSocket launcher;
+                        Transport(launcher, descriptor.phoneSerial, "shell:am start -n com.okuflow.camera/.MainActivity",
+                                  &canceled_, 1000, descriptor.phoneTransportId);
+                        QByteArray response;
+                        const auto launchDeadline = Clock::now() + std::chrono::seconds(2);
+                        while (launcher.state() == QAbstractSocket::ConnectedState && Clock::now() < launchDeadline) {
+                            CheckCanceled(&canceled_); launcher.waitForReadyRead(20); response += launcher.readAll();
+                            if (response.size() > kControlLimit) throw std::runtime_error("Oversized app launch response");
+                        }
+                        if (response.contains("Error") || response.contains("Exception"))
+                            throw std::runtime_error("Install OkuFlow Camera on the selected USB phone first");
+                    }
+                    if (Clock::now() >= connectionDeadline)
+                        throw std::runtime_error("Open OkuFlow Camera, allow camera access and authorize USB debugging");
                 }
+                for (int i = 0; i < 5; ++i) { CheckCanceled(&canceled_); std::this_thread::sleep_for(std::chrono::milliseconds(20)); }
             }
-            const auto capabilities = ControlHello(control, 3000, hevcSupported);
-            Transport(video, descriptor.phoneSerial, "localabstract:okuflow_camera", &canceled_, 3000, descriptor.phoneTransportId);
-            Hello(video, 2, {{"token", capabilities["token"]}});
             const auto bound = ReadPacket(video, kControlLimit, &canceled_);
             if (bound.type != 1 || bound.flags || Json(bound)["channel"].toString() != "video") throw std::runtime_error("Phone video binding failed");
             if (!descriptor.phoneCameraId.empty()) Command(control, {{"op", "camera"}, {"cameraId", QString::fromStdString(descriptor.phoneCameraId)}}, &canceled_);
@@ -551,7 +736,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                     const auto packet = ReadPacket(control, kControlLimit, &canceled_);
                     if (packet.flags || (packet.type != 3 && packet.type != 4 && packet.type != 5)) throw std::runtime_error("Invalid phone control message");
                     const auto json = Json(packet);
-                    if (packet.type == 5) throw std::runtime_error(json["error"].toString().toStdString());
+                    if (packet.type == 5) throw PhoneProtocolError(json["code"].toString().toStdString(), json["error"].toString().toStdString());
                     if (packet.type == 4) {
                         torchAvailable_.store(json["torchAvailable"].toBool(false));
                         torchEnabled_.store(json["torchEnabled"].toBool(false));
@@ -661,6 +846,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             std::lock_guard lock(mutex_);
             failed_ = true;
             error_ = exception.what();
+            if (const auto* protocol = dynamic_cast<const PhoneProtocolError*>(&exception)) problemCode_ = protocol->code;
         }
         ready_.notify_all();
         if (!canceled_.load() && errorCallback) { try { errorCallback(exception.what()); } catch (...) {} }

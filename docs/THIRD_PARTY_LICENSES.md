@@ -173,13 +173,14 @@ test-only dependencies; they are not included in the application APK.
 Their test-only use does not add an EPL runtime component to the GPL app.
 
 Temurin JDK 21 uses GPL-2.0 with the Classpath exception. The Android SDK,
-NDK, platform-tools and CMake are separately installed tools governed by
-their own vendor licenses/notices, not copied into the Windows bundle.
-Redistribution of adb binaries, exact resolved runtime notices in a release
-APK, and the companion's release dependency inventory remain explicit
-Phase 7 packaging gates. The Windows release script currently ships neither
-the APK nor adb. Contributions to the companion follow the repository's
-GPL-3.0 plus commercial contribution terms.
+NDK and CMake are separately installed development tools governed by their own
+vendor licenses/notices, not copied into the Windows bundle. The Windows bundle
+does contain the source-built adb runtime and its dependency DLLs; see
+[Android Debug Bridge (source-built runtime)](#android-debug-bridge-source-built-runtime).
+The exact resolved runtime notices in a release APK, and the companion's release
+dependency inventory, remain explicit Phase 7 packaging gates. The Windows
+release script does not ship the APK. Contributions to the companion follow the
+repository's GPL-3.0 plus commercial contribution terms.
 
 The phone engine uses Android platform Camera2/MediaCodec/LocalSocket APIs;
 the desktop receiver uses the Windows system H.264 decoder, an optional installed
@@ -195,6 +196,63 @@ library provides the optional probe and fake-server tests.
 FFmpeg/libx264 and FFmpeg/libx265, not third-party footage.
 The generation command is recorded in `tests/README.md`; the fixture follows
 the project's contribution/license terms. Neither generation tool is redistributed.
+
+## Android Debug Bridge (source-built runtime)
+- Upstream source: [android-tools 37.0.0](https://github.com/nmeum/android-tools/releases/tag/37.0.0),
+  which includes AOSP adb and its source dependencies; Windows USB DLL source:
+  [MSYS2 adbwinapi](https://github.com/msys2/adbwinapi).
+- Distribution version: `37.0.0-okuflow.1`, adb protocol 41. Inputs, patches
+  and exact development-library packages are SHA-256 pinned in
+  `scripts/adb-source/pins.json`. The reviewed output manifest is pinned in
+  `scripts/adb-source/distribution.json`.
+- Build: GCC 16.2.0 / MSYS2 UCRT64 for adb, MSVC 2022 for both USB DLLs.
+  Only adb and the USB DLL targets are built. Wireless mDNS is disabled.
+  This is an unsigned OkuFlow source build; no Google SDK binary is copied.
+- Bundled runtime: `platform-tools/adb.exe`, `AdbWinApi.dll`, `AdbWinUsbApi.dll`
+  and their complete transitive dependency DLLs. `NOTICE.txt`,
+  `source.properties` and `adb-build.json` accompany them. Fastboot, sqlite3,
+  filesystem tools and Android build tools are not deployed.
+- Source/relinking materials: `sources/adb-37.0.0-okuflow-source.zip` contains
+  complete original adb/libusb/BoringSSL and Windows USB sources, all applied
+  patches, exact dependency package archives with headers/import libraries and
+  runtime DLLs, and rebuild instructions/scripts. Full notices are retained in
+  `licenses/adb/`. Source archives also contain other Android tools; their
+  presence does not mean those executables or code are linked into adb.
+
+| Component | License | Use / notice |
+| --- | --- | --- |
+| AOSP adb and Windows USB API | Apache-2.0 | Separate executable and USB DLLs; `AOSP_ADB_NOTICE.txt`, `APACHE_2_0.txt` |
+| libusb 1.0.29, AOSP commit `e392f3b7f7c3550c665793db2eea37a95c3bb105` | LGPL-2.1-or-later | Static; `LIBUSB_LGPL_2_1.txt`, `LIBUSB_NOTICE.txt`; full corresponding source/relinking ZIP |
+| BoringSSL snapshot in the pinned source archive | Composite upstream license (`LicenseRef-BoringSSL` in SBOM) | Static; complete `BORINGSSL_LICENSE.txt` retained and extracted into SBOM |
+| Abseil 20260526.0-1 | Apache-2.0 | DLLs; `abseil-cpp/` |
+| Protobuf 36.2-1 | BSD-3-Clause | DLLs; `protobuf/` |
+| utf8_range, Protobuf 36.2 snapshot | MIT | DLL; `UTF8_RANGE_LICENSE.txt` |
+| Brotli 1.2.0-1 | MIT | DLLs; `brotli/` |
+| LZ4 1.10.0-1 | BSD-2-Clause | DLL; `lz4/LICENSE` |
+| Zstandard 1.5.7-2 | BSD-3-Clause | DLL; `zstd/` |
+| zlib 1.3.2-2 | Zlib | DLL; `zlib/` |
+| fmt 12.2.0-1 | MIT | Headers; `fmt/` |
+| GCC libgcc/libstdc++ 16.2.0-5 | GPL-3.0-or-later WITH GCC-exception-3.1 | DLLs; full `libgcc/` and `libstdc++/` notices and exception text |
+| MinGW winpthreads 14.0.0.r426.g4564ee4b5-1 | MIT AND BSD-3-Clause | DLL; complete `libwinpthread/` notices |
+| MinGW CRT/headers | Component terms in retained original notices | Toolchain runtime/header material; complete `crt/` and `headers/` notices |
+| MSYS2 Windows recipe/patches | BSD-3-Clause | Applied build adaptation; `MSYS2_RECIPE_LICENSE.txt` |
+
+- LGPL static-link distribution follows [LGPL 2.1 section 6(a)](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html):
+  the included corresponding source and relinking inputs allow modifying libusb
+  and rebuilding/relinking adb. Modification of the library and reverse
+  engineering for debugging those modifications are permitted. OkuFlow's
+  commercial terms do not limit these rights. Redistributors must preserve
+  the complete notices and source/relinking package, not omit it from the ZIP.
+- The [GCC Runtime Library Exception](https://www.gnu.org/licenses/gcc-exception-3.1.html)
+  applies to eligible compilation using the GCC runtime; its exact installed
+  text is retained with the GPL text. These runtimes are not classified as
+  unrestricted Apache/MIT code.
+- adb is an independent program, not linked into `oku_flow.exe`; its licenses
+  remain independent in both GPL and commercial OkuFlow distributions.
+- Staging validates the reviewed manifest and every runtime/source file; SDK
+  directories are never an automatic packaging fallback. See
+  [adb_distribution.md](adb_distribution.md) for build/relink and ownership rules.
+- The Android APK and development SDK remain separately installed/distributed.
 
 ## Not Currently Bundled
 - OpenCV DNN

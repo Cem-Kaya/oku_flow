@@ -11,11 +11,17 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
-/** Abstract Unix socket reached through adb. Accepts shell/root peers, one control/video pair only. */
+/**
+ * Abstract Unix socket reached through adb. Accepts shell/root peers, one control/video pair only.
+ * [problem] supplies the current problem code for non-claiming probes; [onListenerFailed]
+ * runs once if the listening socket itself dies so the owner can restart it.
+ */
 class UsbSocketServer(
     private val capabilities: () -> JSONObject,
     private val onCommand: (JSONObject) -> Unit,
     private val onConnect: () -> Unit,
+    private val problem: () -> String? = { null },
+    private val onListenerFailed: () -> Unit = {},
     private val onDisconnect: () -> Unit,
 ) : AutoCloseable {
     private val server = LocalServerSocket("okuflow_camera")
@@ -23,6 +29,16 @@ class UsbSocketServer(
     private val sockets = ConcurrentHashMap.newKeySet<LocalSocket>()
     private val lock = Any()
     private var session: Session? = null
+    // Camera characteristics and codec lists are slow on a cold process; build once per listener.
+    @Volatile private var cachedCapabilities: String? = null
+
+    /** A fresh copy: callers add per-connection fields. */
+    private fun capabilityJson(): JSONObject {
+        cachedCapabilities?.let { return JSONObject(it) }
+        val fresh = capabilities()
+        cachedCapabilities = fresh.toString()
+        return fresh
+    }
 
     private inner class Channel(val socket: LocalSocket, capacity: Int, private val byteLimit: Int) {
         private val queue = ArrayBlockingQueue<WireProtocol.Packet>(capacity)
@@ -60,34 +76,46 @@ class UsbSocketServer(
     }
     private inner class Session(val control: Channel, val codecs: Set<String>, val limits: HostLimits) {
         val token = UUID.randomUUID().toString()
+        val createdAt = SystemClock.elapsedRealtime()
         var video: Channel? = null
         var generation = -1
     }
 
     init {
+        thread(name = "OkuFlow-USB-capabilities", isDaemon = true) {
+            runCatching { capabilityJson() }.onFailure { Log.w("OkuFlow-USB", "Capability warm-up failed") }
+        }
         thread(name = "OkuFlow-USB-accept", isDaemon = true) {
             while (running.get()) {
-                try {
-                    val socket = server.accept()
-                    val uid = socket.peerCredentials.uid
-                    if ((uid != 2000 && uid != 0) || sockets.size >= 4) { socket.close(); continue }
-                    sockets.add(socket)
-                    thread(name = "OkuFlow-USB-read", isDaemon = true) { readChannel(socket) }
-                } catch (_: Exception) { if (running.get()) close() }
+                val socket = try { server.accept() } catch (_: Exception) {
+                    // Only a dead listening socket ends the loop; the owner restarts the listener.
+                    if (running.get()) { close(); onListenerFailed() }
+                    break
+                }
+                // A peer that exits before credentials are read affects only its own socket.
+                val uid = runCatching { socket.peerCredentials.uid }.getOrNull()
+                if (!peerAllowed(uid) || sockets.size >= 4 || !running.get()) { runCatching { socket.close() }; continue }
+                sockets.add(socket)
+                runCatching { thread(name = "OkuFlow-USB-read", isDaemon = true) { readChannel(socket) } }
+                    .onFailure { disconnect(socket) }
             }
         }
         thread(name = "OkuFlow-USB-watchdog", isDaemon = true) {
             while (running.get()) {
                 Thread.sleep(500)
+                val now = SystemClock.elapsedRealtime()
                 val stalled = synchronized(lock) {
-                    listOfNotNull(session?.control, session?.video).filter {
+                    val current = session
+                    val writers = listOfNotNull(current?.control, current?.video).filter {
                         // Read once: a completed write can reset this volatile field
                         // between reads, making uptime - 0 look like a stalled write.
                         val startedAt = it.writeStarted
-                        startedAt != 0L && SystemClock.elapsedRealtime() - startedAt > 3000
+                        startedAt != 0L && now - startedAt > 3000
                     }.map { it.socket }
+                    val unbound = current?.takeIf { videoBindExpired(it.createdAt, now, it.video != null) }
+                    writers + listOfNotNull(unbound?.control?.socket)
                 }
-                if (stalled.isNotEmpty()) Log.w("OkuFlow-USB", "Disconnecting stalled channel writer")
+                if (stalled.isNotEmpty()) Log.w("OkuFlow-USB", "Disconnecting stalled or unbound channel")
                 stalled.forEach { disconnect(it) }
             }
         }
@@ -98,18 +126,33 @@ class UsbSocketServer(
             socket.soTimeout = 5000
             val hello = WireProtocol.readHello(socket.inputStream)
             val json = JSONObject(hello.json.toString(Charsets.UTF_8))
+            if (hello.role == WireProtocol.CONTROL && json.optBoolean("probe", false)) {
+                // Discovery: report readiness without claiming the session slot or allocating a token.
+                val busy = synchronized(lock) { session != null }
+                val reply = capabilityJson().put("protocol", WireProtocol.VERSION).put("probe", true)
+                    .put("busy", busy).put("problem", problem() ?: JSONObject.NULL)
+                writeDirect(socket, WireProtocol.ACK, reply)
+                return
+            }
             if (hello.role == WireProtocol.CONTROL) {
                 val codecs = requireNotNull(json.optJSONArray("codecs")) { "Missing host codecs" }
                 val supported = (0 until codecs.length()).map { codecs.getString(it) }.filter { it in listOf("avc", "hevc") }.toSet()
                 require(supported.isNotEmpty()) { "No shared codec" }
+                val limits = HostLimits(json.optInt("maxWidth", 16384).coerceIn(64, 16384),
+                    json.optInt("maxHeight", 16384).coerceIn(48, 16384),
+                    json.optLong("maxPixelsPerSecond", Long.MAX_VALUE).coerceAtLeast(1))
+                // Build the ACK before claiming: the bind deadline must not include a cold capability scan.
+                val ack = capabilityJson()
                 val created = synchronized(lock) {
-                    require(session == null) { "Another host is already connected" }
-                    val limits = HostLimits(json.optInt("maxWidth", 16384).coerceIn(64, 16384),
-                        json.optInt("maxHeight", 16384).coerceIn(48, 16384),
-                        json.optLong("maxPixelsPerSecond", Long.MAX_VALUE).coerceAtLeast(1))
-                    Session(Channel(socket, 128, 512 * 1024), supported, limits).also { session = it }
+                    if (session != null) null
+                    else Session(Channel(socket, 128, 512 * 1024), supported, limits).also { session = it }
                 }
-                send(created.control, WireProtocol.ACK, capabilities().put("token", created.token)
+                if (created == null) {
+                    writeDirect(socket, WireProtocol.ERROR, JSONObject()
+                        .put("error", "Another host is already connected").put("code", SESSION_BUSY_CODE))
+                    return
+                }
+                send(created.control, WireProtocol.ACK, ack.put("token", created.token)
                     .put("protocol", WireProtocol.VERSION).put("hostCodecs", org.json.JSONArray(supported.toList())))
                 socket.soTimeout = 30_000 // Hosts send a ping at least every 10 seconds.
                 while (running.get()) {
@@ -158,7 +201,13 @@ class UsbSocketServer(
     fun metadata(json: JSONObject) {
         if (synchronized(lock) { session?.generation == json.optInt("generation", -2) }) control(WireProtocol.METADATA, json)
     }
-    fun error(message: String) = control(WireProtocol.ERROR, JSONObject().put("error", message))
+    fun error(message: String, code: String? = null) =
+        control(WireProtocol.ERROR, JSONObject().put("error", message).apply { if (code != null) put("code", code) })
+
+    /** One small reply on a connection that never joins the session; it fits the socket send buffer. */
+    private fun writeDirect(socket: LocalSocket, type: Int, json: JSONObject) {
+        runCatching { WireProtocol.writePacket(socket.outputStream, type, json.toString().toByteArray(Charsets.UTF_8)) }
+    }
 
     private fun control(type: Int, json: JSONObject) {
         val channel = synchronized(lock) { session?.control } ?: return

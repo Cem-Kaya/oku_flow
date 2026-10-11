@@ -55,6 +55,31 @@ void OkuFlowApp::EndMousePan() { qFatal("Unexpected app interaction"); }
 
 namespace {
 
+// Qt can report an active fixture while Windows still owns foreground input
+// elsewhere. Acquire native focus in this serial, interactive-desktop test
+// harness; do not ask a person to click test windows and do not weaken checks.
+bool ActivateFixtureWindow(QWidget* widget)
+{
+    QWidget* window = widget->window();
+    window->raise();
+    const HWND handle = reinterpret_cast<HWND>(window->winId());
+    const DWORD thread = GetCurrentThreadId();
+    const DWORD foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
+    const bool attached = foregroundThread && foregroundThread != thread &&
+                          AttachThreadInput(thread, foregroundThread, TRUE);
+    SetForegroundWindow(handle);
+    SetActiveWindow(handle);
+    window->activateWindow();
+    if (attached) AttachThreadInput(thread, foregroundThread, FALSE);
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        QTest::qWait(20);
+        if (GetForegroundWindow() == handle && window->isActiveWindow()) return true;
+    }
+    qWarning() << "Native fixture activation failed:" << window->objectName()
+               << "requested" << handle << "foreground" << GetForegroundWindow();
+    return false;
+}
+
 template <typename T>
 T* Named(MainWindow& window, const char* name)
 {
@@ -267,7 +292,7 @@ void MainWindowTests::modesGridSearchAndGeometry()
     AddQuickModes(window);
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QCoreApplication::processEvents();
     QVERIFY(window.isSimpleMode());
@@ -279,7 +304,7 @@ void MainWindowTests::modesGridSearchAndGeometry()
     QVERIFY(gridButton && grid && current);
     SaveScreenshot(window, code + QStringLiteral("-simple"));
 
-    gridButton->window()->activateWindow();
+    QVERIFY(ActivateFixtureWindow(gridButton));
     QVERIFY(QTest::qWaitForWindowActive(gridButton->window()));
     QTest::mouseClick(gridButton, Qt::LeftButton);
     QTRY_VERIFY(grid->isVisible());
@@ -572,7 +597,7 @@ void MainWindowTests::gridBrowsingRequiresDeliberateActivation()
     AddQuickModes(window);
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     QVERIFY(QTest::qWaitForWindowActive(&window));
     auto* gridButton = Named<QToolButton>(window, "modeGridButton");
     auto* grid = Named<QWidget>(window, "modeGridPopup");
@@ -581,7 +606,7 @@ void MainWindowTests::gridBrowsingRequiresDeliberateActivation()
     QSignalSpy activated(&window, &MainWindow::quickModeActivated);
     const QString appliedLabel = current->text();
 
-    gridButton->window()->activateWindow();
+    QVERIFY(ActivateFixtureWindow(gridButton));
     QVERIFY(QTest::qWaitForWindowActive(gridButton->window()));
     QTest::mouseClick(gridButton, Qt::LeftButton);
     QTRY_VERIFY(grid->isVisible());
@@ -749,7 +774,7 @@ void MainWindowTests::keyboardRegionsAndFindShortcut()
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     QVERIFY(QTest::qWaitForWindowActive(&window));
     auto* gridButton = Named<QToolButton>(window, "modeGridButton");
     auto* tabs = Named<QTabWidget>(window, "advancedPage");
@@ -770,20 +795,20 @@ void MainWindowTests::keyboardRegionsAndFindShortcut()
     QTest::keyClick(gridButton, Qt::Key_F6, Qt::ShiftModifier);
     QTRY_VERIFY(window.simpleModeButton()->hasFocus());
 
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     QTest::keyClick(&window, Qt::Key_F, Qt::ControlModifier);
     QTRY_VERIFY(!window.isSimpleMode());
     QCOMPARE(tabs->currentWidget(), image);
     QTRY_VERIFY(imageSearch->hasFocus());
 
     tabs->setCurrentWidget(settings);
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     QTest::keyClick(tabs, Qt::Key_F, Qt::ControlModifier);
     QCOMPARE(tabs->currentWidget(), settings);
     QTRY_VERIFY(sharedSearch->hasFocus());
 
     tabs->setCurrentWidget(assistant);
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     QTest::keyClick(tabs, Qt::Key_F, Qt::ControlModifier);
     QCOMPARE(tabs->currentWidget(), image);
     QTRY_VERIFY(imageSearch->hasFocus());
@@ -805,7 +830,7 @@ void MainWindowTests::assistantInspectorTabTraversal()
     auto* attach = window.assistantAttachFrameCheckbox();
     auto* newConversation = window.assistantNewButton();
     QVERIFY(attach && newConversation && attach->isVisible() && newConversation->isVisible());
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     attach->setFocus();
     QTRY_VERIFY(attach->hasFocus());
     QTest::keyClick(attach, Qt::Key_Tab);
@@ -1178,7 +1203,7 @@ void MainWindowTests::mouseFocusedChromeCanIdleFade()
     auto* idle = Named<QTimer>(window, "simpleChromeIdleTimer");
     QVERIFY(top && idle);
     QTRY_VERIFY(top->isVisible());
-    top->activateWindow();
+    QVERIFY(ActivateFixtureWindow(top));
     QVERIFY(QTest::qWaitForWindowActive(top));
     QTest::mouseClick(window.simpleModeButton(), Qt::LeftButton);
     QTRY_VERIFY(window.simpleModeButton()->hasFocus());
@@ -1221,7 +1246,7 @@ void MainWindowTests::unrelatedNativeInputCannotRevealChrome()
     NativeInputWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     QVERIFY(QTest::qWaitForWindowActive(&window));
     auto* top = Named<QWidget>(window, "topLeftPanel");
     auto* idle = Named<QTimer>(window, "simpleChromeIdleTimer");
@@ -1256,7 +1281,7 @@ void MainWindowTests::keyboardFocusedChromeSurvivesNativeHandoff()
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     QVERIFY(QTest::qWaitForWindowActive(&window));
     auto* top = Named<QWidget>(window, "topLeftPanel");
     auto* bottomLeft = Named<QWidget>(window, "bottomLeftPanel");
@@ -1289,11 +1314,11 @@ void MainWindowTests::simpleBackwardFocusCrossesPanels()
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     QVERIFY(QTest::qWaitForWindowActive(&window));
     auto* gridButton = Named<QToolButton>(window, "modeGridButton");
     QVERIFY(gridButton);
-    gridButton->window()->activateWindow();
+    QVERIFY(ActivateFixtureWindow(gridButton));
     QVERIFY(QTest::qWaitForWindowActive(gridButton->window()));
     gridButton->setFocus();
     QTRY_VERIFY(gridButton->hasFocus());
@@ -1307,7 +1332,7 @@ void MainWindowTests::modalDialogKeepsTabAndNumberKeys()
     AddQuickModes(window);
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    window.activateWindow();
+    QVERIFY(ActivateFixtureWindow(&window));
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QDialog dialog(&window);
     dialog.setModal(true);

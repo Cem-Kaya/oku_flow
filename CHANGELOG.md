@@ -4,7 +4,31 @@
   the redundant global compatibility checkbox and migrate its legacy enabled
   state to `Compatibility mode` for the selected physical camera.
 
-## [Unreleased]
+## [0.2.1] - 2026-10-12
+
+### Fixed
+- Discover the optional Android camera in the background every five seconds,
+  remember the user's camera choice across sessions and reconnect after late
+  USB authorization, app startup or cable reconnection. No phone model or serial
+  is built into the discovery logic; an explicit webcam choice remains selected.
+- Keep phone discovery separate from a streaming session, recover the Android
+  USB listener while the app is visible, debounce short cable interruptions,
+  and cancel incomplete handshakes promptly. Keep a working webcam until the
+  preferred phone is ready and restore a temporary webcam after phone failure.
+- Keep camera controls responsive during phone startup and avoid repeated phone
+  activity launches or modal error dialogs during automatic recovery.
+- Retry transient phone camera failures after 30 seconds without requiring a
+  cable replug. Clear permission/mode problems when their prerequisite changes.
+- Make unattended main-window GUI tests acquire native Windows foreground focus
+  before testing keyboard and idle behavior; no manual window clicks are needed.
+
+### Packaging
+- Build adb and both Windows USB support DLLs from pinned source. Bundle their
+  complete dependency DLLs, notices, checksum provenance and corresponding
+  adb/libusb source plus relinking inputs. Verify the reviewed build before
+  staging; users do not need Android Studio or a separate SDK installation.
+- Start a missing local adb server hidden on loopback, preserving any existing
+  server. Document rebuilding and LGPL rights in `docs/adb_distribution.md`.
 
 ## [0.2.0] - 2026-10-11
 

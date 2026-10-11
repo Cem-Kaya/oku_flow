@@ -161,4 +161,15 @@ class SetupStepTest {
         assertFalse(ready.copy(usbDebuggingEnabled = false).canListenForHost)
         assertEquals(SetupStep.ConnectUsb, step(unknown.copy(usbConnectedToComputer = false)))
     }
+
+    @Test
+    fun briefUsbDropoutIsDebouncedButLostPrerequisitesStopImmediately() {
+        assertNull(listenerStopDelayMs(ready))
+        assertEquals(USB_DISCONNECT_GRACE_MS, listenerStopDelayMs(ready.copy(usbConnectedToComputer = false)))
+        assertEquals(0L, listenerStopDelayMs(ready.copy(cameraPermissionGranted = false)))
+        assertEquals(0L, listenerStopDelayMs(ready.copy(usbDebuggingEnabled = false)))
+        // Android 17 redacts the setting: unknown is not "disabled", so only the cable is missing.
+        assertEquals(USB_DISCONNECT_GRACE_MS,
+            listenerStopDelayMs(ready.copy(usbDebuggingEnabled = null, usbConnectedToComputer = false)))
+    }
 }

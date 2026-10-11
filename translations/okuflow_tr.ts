@@ -3013,5 +3013,13 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
         <translation>Kodlayıcı kuyruğu dolu olduğu için video kareleri atlanıyor. Devam ederse kayıt çözünürlüğünü düşürün veya kaydı durdurup yeniden başlatın.</translation>
     </message>
+    <message>
+        <source>Waiting for phone…</source>
+        <translation>Telefon bekleniyor…</translation>
+    </message>
+    <message>
+        <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
+        <translation>Telefonda OkuFlow Camera uygulamasını açın, USB kablosunu bağlayın ve USB hata ayıklamasına izin verin. OkuFlow bağlantıyı otomatik olarak denetler.</translation>
+    </message>
 </context>
 </TS>

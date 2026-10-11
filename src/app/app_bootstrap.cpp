@@ -1130,6 +1130,11 @@ bool OkuFlowApp::Initialize()
         vlmAssistEnabled_, assistiveOverlayEnabled_);
 
     const auto& savedCamera = settingsController_->MutableSettings();
+    automaticPhoneSelectionAllowed_ =
+        savedCamera.cameraSymbolicLink.startsWith(QStringLiteral("okuflow-phone:")) ||
+        !savedCamera.cameraSelectionExplicit;
+    preferredPhoneCamera_ = savedCamera.cameraSymbolicLink.startsWith(QStringLiteral("okuflow-phone:"))
+        ? savedCamera.cameraSymbolicLink : QString();
     const int initialCameraIndex = ResolveSavedCameraIndex(cameras_,
         savedCamera.cameraSymbolicLink.toStdWString(), savedCamera.cameraIndex);
     if (!cameras_.empty()) {
@@ -1138,7 +1143,8 @@ bool OkuFlowApp::Initialize()
         if (!startupSynchronousProfile_) {
             // All app services/settings now exist. Open the camera while show()
             // initializes the native presenter; completion still returns via Qt.
-            StartCameraCapture(static_cast<size_t>(initialCameraIndex), true, false, true);
+            StartCameraCapture(static_cast<size_t>(initialCameraIndex),
+                cameras_[static_cast<size_t>(initialCameraIndex)].phoneSerial.empty(), false, true);
         }
     }
 
@@ -1179,6 +1185,10 @@ bool OkuFlowApp::Initialize()
         StartCameraCapture(static_cast<size_t>(initialCameraIndex));
     }
     initialized_ = true;
+    auto* phoneDiscoveryPulse = new QTimer(this);
+    phoneDiscoveryPulse->setInterval(100);
+    connect(phoneDiscoveryPulse, &QTimer::timeout, this, &OkuFlowApp::PollPhoneCameraDiscovery);
+    phoneDiscoveryPulse->start();
     return true;
 }
 
@@ -1396,6 +1406,8 @@ void OkuFlowApp::MaybeReportTranscriptNotesSaved()
 }
 
 OkuFlowApp::~OkuFlowApp() {
+    phoneDiscoveryCanceled_.store(true);
+    if (phoneDiscovery_.valid()) phoneDiscovery_.wait();
     WriteStartupProfile();
     if (cameraStartupPending_) {
         StopCameraCapture(true);

@@ -2,6 +2,7 @@
 
 #include "app_internal.hpp"
 #include <QLocale>
+#include "okuflow/capture/phone_camera.hpp"
 
 namespace okuflow {
 
@@ -12,10 +13,19 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
 
     // A manual camera pick always wins over an in-flight automatic reconnect.
     pipelineOrchestrator_->CancelCameraReconnect();
+    automaticPhoneSelectionAllowed_ = !cameras_[static_cast<size_t>(index)].phoneSerial.empty();
+    preferredPhoneCamera_ = automaticPhoneSelectionAllowed_
+        ? QString::fromStdWString(cameras_[static_cast<size_t>(index)].symbolicLink) : QString();
     settingsController_->MutableSettings().cameraIndex = index;
+    settingsController_->MutableSettings().cameraSelectionExplicit = true;
     settingsController_->MutableSettings().cameraSymbolicLink =
         QString::fromStdWString(cameras_[static_cast<size_t>(index)].symbolicLink);
+    if (automaticPhoneSelectionAllowed_) {
+        phoneRetries_[cameras_[static_cast<size_t>(index)].phoneSerial].Succeeded();
+        PhoneCameraTransport::AllowAppLaunch(cameras_[static_cast<size_t>(index)].phoneSerial);
+    }
     StartCameraCapture(static_cast<size_t>(index));
+    SavePersistentSettings();
 }
 
 void OkuFlowApp::UpdateCameraAccelerationUi()

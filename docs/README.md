@@ -552,3 +552,10 @@ legacy `powershell.exe` bridge.
   CLI from a pinned, verified OpenAI bootstrap script; authentication remains
   an explicit `Connect ChatGPT` action. The fallback VLM mode depends on a
   user-provided OpenAI-compatible `chat/completions` server.
+
+USB companion connection recovery, preference persistence and adb bootstrap are
+mapped in [code_reference.md](code_reference.md) and
+[../android/PROTOCOL.md](../android/PROTOCOL.md). The source-built adb runtime,
+rebuild/source package and licensing terms are documented in
+[adb_distribution.md](adb_distribution.md) and
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

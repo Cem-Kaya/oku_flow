@@ -1,0 +1,164 @@
+{
+  "version": "37.0.0-okuflow.1",
+  "protocol": 41,
+  "msys2": {
+    "url": "https://github.com/msys2/msys2-installer/releases/download/2026-09-27/msys2-base-x86_64-20260927.tar.xz",
+    "sha256": "ea2f31a0b6ade63914ce441ffb022f0f6aa96982bfefa2326460a26d5fb01322"
+  },
+  "msysRecipeCommit": "de5eb1580a830c8b0afd199b605ec00e17ab5c49",
+  "usbApiRecipeCommit": "630c546647bd92c1b0540a8fed0ae880f35da785",
+  "protobufPatchCommit": "fc6d1ecca7fb40746f58699c566b25dac902f44c",
+  "compiler": "16.2.0",
+  "inputs": [
+    {
+      "name": "0001-android-tools-cmake.patch",
+      "url": "https://raw.githubusercontent.com/msys2/MINGW-packages/de5eb1580a830c8b0afd199b605ec00e17ab5c49/mingw-w64-android-tools/0001-android-tools-cmake.patch",
+      "sha256": "909d4d96a007446747c1ebff824c30092b00f039e9e15a87585520bbc87645d3",
+      "dependency": false
+    },
+    {
+      "name": "0002-android-tools-vendor.patch",
+      "url": "https://raw.githubusercontent.com/msys2/MINGW-packages/de5eb1580a830c8b0afd199b605ec00e17ab5c49/mingw-w64-android-tools/0002-android-tools-vendor.patch",
+      "sha256": "e02e8a54ff265f75b48e00c444bb6486276fb6051b93ce4d055cb531287f8055",
+      "dependency": false
+    },
+    {
+      "name": "0003-fix-building-with-gcc-mingw.patch",
+      "url": "https://raw.githubusercontent.com/msys2/MINGW-packages/de5eb1580a830c8b0afd199b605ec00e17ab5c49/mingw-w64-android-tools/0003-fix-building-with-gcc-mingw.patch",
+      "sha256": "528e7a2dbf366832d6ae339e013de7c311efb7fa9139ce3478bc18fe29b0542d",
+      "dependency": false
+    },
+    {
+      "name": "0004-leave-wstat-as-is.patch",
+      "url": "https://raw.githubusercontent.com/msys2/MINGW-packages/de5eb1580a830c8b0afd199b605ec00e17ab5c49/mingw-w64-android-tools/0004-leave-wstat-as-is.patch",
+      "sha256": "4c670ab8a96da18f26741bad300a8c218ac50cfa96efb713d36a6883d774c300",
+      "dependency": false
+    },
+    {
+      "name": "0005-missing-includes.patch",
+      "url": "https://raw.githubusercontent.com/msys2/MINGW-packages/de5eb1580a830c8b0afd199b605ec00e17ab5c49/mingw-w64-android-tools/0005-missing-includes.patch",
+      "sha256": "e0b89815ef8cc40943f79721344937cc037d25cb4ee24a8d4bad5c1d031b0354",
+      "dependency": false
+    },
+    {
+      "name": "adbwinapi_sources.zip",
+      "url": "https://github.com/msys2/adbwinapi/releases/download/37.0.0/adbwinapi_sources.zip",
+      "sha256": "c2a57e05f47749cd4b3037ef1a0ececf6ac677e8eb3ec48fde7df20987964e69",
+      "dependency": false
+    },
+    {
+      "name": "AdbWinApi.def",
+      "url": "https://raw.githubusercontent.com/msys2/MINGW-packages/de5eb1580a830c8b0afd199b605ec00e17ab5c49/mingw-w64-android-tools/AdbWinApi.def",
+      "sha256": "e6fc31c148e120fc69be53e0464434c492ab0eaa0dbc8f18dd3c19eb2dd2577b",
+      "dependency": false
+    },
+    {
+      "name": "android-tools-37.0.0.tar.xz",
+      "url": "https://github.com/nmeum/android-tools/releases/download/37.0.0/android-tools-37.0.0.tar.xz",
+      "sha256": "2725d09f892a3a38e534429f47a321f58ecf6a3169caa42c915fb2cb7d46be0e",
+      "dependency": false
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-abseil-cpp-20260526.0-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-abseil-cpp-20260526.0-1-any.pkg.tar.zst",
+      "sha256": "89803dbb88b7e1a18169fd2ecefa2b85de3d99fcd5d6899b737e4451532b691f",
+      "dependency": true
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+      "sha256": "9cc89665496ea504751476eafba15c71c554aaf3004babc2004f7c07ffd60514",
+      "dependency": true
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-fmt-12.2.0-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-fmt-12.2.0-1-any.pkg.tar.zst",
+      "sha256": "7b368e76d231f44c968c6b2a0780ac122e48fac80b35aa9ec353a3bcb440b00f",
+      "dependency": true
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-libgcc-16.2.0-5-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libgcc-16.2.0-5-any.pkg.tar.zst",
+      "sha256": "5b7efca9a27ce7504a931d92bac39a8009d8347dade0d905d0588aecdf68cb4b",
+      "dependency": true
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-libstdc++-16.2.0-5-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libstdc++-16.2.0-5-any.pkg.tar.zst",
+      "sha256": "9025eb0c238f1c6093bb7561d9be64523159a8cac212b9c221853ac88c0d341a",
+      "dependency": true
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst",
+      "sha256": "f8de8153bbc0e47ba244a423c12c426fa1d9f56395117ecaa34c6ad6ebed6ca3",
+      "dependency": true
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-lz4-1.10.0-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-lz4-1.10.0-1-any.pkg.tar.zst",
+      "sha256": "00a807df81a4b7e82445178b8625962ed592cf1f0a08a8e04c8b9338c4362638",
+      "dependency": true
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-pcre2-10.49-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-pcre2-10.49-1-any.pkg.tar.zst",
+      "sha256": "63172179db724ac71e2439a7981134c1bcab8049bdddfd349b32b8f76ed52d1e",
+      "dependency": true
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-protobuf-36.2-1-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-protobuf-36.2-1-any.pkg.tar.zst",
+      "sha256": "39446eb547ad14187dc6f126ea978ec49c9648db340e14c244da033a030502eb",
+      "dependency": true
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+      "sha256": "841401182976d2f9e17e5c0ebaac51f2a8014140ea53d67625e91c8fb3c85ea0",
+      "dependency": true
+    },
+    {
+      "name": "mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+      "url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+      "sha256": "dbdb8427280046a2b41697780aa4c52983b708082b0da4755951dc3bea96ca89",
+      "dependency": true
+    },
+    {
+      "name": "MSYS2_RECIPE_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/msys2/MINGW-packages/de5eb1580a830c8b0afd199b605ec00e17ab5c49/LICENSE",
+      "sha256": "e08ac31ef517ea449b7f402ab7940c750127c1de0566458d8e80635be9fa4055",
+      "dependency": false
+    },
+    {
+      "name": "protobuf36.patch",
+      "url": "https://raw.githubusercontent.com/nmeum/android-tools/fc6d1ecca7fb40746f58699c566b25dac902f44c/patches/adb/0029-protobuf-36-absl-log-macros.patch",
+      "sha256": "a62c10ebff856d0cf290f40995fb763ff91c898e49bf711ab0dcb85ffdf916af",
+      "dependency": false
+    },
+    {
+      "name": "USB_API_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/msys2/adbwinapi/630c546647bd92c1b0540a8fed0ae880f35da785/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "dependency": false
+    },
+    {
+      "name": "usb-api-CMakeLists.txt",
+      "url": "https://raw.githubusercontent.com/msys2/adbwinapi/630c546647bd92c1b0540a8fed0ae880f35da785/CMakeLists.txt",
+      "sha256": "286382f9f9a4167abc771d6390cd5f687c7116c55b04c06dbce2a306de6ec3bd",
+      "dependency": false
+    },
+    {
+      "name": "UTF8_RANGE_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/protocolbuffers/protobuf/v36.2/third_party/utf8_range/LICENSE",
+      "sha256": "02de69b64fc36d9e938f418e52723e42f0b2b226d58a9cb3c8dcbdf7059f5074",
+      "dependency": false
+    },
+    {
+      "name": "LZ4_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/lz4/lz4/v1.10.0/lib/LICENSE",
+      "sha256": "8b58c446121a109ccf32edc094bba3010a3d85e4ee3702950db55e4d3e87736c",
+      "dependency": false
+    }
+  ]
+}

@@ -203,6 +203,23 @@ class PhoneCameraClient:
         self.command_id = 0
         self.capabilities = {}
 
+    def probe(self) -> dict:
+        """Read capabilities/readiness without claiming a new companion's session."""
+        if not any(device["serial"] == self.serial and device["state"] == "device" for device in self.adb.devices()):
+            raise RuntimeError("The selected phone is not connected and authorized over USB")
+        with self.adb.transport(self.serial, "localabstract:okuflow_camera") as stream:
+            send_hello(stream, 1, {"probe": True, "codecs": ["avc", "hevc"]})
+            kind, flags, payload = read_packet(stream)
+            reply = json.loads(payload)
+            if (kind, flags) == (ERROR, 0):
+                raise RuntimeError(f"{reply.get('code', 'failed')}: {reply.get('error', 'Phone probe failed')}")
+            if (kind, flags) != (ACK, 0) or reply.get("protocol") != VERSION:
+                raise ValueError("Invalid phone probe acknowledgement")
+            if not reply.get("probe") and not reply.get("token"):
+                raise ValueError("Unsupported phone probe")
+            # An old app may claim a session; immediately closing frees it.
+            return {key: value for key, value in reply.items() if key != "token"}
+
     def connect(self) -> dict:
         try:
             if not any(device["serial"] == self.serial and device["state"] == "device" for device in self.adb.devices()):

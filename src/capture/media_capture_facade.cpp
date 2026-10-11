@@ -3,6 +3,7 @@
 #include "okuflow/capture/phone_camera.hpp"
 
 #include <QDebug>
+#include <algorithm>
 #include <chrono>
 #include <thread>
 #include <utility>
@@ -18,6 +19,67 @@ void RetainAbandonedSession(const std::shared_ptr<MediaCaptureSession>& session)
 } // namespace
 
 MediaCapture::MediaCapture() : session_(std::make_shared<MediaCaptureSession>()) {}
+int ResolveAutomaticPhoneIndex(const std::vector<CameraDescriptor>& cameras,
+                              const std::wstring& preferredSymbolicLink,
+                              bool allowPhoneSelection, bool requireReady)
+{
+    if (!allowPhoneSelection) return -1;
+    const auto eligible = [requireReady](const CameraDescriptor& camera) {
+        return !camera.phoneSerial.empty() && !camera.phoneBusy &&
+            camera.phoneProblem.empty() && (!requireReady || camera.phoneAppReady);
+    };
+    if (preferredSymbolicLink.starts_with(L"okuflow-phone:")) {
+        for (size_t i = 0; i < cameras.size(); ++i) {
+            if (eligible(cameras[i]) &&
+                cameras[i].symbolicLink == preferredSymbolicLink)
+                return static_cast<int>(i);
+        }
+        for (size_t i = 0; i < cameras.size(); ++i) {
+            if (eligible(cameras[i]) && cameras[i].phoneCameraId.empty() &&
+                preferredSymbolicLink.starts_with(cameras[i].symbolicLink + L"/"))
+                return static_cast<int>(i);
+        }
+    }
+    for (size_t i = 0; i < cameras.size(); ++i) {
+        if (eligible(cameras[i]) && cameras[i].phoneAppReady)
+            return static_cast<int>(i);
+    }
+    return -1;
+}
+
+std::vector<CameraDescriptor> MergePhoneCameraDiscovery(
+    const std::vector<CameraDescriptor>& previous,
+    const std::vector<CameraDescriptor>& discovered,
+    const std::wstring& activeSymbolicLink)
+{
+    std::vector<CameraDescriptor> merged;
+    std::string activeSerial;
+    for (const auto& camera : previous) {
+        if (camera.phoneSerial.empty()) merged.push_back(camera);
+        else if (camera.symbolicLink == activeSymbolicLink) activeSerial = camera.phoneSerial;
+    }
+    for (const auto& camera : discovered) {
+        if (!camera.phoneSerial.empty()) merged.push_back(camera);
+    }
+    for (const auto& old : previous) {
+        if (old.phoneSerial.empty()) continue;
+        const auto attached = std::find_if(discovered.begin(), discovered.end(),
+            [&](const auto& current) { return current.phoneSerial == old.phoneSerial; });
+        if (attached == discovered.end() && old.phoneSerial != activeSerial) continue;
+        if (std::any_of(merged.begin(), merged.end(),
+                [&](const auto& current) { return current.symbolicLink == old.symbolicLink; })) continue;
+        auto retained = old;
+        if (attached != discovered.end()) {
+            retained.phoneTransportId = attached->phoneTransportId;
+            retained.phoneAppReady = attached->phoneAppReady;
+            retained.phoneBusy = attached->phoneBusy;
+            retained.phoneProblem = attached->phoneProblem;
+        }
+        merged.push_back(std::move(retained));
+    }
+    return merged;
+}
+
 int ResolveSavedCameraIndex(const std::vector<CameraDescriptor>& cameras,
                             const std::wstring& savedSymbolicLink,
                             int legacyIndex)
@@ -37,7 +99,9 @@ int ResolveSavedCameraIndex(const std::vector<CameraDescriptor>& cameras,
                 savedSymbolicLink.starts_with(cameras[index].symbolicLink + L"/"))
                 return static_cast<int>(index);
         }
-        return 0;
+        const int phone = ResolveAutomaticPhoneIndex(cameras, savedSymbolicLink,
+            savedSymbolicLink.starts_with(L"okuflow-phone:"));
+        return phone >= 0 ? phone : 0;
     }
     if (legacyIndex >= 0 && static_cast<size_t>(legacyIndex) < cameras.size()) return legacyIndex;
     for (size_t index = 0; index < cameras.size(); ++index) {
@@ -62,7 +126,7 @@ void MediaCapture::Swap(MediaCapture& other) noexcept
 bool MediaCapture::Initialize() { return true; }
 void MediaCapture::Shutdown() { StopCapture(); }
 
-std::vector<CameraDescriptor> MediaCapture::EnumerateCameras()
+std::vector<CameraDescriptor> MediaCapture::EnumerateCameras(bool includePhones)
 {
     if (abandonedForExit_) {
         lastError_ = "The camera driver did not stop safely. Restart OkuFlow before opening another camera.";
@@ -71,7 +135,8 @@ std::vector<CameraDescriptor> MediaCapture::EnumerateCameras()
     // Enumeration state is separate even if an old session is still stopping.
     auto enumerator = std::make_shared<MediaCaptureSession>();
     auto cameras = enumerator->EnumerateCameras();
-    auto phones = PhoneCameraTransport::Enumerate();
+    auto phones = includePhones ? PhoneCameraTransport::Enumerate()
+                               : std::vector<CameraDescriptor>();
     // Physical ordering stays stable; the selection resolver honors saved cameras.
     cameras.insert(cameras.end(), std::make_move_iterator(phones.begin()), std::make_move_iterator(phones.end()));
     return cameras;
@@ -95,7 +160,8 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
                                 FrameCallback callback, GUID preferredSubtype,
                                 CaptureErrorCallback errorCallback,
                                 CaptureAccelerationMode accelerationMode,
-                                const std::wstring& requestedStableId)
+                                const std::wstring& requestedStableId,
+                                const std::atomic<bool>* startupCanceled)
 {
     if (!StopCapture() || abandonedForExit_) {
         lastError_ = "The camera driver did not stop safely. Restart OkuFlow before opening another camera.";
@@ -108,7 +174,7 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
     lastSymbolicLink_ = descriptor.symbolicLink;
     const bool started = session_->StartCapture(descriptor, requestedFormat,
         std::move(callback), preferredSubtype, std::move(errorCallback), accelerationMode,
-        requestedStableId);
+        requestedStableId, startupCanceled);
     // Session text/format fields are immutable after startup. Runtime failures
     // use callbacks and atomics, never these UI-owned diagnostic snapshots.
     lastError_ = session_->LastError();
@@ -213,5 +279,7 @@ bool MediaCapture::PhoneTorchAvailable() const
 { return session_ && !session_->releaseNotified_ && session_->phoneTransport_ && session_->phoneTransport_->TorchAvailable(); }
 bool MediaCapture::PhoneTorchEnabled() const
 { return session_ && !session_->releaseNotified_ && session_->phoneTransport_ && session_->phoneTransport_->TorchEnabled(); }
+std::string MediaCapture::PhoneProblemCode() const
+{ return session_ && session_->phoneTransport_ ? session_->phoneTransport_->ProblemCode() : std::string(); }
 } // namespace okuflow
 #endif

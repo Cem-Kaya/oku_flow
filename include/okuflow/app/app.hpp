@@ -22,6 +22,7 @@
 #include "okuflow/app/ui_state_manager.hpp"
 #include "okuflow/app/user_data_paths.hpp"
 #include "okuflow/capture/media_capture.hpp"
+#include "okuflow/capture/phone_retry_policy.hpp"
 #include "okuflow/capture/audio_capture.hpp"
 #include "okuflow/common/frame_pipeline.hpp"
 #include "okuflow/common/annotation_model.hpp"
@@ -36,11 +37,13 @@
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 QT_BEGIN_NAMESPACE
@@ -181,6 +184,8 @@ private:
     void AppendAssistantMessage(const QString& speaker, const QString& text);
     void InitializePlatform();
     void EnumerateCameras();
+    void PollPhoneCameraDiscovery();
+    void StartFallbackCamera();
     void PopulateCameraCombo();
     void EnumerateMicrophones();
     void PopulateMicrophoneCombo();
@@ -311,6 +316,13 @@ private:
     bool presenterFaultReported_{};
 
     std::vector<CameraDescriptor> cameras_;
+    std::future<std::pair<bool, std::vector<CameraDescriptor>>> phoneDiscovery_;
+    std::atomic<bool> phoneDiscoveryCanceled_{false};
+    QElapsedTimer phoneDiscoveryTimer_;
+    QString preferredPhoneCamera_;
+    bool automaticPhoneSelectionAllowed_{};
+    std::shared_ptr<std::atomic<bool>> pendingCameraStartupCancel_;
+    std::unordered_map<std::string, PhoneRetryPolicy> phoneRetries_;
     std::vector<VideoFormat> cameraFormats_;
     MediaCapture mediaCapture_;
     std::vector<AudioDeviceDescriptor> microphones_;

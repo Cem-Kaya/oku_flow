@@ -22,6 +22,12 @@ target_link_libraries(settings_store_tests PRIVATE
 add_test(NAME settings_store_round_trip COMMAND settings_store_tests)
 get_target_property(QT_QMAKE_EXECUTABLE Qt6::qmake IMPORTED_LOCATION)
 get_filename_component(QT_BIN_DIRECTORY "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
+add_executable(phone_retry_policy_tests phone_retry_policy_tests.cpp)
+target_include_directories(phone_retry_policy_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(phone_retry_policy_tests PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME phone_retry_policy COMMAND phone_retry_policy_tests)
+set_tests_properties(phone_retry_policy PROPERTIES TIMEOUT 30
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 set_tests_properties(settings_store_round_trip PROPERTIES
     TIMEOUT 30
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"

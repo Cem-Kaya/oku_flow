@@ -109,3 +109,19 @@ Stop revokes callbacks and uses one 1500 ms worker deadline plus the consumer's
 bounded CUDA drain. A stalled driver keeps its session/backing alive until
 process exit and requires restart. A producer lease prevents reuse or release
 of the converted texture until CUDA observes its asynchronous copy completion.
+
+Phone discovery runs on a separate app worker every five seconds. Startup and
+webcam reconnect list only Media Foundation devices and use the cached phone
+snapshot, so adb/socket delays never block camera enumeration on the UI thread.
+Unknown adb results retain the prior cache. Probes report capabilities, busy and
+problem without claiming the stream; active/starting phones are excluded.
+`PhoneRetryPolicy` backs off failed starts, resetting on a new transport or
+readiness transition. A working webcam is replaced only by a ready phone.
+
+The raw host connection honors local TCP adb endpoint overrides and never
+replaces a running server. Without an override/listener, a hidden bundled adb
+server may be launched directly, at most once every 30 seconds. It remains
+shared after OkuFlow exits. `PhoneAdbTestHooks` keeps contract tests off the
+real server. The release bundles source-built adb and its complete dependency
+runtime with notices, source and relinking inputs. See
+[adb_distribution.md](../../docs/adb_distribution.md) for the pinned recipe.

@@ -643,6 +643,8 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
             .toString();
     settings.cameraIndex = root.value(QStringLiteral("cameraIndex")).toInt(settings.cameraIndex);
     settings.cameraSymbolicLink = root.value(QStringLiteral("cameraSymbolicLink")).toString();
+    settings.cameraSelectionExplicit = root.value(QStringLiteral("cameraSelectionExplicit"))
+        .toBool(!settings.cameraSymbolicLink.isEmpty() || settings.cameraIndex >= 0);
     settings.cameraFormatStableId =
         root.value(QStringLiteral("cameraFormatStableId")).toString();
     settings.microphoneEndpointId =
@@ -964,6 +966,7 @@ QByteArray Serialize(const PersistentSettings& settings)
                              settings.userDataRoot}});
     root.insert(QStringLiteral("cameraIndex"), settings.cameraIndex);
     root.insert(QStringLiteral("cameraSymbolicLink"), settings.cameraSymbolicLink);
+    root.insert(QStringLiteral("cameraSelectionExplicit"), settings.cameraSelectionExplicit);
     root.insert(QStringLiteral("cameraFormatStableId"),
                 settings.cameraFormatStableId);
     root.insert(QStringLiteral("microphoneEndpointId"),

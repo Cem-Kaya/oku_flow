@@ -1,10 +1,159 @@
 #include "okuflow/capture/phone_camera.hpp"
 #include <QtTest/QtTest>
 #include <QFile>
+#include <QTcpServer>
+#include <QTcpSocket>
+#include <QHostAddress>
+#include <QScopeGuard>
+#include <QtEndian>
+#include <future>
+#include <thread>
+#include <atomic>
+#include <cstring>
+
+namespace {
+// Private random port, no bootstrap: these fixtures can never reach a real adb or phone.
+class FakePhoneAdb {
+public:
+    explicit FakePhoneAdb(bool old = false, bool stall = false, bool busy = false)
+        : old(old), stall(stall), busy(busy) {
+        std::promise<quint16> promise;
+        auto future = promise.get_future();
+        worker = std::thread([this, promise = std::move(promise)]() mutable {
+            QTcpServer server;
+            if (!server.listen(QHostAddress::LocalHost, 0)) { promise.set_value(0); return; }
+            promise.set_value(server.serverPort());
+            while (!stopped.load()) {
+                if (!server.waitForNewConnection(20)) continue;
+                std::unique_ptr<QTcpSocket> socket(server.nextPendingConnection());
+                try { Serve(*socket); } catch (...) {}
+            }
+        });
+        port = future.get();
+        if (!port) throw std::runtime_error("Cannot listen on test socket");
+        okuflow::SetPhoneAdbTestHooks(okuflow::PhoneAdbTestHooks{port, {}});
+    }
+    ~FakePhoneAdb() {
+        stopped.store(true);
+        worker.join();
+        okuflow::SetPhoneAdbTestHooks(std::nullopt);
+    }
+    quint16 port{};
+    std::atomic<bool> hello{false};
+    std::atomic<int> probes{0};
+private:
+    QByteArray Read(QTcpSocket& socket, int size) {
+        QByteArray result;
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (result.size() < size && !stopped.load()) {
+            result += socket.read(size - result.size());
+            if (result.size() == size) return result;
+            if (std::chrono::steady_clock::now() >= deadline) break;
+            socket.waitForReadyRead(20);
+        }
+        throw std::runtime_error("Incomplete fixture request");
+    }
+    void Write(QTcpSocket& socket, const QByteArray& bytes) {
+        socket.write(bytes);
+        while (socket.bytesToWrite() && !stopped.load()) socket.waitForBytesWritten(20);
+    }
+    void Serve(QTcpSocket& socket) {
+        // EnsureAdbServer opens a harmless TCP probe with no data.
+        if (!socket.waitForReadyRead(100)) return;
+        const auto size = Read(socket, 4).toInt(nullptr, 16);
+        const auto service = Read(socket, size);
+        if (service == "host:track-devices-proto-binary") {
+            const char data[]{10, 11, 10, 3, 'a', 'b', 'c', 16, 8, 56, 1, 80, 9};
+            QByteArray body(data, sizeof(data));
+            Write(socket, "OKAY" + QByteArray::number(body.size(), 16).rightJustified(4, '0') + body);
+            return;
+        }
+        if (!service.startsWith("host:transport")) return;
+        Write(socket, "OKAY");
+        const auto nextSize = Read(socket, 4).toInt(nullptr, 16);
+        if (Read(socket, nextSize) != "localabstract:okuflow_camera") return;
+        Write(socket, "OKAY");
+        const auto header = Read(socket, 12);
+        const auto body = Read(socket, static_cast<int>(qFromLittleEndian<quint32>(header.constData() + 8)));
+        if (body.contains("probe")) ++probes;
+        hello.store(true);
+        if (stall) {
+            while (!stopped.load() && socket.state() == QAbstractSocket::ConnectedState) socket.waitForReadyRead(20);
+            return;
+        }
+        const QByteArray reply = old ? QByteArray(R"({"protocol":1,"token":"old-token","cameras":[{"id":"0"}]})") :
+            busy ? QByteArray(R"({"protocol":1,"probe":true,"busy":true,"problem":null,"cameras":[{"id":"0"}]})") :
+                   QByteArray(R"({"protocol":1,"probe":true,"busy":false,"problem":null,"cameras":[{"id":"0"}]})");
+        QByteArray packet(8, 0);
+        qToLittleEndian<quint16>(1, packet.data());
+        qToLittleEndian<quint32>(static_cast<quint32>(reply.size()), packet.data() + 4);
+        Write(socket, packet + reply);
+    }
+    bool old, stall, busy;
+    std::atomic<bool> stopped{false};
+    std::thread worker;
+};
+}
 
 class PhoneCameraTests : public QObject {
     Q_OBJECT
 private slots:
+    void localAdbOverridesAreRespected() {
+        auto endpoint = okuflow::ParseAdbServerEndpoint("", "", "");
+        QVERIFY(endpoint.supported); QVERIFY(!endpoint.overridden); QCOMPARE(endpoint.port, quint16{5037});
+        endpoint = okuflow::ParseAdbServerEndpoint("tcp:localhost:5500", "9999", "remote");
+        QVERIFY(endpoint.supported); QVERIFY(endpoint.overridden); QCOMPARE(endpoint.port, quint16{5500});
+        QVERIFY(!okuflow::ParseAdbServerEndpoint("tcp:192.0.2.1:5037", "", "").supported);
+        QVERIFY(!okuflow::ParseAdbServerEndpoint("localfilesystem:foo", "", "").supported);
+        QVERIFY(!okuflow::ParseAdbServerEndpoint("", "65536", "").supported);
+        QVERIFY(!okuflow::ParseAdbServerEndpoint("", "5037junk", "").supported);
+        QVERIFY(!okuflow::ParseAdbServerEndpoint("", "", "192.0.2.1").supported);
+    }
+    void probeDoesNotRequireToken_data() {
+        QTest::addColumn<bool>("old"); QTest::addColumn<bool>("busy");
+        QTest::newRow("probe") << false << false;
+        QTest::newRow("legacy token") << true << false;
+        QTest::newRow("busy probe") << false << true;
+    }
+    void probeDoesNotRequireToken() {
+        QFETCH(bool, old); QFETCH(bool, busy);
+        FakePhoneAdb server(old, false, busy);
+        bool listed = false;
+        const auto phones = okuflow::PhoneCameraTransport::Enumerate({}, nullptr, &listed);
+        QVERIFY(listed); QCOMPARE(phones.size(), size_t{2});
+        QCOMPARE(phones[0].phoneAppReady, !busy);
+        QCOMPARE(phones[0].phoneBusy, busy);
+        QCOMPARE(phones[1].phoneCameraId, std::string("0"));
+        QCOMPARE(server.probes.load(), 1);
+    }
+    void canceledProbeKeepsListingAndStopsPromptly() {
+        FakePhoneAdb server(false, true);
+        std::atomic<bool> canceled{false};
+        bool listed = false;
+        auto result = std::async(std::launch::async, [&] { return okuflow::PhoneCameraTransport::Enumerate({}, &canceled, &listed); });
+        QTRY_VERIFY_WITH_TIMEOUT(server.hello.load(), 2000);
+        const auto start = std::chrono::steady_clock::now(); canceled.store(true);
+        QVERIFY(result.wait_for(std::chrono::milliseconds(500)) == std::future_status::ready);
+        const auto phones = result.get(); QVERIFY(listed); QCOMPARE(phones.size(), size_t{1});
+        QVERIFY(!phones[0].phoneAppReady);
+        QVERIFY(std::chrono::steady_clock::now() - start < std::chrono::milliseconds(500));
+    }
+    void canceledStartupJoinsInsideStopDeadline() {
+        FakePhoneAdb server(false, true);
+        const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        QVERIFY(SUCCEEDED(apartment)); QVERIFY(SUCCEEDED(MFStartup(MF_VERSION)));
+        auto teardown = qScopeGuard([&] { MFShutdown(); CoUninitialize(); });
+        okuflow::PhoneCameraTransport transport;
+        okuflow::CameraDescriptor phone; phone.phoneSerial = "abc"; phone.phoneTransportId = 9;
+        std::atomic<bool> canceled{false};
+        auto result = std::async(std::launch::async, [&] { return transport.Start(phone, nullptr, {}, {}, &canceled); });
+        QTRY_VERIFY_WITH_TIMEOUT(server.hello.load(), 3000);
+        const auto start = std::chrono::steady_clock::now(); canceled.store(true);
+        QVERIFY(result.wait_for(std::chrono::milliseconds(500)) == std::future_status::ready);
+        QVERIFY(!result.get()); transport.Stop();
+        QVERIFY(std::chrono::steady_clock::now() - start < std::chrono::milliseconds(1500));
+        QCOMPARE(server.probes.load(), 0); // Streaming startup skips its own discovery probe.
+    }
     void structuredUsbDiscoveryWorksWithoutWindowsBusPath()
     {
         const std::uint8_t data[]{10, 11, 10, 3, 'a', 'b', 'c', 16, 8, 56, 1, 80, 5,
@@ -92,6 +241,70 @@ private slots:
         QCOMPARE(okuflow::ResolveSavedCameraIndex({webcam, phone}, L"webcam-fixture", 0), 0);
         QCOMPARE(okuflow::ResolveSavedCameraIndex({webcam, phone}, L"", 0), 0);
         QCOMPARE(okuflow::ResolveSavedCameraIndex({webcam, phone}, L"okuflow-phone:fixture", 0), 1);
+    }
+
+    void delayedPhoneArrivalKeepsTheSavedIntent()
+    {
+        okuflow::CameraDescriptor webcam, phone;
+        webcam.symbolicLink = L"webcam-fixture";
+        phone.symbolicLink = L"okuflow-phone:fixture";
+        phone.phoneSerial = "fixture";
+        const std::wstring saved = phone.symbolicLink;
+        QCOMPARE(okuflow::ResolveSavedCameraIndex({webcam}, saved, 0), 0);
+        QCOMPARE(okuflow::ResolveAutomaticPhoneIndex({webcam}, saved, true), -1);
+        // Same saved phone is retried even before its app listener is ready.
+        QCOMPARE(okuflow::ResolveAutomaticPhoneIndex({webcam, phone}, saved, true), 1);
+        QCOMPARE(okuflow::ResolveAutomaticPhoneIndex({webcam, phone}, saved, true, true), -1);
+        QCOMPARE(okuflow::ResolveAutomaticPhoneIndex({webcam, phone}, saved + L"/2", true), 1);
+        // A deliberate webcam selection made while discovery was in flight wins.
+        phone.phoneAppReady = true;
+        QCOMPARE(okuflow::ResolveAutomaticPhoneIndex({webcam, phone}, saved, false), -1);
+        QCOMPARE(okuflow::ResolveAutomaticPhoneIndex({webcam, phone}, L"webcam-fixture", false), -1);
+    }
+
+    void anotherPhoneCanReplaceAnUnavailablePhoneButFirstRunNeedsReadiness()
+    {
+        okuflow::CameraDescriptor webcam, phone;
+        webcam.symbolicLink = L"webcam-fixture";
+        phone.symbolicLink = L"okuflow-phone:replacement";
+        phone.phoneSerial = "replacement";
+        QCOMPARE(okuflow::ResolveAutomaticPhoneIndex({webcam, phone}, L"", true), -1);
+        QCOMPARE(okuflow::ResolveAutomaticPhoneIndex({webcam, phone}, L"okuflow-phone:missing", true), -1);
+        phone.phoneAppReady = true;
+        QCOMPARE(okuflow::ResolveAutomaticPhoneIndex({webcam, phone}, L"", true), 1);
+        QCOMPARE(okuflow::ResolveAutomaticPhoneIndex({webcam, phone}, L"okuflow-phone:missing", true), 1);
+        QCOMPARE(okuflow::ResolveSavedCameraIndex({webcam, phone}, L"okuflow-phone:missing", 0), 1);
+    }
+
+    void discoveryPreservesWebcamOrderAndBusyPhoneLensIdentity()
+    {
+        okuflow::CameraDescriptor first, second, phone, lens, vanished;
+        first.symbolicLink = L"first-webcam";
+        second.symbolicLink = L"second-webcam";
+        phone.phoneSerial = "fixture";
+        phone.symbolicLink = L"okuflow-phone:fixture";
+        phone.phoneTransportId = 1;
+        lens = phone;
+        lens.phoneCameraId = "2";
+        lens.symbolicLink += L"/2";
+        vanished.phoneSerial = "vanished";
+        vanished.symbolicLink = L"okuflow-phone:vanished";
+        auto current = phone;
+        current.phoneTransportId = 37; // A USB replug changes the transport, not identity.
+        auto merged = okuflow::MergePhoneCameraDiscovery(
+            {first, second, phone, lens, vanished}, {current}, L"");
+        QCOMPARE(merged.size(), size_t{4});
+        QCOMPARE(merged[0].symbolicLink, first.symbolicLink);
+        QCOMPARE(merged[1].symbolicLink, second.symbolicLink);
+        QCOMPARE(merged[3].symbolicLink, lens.symbolicLink);
+        QCOMPARE(merged[3].phoneTransportId, std::uint64_t{37});
+        QVERIFY(!merged[3].phoneAppReady);
+        // A transient empty snapshot does not erase a camera still delivering frames.
+        merged = okuflow::MergePhoneCameraDiscovery(merged, {}, lens.symbolicLink);
+        QCOMPARE(merged.size(), size_t{4});
+        // Once capture is stopped, a real absence removes its stale entries.
+        merged = okuflow::MergePhoneCameraDiscovery(merged, {}, L"");
+        QCOMPARE(merged.size(), size_t{2});
     }
 };
 QTEST_GUILESS_MAIN(PhoneCameraTests)

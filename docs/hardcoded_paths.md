@@ -403,4 +403,40 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   requests at most 30 FPS; CRITICAL stops. See [`PROTOCOL.md`](../android/PROTOCOL.md).
 - Probe output: `%LOCALAPPDATA%\OkuFlow\camera-probes\<timestamp>`;
   non-Windows fallback `~/.local/share/OkuFlow/camera-probes`, or `--output`.
-  Discovery reads one protobuf snapshot (64 KiB) and does not own adb's lifecycle.
+  The Python probe reads one protobuf snapshot (64 KiB) and does not own adb's
+  lifecycle. Windows can bootstrap a missing local server as described below.
+
+### Windows phone discovery defaults
+
+- No phone serial/model is embedded. Saved `cameraSymbolicLink` is a user
+  preference; `cameraSelectionExplicit` distinguishes a manual webcam choice
+  from an implicit fallback. Runtime transport IDs are never saved.
+- Discovery runs asynchronously every 5 s, with a 100 ms UI completion pulse.
+  Probe ACK deadline is 1500 ms; listing reads are 150 ms. Unknown listing
+  results preserve the cache. Failure retries back off 5/10/20/60 s; busy/hot
+  starts wait at least 30 s. A new transport or readiness transition resets it.
+- `ADB_SERVER_SOCKET` accepts `tcp:<port>` or local `tcp:<host>:<port>`;
+  `ANDROID_ADB_SERVER_PORT` and `ANDROID_ADB_SERVER_ADDRESS` accept local TCP.
+  Default is `127.0.0.1:5037`; nonlocal/invalid overrides disable USB phones.
+  Overrides are owner-managed and never trigger server bootstrap.
+- Adb lookup: `OKUFLOW_ADB_PATH`, executable-relative `platform-tools/adb.exe`,
+  `ANDROID_HOME`, `ANDROID_SDK_ROOT`, PATH, then environment-derived
+  `%LOCALAPPDATA%/Android/Sdk/platform-tools/adb.exe`. No user path is compiled.
+  Hidden direct loopback server starts are throttled to 30 s and never replace
+  or kill an existing listener. A server can keep its runtime files locked after
+  OkuFlow exits; use the documented `OkuFlow2` bundle fallback.
+- Automatic activity launch is limited to one attempt per serial/transport.
+  A manual phone selection renews it. Permission, busy and thermal probe
+  problems wait for phone-state changes instead of forcing foreground every 5 s.
+- Source builds use `%LOCALAPPDATA%/OkuFlow/adb-source-build` by default;
+  `scripts/build_adb_from_source.ps1 -BuildRoot` selects another local root.
+  Inputs and GCC 16.2.0 are pinned in `scripts/adb-source/pins.json`.
+- Staging uses `-SourcePath`, `OKUFLOW_PLATFORM_TOOLS_DIR`, or the default
+  `adb-source-build/build-output` directory, in that order. This is a build-output
+  root containing `platform-tools`, `licenses` and `sources`, not an SDK directory.
+  `scripts/adb-source/distribution.json` pins the reviewed manifest; every file
+  is checked before and after copying. Google SDK binaries are not accepted.
+- The source-built version is `37.0.0-okuflow.1` (protocol 41). Runtime closure
+  includes adb, both USB DLLs and their dependency DLLs. Corresponding source
+  and relinking inputs are `sources/adb-37.0.0-okuflow-source.zip`; notices are
+  under `licenses/adb`. See [adb_distribution.md](adb_distribution.md).

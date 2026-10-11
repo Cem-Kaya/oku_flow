@@ -35,7 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -45,6 +45,9 @@ import com.okuflow.camera.setup.OemFamily
 import com.okuflow.camera.setup.SetupStep
 import com.okuflow.camera.setup.SetupViewModel
 import com.okuflow.camera.setup.SystemSettingsLauncher
+
+/** Listener retry cadence while the app is in front. */
+private const val SERVICE_RETRY_MS = 3_000L
 
 /**
  * The main camera pane shows one step, with a separate optional Advanced menu:
@@ -65,9 +68,15 @@ fun OkuFlowCameraApp(viewModel: SetupViewModel = viewModel()) {
     val activity = LocalActivity.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
-    LifecycleResumeEffect(Unit) {
-        viewModel.refresh()
-        onPauseOrDispose {}
+    // Re-read setup state and restart a stopped or failed listener while visible.
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            viewModel.onResumed()
+            while (true) {
+                viewModel.refresh()
+                kotlinx.coroutines.delay(SERVICE_RETRY_MS)
+            }
+        }
     }
 
     val cameraPermissionLauncher =

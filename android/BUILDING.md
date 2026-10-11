@@ -217,6 +217,16 @@ setup's cleanup.
 
 ## Validation record
 
+The 2026-10-12 connection-robustness change (probe hello, video bind deadline,
+listener retry, USB debounce and transient problem recovery) passed
+`scripts/build_android.ps1 -Lint -Install`: APK assembly, 54 JVM tests, lint
+and 71-key English/Turkish/German resource parity. Installation and launch
+succeeded on the authorized Pixel 9 Pro Fold. The native Windows app connected
+automatically and received HEVC 1920×1080/60; the 20-second profile measured
+59.51 arrival FPS and 59.06 viewport FPS. The shared adb server was preserved.
+The SDK adb above is development tooling; Windows bundles use the separate
+source build described in [adb_distribution.md](../docs/adb_distribution.md).
+
 The 2026-10-11 continuation passed `scripts/build_android.ps1 -Lint -Install`:
 APK assembly, 49 JVM tests, 71 English/Turkish/German resource keys, and lint
 with no issues. Installation and launch succeeded on the authorized Pixel 9

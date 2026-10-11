@@ -32,6 +32,12 @@ session or stream, after cooling (heat) or after unplugging. The raw diagnostic
 still reaches Windows. Problems use Android's rejection vibration; other step
 changes use the confirmation vibration, without one for the brief connected state.
 
+While OkuFlow Camera is in front it re-checks setup and restarts a stopped or
+failed USB listener every three seconds, so the phone, desktop app, cable and
+USB-debugging authorization can come up in any order. A USB dropout shorter
+than two seconds keeps the listener; revoking camera permission or turning
+USB debugging off stops it immediately.
+
 Unlock the phone and leave OkuFlow Camera visible when connecting. The app
 does not show over the lock screen or wake a manually locked phone.
 
@@ -82,12 +88,16 @@ android/
 
 Install/open the debug APK once using `scripts/build_android.ps1 -Lint -Install`
 with one authorized USB phone, or install the built APK manually. Complete the
-three setup steps and allow the computer's USB debugging prompt. This prototype
-requires a running local adb server; the prepared SDK or an existing compatible
-tool such as scrcpy can provide it. Windows bundles do not yet install or ship adb.
+three setup steps and allow the computer's USB debugging prompt. The Windows
+bundle includes source-built adb and its runtime; it starts a missing local
+server hidden and preserves any existing compatible server. Users do not need
+Android Studio or a separate SDK. Vendor USB drivers may still be required.
 
-Start the newly built Windows executable and select **OkuFlow Camera · device**
-under Advanced → Settings → Camera. With the phone app open during discovery,
+Start the newly built Windows executable. Discovery checks every five seconds
+and connects a ready phone automatically when no explicit webcam preference
+exists, or when that phone was selected in a previous session. To change the
+source, select **OkuFlow Camera · device** under Advanced → Settings → Camera.
+With the phone app open during discovery,
 additional entries identify its camera IDs. The default phone entry retains
 the phone's saved camera; selecting an ID sends the camera command. The saved
 Windows phone choice persists. New installations and **Restore automatic

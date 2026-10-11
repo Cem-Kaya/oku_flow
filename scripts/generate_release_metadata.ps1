@@ -35,6 +35,34 @@ $d3dCompilerVersion =
     } else {
         $null
     }
+# stage_platform_tools.ps1 pins and verifies these files; the SBOM records
+# what was actually staged rather than repeating the pin.
+$platformToolsPath = Join-Path $bundle 'platform-tools'
+foreach ($name in @('adb.exe', 'AdbWinApi.dll', 'AdbWinUsbApi.dll', 'NOTICE.txt', 'source.properties', 'adb-build.json')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $platformToolsPath $name) -PathType Leaf)) {
+        throw "Required Android platform-tools file is missing: platform-tools/$name"
+    }
+}
+$platformToolsRevisionLine = Select-String -LiteralPath (Join-Path $platformToolsPath 'source.properties') `
+    -Pattern '^Pkg\.Revision=(.+)$' | Select-Object -First 1
+if ($null -eq $platformToolsRevisionLine) {
+    throw 'platform-tools/source.properties does not declare Pkg.Revision.'
+}
+$platformToolsRevision = $platformToolsRevisionLine.Matches[0].Groups[1].Value.Trim()
+$adbBuild = Get-Content (Join-Path $platformToolsPath 'adb-build.json') -Raw | ConvertFrom-Json
+if (-not $adbBuild.sourceBuilt -or $adbBuild.protocol -ne 41) {
+    throw 'adb must be built from the reviewed source recipe.'
+}
+foreach ($record in $adbBuild.files) {
+    if ($record.path.Contains('..') -or $record.path.Contains(':') -or
+        (Get-FileHash -LiteralPath (Join-Path $bundle $record.path)).Hash.ToLowerInvariant() -ne $record.sha256) {
+        throw "adb runtime/source verification failed: $($record.path)"
+    }
+}
+function Get-PlatformToolsFileVersion([string]$Name) {
+    $version = (Get-Item -LiteralPath (Join-Path $platformToolsPath $Name)).VersionInfo.FileVersion
+    if ([string]::IsNullOrWhiteSpace($version)) { 'unknown' } else { $version.Trim() }
+}
 $metadataNames = @(
     'SHA256SUMS.txt',
     'release-manifest.json',
@@ -298,8 +326,55 @@ $packages = @(
         licenseDeclared = 'NOASSERTION'
         copyrightText = 'Copyright Microsoft Corporation'
         comment = 'D3Dcompiler_47.dll is deployed by windeployqt when required and is governed by the applicable Microsoft redistribution terms.'
+    },
+    [ordered]@{
+        SPDXID = 'SPDXRef-Package-Android-adb'
+        name = 'Android Debug Bridge (OkuFlow source build)'
+        versionInfo = $platformToolsRevision
+        downloadLocation = 'https://github.com/nmeum/android-tools/releases/tag/37.0.0'
+        filesAnalyzed = $false
+        licenseConcluded = 'Apache-2.0'
+        licenseDeclared = 'Apache-2.0'
+        copyrightText = 'Copyright The Android Open Source Project and the copyright holders listed in platform-tools/NOTICE.txt'
+        comment = 'Separate source-built executable, not linked into OkuFlow. Apache-2.0 describes the AOSP adb sources; statically linked LGPL libusb and BoringSSL, plus dependency DLLs, have separate packages below. The complete corresponding adb/libusb source, patches, relinking library packages and rebuild instructions are included in sources/adb-37.0.0-okuflow-source.zip. Exact notices are in licenses/adb/. No Google SDK binary or SDK license agreement is redistributed.'
+    },
+    [ordered]@{
+        SPDXID = 'SPDXRef-Package-AdbWinApi'
+        name = 'AdbWinApi.dll'
+        versionInfo = (Get-PlatformToolsFileVersion 'AdbWinApi.dll')
+        downloadLocation = 'https://android.googlesource.com/platform/development/+/refs/heads/main/host/windows/usb/api'
+        filesAnalyzed = $false
+        licenseConcluded = 'Apache-2.0'
+        licenseDeclared = 'Apache-2.0'
+        copyrightText = 'Copyright (C) 2006 The Android Open Source Project'
+        comment = 'Built locally from the pinned AOSP Windows USB API source archive with MSVC 2022. Corresponding source and the build recipe are included in the adb source ZIP.'
+    },
+    [ordered]@{
+        SPDXID = 'SPDXRef-Package-AdbWinUsbApi'
+        name = 'AdbWinUsbApi.dll'
+        versionInfo = (Get-PlatformToolsFileVersion 'AdbWinUsbApi.dll')
+        downloadLocation = 'https://android.googlesource.com/platform/development/+/refs/heads/main/host/windows/usb/winusb'
+        filesAnalyzed = $false
+        licenseConcluded = 'Apache-2.0'
+        licenseDeclared = 'Apache-2.0'
+        copyrightText = 'Copyright (C) 2006-2015 The Android Open Source Project'
+        comment = 'Built locally from the pinned AOSP WinUSB source archive with MSVC 2022. Loaded by AdbWinApi.dll; source and rebuild instructions are included.'
     }
 )
+
+foreach ($component in $adbBuild.components) {
+    $packages += [ordered]@{
+        SPDXID = 'SPDXRef-Package-adb-' + ($component.name -replace '[^A-Za-z0-9.-]', '-')
+        name = $component.name
+        versionInfo = $component.version
+        downloadLocation = if ($component.source -match '^https://') { $component.source } else { 'NOASSERTION' }
+        filesAnalyzed = $false
+        licenseConcluded = $component.license
+        licenseDeclared = $component.license
+        copyrightText = 'See the full upstream notices in ' + $component.notice
+        comment = "adb dependency ($($component.linkage)). Exact notices: $($component.notice). Source or relinking package: $($component.source). Build input hashes: platform-tools/adb-build.json."
+    }
+}
 
 if (-not $cudaIsEnabled) {
     $packages = @(
@@ -331,7 +406,8 @@ foreach ($dependency in @(
     'SPDXRef-Package-Maxine-Headers',
     'SPDXRef-Package-libdatachannel',
     'SPDXRef-Package-opus',
-    'SPDXRef-Package-D3DCompiler47')) {
+    'SPDXRef-Package-D3DCompiler47',
+    'SPDXRef-Package-Android-adb')) {
     if ($dependency -notin $packageIds) {
         continue
     }
@@ -353,6 +429,24 @@ foreach ($dependency in @(
         spdxElementId = 'SPDXRef-Package-libdatachannel'
         relationshipType = 'DEPENDS_ON'
         relatedSpdxElement = $dependency
+    }
+}
+
+$relationships += [ordered]@{
+    spdxElementId = 'SPDXRef-Package-Android-adb'
+    relationshipType = 'DEPENDS_ON'
+    relatedSpdxElement = 'SPDXRef-Package-AdbWinApi'
+}
+$relationships += [ordered]@{
+    spdxElementId = 'SPDXRef-Package-AdbWinApi'
+    relationshipType = 'DEPENDS_ON'
+    relatedSpdxElement = 'SPDXRef-Package-AdbWinUsbApi'
+}
+foreach ($component in $adbBuild.components) {
+    $relationships += [ordered]@{
+        spdxElementId = 'SPDXRef-Package-Android-adb'
+        relationshipType = if ($component.linkage -eq 'static') { 'STATIC_LINK' } elseif ($component.linkage -eq 'dynamic') { 'DYNAMIC_LINK' } else { 'DEPENDS_ON' }
+        relatedSpdxElement = 'SPDXRef-Package-adb-' + ($component.name -replace '[^A-Za-z0-9.-]', '-')
     }
 }
 
@@ -431,6 +525,11 @@ $sbom = [ordered]@{
         creators = @('Tool: OkuFlow generate_release_metadata.ps1')
     }
     hasExtractedLicensingInfos = @(
+        [ordered]@{
+            licenseId = 'LicenseRef-BoringSSL'
+            extractedText = Get-Content -LiteralPath (Join-Path $bundle 'licenses/adb/BORINGSSL_LICENSE.txt') -Raw
+            name = 'BoringSSL composite upstream license'
+        },
         [ordered]@{
             licenseId = 'LicenseRef-OkuFlow-Commercial'
             extractedText =

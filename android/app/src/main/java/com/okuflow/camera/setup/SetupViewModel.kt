@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.okuflow.camera.link.HostProblem
 import com.okuflow.camera.link.HostLink
 import com.okuflow.camera.camera.CameraStreamService
 import com.okuflow.camera.settings.CameraSettings
@@ -24,12 +25,25 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
     val diagnostics = HostLink.details.asStateFlow()
     val problem = HostLink.problem
 
-    fun updateSettings(settings: CameraSettings) = settingsStore.update(settings)
+    fun updateSettings(settings: CameraSettings) {
+        if (settings != settingsStore.state.value && HostLink.problem.value in listOf(
+                HostProblem.NoCompatibleMode, HostProblem.CameraBusy, HostProblem.CameraFailed)) HostLink.report(null)
+        settingsStore.update(settings)
+    }
 
-    /** Called by the resumed activity: background service starts never bypass Android's camera gate. */
+    /** Returning from privacy settings or another camera app is a new user-authorized attempt. */
+    fun onResumed() {
+        if (HostLink.problem.value == HostProblem.CameraBlocked) HostLink.report(null)
+    }
+
+    /**
+     * Called by the resumed activity, also periodically, so a failed or stopped
+     * listener comes back in any phone/cable/authorization order. Background
+     * service starts never bypass Android's camera gate.
+     */
     fun startServiceIfReady() {
         val snapshot = monitor.snapshot.value
-        if (snapshot.canListenForHost)
+        if (snapshot.canListenForHost && !CameraStreamService.isRunning)
             CameraStreamService.startVisible(getApplication())
     }
 
@@ -54,6 +68,7 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
     val cameraPermanentlyDenied: StateFlow<Boolean> = mutableCameraPermanentlyDenied.asStateFlow()
 
     fun refresh() {
+        HostLink.retryTransientProblem()
         monitor.refresh()
         if (monitor.snapshot.value.cameraPermissionGranted) {
             setCameraPermanentlyDenied(false)
@@ -67,6 +82,7 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun onCameraPermissionResult(granted: Boolean, shouldShowRationale: Boolean) {
         setCameraPermanentlyDenied(!granted && !shouldShowRationale)
+        if (granted && HostLink.problem.value == HostProblem.CameraBlocked) HostLink.report(null)
         refresh()
     }
 

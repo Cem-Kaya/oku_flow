@@ -20,7 +20,8 @@ public:
                       CaptureErrorCallback errorCallback = {},
                       CaptureAccelerationMode accelerationMode =
                           CaptureAccelerationMode::Compatibility,
-                      const std::wstring& requestedStableId = {});
+                      const std::wstring& requestedStableId = {},
+                      const std::atomic<bool>* startupCanceled = nullptr);
     // Stop coordinator only: blocking driver work is isolated from the facade.
     void Quiesce();
     void ReleaseResources();

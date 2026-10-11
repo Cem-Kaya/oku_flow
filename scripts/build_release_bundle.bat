@@ -157,6 +157,18 @@ if errorlevel 1 goto :fail
 call :copy_required_file "%BUILD_DIR%\_deps\mbedtls-src\LICENSE" "%STAGING_DIR%\licenses\MBEDTLS_LICENSE.txt"
 if errorlevel 1 goto :fail
 
+echo ===== STAGE SOURCE-BUILT ANDROID DEBUG BRIDGE =====
+rem Phone-camera support needs adb in platform-tools\. The helper copies only
+rem the reviewed source build, dependency DLLs, notices and relinking source.
+rem There is no bypass that ships a bundle without phone support or source.
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\stage_platform_tools.ps1" ^
+    -BundlePath "%STAGING_DIR%"
+if errorlevel 1 (
+    echo ERROR: Reviewed source-built adb could not be staged.
+    echo Run scripts\build_adb_from_source.ps1 or set OKUFLOW_PLATFORM_TOOLS_DIR.
+    goto :fail
+)
+
 echo ===== GENERATE RELEASE INTEGRITY METADATA =====
 pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\generate_release_metadata.ps1" ^
     -BundlePath "%STAGING_DIR%" -RepositoryPath "%ROOT_DIR%" -QtVersion "%QT_RUNTIME_VERSION%" ^
@@ -328,6 +340,9 @@ if not exist "%STAGING_DIR%\licenses\NLOHMANN_JSON_LICENSE.txt" goto :deploy_inc
 if not exist "%STAGING_DIR%\licenses\OPUS_COPYING.txt" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\licenses\OPUS_LICENSE_PLEASE_READ.txt" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\licenses\MBEDTLS_LICENSE.txt" goto :deploy_incomplete
+for %%F in (adb.exe AdbWinApi.dll AdbWinUsbApi.dll NOTICE.txt source.properties adb-build.json) do if not exist "%STAGING_DIR%\platform-tools\%%F" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\adb\LIBUSB_LGPL_2_1.txt" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\sources\adb-37.0.0-okuflow-source.zip" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\SHA256SUMS.txt" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\release-manifest.json" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\SBOM.spdx.json" goto :deploy_incomplete
@@ -345,6 +360,9 @@ echo Qt6Core/Gui/Widgets/Network.dll,
 echo platforms\qwindows.dll, LICENSE, COMMERCIAL.md, THIRD_PARTY_LICENSES.md,
 echo complete Qt/FFmpeg/module-SPDX, Lucide, CUDA-upscaler, Maxine-header,
 echo native-WebRTC, and CUDA Toolkit notices,
+echo platform-tools\adb.exe, AdbWinApi.dll, AdbWinUsbApi.dll, NOTICE.txt,
+echo source.properties, adb-build.json, full adb dependency notices,
+echo sources\adb-37.0.0-okuflow-source.zip,
 echo SHA256SUMS.txt, release-manifest.json, and SBOM.spdx.json.
 exit /b 1
 
