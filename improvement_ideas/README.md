@@ -96,6 +96,7 @@ that document is authoritative.
 | [`48-gemini-independent-review-2026-10-11.md`](48-gemini-independent-review-2026-10-11.md) | Four Gemini audits with independent root verdicts and console probes | **REVIEW COMPLETE — all 20 findings adjudicated; implementation follow-ups open** |
 | [`49-unused-code-census-2026-10-11.md`](49-unused-code-census-2026-10-11.md) | Verified unused-code cleanup, before/after census and CUDA binary evidence | **CLEANED — release + CPU 22/22 + CUDA 27/27; desktop deferred** |
 | [`51-okuflow-camera-android.md`](51-okuflow-camera-android.md) | Optional OkuFlow Camera Android source, USB streaming, Advanced settings and initial Windows receiver; normal cameras remain independent | **IMPLEMENTED PROTOTYPE — local contract/decoder checks pass; real-phone/full GUI acceptance and zoom bridge pending** |
+| [`embedding-stt-future-research-2026-10-13.md`](embedding-stt-future-research-2026-10-13.md) | EmbeddingGemma 2 audio embeddings, claimed STT conversion and Chrome/WebGPU feasibility | **RESEARCH ONLY — decoder/speed claim unverified; no transcription implementation change** |
 | [`verified-non-issues.md`](verified-non-issues.md) | Refuted findings — do not "fix" these | Read before analyzing |
 | [`done/`](done/README.md) | Completed plans (01, 02, 09, 11, 12, 13) | Provenance only |
 
