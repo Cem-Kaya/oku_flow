@@ -278,6 +278,8 @@ aligned with the project goals.
   unreviewed installer versions or add app-local CRT DLLs silently.
   Preserve the EULA's exact bytes through its `-text -diff` Git attribute;
   line-ending or whitespace normalization would invalidate the reviewed hash.
+- Keep the release batch script's Windows working copy as CRLF through its Git
+  attribute; use the tracked script for packaging rather than a rewritten runner.
 - Run `windows_runtime_contract` and serial `setup_assistant_interactions`
   through the tracked matrix. Do not uninstall a working system runtime or
   trigger UAC from unit tests; missing-runtime installation needs an isolated

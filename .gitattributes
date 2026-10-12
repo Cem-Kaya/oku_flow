@@ -6,3 +6,4 @@ android/gradlew text eol=lf
 android/app/src/main/assets/licenses/** -text whitespace=cr-at-eol,-blank-at-eof
 android/licenses/** -text whitespace=cr-at-eol,-blank-at-eof
 scripts/vc-runtime/LICENSE.rtf -text -diff
+scripts/build_release_bundle.bat text eol=crlf
