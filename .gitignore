@@ -1,4 +1,25 @@
 # Notes for future assistant: keep this list in sync with workspace directories.
+# Private Android/Google Play signing and automation configuration.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+*.pem
+*.der
+*.cer
+*.crt
+certificates*.zip
+.env
+.env.*
+signing.credentials.xml
+credentials*.json
+service-account*.json
+service_account*.json
+client_secret*.json
+google-play-service-account*.json
+android-signing/
+# Public website assetlinks fingerprints are intentionally source data.
 /ref/
 /build/
 /build-*/

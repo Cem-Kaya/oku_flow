@@ -512,6 +512,9 @@ legacy `powershell.exe` bridge.
   records the installed user-owned toolchain, off-Drive outputs, build/test/lint,
   and optional one-device installation. [`Plan 51`](../improvement_ideas/51-okuflow-camera-android.md)
   tracks hardware acceptance and remaining phone zoom, quality and packaging work.
+  [`PLAY_READINESS.md`](../android/PLAY_READINESS.md) records the first
+  `com.okuflow` closed-test scope, persistent Pause/Resume, offline privacy/notices,
+  private upload signing and remaining Console/device gates.
 - [`docs/ui_capture.md`](ui_capture.md): opt-in composed real-app PNG captures
   in isolated startup-profiling sessions, including native chrome and desktop checks.
 - [`docs/lecture_camera.md`](lecture_camera.md): downloadable lecture sample,

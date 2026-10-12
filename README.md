@@ -257,8 +257,9 @@ Media Foundation, with capability-checked HEVC and an H.264 fallback; the Python
 probe supports both codecs. Advanced phone settings save
 a combined resolution/FPS mode, camera, stabilization, focus, exposure and light preferences.
 See the [current protocol and limits](android/PROTOCOL.md). A running local
-adb server is required by this prototype; automatic viewport-to-phone zoom
-handoff and packaging are still pending. Pixel 9 Pro Fold streaming, remote
+adb server is required; the Windows bundle includes source-built adb and starts
+a missing local server automatically. Automatic viewport-to-phone zoom
+handoff remains pending. Pixel 9 Pro Fold streaming, remote
 controls, codecs and native Windows integration have been exercised; see the
 [device validation record](android/DEVICE_VALIDATION.md) for measurements and
 remaining hardware acceptance. The phone discovers combined resolution/FPS
@@ -269,6 +270,14 @@ The companion is optional: normal USB cameras must work without Android
 components, and an explicit webcam selection must survive phone hot-plug.
 Phone sources are appended without changing the physical-camera default or
 an explicitly saved webcam choice. Plan 51 retains the full hardware regression gate.
+
+The first Google Play closed-test build uses package `com.okuflow`.
+Pause streaming persists through reopening and USB retries; Resume is explicit.
+Privacy information and reviewed open-source notices are readable offline.
+Use `scripts/build_android_signed.ps1` for owner-controlled signed releases;
+keys and its Windows-protected credential profile stay outside Drive/Git.
+See [closed-test readiness](android/PLAY_READINESS.md) for Console, tester and
+device acceptance still required. A successful signed build is not Play approval.
 
 ## Lecture Video Test Camera
 

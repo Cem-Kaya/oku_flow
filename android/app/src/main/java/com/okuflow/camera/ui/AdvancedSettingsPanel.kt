@@ -76,11 +76,24 @@ import kotlin.math.roundToInt
  * connected), shown first on both levels so setting changes show their effect.
  */
 @Composable
-fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (CameraSettings) -> Unit, onBack: () -> Unit) {
+fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (CameraSettings) -> Unit,
+    paused: Boolean = false, onPauseChange: () -> Unit = {}, onBack: () -> Unit) {
     var showMoreOptions by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = showMoreOptions) { showMoreOptions = false }
+    var showPrivacy by rememberSaveable { mutableStateOf(false) }
+    var showLicenses by rememberSaveable { mutableStateOf(false) }
     val mainScroll = rememberScrollState()
     val moreScroll = rememberScrollState()
+    if (showLicenses) {
+        BackHandler { showLicenses = false }
+        LicensesPanel { showLicenses = false }
+        return
+    }
+    if (showPrivacy) {
+        BackHandler { showPrivacy = false }
+        PrivacyPanel { showPrivacy = false }
+        return
+    }
+    BackHandler(enabled = showMoreOptions) { showMoreOptions = false }
     val context = LocalContext.current
     val catalog = remember(context) { CameraCatalog(context.applicationContext) }
     var cameras by remember { mutableStateOf(emptyList<CameraChoice>()) }
@@ -115,6 +128,7 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                     fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).semantics { heading() })
             }
+            StreamingIntentControl(paused, onPauseChange)
             SettingsDivider()
             Column(Modifier.weight(1f).widthIn(max = 680.dp).fillMaxWidth()
                 .verticalScroll(if (showMoreOptions) moreScroll else mainScroll).padding(20.dp),
@@ -187,6 +201,17 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                                 valueRange = -12f..12f, steps = 23,
                                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = exposureLabel })
                         }
+                    }
+                    OptionalNotificationControl()
+                    OutlinedButton(onClick = { showPrivacy = true }, shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(2.dp, Color.White), modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+                        Text(stringResource(R.string.privacy_title), fontSize = 20.sp, lineHeight = 28.sp,
+                            textAlign = TextAlign.Center)
+                    }
+                    OutlinedButton(onClick = { showLicenses = true }, shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(2.dp, Color.White), modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+                        Text(stringResource(R.string.licenses_title), fontSize = 20.sp, lineHeight = 28.sp,
+                            textAlign = TextAlign.Center)
                     }
                 }
             }
@@ -301,6 +326,6 @@ private fun ToggleSetting(label: String, enabled: Boolean, hint: String? = null,
 @Composable
 private fun AdvancedSettingsPreview() {
     OkuFlowCameraTheme {
-        AdvancedSettingsPanel(CameraSettings(resolution = 1080), "Streaming to OkuFlow\n1920 × 1080 · 60 FPS · H.264", {}, {})
+        AdvancedSettingsPanel(CameraSettings(resolution = 1080), "Streaming to OkuFlow\n1920 × 1080 · 60 FPS · H.264", {}) {}
     }
 }

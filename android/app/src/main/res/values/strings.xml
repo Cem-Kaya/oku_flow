@@ -14,19 +14,19 @@
     <string name="developer_hint_oneplus">Open “Version”, then tap “Build number” 7 times.</string>
 
     <string name="usb_debugging_title">Turn on USB debugging</string>
-    <string name="usb_debugging_hint">Find “USB debugging” and switch it on.</string>
+    <string name="usb_debugging_hint">Turn on “USB debugging”. Connect only to your own trusted private computer.</string>
     <string name="check_usb_title">Check the USB connection</string>
     <string name="check_usb_hint">Open OkuFlow on your computer. If it cannot connect, check that USB debugging is on and allow this computer when asked. If Developer options are missing, open About phone and tap Build number 7 times.</string>
 
     <string name="camera_title">Allow the camera</string>
-    <string name="camera_hint">OkuFlow shows this camera on your computer. Nothing is sent to the internet.</string>
+    <string name="camera_hint">This phone streams the camera by USB. Optional Windows AI features can send images to your selected service.</string>
     <string name="camera_hint_settings">Open settings, choose “Permissions”, then allow “Camera”.</string>
 
     <string name="connect_usb_title">Plug this phone into your computer</string>
     <string name="connect_usb_hint">Use a USB cable that can transfer data.</string>
 
     <string name="open_okuflow_title">Open OkuFlow on your computer</string>
-    <string name="open_okuflow_hint">If your phone asks “Allow USB debugging?”, tick “Always allow” and tap “Allow”.</string>
+    <string name="open_okuflow_hint">If asked to allow USB debugging, allow only your own trusted private computer. “Always allow” is optional for that computer; leave it off on shared computers.</string>
 
     <string name="streaming_title">Streaming to OkuFlow</string>
     <string name="streaming_hint">Keep this screen open.</string>
@@ -79,4 +79,25 @@
     <string name="problem_hot_title">The phone is too hot</string>
     <string name="problem_service_title">The USB camera could not start</string>
     <string name="problem_service_hint">Close OkuFlow Camera and open it again. If this keeps happening, restart the phone.</string>
+    <string name="privacy_title">Privacy policy</string>
+    <string name="privacy_identity">OkuFlow Camera is provided by Cem Kaya. Updated 12 October 2026. This policy covers the Android companion and explains its connection to OkuFlow for Windows.</string>
+    <string name="privacy_access">With camera permission, the app encodes live camera video and sends it by an authorized USB debugging connection to your computer. It also sends camera capabilities, codec and capture settings, frame timing, and error information. The phone app has no Internet permission and does not request microphone, location or contacts access.</string>
+    <string name="privacy_retention">On the phone, video is held in memory for streaming rather than saved as recordings. Camera and setup preferences are stored locally; the light resets off for a new connection. Restore automatic settings resets camera preferences. Android app storage controls or uninstalling remove stored preferences. Backup and device transfer of app data are disabled.</string>
+    <string name="privacy_windows">OkuFlow for Windows can save photos, recordings, notes and diagnostic logs on your computer. If you use its optional AI features, images and questions can be sent to your selected Codex or vision service. That service has its own privacy and retention terms. Delete saved computer files through Windows; clearing this phone app does not delete them or provider-held data.</string>
+    <string name="privacy_usb">Authorize USB debugging only on a computer you trust. An authorized debugging connection gives the computer broad access to the phone. Disconnect the cable when finished; you can turn off USB debugging or revoke debugging authorizations in Developer options. USB authorization is not a claim of encrypted video transfer.</string>
+    <string name="privacy_contact">Privacy questions: contact Cem Kaya through the public OkuFlow repository issues. Issues are public; do not post camera images, credentials or private documents. Opening the public policy or contact link uses your browser and its connection to GitHub.</string>
+    <string name="privacy_public">Open public privacy policy</string>
+    <string name="privacy_contact_action">Contact through public issues</string>
+    <string name="notification_optional_hint">You can show the camera service notice in the notification drawer. This is optional; declining does not stop streaming.</string>
+    <string name="notification_optional_action">Show camera notification</string>
+    <string name="service_connected_notification">Connected to OkuFlow; waiting for video</string>
+    <string name="service_streaming_notification">Streaming to OkuFlow: %1$s</string>
+    <string name="action_pause_streaming">Pause streaming</string>
+    <string name="action_resume_streaming">Resume streaming</string>
+    <string name="paused_title">Streaming paused</string>
+    <string name="paused_hint">The camera is stopped. Choose Resume streaming when ready. Reconnecting or reopening the app keeps it paused.</string>
+    <string name="pause_save_failed">The camera is paused, but this choice could not be saved. Keep the cable disconnected before reopening the app. Try Resume streaming again after checking app storage.</string>
+    <string name="licenses_title">Open-source licenses</string>
+    <string name="licenses_loading">Loading license notices…</string>
+    <string name="licenses_unavailable">License notices could not be opened. Use the source repository license folder.</string>
 </resources>

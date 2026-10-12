@@ -153,7 +153,7 @@ Servicing: these pins are recorded in the SBOM; each release reviews
 upstream security advisories (Mbed TLS in particular) and bumps the pins as
 ordinary changes re-validated by the loopback and live test matrices.
 
-## Android Companion Dependencies (development scaffold)
+## Android Companion Dependencies (closed-test preparation)
 
 The standalone `android/` Gradle project uses GPL-3.0-compatible Apache-2.0
 runtime libraries: AndroidX Core KTX 1.19.1, Activity Compose 1.13.0,
@@ -177,8 +177,15 @@ NDK and CMake are separately installed development tools governed by their own
 vendor licenses/notices, not copied into the Windows bundle. The Windows bundle
 does contain the source-built adb runtime and its dependency DLLs; see
 [Android Debug Bridge (source-built runtime)](#android-debug-bridge-source-built-runtime).
-The exact resolved runtime notices in a release APK, and the companion's release
-dependency inventory, remain explicit Phase 7 packaging gates. The Windows
+The release gate now checks 65 resolved runtime entries against 64 reviewed
+unique artifacts and verifies the original license/NOTICE assets in both APK
+and AAB. Official POMs, original notices, artifact hashes and review tools are
+retained in [`android/licenses/`](../android/licenses/README.md). Guava's
+inherited license and AndroidX graphics-path's native source/build inputs are
+reviewed explicitly. The latter retains separate source/blob and ELF dependency
+evidence; this is not a reproducible-build claim for Google's native binary.
+Offline Open-source licenses includes these notices and OkuFlow's GPL text.
+Changed dependencies or notices fail validation until reviewed again. The Windows
 release script does not ship the APK. Contributions to the companion follow the
 repository's GPL-3.0 plus commercial contribution terms.
 

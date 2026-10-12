@@ -56,6 +56,7 @@ enum class SetupStep(
     ConnectUsb(null),
     CheckUsbSetup(null),
     OpenOkuFlow(null),
+    Paused(null),
 
     /** OkuFlow holds a session; the camera is starting or paused. */
     HostConnected(null),
@@ -86,9 +87,11 @@ fun resolveSetupStep(
     snapshot: DeviceSetupSnapshot,
     link: HostLinkState,
     problem: HostProblem? = null,
+    paused: Boolean = false,
 ): SetupStep {
     val debuggingOn = snapshot.usbAdbActive || snapshot.usbDebuggingEnabled == true
     return when {
+        paused -> SetupStep.Paused
         !debuggingOn && snapshot.developerOptionsEnabled == false -> SetupStep.EnableDeveloperOptions
         !debuggingOn && snapshot.usbDebuggingEnabled == false -> SetupStep.EnableUsbDebugging
         !snapshot.cameraPermissionGranted -> SetupStep.AllowCamera

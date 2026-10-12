@@ -2621,7 +2621,7 @@ Native Windows consumes AVC and optional HEVC through the phone source below. Se
 The manifest declares CAMERA and camera foreground-service permissions without INTERNET, disables backup, and uses
 `res/xml/data_extraction_rules.xml` to exclude device-specific setup history.
 `SetupStepTest`, `OemFamilyTest`, `WireProtocolTest`, `StreamPolicyTest`,
-`CameraSettingsTest`, `CameraFailuresTest` and `LinkPolicyTest` provide 54 JVM checks, including older-setting behavior,
+`CameraSettingsTest`, `CameraFailuresTest`, `LinkPolicyTest` and `StreamingIntentTest` provide 59 JVM checks, including older-setting behavior,
 Android 17 redaction, USB evidence, connected/problem step priority, camera
 failure classification, the HEVC default with explicit-AVC preservation, exact dimension/rate bounds, legacy preference
 migration and camera-mode reconciliation. `CameraEngine.start` uses actual
@@ -2638,6 +2638,54 @@ outputs/caches remain outside Drive. The Gradle files pin dependencies,
 JVM 17 output, API levels and local output paths, with wrapper checksum
 verification. `android/design/setup-panels.html` illustrates the panels with
 translated app strings; it is an HTML draft, not a native-device screenshot.
+
+### Closed-test state, notices and signed artifacts
+
+- `settings/StreamingIntent.kt`: `StreamingPausePersistence` abstracts the saved
+  pause flag; `StreamingIntent.canStart`, `pause` and `resume` preserve explicit
+  intent across reopening/retries. Failed storage writes remain paused.
+  `StreamingIntentStore.get` provides the installation-local singleton;
+  `pause`/`resume` synchronously commit only user actions and publish `paused`
+  and `saveFailed` StateFlows, independently of camera-settings reset.
+- `camera/StreamingPauseReceiver.kt`: the non-exported receiver's `onReceive`
+  calls `pauseStreaming`, saving Pause before stopping the foreground service.
+  `SetupViewModel` and `CameraStreamService` recheck that intent at startup,
+  host commands, retries and restarts. `SetupStep.Paused` and
+  `ui/StreamingIntentControl.kt` expose deliberate Resume. Notification and
+  Advanced settings use the same intent, without adding a frame-path write.
+- `ui/PrivacyPanel.kt` and `ui/LicensesPanel.kt` present translated privacy
+  information and retained original notices offline. External public/contact
+  links delegate to the owner's browser. Notification permission is optional;
+  the monochrome notification icon and text reflect actual service state.
+- The immutable application id is `com.okuflow`; explicit manifest component
+  names retain Kotlin namespace `com.okuflow.camera`. The verified VIEW intent
+  handles only HTTPS `okuflow.com/camera/open`. Google's public app-signing
+  certificate in the website association differs from the private upload key.
+- `app/build.gradle.kts` enforces all-or-none upload-signing inputs and explicit
+  unsigned review mode. Release dependency inventory checks actual artifact
+  hashes against reviewed runtime/native evidence before packaging. The
+  `android/tools/` review scripts retain original POM/licenses, native source
+  blob/build evidence and ELF dependencies under `android/licenses/`.
+- `scripts/build_android_signed.ps1` initializes an owner-controlled local key
+  with masked password input or loads a Windows DPAPI credential profile.
+  Persistent signing variables are path/alias pointers; four temporary
+  `UPLOAD_*` process inputs and Gradle daemon settings are restored on exit.
+  Keytool receives passwords through environment references, never argv.
+- `scripts/build_android.ps1 -Release` runs release assembly, JVM tests, lint,
+  AAB and inventory before `scripts/validate_android_release.ps1`.
+  `Assert-ApplicationIdentity`, `Assert-CameraAppLink`, `Assert-Elf16K`,
+  `Assert-ArchiveLibraries` and `Assert-PackagedNotices` check manifest identity,
+  the narrow verified URL, alignment and actual APK/AAB retained assets.
+  `Get-ApkUploadCertificateDigest` handles old/current SDK signer prefixes,
+  repeated scheme reports of one certificate and rejects different identities.
+  `-SelfTest` supplies 22 fixtures (4 ELF, 4 notices, 4 identities, 4 links,
+  6 signer outputs). Signed artifacts require matching APK/AAB upload identities;
+  unsigned review artifacts cannot become Play upload candidates.
+- `android/tools/export_play_art.ps1`: `Draw-OkuFlowMark` rasterizes the owned
+  Android launcher vector geometry. The exporter writes the required store icon
+  and feature graphic outside the checkout, disposes graphics resources and
+  rejects checkout output paths. It does not fabricate screenshots or performance
+  evidence; real app captures require the active physical display on foldables.
 
 ### Optional Windows phone source and host probe
 
@@ -2682,8 +2730,10 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
 - `tests/phone_camera_tests.cpp` checks USB identity without Windows bus paths,
   malformed protobuf, actual AVC/HEVC system-decoder NV12 and saved source selection.
   The HEVC data row skips explicitly when the optional decoder is unavailable.
-  `android/tests/test_host_probe.py` supplies seven fake-server/parser/control
+  `android/tests/test_host_probe.py` supplies eleven fake-server/parser/control
   checks with no live adb changes. Viewport-to-phone zoom handoff remains pending.
+  Canonical cold launch, missing-only legacy fallback and blocked-launch cases
+  use isolated fake endpoints; `PhoneCameraClient` mirrors the same launch rules.
 
 ## Entry Point
 

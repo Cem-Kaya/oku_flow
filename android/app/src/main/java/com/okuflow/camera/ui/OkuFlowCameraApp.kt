@@ -63,6 +63,8 @@ fun OkuFlowCameraApp(viewModel: SetupViewModel = viewModel()) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val diagnostics by viewModel.diagnostics.collectAsStateWithLifecycle()
     val problem by viewModel.problem.collectAsStateWithLifecycle()
+    val paused by viewModel.paused.collectAsStateWithLifecycle()
+    val pauseSaveFailed by viewModel.pauseSaveFailed.collectAsStateWithLifecycle()
     var showSettings by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val activity = LocalActivity.current
@@ -148,6 +150,10 @@ fun OkuFlowCameraApp(viewModel: SetupViewModel = viewModel()) {
             title = stringResource(R.string.open_okuflow_title),
             hint = stringResource(R.string.open_okuflow_hint),
         )
+        SetupStep.Paused -> StepContent(
+            title = stringResource(R.string.paused_title),
+            hint = stringResource(if (pauseSaveFailed) R.string.pause_save_failed else R.string.paused_hint),
+        )
 
         SetupStep.HostConnected -> StepContent(
             title = stringResource(R.string.connected_title),
@@ -182,7 +188,10 @@ fun OkuFlowCameraApp(viewModel: SetupViewModel = viewModel()) {
 
     BackHandler(enabled = showSettings) { showSettings = false }
     if (showSettings) {
-        AdvancedSettingsPanel(settings, status, viewModel::updateSettings) { showSettings = false }
+        AdvancedSettingsPanel(settings, status, viewModel::updateSettings,
+            paused = paused, onPauseChange = { if (paused) viewModel.resumeStreaming() else viewModel.pauseStreaming() }) {
+            showSettings = false
+        }
         return
     }
 
@@ -196,6 +205,7 @@ fun OkuFlowCameraApp(viewModel: SetupViewModel = viewModel()) {
         ) {
             Text("${stringResource(R.string.advanced_settings)}  ›", textAlign = TextAlign.Center)
         }
+        StreamingIntentControl(paused) { if (paused) viewModel.resumeStreaming() else viewModel.pauseStreaming() }
         Box(Modifier.weight(1f)) {
             val action = content.onAction
             when {

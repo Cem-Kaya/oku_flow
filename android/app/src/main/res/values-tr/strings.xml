@@ -13,19 +13,19 @@
     <string name="developer_hint_oneplus">“Sürüm”ü açın, ardından “Yapım numarası”na 7 kez dokunun.</string>
 
     <string name="usb_debugging_title">USB hata ayıklamayı açın</string>
-    <string name="usb_debugging_hint">“USB hata ayıklama” seçeneğini bulun ve açın.</string>
+    <string name="usb_debugging_hint">“USB hata ayıklama”yı açın. Yalnızca size ait, güvendiğiniz kişisel bilgisayara bağlanın.</string>
     <string name="check_usb_title">USB bağlantısını kontrol edin</string>
     <string name="check_usb_hint">Bilgisayarınızda OkuFlow’u açın. Bağlanamıyorsa USB hata ayıklamanın açık olduğunu kontrol edin ve sorulduğunda bu bilgisayara izin verin. Geliştirici seçenekleri yoksa Telefon hakkında bölümünü açıp Yapım numarası’na 7 kez dokunun.</string>
 
     <string name="camera_title">Kameraya izin verin</string>
-    <string name="camera_hint">OkuFlow bu kamerayı bilgisayarınızda gösterir. İnternete hiçbir şey gönderilmez.</string>
+    <string name="camera_hint">Bu telefon kamerayı USB üzerinden aktarır. İsteğe bağlı Windows yapay zekâ özellikleri görüntüleri seçtiğiniz hizmete gönderebilir.</string>
     <string name="camera_hint_settings">Ayarları açın, “İzinler”i seçin ve “Kamera”ya izin verin.</string>
 
     <string name="connect_usb_title">Bu telefonu bilgisayarınıza takın</string>
     <string name="connect_usb_hint">Veri aktarabilen bir USB kablosu kullanın.</string>
 
     <string name="open_okuflow_title">Bilgisayarınızda OkuFlow’u açın</string>
-    <string name="open_okuflow_hint">Telefonunuz “USB hata ayıklamaya izin verilsin mi?” diye sorarsa “Her zaman izin ver”i işaretleyip “İzin ver”e dokunun.</string>
+    <string name="open_okuflow_hint">USB hata ayıklama izni sorulursa yalnızca size ait, güvendiğiniz kişisel bilgisayara izin verin. Bu bilgisayar için “Her zaman izin ver” isteğe bağlıdır; paylaşılan bilgisayarda kapalı bırakın.</string>
 
     <string name="streaming_title">OkuFlow’a aktarılıyor</string>
     <string name="streaming_hint">Bu ekranı açık tutun.</string>
@@ -78,4 +78,25 @@
     <string name="problem_hot_title">Telefon çok sıcak</string>
     <string name="problem_service_title">USB kamera başlatılamadı</string>
     <string name="problem_service_hint">OkuFlow Kamera’yı kapatıp yeniden açın. Bu sık oluyorsa telefonu yeniden başlatın.</string>
+    <string name="privacy_title">Gizlilik politikası</string>
+    <string name="privacy_identity">OkuFlow Kamera, Cem Kaya tarafından sunulur. Güncelleme: 12 Ekim 2026. Bu politika Android yardımcı uygulamasını kapsar ve Windows için OkuFlow ile bağlantısını açıklar.</string>
+    <string name="privacy_access">Kamera izniyle uygulama canlı kamera görüntüsünü kodlar ve izin verdiğiniz USB hata ayıklama bağlantısı üzerinden bilgisayarınıza gönderir. Kamera özellikleri, kodek ve çekim ayarları, kare zamanlaması ve hata bilgileri de gönderilir. Telefon uygulamasının İnternet izni yoktur; mikrofon, konum veya kişilere erişim istemez.</string>
+    <string name="privacy_retention">Telefonda video kayıt dosyası olarak saklanmaz; aktarım için bellekte tutulur. Kamera ve kurulum tercihleri yerel olarak saklanır; yeni bağlantıda ışık kapalı başlar. Otomatik ayarları geri yükleme kamera tercihlerini sıfırlar. Android uygulama depolama kontrolleri veya uygulamayı kaldırma, saklanan tercihleri siler. Uygulama verilerinin yedeklenmesi ve cihaz aktarımı kapalıdır.</string>
+    <string name="privacy_windows">Windows için OkuFlow bilgisayarınızda fotoğraf, kayıt, not ve tanılama günlüğü saklayabilir. İsteğe bağlı yapay zekâ özelliklerini kullanırsanız görüntüler ve sorular seçtiğiniz Codex veya görüntü hizmetine gönderilebilir. Bu hizmetin kendi gizlilik ve saklama koşulları vardır. Bilgisayardaki dosyaları Windows üzerinden silin; telefon uygulamasını temizlemek bunları veya hizmet sağlayıcısının tuttuğu verileri silmez.</string>
+    <string name="privacy_usb">USB hata ayıklamaya yalnızca güvendiğiniz bir bilgisayarda izin verin. İzin verilmiş hata ayıklama bağlantısı bilgisayara telefon üzerinde geniş erişim verir. İşiniz bitince kabloyu çıkarın; Geliştirici seçeneklerinde USB hata ayıklamayı kapatabilir veya hata ayıklama yetkilerini iptal edebilirsiniz. USB izni, video aktarımının şifreli olduğu anlamına gelmez.</string>
+    <string name="privacy_contact">Gizlilik soruları için herkese açık OkuFlow deposunun sorunlar bölümünden Cem Kaya ile iletişime geçin. Sorunlar herkese açıktır; kamera görüntüsü, kimlik bilgisi veya özel belge paylaşmayın. Açık politika veya iletişim bağlantısı tarayıcınızı ve tarayıcının GitHub bağlantısını kullanır.</string>
+    <string name="privacy_public">Açık gizlilik politikasını aç</string>
+    <string name="privacy_contact_action">Açık sorunlar üzerinden iletişim</string>
+    <string name="notification_optional_hint">Kamera hizmeti bildirimini bildirim panelinde gösterebilirsiniz. Bu isteğe bağlıdır; reddetmek aktarımı durdurmaz.</string>
+    <string name="notification_optional_action">Kamera bildirimini göster</string>
+    <string name="service_connected_notification">OkuFlow’a bağlı; video bekleniyor</string>
+    <string name="service_streaming_notification">OkuFlow’a aktarılıyor: %1$s</string>
+    <string name="action_pause_streaming">Aktarımı duraklat</string>
+    <string name="action_resume_streaming">Aktarımı sürdür</string>
+    <string name="paused_title">Aktarım duraklatıldı</string>
+    <string name="paused_hint">Kamera durdu. Hazır olduğunuzda Aktarımı sürdür’ü seçin. Yeniden bağlanmak veya uygulamayı açmak duraklatmayı kaldırmaz.</string>
+    <string name="pause_save_failed">Kamera duraklatıldı ancak bu seçim kaydedilemedi. Uygulamayı yeniden açmadan önce kabloyu çıkarın. Uygulama depolamasını kontrol ettikten sonra Aktarımı sürdür’ü tekrar deneyin.</string>
+    <string name="licenses_title">Açık kaynak lisansları</string>
+    <string name="licenses_loading">Lisans bildirimleri yükleniyor…</string>
+    <string name="licenses_unavailable">Lisans bildirimleri açılamadı. Kaynak deposunun lisans klasörünü kullanın.</string>
 </resources>

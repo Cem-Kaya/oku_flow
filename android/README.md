@@ -198,7 +198,11 @@ remain acceptance work. The Windows GUI gate needs an uncontested desktop.
 
 ## Rules
 
-- Product name **OkuFlow Camera**; package `com.okuflow.camera`.
+- Product name **OkuFlow Camera**; Play/install package `com.okuflow`.
+  Kotlin namespace/classes stay `com.okuflow.camera`. Launch with
+  `com.okuflow/com.okuflow.camera.MainActivity`; `com.okuflow/.MainActivity`
+  would name a class that does not exist. Windows/probe compatibility retains
+  older `com.okuflow.camera` debug installations until their owners update them.
 - No INTERNET permission: frames leave the phone only through the adb
   tunnel to OkuFlow.
 - Camera2 and MediaCodec directly — no CameraX.
@@ -207,3 +211,38 @@ remain acceptance work. The Windows GUI gate needs an uncontested desktop.
   centered headings/step counters/progress, justified instruction paragraphs,
   merged panel semantics and scrolling layouts for large system fonts.
   TalkBack behavior and 200% font-scale rendering still need device acceptance.
+
+## Privacy and release preparation
+
+Advanced settings → Privacy policy opens a scrollable offline policy in the
+phone's English, Turkish or German language. It explains USB camera transfer,
+local preferences, Windows recording and optional AI-provider processing.
+The public policy is [PRIVACY.md](PRIVACY.md); its GitHub URL must be live before
+Play submission. Authorize USB debugging only on a trusted computer.
+
+On Android 13 and newer, **Show camera notification** in Advanced settings is an
+optional, once-per-install permission request. Denial does not block the camera
+or USB service. The monochrome service notification reports waiting/connected
+or actual streaming mode and offers **Pause streaming**. Pause is also available
+on the main and settings screens: it closes the camera/listener service and saves
+that intent. Reconnecting, reopening the app or automatic Windows launch keeps
+it paused. Only **Resume streaming** in the visible app clears it; default new
+installations still auto-connect. Notification denial leaves the phone UI action
+available. Permission/cable/debugging prerequisites still apply after Resume.
+
+Advanced settings → Open-source licenses reads the complete retained notices
+offline. The reviewed release graph has 65 entries / 64 unique artifacts; exact
+artifact hashes, original upstream POM/source evidence and retained notices are
+verified during packaging. See [licenses/README.md](licenses/README.md).
+
+`scripts/build_android.ps1 -Release` requires existing upload-signing inputs and
+runs release unit tests, lint, APK/AAB assembly, resolved dependency inventory
+and technical artifact checks. `-Release -AllowUnsignedRelease` deliberately
+produces a **non-uploadable review artifact**. Neither path installs an app,
+creates a key or submits to Play. See [BUILDING.md](BUILDING.md) for inputs and
+[PLAY_READINESS.md](PLAY_READINESS.md) for the remaining publication gates.
+
+The immediate destination is the owner's first Google Play **closed test** for
+12 invited testers, rather than production. USB streaming stays unchanged with
+no application PIN, pairing step or encryption added. Trust wording is explicit;
+this technical choice is not evidence of a Google Play policy exception or approval.

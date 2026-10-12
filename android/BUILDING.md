@@ -34,10 +34,12 @@ Maven Central metadata, and Google's stable SDK catalog on 2026-10-11.
 Paths beginning with `Sdk\` are relative to `%LOCALAPPDATA%\Android\Sdk`.
 Gradle runs on JDK 21; Java and Kotlin emit JVM 17 bytecode. `minSdk` is 30,
 `compileSdk` is release 37 with minor API level 2, and `targetSdk` is 37 (Android
-target behavior uses the major API level). The app id/namespace is
-`com.okuflow.camera`, version code 1, version name `0.1.0`.
+target behavior uses the major API level). The install application id is
+`com.okuflow` (Play/install application id); Kotlin/resource namespace and class
+paths stay `com.okuflow.camera`. Version code 1, version name `0.1.0`.
 NDK and CMake are installed for the later native processing stage; no native
-build is enabled in this scaffold. Kotlin sources use `app/src/main/java`, and
+build is enabled in this scaffold. Transitive AndroidX graphics dependencies do
+include native libraries, which must pass release 16 KB checks. Kotlin sources use `app/src/main/java`, and
 JVM tests use `app/src/test/java`. No CameraX or network library is declared.
 The app manifest must not declare `android.permission.INTERNET`.
 
@@ -117,7 +119,7 @@ exit code. Success prints the debug APK path:
 
 `-Install` uses `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe` explicitly
 (or the selected `ANDROID_HOME`). It installs with `adb install -r` and launches
-`com.okuflow.camera/.MainActivity` only when one device is attached and authorized
+`com.okuflow/com.okuflow.camera.MainActivity` only when one device is attached and authorized
 and no other devices are attached. Zero, unauthorized, offline, or multiple
 devices produce a clear skip message. Enable USB debugging and authorize the
 computer on the phone first. No physical phone was present during setup.
@@ -157,6 +159,162 @@ project cache.
 
 Unit-test reports are under `<root>\app\reports\tests\testDebugUnitTest`;
 lint reports are under `<root>\app\reports\lint-results-debug.html` and `.xml`.
+
+## Release artifacts and upload signing
+
+Use an **existing** upload keystore kept outside Drive and the checkout. Supply
+all four process environment variables together:
+
+- `OKUFLOW_ANDROID_UPLOAD_KEYSTORE`: absolute local keystore file path.
+- `OKUFLOW_ANDROID_UPLOAD_KEY_ALIAS`: upload-key alias.
+- `OKUFLOW_ANDROID_UPLOAD_STORE_PASSWORD`: keystore password.
+- `OKUFLOW_ANDROID_UPLOAD_KEY_PASSWORD`: upload-key password.
+
+Set passwords through your secure local workflow, not a tracked file, command
+argument or pasted build log. The low-level build script does not create keys
+or print passwords. Partial signing inputs are refused; release never defaults to the debug
+key. Keep your keystore/password backups under your own control. A Play-installed
+release normally cannot update a debug-key installation with the same package.
+
+For the first owner-controlled Play release, use the tracked signing helper in
+the owner's local PowerShell terminal:
+
+```powershell
+pwsh -NoProfile -File scripts/build_android_signed.ps1 -InitializeKey
+# Future signed releases reuse the protected local profile:
+pwsh -NoProfile -File scripts/build_android_signed.ps1
+```
+
+The first command uses masked local password input, refuses to replace an
+existing key, creates the upload keystore under
+`%LOCALAPPDATA%\OkuFlow\android-signing\`, stores the credential profile using
+Windows user/machine DPAPI protection, exports `upload-certificate.pem` (public)
+and runs the signed Release gate. Future runs use the local protected profile.
+Persistent `OKUFLOW_ANDROID_SIGNING_KEYSTORE`, `OKUFLOW_ANDROID_SIGNING_KEY_ALIAS`
+and `OKUFLOW_ANDROID_SIGNING_PROFILE` are non-secret pointers only. The four
+`UPLOAD_*` inputs exist only in the build process and are restored afterward;
+no password is saved as a permanent environment variable. Back up the encrypted
+keystore and its password privately. Never put the key, credential profile or
+password in Drive, Git, a tester ZIP or an agent message. Signing does not alter
+the camera transport. Creating a key/build does not create or submit a Play app.
+
+```powershell
+pwsh -NoProfile -File scripts/build_android.ps1 -Release
+# No signing inputs: explicitly inspect an unsigned, non-uploadable review build.
+pwsh -NoProfile -File scripts/build_android.ps1 -Release -AllowUnsignedRelease
+pwsh -NoProfile -File scripts/validate_android_release.ps1 -SelfTest
+```
+
+Release always runs `assembleRelease`, `testReleaseUnitTest`, `lintRelease`,
+`bundleRelease` and `writeReleaseDependencyInventory`, followed by the tracked
+artifact validator. `android.onlyEnableUnitTestForTheTestedBuildType=false`
+keeps release JVM tests available despite AGP 9's debug-only default.
+`-Release -Install` is refused; the existing Debug `-Install`
+workflow and its adb-server safeguards remain unchanged. R8/minification remains
+disabled; it is a separate optimization, not a Google Play publishing requirement.
+Direct Gradle release tasks also require the signing inputs, or the explicit
+`-Pokuflow.allowUnsignedRelease=true` review opt-in.
+
+Outputs stay under the selected local build root:
+
+- `app/outputs/bundle/release/app-release.aab`.
+- `app/outputs/apk/release/app-release.apk`, or `app-release-unsigned.apk`.
+- `app/reports/tests/testReleaseUnitTest` and `app/reports/lint-results-release.*`.
+- `app/reports/release/runtime-dependencies.json`: the actual resolved release
+  runtime graph, artifact names and SHA-256 values plus the matching reviewed
+  license manifest hash. A changed artifact/version or retained notice blocks
+  this gate until its evidence is reviewed again.
+- `app/reports/release/merged-manifest.xml` and `artifact-validation.json`:
+  inspected manifest, artifact/inventory hashes, signing/review mode and remaining gates.
+
+The validator uses SDK 37.0.0 `apksigner`/`zipalign`, SDK command-line
+`apkanalyzer`, and JDK `jarsigner`/`keytool`. It checks package identity,
+non-debuggable/non-test-only configuration, SDK/permissions, optional rear
+camera/autofocus and camera FGS declarations, upload signatures (or explicit
+unsigned mode), matching APK/AAB certificates, native ELF 16 KB segment alignment,
+APK ZIP 16 KB alignment, a nonempty resolved inventory and the actual packaged
+license/NOTICE bytes in both archives. Its four synthetic
+ELF self-test cases cover accepting 16 KB and rejecting 4 KB, incongruent segments
+and a malformed program table; four packaged-notice fixtures accept the reviewed
+graph and reject altered/missing notices or a changed artifact graph. Four identity
+fixtures accept the canonical package/activity and reject the legacy install
+package, a renamed Kotlin class or a relative activity name. Four App Links
+fixtures require auto-verification of only HTTPS `okuflow.com/camera/open`.
+Six signer-output fixtures cover old and current SDK output, repeated reports
+of one identity, malformed/missing digests and distinct signers. It also checks the
+non-exported notification Pause receiver. No device or adb server is contacted.
+
+It does **not** establish Play-generated split APK alignment/runtime behavior,
+Play policy exceptions, native accessibility/phone acceptance, public policy
+availability or Console/account declarations. See [PLAY_READINESS.md](PLAY_READINESS.md).
+Only the signed path can produce an upload candidate; neither result is a claim
+that all Play publication gates have passed.
+
+### Offline release preparation validation — 2026-10-12
+
+The tracked Debug `-Lint` and Release `-AllowUnsignedRelease` gates both passed:
+54 JVM tests each, zero lint issues, and 84 English/Turkish/German resource keys.
+The release validator accepted the non-debuggable manifest and camera feature/
+permission contract, confirmed unsigned review mode, passed APK ZIP alignment
+and the two 64-bit ELF entries in each APK/AAB, and retained a 65-artifact resolved
+release runtime inventory. All four synthetic ELF fixtures passed. A release
+invocation without signing inputs was rejected before compilation as intended.
+
+Outputs are the paths above; final logs are under
+`%LOCALAPPDATA%\OkuFlow\phone-controls-20261011\android-play-debug-final.log`
+and `android-play-release-review-final.log`. These are build/artifact checks only.
+No release/upload key was created, no signed-release branch tested, no app
+installed, no phone or adb server contacted and no Play submission performed.
+Native privacy/notification screens, signed AAB acceptance, licenses and all
+external publication gates remain pending.
+
+The later private-tester continuation adds offline verified runtime notices and
+durable Pause/Resume. The original evidence above describes the earlier build.
+See [licenses/README.md](licenses/README.md) for official runtime/native source
+provenance and reproducible review commands. Camera and setup preferences remain
+local; `streaming_intent/paused` defaults false and is synchronously saved only
+on user Pause/Resume, independently of camera reset. Activity, USB, permission
+and host retry paths cannot clear it. Storage-write failure keeps the current
+process paused and is reported rather than silently resuming.
+
+Latest continuation gates pass: **59 JVM tests in both Debug and Release**, zero
+lint issues, **92 translated keys**, and **22 validator fixtures** (4 ELF + 4
+packaged notices + 4 package/activity identities + 4 App Links + 6 signer outputs). The final Play-identity build
+uses application id `com.okuflow` and the merged exported `singleTask` activity
+`com.okuflow.camera.MainActivity`; its canonical launch component is
+`com.okuflow/com.okuflow.camera.MainActivity`. The Kotlin namespace and USB
+endpoint/protocol remain unchanged. The APK/AAB package all retained license assets,
+including the separate native graphics source/binary review; the validator
+confirms 64 reviewed unique runtime artifacts against 65 resolved entries.
+
+The owner then created the private upload key outside Drive and Git. The signed
+Release helper and matching APK/AAB certificate checks passed, including a
+repeat build using the protected local profile without exposing a password.
+Google Play accepted version code 1 / version 0.1.0 in the Alpha closed-test
+draft on 2026-10-12. This verifies upload acceptance, not rollout or policy review.
+The site's public app-signing association is served as JSON without redirects
+at `https://okuflow.com/.well-known/assetlinks.json`. Its Google Play app-signing
+certificate differs from the local upload certificate, so verified app-link
+runtime acceptance must use the Play-signed installation.
+
+`pwsh -NoProfile -File android/tools/export_play_art.ps1` exports the original
+Android launcher vector geometry as an opaque 512×512 store icon and a 1024×500
+feature graphic, using Windows System.Drawing/Segoe UI. Outputs default to
+`%LOCALAPPDATA%\OkuFlow\play-listing`, outside the synced checkout. These are
+listing artwork, not native UI screenshots. Capture real app screens separately;
+on a foldable, select the physical display that is actually on rather than an
+inactive panel or a scrcpy virtual display. Restore any temporary size override.
+Git attributes preserve original notice/POM/review bytes, including retained
+upstream trailing blank lines; Windows autocrlf must not change their pinned hashes.
+Native provenance checks cover 13 immutable build/source/header records and all
+four ABI libraries, whose dynamic dependencies are only `libm.so`, `libdl.so`
+and `libc.so`, with undefined symbols versioned to Android `LIBC`.
+Logs: `android-com-okuflow-debug.log`, `android-com-okuflow-release.log` and
+`android-native-license-review.log` in the same local evidence directory.
+This continuation still produced only an unsigned review AAB/APK and made no
+phone installation or Play submission; signed tester/device and external policy/
+Console gates are separate. The new signing helper is documented above for the
+owner's first-key and future local build workflow, not claimed executed here.
 
 To use Android Studio, install a stable version supporting AGP 9.4 and open
 the repository's `android` directory. Select the SDK path above and set

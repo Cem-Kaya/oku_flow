@@ -4,6 +4,24 @@
   the redundant global compatibility checkbox and migrate its legacy enabled
   state to `Compatibility mode` for the selected physical camera.
 
+## [Unreleased]
+
+- Add Android privacy information, notification state updates, optional
+  notification permission and explicit optional rear-camera/autofocus feature
+  declarations. Add fail-closed upload-key configuration and APK/AAB release
+  validation, including 16 KB native-library alignment and runtime inventory.
+  Unsigned review bundles are not uploadable Play artifacts.
+- Persist Android Pause streaming independently of camera settings. Reopening,
+  cable reconnection and Windows retries preserve Pause; only Resume clears it.
+  Include reviewed runtime/native notices in an offline licenses screen.
+- Use the owner-selected Play package `com.okuflow`, retaining the internal
+  Kotlin namespace. Windows launches that package and falls back to the older
+  development package only when the canonical activity is absent.
+- Add a verified HTTPS app link for `okuflow.com/camera/open` and a private local
+  upload-signing helper using masked input and a Windows-protected profile.
+  Keep keys/passwords outside Drive and Git. Accept current SDK apksigner output
+  while rejecting distinct signer identities; validate matching APK/AAB certificates.
+
 ## [0.2.1] - 2026-10-12
 
 ### Fixed

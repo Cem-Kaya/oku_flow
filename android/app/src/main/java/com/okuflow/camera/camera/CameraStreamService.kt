@@ -19,6 +19,7 @@ import com.okuflow.camera.link.HostProblem
 import com.okuflow.camera.link.UsbSocketServer
 import com.okuflow.camera.settings.CameraSettingsStore
 import com.okuflow.camera.settings.CameraSettings
+import com.okuflow.camera.settings.StreamingIntentStore
 import com.okuflow.camera.setup.DeviceSetupMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,7 @@ class CameraStreamService : Service() {
     private lateinit var monitor: DeviceSetupMonitor
     private lateinit var store: CameraSettingsStore
     private lateinit var power: PowerManager
+    private lateinit var streamingIntent: StreamingIntentStore
     @Volatile private var requested = false
     @Volatile private var thermalFps = 60
     @Volatile private var lastSettings: CameraSettings? = null
@@ -63,6 +65,8 @@ class CameraStreamService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        streamingIntent = StreamingIntentStore.get(this)
+        if (!streamingIntent.canStart(true)) { stopSelf(); return }
         val notifications = getSystemService(NotificationManager::class.java)
         notifications.createNotificationChannel(NotificationChannel("camera", getString(R.string.app_name), NotificationManager.IMPORTANCE_LOW))
         try {
@@ -81,6 +85,7 @@ class CameraStreamService : Service() {
         val catalog = CameraCatalog(this)
         engine = CameraEngine(catalog,
             onState = { state ->
+                if (!streamingIntent.canStart(true)) return@CameraEngine
                 if (!::server.isInitialized || !server.connected()) return@CameraEngine
                 if (!server.state(state)) return@CameraEngine
                 if (state.optString("event") == "streaming") {
@@ -89,6 +94,8 @@ class CameraStreamService : Service() {
                 }
                 val codec = if (state.optString("mime") == "video/hevc") "HEVC" else "H.264"
                 HostLink.details.value = "${state.optInt("width")} × ${state.optInt("height")} · ${state.optInt("fps")} FPS · $codec · ${state.optInt("bitrate") / 1_000_000} Mbps"
+                if (state.optString("event") == "streaming")
+                    updateNotification(getString(R.string.service_streaming_notification, HostLink.details.value))
             }, onMetadata = { server.metadata(it) }, onFrame = { pts, seq, generation, flags, bytes ->
                 server.frame(pts, seq, generation, flags, bytes)
             }, onError = { problem, message ->
@@ -103,6 +110,7 @@ class CameraStreamService : Service() {
                 // A new host session is a fresh attempt; its own failure reports again.
                 if (HostLink.problem.value != HostProblem.TooHot) HostLink.report(null)
                 HostLink.publish(HostLinkState.Connected)
+                updateNotification(getString(R.string.service_connected_notification))
             }, problem = { HostLink.problem.value?.wireCode }, onListenerFailed = {
                 // The resumed activity retries; a dead listener must not leave a silent running service.
                 mainExecutor.execute { HostLink.report(HostProblem.ServiceFailed); stopSelf() }
@@ -113,6 +121,7 @@ class CameraStreamService : Service() {
                 engine.stop()
                 HostLink.publish(HostLinkState.Disconnected)
                 HostLink.details.value = ""
+                updateNotification(getString(R.string.service_notification))
             }
         } catch (exception: Exception) {
             HostLink.report(HostProblem.ServiceFailed)
@@ -134,10 +143,12 @@ class CameraStreamService : Service() {
             }
         }
         scope.launch { store.state.collectLatest { kotlinx.coroutines.delay(350); restart() } }
+        scope.launch { streamingIntent.paused.collectLatest { paused -> if (paused) stopSelf() } }
         running.set(true)
     }
 
     private fun command(command: JSONObject) {
+        if (!streamingIntent.canStart(true)) return
         try {
             when (command.getString("op")) {
                 "start" -> {
@@ -174,7 +185,7 @@ class CameraStreamService : Service() {
 
     // Settings, thermal and command threads all restart; serialize the compare-and-start.
     @Synchronized private fun restart() {
-        if (!requested || !::server.isInitialized || server.hostCodecs().isEmpty()) return
+        if (!streamingIntent.canStart(true) || !requested || !::server.isInitialized || server.hostCodecs().isEmpty()) return
         val settings = store.state.value
         if (settings == lastSettings && thermalFps == lastThermalFps) return
         lastSettings = settings
@@ -187,12 +198,22 @@ class CameraStreamService : Service() {
     private fun publishIdle() {
         HostLink.details.value = ""
         HostLink.publish(if (::server.isInitialized && server.connected()) HostLinkState.Connected else HostLinkState.Disconnected)
+        updateNotification(getString(if (::server.isInitialized && server.connected())
+            R.string.service_connected_notification else R.string.service_notification))
+    }
+
+    @android.annotation.SuppressLint("MissingPermission") // FGS is permitted without the optional drawer permission.
+    private fun updateNotification(text: String) {
+        runCatching { getSystemService(NotificationManager::class.java).notify(1, notification(text)) }
     }
 
     private fun notification(text: String) = NotificationCompat.Builder(this, "camera")
-        .setSmallIcon(R.mipmap.ic_launcher).setContentTitle(getString(R.string.app_name))
+        .setSmallIcon(R.drawable.ic_camera_notification).setContentTitle(getString(R.string.app_name))
         .setContentText(text).setOngoing(true)
         .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
+        .addAction(R.drawable.ic_camera_notification, getString(R.string.action_pause_streaming),
+            PendingIntent.getBroadcast(this, 1, Intent(this, StreamingPauseReceiver::class.java)
+                .setAction(StreamingPauseReceiver.ACTION_PAUSE), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         .build()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_NOT_STICKY
@@ -204,6 +225,7 @@ class CameraStreamService : Service() {
         if (::monitor.isInitialized) monitor.stop()
         if (::server.isInitialized) server.close()
         if (::engine.isInitialized) engine.close()
+        stopForeground(STOP_FOREGROUND_REMOVE)
         HostLink.details.value = ""
         HostLink.publish(HostLinkState.Disconnected)
         super.onDestroy()
@@ -215,6 +237,7 @@ class CameraStreamService : Service() {
         val isRunning: Boolean get() = running.get()
 
         fun startVisible(context: Context) {
+            if (!StreamingIntentStore.get(context).canStart(true)) return
             runCatching { androidx.core.content.ContextCompat.startForegroundService(context,
                 Intent(context, CameraStreamService::class.java)) }.onFailure { HostLink.report(HostProblem.ServiceFailed) }
         }

@@ -1,4 +1,6 @@
 """Contract tests use local socket fixtures, never a real adb server or camera."""
+from contextlib import nullcontext
+from unittest.mock import patch
 import importlib.util
 import json
 from pathlib import Path
@@ -126,6 +128,28 @@ class FakeAdb:
 
 
 class HostProbeTests(unittest.TestCase):
+    def test_launch_prefers_play_package(self):
+        adb = probe.AdbServer()
+        with patch.object(adb, 'transport', return_value=nullcontext(FragmentedStream(b'Starting: Intent'))) as transport:
+            adb.launch('fixture')
+        transport.assert_called_once_with('fixture', 'shell:am start -n com.okuflow/com.okuflow.camera.MainActivity')
+
+    def test_launch_legacy_only_when_play_activity_missing(self):
+        adb = probe.AdbServer()
+        replies = [nullcontext(FragmentedStream(b'Error type 3\nActivity class does not exist.')),
+                   nullcontext(FragmentedStream(b'Starting: Intent'))]
+        with patch.object(adb, 'transport', side_effect=replies) as transport:
+            adb.launch('fixture')
+        self.assertEqual(transport.call_count, 2)
+        self.assertEqual(transport.call_args.args, ('fixture', 'shell:am start -n com.okuflow.camera/.MainActivity'))
+
+    def test_blocked_play_activity_does_not_launch_legacy(self):
+        adb = probe.AdbServer()
+        with patch.object(adb, 'transport', return_value=nullcontext(FragmentedStream(b'Error: Activity start blocked'))) as transport:
+            with self.assertRaisesRegex(RuntimeError, 'blocked'):
+                adb.launch('fixture')
+        self.assertEqual(transport.call_count, 1)
+
     def test_probe_does_not_claim_session(self):
         server = FakeAdb()
         try:

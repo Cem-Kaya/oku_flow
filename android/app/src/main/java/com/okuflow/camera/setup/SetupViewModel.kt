@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.okuflow.camera.link.HostProblem
 import com.okuflow.camera.link.HostLink
 import com.okuflow.camera.camera.CameraStreamService
+import com.okuflow.camera.camera.StreamingPauseReceiver
+import com.okuflow.camera.settings.StreamingIntentStore
 import com.okuflow.camera.settings.CameraSettings
 import com.okuflow.camera.settings.CameraSettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +23,9 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
     private val setupPreferences = application.getSharedPreferences("setup", Context.MODE_PRIVATE)
     private val monitor = DeviceSetupMonitor(application).also { it.start() }
     private val settingsStore = CameraSettingsStore.get(application)
+    private val streamingIntent = StreamingIntentStore.get(application)
+    val paused = streamingIntent.paused
+    val pauseSaveFailed = streamingIntent.saveFailed
     val settings = settingsStore.state
     val diagnostics = HostLink.details.asStateFlow()
     val problem = HostLink.problem
@@ -43,16 +48,23 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun startServiceIfReady() {
         val snapshot = monitor.snapshot.value
-        if (snapshot.canListenForHost && !CameraStreamService.isRunning)
+        if (streamingIntent.canStart(snapshot.canListenForHost) && !CameraStreamService.isRunning)
             CameraStreamService.startVisible(getApplication())
     }
 
+    fun pauseStreaming() = StreamingPauseReceiver.pauseStreaming(getApplication())
+    fun resumeStreaming() {
+        if (streamingIntent.resume()) refresh()
+    }
+
     val step: StateFlow<SetupStep> =
-        combine(monitor.snapshot, HostLink.state, HostLink.problem, ::resolveSetupStep)
+        combine(monitor.snapshot, HostLink.state, HostLink.problem, streamingIntent.paused) { snapshot, link, problem, paused ->
+            resolveSetupStep(snapshot, link, problem, paused)
+        }
             .stateIn(
                 viewModelScope,
                 SharingStarted.Eagerly,
-                resolveSetupStep(monitor.snapshot.value, HostLink.state.value, HostLink.problem.value),
+                resolveSetupStep(monitor.snapshot.value, HostLink.state.value, HostLink.problem.value, streamingIntent.paused.value),
             )
 
     private val mutableCameraPermanentlyDenied = MutableStateFlow(

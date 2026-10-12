@@ -2,7 +2,9 @@
 [CmdletBinding()]
 param(
     [switch]$Lint,
-    [switch]$Install
+    [switch]$Install,
+    [switch]$Release,
+    [switch]$AllowUnsignedRelease
 )
 
 $ErrorActionPreference = "Stop"
@@ -93,6 +95,16 @@ function Assert-AdbServerCompatible {
 }
 
 try {
+    if ($AllowUnsignedRelease -and -not $Release) { throw "-AllowUnsignedRelease requires -Release." }
+    if ($Release -and $Install) { throw "Release builds are never installed by this helper; use the Debug -Install workflow for device validation." }
+    if ($Release) {
+        $signingNames = @('OKUFLOW_ANDROID_UPLOAD_KEYSTORE', 'OKUFLOW_ANDROID_UPLOAD_KEY_ALIAS',
+            'OKUFLOW_ANDROID_UPLOAD_STORE_PASSWORD', 'OKUFLOW_ANDROID_UPLOAD_KEY_PASSWORD')
+        $present = @($signingNames | Where-Object { -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) })
+        if ($present.Count -ne 0 -and $present.Count -ne $signingNames.Count) { throw "All four OKUFLOW_ANDROID_UPLOAD_* signing inputs are required together." }
+        if (-not $AllowUnsignedRelease -and $present.Count -eq 0) { throw "Release signing inputs are missing; no upload key will be created. Use -AllowUnsignedRelease only for a review artifact." }
+        if ($AllowUnsignedRelease -and $present.Count) { throw "Clear upload signing inputs for an unsigned review build; -AllowUnsignedRelease must never produce an ambiguous signed artifact." }
+    }
     Assert-AndroidTranslations
     $jdk = if ($env:OKUFLOW_ANDROID_JDK) { $env:OKUFLOW_ANDROID_JDK }
         else { Join-Path $env:LOCALAPPDATA "Programs\jdk-21" }
@@ -126,19 +138,36 @@ try {
         "--project-cache-dir", $projectCache,
         "-Dorg.gradle.java.home=$env:JAVA_HOME",
         "-Pkotlin.project.persistent.dir=$kotlinPersistent",
-        "--console=plain",
-        ":app:assembleDebug", ":app:testDebugUnitTest"
+        "--console=plain"
     )
-    if ($Lint) { $arguments += ":app:lintDebug" }
+    if ($Release) {
+        $arguments += @(':app:assembleRelease', ':app:testReleaseUnitTest', ':app:lintRelease',
+            ':app:bundleRelease', ':app:writeReleaseDependencyInventory')
+        if ($AllowUnsignedRelease) { $arguments += '-Pokuflow.allowUnsignedRelease=true' }
+    } else {
+        $arguments += @(':app:assembleDebug', ':app:testDebugUnitTest')
+        if ($Lint) { $arguments += ':app:lintDebug' }
+    }
     Write-Host "JDK: $env:JAVA_HOME"
     Write-Host "SDK: $env:ANDROID_HOME"
     Write-Host "Android outputs: $buildRoot"
     & (Join-Path $androidRoot "gradlew.bat") @arguments
     if ($LASTEXITCODE -ne 0) { throw "Android build/test$(if ($Lint) { '/lint' }) failed (exit $LASTEXITCODE)." }
-    $apk = Join-Path $buildRoot "app\outputs\apk\debug\app-debug.apk"
-    if (-not (Test-Path $apk)) { throw "Build returned success but debug APK is missing: $apk" }
-    Write-Host "PASS: assembleDebug and testDebugUnitTest$(if ($Lint) { ' and lintDebug' })"
-    Write-Host "Debug APK: $apk"
+    if ($Release) {
+        $apk = Join-Path $buildRoot $(if ($AllowUnsignedRelease) { 'app\outputs\apk\release\app-release-unsigned.apk' } else { 'app\outputs\apk\release\app-release.apk' })
+        $bundle = Join-Path $buildRoot 'app\outputs\bundle\release\app-release.aab'
+        & (Join-Path $PSScriptRoot 'validate_android_release.ps1') -Apk $apk -Bundle $bundle -BuildRoot $buildRoot -Sdk $sdk -Jdk $jdk -AllowUnsignedRelease:$AllowUnsignedRelease
+        if ($LASTEXITCODE -ne 0) { throw "Android release artifact validation failed." }
+        Write-Host "PASS: Release assembly, unit tests, lint, bundle and technical artifact checks."
+        Write-Host "Release AAB: $bundle"
+        if ($AllowUnsignedRelease) { Write-Host 'REVIEW ONLY: UNSIGNED, NOT UPLOADABLE TO PLAY.' -ForegroundColor Yellow }
+        Write-Host 'PENDING: signed tester distribution, public policy publication, Play declarations/account/policy applicability and real tester-device acceptance; production gates remain separate.'
+    } else {
+        $apk = Join-Path $buildRoot 'app\outputs\apk\debug\app-debug.apk'
+        if (-not (Test-Path $apk)) { throw "Build returned success but debug APK is missing: $apk" }
+        Write-Host "PASS: assembleDebug and testDebugUnitTest$(if ($Lint) { ' and lintDebug' })"
+        Write-Host "Debug APK: $apk"
+    }
 
     if ($Install) {
         $adb = Join-Path $env:ANDROID_HOME "platform-tools\adb.exe"
@@ -158,7 +187,7 @@ try {
             $serial = ($authorized[0] -split '\s+')[0]
             & $adb -s $serial install -r $apk
             if ($LASTEXITCODE -ne 0) { throw "adb install failed." }
-            $launchOutput = & $adb -s $serial shell am start -n "com.okuflow.camera/.MainActivity" 2>&1
+            $launchOutput = & $adb -s $serial shell am start -n "com.okuflow/com.okuflow.camera.MainActivity" 2>&1
             $launchCode = $LASTEXITCODE
             $launchOutput | ForEach-Object { Write-Host $_ }
             if ($launchCode -ne 0 -or ($launchOutput -join "`n") -match '(?m)^Error:|Exception') {

@@ -181,16 +181,25 @@ class AdbServer:
             raise
 
     def launch(self, serial: str) -> None:
-        with self.transport(serial, "shell:am start -n com.okuflow.camera/.MainActivity") as stream:
-            data = bytearray()
-            while len(data) < MAX_CONTROL:
-                chunk = stream.recv(min(4096, MAX_CONTROL - len(data)))
-                if not chunk:
-                    break
-                data.extend(chunk)
-            response = data.decode("utf-8", errors="replace")
-            if "Error" in response or "Exception" in response:
-                raise RuntimeError(response.strip())
+        commands = (
+            "shell:am start -n com.okuflow/com.okuflow.camera.MainActivity",
+            "shell:am start -n com.okuflow.camera/.MainActivity",
+        )
+        for index, command in enumerate(commands):
+            with self.transport(serial, command) as stream:
+                data = bytearray()
+                while len(data) <= MAX_CONTROL:
+                    chunk = stream.recv(min(4096, MAX_CONTROL + 1 - len(data)))
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+                if len(data) > MAX_CONTROL:
+                    raise RuntimeError("Oversized app launch response")
+                response = data.decode("utf-8", errors="replace")
+                if "Error" not in response and "Exception" not in response:
+                    return
+                if index or "Error type 3" not in response:
+                    raise RuntimeError(response.strip())
 
 
 class PhoneCameraClient:

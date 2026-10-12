@@ -181,7 +181,7 @@ private fun StepHeader(step: SetupStep) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { WarningBadge() }
         return
     }
-    if (step == SetupStep.CheckUsbSetup) return
+    if (step == SetupStep.CheckUsbSetup || step == SetupStep.Paused) return
     val number = step.actionNumber
     Column(
         modifier = Modifier.fillMaxWidth(),

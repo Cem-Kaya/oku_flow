@@ -13,19 +13,19 @@
     <string name="developer_hint_oneplus">Öffnen Sie „Version“ und tippen Sie dann 7-mal auf „Build-Nummer“.</string>
 
     <string name="usb_debugging_title">USB-Debugging aktivieren</string>
-    <string name="usb_debugging_hint">Suchen Sie „USB-Debugging“ und schalten Sie es ein.</string>
+    <string name="usb_debugging_hint">Aktivieren Sie „USB-Debugging“. Verbinden Sie sich nur mit Ihrem eigenen vertrauenswürdigen privaten Computer.</string>
     <string name="check_usb_title">USB-Verbindung prüfen</string>
     <string name="check_usb_hint">Öffnen Sie OkuFlow auf dem Computer. Wenn keine Verbindung möglich ist, prüfen Sie, ob USB-Debugging aktiviert ist, und erlauben Sie den Computer bei der Nachfrage. Fehlen die Entwickleroptionen, öffnen Sie Telefoninfo und tippen Sie 7-mal auf Build-Nummer.</string>
 
     <string name="camera_title">Kamera erlauben</string>
-    <string name="camera_hint">OkuFlow zeigt diese Kamera auf Ihrem Computer. Es wird nichts ins Internet gesendet.</string>
+    <string name="camera_hint">Dieses Telefon überträgt die Kamera per USB. Optionale KI-Funktionen unter Windows können Bilder an Ihren gewählten Dienst senden.</string>
     <string name="camera_hint_settings">Öffnen Sie die Einstellungen, wählen Sie „Berechtigungen“ und erlauben Sie „Kamera“.</string>
 
     <string name="connect_usb_title">Telefon mit dem Computer verbinden</string>
     <string name="connect_usb_hint">Verwenden Sie ein USB-Kabel, das Daten übertragen kann.</string>
 
     <string name="open_okuflow_title">OkuFlow auf dem Computer öffnen</string>
-    <string name="open_okuflow_hint">Wenn Ihr Telefon „USB-Debugging zulassen?“ fragt, setzen Sie den Haken bei „Immer zulassen“ und tippen Sie auf „Zulassen“.</string>
+    <string name="open_okuflow_hint">Erlauben Sie USB-Debugging nur für Ihren eigenen vertrauenswürdigen privaten Computer. „Immer zulassen“ ist für diesen Computer optional; lassen Sie es auf gemeinsam genutzten Computern aus.</string>
 
     <string name="streaming_title">Überträgt an OkuFlow</string>
     <string name="streaming_hint">Lassen Sie diesen Bildschirm geöffnet.</string>
@@ -78,4 +78,25 @@
     <string name="problem_hot_title">Das Telefon ist zu heiß</string>
     <string name="problem_service_title">Die USB-Kamera konnte nicht starten</string>
     <string name="problem_service_hint">Schließen Sie OkuFlow Kamera und öffnen Sie die App erneut. Passiert das häufig, starten Sie das Telefon neu.</string>
+    <string name="privacy_title">Datenschutzerklärung</string>
+    <string name="privacy_identity">OkuFlow Kamera wird von Cem Kaya bereitgestellt. Aktualisiert am 12. Oktober 2026. Diese Erklärung gilt für die Android-Begleit-App und erläutert ihre Verbindung zu OkuFlow für Windows.</string>
+    <string name="privacy_access">Mit Ihrer Kameraerlaubnis kodiert die App Live-Kameravideo und sendet es über eine autorisierte USB-Debugging-Verbindung an Ihren Computer. Sie sendet auch Kamerafunktionen, Codec- und Aufnahmeeinstellungen, Bildzeitpunkte und Fehlerinformationen. Die Telefon-App hat keine Internetberechtigung und fordert keinen Zugriff auf Mikrofon, Standort oder Kontakte an.</string>
+    <string name="privacy_retention">Auf dem Telefon wird Video für die Übertragung im Arbeitsspeicher gehalten und nicht als Aufnahme gespeichert. Kamera- und Einrichtungseinstellungen bleiben lokal; bei einer neuen Verbindung ist das Licht aus. Automatische Einstellungen wiederherstellen setzt die Kameraeinstellungen zurück. Die Android-Speicherverwaltung oder eine Deinstallation entfernt gespeicherte Einstellungen. Sicherung und Geräteübertragung der App-Daten sind deaktiviert.</string>
+    <string name="privacy_windows">OkuFlow für Windows kann Fotos, Aufnahmen, Notizen und Diagnoseprotokolle auf Ihrem Computer speichern. Bei optionalen KI-Funktionen können Bilder und Fragen an Ihren gewählten Codex- oder Bildanalysedienst gesendet werden. Dieser Dienst hat eigene Datenschutz- und Aufbewahrungsbedingungen. Löschen Sie Computerdateien über Windows; das Löschen der Telefon-App entfernt weder diese Dateien noch beim Anbieter gespeicherte Daten.</string>
+    <string name="privacy_usb">Autorisieren Sie USB-Debugging nur auf einem vertrauenswürdigen Computer. Eine autorisierte Debugging-Verbindung gibt dem Computer weitreichenden Zugriff auf das Telefon. Trennen Sie danach das Kabel; in den Entwickleroptionen können Sie USB-Debugging deaktivieren oder Debugging-Autorisierungen widerrufen. USB-Autorisierung bedeutet nicht, dass das Video verschlüsselt übertragen wird.</string>
+    <string name="privacy_contact">Bei Datenschutzfragen erreichen Sie Cem Kaya über die öffentlichen Issues des OkuFlow-Repositories. Issues sind öffentlich; veröffentlichen Sie keine Kamerabilder, Zugangsdaten oder privaten Dokumente. Die Links zur öffentlichen Erklärung und zum Kontakt verwenden Ihren Browser und dessen Verbindung zu GitHub.</string>
+    <string name="privacy_public">Öffentliche Datenschutzerklärung öffnen</string>
+    <string name="privacy_contact_action">Kontakt über öffentliche Issues</string>
+    <string name="notification_optional_hint">Sie können den Kameradienst in der Benachrichtigungsleiste anzeigen. Das ist freiwillig; eine Ablehnung beendet die Übertragung nicht.</string>
+    <string name="notification_optional_action">Kamerabenachrichtigung anzeigen</string>
+    <string name="service_connected_notification">Mit OkuFlow verbunden; wartet auf Video</string>
+    <string name="service_streaming_notification">Übertragung an OkuFlow: %1$s</string>
+    <string name="action_pause_streaming">Übertragung pausieren</string>
+    <string name="action_resume_streaming">Übertragung fortsetzen</string>
+    <string name="paused_title">Übertragung pausiert</string>
+    <string name="paused_hint">Die Kamera ist gestoppt. Wählen Sie Übertragung fortsetzen, wenn Sie bereit sind. Erneutes Verbinden oder Öffnen der App hebt die Pause nicht auf.</string>
+    <string name="pause_save_failed">Die Kamera ist pausiert, aber diese Auswahl konnte nicht gespeichert werden. Trennen Sie das Kabel, bevor Sie die App erneut öffnen. Prüfen Sie den App-Speicher und versuchen Sie Übertragung fortsetzen erneut.</string>
+    <string name="licenses_title">Open-Source-Lizenzen</string>
+    <string name="licenses_loading">Lizenzhinweise werden geladen…</string>
+    <string name="licenses_unavailable">Die Lizenzhinweise konnten nicht geöffnet werden. Verwenden Sie den Lizenzordner im Quellcode-Repository.</string>
 </resources>

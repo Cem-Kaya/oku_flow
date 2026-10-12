@@ -11,7 +11,12 @@ Android shell (uid 2000) or root (uid 0) peers. The camera foreground service
 starts from the resumed activity after camera permission, USB debugging and
 the USB connection heuristic are satisfied; the resumed activity retries every
 three seconds while the service is not running, including after a listener
-failure. Turning debugging off or removing permission stops the service at
+failure, unless the user saved Pause. Pause stops the listener/camera and persists
+across app reopening or automatic host launch; only explicit Resume clears it.
+The canonical install package is `com.okuflow`, launched through
+`com.okuflow/com.okuflow.camera.MainActivity`; legacy development packages use
+`com.okuflow.camera/.MainActivity`. The abstract socket and protocol version are
+unchanged. Turning debugging off or removing permission stops the service at
 once; a USB disconnect stops it only after two seconds without the cable.
 A peer whose credentials cannot be read is closed without affecting the
 listener. No INTERNET permission is

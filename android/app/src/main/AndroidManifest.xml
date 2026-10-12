@@ -9,11 +9,15 @@
     <uses-feature
         android:name="android.hardware.camera.any"
         android:required="true" />
+    <!-- CAMERA must not imply a rear lens or autofocus on front-only/fixed-focus devices. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <uses-permission android:name="android.permission.CAMERA" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
@@ -25,21 +29,28 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.OkuFlowCamera">
 
-        <service android:name=".camera.CameraStreamService"
+        <service android:name="com.okuflow.camera.camera.CameraStreamService"
             android:exported="false" android:foregroundServiceType="camera" />
+        <receiver android:name="com.okuflow.camera.camera.StreamingPauseReceiver" android:exported="false" />
 
         <!--
           singleTask: the OkuFlow Windows app starts this activity over adb
-          (`am start -n com.okuflow.camera/.MainActivity`); repeated starts
+          (`am start -n com.okuflow/com.okuflow.camera.MainActivity`); repeated starts
           must reuse the running instance instead of stacking new ones.
         -->
         <activity
-            android:name=".MainActivity"
+            android:name="com.okuflow.camera.MainActivity"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="okuflow.com" android:path="/camera/open" />
             </intent-filter>
         </activity>
     </application>
