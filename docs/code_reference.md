@@ -1,5 +1,34 @@
 # OkuFlow Code Reference
 
+## Installer and brand tooling (2026-10-13)
+
+`scripts/windows-installer/common.ps1` supplies stable per-path IDs/GUIDs,
+`New-VerifiedBundleSnapshot` (clean provenance, safe inventory, required files,
+copy/hash checks), SDK discovery, Authenticode signing and read-only MSI table
+queries. `build_msi.ps1` authors standard WiX components, branded advertised
+shortcuts and transactional major upgrades from that snapshot. Its versioned
+receipt records installer hash, source and unsigned-preview status.
+`test_msi_package.ps1` checks database policy and compares extracted payload
+hash multiplicities to the verified source without installation or UAC.
+`test_msi_sandbox.ps1` creates an owned, network-disabled disposable guest;
+`windows-installer/sandbox_acceptance.ps1` requires its WDAG account and checks
+real install/upgrade/downgrade/uninstall, payload bytes, shortcuts and retained
+user data. Its logs/result stay in the guest's mapped local evidence directory.
+`generate_winget_manifest.ps1` uses the receipt and exact GitHub URL to write
+the three catalog drafts; it does not submit a PR or enable automatic updates.
+`build_store_msix.ps1` requires `-ReviewOnly`, uses the public Partner Center
+identity and SDK schema/round-trip validation, and records runtime/certification
+blockers. It neither signs nor installs/submits the review package.
+
+`scripts/icon_tools/render_icon.cpp::main` uses QSvgRenderer without a desktop
+window to export PNG logos and PNG-encoded ICO entries. The wrapper compiles
+against the selected Qt SDK and keeps developer output outside Drive.
+`build_release_bundle.bat::find_built_executable` selects the active generator's
+layout, derives the launcher beside its Qt child and rejects missing outputs;
+old output directories cannot override current Ninja binaries.
+The browser fixture discovers static transcription caches by prefix and checks
+the page's actual icon URL, so a new cache version does not reopen an old cache.
+
 ## Browser transcription notes handoff (2026-10-12)
 
 `AssistiveRuntime::EnsureNotesFile` composes the append-safe local notes shell

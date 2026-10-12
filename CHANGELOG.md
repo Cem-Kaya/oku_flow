@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+- Adopt the owner's cyan rounded-square website magnifier for Windows icons,
+  installer shortcuts and Store review logos; keep the favicon byte-identical
+  in the website repository. Retain the first-party SVG and Qt asset exporter.
+- Fix release packaging selecting stale Visual Studio executables from a
+  Ninja build tree. Select only the current generator's application/probe
+  layout and verify both deployed executable hashes.
+- Add complete-bundle MSI packaging with desktop/Start menu shortcuts,
+  uninstall registration, rollback-capable major upgrades and no automatic
+  process shutdown. Add signature hooks, extracted-payload checks, winget
+  manifest drafts and structural MSIX review packaging using the existing
+  public Store identity. Store runtime integration, certification and automatic
+  update delivery remain pending; unsigned previews retain SmartScreen warnings.
+
 - Redesign the lecture-notes page for low-vision reading: larger type with a
   remembered text-size control (A−/A+), Automatic/Light/Dark/High contrast
   colours, kind icons and colour accents, filter chips (Recordings, Photos,

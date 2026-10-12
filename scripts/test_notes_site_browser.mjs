@@ -105,8 +105,12 @@ try {
   await page.$eval('.brand img', image => image.decode());
   await page.waitForFunction(async () => {
     await navigator.serviceWorker.ready;
-    const cache = await caches.open('okuflow-transcribe-app-v2');
-    return (await cache.keys()).some(request => /\/assets\/okuflow-icon-[a-f0-9]{12}\.ico$/.test(request.url));
+    const iconUrl = document.querySelector('link[rel="icon"]').href;
+    const names = (await caches.keys()).filter(name => name.startsWith('okuflow-transcribe-app-'));
+    for (const name of names) {
+      if (await (await caches.open(name)).match(iconUrl)) return true;
+    }
+    return false;
   });
   console.log('PASS: actual app favicon and transcription static-cache icon');
   await page.close();

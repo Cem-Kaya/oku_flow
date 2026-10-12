@@ -17,6 +17,19 @@ desktop does not infer a fixed Documents path or read/transcribe those files.
 
 This document tracks machine-specific defaults, generated output locations, and other fixed values that should be reviewed when the toolchain or deployment story changes.
 
+## Installer and icon tooling
+
+WiX 4.0.6 is SHA-256-pinned in `scripts/windows-installer/tools.json`; its
+developer-only binaries live under `%LOCALAPPDATA%\OkuFlow\installer-tools`.
+MSI/MSIX snapshots and extraction evidence use `installer-build`, `store-build`
+and `installer-validation` in the same local root. `-OutputDirectory` controls
+installer outputs (default `dist\Installers`); no credentials enter those files.
+The fixed MSI UpgradeCode represents the product family, not a device.
+Store package identity is public account metadata in `store-identity.json`,
+not a signing key. `OKUFLOW_SIGN_CERT_SHA1` is a certificate pointer only.
+The SVG exporter caches compilation under `icon-build` and defaults to the
+documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
+
 ## Recording admission defaults
 - `RecordingEncoderBacklog` admits at most 12 AV1/H.264 video samples or
   128 MiB estimated raw input payload per writer, counting pending and incoming

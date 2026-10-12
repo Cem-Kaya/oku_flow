@@ -270,10 +270,15 @@ if not defined CUDA_LICENSE_PATH (
 exit /b 0
 
 :find_built_executable
-set "EXE_PATH=%BUILD_DIR%\cmake\Release\oku_flow.exe"
-if not exist "%EXE_PATH%" set "EXE_PATH=%BUILD_DIR%\Release\oku_flow.exe"
-if not exist "%EXE_PATH%" set "EXE_PATH=%BUILD_DIR%\cmake\oku_flow.exe"
-if not exist "%EXE_PATH%" set "EXE_PATH=%BUILD_DIR%\oku_flow.exe"
+rem Select only this generator's output. Old Release subdirectories can remain
+rem after a Ninja migration and must never take precedence over its new binary.
+if /I "%GENERATOR%"=="Visual Studio 17 2022" (
+    set "EXE_PATH=%BUILD_DIR%\cmake\Release\oku_flow.exe"
+    set "PROBE_PATH=%BUILD_DIR%\sandbox_mf_dxva_minimal\Release\mf_dxva_minimal.exe"
+) else (
+    set "EXE_PATH=%BUILD_DIR%\cmake\oku_flow.exe"
+    set "PROBE_PATH=%BUILD_DIR%\sandbox_mf_dxva_minimal\mf_dxva_minimal.exe"
+)
 if not exist "%EXE_PATH%" (
     echo ERROR: Built executable was not found under "%BUILD_DIR%".
     exit /b 1
@@ -284,8 +289,6 @@ if not exist "%EXE_PATH%" (
     echo ERROR: Runtime preflight launcher was not built: "%EXE_PATH%".
     exit /b 1
 )
-set "PROBE_PATH=%BUILD_DIR%\sandbox_mf_dxva_minimal\Release\mf_dxva_minimal.exe"
-if not exist "%PROBE_PATH%" set "PROBE_PATH=%BUILD_DIR%\sandbox_mf_dxva_minimal\mf_dxva_minimal.exe"
 if not exist "%PROBE_PATH%" (
     echo ERROR: Isolated camera probe was not found under "%BUILD_DIR%".
     exit /b 1

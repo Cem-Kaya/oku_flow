@@ -91,9 +91,14 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
 - One user-owned root at `Documents\OkuFlow\` for photos, recordings, notes,
   analysis exports, and opt-in console debug logs. The root is configurable,
   and `Ctrl+Shift+O` opens it from anywhere in the application.
-- A branded, high-contrast magnifier icon embedded in the Windows executable
+- The cyan website magnifier icon embedded in the Windows executable
   at multiple display sizes and assigned through Qt for the title bar,
   Alt-Tab, and taskbar.
+- MSI packaging installs the complete bundle with desktop/Start menu shortcuts
+  and versioned upgrades. Signing hooks, winget manifest generation and a Store
+  identity/review-package workflow are documented in
+  [Windows distribution](docs/windows_distribution.md). Store certification,
+  a packaged runtime strategy and automatic updates remain pending.
 
 ## Status
 CUDA is the processing path; the CPU effects pipeline is deprecated. When the D3D12/CUDA interop surface cannot initialize, the app presents unprocessed passthrough video and shows a persistent "GPU required — processing disabled (showing raw video)" notice instead of silently degrading. The CPU debug composite view remains available as a diagnostic.

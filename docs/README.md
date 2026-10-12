@@ -2,6 +2,10 @@
 
 Website: <https://okuflow.com>
 
+[Windows distribution](windows_distribution.md) covers MSI builds, shortcuts,
+signing, winget drafts, the account's Store identity, structural MSIX review
+packages and the remaining clean-VM/Store runtime acceptance work.
+
 Recorded-video notes now hand off speech processing to the static Chrome tool
 at `okuflow.com/transcribe/`. The Windows app only records and generates the
 local notes viewer. The browser uses folder grants, a File/MessageChannel

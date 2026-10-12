@@ -245,6 +245,16 @@ MIT header snapshot. It does not add a link-time or redistribution dependency
 on the proprietary runtime.
 
 ## Optional External Tools And Services
+- WiX Toolset 4.0.6 is a developer-only MSI compiler under MS-RL, pinned by
+  NuGet SHA-256 in `scripts/windows-installer/tools.json`. The unmodified exact
+  upstream license is retained as `scripts/windows-installer/WIX_LICENSE.txt`;
+  source: <https://github.com/wixtoolset/wix/tree/v4.0.6>. Its reciprocal source
+  requirements apply to distribution of covered WiX files. OkuFlow uses
+  first-party WiX authoring and standard Windows Installer actions only;
+  no WiX executables, extensions, custom-action DLLs or runtime are shipped
+  inside the MSI or application. Do not add such components without a new
+  redistribution/license review. Microsoft's SDK MakeAppx is likewise a
+  separately installed development tool, not a redistributed application file.
 - OBS Studio (GPL-2.0-or-later, <https://obsproject.com/>) is an optional
   separately installed lecture-test tool. `scripts/lecture_camera.ps1`
   prepares a private local portable copy, including its bundled obs-websocket

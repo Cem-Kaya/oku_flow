@@ -1,0 +1,10 @@
+{
+  "wix": {
+    "version": "4.0.6",
+    "url": "https://api.nuget.org/v3-flatcontainer/wix/4.0.6/wix.4.0.6.nupkg",
+    "sha256": "a94dd42ae1fb56b32da180e2173ceda4f0d10b4c8871c5ee59ecb502131a1eb6",
+    "license": "MS-RL",
+    "source": "https://github.com/wixtoolset/wix/tree/v4.0.6"
+  },
+  "upgradeCode": "D4CC720F-8EAB-4B6E-8CA4-4EEB195170E3"
+}

@@ -301,6 +301,20 @@ aligned with the project goals.
   from the native Windows notes-storage fixtures. Only use private Chrome test
   profiles and fixture folders; keep recordings and model caches outside Git.
   Browser hardware tests and Windows GUI fixtures must remain serial.
+
+## Windows installer and Store review validation
+- Build MSI only from a clean, verified release inventory with
+  `scripts/build_msi.ps1`; use standard MSI actions and retain all runtime,
+  license and adb source files. Do not add WiX custom-action binaries without
+  license review. Tool caches and payload snapshots stay in LocalAppData.
+- Never install/uninstall an acceptance MSI on the owner's machine. Validate
+  tables/extracted bytes locally and install/upgrade/downgrade/uninstall in a
+  clean disposable Windows VM. Preserve user data and never force-close OkuFlow.
+- Default MSI builds require trusted signing; `-AllowUnsignedPreview` must be
+  visibly described as unsigned. Store review MSIX requires `-ReviewOnly` and
+  is not publish-ready until packaged runtime/bootstrap acceptance is complete.
+- winget generation is not catalog submission/acceptance. Publish immutable
+  installer URLs only and validate exact hashes before submitting manifests.
 - Render opt-in notes drafts with `python -B scripts/render_notes_preview.py`.
   It uses the real compiled template and keeps synthetic media under local app
   data; never stage that output. `scripts/test_notes_site_browser.mjs` checks
