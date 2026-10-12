@@ -43,4 +43,4 @@ foreach($name in @('oku_flow.exe','OkuFlowApp.exe')){
             [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([byte[]]$expected))){throw "Stale executable icon frame $index in $name"}
     }
 }
-Write-Output 'PASS: both deployed executables embed all seven exact current cyan icon frames.'
+Write-Output 'PASS: both deployed executables embed all seven exact current star-magnifier icon frames.'

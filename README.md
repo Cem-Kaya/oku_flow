@@ -91,7 +91,7 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
 - One user-owned root at `Documents\OkuFlow\` for photos, recordings, notes,
   analysis exports, and opt-in console debug logs. The root is configurable,
   and `Ctrl+Shift+O` opens it from anywhere in the application.
-- The cyan website magnifier icon embedded in the Windows executable
+- The star magnifier icon embedded in the Windows executable
   at multiple display sizes and assigned through Qt for the title bar,
   Alt-Tab, and taskbar.
 - MSI packaging installs the complete bundle with desktop/Start menu shortcuts

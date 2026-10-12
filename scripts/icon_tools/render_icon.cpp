@@ -7,21 +7,34 @@
 #include <QImage>
 #include <QPainter>
 #include <QSvgRenderer>
+#include <QImageReader>
 #include <vector>
 
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
     if (argc != 3) return 2;
-    QSvgRenderer renderer(QString::fromLocal8Bit(argv[1]));
-    if (!renderer.isValid()) return 3;
+    const QString sourcePath = QString::fromLocal8Bit(argv[1]);
+    const bool vectorSource = sourcePath.endsWith(".svg", Qt::CaseInsensitive);
+    QSvgRenderer renderer;
+    QImage sourceImage;
+    if (vectorSource) {
+        if (!renderer.load(sourcePath)) return 3;
+    } else {
+        sourceImage = QImageReader(sourcePath).read();
+        if (sourceImage.isNull()) return 3;
+    }
     QDir output(QString::fromLocal8Bit(argv[2]));
     if (!output.mkpath(".")) return 4;
     auto render = [&](int size) {
         QImage image(size, size, QImage::Format_ARGB32_Premultiplied);
         image.fill(Qt::transparent);
         QPainter painter(&image);
-        renderer.render(&painter);
+        if (vectorSource) renderer.render(&painter);
+        else {
+            painter.setRenderHint(QPainter::SmoothPixmapTransform);
+            painter.drawImage(image.rect(), sourceImage);
+        }
         painter.end();
         return image;
     };

@@ -6,9 +6,9 @@
 
 ## [Unreleased]
 
-- Adopt the owner's cyan rounded-square website magnifier for Windows icons,
-  installer shortcuts and Store review logos; keep the favicon byte-identical
-  in the website repository. Retain the first-party SVG and Qt asset exporter.
+- Use the owner's original magnifier with a magenta star consistently in the
+  Windows app, installer shortcuts, website header/favicon and Store review
+  logos. Preserve the canonical PNG and provide a Qt size/format exporter.
   Track the ICO as an explicit Windows resource dependency so incremental
   Ninja builds also refresh the launcher and Explorer executable icons.
 - Fix release packaging selecting stale Visual Studio executables from a

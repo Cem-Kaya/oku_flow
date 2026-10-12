@@ -11,7 +11,7 @@ receipt records installer hash, source and unsigned-preview status.
 Advertised shortcut icons use `OkuFlowIcon.exe` with the verified launcher PE
 as Icon-table data, satisfying Windows Installer's target-extension/PE rule.
 Bare ICO data with an extensionless name produced blank/non-resolving links.
-The VM fixture checks the installed resource path and rendered cyan/dark pixels.
+The VM fixture checks the installed resource path and rendered star/ring pixels.
 `test_msi_package.ps1` checks database policy and compares extracted payload
 hash multiplicities to the verified source without installation or UAC.
 `test_msi_sandbox.ps1` creates an owned, network-disabled disposable guest;
@@ -29,8 +29,10 @@ the three catalog drafts; it does not submit a PR or enable automatic updates.
 identity and SDK schema/round-trip validation, and records runtime/certification
 blockers. It neither signs nor installs/submits the review package.
 
-`scripts/icon_tools/render_icon.cpp::main` uses QSvgRenderer without a desktop
-window to export PNG logos and PNG-encoded ICO entries. The wrapper compiles
+`scripts/icon_tools/render_icon.cpp::main` uses QImageReader and smooth Qt
+scaling without a desktop window to export Store PNG logos and PNG-encoded ICO
+entries from the original canonical star PNG. It also accepts SVG input for
+archived vector artwork. The wrapper preserves the canonical PNG and compiles
 against the selected Qt SDK and keeps developer output outside Drive.
 The Windows RC source declares an explicit CMake `OBJECT_DEPENDS` on the ICO
 so Ninja rebuilds both launcher and Qt executable resources after icon updates.

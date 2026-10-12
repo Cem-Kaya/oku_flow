@@ -5,7 +5,7 @@ under `Program Files\OkuFlow`, with branded public desktop and Start menu
 shortcuts, Add/Remove Programs registration and transactional major upgrades.
 Advertised shortcut icon data is a separate cached first-party launcher PE
 named `OkuFlowIcon.exe`, matching the `.exe` target as Windows Installer requires.
-The VM verifies that Windows can render its cyan magnifier, beyond file presence.
+The VM verifies that Windows can render its star magnifier, beyond file presence.
 It includes the entire verified release inventory: Qt, source-built adb,
 notices, adb source/relinking ZIP and Microsoft's pinned runtime installer.
 Settings and `Documents\OkuFlow` captures are outside the installation and
@@ -128,12 +128,16 @@ command, not a background auto-update service.
 
 ## Brand assets
 
-`assets/okuflow-icon.svg` is the owner's cyan website magnifier mark. Export
-it with `scripts/generate_brand_icons.ps1` in a Visual Studio 2022 x64 shell.
-Qt SVG produces transparent PNGs and a seven-size 16–256px ICO. Native
+`assets/okuflow-icon.png` is the owner's selected original star magnifier:
+a white magnifier around a magenta four-point star in a dark lens. The canonical
+1200px PNG artwork stays unchanged. Export the native sizes with
+`scripts/generate_brand_icons.ps1` in a Visual Studio 2022 x64 shell. Qt image
+scaling produces Store PNGs and a seven-size 16–256px ICO. Native
 executables, MSI shortcuts/ARP and Store review logos use these generated
 assets. The website copies the exact ICO bytes into its content-hashed favicon
-and fallback path; its separate static cache version changes with the icon.
+and fallback path and uses the exact canonical PNG in its header/footer.
+Its separate static cache version changes with the icon. The superseded cyan
+SVG remains a source archive under `assets/legacy`, outside active resources.
 The wordmark remains text and is not squeezed into a small favicon.
 Run `scripts/test_brand_icons.ps1 -BundlePath <new-bundle>` to verify that both
 deployed PE files embed all seven exact icon frames, including incremental builds.

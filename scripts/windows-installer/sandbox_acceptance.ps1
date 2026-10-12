@@ -30,10 +30,10 @@ try{
         Assert-Fixture ((Test-Path -LiteralPath $iconPath) -and [IO.Path]::GetExtension($iconPath) -eq '.exe') 'Shortcut references a real advertised PE icon file'
         $image=[Drawing.Icon]::ExtractAssociatedIcon($iconPath).ToBitmap()
         try{
-            $cyan=0;$dark=0
-            for($y=0;$y -lt $image.Height;$y++){for($x=0;$x -lt $image.Width;$x++){$pixel=$image.GetPixel($x,$y);if($pixel.A -gt 128){if($pixel.G -gt 100 -and $pixel.B -gt 150 -and $pixel.R -lt 130){$cyan++};if($pixel.R -lt 40 -and $pixel.G -lt 50 -and $pixel.B -lt 70){$dark++}}}}
-            Assert-Fixture ($cyan -gt $image.Width*$image.Height/5 -and $dark -gt $image.Width*$image.Height/10) 'Windows renders the cyan magnifier icon from the installed shortcut resource'
             $image.Save((Join-Path $EvidenceDirectory ('shortcut-'+[IO.Path]::GetFileName((Split-Path $link))+'.png')))
+            $magenta=0;$white=0
+            for($y=0;$y -lt $image.Height;$y++){for($x=0;$x -lt $image.Width;$x++){$pixel=$image.GetPixel($x,$y);if($pixel.R -gt 140 -and $pixel.B -gt 140 -and $pixel.G -lt 100){$magenta++};if($pixel.R -gt 200 -and $pixel.G -gt 200 -and $pixel.B -gt 200){$white++}}}
+            Assert-Fixture ($magenta -gt $image.Width*$image.Height/100 -and $white -gt $image.Width*$image.Height/10) 'Windows renders the star and magnifier from the installed shortcut resource'
         }finally{$image.Dispose()}
     }
     foreach($record in $inputData.files){

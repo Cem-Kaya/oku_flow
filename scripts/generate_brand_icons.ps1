@@ -14,10 +14,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Icon exporter compilation failed.' }
 $previousPath = $env:PATH
 try {
     $env:PATH = "$QtPrefix\bin;$env:PATH"
-    & $exporter (Join-Path $repository 'assets\okuflow-icon.svg') $work
+    & $exporter (Join-Path $repository 'assets\okuflow-icon.png') $work
     if ($LASTEXITCODE -ne 0) { throw 'Icon export failed.' }
 } finally { $env:PATH = $previousPath }
-foreach ($name in @('okuflow.ico','okuflow-icon.png')) {
+foreach ($name in @('okuflow.ico')) {
     Copy-Item -LiteralPath (Join-Path $work $name) -Destination (Join-Path $repository "assets\$name")
 }
 $storeAssets = Join-Path $repository 'assets\store-icons'
@@ -25,4 +25,4 @@ New-Item -ItemType Directory -Path $storeAssets -Force | Out-Null
 foreach ($name in @('StoreLogo.png','Square44x44Logo.png','Square150x150Logo.png')) {
     Copy-Item -LiteralPath (Join-Path $work $name) -Destination (Join-Path $storeAssets $name)
 }
-Write-Output 'Exported native/Store icons from the cyan website magnifier SVG.'
+Write-Output 'Exported native/Store icons from the original star-magnifier PNG; canonical artwork is preserved.'
