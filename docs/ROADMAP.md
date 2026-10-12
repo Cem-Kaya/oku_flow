@@ -142,8 +142,8 @@ app presents unprocessed frames with a persistent "GPU required" notice.
 ## Phase 3 (ideas)
 - Second GPU backend: D3D12 compute shaders for non-NVIDIA hardware (the
   `ProcessingSettings` contract is backend-neutral by design).
-- Local Whisper for lecture audio → merged transcript + slides in one notes
-  timeline.
+- Browser Whisper/WebGPU on okuflow.com, launched by a Transcribe action in
+  generated notes. Desktop recording supplies the saved media.
 - Export notes to accessible formats (large-print PDF, HTML with semantic
   headings).
 - Multi-camera: slides camera + board camera, switchable instantly.

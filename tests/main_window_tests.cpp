@@ -24,6 +24,7 @@
 #include <QScreen>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QScopeGuard>
 #include <QTextCursor>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -220,7 +221,6 @@ private slots:
     void simpleBackwardFocusCrossesPanels();
     void modalDialogKeepsTabAndNumberKeys();
     void streamingPreservesReadingState();
-    void simpleCaptionHasViewportBudget();
 };
 
 void MainWindowTests::streamingPreservesReadingState()
@@ -247,25 +247,6 @@ void MainWindowTests::streamingPreservesReadingState()
     body->verticalScrollBar()->setValue(body->verticalScrollBar()->maximum());
     overlay.SetContent(QStringLiteral("Answer"), answer + QStringLiteral("New streamed text\nMore text"), true);
     QCOMPARE(body->verticalScrollBar()->value(), body->verticalScrollBar()->maximum());
-}
-
-void MainWindowTests::simpleCaptionHasViewportBudget()
-{
-    MainWindow window;
-    window.resize(800, 600);
-    window.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&window));
-    window.SetSimpleTranscriptActive(true);
-    const QString phrase = QStringLiteral("Long transcript phrase ").repeated(300);
-    window.SetSimpleTranscriptPartial(phrase);
-    QCoreApplication::processEvents();
-    auto* panel = Named<QWidget>(window, "simpleTranscriptPanel");
-    auto* label = Named<QLabel>(window, "simpleTranscriptLabel");
-    QVERIFY(panel && label);
-    QVERIFY(panel->height() <= window.renderWidget()->height() / 3);
-    QVERIFY(GlobalRect(window.renderWidget()).contains(GlobalRect(panel)));
-    QVERIFY(label->text().size() < phrase.size());
-    QVERIFY(label->text().endsWith(QStringLiteral("phrase ")));
 }
 
 void MainWindowTests::modesGridSearchAndGeometry_data()
@@ -348,15 +329,13 @@ void MainWindowTests::modesGridSearchAndGeometry()
     auto* advanced = Named<QTabWidget>(window, "advancedPage");
     auto* imagePage = Named<QWidget>(window, "imageTabPage");
     auto* assistantPage = Named<QWidget>(window, "assistantTabPage");
-    auto* transcriptPage = Named<QWidget>(window, "transcriptTabPage");
     auto* settingsPage = Named<QWidget>(window, "settingsTabPage");
-    QVERIFY(splitter && advanced && imagePage && assistantPage && transcriptPage && settingsPage);
+    QVERIFY(splitter && advanced && imagePage && assistantPage && settingsPage);
     QTRY_VERIFY(advanced->isVisible());
-    QCOMPARE(advanced->count(), 4);
+    QCOMPARE(advanced->count(), 3);
     QCOMPARE(advanced->widget(0), imagePage);
     QCOMPARE(advanced->widget(1), assistantPage);
-    QCOMPARE(advanced->widget(2), transcriptPage);
-    QCOMPARE(advanced->widget(3), settingsPage);
+    QCOMPARE(advanced->widget(2), settingsPage);
     QTRY_VERIFY_WITH_TIMEOUT(advanced->width() >= 500, 1000);
     SaveScreenshot(window, code + QStringLiteral("-image-default"));
     for (int index = 0; index < advanced->count(); ++index) {
@@ -378,10 +357,6 @@ void MainWindowTests::modesGridSearchAndGeometry()
     QVERIFY(settingsPage->isAncestorOf(window.phoneLightButton()));
     QVERIFY(!window.phoneLightButton()->isVisible());
     QVERIFY(!window.phoneLightButton()->isEnabled());
-    QVERIFY(transcriptPage->isAncestorOf(window.transcribeMicrophoneCheckbox()));
-    QVERIFY(transcriptPage->isAncestorOf(window.transcriptToNotesCheckbox()));
-    QVERIFY(!window.transcribeMicrophoneCheckbox()->isChecked());
-    QVERIFY(!window.transcriptToNotesCheckbox()->isChecked());
     QVERIFY(settingsPage->isAncestorOf(window.viewportFitCombo()));
     QVERIFY(settingsPage->isAncestorOf(window.recordingCanvasCombo()));
     QVERIFY(settingsPage->isAncestorOf(window.applicationLanguageCombo()));
@@ -1196,6 +1171,11 @@ void MainWindowTests::hideUiPreservesPriorModeAndStreaming()
 
 void MainWindowTests::mouseFocusedChromeCanIdleFade()
 {
+    POINT ownerPointer{};
+    QVERIFY(GetCursorPos(&ownerPointer));
+    const auto restorePointer = qScopeGuard([ownerPointer] {
+        SetCursorPos(ownerPointer.x, ownerPointer.y);
+    });
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
@@ -1205,18 +1185,35 @@ void MainWindowTests::mouseFocusedChromeCanIdleFade()
     QTRY_VERIFY(top->isVisible());
     QVERIFY(ActivateFixtureWindow(top));
     QVERIFY(QTest::qWaitForWindowActive(top));
-    QTest::mouseClick(window.simpleModeButton(), Qt::LeftButton);
+    // QWidget mouseClick injects Qt events without moving the native cursor.
+    // Keep those events and FadeSimpleChrome's actual cursor baseline aligned.
+    const QPoint clickLocal = window.simpleModeButton()->rect().center();
+    const QPoint clickGlobal = window.simpleModeButton()->mapToGlobal(clickLocal);
+    QCursor::setPos(clickGlobal);
+    QCoreApplication::processEvents();
+    QCOMPARE(QCursor::pos(), clickGlobal);
+    QTest::mouseClick(window.simpleModeButton(), Qt::LeftButton, Qt::NoModifier,
+                      clickLocal);
     QTRY_VERIFY(window.simpleModeButton()->hasFocus());
     QVERIFY(idle->isActive());
+    const QPointF stationaryGlobal(QCursor::pos());
+    POINT stationaryNative{};
+    QVERIFY(GetCursorPos(&stationaryNative));
+    const auto pointerIsStationary = [stationaryGlobal, stationaryNative] {
+        POINT current{};
+        return GetCursorPos(&current) &&
+               current.x == stationaryNative.x && current.y == stationaryNative.y &&
+               QCursor::pos() == stationaryGlobal.toPoint();
+    };
     // A real single-shot timeout is no longer active when its signal runs.
     idle->stop();
     QVERIFY(QMetaObject::invokeMethod(idle, "timeout", Qt::DirectConnection));
     QTRY_VERIFY(!top->isVisible());
     QTest::qWait(300);
+    QVERIFY2(pointerIsStationary(), "Native pointer moved during the idle fixture");
     QVERIFY(!top->isVisible());
 
     // Hover changes caused by hiding native panels are not pointer input.
-    const QPointF stationaryGlobal(QCursor::pos());
     const QPointF stationaryLocal = window.renderWidget()->mapFromGlobal(
         stationaryGlobal.toPoint());
     QEnterEvent enter(stationaryLocal, stationaryLocal, stationaryGlobal);
@@ -1224,13 +1221,26 @@ void MainWindowTests::mouseFocusedChromeCanIdleFade()
     QMouseEvent stationary(QEvent::MouseMove, stationaryLocal, stationaryLocal,
                            stationaryGlobal, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
     QCoreApplication::sendEvent(window.renderWidget(), &stationary);
+    QVERIFY(!top->isVisible());
+    // At 150% DPI an unchanged native cursor can arrive one third of a
+    // logical pixel away from QCursor::pos()'s rounded baseline.
+    const QPointF fractionalOffset(1.0 / 3.0, 1.0 / 3.0);
+    QMouseEvent fractionalStationary(
+        QEvent::MouseMove, stationaryLocal + fractionalOffset,
+        stationaryLocal + fractionalOffset, stationaryGlobal + fractionalOffset,
+        Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(window.renderWidget(), &fractionalStationary);
     QTest::qWait(100);
+    QVERIFY2(pointerIsStationary(), "Native pointer moved during stationary input");
     QVERIFY(!top->isVisible());
     QCOMPARE(QGuiApplication::applicationState(), Qt::ApplicationActive);
 
     const QPointF local = window.renderWidget()->mapToGlobal(QPoint(20, 20)) == QCursor::pos()
                               ? QPointF(40, 40) : QPointF(20, 20);
     const QPointF global = window.renderWidget()->mapToGlobal(local.toPoint());
+    QCursor::setPos(global.toPoint());
+    QCoreApplication::processEvents();
+    QCOMPARE(QCursor::pos(), global.toPoint());
     QMouseEvent move(QEvent::MouseMove, local, local, global,
                      Qt::NoButton, Qt::NoButton, Qt::NoModifier);
     QCoreApplication::sendEvent(window.renderWidget(), &move);
@@ -1271,7 +1281,9 @@ void MainWindowTests::unrelatedNativeInputCannotRevealChrome()
 
     message.hwnd = reinterpret_cast<HWND>(window.winId());
     message.message = WM_MOUSEMOVE;
-    message.pt.x += 40;
+    QVERIFY(GetCursorPos(&message.pt));
+    // Logical rounding must not discard one physical pixel of native input.
+    ++message.pt.x;
     window.nativeEventFilter({}, &message, nullptr);
     QTRY_VERIFY(top->isVisible());
 }

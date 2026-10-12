@@ -5,3 +5,4 @@ android/gradlew text eol=lf
 # Reviewed upstream evidence and packaged notices are hashed as original bytes.
 android/app/src/main/assets/licenses/** -text whitespace=cr-at-eol,-blank-at-eof
 android/licenses/** -text whitespace=cr-at-eol,-blank-at-eof
+scripts/vc-runtime/LICENSE.rtf -text -diff

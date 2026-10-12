@@ -173,10 +173,6 @@ struct PersistentSettings {
     ViewportRateMode viewportRateMode{ViewportRateMode::AutoUpTo120};
     ViewportFitModeSetting viewportFitMode{ViewportFitModeSetting::Fill};
     RecordingCanvasMode recordingCanvasMode{RecordingCanvasMode::Source};
-    // Live transcription (plan 36): privacy-safe defaults — microphone audio
-    // is only sent to the realtime service after an explicit opt-in.
-    bool liveTranscriptionEnabled{false};
-    bool appendTranscriptToNotes{false};
     QMap<QString, bool> uiSectionStates;
     QRect assistiveOverlayGeometry;
     QString assistiveOverlayDockPosition{QStringLiteral("floating")};

@@ -85,9 +85,6 @@ class ColorSchemePicker;
 struct MicrophoneCallbackTarget;
 struct CameraIngress;
 struct StartupWorkerTracker;
-class CodexRealtimeTranscriptionClient;
-class RealtimeNativeRtcCarrier;
-class TranscriptionSessionController;
 
 class D3D12Presenter;
 class CudaInteropSurface;
@@ -191,12 +188,6 @@ private:
     void PopulateMicrophoneCombo();
     bool StartSelectedMicrophone();
     void StopMicrophoneCapture(bool retainQueuedAudio = false);
-    // Live transcription (plan 36): lazily builds the dedicated Codex
-    // realtime client, the hidden WebRTC host, and the session controller.
-    void EnsureTranscriptionStack();
-    void StartTranscriptionForActiveRecording();
-    void OnTranscriptionStateChanged(TranscriptionState state,
-                                     const QString& status);
     void RefreshCameraFormats(size_t index);
     void UpdatePhoneLightUi();
     bool StartCameraCapture(size_t index,
@@ -471,13 +462,7 @@ private:
     UINT64 pendingAnnotationReadbackId_{};
     QElapsedTimer pendingAnnotationReadbackTimer_;
 
-    std::unique_ptr<CodexRealtimeTranscriptionClient> realtimeTranscriptionClient_;
-    std::unique_ptr<RealtimeNativeRtcCarrier> realtimeNativeRtcCarrier_;
-    std::unique_ptr<TranscriptionSessionController> transcriptionController_;
-    bool transcriptionNoteWriteFailed_{false};
-    bool transcriptionNotesCompletionPending_{false};
     bool openNotesWhenStored_{false};
-    void MaybeReportTranscriptNotesSaved();
     std::unique_ptr<AssistiveFeatureManager> assistiveManager_;
     JoystickOverlay* joystickOverlay_{};
     SetupAssistantDialog* setupAssistantDialog_{};

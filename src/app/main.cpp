@@ -15,11 +15,19 @@
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
     for (int index = 1; index < argc; ++index) {
+        const HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+        const HANDLE error = GetStdHandle(STD_ERROR_HANDLE);
+        const DWORD outputType = GetFileType(output);
+        const DWORD errorType = GetFileType(error);
+        const bool outputRedirected = outputType == FILE_TYPE_PIPE || outputType == FILE_TYPE_DISK;
+        const bool errorRedirected = errorType == FILE_TYPE_PIPE || errorType == FILE_TYPE_DISK;
         if (std::strcmp(argv[index], "--console") == 0 &&
             AttachConsole(ATTACH_PARENT_PROCESS)) {
             FILE* stream = nullptr;
-            freopen_s(&stream, "CONOUT$", "w", stdout);
-            freopen_s(&stream, "CONOUT$", "w", stderr);
+            if (outputRedirected) SetStdHandle(STD_OUTPUT_HANDLE, output);
+            else freopen_s(&stream, "CONOUT$", "w", stdout);
+            if (errorRedirected) SetStdHandle(STD_ERROR_HANDLE, error);
+            else freopen_s(&stream, "CONOUT$", "w", stderr);
             break;
         }
     }

@@ -1,5 +1,14 @@
 # Hard-Coded Paths and Defaults
 
+## Browser notes transcription
+
+New notes use `https://okuflow.com/transcribe/?ui=<document-language>` only to
+open the static browser tool. Recording bytes and segments travel over a
+private MessageChannel, not URL parameters or a local server. Chrome stores
+the user-selected directory handle in `okuflow-notes-files` IndexedDB and
+saves `<original-video>.okuflow-transcript.json` beside the recording. The
+desktop does not infer a fixed Documents path or read/transcribe those files.
+
 This document tracks machine-specific defaults, generated output locations, and other fixed values that should be reviewed when the toolchain or deployment story changes.
 
 ## Recording admission defaults
@@ -138,10 +147,6 @@ This document tracks machine-specific defaults, generated output locations, and 
   only when the associated answer is ready for storage. Cancellation releases
   the retained frame; failed HTML appends remove their newly encoded images.
 - Assistant export default: `Analysis\OkuFlow_Assistant_*.txt`
-- Live transcription (native WebRTC stack) creates no profile, cache, or
-  data directory of its own. A `Cache\RealtimeWebView\` folder left behind
-  by a pre-release WebView2 build is unused user data and may be deleted
-  manually.
 - Console-attached diagnostic logs:
   `Debug\OkuFlow_<timestamp>_pid<process-id>.log`; the newest 20 are retained
 - Legacy `<install>\output\` files are never migrated or touched. Release
@@ -272,10 +277,6 @@ This document tracks machine-specific defaults, generated output locations, and 
   `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` and
   `%LOCALAPPDATA%\Microsoft\WinGet\Links\codex.exe`
 - Codex app-server working directory: `%TEMP%\OkuFlow\assistant\`
-- Live-transcription app-server working directory:
-  `%TEMP%\OkuFlow-transcription-*\`; a new empty directory is created for
-  each session and removed after bounded child shutdown so speech-driven
-  requests cannot even read the project or ordinary user files.
 - Optional Advanced Assistant coding workspace: user-selected in AI Settings; no default folder is granted.
   Enabling it changes persistent Assistant sessions to `workspaceWrite` for
   that folder, which intentionally permits local coding tools including Python
@@ -307,12 +308,7 @@ This document tracks machine-specific defaults, generated output locations, and 
   `COMMERCIAL.md`, `README.md` as `README.txt`,
   `docs/THIRD_PARTY_LICENSES.md`, the Lucide
   notice, the applicable Qt/FFmpeg texts, exact Qt module SPDX documents,
-  CUDA/FSR/NIS/Maxine-header notices for CUDA builds, and every native-WebRTC
-  dependency notice (including nlohmann/json).
-- Live transcription's native WebRTC stack (libdatachannel, Opus, Mbed TLS;
-  pinned by commit in `cmake/NativeRtc.cmake`) is statically linked into
-  `oku_flow.exe`: no extra DLLs, assets, or runtime dependencies ship for
-  it, and no browser runtime is required.
+  CUDA/FSR/NIS/Maxine-header notices for CUDA builds.
 - `scripts/build_release_bundle.bat` validates `Qt6Core.dll`,
   `Qt6Gui.dll`, `Qt6Widgets.dll`, `Qt6Network.dll`, and
   `platforms\qwindows.dll` before publishing, and verifies the published
@@ -440,3 +436,16 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   includes adb, both USB DLLs and their dependency DLLs. Corresponding source
   and relinking inputs are `sources/adb-37.0.0-okuflow-source.zip`; notices are
   under `licenses/adb`. See [adb_distribution.md](adb_distribution.md).
+
+## Microsoft Windows runtime pin
+
+- `scripts/vc-runtime/pins.json` pins x64 Microsoft runtime 14.44.35211.0,
+  the minimum supported version, required system DLL names, signed installer
+  SHA-256 and exact embedded EULA hash. Newer compatible system versions pass.
+- Runtime detection reads both x64 registry views and verifies DLL versions
+  under the system directory. No machine-specific installation path is used.
+- The deployed native launcher is `oku_flow.exe`; its Qt child is
+  `OkuFlowApp.exe` beside it. The vendor installer is `vc_redist.x64.exe`.
+  Neither a phone model nor serial is part of these pins.
+- See [runtime setup](windows_runtime_setup.md) for user approval, temporary
+  copy ownership and clean-VM acceptance limits.

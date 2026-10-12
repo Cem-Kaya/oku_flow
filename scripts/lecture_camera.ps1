@@ -209,7 +209,7 @@ function Install-MediaFoundationOutput([string]$PortableRoot) {
 function Start-OkuFlow {
     $app = Join-Path $PSScriptRoot '..\dist\OkuFlow\oku_flow.exe'
     if (-not (Test-Path -LiteralPath $app)) { throw "OkuFlow bundle not found: $app" }
-    if (-not (Get-Process -Name oku_flow -ErrorAction SilentlyContinue)) {
+    if (-not (Get-Process -Name oku_flow,OkuFlowApp -ErrorAction SilentlyContinue)) {
         Start-Process -FilePath $app -WorkingDirectory (Split-Path $app) | Out-Null
     }
 }

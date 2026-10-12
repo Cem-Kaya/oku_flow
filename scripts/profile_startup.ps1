@@ -18,7 +18,7 @@ $destination = if ([IO.Path]::IsPathFullyQualified($OutputDirectory)) {
 } else {
     [IO.Path]::GetFullPath((Join-Path $repository $OutputDirectory))
 }
-if (Get-Process -Name oku_flow -ErrorAction SilentlyContinue) {
+if (Get-Process -Name oku_flow,OkuFlowApp -ErrorAction SilentlyContinue) {
     throw "An OkuFlow instance is already running. Close it before profiling to avoid competing for its camera."
 }
 New-Item -ItemType Directory -Path $destination -Force | Out-Null

@@ -72,6 +72,8 @@ call :find_built_executable
 if errorlevel 1 goto :fail
 call :sign_release_binary "%EXE_PATH%"
 if errorlevel 1 goto :fail
+call :sign_release_binary "%APP_EXE_PATH%"
+if errorlevel 1 goto :fail
 call :sign_release_binary "%PROBE_PATH%"
 if errorlevel 1 goto :fail
 
@@ -86,12 +88,14 @@ if errorlevel 1 goto :fail
 
 copy /y "%EXE_PATH%" "%STAGING_DIR%\oku_flow.exe" >nul
 if errorlevel 1 goto :fail
+copy /y "%APP_EXE_PATH%" "%STAGING_DIR%\OkuFlowApp.exe" >nul
+if errorlevel 1 goto :fail
 copy /y "%PROBE_PATH%" "%STAGING_DIR%\mf_dxva_minimal.exe" >nul
 if errorlevel 1 goto :fail
 
 echo Using Qt runtime from "%QT_BIN_DIR%".
 echo Running Qt deployment tool: "%WINDEPLOYQT%"
-"%WINDEPLOYQT%" --release "%STAGING_DIR%\oku_flow.exe" ^
+"%WINDEPLOYQT%" --release "%STAGING_DIR%\OkuFlowApp.exe" ^
     --dir "%STAGING_DIR%" --no-translations
 if errorlevel 1 (
     echo ERROR: windeployqt failed; no bundle was published.
@@ -102,6 +106,8 @@ rem Proprietary NVIDIA runtimes and Codex CLI are installed
 rem separately through Setup Assistant. Qt's software OpenGL fallback is not
 rem part of the supported GPU path.
 if exist "%STAGING_DIR%\opengl32sw.dll" del /q "%STAGING_DIR%\opengl32sw.dll"
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\stage_windows_runtime.ps1" -BundlePath "%STAGING_DIR%"
+if errorlevel 1 goto :fail
 
 call :copy_required_file "%ROOT_DIR%\LICENSE" "%STAGING_DIR%\LICENSE"
 if errorlevel 1 goto :fail
@@ -137,24 +143,6 @@ if errorlevel 1 goto :fail
 if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\maxine\LICENSE.txt" "%STAGING_DIR%\licenses\NVIDIA_MAXINE_INTEGRATION_NOTICE.txt"
 if errorlevel 1 goto :fail
 if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" call :copy_required_file "%CUDA_LICENSE_PATH%" "%STAGING_DIR%\licenses\NVIDIA_CUDA_EULA.txt"
-if errorlevel 1 goto :fail
-call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\LICENSE" "%STAGING_DIR%\licenses\LIBDATACHANNEL_LICENSE.txt"
-if errorlevel 1 goto :fail
-call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\deps\libjuice\LICENSE" "%STAGING_DIR%\licenses\LIBJUICE_LICENSE.txt"
-if errorlevel 1 goto :fail
-call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\deps\libsrtp\LICENSE" "%STAGING_DIR%\licenses\LIBSRTP_LICENSE.txt"
-if errorlevel 1 goto :fail
-call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\deps\usrsctp\LICENSE.md" "%STAGING_DIR%\licenses\USRSCTP_LICENSE.txt"
-if errorlevel 1 goto :fail
-call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\deps\plog\LICENSE" "%STAGING_DIR%\licenses\PLOG_LICENSE.txt"
-if errorlevel 1 goto :fail
-call :copy_required_file "%BUILD_DIR%\_deps\libdatachannel-src\deps\json\LICENSE.MIT" "%STAGING_DIR%\licenses\NLOHMANN_JSON_LICENSE.txt"
-if errorlevel 1 goto :fail
-call :copy_required_file "%BUILD_DIR%\_deps\opus-src\COPYING" "%STAGING_DIR%\licenses\OPUS_COPYING.txt"
-if errorlevel 1 goto :fail
-call :copy_required_file "%BUILD_DIR%\_deps\opus-src\LICENSE_PLEASE_READ.txt" "%STAGING_DIR%\licenses\OPUS_LICENSE_PLEASE_READ.txt"
-if errorlevel 1 goto :fail
-call :copy_required_file "%BUILD_DIR%\_deps\mbedtls-src\LICENSE" "%STAGING_DIR%\licenses\MBEDTLS_LICENSE.txt"
 if errorlevel 1 goto :fail
 
 echo ===== STAGE SOURCE-BUILT ANDROID DEBUG BRIDGE =====
@@ -290,6 +278,12 @@ if not exist "%EXE_PATH%" (
     echo ERROR: Built executable was not found under "%BUILD_DIR%".
     exit /b 1
 )
+set "APP_EXE_PATH=%EXE_PATH%"
+for %%I in ("%APP_EXE_PATH%") do set "EXE_PATH=%%~dpIokuflow_launcher.exe"
+if not exist "%EXE_PATH%" (
+    echo ERROR: Runtime preflight launcher was not built: "%EXE_PATH%".
+    exit /b 1
+)
 set "PROBE_PATH=%BUILD_DIR%\sandbox_mf_dxva_minimal\Release\mf_dxva_minimal.exe"
 if not exist "%PROBE_PATH%" set "PROBE_PATH=%BUILD_DIR%\sandbox_mf_dxva_minimal\mf_dxva_minimal.exe"
 if not exist "%PROBE_PATH%" (
@@ -312,6 +306,9 @@ exit /b 0
 
 :validate_staging_bundle
 if not exist "%STAGING_DIR%\oku_flow.exe" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\OkuFlowApp.exe" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\vc_redist.x64.exe" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\licenses\MICROSOFT_VC_RUNTIME_LICENSE.rtf" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\mf_dxva_minimal.exe" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\Qt6Core.dll" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\Qt6Gui.dll" goto :deploy_incomplete
@@ -331,15 +328,6 @@ if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\licenses\NVIDIA_
 if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\licenses\NVIDIA_MAXINE_SDK_HEADERS_LICENSE.txt" goto :deploy_incomplete
 if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\licenses\NVIDIA_MAXINE_INTEGRATION_NOTICE.txt" goto :deploy_incomplete
 if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\licenses\NVIDIA_CUDA_EULA.txt" goto :deploy_incomplete
-if not exist "%STAGING_DIR%\licenses\LIBDATACHANNEL_LICENSE.txt" goto :deploy_incomplete
-if not exist "%STAGING_DIR%\licenses\LIBJUICE_LICENSE.txt" goto :deploy_incomplete
-if not exist "%STAGING_DIR%\licenses\LIBSRTP_LICENSE.txt" goto :deploy_incomplete
-if not exist "%STAGING_DIR%\licenses\USRSCTP_LICENSE.txt" goto :deploy_incomplete
-if not exist "%STAGING_DIR%\licenses\PLOG_LICENSE.txt" goto :deploy_incomplete
-if not exist "%STAGING_DIR%\licenses\NLOHMANN_JSON_LICENSE.txt" goto :deploy_incomplete
-if not exist "%STAGING_DIR%\licenses\OPUS_COPYING.txt" goto :deploy_incomplete
-if not exist "%STAGING_DIR%\licenses\OPUS_LICENSE_PLEASE_READ.txt" goto :deploy_incomplete
-if not exist "%STAGING_DIR%\licenses\MBEDTLS_LICENSE.txt" goto :deploy_incomplete
 for %%F in (adb.exe AdbWinApi.dll AdbWinUsbApi.dll NOTICE.txt source.properties adb-build.json) do if not exist "%STAGING_DIR%\platform-tools\%%F" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\licenses\adb\LIBUSB_LGPL_2_1.txt" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\sources\adb-37.0.0-okuflow-source.zip" goto :deploy_incomplete
@@ -351,6 +339,11 @@ if errorlevel 1 (
     echo ERROR: Staged executable does not match the tested release executable.
     exit /b 1
 )
+fc /b "%APP_EXE_PATH%" "%STAGING_DIR%\OkuFlowApp.exe" >nul
+if errorlevel 1 (
+    echo ERROR: Staged Qt application does not match the tested build.
+    exit /b 1
+)
 exit /b 0
 
 :deploy_incomplete
@@ -359,7 +352,7 @@ echo Required files include oku_flow.exe, mf_dxva_minimal.exe,
 echo Qt6Core/Gui/Widgets/Network.dll,
 echo platforms\qwindows.dll, LICENSE, COMMERCIAL.md, THIRD_PARTY_LICENSES.md,
 echo complete Qt/FFmpeg/module-SPDX, Lucide, CUDA-upscaler, Maxine-header,
-echo native-WebRTC, and CUDA Toolkit notices,
+echo and CUDA Toolkit notices,
 echo platform-tools\adb.exe, AdbWinApi.dll, AdbWinUsbApi.dll, NOTICE.txt,
 echo source.properties, adb-build.json, full adb dependency notices,
 echo sources\adb-37.0.0-okuflow-source.zip,
@@ -404,6 +397,15 @@ if /I not "%EXPECTED_EXE_SHA256%"=="%PUBLISHED_EXE_SHA256%" (
     exit /b 1
 )
 echo Verified oku_flow.exe SHA-256: %PUBLISHED_EXE_SHA256%
+call :compute_sha256 "%APP_EXE_PATH%" EXPECTED_APP_SHA256
+if errorlevel 1 exit /b 1
+call :compute_sha256 "%PUBLISHED_BUNDLE%\OkuFlowApp.exe" PUBLISHED_APP_SHA256
+if errorlevel 1 exit /b 1
+if /I not "%EXPECTED_APP_SHA256%"=="%PUBLISHED_APP_SHA256%" (
+    echo ERROR: Published OkuFlowApp.exe does not match the built Qt application.
+    exit /b 1
+)
+echo Verified OkuFlowApp.exe SHA-256: %PUBLISHED_APP_SHA256%
 exit /b 0
 
 :compute_sha256_impl
@@ -447,6 +449,17 @@ if exist "%PRIMARY_DIR%\oku_flow.exe" (
     ren "%PRIMARY_DIR%\oku_flow.bundle-lock-check.exe" "oku_flow.exe" >nul 2>&1
     if errorlevel 1 (
         echo ERROR: Bundle lock check could not restore oku_flow.exe.
+        exit /b 1
+    )
+)
+
+rem The Qt child can also be launched directly by an existing shortcut.
+if exist "%PRIMARY_DIR%\OkuFlowApp.exe" (
+    ren "%PRIMARY_DIR%\OkuFlowApp.exe" "OkuFlowApp.bundle-lock-check.exe" >nul 2>&1
+    if errorlevel 1 goto :publish_secondary
+    ren "%PRIMARY_DIR%\OkuFlowApp.bundle-lock-check.exe" "OkuFlowApp.exe" >nul 2>&1
+    if errorlevel 1 (
+        echo ERROR: Bundle lock check could not restore OkuFlowApp.exe.
         exit /b 1
     )
 )

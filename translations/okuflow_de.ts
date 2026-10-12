@@ -2428,180 +2428,8 @@ Die Entfernung wird von Windows verwaltet.</translation>
         <translation>Der gespeicherte OkuFlow-Ordner kann nicht verwendet werden (%1). Dateien werden im Standard-Dokumente-Ordner gespeichert, bis ein neuer Ordner gewählt wird.</translation>
     </message>
     <message>
-        <source>Preparing live transcription...</source>
-        <translation>Live-Transkription wird vorbereitet ...</translation>
-    </message>
-    <message>
-        <source>Listening and transcribing...</source>
-        <translation>Es wird zugehört und transkribiert ...</translation>
-    </message>
-    <message>
-        <source>Finishing transcript...</source>
-        <translation>Transkript wird abgeschlossen ...</translation>
-    </message>
-    <message>
-        <source>Transcription finished.</source>
-        <translation>Transkription abgeschlossen.</translation>
-    </message>
-    <message>
-        <source>Codex did not become ready in time.</source>
-        <translation>Codex wurde nicht rechtzeitig bereit.</translation>
-    </message>
-    <message>
-        <source>Live transcription did not start in time.</source>
-        <translation>Die Live-Transkription ist nicht rechtzeitig gestartet.</translation>
-    </message>
-    <message>
-        <source>This Codex version does not support live transcription.</source>
-        <translation>Diese Codex-Version unterstützt keine Live-Transkription.</translation>
-    </message>
-    <message>
-        <source>Live transcription requires Codex signed in with ChatGPT.</source>
-        <translation>Die Live-Transkription erfordert eine ChatGPT-Anmeldung in Codex.</translation>
-    </message>
-    <message>
-        <source>Codex could not start a transcription session.</source>
-        <translation>Codex konnte keine Transkriptionssitzung starten.</translation>
-    </message>
-    <message>
-        <source>Codex CLI not found.</source>
-        <translation>Codex-Befehlszeilenprogramm nicht gefunden.</translation>
-    </message>
-    <message>
-        <source>Codex protocol failure.</source>
-        <translation>Codex-Protokollfehler.</translation>
-    </message>
-    <message>
-        <source>Codex stopped unexpectedly.</source>
-        <translation>Codex wurde unerwartet beendet.</translation>
-    </message>
-    <message>
-        <source>Live transcription failed.</source>
-        <translation>Die Live-Transkription ist fehlgeschlagen.</translation>
-    </message>
-    <message>
-        <source>Live transcription connection closed.</source>
-        <translation>Die Verbindung der Live-Transkription wurde geschlossen.</translation>
-    </message>
-    <message>
-        <source>The WebRTC offer was rejected.</source>
-        <translation>Das WebRTC-Angebot wurde abgelehnt.</translation>
-    </message>
-    <message>
-        <source>WebRTC negotiation timed out.</source>
-        <translation>Die WebRTC-Aushandlung hat das Zeitlimit überschritten.</translation>
-    </message>
-    <message>
-        <source>WebRTC component unavailable.</source>
-        <translation>WebRTC-Komponente nicht verfügbar.</translation>
-    </message>
-    <message>
-        <source>WebRTC component stopped.</source>
-        <translation>WebRTC-Komponente wurde beendet.</translation>
-    </message>
-    <message>
-        <source>WebRTC negotiation failed.</source>
-        <translation>Die WebRTC-Aushandlung ist fehlgeschlagen.</translation>
-    </message>
-    <message>
-        <source>Transcript has a gap; recording is unaffected.</source>
-        <translation>Das Transkript hat eine Lücke; die Aufnahme ist nicht betroffen.</translation>
-    </message>
-    <message>
-        <source>Select a recording microphone to transcribe.</source>
-        <translation>Wählen Sie ein Aufnahmemikrofon für die Transkription.</translation>
-    </message>
-    <message>
-        <source>Transcription unavailable: %1 Recording continues.</source>
-        <translation>Transkription nicht verfügbar: %1 Die Aufnahme läuft weiter.</translation>
-    </message>
-    <message>
-        <source>Transcript saved to lecture notes.</source>
-        <translation>Transkript in den Vorlesungsnotizen gespeichert.</translation>
-    </message>
-    <message>
-        <source>Transcript could not be saved to lecture notes.</source>
-        <translation>Das Transkript konnte nicht in den Vorlesungsnotizen gespeichert werden.</translation>
-    </message>
-    <message>
-        <source>Reconnecting live transcription...</source>
-        <translation>Live-Transkription wird erneut verbunden...</translation>
-    </message>
-    <message>
-        <source>Codex usage: %1% remaining in the current general window.</source>
-        <translation>Codex-Nutzung: %1 % verbleibend im aktuellen allgemeinen Fenster.</translation>
-    </message>
-    <message>
-        <source>Codex usage is unavailable.</source>
-        <translation>Codex-Nutzung ist nicht verfügbar.</translation>
-    </message>
-    <message>
-        <source>Voice-specific remaining time is not exposed by this Codex app-server.</source>
-        <translation>Dieser Codex-App-Server gibt keine sprachspezifische Restzeit an.</translation>
-    </message>
-    <message>
         <source>Lecture transcript</source>
         <translation>Vorlesungstranskript</translation>
-    </message>
-    <message>
-        <source>(truncated)</source>
-        <translation>(gekürzt)</translation>
-    </message>
-    <message>
-        <source>about %1 into recording</source>
-        <translation>etwa %1 nach Aufnahmebeginn</translation>
-    </message>
-    <message>
-        <source>Transcribe microphone while recording</source>
-        <translation>Mikrofon während der Aufnahme transkribieren</translation>
-    </message>
-    <message>
-        <source>Add finalized transcript to lecture notes</source>
-        <translation>Fertiges Transkript zu Vorlesungsnotizen hinzufügen</translation>
-    </message>
-    <message>
-        <source>Sends microphone audio to Codex Voice for live transcription, only while recording. Requires Codex signed in with ChatGPT.</source>
-        <translation>Sendet Mikrofonaudio nur während der Aufnahme zur Live-Transkription an Codex Voice. Erfordert eine ChatGPT-Anmeldung in Codex.</translation>
-    </message>
-    <message>
-        <source>Appends each finalized phrase to the HTML lecture notes. Effective only while lecture notes are enabled.</source>
-        <translation>Fügt jeden fertigen Satz den HTML-Vorlesungsnotizen hinzu. Wirksam nur, solange Vorlesungsnotizen aktiviert sind.</translation>
-    </message>
-    <message>
-        <source>Current phrase</source>
-        <translation>Aktueller Satz</translation>
-    </message>
-    <message>
-        <source>Finalized transcript</source>
-        <translation>Fertiges Transkript</translation>
-    </message>
-    <message>
-        <source>Transcript</source>
-        <translation>Transkript</translation>
-    </message>
-    <message>
-        <source>Global recording setting. Sends microphone audio to Codex Voice for live transcription only while recording. Requires Codex signed in with ChatGPT. Recording works without it.</source>
-        <translation>Globale Aufnahmeeinstellung. Sendet Mikrofonaudio nur während der Aufnahme zur Live-Transkription an Codex Voice. Erfordert eine ChatGPT-Anmeldung in Codex. Die Aufnahme funktioniert auch ohne.</translation>
-    </message>
-    <message>
-        <source>Reports the live transcription state. Recording is never affected by transcription problems.</source>
-        <translation>Meldet den Zustand der Live-Transkription. Die Aufnahme wird von Transkriptionsproblemen nie beeinträchtigt.</translation>
-    </message>
-    <message>
-        <source>Shows the general Codex quota window. Voice-specific remaining time is not exposed by this Codex app-server.</source>
-        <translation>Zeigt das allgemeine Codex-Kontingentfenster. Dieser Codex-App-Server gibt keine sprachspezifische Restzeit an.</translation>
-    </message>
-    <message>
-        <source>The phrase being transcribed right now. Partial text is presentation-only until it is finalized.</source>
-        <translation>Der gerade transkribierte Satz. Vorläufiger Text dient nur der Anzeige, bis er fertiggestellt ist.</translation>
-    </message>
-    <message>
-        <source>Read-only list of finalized transcript phrases from the current recording. Text is selectable.</source>
-        <translation>Schreibgeschützte Liste der fertigen Transkriptsätze der aktuellen Aufnahme. Text ist auswählbar.</translation>
-    </message>
-    <message>
-        <source>Transcription status</source>
-        <translation>Transkriptionsstatus</translation>
     </message>
     <message>
         <source>Expand all</source>
@@ -3020,6 +2848,58 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
     <message>
         <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
         <translation>Öffnen Sie OkuFlow Camera auf dem Telefon, schließen Sie das USB-Kabel an und erlauben Sie USB-Debugging. OkuFlow prüft die Verbindung automatisch.</translation>
+    </message>
+    <message>
+        <source>Set up OkuFlow</source>
+        <translation>OkuFlow einrichten</translation>
+    </message>
+    <message>
+        <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
+        <translation>Das Installationsprogramm für die Windows-Laufzeit ist enthalten. Optionale KI-Werkzeuge werden von ihren Anbietern heruntergeladen. Jedes Installationsprogramm wird vor dem Start überprüft.</translation>
+    </message>
+    <message>
+        <source>Microsoft Windows runtime</source>
+        <translation>Microsoft Windows-Laufzeit</translation>
+    </message>
+    <message>
+        <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
+        <translation>Von OkuFlow verwendete Windows-Bibliotheken. Die Installation nutzt das enthaltene Microsoft-Installationsprogramm und kann Administratorrechte anfordern.</translation>
+    </message>
+    <message>
+        <source>Install for Windows</source>
+        <translation>Für Windows installieren</translation>
+    </message>
+    <message>
+        <source>Install Microsoft Windows runtime</source>
+        <translation>Microsoft Windows-Laufzeit installieren</translation>
+    </message>
+    <message>
+        <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>
+        <translation>Verwenden Sie das vollständige OkuFlow-ZIP mit dem Windows-Installationsprogramm.</translation>
+    </message>
+    <message>
+        <source>The included Microsoft installer could not be verified. Download the complete OkuFlow ZIP again.</source>
+        <translation>Das enthaltene Microsoft-Installationsprogramm konnte nicht überprüft werden. Laden Sie das vollständige OkuFlow-ZIP erneut herunter.</translation>
+    </message>
+    <message>
+        <source>Windows could not start the elevated installer (error %1).</source>
+        <translation>Windows konnte das Installationsprogramm mit erhöhten Rechten nicht starten (Fehler %1).</translation>
+    </message>
+    <message>
+        <source>Microsoft installer running. Continue in the installer window.</source>
+        <translation>Das Microsoft-Installationsprogramm läuft. Fahren Sie in dessen Fenster fort.</translation>
+    </message>
+    <message>
+        <source>Windows installer exit code: %1</source>
+        <translation>Windows-Installationsprogramm: Rückgabecode %1</translation>
+    </message>
+    <message>
+        <source>Installation completed. Restart Windows when convenient.</source>
+        <translation>Die Installation ist abgeschlossen. Starten Sie Windows bei Gelegenheit neu.</translation>
+    </message>
+    <message>
+        <source>Installation cancelled. You can try again later.</source>
+        <translation>Die Installation wurde abgebrochen. Sie können es später erneut versuchen.</translation>
     </message>
 </context>
 </TS>

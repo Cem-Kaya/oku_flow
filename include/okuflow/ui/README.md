@@ -5,7 +5,7 @@ Public Qt UI interfaces live here.
 Currently exported:
 - `main_window.hpp`: auto-fading Simple-mode corner controls, mode
   announcements, deliberate quick-mode activation, explicit Explain/Stop state,
-  and the right-side Advanced Image/Assistant/Transcript/Settings inspector,
+  and the right-side Advanced Image/Assistant/Settings inspector,
   including scoped search and compact SuperRes factor/performance controls
   and state-preserving `setUiHidden` / `isUiHidden` controls
 - `render_widget.hpp`: native D3D12 surface with coalesced native-pixel resize

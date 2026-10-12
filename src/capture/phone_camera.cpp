@@ -693,17 +693,29 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                     control.abort(); video.abort(); CheckCanceled(&canceled_);
                     // Only an absent listener gets a single launch per USB attachment.
                     if (!endpointOpened && MayLaunch(descriptor.phoneSerial, descriptor.phoneTransportId)) {
-                        QTcpSocket launcher;
-                        Transport(launcher, descriptor.phoneSerial, "shell:am start -n com.okuflow.camera/.MainActivity",
-                                  &canceled_, 1000, descriptor.phoneTransportId);
-                        QByteArray response;
-                        const auto launchDeadline = Clock::now() + std::chrono::seconds(2);
-                        while (launcher.state() == QAbstractSocket::ConnectedState && Clock::now() < launchDeadline) {
-                            CheckCanceled(&canceled_); launcher.waitForReadyRead(20); response += launcher.readAll();
+                        // The Play app uses com.okuflow; retain the earlier
+                        // debug package only when the new activity is absent.
+                        // A paused/blocked installed app must not launch the
+                        // legacy app instead and bypass the user's intent.
+                        for (const char* command : {
+                            "shell:am start -n com.okuflow/com.okuflow.camera.MainActivity",
+                            "shell:am start -n com.okuflow.camera/.MainActivity"}) {
+                            QTcpSocket launcher;
+                            Transport(launcher, descriptor.phoneSerial, command,
+                                      &canceled_, 1000, descriptor.phoneTransportId);
+                            QByteArray response;
+                            const auto launchDeadline = Clock::now() + std::chrono::seconds(2);
+                            while (launcher.state() == QAbstractSocket::ConnectedState && Clock::now() < launchDeadline) {
+                                CheckCanceled(&canceled_); launcher.waitForReadyRead(20); response += launcher.readAll();
+                                if (response.size() > kControlLimit) throw std::runtime_error("Oversized app launch response");
+                            }
+                            response += launcher.readAll();
                             if (response.size() > kControlLimit) throw std::runtime_error("Oversized app launch response");
+                            if (!response.contains("Error") && !response.contains("Exception")) break;
+                            const bool legacy = std::string_view(command).find("com.okuflow.camera/.MainActivity") != std::string_view::npos;
+                            if (legacy || !response.contains("Error type 3"))
+                                throw std::runtime_error("Install OkuFlow Camera on the selected USB phone first");
                         }
-                        if (response.contains("Error") || response.contains("Exception"))
-                            throw std::runtime_error("Install OkuFlow Camera on the selected USB phone first");
                     }
                     if (Clock::now() >= connectionDeadline)
                         throw std::runtime_error("Open OkuFlow Camera, allow camera access and authorize USB debugging");

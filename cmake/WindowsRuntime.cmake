@@ -1,0 +1,18 @@
+# One reviewed runtime pin drives packaging and the installer/detection code.
+file(READ "${PROJECT_SOURCE_DIR}/scripts/vc-runtime/pins.json" OKUFLOW_VC_RUNTIME_PIN)
+set(OKUFLOW_VC_MINIMUM_VERSION "")
+foreach(index RANGE 0 3)
+    string(JSON component GET "${OKUFLOW_VC_RUNTIME_PIN}" minimumVersion ${index})
+    string(APPEND OKUFLOW_VC_MINIMUM_VERSION "${component},")
+endforeach()
+string(JSON OKUFLOW_VC_INSTALLER_SHA256 GET "${OKUFLOW_VC_RUNTIME_PIN}" installer sha256)
+string(JSON fileCount LENGTH "${OKUFLOW_VC_RUNTIME_PIN}" files)
+math(EXPR lastFile "${fileCount}-1")
+set(OKUFLOW_VC_FILE_NAMES "")
+foreach(index RANGE 0 ${lastFile})
+    string(JSON fileName GET "${OKUFLOW_VC_RUNTIME_PIN}" files ${index} name)
+    string(APPEND OKUFLOW_VC_FILE_NAMES "\"${fileName}\",\n")
+endforeach()
+set(OKUFLOW_RUNTIME_GENERATED_DIR "${PROJECT_BINARY_DIR}/generated")
+configure_file("${CMAKE_CURRENT_LIST_DIR}/windows_runtime_pins.hpp.in"
+    "${OKUFLOW_RUNTIME_GENERATED_DIR}/okuflow/windows_runtime_pins.hpp" @ONLY)

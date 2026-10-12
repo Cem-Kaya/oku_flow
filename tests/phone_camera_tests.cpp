@@ -10,13 +10,15 @@
 #include <thread>
 #include <atomic>
 #include <cstring>
+#include <mutex>
 
 namespace {
 // Private random port, no bootstrap: these fixtures can never reach a real adb or phone.
 class FakePhoneAdb {
 public:
-    explicit FakePhoneAdb(bool old = false, bool stall = false, bool busy = false)
-        : old(old), stall(stall), busy(busy) {
+    enum class LaunchMode { None, Play, Legacy, Blocked };
+    explicit FakePhoneAdb(bool old = false, bool stall = false, bool busy = false, LaunchMode mode = LaunchMode::None)
+        : old(old), stall(stall), busy(busy), launchMode(mode) {
         std::promise<quint16> promise;
         auto future = promise.get_future();
         worker = std::thread([this, promise = std::move(promise)]() mutable {
@@ -41,6 +43,10 @@ public:
     quint16 port{};
     std::atomic<bool> hello{false};
     std::atomic<int> probes{0};
+    QStringList Launches() {
+        std::lock_guard lock(launchMutex);
+        return launches;
+    }
 private:
     QByteArray Read(QTcpSocket& socket, int size) {
         QByteArray result;
@@ -71,7 +77,22 @@ private:
         if (!service.startsWith("host:transport")) return;
         Write(socket, "OKAY");
         const auto nextSize = Read(socket, 4).toInt(nullptr, 16);
-        if (Read(socket, nextSize) != "localabstract:okuflow_camera") return;
+        const auto next = Read(socket, nextSize);
+        if (next.startsWith("shell:am start")) {
+            { std::lock_guard lock(launchMutex); launches.append(QString::fromUtf8(next)); }
+            Write(socket, "OKAY");
+            if (launchMode == LaunchMode::Blocked) Write(socket, "Error: Activity start blocked");
+            else if (launchMode == LaunchMode::Legacy && !next.contains("com.okuflow.camera/.MainActivity"))
+                Write(socket, "Error type 3\nError: Activity class does not exist.");
+            else { launchReady = true; Write(socket, "Starting: Intent"); }
+            return;
+        }
+        if (next != "localabstract:okuflow_camera") return;
+        if (launchMode != LaunchMode::None && !launchReady) {
+            const QByteArray message("listener absent");
+            Write(socket, "FAIL" + QByteArray::number(message.size(), 16).rightJustified(4, '0') + message);
+            return;
+        }
         Write(socket, "OKAY");
         const auto header = Read(socket, 12);
         const auto body = Read(socket, static_cast<int>(qFromLittleEndian<quint32>(header.constData() + 8)));
@@ -90,6 +111,10 @@ private:
         Write(socket, packet + reply);
     }
     bool old, stall, busy;
+    LaunchMode launchMode;
+    bool launchReady{false};
+    std::mutex launchMutex;
+    QStringList launches;
     std::atomic<bool> stopped{false};
     std::thread worker;
 };
@@ -98,6 +123,34 @@ private:
 class PhoneCameraTests : public QObject {
     Q_OBJECT
 private slots:
+    void launchesRegisteredPackage_data() {
+        QTest::addColumn<int>("mode");
+        QTest::newRow("Play package") << static_cast<int>(FakePhoneAdb::LaunchMode::Play);
+        QTest::newRow("legacy debug APK") << static_cast<int>(FakePhoneAdb::LaunchMode::Legacy);
+        QTest::newRow("blocked Play app never starts legacy") << static_cast<int>(FakePhoneAdb::LaunchMode::Blocked);
+    }
+    void launchesRegisteredPackage() {
+        QFETCH(int, mode);
+        const auto policy = static_cast<FakePhoneAdb::LaunchMode>(mode);
+        FakePhoneAdb server(false, true, false, policy);
+        const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        QVERIFY(SUCCEEDED(apartment)); QVERIFY(SUCCEEDED(MFStartup(MF_VERSION)));
+        auto teardown = qScopeGuard([&] { MFShutdown(); CoUninitialize(); });
+        okuflow::PhoneCameraTransport transport;
+        okuflow::CameraDescriptor phone; phone.phoneSerial = "abc"; phone.phoneTransportId = 9;
+        std::atomic<bool> canceled{false};
+        auto result = std::async(std::launch::async, [&] { return transport.Start(phone, nullptr, {}, {}, &canceled); });
+        auto cancelOnExit = qScopeGuard([&] { canceled.store(true); });
+        if (policy != FakePhoneAdb::LaunchMode::Blocked) QTRY_VERIFY_WITH_TIMEOUT(server.hello.load(), 3000);
+        else QVERIFY(result.wait_for(std::chrono::seconds(3)) == std::future_status::ready);
+        canceled.store(true);
+        QVERIFY(result.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
+        QVERIFY(!result.get()); transport.Stop();
+        const auto commands = server.Launches();
+        QCOMPARE(commands.size(), policy == FakePhoneAdb::LaunchMode::Legacy ? 2 : 1);
+        QCOMPARE(commands.front(), QString("shell:am start -n com.okuflow/com.okuflow.camera.MainActivity"));
+        if (commands.size() == 2) QCOMPARE(commands.back(), QString("shell:am start -n com.okuflow.camera/.MainActivity"));
+    }
     void localAdbOverridesAreRespected() {
         auto endpoint = okuflow::ParseAdbServerEndpoint("", "", "");
         QVERIFY(endpoint.supported); QVERIFY(!endpoint.overridden); QCOMPARE(endpoint.port, quint16{5037});

@@ -20,6 +20,7 @@ else()
 endif()
 
 file(GLOB_RECURSE OKUFLOW_CPP_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/*.cpp)
+list(FILTER OKUFLOW_CPP_SOURCES EXCLUDE REGEX "/src/launcher/")
 if (OKUFLOW_ENABLE_CUDA)
     file(GLOB_RECURSE OKUFLOW_CUDA_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/*.cu)
 endif()
@@ -45,8 +46,8 @@ target_sources(oku_flow PRIVATE
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/pipeline_orchestrator.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/protected_secret_store.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/recording_manager.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/app/recording_session_info.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/settings_controller.hpp
-    ${PROJECT_SOURCE_DIR}/include/okuflow/app/transcription_session_controller.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/settings_store.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/suspend_guard.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/ui_state_manager.hpp
@@ -64,10 +65,6 @@ target_sources(oku_flow PRIVATE
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/assistive_runtime.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
-    ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_realtime_transcription_client.hpp
-    ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_native_rtc_carrier.hpp
-    ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_transcription_interfaces.hpp
-    ${PROJECT_SOURCE_DIR}/include/okuflow/common/transcript.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/d3d12/presenter.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/main_window.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistive_overlay.hpp
@@ -104,16 +101,21 @@ target_compile_definitions(oku_flow PRIVATE
 )
 
 if (WIN32)
+    include(WindowsRuntime.cmake)
+    target_include_directories(oku_flow PRIVATE ${OKUFLOW_RUNTIME_GENERATED_DIR})
+    add_executable(okuflow_launcher WIN32
+        ${PROJECT_SOURCE_DIR}/src/launcher/main.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/windows_runtime_contract.cpp
+        ${PROJECT_SOURCE_DIR}/assets/okuflow.rc)
+    target_include_directories(okuflow_launcher PRIVATE ${PROJECT_SOURCE_DIR}/include ${OKUFLOW_RUNTIME_GENERATED_DIR})
+    target_compile_definitions(okuflow_launcher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    set_property(TARGET okuflow_launcher PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_options(okuflow_launcher PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+    target_link_libraries(okuflow_launcher PRIVATE advapi32 version bcrypt shell32 comctl32)
     target_sources(oku_flow PRIVATE
         ${PROJECT_SOURCE_DIR}/assets/okuflow.rc
         ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
     )
-
-    # Live transcription is a shipping capability, not an optional build
-    # variant. Keeping one Windows dependency graph avoids an untested moc/
-    # linker split and ensures every release receives the same hardening.
-    include(NativeRtc.cmake)
-    target_link_libraries(oku_flow PRIVATE OkuFlow::NativeRtc)
 
     find_package(Qt6 QUIET COMPONENTS Widgets Network LinguistTools)
     if (NOT Qt6_FOUND)
@@ -155,6 +157,8 @@ if (WIN32)
         windowscodecs
         comctl32
         advapi32
+        version
+        bcrypt
     )
 
     target_compile_definitions(oku_flow PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)

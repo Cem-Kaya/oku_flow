@@ -195,14 +195,11 @@ bool OkuFlowApp::Initialize()
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::NotesWriteFinished,
             this, [this](const QString& path, const QString& error) {
                 if (!error.isEmpty()) {
-                    transcriptionNoteWriteFailed_ = true;
-                    transcriptionNotesCompletionPending_ = false;
                     openNotesWhenStored_ = false;
                     qWarning() << "Lecture notes storage failed:" << path << error;
                     ShowStatusMessage(QStringLiteral("Lecture notes could not be saved."), 9000);
                     return;
                 }
-                MaybeReportTranscriptNotesSaved();
                 if (openNotesWhenStored_ && !assistiveManager_->Runtime().HasPendingNotesWrites()) {
                     openNotesWhenStored_ = false;
                     OpenNotesFile();
@@ -257,17 +254,12 @@ bool OkuFlowApp::Initialize()
             }
         },
         *userDataPaths_,
-        [this](const RecordingSessionInfo& endedSession) {
+        [this](const RecordingSessionInfo&) {
             // Session-ended callbacks are queued from the recording worker
             // after the terminal state is published. If a new recording has
             // already started by the time this lands, releasing the
             // microphone now would silently strip audio from that new
             // session.
-            if (transcriptionController_) {
-                // Idempotent: recorder failure, watchdog, and normal stop all
-                // funnel here; only the matching transcript session ends.
-                transcriptionController_->FinishForSession(endedSession.id);
-            }
             if (recordingManager_ && recordingManager_->IsActive()) {
                 return;
             }
@@ -412,12 +404,6 @@ bool OkuFlowApp::Initialize()
                 if (checked) {
                     StartSelectedMicrophone();
                 } else {
-                    // Transcript input ends first, then PCM production. The
-                    // transcript finalizer is bounded and asynchronous; it
-                    // never delays microphone release or recorder stop.
-                    if (transcriptionController_) {
-                        transcriptionController_->FinishInput();
-                    }
                     // Stop producing PCM first. RecordingManager::Stop
                     // deliberately clears its queued audio rather than
                     // draining a tail — finishing the sample the worker
@@ -433,11 +419,6 @@ bool OkuFlowApp::Initialize()
                     // Do not retain exclusive access to the device when no
                     // recording session exists.
                     StopMicrophoneCapture();
-                    if (transcriptionController_) {
-                        transcriptionController_->Cancel();
-                    }
-                } else if (checked) {
-                    StartTranscriptionForActiveRecording();
                 }
             }
         });
@@ -503,30 +484,6 @@ bool OkuFlowApp::Initialize()
                 UpdateSectionChangedCounts();
                 SavePersistentSettings();
             });
-    if (uiState_->transcribeMicrophoneCheckbox_) {
-        connect(uiState_->transcribeMicrophoneCheckbox_, &QCheckBox::toggled,
-                this, [this](bool checked) {
-                    settingsController_->MutableSettings()
-                        .liveTranscriptionEnabled = checked;
-                    if (!checked && transcriptionController_) {
-                        // Ending the opt-in mid-session ends the transcript
-                        // immediately; recording continues untouched.
-                        transcriptionController_->Cancel();
-                        transcriptionController_->SetEnabled(false);
-                    } else if (checked && recordingManager_ && recordingManager_->IsActive()) {
-                        StartTranscriptionForActiveRecording();
-                    }
-                    SavePersistentSettings();
-                });
-    }
-    if (uiState_->transcriptToNotesCheckbox_) {
-        connect(uiState_->transcriptToNotesCheckbox_, &QCheckBox::toggled,
-                this, [this](bool checked) {
-                    settingsController_->MutableSettings()
-                        .appendTranscriptToNotes = checked;
-                    SavePersistentSettings();
-                });
-    }
     if (uiState_->zoomCenterXSlider_) {
         connect(uiState_->zoomCenterXSlider_, &QSlider::valueChanged,
                 this, &OkuFlowApp::OnZoomCenterXChanged);
@@ -1192,219 +1149,6 @@ bool OkuFlowApp::Initialize()
     return true;
 }
 
-void OkuFlowApp::EnsureTranscriptionStack()
-{
-    if (transcriptionController_ || !userDataPaths_) {
-        return;
-    }
-    realtimeTranscriptionClient_ =
-        std::make_unique<CodexRealtimeTranscriptionClient>();
-    // Carrier D: the native WebRTC stack has no browser runtime, profile
-    // directory, or staged assets — it is always constructible.
-    realtimeNativeRtcCarrier_ = std::make_unique<RealtimeNativeRtcCarrier>();
-    transcriptionController_ = std::make_unique<TranscriptionSessionController>(
-        realtimeTranscriptionClient_.get(), realtimeNativeRtcCarrier_.get());
-
-    connect(transcriptionController_.get(),
-            &TranscriptionSessionController::SegmentFinalized,
-            this, [this](const TranscriptSegment& segment) {
-                if (settingsController_ &&
-                    settingsController_->Settings().appendTranscriptToNotes &&
-                    assistiveManager_) {
-                    if (!assistiveManager_->Runtime().NoteTranscriptSegment(segment)) {
-                        transcriptionNoteWriteFailed_ = true;
-                        ShowStatusMessage(
-                            QCoreApplication::translate(
-                                "OkuFlow",
-                                "Transcript could not be saved to lecture notes."),
-                            9000);
-                    }
-                }
-                if (uiState_ && uiState_->transcriptFinalsView_) {
-                    uiState_->transcriptFinalsView_->appendPlainText(segment.text);
-                }
-                if (mainWindow_) {
-                    mainWindow_->AppendSimpleTranscriptFinal(segment.text);
-                }
-            });
-    connect(transcriptionController_.get(),
-            &TranscriptionSessionController::PartialChanged,
-            this, [this](const QString&, quint64, const QString& text) {
-                // Silent, coalesced presentation only — no UIA event per
-                // delta.
-                if (uiState_ && uiState_->transcriptPartialLabel_) {
-                    uiState_->transcriptPartialLabel_->setText(text);
-                }
-                if (mainWindow_) {
-                    mainWindow_->SetSimpleTranscriptPartial(text);
-                }
-            });
-    connect(transcriptionController_.get(),
-            &TranscriptionSessionController::QuotaChanged,
-            this, [this](int remainingPercent, bool known) {
-                if (!uiState_ || !uiState_->transcriptionQuotaLabel_) {
-                    return;
-                }
-                QString text =
-                    known ? QCoreApplication::translate(
-                                "OkuFlow",
-                                "Codex usage: %1% remaining in the current "
-                                "general window.")
-                                .arg(remainingPercent)
-                          : QCoreApplication::translate(
-                                "OkuFlow", "Codex usage is unavailable.");
-                text += QLatin1Char(' ');
-                text += QCoreApplication::translate(
-                    "OkuFlow",
-                    "Voice-specific remaining time is not exposed by this "
-                    "Codex app-server.");
-                uiState_->transcriptionQuotaLabel_->setText(text);
-                uiState_->transcriptionQuotaLabel_->setVisible(true);
-            });
-    connect(transcriptionController_.get(),
-            &TranscriptionSessionController::GapDetected,
-            this, [this](const QString& sessionId, qint64, qint64) {
-                if (settingsController_ &&
-                    settingsController_->Settings().appendTranscriptToNotes &&
-                    assistiveManager_) {
-                    if (!assistiveManager_->Runtime().NoteTranscriptGap(sessionId)) {
-                        transcriptionNoteWriteFailed_ = true;
-                        ShowStatusMessage(
-                            QCoreApplication::translate(
-                                "OkuFlow",
-                                "Transcript could not be saved to lecture notes."),
-                            9000);
-                    }
-                }
-                ShowStatusMessage(
-                    QCoreApplication::translate(
-                        "OkuFlow",
-                        "Transcript has a gap; recording is unaffected."),
-                    9000);
-            });
-    connect(transcriptionController_.get(),
-            &TranscriptionSessionController::StateChanged,
-            this, &OkuFlowApp::OnTranscriptionStateChanged);
-}
-
-void OkuFlowApp::StartTranscriptionForActiveRecording()
-{
-    if (!settingsController_ ||
-        !settingsController_->Settings().liveTranscriptionEnabled) {
-        return;
-    }
-    EnsureTranscriptionStack();
-    if (!transcriptionController_) {
-        return;
-    }
-    transcriptionController_->SetCodexExecutable(
-        settingsController_->Settings().assistive.codexExecutablePath);
-    transcriptionController_->SetEnabled(true);
-    if (!audioCapture_.IsRunning()) {
-        ShowStatusMessage(
-            QCoreApplication::translate(
-                "OkuFlow", "Select a recording microphone to transcribe."),
-            9000);
-        return;
-    }
-    const auto session =
-        recordingManager_ ? recordingManager_->CurrentSessionInfo()
-                          : std::nullopt;
-    if (!session.has_value()) {
-        return;
-    }
-    transcriptionNoteWriteFailed_ = false;
-    transcriptionNotesCompletionPending_ = false;
-    if (uiState_ && uiState_->transcriptFinalsView_) {
-        uiState_->transcriptFinalsView_->clear();
-    }
-    if (mainWindow_) {
-        mainWindow_->SetSimpleTranscriptActive(false);
-    }
-    transcriptionController_->StartSession(
-        *session,
-        languageManager_ ? languageManager_->languageCode()
-                         : QStringLiteral("en"));
-}
-
-void OkuFlowApp::OnTranscriptionStateChanged(TranscriptionState state,
-                                              const QString& status)
-{
-    // Fixed sentences translate via the catalog; a dynamic runtime reason
-    // passes through unchanged rather than being assembled from fragments.
-    const QString translatedStatus =
-        status.isEmpty() ? QString() : TranslateUi(status);
-    if (uiState_ && uiState_->transcriptionStatusLabel_) {
-        uiState_->transcriptionStatusLabel_->setText(translatedStatus);
-        uiState_->transcriptionStatusLabel_->setVisible(!status.isEmpty());
-    }
-    if (mainWindow_) {
-        const bool overlayActive = state == TranscriptionState::Starting ||
-                                   state == TranscriptionState::Listening ||
-                                   state == TranscriptionState::Finalizing;
-        mainWindow_->SetSimpleTranscriptActive(overlayActive);
-    }
-    if (uiState_ && uiState_->transcriptPartialLabel_ &&
-        (state == TranscriptionState::Starting ||
-         state == TranscriptionState::Completed ||
-         state == TranscriptionState::Failed)) {
-        uiState_->transcriptPartialLabel_->clear();
-    }
-    switch (state) {
-    case TranscriptionState::Failed: {
-        const QString reason =
-            translatedStatus.isEmpty()
-                ? QCoreApplication::translate("OkuFlow",
-                                              "Live transcription failed.")
-                : translatedStatus;
-        // The wording always reaffirms that recording is unaffected.
-        ShowStatusMessage(
-            QCoreApplication::translate(
-                "OkuFlow", "Transcription unavailable: %1 Recording continues.")
-                .arg(reason),
-            12000);
-        break;
-    }
-    case TranscriptionState::Unavailable:
-        if (!translatedStatus.isEmpty()) {
-            ShowStatusMessage(translatedStatus, 9000);
-        }
-        break;
-    case TranscriptionState::Starting:
-        if (!translatedStatus.isEmpty()) {
-            ShowStatusMessage(translatedStatus, 4000);
-        }
-        break;
-    case TranscriptionState::Listening:
-    case TranscriptionState::Finalizing:
-        if (!translatedStatus.isEmpty()) {
-            ShowStatusMessage(translatedStatus, 4000);
-        }
-        break;
-    case TranscriptionState::Completed:
-        transcriptionNotesCompletionPending_ = true;
-        MaybeReportTranscriptNotesSaved();
-        break;
-    case TranscriptionState::Off:
-    case TranscriptionState::Ready:
-        break;
-    }
-}
-
-void OkuFlowApp::MaybeReportTranscriptNotesSaved()
-{
-    if (!transcriptionNotesCompletionPending_ || !settingsController_ ||
-        !settingsController_->Settings().appendTranscriptToNotes ||
-        !assistiveManager_ || transcriptionNoteWriteFailed_ ||
-        assistiveManager_->Runtime().HasPendingNotesWrites() ||
-        assistiveManager_->Runtime().notesFilePath().isEmpty()) {
-        return;
-    }
-    transcriptionNotesCompletionPending_ = false;
-    ShowStatusMessage(QCoreApplication::translate(
-        "OkuFlow", "Transcript saved to lecture notes."), 7000);
-}
-
 OkuFlowApp::~OkuFlowApp() {
     phoneDiscoveryCanceled_.store(true);
     if (phoneDiscovery_.valid()) phoneDiscovery_.wait();
@@ -1414,12 +1158,6 @@ OkuFlowApp::~OkuFlowApp() {
     }
     if (settingsController_ && uiState_ && assistiveManager_) {
         SavePersistentSettings();
-    }
-    // End the transcript before microphone/recorder teardown: revokes audio
-    // acceptance, stops the WebRTC carrier, and bounded-stops the dedicated
-    // Codex child. Never waits on finalization.
-    if (transcriptionController_) {
-        transcriptionController_->Cancel();
     }
     StopMicrophoneCapture();
     if (microphoneCallbackTarget_) {

@@ -2428,180 +2428,8 @@ Kaldırma Windows tarafından yönetilir.</translation>
         <translation>Kaydedilmiş OkuFlow klasörü kullanılamıyor (%1). Yeni bir klasör seçilene kadar dosyalar varsayılan Belgeler klasörüne gidecek.</translation>
     </message>
     <message>
-        <source>Preparing live transcription...</source>
-        <translation>Canlı yazıya dökme hazırlanıyor...</translation>
-    </message>
-    <message>
-        <source>Listening and transcribing...</source>
-        <translation>Dinleniyor ve yazıya dökülüyor...</translation>
-    </message>
-    <message>
-        <source>Finishing transcript...</source>
-        <translation>Transkript tamamlanıyor...</translation>
-    </message>
-    <message>
-        <source>Transcription finished.</source>
-        <translation>Yazıya dökme tamamlandı.</translation>
-    </message>
-    <message>
-        <source>Codex did not become ready in time.</source>
-        <translation>Codex zamanında hazır olmadı.</translation>
-    </message>
-    <message>
-        <source>Live transcription did not start in time.</source>
-        <translation>Canlı yazıya dökme zamanında başlamadı.</translation>
-    </message>
-    <message>
-        <source>This Codex version does not support live transcription.</source>
-        <translation>Bu Codex sürümü canlı yazıya dökmeyi desteklemiyor.</translation>
-    </message>
-    <message>
-        <source>Live transcription requires Codex signed in with ChatGPT.</source>
-        <translation>Canlı yazıya dökme için Codex'te ChatGPT ile oturum açılmış olmalıdır.</translation>
-    </message>
-    <message>
-        <source>Codex could not start a transcription session.</source>
-        <translation>Codex bir yazıya dökme oturumu başlatamadı.</translation>
-    </message>
-    <message>
-        <source>Codex CLI not found.</source>
-        <translation>Codex komut satırı aracı bulunamadı.</translation>
-    </message>
-    <message>
-        <source>Codex protocol failure.</source>
-        <translation>Codex iletişim kuralı hatası.</translation>
-    </message>
-    <message>
-        <source>Codex stopped unexpectedly.</source>
-        <translation>Codex beklenmedik şekilde durdu.</translation>
-    </message>
-    <message>
-        <source>Live transcription failed.</source>
-        <translation>Canlı yazıya dökme başarısız oldu.</translation>
-    </message>
-    <message>
-        <source>Live transcription connection closed.</source>
-        <translation>Canlı yazıya dökme bağlantısı kapandı.</translation>
-    </message>
-    <message>
-        <source>The WebRTC offer was rejected.</source>
-        <translation>WebRTC teklifi reddedildi.</translation>
-    </message>
-    <message>
-        <source>WebRTC negotiation timed out.</source>
-        <translation>WebRTC anlaşması zaman aşımına uğradı.</translation>
-    </message>
-    <message>
-        <source>WebRTC component unavailable.</source>
-        <translation>WebRTC bileşeni kullanılamıyor.</translation>
-    </message>
-    <message>
-        <source>WebRTC component stopped.</source>
-        <translation>WebRTC bileşeni durdu.</translation>
-    </message>
-    <message>
-        <source>WebRTC negotiation failed.</source>
-        <translation>WebRTC anlaşması başarısız oldu.</translation>
-    </message>
-    <message>
-        <source>Transcript has a gap; recording is unaffected.</source>
-        <translation>Transkriptte boşluk var; kayıt bundan etkilenmez.</translation>
-    </message>
-    <message>
-        <source>Select a recording microphone to transcribe.</source>
-        <translation>Yazıya dökmek için bir kayıt mikrofonu seçin.</translation>
-    </message>
-    <message>
-        <source>Transcription unavailable: %1 Recording continues.</source>
-        <translation>Yazıya dökme kullanılamıyor: %1 Kayıt devam ediyor.</translation>
-    </message>
-    <message>
-        <source>Transcript saved to lecture notes.</source>
-        <translation>Transkript ders notlarına kaydedildi.</translation>
-    </message>
-    <message>
-        <source>Transcript could not be saved to lecture notes.</source>
-        <translation>Transkript ders notlarına kaydedilemedi.</translation>
-    </message>
-    <message>
-        <source>Reconnecting live transcription...</source>
-        <translation>Canlı transkripsiyona yeniden bağlanılıyor...</translation>
-    </message>
-    <message>
-        <source>Codex usage: %1% remaining in the current general window.</source>
-        <translation>Codex kullanımı: geçerli genel pencerede %%1 kaldı.</translation>
-    </message>
-    <message>
-        <source>Codex usage is unavailable.</source>
-        <translation>Codex kullanım bilgisi alınamıyor.</translation>
-    </message>
-    <message>
-        <source>Voice-specific remaining time is not exposed by this Codex app-server.</source>
-        <translation>Bu Codex uygulama sunucusu, sese özgü kalan süreyi bildirmiyor.</translation>
-    </message>
-    <message>
         <source>Lecture transcript</source>
         <translation>Ders transkripti</translation>
-    </message>
-    <message>
-        <source>(truncated)</source>
-        <translation>(kısaltıldı)</translation>
-    </message>
-    <message>
-        <source>about %1 into recording</source>
-        <translation>kaydın yaklaşık %1 anında</translation>
-    </message>
-    <message>
-        <source>Transcribe microphone while recording</source>
-        <translation>Kayıt sırasında mikrofonu yazıya dök</translation>
-    </message>
-    <message>
-        <source>Add finalized transcript to lecture notes</source>
-        <translation>Tamamlanan transkripti ders notlarına ekle</translation>
-    </message>
-    <message>
-        <source>Sends microphone audio to Codex Voice for live transcription, only while recording. Requires Codex signed in with ChatGPT.</source>
-        <translation>Mikrofon sesini yalnızca kayıt sırasında canlı yazıya dökme için Codex Voice'a gönderir. Codex'te ChatGPT ile oturum açılmış olmalıdır.</translation>
-    </message>
-    <message>
-        <source>Appends each finalized phrase to the HTML lecture notes. Effective only while lecture notes are enabled.</source>
-        <translation>Tamamlanan her ifadeyi HTML ders notlarına ekler. Yalnızca ders notları etkinken geçerlidir.</translation>
-    </message>
-    <message>
-        <source>Current phrase</source>
-        <translation>Geçerli ifade</translation>
-    </message>
-    <message>
-        <source>Finalized transcript</source>
-        <translation>Tamamlanan transkript</translation>
-    </message>
-    <message>
-        <source>Transcript</source>
-        <translation>Transkript</translation>
-    </message>
-    <message>
-        <source>Global recording setting. Sends microphone audio to Codex Voice for live transcription only while recording. Requires Codex signed in with ChatGPT. Recording works without it.</source>
-        <translation>Genel kayıt ayarı. Mikrofon sesini yalnızca kayıt sırasında canlı yazıya dökme için Codex Voice'a gönderir. Codex'te ChatGPT ile oturum açılmış olmalıdır. Kayıt bu olmadan da çalışır.</translation>
-    </message>
-    <message>
-        <source>Reports the live transcription state. Recording is never affected by transcription problems.</source>
-        <translation>Canlı yazıya dökme durumunu bildirir. Kayıt, yazıya dökme sorunlarından asla etkilenmez.</translation>
-    </message>
-    <message>
-        <source>Shows the general Codex quota window. Voice-specific remaining time is not exposed by this Codex app-server.</source>
-        <translation>Genel Codex kota penceresini gösterir. Bu Codex uygulama sunucusu, sese özgü kalan süreyi bildirmiyor.</translation>
-    </message>
-    <message>
-        <source>The phrase being transcribed right now. Partial text is presentation-only until it is finalized.</source>
-        <translation>Şu anda yazıya dökülen ifade. Kısmi metin, tamamlanana kadar yalnızca görüntülemek içindir.</translation>
-    </message>
-    <message>
-        <source>Read-only list of finalized transcript phrases from the current recording. Text is selectable.</source>
-        <translation>Geçerli kayıttan tamamlanan transkript ifadelerinin salt okunur listesi. Metin seçilebilir.</translation>
-    </message>
-    <message>
-        <source>Transcription status</source>
-        <translation>Yazıya dökme durumu</translation>
     </message>
     <message>
         <source>Expand all</source>
@@ -3020,6 +2848,58 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
     <message>
         <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
         <translation>Telefonda OkuFlow Camera uygulamasını açın, USB kablosunu bağlayın ve USB hata ayıklamasına izin verin. OkuFlow bağlantıyı otomatik olarak denetler.</translation>
+    </message>
+    <message>
+        <source>Set up OkuFlow</source>
+        <translation>OkuFlow’u kurun</translation>
+    </message>
+    <message>
+        <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
+        <translation>Windows çalışma zamanı yükleyicisi pakete dahildir. İsteğe bağlı yapay zekâ araçları üreticilerinden indirilir. Her yükleyici çalıştırılmadan önce doğrulanır.</translation>
+    </message>
+    <message>
+        <source>Microsoft Windows runtime</source>
+        <translation>Microsoft Windows çalışma zamanı</translation>
+    </message>
+    <message>
+        <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
+        <translation>OkuFlow tarafından kullanılan Windows kitaplıkları. Kurulum, paketteki Microsoft yükleyicisini kullanır ve yönetici onayı isteyebilir.</translation>
+    </message>
+    <message>
+        <source>Install for Windows</source>
+        <translation>Windows için kur</translation>
+    </message>
+    <message>
+        <source>Install Microsoft Windows runtime</source>
+        <translation>Microsoft Windows çalışma zamanını kur</translation>
+    </message>
+    <message>
+        <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>
+        <translation>Windows çalışma zamanı yükleyicisi için tam OkuFlow ZIP paketini kullanın.</translation>
+    </message>
+    <message>
+        <source>The included Microsoft installer could not be verified. Download the complete OkuFlow ZIP again.</source>
+        <translation>Paketteki Microsoft yükleyicisi doğrulanamadı. Tam OkuFlow ZIP paketini yeniden indirin.</translation>
+    </message>
+    <message>
+        <source>Windows could not start the elevated installer (error %1).</source>
+        <translation>Windows yönetici yetkili yükleyiciyi başlatamadı (hata %1).</translation>
+    </message>
+    <message>
+        <source>Microsoft installer running. Continue in the installer window.</source>
+        <translation>Microsoft yükleyicisi çalışıyor. Yükleyici penceresinde devam edin.</translation>
+    </message>
+    <message>
+        <source>Windows installer exit code: %1</source>
+        <translation>Windows yükleyicisi çıkış kodu: %1</translation>
+    </message>
+    <message>
+        <source>Installation completed. Restart Windows when convenient.</source>
+        <translation>Kurulum tamamlandı. Uygun olduğunda Windows’u yeniden başlatın.</translation>
+    </message>
+    <message>
+        <source>Installation cancelled. You can try again later.</source>
+        <translation>Kurulum iptal edildi. Daha sonra yeniden deneyebilirsiniz.</translation>
     </message>
 </context>
 </TS>

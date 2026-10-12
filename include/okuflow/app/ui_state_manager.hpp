@@ -58,12 +58,6 @@ public:
     QLabel* cameraAccelerationStatusLabel_{};
     QPushButton* testCameraAccelerationButton_{};
     QComboBox* recordingCanvasCombo_{};
-    QCheckBox* transcribeMicrophoneCheckbox_{};
-    QCheckBox* transcriptToNotesCheckbox_{};
-    QLabel* transcriptionStatusLabel_{};
-    QLabel* transcriptionQuotaLabel_{};
-    QLabel* transcriptPartialLabel_{};
-    QPlainTextEdit* transcriptFinalsView_{};
     QCheckBox* joystickCheckbox_{};
     QCheckBox* zoomWheelAccelerationCheckbox_{};
     QToolButton* collapseButton_{};

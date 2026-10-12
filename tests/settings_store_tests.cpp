@@ -303,8 +303,6 @@ void SettingsStoreTests::defaultsUseLunaLow()
     QCOMPARE(settings.assistive.codexModel, QStringLiteral("gpt-6-luna"));
     QCOMPARE(settings.assistive.codexReasoningEffort, QStringLiteral("low"));
     QCOMPARE(settings.currentConfig.spatialUpscaler, 1);
-    QVERIFY(!settings.liveTranscriptionEnabled);
-    QVERIFY(!settings.appendTranscriptToNotes);
 }
 
 void SettingsStoreTests::modelDefaultsPreserveExplicitSelections()
@@ -407,8 +405,6 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     expected.viewportRateMode = ViewportRateMode::Fps90;
     expected.viewportFitMode = ViewportFitModeSetting::Fit;
     expected.recordingCanvasMode = RecordingCanvasMode::Sd480;
-    expected.liveTranscriptionEnabled = true;
-    expected.appendTranscriptToNotes = false;
     expected.uiSectionStates.insert(QStringLiteral("device"), false);
     expected.uiSectionStates.insert(QStringLiteral("textClarity"), true);
     expected.assistiveOverlayGeometry = QRect(12, 34, 640, 480);
@@ -496,8 +492,6 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QCOMPARE(loaded->viewportRateMode, expected.viewportRateMode);
     QCOMPARE(loaded->viewportFitMode, expected.viewportFitMode);
     QCOMPARE(loaded->recordingCanvasMode, expected.recordingCanvasMode);
-    QCOMPARE(loaded->liveTranscriptionEnabled, expected.liveTranscriptionEnabled);
-    QCOMPARE(loaded->appendTranscriptToNotes, expected.appendTranscriptToNotes);
     QCOMPARE(loaded->uiSectionStates, expected.uiSectionStates);
     QCOMPARE(loaded->assistiveOverlayGeometry, expected.assistiveOverlayGeometry);
     QCOMPARE(loaded->assistiveOverlayDockPosition, expected.assistiveOverlayDockPosition);

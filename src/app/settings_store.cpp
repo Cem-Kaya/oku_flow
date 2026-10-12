@@ -716,14 +716,6 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
                 .toInt(static_cast<int>(settings.recordingCanvasMode)),
             static_cast<int>(RecordingCanvasMode::Source),
             static_cast<int>(RecordingCanvasMode::Nhd360)));
-    // Missing legacy values keep the defaults; non-Boolean JSON types do not
-    // coerce (toBool falls back to the default for non-bool values).
-    settings.liveTranscriptionEnabled =
-        recording.value(QStringLiteral("liveTranscriptionEnabled"))
-            .toBool(settings.liveTranscriptionEnabled);
-    settings.appendTranscriptToNotes =
-        recording.value(QStringLiteral("appendTranscriptToNotes"))
-            .toBool(settings.appendTranscriptToNotes);
     const QJsonObject sectionStates =
         ui.value(QStringLiteral("sectionStates")).toObject();
     for (auto it = sectionStates.begin(); it != sectionStates.end(); ++it) {
@@ -1025,11 +1017,7 @@ QByteArray Serialize(const PersistentSettings& settings)
     root.insert(
         QStringLiteral("recording"),
         QJsonObject{{QStringLiteral("canvasMode"),
-                     static_cast<int>(settings.recordingCanvasMode)},
-                    {QStringLiteral("liveTranscriptionEnabled"),
-                     settings.liveTranscriptionEnabled},
-                    {QStringLiteral("appendTranscriptToNotes"),
-                     settings.appendTranscriptToNotes}});
+                     static_cast<int>(settings.recordingCanvasMode)}});
 
     root.insert(
         QStringLiteral("annotations"),

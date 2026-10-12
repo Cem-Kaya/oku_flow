@@ -5,6 +5,13 @@ OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository:
 OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- New recorded-video lecture notes include a Transcribe button. Open the notes
+  in Chrome and allow access to the OkuFlow folder containing the recording;
+  a second first-use click opens the local-only tool at okuflow.com/transcribe/.
+  Pick the speech model and processor explicitly there. Audio/text are never
+  uploaded by the tool. Returned text is shown under the recording and saved
+  beside it as an `.okuflow-transcript.json` sidecar. Existing notes files are
+  preserved; transcription no longer runs in the Windows app.
 - Camera selection follows the saved physical device rather than its changing
   enumeration index; older settings use their numeric index until an identity
   is saved. Failed opens retry the requested camera. Unsupported live format
@@ -15,8 +22,7 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   or webcam preference. Phone light starts off on every connection and is
   controlled by the explicit phone-light button in the same section.
 - Streamed Assistant answers preserve selected text and a scrolled reading
-  position. Draw rails scroll in short views; Simple live captions show the
-  trailing text that fits above controls while Advanced retains the transcript.
+  position. Draw rails scroll in short views.
   An unavailable speech voice retains its saved choice.
 - Live-switchable English, Turkish, and German UI under
   `Advanced > Settings > Language`. The flag-and-native-name selector changes
@@ -178,10 +184,6 @@ by default; the CPU preset disables it. Set the environment override explicitly
 to `OFF` only for a bundle that intentionally omits the adapter. OkuFlow links
 no Maxine import library and ships no proprietary runtime or model files.
 
-The pinned native WebRTC stack (libdatachannel, Opus, Mbed TLS) is part of the
-single supported Windows build. All of it is statically linked with the same
-`/MT` runtime; live transcription adds no browser runtime or dependency DLL.
-
 ### Release bundle
 
 ```bat
@@ -203,9 +205,10 @@ stage Qt Multimedia's exact FFmpeg LGPL-2.1-or-later text. The script discovers
 the normal sibling `Src` directory automatically; set `QT_SOURCE_ROOT` when the
 matching source tree is installed elsewhere.
 
-The published bundle contains `oku_flow.exe`, Qt runtime files,
+The published bundle contains the native `oku_flow.exe` launcher,
+`OkuFlowApp.exe`, the signed Microsoft `vc_redist.x64.exe` installer, Qt runtime files,
 `LICENSE`, `COMMERCIAL.md`, `README.txt`, `THIRD_PARTY_LICENSES.md`, complete notices for the
-bundled CUDA/reference/native-WebRTC code, Qt and FFmpeg license texts, and the
+bundled CUDA/reference code, Qt and FFmpeg license texts, and the
 exact Qt module SPDX documents that cover every module and plugin deployed
 by `windeployqt`. It also contains `SHA256SUMS.txt`,
 `release-manifest.json`, and `SBOM.spdx.json`, generated from the exact staged
@@ -213,6 +216,11 @@ files before publication. The top-level SPDX document links the staged Qt SPDX
 documents by namespace and SHA-1, distinguishes bundled dependencies from
 optional user-installed runtimes, and records every staged file in the release
 manifest.
+The launcher checks the system-wide Microsoft runtime before loading Qt and
+offers the included installer only when needed. Installation requires the
+user's vendor-license/UAC approval and never forces a restart. Setup Assistant
+shows the same dependency status. Keep the complete extracted ZIP together;
+see [Windows runtime setup](docs/windows_runtime_setup.md).
 Private/team bundles may remain unsigned. To sign with a certificate already
 installed in the current user's Windows certificate store, set
 `OKUFLOW_SIGN_CERT_SHA1` to its thumbprint before running the script. A
@@ -369,37 +377,6 @@ profiling flags for ordinary operation.
   selects which Windows audio capture endpoint is recorded. New settings use
   the Windows system-default microphone; `No microphone (video only)` records
   silent video. OkuFlow opens the microphone only while recording.
-- `Transcribe microphone while recording`, in the **Transcript** tab, is an opt-in
-  that sends microphone audio to Codex Voice for live transcription while a
-  recording is active. It requires the Codex CLI signed in with ChatGPT,
-  shows the current phrase and
-  finalized text in a read-only Transcript tab (plus a Simple-mode overlay),
-  and `Add finalized transcript to lecture notes` appends each finalized
-  phrase to the HTML lecture notes. Both options default off; video recording
-  does not enable them. Explicit saved choices are retained. Enabling transcription
-  during a recording starts it immediately; disabling it stops transcription
-  while recording continues. Transcription problems never stop,
-  delay, or invalidate the recording; the shown quota is the general Codex
-  window, not voice minutes.
-  The five-second value is negotiation pre-roll/backpressure capacity, not an
-  upload interval or recognition context window: live WebRTC receives
-  continuous 20 ms audio frames, encoded as 48 kbit/s Opus. The realtime
-  carrier holds a bounded 500 ms continuity cushion before paced RTP begins
-  (and rebuilds it after a real later underflow); that cushion prevents
-  capture/UI timer bursts from becoming missing speech and is not a recognition
-  or upload chunk size. The realtime
-  session receives OkuFlow's fixed instruction to transcribe the classroom
-  speaker verbatim and treat spoken content as untrusted quoted data, never an
-  action request. No post-session Codex handoff or second transcription pass is
-  used; if the service closes without a final event, the already-streamed final
-  partial is preserved locally. OkuFlow disables configured
-  MCP servers plus Codex's built-in app and plugin providers before this
-  dedicated child starts, fails closed on any MCP lifecycle event, denies
-  unexpected requests, uses no approvals, a read-only sandbox, and an empty
-  temporary working directory. The WebRTC media path is a statically linked, pinned
-  open-source stack (libdatachannel, Opus, Mbed TLS): no browser component,
-  no ICE/STUN third-party servers, and the assistant's return audio is never
-  decoded.
 - In Simple mode, the switch, profile carousel, and
   Photo/Record/Explain/Read/Draw actions occupy three flush view corners.
   Keystone profiles add a separate Previous/Stop/Next correction strip beside
@@ -471,7 +448,7 @@ profiling flags for ordinary operation.
   turned off.
 - The bottom-left quick-mode carousel and its full preset grid remain available
   in Advanced mode, so presets can be changed without returning to Simple.
-- Advanced has separate `Image`, `Assistant`, `Transcript`, and `Settings`
+- Advanced has separate `Image`, `Assistant`, and `Settings`
   tabs; `Ctrl+Tab` cycles them. Image contains the current mode's adjustments,
   while Settings contains shared camera, recording, navigation, language,
   files, and AI setup. Detailed text algorithms sit under `Fine-tune text`.

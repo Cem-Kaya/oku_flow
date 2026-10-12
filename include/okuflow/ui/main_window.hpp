@@ -53,8 +53,6 @@ class ColorSchemePicker;
 class CollapsibleSection;
 namespace settings { struct AdvancedConfig; }
 
-
-
 class MainWindow : public QMainWindow, public QAbstractNativeEventFilter {
     Q_OBJECT
 public:
@@ -112,20 +110,6 @@ public:
     QPushButton* testCameraAccelerationButton() const;
     QComboBox* recordingCanvasCombo() const;
     QComboBox* applicationLanguageCombo() const;
-    QCheckBox* transcribeMicrophoneCheckbox() const;
-    QCheckBox* transcriptToNotesCheckbox() const;
-    QLabel* transcriptionStatusLabel() const;
-    QLabel* transcriptionQuotaLabel() const;
-    QLabel* transcriptPartialLabel() const;
-    QPlainTextEdit* transcriptFinalsView() const;
-
-    // Simple-mode live transcript overlay: non-activating and
-    // mouse-transparent, shown above the bottom action panel only while a
-    // transcription session is active. Text updates are silent (no
-    // accessibility announcements per delta).
-    void SetSimpleTranscriptActive(bool active);
-    void SetSimpleTranscriptPartial(const QString& text);
-    void AppendSimpleTranscriptFinal(const QString& text);
 
     // Two-speed UI: Simple overlays compact corner controls on the full render
     // surface; Advanced adds a right-side inspector.
@@ -359,20 +343,6 @@ private:
     QLabel* cameraAccelerationStatusLabel_{};
     QPushButton* testCameraAccelerationButton_{};
     QComboBox* recordingCanvasCombo_{};
-    QCheckBox* transcribeMicrophoneCheckbox_{};
-    QCheckBox* transcriptToNotesCheckbox_{};
-    QLabel* transcriptionStatusLabel_{};
-    QLabel* transcriptionQuotaLabel_{};
-    QLabel* transcriptPartialLabel_{};
-    QPlainTextEdit* transcriptFinalsView_{};
-    QWidget* simpleTranscriptPanel_{};
-    QLabel* simpleTranscriptLabel_{};
-    QString simpleTranscriptPartial_;
-    QStringList simpleTranscriptFinals_;
-    bool simpleTranscriptActive_{false};
-    void RefreshSimpleTranscriptText();
-    void UpdateSimpleTranscriptGeometry();
-    bool simpleTranscriptGeometryPending_{};
     QComboBox* applicationLanguageCombo_{};
     CollapsibleSection* applicationSection_{};
     CollapsibleSection* deviceSection_{};

@@ -2,6 +2,19 @@
 
 Website: <https://okuflow.com>
 
+Recorded-video notes now hand off speech processing to the static Chrome tool
+at `okuflow.com/transcribe/`. The Windows app only records and generates the
+local notes viewer. The browser uses folder grants, a File/MessageChannel
+handoff and versioned sidecars; it never edits the app-owned HTML or uploads
+the recording. See the sibling website's `docs/browser-transcription.md` for
+model profiles, caching, security headers and browser validation.
+
+The 2026-10-12 removal/handoff implementation passed the tracked Windows matrix:
+shipping release compilation, 31 CPU tests and 36 CUDA tests, with GUI fixtures
+included and run serially. The website's Chrome fixture separately passed local
+recording recognition and notes-sidecar save/restore. Native Chrome folder-grant
+UI/persistence and long-recording acceptance remain separate manual checks.
+
 OkuFlow is a Windows-only live magnification application that combines:
 - Qt 6 for the desktop shell and input handling
 - Media Foundation for camera and microphone discovery, frame capture, and
@@ -84,8 +97,7 @@ The current frame flow is:
 Lecture-notes document/image storage uses one bounded ordered background
 queue. Queued jobs retain their paths and immutable data through settings
 changes; cancellation releases unsubmitted images. The UI reports failures
-and waits for actual storage completion before opening notes or announcing
-that transcription was saved.
+and waits for actual storage completion before opening notes.
 
 `scripts/profile_startup.ps1` profiles first-camera presentation, Qt heartbeat
 delays, actual camera arrival FPS, application drops, and processing/presentation
@@ -140,8 +152,7 @@ Assistant preparation cancellation retires its notes payload and emits one
 terminal event; late workers remove only their own temporary file. History
 loads have a separate generation canceled by newer loads/turns. Credential
 deletions persist opaque pending ids before removal and retain them on failure.
-Streamed answers preserve selection/scroll; short Draw rails scroll, Simple
-captions fit a bounded trailing view, and Stop still accepts transcription deltas.
+Streamed answers preserve selection/scroll; short Draw rails scroll.
 
 See [audit 45](../improvement_ideas/45-codebase-audit-2026-10-11.md) for actual
 validation results and native/hardware checks still pending. Source work
@@ -156,7 +167,7 @@ completed Opus capture, UI, and resumed GPU reports with root validation.
 Follow-ups retain camera preference during fallback, disable driver enhancement
 in conversion, catch up saturated capture bursts, and add paired video admission
 with explicit loss accounting. Diagnostics publish without starvation; recovery
-retains transcript tails; history errors retire placeholders; photo recovery
+history errors retire placeholders; photo recovery
 ignores completed pairs. GPU soft-mask/opaque-scene contracts and in-place text
 composition address quality and redundant traffic. Measured speed and vendor
 fidelity remain unverified; native desktop checks remain deferred by the owner.
@@ -238,7 +249,7 @@ The UI now has two states:
   contextual keystone history controls, a numbered quick-mode grid, and large
   visual/accessibility mode announcements
 - Advanced: the same live view beside an inspector with `Image`, `Assistant`,
-  `Transcript`, and `Settings` tabs. Image contains mode-owned tuning and
+  and `Settings` tabs. Image contains mode-owned tuning and
   diagnostics; Settings contains shared camera, recording, navigation, files,
   language, and AI setup. Assistant provides subscription status, camera-aware
   chat, and OkuFlow-owned history.
@@ -562,3 +573,10 @@ mapped in [code_reference.md](code_reference.md) and
 rebuild/source package and licensing terms are documented in
 [adb_distribution.md](adb_distribution.md) and
 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+## Windows first-use runtime
+
+The release uses a native /MT `oku_flow.exe` preflight launcher and a deployed
+`OkuFlowApp.exe` Qt application. Missing Microsoft runtime installation uses
+the included signed installer with explicit vendor/UAC approval; Setup
+Assistant displays its status too. See [Windows runtime setup](windows_runtime_setup.md).

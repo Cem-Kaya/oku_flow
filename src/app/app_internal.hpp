@@ -13,10 +13,7 @@
 #include "okuflow/ui/ai_settings_dialog.hpp"
 #include "okuflow/ui/color_scheme_picker.hpp"
 #include "okuflow/app/setup_assistant.hpp"
-#include "okuflow/app/transcription_session_controller.hpp"
-#include "okuflow/common/codex_realtime_transcription_client.hpp"
 #include "okuflow/common/maxine_superres.hpp"
-#include "okuflow/common/realtime_native_rtc_carrier.hpp"
 #include <QAbstractButton>
 #include <QAccessible>
 #include <QAccessibleAnnouncementEvent>

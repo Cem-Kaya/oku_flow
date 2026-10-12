@@ -1,6 +1,6 @@
 // Regression tests for the appended lecture-notes HTML (plan 36 redesign):
 // head written once with theme toggle and viewer script, every entry a
-// self-contained appended block, transcript as escaped line-by-line feed,
+// self-contained appended block, escaped text sections,
 // collapsible note sections, duplicate-final dedupe. No network, no media
 // files needed. Set OKUFLOW_NOTES_TEST_DIR to keep the generated file for
 // visual inspection.
@@ -14,7 +14,6 @@
 
 #include "okuflow/common/assistive_runtime.hpp"
 #include "okuflow/common/codex_app_server_client.hpp"
-#include "okuflow/common/transcript.hpp"
 
 using namespace okuflow;
 
@@ -33,19 +32,6 @@ class NotesHtmlTests : public QObject {
         return config;
     }
 
-    static TranscriptSegment MakeSegment(quint64 sequence, const QString& text,
-                                         qint64 offsetSeconds)
-    {
-        TranscriptSegment segment;
-        segment.recordingSessionId = QStringLiteral("11112222-3333-4444");
-        segment.sequence = sequence;
-        segment.languageCode = QStringLiteral("en");
-        segment.text = text;
-        segment.observedCaptureClock100ns = offsetSeconds * 10000000LL;
-        segment.approximateOffset100ns = offsetSeconds * 10000000LL;
-        return segment;
-    }
-
     static QString ReadAll(const QString& path)
     {
         QFile file(path);
@@ -53,15 +39,6 @@ class NotesHtmlTests : public QObject {
             return {};
         }
         return QString::fromUtf8(file.readAll());
-    }
-
-    static bool content_hasBothSessions(const QString& path)
-    {
-        const QString content = ReadAll(path);
-        return content.contains(
-                   QStringLiteral("data-recording-session=\"11112222-3333-4444\"")) &&
-               content.contains(
-                   QStringLiteral("data-recording-session=\"99998888-7777-6666\""));
     }
 
 private slots:
@@ -333,14 +310,14 @@ private slots:
         config.notesDirectory += QStringLiteral("/ordered-first");
         runtime.SetConfig(config);
         QSignalSpy writes(&runtime, &AssistiveRuntime::NotesWriteFinished);
-        QVERIFY(runtime.NoteTranscriptSegment(MakeSegment(1, QStringLiteral("first entry"), 1)));
+        QVERIFY(runtime.AppendNoteSection(QStringLiteral("Note"), QStringLiteral("first entry")));
         QVERIFY(runtime.HasPendingNotesWrites());
         const QString firstPath = runtime.notesFilePath();
         QVERIFY(!QFile::exists(firstPath));
-        QVERIFY(runtime.NoteTranscriptSegment(MakeSegment(2, QStringLiteral("second entry"), 2)));
+        QVERIFY(runtime.AppendNoteSection(QStringLiteral("Note"), QStringLiteral("second entry")));
         config.notesDirectory += QStringLiteral("/next");
         runtime.SetConfig(config);
-        QVERIFY(runtime.NoteTranscriptSegment(MakeSegment(1, QStringLiteral("new target"), 1)));
+        QVERIFY(runtime.AppendNoteSection(QStringLiteral("Note"), QStringLiteral("new target")));
         const QString nextPath = runtime.notesFilePath();
         QVERIFY(firstPath != nextPath);
         QCOMPARE(writes.size(), 0);
@@ -368,13 +345,12 @@ private slots:
         config.notesDirectory = blocker;
         runtime.SetConfig(config);
         QSignalSpy writes(&runtime, &AssistiveRuntime::NotesWriteFinished);
-        const auto segment = MakeSegment(1, QStringLiteral("retry this final"), 1);
-        QVERIFY(runtime.NoteTranscriptSegment(segment));
+        QVERIFY(runtime.AppendNoteSection(QStringLiteral("Note"), QStringLiteral("retry this final")));
         QTRY_COMPARE(writes.size(), 2);
         for (const auto& write : writes) QVERIFY(!write.at(1).toString().isEmpty());
         QVERIFY(QFile::remove(blocker));
         writes.clear();
-        QVERIFY(runtime.NoteTranscriptSegment(segment));
+        QVERIFY(runtime.AppendNoteSection(QStringLiteral("Note"), QStringLiteral("retry this final")));
         const QString path = runtime.notesFilePath();
         QTRY_COMPARE(writes.size(), 2);
         for (const auto& write : writes) QVERIFY(write.at(1).toString().isEmpty());
@@ -403,15 +379,15 @@ private slots:
             runtime.SetConfig(config);
             QSignalSpy writes(&runtime, &AssistiveRuntime::NotesWriteFinished);
             for (quint64 i = 1; i <= 127; ++i)
-                QVERIFY(runtime.NoteTranscriptSegment(MakeSegment(i, QStringLiteral("accepted"), i)));
-            QVERIFY(!runtime.NoteTranscriptSegment(MakeSegment(128, QStringLiteral("rejected"), 128)));
+                QVERIFY(runtime.AppendNoteSection(QStringLiteral("Note"), QStringLiteral("accepted")));
+            QVERIFY(!runtime.AppendNoteSection(QStringLiteral("Note"), QStringLiteral("rejected")));
             QCOMPARE(writes.size(), 1);
             QVERIFY(!writes.front().at(1).toString().isEmpty());
             path = runtime.notesFilePath();
             // Destruction must not wait for the blocked notes worker.
         }
         release.release();
-        QTRY_COMPARE(ReadAll(path).count(QStringLiteral("<span class=\"tr-text\">accepted")), 127);
+        QTRY_COMPARE(ReadAll(path).count(QStringLiteral("<p class=\"note-text\">accepted")), 127);
         QVERIFY(!ReadAll(path).contains(QStringLiteral("rejected")));
     }
 
@@ -426,46 +402,23 @@ private slots:
             notesDirectory_ + QStringLiteral("/VID_original.mp4"),
             notesDirectory_ + QStringLiteral("/VID_processed.mp4"));
 
-        // Transcript lines, including an injection attempt that must stay
-        // quoted text, a truncated final, a duplicate sequence, and a gap.
-        QVERIFY(runtime.NoteTranscriptSegment(MakeSegment(
-            1, QStringLiteral("Hello class, welcome back."), 5)));
-        QVERIFY(runtime.NoteTranscriptSegment(MakeSegment(
-            2,
-            QStringLiteral("<script>alert('x')</script> \"quotes\" & <b>tags</b>"),
-            12)));
-        QVERIFY(runtime.NoteTranscriptSegment(MakeSegment(2,
-            QStringLiteral("duplicate must not append"), 12)));
-        TranscriptSegment truncated =
-            MakeSegment(3, QStringLiteral("cut off mid"), 65);
-        truncated.truncated = true;
-        QVERIFY(runtime.NoteTranscriptSegment(truncated));
-        QVERIFY(runtime.NoteTranscriptGap(QStringLiteral("11112222-3333-4444")));
+        // A text section with an injection attempt that must stay quoted text.
+        QVERIFY(runtime.AppendNoteSection(
+            QStringLiteral("Read text"),
+            QStringLiteral("<script>alert('x')</script> \"quotes\" & <b>tags</b>")));
 
         // A plain annotated-view section.
         runtime.NoteAnnotationSnapshot(
             notesDirectory_ + QStringLiteral("/IMG_annotated.png"),
             QStringLiteral("Annotated view"));
 
-        // A SECOND recording session (different id) with media between: its
-        // transcript lines are appended far from the first session's. The
-        // viewer script must still gather every line into one block.
-        TranscriptSegment second =
-            MakeSegment(1, QStringLiteral("Back after a pause, second clip."), 3);
-        second.recordingSessionId = QStringLiteral("99998888-7777-6666");
-        QVERIFY(runtime.NoteTranscriptSegment(second));
-
-        // Media from the second session, appended after its transcript.
+        // A second recording.
         runtime.NoteCapturedVideoPair(
             notesDirectory_ + QStringLiteral("/VID2_original.mp4"),
             notesDirectory_ + QStringLiteral("/VID2_processed.mp4"));
 
-        // Two recording sessions produced transcript lines that are
-        // physically separated in the appended file; the head script keys
-        // them by data-recording-session so they can be unified at load.
-        QTRY_COMPARE(writes.size(), 9);
+        QTRY_COMPARE(writes.size(), 5);
         for (const auto& write : writes) QVERIFY(write.at(1).toString().isEmpty());
-        QVERIFY(content_hasBothSessions(runtime.notesFilePath()));
 
         const QString path = runtime.notesFilePath();
         QVERIFY(!path.isEmpty());
@@ -477,10 +430,12 @@ private slots:
         QCOMPARE(content.count(QStringLiteral("id=\"btn-theme\"")), 1);
         QCOMPARE(content.count(QStringLiteral("id=\"btn-expand\"")), 1);
         QCOMPARE(content.count(QStringLiteral("id=\"btn-collapse\"")), 1);
-        QVERIFY(content.contains(QStringLiteral("data-l10n-transcript=")));
         QVERIFY(content.contains(QStringLiteral("prefers-color-scheme")));
         QVERIFY(!content.contains(QStringLiteral("http://")));
-        QVERIFY(!content.contains(QStringLiteral("https://")));
+        QVERIFY(content.contains(QStringLiteral("https://okuflow.com/transcribe/")));
+        QCOMPARE(content.count(QStringLiteral("data-transcribe-src=\"")), 2);
+        QVERIFY(content.contains(QStringLiteral(".okuflow-transcript.json")));
+        QVERIFY(!content.contains(QStringLiteral("Consolidate EVERY transcript")));
 
         // Sections are native collapsibles with a type icon, the heading in
         // the summary for screen-reader navigation, and the timestamp last.
@@ -495,9 +450,6 @@ private slots:
         QVERIFY(content.contains(QStringLiteral("data-kind=\"video\"")));
         // The head defines all type icons, the single-block consolidation,
         // the after-the-video placement, and the analyzed-image style.
-        QVERIFY(content.contains(QStringLiteral("[data-kind=\"talk\"]")));
-        QVERIFY(content.contains(QStringLiteral("insertBefore(wrap, first)")));
-        QVERIFY(content.contains(QStringLiteral("details[data-kind='video']")));
         QVERIFY(content.contains(QStringLiteral("figure.ai-shot")));
         // Conversation grouping: label, icon, and the grouping query.
         QVERIFY(content.contains(QStringLiteral("data-l10n-conversation=")));
@@ -505,28 +457,10 @@ private slots:
         QVERIFY(content.contains(
             QStringLiteral("details[data-conversation]")));
 
-        // Transcript feed: compact lines, ids, session key, short time chip
-        // plus the approximate long form in the tooltip.
-        QVERIFY(content.contains(QStringLiteral(
-            "id=\"transcript-11112222-1\"")));
-        QVERIFY(content.contains(
-            QStringLiteral("data-recording-session=\"11112222-3333-4444\"")));
-        QVERIFY(content.contains(QStringLiteral(">0:05</time>")));
-        QVERIFY(content.contains(QStringLiteral(">1:05</time>")));
-        QVERIFY(content.contains(QStringLiteral("about 00:00:05")));
-
         // Escaping: the injection attempt is quoted text, never markup.
         QVERIFY(!content.contains(QStringLiteral("<script>alert")));
         QVERIFY(content.contains(QStringLiteral("&lt;script&gt;alert")));
         QVERIFY(content.contains(QStringLiteral("&amp; &lt;b&gt;")));
-
-        // Duplicate sequence appended exactly once.
-        QCOMPARE(content.count(QStringLiteral("id=\"transcript-11112222-2\"")), 1);
-        QVERIFY(!content.contains(QStringLiteral("duplicate must not append")));
-
-        // Truncation marker and gap line.
-        QVERIFY(content.contains(QStringLiteral("(truncated)")));
-        QVERIFY(content.contains(QStringLiteral("tr tr-gap")));
 
         // Abrupt-exit readability: the file has no closing </html> while
         // open, and each appended block is complete in itself.

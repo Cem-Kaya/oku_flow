@@ -83,8 +83,8 @@ number shortcuts.
 
 ## Advanced Mode
 
-Advanced mode keeps the live image visible beside an inspector with four tabs:
-`Image`, `Assistant`, `Transcript`, and `Settings`. Image changes how the
+Advanced mode keeps the live image visible beside an inspector with three tabs:
+`Image`, `Assistant`, and `Settings`. Image changes how the
 picture looks; Settings changes how OkuFlow is set up. The tab labels can elide
 at narrow widths while retaining their complete tooltips and accessible text.
 `Ctrl+Tab` cycles tabs. The Simple/Advanced switch and camera actions remain
@@ -114,23 +114,18 @@ Settings contains shared controls, never saved into quick modes:
 6. **AI and downloads** — AI Settings and dependency setup.
 7. **Troubleshooting** — camera acceleration and camera test.
 
-The Transcript tab owns the explicit **Transcribe microphone while recording**
-opt-in and **Add finalized transcript to lecture notes** option, both off by
-default. Recording a lecture does not enable transcription. Turning transcription
-on during an active recording starts it; turning it off stops transcription while
-video/audio recording continues. An explicit saved opt-in is retained across
-launches. The phone-light button appears only for a selected phone, enables only
+The phone-light button appears only for a selected phone, enables only
 after the phone reports an available light, and reflects actual capture metadata.
 It always starts off after reconnect and is never saved into preferences or modes.
 
-Existing persistence keys and settings ownership are preserved. Changed-count
+Image and shared settings ownership stays unchanged. Obsolete speech-processing
+keys are ignored on load and dropped on save without migration. Changed-count
 badges describe controls actually inside their group. Ordinary edits preserve
 the user's collapsed groups. Each tab searches its own groups in visual order;
 when only the other tab matches, Enter transfers the search there. Search
 temporarily expands matching groups and restores disclosure choices when
 cleared. Active searches refresh after a language change. `Ctrl+F` reveals the
-appropriate search field, including from Simple,
-Assistant, or Transcript. Keyboard navigation stays inside dialogs and editors.
+appropriate search field, including from Simple or Assistant. Keyboard navigation stays inside dialogs and editors.
 
 Slider readouts follow the active locale and dim with their sliders. Disabled
 slider fills and handles also lose the active accent, including dormant Text
@@ -145,9 +140,8 @@ Their complete names remain available through tooltips and accessibility.
 
 Dependent options sit below their parent switch inside an indented group with
 a left border. This covers Zoom position, Extra Stable, sharpening backend and
-strength, Super Resolution modes, blur parameters, and finalized microphone
-transcripts. These visual containers preserve each control's application-owned
-enabled state and saved preferences.
+strength, Super Resolution modes and blur parameters. These visual containers
+preserve each control's application-owned enabled state and saved preferences.
 
 Before the first presented camera frame, during reconnection, and while capture
 is stopped, a centered high-contrast placeholder explains camera state in both

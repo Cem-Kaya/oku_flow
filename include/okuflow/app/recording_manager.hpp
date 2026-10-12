@@ -5,7 +5,7 @@
 #include "okuflow/common/media_writer.hpp"
 #include "okuflow/common/annotation_model.hpp"
 #include "okuflow/common/recording_contract.hpp"
-#include "okuflow/common/transcript.hpp"
+#include "okuflow/app/recording_session_info.hpp"
 #include "okuflow/app/user_data_paths.hpp"
 #include "okuflow/capture/audio_capture.hpp"
 
@@ -110,8 +110,8 @@ public:
 
     bool IsActive() const;
     RecordingState State() const { return state_.load(); }
-    // Identity of the active session; empty while not recording. Transcript
-    // sessions key their durable output to this id.
+    // Identity of the active session; empty while not recording. Saved-media
+    // callbacks retain this id independently of later sessions.
     std::optional<RecordingSessionInfo> CurrentSessionInfo() const;
     QString CodecName() const;
     RecordingTimingSnapshot EncoderSubmitTiming() const;

@@ -5,11 +5,7 @@ a Windows bus path, malformed lengths/varints, saved webcam/phone/lens-fallback
 selection and actual NV12 output from Windows H.264 and optional HEVC decoders.
 First-run selection prefers only a companion that answered its handshake;
 saved webcam and legacy numeric preferences still win. Android settings tests
-verify a new host session clears only the light. The transcription controller's
-disabled test also verifies recording audio is refused without a service/carrier
-session. Native main-window checks cover phone-light and Transcript tab ownership
-and off defaults; those GUI checks require the interactive desktop gate.
-The HEVC row explicitly skips only when the optional decoder probe fails;
+verify a new host session clears only the light. The HEVC row explicitly skips only when the optional decoder probe fails;
 H.264 remains required.
 It uses no real camera, adb server or GUI. The original gray-scene fixture
 `data/phone-camera.h264` was generated locally with:
@@ -69,7 +65,7 @@ Audit-46 adds deterministic encoder-statistics/admission and exact capture-loss
 accounting, including exact 64 MiB startup boundaries, payload-overflow rejection
 and failed oversized startup that creates no output file; saturated burst
 retirement; fallback preference retention; completed
-photo-library/legacy-staleness recovery; transcription failure tails; and current/
+photo-library/legacy-staleness recovery; and current/
 stale history errors. CUDA fixtures cover opaque-alpha RGB/padding guards, soft
 hysteresis/jitter, exact composite alias parity, and automatic document
 sharpening skip/chain parity with mixed-scene preservation. Coalescer, translation and
@@ -125,8 +121,7 @@ from camera/optics validation.
   user-motion tail: a settled 30 FPS camera returns to a 33 ms interval while
   interaction retains 8 ms scheduling on an injected 120 Hz display.
 - UI fixtures extend selection/scroll preservation, short Draw rail reachability,
-  bounded plain-text captions, rotated ink/edit history, and missing-voice
-  retention. Realtime fixtures retain Stop-window transcript deltas. Native
+  rotated ink/edit history, and missing-voice retention. Native
   GUI tests remain serial in an interactive Windows desktop session.
 
 `ai_settings_dialog_interactions` exercises the production AI Settings dialog:

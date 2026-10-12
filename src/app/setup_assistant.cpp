@@ -31,6 +31,7 @@
 #include <QScrollArea>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QTemporaryDir>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -53,6 +54,8 @@ constexpr char kCodexInstallerSha256[] =
 constexpr char kCodexVendorPage[] = "https://learn.chatgpt.com/docs/codex/cli";
 constexpr char kNvidiaVendorPage[] =
     "https://www.nvidia.com/en-me/geforce/broadcasting/broadcast-sdk/resources/";
+constexpr char kMicrosoftRuntimeVendorPage[] =
+    "https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist";
 
 struct NvidiaInstaller {
     const char* architecture;
@@ -219,10 +222,12 @@ QString FindUninstallCommandInView(REGSAM view) {
 
 SetupAssistantDialog::SetupAssistantDialog(const QString& configuredCodexPath,
                                            bool declined,
-                                           QWidget* parent)
+                                           QWidget* parent,
+                                           std::function<WindowsRuntimeStatus()> runtimeCheck)
     : QDialog(parent),
       configuredCodexPath_(configuredCodexPath),
-      nvidiaArchitecture_(DetectNvidiaArchitecture()) {
+      nvidiaArchitecture_(DetectNvidiaArchitecture()),
+      runtimeCheck_(runtimeCheck ? std::move(runtimeCheck) : CheckWindowsRuntime) {
     setWindowTitle(QStringLiteral("OkuFlow Setup Assistant"));
     setAttribute(Qt::WA_DeleteOnClose);
     setModal(false);
@@ -232,15 +237,15 @@ SetupAssistantDialog::SetupAssistantDialog(const QString& configuredCodexPath,
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(20, 18, 20, 18);
     root->setSpacing(12);
-    auto* heading = new QLabel(QStringLiteral("Optional Reading and AI Tools"));
+    auto* heading = new QLabel(QStringLiteral("Set up OkuFlow"));
     QFont headingFont = heading->font();
     headingFont.setBold(true);
     headingFont.setPointSize(16);
     heading->setFont(headingFont);
     root->addWidget(heading);
     auto* intro = new QLabel(QStringLiteral(
-        "OkuFlow downloads these tools directly from their vendors and verifies each download "
-        "before it runs. They are not included in the OkuFlow package."));
+        "The Windows runtime installer is included. Optional AI tools are downloaded "
+        "from their vendors. Every installer is verified before it runs."));
     intro->setWordWrap(true);
     root->addWidget(intro);
 
@@ -250,6 +255,14 @@ SetupAssistantDialog::SetupAssistantDialog(const QString& configuredCodexPath,
     auto* rowsWidget = new QWidget();
     auto* rows = new QVBoxLayout(rowsWidget);
     rows->setContentsMargins(0, 0, 0, 0);
+    runtimeRow_ = AddDependencyRow(
+        rows, QStringLiteral("Microsoft Windows runtime"),
+        QStringLiteral("Windows libraries used by OkuFlow. Installation uses the included "
+                       "Microsoft installer and may request administrator approval."));
+    runtimeRow_.container->setObjectName(QStringLiteral("windowsRuntimeRow"));
+    runtimeRow_.status->setObjectName(QStringLiteral("windowsRuntimeStatus"));
+    runtimeRow_.install->setObjectName(QStringLiteral("windowsRuntimeInstall"));
+    runtimeRow_.remove->hide();
     codexRow_ = AddDependencyRow(
         rows, QStringLiteral("Codex CLI"),
         QStringLiteral("Powers subscription-backed Read, Explain, and Assistant features. "
@@ -286,6 +299,8 @@ SetupAssistantDialog::SetupAssistantDialog(const QString& configuredCodexPath,
 
     connect(codexRow_.install, &QPushButton::clicked,
             this, [this]() { BeginDownload(Dependency::CodexCli); });
+    connect(runtimeRow_.install, &QPushButton::clicked,
+            this, &SetupAssistantDialog::BeginWindowsRuntimeInstall);
     connect(nvidiaRow_.install, &QPushButton::clicked,
             this, [this]() { BeginDownload(Dependency::NvidiaVideoEffects); });
     connect(codexRow_.remove, &QPushButton::clicked,
@@ -329,6 +344,8 @@ SetupAssistantDialog::SetupAssistantDialog(const QString& configuredCodexPath,
 SetupAssistantDialog::DependencyRow& SetupAssistantDialog::RowForDependency(
     Dependency dependency) {
     switch (dependency) {
+    case Dependency::WindowsRuntime:
+        return runtimeRow_;
     case Dependency::CodexCli:
         return codexRow_;
     case Dependency::NvidiaVideoEffects:
@@ -453,10 +470,21 @@ QString SetupAssistantDialog::DetectNvidiaArchitecture() {
 }
 
 bool SetupAssistantDialog::NeedsSetup(const QString& configuredCodexPath) {
-    return FindCodexExecutable(configuredCodexPath).isEmpty();
+    return !CheckWindowsRuntime().Ready() || FindCodexExecutable(configuredCodexPath).isEmpty();
 }
 
 void SetupAssistantDialog::RefreshStatus() {
+    const WindowsRuntimeStatus runtime = runtimeCheck_();
+    SetDependencyStatus(runtimeRow_, runtime.Ready(),
+                        runtime.installed ? QStringLiteral("Installed") : QStringLiteral("Not installed"));
+    runtimeRow_.install->setText(runtime.installed ? QStringLiteral("Installed")
+                                                  : QStringLiteral("Install for Windows"));
+    runtimeRow_.install->setAccessibleName(QStringLiteral("Install Microsoft Windows runtime"));
+    const bool installerAvailable = QFileInfo::exists(
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("vc_redist.x64.exe")));
+    runtimeRow_.install->setEnabled(!runtime.installed && installerAvailable && activeDependency_ == Dependency::None);
+    runtimeRow_.install->setToolTip(installerAvailable ? QString()
+        : QStringLiteral("Use the complete OkuFlow ZIP to include the Windows runtime installer."));
     const QString codex = FindCodexExecutable(configuredCodexPath_);
     const bool codexInstalled = !codex.isEmpty();
     SetDependencyStatus(
@@ -782,13 +810,14 @@ void SetupAssistantDialog::ResetDownloadState() {
     primaryDownloadError_.clear();
     fallbackUsingAlternateUrl_ = false;
     hash_.reset();
+    runtimeInstallerDirectory_.reset();
     cancelDownloadButton_->setVisible(false);
 }
 
 void SetupAssistantDialog::StartVerifiedInstaller() {
     const Dependency installing = activeDependency_;
-    if (installing == Dependency::NvidiaVideoEffects) {
-        StartElevatedNvidiaInstaller();
+    if (installing == Dependency::NvidiaVideoEffects || installing == Dependency::WindowsRuntime) {
+        StartElevatedInstaller(installing);
         return;
     }
 
@@ -845,7 +874,31 @@ void SetupAssistantDialog::StartVerifiedInstaller() {
     }
 }
 
-void SetupAssistantDialog::StartElevatedNvidiaInstaller() {
+void SetupAssistantDialog::BeginWindowsRuntimeInstall() {
+    if (activeDependency_ != Dependency::None) return;
+    // Recheck immediately before installation to avoid downgrading or
+    // reinstalling an already supported Windows runtime.
+    if (runtimeCheck_().installed) { RefreshStatus(); return; }
+    auto directory = std::make_unique<QTemporaryDir>(
+        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+            .filePath(QStringLiteral("OkuFlow-runtime-XXXXXX")));
+    const QString source = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("vc_redist.x64.exe"));
+    const QString temporary = directory->filePath(QStringLiteral("vc_redist.x64.exe"));
+    if (!directory->isValid() || !QFile::copy(source, temporary) || !VerifyWindowsRuntimeInstaller(temporary)) {
+        SetLiveText(runtimeRow_.status,
+                    QStringLiteral("The included Microsoft installer could not be verified. Download the complete OkuFlow ZIP again."),
+                    LivePoliteness::kAssertive, QStringLiteral("Setup status"));
+        return;
+    }
+    // Only this private copy is removed; never delete the bundled installer.
+    runtimeInstallerDirectory_ = std::move(directory);
+    downloadPath_ = temporary;
+    activeDependency_ = Dependency::WindowsRuntime;
+    RefreshStatus();
+    StartVerifiedInstaller();
+}
+
+void SetupAssistantDialog::StartElevatedInstaller(Dependency dependency) {
     const std::wstring installerPath =
         QDir::toNativeSeparators(downloadPath_).toStdWString();
     SHELLEXECUTEINFOW executeInfo{};
@@ -854,46 +907,67 @@ void SetupAssistantDialog::StartElevatedNvidiaInstaller() {
     executeInfo.hwnd = reinterpret_cast<HWND>(winId());
     executeInfo.lpVerb = L"runas";
     executeInfo.lpFile = installerPath.c_str();
+    if (dependency == Dependency::WindowsRuntime) executeInfo.lpParameters = L"/install /norestart";
     executeInfo.nShow = SW_SHOWNORMAL;
 
     if (!ShellExecuteExW(&executeInfo) || !executeInfo.hProcess) {
         const DWORD error = GetLastError();
         QFile::remove(downloadPath_);
-        activeDependency_ = Dependency::None;
+        ResetDownloadState();
         RefreshStatus();
         const QString message = error == ERROR_CANCELLED
                                     ? QStringLiteral(
                                           "Administrator approval was cancelled. Nothing was installed.")
                                     : QStringLiteral(
-                                          "Windows could not start the elevated NVIDIA installer "
+                                          "Windows could not start the elevated installer "
                                           "(error %1).").arg(error);
-        ShowDownloadFailure(message, QString::fromLatin1(kNvidiaVendorPage));
+        if (dependency == Dependency::WindowsRuntime && error == ERROR_CANCELLED) {
+            SetLiveText(runtimeRow_.status, message, LivePoliteness::kPolite, QStringLiteral("Setup status"));
+        } else {
+            ShowDownloadFailure(message, QString::fromLatin1(
+                dependency == Dependency::WindowsRuntime ? kMicrosoftRuntimeVendorPage : kNvidiaVendorPage));
+        }
         return;
     }
 
     elevatedInstallerHandle_ = executeInfo.hProcess;
     SetDependencyProgress(
-        nvidiaRow_,
-        QStringLiteral("NVIDIA installer running. Continue in the vendor installer window."));
+        RowForDependency(dependency),
+        dependency == Dependency::WindowsRuntime
+            ? QStringLiteral("Microsoft installer running. Continue in the installer window.")
+            : QStringLiteral("NVIDIA installer running. Continue in the vendor installer window."));
     elevatedInstallerTimer_ = new QTimer(this);
     elevatedInstallerTimer_->setInterval(500);
-    connect(elevatedInstallerTimer_, &QTimer::timeout, this, [this]() {
+    connect(elevatedInstallerTimer_, &QTimer::timeout, this, [this, dependency]() {
         if (!elevatedInstallerHandle_) {
             return;
         }
         DWORD exitCode = STILL_ACTIVE;
-        if (!GetExitCodeProcess(static_cast<HANDLE>(elevatedInstallerHandle_), &exitCode) ||
-            exitCode == STILL_ACTIVE) {
-            return;
-        }
+        const bool resultRead = GetExitCodeProcess(static_cast<HANDLE>(elevatedInstallerHandle_), &exitCode);
+        if (resultRead && exitCode == STILL_ACTIVE) return;
         CloseHandle(static_cast<HANDLE>(elevatedInstallerHandle_));
         elevatedInstallerHandle_ = nullptr;
         elevatedInstallerTimer_->stop();
         elevatedInstallerTimer_->deleteLater();
         elevatedInstallerTimer_ = nullptr;
-        CompleteInstaller(Dependency::NvidiaVideoEffects,
-                          exitCode == 0 || exitCode == ERROR_SUCCESS_REBOOT_REQUIRED ||
-                              exitCode == ERROR_SUCCESS_RESTART_REQUIRED);
+        if (dependency == Dependency::WindowsRuntime) {
+            const auto result = resultRead ? ClassifyWindowsRuntimeInstallResult(exitCode, runtimeCheck_().installed)
+                                          : WindowsRuntimeInstallResult::Failed;
+            CompleteInstaller(dependency, result != WindowsRuntimeInstallResult::Failed,
+                              result == WindowsRuntimeInstallResult::Failed
+                                  ? QStringLiteral("Windows installer exit code: %1").arg(exitCode) : QString());
+            if (result == WindowsRuntimeInstallResult::RestartRequired || result == WindowsRuntimeInstallResult::Canceled) {
+                SetLiveText(runtimeRow_.status,
+                            result == WindowsRuntimeInstallResult::RestartRequired
+                                ? QStringLiteral("Installation completed. Restart Windows when convenient.")
+                                : QStringLiteral("Installation cancelled. You can try again later."),
+                            LivePoliteness::kPolite, QStringLiteral("Setup status"));
+            }
+        } else {
+            CompleteInstaller(dependency, resultRead &&
+                              (exitCode == 0 || exitCode == ERROR_SUCCESS_REBOOT_REQUIRED ||
+                               exitCode == ERROR_SUCCESS_RESTART_REQUIRED));
+        }
     });
     elevatedInstallerTimer_->start();
 }
@@ -922,6 +996,8 @@ void SetupAssistantDialog::CompleteInstaller(Dependency dependency,
         const QString vendorPage =
             dependency == Dependency::CodexCli
                       ? QString::fromLatin1(kCodexVendorPage)
+                      : dependency == Dependency::WindowsRuntime
+                      ? QString::fromLatin1(kMicrosoftRuntimeVendorPage)
                       : QString::fromLatin1(kNvidiaVendorPage);
         ShowDownloadFailure(message, vendorPage);
     }

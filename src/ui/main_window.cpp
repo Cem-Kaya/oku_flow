@@ -1386,34 +1386,6 @@ MainWindow::MainWindow()
     recordingLayout->addWidget(microphoneLabel);
     recordingLayout->addWidget(microphoneCombo_);
 
-    transcribeMicrophoneCheckbox_ =
-        new QCheckBox(QStringLiteral("Transcribe microphone while recording"));
-    transcribeMicrophoneCheckbox_->setToolTip(QStringLiteral(
-        "Sends microphone audio to Codex Voice for live transcription, only "
-        "while recording. Requires Codex signed in with ChatGPT."));
-    QVBoxLayout* transcriptionOptionsLayout = nullptr;
-    auto* transcriptionOptions = makeDependentGroup(
-        QStringLiteral("transcriptionOptions"), transcriptionOptionsLayout);
-    transcriptToNotesCheckbox_ =
-        new QCheckBox(QStringLiteral("Add finalized transcript to lecture notes"));
-    transcriptToNotesCheckbox_->setToolTip(QStringLiteral(
-        "Appends each finalized phrase to the HTML lecture notes. Effective "
-        "only while lecture notes are enabled."));
-    transcriptToNotesCheckbox_->setEnabled(false);
-    transcriptionOptionsLayout->addWidget(transcriptToNotesCheckbox_);
-    connect(transcribeMicrophoneCheckbox_, &QCheckBox::toggled,
-            transcriptToNotesCheckbox_, &QWidget::setEnabled);
-    transcriptionStatusLabel_ = new QLabel();
-    transcriptionStatusLabel_->setObjectName(QStringLiteral("transcriptionStatusLabel"));
-    transcriptionStatusLabel_->setWordWrap(true);
-    transcriptionStatusLabel_->setVisible(false);
-    transcriptionOptionsLayout->addWidget(transcriptionStatusLabel_);
-    transcriptionQuotaLabel_ = new QLabel();
-    transcriptionQuotaLabel_->setObjectName(QStringLiteral("transcriptionQuotaLabel"));
-    transcriptionQuotaLabel_->setWordWrap(true);
-    transcriptionQuotaLabel_->setVisible(false);
-    transcriptionOptionsLayout->addWidget(transcriptionQuotaLabel_);
-
     // ---- 4. Notes and files --------------------------------------------
     notesFilesSection_ = makeSection(QStringLiteral("Notes and files"),
                                      QStringLiteral("notesFiles"), false);
@@ -1631,40 +1603,13 @@ MainWindow::MainWindow()
     assistantTabs->addTab(historyPage, "History");
     assistantLayout->addWidget(assistantTabs, 1);
 
-    // Explicit opt-in controls and a read-only live transcript; no Assistant
-    // conversation is implied. Finalized text stays selectable.
-    auto* transcriptPage = new QWidget();
-    auto* transcriptLayout = new QVBoxLayout(transcriptPage);
-    transcriptLayout->setContentsMargins(10, 10, 10, 10);
-    transcriptLayout->setSpacing(6);
-    transcriptLayout->addWidget(transcribeMicrophoneCheckbox_);
-    transcriptLayout->addWidget(transcriptionOptions);
-    auto* transcriptPartialCaption = new QLabel(QStringLiteral("Current phrase"));
-    transcriptPartialCaption->setObjectName(QStringLiteral("scopeSubtitle"));
-    transcriptPartialLabel_ = new QLabel();
-    transcriptPartialLabel_->setWordWrap(true);
-    transcriptPartialLabel_->setMinimumHeight(40);
-    transcriptPartialCaption->setBuddy(transcriptPartialLabel_);
-    auto* transcriptFinalsCaption = new QLabel(QStringLiteral("Finalized transcript"));
-    transcriptFinalsCaption->setObjectName(QStringLiteral("scopeSubtitle"));
-    transcriptFinalsView_ = new QPlainTextEdit();
-    transcriptFinalsView_->setReadOnly(true);
-    transcriptFinalsView_->setTabChangesFocus(true);
-    transcriptFinalsCaption->setBuddy(transcriptFinalsView_);
-    transcriptLayout->addWidget(transcriptPartialCaption);
-    transcriptLayout->addWidget(transcriptPartialLabel_);
-    transcriptLayout->addWidget(transcriptFinalsCaption);
-    transcriptLayout->addWidget(transcriptFinalsView_, 1);
-
     assistantPage->setObjectName(QStringLiteral("assistantTabPage"));
-    transcriptPage->setObjectName(QStringLiteral("transcriptTabPage"));
     auto* advancedTabs = new QTabWidget();
     advancedTabs->setObjectName(QStringLiteral("advancedPage"));
     advancedTabs->addTab(imageTabPage_, "Image");
     advancedTabs->addTab(assistantPage, "Assistant");
-    advancedTabs->addTab(transcriptPage, "Transcript");
     advancedTabs->addTab(settingsTabPage_, "Settings");
-    // Four tabs must fit a 360 px inspector in every language: tabs share the
+    // Three tabs must fit a 360 px inspector in every language: tabs share the
     // strip and elide, with the full text kept in the tooltip and in the
     // accessible name (QTabBar exposes the unelided text).
     advancedTabs->tabBar()->setObjectName(QStringLiteral("advancedTabBar"));
@@ -1851,23 +1796,6 @@ MainWindow::MainWindow()
     bottomRightLayout->addWidget(explainNowButton_, 0, 2);
     bottomRightLayout->addWidget(readTextButton_, 0, 3);
     bottomRightLayout->addWidget(annotationButton_, 0, 4);
-
-    // Simple-mode live transcript overlay (plan 36): never activates, never
-    // takes input or focus, and never announces per-delta — screen-reader
-    // users get state changes through the live status path instead.
-    simpleTranscriptPanel_ = new QWidget(
-        this, chromeFlags | Qt::WindowTransparentForInput |
-                  Qt::WindowDoesNotAcceptFocus);
-    simpleTranscriptPanel_->setObjectName(QStringLiteral("simpleTranscriptPanel"));
-    auto* simpleTranscriptLayout = new QVBoxLayout(simpleTranscriptPanel_);
-    simpleTranscriptLayout->setContentsMargins(12, 8, 12, 8);
-    simpleTranscriptLabel_ = new QLabel();
-    simpleTranscriptLabel_->setObjectName(QStringLiteral("simpleTranscriptLabel"));
-    simpleTranscriptLabel_->setWordWrap(true);
-    simpleTranscriptLabel_->setTextFormat(Qt::PlainText);
-    simpleTranscriptLabel_->setTextInteractionFlags(Qt::NoTextInteraction);
-    simpleTranscriptLayout->addWidget(simpleTranscriptLabel_);
-    simpleTranscriptPanel_->hide();
 
     connect(annotationButton_, &QPushButton::toggled, this, [this](bool checked) {
         if (changingAnnotationMode_) {
@@ -2124,25 +2052,6 @@ MainWindow::MainWindow()
     setA11y(microphoneCombo_, "Recording microphone",
             "Select microphone audio for both original and processed MP4 "
             "recordings, or choose no microphone.");
-    setA11y(transcribeMicrophoneCheckbox_, "Transcribe microphone while recording",
-            "Sends microphone audio to Codex Voice for live transcription only "
-            "while recording. Requires Codex signed in with ChatGPT. Recording "
-            "works without it.");
-    setA11y(transcriptToNotesCheckbox_, "Add finalized transcript to lecture notes",
-            "Appends each finalized phrase to the HTML lecture notes. "
-            "Effective only while lecture notes are enabled.");
-    setA11y(transcriptionStatusLabel_, "Transcription status",
-            "Reports the live transcription state. Recording is never "
-            "affected by transcription problems.");
-    setA11y(transcriptionQuotaLabel_, "Codex usage",
-            "Shows the general Codex quota window. Voice-specific remaining "
-            "time is not exposed by this Codex app-server.");
-    setA11y(transcriptPartialLabel_, "Current phrase",
-            "The phrase being transcribed right now. Partial text is "
-            "presentation-only until it is finalized.");
-    setA11y(transcriptFinalsView_, "Finalized transcript",
-            "Read-only list of finalized transcript phrases from the "
-            "current recording. Text is selectable.");
     setA11y(cameraFormatCombo_, "Resolution and frame rate",
             "Select the camera capture mode used by original photos and original video.");
     setA11y(cameraFormatNoticeLabel_, "Camera format notice",
@@ -2894,123 +2803,9 @@ QAbstractButton* MainWindow::simpleModeButton() const { return simpleModeButton_
 QAbstractButton* MainWindow::advancedModeButton() const { return advancedModeButton_; }
 QPushButton* MainWindow::explainNowButton() const { return explainNowButton_; }
 QPushButton* MainWindow::readTextButton() const { return readTextButton_; }
-QCheckBox* MainWindow::transcribeMicrophoneCheckbox() const
-{
-    return transcribeMicrophoneCheckbox_;
-}
-QCheckBox* MainWindow::transcriptToNotesCheckbox() const
-{
-    return transcriptToNotesCheckbox_;
-}
-QLabel* MainWindow::transcriptionStatusLabel() const { return transcriptionStatusLabel_; }
-QLabel* MainWindow::transcriptionQuotaLabel() const { return transcriptionQuotaLabel_; }
-QLabel* MainWindow::transcriptPartialLabel() const { return transcriptPartialLabel_; }
-QPlainTextEdit* MainWindow::transcriptFinalsView() const { return transcriptFinalsView_; }
-
-void MainWindow::SetSimpleTranscriptActive(bool active)
-{
-    if (simpleTranscriptActive_ == active && simpleTranscriptPanel_ &&
-        simpleTranscriptPanel_->isVisible() == (active && isSimpleMode() && !uiHidden_)) {
-        return;
-    }
-    simpleTranscriptActive_ = active;
-    if (!active) {
-        simpleTranscriptPartial_.clear();
-        simpleTranscriptFinals_.clear();
-        RefreshSimpleTranscriptText();
-    }
-    if (simpleTranscriptPanel_) {
-        simpleTranscriptPanel_->setVisible(active && isSimpleMode() && !uiHidden_);
-        if (simpleTranscriptPanel_->isVisible()) {
-            UpdateSimpleChromeGeometry();
-        }
-    }
-}
-
-void MainWindow::SetSimpleTranscriptPartial(const QString& text)
-{
-    if (simpleTranscriptPartial_ == text) {
-        return;
-    }
-    simpleTranscriptPartial_ = text;
-    RefreshSimpleTranscriptText();
-}
-
-void MainWindow::AppendSimpleTranscriptFinal(const QString& text)
-{
-    if (text.trimmed().isEmpty()) {
-        return;
-    }
-    simpleTranscriptFinals_.append(text);
-    while (simpleTranscriptFinals_.size() > 3) {
-        simpleTranscriptFinals_.removeFirst();
-    }
-    RefreshSimpleTranscriptText();
-}
-
-void MainWindow::RefreshSimpleTranscriptText()
-{
-    if (!simpleTranscriptLabel_) {
-        return;
-    }
-    // Coalesce deltas without assigning an unbounded label/layout minimum.
-    if (!simpleTranscriptGeometryPending_) {
-        simpleTranscriptGeometryPending_ = true;
-        QTimer::singleShot(0, this, [this] {
-            simpleTranscriptGeometryPending_ = false;
-            UpdateSimpleTranscriptGeometry();
-        });
-    }
-}
-
 void MainWindow::rotateAnnotationsClockwise(int quarterTurns)
 {
     if (annotationOverlay_) annotationOverlay_->RotateClockwise(quarterTurns);
-}
-
-void MainWindow::UpdateSimpleTranscriptGeometry()
-{
-    if (!renderWidget_ || !simpleTranscriptPanel_ || !simpleTranscriptPanel_->isVisible()) return;
-    const int viewWidth = renderWidget_->width();
-    const int viewHeight = renderWidget_->height();
-    const QPoint origin = renderWidget_->mapToGlobal(QPoint());
-    int chromeTop = viewHeight;
-    for (QWidget* panel : {bottomLeftPanel_, bottomRightPanel_}) {
-        if (panel && panel->isVisible()) chromeTop = std::min(chromeTop, panel->y() - origin.y());
-    }
-    const int panelWidth = std::max(1, std::min(viewWidth - 24, 900));
-    const int budget = std::max(1, std::min(viewHeight / 3, chromeTop - 16));
-    const QMargins margins = simpleTranscriptPanel_->layout()->contentsMargins();
-    const int textWidth = std::max(1, panelWidth - margins.left() - margins.right());
-    const int textHeight = std::max(1, budget - margins.top() - margins.bottom());
-    QStringList lines = simpleTranscriptFinals_;
-    if (!simpleTranscriptPartial_.trimmed().isEmpty()) lines.append(simpleTranscriptPartial_);
-    QString text = lines.join(QStringLiteral("\n"));
-    const QFontMetrics metrics(simpleTranscriptLabel_->font());
-    // Show the trailing caption that fits; the Advanced transcript retains every phrase.
-    const auto fits = [&](const QString& candidate) {
-        return metrics.boundingRect(QRect(0, 0, textWidth, 1000000),
-                                    Qt::TextWordWrap, candidate).height() <= textHeight;
-    };
-    if (!fits(text)) {
-        int low = 0, high = text.size();
-        while (low < high) {
-            const int middle = low + (high - low) / 2;
-            if (fits(QStringLiteral("\u2026") + text.mid(middle))) high = middle;
-            else low = middle + 1;
-        }
-        if (low < text.size() && text.at(low).isLowSurrogate()) ++low;
-        text = QStringLiteral("\u2026") + text.mid(low);
-    }
-    simpleTranscriptLabel_->setMaximumHeight(textHeight);
-    simpleTranscriptLabel_->setText(text);
-    simpleTranscriptPanel_->setFixedWidth(panelWidth);
-    simpleTranscriptPanel_->setMaximumHeight(budget);
-    simpleTranscriptLabel_->setMinimumHeight(0);
-    simpleTranscriptPanel_->adjustSize();
-    simpleTranscriptPanel_->resize(panelWidth, std::min(budget, simpleTranscriptPanel_->height()));
-    simpleTranscriptPanel_->move(origin.x() + std::max(0, (viewWidth - panelWidth) / 2),
-                                 origin.y() + std::max(0, chromeTop - simpleTranscriptPanel_->height() - 8));
 }
 
 void MainWindow::setAnnotationPreferences(const QColor& color,
@@ -3719,8 +3514,6 @@ void MainWindow::UpdateSimpleChromeGeometry()
     bottomRightPanel_->move(trailingX(bottomRightPanel_->width()),
                             viewOrigin.y() + std::max(0, bottomRightY));
 
-    UpdateSimpleTranscriptGeometry();
-
     if (modeGridPopup_) {
         const int popupWidth = std::min(viewWidth, std::max(420, std::min(860, viewWidth * 3 / 4)));
         const int columns = std::max(2, (popupWidth - 28) / 220);
@@ -3768,8 +3561,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
                 safeTop = std::max(safeTop, panel->geometry().bottom() - viewOrigin.y() + 9);
             }
         }
-        for (QWidget* panel : {bottomLeftPanel_, bottomRightPanel_, keystoneTrackingPanel_,
-                              simpleTranscriptPanel_}) {
+        for (QWidget* panel : {bottomLeftPanel_, bottomRightPanel_, keystoneTrackingPanel_}) {
             if (panel && panel->isVisible()) {
                 safeBottom = std::min(safeBottom, panel->geometry().top() - viewOrigin.y() - 8);
             }
@@ -3860,7 +3652,7 @@ void MainWindow::setUiHidden(bool hidden)
         simpleChromeVisible_ = false;
         advancedPanel_->hide();
         for (QWidget* panel : {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_,
-                              bottomRightPanel_, modeGridPopup_, modeToast_, simpleTranscriptPanel_,
+                              bottomRightPanel_, modeGridPopup_, modeToast_,
                               cameraPlaceholder_}) {
             if (panel) panel->hide();
         }
@@ -3955,7 +3747,7 @@ void MainWindow::RaiseChromeAboveCanvas()
 {
     for (QWidget* panel : {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_,
                           bottomRightPanel_, uiVisibilityPanel_, modeGridPopup_,
-                          modeToast_, simpleTranscriptPanel_}) {
+                          modeToast_}) {
         if (panel && panel->isVisible()) panel->raise();
     }
     RaiseDialogsAboveChrome();
@@ -4078,9 +3870,6 @@ void MainWindow::setSimpleMode(bool simple)
             keystoneTrackingPanel_->show();
         }
         bottomRightPanel_->show();
-        if (simpleTranscriptPanel_ && simpleTranscriptActive_) {
-            simpleTranscriptPanel_->show();
-        }
         UpdateSimpleChromeGeometry();
         RevealSimpleChrome();
     } else if (!simple && advancedModeButton_) {
@@ -4107,10 +3896,6 @@ void MainWindow::setSimpleMode(bool simple)
         bottomRightPanel_->show();
         bottomRightPanel_->raise();
         RaiseDialogsAboveChrome();
-        if (simpleTranscriptPanel_) {
-            // The Advanced Transcript tab shows the same content instead.
-            simpleTranscriptPanel_->hide();
-        }
         UpdateSimpleChromeGeometry();
     }
 }
@@ -4285,7 +4070,11 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
          static_cast<QFocusEvent*>(event)->reason() == Qt::ShortcutFocusReason);
     bool pointerMoved = false;
     if (type == QEvent::MouseMove) {
-        const QPointF position = static_cast<QMouseEvent*>(event)->globalPosition();
+        // QCursor::pos() rounds the logical coordinates used by the fade
+        // baseline. Native mouse events can retain a fractional logical part
+        // at scaled DPI; compare in the same domain to avoid stationary wakes.
+        // The native filter still detects movement at physical-pixel precision.
+        const QPoint position = static_cast<QMouseEvent*>(event)->globalPosition().toPoint();
         pointerMoved = !chromeMousePositionKnown_ || position != chromeMouseGlobalPosition_;
         chromeMouseGlobalPosition_ = position;
         chromeMousePositionKnown_ = true;

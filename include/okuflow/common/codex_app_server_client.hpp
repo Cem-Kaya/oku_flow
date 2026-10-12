@@ -46,7 +46,7 @@ public:
     bool IsTurnActive() const;
     static QString BuiltInAssistantInstructions();
     // Shared Codex CLI discovery (configured path, OKUFLOW_CODEX_PATH, PATH,
-    // then known install locations). Also used by the realtime client.
+    // then known install locations).
     static QString ResolveExecutablePath(const QString& configuredExecutable);
 
     void RefreshAccount();

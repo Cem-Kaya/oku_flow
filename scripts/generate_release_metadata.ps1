@@ -27,6 +27,18 @@ $cudaToolkitVersion =
 $ErrorActionPreference = 'Stop'
 $bundle = (Resolve-Path -LiteralPath $BundlePath).Path
 $repository = (Resolve-Path -LiteralPath $RepositoryPath).Path
+$runtimePin = Get-Content (Join-Path $repository 'scripts/vc-runtime/pins.json') -Raw | ConvertFrom-Json
+$runtimeInstaller = Join-Path $bundle $runtimePin.installer.name
+$runtimeLicense = Join-Path $bundle 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'
+if ((Get-FileHash -LiteralPath $runtimeInstaller).Hash.ToLowerInvariant() -ne $runtimePin.installer.sha256 -or
+    (Get-FileHash -LiteralPath $runtimeLicense).Hash.ToLowerInvariant() -ne $runtimePin.licenseSha256) {
+    throw 'Microsoft runtime installer/license differ from the reviewed pins.'
+}
+$runtimeSignature = Get-AuthenticodeSignature -LiteralPath $runtimeInstaller
+if ($runtimeSignature.Status -ne 'Valid' -or
+    $runtimeSignature.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation(?:,|$)') {
+    throw 'Microsoft runtime installer signature could not be verified.'
+}
 $d3dCompilerPath = Join-Path $bundle 'D3Dcompiler_47.dll'
 $d3dCompilerVersion =
     if (Test-Path -LiteralPath $d3dCompilerPath -PathType Leaf) {
@@ -99,8 +111,19 @@ $dirty = $LASTEXITCODE -ne 0 -or $statusLines.Count -gt 0
 
 $executable = Join-Path $bundle 'oku_flow.exe'
 $signature = Get-AuthenticodeSignature -LiteralPath $executable
+$executableSignatures = foreach ($name in @('oku_flow.exe', 'OkuFlowApp.exe')) {
+    $path = Join-Path $bundle $name
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required release executable missing: $name" }
+    $signed = Get-AuthenticodeSignature -LiteralPath $path
+    [ordered]@{
+        path = $name
+        status = [string]$signed.Status
+        signer = if ($signed.SignerCertificate) { $signed.SignerCertificate.Subject } else { $null }
+        thumbprint = if ($signed.SignerCertificate) { $signed.SignerCertificate.Thumbprint } else { $null }
+    }
+}
 $manifest = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     product = 'OkuFlow'
     generatedUtc = [DateTime]::UtcNow.ToString('o')
     sourceCommit = [string]$commit
@@ -118,6 +141,15 @@ $manifest = [ordered]@{
             $null
         }
     }
+    executables = @($executableSignatures)
+    windowsRuntime = [ordered]@{
+        version = $runtimePin.version
+        installation = 'system-wide, with user/admin approval only when required'
+        installer = $runtimePin.installer.name
+        installerSha256 = $runtimePin.installer.sha256
+        installerAuthenticode = [string]$runtimeSignature.Status
+        license = 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'
+    }
     files = @($fileRecords)
 }
 $manifest | ConvertTo-Json -Depth 8 |
@@ -129,6 +161,17 @@ $namespaceId = if ($commit -ne 'unknown') {
     [Guid]::NewGuid().ToString('N')
 }
 $packages = @(
+    [ordered]@{
+        SPDXID = 'SPDXRef-Package-Microsoft-VC-Runtime'
+        name = 'Microsoft Visual C++ x64 runtime redistributable'
+        versionInfo = $runtimePin.version
+        downloadLocation = $runtimePin.vendorPage
+        filesAnalyzed = $false
+        licenseConcluded = 'LicenseRef-Microsoft-VC-Runtime'
+        licenseDeclared = 'LicenseRef-Microsoft-VC-Runtime'
+        copyrightText = 'Copyright Microsoft Corporation'
+        comment = 'Unmodified signed installer and exact license shipped; /MT native launcher uses the static CRT, while OkuFlowApp.exe uses the centrally installed runtime. No app-local runtime DLLs are copied.'
+    },
     [ordered]@{
         SPDXID = 'SPDXRef-Package-OkuFlow'
         name = 'OkuFlow'
@@ -229,94 +272,6 @@ $packages = @(
         comment = 'Optional local app-server executable installed separately by the user.'
     },
     [ordered]@{
-        SPDXID = 'SPDXRef-Package-libdatachannel'
-        name = 'libdatachannel'
-        versionInfo = 'v0.24.5'
-        downloadLocation = 'https://github.com/paullouisageneau/libdatachannel/tree/443f6934d9007eb7076ab7825ba330f355fcbead'
-        filesAnalyzed = $false
-        licenseConcluded = 'MPL-2.0'
-        licenseDeclared = 'MPL-2.0'
-        copyrightText = 'Copyright Paul-Louis Ageneau and contributors'
-        comment = 'Statically linked native WebRTC stack for live transcription (plan 36 Carrier D): PeerConnection, ICE, DTLS-SRTP, SCTP data channel, and RTP packetization.'
-    },
-    [ordered]@{
-        SPDXID = 'SPDXRef-Package-libjuice'
-        name = 'libjuice'
-        versionInfo = 'v1.7.2 (3c40a3545b6b1b62c7adee7f8f2bd58aa290afd6)'
-        downloadLocation = 'https://github.com/paullouisageneau/libjuice/tree/3c40a3545b6b1b62c7adee7f8f2bd58aa290afd6'
-        filesAnalyzed = $false
-        licenseConcluded = 'MPL-2.0'
-        licenseDeclared = 'MPL-2.0'
-        copyrightText = 'Copyright Paul-Louis Ageneau and contributors'
-        comment = 'Pinned libdatachannel submodule providing ICE with host candidates only.'
-    },
-    [ordered]@{
-        SPDXID = 'SPDXRef-Package-libsrtp'
-        name = 'libSRTP'
-        versionInfo = '2.8.0 (24b3bf8f19b6f5ab4cd2bcceb4f4064efca86fd5)'
-        downloadLocation = 'https://github.com/cisco/libsrtp/tree/24b3bf8f19b6f5ab4cd2bcceb4f4064efca86fd5'
-        filesAnalyzed = $false
-        licenseConcluded = 'BSD-3-Clause'
-        licenseDeclared = 'BSD-3-Clause'
-        copyrightText = 'Copyright Cisco Systems, Inc. and contributors'
-        comment = 'Pinned libdatachannel submodule providing SRTP protection.'
-    },
-    [ordered]@{
-        SPDXID = 'SPDXRef-Package-usrsctp'
-        name = 'usrsctp'
-        versionInfo = 'fec583d54493f879d2ae44a743423bf8a04371ab'
-        downloadLocation = 'https://github.com/sctplab/usrsctp/tree/fec583d54493f879d2ae44a743423bf8a04371ab'
-        filesAnalyzed = $false
-        licenseConcluded = 'BSD-3-Clause'
-        licenseDeclared = 'BSD-3-Clause'
-        copyrightText = 'Copyright Randall Stewart, Michael Tuexen, and contributors'
-        comment = 'Pinned libdatachannel submodule providing SCTP for the oai-events data channel.'
-    },
-    [ordered]@{
-        SPDXID = 'SPDXRef-Package-plog'
-        name = 'plog'
-        versionInfo = '1.1.10 (94899e0b926ac1b0f4750bfbd495167b4a6ae9ef)'
-        downloadLocation = 'https://github.com/SergiusTheBest/plog/tree/94899e0b926ac1b0f4750bfbd495167b4a6ae9ef'
-        filesAnalyzed = $false
-        licenseConcluded = 'MIT'
-        licenseDeclared = 'MIT'
-        copyrightText = 'Copyright Sergey Podobry'
-        comment = 'Pinned header-only logging dependency used by libdatachannel.'
-    },
-    [ordered]@{
-        SPDXID = 'SPDXRef-Package-nlohmann-json'
-        name = 'JSON for Modern C++'
-        versionInfo = '3.12.0 (55f93686c01528224f448c19128836e7df245f72)'
-        downloadLocation = 'https://github.com/nlohmann/json/tree/55f93686c01528224f448c19128836e7df245f72'
-        filesAnalyzed = $false
-        licenseConcluded = 'MIT'
-        licenseDeclared = 'MIT'
-        copyrightText = 'Copyright (c) 2013-2025 Niels Lohmann'
-        comment = 'Pinned header-only JSON dependency used by libdatachannel; the complete notice is staged as licenses/NLOHMANN_JSON_LICENSE.txt.'
-    },
-    [ordered]@{
-        SPDXID = 'SPDXRef-Package-opus'
-        name = 'Opus audio codec'
-        versionInfo = 'v1.5.2'
-        downloadLocation = 'https://github.com/xiph/opus/tree/ddbe48383984d56acd9e1ab6a090c54ca6b735a6'
-        filesAnalyzed = $false
-        licenseConcluded = 'BSD-3-Clause'
-        licenseDeclared = 'BSD-3-Clause'
-        copyrightText = 'Copyright Xiph.Org Foundation and contributors'
-        comment = 'Statically linked Opus encoder for the live-transcription audio track. No decoder path exists: remote audio is never decoded.'
-    },
-    [ordered]@{
-        SPDXID = 'SPDXRef-Package-mbedtls'
-        name = 'Mbed TLS'
-        versionInfo = '3.6.7'
-        downloadLocation = 'https://github.com/Mbed-TLS/mbedtls/tree/068ff080b369adfac81509f9b57b2afabaf82dc5'
-        filesAnalyzed = $false
-        licenseConcluded = 'Apache-2.0 OR GPL-2.0-or-later'
-        licenseDeclared = 'Apache-2.0 OR GPL-2.0-or-later'
-        copyrightText = 'Copyright The Mbed TLS Contributors'
-        comment = 'Statically linked DTLS/crypto backend (LTS branch) for the native WebRTC stack, built with MBEDTLS_SSL_DTLS_SRTP enabled.'
-    },
-    [ordered]@{
         SPDXID = 'SPDXRef-Package-D3DCompiler47'
         name = 'Microsoft Direct3D Shader Compiler 47 redistributable'
         versionInfo = if ($null -eq $d3dCompilerVersion) { 'not-bundled' } else { $d3dCompilerVersion }
@@ -398,14 +353,13 @@ if ($null -eq $d3dCompilerVersion) {
 $packageIds = @($packages | ForEach-Object { $_.SPDXID })
 $relationships = @()
 foreach ($dependency in @(
+    'SPDXRef-Package-Microsoft-VC-Runtime',
     'SPDXRef-Package-Qt',
     'SPDXRef-Package-Lucide',
     'SPDXRef-Package-AMD-FSR1',
     'SPDXRef-Package-NVIDIA-NIS',
     'SPDXRef-Package-CUDA',
     'SPDXRef-Package-Maxine-Headers',
-    'SPDXRef-Package-libdatachannel',
-    'SPDXRef-Package-opus',
     'SPDXRef-Package-D3DCompiler47',
     'SPDXRef-Package-Android-adb')) {
     if ($dependency -notin $packageIds) {
@@ -413,20 +367,6 @@ foreach ($dependency in @(
     }
     $relationships += [ordered]@{
         spdxElementId = 'SPDXRef-Package-OkuFlow'
-        relationshipType = 'DEPENDS_ON'
-        relatedSpdxElement = $dependency
-    }
-}
-
-foreach ($dependency in @(
-    'SPDXRef-Package-libjuice',
-    'SPDXRef-Package-libsrtp',
-    'SPDXRef-Package-usrsctp',
-    'SPDXRef-Package-plog',
-    'SPDXRef-Package-nlohmann-json',
-    'SPDXRef-Package-mbedtls')) {
-    $relationships += [ordered]@{
-        spdxElementId = 'SPDXRef-Package-libdatachannel'
         relationshipType = 'DEPENDS_ON'
         relatedSpdxElement = $dependency
     }
@@ -525,6 +465,12 @@ $sbom = [ordered]@{
         creators = @('Tool: OkuFlow generate_release_metadata.ps1')
     }
     hasExtractedLicensingInfos = @(
+        [ordered]@{
+            licenseId = 'LicenseRef-Microsoft-VC-Runtime'
+            extractedText = Get-Content -LiteralPath $runtimeLicense -Raw
+            name = 'Microsoft Visual C++ runtime license (exact installer RTF)'
+            seeAlsos = @($runtimePin.licensePage)
+        },
         [ordered]@{
             licenseId = 'LicenseRef-BoringSSL'
             extractedText = Get-Content -LiteralPath (Join-Path $bundle 'licenses/adb/BORINGSSL_LICENSE.txt') -Raw

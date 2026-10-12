@@ -401,13 +401,6 @@ bool OkuFlowApp::StartSelectedMicrophone()
                 callbackTarget->generation != callbackGeneration) {
                 return;
             }
-            // Fan-out under the callback-target mutex: both calls are
-            // bounded, lock-free toward the recorder, and never block. The
-            // transcript copy happens before the recorder consumes the
-            // frame; transcript pressure can never change recorder drops.
-            if (app->transcriptionController_) {
-                (void)app->transcriptionController_->TryEnqueueAudio(frame);
-            }
             if (app->recordingManager_) {
                 app->recordingManager_->AddAudioFrame(std::move(frame));
             }

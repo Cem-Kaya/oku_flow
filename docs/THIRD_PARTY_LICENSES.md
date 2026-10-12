@@ -1,5 +1,12 @@
 # Third-Party Licenses and Attributions
 
+The separate static website's browser transcription tool uses Transformers.js
+(Apache-2.0), MP4Box.js (BSD-3-Clause), ONNX Runtime and Whisper weights (MIT).
+Those runtimes/models are not Windows or Android binary dependencies. Their
+pinned files and notices belong to the website repository; see
+`okuflow-website/docs/browser-transcription.md`. The notes document contains
+first-party file-access/MessageChannel glue, not a bundled recognition engine.
+
 OkuFlow relies on several third-party SDKs and code drops. Keep this summary with any redistributed build and update it whenever dependencies or bundled notices change.
 
 ## Qt 6
@@ -115,43 +122,6 @@ OkuFlow relies on several third-party SDKs and code drops. Keep this summary wit
   third-party source code. When `windeployqt` stages `D3Dcompiler_47.dll`, the
   top-level SBOM adds the file's actual version as a Microsoft redistributable
   package governed by the applicable Microsoft terms.
-
-## Native WebRTC Stack (live transcription, plan 36 Carrier D)
-All components below are fetched by pinned commit at build time (never
-committed to this repository), built as static libraries, and linked into
-`oku_flow.exe`. Every license is GPL-3.0-compatible; no proprietary
-component is involved and no extra runtime DLL ships in the bundle. Exact
-upstream license texts are staged in the release bundle's `licenses/`
-directory and covered by its checksum manifest.
-
-- **libdatachannel v0.24.5** (commit `443f6934d9007eb7076ab7825ba330f355fcbead`)
-  - License: MPL-2.0 (file-level copyleft; OkuFlow uses it unmodified)
-  - Role: PeerConnection, SDP, ICE, DTLS-SRTP, SCTP data channel, RTP
-    packetization
-  - Bundled pinned submodules (also separate SBOM packages):
-    - libjuice v1.7.2, commit `3c40a3545b6b1b62c7adee7f8f2bd58aa290afd6`
-      (MPL-2.0)
-    - libSRTP 2.8.0, commit `24b3bf8f19b6f5ab4cd2bcceb4f4064efca86fd5`
-      (BSD-3-Clause)
-    - usrsctp commit `fec583d54493f879d2ae44a743423bf8a04371ab`
-      (BSD-3-Clause)
-    - plog 1.1.10, commit `94899e0b926ac1b0f4750bfbd495167b4a6ae9ef`
-      (MIT)
-    - JSON for Modern C++ 3.12.0, commit
-      `55f93686c01528224f448c19128836e7df245f72` (MIT; header-only JSON
-      dependency, notice staged as `licenses/NLOHMANN_JSON_LICENSE.txt`)
-- **Opus v1.5.2** (commit `ddbe48383984d56acd9e1ab6a090c54ca6b735a6`)
-  - License: BSD-3-Clause
-  - Role: audio encoder for the outbound side of the SendRecv transcription
-    track. No decoder is built: the assistant's return audio is never decoded.
-- **Mbed TLS 3.6.7 LTS** (commit `068ff080b369adfac81509f9b57b2afabaf82dc5`)
-  - License: Apache-2.0 OR GPL-2.0-or-later (dual)
-  - Role: DTLS and crypto backend, built with `MBEDTLS_SSL_DTLS_SRTP`
-    enabled
-
-Servicing: these pins are recorded in the SBOM; each release reviews
-upstream security advisories (Mbed TLS in particular) and bumps the pins as
-ordinary changes re-validated by the loopback and live test matrices.
 
 ## Android Companion Dependencies (closed-test preparation)
 
@@ -305,3 +275,22 @@ on the proprietary runtime.
   an OpenAI SDK. Codex authentication, service access, usage limits, updates,
   and licensing remain governed by the user's Codex installation and OpenAI
   terms.
+
+## Microsoft Visual C++ Windows runtime
+
+The Windows ZIP retains Microsoft's unmodified signed x64 redistributable
+14.44.35211.0 and its exact embedded English EULA as
+`licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf`. Version, installer and EULA
+SHA-256 pins live in `scripts/vc-runtime/pins.json`. The build uses the
+licensed Visual Studio 2022 redistributable; Microsoft's redistribution
+terms apply independently of OkuFlow's dual license. The native launcher
+uses the static CRT (/MT); the Qt application uses a system installation.
+No app-local CRT DLLs are copied. The launcher requests the user's vendor
+license/UAC approval only when installation is needed; it never forces a
+restart or downgrades a supported installed version.
+
+[Microsoft redistribution guidance](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files)
+and [runtime license](https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/).
+See [Windows runtime setup](windows_runtime_setup.md) for staging, provenance
+and remaining clean-VM acceptance. The license text and installer must be
+reviewed together whenever pins are refreshed.

@@ -62,7 +62,7 @@ added by this harness. The selected local download is **320x240 at 15 FPS**,
 77 minutes long (about 85 MiB). OBS's 30 FPS output repeats source frames;
 it does not create 30 distinct lecture frames each second. Audio is muted in
 the test scene. OBS Virtual Camera carries **video only**, so this
-does not test microphone transcription or sensor/autofocus behavior.
+does not test microphone audio or sensor/autofocus behavior.
 
 The default publisher copy can be downloaded again with:
 

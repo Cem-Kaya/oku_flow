@@ -2,15 +2,13 @@
 
 This module owns the Qt widget layer.
 
-The Advanced Transcript tab owns the explicit live-transcription opt-in and
-append-to-notes option; both default off. Recording alone does not enable them.
 Settings > Camera provides a phone-only light button whose label follows capture
 metadata. The light starts off each connection and is never a saved preference.
 
 Current contents:
 - `MainWindow` for the persistent render surface, three auto-fading Simple-mode
   corner clusters, the shared Simple/Advanced quick-mode carousel and numbered
-  grid/toast, and right-side Advanced Image, Assistant, Transcript, and Settings
+  grid/toast, and right-side Advanced Image, Assistant, and Settings
   tabs. Image owns mode tuning and Settings owns shared setup, with independent
   search fields and cross-tab match feedback. Fine-tune text keeps detailed
   algorithms inside a nested group. The inspector also provides

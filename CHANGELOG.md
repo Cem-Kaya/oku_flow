@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+- Fix Simple controls reappearing under a stationary pointer at scaled Windows
+  DPI. Qt cursor comparisons use one coordinate domain; physical pointer
+  movement still reveals the controls, including a single native pixel.
+- Add browser Transcribe controls under new recorded-video notes cards, with
+  explicit Chrome folder access and a server-free handoff to okuflow.com.
+  Transcripts return to the notes viewer and persist in recording sidecars;
+  the browser never rewrites OkuFlow's actively appended HTML. Extract the
+  self-contained notes shell/bridge and improve narrow layouts and touch targets.
+- Remove live lecture transcription from the Windows app, including its
+  Transcript tab, caption overlay, opt-ins, Codex realtime client and native
+  WebRTC dependencies. Microphone AAC/video recording, media notes, Assistant
+  chat history, Read/Explain and TTS remain. Obsolete keys are ignored/dropped
+  without migration. Transcription moves to okuflow.com in Chrome through a
+  Transcribe button in generated notes.
+
+- Add a native Windows startup launcher that checks the system Microsoft
+  runtime before Qt loads and offers the included verified installer only
+  when needed. Setup Assistant shows runtime status; cancellation is safe
+  and installation never forces a restart. Sign and inventory both release
+  executables and retain Microsoft's exact license.
 - Add Android privacy information, notification state updates, optional
   notification permission and explicit optional rear-camera/autofocus feature
   declarations. Add fail-closed upload-key configuration and APK/AAB release

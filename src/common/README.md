@@ -23,6 +23,8 @@ Current contents:
 - stage orchestration and debug compositing in `frame_pipeline.cpp`
   (the unused `ResampleToFill` path and its private dimension cache were removed;
   presentation uses the canonical viewport transform)
+- microphone PCM feeds AAC recording only; browser speech processing is separate
+  from the desktop media pipeline
 - live AV1/H.264 Media Foundation sink-writer recording in `media_writer.cpp`;
   the app owns two instances for synchronized original/processed output. An
   automatic stop retains its terminal result and original failure; an early

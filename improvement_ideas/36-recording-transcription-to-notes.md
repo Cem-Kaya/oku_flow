@@ -1,3 +1,8 @@
+**SUPERSEDED 2026-10-12** — Transcription is removed from the OkuFlow desktop
+app. It moves to okuflow.com browser transcription in Chrome (Whisper via
+WebGPU), launched from a Transcribe button in the generated notes page.
+Desktop audio/video recording remains. The plan below is historical provenance.
+
 # Plan 36 — Live recording transcription into lecture notes
 
 Status: **IMPLEMENTED 2026-08-08 — Carrier D (native WebRTC); short and

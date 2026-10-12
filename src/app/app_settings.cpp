@@ -247,20 +247,6 @@ void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings sett
         uiState_->recordingCanvasCombo_->setCurrentIndex(
             index >= 0 ? index : 0);
     }
-    if (uiState_->transcribeMicrophoneCheckbox_) {
-        auto block =
-            uiState_->BlockSignals(uiState_->transcribeMicrophoneCheckbox_);
-        uiState_->transcribeMicrophoneCheckbox_->setChecked(
-            settings.liveTranscriptionEnabled);
-    }
-    if (uiState_->transcriptToNotesCheckbox_) {
-        auto block =
-            uiState_->BlockSignals(uiState_->transcriptToNotesCheckbox_);
-        uiState_->transcriptToNotesCheckbox_->setChecked(
-            settings.appendTranscriptToNotes);
-        uiState_->transcriptToNotesCheckbox_->setEnabled(
-            settings.liveTranscriptionEnabled);
-    }
     if (mainWindow_) {
         mainWindow_->setAdvancedPanelWidth(settings.advancedPanelWidth);
         mainWindow_->setSimpleMode(settings.simpleUiMode);
@@ -317,14 +303,6 @@ void OkuFlowApp::SavePersistentSettings() {
                 storedValue,
                 static_cast<int>(RecordingCanvasMode::Source),
                 static_cast<int>(RecordingCanvasMode::Nhd360)));
-    }
-    if (uiState_->transcribeMicrophoneCheckbox_) {
-        settingsController_->MutableSettings().liveTranscriptionEnabled =
-            uiState_->transcribeMicrophoneCheckbox_->isChecked();
-    }
-    if (uiState_->transcriptToNotesCheckbox_) {
-        settingsController_->MutableSettings().appendTranscriptToNotes =
-            uiState_->transcriptToNotesCheckbox_->isChecked();
     }
     if (mainWindow_) {
         settingsController_->MutableSettings().advancedPanelWidth = mainWindow_->advancedPanelWidth();

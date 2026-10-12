@@ -167,7 +167,7 @@ aligned with the project goals.
   layouts. Captures include the native corner-control windows; inspect them
   alongside the assertions. Use separate output directories for each
   `QT_SCALE_FACTOR` run and avoid concurrent GUI test runs.
-- Preserve the four-tab ownership contract in `docs/ui_modes_design.md` and
+- Preserve the three-tab ownership contract in `docs/ui_modes_design.md` and
   keep keyboard order, collapsed-section persistence, and English/Turkish/
   German regression coverage aligned when moving controls.
 - `ai_settings_dialog_interactions` validates provider switching, credential-id
@@ -195,66 +195,6 @@ aligned with the project goals.
   Its summary explicitly marks partial validation. The default remains the
   complete test matrix; a filtered pass never substitutes for the full release
   gate or permits claiming that desktop interactions were verified.
-
-- Set `OKUFLOW_AGENT_RELEASE_BUILD_DIR` to an isolated local build directory
-  when the development executable is running. `scripts/agent_build.bat` applies
-  the same shipping release preset there and still runs the tracked CPU/CUDA
-  test presets. Never terminate the user's process to unlock build output.
-
-## Android Companion Validation
-- Run `pwsh -NoProfile -File scripts/build_android.ps1 -Lint` for phone code,
-  and `python -B -m unittest discover -s android/tests -v` for host protocol
-  changes. `-B` keeps Python bytecode caches off the synced checkout.
-- Run the tracked Windows matrix for receiver/facade changes; the
-  `phone_camera_contract` fixture checks the system decoder without using a
-  real camera or adb server. Preserve saved physical-camera selection when
-  adding phone entries or changing discovery.
-- Follow `android/PROTOCOL.md`; never replace/kill a foreign adb server to test
-  the companion. Query structured USB transport type and use its transport ID;
-  unknown/Wi-Fi transports must not become cable-camera sources. The probe's
-  recordings belong in local app data, not release bundles or the synced tree.
-- Report local fixtures separately from real-phone quality, disconnect and
-  long-soak acceptance. A debug APK is not a signed public release.
-
-- Keep Android outputs, Gradle project caches and Kotlin persistent data outside
-  Drive; see `android/BUILDING.md`. `-Install` requires one authorized device.
-- Android 17 redacts developer/debugging settings. Preserve unknown versus off,
-  retain older-version checks and verify with current USB/session evidence.
-- Keep real-device validation in `android/DEVICE_VALIDATION.md`; do not infer
-  older-phone or long-soak acceptance from the connected development phone.
-- Inspect actual phone screenshots after Android UI changes. A UI hierarchy
-  can report labels that render invisibly; text presence alone does not verify
-  contrast, layout or visible switch/slider labels. Report offline-device
-  installation or visual-validation limits explicitly.
-- If Android screenshots intermittently omit system chrome as well as app text,
-  compare an independent native screen recording before changing UI code. Keep
-  the original evidence and report capture limitations separately from app bugs.
-
-## USB Companion Discovery Validation
-- Keep real phone discovery/startup off the UI thread. Use non-claiming probes
-  and retain saved camera intent through delayed arrival; never encode a phone
-  serial/model as a default. Explicit webcam selection must survive sessions.
-- Fake-adb tests must set `PhoneAdbTestHooks` to a private local port with server
-  launch disabled. Never probe the owner's port 5037 from unit tests or kill an
-  unrelated adb server. Runtime bootstrap uses a direct loopback bind only
-  when no listener/endpoint override exists, with a 30-second throttle.
-- The pinned adb staging helper retains exact notices. Before public release,
-  resolve any open source/relinking obligations in `THIRD_PARTY_LICENSES.md`;
-  a local successful staging test does not clear a redistribution gate.
-
-## Source-built adb and unattended GUI validation
-- Build adb with `scripts/build_adb_from_source.ps1`; retain its complete runtime,
-  notices and source/relinking ZIP. Review the generated manifest and update
-  `scripts/adb-source/distribution.json` before staging a new build. The staging
-  helper accepts the source build-output root, never an arbitrary SDK binary.
-  Follow `docs/adb_distribution.md` when changing inputs or licensing.
-- Test source-built server startup with `scripts/test_adb_source_build.ps1`.
-  It owns a private loopback child and stops only that exact child; do not stop
-  a foreign shared adb server to obtain a clean-server measurement.
-- GUI fixtures must acquire and verify native Windows foreground focus before
-  keyboard/idle assertions. Never ask the owner to click test windows to make
-  assertions pass. Run GUI tests serially on a free interactive desktop; preserve
-  behavior assertions and distinguish harness activation failures from app bugs.
 
 ## Private Android Signing and Serial Desktop Validation
 - Use `scripts/build_android_signed.ps1` for owner-controlled upload signing.
@@ -336,7 +276,26 @@ aligned with the project goals.
 - The runtime installer and EULA are pinned in `scripts/vc-runtime/`; use
   `stage_windows_runtime.ps1` before metadata generation. Do not ship
   unreviewed installer versions or add app-local CRT DLLs silently.
+  Preserve the EULA's exact bytes through its `-text -diff` Git attribute;
+  line-ending or whitespace normalization would invalidate the reviewed hash.
 - Run `windows_runtime_contract` and serial `setup_assistant_interactions`
   through the tracked matrix. Do not uninstall a working system runtime or
   trigger UAC from unit tests; missing-runtime installation needs an isolated
   Windows VM. See `docs/windows_runtime_setup.md`.
+
+## Desktop recording ownership (2026-10-12)
+- The Windows app records microphone audio and video. Speech processing moves
+  to okuflow.com in Chrome from the notes page; preserve recording, media-note
+  callbacks, Assistant conversation history, Read/Explain, and manual TTS.
+- Recording session identity belongs to `app/recording_session_info.hpp`.
+  Removed feature keys have no migration and are omitted on save.
+
+## Browser transcription notes validation
+- The local notes shell and first-party handoff script are compiled from
+  `common/notes_document_template.hpp` and `common/notes_transcribe_bridge.hpp`.
+  Browser transcripts are versioned recording sidecars, never concurrent edits
+  to the app-owned notes HTML. Keep text escaped and file identity checked.
+- Validate the File/MessageChannel handoff and sidecar restoration separately
+  from the native Windows notes-storage fixtures. Only use private Chrome test
+  profiles and fixture folders; keep recordings and model caches outside Git.
+  Browser hardware tests and Windows GUI fixtures must remain serial.

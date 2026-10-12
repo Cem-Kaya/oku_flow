@@ -18,7 +18,6 @@
 #include <cstdint>
 #include <memory>
 
-#include "okuflow/common/transcript.hpp"
 
 QT_BEGIN_NAMESPACE
 class QImage;
@@ -113,16 +112,6 @@ public:
     // Appends an annotation snapshot section with the marked viewport image.
     void NoteAnnotationSnapshot(const QString& filePath,
                                 const QString& heading);
-    // Appends one finalized live-transcript segment (plan 36). Final-only:
-    // partial text never reaches this API. Values are validated and HTML-
-    // escaped; a repeated (session id, sequence) identity is consumed once.
-    // No-op when notes are disabled.
-    // True means accepted for ordered storage (or already accepted).
-    // NotesWriteFinished reports durable completion; false is rejection.
-    bool NoteTranscriptSegment(const TranscriptSegment& segment);
-    // Appends one translated gap section: audio was dropped from the
-    // transcript while the recording stayed unaffected.
-    bool NoteTranscriptGap(const QString& recordingSessionId);
     // Absolute path of the current lecture notes file; empty if nothing has
     // been scheduled yet; NotesWriteFinished confirms durable creation.
     QString notesFilePath() const;
@@ -260,10 +249,6 @@ private:
     // note with the question, the analyzed image, and the reply.
     QString pendingAssistantNotePrompt_;
     QString pendingAssistantNoteImagePath_;
-    // Accepted identities include target path and recording session. Failed
-    // completions release identities for retry; configuration switches cannot
-    // alias pending callbacks from an earlier target.
-    QSet<QString> acceptedTranscriptIdentities_;
     QHash<QString, QImage> noteImages_;
     std::shared_ptr<NotesWorkState> notesWork_;
     std::size_t pendingNotesWrites_{};

@@ -1,0 +1,9 @@
+#pragma once
+#include <array>
+#include <cstdint>
+namespace okuflow::windows_runtime_pins {
+inline constexpr std::array<std::uint32_t, 4> kMinimumVersion{@OKUFLOW_VC_MINIMUM_VERSION@};
+inline constexpr char kInstallerSha256[] = "@OKUFLOW_VC_INSTALLER_SHA256@";
+inline constexpr const char* kFiles[] = {
+@OKUFLOW_VC_FILE_NAMES@};
+}

@@ -6,6 +6,8 @@
 #include <QString>
 
 #include <memory>
+#include <functional>
+#include "okuflow/app/windows_runtime.hpp"
 
 QT_BEGIN_NAMESPACE
 class QCheckBox;
@@ -19,20 +21,21 @@ class QProcess;
 class QProgressBar;
 class QPushButton;
 class QTimer;
+class QTemporaryDir;
 class QVBoxLayout;
 QT_END_NAMESPACE
 
 namespace okuflow {
 
-// Installs optional vendor dependencies without placing their binaries in the
-// OkuFlow distribution. Downloads are pinned and SHA-256 verified before an
-// installer is ever started.
+// Installs the bundled Windows runtime and optional vendor tools. Every
+// installer is pinned and SHA-256 verified before it is started.
 class SetupAssistantDialog : public QDialog {
     Q_OBJECT
 public:
     explicit SetupAssistantDialog(const QString& configuredCodexPath,
                                   bool declined,
-                                  QWidget* parent = nullptr);
+                                  QWidget* parent = nullptr,
+                                  std::function<WindowsRuntimeStatus()> runtimeCheck = {});
     ~SetupAssistantDialog() override;
 
     // True when a dependency of the core Read/Explain/Assistant features is
@@ -59,7 +62,7 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
-    enum class Dependency { None, CodexCli, NvidiaVideoEffects };
+    enum class Dependency { None, WindowsRuntime, CodexCli, NvidiaVideoEffects };
 
     DependencyRow& RowForDependency(Dependency dependency);
     void RefreshStatus();
@@ -72,7 +75,8 @@ private:
     bool VerifyDownloadedInstaller(QString& error);
     void ResetDownloadState();
     void StartVerifiedInstaller();
-    void StartElevatedNvidiaInstaller();
+    void BeginWindowsRuntimeInstall();
+    void StartElevatedInstaller(Dependency dependency);
     void CompleteInstaller(Dependency dependency,
                            bool success,
                            const QString& detail = {});
@@ -84,9 +88,12 @@ private:
 
     QString configuredCodexPath_;
     QString nvidiaArchitecture_;
+    std::function<WindowsRuntimeStatus()> runtimeCheck_;
     Dependency activeDependency_{Dependency::None};
     DependencyRow codexRow_;
     DependencyRow nvidiaRow_;
+    DependencyRow runtimeRow_;
+    std::unique_ptr<QTemporaryDir> runtimeInstallerDirectory_;
     QCheckBox* declineCheckbox_{};
     QPushButton* cancelDownloadButton_{};
     QNetworkAccessManager* network_{};

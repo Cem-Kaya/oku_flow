@@ -24,12 +24,11 @@ namespace okuflow {
 // process lifetime, request ids and reply deadlines, newline framing with hard
 // message/buffer bounds, one payload-free stderr indication per child, and
 // default denial of unexpected
-// server-to-client requests. Feature clients (Assistant, realtime
-// transcription) own only their method and notification state.
+// server-to-client requests. Feature clients (Assistant and vision) own only their method and notification state.
 //
 // Diagnostics never include raw payload bytes: malformed or oversized traffic
 // is reported by size and parse offset only, because protocol lines can carry
-// speech transcripts, SDP, or account details.
+// conversation text, images, or account details.
 class CodexJsonRpcProcess : public QObject {
     Q_OBJECT
 public:

@@ -22,6 +22,37 @@ target_link_libraries(settings_store_tests PRIVATE
 add_test(NAME settings_store_round_trip COMMAND settings_store_tests)
 get_target_property(QT_QMAKE_EXECUTABLE Qt6::qmake IMPORTED_LOCATION)
 get_filename_component(QT_BIN_DIRECTORY "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
+add_executable(launcher_fixture launcher_fixture.cpp)
+set_property(TARGET launcher_fixture PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+add_executable(windows_runtime_tests windows_runtime_tests.cpp ${PROJECT_SOURCE_DIR}/src/app/windows_runtime_contract.cpp)
+target_include_directories(windows_runtime_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ${OKUFLOW_RUNTIME_GENERATED_DIR})
+target_compile_definitions(windows_runtime_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
+    OKUFLOW_LAUNCHER_TEST_BINARY="$<TARGET_FILE:okuflow_launcher>"
+    OKUFLOW_LAUNCHER_TEST_CHILD="$<TARGET_FILE:launcher_fixture>")
+target_link_libraries(windows_runtime_tests PRIVATE Qt6::Core Qt6::Test advapi32 version bcrypt shell32)
+add_dependencies(windows_runtime_tests okuflow_launcher launcher_fixture)
+target_compile_options(windows_runtime_tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+add_test(NAME windows_runtime_contract COMMAND windows_runtime_tests)
+set_tests_properties(windows_runtime_contract PROPERTIES TIMEOUT 30
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+add_executable(setup_assistant_tests setup_assistant_tests.cpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/app/setup_assistant.hpp
+    ${PROJECT_SOURCE_DIR}/src/app/setup_assistant.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/windows_runtime.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/windows_runtime_contract.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp)
+target_include_directories(setup_assistant_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ${OKUFLOW_RUNTIME_GENERATED_DIR})
+target_compile_definitions(setup_assistant_tests PRIVATE OKUFLOW_ENABLE_CUDA=0 NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_options(setup_assistant_tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+target_link_libraries(setup_assistant_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Test
+    advapi32 version bcrypt shell32)
+qt_add_resources(setup_assistant_tests "okuflow_setup_test_translations"
+    PREFIX "/i18n" BASE "${CMAKE_CURRENT_BINARY_DIR}/../cmake" FILES ${OKUFLOW_QM_FILES})
+add_test(NAME setup_assistant_interactions COMMAND setup_assistant_tests)
+set_tests_properties(setup_assistant_interactions PROPERTIES TIMEOUT 30 LABELS "gui"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 add_executable(phone_retry_policy_tests phone_retry_policy_tests.cpp)
 target_include_directories(phone_retry_policy_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(phone_retry_policy_tests PRIVATE Qt6::Core Qt6::Test)
@@ -648,112 +679,6 @@ if (WIN32)
         ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
-    add_executable(codex_realtime_client_tests
-        codex_realtime_client_tests.cpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_realtime_transcription_client.hpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_transcription_interfaces.hpp
-        ${PROJECT_SOURCE_DIR}/src/common/codex_app_server_client.cpp
-        ${PROJECT_SOURCE_DIR}/src/common/codex_json_rpc_process.cpp
-        ${PROJECT_SOURCE_DIR}/src/common/codex_realtime_transcription_client.cpp
-    )
-    target_include_directories(codex_realtime_client_tests PRIVATE
-        ${PROJECT_SOURCE_DIR}/include
-    )
-    target_link_libraries(codex_realtime_client_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-    )
-    add_dependencies(codex_realtime_client_tests fake_codex_app_server)
-
-    add_test(NAME codex_realtime_protocol COMMAND codex_realtime_client_tests)
-    set_tests_properties(codex_realtime_protocol PROPERTIES
-        TIMEOUT 60
-        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
-    )
-
-    add_executable(transcription_controller_tests
-        transcription_controller_tests.cpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/app/transcription_session_controller.hpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_transcription_interfaces.hpp
-        ${PROJECT_SOURCE_DIR}/src/app/transcription_session_controller.cpp
-    )
-    target_include_directories(transcription_controller_tests PRIVATE
-        ${PROJECT_SOURCE_DIR}/include
-    )
-    target_link_libraries(transcription_controller_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-    )
-    target_compile_definitions(transcription_controller_tests PRIVATE
-        NOMINMAX
-        WIN32_LEAN_AND_MEAN
-        UNICODE
-        _UNICODE
-    )
-    add_test(NAME transcription_controller COMMAND transcription_controller_tests)
-    set_tests_properties(transcription_controller PROPERTIES
-        TIMEOUT 60
-        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
-    )
-
-    add_executable(native_rtc_carrier_tests
-        native_rtc_carrier_tests.cpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_native_rtc_carrier.hpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_transcription_interfaces.hpp
-        ${PROJECT_SOURCE_DIR}/src/common/realtime_native_rtc_carrier.cpp
-    )
-    target_include_directories(native_rtc_carrier_tests PRIVATE
-        ${PROJECT_SOURCE_DIR}/include
-    )
-    target_link_libraries(native_rtc_carrier_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        OkuFlow::NativeRtc
-    )
-    target_compile_definitions(native_rtc_carrier_tests PRIVATE
-        NOMINMAX
-        WIN32_LEAN_AND_MEAN
-        UNICODE
-        _UNICODE
-    )
-    add_test(NAME native_rtc_carrier COMMAND native_rtc_carrier_tests)
-    set_tests_properties(native_rtc_carrier PROPERTIES
-        TIMEOUT 120
-        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
-    )
-
-    # Opt-in live gate (plan 36 D4): needs a signed-in Codex CLI and network,
-    # so it is built but never registered with ctest. Run manually with a
-    # 48 kHz mono PCM16 WAV.
-    add_executable(native_rtc_live_probe
-        native_rtc_live_probe.cpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/app/transcription_session_controller.hpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_realtime_transcription_client.hpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_native_rtc_carrier.hpp
-        ${PROJECT_SOURCE_DIR}/include/okuflow/common/realtime_transcription_interfaces.hpp
-        ${PROJECT_SOURCE_DIR}/src/app/transcription_session_controller.cpp
-        ${PROJECT_SOURCE_DIR}/src/common/codex_app_server_client.cpp
-        ${PROJECT_SOURCE_DIR}/src/common/codex_json_rpc_process.cpp
-        ${PROJECT_SOURCE_DIR}/src/common/codex_realtime_transcription_client.cpp
-        ${PROJECT_SOURCE_DIR}/src/common/realtime_native_rtc_carrier.cpp
-    )
-    target_include_directories(native_rtc_live_probe PRIVATE
-        ${PROJECT_SOURCE_DIR}/include
-    )
-    target_link_libraries(native_rtc_live_probe PRIVATE
-        Qt6::Core
-        OkuFlow::NativeRtc
-    )
-    target_compile_definitions(native_rtc_live_probe PRIVATE
-        NOMINMAX
-        WIN32_LEAN_AND_MEAN
-        UNICODE
-        _UNICODE
-    )
 endif()
 
 if (WIN32 AND OKUFLOW_ENABLE_CUDA)

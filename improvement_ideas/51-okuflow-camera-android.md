@@ -17,6 +17,83 @@ commands are recorded in [`android/BUILDING.md`](../android/BUILDING.md).
 [`android/design/setup-panels.html`](../android/design/setup-panels.html) is
 an interactive screen draft; it is not a capture of a running Android device.
 
+## High-priority follow-up (2026-10-12)
+
+**Priority: P1 / high priority, explicitly requested by the owner.** Root
+completed these source and binary reviews after the requested Opus reviews
+hit their rate limit. No rebuilt Windows bundle, end-to-end acceptance or
+recording-path benchmark is claimed by this review.
+
+1. **Ship the corrected Android launch path in the Windows bundle.**
+   The inspected `dist/OkuFlow/OkuFlowApp.exe` still launches the old
+   `com.okuflow.camera/.MainActivity` component. The source already attempts
+   `com.okuflow/com.okuflow.camera.MainActivity` first in
+   [`phone_camera.cpp`](../src/capture/phone_camera.cpp), but the deployed
+   binary is stale. Rebuild, run the tracked release gates and deploy a
+   complete bundle. Acceptance: a cold Windows launch discovers and opens
+   the Play-package phone app, receives a real first frame, and reconnects
+   after cable removal. Test canonical-only and canonical-plus-legacy app
+   installations, saved phone preferences, and an explicit ordinary webcam
+   preference. If the owner is running the primary bundle, follow the
+   documented `dist/OkuFlow2` fallback without terminating that instance.
+
+2. **Explain blocked app launches accurately.**
+   `PhoneCameraTransport::Start` currently treats a non-missing Android
+   launch error as an instruction to install the phone app, even when it is
+   installed. Distinguish a missing app from a blocked launch or access
+   failure and give the appropriate next action. Preserve the rule that a
+   blocked canonical app must not be bypassed by launching the legacy app.
+   Acceptance: targeted error-message checks and real installed-app launch
+   failure/recovery checks; existing command-selection tests alone do not
+   establish first-frame success.
+
+3. **Connect Windows zoom controls to the phone camera API.**
+   `OkuFlowApp::OnZoomAmountChanged` in
+   [`app_controls.cpp`](../src/app/app_controls.cpp) currently changes only
+   the desktop viewport. `MediaCapture::SetPhoneZoom` exists in
+   [`media_capture_facade.cpp`](../src/capture/media_capture_facade.cpp) but
+   has no application/UI caller. Implement the phone sensor/lens zoom plus
+   residual viewport zoom handoff, using acknowledged frame metadata so
+   one gesture cannot apply the same zoom twice. Acceptance: rapid zoom
+   changes, supported lens transitions, camera switches and reconnection
+   converge to the requested view; ordinary webcams retain desktop zoom.
+
+4. **Make recording bitrate an explicit quality/file-size policy.**
+   [`media_writer.cpp`](../src/common/media_writer.cpp) currently requests
+   `width * height * 5` bits/s for both AV1 and H.264, independently of FPS
+   and incoming bitrate. At 4000 x 2256 this requests 45.12 Mbps, so
+   re-encoding a 30 Mbps phone stream can request a larger Original file.
+   Define sensible codec/FPS-aware quality and smaller-file targets, then
+   measure actual output bitrate, text legibility and recording cost. For
+   planning, video alone at 30/50/10 Mbps is approximately 13.5/22.5/4.5
+   decimal GB/hour; these are bitrate calculations, not measured file sizes.
+
+5. **Evaluate recording optimizations while preserving both files.**
+   The owner confirmed that **Original and Processed recordings are both
+   intentional**. Keep the two-file output contract. Investigate these
+   paths before choosing defaults:
+
+   - **Original, preserve quality:** optionally mux the incoming H.265 or
+     H.264 stream directly when it satisfies the recording contract. This
+     avoids the Original-file encoder; live viewing still needs decoding.
+   - **Original, smaller file:** re-encode at an explicit lower bitrate.
+   - **Processed:** encode the processed frames. Benchmark hardware HEVC
+     against the existing AV1-first path at comparable quality/bitrate,
+     with H.264 fallback and runtime hardware capability checks. An HEVC
+     input does not make processed HEVC re-encoding a passthrough operation.
+
+   Direct muxing needs an encoded-packet side channel before the current
+   receiver discards packets after decoder submission. Specify keyframe
+   startup, codec-header/container conversion, phone-to-host timestamps and
+   microphone sync, rotation, codec/mode/camera changes, segment boundaries,
+   reconnects, disk pressure and finalization. The present Original file is
+   rotation-correct and frame-matched to Processed. A compressed-packet queue
+   cannot reuse the decoded-frame drop policy without breaking inter-frame
+   dependencies; preserve that contract or make any different archive
+   semantics an explicit option. Acceptance: bounded queues, playable files
+   across those transitions, synchronized audio and measured CPU/GPU/frame
+   cost on supported PCs. No codec default change is approved by these notes.
+
 ## Goal
 
 A companion Android app, **OkuFlow Camera**, that turns the student's phone

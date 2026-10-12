@@ -1,6 +1,8 @@
 #ifdef _WIN32
 
 #include "okuflow/common/assistive_runtime.hpp"
+#include "okuflow/common/notes_document_template.hpp"
+#include "okuflow/common/notes_transcribe_bridge.hpp"
 #include "okuflow/common/response_language.hpp"
 #include "okuflow/common/codex_app_server_client.hpp"
 
@@ -625,126 +627,7 @@ bool IsSafeAttributeToken(const QString& value, const QString& extraCharacters)
     return true;
 }
 
-QString FormatClockDuration(qint64 duration100ns)
-{
-    const qint64 totalSeconds = duration100ns / 10000000LL;
-    const qint64 hours = totalSeconds / 3600;
-    const qint64 minutes = (totalSeconds / 60) % 60;
-    const qint64 seconds = totalSeconds % 60;
-    return QStringLiteral("%1:%2:%3")
-        .arg(hours, 2, 10, QLatin1Char('0'))
-        .arg(minutes, 2, 10, QLatin1Char('0'))
-        .arg(seconds, 2, 10, QLatin1Char('0'));
-}
-
-// Compact chip form: M:SS below one hour, H:MM:SS beyond.
-QString FormatShortClockDuration(qint64 duration100ns)
-{
-    const qint64 totalSeconds = duration100ns / 10000000LL;
-    const qint64 hours = totalSeconds / 3600;
-    const qint64 minutes = (totalSeconds / 60) % 60;
-    const qint64 seconds = totalSeconds % 60;
-    if (hours > 0) {
-        return QStringLiteral("%1:%2:%3")
-            .arg(hours)
-            .arg(minutes, 2, 10, QLatin1Char('0'))
-            .arg(seconds, 2, 10, QLatin1Char('0'));
-    }
-    return QStringLiteral("%1:%2")
-        .arg(minutes)
-        .arg(seconds, 2, 10, QLatin1Char('0'));
-}
-
 } // namespace
-
-bool AssistiveRuntime::NoteTranscriptSegment(const TranscriptSegment& segment)
-{
-    if (!config_.lectureNotesEnabled ||
-        config_.notesDirectory.trimmed().isEmpty()) {
-        return false;
-    }
-    const QString text = segment.text.trimmed();
-    if (text.isEmpty() ||
-        text.size() > transcript_limits::kMaximumSegmentCharacters ||
-        !IsSafeAttributeToken(segment.recordingSessionId, QStringLiteral("-")) ||
-        segment.sequence == 0) {
-        return false;
-    }
-    if (!EnsureNotesFile()) {
-        return false;
-    }
-    const QString identity = notesFilePath_ + QLatin1Char('|') +
-        segment.recordingSessionId + QLatin1Char('|') + QString::number(segment.sequence);
-    if (acceptedTranscriptIdentities_.contains(identity)) {
-        return true;
-    }
-
-    // One compact feed line per finalized phrase — no per-phrase heading.
-    // The load-time script in the document head groups consecutive lines of
-    // one recording into a single collapsible transcript block; without
-    // script the lines still render as a clean feed.
-    QString timeChip;
-    if (segment.approximateOffset100ns >= 0) {
-        const qint64 offsetSeconds =
-            segment.approximateOffset100ns / 10000000LL;
-        timeChip = QStringLiteral(
-                       " <time class=\"tr-at\" datetime=\"PT%1S\" title=\"%2\">%3</time>")
-                       .arg(QString::number(offsetSeconds),
-                            QCoreApplication::translate("OkuFlow",
-                                                        "about %1 into recording")
-                                .arg(FormatClockDuration(segment.approximateOffset100ns))
-                                .toHtmlEscaped(),
-                            FormatShortClockDuration(segment.approximateOffset100ns)
-                                .toHtmlEscaped());
-    }
-    const QString language = segment.languageCode.trimmed().left(12);
-    const QString languageAttribute =
-        IsSafeAttributeToken(language, QStringLiteral("-"))
-            ? QStringLiteral(" lang=\"%1\"").arg(language.toHtmlEscaped())
-            : QString();
-    const QString line =
-        QStringLiteral(
-            "  <p class=\"tr\" id=\"transcript-%1-%2\" data-recording-session=\"%3\""
-            " data-sequence=\"%2\" data-time-precision=\"approximate\"%4>"
-            "<span class=\"tr-text\">%5%6</span>%7</p>\n")
-            .arg(segment.recordingSessionId.left(8).toHtmlEscaped(),
-                 QString::number(segment.sequence),
-                 segment.recordingSessionId.toHtmlEscaped(),
-                 languageAttribute,
-                 text.toHtmlEscaped(),
-                 segment.truncated
-                     ? QStringLiteral(" %1").arg(
-                           QCoreApplication::translate("OkuFlow", "(truncated)")
-                               .toHtmlEscaped())
-                     : QString(),
-                 timeChip);
-    if (!AppendNoteBlock(line, identity)) {
-        return false;
-    }
-    acceptedTranscriptIdentities_.insert(identity);
-    return true;
-}
-
-bool AssistiveRuntime::NoteTranscriptGap(const QString& recordingSessionId)
-{
-    if (!config_.lectureNotesEnabled ||
-        config_.notesDirectory.trimmed().isEmpty() ||
-        !IsSafeAttributeToken(recordingSessionId, QStringLiteral("-")) ||
-        !EnsureNotesFile()) {
-        return false;
-    }
-    // A gap renders inside the transcript feed as a visually distinct line,
-    // so later text never reads as continuous across dropped audio.
-    return AppendNoteBlock(
-        QStringLiteral(
-            "  <p class=\"tr tr-gap\" data-recording-session=\"%1\">"
-            "<span class=\"tr-text\">%2</span></p>\n")
-            .arg(recordingSessionId.toHtmlEscaped(),
-                 QCoreApplication::translate(
-                     "OkuFlow",
-                     "Transcript has a gap; recording is unaffected.")
-                     .toHtmlEscaped()));
-}
 
 void AssistiveRuntime::NoteAnnotationSnapshot(const QString& filePath,
                                               const QString& heading)
@@ -1550,283 +1433,11 @@ bool AssistiveRuntime::EnsureNotesFile()
     // script are inline: the file must work offline with no external
     // resources. Placeholders are token-replaced (never QString::arg) so
     // literal % signs in CSS/JS stay inert.
-    QString document = QStringLiteral(R"HTML(<!doctype html>
-<html lang="@@LANG@@" data-l10n-transcript="@@TRLABEL@@" data-l10n-conversation="@@CONVOLABEL@@">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>@@TITLE@@ - @@TIME@@</title>
-  <style>
-    :root {
-      color-scheme: light;
-      --bg: #f4f2ee; --panel: #ffffff; --panel-2: #faf9f6; --ink: #1a1b1d; --muted: #5b6470;
-      --line: #e3ded4; --line-soft: #ece8e0; --accent: #2563eb; --accent-soft: #e8f0fe;
-      --chip: #efece5; --user-bubble: #eef2fb; --radius: 12px;
-      --shadow: 0 1px 2px rgba(20, 18, 12, .06), 0 1px 8px rgba(20, 18, 12, .04);
-    }
-    :root[data-theme="dark"] {
-      color-scheme: dark;
-      --bg: #0e1013; --panel: #181b1f; --panel-2: #1e2226; --ink: #e9ebee; --muted: #9aa2ab;
-      --line: #2a2f36; --line-soft: #23272d; --accent: #7aa7ff; --accent-soft: #1b2740;
-      --chip: #23282e; --user-bubble: #1a2237;
-      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 2px 12px rgba(0, 0, 0, .35);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root:not([data-theme="light"]) {
-        color-scheme: dark;
-        --bg: #0e1013; --panel: #181b1f; --panel-2: #1e2226; --ink: #e9ebee; --muted: #9aa2ab;
-        --line: #2a2f36; --line-soft: #23272d; --accent: #7aa7ff; --accent-soft: #1b2740;
-        --chip: #23282e; --user-bubble: #1a2237;
-        --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 2px 12px rgba(0, 0, 0, .35);
-      }
-    }
-    * { box-sizing: border-box; }
-    html { font: 16px/1.6 system-ui, "Segoe UI", sans-serif; }
-    body { margin: 0; background: var(--bg); color: var(--ink); }
-    .topbar { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
-    .topbar-inner { width: min(52rem, calc(100vw - 2rem)); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .5rem 0; flex-wrap: wrap; }
-    .brand { margin: 0; font-weight: 700; letter-spacing: .01em; font-size: 1rem; display: flex; align-items: center; gap: .5rem; }
-    .brand::before { content: ""; width: .7rem; height: .7rem; border-radius: 3px; background: var(--accent); }
-    .tools { display: flex; gap: .4rem; flex-wrap: wrap; }
-    .tools button { font: inherit; font-size: .82rem; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .35rem .8rem; cursor: pointer; }
-    .tools button:hover { border-color: var(--accent); color: var(--accent); }
-    main { width: min(52rem, calc(100vw - 2rem)); margin: 0 auto; padding: 1.75rem 0 5rem; }
-    h1 { font-size: clamp(1.5rem, 4vw, 2rem); line-height: 1.15; margin: 0; }
-    .created { color: var(--muted); margin: .35rem 0 1.75rem; font-size: .9rem; }
-    /* Every entry is a compact chat-like card. */
-    details.note { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin: .55rem 0; box-shadow: var(--shadow); overflow: hidden; }
-    summary { cursor: pointer; padding: .55rem .85rem; list-style: none; display: flex; align-items: center; gap: .5rem; }
-    summary::-webkit-details-marker { display: none; }
-    summary::before { content: "\25B8"; flex: none; color: var(--muted); font-size: .72rem; transition: transform .15s ease; }
-    details[open] > summary::before { transform: rotate(90deg); }
-    /* Type icon shows the entry kind at a glance while collapsed. */
-    .ic { flex: none; font-size: 1rem; line-height: 1; }
-    .ic::before { content: "\2022 "; color: var(--muted); }
-    [data-kind="ai"]    > summary .ic::before { content: "\1F916 "; }
-    [data-kind="video"] > summary .ic::before { content: "\1F3AC "; }
-    [data-kind="photo"] > summary .ic::before { content: "\1F4F7 "; }
-    [data-kind="draw"]  > summary .ic::before { content: "\270F "; }
-    [data-kind="talk"]  > summary .ic::before { content: "\1F4AC "; }
-    [data-kind="convo"] > summary .ic::before { content: "\1F5E8 "; }
-    /* A multi-turn conversation wraps its turn cards; nested cards are flush. */
-    details.convo > .note-body { padding: .4rem .6rem .6rem; }
-    details.convo details.note { margin: .4rem 0; box-shadow: none; }
-    details.convo details.note:first-child { margin-top: 0; }
-    details.convo details.note:last-child { margin-bottom: 0; }
-    h2.ttl { flex: none; font-size: .92rem; line-height: 1.3; margin: 0; font-weight: 600; color: var(--ink); }
-    .count { flex: none; background: var(--chip); color: var(--muted); border-radius: 999px; padding: 0 .5rem; font-size: .74rem; font-weight: 500; }
-    /* One-line preview fills the middle; hidden (but space kept) when open. */
-    .preview { flex: 1 1 auto; min-width: 0; color: var(--muted); font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    details[open] > summary .preview { visibility: hidden; }
-    /* Timestamp: least prominent, pinned to the far right. */
-    time.at { flex: none; color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
-    .note-body { padding: .1rem 1rem .85rem 2.35rem; }
-    time { font-variant-numeric: tabular-nums; }
-    .note-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; line-height: 1.55; }
-    /* The question you asked the assistant, above the analyzed frame + reply. */
-    .note-ask { margin: 0 0 .55rem; padding: .45rem .7rem; background: var(--user-bubble); border-radius: 9px; font-weight: 550; overflow-wrap: anywhere; }
-    details.ai .note-body { border-left: 2px solid var(--accent-soft); padding-left: .9rem; margin-left: 1.4rem; }
-    /* The exact frame the assistant analyzed, above its answer. */
-    figure.ai-shot { margin: 0 0 .6rem; max-width: 22rem; }
-    figure.ai-shot img { border-radius: 8px; }
-    figure { margin: 0; }
-    .media-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .7rem; }
-    img, video { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: #000; }
-    figcaption { margin-top: .35rem; color: var(--muted); font-size: .84rem; }
-    figcaption a, a { color: var(--accent); }
-    /* Single consolidated transcript block: tight chat rows, session breaks. */
-    .trbody { padding: .3rem .5rem .5rem; }
-    p.tr { display: flex; justify-content: space-between; align-items: baseline; gap: .8rem; margin: 0; padding: .32rem .65rem; }
-    .trbody p.tr { border-radius: 9px; }
-    .trbody p.tr:nth-child(odd) { background: var(--panel-2); }
-    .trbody p.tr.tr-newsession { margin-top: .5rem; padding-top: .5rem; border-top: 1px dashed var(--line); }
-    /* Standalone transcript lines (no script) still read as a card. */
-    main > p.tr { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin: .3rem 0; padding: .5rem .85rem; }
-    .tr-text { overflow-wrap: anywhere; }
-    .tr-at { flex: none; color: var(--muted); font-size: .76rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    p.tr.tr-gap { color: var(--muted); font-style: italic; }
-    p.tr.tr-gap .tr-text::before { content: "\2504 "; }
-    button:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
-    @media (prefers-reduced-motion: reduce) { summary::before { transition: none; } }
-    @media print { .topbar { display: none; } main { width: 100%; } details.note { break-inside: avoid; box-shadow: none; } details:not([open]) > summary ~ * { display: revert; } }
-  </style>
-  <script>
-  (function () {
-    "use strict";
-    var storageKey = "okuflow-notes-theme";
-    function applyTheme(value) {
-      if (value === "light" || value === "dark") {
-        document.documentElement.setAttribute("data-theme", value);
-      }
-    }
-    try { applyTheme(localStorage.getItem(storageKey)); } catch (e) { /* blocked storage */ }
-    function isDark() {
-      var explicit = document.documentElement.getAttribute("data-theme");
-      if (explicit) { return explicit === "dark"; }
-      return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    }
-    document.addEventListener("DOMContentLoaded", function () {
-      var themeButton = document.getElementById("btn-theme");
-      if (themeButton) {
-        var sync = function () {
-          themeButton.setAttribute("aria-pressed", isDark() ? "true" : "false");
-        };
-        sync();
-        themeButton.addEventListener("click", function () {
-          var next = isDark() ? "light" : "dark";
-          applyTheme(next);
-          try { localStorage.setItem(storageKey, next); } catch (e) { /* blocked */ }
-          sync();
-        });
-      }
-      var setAll = function (open) {
-        var all = document.querySelectorAll("details");
-        for (var i = 0; i < all.length; i++) { all[i].open = open; }
-      };
-      var expand = document.getElementById("btn-expand");
-      var collapse = document.getElementById("btn-collapse");
-      if (expand) { expand.addEventListener("click", function () { setAll(true); }); }
-      if (collapse) { collapse.addEventListener("click", function () { setAll(false); }); }
-      // Consolidate EVERY transcript line in the document into one single
-      // collapsible block, regardless of how many times recording was
-      // started/stopped or what media sits between them. The block is placed
-      // right after the last recorded-video card (the transcript belongs to
-      // the recording, so it reads after it); with no video it stays at the
-      // first transcript line. A dashed rule marks where one recording ends
-      // and the next begins. Progressive enhancement: without script each
-      // line still renders as a readable card.
-      var label = document.documentElement.getAttribute("data-l10n-transcript") || "Transcript";
-      var main = document.querySelector("main");
-      if (!main) { return; }
-      var lines = Array.prototype.slice.call(main.children).filter(function (node) {
-        return node.nodeType === 1 && node.matches("p.tr");
-      });
-      if (lines.length > 0) {
-      var first = lines[0];
-      var wrap = document.createElement("details");
-      wrap.open = true;
-      wrap.className = "note trwrap";
-      wrap.setAttribute("data-kind", "talk");
-      var summary = document.createElement("summary");
-      var ic = document.createElement("span");
-      ic.className = "ic";
-      ic.setAttribute("aria-hidden", "true");
-      summary.appendChild(ic);
-      var heading = document.createElement("h2");
-      heading.className = "ttl";
-      heading.textContent = label;
-      summary.appendChild(heading);
-      var count = document.createElement("span");
-      count.className = "count";
-      count.textContent = String(lines.length);
-      summary.appendChild(count);
-      var preview = document.createElement("span");
-      preview.className = "preview";
-      var firstText = first.querySelector(".tr-text");
-      preview.textContent = firstText ? firstText.textContent : "";
-      summary.appendChild(preview);
-      var atTime = document.createElement("time");
-      atTime.className = "at";
-      var firstChip = first.querySelector(".tr-at");
-      if (firstChip) { atTime.textContent = firstChip.textContent; }
-      summary.appendChild(atTime);
-      wrap.appendChild(summary);
-      var body = document.createElement("div");
-      body.className = "trbody";
-      wrap.appendChild(body);
-      var videos = main.querySelectorAll(":scope > details[data-kind='video']");
-      if (videos.length) {
-        var lastVideo = videos[videos.length - 1];
-        if (lastVideo.nextSibling) {
-          main.insertBefore(wrap, lastVideo.nextSibling);
-        } else {
-          main.appendChild(wrap);
-        }
-      } else {
-        main.insertBefore(wrap, first);
-      }
-      var prevSession = null;
-      for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        var session = line.getAttribute("data-recording-session");
-        if (prevSession !== null && session !== prevSession) {
-          line.classList.add("tr-newsession");
-        }
-        prevSession = session;
-        body.appendChild(line);
-      }
-      } // end transcript consolidation
-
-      // Group Advanced Assistant turns of one conversation into a single
-      // collapsible "Conversation" block, each turn still individually
-      // collapsible inside it. A single-turn conversation stays a plain card.
-      var convoLabel =
-        document.documentElement.getAttribute("data-l10n-conversation") ||
-        "Conversation";
-      var order = [];
-      var byConversation = {};
-      var turns = main.querySelectorAll(":scope > details[data-conversation]");
-      for (var t = 0; t < turns.length; t++) {
-        var id = turns[t].getAttribute("data-conversation");
-        if (!byConversation[id]) { byConversation[id] = []; order.push(id); }
-        byConversation[id].push(turns[t]);
-      }
-      for (var c = 0; c < order.length; c++) {
-        var group = byConversation[order[c]];
-        if (group.length < 2) { continue; }
-        var cWrap = document.createElement("details");
-        cWrap.open = true;
-        cWrap.className = "note convo";
-        cWrap.setAttribute("data-kind", "convo");
-        var cSummary = document.createElement("summary");
-        var cIc = document.createElement("span");
-        cIc.className = "ic";
-        cIc.setAttribute("aria-hidden", "true");
-        cSummary.appendChild(cIc);
-        var cH2 = document.createElement("h2");
-        cH2.className = "ttl";
-        cH2.textContent = convoLabel;
-        cSummary.appendChild(cH2);
-        var cCount = document.createElement("span");
-        cCount.className = "count";
-        cCount.textContent = String(group.length);
-        cSummary.appendChild(cCount);
-        var cPrev = document.createElement("span");
-        cPrev.className = "preview";
-        cPrev.textContent = group[0].querySelector("h2.ttl")
-          ? group[0].querySelector("h2.ttl").textContent : "";
-        cSummary.appendChild(cPrev);
-        cWrap.appendChild(cSummary);
-        var cBody = document.createElement("div");
-        cBody.className = "note-body";
-        cWrap.appendChild(cBody);
-        main.insertBefore(cWrap, group[0]);
-        for (var g = 0; g < group.length; g++) { cBody.appendChild(group[g]); }
-      }
-    });
-  })();
-  </script>
-</head>
-<body>
-<header class="topbar">
-  <div class="topbar-inner">
-    <p class="brand">OkuFlow</p>
-    <div class="tools">
-      <button type="button" id="btn-expand">@@EXPAND@@</button>
-      <button type="button" id="btn-collapse">@@COLLAPSE@@</button>
-      <button type="button" id="btn-theme" aria-pressed="false">&#9681; @@THEMELABEL@@</button>
-    </div>
-  </div>
-</header>
-<main>
-  <h1>@@TITLE@@</h1>
-  <p class="created">@@CREATED@@</p>
-)HTML");
+    QString document = QString::fromUtf8(kNotesDocumentTemplate);
+    document.replace(QStringLiteral("@@TRANSCRIBE_SCRIPT@@"),
+                     QString::fromUtf8(kNotesTranscribeBridge));
     document.replace(QStringLiteral("@@LANG@@"),
                      documentLanguage.toHtmlEscaped());
-    document.replace(QStringLiteral("@@TRLABEL@@"),
-                     QCoreApplication::translate("OkuFlow", "Lecture transcript")
-                         .toHtmlEscaped());
     document.replace(QStringLiteral("@@CONVOLABEL@@"),
                      QCoreApplication::translate("OkuFlow", "Conversation")
                          .toHtmlEscaped());
@@ -2023,7 +1634,7 @@ void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
         (video ? QCoreApplication::translate("OkuFlow", "Processed camera video")
                : QCoreApplication::translate("OkuFlow", "Processed camera photo"))
             .toHtmlEscaped();
-    const QString content =
+    QString content =
         QStringLiteral(
             "    <div class=\"media-grid\">\n"
             "      <figure>\n"
@@ -2041,6 +1652,17 @@ void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
                  processedMedia,
                  processedUrl,
                  processedCaption);
+    if (video) {
+        content += QStringLiteral(
+            "    <section class=\"transcribe-tools\" data-transcribe-src=\"%1\">\n"
+            "      <div class=\"transcribe-actions\"><button type=\"button\" class=\"transcribe-start\">Transcribe</button>"
+            "<button type=\"button\" class=\"transcribe-stop\" hidden>Stop</button>"
+            "<button type=\"button\" class=\"transcribe-export\" hidden>Save as text</button></div>\n"
+            "      <p class=\"transcribe-status\" role=\"status\"></p>\n"
+            "      <div class=\"transcribe-result\" hidden><h3 class=\"transcribe-heading\">Transcript</h3>"
+            "<div class=\"transcribe-lines\"></div></div>\n"
+            "    </section>\n").arg(originalUrl);
+    }
     NoteSectionMetadata metadata;
     metadata.cssClass = QStringLiteral("media");
     metadata.kind = video ? QStringLiteral("video") : QStringLiteral("photo");
@@ -2092,7 +1714,6 @@ bool AssistiveRuntime::QueueNotesWork(const QString& path, qint64 bytes,
                     [receiver, path = job.path, identity = job.identity, success] {
                         --receiver->pendingNotesWrites_;
                         if (!success) {
-                            receiver->acceptedTranscriptIdentities_.remove(identity);
                             if (receiver->notesFilePath_ == path) {
                                 receiver->notesFilePath_.clear();
                                 receiver->notesDocumentOpen_ = false;

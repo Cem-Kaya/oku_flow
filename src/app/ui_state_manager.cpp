@@ -58,12 +58,6 @@ UIStateManager::UIStateManager(MainWindow& window, OkuFlowApp& app)
     OKUFLOW_BIND_WIDGET(cameraAccelerationStatusLabel_, cameraAccelerationStatusLabel);
     OKUFLOW_BIND_WIDGET(testCameraAccelerationButton_, testCameraAccelerationButton);
     OKUFLOW_BIND_WIDGET(recordingCanvasCombo_, recordingCanvasCombo);
-    OKUFLOW_BIND_WIDGET(transcribeMicrophoneCheckbox_, transcribeMicrophoneCheckbox);
-    OKUFLOW_BIND_WIDGET(transcriptToNotesCheckbox_, transcriptToNotesCheckbox);
-    OKUFLOW_BIND_WIDGET(transcriptionStatusLabel_, transcriptionStatusLabel);
-    OKUFLOW_BIND_WIDGET(transcriptionQuotaLabel_, transcriptionQuotaLabel);
-    OKUFLOW_BIND_WIDGET(transcriptPartialLabel_, transcriptPartialLabel);
-    OKUFLOW_BIND_WIDGET(transcriptFinalsView_, transcriptFinalsView);
     OKUFLOW_BIND_WIDGET(joystickCheckbox_, joystickCheckbox);
     OKUFLOW_BIND_WIDGET(zoomWheelAccelerationCheckbox_, zoomWheelAccelerationCheckbox);
     OKUFLOW_BIND_WIDGET(collapseButton_, controlsToggleButton);
