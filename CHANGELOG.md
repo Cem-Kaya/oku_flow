@@ -9,6 +9,8 @@
 - Adopt the owner's cyan rounded-square website magnifier for Windows icons,
   installer shortcuts and Store review logos; keep the favicon byte-identical
   in the website repository. Retain the first-party SVG and Qt asset exporter.
+  Track the ICO as an explicit Windows resource dependency so incremental
+  Ninja builds also refresh the launcher and Explorer executable icons.
 - Fix release packaging selecting stale Visual Studio executables from a
   Ninja build tree. Select only the current generator's application/probe
   layout and verify both deployed executable hashes.

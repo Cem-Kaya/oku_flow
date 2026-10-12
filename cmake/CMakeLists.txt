@@ -102,6 +102,10 @@ target_compile_definitions(oku_flow PRIVATE
 
 if (WIN32)
     include(WindowsRuntime.cmake)
+    # Ninja's Windows RC rule does not discover the ICON file dependency.
+    # Recompile both executable resources whenever the shared icon changes.
+    set_source_files_properties(${PROJECT_SOURCE_DIR}/assets/okuflow.rc PROPERTIES
+        OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/assets/okuflow.ico")
     target_include_directories(oku_flow PRIVATE ${OKUFLOW_RUNTIME_GENERATED_DIR})
     add_executable(okuflow_launcher WIN32
         ${PROJECT_SOURCE_DIR}/src/launcher/main.cpp

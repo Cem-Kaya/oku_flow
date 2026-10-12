@@ -23,6 +23,8 @@ blockers. It neither signs nor installs/submits the review package.
 `scripts/icon_tools/render_icon.cpp::main` uses QSvgRenderer without a desktop
 window to export PNG logos and PNG-encoded ICO entries. The wrapper compiles
 against the selected Qt SDK and keeps developer output outside Drive.
+The Windows RC source declares an explicit CMake `OBJECT_DEPENDS` on the ICO
+so Ninja rebuilds both launcher and Qt executable resources after icon updates.
 `build_release_bundle.bat::find_built_executable` selects the active generator's
 layout, derives the launcher beside its Qt child and rejects missing outputs;
 old output directories cannot override current Ninja binaries.
