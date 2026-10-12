@@ -25,6 +25,10 @@ coverage includes fractional stationary input and a one-pixel native wake.
 
 Authoritative code map for the current repository state as of 2026-10-12. Update this file whenever classes, public structs, or significant functions change.
 
+The release-bundle `copy_required_file` subroutine verifies destination
+existence and byte equality immediately after copying required notices,
+so metadata generation cannot silently accept an incomplete copy.
+
 ## USB phone discovery and recovery
 
 - `CameraDescriptor.phoneAppReady`, `phoneBusy` and `phoneProblem` describe the

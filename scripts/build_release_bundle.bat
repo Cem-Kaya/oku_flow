@@ -302,6 +302,16 @@ if errorlevel 1 (
     echo ERROR: Could not copy required bundle file to "%~2".
     exit /b 1
 )
+if not exist "%~2" (
+    echo ERROR: Required copied bundle file is missing: "%~2".
+    exit /b 1
+)
+fc /b "%~1" "%~2" >nul
+if errorlevel 1 (
+    echo ERROR: Required copied bundle file differs from its source: "%~2".
+    exit /b 1
+)
+echo Verified required bundle file: "%~2"
 exit /b 0
 
 :validate_staging_bundle

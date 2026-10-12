@@ -16,6 +16,8 @@ OkuFlow relies on several third-party SDKs and code drops. Keep this summary wit
 - Notes:
   - Release bundles stage the applicable Qt license text as
     `licenses/QT_LICENSE.txt`.
+    The required-file helper checks that each copied notice exists and is
+    byte-identical to its source before metadata generation.
   - They also stage the exact `qtbase`, `qtimageformats`, `qtmultimedia`,
     `qtspeech`, and `qtsvg` SPDX 2.3 JSON documents supplied by the
     selected Qt runtime under `licenses/qt-sbom/`. The OkuFlow SBOM links each
