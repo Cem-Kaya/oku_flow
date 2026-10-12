@@ -22,7 +22,7 @@ namespace okuflow {
 
 // Native client for the local Codex app-server. Internet and coding permissions
 // are explicit opt-ins and apply only to persistent Advanced Assistant turns;
-// Simple camera explanations always retain the restricted vision policy.
+// Read and Explain camera turns always retain the restricted vision policy.
 class CodexAppServerClient : public QObject {
     Q_OBJECT
 public:
@@ -51,10 +51,18 @@ public:
 
     void RefreshAccount();
     void StartChatGptLogin();
+    // persistent selects an Advanced Assistant turn. A non-persistent turn
+    // with retainThread is an Explain turn: its thread is stored (not
+    // ephemeral) so later Explains can continue it, but it keeps the
+    // restricted vision policy. If resuming its threadId fails while Codex is
+    // running, a replacement thread is opened transparently and reported by
+    // RetainedThreadStarted. Without retainThread a non-persistent turn runs
+    // in a fresh ephemeral thread (Read).
     void RequestVisionTurn(const QString& prompt,
                            const QString& imagePath,
                            const QString& threadId,
-                           bool persistent);
+                           bool persistent,
+                           bool retainThread = false);
     void InterruptTurn();
     void LoadConversation(const QString& threadId);
     void CancelConversationLoad();
@@ -70,6 +78,8 @@ signals:
     void LoginUrlReady(const QUrl& url);
 
     void ConversationCreated(const QJsonObject& thread);
+    // A retained (Explain) thread was opened for a new or replaced conversation.
+    void RetainedThreadStarted(const QJsonObject& thread);
     void ConversationTranscriptLoaded(const QString& threadId, const QJsonArray& messages);
     // Only the current load generation may publish either terminal signal.
     void ConversationTranscriptLoadFailed(const QString& threadId, const QString& error);
@@ -97,6 +107,7 @@ private:
         QString threadId;
         quint64 generation{0};
         bool persistent{false};
+        bool retainThread{false};
         bool valid{false};
         bool opening{false}; // thread/start or thread/resume already sent
     };

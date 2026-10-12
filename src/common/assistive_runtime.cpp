@@ -73,6 +73,18 @@ constexpr int kMaxVlmFrameEdge = 2048;
 constexpr int kVlmTransferTimeoutMs = 30000;
 constexpr qint64 kMaximumVlmResponseBytes = 2 * 1024 * 1024;
 constexpr qsizetype kMaximumDisplayedAssistantCharacters = 256 * 1024;
+// Continuity for OpenAI-compatible Explain requests: earlier answers only,
+// never earlier images, so each request stays small and bounded.
+constexpr qsizetype kMaximumExplainHistoryAnswers = 4;
+constexpr qsizetype kMaximumExplainHistoryAnswerCharacters = 1200;
+
+QString ExplainContinuationPrompt(const QString& prompt)
+{
+    return prompt + QStringLiteral(
+        "\n\nThis is a new camera view in an ongoing Explain conversation. "
+        "Describe this view; use earlier views only as context, for example "
+        "to point out what changed.");
+}
 
 QString SanitizeText(QString text)
 {
@@ -276,7 +288,8 @@ QByteArray BuildVlmRequestBody(const QByteArray& jpegBytes,
                                const QString& prompt,
                                const QString& assistantInstructions,
                                const QString& responseLanguageCode,
-                               int maximumTokens)
+                               int maximumTokens,
+                               const QStringList& explainHistory = {})
 {
     const QString dataUri =
         QStringLiteral("data:image/jpeg;base64,%1")
@@ -308,6 +321,17 @@ QByteArray BuildVlmRequestBody(const QByteArray& jpegBytes,
             QJsonObject{
                 {QStringLiteral("role"), QStringLiteral("system")},
                 {QStringLiteral("content"), assistantInstructions}});
+    }
+    for (const QString& earlierAnswer : explainHistory) {
+        messages.append(
+            QJsonObject{
+                {QStringLiteral("role"), QStringLiteral("user")},
+                {QStringLiteral("content"),
+                 QStringLiteral("Earlier Explain request (its camera image is not resent).")}});
+        messages.append(
+            QJsonObject{
+                {QStringLiteral("role"), QStringLiteral("assistant")},
+                {QStringLiteral("content"), earlierAnswer}});
     }
     messages.append(message);
 
@@ -353,7 +377,26 @@ AssistiveRuntime::AssistiveRuntime(QObject* parent)
     connect(codexClient_.get(), &CodexAppServerClient::ConversationRenamed,
             this, &AssistiveRuntime::AssistantConversationRenamed);
     connect(codexClient_.get(), &CodexAppServerClient::ConversationDeleted,
-            this, &AssistiveRuntime::AssistantConversationDeleted);
+            this, [this](const QString& threadId) {
+                // Deleting the Explain conversation makes the next Explain
+                // start a new one.
+                if (!threadId.isEmpty() && threadId == explainThreadId_) {
+                    explainThreadId_.clear();
+                    emit ExplainConversationChanged({});
+                }
+                emit AssistantConversationDeleted(threadId);
+            });
+    connect(codexClient_.get(), &CodexAppServerClient::RetainedThreadStarted,
+            this, [this](const QJsonObject& thread) {
+                const QString threadId =
+                    thread.value(QStringLiteral("id")).toString();
+                if (threadId.isEmpty()) {
+                    return;
+                }
+                explainThreadId_ = threadId;
+                emit ExplainConversationCreated(thread);
+                emit ExplainConversationChanged(threadId);
+            });
     connect(codexClient_.get(), &CodexAppServerClient::TurnStarted,
             this, &AssistiveRuntime::AssistantTurnStarted);
     connect(codexClient_.get(), &CodexAppServerClient::TurnTextDelta,
@@ -438,6 +481,16 @@ void AssistiveRuntime::SetConfig(const AssistiveRuntimeConfig& config)
         config.ttsVoiceName != config_.ttsVoiceName ||
         config.ttsVoiceLocale != config_.ttsVoiceLocale ||
         config.ttsRate != config_.ttsRate;
+    // Earlier answers are only resent to the endpoint, model and credential
+    // that wrote them. Retire the active request's history admission too: its
+    // eventual answer still belongs to the old configuration.
+    if (config.aiProvider != config_.aiProvider ||
+        config.vlmApiUrl != config_.vlmApiUrl ||
+        config.vlmModel != config_.vlmModel ||
+        config.vlmApiKey != config_.vlmApiKey) {
+        explainHistory_.clear();
+        vlmRequestRecordsExplainHistory_ = false;
+    }
     if (speechConfigChanged) {
         StopSpeech();
 #if OKUFLOW_HAS_TTS
@@ -590,7 +643,7 @@ void AssistiveRuntime::SubmitFrameForced(const uint8_t* bgraData, int width, int
         return;
     }
     vlmHardUnavailable_ = false;
-    StartVlm(bgraData, width, height, readText);
+    StartVlm(bgraData, width, height, readText, !readText);
 }
 
 void AssistiveRuntime::NoteCapturedPhotoPair(const QString& originalPath,
@@ -664,6 +717,7 @@ bool AssistiveRuntime::CancelVlmPreparation()
     vlmPreparationPending_ = false;
     vlmPreparationPersistent_ = false;
     vlmPreparationThreadId_.clear();
+    vlmRequestRecordsExplainHistory_ = false;
     if (persistent) {
         ClearPendingAssistantNote();
     } else if (!pendingVlmNoteImagePath_.isEmpty()) {
@@ -895,6 +949,23 @@ void AssistiveRuntime::DeleteAssistantConversation(const QString& threadId)
     }
 }
 
+void AssistiveRuntime::SetExplainConversationId(const QString& threadId)
+{
+    explainThreadId_ = threadId.trimmed();
+}
+
+void AssistiveRuntime::StartNewExplainConversation()
+{
+    explainHistory_.clear();
+    // An in-flight HTTP answer must not repopulate the reset conversation.
+    vlmRequestRecordsExplainHistory_ = false;
+    if (explainThreadId_.isEmpty()) {
+        return;
+    }
+    explainThreadId_.clear();
+    emit ExplainConversationChanged({});
+}
+
 QString AssistiveRuntime::notesFilePath() const
 {
     return notesFilePath_;
@@ -954,9 +1025,11 @@ bool AssistiveRuntime::ValidateFrame(const uint8_t* bgraData, int width, int hei
     return true;
 }
 
-void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height, bool readText)
+void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height,
+                                bool readText, bool continueExplain)
 {
     readingText_ = readText;
+    continueExplain = continueExplain && !readText;
     const QString readingPrompt = QStringLiteral(
         "Transcribe all readable text in the attached camera view, in reading order. "
         "Preserve the original wording, numbers, paragraph breaks, and source language. "
@@ -969,13 +1042,20 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height, 
             prompt = QStringLiteral("Describe the visible scene briefly for a low-vision user. "
                                     "Focus on readable text, controls, and major objects.");
         }
+        // Read always opens a new temporary thread. Explain continues the
+        // remembered Explain thread, or opens one that later Explains reuse.
+        const bool continuing = continueExplain && !explainThreadId_.isEmpty();
+        if (continuing) {
+            prompt = ExplainContinuationPrompt(prompt);
+        }
         StartCodexVlm(
             bgraData,
             width,
             height,
             readText ? prompt : AppendResponseLanguageDirective(prompt, responseLanguageCode_),
-            {},
-            false);
+            continueExplain ? explainThreadId_ : QString(),
+            false,
+            continueExplain);
         return;
     }
     if (vlmHardUnavailable_ || vlmPreparationPending_) {
@@ -1001,6 +1081,13 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height, 
     if (prompt.isEmpty()) {
         prompt = QStringLiteral("Describe the visible scene briefly for a low-vision user. Focus on readable text, UI elements, and major objects.");
     }
+    // Only a user-requested Explain sends and extends the Explain history;
+    // Read and periodic analyses remain independent single requests.
+    const QStringList explainHistory =
+        continueExplain ? explainHistory_ : QStringList();
+    if (!explainHistory.isEmpty()) {
+        prompt = ExplainContinuationPrompt(prompt);
+    }
     // Reading copies source text verbatim, regardless of conversational
     // language, tone, or summary preferences.
     const QString assistantInstructions =
@@ -1011,17 +1098,33 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height, 
         endpoint.host().trimmed().isEmpty()
             ? apiUrl
             : endpoint.host().trimmed();
-    EmitPrivacyNoticeIfChanged(
-        QStringLiteral("Sending the current camera frame and prompt to %1 "
-                       "(%2 endpoint). Conversation: temporary. Coding tools: unavailable.")
-            .arg(endpointName,
-                 IsLocalEndpoint(endpoint)
-                     ? QStringLiteral("local")
-                     : QStringLiteral("remote")));
+    const bool localEndpoint = IsLocalEndpoint(endpoint);
+    if (!continueExplain) {
+        EmitPrivacyNoticeIfChanged(
+            QStringLiteral("Sending the current camera frame and prompt to %1 "
+                           "(%2 endpoint). Conversation: temporary. Coding tools: unavailable.")
+                .arg(endpointName,
+                     localEndpoint
+                         ? QStringLiteral("local")
+                         : QStringLiteral("remote")));
+    } else {
+        EmitPrivacyNoticeIfChanged(
+            (localEndpoint
+                 ? QStringLiteral(
+                       "Sending the current camera frame, prompt, and recent Explain answers "
+                       "to %1 (local endpoint). Conversation: recent Explain answers, kept in "
+                       "memory only. Coding tools: unavailable.")
+                 : QStringLiteral(
+                       "Sending the current camera frame, prompt, and recent Explain answers "
+                       "to %1 (remote endpoint). Conversation: recent Explain answers, kept in "
+                       "memory only. Coding tools: unavailable."))
+                .arg(endpointName));
+    }
 
     vlmPreparationPending_ = true;
     vlmPreparationPersistent_ = false;
     vlmPreparationThreadId_.clear();
+    vlmRequestRecordsExplainHistory_ = continueExplain;
     if (!pendingVlmNoteImagePath_.isEmpty()) {
         RemoveNoteImage(pendingVlmNoteImagePath_);
     }
@@ -1041,6 +1144,7 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height, 
          assistantInstructions,
          responseLanguageCode,
          readText,
+         explainHistory,
          generation]() mutable {
             if (copy.width() > kMaxVlmFrameEdge ||
                 copy.height() > kMaxVlmFrameEdge) {
@@ -1061,7 +1165,8 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height, 
                                         prompt,
                                         assistantInstructions,
                                         responseLanguageCode,
-                                        readText ? 4096 : 180);
+                                        readText ? 4096 : 180,
+                                        explainHistory);
             }
             if (!owner) {
                 return;
@@ -1092,6 +1197,7 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height, 
         });
     if (!queued) {
         vlmPreparationPending_ = false;
+        vlmRequestRecordsExplainHistory_ = false;
         FinishVlmError(
             QStringLiteral(
                 "VLM image preparation is busy. Try again in a moment."));
@@ -1171,16 +1277,21 @@ void AssistiveRuntime::StartCodexVlm(const uint8_t* bgraData,
                                      int height,
                                      const QString& prompt,
                                      const QString& threadId,
-                                     bool persistent)
+                                     bool persistent,
+                                     bool retainThread)
 {
     if (!codexClient_ || vlmPreparationPending_) {
         FinishVlmError(CodexNotAvailableMessage());
         return;
     }
     EmitPrivacyNoticeIfChanged(
-        QStringLiteral("Sending the current camera frame and prompt to Codex. "
-                       "Conversation: temporary. Tool internet: blocked. "
-                       "Coding and file changes: blocked."));
+        retainThread
+            ? QStringLiteral("Sending the current camera frame and prompt to Codex. "
+                             "Conversation: saved Explain conversation, continued by each Explain. "
+                             "Tool internet: blocked. Coding and file changes: blocked.")
+            : QStringLiteral("Sending the current camera frame and prompt to Codex. "
+                             "Conversation: temporary, new for each Read. Tool internet: blocked. "
+                             "Coding and file changes: blocked."));
     QImage frameImage(bgraData,
                       width,
                       height,
@@ -1221,6 +1332,7 @@ void AssistiveRuntime::StartCodexVlm(const uint8_t* bgraData,
          prompt,
          threadId,
          persistent,
+         retainThread,
          generation]() mutable {
             if (copy.width() > kMaxVlmFrameEdge ||
                 copy.height() > kMaxVlmFrameEdge) {
@@ -1247,6 +1359,7 @@ void AssistiveRuntime::StartCodexVlm(const uint8_t* bgraData,
                  prompt,
                  threadId,
                  persistent,
+                 retainThread,
                  generation]() {
                     if (!owner ||
                         generation != owner->vlmPreparationGeneration_ ||
@@ -1266,7 +1379,7 @@ void AssistiveRuntime::StartCodexVlm(const uint8_t* bgraData,
                     owner->vlmStatus_ = QStringLiteral("Thinking...");
                     owner->RefreshOverlay();
                     owner->codexClient_->RequestVisionTurn(
-                        prompt, imagePath, threadId, persistent);
+                        prompt, imagePath, threadId, persistent, retainThread);
                 },
                 Qt::QueuedConnection);
         });
@@ -1285,6 +1398,8 @@ void AssistiveRuntime::FinishVlmSuccess(const QString& text)
 {
     const QString analyzedImage = pendingVlmNoteImagePath_;
     pendingVlmNoteImagePath_.clear();
+    const bool recordExplainHistory = vlmRequestRecordsExplainHistory_;
+    vlmRequestRecordsExplainHistory_ = false;
     const QString fullText = SanitizeText(text);
     vlmText_ = readingText_ ? fullText.left(kMaximumDisplayedAssistantCharacters)
                             : TruncateText(fullText, 700);
@@ -1293,6 +1408,13 @@ void AssistiveRuntime::FinishVlmSuccess(const QString& text)
         vlmStatus_ = QStringLiteral("VLM returned an empty description.");
     } else {
         vlmStatus_.clear();
+        if (recordExplainHistory && !readingText_) {
+            explainHistory_.append(
+                fullText.left(kMaximumExplainHistoryAnswerCharacters));
+            while (explainHistory_.size() > kMaximumExplainHistoryAnswers) {
+                explainHistory_.removeFirst();
+            }
+        }
         noted = AppendNoteSection(
             QCoreApplication::translate("OkuFlow", readingText_ ? "Text on screen" : "Scene explanation"),
             fullText, analyzedImage, true);
@@ -1305,6 +1427,7 @@ void AssistiveRuntime::FinishVlmSuccess(const QString& text)
 
 void AssistiveRuntime::FinishVlmError(const QString& errorText)
 {
+    vlmRequestRecordsExplainHistory_ = false;
     if (!pendingVlmNoteImagePath_.isEmpty()) {
         RemoveNoteImage(pendingVlmNoteImagePath_);
         pendingVlmNoteImagePath_.clear();

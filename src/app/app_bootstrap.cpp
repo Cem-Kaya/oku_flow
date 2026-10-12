@@ -944,6 +944,34 @@ bool OkuFlowApp::Initialize()
                 PopulateAssistantHistory();
                 SavePersistentSettings();
             });
+    // Explain continues one Codex conversation across launches. It is listed
+    // with the Assistant conversations so it can be reviewed or deleted;
+    // creating it never changes the selected chat.
+    assistiveManager_->Runtime().SetExplainConversationId(
+        settingsController_->MutableSettings().explainThreadId);
+    connect(&assistiveManager_->Runtime(), &AssistiveRuntime::ExplainConversationCreated,
+            this, [this](const QJsonObject& thread) {
+                settings::CodexConversation conversation;
+                conversation.threadId = thread.value(QStringLiteral("id")).toString();
+                conversation.explain = true;
+                conversation.createdAt = thread.value(QStringLiteral("createdAt")).toInteger(
+                    QDateTime::currentSecsSinceEpoch());
+                conversation.updatedAt = conversation.createdAt;
+                auto& conversations = settingsController_->MutableSettings().codexConversations;
+                if (std::none_of(conversations.begin(), conversations.end(),
+                                 [&conversation](const settings::CodexConversation& candidate) {
+                                     return candidate.threadId == conversation.threadId;
+                                 })) {
+                    conversations.push_back(conversation);
+                }
+                PopulateAssistantHistory();
+                SavePersistentSettings();
+            });
+    connect(&assistiveManager_->Runtime(), &AssistiveRuntime::ExplainConversationChanged,
+            this, [this](const QString& threadId) {
+                settingsController_->MutableSettings().explainThreadId = threadId;
+                SavePersistentSettings();
+            });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTranscriptLoaded,
             this, [this](const QString& threadId, const QJsonArray& messages) {
                 if (threadId != currentAssistantThreadId_ ||
@@ -1040,6 +1068,22 @@ bool OkuFlowApp::Initialize()
                 // persistent chat turn leaves the button alone.
                 syncExplainBusy();
                 if (!persistent) {
+                    // A completed Explain moves its listed conversation to the
+                    // top and previews the latest explanation.
+                    if (!threadId.isEmpty() &&
+                        threadId == assistiveManager_->Runtime().ExplainConversationId() &&
+                        error.trimmed().isEmpty() && !interrupted) {
+                        for (settings::CodexConversation& conversation :
+                             settingsController_->MutableSettings().codexConversations) {
+                            if (conversation.threadId == threadId) {
+                                conversation.updatedAt = QDateTime::currentSecsSinceEpoch();
+                                conversation.preview = text.simplified().left(160);
+                                PopulateAssistantHistory();
+                                SavePersistentSettings();
+                                break;
+                            }
+                        }
+                    }
                     return;
                 }
                 if (assistantResponseOpen_) {

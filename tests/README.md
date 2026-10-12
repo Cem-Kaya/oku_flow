@@ -1,5 +1,23 @@
 # OkuFlow Tests
 
+`assistive_preparation` covers retained Explain threads, independent temporary
+Read threads, Assistant identity preservation, cancelled start/resume openings,
+and loopback HTTP history isolation after URL/model/provider/key changes, reset,
+cancel, failure and bounded-history truncation. It never submits real AI calls.
+
+`scripts/test_notes_site_browser.mjs` is an opt-in Chrome design fixture using
+generated notes and the sibling website's `public/` directory. Set
+`OKUFLOW_PUPPETEER_MODULE` to the file URL of an externally installed
+`puppeteer-core` module, `OKUFLOW_TEST_CHROME` to Chrome's executable,
+`OKUFLOW_TEST_PROFILE` to a private local profile, `OKUFLOW_TEST_WEBSITE` to
+the website publish directory, `OKUFLOW_TEST_NOTES` to the English generated
+notes file, and `OKUFLOW_TEST_EVIDENCE` to a local evidence directory.
+It checks carousel states/reduced motion/RTL and local notes media, filters,
+text-size persistence, contrast and narrow layouts; no camera/AI is used.
+Render all three drafts (`--lang en`, `--lang tr`, `--lang de`) first; it expects
+the `_tr.html` and `_de.html` siblings of the selected `_en.html` file.
+Run it serially with the Windows GUI matrix. Evidence is not release media.
+
 `phone_camera_contract` checks USB connection-type protobuf parsing without
 a Windows bus path, malformed lengths/varints, saved webcam/phone/lens-fallback
 selection and actual NV12 output from Windows H.264 and optional HEVC decoders.
@@ -364,9 +382,20 @@ interactive desktop; authored assertions alone are not a passing run.
 `notes_html` also runs Read and Explain against the fake Codex app-server.
 It validates the Luna 6/low default, transcription versus scene prompts across
 English/Turkish/German interface settings without translating source text, real
-prepared-image attachment, ephemeral read-only/no-network policy despite
-Advanced opt-ins, busy-request ownership, and full reading text in the overlay
-and notes. These checks require no account or external service.
+prepared-image attachment, read-only/no-network policy despite Advanced
+opt-ins (ephemeral for Read, stored for Explain), busy-request ownership, and
+full reading text in the overlay and notes. These checks require no account or
+external service.
+
+`assistive_preparation` drives the fake app-server's `explain-threads`
+scenario: two Explains reuse one stored thread while each Read opens a new
+ephemeral one, never the Explain thread; a remembered thread the server does
+not know is replaced transparently and remembered; deleting or resetting the
+Explain conversation makes the next Explain start fresh; Explain answers still
+reach the lecture notes. A loopback OpenAI-compatible fixture verifies that
+only Explain resends earlier answers, bounded to four, and that a model change
+or reset clears them. `settings_store_round_trip` covers `explainThreadId` and
+the conversation `explain` flag.
 
 Audit-50 settings publication regressions cover read-only oversized/normal
 primaries, a read-only backup, an open primary that denies rename, actual

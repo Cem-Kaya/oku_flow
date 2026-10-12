@@ -75,6 +75,7 @@ inline constexpr char kNotesTranscribeBridge[] = R"JS(<script>
   }
   function showLine(card, segment) {
     const row = document.createElement('p'); row.className = 'transcribe-line';
+    row.dataset.start = String(segment.start); row.dataset.end = String(segment.end);
     const time = document.createElement('button'); time.type = 'button'; time.textContent = clock(segment.start);
     time.addEventListener('click', () => {
       card.closest('details').querySelectorAll('video').forEach(video => {video.currentTime = segment.start;});

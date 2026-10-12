@@ -160,14 +160,20 @@ size. Detailed controls scroll within the inspector.
 Assistant is a separate work surface rather than another image-processing
 section. It shows Codex/ChatGPT connection and usage state, a camera-aware chat,
 and a history tab. A new conversation can attach the current processed frame;
-follow-up questions can keep or omit that attachment. Simple Explain creates a
-temporary thread and never appears in history. Advanced Assistant creates
+follow-up questions can keep or omit that attachment. Read creates a new
+temporary thread each time and never appears in history. Explain continues one
+saved thread across launches; it is listed as "Explain conversation" so it can
+be reviewed or deleted. Deleting it, or pressing New while it is open or
+selected, makes the next Explain start a new one; Simple mode gains no extra
+control. Advanced Assistant creates
 persistent threads and lists only ids created by OkuFlow, with resume, rename,
 export, and delete actions. Codex owns the transcript store while OkuFlow keeps
 the small title/preview/timestamp index in `settings.json`. Internet and coding
 are explicit global Assistant permissions in AI Settings. Coding requires a
-workspace folder and affects only persistent Advanced Assistant turns; Simple
-Explain remains restricted even when those permissions are enabled.
+workspace folder and affects only persistent Advanced Assistant turns; Read and
+Explain remain restricted even when those permissions are enabled. A follow-up
+asked from the Assistant tab inside the Explain conversation is an Assistant
+turn and uses the Assistant permissions for that turn only.
 
 AI Settings groups service selection, the selected provider's connection,
 shared Assistant instructions and Explain prompt, Advanced Assistant permissions,

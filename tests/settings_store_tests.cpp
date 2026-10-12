@@ -440,6 +440,9 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     expected.assistive.lectureNotesEnabled = false;
     expected.codexConversations.push_back(
         {QStringLiteral("thread-1"), QStringLiteral("Title"), QStringLiteral("Preview"), 10, 20});
+    expected.codexConversations.push_back(
+        {QStringLiteral("explain-thread"), {}, QStringLiteral("Slide 2"), 30, 40, true});
+    expected.explainThreadId = QStringLiteral("explain-thread");
     expected.customConfigs.push_back(expected.currentConfig);
     expected.customPresets.push_back(
         {QStringLiteral("custom-preset"), QStringLiteral("Custom"), QStringLiteral("Description"),
@@ -517,9 +520,24 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QCOMPARE(loaded->assistive.ttsVoiceName, expected.assistive.ttsVoiceName);
     QCOMPARE(loaded->assistive.ttsRate, expected.assistive.ttsRate);
     QCOMPARE(loaded->codexConversations.size(), expected.codexConversations.size());
+    QVERIFY(!loaded->codexConversations.front().explain);
+    QCOMPARE(loaded->codexConversations.back().threadId, QStringLiteral("explain-thread"));
+    QVERIFY(loaded->codexConversations.back().explain);
+    QCOMPARE(loaded->codexConversations.back().title, QString());
+    QCOMPARE(loaded->codexConversations.back().preview, QStringLiteral("Slide 2"));
+    QCOMPARE(loaded->codexConversations.back().updatedAt, qint64(40));
+    QCOMPARE(loaded->explainThreadId, expected.explainThreadId);
     QCOMPARE(loaded->customConfigs.size(), expected.customConfigs.size());
     QCOMPARE(loaded->customPresets.size(), expected.customPresets.size());
     QVERIFY(AreConfigsEquivalent(loaded->customConfigs.front(), expected.customConfigs.front()));
+
+    // Forgetting the Explain conversation round-trips as "start fresh".
+    expected.explainThreadId.clear();
+    const QString resetPath = dir.filePath(QStringLiteral("reset-settings.json"));
+    QVERIFY(Save(resetPath, expected));
+    const auto reset = Load(resetPath);
+    QVERIFY(reset.has_value());
+    QCOMPARE(reset->explainThreadId, QString());
 }
 
 void SettingsStoreTests::invalidLanguageFallsBackToMigrationDefault()

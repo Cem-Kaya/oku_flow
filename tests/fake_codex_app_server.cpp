@@ -10,6 +10,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
+#include <QStringList>
 
 #include <cstdio>
 #include <cstdlib>
@@ -26,6 +27,9 @@ QString gHeldMethod;
 int gLifecycleOpenings = 0;
 QJsonValue gHistoryId(QJsonValue::Undefined);
 QString gHistoryThread;
+int gNextThread = 0;
+int gTurnCount = 0;
+QStringList gKeptThreads;
 
 void WriteObject(const QJsonObject& object)
 {
@@ -78,11 +82,92 @@ void ReleaseHistory()
     WriteNotification(QStringLiteral("warning"), QJsonObject{{QStringLiteral("message"), QStringLiteral("released history")}});
 }
 
+// "explain-threads": a small thread store. Ephemeral threads are named tmp_N,
+// stored ones keep_N; only stored threads created by this process resume.
+// Answers name their thread, request kind, and whether the prompt continued
+// an Explain conversation, e.g. "keep_1 explain continued".
+bool HandleExplainThreads(const QJsonValue& id, const QString& method, const QJsonObject& params)
+{
+    const bool restrictedOpening =
+        params.value(QStringLiteral("approvalPolicy")).toString() == QStringLiteral("never") &&
+        params.value(QStringLiteral("sandbox")).toString() == QStringLiteral("read-only") &&
+        params.value(QStringLiteral("developerInstructions")).toString().contains(
+            QStringLiteral("Never execute commands or edit files."));
+    if (method == QStringLiteral("thread/start")) {
+        if (!restrictedOpening) {
+            WriteError(id, -32602, QStringLiteral("camera thread lost the restricted vision policy"));
+            return true;
+        }
+        const bool ephemeral = params.value(QStringLiteral("ephemeral")).toBool();
+        const QString thread = QStringLiteral("%1_%2")
+                                   .arg(ephemeral ? QStringLiteral("tmp") : QStringLiteral("keep"))
+                                   .arg(++gNextThread);
+        if (!ephemeral) gKeptThreads.append(thread);
+        WriteResult(id, QJsonObject{{QStringLiteral("thread"),
+                                     QJsonObject{{QStringLiteral("id"), thread},
+                                                 {QStringLiteral("createdAt"), 1700000000 + gNextThread}}}});
+        return true;
+    }
+    if (method == QStringLiteral("thread/resume")) {
+        const QString thread = params.value(QStringLiteral("threadId")).toString();
+        if (!restrictedOpening) {
+            WriteError(id, -32602, QStringLiteral("camera thread lost the restricted vision policy"));
+        } else if (!gKeptThreads.contains(thread)) {
+            WriteError(id, -32600, QStringLiteral("thread not found: %1").arg(thread));
+        } else {
+            WriteResult(id, QJsonObject{{QStringLiteral("thread"), QJsonObject{{QStringLiteral("id"), thread}}}});
+        }
+        return true;
+    }
+    if (method == QStringLiteral("thread/delete")) {
+        gKeptThreads.removeAll(params.value(QStringLiteral("threadId")).toString());
+        WriteResult(id, {});
+        return true;
+    }
+    if (method == QStringLiteral("turn/start")) {
+        const QString thread = params.value(QStringLiteral("threadId")).toString();
+        const QJsonArray input = params.value(QStringLiteral("input")).toArray();
+        const QString prompt = input.isEmpty() ? QString() : input.first().toObject().value(QStringLiteral("text")).toString();
+        const QJsonObject sandbox = params.value(QStringLiteral("sandboxPolicy")).toObject();
+        if (sandbox.value(QStringLiteral("type")).toString() != QStringLiteral("readOnly") ||
+            sandbox.value(QStringLiteral("networkAccess")).toBool() || input.size() < 2 ||
+            input.at(1).toObject().value(QStringLiteral("type")).toString() != QStringLiteral("localImage")) {
+            WriteError(id, -32602, QStringLiteral("camera turn lost its image or restricted permissions"));
+            return true;
+        }
+        const bool reading = prompt.contains(QStringLiteral("Transcribe all readable text"));
+        const bool continued = prompt.contains(QStringLiteral("ongoing Explain conversation"));
+        const QString turnId = QStringLiteral("turn_%1").arg(++gTurnCount);
+        const QString text = QStringLiteral("%1 %2 %3")
+                                 .arg(thread,
+                                      reading ? QStringLiteral("read") : QStringLiteral("explain"),
+                                      continued ? QStringLiteral("continued") : QStringLiteral("first"));
+        gThreadId = thread;
+        WriteResult(id, QJsonObject{{QStringLiteral("turn"), QJsonObject{{QStringLiteral("id"), turnId}}}});
+        WriteNotification(QStringLiteral("item/agentMessage/delta"),
+                          QJsonObject{{QStringLiteral("turnId"), turnId}, {QStringLiteral("delta"), text}});
+        WriteNotification(QStringLiteral("turn/completed"),
+                          QJsonObject{{QStringLiteral("turn"), QJsonObject{
+                              {QStringLiteral("id"), turnId}, {QStringLiteral("status"), QStringLiteral("completed")}}}});
+        return true;
+    }
+    if (method == QStringLiteral("model/list")) {
+        WriteResult(id, {});
+        return true;
+    }
+    return false;
+}
+
 void HandleMessage(const QJsonObject& message)
 {
     const QJsonValue id = message.value(QStringLiteral("id"));
     const QString method = message.value(QStringLiteral("method")).toString();
     const QJsonObject params = message.value(QStringLiteral("params")).toObject();
+
+    if (gScenario == QStringLiteral("explain-threads") &&
+        HandleExplainThreads(id, method, params)) {
+        return;
+    }
 
     if (gScenario.startsWith(QStringLiteral("vision-lifecycle"))) {
         if (gScenario.startsWith(QStringLiteral("vision-lifecycle-history")) && method == QStringLiteral("thread/read")) {
@@ -179,7 +264,9 @@ void HandleMessage(const QJsonObject& message)
             return;
         }
         if (method == QStringLiteral("thread/start")) {
-            if (!params.value(QStringLiteral("ephemeral")).toBool() ||
+            // Read opens a temporary thread; Explain keeps its thread.
+            if (params.value(QStringLiteral("ephemeral")).toBool() !=
+                    gScenario.startsWith(QStringLiteral("vision-read-")) ||
                 params.value(QStringLiteral("approvalPolicy")).toString() != QStringLiteral("never") ||
                   params.value(QStringLiteral("sandbox")).toString() != QStringLiteral("read-only") ||
                   !params.value(QStringLiteral("developerInstructions")).toString().contains(

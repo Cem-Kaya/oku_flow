@@ -6,6 +6,31 @@
 
 ## [Unreleased]
 
+- Redesign the lecture-notes page for low-vision reading: larger type with a
+  remembered text-size control (A−/A+), Automatic/Light/Dark/High contrast
+  colours, kind icons and colour accents, filter chips (Recordings, Photos,
+  Answers, Conversations, Drawings), the processed recording shown first and
+  largest, Read aloud and Copy on text answers, a back-to-top button, and
+  transcript lines that highlight while the recording plays. Existing
+  appended entries and older notes files keep working. Transcript following
+  scrolls only its panel; narrow/high-zoom layouts keep the toolbar in normal
+  flow, card timestamps wrap to their own row at high zoom, and timestamp
+  buttons retain 44px touch targets.
+- Add `scripts/render_notes_preview.py`, which renders a local notes preview
+  from the real template with sample recordings, photos and answers.
+
+- Explain now continues one saved Codex conversation instead of opening a
+  temporary one each time, so a changed slide is explained in context. The
+  conversation id persists in `settings.json` (`explainThreadId`); a thread
+  that cannot be resumed is replaced transparently. It appears in the
+  Assistant history as "Explain conversation" for review or deletion; deleting
+  it, or pressing New while it is open or selected, makes the next Explain
+  start fresh. Read still opens a new temporary conversation every time.
+  OpenAI-compatible servers resend up to four recent Explain answers (text
+  only, kept in memory). Privacy notices state which conversation is used.
+  Resetting Explain or changing provider, endpoint, model or API key revokes
+  pending answers so they cannot restore cleared context. New conversation
+  waits for an active capture/request; Read ignores any supplied thread id.
 - Fix Simple controls reappearing under a stationary pointer at scaled Windows
   DPI. Qt cursor comparisons use one coordinate domain; physical pointer
   movement still reveals the controls, including a single native pixel.

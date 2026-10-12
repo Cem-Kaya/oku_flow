@@ -2472,6 +2472,30 @@ Kaldırma Windows tarafından yönetilir.</translation>
         <translation>Yeni sohbet başlatmadan önce mevcut yanıtı bitirin.</translation>
     </message>
     <message>
+        <source>Explain conversation</source>
+        <translation>Açıkla sohbeti</translation>
+    </message>
+    <message>
+        <source>Started a new conversation. The next Explain also starts a new conversation.</source>
+        <translation>Yeni bir sohbet başlatıldı. Sonraki Açıkla isteği de yeni bir sohbet başlatacak.</translation>
+    </message>
+    <message>
+        <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
+        <translation>Geçerli kamera karesi ve istem Codex&apos;e gönderiliyor. Sohbet: kayıtlı Açıkla sohbeti, her Açıkla isteğiyle sürdürülür. Araç internet erişimi: engelli. Kodlama ve dosya değişiklikleri: engelli.</translation>
+    </message>
+    <message>
+        <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
+        <translation>Geçerli kamera karesi ve istem Codex&apos;e gönderiliyor. Sohbet: geçici, her Oku isteği için yeni. Araç internet erişimi: engelli. Kodlama ve dosya değişiklikleri: engelli.</translation>
+    </message>
+    <message>
+        <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
+        <translation>Geçerli kamera karesi, istem ve son Açıkla yanıtları %1 adresine gönderiliyor (yerel uç nokta). Sohbet: son Açıkla yanıtları, yalnızca bellekte tutulur. Kodlama araçları: kullanılamaz.</translation>
+    </message>
+    <message>
+        <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
+        <translation>Geçerli kamera karesi, istem ve son Açıkla yanıtları %1 adresine gönderiliyor (uzak uç nokta). Sohbet: son Açıkla yanıtları, yalnızca bellekte tutulur. Kodlama araçları: kullanılamaz.</translation>
+    </message>
+    <message>
         <source>Panel position</source>
         <translation>Panel konumu</translation>
     </message>

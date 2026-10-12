@@ -301,3 +301,9 @@ aligned with the project goals.
   from the native Windows notes-storage fixtures. Only use private Chrome test
   profiles and fixture folders; keep recordings and model caches outside Git.
   Browser hardware tests and Windows GUI fixtures must remain serial.
+- Render opt-in notes drafts with `python -B scripts/render_notes_preview.py`.
+  It uses the real compiled template and keeps synthetic media under local app
+  data; never stage that output. `scripts/test_notes_site_browser.mjs` checks
+  the generated viewer and sibling website with a private Chrome profile.
+  See `tests/README.md` for its explicit environment and run it before, never
+  alongside, the Windows GUI matrix.

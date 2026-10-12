@@ -7,7 +7,12 @@ Current contents:
   live Assistant exclusion, while restricting ink to the scene destination
 - on-demand Read transcribes through the vision provider, using Luna 6/low as
   the Codex default; Explain retains its scene prompt. Both share bounded
-  image preparation, busy/cancel handling, notes, and manual Read Aloud
+  image preparation, busy/cancel handling, notes, and manual Read Aloud.
+  Read always opens a new ephemeral Codex thread; Explain continues one stored
+  thread (replaced transparently if it cannot be resumed). OpenAI-compatible
+  Explain resends up to four recent answers as text, kept in memory only.
+  Provider, URL, model, API-key changes and explicit resets clear that history
+  and revoke admission of pending answers, so late replies cannot restore it.
 - asynchronous assistive analysis in `assistive_runtime.cpp`, including shared
   response instructions for Codex and OpenAI-compatible requests plus
   incrementally maintained HTML lecture notes; ordered bounded background

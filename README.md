@@ -5,6 +5,10 @@ OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository:
 OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- Lecture notes have larger text, remembered text-size and colour controls,
+  media-type filters, grouped conversations, and timestamped transcripts.
+  Preview the viewer locally with `python -B scripts/render_notes_preview.py`;
+  it writes sample notes/media under `%LOCALAPPDATA%\OkuFlow\notes-preview\`.
 - New recorded-video lecture notes include a Transcribe button. Open the notes
   in Chrome and allow access to the OkuFlow folder containing the recording;
   a second first-use click opens the local-only tool at okuflow.com/transcribe/.
@@ -656,8 +660,9 @@ manual reset requires removing both primary and backup.
   deletion or settings cleanup remains pending across later saves/restarts.
   OkuFlow stores
   only an index of the persistent
-  Codex conversations it created; Codex stores their transcripts. Temporary
-  Simple explanations are ephemeral and do not enter history.
+  Codex conversations it created; Codex stores their transcripts. Explain
+  continues one saved conversation (`explainThreadId`, listed as "Explain
+  conversation"); Read requests are ephemeral and do not enter history.
   The settings file is limited to 16 MiB. That holds more than 10,000
   conversation index entries. If a file exceeds the limit, OkuFlow keeps it as
   `settings.json.too-large-<timestamp>` and restores the last valid backup. A
@@ -759,7 +764,7 @@ approvals, no tool network access, and vision-only instructions. AI Settings
 can independently allow internet access and coding for persistent Advanced
 Assistant conversations. Coding requires an existing workspace folder and uses
 Codex `workspaceWrite` sandboxing with that folder as the only writable root.
-Simple Explain always stays restricted. MCP, dynamic, and collaboration tools
+Read and Explain always stay restricted. MCP, dynamic, and collaboration tools
 remain blocked in every mode, and unexpected approval requests are denied.
 The current stable app-server `turn/start` surface does not expose a complete
 per-turn tool allow-list, so OkuFlow also interrupts unexpected tool items as

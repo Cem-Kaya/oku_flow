@@ -11,6 +11,9 @@ Saved-media callbacks continue adding recordings and photos to lecture notes.
 
 The Advanced inspector has Image, Assistant, and Settings tabs. Assistant
 conversation history, Read, Explain, and manual Read Aloud remain available.
+The app persists the Explain conversation id (`explainThreadId`) and lists that
+thread in Assistant history as "Explain conversation"; deleting it, or New
+while it is open or selected, makes the next Explain start fresh.
 Microphone capture runs only while recording and sends PCM to the recorder.
 Obsolete recording settings are ignored on load and omitted on save; there is
 no settings migration.

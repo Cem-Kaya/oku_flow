@@ -2472,6 +2472,30 @@ Die Entfernung wird von Windows verwaltet.</translation>
         <translation>Beenden Sie die aktuelle Antwort, bevor Sie einen neuen Chat starten.</translation>
     </message>
     <message>
+        <source>Explain conversation</source>
+        <translation>Erklären-Unterhaltung</translation>
+    </message>
+    <message>
+        <source>Started a new conversation. The next Explain also starts a new conversation.</source>
+        <translation>Neue Unterhaltung gestartet. Das nächste Erklären beginnt ebenfalls eine neue Unterhaltung.</translation>
+    </message>
+    <message>
+        <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
+        <translation>Aktueller Kameraframe und Anweisung werden an Codex gesendet. Unterhaltung: gespeicherte Erklären-Unterhaltung, die jedes Erklären fortsetzt. Internet für Werkzeuge: blockiert. Programmierung und Dateiänderungen: blockiert.</translation>
+    </message>
+    <message>
+        <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
+        <translation>Aktueller Kameraframe und Anweisung werden an Codex gesendet. Unterhaltung: temporär, für jedes Lesen neu. Internet für Werkzeuge: blockiert. Programmierung und Dateiänderungen: blockiert.</translation>
+    </message>
+    <message>
+        <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
+        <translation>Aktueller Kameraframe, Anweisung und letzte Erklären-Antworten werden an %1 gesendet (lokaler Endpunkt). Unterhaltung: letzte Erklären-Antworten, nur im Arbeitsspeicher. Programmierwerkzeuge: nicht verfügbar.</translation>
+    </message>
+    <message>
+        <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
+        <translation>Aktueller Kameraframe, Anweisung und letzte Erklären-Antworten werden an %1 gesendet (entfernter Endpunkt). Unterhaltung: letzte Erklären-Antworten, nur im Arbeitsspeicher. Programmierwerkzeuge: nicht verfügbar.</translation>
+    </message>
+    <message>
         <source>Panel position</source>
         <translation>Panelposition</translation>
     </message>

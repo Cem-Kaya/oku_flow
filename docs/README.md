@@ -447,15 +447,22 @@ legacy `powershell.exe` bridge.
   Codex CLI and offers NVIDIA Video Effects on supported hardware. Downloads
   are pinned and verified, with a Windows downloader retry on transfer failure.
 - Scene Explain defaults to a native Qt JSON-RPC client for `codex app-server`,
-  reusing a ChatGPT-managed Codex login. Simple Explain threads are ephemeral
-  and always use a read-only, no-network, no-approval policy. Advanced
+  reusing a ChatGPT-managed Codex login. Read opens a new ephemeral thread
+  every time. Explain continues one saved thread (`explainThreadId` in
+  settings, listed in Assistant history as "Explain conversation"); a thread
+  that cannot be resumed is replaced and the new id remembered. Both always
+  use a read-only, no-network, no-approval policy. Advanced
   Assistant threads are persistent and can opt into internet access or
   workspace-scoped coding; only OkuFlow-created thread ids are indexed in
   settings. Server approval and permission-escalation requests are denied,
   unexpected tool items are interrupted, and turn watchdogs always return the
   UI to idle. The stable app-server surface currently lacks a complete
   per-turn tool allow-list, so the interrupt path remains necessary defense in
-  depth. OpenAI-compatible HTTP servers remain an optional fallback.
+  depth. OpenAI-compatible HTTP servers remain an optional fallback; there,
+  Explain resends up to four recent Explain answers as text (never earlier
+  images), kept only in memory and cleared when the server URL, model, API key
+  or provider changes, or when New is pressed in the Assistant tab. Pending
+  answers cannot repopulate history after a reset or configuration change.
 - The streamed result panel is an owned floating tool window with native
   move/resize handling over the D3D camera surface. Streamed fragments update
   its 20-point, 135%-spaced text without reapplying geometry. Its prominent

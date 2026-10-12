@@ -525,11 +525,15 @@ AssistiveSettings AssistiveFromJson(const QJsonObject& object)
 
 QJsonObject CodexConversationToJson(const CodexConversation& conversation)
 {
-    return QJsonObject{{QStringLiteral("threadId"), conversation.threadId},
+    QJsonObject object{{QStringLiteral("threadId"), conversation.threadId},
                        {QStringLiteral("title"), conversation.title},
                        {QStringLiteral("preview"), conversation.preview},
                        {QStringLiteral("createdAt"), conversation.createdAt},
                        {QStringLiteral("updatedAt"), conversation.updatedAt}};
+    if (conversation.explain) {
+        object.insert(QStringLiteral("explain"), true);
+    }
+    return object;
 }
 
 CodexConversation CodexConversationFromJson(const QJsonObject& object)
@@ -540,6 +544,7 @@ CodexConversation CodexConversationFromJson(const QJsonObject& object)
     conversation.preview = object.value(QStringLiteral("preview")).toString();
     conversation.createdAt = object.value(QStringLiteral("createdAt")).toInteger();
     conversation.updatedAt = object.value(QStringLiteral("updatedAt")).toInteger();
+    conversation.explain = object.value(QStringLiteral("explain")).toBool();
     return conversation;
 }
 
@@ -788,6 +793,8 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
             settings.codexConversations.push_back(std::move(conversation));
         }
     }
+    settings.explainThreadId =
+        root.value(QStringLiteral("explainThreadId")).toString().trimmed();
 
     const AdvancedConfig defaultConfig = BuiltInConfigsStorage().front();
     settings.currentConfig = ConfigFromJson(root.value(QStringLiteral("currentConfig")).toObject(), defaultConfig);
@@ -1042,6 +1049,9 @@ QByteArray Serialize(const PersistentSettings& settings)
         conversationArray.append(CodexConversationToJson(conversation));
     }
     root.insert(QStringLiteral("codexConversations"), conversationArray);
+    if (!settings.explainThreadId.isEmpty()) {
+        root.insert(QStringLiteral("explainThreadId"), settings.explainThreadId);
+    }
 
     root.insert(QStringLiteral("currentConfig"), ConfigToJson(settings.currentConfig));
     if (settings.customColorScheme.stops.size() >= 2) {

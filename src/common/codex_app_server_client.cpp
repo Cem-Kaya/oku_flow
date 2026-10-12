@@ -292,7 +292,8 @@ void CodexAppServerClient::StartChatGptLogin()
 void CodexAppServerClient::RequestVisionTurn(const QString& prompt,
                                              const QString& imagePath,
                                              const QString& threadId,
-                                             bool persistent)
+                                             bool persistent,
+                                             bool retainThread)
 {
     if (IsTurnActive()) {
         if (!imagePath.trimmed().isEmpty()) {
@@ -323,8 +324,10 @@ void CodexAppServerClient::RequestVisionTurn(const QString& prompt,
     turnWatchdogTimer_->start();
     pendingTurn_.prompt = prompt.trimmed();
     pendingTurn_.imagePath = imagePath;
-    pendingTurn_.threadId = threadId.trimmed();
+    // Read is isolated even if a caller supplies a remembered conversation.
+    pendingTurn_.threadId = persistent || retainThread ? threadId.trimmed() : QString();
     pendingTurn_.persistent = persistent;
+    pendingTurn_.retainThread = !persistent && retainThread;
     pendingTurn_.valid = true;
     if (pendingTurn_.prompt.isEmpty()) {
         pendingTurn_.prompt = QStringLiteral("Describe the current view for a low-vision user.");
@@ -798,7 +801,7 @@ void CodexAppServerClient::StartNewThreadForPendingTurn()
         {QStringLiteral("approvalPolicy"), QStringLiteral("never")},
         {QStringLiteral("sandbox"), allowCoding ? QStringLiteral("workspace-write")
                                                 : QStringLiteral("read-only")},
-        {QStringLiteral("ephemeral"), !persistent},
+        {QStringLiteral("ephemeral"), !persistent && !pendingTurn_.retainThread},
         {QStringLiteral("serviceName"), QStringLiteral("okuflow")},
         {QStringLiteral("developerInstructions"), DeveloperInstructions(persistent)}};
     if (!selectedModel_.isEmpty()) {
@@ -820,6 +823,8 @@ void CodexAppServerClient::StartNewThreadForPendingTurn()
                     pendingTurn_.threadId = threadId;
                     if (pendingTurn_.persistent) {
                         emit ConversationCreated(thread);
+                    } else if (pendingTurn_.retainThread) {
+                        emit RetainedThreadStarted(thread);
                     }
                     StartTurnOnThread(threadId);
                 });
@@ -845,6 +850,17 @@ void CodexAppServerClient::ResumeThreadForPendingTurn()
                 [this, generation, threadId = pendingTurn_.threadId](const QJsonObject&, const QJsonObject& error) {
                     if (!PendingTurnCurrent(generation) || pendingTurn_.threadId != threadId) return;
                     if (!error.isEmpty()) {
+                        if (pendingTurn_.retainThread && initialized_ && signedIn_) {
+                            // A deleted, expired, or unreadable Explain thread
+                            // is replaced rather than failing the request.
+                            qInfo().noquote()
+                                << "Codex: starting a new Explain conversation; resume failed:"
+                                << ErrorMessage(error, QStringLiteral("unknown error"));
+                            pendingTurn_.threadId.clear();
+                            pendingTurn_.opening = false;
+                            StartNewThreadForPendingTurn();
+                            return;
+                        }
                         FinishActiveTurn({}, ErrorMessage(error, QStringLiteral("Could not resume assistant conversation.")), false);
                         return;
                     }

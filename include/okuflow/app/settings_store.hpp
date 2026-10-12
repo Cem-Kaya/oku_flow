@@ -136,6 +136,9 @@ struct CodexConversation {
     QString preview;
     qint64 createdAt{0};
     qint64 updatedAt{0};
+    // Opened by Explain rather than the Assistant chat. An empty title is
+    // shown as the translated "Explain conversation".
+    bool explain{false};
 };
 
 struct PresetDefinition {
@@ -188,6 +191,8 @@ struct PersistentSettings {
     color_schemes::ColorScheme customColorScheme{};
     AssistiveSettings assistive{};
     std::vector<CodexConversation> codexConversations;
+    // Codex thread every Explain continues; empty = the next Explain opens one.
+    QString explainThreadId;
     std::vector<AdvancedConfig> customConfigs;
     std::vector<PresetDefinition> customPresets;
 };

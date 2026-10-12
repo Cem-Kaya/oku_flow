@@ -102,6 +102,14 @@ public:
     void CancelAssistantConversationLoad();
     void RenameAssistantConversation(const QString& threadId, const QString& name);
     void DeleteAssistantConversation(const QString& threadId);
+    // Codex thread continued by every Explain (Read always opens a new
+    // temporary thread). The owner restores the persisted id at startup;
+    // ExplainConversationChanged reports every later change.
+    void SetExplainConversationId(const QString& threadId);
+    QString ExplainConversationId() const { return explainThreadId_; }
+    // Makes the next Explain open a new conversation: forgets the Codex
+    // thread id and the in-memory OpenAI-compatible Explain history.
+    void StartNewExplainConversation();
 
     // Appends synchronized original and processed media to the HTML lecture
     // notes (no-op when notes are disabled).
@@ -134,6 +142,11 @@ signals:
     void AssistantTranscriptLoadFailed(const QString& threadId, const QString& error);
     void AssistantConversationRenamed(const QString& threadId, const QString& name);
     void AssistantConversationDeleted(const QString& threadId);
+    // A new Codex Explain conversation was opened (first Explain, after a
+    // reset, or replacing a thread that could not be resumed).
+    void ExplainConversationCreated(const QJsonObject& thread);
+    // The Explain thread id changed; empty means the next Explain starts fresh.
+    void ExplainConversationChanged(const QString& threadId);
     void AssistantTurnStarted(const QString& threadId, const QString& turnId, bool persistent);
     void AssistantTextDelta(const QString& threadId, const QString& turnId, const QString& delta);
     void AssistantTurnFinished(const QString& threadId,
@@ -151,13 +164,17 @@ private:
     friend class ::NotesHtmlTests;
     friend class ::AssistivePreparationTests;
     void RefreshOverlay();
-    void StartVlm(const uint8_t* bgraData, int width, int height, bool readText = false);
+    // continueExplain marks a user-requested Explain that continues the
+    // Explain conversation; periodic analyses and Read stay independent.
+    void StartVlm(const uint8_t* bgraData, int width, int height,
+                  bool readText = false, bool continueExplain = false);
     void StartCodexVlm(const uint8_t* bgraData,
                        int width,
                        int height,
                        const QString& prompt,
                        const QString& threadId,
-                       bool persistent);
+                       bool persistent,
+                       bool retainThread = false);
     void PostVlmRequest(const QByteArray& requestBody,
                         const QString& apiUrl,
                         const QString& apiKey);
@@ -258,6 +275,13 @@ private:
     QNetworkReply* activeReply_{};
     bool vlmResponseTooLarge_{false};
     QString vlmPreparationThreadId_;
+    QString explainThreadId_;
+    // OpenAI-compatible endpoints have no server-side thread. A bounded,
+    // text-only, in-memory record of recent Explain answers gives later
+    // Explains the same continuity. Cleared on provider/endpoint/model/key
+    // change or explicit reset, including admission of an in-flight answer.
+    QStringList explainHistory_;
+    bool vlmRequestRecordsExplainHistory_{false};
     QString lastPrivacyNotice_;
     std::unique_ptr<CodexAppServerClient> codexClient_;
 #if OKUFLOW_HAS_TTS

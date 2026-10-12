@@ -11,6 +11,39 @@ sidecars beside recordings and never rewrites the actively appended notes HTML.
 The shell preserves native disclosure cards, conversation grouping, theme,
 expand/collapse and escaped content, with larger controls and narrow layouts.
 
+The 2026-10-13 shell redesign keeps every placeholder and entry class. Its
+inline viewer script adds a remembered text scale (`okuflow-notes-scale`,
+87.5-200%), a four-state colour scheme (`okuflow-notes-theme`: auto, light,
+dark, contrast), SVG kind icons, kind filter chips, Read aloud/Copy on
+`.note-text` answers (Web Speech and Clipboard APIs, local only) and
+playback-synchronised transcript highlighting using the bridge's
+`data-start`/`data-end` row attributes. Its toolbar labels are an inline
+English/Turkish/German table keyed on the document language. The template is
+split into adjacent raw-string pieces to stay within MSVC literal limits and
+must not contain `http://` or a literal `<details` (asserted by the notes
+tests). `scripts/render_notes_preview.py` renders it with sample entries whose
+markup mirrors `AssistiveRuntime`; update both when entry markup changes.
+
+At narrow widths the toolbar returns to document flow, controls wrap within
+the viewport, summary timestamps span their own row, and padding/icon sizing
+leaves room for 200% text. `scripts/test_notes_site_browser.mjs` validates
+these layouts against real generated EN/TR/DE fixture files in a private Chrome
+profile, including loaded local images/video, filters, conversation grouping,
+expand/collapse and persisted text size. It also checks the sibling website's
+carousel, themes, reduced motion, Arabic navigation and narrow translations;
+fixtures, profiles and screenshots stay in local app data.
+
+Transcript timestamps retain 44 px targets. Playback follows only the transcript
+panel's internal scroll position, without moving the document. The small-screen
+toolbar stays in normal flow, and Stop reading resets its state immediately.
+Conversation grouping uses a dictionary without inherited property names.
+
+`AssistiveRuntime` revokes an active HTTP Explain answer's eligibility for history
+when provider, URL, model, API key or the conversation is reset. A late response
+cannot repopulate cleared history or carry it into a new configuration. Read
+discards any supplied thread ID at the Codex client boundary and starts a fresh
+ephemeral thread. New conversation is blocked throughout request/capture work.
+
 `MainWindowTests::mouseFocusedChromeCanIdleFade` aligns synthetic Qt input
 with the native cursor, verifies that stationary logical/physical positions
 cannot reveal faded controls, reports outside pointer interference distinctly,
@@ -23,7 +56,7 @@ stationary notifications at scaled Windows DPI do not wake controls.
 `nativeEventFilter` preserves physical-pixel movement precision. Regression
 coverage includes fractional stationary input and a one-pixel native wake.
 
-Authoritative code map for the current repository state as of 2026-10-12. Update this file whenever classes, public structs, or significant functions change.
+Authoritative code map for the current repository state as of 2026-10-13. Update this file whenever classes, public structs, or significant functions change.
 
 The release-bundle `copy_required_file` subroutine verifies destination
 existence and byte equality immediately after copying required notices,
@@ -817,7 +850,7 @@ Namespace `okuflow::settings`
     Credential Manager. Matching environment variables remain runtime
     fallbacks.
 - `struct CodexConversation`
-  - OkuFlow-owned thread index entry: `threadId`, `title`, `preview`, `createdAt`, and `updatedAt`; transcripts remain in the Codex thread store
+  - OkuFlow-owned thread index entry: `threadId`, `title`, `preview`, `createdAt`, `updatedAt`, and `explain` (serialized only when true; marks a thread opened by Explain, whose empty title displays as the translated "Explain conversation"); transcripts remain in the Codex thread store
 - `struct PresetDefinition`
   - stage-1 quick-mode metadata: preset id, name, description, target config id, built-in flag
 - `struct PersistentSettings`
@@ -845,7 +878,9 @@ Namespace `okuflow::settings`
     `setupAssistantDeclined`, selected preset id, current live advanced config,
     reusable `customColorScheme`,
     the `assistive` settings block,
-    OkuFlow-created `codexConversations`, and user-created configs/presets
+    OkuFlow-created `codexConversations`, `explainThreadId` (the Codex thread
+    every Explain continues; empty or absent means the next Explain opens
+    one), and user-created configs/presets
 - `kMaxSettingsFileBytes`
   - 16 MiB raw on-disk limit for `settings.json` and `.backup`, counting CRLF
     bytes; see `docs/hardcoded_paths.md` for the capacity rationale
@@ -1136,7 +1171,7 @@ Types:
 - Restricted mode uses read-only sandboxing, approval policy `never`, disabled
   network access, and vision-only developer instructions. Persistent Advanced
   Assistant turns can opt into web/network access and workspace-scoped command
-  execution/file changes. Simple Explain never inherits those permissions.
+  execution/file changes. Read and Explain never inherit those permissions.
   MCP, dynamic, and collaboration tool items always trigger interruption.
   Server-initiated command/file approvals are declined, and permission-profile
   requests receive an empty grant so no additional filesystem or network
@@ -1166,10 +1201,19 @@ Types:
   - `BuiltInAssistantInstructions()` returns the read-only OkuFlow identity
     prompt shown in AI Settings
   - `RefreshAccount()` / `StartChatGptLogin()`
-  - `RequestVisionTurn(...)` / `InterruptTurn()`
+  - `RequestVisionTurn(prompt, imagePath, threadId, bool persistent, bool retainThread = false)` / `InterruptTurn()`
+    - `persistent` = Advanced Assistant turn (stored thread, opt-in
+      permissions). Non-persistent with `retainThread` = Explain: a stored
+      (`ephemeral: false`) thread under the restricted vision policy. If
+      `thread/resume` of its id fails while Codex is ready and signed in, the
+      same admitted turn opens a replacement thread instead of failing.
+      Neither flag = Read: a fresh ephemeral thread.
   - `LoadConversation(...)`, `RenameConversation(...)`, `DeleteConversation(...)`
 - Signals cover server/account/model/rate-limit state, login URL, conversation
   lifecycle/transcript loading, and streamed turn start/delta/completion.
+  `ConversationCreated` reports new Assistant threads;
+  `RetainedThreadStarted(const QJsonObject&)` reports a new or replacement
+  Explain thread.
   `ModelCatalogChanged(const QJsonArray&, ...)` preserves app-server display
   names, defaults, modalities, and supported reasoning efforts while the
   compatibility `ModelsChanged(QStringList, ...)` signal remains available.
@@ -1200,12 +1244,23 @@ Supporting types:
 - Owns a bounded two-thread image-preparation pool for vision resize, JPEG,
   base64, JSON, and temporary-frame writes. Generation tokens invalidate
   canceled work; queued completions start requests on the runtime thread.
-- `StartVlm(..., bool readText)` chooses either a verbatim transcription prompt
+- `StartVlm(..., bool readText, bool continueExplain)` chooses either a verbatim transcription prompt
   or the configured scene prompt. Read omits interface-language directives and
   HTTP conversational preferences to preserve source text. It keeps answers up to the
   existing 256 Ki-character cap and records them under `Text on screen`;
   Explain keeps its short overlay preview and full notes text. The HTTP
   `BuildVlmRequestBody` token limit is 4096 for Read and 180 for Explain.
+- Explain continuity (`continueExplain`, set by `SubmitFrameForced` for
+  Explain only): with Codex, `StartCodexVlm(..., bool retainThread)` continues
+  `explainThreadId_`, or opens a stored thread whose id arrives through
+  `RetainedThreadStarted`. Read always uses a new ephemeral thread. A
+  continuing request appends `ExplainContinuationPrompt` (describe this view,
+  use earlier views only as context). With an OpenAI-compatible server,
+  `explainHistory_` keeps the last 4 Explain answers (each at most 1200
+  characters, text only, in memory); `BuildVlmRequestBody` resends them as
+  user/assistant pairs before the current request. Read and periodic analyses
+  neither send nor extend it; a provider, server URL, or model change clears it.
+  Explain results reach lecture notes exactly as before (`FinishVlmSuccess`).
 - There is one vision busy state. A second forced request reports status
   without clearing the active answer or its retained notes image. Codex
   requests remain user-initiated; enabling scene mode does not spend allowance
@@ -1224,8 +1279,9 @@ Supporting types:
   - fallback: JPEG-encodes the frame and posts an OpenAI-compatible `chat/completions` request; API keys are optional for local servers
   - streams/finalizes text into the overlay, notes, and Assistant signals; TTS is invoked separately by `ReadAloud(...)`
   - emits a deduplicated `PrivacyNotice` naming whether a camera frame is
-    attached, the local/remote provider, persistence, and enabled
-    internet/coding capabilities
+    attached, the local/remote provider, persistence (saved Explain
+    conversation, temporary per Read, or recent Explain answers kept in
+    memory), and enabled internet/coding capabilities
 - Temporary Codex files carry the owning process id, are removed on every
   normal completion/cancellation/shutdown path, and stale files belonging to
   dead processes are swept at startup.
@@ -1245,6 +1301,18 @@ Supporting types:
     matching installed TTS locale without initiating speech
   - `void DismissOverlay()` — hides the current result panel until a new forced Read, Explain, or Assistant request begins
   - Codex/Assistant control: `StartCodexLogin()`, `StopAssistant()`, `SubmitAssistantPrompt(...)`, `LoadAssistantConversation(...)`, `RenameAssistantConversation(...)`, `DeleteAssistantConversation(...)`
+  - Explain conversation: `SetExplainConversationId(const QString&)` restores
+    the persisted id without signaling; `ExplainConversationId()`;
+    `StartNewExplainConversation()` forgets the id and the OpenAI-compatible
+    history. Signals: `ExplainConversationCreated(const QJsonObject& thread)`
+    for a new/replacement thread, and `ExplainConversationChanged(const QString&)`
+    whenever the id changes (empty after reset or after
+    `AssistantConversationDeleted` for that thread). `OkuFlowApp` mirrors the
+    id into `PersistentSettings::explainThreadId`, lists the thread with
+    `CodexConversation::explain`, and on a completed Explain refreshes that
+    entry's `updatedAt` and preview. `StartNewAssistantConversation()` also
+    calls `StartNewExplainConversation()` when the Explain conversation is
+    open or selected, or when the provider is not Codex.
   - `void NoteCapturedPhotoPair(const QString& originalPath, const QString& processedPath)` — appends synchronized original and processed images to the HTML lecture notes
   - `void NoteCapturedVideoPair(const QString& originalPath, const QString& processedPath)` — appends synchronized playable MP4 controls and direct links to the HTML lecture notes
   - `void NoteAnnotationSnapshot(const QString& filePath, const QString& heading)`

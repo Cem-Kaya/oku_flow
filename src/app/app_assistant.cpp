@@ -108,14 +108,34 @@ void OkuFlowApp::SubmitFloatingAssistantPrompt(const QString& prompt)
 
 void OkuFlowApp::StartNewAssistantConversation()
 {
-    if (assistiveManager_->Runtime().IsCodexTurnActive() ||
-        pendingAssistantFramePrompt_) {
+    if (assistiveManager_->Runtime().IsBusy() ||
+        pendingOnDemandAnalysis_ || pendingAssistantFramePrompt_) {
         ShowStatusMessage(
             QCoreApplication::translate(
                 "OkuFlow",
                 "Finish the current answer before starting a new chat."),
             5000);
         return;
+    }
+    // New while the Explain conversation is open or selected also makes the
+    // next Explain start fresh. OpenAI-compatible providers have no listed
+    // Explain conversation, so New always clears their in-memory history.
+    AssistiveRuntime& runtime = assistiveManager_->Runtime();
+    const QString explainThreadId = runtime.ExplainConversationId();
+    const QListWidgetItem* selectedItem =
+        uiState_->assistantHistoryList_
+            ? uiState_->assistantHistoryList_->currentItem()
+            : nullptr;
+    const bool explainSelected =
+        !explainThreadId.isEmpty() &&
+        (currentAssistantThreadId_ == explainThreadId ||
+         (selectedItem && selectedItem->isSelected() &&
+          selectedItem->data(Qt::UserRole).toString() == explainThreadId));
+    const bool codexProvider =
+        settingsController_->MutableSettings().assistive.aiProvider.trimmed().compare(
+            QStringLiteral("codex"), Qt::CaseInsensitive) == 0;
+    if (explainSelected || !codexProvider) {
+        runtime.StartNewExplainConversation();
     }
     CancelAssistantHistoryLoad();
     // Dropping the thread id makes the next turn open a fresh Codex thread,
@@ -131,7 +151,11 @@ void OkuFlowApp::StartNewAssistantConversation()
         uiState_->assistantHistoryList_->clearSelection();
     }
     ShowStatusMessage(
-        QCoreApplication::translate("OkuFlow", "Started a new conversation."),
+        explainSelected
+            ? QCoreApplication::translate(
+                  "OkuFlow",
+                  "Started a new conversation. The next Explain also starts a new conversation.")
+            : QCoreApplication::translate("OkuFlow", "Started a new conversation."),
         4000);
 }
 
@@ -280,9 +304,12 @@ void OkuFlowApp::PopulateAssistantHistory()
                                      ? QDateTime::fromSecsSinceEpoch(timestamp).toString(
                                            QStringLiteral("yyyy-MM-dd  HH:mm"))
                                      : QString();
-        const QString title = conversation->title.trimmed().isEmpty()
-                                  ? QStringLiteral("OkuFlow Assistant")
-                                  : conversation->title.trimmed();
+        const QString title =
+            !conversation->title.trimmed().isEmpty()
+                ? conversation->title.trimmed()
+                : conversation->explain
+                      ? QCoreApplication::translate("OkuFlow", "Explain conversation")
+                      : QStringLiteral("OkuFlow Assistant");
         const QString preview = conversation->preview.simplified().left(110);
         auto* item = new QListWidgetItem(
             QStringLiteral("%1\n%2%3")

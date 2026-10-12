@@ -2,6 +2,12 @@
 
 ## Browser notes transcription
 
+The opt-in notes renderer defaults to `%LOCALAPPDATA%\OkuFlow\notes-preview\`.
+`--out` selects another fixture folder; `--lang en|tr|de` renders a local draft
+whose media and transcription folder grants follow the real data-root layout.
+It uses PowerShell 7 for optional synthetic speech and FFmpeg when available;
+these are development helpers, not bundled runtime dependencies.
+
 New notes use `https://okuflow.com/transcribe/?ui=<document-language>` only to
 open the static browser tool. Recording bytes and segments travel over a
 private MessageChannel, not URL parameters or a local server. Chrome stores
