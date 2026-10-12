@@ -128,6 +128,8 @@ executables, MSI shortcuts/ARP and Store review logos use these generated
 assets. The website copies the exact ICO bytes into its content-hashed favicon
 and fallback path; its separate static cache version changes with the icon.
 The wordmark remains text and is not squeezed into a small favicon.
+Run `scripts/test_brand_icons.ps1 -BundlePath <new-bundle>` to verify that both
+deployed PE files embed all seven exact icon frames, including incremental builds.
 
 Sources: [Microsoft signing options](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options),
 [distribution and updates](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/choose-distribution-path),

@@ -25,6 +25,8 @@ window to export PNG logos and PNG-encoded ICO entries. The wrapper compiles
 against the selected Qt SDK and keeps developer output outside Drive.
 The Windows RC source declares an explicit CMake `OBJECT_DEPENDS` on the ICO
 so Ninja rebuilds both launcher and Qt executable resources after icon updates.
+`test_brand_icons.ps1` reads resources without executing either binary and
+compares all seven embedded PNG frames in both deployed executables to the ICO.
 `build_release_bundle.bat::find_built_executable` selects the active generator's
 layout, derives the launcher beside its Qt child and rejects missing outputs;
 old output directories cannot override current Ninja binaries.
