@@ -5,6 +5,10 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+- Fix Android USB unplug/reconnect crashes caused by removing a thermal listener
+  that partial startup never registered. Keep an authorized foreground listener
+  alive across cable removal while closing capture, and prevent background or
+  repeated refused foreground starts. Prepare version code 2 / 0.1.1 for Play.
 
 - Use the owner's original magnifier with a magenta star consistently in the
   Windows app, installer shortcuts, website header/favicon and Store review

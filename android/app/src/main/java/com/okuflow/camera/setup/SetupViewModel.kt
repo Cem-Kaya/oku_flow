@@ -38,8 +38,11 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Returning from privacy settings or another camera app is a new user-authorized attempt. */
     fun onResumed() {
+        CameraStreamService.onActivityResumed()
         if (HostLink.problem.value == HostProblem.CameraBlocked) HostLink.report(null)
     }
+
+    fun onPaused() = CameraStreamService.onActivityPaused()
 
     /**
      * Called by the resumed activity, also periodically, so a failed or stopped

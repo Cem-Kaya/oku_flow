@@ -36,7 +36,7 @@ Gradle runs on JDK 21; Java and Kotlin emit JVM 17 bytecode. `minSdk` is 30,
 `compileSdk` is release 37 with minor API level 2, and `targetSdk` is 37 (Android
 target behavior uses the major API level). The install application id is
 `com.okuflow` (Play/install application id); Kotlin/resource namespace and class
-paths stay `com.okuflow.camera`. Version code 1, version name `0.1.0`.
+paths stay `com.okuflow.camera`. Version code 2, version name `0.1.1`.
 NDK and CMake are installed for the later native processing stage; no native
 build is enabled in this scaffold. Transitive AndroidX graphics dependencies do
 include native libraries, which must pass release 16 KB checks. Kotlin sources use `app/src/main/java`, and
@@ -374,6 +374,17 @@ signing key was reused without modification; do not remove it as part of this
 setup's cleanup.
 
 ## Validation record
+
+The 2026-10-13 unplug/reconnect fix passed `scripts/build_android.ps1 -Lint`:
+Debug APK assembly, **65 JVM tests**, zero lint issues and **92** matching
+English/Turkish/German resource keys. The standard-library host protocol suite
+passed **11 tests**. Six new JVM regressions cover partial/failed thermal
+registration, one-time release, resumed-only foreground starts and refusal
+backoff; setup tests retain older-phone/Android 17 prerequisite behavior.
+The prepared APK is version code 2 / `0.1.1`. No APK was installed over the
+Play-signed code-1 app and no release was signed or published. See
+[DEVICE_VALIDATION.md](DEVICE_VALIDATION.md) for the actual buffered crash trace
+and remaining fixed-build physical unplug/replug acceptance.
 
 The 2026-10-12 connection-robustness change (probe hello, video bind deadline,
 listener retry, USB debounce and transient problem recovery) passed

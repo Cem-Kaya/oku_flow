@@ -1,5 +1,15 @@
 # OkuFlow Camera closed-test readiness
 
+## Verified Console and update status (2026-10-13)
+
+Google Play Console shows the Alpha track active with version code 1 / 0.1.0.
+The existing selected tester list now has 10 members. The signed USB reconnect
+fix, version code 2 / 0.1.1, passed release tests, lint and APK/AAB artifact
+validation and was accepted into a new Console release draft. Submission and
+review are separate from upload; fixed Play-signed unplug/replug acceptance is
+still pending. No Play Publisher API credentials are configured in this
+project, so this update uses the owner's signed-in Console instead of a CLI.
+
 The immediate scope is the owner's **first Google Play closed test for 12 invited
 testers**, not production publication. This document records preparation and
 remaining gates, not a submission, policy exception or approval. The app targets

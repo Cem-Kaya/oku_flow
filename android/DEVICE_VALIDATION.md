@@ -424,3 +424,31 @@ while preserving the shared server. It does not establish clean-PC USB driver
 installation or a cold source-built server taking over the already attached
 phone. Exact rebuild/source materials are included in the release; see
 [adb_distribution.md](../docs/adb_distribution.md).
+
+## Play-installed unplug/reconnect crash diagnosis — 2026-10-13
+
+Read-only diagnostics on the authorized Pixel 9 Pro Fold recovered two buffered
+`com.okuflow` main-thread crash traces at 00:50:43 and 00:52:34. Both report
+`Unable to stop service` caused by `IllegalArgumentException: Thermal status
+listener was not added`, from `CameraStreamService.onDestroy`. The service had
+acquired `PowerManager`, but partial startup had not registered its listener;
+shutdown incorrectly treated an initialized manager as listener ownership.
+The installed Google Play app is version code 1 / `0.1.0`. The phone also retains
+an input-focus ANR at 00:52:39; its thread stack has not been recovered, so that
+ANR is not attributed to the thermal exception.
+
+The fix tracks successful thermal registration and tolerates partial cleanup.
+It retains an existing authorized foreground listener across cable removal,
+releasing the host/camera on EOF or the two-second USB debounce. New foreground
+starts require a resumed activity; a rejected start waits for a fresh resume.
+Pause, revoked camera permission and debugging explicitly off still stop the
+service. Android 17 unknown settings and older-version checks are retained.
+Version code 2 / `0.1.1` is prepared for the owner's later Play update.
+
+Crash/lifecycle logs remain under
+`%LOCALAPPDATA%\OkuFlow\android-usb-crash-20261013`, outside Git. Structured
+adb discovery identified the USB transport before querying by transport ID;
+the existing shared adb server and logcat buffers were preserved. The Play app
+was not replaced, uninstalled, wiped or updated. Physical unplug/replug and
+background reconnect acceptance of the fixed Play-signed build remain pending;
+local JVM tests cannot establish those hardware results.

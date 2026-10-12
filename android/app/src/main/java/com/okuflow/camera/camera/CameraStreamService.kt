@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.okuflow.camera.MainActivity
@@ -27,7 +28,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import com.okuflow.camera.setup.listenerStopDelayMs
+import com.okuflow.camera.setup.listenerMustStop
+import com.okuflow.camera.setup.USB_DISCONNECT_GRACE_MS
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -44,7 +46,13 @@ class CameraStreamService : Service() {
     @Volatile private var thermalFps = 60
     @Volatile private var lastSettings: CameraSettings? = null
     @Volatile private var lastThermalFps = 0
+    @Volatile private var destroyed = false
+    private val thermalRegistration = ListenerRegistration(
+        { power.addThermalStatusListener(mainExecutor, thermalListener) },
+        { power.removeThermalStatusListener(thermalListener) },
+    )
     private val thermalListener = PowerManager.OnThermalStatusChangedListener { status ->
+        if (destroyed) return@OnThermalStatusChangedListener
         val next = if (status >= PowerManager.THERMAL_STATUS_SEVERE) 30 else 60
         if (status >= PowerManager.THERMAL_STATUS_CRITICAL) {
             requested = false
@@ -66,13 +74,15 @@ class CameraStreamService : Service() {
     override fun onCreate() {
         super.onCreate()
         streamingIntent = StreamingIntentStore.get(this)
-        if (!streamingIntent.canStart(true)) { stopSelf(); return }
+        if (!streamingIntent.canStart(true) || !visibleStart.canStart) { stopSelf(); return }
         val notifications = getSystemService(NotificationManager::class.java)
         notifications.createNotificationChannel(NotificationChannel("camera", getString(R.string.app_name), NotificationManager.IMPORTANCE_LOW))
         try {
             ServiceCompat.startForeground(this, 1, notification(getString(R.string.service_notification)),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA)
         } catch (exception: Exception) {
+            visibleStart.onRefused()
+            Log.w("OkuFlow-Service", "Camera foreground service start refused", exception)
             HostLink.report(HostProblem.ServiceFailed)
             stopSelf()
             return
@@ -124,6 +134,7 @@ class CameraStreamService : Service() {
                 updateNotification(getString(R.string.service_notification))
             }
         } catch (exception: Exception) {
+            Log.w("OkuFlow-Service", "USB listener startup failed", exception)
             HostLink.report(HostProblem.ServiceFailed)
             stopSelf()
             return
@@ -131,15 +142,23 @@ class CameraStreamService : Service() {
         // A fresh listener starts without the previous attempt's problem; heat persists until cooling.
         // Cleared only once listening, so periodic retries of a failing listener do not flicker.
         if (HostLink.problem.value != HostProblem.TooHot) HostLink.report(null)
-        power.addThermalStatusListener(mainExecutor, thermalListener)
+        try { thermalRegistration.register() } catch (exception: Exception) {
+            Log.w("OkuFlow-Service", "Thermal listener registration failed", exception)
+            HostLink.report(HostProblem.ServiceFailed)
+            stopSelf()
+            return
+        }
         scope.launch {
             monitor.snapshot.collectLatest { snapshot ->
-                val stopAfter = listenerStopDelayMs(snapshot) ?: return@collectLatest
-                // collectLatest cancels this wait if the cable reports connected again.
-                kotlinx.coroutines.delay(stopAfter)
-                // Unplugging ends this attempt; the next cable connection starts clean.
-                if (!snapshot.usbConnectedToComputer) HostLink.report(null)
-                stopSelf()
+                if (listenerMustStop(snapshot)) { stopSelf(); return@collectLatest }
+                if (!snapshot.usbConnectedToComputer) {
+                    // Retain the foreground authorization and endpoint. Recreating a camera
+                    // FGS on replug could be rejected after the activity moves to the background.
+                    // collectLatest cancels this wait if the USB state recovers.
+                    kotlinx.coroutines.delay(USB_DISCONNECT_GRACE_MS)
+                    server.disconnectHost()
+                    HostLink.report(null)
+                }
             }
         }
         scope.launch { store.state.collectLatest { kotlinx.coroutines.delay(350); restart() } }
@@ -185,7 +204,7 @@ class CameraStreamService : Service() {
 
     // Settings, thermal and command threads all restart; serialize the compare-and-start.
     @Synchronized private fun restart() {
-        if (!streamingIntent.canStart(true) || !requested || !::server.isInitialized || server.hostCodecs().isEmpty()) return
+        if (destroyed || !streamingIntent.canStart(true) || !requested || !::server.isInitialized || server.hostCodecs().isEmpty()) return
         val settings = store.state.value
         if (settings == lastSettings && thermalFps == lastThermalFps) return
         lastSettings = settings
@@ -204,6 +223,7 @@ class CameraStreamService : Service() {
 
     @android.annotation.SuppressLint("MissingPermission") // FGS is permitted without the optional drawer permission.
     private fun updateNotification(text: String) {
+        if (destroyed) return
         runCatching { getSystemService(NotificationManager::class.java).notify(1, notification(text)) }
     }
 
@@ -219,27 +239,42 @@ class CameraStreamService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_NOT_STICKY
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
+        destroyed = true
+        requested = false
         running.set(false)
         scope.cancel()
-        if (::power.isInitialized) power.removeThermalStatusListener(thermalListener)
-        if (::monitor.isInitialized) monitor.stop()
-        if (::server.isInitialized) server.close()
-        if (::engine.isInitialized) engine.close()
+        cleanup("thermal listener") { thermalRegistration.close() }
+        if (::monitor.isInitialized) cleanup("setup monitor") { monitor.stop() }
+        if (::server.isInitialized) cleanup("USB listener") { server.close() }
+        if (::engine.isInitialized) cleanup("camera engine") { engine.close() }
         stopForeground(STOP_FOREGROUND_REMOVE)
         HostLink.details.value = ""
         HostLink.publish(HostLinkState.Disconnected)
         super.onDestroy()
     }
+
+    private fun cleanup(name: String, release: () -> Unit) {
+        runCatching(release).onFailure { Log.w("OkuFlow-Service", "Could not release $name", it) }
+    }
+
     companion object {
         private val running = AtomicBoolean(false)
+        private val visibleStart = VisibleServiceStartGate()
 
         /** True from a successful listener start until onDestroy; the activity retries while false. */
         val isRunning: Boolean get() = running.get()
 
+        fun onActivityResumed() = visibleStart.onResumed()
+        fun onActivityPaused() = visibleStart.onPaused()
+
         fun startVisible(context: Context) {
-            if (!StreamingIntentStore.get(context).canStart(true)) return
+            if (!visibleStart.canStart || !StreamingIntentStore.get(context).canStart(true)) return
             runCatching { androidx.core.content.ContextCompat.startForegroundService(context,
-                Intent(context, CameraStreamService::class.java)) }.onFailure { HostLink.report(HostProblem.ServiceFailed) }
+                Intent(context, CameraStreamService::class.java)) }.onFailure {
+                    visibleStart.onRefused()
+                    Log.w("OkuFlow-Service", "Camera foreground service request refused", it)
+                    HostLink.report(HostProblem.ServiceFailed)
+                }
         }
     }
 }

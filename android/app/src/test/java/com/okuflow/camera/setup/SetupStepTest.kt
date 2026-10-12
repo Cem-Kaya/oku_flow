@@ -163,13 +163,18 @@ class SetupStepTest {
     }
 
     @Test
-    fun briefUsbDropoutIsDebouncedButLostPrerequisitesStopImmediately() {
-        assertNull(listenerStopDelayMs(ready))
-        assertEquals(USB_DISCONNECT_GRACE_MS, listenerStopDelayMs(ready.copy(usbConnectedToComputer = false)))
-        assertEquals(0L, listenerStopDelayMs(ready.copy(cameraPermissionGranted = false)))
-        assertEquals(0L, listenerStopDelayMs(ready.copy(usbDebuggingEnabled = false)))
-        // Android 17 redacts the setting: unknown is not "disabled", so only the cable is missing.
-        assertEquals(USB_DISCONNECT_GRACE_MS,
-            listenerStopDelayMs(ready.copy(usbDebuggingEnabled = null, usbConnectedToComputer = false)))
+    fun unplugRetainsTheAuthorizedListenerButLostPrerequisitesStopImmediately() {
+        assertFalse(listenerMustStop(ready))
+        val detached = ready.copy(usbConnectedToComputer = false, usbAdbActive = false)
+        assertFalse(detached.canListenForHost) // A fresh background service is still forbidden.
+        assertFalse(listenerMustStop(detached))
+        assertFalse(listenerMustStop(detached.copy(usbDebuggingEnabled = null)))
+        assertTrue(listenerMustStop(ready.copy(cameraPermissionGranted = false)))
+        assertTrue(listenerMustStop(ready.copy(usbDebuggingEnabled = false)))
+        assertTrue(listenerMustStop(detached.copy(usbDebuggingEnabled = false)))
+        assertTrue(listenerMustStop(detached.copy(cameraPermissionGranted = false)))
+        // Current adb evidence still handles older OEM redaction/backports.
+        assertFalse(listenerMustStop(ready.copy(usbDebuggingEnabled = false, usbAdbActive = true)))
+        assertEquals(2_000L, USB_DISCONNECT_GRACE_MS)
     }
 }

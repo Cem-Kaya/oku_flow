@@ -34,9 +34,15 @@ changes use the confirmation vibration, without one for the brief connected stat
 
 While OkuFlow Camera is in front it re-checks setup and restarts a stopped or
 failed USB listener every three seconds, so the phone, desktop app, cable and
-USB-debugging authorization can come up in any order. A USB dropout shorter
-than two seconds keeps the listener; revoking camera permission or turning
-USB debugging off stops it immediately.
+USB-debugging authorization can come up in any order. Once started from the
+visible app, the foreground listener stays available across unplug/replug.
+Socket loss releases the camera immediately; a disconnected USB broadcast
+also retires the host session after two seconds. Reconnecting can then bind a
+fresh session without recreating a camera foreground service in the background.
+Revoking camera permission, explicitly turning USB debugging off or choosing
+Pause stops the service. A rejected foreground-service start waits for a fresh
+activity resume before retrying; permission callbacks cannot start it while
+the activity is paused.
 
 Unlock the phone and leave OkuFlow Camera visible when connecting. The app
 does not show over the lock screen or wake a manually locked phone.
@@ -48,7 +54,7 @@ over. Plan 51 includes a normal-camera regression gate for the later Windows
 integration. Phone enumeration is appended to the physical camera list;
 normal cameras continue through their existing activation/capture branch.
 
-The Android toolchain is installed and the debug APK builds with 49 passing
+The Android toolchain is installed and the debug APK builds with 65 passing
 JVM tests. Run `pwsh -NoProfile -File scripts/build_android.ps1 -Lint` from
 the repository root. This also checks English/Turkish/German resource key
 parity. Outputs and caches stay under local app data, outside Google Drive.

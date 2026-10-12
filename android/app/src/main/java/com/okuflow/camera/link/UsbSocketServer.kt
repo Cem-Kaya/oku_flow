@@ -171,10 +171,12 @@ class UsbSocketServer(
                     val current = requireNotNull(session) { "Connect the control channel first" }
                     require(current.token == json.optString("token") && current.video == null) { "Invalid video binding" }
                     current.video = Channel(socket, 32, 32 * 1024 * 1024)
+                    // Serialize binding with retirement: an old session cannot publish
+                    // Disconnected or stop capture after this session is Connected.
+                    onConnect()
                     current.video!!
                 }
-                // Publish Connected before the ACK lets the host request its first frame.
-                onConnect()
+                // Connected is already published before the ACK permits the first frame.
                 send(bound, WireProtocol.ACK, JSONObject().put("channel", "video"))
                 socket.soTimeout = 0
                 // Video is unidirectional. EOF detects disconnect even while the camera is idle.
@@ -235,6 +237,9 @@ class UsbSocketServer(
             val current = session
             if (current != null && (current.control.socket === socket || current.video?.socket === socket)) {
                 session = null
+                // Invalidate capture before another control host can claim the slot.
+                // Close native sockets afterward, outside the session lock.
+                runCatching(onDisconnect).onFailure { Log.w("OkuFlow-USB", "Session cleanup failed", it) }
                 current
             } else null
         }
@@ -243,10 +248,15 @@ class UsbSocketServer(
             retired.video?.close()
             sockets.remove(retired.control.socket)
             retired.video?.let { sockets.remove(it.socket) }
-            onDisconnect()
         }
         sockets.remove(socket)
         runCatching { socket.close() }
+    }
+
+    /** Retire capture after a debounced USB removal without closing the reusable listener. */
+    fun disconnectHost() {
+        val socket = synchronized(lock) { session?.control?.socket } ?: return
+        disconnect(socket)
     }
 
     override fun close() {

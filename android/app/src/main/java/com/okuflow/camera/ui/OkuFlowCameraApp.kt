@@ -74,10 +74,12 @@ fun OkuFlowCameraApp(viewModel: SetupViewModel = viewModel()) {
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
             viewModel.onResumed()
-            while (true) {
-                viewModel.refresh()
-                kotlinx.coroutines.delay(SERVICE_RETRY_MS)
-            }
+            try {
+                while (true) {
+                    viewModel.refresh()
+                    kotlinx.coroutines.delay(SERVICE_RETRY_MS)
+                }
+            } finally { viewModel.onPaused() }
         }
     }
 

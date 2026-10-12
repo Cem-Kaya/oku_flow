@@ -380,7 +380,8 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 
 ## Android Companion
 
-- Package/application id: `com.okuflow.camera`, version code `1`, name `0.1.0`;
+- Package/application id: `com.okuflow`, Kotlin namespace `com.okuflow.camera`,
+  version code `2`, name `0.1.1`;
   min API `30`, compile API `37.2`, target API `37`. Pins live in
   `android/gradle/libs.versions.toml` and `android/app/build.gradle.kts`.
 - User-owned JDK: `%LOCALAPPDATA%\Programs\jdk-21`;
@@ -413,6 +414,10 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   loopback adb server `127.0.0.1:5037`. Control payload 64 KiB, video 16 MiB,
   video prefix 20 bytes. Hello deadline 5 s; keepalive inactivity 30 s;
   blocked writer 3 s; video queue 32 packets/32 MiB; control 128/512 KiB.
+- USB-disconnected broadcast grace: 2 s before retiring the host session.
+  An already authorized foreground listener remains bound across unplug/replug;
+  Pause, permission loss or debugging explicitly off stops it. New service
+  requests require a resumed activity; foreground refusal waits for a new resume.
 - Encoder startup tries at most six candidates with 4 s first-frame deadlines.
   Windows startup deadline 12 s and decoded buffer bound 64 MiB; Windows
   H.264 limits 4096×2304 / 251658240 pixels per second. SEVERE thermal state

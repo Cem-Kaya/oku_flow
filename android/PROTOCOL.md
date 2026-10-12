@@ -17,7 +17,12 @@ The canonical install package is `com.okuflow`, launched through
 `com.okuflow/com.okuflow.camera.MainActivity`; legacy development packages use
 `com.okuflow.camera/.MainActivity`. The abstract socket and protocol version are
 unchanged. Turning debugging off or removing permission stops the service at
-once; a USB disconnect stops it only after two seconds without the cable.
+once. A listener already started with foreground camera authorization survives
+USB unplug/replug: EOF retires the camera/session, and a USB-disconnected
+broadcast also retires any remaining host session after two seconds. The
+abstract endpoint stays bound for a fresh host session. This does not create
+a new camera foreground service from a background activity. Rejected foreground
+starts wait for the next activity resume instead of retrying every three seconds.
 A peer whose credentials cannot be read is closed without affecting the
 listener. No INTERNET permission is
 declared. The peer uid alone does not prove that a connection uses a cable.
