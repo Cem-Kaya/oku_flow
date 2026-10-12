@@ -3,6 +3,9 @@
 The portable ZIP stays supported. The MSI adds a machine-wide installation
 under `Program Files\OkuFlow`, with branded public desktop and Start menu
 shortcuts, Add/Remove Programs registration and transactional major upgrades.
+Advertised shortcut icon data is a separate cached first-party launcher PE
+named `OkuFlowIcon.exe`, matching the `.exe` target as Windows Installer requires.
+The VM verifies that Windows can render its cyan magnifier, beyond file presence.
 It includes the entire verified release inventory: Qt, source-built adb,
 notices, adb source/relinking ZIP and Microsoft's pinned runtime installer.
 Settings and `Documents\OkuFlow` captures are outside the installation and
@@ -54,6 +57,10 @@ for writes. The guest tests silent install, upgrade, downgrade rejection,
 every file hash, both shortcuts and uninstall preserving sentinel settings/
 captures, then shuts down itself. It refuses an existing Sandbox session and
 does not enable Windows features or request elevation on the owner PC.
+Detached Sandbox launcher exit is not treated as completion; the host waits
+for the guest result. An existing remote/server session is never reused.
+Cold guest installer startup can be slow; `-TimeoutSeconds` controls the host
+evidence wait (default 900 seconds). It never terminates a guest to force a pass.
 
 ## Signing and SmartScreen
 

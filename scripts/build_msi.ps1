@@ -47,8 +47,10 @@ try {
     Start-Element 'Package' @{Name='OkuFlow';Manufacturer='OkuFlow';Version=$Version;Language='1033';Scope='perMachine';InstallerVersion='500';ProductCode=$productCode;UpgradeCode=$pins.upgradeCode}
     Write-Element 'MajorUpgrade' @{Schedule='afterInstallInitialize';DowngradeErrorMessage='A newer version of OkuFlow is already installed.'}
     Write-Element 'MediaTemplate' @{EmbedCab='yes';CompressionLevel='high'}
-    Write-Element 'Icon' @{Id='OkuFlowIcon';SourceFile=(Join-Path $repository 'assets\okuflow.ico')}
-    Write-Element 'Property' @{Id='ARPPRODUCTICON';Value='OkuFlowIcon'}
+    # Advertised shortcuts require PE icon data and the target's .exe extension.
+    # Reuse the verified first-party launcher resource, not a bare ICO stream.
+    Write-Element 'Icon' @{Id='OkuFlowIcon.exe';SourceFile=(Join-Path $snapshot.path 'oku_flow.exe')}
+    Write-Element 'Property' @{Id='ARPPRODUCTICON';Value='OkuFlowIcon.exe'}
     Write-Element 'Property' @{Id='ARPURLINFOABOUT';Value='https://okuflow.com'}
     Write-Element 'Property' @{Id='ARPNOREPAIR';Value='1'}
     Write-Element 'Property' @{Id='MSIRESTARTMANAGERCONTROL';Value='DisableShutdown'}
@@ -87,7 +89,7 @@ try {
         Start-Element 'File' @{Id=('F_'+$id);Source=(Join-Path $snapshot.path $relative);Name=$relative.Split('/')[-1];KeyPath='yes'}
         if ($relative -eq 'oku_flow.exe') {
             foreach($shortcut in @(@{Id='DesktopShortcut';Directory='DesktopFolder'},@{Id='StartMenuShortcut';Directory='ApplicationPrograms'})) {
-                $shortcut += @{Name='OkuFlow';Advertise='yes';Icon='OkuFlowIcon';WorkingDirectory='INSTALLFOLDER';Description='OkuFlow camera magnifier'}
+                $shortcut += @{Name='OkuFlow';Advertise='yes';Icon='OkuFlowIcon.exe';IconIndex='0';WorkingDirectory='INSTALLFOLDER';Description='OkuFlow camera magnifier'}
                 Write-Element 'Shortcut' $shortcut
             }
         }

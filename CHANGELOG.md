@@ -20,6 +20,8 @@
   manifest drafts and structural MSIX review packaging using the existing
   public Store identity. Store runtime integration, certification and automatic
   update delivery remain pending; unsigned previews retain SmartScreen warnings.
+  Correct the advertised-shortcut icon's PE format and `.exe` name so Windows
+  renders the cyan mark and can resolve the shortcut on a clean installation.
 
 - Redesign the lecture-notes page for low-vision reading: larger type with a
   remembered text-size control (A−/A+), Automatic/Light/Dark/High contrast

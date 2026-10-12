@@ -1,10 +1,10 @@
 #requires -Version 7.0
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$InstallerPath,[Parameter(Mandatory)][string]$PreviousInstallerPath,[Parameter(Mandatory)][string]$BundlePath)
+param([Parameter(Mandatory)][string]$InstallerPath,[Parameter(Mandatory)][string]$PreviousInstallerPath,[Parameter(Mandatory)][string]$BundlePath,[ValidateRange(60,1800)][int]$TimeoutSeconds=900)
 . (Join-Path $PSScriptRoot 'windows-installer\common.ps1')
 $sandbox=Get-Command WindowsSandbox.exe -ErrorAction SilentlyContinue
 if(-not $sandbox){throw 'Windows Sandbox is unavailable. Use a clean Windows VM; do not install the fixture on this PC.'}
-if(Get-Process WindowsSandbox -ErrorAction SilentlyContinue){throw 'An existing Sandbox session must remain untouched. Close it before this separate acceptance run.'}
+if(Get-Process WindowsSandbox,WindowsSandboxRemoteSession,WindowsSandboxServer -ErrorAction SilentlyContinue){throw 'An existing Sandbox session must remain untouched. Close it before this separate acceptance run.'}
 $work=Join-Path $env:LOCALAPPDATA "OkuFlow\installer-sandbox\$([Guid]::NewGuid().ToString('N'))"
 $inputPath=Join-Path $work 'input';$evidence=Join-Path $work 'evidence'
 New-Item -ItemType Directory -Path $inputPath,$evidence -Force | Out-Null
@@ -24,9 +24,16 @@ $configuration=@"
 $config=Join-Path $work 'acceptance.wsb';$configuration | Set-Content $config -Encoding utf8NoBOM
 Write-Output "Starting disposable installer acceptance; evidence: $evidence"
 $child=Start-Process -FilePath $sandbox.Source -ArgumentList "`"$config`"" -WindowStyle Hidden -PassThru
-if(-not $child.WaitForExit(240000)){throw "Owned Sandbox did not finish within four minutes; evidence: $evidence"}
 $resultPath=Join-Path $evidence 'result.json'
-if(-not (Test-Path -LiteralPath $resultPath)){throw "Sandbox did not produce acceptance evidence (feature may be disabled). See $evidence"}
+# New Windows Sandbox versions detach their RemoteSession from the launcher.
+# Guest evidence, rather than launcher lifetime, determines completion.
+$deadline=[DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+while(-not (Test-Path -LiteralPath $resultPath) -and [DateTime]::UtcNow -lt $deadline){
+    Start-Sleep -Seconds 2
+    $child.Refresh()
+    if($child.HasExited -and $child.ExitCode -ne 0){throw "Sandbox launch failed (exit $($child.ExitCode)); evidence: $evidence"}
+}
+if(-not (Test-Path -LiteralPath $resultPath)){throw "Sandbox did not produce guest evidence within $TimeoutSeconds seconds. See $evidence"}
 $result=Get-Content $resultPath -Raw | ConvertFrom-Json
 if(-not $result.pass){throw "Sandbox acceptance failed: $($result.failure). See $evidence"}
 Write-Output "PASS: clean-VM install, branded shortcuts, upgrade, downgrade rejection, complete payload, uninstall and preserved user data ($($result.checks.Count) checks). Evidence: $resultPath"

@@ -8,7 +8,7 @@ $properties = @{}
 foreach($row in (Read-InstallerTable $database 'SELECT `Property`, `Value` FROM `Property`')) { $properties[$row[0]]=$row[1] }
 if ($properties['ProductName'] -ne 'OkuFlow' -or $properties['ALLUSERS'] -ne '1' -or $properties['MSIRESTARTMANAGERCONTROL'] -ne 'DisableShutdown') { throw 'Incorrect product, scope or application-shutdown policy.' }
 $shortcuts = @(Read-InstallerTable $database 'SELECT `Name`, `Directory_`, `Icon_`, `WkDir` FROM `Shortcut`')
-if ($shortcuts.Count -ne 2 -or (@($shortcuts | Where-Object {$_[1] -in @('DesktopFolder','ApplicationPrograms') -and $_[2] -eq 'OkuFlowIcon' -and $_[3] -eq 'INSTALLFOLDER'})).Count -ne 2) { throw 'Desktop/Start menu shortcuts are incomplete.' }
+if ($shortcuts.Count -ne 2 -or (@($shortcuts | Where-Object {$_[1] -in @('DesktopFolder','ApplicationPrograms') -and $_[2] -eq 'OkuFlowIcon.exe' -and $_[3] -eq 'INSTALLFOLDER'})).Count -ne 2) { throw 'Desktop/Start menu shortcuts are incomplete.' }
 $files = @(Read-InstallerTable $database 'SELECT `File`, `FileName`, `Component_` FROM `File`')
 $snapshotFiles = @(Get-ChildItem -LiteralPath $BundlePath -File -Recurse)
 if ($files.Count -ne $snapshotFiles.Count) { throw 'MSI omitted payload files.' }

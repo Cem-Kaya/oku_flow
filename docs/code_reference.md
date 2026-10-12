@@ -8,12 +8,21 @@ copy/hash checks), SDK discovery, Authenticode signing and read-only MSI table
 queries. `build_msi.ps1` authors standard WiX components, branded advertised
 shortcuts and transactional major upgrades from that snapshot. Its versioned
 receipt records installer hash, source and unsigned-preview status.
+Advertised shortcut icons use `OkuFlowIcon.exe` with the verified launcher PE
+as Icon-table data, satisfying Windows Installer's target-extension/PE rule.
+Bare ICO data with an extensionless name produced blank/non-resolving links.
+The VM fixture checks the installed resource path and rendered cyan/dark pixels.
 `test_msi_package.ps1` checks database policy and compares extracted payload
 hash multiplicities to the verified source without installation or UAC.
 `test_msi_sandbox.ps1` creates an owned, network-disabled disposable guest;
 `windows-installer/sandbox_acceptance.ps1` requires its WDAG account and checks
 real install/upgrade/downgrade/uninstall, payload bytes, shortcuts and retained
 user data. Its logs/result stay in the guest's mapped local evidence directory.
+The host waits for guest evidence rather than launcher exit because current
+Windows Sandbox detaches its RemoteSession process. Existing remote/server
+sessions are refused too. The guest publishes its result atomically.
+`TimeoutSeconds` bounds host waiting (900 seconds by default) without forcibly
+ending a running guest. winget draft headers select the exact 1.9 schema.
 `generate_winget_manifest.ps1` uses the receipt and exact GitHub URL to write
 the three catalog drafts; it does not submit a PR or enable automatic updates.
 `build_store_msix.ps1` requires `-ReviewOnly`, uses the public Partner Center

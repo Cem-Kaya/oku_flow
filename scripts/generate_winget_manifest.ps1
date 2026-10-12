@@ -16,6 +16,7 @@ New-Item -ItemType Directory -Path $target -Force | Out-Null
 $common="PackageIdentifier: OkuFlow.OkuFlow`nPackageVersion: $version`nManifestVersion: 1.9.0"
 $installer=@"
 # Draft: validate and submit to microsoft/winget-pkgs after installer acceptance.
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
 $common
 InstallerType: wix
 Scope: machine
@@ -37,6 +38,7 @@ Installers:
 ManifestType: installer
 "@
 $locale=@"
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
 $common
 PackageLocale: en-US
 Publisher: OkuFlow
@@ -54,7 +56,7 @@ Tags:
 - low-vision
 ManifestType: defaultLocale
 "@
-$versionManifest="$common`nDefaultLocale: en-US`nManifestType: version`n"
+$versionManifest="# yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.9.0.schema.json`n$common`nDefaultLocale: en-US`nManifestType: version`n"
 $installer | Set-Content -LiteralPath (Join-Path $target 'OkuFlow.OkuFlow.installer.yaml') -Encoding utf8NoBOM
 $locale | Set-Content -LiteralPath (Join-Path $target 'OkuFlow.OkuFlow.locale.en-US.yaml') -Encoding utf8NoBOM
 $versionManifest | Set-Content -LiteralPath (Join-Path $target 'OkuFlow.OkuFlow.yaml') -Encoding utf8NoBOM

@@ -22,6 +22,20 @@ try{
     Invoke-FixtureMsi '/i' (Join-Path $InputDirectory 'previous.msi') 'install-previous'
     Assert-Fixture ((Test-Path $desktop) -and (Test-Path $startMenu)) 'Desktop and Start menu shortcuts are installed'
     Invoke-FixtureMsi '/i' (Join-Path $InputDirectory 'candidate.msi') 'upgrade-candidate'
+    $shell=New-Object -ComObject WScript.Shell
+    Add-Type -AssemblyName System.Drawing
+    foreach($link in @($desktop,$startMenu)){
+        $shortcut=$shell.CreateShortcut($link)
+        $iconPath=$shortcut.IconLocation -replace ',[^,]*$',''
+        Assert-Fixture ((Test-Path -LiteralPath $iconPath) -and [IO.Path]::GetExtension($iconPath) -eq '.exe') 'Shortcut references a real advertised PE icon file'
+        $image=[Drawing.Icon]::ExtractAssociatedIcon($iconPath).ToBitmap()
+        try{
+            $cyan=0;$dark=0
+            for($y=0;$y -lt $image.Height;$y++){for($x=0;$x -lt $image.Width;$x++){$pixel=$image.GetPixel($x,$y);if($pixel.A -gt 128){if($pixel.G -gt 100 -and $pixel.B -gt 150 -and $pixel.R -lt 130){$cyan++};if($pixel.R -lt 40 -and $pixel.G -lt 50 -and $pixel.B -lt 70){$dark++}}}}
+            Assert-Fixture ($cyan -gt $image.Width*$image.Height/5 -and $dark -gt $image.Width*$image.Height/10) 'Windows renders the cyan magnifier icon from the installed shortcut resource'
+            $image.Save((Join-Path $EvidenceDirectory ('shortcut-'+[IO.Path]::GetFileName((Split-Path $link))+'.png')))
+        }finally{$image.Dispose()}
+    }
     foreach($record in $inputData.files){
         Assert-Fixture ((Get-FileHash -LiteralPath (Join-Path $install $record.path)).Hash.ToLowerInvariant() -eq $record.sha256) "Installed payload matches: $($record.path)"
     }
@@ -37,7 +51,8 @@ try{
     $result.pass=$true
 }catch{$result.failure=$_.Exception.Message}
 finally{
-    $result | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $EvidenceDirectory 'result.json') -Encoding UTF8
+    $result | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $EvidenceDirectory 'result.tmp') -Encoding UTF8
+    Move-Item -LiteralPath (Join-Path $EvidenceDirectory 'result.tmp') -Destination (Join-Path $EvidenceDirectory 'result.json')
     # This shuts down only the disposable guest, ending its owned Sandbox session.
     Start-Process shutdown.exe -ArgumentList '/s /t 0' -WindowStyle Hidden
 }
