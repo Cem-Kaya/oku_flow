@@ -80,6 +80,7 @@ private slots:
     void fillAppliesZoomAndClampsFocus();
     void fitShowsWholeSourceWithSymmetricBars();
     void pixelMappingUsesCanonicalTransform();
+    void sixteenXViewportAndCpuMappingShareCrop();
     void cachedRoiRemapsWithoutChangingDestinationGeometry();
     void cachedRoiRejectsUncoveredViewport();
     void superResCanonicalViewportFitsFreshIntegerCrop();
@@ -311,6 +312,42 @@ void ViewTransformTests::cachedRoiRejectsUncoveredViewport() {
     QVERIFY(!RemapViewTransformToSourceRect(
         requested, staleCenterRoi, remapped));
     QVERIFY(!remapped.valid);
+}
+
+void ViewTransformTests::sixteenXViewportAndCpuMappingShareCrop() {
+    for (const auto [width, height] :
+         {std::pair{1280u, 720u}, std::pair{1600u, 840u},
+          std::pair{720u, 1280u}}) {
+        for (const float focus : {0.0f, 0.24f, 1.0f}) {
+            const ViewTransform native = ComputeViewTransform(
+                1280, 720, width, height, 1.0f, focus, focus,
+                ViewportFitMode::kFill);
+            // This is the transform consumed by the D3D12 GPU viewport.
+            const ViewTransform magnified = ComputeViewTransform(
+                1280, 720, width, height, 16.0f, focus, focus,
+                ViewportFitMode::kFill);
+            QVERIFY(magnified.valid);
+            QVERIFY(std::abs(magnified.sourceWidth * 16.0f -
+                             native.sourceWidth) < 0.00001f);
+            QVERIFY(std::abs(magnified.sourceHeight * 16.0f -
+                             native.sourceHeight) < 0.00001f);
+            QVERIFY(magnified.sourceX >= 0.0f);
+            QVERIFY(magnified.sourceY >= 0.0f);
+            QVERIFY(magnified.sourceX + magnified.sourceWidth <= 1.00001f);
+            QVERIFY(magnified.sourceY + magnified.sourceHeight <= 1.00001f);
+            // CPU passthrough, pointer mapping and capture use the same crop.
+            const PixelViewMapping cpu = ComputePixelViewMapping(
+                magnified, 1280, 720, width, height);
+            QVERIFY(cpu.valid);
+            QCOMPARE(cpu.activeWidth, width);
+            QCOMPARE(cpu.activeHeight, height);
+            QVERIFY(std::abs(cpu.stepX - cpu.stepY) < 0.00001f);
+            QVERIFY(std::abs(cpu.stepX * width -
+                             magnified.sourceWidth * 1280.0f) < 0.0001f);
+            QVERIFY(std::abs(cpu.stepY * height -
+                             magnified.sourceHeight * 720.0f) < 0.0001f);
+        }
+    }
 }
 
 void ViewTransformTests::superResCanonicalViewportFitsFreshIntegerCrop() {

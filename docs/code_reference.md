@@ -42,8 +42,10 @@ hash multiplicities to the verified source without installation or UAC.
 real install/upgrade/downgrade/uninstall, payload bytes, shortcuts and retained
 user data. Its logs/result stay in the guest's mapped local evidence directory.
 The host waits for guest evidence rather than launcher exit because current
-Windows Sandbox detaches its RemoteSession process. Existing remote/server
-sessions are refused too. The guest publishes its result atomically.
+Windows Sandbox detaches its RemoteSession process. Existing remote/guest
+sessions are refused. An idle Store Sandbox server is left running; its `wsb`
+guest inventory must be queryable and empty before a new fixture starts.
+The guest publishes its result atomically.
 `TimeoutSeconds` bounds host waiting (900 seconds by default) without forcibly
 ending a running guest. winget draft headers select the exact 1.9 schema.
 `generate_winget_manifest.ps1` uses the receipt and exact GitHub URL to write
@@ -624,6 +626,11 @@ source changes make no measured throughput or latency claim.
   GPU work without blocking that event loop.
 - `Callbacks` supplies fresh-frame processing, motion/presenter/camera state,
   active display refresh discovery, and a one-shot explicit-rate clamp notice.
+  `presentPendingScene` runs after every `tick(...)`, including camera-handoff
+  early returns. `OkuFlowApp::PresentPendingScene()` selects a dirty cached
+  CPU/GPU scene or a presenter's resize redraw without advancing temporal
+  processing, SuperRes, or paired recording. A fresh camera frame's successful
+  presentation clears dirtiness, so the callback does not redraw it twice.
 
 ### `include/okuflow/app/recording_session_info.hpp`
 `okuflow::RecordingSessionInfo`
@@ -1015,7 +1022,13 @@ Namespace `okuflow::settings`
 ### `include/okuflow/app/constants.hpp`
 Namespace `okuflow::app_constants`
 - UI scaling and step constants for zoom, panning, and blur controls
+- `kZoomSliderMaxMultiplier` is 16; the slider spans 100..1600 at hundredth
+  precision. Wheel/keyboard limits follow that same slider range.
 - Helper functions:
+  - `ClampZoomMultiplier(float)` validates finite magnification in 1x..16x,
+    defaulting non-finite values to 1x. Built-in/modern/legacy config parsing,
+    serialization and UI restoration share it; existing valid zoom settings
+    and profile values are preserved without a schema change.
   - `SliderValueToSigma(int sliderValue)`
   - `SnapBlurRadius(int value)`
 

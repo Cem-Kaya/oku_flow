@@ -409,6 +409,9 @@ void PipelineOrchestrator::OnTick()
         static_cast<double>(elapsedNanos) / 1'000'000'000.0;
     const bool processedCameraFrame =
         callbacks_.tick && callbacks_.tick(elapsedSeconds);
+    if (callbacks_.presentPendingScene) {
+        callbacks_.presentPendingScene();
+    }
     UpdateTimerPolicy();
     if (processedCameraFrame) {
         RecordFrameTickSample(tickTimer.nsecsElapsed());

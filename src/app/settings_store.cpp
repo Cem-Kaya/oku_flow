@@ -130,7 +130,7 @@ AdvancedConfig MakeConfig(QString id,
     config.blackWhiteEnabled = blackWhiteEnabled;
     config.blackWhiteThreshold = Clamp01(blackWhiteThreshold);
     config.zoomEnabled = zoomEnabled;
-    config.zoomAmount = std::max(1.0f, zoomAmount);
+    config.zoomAmount = app_constants::ClampZoomMultiplier(zoomAmount);
     config.zoomCenterX = Clamp01(zoomCenterX);
     config.zoomCenterY = Clamp01(zoomCenterY);
     config.blurEnabled = blurEnabled;
@@ -318,7 +318,7 @@ QJsonObject ConfigToJson(const AdvancedConfig& config)
     object.insert(QStringLiteral("blackWhiteEnabled"), config.blackWhiteEnabled);
     object.insert(QStringLiteral("blackWhiteThreshold"), config.blackWhiteThreshold);
     object.insert(QStringLiteral("zoomEnabled"), config.zoomEnabled);
-    object.insert(QStringLiteral("zoomAmount"), config.zoomAmount);
+    object.insert(QStringLiteral("zoomAmount"), app_constants::ClampZoomMultiplier(config.zoomAmount));
     object.insert(QStringLiteral("zoomCenterX"), config.zoomCenterX);
     object.insert(QStringLiteral("zoomCenterY"), config.zoomCenterY);
     object.insert(QStringLiteral("blurEnabled"), config.blurEnabled);
@@ -382,7 +382,7 @@ AdvancedConfig ConfigFromJson(const QJsonObject& object, const AdvancedConfig& d
     config.blackWhiteEnabled = object.value(QStringLiteral("blackWhiteEnabled")).toBool(config.blackWhiteEnabled);
     config.blackWhiteThreshold = Clamp01(static_cast<float>(object.value(QStringLiteral("blackWhiteThreshold")).toDouble(config.blackWhiteThreshold)));
     config.zoomEnabled = object.value(QStringLiteral("zoomEnabled")).toBool(config.zoomEnabled);
-    config.zoomAmount = std::max(1.0f, static_cast<float>(object.value(QStringLiteral("zoomAmount")).toDouble(config.zoomAmount)));
+    config.zoomAmount = app_constants::ClampZoomMultiplier(static_cast<float>(object.value(QStringLiteral("zoomAmount")).toDouble(config.zoomAmount)));
     config.zoomCenterX = Clamp01(static_cast<float>(object.value(QStringLiteral("zoomCenterX")).toDouble(config.zoomCenterX)));
     config.zoomCenterY = Clamp01(static_cast<float>(object.value(QStringLiteral("zoomCenterY")).toDouble(config.zoomCenterY)));
     config.blurEnabled = object.value(QStringLiteral("blurEnabled")).toBool(config.blurEnabled);
@@ -583,7 +583,7 @@ AdvancedConfig LegacyConfigFromRoot(const QJsonObject& root)
 
     const QJsonObject zoom = root.value(QStringLiteral("zoom")).toObject();
     config.zoomEnabled = zoom.value(QStringLiteral("enabled")).toBool(config.zoomEnabled);
-    config.zoomAmount = std::max(1.0f, static_cast<float>(zoom.value(QStringLiteral("amount")).toDouble(config.zoomAmount)));
+    config.zoomAmount = app_constants::ClampZoomMultiplier(static_cast<float>(zoom.value(QStringLiteral("amount")).toDouble(config.zoomAmount)));
     config.zoomCenterX = Clamp01(static_cast<float>(zoom.value(QStringLiteral("centerX")).toDouble(config.zoomCenterX)));
     config.zoomCenterY = Clamp01(static_cast<float>(zoom.value(QStringLiteral("centerY")).toDouble(config.zoomCenterY)));
 

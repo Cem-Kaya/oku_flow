@@ -221,7 +221,7 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
         zoomCheckbox_->setChecked(config.zoomEnabled);
     }
     app_.zoomEnabled_ = config.zoomEnabled;
-    app_.zoomAmount_ = std::clamp(config.zoomAmount, 1.0f, static_cast<float>(kZoomSliderMaxMultiplier));
+    app_.zoomAmount_ = ClampZoomMultiplier(config.zoomAmount);
     if (zoomSlider_) {
         const int sliderValue = std::clamp(static_cast<int>(std::round(app_.zoomAmount_ * kZoomSliderScale)),
                                            zoomSlider_->minimum(), zoomSlider_->maximum());

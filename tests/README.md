@@ -1,5 +1,18 @@
 # OkuFlow Tests
 
+`pipeline_timing_percentiles` checks pending-scene presentation during retained
+camera GPU-handoff retries: pan, zoom, and a native resize redraw use the held
+scene without advancing camera effects or recording. This scheduler fixture
+uses no camera, proprietary runtime, GPU submission, or desktop window;
+real-phone SuperRes/stabilization acceptance remains a separate hardware check.
+
+`settings_store_round_trip` preserves existing 12x values and focus positions,
+round-trips 16x current/custom profiles, and bounds modern/legacy/serialized
+out-of-range magnification. `viewport_transform_geometry` checks the 16x
+GPU viewport crop against CPU pixel mapping across wide/portrait viewports and
+edge focus positions. `main_window_interactions` checks the real slider's
+16x limit; it remains part of the serial native desktop matrix.
+
 `assistive_preparation` covers retained Explain threads, independent temporary
 Read threads, Assistant identity preservation, cancelled start/resume openings,
 and loopback HTTP history isolation after URL/model/provider/key changes, reset,

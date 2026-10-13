@@ -79,7 +79,9 @@ The current frame flow is:
    focus animation, or resize it can re-present the latest complete scene up
    to 120 FPS or the active display rate; while idle it reduces to the camera
    rate. This improves navigation smoothness without synthesizing camera
-   frames or rerunning temporal effects.
+   frames or rerunning temporal effects. Its pending-scene callback runs after
+   every camera tick, including retained GPU-handoff retries, so those waits
+   cannot skip navigation over an Extra Stable held scene.
 5. `D3D12Presenter` keeps its swap chain at the render window's native pixel
    size and draws the persistent scene through one canonical `ViewTransform`.
    Fill crops uniformly and Fit letterboxes uniformly, so camera frames are
@@ -111,8 +113,8 @@ delays, actual camera arrival FPS, application drops, and processing/presentatio
 timings. It uses explicit isolated settings and normal child-process shutdown.
 `-OutputDirectory` accepts either a repository-relative directory or an absolute
 local path, so phone-test evidence can stay outside the synced checkout.
-See the root README for invocation and measurement limits. Initial platform
-discovery, graphics resource creation, and manual device changes still include
+See [the developer guide](developer_guide.md) for invocation and measurement
+limits. Initial platform discovery, graphics resource creation, and manual device changes still include
 synchronous work; ordinary frame-slot admission and initial device opening no
 longer add blocking waits to the Qt event loop.
 
@@ -544,7 +546,9 @@ legacy `powershell.exe` bridge.
   in isolated startup-profiling sessions, including native chrome and desktop checks.
 - [`docs/lecture_camera.md`](lecture_camera.md): downloadable lecture sample,
   isolated OBS Virtual Camera start/stop, and replacement-video workflow.
-- [`README.md`](../README.md): top-level project overview and usage.
+- [`README.md`](../README.md): user-facing features, downloads, setup and privacy.
+- [`developer_guide.md`](developer_guide.md): technical setup, build and test
+  commands, runtime controls, architecture details and contribution guidance.
 - [`docs/code_reference.md`](code_reference.md): authoritative file/class map.
 - [`docs/ui_modes_design.md`](ui_modes_design.md): Simple/Advanced layout and settings-ownership contract.
 - [`docs/hardcoded_paths.md`](hardcoded_paths.md): machine defaults and magic values.

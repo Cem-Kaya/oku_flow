@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
@@ -198,6 +199,7 @@ private slots:
     void pendingDeletionNeverReusesReplacementKey();
     void ignoresPlaintextApiKeyField();
     void clampsOutOfRangeValues();
+    void sixteenXZoomPreservesSettingsAndBoundsProfiles();
     void equivalenceUsesUiTolerances();
 };
 
@@ -713,6 +715,63 @@ void SettingsStoreTests::clampsOutOfRangeValues()
     QCOMPARE(loaded->currentConfig.claheClipLimit, 8.0f);
     QCOMPARE(loaded->currentConfig.focusThreshold, 0.001f);
     QCOMPARE(loaded->currentConfig.mlSuperResStrength, 1.0f);
+}
+
+void SettingsStoreTests::sixteenXZoomPreservesSettingsAndBoundsProfiles()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("zoom.json"));
+    PersistentSettings settings;
+    settings.currentConfig.zoomEnabled = true;
+    settings.currentConfig.zoomAmount = 12.0f;
+    settings.currentConfig.zoomCenterX = 0.24f;
+    settings.currentConfig.zoomCenterY = 0.37f;
+    AdvancedConfig custom = settings.currentConfig;
+    custom.id = QStringLiteral("sixteen-x");
+    custom.zoomAmount = 16.0f;
+    settings.customConfigs.push_back(custom);
+    QVERIFY(Save(path, settings));
+    auto loaded = Load(path);
+    QVERIFY(loaded.has_value());
+    QCOMPARE(loaded->currentConfig.zoomAmount, 12.0f);
+    QCOMPARE(loaded->currentConfig.zoomCenterX, 0.24f);
+    QCOMPARE(loaded->currentConfig.zoomCenterY, 0.37f);
+    QCOMPARE(loaded->customConfigs.front().zoomAmount, 16.0f);
+
+    settings.currentConfig.zoomAmount = 16.0f;
+    QVERIFY(Save(path, settings));
+    loaded = Load(path);
+    QVERIFY(loaded.has_value());
+    QCOMPARE(loaded->currentConfig.zoomAmount, 16.0f);
+    QCOMPARE(loaded->customConfigs.front().zoomAmount, 16.0f);
+
+    // Both direct serialization and parsed current/custom configurations use
+    // the same bound; existing valid preferences need no schema migration.
+    settings.currentConfig.zoomAmount = 20.0f;
+    QCOMPARE(QJsonDocument::fromJson(Serialize(settings)).object()
+                 .value(QStringLiteral("currentConfig")).toObject()
+                 .value(QStringLiteral("zoomAmount")).toDouble(), 16.0);
+    const QJsonObject outOfRange{{QStringLiteral("zoomAmount"), 16.5}};
+    QVERIFY(WriteJson(path, QJsonObject{
+        {QStringLiteral("version"), 16},
+        {QStringLiteral("currentConfig"), outOfRange},
+        {QStringLiteral("customConfigs"), QJsonArray{QJsonObject{
+            {QStringLiteral("id"), QStringLiteral("too-large")},
+            {QStringLiteral("zoomAmount"), 1000.0}}}}}));
+    loaded = Load(path);
+    QVERIFY(loaded.has_value());
+    QCOMPARE(loaded->currentConfig.zoomAmount, 16.0f);
+    QCOMPARE(loaded->customConfigs.front().zoomAmount, 16.0f);
+
+    QVERIFY(WriteJson(path, QJsonObject{
+        {QStringLiteral("version"), 1},
+        {QStringLiteral("zoom"), QJsonObject{
+            {QStringLiteral("enabled"), true},
+            {QStringLiteral("amount"), 17.0}}}}));
+    loaded = Load(path);
+    QVERIFY(loaded.has_value());
+    QCOMPARE(loaded->currentConfig.zoomAmount, 16.0f);
 }
 
 void SettingsStoreTests::rejectsFutureSettingsVersion()

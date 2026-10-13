@@ -15,10 +15,33 @@
   validate the exact mapping/configuration against the release artifact.
   Request FULL native debug metadata, but report the already stripped AndroidX
   graphics-path input honestly; matching native symbols remain unavailable.
+
+## [0.2.3] - 2026-10-13
+
+- Remake the GitHub README as a user-facing counterpart of okuflow.com and
+  preserve the complete technical documentation in docs/developer_guide.md.
+
+- Increase the desktop Zoom ceiling from 12x to 16x across slider,
+  wheel/keyboard input, settings and custom profiles. GPU viewport and CPU
+  fallback share the same aspect-safe 16x crop. Existing settings are retained;
+  Fit framing continues to show the full camera frame at 1x.
+
 - Fix Android USB unplug/reconnect crashes caused by removing a thermal listener
   that partial startup never registered. Keep an authorized foreground listener
   alive across cable removal while closing capture, and prevent background or
-  repeated refused foreground starts. Prepare version code 2 / 0.1.1 for Play.
+  repeated refused foreground starts. The separate Android code-3 / 0.1.2
+  update was submitted to Play's Alpha track; review and device availability
+  remain separate from submission.
+
+- Keep pan, zoom, and viewport resize redraws active over the cached camera
+  scene while a GPU camera handoff waits for completion, including Extra
+  Stable's held image. Viewport redraws do not rerun camera effects or add
+  recording frames.
+
+- Allow the disposable MSI fixture to use an idle Store Sandbox server only
+  after verifying its guest inventory is empty, without stopping the server.
+
+## [0.2.2] - 2026-10-13
 
 - Use the owner's original magnifier with a magenta star consistently in the
   Windows app, installer shortcuts, website header/favicon and Store review
@@ -35,7 +58,7 @@
   public Store identity. Store runtime integration, certification and automatic
   update delivery remain pending; unsigned previews retain SmartScreen warnings.
   Correct the advertised-shortcut icon's PE format and `.exe` name so Windows
-  renders the cyan mark and can resolve the shortcut on a clean installation.
+  renders the star magnifier and can resolve the shortcut on a clean installation.
 
 - Redesign the lecture-notes page for low-vision reading: larger type with a
   remembered text-size control (A−/A+), Automatic/Light/Dark/High contrast

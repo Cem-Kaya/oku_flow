@@ -231,6 +231,10 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
 - Rotation options: `0`, `90`, `180`, `270` degrees clockwise
 - Viewport framing default: `Fill (crop)`; the global alternative is
   `Fit (show all)` with symmetric black bars.
+- Desktop zoom range: `1x..16x`, with slider hundredths (`100..1600`).
+  Modern/legacy settings, custom profiles and UI application use the same
+  bound; existing values up to the former 12x ceiling need no migration.
+  Fit framing shows the whole source at 1x and retains the saved zoom for Fill.
 - Viewport motion default: `Auto (up to 120 FPS)`. Explicit choices are
   `60`, `90`, `120`, and `Match display`; all are clamped to the active
   monitor's current refresh rate without changing camera FPS.

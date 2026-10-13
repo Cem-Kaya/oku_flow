@@ -2,13 +2,14 @@
 
 #include <array>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <limits>
 
 namespace okuflow::app_constants {
 
 inline constexpr int kZoomSliderScale = 100;
-inline constexpr int kZoomSliderMaxMultiplier = 12;
+inline constexpr int kZoomSliderMaxMultiplier = 16;
 inline constexpr int kZoomFocusSliderScale = 100;
 inline constexpr int kDisplayColorModeCount = 17;
 inline constexpr float kPanKeyboardStep = 0.01f;
@@ -19,6 +20,12 @@ inline constexpr int kBlurSigmaSliderMin = 1;
 inline constexpr int kBlurSigmaSliderMax = 50;
 inline constexpr float kBlurSigmaStep = 0.1f;
 inline constexpr std::array<int, 19> kSupportedBlurRadii{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50};
+
+inline float ClampZoomMultiplier(float value)
+{
+    return std::clamp(std::isfinite(value) ? value : 1.0f,
+                      1.0f, static_cast<float>(kZoomSliderMaxMultiplier));
+}
 
 inline float SliderValueToSigma(int sliderValue)
 {

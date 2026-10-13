@@ -211,6 +211,7 @@ bool OkuFlowApp::Initialize()
             .tick = [this](double elapsedSeconds) {
                 return RunFrameTick(elapsedSeconds);
             },
+            .presentPendingScene = [this]() { PresentPendingScene(); },
             .hasContinuousMotion = [this]() {
                 return interactionController_ &&
                        interactionController_->HasContinuousMotion();

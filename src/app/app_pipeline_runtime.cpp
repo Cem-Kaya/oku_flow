@@ -2033,6 +2033,23 @@ void OkuFlowApp::DriveCameraReconnect() {
 
 
 
+void OkuFlowApp::PresentPendingScene() {
+    if (!presenter_ || HandlePresenterFault() || !cameraActive_ ||
+        (!pipelineOrchestrator_->IsViewportDirty() &&
+         !presenter_->NeedsScenePresent())) {
+        return;
+    }
+    if (usingCudaLastFrame_ && cudaSceneReady_) {
+        PresentLatestCudaScene(false, nullptr);
+    } else if (!usingCudaLastFrame_ && cpuSceneReady_) {
+        PresentFitted(
+            cpuSceneBuffer_.data(), cpuSceneWidth_, cpuSceneHeight_,
+            pipelineOrchestrator_->ViewportFitMode() ==
+                settings::ViewportFitModeSetting::Fill,
+            zoomCenterX_, zoomCenterY_, nullptr);
+    }
+}
+
 bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
     UpdatePhoneLightUi();
     if (HandlePresenterFault()) return false;
@@ -2102,23 +2119,6 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
 
     if ((frame.data.empty() && !frame.IsGpuResident()) ||
         frame.width == 0 || frame.height == 0) {
-        if (usingCudaLastFrame_ && cudaSceneReady_ &&
-            (pipelineOrchestrator_->IsViewportDirty() ||
-             presenter_->NeedsScenePresent())) {
-            PresentLatestCudaScene(false, nullptr);
-        } else if (!usingCudaLastFrame_ && cpuSceneReady_ &&
-                   (pipelineOrchestrator_->IsViewportDirty() ||
-                    presenter_->NeedsScenePresent())) {
-            PresentFitted(
-                cpuSceneBuffer_.data(),
-                cpuSceneWidth_,
-                cpuSceneHeight_,
-                pipelineOrchestrator_->ViewportFitMode() ==
-                    settings::ViewportFitModeSetting::Fill,
-                zoomCenterX_,
-                zoomCenterY_,
-                nullptr);
-        }
         return false;
     }
 
@@ -2165,12 +2165,8 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
         if (HandlePresenterFault()) return false;
         if (cudaSubmissionBusy_) {
             // Drop this camera arrival rather than retrying or converting it;
-            // viewport movement can still present the previous completed scene.
+            // the independent viewport callback presents the cached scene.
             if (recordingManager_) recordingManager_->NotifyCaptureGpuUploadBusy();
-            if (cudaSceneReady_ && (pipelineOrchestrator_->IsViewportDirty() ||
-                                    presenter_->NeedsScenePresent())) {
-                PresentLatestCudaScene(false, nullptr);
-            }
             return false;
         }
         if (gpuCompletionPending != CaptureGpuPending::None) {
@@ -2277,10 +2273,6 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
     }
 
     if (cudaSubmissionBusy_) {
-        if (cudaSceneReady_ && (pipelineOrchestrator_->IsViewportDirty() ||
-                                presenter_->NeedsScenePresent())) {
-            PresentLatestCudaScene(false, nullptr);
-        }
         return;
     }
     processedFrameWidth_ = width;

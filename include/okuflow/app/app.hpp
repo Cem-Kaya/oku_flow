@@ -268,6 +268,7 @@ private:
         int durationMs = 10000,
         LivePoliteness politeness = LivePoliteness::kPolite);
     bool RunFrameTick(double elapsedSeconds);
+    void PresentPendingScene();
     void PresentLatestCudaScene(bool newCameraFrame,
                                 CapturedFrame* originalFrame);
     void HandleCudaProcessingFailure();

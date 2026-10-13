@@ -199,6 +199,7 @@ private slots:
     void modesGridSearchAndGeometry_data();
     void modesGridSearchAndGeometry();
     void dependentControls();
+    void desktopZoomSliderReachesSixteenX();
     void textClarityMasterPreservesRefinements();
     void disabledSlidersHaveDistinctAppearance();
     void searchIconsStayInsideFields();
@@ -247,6 +248,21 @@ void MainWindowTests::streamingPreservesReadingState()
     body->verticalScrollBar()->setValue(body->verticalScrollBar()->maximum());
     overlay.SetContent(QStringLiteral("Answer"), answer + QStringLiteral("New streamed text\nMore text"), true);
     QCOMPARE(body->verticalScrollBar()->value(), body->verticalScrollBar()->maximum());
+}
+
+void MainWindowTests::desktopZoomSliderReachesSixteenX()
+{
+    MainWindow window;
+    auto* slider = window.zoomSlider();
+    QVERIFY(slider);
+    QCOMPARE(slider->minimum(), 100);
+    QCOMPARE(slider->maximum(), 1600);
+    slider->setValue(1600);
+    QCOMPARE(slider->value(), 1600);
+    slider->setValue(1601);
+    QCOMPARE(slider->value(), 1600);
+    slider->setValue(1200);
+    QCOMPARE(slider->value(), 1200);
 }
 
 void MainWindowTests::modesGridSearchAndGeometry_data()

@@ -10,9 +10,9 @@ bot, CI assistant) to work within the following guardrails. Keep this document
 open while contributing and update it whenever the workflow evolves.
 
 ## Core Principles
-1. **Read the docs first** – Always consult `README.md`, `docs/README.md`,
-   `docs/hardcoded_paths.md`, and `docs/THIRD_PARTY_LICENSES.md` before making
-   changes. They describe the architecture, build matrix, and licensing rules.
+1. **Read the docs first** – Always consult `README.md`, `docs/developer_guide.md`,
+   `docs/README.md`, `docs/hardcoded_paths.md`, and
+   `docs/THIRD_PARTY_LICENSES.md` before making changes. They describe the architecture, build matrix, and licensing rules.
 2. **Keep documentation current** – Any code or script change that affects
    usage, outputs, dependencies, or licensing must update the relevant doc.
    Never commit features or fixes without doc updates.
@@ -302,6 +302,12 @@ aligned with the project goals.
   profiles and fixture folders; keep recordings and model caches outside Git.
   Browser hardware tests and Windows GUI fixtures must remain serial.
 
+## Disposable installer guest ownership
+- `scripts/test_msi_sandbox.ps1` must refuse an existing Sandbox guest or
+  remote session. A Store Sandbox server daemon can remain after guest shutdown;
+  query its `wsb list --raw` inventory and require an empty list rather than
+  terminating the daemon. An unavailable or unrecognized inventory is a refusal.
+
 ## Windows installer and Store review validation
 - Build MSI only from a clean, verified release inventory with
   `scripts/build_msi.ps1`; use standard MSI actions and retain all runtime,
@@ -347,3 +353,11 @@ aligned with the project goals.
 - Use an isolated `OKUFLOW_ANDROID_BUILD_DIR` while a signed/uploaded release
   awaits publication. Archive the exact signed artifacts and diagnostic hashes
   before rebuilding; code 2 and code 3 are distinct Play release inventories.
+
+## Public README and developer documentation
+- Keep `README.md` as the user-facing Markdown counterpart of okuflow.com.
+  Keep technical setup, build, validation and agent details in
+  `docs/developer_guide.md`; read it before making changes. Repair relative
+  links when moving documentation and preserve existing technical details.
+- Distinguish published downloads from unreleased changes, submitted testing
+  tracks from approval, and planned features from current capabilities.

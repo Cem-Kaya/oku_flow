@@ -42,6 +42,9 @@ class PipelineOrchestrator final {
 public:
     struct Callbacks {
         std::function<bool(double)> tick;
+        // Runs after camera work even when a retained GPU frame is waiting.
+        // It may redraw the latest scene, without advancing camera effects.
+        std::function<void()> presentPendingScene;
         std::function<bool()> hasContinuousMotion;
         std::function<bool()> isMousePanActive;
         std::function<bool()> needsScenePresent;

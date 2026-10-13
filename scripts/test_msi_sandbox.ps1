@@ -4,7 +4,18 @@ param([Parameter(Mandatory)][string]$InstallerPath,[Parameter(Mandatory)][string
 . (Join-Path $PSScriptRoot 'windows-installer\common.ps1')
 $sandbox=Get-Command WindowsSandbox.exe -ErrorAction SilentlyContinue
 if(-not $sandbox){throw 'Windows Sandbox is unavailable. Use a clean Windows VM; do not install the fixture on this PC.'}
-if(Get-Process WindowsSandbox,WindowsSandboxRemoteSession,WindowsSandboxServer -ErrorAction SilentlyContinue){throw 'An existing Sandbox session must remain untouched. Close it before this separate acceptance run.'}
+if(Get-Process WindowsSandbox,WindowsSandboxRemoteSession -ErrorAction SilentlyContinue){throw 'An existing Sandbox session must remain untouched. Close it before this separate acceptance run.'}
+$servers=@(Get-Process WindowsSandboxServer -ErrorAction SilentlyContinue)
+foreach($server in $servers){
+    # The Store Sandbox server can remain idle after its guest shuts down.
+    # Query its inventory rather than stopping it or treating the daemon as a VM.
+    $inventoryTool=Join-Path (Split-Path $server.Path) 'wsb.exe'
+    if(-not (Test-Path -LiteralPath $inventoryTool)){throw 'A Sandbox server is present without a queryable guest inventory. Leave it untouched.'}
+    $inventoryText=& $inventoryTool list --raw
+    if($LASTEXITCODE -ne 0){throw 'Cannot verify that the existing Sandbox server has no guests. Leave it untouched.'}
+    $inventory=$inventoryText | ConvertFrom-Json -ErrorAction Stop
+    if(-not $inventory.PSObject.Properties['WindowsSandboxEnvironments'] -or @($inventory.WindowsSandboxEnvironments).Count -ne 0){throw 'An existing Sandbox guest must remain untouched. Close it before this separate acceptance run.'}
+}
 $work=Join-Path $env:LOCALAPPDATA "OkuFlow\installer-sandbox\$([Guid]::NewGuid().ToString('N'))"
 $inputPath=Join-Path $work 'input';$evidence=Join-Path $work 'evidence'
 New-Item -ItemType Directory -Path $inputPath,$evidence -Force | Out-Null

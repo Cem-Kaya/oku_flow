@@ -69,7 +69,9 @@ every file hash, both shortcuts and uninstall preserving sentinel settings/
 captures, then shuts down itself. It refuses an existing Sandbox session and
 does not enable Windows features or request elevation on the owner PC.
 Detached Sandbox launcher exit is not treated as completion; the host waits
-for the guest result. An existing remote/server session is never reused.
+for the guest result. An existing guest or remote session is never reused.
+When the Store Sandbox server remains idle after shutdown, the host queries
+its guest inventory and proceeds only when it is empty; it never stops the server.
 Cold guest installer startup can be slow; `-TimeoutSeconds` controls the host
 evidence wait (default 900 seconds). It never terminates a guest to force a pass.
 

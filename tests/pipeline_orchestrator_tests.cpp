@@ -17,6 +17,7 @@ private slots:
     void coalescesCameraFrameWakeups();
     void busyFrameRetriesLeaveQtHeartbeatResponsive();
     void sceneArrivalsDoNotExtendUserMotionTail();
+    void cameraHandoffRetriesStillPresentHeldViewport();
 };
 
 void PipelineOrchestratorTests::reportsNearestRankPercentiles()
@@ -166,6 +167,88 @@ void PipelineOrchestratorTests::sceneArrivalsDoNotExtendUserMotionTail()
     orchestrator.MarkViewportPresented();
     orchestrator.UpdateTimerPolicy();
     QCOMPARE(orchestrator.timer_.interval(), 8);
+}
+
+void PipelineOrchestratorTests::cameraHandoffRetriesStillPresentHeldViewport()
+{
+    // Retained D3D11/CUDA handoffs return before consuming another camera
+    // frame. The independently scheduled viewport must still see pan, zoom,
+    // and resize requests over the scene that Extra Stable is holding.
+    bool cameraHandoffPending = false;
+    bool presenterNeedsFrame = false;
+    int cameraFrames = 0;
+    int temporalUpdates = 0;
+    int recordingFrames = 0;
+    int presentations = 0;
+    int sceneGeneration = 0;
+    int presentedSceneGeneration = -1;
+    float focus = 0.5f;
+    float presentedFocus = -1.0f;
+    float zoom = 1.33f;
+    float presentedZoom = -1.0f;
+    int viewportWidth = 1108;
+    int presentedWidth = 0;
+    PipelineOrchestrator* scheduler = nullptr;
+    PipelineOrchestrator orchestrator(*this,
+        PipelineOrchestrator::Callbacks{
+            .tick = [&](double) {
+                if (cameraHandoffPending) return false;
+                ++cameraFrames;
+                ++temporalUpdates;
+                ++recordingFrames;
+                ++sceneGeneration;
+                scheduler->MarkSceneDirty();
+                return true;
+            },
+            .presentPendingScene = [&] {
+                if (!scheduler->IsViewportDirty() && !presenterNeedsFrame)
+                    return;
+                ++presentations;
+                presentedSceneGeneration = sceneGeneration;
+                presentedFocus = focus;
+                presentedZoom = zoom;
+                presentedWidth = viewportWidth;
+                presenterNeedsFrame = false;
+                scheduler->MarkViewportPresented();
+            },
+            .needsScenePresent = [&] { return presenterNeedsFrame; },
+            .cameraActive = [] { return true; },
+            .cameraFrameRate = [] { return 30.0; },
+            .usingCuda = [] { return true; },
+        });
+    scheduler = &orchestrator;
+    orchestrator.Start();
+    orchestrator.OnTick();
+    QCOMPARE(presentations, 1);
+    QCOMPARE(presentedSceneGeneration, 1);
+
+    cameraHandoffPending = true;
+    focus = 0.7f;
+    orchestrator.MarkViewportDirty();
+    orchestrator.OnTick();
+    QCOMPARE(presentations, 2);
+    QCOMPARE(presentedFocus, focus);
+    zoom = 2.5f;
+    orchestrator.MarkViewportDirty();
+    orchestrator.OnTick();
+    QCOMPARE(presentations, 3);
+    QCOMPARE(presentedZoom, zoom);
+
+    // Native resize requests can require a redraw without another camera
+    // arrival or user input notification (for example closing Advanced).
+    viewportWidth = 1600;
+    presenterNeedsFrame = true;
+    orchestrator.OnTick();
+    QCOMPARE(presentations, 4);
+    QCOMPARE(presentedWidth, viewportWidth);
+    QCOMPARE(presentedSceneGeneration, 1);
+    QCOMPARE(cameraFrames, 1);
+    QCOMPARE(temporalUpdates, 1);
+    QCOMPARE(recordingFrames, 1);
+    QVERIFY(!orchestrator.IsViewportDirty());
+    orchestrator.OnTick();
+    QCOMPARE(presentations, 4);
+    orchestrator.Stop();
 }
 
 } // namespace okuflow
