@@ -1,5 +1,16 @@
 # Windows installers, signing and updates
 
+## Published channels (2026-10-13)
+
+[GitHub v0.2.2](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.2)
+contains the immutable unsigned-preview MSI and portable ZIP. The exact public
+MSI passed the clean-VM install/upgrade/downgrade/uninstall acceptance checks.
+[winget submission 451412](https://github.com/microsoft/winget-pkgs/pull/451412)
+requests `OkuFlow.OkuFlow` version 0.2.2; it is awaiting checks/review, so catalog
+installation is not yet established. Microsoft Store has only the preparation
+entry and structural review package described below; no Store submission is
+claimed. Neither the GitHub MSI nor ZIP enables automatic app updates.
+
 The portable ZIP stays supported. The MSI adds a machine-wide installation
 under `Program Files\OkuFlow`, with branded public desktop and Start menu
 shortcuts, Add/Remove Programs registration and transactional major upgrades.

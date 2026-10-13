@@ -62,6 +62,12 @@ Never edit the same app in Console while an API edit is active: Console changes
 invalidate API edits. A committed API edit is not proof of review approval or
 device availability; verify Publishing overview and the resulting track afterward.
 
+The first CLI submission on 2026-10-13 committed code 3 / 0.1.2 to Alpha.
+Console showed Changes in review and automatic checks, confirming submission.
+This is not proof that testers already receive the update. The corresponding
+bundle hash and submission status are retained in `android/PLAY_READINESS.md`;
+private JSON receipts and the Console screenshot stay in LocalAppData.
+
 Sources: [API setup](https://developers.google.com/android-publisher/getting_started),
 [transactional edits](https://developers.google.com/android-publisher/edits),
 [track update](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.tracks/update),

@@ -7,12 +7,17 @@ The existing selected tester list now has 10 members. The signed USB reconnect
 fix, version code 2 / 0.1.1, passed release tests, lint and APK/AAB artifact
 validation and was accepted into a new Console release draft. Submission and
 review are separate from upload; fixed Play-signed unplug/replug acceptance is
-still pending. The signed code-3 / 0.1.2 candidate supersedes that draft with
-an actual generated R8 mapping; native symbols remain unavailable from the
-stripped dependency. The dedicated OkuFlow Play Publishing Cloud project has
+still pending. Signed code 3 / 0.1.2 superseded that draft through the CLI on
+2026-10-13. Google validated and committed the Alpha edit, and Console shows
+the release under Changes in review with automatic checks running. This is
+submission evidence, not approval or tester-device availability. Its AAB hash is
+`ef7c5899c7e87eebeafb0753f53824a119349c0a1d54209262de312beb12575e`.
+It embeds an actual generated R8 mapping; native symbols remain unavailable
+from the stripped dependency. The dedicated OkuFlow Play Publishing Cloud project has
 billing disabled and the Play API enabled. OkuFlow Test Publisher has app-specific
-view/testing-release access; its private local credential authenticated and read
-the active code-1 track through the CLI. Commit, review and tester availability
+view/testing-release access; its private local credential authenticated and
+the committed Alpha edit reads version code 3 through the CLI. That API status
+does not establish Google approval. Commit, review and tester availability
 remain separate gates. [CLI workflow](../docs/android_cli_publishing.md).
 
 The immediate scope is the owner's **first Google Play closed test for 12 invited
