@@ -202,6 +202,10 @@ device was listed at that earlier build checkpoint. A later isolated
 production-component fixture verified both Settings destinations on the Pixel
 without replacing its Play installation; see `android/DEVICE_VALIDATION.md`.
 Two new desktop USB recovery messages bring current Qt coverage to 728 keys.
+Native GUI validation now uses the current simplified German Zoom and six-color
+labels as sentinels. The language roundtrip, locale number formatting and
+current-selection retranslation assertions remain intact; older wording was
+stale after the expanded catalogs were generated.
 The debug AAB's actual BundleConfig metadata also disables LANGUAGE splitting,
 so manual language choices remain installed offline. This is debug-bundle
 evidence, not a Google Play rollout or native-speaker acceptance.

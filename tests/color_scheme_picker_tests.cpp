@@ -173,7 +173,7 @@ void ColorSchemePickerTests::realLanguageRoundtripRetainsTranslatedNames()
     QVERIFY(languages.SetLanguage(AppLanguage::German));
     QTRY_COMPARE(Quick(picker, "yellow-black")->text(), QStringLiteral("Gelb auf Schwarz"));
     QTRY_COMPARE(Quick(picker, "black-yellow")->text(), QStringLiteral("Schwarz auf Gelb"));
-    QTRY_COMPARE(Quick(picker, "posterize-6")->text(), QStringLiteral("6 Farben posterisieren"));
+    QTRY_COMPARE(Quick(picker, "posterize-6")->text(), QStringLiteral("Auf 6 Farben vereinfachen"));
     QTRY_COMPARE(more->text(), QStringLiteral("Weitere Farben\nNormale Farben"));
     saveChoices(QStringLiteral("de"));
     // Reproduce the later generic Show/Polish retranslation that used to

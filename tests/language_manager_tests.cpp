@@ -108,7 +108,7 @@ void LanguageManagerTests::catalogsLoadAndTranslateSentinels()
              QStringLiteral("Aufnahme"));
     QCOMPARE(TranslateUi(QStringLiteral("Zoom %L1 times"))
                  .arg(2.5, 0, 'f', 1),
-             QStringLiteral("2,5-facher Zoom"));
+             QStringLiteral("Zoom: 2,5\u00d7"));
 
     QVERIFY(manager.SetLanguage(AppLanguage::English, false));
     QCOMPARE(TranslateUi(QStringLiteral("Application language")),
