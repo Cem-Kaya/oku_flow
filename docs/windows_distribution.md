@@ -2,14 +2,23 @@
 
 ## Published channels (2026-10-13)
 
-[GitHub v0.2.2](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.2)
+[GitHub v0.2.3](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.3)
 contains the immutable unsigned-preview MSI and portable ZIP. The exact public
 MSI passed the clean-VM install/upgrade/downgrade/uninstall acceptance checks.
 [winget submission 451412](https://github.com/microsoft/winget-pkgs/pull/451412)
-requests `OkuFlow.OkuFlow` version 0.2.2; it is awaiting checks/review, so catalog
+requests `OkuFlow.OkuFlow` version 0.2.3; it is awaiting checks/review, so catalog
 installation is not yet established. Microsoft Store has only the preparation
 entry and structural review package described below; no Store submission is
 claimed. Neither the GitHub MSI nor ZIP enables automatic app updates.
+
+The v0.2.3 bundle comes from clean source `6de0a1e256ddbbd6af58dee761cd5fe883070e59`.
+Release compilation, 31 CPU, 36 CUDA and 36 bundle CTest checks passed. The
+MSI and ZIP each preserve all 151 inventory files; a disposable VM passed 166
+install/upgrade/downgrade/icon/uninstall/user-data checks against v0.2.2.
+The exact public MSI was downloaded and rehashed. v0.2.2 assets remain immutable.
+The local primary bundle is locked/older; the tested v0.2.3 bundle is
+`dist\OkuFlow2`, with both executable hashes verified against the active Ninja
+output. No user process was terminated to publish it.
 
 The portable ZIP stays supported. The MSI adds a machine-wide installation
 under `Program Files\OkuFlow`, with branded public desktop and Start menu

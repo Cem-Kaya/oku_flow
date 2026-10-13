@@ -10,7 +10,7 @@
 
 Point a webcam, a document camera or your phone at the board. OkuFlow magnifies it live, sharpens the text and holds the picture steady. When you ask, its assistant reads the text, explains what it shows and keeps your lecture notes. Choose Read Aloud to hear an answer.
 
-[Website](https://okuflow.com) · [Download MSI](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.2/OkuFlow-0.2.2-x64.msi) · [Portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.2/OkuFlow-0.2.2-windows-x64.zip) · [Release notes](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.2)
+[Website](https://okuflow.com) · [Download MSI](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.2-x64.msi) · [Portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.2-windows-x64.zip) · [Release notes](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.3)
 
 ![OkuFlow Simple view showing a classroom chalkboard, with large camera controls](https://okuflow.com/media/okuflow-simple-206165dcd785.webp)
 
@@ -46,6 +46,10 @@ OkuFlow is a **live camera magnifier**, for a page on your desk, a whiteboard or
 
 **Start simple. Go deeper when you need to.** Simple gives the camera the whole window, with quick modes such as Read a Page, Projector Screen and Whiteboard. Advanced keeps the live view beside every setting. Zoom and pan, stabilize a mounted camera, or straighten a screen viewed at an angle.
 
+**Zoom into the detail.** Magnify the desktop camera view up to 16x in Fill framing. Keep the controls within reach while a single equation fills the view.
+
+![OkuFlow showing the enlarged kinetic-energy equation with its Simple controls](https://okuflow.com/media/okuflow-equation-79862fa42241.webp)
+
 ![OkuFlow Advanced view with the live chalkboard image beside the settings inspector](https://okuflow.com/media/okuflow-advanced-13b63c54fa43.webp)
 
 ## Keep the whole lecture
@@ -62,11 +66,11 @@ Ask permission before recording a lecture or other people.
 
 You need three things:
 
-1. **A Windows 10 or 11 x64 PC.** Download the [v0.2.2 MSI installer](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.2/OkuFlow-0.2.2-x64.msi), or extract the complete [portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.2/OkuFlow-0.2.2-windows-x64.zip) and run `oku_flow.exe`. Keep its adjacent runtime files together.
+1. **A Windows 10 or 11 x64 PC.** Download the [v0.2.3 MSI installer](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.2-x64.msi), or extract the complete [portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.2-windows-x64.zip) and run `oku_flow.exe`. Keep its adjacent runtime files together.
 2. **A compatible camera.** Use a USB or document camera with Windows Media Foundation support, or the optional Android companion described below.
 3. **A compatible NVIDIA GPU for enhancement.** CUDA powers Text Clarity, stabilization, screen correction and colors. Without it, OkuFlow shows raw, unprocessed camera video with a clear on-screen notice.
 
-**v0.2.2 is an unsigned preview.** Windows SmartScreen may warn about an unrecognized app. Check the [release notes and known issues](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.2) before installing. Development documentation may describe changes newer than this download.
+**v0.2.3 is an unsigned preview.** Windows SmartScreen may warn about an unrecognized app. Check the [release notes and known issues](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.3) before installing. Development documentation may describe changes newer than this download.
 
 Optional extras, including the Codex CLI for Read and Explain and NVIDIA Super Resolution, are available through **Setup & Downloads** inside the app. Super Resolution requires the separately installed supported NVIDIA runtime. SuperRes powered by NVIDIA Maxine™.
 
@@ -74,7 +78,7 @@ Optional extras, including the Codex CLI for Read and Explain and NVIDIA Super R
 
 OkuFlow Camera sends your phone's camera to the Windows app over USB. It is optional; compatible USB/document cameras work without it.
 
-The companion is being prepared for Google Play closed testing. **Android 0.1.2 (version code 3) is submitted to the Alpha track and in review**, so submission does not guarantee tester availability yet. Invited testers can check the [closed-test link](https://play.google.com/apps/testing/com.okuflow).
+The companion is available through Google Play closed testing. **Android 0.1.2 (version code 3) is available to invited Alpha testers** through the [closed-test link](https://play.google.com/apps/testing/com.okuflow).
 
 When the test is available to you, install OkuFlow Camera, enable USB debugging and authorize your computer on the phone. Connect the cable, keep the phone app open and select **Advanced → Settings → Camera → OkuFlow Camera**. Phone and desktop compatibility testing continues; see the [Android guide](android/README.md) for setup and current limits.
 
@@ -97,7 +101,7 @@ Check your provider's privacy terms before sending sensitive material. Local rec
 | --- | --- |
 | Claude through the Anthropic CLI for Read, Explain and Assistant | In development for a future release |
 | GPU acceleration for AMD and Intel graphics | Planned |
-| Android USB camera companion | Alpha submission in review; compatibility testing continues |
+| Android USB camera companion | Available to invited Alpha testers; compatibility testing continues |
 | `OkuFlow.OkuFlow` in the winget catalog | [Submitted](https://github.com/microsoft/winget-pkgs/pull/451412), pending catalog acceptance |
 
 Microsoft Store submission and automatic updates remain future work. Current enhancement uses NVIDIA CUDA.

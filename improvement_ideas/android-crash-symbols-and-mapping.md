@@ -21,7 +21,10 @@ to `$$compose` trace alias. Required DEX/desugaring and Compose source records
 remain truthful, including generated methods; optimization is not claimed.
 The validator binds the local map to its AAB entry by exact SHA-256, checks R8
 metadata/readable application lifecycle names/effective flags and records hashes.
-Console warning removal still needs verification of the owner's signed upload.
+The signed upload's code-3 Downloads table now confirms `mapping.txt`, 46.6 MB,
+as a ReTrace asset. Console also reports 0% obfuscation/shrinking/optimization,
+consistent with this diagnostic policy. Native debug symbols still show Upload;
+no native-warning removal is claimed.
 
 ## Remaining native symbol gate
 

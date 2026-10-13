@@ -63,8 +63,8 @@ invalidate API edits. A committed API edit is not proof of review approval or
 device availability; verify Publishing overview and the resulting track afterward.
 
 The first CLI submission on 2026-10-13 committed code 3 / 0.1.2 to Alpha.
-Console showed Changes in review and automatic checks, confirming submission.
-This is not proof that testers already receive the update. The corresponding
+Console first showed Changes in review and automatic checks, then reported the
+release available to testers and cleared the review queue. The corresponding
 bundle hash and submission status are retained in `android/PLAY_READINESS.md`;
 private JSON receipts and the Console screenshot stay in LocalAppData.
 

@@ -1,4 +1,4 @@
-# OkuFlow
+# OkuFlow developer guide
 
 OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository: <https://github.com/Cem-Kaya/oku_flow>.
 

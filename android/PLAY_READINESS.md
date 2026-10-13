@@ -2,27 +2,29 @@
 
 ## Verified Console and update status (2026-10-13)
 
-Google Play Console shows the Alpha track active with version code 1 / 0.1.0.
+Google Play Console now lists Alpha version code 3 / 0.1.2 as **Available to
+testers on Google Play**, with full rollout to the track's 178 selected regions.
 The existing selected tester list now has 10 members. The signed USB reconnect
 fix, version code 2 / 0.1.1, passed release tests, lint and APK/AAB artifact
 validation and was accepted into a new Console release draft. Submission and
 review are separate from upload; fixed Play-signed unplug/replug acceptance is
 still pending. Signed code 3 / 0.1.2 superseded that draft through the CLI on
-2026-10-13. Google validated and committed the Alpha edit, and Console shows
-the release under Changes in review with automatic checks running. This is
-submission evidence, not approval or tester-device availability. Its AAB hash is
+2026-10-13. Google validated and committed the Alpha edit, then completed review:
+Publishing overview shows last published 13 October with no changes in review,
+and Latest releases confirms tester availability. Installed-device upgrade and
+real unplug/replug acceptance are still separate checks. Its AAB hash is
 `ef7c5899c7e87eebeafb0753f53824a119349c0a1d54209262de312beb12575e`.
 It embeds an actual generated R8 mapping; native symbols remain unavailable
 from the stripped dependency. The dedicated OkuFlow Play Publishing Cloud project has
 billing disabled and the Play API enabled. OkuFlow Test Publisher has app-specific
 view/testing-release access; its private local credential authenticated and
 the committed Alpha edit reads version code 3 through the CLI. That API status
-does not establish Google approval. Commit, review and tester availability
+alone does not establish Google approval. Commit, review and tester availability
 remain separate gates. [CLI workflow](../docs/android_cli_publishing.md).
 
-The immediate scope is the owner's **first Google Play closed test for 12 invited
-testers**, not production publication. This document records preparation and
-remaining gates, not a submission, policy exception or approval. The app targets
+The immediate scope is the owner's **Google Play closed test, targeting 12
+testers**, not production publication. This document separates the verified
+closed-track publication from remaining device and production gates. The app targets
 stable API 37 with minimum API 30; do not downgrade to API 35 based on an outdated
 preview claim. API 37 exceeds the current API 36 submission floor.
 [Target API policy](https://support.google.com/googleplay/android-developer/answer/11926878).
@@ -37,8 +39,9 @@ preview claim. API 37 exceeds the current API 36 submission floor.
   shrinking and optimization disabled to embed a genuine generated mapping.
   Its local/AAB bytes and readable app names are validated. Native FULL debug
   metadata is requested, but the stripped graphics-path dependency provides no
-  extractable symbols; native-warning removal and Console acceptance remain
-  unverified. [Diagnostic evidence](../improvement_ideas/android-crash-symbols-and-mapping.md).
+  extractable symbols. Console accepted and published code 3 with its generated
+  mapping; native-warning removal remains unresolved.
+  [Diagnostic evidence](../improvement_ideas/android-crash-symbols-and-mapping.md).
 - The actual 65-entry / 64-unique-artifact runtime graph is reviewed against
   official POM/source and original license material. Native graphics-path
   source/build inputs and binary dependencies are reviewed separately. Original
