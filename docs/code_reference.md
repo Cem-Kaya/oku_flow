@@ -1,5 +1,28 @@
 # OkuFlow Code Reference
 
+## Android CLI publishing
+
+`scripts/configure_android_play.ps1` validates a local Google service-account
+JSON and stores it as a Windows DPAPI credential outside Drive/Git. It verifies
+the protected round trip and persists only the safe profile path.
+`scripts/google-play/publisher_helpers.ps1` supplies
+`Get-AndroidPlayProfilePath` (local/reparse boundaries),
+`Test-AndroidPlayCredential` (service-account identity and fixed Google OAuth endpoint),
+`Read-AndroidPlayCredential`, `ConvertTo-AndroidPlayBase64Url`,
+`New-AndroidPlayAccessToken` and `Invoke-AndroidPlayRequest`.
+The in-memory `OkuFlow.PlayPublisherCrypto.Sign` imports PKCS8 PEM and signs an
+RS256 JWT through the system .NET cryptography APIs; no key or token is logged.
+Requests target Google's fixed OAuth/Android Publisher endpoints and app edits only.
+
+`scripts/publish_android_play.ps1` checks access or prepares a testing-track edit.
+It binds local AAB SHA-256 to Google's version/digest, reuses identical uploaded
+bundles, verifies the expected active version and validates before an explicit
+`-Publish` commit. Uncommitted owned edits are discarded; uploads can still consume
+version codes. Production is refused. Local receipts contain no authentication data.
+`scripts/test_android_play.ps1` uses an isolated fake identity to verify DPAPI,
+actual RSA signature/claims and private-path/production guards without networking
+or reading live credentials. See [CLI publishing](android_cli_publishing.md).
+
 ## Installer and brand tooling (2026-10-13)
 
 `scripts/windows-installer/common.ps1` supplies stable per-path IDs/GUIDs,
@@ -2635,7 +2658,12 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   handles only HTTPS `okuflow.com/camera/open`. Google's public app-signing
   certificate in the website association differs from the private upload key.
 - `app/build.gradle.kts` enforces all-or-none upload-signing inputs and explicit
-  unsigned review mode. Release dependency inventory checks actual artifact
+  unsigned review mode. Release R8 runs with `app/diagnostic-r8.pro` disabling
+  obfuscation/shrinking/optimization and preserving attributes, to generate an
+  actual embedded diagnostic mapping; native FULL extraction is requested.
+  Resource shrinking is explicitly off, with only the corresponding lint
+  optimization advisory exempted for the diagnostic-only release policy.
+  Release dependency inventory checks actual artifact
   hashes against reviewed runtime/native evidence before packaging. The
   `android/tools/` review scripts retain original POM/licenses, native source
   blob/build evidence and ELF dependencies under `android/licenses/`.
@@ -2651,8 +2679,13 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   the narrow verified URL, alignment and actual APK/AAB retained assets.
   `Get-ApkUploadCertificateDigest` handles old/current SDK signer prefixes,
   repeated scheme reports of one certificate and rejects different identities.
-  `-SelfTest` supplies 22 fixtures (4 ELF, 4 notices, 4 identities, 4 links,
-  6 signer outputs). Signed artifacts require matching APK/AAB upload identities;
+  `Assert-R8DiagnosticMapping` checks compiler/source/line metadata, unchanged
+  runtime class names (including AGP's explicit synthetic Compose trace alias)
+  and readable app lifecycle methods. `Assert-BundleDiagnosticMapping` binds the
+  final generated map to the exact AAB entry by length and SHA-256; effective
+  R8 flags/configuration hash and native metadata presence enter the receipt.
+  `-SelfTest` supplies 34 fixtures (4 ELF, 4 notices, 4 identities, 4 links,
+  6 signer outputs, 9 mapping-policy, 3 mapping-binding). Signed artifacts require matching APK/AAB upload identities;
   unsigned review artifacts cannot become Play upload candidates.
 - `android/tools/export_play_art.ps1`: `Draw-OkuFlowMark` rasterizes the owned
   Android launcher vector geometry. The exporter writes the required store icon

@@ -381,7 +381,7 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 ## Android Companion
 
 - Package/application id: `com.okuflow`, Kotlin namespace `com.okuflow.camera`,
-  version code `2`, name `0.1.1`;
+  version code `3`, name `0.1.2`;
   min API `30`, compile API `37.2`, target API `37`. Pins live in
   `android/gradle/libs.versions.toml` and `android/app/build.gradle.kts`.
 - User-owned JDK: `%LOCALAPPDATA%\Programs\jdk-21`;

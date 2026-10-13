@@ -39,8 +39,8 @@ android {
         applicationId = "com.okuflow"
         minSdk = 30
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
     }
 
     signingConfigs {
@@ -54,8 +54,12 @@ android {
     buildTypes {
         getByName("release") {
             isDebuggable = false
-            // Minification is a separate measured optimization, not a Play publication prerequisite.
-            isMinifyEnabled = false
+            // Run R8 to generate exact diagnostic mapping; names and behavior stay readable.
+            // Shrinking/optimization remain explicitly disabled until separately validated.
+            isMinifyEnabled = true
+            isShrinkResources = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "diagnostic-r8.pro")
+            ndk.debugSymbolLevel = "FULL"
             if (uploadConfigured) signingConfig = signingConfigs.getByName("upload")
         }
     }
@@ -66,6 +70,10 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    lint {
+        // R8 only generates diagnostic mapping; resource optimization is deliberately deferred.
+        disable += "NotShrinkingResources"
     }
     sourceSets {
         named("main") { kotlin.directories.add("src/main/java") }

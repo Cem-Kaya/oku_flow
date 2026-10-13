@@ -13,6 +13,9 @@ certificates*.zip
 .env
 .env.*
 signing.credentials.xml
+*.credentials.xml
+okuflow-play-publishing-*.json
+okuflow-test-publisher*.json
 credentials*.json
 service-account*.json
 service_account*.json

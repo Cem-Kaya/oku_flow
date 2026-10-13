@@ -5,6 +5,16 @@
   state to `Compatibility mode` for the selected physical camera.
 
 ## [Unreleased]
+
+- Add owner-controlled Google Play CLI publishing for testing tracks, with
+  private DPAPI credentials, exact bundle/version checks and local receipts.
+  Keep Cloud billing disabled and production publishing out of this helper.
+
+- Prepare Android version code 3 / 0.1.2 with a real build-generated R8 mapping
+  embedded in the AAB. Keep readable names and disable shrinking/optimization;
+  validate the exact mapping/configuration against the release artifact.
+  Request FULL native debug metadata, but report the already stripped AndroidX
+  graphics-path input honestly; matching native symbols remain unavailable.
 - Fix Android USB unplug/reconnect crashes caused by removing a thermal listener
   that partial startup never registered. Keep an authorized foreground listener
   alive across cable removal while closing capture, and prevent background or

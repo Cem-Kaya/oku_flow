@@ -248,6 +248,11 @@ produces a **non-uploadable review artifact**. Neither path installs an app,
 creates a key or submits to Play. See [BUILDING.md](BUILDING.md) for inputs and
 [PLAY_READINESS.md](PLAY_READINESS.md) for the remaining publication gates.
 
+Owner-controlled testing-track releases can use the
+[Google Play CLI workflow](../docs/android_cli_publishing.md). Its protected
+credential stays in LocalAppData; only a safe profile path enters the environment.
+Publishing verifies the signed bundle hash, version and current active release.
+
 The immediate destination is the owner's first Google Play **closed test** for
 12 invited testers, rather than production. USB streaming stays unchanged with
 no application PIN, pairing step or encryption added. Trust wording is explicit;

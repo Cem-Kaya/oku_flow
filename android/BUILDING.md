@@ -36,7 +36,7 @@ Gradle runs on JDK 21; Java and Kotlin emit JVM 17 bytecode. `minSdk` is 30,
 `compileSdk` is release 37 with minor API level 2, and `targetSdk` is 37 (Android
 target behavior uses the major API level). The install application id is
 `com.okuflow` (Play/install application id); Kotlin/resource namespace and class
-paths stay `com.okuflow.camera`. Version code 2, version name `0.1.1`.
+paths stay `com.okuflow.camera`. Version code 3, version name `0.1.2`.
 NDK and CMake are installed for the later native processing stage; no native
 build is enabled in this scaffold. Transitive AndroidX graphics dependencies do
 include native libraries, which must pass release 16 KB checks. Kotlin sources use `app/src/main/java`, and
@@ -210,8 +210,19 @@ Release always runs `assembleRelease`, `testReleaseUnitTest`, `lintRelease`,
 artifact validator. `android.onlyEnableUnitTestForTheTestedBuildType=false`
 keeps release JVM tests available despite AGP 9's debug-only default.
 `-Release -Install` is refused; the existing Debug `-Install`
-workflow and its adb-server safeguards remain unchanged. R8/minification remains
-disabled; it is a separate optimization, not a Google Play publishing requirement.
+workflow and its adb-server safeguards remain unchanged. Release runs R8 to
+generate the actual diagnostic mapping. `app/diagnostic-r8.pro` disables name
+obfuscation, shrinking and optimization and retains attributes; enabling those
+optimizations remains separate validation work. Platform/default and dependency
+consumer rules still apply. R8's required DEX/desugaring and AGP's Compose trace
+metadata remain represented in the generated map, so it is not a guessed identity
+file. Resource shrinking is also explicitly off; lint exempts only the
+`NotShrinkingResources` optimization advisory for this diagnostic-only policy.
+The AAB embeds the exact final `mapping.txt` bytes automatically.
+`ndk.debugSymbolLevel = "FULL"` requests native debug metadata; the current
+prebuilt graphics-path inputs contain no full symbol table/debug sections,
+so AGP cannot extract native metadata from them. This flag does not restore
+stripped symbols or establish that Play's native-symbol warning is cleared.
 Direct Gradle release tasks also require the signing inputs, or the explicit
 `-Pokuflow.allowUnsignedRelease=true` review opt-in.
 
@@ -219,13 +230,17 @@ Outputs stay under the selected local build root:
 
 - `app/outputs/bundle/release/app-release.aab`.
 - `app/outputs/apk/release/app-release.apk`, or `app-release-unsigned.apk`.
+- `app/outputs/mapping/release/mapping.txt` and `configuration.txt`: actual
+  R8/AGP diagnostic mapping and effective rules. Keep them with the exact AAB.
+  Never manufacture a mapping or reuse it for another artifact/version.
 - `app/reports/tests/testReleaseUnitTest` and `app/reports/lint-results-release.*`.
 - `app/reports/release/runtime-dependencies.json`: the actual resolved release
   runtime graph, artifact names and SHA-256 values plus the matching reviewed
   license manifest hash. A changed artifact/version or retained notice blocks
   this gate until its evidence is reviewed again.
 - `app/reports/release/merged-manifest.xml` and `artifact-validation.json`:
-  inspected manifest, artifact/inventory hashes, signing/review mode and remaining gates.
+  inspected manifest, artifact/inventory/mapping/configuration hashes,
+  readable-name checks, native metadata presence, signing/review mode and remaining gates.
 
 The validator uses SDK 37.0.0 `apksigner`/`zipalign`, SDK command-line
 `apkanalyzer`, and JDK `jarsigner`/`keytool`. It checks package identity,
@@ -242,6 +257,12 @@ package, a renamed Kotlin class or a relative activity name. Four App Links
 fixtures require auto-verification of only HTTPS `okuflow.com/camera/open`.
 Six signer-output fixtures cover old and current SDK output, repeated reports
 of one identity, malformed/missing digests and distinct signers. It also checks the
+exact embedded/local mapping hash, genuine R8 metadata, readable runtime classes
+and app lifecycle methods, and effective no-obfuscation/shrinking/optimization
+rules. Nine mapping-policy fixtures include AGP's synthetic Compose trace alias;
+three AAB binding fixtures reject missing or mismatched mapping bytes. Native
+metadata presence is reported honestly rather than replaced with fabricated data.
+The validator checks the
 non-exported notification Pause receiver. No device or adb server is contacted.
 
 It does **not** establish Play-generated split APK alignment/runtime behavior,
@@ -374,6 +395,20 @@ signing key was reused without modification; do not remove it as part of this
 setup's cleanup.
 
 ## Validation record
+
+The 2026-10-13 diagnostic mapping continuation passed Debug `-Lint` and Release
+`-AllowUnsignedRelease` in the isolated local root
+`%LOCALAPPDATA%\OkuFlow\android-build-diagnostics-code3`: **65 JVM tests in each
+configuration**, zero lint issues, **92** translated keys and **34** validator
+fixtures. The prepared review APK/AAB is code 3 / `0.1.2`; the signed code-2
+AAB stayed byte-identical to its previously uploaded hash. R8 9.4.24 generated
+the 46,640,334-byte final map, whose SHA-256 matches the AAB metadata; 15,747
+runtime class names and checked app lifecycle names remain readable, plus AGP's
+one synthetic Compose trace alias. The FULL native task produced no metadata.
+A separate SYMBOL_TABLE extraction also reported already-stripped input for
+all four graphics-path ABIs. Logs remain under
+`%LOCALAPPDATA%\OkuFlow\android-diagnostics-code3`. No signing, upload, device
+installation or Console-warning acceptance was performed by this continuation.
 
 The 2026-10-13 unplug/reconnect fix passed `scripts/build_android.ps1 -Lint`:
 Debug APK assembly, **65 JVM tests**, zero lint issues and **92** matching

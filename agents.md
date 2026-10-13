@@ -321,3 +321,29 @@ aligned with the project goals.
   the generated viewer and sibling website with a private Chrome profile.
   See `tests/README.md` for its explicit environment and run it before, never
   alongside, the Windows GUI matrix.
+
+## Private Google Play CLI publishing
+- Use `scripts/configure_android_play.ps1` and `scripts/publish_android_play.ps1`.
+  Google credentials and DPAPI profiles stay in LocalAppData; persist only the
+  `OKUFLOW_ANDROID_PLAY_PROFILE` pointer, never a key or token. Keep the dedicated
+  Cloud project unlinked from billing and grant only OkuFlow testing-track access.
+- Build/validate the signed bundle before publishing; bind version, reviewed hash
+  and expected active track version. Do not edit the app in Console while a CLI
+  transaction is active. API commit, review approval and device availability are
+  separate states. Test authentication boundaries with `scripts/test_android_play.ps1`
+  using its fake local identity; never substitute a live key in that fixture.
+
+## Android diagnostic release artifacts
+- Release R8 generates the actual mapping with name obfuscation, shrinking and
+  optimization explicitly disabled in `android/app/diagnostic-r8.pro`. Keep the
+  final `mapping.txt` and effective `configuration.txt` with their exact AAB;
+  the release validator requires byte/hash equality with embedded metadata and
+  readable application names. AGP's generated Compose trace alias is expected.
+  Never manufacture a mapping or reuse one for another version/artifact.
+- Native FULL extraction is requested, but an already stripped dependency cannot
+  recreate missing native symbols. Inspect actual ELF sections and generated
+  metadata; report absence and unresolved Console warnings rather than packaging
+  fabricated symbols or symbols from a different binary/build ID.
+- Use an isolated `OKUFLOW_ANDROID_BUILD_DIR` while a signed/uploaded release
+  awaits publication. Archive the exact signed artifacts and diagnostic hashes
+  before rebuilding; code 2 and code 3 are distinct Play release inventories.

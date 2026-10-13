@@ -2,6 +2,9 @@
 
 Website: <https://okuflow.com>
 
+[Android CLI publishing](android_cli_publishing.md) explains owner-controlled
+Play API setup, private DPAPI credentials and validated testing-track releases.
+
 [Windows distribution](windows_distribution.md) covers MSI builds, shortcuts,
 signing, winget drafts, the account's Store identity, structural MSIX review
 packages and the remaining clean-VM/Store runtime acceptance work.

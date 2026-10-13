@@ -7,8 +7,13 @@ The existing selected tester list now has 10 members. The signed USB reconnect
 fix, version code 2 / 0.1.1, passed release tests, lint and APK/AAB artifact
 validation and was accepted into a new Console release draft. Submission and
 review are separate from upload; fixed Play-signed unplug/replug acceptance is
-still pending. No Play Publisher API credentials are configured in this
-project, so this update uses the owner's signed-in Console instead of a CLI.
+still pending. The signed code-3 / 0.1.2 candidate supersedes that draft with
+an actual generated R8 mapping; native symbols remain unavailable from the
+stripped dependency. The dedicated OkuFlow Play Publishing Cloud project has
+billing disabled and the Play API enabled. OkuFlow Test Publisher has app-specific
+view/testing-release access; its private local credential authenticated and read
+the active code-1 track through the CLI. Commit, review and tester availability
+remain separate gates. [CLI workflow](../docs/android_cli_publishing.md).
 
 The immediate scope is the owner's **first Google Play closed test for 12 invited
 testers**, not production publication. This document records preparation and
@@ -23,7 +28,12 @@ preview claim. API 37 exceeds the current API 36 submission floor.
   artifact validation. It checks non-debuggable/non-test-only identity,
   permissions, optional rear camera/autofocus, camera FGS and non-exported Pause
   receiver, signatures or explicitly unsigned review mode, and 16 KB APK/ELF
-  alignment. R8 is a separate optimization, not a publication prerequisite.
+  alignment. The prepared code-3 / 0.1.2 release now runs R8 with renaming,
+  shrinking and optimization disabled to embed a genuine generated mapping.
+  Its local/AAB bytes and readable app names are validated. Native FULL debug
+  metadata is requested, but the stripped graphics-path dependency provides no
+  extractable symbols; native-warning removal and Console acceptance remain
+  unverified. [Diagnostic evidence](../improvement_ideas/android-crash-symbols-and-mapping.md).
 - The actual 65-entry / 64-unique-artifact runtime graph is reviewed against
   official POM/source and original license material. Native graphics-path
   source/build inputs and binary dependencies are reviewed separately. Original
