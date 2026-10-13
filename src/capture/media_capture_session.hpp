@@ -1,6 +1,8 @@
 #pragma once
 #include "okuflow/capture/media_capture.hpp"
 #include "okuflow/capture/capture_shutdown.hpp"
+#include <chrono>
+#include <optional>
 
 #ifdef _WIN32
 namespace okuflow {
@@ -29,7 +31,7 @@ public:
     bool shutdownStarted_{false};
     bool releaseNotified_{false};
 
-    const std::string& LastError() const { return lastError_; }
+    const std::string& LastError() const { return gpuReadbackError_.empty() ? lastError_ : gpuReadbackError_; }
     const std::string& FormatNotice() const { return formatNotice_; }
     const VideoFormat& NegotiatedFormat() const { return negotiatedFormat_; }
     const std::vector<VideoFormat>& NativeFormats() const { return nativeFormats_; }
@@ -48,7 +50,8 @@ public:
         std::shared_ptr<void>& outLease);
     // Lower rung used only for startup validation, raw recording/photo
     // capture, CPU fallback, or a failed CUDA/D3D11 interop attempt.
-    bool ReadbackGpuFrame(MediaFrame& frame);
+    GpuFrameReadbackResult ReadbackGpuFrame(MediaFrame& frame);
+    bool HasPendingGpuReadback() const { return gpuReadbackFrame_.has_value(); }
 
     // Atomically returns whether the capture thread detected mid-stream device
     // loss, clearing the flag. Poll from the app's frame tick to drive reconnection.
@@ -94,6 +97,7 @@ private:
     void CaptureLoop(FrameCallback callback, CaptureErrorCallback errorCallback);
     void Cancel();
     friend class MediaCapture;
+    friend struct CaptureReadbackTestAccess;
     std::vector<VideoFormat> ExtractFormats(IMFSourceReader* reader);
     static std::string HrToString(HRESULT hr);
 
@@ -105,6 +109,14 @@ private:
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3d11Context_;
     Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> dxgiDeviceManager_;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> dxgiReadbackTexture_;
+    // Separate from the capture worker's startup-validation readback. The UI
+    // owns this operation; teardown releases it only after producer quiescence.
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> gpuReadbackTexture_;
+    Microsoft::WRL::ComPtr<ID3D11Query> gpuReadbackQuery_;
+    std::optional<MediaFrame> gpuReadbackFrame_;
+    std::chrono::steady_clock::time_point gpuReadbackStarted_{};
+    bool gpuReadbackSubmitted_{false};
+    std::string gpuReadbackError_;
     Microsoft::WRL::ComPtr<ID3D11VideoDevice> d3d11VideoDevice_;
     Microsoft::WRL::ComPtr<ID3D11VideoContext> d3d11VideoContext_;
     Microsoft::WRL::ComPtr<ID3D11VideoProcessorEnumerator>

@@ -15,6 +15,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -30,11 +38,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -113,14 +123,14 @@ fun OkuFlowCameraApp(viewModel: SetupViewModel = viewModel()) {
             title = stringResource(R.string.developer_title),
             hint = stringResource(developerHintFor(OemFamily.fromManufacturer(Build.MANUFACTURER))),
             actionLabel = openSettings,
-            onAction = { SystemSettingsLauncher.openAboutPhone(context) },
+            onAction = { SystemSettingsLauncher.openSetupSettings(context, step) },
         )
 
         SetupStep.EnableUsbDebugging -> StepContent(
             title = stringResource(R.string.usb_debugging_title),
             hint = stringResource(R.string.usb_debugging_hint),
             actionLabel = openSettings,
-            onAction = { SystemSettingsLauncher.openDeveloperOptions(context) },
+            onAction = { SystemSettingsLauncher.openSetupSettings(context, step) },
         )
 
         SetupStep.AllowCamera -> StepContent(
@@ -144,8 +154,10 @@ fun OkuFlowCameraApp(viewModel: SetupViewModel = viewModel()) {
         SetupStep.CheckUsbSetup -> StepContent(
             title = stringResource(R.string.check_usb_title),
             hint = stringResource(R.string.check_usb_hint),
-            actionLabel = openSettings,
-            onAction = { SystemSettingsLauncher.openDeveloperOptions(context) },
+            actionLabel = stringResource(R.string.developer_title),
+            onAction = { SystemSettingsLauncher.openSetupSettings(context, step) },
+            secondaryActionLabel = stringResource(R.string.usb_debugging_title),
+            onSecondaryAction = { SystemSettingsLauncher.openDeveloperOptions(context) },
         )
 
         SetupStep.OpenOkuFlow -> StepContent(
@@ -197,15 +209,17 @@ fun OkuFlowCameraApp(viewModel: SetupViewModel = viewModel()) {
         return
     }
 
+    val openAdvanced = stringResource(R.string.advanced_settings_open)
     // Insets are applied once here; the panels below fill the remaining safe area.
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
         OutlinedButton(
             onClick = { showSettings = true },
             shape = RoundedCornerShape(12.dp),
             border = BorderStroke(2.dp, Color.White),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).heightIn(min = 56.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).heightIn(min = 56.dp)
+                .semantics { contentDescription = openAdvanced },
         ) {
-            Text("${stringResource(R.string.advanced_settings)}  ›", textAlign = TextAlign.Center)
+            AdvancedSettingsEntryContent()
         }
         StreamingIntentControl(paused) { if (paused) viewModel.resumeStreaming() else viewModel.pauseStreaming() }
         Box(Modifier.weight(1f)) {
@@ -218,6 +232,8 @@ fun OkuFlowCameraApp(viewModel: SetupViewModel = viewModel()) {
                     hint = content.hint,
                     actionLabel = content.actionLabel,
                     onAction = action,
+                    secondaryActionLabel = content.secondaryActionLabel,
+                    onSecondaryAction = content.onSecondaryAction,
                 )
                 else -> WaitingPanel(step = step, title = content.title, hint = content.hint)
             }
@@ -230,6 +246,8 @@ private class StepContent(
     val hint: String,
     val actionLabel: String? = null,
     val onAction: (() -> Unit)? = null,
+    val secondaryActionLabel: String? = null,
+    val onSecondaryAction: (() -> Unit)? = null,
 )
 
 @StringRes
@@ -257,5 +275,20 @@ private fun StepChangeHaptics(step: SetupStep) {
             )
         }
         lastStep = step
+    }
+}
+
+/**
+ * The Advanced settings entry: a white gear beside the visible label. The gear
+ * is decorative; the button's localized description names the action, so
+ * TalkBack does not announce the icon separately.
+ */
+@Composable
+private fun AdvancedSettingsEntryContent() {
+    val forwardArrow = if (LocalLayoutDirection.current == LayoutDirection.Rtl) "‹" else "›"
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Icon(painterResource(R.drawable.ic_settings_gear), contentDescription = null, tint = Color.White,
+            modifier = Modifier.size(28.dp))
+        Text("${stringResource(R.string.advanced_settings)}  $forwardArrow", textAlign = TextAlign.Center)
     }
 }

@@ -71,6 +71,7 @@ QT_END_NAMESPACE
 struct ID3D12Resource;
 
 namespace okuflow {
+enum class PhoneDiscoveryStatus;
 
 class RenderWidget;
 class JoystickOverlay;
@@ -143,7 +144,10 @@ private slots:
 
 private:
     settings::AdvancedConfig CaptureCurrentAdvancedConfig() const;
-    void ApplyAdvancedConfig(const settings::AdvancedConfig& config);
+    // preservePresetSelection keeps the caller-selected preset id authoritative
+    // instead of re-deriving it from the (possibly apply-mutated) live config.
+    void ApplyAdvancedConfig(const settings::AdvancedConfig& config,
+                             bool preservePresetSelection = false);
     void PopulatePresetList();
     void RefreshPresetSelection(bool preserveCurrentSelection = false);
     void UpdatePresetDescription();
@@ -308,7 +312,8 @@ private:
     bool presenterFaultReported_{};
 
     std::vector<CameraDescriptor> cameras_;
-    std::future<std::pair<bool, std::vector<CameraDescriptor>>> phoneDiscovery_;
+    std::future<std::pair<PhoneDiscoveryStatus, std::vector<CameraDescriptor>>> phoneDiscovery_;
+    PhoneDiscoveryStatus phoneDiscoveryStatus_{};
     std::atomic<bool> phoneDiscoveryCanceled_{false};
     QElapsedTimer phoneDiscoveryTimer_;
     QString preferredPhoneCamera_;

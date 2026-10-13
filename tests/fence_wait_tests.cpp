@@ -41,6 +41,34 @@ using namespace okuflow;
 class FenceWaitTests : public QObject {
     Q_OBJECT
 private slots:
+    void progressDeadlineSurvivesMoreSubmissionsAndCameraSilence()
+    {
+        FenceProgressWatchdog progress;
+        QCOMPARE(progress.Observe(10, 9, 0), FenceProgressResult::Healthy);
+        QCOMPARE(progress.Observe(20, 9, 900), FenceProgressResult::Healthy);
+        // No new camera submission is needed to detect the stopped completion.
+        QCOMPARE(progress.Observe(20, 9, 1000), FenceProgressResult::TimedOut);
+        QCOMPARE(progress.Observe(20, 20, 1001), FenceProgressResult::TimedOut);
+    }
+    void advancingCompletionRenewsProgressDeadline()
+    {
+        FenceProgressWatchdog progress;
+        QCOMPARE(progress.Observe(10, 0, 0), FenceProgressResult::Healthy);
+        QCOMPARE(progress.Observe(20, 9, 999), FenceProgressResult::Healthy);
+        QCOMPARE(progress.Observe(30, 20, 1998), FenceProgressResult::Healthy);
+        QCOMPARE(progress.Observe(30, 30, 2997), FenceProgressResult::Healthy);
+        // Camera silence/occlusion with no outstanding GPU work never faults.
+        QCOMPARE(progress.Observe(30, 30, 90000), FenceProgressResult::Healthy);
+        QCOMPARE(progress.Observe(31, 30, 90001), FenceProgressResult::Healthy);
+        QCOMPARE(progress.Observe(31, 30, 91000), FenceProgressResult::Healthy);
+        QCOMPARE(progress.Observe(31, 31, 91001), FenceProgressResult::Healthy);
+    }
+    void deviceRemovalIsNeverProgress()
+    {
+        FenceProgressWatchdog progress;
+        QCOMPARE(progress.Observe(0, UINT64_MAX, 0), FenceProgressResult::DeviceLost);
+        QCOMPARE(progress.Observe(0, 0, 1), FenceProgressResult::DeviceLost);
+    }
     void rejectedSampleRetainsSourceUntilConversionCompletes()
     {
         for (int dropPath = 0; dropPath < 2; ++dropPath) {

@@ -109,9 +109,10 @@ void OkuFlowApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
     UpdateSectionChangedCounts();
 }
 
-void OkuFlowApp::ApplyAdvancedConfig(const settings::AdvancedConfig& config)
+void OkuFlowApp::ApplyAdvancedConfig(const settings::AdvancedConfig& config,
+                                     bool preservePresetSelection)
 {
-    uiState_->ApplyConfigToUI(config);
+    uiState_->ApplyConfigToUI(config, preservePresetSelection);
 }
 
 void OkuFlowApp::ResetCurrentConfigToDefaults()
@@ -181,11 +182,21 @@ void OkuFlowApp::OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetI
     const QString presetId = current->data(kPresetIdRole).toString();
     auto config = settingsController_->ResolvePreset(presetId);
     if (!config) {
+        // Nothing was applied (e.g. a custom preset whose configId no longer
+        // exists). The carousel/list may already show the clicked preset, so
+        // repaint both from the still-applied live config instead.
+        RefreshPresetSelection();
+        UpdatePresetDescription();
         return;
     }
 
+    // The clicked id is authoritative: handlers during apply can mutate the
+    // live config (SuperRes zoom/strength normalization, Text-SR disabled
+    // builds), so do not re-derive identity by config equivalence afterwards.
     settingsController_->MutableSettings().selectedPresetId = presetId;
-    ApplyAdvancedConfig(*config);
+    ApplyAdvancedConfig(*config, true);
+    RefreshPresetSelection(true);
+    UpdatePresetDescription();
 }
 
 void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings settings) {
@@ -261,7 +272,11 @@ void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings sett
     }
     assistiveManager_->RestoreOverlayGeometry(settings.assistiveOverlayGeometry);
     assistiveManager_->Overlay().SetDockPosition(settings.assistiveOverlayDockPosition);
-    ApplyAdvancedConfig(settings.currentConfig);
+    // Restore the persisted preset identity as authoritative, for the same
+    // apply-time-mutation reason as OnPresetSelectionChanged.
+    settingsController_->MutableSettings().selectedPresetId =
+        settings.selectedPresetId;
+    ApplyAdvancedConfig(settings.currentConfig, true);
     rotationQuarterTurns_ = ((settings.rotationQuarterTurns % 4) + 4) % 4;
     UpdateRotationUi();
     settingsController_->MutableSettings().selectedPresetId = settings.selectedPresetId;

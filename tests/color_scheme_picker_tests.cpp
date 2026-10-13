@@ -1,4 +1,6 @@
+#include "gui_test_support.hpp"
 #include "okuflow/ui/color_scheme_picker.hpp"
+#include "okuflow/ui/theme_contrast.hpp"
 #include "okuflow/ui/ui_translation.hpp"
 #include "okuflow/app/language_manager.hpp"
 
@@ -6,7 +8,12 @@
 #include <QComboBox>
 #include <QDir>
 #include <QEvent>
+#include <QImage>
+#include <QLabel>
+#include <QMap>
+#include <QPalette>
 #include <QPushButton>
+#include <QScopeGuard>
 #include <QSet>
 #include <QSignalSpy>
 #include <QTest>
@@ -40,6 +47,7 @@ private slots:
     void moreColorsRetainsFullCatalog();
     void moreColorsRetranslates();
     void realLanguageRoundtripRetainsTranslatedNames();
+    void popupContrastAppearance();
 };
 
 void ColorSchemePickerTests::favoriteSelectionEmitsOnce()
@@ -194,7 +202,113 @@ void ColorSchemePickerTests::realLanguageRoundtripRetainsTranslatedNames()
     saveChoices(QStringLiteral("en"));
     QCOMPARE(changes.count(), 0);
 }
+
+void ColorSchemePickerTests::popupContrastAppearance()
+{
+    // Light OS palette: black text roles on near-white surfaces. The popover
+    // is pinned dark, so every text role must stay light on its surfaces.
+    QPalette light = qApp->palette();
+    const QPalette original = light;
+    const auto restore = qScopeGuard([&original]() { qApp->setPalette(original); });
+    light.setColor(QPalette::Window, QColor(QStringLiteral("#f3f3f3")));
+    light.setColor(QPalette::WindowText, QColor(QStringLiteral("#000000")));
+    light.setColor(QPalette::Base, QColor(QStringLiteral("#ffffff")));
+    light.setColor(QPalette::Text, QColor(QStringLiteral("#000000")));
+    light.setColor(QPalette::Button, QColor(QStringLiteral("#fbfbfb")));
+    light.setColor(QPalette::ButtonText, QColor(QStringLiteral("#000000")));
+    light.setColor(QPalette::Highlight, QColor(QStringLiteral("#005da6")));
+    light.setColor(QPalette::HighlightedText, QColor(QStringLiteral("#ffffff")));
+    qApp->setPalette(light);
+
+    ColorSchemePicker picker;
+    picker.resize(360, 240);
+    picker.show();
+    picker.findChild<QPushButton*>(QStringLiteral("moreColorsButton"))->click();
+    QWidget* popup = nullptr;
+    for (auto* widget : QApplication::topLevelWidgets()) {
+        if (widget->objectName() == QStringLiteral("colorSchemePopup")) popup = widget;
+    }
+    QVERIFY(popup);
+    QTRY_VERIFY(popup->isVisible());
+    const QPalette popupPalette = popup->palette();
+    const auto readableOn = [](const QColor& text, const QColor& surface) {
+        return theme_contrast::ContrastRatio(text, surface) >= 4.5;
+    };
+    QVERIFY2(readableOn(popupPalette.color(QPalette::Active, QPalette::ButtonText),
+                        popupPalette.color(QPalette::Active, QPalette::Button)),
+             "Popup button text is unreadable under a light OS palette");
+    QVERIFY2(readableOn(popupPalette.color(QPalette::Active, QPalette::WindowText),
+                        popupPalette.color(QPalette::Active, QPalette::Window)),
+             "Popup label text is unreadable under a light OS palette");
+    QVERIFY2(readableOn(popupPalette.color(QPalette::Active, QPalette::Text),
+                        popupPalette.color(QPalette::Active, QPalette::Base)),
+             "Popup field text is unreadable under a light OS palette");
+
+    // The reset button is painted from the stylesheet, not the palette, so
+    // check its rendered pixels: most of its area is the dark control
+    // surface and its label must stand out against that surface.
+    QPushButton* reset = nullptr;
+    for (auto* button : popup->findChildren<QPushButton*>()) {
+        if (button->property("schemeId").toString() == QStringLiteral("normal")) reset = button;
+    }
+    QVERIFY(reset);
+    QCoreApplication::processEvents();
+    const QImage shot = popup->grab().toImage().convertToFormat(QImage::Format_RGB32);
+    const qreal ratio = shot.devicePixelRatio();
+    const QPoint resetTopLeft = reset->mapTo(popup, QPoint(0, 0));
+    QRect region(QPointF(resetTopLeft.x() * ratio, resetTopLeft.y() * ratio).toPoint(),
+                 QSizeF(reset->width() * ratio, reset->height() * ratio).toSize());
+    // Skip the standard reset icon so only the label text can pass.
+    region.adjust(static_cast<int>(44 * ratio), static_cast<int>(4 * ratio),
+                  -static_cast<int>(4 * ratio), -static_cast<int>(4 * ratio));
+    region = region.intersected(shot.rect());
+    QVERIFY(!region.isEmpty());
+    QMap<QRgb, int> histogram;
+    for (int y = region.top(); y <= region.bottom(); ++y) {
+        for (int x = region.left(); x <= region.right(); ++x) ++histogram[shot.pixel(x, y)];
+    }
+    QRgb background = histogram.firstKey();
+    for (auto it = histogram.begin(); it != histogram.end(); ++it) {
+        if (it.value() > histogram.value(background)) background = it.key();
+    }
+    int readable = 0;
+    for (auto it = histogram.begin(); it != histogram.end(); ++it) {
+        if (theme_contrast::ContrastRatio(QColor(it.key()), QColor(background)) >= 4.5) {
+            readable += it.value();
+        }
+    }
+    QVERIFY2(readable >= 12, "Popup reset label is unreadable under a light OS palette");
+
+    // A checked quick choice paints its label itself; it must use the
+    // highlighted-text role on the highlight surface, not button text.
+    auto* checked = Quick(picker, "yellow-black");
+    QVERIFY(checked);
+    picker.setCurrentScheme(*color_schemes::FindBuiltInColorScheme(QStringLiteral("yellow-black")));
+    QVERIFY(checked->isChecked());
+    QCoreApplication::processEvents();
+    const QImage buttonShot = checked->grab().toImage().convertToFormat(QImage::Format_RGB32);
+    QMap<QRgb, int> buttonHistogram;
+    const qreal buttonRatio = buttonShot.devicePixelRatio();
+    const int labelLeft = static_cast<int>(60 * buttonRatio);
+    for (int y = 0; y < buttonShot.height(); ++y) {
+        for (int x = labelLeft; x < buttonShot.width(); ++x) {
+            ++buttonHistogram[buttonShot.pixel(x, y)];
+        }
+    }
+    QRgb buttonBackground = buttonHistogram.firstKey();
+    for (auto it = buttonHistogram.begin(); it != buttonHistogram.end(); ++it) {
+        if (it.value() > buttonHistogram.value(buttonBackground)) buttonBackground = it.key();
+    }
+    int buttonReadable = 0;
+    for (auto it = buttonHistogram.begin(); it != buttonHistogram.end(); ++it) {
+        if (theme_contrast::ContrastRatio(QColor(it.key()), QColor(buttonBackground)) >= 4.5) {
+            buttonReadable += it.value();
+        }
+    }
+    QVERIFY2(buttonReadable >= 12,
+             "Checked quick-choice label is unreadable under a light OS palette");
+}
 }
 
-QTEST_MAIN(okuflow::ColorSchemePickerTests)
+OKUFLOW_GUI_TEST_MAIN(okuflow::ColorSchemePickerTests)
 #include "color_scheme_picker_tests.moc"

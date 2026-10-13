@@ -10,7 +10,7 @@
 
 Point a webcam, a document camera or your phone at the board. OkuFlow magnifies it live, sharpens the text and holds the picture steady. When you ask, its assistant reads the text, explains what it shows and keeps your lecture notes. Choose Read Aloud to hear an answer.
 
-[Website](https://okuflow.com) · [Download MSI](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.2-x64.msi) · [Portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.2-windows-x64.zip) · [Release notes](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.3)
+[Website](https://okuflow.com) · [Download MSI](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.3-x64.msi) · [Portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.3-windows-x64.zip) · [Release notes](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.3)
 
 ![OkuFlow Simple view showing a classroom chalkboard, with large camera controls](https://okuflow.com/media/okuflow-simple-206165dcd785.webp)
 
@@ -66,11 +66,21 @@ Ask permission before recording a lecture or other people.
 
 You need three things:
 
-1. **A Windows 10 or 11 x64 PC.** Download the [v0.2.3 MSI installer](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.2-x64.msi), or extract the complete [portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.2-windows-x64.zip) and run `oku_flow.exe`. Keep its adjacent runtime files together.
+1. **A Windows 10 or 11 x64 PC.** Download the [v0.2.3 MSI installer](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.3-x64.msi), or extract the complete [portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.3-windows-x64.zip) and run `oku_flow.exe`. Keep its adjacent runtime files together.
 2. **A compatible camera.** Use a USB or document camera with Windows Media Foundation support, or the optional Android companion described below.
 3. **A compatible NVIDIA GPU for enhancement.** CUDA powers Text Clarity, stabilization, screen correction and colors. Without it, OkuFlow shows raw, unprocessed camera video with a clear on-screen notice.
 
 **v0.2.3 is an unsigned preview.** Windows SmartScreen may warn about an unrecognized app. Check the [release notes and known issues](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.3) before installing. Development documentation may describe changes newer than this download.
+
+In the portable ZIP, open **oku_flow.exe**. It starts the required
+`OkuFlowApp.exe` component automatically. Keep all ZIP contents together.
+The MSI installer gives you a single **OkuFlow** shortcut to open.
+The next portable ZIP puts supporting files in an `app` folder, leaving one EXE
+at the top level. Keep that folder beside `oku_flow.exe`.
+
+The next app update adds 25 languages, including Dutch, a system-language
+default and a saved manual choice. This work is local and unreleased; see the
+[language coverage and validation notes](docs/localization.md).
 
 Optional extras, including the Codex CLI for Read and Explain and NVIDIA Super Resolution, are available through **Setup & Downloads** inside the app. Super Resolution requires the separately installed supported NVIDIA runtime. SuperRes powered by NVIDIA Maxine™.
 

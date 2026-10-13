@@ -1,3 +1,4 @@
+#include "gui_test_support.hpp"
 #include "okuflow/ui/ai_settings_dialog.hpp"
 #include "okuflow/common/codex_app_server_client.hpp"
 
@@ -446,5 +447,5 @@ void AiSettingsDialogTests::narrowGroupsKeepFieldsReachable()
 
 } // namespace okuflow
 
-QTEST_MAIN(okuflow::AiSettingsDialogTests)
+OKUFLOW_GUI_TEST_MAIN(okuflow::AiSettingsDialogTests)
 #include "ai_settings_dialog_tests.moc"

@@ -17,6 +17,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -46,7 +48,8 @@ import com.okuflow.camera.ui.theme.OkuFlowWarningAmber
 /**
  * A whole-screen button: the entire panel is one large touch target with a
  * single action, which TalkBack reads as one element ("title, hint,
- * button, double-tap to <action>").
+ * button, double-tap to <action>"). Connection help with two destinations
+ * instead exposes two independent footer buttons.
  */
 @Composable
 fun ActionPanel(
@@ -55,16 +58,42 @@ fun ActionPanel(
     hint: String,
     actionLabel: String,
     onAction: () -> Unit,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
 ) {
+    val hasSecondaryAction = secondaryActionLabel != null && onSecondaryAction != null
     PanelScaffold(
         title = title,
-        modifier = Modifier.clickable(
+        // With two destinations each footer control owns its action. Avoid
+        // nesting an independently clickable button in a whole-panel button.
+        modifier = if (hasSecondaryAction) Modifier else Modifier.clickable(
             onClickLabel = actionLabel,
             role = Role.Button,
             onClick = onAction,
         ),
         header = { StepHeader(step) },
-        footer = { ActionPill(actionLabel) },
+        footer = {
+            if (hasSecondaryAction) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionPill(actionLabel, Modifier.clickable(
+                        onClickLabel = actionLabel, role = Role.Button, onClick = onAction,
+                    ))
+                    OutlinedButton(
+                        onClick = requireNotNull(onSecondaryAction),
+                        shape = RoundedCornerShape(44.dp),
+                        border = BorderStroke(2.dp, Color.White),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+                    ) {
+                        Text(
+                            text = requireNotNull(secondaryActionLabel),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            } else ActionPill(actionLabel)
+        },
     ) {
         PanelText(title = title, hint = hint)
     }
@@ -237,13 +266,14 @@ private fun WarningBadge() {
 }
 
 @Composable
-private fun ActionPill(label: String) {
+private fun ActionPill(label: String, modifier: Modifier = Modifier) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 88.dp)
             .clip(RoundedCornerShape(44.dp))
             .background(MaterialTheme.colorScheme.primary)
+            .then(modifier)
             .padding(horizontal = 24.dp, vertical = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -280,6 +310,25 @@ private fun UsbDebuggingPanelPreview() {
             hint = stringResource(R.string.usb_debugging_hint),
             actionLabel = stringResource(R.string.action_open_settings),
             onAction = {},
+        )
+    }
+}
+
+@Preview(name = "Hidden debugging settings", widthDp = 360, heightDp = 780)
+@Preview(name = "Hidden debugging settings, German 200%", widthDp = 320, heightDp = 640,
+    locale = "de", fontScale = 2f)
+@Preview(name = "Hidden debugging settings, Arabic", widthDp = 360, heightDp = 780, locale = "ar")
+@Composable
+private fun UsbSetupHelpPanelPreview() {
+    OkuFlowCameraTheme {
+        ActionPanel(
+            step = SetupStep.CheckUsbSetup,
+            title = stringResource(R.string.check_usb_title),
+            hint = stringResource(R.string.check_usb_hint),
+            actionLabel = stringResource(R.string.developer_title),
+            onAction = {},
+            secondaryActionLabel = stringResource(R.string.usb_debugging_title),
+            onSecondaryAction = {},
         )
     }
 }

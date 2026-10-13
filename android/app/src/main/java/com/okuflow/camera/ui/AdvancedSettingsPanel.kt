@@ -2,6 +2,7 @@ package com.okuflow.camera.ui
 
 import android.hardware.camera2.CameraCharacteristics
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -53,17 +55,22 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.LayoutDirection
 import com.okuflow.camera.R
 import com.okuflow.camera.camera.CameraCatalog
 import com.okuflow.camera.camera.CameraChoice
 import com.okuflow.camera.camera.StreamMode
 import com.okuflow.camera.camera.everydayModes
 import com.okuflow.camera.camera.withAvailableModes
+import com.okuflow.camera.settings.AppLanguage
+import com.okuflow.camera.settings.AppLanguageStore
 import com.okuflow.camera.settings.CameraSettings
 import com.okuflow.camera.ui.theme.OkuFlowCameraTheme
 import kotlinx.coroutines.Dispatchers
@@ -95,6 +102,8 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
     }
     BackHandler(enabled = showMoreOptions) { showMoreOptions = false }
     val context = LocalContext.current
+    val backArrow = if (LocalLayoutDirection.current == LayoutDirection.Rtl) "›" else "‹"
+    val forwardArrow = if (LocalLayoutDirection.current == LayoutDirection.Rtl) "‹" else "›"
     val catalog = remember(context) { CameraCatalog(context.applicationContext) }
     var cameras by remember { mutableStateOf(emptyList<CameraChoice>()) }
     LaunchedEffect(Unit) {
@@ -120,7 +129,7 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                 OutlinedButton(onClick = { if (showMoreOptions) showMoreOptions = false else onBack() },
                     shape = RoundedCornerShape(12.dp), border = BorderStroke(2.dp, Color.White),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).heightIn(min = 56.dp)) {
-                    Text("‹  ${stringResource(if (showMoreOptions) R.string.action_back_settings else R.string.action_back)}",
+                    Text("$backArrow  ${stringResource(if (showMoreOptions) R.string.action_back_settings else R.string.action_back)}",
                         fontSize = 20.sp, textAlign = TextAlign.Center)
                 }
                 Text(stringResource(if (showMoreOptions) R.string.settings_more else R.string.advanced_settings),
@@ -154,6 +163,9 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                     }
                 } else {
                     SettingsHint(stringResource(R.string.advanced_hint))
+                    SettingsSection(stringResource(R.string.settings_language)) {
+                        LanguageSetting()
+                    }
                     SettingsSection(stringResource(R.string.settings_video)) {
                         ChoiceSetting(stringResource(R.string.setting_camera), settings.cameraId,
                             listOf("" to automatic) + cameras.map { camera ->
@@ -175,7 +187,7 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                     }
                     OutlinedButton(onClick = { showMoreOptions = true }, shape = RoundedCornerShape(12.dp),
                         border = BorderStroke(2.dp, Color.White), modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
-                        Text("${stringResource(R.string.settings_more)}  ›", fontSize = 20.sp, lineHeight = 28.sp,
+                        Text("${stringResource(R.string.settings_more)}  $forwardArrow", fontSize = 20.sp, lineHeight = 28.sp,
                             textAlign = TextAlign.Center)
                     }
                     SettingsSection(stringResource(R.string.settings_image)) {
@@ -199,7 +211,10 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                             Slider(value = settings.exposure.toFloat(),
                                 onValueChange = { onChange(settings.copy(exposure = it.roundToInt())) },
                                 valueRange = -12f..12f, steps = 23,
-                                modifier = Modifier.fillMaxWidth().semantics { contentDescription = exposureLabel })
+                                modifier = Modifier.fillMaxWidth().semantics {
+                                    contentDescription = exposureLabel
+                                    stateDescription = exposureLabel
+                                })
                         }
                     }
                     OptionalNotificationControl()
@@ -217,6 +232,25 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
             }
         }
     }
+}
+
+/**
+ * App language: System default follows later phone language changes; an
+ * explicit choice persists (Android 13+ also shows it in system app settings).
+ */
+@Composable
+private fun LanguageSetting() {
+    val context = LocalContext.current
+    val activity = LocalActivity.current
+    // Changing the language recreates the activity, which re-reads both values.
+    val selected = remember { AppLanguageStore.selected(context) }
+    val systemLanguage = remember { AppLanguageStore.systemLanguage() }
+    ChoiceSetting(stringResource(R.string.setting_language), selected?.tag ?: "",
+        listOf("" to stringResource(R.string.language_system_default, systemLanguage.nativeName)) +
+            AppLanguage.entries.map { it.tag to it.nativeName }) { tag ->
+        if (AppLanguageStore.select(context, AppLanguage.fromTag(tag))) activity?.recreate()
+    }
+    SettingsHint(stringResource(R.string.language_hint), Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp))
 }
 
 /** A shared selector; a selection made in More options stays visible even when the main list hides it. */
@@ -276,7 +310,9 @@ private fun <T> ChoiceSetting(label: String, value: T, options: List<Pair<T, Str
     }
     BoxWithConstraints(Modifier.fillMaxWidth().padding(12.dp)) {
         val choiceShape = RoundedCornerShape(12.dp)
-        Row(Modifier.fillMaxWidth().border(2.dp, if (enabled) Color.White else Color.Gray, choiceShape)
+        Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
+                stateDescription = valueLabel ?: options.firstOrNull { it.first == value }?.second ?: value.toString()
+            }.border(2.dp, if (enabled) Color.White else Color.Gray, choiceShape)
             .clip(choiceShape).clickable(enabled = enabled, role = Role.Button, onClick = { expanded = true })
             .heightIn(min = 96.dp).padding(horizontal = 20.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -292,14 +328,15 @@ private fun <T> ChoiceSetting(label: String, value: T, options: List<Pair<T, Str
             scrollState = menuScroll, containerColor = Color(0xFF161616), tonalElevation = 0.dp,
             border = BorderStroke(2.dp, Color.White)) {
             options.forEachIndexed { index, option ->
-                val selected = option.first == value
-                val foreground = if (selected) Color.Black else Color.White
+                val isSelected = option.first == value
+                val foreground = if (isSelected) Color.Black else Color.White
                 DropdownMenuItem(text = { Text(option.second, fontSize = 22.sp, lineHeight = 28.sp, color = foreground,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
-                    trailingIcon = if (selected) { { Text("✓", color = foreground,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                    trailingIcon = if (isSelected) { { Text("✓", color = foreground,
                         modifier = Modifier.clearAndSetSemantics { }) } } else null,
-                    modifier = Modifier.onSizeChanged { itemHeights[index] = it.height }
-                        .heightIn(min = 76.dp).background(if (selected) Color.White else Color.Transparent)
+                    modifier = Modifier.semantics { selected = isSelected }
+                        .onSizeChanged { itemHeights[index] = it.height }
+                        .heightIn(min = 76.dp).background(if (isSelected) Color.White else Color.Transparent)
                         .padding(vertical = 8.dp),
                     onClick = { expanded = false; onChange(option.first) })
                 if (index < options.lastIndex) HorizontalDivider(color = Color(0xFF888888))

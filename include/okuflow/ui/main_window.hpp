@@ -3,6 +3,8 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include <QAbstractNativeEventFilter>
+#include <QColor>
+#include <QString>
 #include <QMainWindow>
 #include <QWidget>
 #include <QPointF>
@@ -11,6 +13,7 @@
 
 #include <array>
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "okuflow/ui/render_widget.hpp"
@@ -19,7 +22,9 @@
 #include "okuflow/ui/joystick_overlay.hpp"
 
 QT_BEGIN_NAMESPACE
+class QAction;
 class QAbstractButton;
+class QIcon;
 class QBoxLayout;
 class QTabWidget;
 class QComboBox;
@@ -110,6 +115,9 @@ public:
     QPushButton* testCameraAccelerationButton() const;
     QComboBox* recordingCanvasCombo() const;
     QComboBox* applicationLanguageCombo() const;
+    // Updates the "System default (<language>)" picker entry for the current
+    // UI language and Windows display-language preference.
+    void refreshSystemLanguageItem();
 
     // Two-speed UI: Simple overlays compact corner controls on the full render
     // surface; Advanced adds a right-side inspector.
@@ -265,6 +273,15 @@ private:
     void UpdateUiVisibilityControl();
     std::vector<CollapsibleSection*> SettingsSections(SettingsScope scope) const;
     void UpdateDirectionalUi();
+    // Re-derives readable disabled/placeholder palette roles, per-scheme
+    // status colors, and themed icons from the current (OS-driven) palette.
+    // Safe to call before all widgets exist; missing widgets are skipped.
+    void ApplyThemeContrast(bool rebaseFromApplication = false);
+    void UpdateSuperResStatusStyle();
+    QIcon ThemedIconFor(const QString& resourcePath) const;
+    void SetThemedIcon(QAbstractButton* button, const QString& resourcePath);
+    void SetThemedIcon(QAction* action, const QString& resourcePath);
+    void RefreshThemedIcons();
 
     RenderWidget* renderWidget_{};
     QComboBox* cameraCombo_{};
@@ -397,6 +414,15 @@ private:
     QWidget* uiVisibilityPanel_{};
     QToolButton* uiVisibilityButton_{};
     bool keystoneTrackingActive_{};
+    bool keystonePaused_{};
+    bool applyingThemeContrast_{};
+    QColor themedIconColor_;
+    QColor themedIconDisabledColor_;
+    bool superResStatusKnown_{};
+    bool superResStatusOff_{};
+    bool superResStatusActive_{};
+    std::vector<std::pair<QAbstractButton*, QString>> themedButtonIcons_;
+    std::vector<std::pair<QAction*, QString>> themedActionIcons_;
     QPushButton* simpleModeButton_{};
     QPushButton* advancedModeButton_{};
     QPushButton* explainNowButton_{};

@@ -1,3 +1,4 @@
+#include "gui_test_support.hpp"
 #include "okuflow/common/view_transform.hpp"
 #include "okuflow/app/assistive_feature_manager.hpp"
 #include "okuflow/ui/annotation_overlay.hpp"
@@ -110,6 +111,11 @@ public:
 protected:
     bool event(QEvent* event) override
     {
+        if (event->type() == QEvent::WindowDeactivate || event->type() == QEvent::UngrabMouse) {
+            qInfo() << "Synthetic drag cancellation event" << event->type()
+                    << "grabber" << (mouseGrabber() == this)
+                    << "owner active" << window()->isActiveWindow();
+        }
         if (event->spontaneous() && event->type() == QEvent::MouseMove) {
             // grabMouse also routes the user's physical pointer here. These
             // tests own a synthetic pointer and must not let unrelated native
@@ -597,9 +603,7 @@ void AnnotationOverlayTests::dockedHeaderRequiresHeldPullAndDoesNotImmediatelyRe
     // Docking closes the floating native window and asynchronously activates
     // its owner. Settle that transition before the synthetic held press;
     // a real WindowDeactivate must still cancel an in-progress pull.
-    owner.raise();
-    owner.activateWindow();
-    QVERIFY(QTest::qWaitForWindowActive(&owner));
+    QVERIFY2(test::ActivateFixtureWindow(&owner), test::ActivationFailureMessage());
     auto* header = chat.findChild<QWidget*>(QStringLiteral("assistiveHeader"));
     auto* preview = chat.findChild<QLabel*>(QStringLiteral("assistiveDockPreview"));
     QVERIFY(header);
@@ -648,9 +652,7 @@ void AnnotationOverlayTests::releasingOrCancelingThePullKeepsTheDockLatched()
     chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
     chat.SetDockPosition(QStringLiteral("left"));
     QCoreApplication::processEvents();
-    owner.raise();
-    owner.activateWindow();
-    QVERIFY(QTest::qWaitForWindowActive(&owner));
+    QVERIFY2(test::ActivateFixtureWindow(&owner), test::ActivationFailureMessage());
     auto* header = chat.findChild<QWidget*>(QStringLiteral("assistiveHeader"));
     QVERIFY(header);
     const QPoint press = header->mapToGlobal(header->rect().center());
@@ -821,8 +823,7 @@ void AnnotationOverlayTests::floatingChatRemainsInteractiveAndExcludesInkAfterMo
                                                  1.0f, 0.5f, 0.5f, ViewportFitMode::kFill));
     overlay.SetActive(true);
     overlay.raise();
-    overlay.activateWindow();
-    QVERIFY(QTest::qWaitForWindowActive(&overlay));
+    QVERIFY2(test::ActivateFixtureWindow(&overlay), test::ActivationFailureMessage());
     // Close the initial Pen flyout so the uncovered point below tests canvas
     // input rather than the flyout that normally occupies that location.
     QTest::keyClick(&overlay, Qt::Key_Escape);
@@ -1025,8 +1026,7 @@ void AnnotationOverlayTests::textPlacementIsClickThenType()
         ComputeViewTransform(1280, 720, 900, 600, 1.0f, 0.5f, 0.5f,
                              ViewportFitMode::kFill));
     overlay.SetActive(true);
-    overlay.activateWindow();
-    QVERIFY(QTest::qWaitForWindowActive(&overlay));
+    QVERIFY2(test::ActivateFixtureWindow(&overlay), test::ActivationFailureMessage());
 
     QToolButton* textButton = ToolButton(overlay, QStringLiteral("Text"));
     QVERIFY(textButton);
@@ -1077,8 +1077,7 @@ void AnnotationOverlayTests::moveToolMarqueeSelectsAndMovesMultipleAnnotations()
         ComputeViewTransform(1280, 720, 900, 600, 1.0f, 0.5f, 0.5f,
                              ViewportFitMode::kFill));
     overlay.SetActive(true);
-    overlay.activateWindow();
-    QVERIFY(QTest::qWaitForWindowActive(&overlay));
+    QVERIFY2(test::ActivateFixtureWindow(&overlay), test::ActivationFailureMessage());
 
     const auto drawStroke = [&overlay](const QPointF& start,
                                        const QPointF& end) {
@@ -1246,6 +1245,6 @@ void AnnotationOverlayTests::toolChromeMirrorsForRightToLeftLayouts()
 
 } // namespace okuflow
 
-QTEST_MAIN(okuflow::AnnotationOverlayTests)
+OKUFLOW_GUI_TEST_MAIN(okuflow::AnnotationOverlayTests)
 
 #include "annotation_overlay_tests.moc"

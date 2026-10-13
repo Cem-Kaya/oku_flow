@@ -15,6 +15,54 @@ private slots:
     void initTestCase() { QVERIFY(SUCCEEDED(MFStartup(MF_VERSION))); }
     void cleanupTestCase() { QVERIFY(SUCCEEDED(MFShutdown())); }
 
+    void phoneApertureSeparatesVisibleImageFromCodecPadding()
+    {
+        ComPtr<IMFMediaType> type;
+        QVERIFY(SUCCEEDED(MFCreateMediaType(&type)));
+        okuflow::CaptureAperture aperture;
+        QVERIFY(okuflow::ResolveNv12DisplayAperture(type.Get(), 1920, 1088, 1920, 1080, aperture));
+        QCOMPARE(aperture.width, 1920u);
+        QCOMPARE(aperture.height, 1080u);
+        MFVideoArea area{};
+        area.OffsetX.value = 2; area.OffsetY.value = 4;
+        area.Area.cx = 1280; area.Area.cy = 720;
+        QVERIFY(SUCCEEDED(type->SetBlob(MF_MT_MINIMUM_DISPLAY_APERTURE,
+            reinterpret_cast<const UINT8*>(&area), sizeof(area))));
+        QVERIFY(okuflow::ResolveNv12DisplayAperture(type.Get(), 1920, 1088, 1920, 1080, aperture));
+        QCOMPARE(aperture.x, 2u);
+        QCOMPARE(aperture.y, 4u);
+        QCOMPARE(aperture.width, 1280u);
+        QCOMPARE(aperture.height, 720u);
+        area.OffsetX.fract = 1;
+        QVERIFY(SUCCEEDED(type->SetBlob(MF_MT_MINIMUM_DISPLAY_APERTURE,
+            reinterpret_cast<const UINT8*>(&area), sizeof(area))));
+        QVERIFY(!okuflow::ResolveNv12DisplayAperture(type.Get(), 1920, 1088, 1920, 1080, aperture));
+        QCOMPARE(aperture.height, 720u); // Invalid metadata cannot change the last valid result.
+    }
+
+    void nv12CropKeepsChromaAtTheAllocationPlaneOrigin()
+    {
+        // 8x8 allocation, a visible 4x2 aperture at (2,2), and distinct rows.
+        std::vector<std::uint8_t> bytes(8 * 12);
+        for (UINT row = 0; row < 12; ++row)
+            for (UINT x = 0; x < 8; ++x) bytes[row * 8 + x] = static_cast<BYTE>(row * 10 + x);
+        D3D11_MAPPED_SUBRESOURCE mapped{bytes.data(), 8, 0};
+        std::vector<std::uint8_t> output;
+        LONG stride{};
+        GUID subtype{};
+        QVERIFY(okuflow::CopyMappedCaptureTexture(mapped, DXGI_FORMAT_NV12, 8, 8,
+            4, 2, output, stride, subtype, 2, 2));
+        QCOMPARE(output.size(), std::size_t(12));
+        QCOMPARE(output[0], BYTE(22));
+        QCOMPARE(output[4], BYTE(32));
+        QCOMPARE(output[8], BYTE(92)); // UV begins at allocation row 8 plus y/2.
+        QCOMPARE(stride, LONG(4));
+        QVERIFY(!okuflow::CopyMappedCaptureTexture(mapped, DXGI_FORMAT_NV12, 8, 8,
+            4, 2, output, stride, subtype, 6, 2));
+        QVERIFY(!okuflow::CopyMappedCaptureTexture(mapped, DXGI_FORMAT_NV12, 8, 8,
+            4, 2, output, stride, subtype, 1, 2));
+    }
+
     void captureBurstKeepsJitterAndCatchesUpOnOverflow()
     {
         std::deque<okuflow::MediaFrame> pending, retired;

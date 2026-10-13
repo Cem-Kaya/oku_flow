@@ -8,7 +8,7 @@
 
     <string name="developer_title">Entwickleroptionen aktivieren</string>
     <string name="developer_hint_generic">Tippen Sie 7-mal auf „Build-Nummer“. Wenn Sie sie nicht sehen, öffnen Sie zuerst „Softwareinformationen“.</string>
-    <string name="developer_hint_samsung">Öffnen Sie „Softwareinformationen“ und tippen Sie dann 7-mal auf „Buildnummer“.</string>
+    <string name="developer_hint_samsung">Öffnen Sie „Softwareinformationen“ und tippen Sie dann 7-mal auf „Build-Nummer“.</string>
     <string name="developer_hint_xiaomi">Tippen Sie 7-mal auf „OS-Version“ (oder „MIUI-Version“).</string>
     <string name="developer_hint_oneplus">Öffnen Sie „Version“ und tippen Sie dann 7-mal auf „Build-Nummer“.</string>
 
@@ -22,7 +22,7 @@
     <string name="camera_hint_settings">Öffnen Sie die Einstellungen, wählen Sie „Berechtigungen“ und erlauben Sie „Kamera“.</string>
 
     <string name="connect_usb_title">Telefon mit dem Computer verbinden</string>
-    <string name="connect_usb_hint">Verwenden Sie ein USB-Kabel, das Daten übertragen kann.</string>
+    <string name="connect_usb_hint">Diese Telefon-App benötigt OkuFlow für Windows auf Ihrem PC. Laden Sie es von okuflow.com herunter und öffnen Sie es. Verwenden Sie ein USB-Kabel, das Daten übertragen kann.</string>
 
     <string name="open_okuflow_title">OkuFlow auf dem Computer öffnen</string>
     <string name="open_okuflow_hint">Erlauben Sie USB-Debugging nur für Ihren eigenen vertrauenswürdigen privaten Computer. „Immer zulassen“ ist für diesen Computer optional; lassen Sie es auf gemeinsam genutzten Computern aus.</string>
@@ -57,7 +57,7 @@
     <string name="stabilization_hint">Elektronische Stabilisierung kann das Bild zuschneiden. Wählen Sie Aus oder Optisch, wenn Sie die Stabilisierung mit fester Referenz in OkuFlow verwenden.</string>
     <string name="setting_autofocus">Kontinuierlicher Autofokus</string>
     <string name="focus_hint">Bei ausgeschaltetem Autofokus wird für entfernte Inhalte auf unendlich fokussiert.</string>
-    <string name="setting_torch">Kameralicht</string>
+    <string name="setting_torch">Telefonlicht</string>
     <string name="torch_host_hint">Beginnt ausgeschaltet. Verwenden Sie die Telefonlicht-Taste in den Kameraeinstellungen von OkuFlow auf Ihrem Computer.</string>
     <string name="setting_exposure">Belichtung: %1$d</string>
     <string name="exposure_hint">Nach links wird das Bild dunkler, nach rechts heller.</string>
@@ -99,4 +99,10 @@
     <string name="licenses_title">Open-Source-Lizenzen</string>
     <string name="licenses_loading">Lizenzhinweise werden geladen…</string>
     <string name="licenses_unavailable">Die Lizenzhinweise konnten nicht geöffnet werden. Verwenden Sie den Lizenzordner im Quellcode-Repository.</string>
+    <string name="advanced_settings_open">Erweiterte Einstellungen öffnen</string>
+    <string name="settings_language">Sprache</string>
+    <string name="setting_language">App-Sprache</string>
+    <string name="language_system_default">Systemstandard (%1$s)</string>
+    <string name="language_hint">Systemstandard folgt der Sprache Ihres Telefons. Eine andere Auswahl gilt nur für diese App und bleibt nach Neustarts erhalten.</string>
+    <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbit/s</string>
 </resources>

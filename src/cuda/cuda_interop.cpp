@@ -13,6 +13,7 @@
 
 #include "okuflow/cuda/cuda_kernels.hpp"
 #include "okuflow/common/maxine_superres.hpp"
+#include "okuflow/common/superres_scale_policy.hpp"
 
 #include <windows.h>
 
@@ -549,6 +550,7 @@ CudaInteropSurface::~CudaInteropSurface() {
     ResetCaptureInterop();
 
     ReleaseSuperRes();
+    if (streamFaulted_) { QuarantineGpuResources(); return; }
     ReleasePinnedUploadRing();
     ReleaseDeviceBuffers();
 
@@ -695,7 +697,8 @@ bool CudaInteropSurface::SelectCudaDeviceMatching(LUID adapterLuid) {
         return false;
     }
 
-    qInfo() << "Using CUDA device" << cudaDeviceId_ << matchedProps.name;
+    qInfo() << "Using CUDA device" << cudaDeviceId_ << matchedProps.name
+            << "compute capability" << matchedProps.major << matchedProps.minor;
     return true;
 }
 
@@ -1674,6 +1677,16 @@ bool CudaInteropSurface::EnsureKeystoneResources(unsigned int width, unsigned in
 }
 
 void CudaInteropSurface::ReleaseSuperRes() {
+    if (maxineSuperRes_) {
+        maxineSuperRes_->Teardown();
+        if (maxineSuperRes_->IsFaulted()) {
+            lastError_ = maxineSuperRes_->LastError();
+            streamFaulted_ = true;
+            valid_ = false;
+            return;
+        }
+        maxineSuperRes_.reset();
+    }
     if (deviceSuperResOutput_) {
         cudaFree(deviceSuperResOutput_);
         deviceSuperResOutput_ = nullptr;
@@ -1681,10 +1694,6 @@ void CudaInteropSurface::ReleaseSuperRes() {
     devicePitchSuperResOutput_ = 0;
     deviceSuperResOutputWidth_ = 0;
     deviceSuperResOutputHeight_ = 0;
-    if (maxineSuperRes_) {
-        maxineSuperRes_->Teardown();
-        maxineSuperRes_.reset();
-    }
     if (superResStartEvent_) {
         cudaEventDestroy(superResStartEvent_);
         superResStartEvent_ = nullptr;
@@ -1696,6 +1705,7 @@ void CudaInteropSurface::ReleaseSuperRes() {
     superResTimingPending_ = false;
     discardSuperResTiming_ = false;
     superResTimingStrength_ = -1.0f;
+    superResRequestedStrength_ = -1.0f;
     superResAutoDisabled_ = false;
     superResFailureLatched_ = false;
     superResFailSrcWidth_ = 0;
@@ -1753,7 +1763,7 @@ void CudaInteropSurface::SetSuperResPerformanceOverride(bool enabled) {
     } else if (superResLastAverageMs_ > kSuperResLatencyTargetMs) {
         superResAutoDisabled_ = true;
         superResStatus_ = SuperResTimingStatus(
-            "SuperRes exceeded the performance target - using NIS;",
+            "SuperRes disabled after exceeding the performance target;",
             superResLastAverageMs_);
     }
 }
@@ -1794,7 +1804,7 @@ void CudaInteropSurface::ConsumeSuperResTiming() {
             if (averageMs > kSuperResLatencyTargetMs && !superResPerformanceOverride_) {
                 superResAutoDisabled_ = true;
                 superResStatus_ = SuperResTimingStatus(
-                    "SuperRes exceeded the performance target - using NIS;", averageMs);
+                    "SuperRes disabled after exceeding the performance target;", averageMs);
             } else {
                 superResStatus_ = averageMs > kSuperResLatencyTargetMs
                                       ? SuperResTimingStatus(
@@ -1906,7 +1916,9 @@ void CudaInteropSurface::UpdateSuperResCache(
         }
         if ((candidateWidth & 1u) != 0u ||
             (candidateHeight & 1u) != 0u ||
-            candidateWidth < 160u || candidateHeight < 90u) {
+            candidateWidth < 160u ||
+            !IsSuperResInputHeightSupported(candidateHeight,
+                                           scale.numerator, scale.denominator)) {
             continue;
         }
         if (!settings.mlSuperResUltra1440p &&
@@ -1942,12 +1954,22 @@ void CudaInteropSurface::UpdateSuperResCache(
     }
     if (factorNum == 0u) {
         superResStatus_ =
-            "Scene dimensions do not support an exact NVIDIA SuperRes scale - using NIS";
+            "Scene dimensions do not support an exact NVIDIA SuperRes scale";
         latchFailure();
         return;
     }
 
-    const float effectiveStrength = std::clamp(settings.mlSuperResStrength, 0.0f, 1.0f);
+    const float requestedStrength = std::clamp(settings.mlSuperResStrength, 0.0f, 1.0f);
+    const auto now = GetTickCount64();
+    if (superResRequestedStrength_ != requestedStrength) {
+        superResRequestedStrength_ = requestedStrength;
+        superResStrengthChangedAt_ = now;
+    }
+    // Keep the current model while the slider is moving. Only load its final
+    // value after 200 ms, instead of reloading on every camera frame.
+    const float effectiveStrength = superResTimingStrength_ >= 0.0f &&
+            now - superResStrengthChangedAt_ < 200
+        ? superResTimingStrength_ : requestedStrength;
     const bool configurationChanged = superResTimingSourceWidth_ != sourceWidth ||
         superResTimingSourceHeight_ != sourceHeight ||
         superResTimingOutputWidth_ != outputWidth ||
@@ -1980,15 +2002,18 @@ void CudaInteropSurface::UpdateSuperResCache(
     if (!maxineSuperRes_) {
         maxineSuperRes_ = std::make_unique<MaxineSuperRes>();
     }
-    maxineSuperRes_->SetStrength(
-        std::clamp(settings.mlSuperResStrength, 0.0f, 1.0f));
+    maxineSuperRes_->SetStrength(effectiveStrength);
     if (!maxineSuperRes_->Ensure(sourceWidth,
                                  sourceHeight,
                                  outputWidth,
                                  outputHeight,
                                  reinterpret_cast<void*>(stream_))) {
-        superResStatus_ =
-            maxineSuperRes_->LastError() + " - using NIS";
+        superResStatus_ = maxineSuperRes_->LastError();
+        if (maxineSuperRes_->IsFaulted()) {
+            lastError_ = superResStatus_;
+            streamFaulted_ = true;
+            valid_ = false;
+        }
         latchFailure();
         return;
     }
@@ -2019,8 +2044,12 @@ void CudaInteropSurface::UpdateSuperResCache(
             sourcePitch,
             superResDestination,
             superResDestinationPitch)) {
-        superResStatus_ =
-            maxineSuperRes_->LastError() + " - using NIS";
+        superResStatus_ = maxineSuperRes_->LastError();
+        if (maxineSuperRes_->IsFaulted()) {
+            lastError_ = superResStatus_;
+            streamFaulted_ = true;
+            valid_ = false;
+        }
         latchFailure();
         return;
     }
@@ -2074,7 +2103,7 @@ void CudaInteropSurface::UpdateSuperResCache(
     }
 #else
     superResStatus_ =
-        "SuperRes support is disabled in this build - using NIS";
+        "SuperRes support is disabled in this build";
 #endif
 }
 
@@ -4183,7 +4212,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             // A configuration reload may fail to retire prior SDK transfers.
             // Do not enqueue another cache write, timing marker or success
             // fence; the caller retains its reservation and quarantines storage.
-            lastError_ = "CUDA stream could not retire the previous SuperRes configuration";
+            if (lastError_.empty()) lastError_ = "CUDA stream could not retire the previous SuperRes configuration";
             return false;
         }
         // Only a new camera frame reaches this point. Temporal effects have

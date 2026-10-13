@@ -36,11 +36,15 @@ Gradle runs on JDK 21; Java and Kotlin emit JVM 17 bytecode. `minSdk` is 30,
 `compileSdk` is release 37 with minor API level 2, and `targetSdk` is 37 (Android
 target behavior uses the major API level). The install application id is
 `com.okuflow` (Play/install application id); Kotlin/resource namespace and class
-paths stay `com.okuflow.camera`. Version code 3, version name `0.1.2`.
+paths stay `com.okuflow.camera`. Prepared version code 4, version name `0.1.3`;
+the currently published closed-test code 3 / `0.1.2` is a separate artifact.
 NDK and CMake are installed for the later native processing stage; no native
 build is enabled in this scaffold. Transitive AndroidX graphics dependencies do
 include native libraries, which must pass release 16 KB checks. Kotlin sources use `app/src/main/java`, and
 JVM tests use `app/src/test/java`. No CameraX or network library is declared.
+Language bundle splits are disabled so every installed Play build includes
+all 25 resource catalogs. Manual language selection therefore works offline
+on Android 11/12 as well as newer phones, without a Play Core download path.
 The app manifest must not declare `android.permission.INTERNET`.
 
 Version sources:
@@ -107,7 +111,7 @@ pwsh -NoProfile -File scripts/build_android.ps1 -Lint
 pwsh -NoProfile -File scripts/build_android.ps1 -Install
 ```
 
-Every invocation first checks exact English/Turkish/German Android resource
+Every invocation first checks exact 25-language Android resource
 key parity (including duplicates and empty catalogs), then runs
 `:app:assembleDebug :app:testDebugUnitTest`.
 `-Lint` additionally runs `:app:lintDebug`. Errors return a nonzero process
@@ -141,6 +145,14 @@ rejected by `-Install` so this guard cannot silently inspect the wrong server.
 If it refuses a server, close its owning tool yourself before retrying.
 
 ## Local outputs and Android Studio
+
+For the 25-language update, use a separate local output root such as
+`$env:OKUFLOW_ANDROID_BUILD_DIR = "$env:LOCALAPPDATA\OkuFlow\android-multilingual-build"`
+while the signed code-3 inventory is retained. The prepared code-4 debug build
+passes assembly, 67 JVM tests and lint, with exact parity across 98 keys in all
+25 resource catalogs. This does not establish release signing, Play rollout,
+older-device language switching, TalkBack or visible large-font acceptance.
+See [localization](../docs/localization.md).
 
 The checkout is on Google Drive's virtual Y: drive. Generated files and caches
 must remain local to avoid slow synced I/O and cloud uploads. Every Gradle

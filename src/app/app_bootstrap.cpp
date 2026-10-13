@@ -3,6 +3,7 @@
 #include "app_internal.hpp"
 #include <QLocale>
 #include "debug_log.hpp"
+#include "okuflow/capture/phone_camera.hpp"
 
 #include <QSaveFile>
 #include <QScrollBar>
@@ -55,14 +56,23 @@ bool OkuFlowApp::Initialize()
     languageManager_ =
         std::make_unique<LanguageManager>(*qtApp_, this);
     auto& persistentSettings = settingsController_->MutableSettings();
-    const AppLanguage initialLanguage =
-        persistentSettings.language.trimmed().isEmpty()
-            ? AppLanguageFromSystemLocale()
-            : AppLanguageFromCode(persistentSettings.language);
-    if (!languageManager_->SetLanguage(initialLanguage, false)) {
+    // An explicit saved language wins; "system" (also a missing or unknown
+    // value) resolves the Windows display-language list on every start.
+    persistentSettings.language =
+        NormalizeLanguagePreference(persistentSettings.language);
+    if (persistentSettings.language.isEmpty()) {
+        persistentSettings.language =
+            QString::fromLatin1(kSystemLanguagePreference);
+    }
+    const AppLanguage initialLanguage = ResolveLanguagePreference(
+        persistentSettings.language, QLocale::system().uiLanguages());
+    // A missing or unloadable catalog leaves the UI in English. The saved
+    // preference is kept; the selector and a status notice show English.
+    const bool startupLanguageFailed =
+        !languageManager_->SetLanguage(initialLanguage, false);
+    if (startupLanguageFailed) {
         languageManager_->SetLanguage(AppLanguage::English, false);
     }
-    persistentSettings.language = languageManager_->languageCode();
     // Revalidate the persisted root on every startup, not only when the user
     // picks a folder: a saved directory can later be replaced with a
     // junction into the install directory, lose its drive, or lose write
@@ -135,9 +145,17 @@ bool OkuFlowApp::Initialize()
     if (QComboBox* languageCombo =
             mainWindow_->applicationLanguageCombo()) {
         const QSignalBlocker blocker(languageCombo);
-        const int index =
-            languageCombo->findData(languageManager_->languageCode());
+        const int index = languageCombo->findData(
+            startupLanguageFailed
+                ? AppLanguageCode(AppLanguage::English)
+                : settingsController_->Settings().language);
         languageCombo->setCurrentIndex(index >= 0 ? index : 0);
+    }
+    if (startupLanguageFailed) {
+        ShowStatusMessage(
+            TranslateUi(QStringLiteral(
+                "The selected language could not be loaded.")),
+            7000);
     }
     connect(mainWindow_.get(),
             &MainWindow::applicationLanguageRequested,
@@ -146,14 +164,23 @@ bool OkuFlowApp::Initialize()
                 if (!languageManager_ || !mainWindow_) {
                     return;
                 }
-                const AppLanguage requested =
-                    AppLanguageFromCode(code);
+                QString preference = NormalizeLanguagePreference(code);
+                if (preference.isEmpty()) {
+                    preference = QString::fromLatin1(kSystemLanguagePreference);
+                }
+                const AppLanguage requested = ResolveLanguagePreference(
+                    preference, QLocale::system().uiLanguages());
                 if (!languageManager_->SetLanguage(requested, false)) {
                     if (QComboBox* combo =
                             mainWindow_->applicationLanguageCombo()) {
                         const QSignalBlocker blocker(combo);
-                        combo->setCurrentIndex(
-                            combo->findData(languageManager_->languageCode()));
+                        const QString& saved = settingsController_->Settings().language;
+                        const QString visible = ResolveLanguagePreference(
+                            saved, QLocale::system().uiLanguages()) == languageManager_->language()
+                            ? saved : languageManager_->languageCode();
+                        const int previous = combo->findData(
+                            visible);
+                        combo->setCurrentIndex(previous >= 0 ? previous : 0);
                     }
                     ShowStatusMessage(
                         TranslateUi(QStringLiteral(
@@ -162,8 +189,7 @@ bool OkuFlowApp::Initialize()
                     return;
                 }
 
-                settingsController_->MutableSettings().language =
-                    languageManager_->languageCode();
+                settingsController_->MutableSettings().language = preference;
                 if (assistiveManager_) {
                     assistiveManager_->Runtime().SetResponseLanguage(
                         languageManager_->languageCode());
@@ -1252,6 +1278,11 @@ OkuFlowApp::~OkuFlowApp() {
         StopCameraCapture(true);
     }
     mediaCapture_.Shutdown();
+    // Discovery is canceled above and capture has stopped: terminate only
+    // the private adb server this process owns. A borrowed server (already
+    // running on the default endpoint or explicitly overridden) is left
+    // exactly as found.
+    ShutdownOwnedAdbServer();
     mediaFoundationTeardownUnsafe =
         mediaFoundationTeardownUnsafe || mediaCapture_.WasAbandoned() ||
         (startupWorkers_ && (startupWorkers_->active.load() != 0 ||

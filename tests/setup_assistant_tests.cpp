@@ -1,3 +1,4 @@
+#include "gui_test_support.hpp"
 #include "okuflow/app/setup_assistant.hpp"
 #include "okuflow/common/maxine_superres.hpp"
 #include "okuflow/ui/ui_translation.hpp"
@@ -63,5 +64,5 @@ private slots:
         QCoreApplication::removeTranslator(&translator);
     }
 };
-QTEST_MAIN(SetupAssistantTests)
+OKUFLOW_GUI_TEST_MAIN(SetupAssistantTests)
 #include "setup_assistant_tests.moc"

@@ -1,5 +1,6 @@
 #ifdef _WIN32
 #include "okuflow/app/windows_runtime_contract.hpp"
+#include "launcher_text.hpp"
 #include <windows.h>
 #include <shellapi.h>
 #include <commctrl.h>
@@ -9,23 +10,39 @@
 #endif
 
 namespace {
-const wchar_t* Text(const wchar_t* english, const wchar_t* turkish, const wchar_t* german) {
-    switch (PRIMARYLANGID(GetUserDefaultUILanguage())) {
-    case LANG_TURKISH: return turkish;
-    case LANG_GERMAN: return german;
-    default: return english;
-    }
+// The launcher runs before Qt and the saved app setting are available, so it
+// follows the Windows display language among OkuFlow's 25 UI languages.
+const okuflow::launcher::Language kLanguage =
+    okuflow::launcher::LanguageFromWindows(GetUserDefaultUILanguage());
+
+std::wstring Text(okuflow::launcher::Message message, const std::wstring& value = {}) {
+    std::wstring text = okuflow::launcher::Translate(kLanguage, message);
+    const std::size_t placeholder = text.find(L"%1");
+    if (placeholder != std::wstring::npos) text.replace(placeholder, 2, value);
+    return text;
 }
-void Inform(const wchar_t* heading, const std::wstring& message) {
-    TaskDialog(nullptr, nullptr, L"OkuFlow", heading, message.c_str(), TDCBF_OK_BUTTON, TD_WARNING_ICON, nullptr);
+int Show(const std::wstring& heading, const std::wstring& message,
+         TASKDIALOG_COMMON_BUTTON_FLAGS buttons, PCWSTR icon) {
+    TASKDIALOGCONFIG config{};
+    config.cbSize = sizeof(config);
+    config.dwFlags = okuflow::launcher::IsRightToLeft(kLanguage) ? TDF_RTL_LAYOUT : 0;
+    config.dwCommonButtons = buttons;
+    config.pszWindowTitle = L"OkuFlow";
+    config.pszMainIcon = icon;
+    config.pszMainInstruction = heading.c_str();
+    config.pszContent = message.c_str();
+    int button = 0;
+    return SUCCEEDED(TaskDialogIndirect(&config, &button, nullptr, nullptr)) ? button : 0;
+}
+void Inform(const std::wstring& heading, const std::wstring& message) {
+    Show(heading, message, TDCBF_OK_BUTTON, TD_WARNING_ICON);
 }
 
 bool PrepareWindowsRuntime(const std::wstring& directory) {
     if (okuflow::IsSystemWindowsRuntimeReady()) return true;
-    int button = 0;
-    TaskDialog(nullptr, nullptr, L"OkuFlow", Text(L"Install the Microsoft Windows runtime", L"Microsoft Windows çalışma zamanını kurun", L"Microsoft Windows-Laufzeit installieren"),
-               Text(L"OkuFlow needs Microsoft's Windows libraries. The installer is included in this package. Select OK to install them. Windows may ask for administrator approval.", L"OkuFlow, Microsoft Windows kitaplıklarına ihtiyaç duyar. Yükleyici bu pakete dahildir. Kurmak için Tamam’ı seçin. Windows yönetici onayı isteyebilir.", L"OkuFlow benötigt Microsofts Windows-Bibliotheken. Das Installationsprogramm ist in diesem Paket enthalten. Wählen Sie OK zur Installation. Windows kann Administratorrechte anfordern."),
-               TDCBF_OK_BUTTON | TDCBF_CANCEL_BUTTON, TD_INFORMATION_ICON, &button);
+    using okuflow::launcher::Message;
+    const int button = Show(Text(Message::InstallTitle), Text(Message::InstallBody),
+                            TDCBF_OK_BUTTON | TDCBF_CANCEL_BUTTON, TD_INFORMATION_ICON);
     if (button != IDOK) return false;
 
     // Convert the exact unique file owned by GetTempFileName into a private
@@ -34,7 +51,7 @@ bool PrepareWindowsRuntime(const std::wstring& directory) {
     const DWORD length = GetTempPathW(MAX_PATH, temporaryRoot);
     if (!length || length >= MAX_PATH || !GetTempFileNameW(temporaryRoot, L"Oku", 0, temporaryName) ||
         !DeleteFileW(temporaryName) || !CreateDirectoryW(temporaryName, nullptr)) {
-        Inform(Text(L"Could not prepare installation", L"Kurulum hazırlanamadı", L"Installation konnte nicht vorbereitet werden"), Text(L"The temporary installer directory could not be created.", L"Geçici yükleyici klasörü oluşturulamadı.", L"Der temporäre Installationsordner konnte nicht erstellt werden."));
+        Inform(Text(Message::PrepareFailedTitle), Text(Message::PrepareFailedBody));
         return false;
     }
     const std::wstring installer = std::wstring(temporaryName) + L"\\vc_redist.x64.exe";
@@ -42,7 +59,7 @@ bool PrepareWindowsRuntime(const std::wstring& directory) {
     if (!CopyFileW((directory + L"\\vc_redist.x64.exe").c_str(), installer.c_str(), TRUE) ||
         !okuflow::VerifyWindowsRuntimeInstallerFile(installer)) {
         cleanup();
-        Inform(Text(L"Installer verification failed", L"Yükleyici doğrulanamadı", L"Überprüfung des Installationsprogramms fehlgeschlagen"), Text(L"Download and extract the complete OkuFlow ZIP again.", L"Tam OkuFlow ZIP paketini yeniden indirip çıkarın.", L"Laden Sie das vollständige OkuFlow-ZIP erneut herunter und entpacken Sie es."));
+        Inform(Text(Message::VerificationFailedTitle), Text(Message::VerificationFailedBody));
         return false;
     }
     if (okuflow::IsSystemWindowsRuntimeReady()) { cleanup(); return true; }
@@ -56,7 +73,7 @@ bool PrepareWindowsRuntime(const std::wstring& directory) {
     if (!ShellExecuteExW(&execute) || !execute.hProcess) {
         const DWORD error = GetLastError();
         cleanup();
-        if (error != ERROR_CANCELLED) Inform(Text(L"Installation could not start", L"Kurulum başlatılamadı", L"Installation konnte nicht gestartet werden"), std::wstring(Text(L"Windows installer error: ", L"Windows yükleyicisi hatası: ", L"Windows-Installationsfehler: ")) + std::to_wstring(error));
+        if (error != ERROR_CANCELLED) Inform(Text(Message::StartFailedTitle), Text(Message::StartFailedBody, std::to_wstring(error)));
         return false;
     }
     DWORD exitCode = 0;
@@ -69,11 +86,11 @@ bool PrepareWindowsRuntime(const std::wstring& directory) {
                              : okuflow::WindowsRuntimeInstallResult::Failed;
     if (result == okuflow::WindowsRuntimeInstallResult::Canceled) return false;
     if (result == okuflow::WindowsRuntimeInstallResult::RestartRequired && !ready) {
-        Inform(Text(L"Restart Windows to finish setup", L"Kurulumu bitirmek için Windows’u yeniden başlatın", L"Windows neu starten, um die Einrichtung abzuschließen"), Text(L"Installation completed. Restart Windows when convenient, then open OkuFlow again.", L"Kurulum tamamlandı. Uygun olduğunda Windows’u yeniden başlatın, ardından OkuFlow’u tekrar açın.", L"Die Installation ist abgeschlossen. Starten Sie Windows bei Gelegenheit neu und öffnen Sie OkuFlow erneut."));
+        Inform(Text(Message::RestartTitle), Text(Message::RestartBody));
         return false;
     }
     if (result == okuflow::WindowsRuntimeInstallResult::Failed || !ready) {
-        Inform(Text(L"Installation did not complete", L"Kurulum tamamlanmadı", L"Installation wurde nicht abgeschlossen"), std::wstring(Text(L"Microsoft installer exit code: ", L"Microsoft yükleyicisi çıkış kodu: ", L"Microsoft-Installationsprogramm: Rückgabecode ")) + std::to_wstring(exitCode) + Text(L". You can run OkuFlow again to retry.", L". Yeniden denemek için OkuFlow’u tekrar açabilirsiniz.", L". Öffnen Sie OkuFlow erneut, um es noch einmal zu versuchen."));
+        Inform(Text(Message::IncompleteTitle), Text(Message::IncompleteBody, std::to_wstring(exitCode)));
         return false;
     }
     return true;
@@ -82,8 +99,10 @@ bool PrepareWindowsRuntime(const std::wstring& directory) {
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const auto directory = okuflow::WindowsExecutableDirectory();
-    if (directory.empty() || !PrepareWindowsRuntime(directory)) return 1;
-    const std::wstring application = directory + L"\\OkuFlowApp.exe";
+    if (directory.empty()) return 1;
+    const auto payload = okuflow::WindowsRuntimePayloadDirectory(directory);
+    if (!PrepareWindowsRuntime(payload)) return 1;
+    const std::wstring application = payload + L"\\OkuFlowApp.exe";
     int count = 0;
     auto arguments = CommandLineToArgvW(GetCommandLineW(), &count);
     if (!arguments) return 1;
@@ -106,8 +125,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     PROCESS_INFORMATION process{};
     if (!CreateProcessW(application.c_str(), command.data(), nullptr, nullptr, redirected,
                         CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process)) {
-        Inform(Text(L"OkuFlow could not open", L"OkuFlow açılamadı", L"OkuFlow konnte nicht geöffnet werden"), std::wstring(Text(L"Windows error: ", L"Windows hatası: ", L"Windows-Fehler: ")) + std::to_wstring(GetLastError()) +
-               Text(L". Keep OkuFlowApp.exe and the other files from the ZIP beside oku_flow.exe.", L". OkuFlowApp.exe ve ZIP paketindeki diğer dosyaları oku_flow.exe ile aynı klasörde tutun.", L". Lassen Sie OkuFlowApp.exe und die anderen ZIP-Dateien neben oku_flow.exe."));
+        const DWORD error = GetLastError();
+        Inform(Text(okuflow::launcher::Message::OpenFailedTitle),
+               Text(okuflow::launcher::Message::OpenFailedBody, std::to_wstring(error)));
         return 1;
     }
     CloseHandle(process.hThread);

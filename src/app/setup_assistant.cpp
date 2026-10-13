@@ -151,9 +151,7 @@ void SetDependencyStatus(SetupAssistantDialog::DependencyRow& row,
                          bool installed,
                          const QString& text) {
     row.statusIcon->setText(installed ? QStringLiteral("\u2713") : QStringLiteral("\u2715"));
-    row.statusIcon->setStyleSheet(installed
-                                      ? QStringLiteral("color: #33d17a;")
-                                      : QStringLiteral("color: #ff6b6b;"));
+    row.statusIcon->setStyleSheet(QStringLiteral("color: palette(window-text);"));
     row.statusIcon->setAccessibleName(installed
                                           ? QStringLiteral("Installed")
                                           : QStringLiteral("Not installed"));
@@ -163,7 +161,7 @@ void SetDependencyStatus(SetupAssistantDialog::DependencyRow& row,
 
 void SetDependencyProgress(SetupAssistantDialog::DependencyRow& row, const QString& text) {
     row.statusIcon->setText(QStringLiteral("\u2026"));
-    row.statusIcon->setStyleSheet(QStringLiteral("color: #f6c85f;"));
+    row.statusIcon->setStyleSheet(QStringLiteral("color: palette(window-text);"));
     row.statusIcon->setAccessibleName(QStringLiteral("Setup in progress"));
     SetLiveText(row.status, text, LivePoliteness::kPolite,
                 QStringLiteral("Setup progress"));

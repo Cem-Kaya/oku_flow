@@ -1,8 +1,10 @@
+#include "gui_test_support.hpp"
 #include "okuflow/app/app.hpp"
 #include "okuflow/app/language_manager.hpp"
 #include "okuflow/ui/assistive_overlay.hpp"
 #include "okuflow/ui/collapsible_section.hpp"
 #include "okuflow/ui/main_window.hpp"
+#include "okuflow/ui/theme_contrast.hpp"
 #include "okuflow/ui/ui_translation.hpp"
 
 #include <QApplication>
@@ -20,7 +22,10 @@
 #include <QListWidget>
 #include <QMap>
 #include <QMouseEvent>
+#include <QAction>
+#include <QPalette>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScreen>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -56,30 +61,7 @@ void OkuFlowApp::EndMousePan() { qFatal("Unexpected app interaction"); }
 
 namespace {
 
-// Qt can report an active fixture while Windows still owns foreground input
-// elsewhere. Acquire native focus in this serial, interactive-desktop test
-// harness; do not ask a person to click test windows and do not weaken checks.
-bool ActivateFixtureWindow(QWidget* widget)
-{
-    QWidget* window = widget->window();
-    window->raise();
-    const HWND handle = reinterpret_cast<HWND>(window->winId());
-    const DWORD thread = GetCurrentThreadId();
-    const DWORD foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
-    const bool attached = foregroundThread && foregroundThread != thread &&
-                          AttachThreadInput(thread, foregroundThread, TRUE);
-    SetForegroundWindow(handle);
-    SetActiveWindow(handle);
-    window->activateWindow();
-    if (attached) AttachThreadInput(thread, foregroundThread, FALSE);
-    for (int attempt = 0; attempt < 50; ++attempt) {
-        QTest::qWait(20);
-        if (GetForegroundWindow() == handle && window->isActiveWindow()) return true;
-    }
-    qWarning() << "Native fixture activation failed:" << window->objectName()
-               << "requested" << handle << "foreground" << GetForegroundWindow();
-    return false;
-}
+using test::ActivateFixtureWindow;
 
 template <typename T>
 T* Named(MainWindow& window, const char* name)
@@ -144,6 +126,112 @@ void AddQuickModes(MainWindow& window)
     list->setCurrentRow(0);
 }
 
+// Deterministic light/dark fixture palettes. Disabled roles start deliberately
+// unreadable so the window's scheme-aware override is what makes them pass.
+QPalette SchemePalette(bool light)
+{
+    QPalette palette = QApplication::palette();
+    const auto set = [&palette](QPalette::ColorRole role, const char* hex) {
+        palette.setColor(role, QColor(QString::fromLatin1(hex)));
+    };
+    if (light) {
+        set(QPalette::Window, "#f3f3f3"); set(QPalette::WindowText, "#000000");
+        set(QPalette::Base, "#ffffff"); set(QPalette::AlternateBase, "#e9e9e9");
+        set(QPalette::Text, "#000000"); set(QPalette::Button, "#fbfbfb");
+        set(QPalette::ButtonText, "#000000"); set(QPalette::Highlight, "#005da6");
+        set(QPalette::HighlightedText, "#ffffff"); set(QPalette::Mid, "#8a8a8a");
+        set(QPalette::Midlight, "#e3e3e3"); set(QPalette::Light, "#ffffff");
+        set(QPalette::Dark, "#6d6d6d"); set(QPalette::Shadow, "#000000");
+        set(QPalette::PlaceholderText, "#767676"); set(QPalette::BrightText, "#ffffff");
+        set(QPalette::ToolTipBase, "#ffffff"); set(QPalette::ToolTipText, "#000000");
+        set(QPalette::Link, "#005da6");
+        const QColor faint(QStringLiteral("#c8c8c8"));
+        palette.setColor(QPalette::Disabled, QPalette::WindowText, faint);
+        palette.setColor(QPalette::Disabled, QPalette::ButtonText, faint);
+        palette.setColor(QPalette::Disabled, QPalette::Text, faint);
+    } else {
+        set(QPalette::Window, "#202020"); set(QPalette::WindowText, "#ffffff");
+        set(QPalette::Base, "#2b2b2b"); set(QPalette::AlternateBase, "#353535");
+        set(QPalette::Text, "#ffffff"); set(QPalette::Button, "#2b2b2b");
+        set(QPalette::ButtonText, "#ffffff"); set(QPalette::Highlight, "#005da6");
+        set(QPalette::HighlightedText, "#ffffff"); set(QPalette::Mid, "#5a5a5a");
+        set(QPalette::Midlight, "#3a3a3a"); set(QPalette::Light, "#4a4a4a");
+        set(QPalette::Dark, "#141414"); set(QPalette::Shadow, "#000000");
+        set(QPalette::PlaceholderText, "#8a8a8a"); set(QPalette::BrightText, "#ffffff");
+        set(QPalette::ToolTipBase, "#2b2b2b"); set(QPalette::ToolTipText, "#ffffff");
+        set(QPalette::Link, "#4cc2ff");
+        const QColor faint(QStringLiteral("#404040"));
+        palette.setColor(QPalette::Disabled, QPalette::WindowText, faint);
+        palette.setColor(QPalette::Disabled, QPalette::ButtonText, faint);
+        palette.setColor(QPalette::Disabled, QPalette::Text, faint);
+    }
+    return palette;
+}
+
+QRect ScaledWidgetRect(QWidget* widget, QWidget* window, const QImage& image,
+                       int insetLogical, int leftTrimLogical = 0)
+{
+    const qreal ratio = image.devicePixelRatio();
+    const QPoint topLeft = widget->mapTo(window, QPoint(0, 0));
+    QRect rect(QPointF(topLeft.x() * ratio, topLeft.y() * ratio).toPoint(),
+               QSizeF(widget->width() * ratio, widget->height() * ratio).toSize());
+    const int inset = static_cast<int>(insetLogical * ratio);
+    rect.adjust(inset + static_cast<int>(leftTrimLogical * ratio), inset, -inset, -inset);
+    return rect.intersected(image.rect());
+}
+
+// Counts pixels readable (>= minimumRatio) against the region's majority
+// color, so white text on a near-white surface scores zero.
+int ReadablePixelCount(const QImage& image, const QRect& region, double minimumRatio)
+{
+    QMap<QRgb, int> histogram;
+    for (int y = region.top(); y <= region.bottom(); ++y) {
+        for (int x = region.left(); x <= region.right(); ++x) {
+            ++histogram[image.pixel(x, y)];
+        }
+    }
+    if (histogram.isEmpty()) return 0;
+    QRgb background = histogram.firstKey();
+    for (auto it = histogram.begin(); it != histogram.end(); ++it) {
+        if (it.value() > histogram.value(background)) background = it.key();
+    }
+    int readable = 0;
+    for (auto it = histogram.begin(); it != histogram.end(); ++it) {
+        if (theme_contrast::ContrastRatio(QColor(it.key()), QColor(background)) >= minimumRatio) {
+            readable += it.value();
+        }
+    }
+    return readable;
+}
+
+QColor StyleSheetColor(const QString& styleSheet)
+{
+    const QRegularExpressionMatch match =
+        QRegularExpression(QStringLiteral("color:\\s*(#[0-9a-fA-F]{6})")).match(styleSheet);
+    return match.hasMatch() ? QColor(match.captured(1)) : QColor();
+}
+
+QColor IconInkColor(const QIcon& icon, int* inkPixels)
+{
+    const QImage image = icon.pixmap(QSize(48, 48)).toImage()
+                             .convertToFormat(QImage::Format_ARGB32);
+    long long red = 0, green = 0, blue = 0;
+    *inkPixels = 0;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QColor pixel = image.pixelColor(x, y);
+            if (pixel.alpha() >= 200) {
+                red += pixel.red(); green += pixel.green(); blue += pixel.blue();
+                ++(*inkPixels);
+            }
+        }
+    }
+    if (*inkPixels == 0) return QColor();
+    return QColor(static_cast<int>(red / *inkPixels),
+                  static_cast<int>(green / *inkPixels),
+                  static_cast<int>(blue / *inkPixels));
+}
+
 // These screenshots intentionally use a camera-free window. Mirror the app's
 // initial language/Zoom state so the fixture does not depict inactive controls
 // as enabled or display English as the selected language in translated images.
@@ -202,6 +290,8 @@ private slots:
     void desktopZoomSliderReachesSixteenX();
     void textClarityMasterPreservesRefinements();
     void disabledSlidersHaveDistinctAppearance();
+    void inspectorContrastAppearance_data();
+    void inspectorContrastAppearance();
     void searchIconsStayInsideFields();
     void gridBrowsingRequiresDeliberateActivation();
     void carouselUsesAppliedModeDuringGridBrowse();
@@ -289,7 +379,7 @@ void MainWindowTests::modesGridSearchAndGeometry()
     AddQuickModes(window);
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QCoreApplication::processEvents();
     QVERIFY(window.isSimpleMode());
@@ -301,7 +391,7 @@ void MainWindowTests::modesGridSearchAndGeometry()
     QVERIFY(gridButton && grid && current);
     SaveScreenshot(window, code + QStringLiteral("-simple"));
 
-    QVERIFY(ActivateFixtureWindow(gridButton));
+    QVERIFY2(ActivateFixtureWindow(gridButton), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(gridButton->window()));
     QTest::mouseClick(gridButton, Qt::LeftButton);
     QTRY_VERIFY(grid->isVisible());
@@ -310,9 +400,7 @@ void MainWindowTests::modesGridSearchAndGeometry()
     SaveScreenshot(window, code + QStringLiteral("-grid"));
     QTest::keyClick(window.presetList(), Qt::Key_Escape);
     QTRY_VERIFY(!grid->isVisible());
-    for (int attempt = 0; attempt < 75 && !current->hasFocus(); ++attempt) {
-        QTest::qWait(20);
-    }
+    const bool restoredFocus = QTest::qWaitFor([&] { return current->hasFocus(); }, 1500);
     QWidget* focus = QApplication::focusWidget();
     QWidget* active = QApplication::activeWindow();
     DWORD foregroundProcess = 0;
@@ -328,7 +416,7 @@ void MainWindowTests::modesGridSearchAndGeometry()
         .arg(active ? active->objectName() : QStringLiteral("<none>"))
         .arg(foregroundProcess).arg(GetCurrentProcessId())
         .arg(QString::fromWCharArray(foregroundClass));
-    QVERIFY2(current->hasFocus(), qPrintable(focusDetails));
+    QVERIFY2(restoredFocus, qPrintable(focusDetails));
 
     QTest::keyClick(&window, Qt::Key_2);
     QCOMPARE(window.presetList()->currentRow(), 1);
@@ -553,6 +641,141 @@ void MainWindowTests::disabledSlidersHaveDistinctAppearance()
     }
 }
 
+void MainWindowTests::inspectorContrastAppearance_data()
+{
+    QTest::addColumn<bool>("light");
+    QTest::newRow("light") << true;
+    QTest::newRow("dark") << false;
+}
+
+void MainWindowTests::inspectorContrastAppearance()
+{
+    QFETCH(bool, light);
+    auto* application = qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application);
+    const QPalette originalPalette = application->palette();
+    const auto restorePalette = qScopeGuard(
+        [&application, &originalPalette]() { application->setPalette(originalPalette); });
+    application->setPalette(SchemePalette(light));
+
+    MainWindow window;
+    window.setAttribute(Qt::WA_DontShowOnScreen);
+    AddQuickModes(window);
+    window.resize(1280, 720);
+    window.show();
+    window.setSimpleMode(false);
+    auto expanded = window.sectionStates();
+    for (auto it = expanded.begin(); it != expanded.end(); ++it) it.value() = true;
+    window.setSectionStates(expanded);
+    QCoreApplication::processEvents();
+
+    const auto readableOn = [](const QColor& text, const QColor& surface) {
+        return text.isValid() && theme_contrast::ContrastRatio(text, surface) >= 4.5;
+    };
+    const auto verifyPaletteRoles = [&readableOn](const QPalette& palette) {
+        QVERIFY2(readableOn(palette.color(QPalette::Disabled, QPalette::WindowText),
+                            palette.color(QPalette::Active, QPalette::Window)),
+                 "Disabled window text is unreadable");
+        QVERIFY2(readableOn(palette.color(QPalette::Disabled, QPalette::ButtonText),
+                            palette.color(QPalette::Active, QPalette::Button)),
+                 "Disabled button text is unreadable");
+        QVERIFY2(readableOn(palette.color(QPalette::Disabled, QPalette::Text),
+                            palette.color(QPalette::Active, QPalette::Base)),
+                 "Disabled field text is unreadable");
+        QVERIFY2(readableOn(palette.color(QPalette::Active, QPalette::PlaceholderText),
+                            palette.color(QPalette::Active, QPalette::Base)),
+                 "Placeholder text is unreadable");
+    };
+    verifyPaletteRoles(window.palette());
+
+    auto* summary = Named<QLabel>(window, "currentModeSummaryLabel");
+    QVERIFY(summary && !summary->text().isEmpty());
+    QToolButton* header = nullptr;
+    for (auto* button : window.findChildren<QToolButton*>()) {
+        if (button->objectName() == QStringLiteral("collapsibleHeader") &&
+            button->isVisible() && button->isChecked() &&
+            window.rect().intersects(QRect(button->mapTo(&window, QPoint()), button->size()))) {
+            header = button;
+            break;
+        }
+    }
+    QVERIFY2(header, "No visible expanded section header");
+    QLabel* subtitle = nullptr;
+    for (auto* label : window.findChildren<QLabel*>()) {
+        if (label->objectName() == QStringLiteral("scopeSubtitle") && label->isVisible() &&
+            !label->text().isEmpty()) {
+            subtitle = label;
+            break;
+        }
+    }
+    QVERIFY2(subtitle, "No visible scope subtitle");
+
+    const auto verifyGrabbedText = [&window](QWidget* headerWidget, QWidget* summaryWidget,
+                                             QWidget* subtitleWidget) {
+        QCoreApplication::processEvents();
+        const QImage shot = window.grab().toImage().convertToFormat(QImage::Format_RGB32);
+        // The header crop skips its arrow so only the title text can pass.
+        QVERIFY2(ReadablePixelCount(shot, ScaledWidgetRect(headerWidget, &window, shot, 4, 30), 4.5) >= 12,
+                 "Expanded section header text is unreadable in this scheme");
+        QVERIFY2(ReadablePixelCount(shot, ScaledWidgetRect(summaryWidget, &window, shot, 2), 4.5) >= 12,
+                 "Current quick-mode name is unreadable in this scheme");
+        QVERIFY2(ReadablePixelCount(shot, ScaledWidgetRect(subtitleWidget, &window, shot, 2), 4.5) >= 12,
+                 "Scope subtitle is unreadable in this scheme");
+    };
+    verifyGrabbedText(header, summary, subtitle);
+
+    auto* warning = window.cameraFormatNoticeLabel();
+    QVERIFY(warning);
+    QVERIFY2(readableOn(StyleSheetColor(warning->styleSheet()),
+                        window.palette().color(QPalette::Active, QPalette::Window)),
+             "Format warning color is unreadable in this scheme");
+
+    auto* status = Named<QLabel>(window, "featureStatusLabel");
+    QVERIFY(status);
+    const QColor windowSurface = window.palette().color(QPalette::Active, QPalette::Window);
+    window.setSuperResStatus(QStringLiteral("Off"), false);
+    QVERIFY2(readableOn(StyleSheetColor(status->styleSheet()), windowSurface),
+             "SuperRes Off status is unreadable in this scheme");
+    window.setSuperResStatus(QStringLiteral("Active"), true);
+    QVERIFY2(readableOn(StyleSheetColor(status->styleSheet()), windowSurface),
+             "SuperRes active status is unreadable in this scheme");
+    window.setSuperResStatus(QStringLiteral("Unavailable"), false);
+    QVERIFY2(readableOn(StyleSheetColor(status->styleSheet()), windowSurface),
+             "SuperRes warning status is unreadable in this scheme");
+
+    const auto verifyIconInk = [&window](const QIcon& icon, const QColor& surface,
+                                         const char* what) {
+        int inkPixels = 0;
+        const QColor ink = IconInkColor(icon, &inkPixels);
+        QVERIFY2(inkPixels > 0 && theme_contrast::ContrastRatio(ink, surface) >= 3.0, what);
+    };
+    auto* search = Named<QLineEdit>(window, "imageSettingsSearch");
+    QVERIFY(search && !search->actions().isEmpty());
+    verifyIconInk(search->actions().constFirst()->icon(),
+                  window.palette().color(QPalette::Active, QPalette::Base),
+                  "Search icon ink is unreadable in this scheme");
+    verifyIconInk(window.capturePhotoButton()->icon(),
+                  window.palette().color(QPalette::Active, QPalette::Button),
+                  "Photo icon ink is unreadable in this scheme");
+
+    // An OS scheme switch after startup must re-derive every paired color.
+    application->setPalette(SchemePalette(!light));
+    QCoreApplication::processEvents();
+    verifyPaletteRoles(window.palette());
+    QVERIFY2(theme_contrast::IsLightTheme(window.palette()) != light,
+             "Window did not follow the switched scheme");
+    verifyGrabbedText(header, summary, subtitle);
+    QVERIFY2(readableOn(StyleSheetColor(warning->styleSheet()),
+                        window.palette().color(QPalette::Active, QPalette::Window)),
+             "Format warning color is unreadable after the scheme switch");
+    QVERIFY2(readableOn(StyleSheetColor(status->styleSheet()),
+                        window.palette().color(QPalette::Active, QPalette::Window)),
+             "SuperRes status color is unreadable after the scheme switch");
+    verifyIconInk(search->actions().constFirst()->icon(),
+                  window.palette().color(QPalette::Active, QPalette::Base),
+                  "Search icon ink is unreadable after the scheme switch");
+}
+
 void MainWindowTests::searchIconsStayInsideFields()
 {
     MainWindow window;
@@ -588,7 +811,7 @@ void MainWindowTests::gridBrowsingRequiresDeliberateActivation()
     AddQuickModes(window);
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(&window));
     auto* gridButton = Named<QToolButton>(window, "modeGridButton");
     auto* grid = Named<QWidget>(window, "modeGridPopup");
@@ -597,7 +820,7 @@ void MainWindowTests::gridBrowsingRequiresDeliberateActivation()
     QSignalSpy activated(&window, &MainWindow::quickModeActivated);
     const QString appliedLabel = current->text();
 
-    QVERIFY(ActivateFixtureWindow(gridButton));
+    QVERIFY2(ActivateFixtureWindow(gridButton), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(gridButton->window()));
     QTest::mouseClick(gridButton, Qt::LeftButton);
     QTRY_VERIFY(grid->isVisible());
@@ -666,6 +889,14 @@ void MainWindowTests::carouselUsesAppliedModeDuringGridBrowse()
     QCOMPARE(window.presetList()->currentRow(), 1);
     QCOMPARE(current->text(), QStringLiteral("High contrast"));
     QVERIFY(!grid->isVisible());
+
+    // Custom has no selected row. Previous should wrap to the last quick mode.
+    window.presetList()->clearSelection();
+    window.presetList()->setCurrentItem(nullptr);
+    QCOMPARE(window.presetList()->currentRow(), -1);
+    Named<QPushButton>(window, "previousModeButton")->click();
+    QTRY_COMPARE(activated.size(), 2);
+    QCOMPARE(activated.at(1).at(0).toInt(), window.presetList()->count() - 1);
 }
 
 void MainWindowTests::searchCanHandoffBetweenTabs()
@@ -765,7 +996,7 @@ void MainWindowTests::keyboardRegionsAndFindShortcut()
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(&window));
     auto* gridButton = Named<QToolButton>(window, "modeGridButton");
     auto* tabs = Named<QTabWidget>(window, "advancedPage");
@@ -786,20 +1017,20 @@ void MainWindowTests::keyboardRegionsAndFindShortcut()
     QTest::keyClick(gridButton, Qt::Key_F6, Qt::ShiftModifier);
     QTRY_VERIFY(window.simpleModeButton()->hasFocus());
 
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     QTest::keyClick(&window, Qt::Key_F, Qt::ControlModifier);
     QTRY_VERIFY(!window.isSimpleMode());
     QCOMPARE(tabs->currentWidget(), image);
     QTRY_VERIFY(imageSearch->hasFocus());
 
     tabs->setCurrentWidget(settings);
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     QTest::keyClick(tabs, Qt::Key_F, Qt::ControlModifier);
     QCOMPARE(tabs->currentWidget(), settings);
     QTRY_VERIFY(sharedSearch->hasFocus());
 
     tabs->setCurrentWidget(assistant);
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     QTest::keyClick(tabs, Qt::Key_F, Qt::ControlModifier);
     QCOMPARE(tabs->currentWidget(), image);
     QTRY_VERIFY(imageSearch->hasFocus());
@@ -821,7 +1052,7 @@ void MainWindowTests::assistantInspectorTabTraversal()
     auto* attach = window.assistantAttachFrameCheckbox();
     auto* newConversation = window.assistantNewButton();
     QVERIFY(attach && newConversation && attach->isVisible() && newConversation->isVisible());
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     attach->setFocus();
     QTRY_VERIFY(attach->hasFocus());
     QTest::keyClick(attach, Qt::Key_Tab);
@@ -914,12 +1145,10 @@ void MainWindowTests::minimumViewportChromeFits()
         it.value() = true;
     }
     window.setSectionStates(expanded);
-    QTest::qWait(25);
-    for (int attempt = 0;
-         attempt < 50 && imageScroll->widget()->width() > imageScroll->viewport()->width() + 1;
-         ++attempt) {
-        QTest::qWait(20);
-    }
+    QCoreApplication::processEvents();
+    const bool widthSettled = QTest::qWaitFor([&] {
+        return imageScroll->widget()->width() <= imageScroll->viewport()->width() + 1;
+    }, 1000);
     QList<QPair<int, QString>> widthConstraints;
     for (auto* child : imageScroll->widget()->findChildren<QWidget*>()) {
         if (!child->isVisible() || child->window() != &window) continue;
@@ -951,7 +1180,7 @@ void MainWindowTests::minimumViewportChromeFits()
         .arg(imageScroll->widget()->width())
         .arg(imageScroll->viewport()->width())
         .arg(widest.join(QStringLiteral(", ")));
-    QVERIFY2(imageScroll->widget()->width() <= imageScroll->viewport()->width() + 1,
+    QVERIFY2(widthSettled,
              qPrintable(widthDetails));
     const int viewportWidth = imageScroll->viewport()->width();
     for (auto* widget : imageScroll->widget()->findChildren<QWidget*>()) {
@@ -1199,7 +1428,7 @@ void MainWindowTests::mouseFocusedChromeCanIdleFade()
     auto* idle = Named<QTimer>(window, "simpleChromeIdleTimer");
     QVERIFY(top && idle);
     QTRY_VERIFY(top->isVisible());
-    QVERIFY(ActivateFixtureWindow(top));
+    QVERIFY2(ActivateFixtureWindow(top), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(top));
     // QWidget mouseClick injects Qt events without moving the native cursor.
     // Keep those events and FadeSimpleChrome's actual cursor baseline aligned.
@@ -1226,7 +1455,7 @@ void MainWindowTests::mouseFocusedChromeCanIdleFade()
     QVERIFY(QMetaObject::invokeMethod(idle, "timeout", Qt::DirectConnection));
     QTRY_VERIFY(!top->isVisible());
     QTest::qWait(300);
-    QVERIFY2(pointerIsStationary(), "Native pointer moved during the idle fixture");
+    QVERIFY2(pointerIsStationary(), "OKUFLOW_DESKTOP_INTERRUPTED: native pointer moved during the idle fixture");
     QVERIFY(!top->isVisible());
 
     // Hover changes caused by hiding native panels are not pointer input.
@@ -1247,7 +1476,7 @@ void MainWindowTests::mouseFocusedChromeCanIdleFade()
         Qt::NoButton, Qt::NoButton, Qt::NoModifier);
     QCoreApplication::sendEvent(window.renderWidget(), &fractionalStationary);
     QTest::qWait(100);
-    QVERIFY2(pointerIsStationary(), "Native pointer moved during stationary input");
+    QVERIFY2(pointerIsStationary(), "OKUFLOW_DESKTOP_INTERRUPTED: native pointer moved during stationary input");
     QVERIFY(!top->isVisible());
     QCOMPARE(QGuiApplication::applicationState(), Qt::ApplicationActive);
 
@@ -1272,7 +1501,7 @@ void MainWindowTests::unrelatedNativeInputCannotRevealChrome()
     NativeInputWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(&window));
     auto* top = Named<QWidget>(window, "topLeftPanel");
     auto* idle = Named<QTimer>(window, "simpleChromeIdleTimer");
@@ -1309,7 +1538,7 @@ void MainWindowTests::keyboardFocusedChromeSurvivesNativeHandoff()
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(&window));
     auto* top = Named<QWidget>(window, "topLeftPanel");
     auto* bottomLeft = Named<QWidget>(window, "bottomLeftPanel");
@@ -1342,11 +1571,11 @@ void MainWindowTests::simpleBackwardFocusCrossesPanels()
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(&window));
     auto* gridButton = Named<QToolButton>(window, "modeGridButton");
     QVERIFY(gridButton);
-    QVERIFY(ActivateFixtureWindow(gridButton));
+    QVERIFY2(ActivateFixtureWindow(gridButton), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(gridButton->window()));
     gridButton->setFocus();
     QTRY_VERIFY(gridButton->hasFocus());
@@ -1360,7 +1589,7 @@ void MainWindowTests::modalDialogKeepsTabAndNumberKeys()
     AddQuickModes(window);
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
-    QVERIFY(ActivateFixtureWindow(&window));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QDialog dialog(&window);
     dialog.setModal(true);
@@ -1383,5 +1612,5 @@ void MainWindowTests::modalDialogKeepsTabAndNumberKeys()
 
 } // namespace okuflow
 
-QTEST_MAIN(okuflow::MainWindowTests)
+OKUFLOW_GUI_TEST_MAIN(okuflow::MainWindowTests)
 #include "main_window_tests.moc"

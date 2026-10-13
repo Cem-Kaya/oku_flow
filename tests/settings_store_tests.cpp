@@ -201,6 +201,8 @@ private slots:
     void clampsOutOfRangeValues();
     void sixteenXZoomPreservesSettingsAndBoundsProfiles();
     void equivalenceUsesUiTolerances();
+    void presetIdentitySurvivesApplyTimeMutations();
+    void danglingPresetResolutionLeavesSelectionUnchanged();
 };
 
 void SettingsStoreTests::automaticFallbackPreservesPreferredCamera()
@@ -1443,8 +1445,89 @@ void SettingsStoreTests::equivalenceUsesUiTolerances()
     QVERIFY(!AreConfigsEquivalent(base, outside));
 
     outside = base;
+    // Legacy per-profile rotation is ignored: orientation now lives at the
+    // top level of PersistentSettings, so it must not split a preset match.
+    AdvancedConfig rotated = base;
+    rotated.rotationQuarterTurns = (base.rotationQuarterTurns + 1) % 4;
+    QVERIFY(AreConfigsEquivalent(base, rotated));
+
     outside.colorScheme.stops[1] = QColor(QStringLiteral("#010203"));
     QVERIFY(!AreConfigsEquivalent(base, outside));
+}
+
+void SettingsStoreTests::presetIdentitySurvivesApplyTimeMutations()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    SettingsController controller(path);
+
+    // A promoted custom preset is unique, so re-derivation cannot hide
+    // behind a coincidental built-in match.
+    const PresetDefinition preset = controller.PromoteCurrentConfig(
+        MakePopulatedConfig(), QStringLiteral("Apply Mutation Fixture"));
+    const auto resolved = controller.ResolvePreset(preset.id);
+    QVERIFY(resolved.has_value());
+
+    // Simulate beyond-tolerance values a preset apply can produce: a
+    // SuperRes minimum-zoom raise on a low-zoom preset and SuperRes forced
+    // off in a build without the Text-SR adapter.
+    AdvancedConfig live = *resolved;
+    live.rotationQuarterTurns = (live.rotationQuarterTurns + 1) % 4;
+    live.mlSuperResEnabled = false;
+    live.zoomAmount += 0.67f;
+    QVERIFY(!AreConfigsEquivalent(live, *resolved));
+    // Re-deriving identity from the mutated live config loses the preset.
+    QVERIFY(controller.MatchPreset(live, false) != preset.id);
+    QVERIFY(controller.Settings().selectedPresetId != preset.id);
+
+    // The clicked id, preserved through apply, stays authoritative.
+    controller.MutableSettings().selectedPresetId = preset.id;
+    QCOMPARE(controller.MatchPreset(live, true), preset.id);
+    QCOMPARE(controller.Settings().selectedPresetId, preset.id);
+    QCOMPARE(controller.Settings().currentConfig.id, preset.configId);
+
+    // Every built-in preset resolves, and a legacy-rotation-only difference
+    // neither breaks equivalence nor preserved identity.
+    for (const PresetDefinition& builtIn : BuiltInPresets()) {
+        const auto config = controller.ResolvePreset(builtIn.id);
+        QVERIFY2(config.has_value(), qPrintable(builtIn.id));
+        AdvancedConfig rotated = *config;
+        rotated.rotationQuarterTurns = (rotated.rotationQuarterTurns + 1) % 4;
+        QVERIFY2(AreConfigsEquivalent(*config, rotated),
+                 qPrintable(builtIn.id));
+        controller.MutableSettings().selectedPresetId = builtIn.id;
+        QCOMPARE(controller.MatchPreset(rotated, true), builtIn.id);
+    }
+}
+
+void SettingsStoreTests::danglingPresetResolutionLeavesSelectionUnchanged()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    SettingsController controller(path);
+    const QString selectedBefore = controller.Settings().selectedPresetId;
+    QVERIFY(!selectedBefore.isEmpty());
+
+    const PresetDefinition dangling{
+        QStringLiteral("custom-preset-dangling-fixture"),
+        QStringLiteral("Dangling Fixture"),
+        QStringLiteral("Points at a config that no longer exists."),
+        QStringLiteral("custom-config-missing-fixture"),
+        false};
+    controller.MutableSettings().customPresets.push_back(dangling);
+
+    QVERIFY(!controller.ResolvePreset(dangling.id).has_value());
+    QVERIFY(!controller.ResolvePreset(QString()).has_value());
+    QCOMPARE(controller.Settings().selectedPresetId, selectedBefore);
+
+    // Preserved matching must not honor an unresolvable selection; the app
+    // rolls the carousel/list back to the still-applied config instead.
+    controller.MutableSettings().selectedPresetId = dangling.id;
+    QVERIFY(controller.MatchPreset(controller.Settings().currentConfig, true) !=
+            dangling.id);
+    QVERIFY(controller.Settings().selectedPresetId != dangling.id);
 }
 
 } // namespace okuflow::settings

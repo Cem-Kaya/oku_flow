@@ -3,6 +3,7 @@
 #include "okuflow/capture/media_capture.hpp"
 
 #include <wrl/client.h>
+#include <mferror.h>
 #include <cstddef>
 #include <cstring>
 #include <limits>
@@ -52,11 +53,40 @@ bool IsSupportedCaptureLayout(const GUID& subtype, UINT width, UINT height,
         bytes <= std::numeric_limits<LONG>::max();
 }
 
+bool ResolveNv12DisplayAperture(IMFMediaType* type, UINT allocationWidth,
+                               UINT allocationHeight, UINT expectedWidth,
+                               UINT expectedHeight, CaptureAperture& aperture)
+{
+    if (!type) return false;
+    CaptureAperture candidate{0, 0, expectedWidth, expectedHeight};
+    for (const GUID& attribute : {MF_MT_MINIMUM_DISPLAY_APERTURE, MF_MT_GEOMETRIC_APERTURE}) {
+        UINT32 size = 0;
+        const HRESULT present = type->GetBlobSize(attribute, &size);
+        if (present == MF_E_ATTRIBUTENOTFOUND) continue;
+        if (FAILED(present) || size != sizeof(MFVideoArea)) return false;
+        MFVideoArea area{};
+        if (FAILED(type->GetBlob(attribute, reinterpret_cast<UINT8*>(&area), sizeof(area), nullptr)) ||
+            area.OffsetX.value < 0 || area.OffsetY.value < 0 ||
+            area.OffsetX.fract || area.OffsetY.fract || area.Area.cx <= 0 || area.Area.cy <= 0)
+            return false;
+        candidate = {static_cast<UINT>(area.OffsetX.value), static_cast<UINT>(area.OffsetY.value),
+                     static_cast<UINT>(area.Area.cx), static_cast<UINT>(area.Area.cy)};
+        break;
+    }
+    if (!candidate.width || !candidate.height ||
+        ((candidate.x | candidate.y | candidate.width | candidate.height) & 1u) ||
+        candidate.x > allocationWidth || candidate.y > allocationHeight ||
+        candidate.width > allocationWidth - candidate.x ||
+        candidate.height > allocationHeight - candidate.y) return false;
+    aperture = candidate;
+    return true;
+}
+
 bool CopyMappedCaptureTexture(const D3D11_MAPPED_SUBRESOURCE& mapped,
                               DXGI_FORMAT format, UINT allocationWidth,
                               UINT allocationHeight, UINT width, UINT height,
                               std::vector<std::uint8_t>& output, LONG& stride,
-                              GUID& subtype)
+                              GUID& subtype, UINT sourceX, UINT sourceY)
 {
     GUID packedSubtype{};
     if (format == DXGI_FORMAT_NV12) packedSubtype = MFVideoFormat_NV12;
@@ -64,20 +94,25 @@ bool CopyMappedCaptureTexture(const D3D11_MAPPED_SUBRESOURCE& mapped,
     else if (format == DXGI_FORMAT_B8G8R8A8_UNORM) packedSubtype = MFVideoFormat_ARGB32;
     else if (format == DXGI_FORMAT_R8G8B8A8_UNORM) packedSubtype = MFVideoFormat_RGB32;
     else return false;
-    if (!mapped.pData || width > allocationWidth || height > allocationHeight ||
+    if (!mapped.pData || sourceX > allocationWidth || sourceY > allocationHeight ||
+        width > allocationWidth - sourceX || height > allocationHeight - sourceY ||
         mapped.RowPitch > std::numeric_limits<LONG>::max() ||
         !IsSupportedCaptureLayout(packedSubtype, width, height, static_cast<LONG>(mapped.RowPitch))) return false;
     const bool nv12 = format == DXGI_FORMAT_NV12;
-    if (nv12 && (allocationHeight & 1)) return false;
+    if (nv12 && ((allocationHeight | sourceX | sourceY) & 1)) return false;
+    if (format == DXGI_FORMAT_YUY2 && (sourceX & 1)) return false;
+    const UINT pixelBytes = nv12 ? 1 : format == DXGI_FORMAT_YUY2 ? 2 : 4;
+    if ((std::uint64_t(sourceX) + width) * pixelBytes > mapped.RowPitch) return false;
     const std::size_t bytes = std::size_t(width) * (nv12 ? 1 : format == DXGI_FORMAT_YUY2 ? 2 : 4);
     const std::size_t rows = std::size_t(height) + (nv12 ? height / 2 : 0);
     if (rows > std::numeric_limits<std::size_t>::max() / bytes) return false;
     const auto* source = static_cast<const std::uint8_t*>(mapped.pData);
     std::vector<std::uint8_t> packed(bytes * rows);
     for (std::size_t row = 0; row < rows; ++row) {
-        const std::size_t sourceRow = nv12 && row >= height ? allocationHeight + row - height : row;
+        const std::size_t sourceRow = nv12 && row >= height
+            ? allocationHeight + sourceY / 2 + row - height : sourceY + row;
         auto* destination = packed.data() + row * bytes;
-        std::memcpy(destination, source + sourceRow * mapped.RowPitch, bytes);
+        std::memcpy(destination, source + sourceRow * mapped.RowPitch + std::size_t(sourceX) * pixelBytes, bytes);
         if (format == DXGI_FORMAT_R8G8B8A8_UNORM) {
             for (UINT x = 0; x < width; ++x) std::swap(destination[x * 4], destination[x * 4 + 2]);
         }

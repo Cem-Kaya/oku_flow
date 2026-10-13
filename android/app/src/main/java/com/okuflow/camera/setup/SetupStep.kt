@@ -67,6 +67,21 @@ enum class SetupStep(
     }
 }
 
+/** Public system screen for a setup panel's primary settings action. */
+enum class SetupSettingsTarget { AboutPhone, DeveloperOptions }
+
+/**
+ * Unknown/redacted debugging state is not proof that Developer options exist.
+ * Opening that hidden activity can succeed but immediately finish with an OEM
+ * toast, so exception-based fallback cannot fix it. Start at About phone;
+ * connection help also exposes a separate explicit Developer options shortcut.
+ */
+fun primarySetupSettingsTarget(step: SetupStep): SetupSettingsTarget? = when (step) {
+    SetupStep.EnableDeveloperOptions, SetupStep.CheckUsbSetup -> SetupSettingsTarget.AboutPhone
+    SetupStep.EnableUsbDebugging -> SetupSettingsTarget.DeveloperOptions
+    else -> null
+}
+
 /**
  * Pure resolution of the current step, kept free of Android types so it is
  * covered by JVM unit tests.

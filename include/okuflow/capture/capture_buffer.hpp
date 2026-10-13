@@ -20,13 +20,21 @@ std::size_t EnqueueCaptureFrame(std::deque<MediaFrame>& pending, MediaFrame&& fr
 
 bool IsSupportedCaptureLayout(const GUID& subtype, UINT width, UINT height,
                               LONG stride);
+struct CaptureAperture {
+    UINT x{}, y{}, width{}, height{};
+};
+// Decoder frame size describes its allocation, which may include codec padding.
+// Prefer its explicit display aperture; otherwise use the negotiated phone size.
+bool ResolveNv12DisplayAperture(IMFMediaType* type, UINT allocationWidth,
+                               UINT allocationHeight, UINT expectedWidth,
+                               UINT expectedHeight, CaptureAperture& aperture);
 // Packs a mapped GPU subresource, using allocationHeight for the NV12 UV
 // origin. Only explicit RGBA textures swap red/blue into MF RGB32 order.
 bool CopyMappedCaptureTexture(const D3D11_MAPPED_SUBRESOURCE& mapped,
                               DXGI_FORMAT format, UINT allocationWidth,
                               UINT allocationHeight, UINT width, UINT height,
                               std::vector<std::uint8_t>& output, LONG& stride,
-                              GUID& subtype);
+                              GUID& subtype, UINT sourceX = 0, UINT sourceY = 0);
 
 // Copies visible pixels into tightly packed, top-down storage. Actual 2D
 // pitch takes precedence over negotiatedStride. Plain buffers use that signed

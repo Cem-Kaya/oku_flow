@@ -32,12 +32,13 @@ if (OKUFLOW_ENABLE_CUDA)
     set_target_properties(oku_flow PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RUNTIME_LIBRARY Static
-        CUDA_ARCHITECTURES "75;86;89"
+        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
     )
 endif()
 
 target_sources(oku_flow PRIVATE
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/app.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/app/app_language.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/assistive_feature_manager.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/color_schemes.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/constants.hpp
@@ -53,6 +54,8 @@ target_sources(oku_flow PRIVATE
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/ui_state_manager.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/user_data_paths.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/capture/audio_capture.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/capture/adb_owned_server.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/capture/adb_legacy_recovery.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/capture/media_capture.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/image_processing.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/frame_pipeline.hpp
@@ -76,6 +79,7 @@ target_sources(oku_flow PRIVATE
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/collapsible_section.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/responsive_slider_row.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ui_translation.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/theme_contrast.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/wheel_safe_combo_box.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ai_settings_dialog.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/setup_assistant.hpp
@@ -144,6 +148,8 @@ if (WIN32)
     target_link_libraries(oku_flow PRIVATE
         Qt6::Widgets
         Qt6::Network
+        iphlpapi
+        ws2_32
         d3d11
         d3d12
         dxgi
@@ -167,19 +173,44 @@ if (WIN32)
 
     target_compile_definitions(oku_flow PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 
+    # Keep in sync with src/app/app_language.cpp and scripts/check_translations.ps1.
+    set(OKUFLOW_TS_FILES
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_tr.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_de.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_fr.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_es.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_it.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_pt_BR.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_ru.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_uk.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_ar.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_hi.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_ja.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_ko.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_zh_Hans.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_nl.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_pl.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_cs.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_sv.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_id.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_vi.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_th.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_bn.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_fa.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_he.ts
+        ${PROJECT_SOURCE_DIR}/translations/okuflow_ur.ts
+    )
     qt_add_lupdate(
         LUPDATE_TARGET update_okuflow_translations
         SOURCE_TARGETS oku_flow
         TS_FILES
-            ${PROJECT_SOURCE_DIR}/translations/okuflow_tr.ts
-            ${PROJECT_SOURCE_DIR}/translations/okuflow_de.ts
+            ${OKUFLOW_TS_FILES}
         OPTIONS -locations none
     )
     qt_add_lrelease(
         LRELEASE_TARGET release_okuflow_translations
         TS_FILES
-            ${PROJECT_SOURCE_DIR}/translations/okuflow_tr.ts
-            ${PROJECT_SOURCE_DIR}/translations/okuflow_de.ts
+            ${OKUFLOW_TS_FILES}
         QM_FILES_OUTPUT_VARIABLE OKUFLOW_QM_FILES
         OPTIONS -nounfinished
     )

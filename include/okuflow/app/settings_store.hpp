@@ -150,8 +150,9 @@ struct PresetDefinition {
 };
 
 struct PersistentSettings {
-    // Empty means this profile predates language persistence. Startup maps the
-    // system locale once, then stores one of the stable tokens en/tr/de.
+    // UI language preference: a supported code from app_language.hpp (an
+    // explicit choice) or "system". Empty also follows the Windows display
+    // language and is saved as "system".
     QString language;
     // Empty selects UserDataPaths::DefaultRoot(). Keeping the empty value in
     // settings lets the Documents folder follow Windows account policy.

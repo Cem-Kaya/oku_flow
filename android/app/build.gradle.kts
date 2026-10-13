@@ -39,8 +39,8 @@ android {
         applicationId = "com.okuflow"
         minSdk = 30
         targetSdk = 37
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
     }
 
     signingConfigs {
@@ -70,6 +70,19 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    androidResources {
+        // Publishes the values-* languages as per-app languages (Android 13+
+        // Settings → Apps → Language); res/resources.properties names the
+        // unqualified English default.
+        generateLocaleConfig = true
+    }
+    bundle {
+        language {
+            // Manual in-app language changes must work offline, including on
+            // Android 11/12. Play must deliver every locale with the base app.
+            enableSplit = false
+        }
     }
     lint {
         // R8 only generates diagnostic mapping; resource optimization is deliberately deferred.

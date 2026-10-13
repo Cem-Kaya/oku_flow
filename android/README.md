@@ -5,6 +5,18 @@ USB cable. Design, protocol and roadmap:
 [`improvement_ideas/51-okuflow-camera-android.md`](../improvement_ideas/51-okuflow-camera-android.md).
 Toolchain and build commands: [`BUILDING.md`](BUILDING.md).
 
+The phone app requires OkuFlow for Windows on the computer. Download it from
+[okuflow.com](https://okuflow.com), open it on the PC, and use a USB cable that
+supports data transfer. The phone's cable-connection screen explains this
+requirement in all 25 supported languages.
+
+The next update, 0.1.3 (code 4), adds 25 UI languages including Dutch. New
+installations follow the phone language; **Advanced settings → Language** offers
+a saved manual choice and System default. The Advanced entry has a gear icon.
+Arabic, Persian, Hebrew and Urdu use RTL layouts. See the [language coverage,
+draft wording and acceptance limits](../docs/localization.md). This local build
+has not replaced the published closed-test 0.1.2 (code 3).
+
 ## Status
 
 The app includes onboarding, Camera2 hardware encoding over USB debugging,
@@ -54,9 +66,9 @@ over. Plan 51 includes a normal-camera regression gate for the later Windows
 integration. Phone enumeration is appended to the physical camera list;
 normal cameras continue through their existing activation/capture branch.
 
-The Android toolchain is installed and the debug APK builds with 65 passing
+The Android toolchain is installed and the debug APK builds with 68 passing
 JVM tests. Run `pwsh -NoProfile -File scripts/build_android.ps1 -Lint` from
-the repository root. This also checks English/Turkish/German resource key
+the repository root. This also checks all 25 languages' resource key
 parity. Outputs and caches stay under local app data, outside Google Drive.
 
 Review the [interactive screen draft](design/setup-panels.html) in a browser.
@@ -66,10 +78,17 @@ every state, permission denial, landscape, and German at 200% font scale.
 Real Pixel 9 Pro Fold validation and remaining acceptance checks are recorded
 in [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md). Neither preview replaces hardware testing.
 When app wording changes, update the draft's embedded `translations` data
-from the three Android resource catalogs.
+from the Android resource catalogs. The older HTML draft is not the native
+25-language settings UI and does not establish device acceptance.
 
 The Settings button opens About phone or Developer options, with OEM
-fallbacks. Android still requires manually enabling Developer mode and USB
+fallbacks. Connection help defaults to **Turn on Developer mode**, opening
+About phone for Build number (Samsung: Software information first). Its
+separate **Turn on USB debugging** button opens Developer options for users
+who have already enabled them. Unknown/redacted settings do not cause the
+primary action to open a hidden Developer options activity that closes with a
+toast. External Settings launches also support the app's localized contexts.
+Android still requires manually enabling Developer mode and USB
 debugging. The app rechecks them when you return. Camera-permission denial
 survives app restart so the one-tap app-settings shortcut remains available;
 granting access clears it. This installation-local history is excluded from
@@ -221,7 +240,7 @@ remain acceptance work. The Windows GUI gate needs an uncontested desktop.
 ## Privacy and release preparation
 
 Advanced settings → Privacy policy opens a scrollable offline policy in the
-phone's English, Turkish or German language. It explains USB camera transfer,
+selected supported language. It explains USB camera transfer,
 local preferences, Windows recording and optional AI-provider processing.
 The public policy is [PRIVACY.md](PRIVACY.md); its GitHub URL must be live before
 Play submission. Authorize USB debugging only on a trusted computer.

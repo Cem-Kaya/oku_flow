@@ -2,6 +2,8 @@
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$BundlePath)
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'windows-installer/bundle_layout.ps1')
+$layout = Get-OkuFlowBundleLayout $BundlePath
 $repository=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ico=[IO.File]::ReadAllBytes((Join-Path $repository 'assets\okuflow.ico'))
 Add-Type @'
@@ -30,7 +32,7 @@ public static class OkuFlowIconResources {
 '@
 $count=[BitConverter]::ToUInt16($ico,4)
 if($count -ne 7){throw 'Expected the seven reviewed icon sizes.'}
-foreach($name in @('oku_flow.exe','OkuFlowApp.exe')){
+foreach($name in @('oku_flow.exe', $layout.ApplicationRelativePath)){
     $path=(Resolve-Path -LiteralPath (Join-Path $BundlePath $name)).Path
     $group=[OkuFlowIconResources]::Read($path,14,101)
     if([BitConverter]::ToUInt16($group,4) -ne $count){throw "Incorrect embedded icon count: $name"}

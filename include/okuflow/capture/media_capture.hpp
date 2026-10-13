@@ -36,6 +36,8 @@ struct MediaFrame {
     Microsoft::WRL::ComPtr<ID3D11Texture2D> gpuTexture;
     Microsoft::WRL::ComPtr<IMFSample> gpuSample;
     UINT gpuSubresource{0};
+    UINT gpuVisibleX{0};
+    UINT gpuVisibleY{0};
     DXGI_FORMAT gpuFormat{DXGI_FORMAT_UNKNOWN};
     GUID subtype{GUID_NULL};
     YuvColorInfo yuvColor{};
@@ -70,6 +72,8 @@ struct CameraDescriptor {
     bool phoneAppReady{false};
     bool phoneBusy{false};
     std::string phoneProblem;
+    // Ephemeral server identity generation; never saved as a camera preference.
+    std::uint64_t phoneServerEpoch{0};
 };
 
 // Resolve physical identity before legacy enumeration position. A missing
@@ -114,6 +118,7 @@ enum class GpuFramePreparationResult {
     Retry,
     Unsupported,
 };
+enum class GpuFrameReadbackResult { Ready, Pending, Failed };
 
 class MediaCaptureSession;
 
@@ -165,7 +170,9 @@ public:
         const MediaFrame& frame,
         Microsoft::WRL::ComPtr<ID3D11Texture2D>& outTexture,
         std::shared_ptr<void>& outLease);
-    bool ReadbackGpuFrame(MediaFrame& frame);
+    // Retain and retry the exact frame on Pending; never blocks for a GPU map.
+    GpuFrameReadbackResult ReadbackGpuFrame(MediaFrame& frame);
+    bool HasPendingGpuReadback() const;
     // No-op for ordinary Media Foundation webcams; writes are queued, never block the UI.
     void SetPhoneZoom(float ratio);
     void SetPhoneCamera(const std::string& id);

@@ -1,0 +1,2941 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="nl" sourcelanguage="en_US">
+    <context>
+        <name>OkuFlow</name>
+        <message>
+            <source>Turn on phone light</source>
+            <translation>Schakel het telefoonlampje in</translation>
+        </message>
+        <message>
+            <source>Turn off phone light</source>
+            <translation>Schakel het telefoonlampje uit</translation>
+        </message>
+        <message>
+            <source>Phone light</source>
+            <translation>Telefoon licht</translation>
+        </message>
+        <message>
+            <source>Starts off on each connection. Press to turn the phone light on or off.</source>
+            <translation>Begint bij elke verbinding. Druk hierop om het telefoonlampje in of uit te schakelen.</translation>
+        </message>
+        <message>
+            <source>Application</source>
+            <translation>Toepassing</translation>
+        </message>
+        <message>
+            <source>Application language</source>
+            <translation>Taal van de app</translation>
+        </message>
+        <message>
+            <source>Changes OkuFlow's interface language immediately. An assistant request already in progress keeps its original response language.</source>
+            <translation>Wijzigt de interfacetaal van OkuFlow onmiddellijk. Een assistentverzoek dat al in behandeling is, behoudt de oorspronkelijke antwoordtaal.</translation>
+        </message>
+        <message>
+            <source>Changes the interface immediately. In-progress assistant requests use the language selected when they started.</source>
+            <translation>Verandert de interface onmiddellijk. Lopende assistent-verzoeken gebruiken de taal die is geselecteerd toen ze begonnen.</translation>
+        </message>
+        <message>
+            <source>Language set to %1.</source>
+            <translation>Taal ingesteld op %1.</translation>
+        </message>
+        <message>
+            <source>The selected language could not be loaded.</source>
+            <translation>De geselecteerde taal kon niet worden geladen.</translation>
+        </message>
+        <message>
+            <source>Simple</source>
+            <translation>Eenvoudig</translation>
+        </message>
+        <message>
+            <source>Advanced</source>
+            <translation>Geavanceerd</translation>
+        </message>
+        <message>
+            <source>Image</source>
+            <translation>Afbeelding</translation>
+        </message>
+        <message>
+            <source>Assistant</source>
+            <translation>Assistent</translation>
+        </message>
+        <message>
+            <source>Device</source>
+            <translation>Apparaat</translation>
+        </message>
+        <message>
+            <source>Recording</source>
+            <translation>Opname</translation>
+        </message>
+        <message>
+            <source>Profile</source>
+            <translation>Profiel</translation>
+        </message>
+        <message>
+            <source>Diagnostics</source>
+            <translation>Diagnostiek</translation>
+        </message>
+        <message>
+            <source>Shared by every profile</source>
+            <translation>Gedeeld door elk profiel</translation>
+        </message>
+        <message>
+            <source>Saved into the selected quick option</source>
+            <translation>Opgeslagen in de geselecteerde snelle optie</translation>
+        </message>
+        <message>
+            <source>Search settings...</source>
+            <translation>Zoekinstellingen...</translation>
+        </message>
+        <message>
+            <source>Search Advanced settings</source>
+            <translation>Zoeken Geavanceerde instellingen</translation>
+        </message>
+        <message>
+            <source>Type part of a setting name to reveal and focus matching controls.</source>
+            <translation>Typ een deel van de naam van een instelling om overeenkomende besturingselementen weer te geven en scherp te stellen.</translation>
+        </message>
+        <message>
+            <source>Camera</source>
+            <translation>Camera</translation>
+        </message>
+        <message>
+            <source>Orientation</source>
+            <translation>Oriëntatie</translation>
+        </message>
+        <message>
+            <source>Camera acceleration</source>
+            <translation>Cameraversnelling</translation>
+        </message>
+        <message>
+            <source>Automatic (recommended)</source>
+            <translation>Automatisch (aanbevolen)</translation>
+        </message>
+        <message>
+            <source>Always use GPU acceleration</source>
+            <translation>Gebruik altijd GPU-versnelling</translation>
+        </message>
+        <message>
+            <source>Compatibility mode</source>
+            <translation>Compatibiliteitsmodus</translation>
+        </message>
+        <message>
+            <source>Test this camera</source>
+            <translation>Test deze camera</translation>
+        </message>
+        <message>
+            <source>Viewport motion rate</source>
+            <translation>Bewegingssnelheid van de viewport</translation>
+        </message>
+        <message>
+            <source>Auto (up to 120 FPS)</source>
+            <translation>Automatisch (tot 120 FPS)</translation>
+        </message>
+        <message>
+            <source>Match display</source>
+            <translation>Aanpassen aan scherm</translation>
+        </message>
+        <message>
+            <source>Viewport framing</source>
+            <translation>Viewport-framing</translation>
+        </message>
+        <message>
+            <source>Fill (crop)</source>
+            <translation>Vullen (bijsnijden)</translation>
+        </message>
+        <message>
+            <source>Fit (show all)</source>
+            <translation>Passend (toon alles)</translation>
+        </message>
+        <message>
+            <source>Save As Quick Option</source>
+            <translation>Opslaan als snelle optie</translation>
+        </message>
+        <message>
+            <source>Reset Tuning</source>
+            <translation>Afstemming opnieuw instellen</translation>
+        </message>
+        <message>
+            <source>Virtual Joystick</source>
+            <translation>Virtuele joystick</translation>
+        </message>
+        <message>
+            <source>Zoom wheel acceleration</source>
+            <translation>Versnelling van het zoomwiel</translation>
+        </message>
+        <message>
+            <source>Shared by original and processed recordings</source>
+            <translation>Gedeeld door originele en verwerkte opnames</translation>
+        </message>
+        <message>
+            <source>Processed recording resolution</source>
+            <translation>Verwerkte opnameresolutie</translation>
+        </message>
+        <message>
+            <source>Camera and original recording resolution &amp;&amp; frame rate</source>
+            <translation>Camera en originele opnameresolutie &amp;&amp; framesnelheid</translation>
+        </message>
+        <message>
+            <source>Automatic (driver's choice)</source>
+            <translation>Automatisch (keuze van het stuurprogramma)</translation>
+        </message>
+        <message>
+            <source>Microphone</source>
+            <translation>Microfoon</translation>
+        </message>
+        <message>
+            <source>No microphone audio</source>
+            <translation>Geen microfoonaudio</translation>
+        </message>
+        <message>
+            <source>Magnification</source>
+            <translation>Vergroting</translation>
+        </message>
+        <message>
+            <source>Magnification and image</source>
+            <translation>Vergroting en beeld</translation>
+        </message>
+        <message>
+            <source>Readability</source>
+            <translation>Leesbaarheid</translation>
+        </message>
+        <message>
+            <source>Stability</source>
+            <translation>Stabiliteit</translation>
+        </message>
+        <message>
+            <source>Screen fix</source>
+            <translation>Schermreparatie</translation>
+        </message>
+        <message>
+            <source>Text clarity</source>
+            <translation>Teksthelderheid</translation>
+        </message>
+        <message>
+            <source>Sharpen and focus</source>
+            <translation>Verscherpen en focussen</translation>
+        </message>
+        <message>
+            <source>Black &amp;&amp; White</source>
+            <translation>Zwart &amp;&amp; Wit</translation>
+        </message>
+        <message>
+            <source>Zoom</source>
+            <translation>Zoomen</translation>
+        </message>
+        <message>
+            <source>Zoom %L1 times</source>
+            <translation>Zoom %L1 keer</translation>
+        </message>
+        <message>
+            <source>Gaussian Blur</source>
+            <translation>Gaussiaanse vervaging</translation>
+        </message>
+        <message>
+            <source>Sigma</source>
+            <translation>Sigma</translation>
+        </message>
+        <message>
+            <source>Radius</source>
+            <translation>Straal</translation>
+        </message>
+        <message>
+            <source>Temporal Smooth</source>
+            <translation>Tijdelijk glad</translation>
+        </message>
+        <message>
+            <source>Blend:</source>
+            <translation>Mengsel:</translation>
+        </message>
+        <message>
+            <source>Stabilize Image</source>
+            <translation>Stabiliseer het beeld</translation>
+        </message>
+        <message>
+            <source>Extra Stable (hold on shake)</source>
+            <translation>Extra stabiel (schudden)</translation>
+        </message>
+        <message>
+            <source>Straighten Screen (Keystone)</source>
+            <translation>Scherm rechttrekken (Keystone)</translation>
+        </message>
+        <message>
+            <source>Correction tracking:</source>
+            <translation>Correctie volgen:</translation>
+        </message>
+        <message>
+            <source>Back</source>
+            <translation>Terug</translation>
+        </message>
+        <message>
+            <source>Stop</source>
+            <translation>Stop</translation>
+        </message>
+        <message>
+            <source>Next</source>
+            <translation>Volgende</translation>
+        </message>
+        <message>
+            <source>Auto Contrast</source>
+            <translation>Automatisch contrast</translation>
+        </message>
+        <message>
+            <source>Strength:</source>
+            <translation>Sterkte:</translation>
+        </message>
+        <message>
+            <source>Auto Text Clarity</source>
+            <translation>Automatische teksthelderheid</translation>
+        </message>
+        <message>
+            <source>Flatten Background</source>
+            <translation>Maak de achtergrond plat</translation>
+        </message>
+        <message>
+            <source>Adaptive Text</source>
+            <translation>Adaptieve tekst</translation>
+        </message>
+        <message>
+            <source>Edge softness</source>
+            <translation>Zachtheid van de randen</translation>
+        </message>
+        <message>
+            <source>Text polarity</source>
+            <translation>Tekstpolariteit</translation>
+        </message>
+        <message>
+            <source>Stroke weight</source>
+            <translation>Slaggewicht</translation>
+        </message>
+        <message>
+            <source>Smart Sharpen</source>
+            <translation>Slim verscherpen</translation>
+        </message>
+        <message>
+            <source>Local Contrast (CLAHE)</source>
+            <translation>Lokaal contrast (CLAHE)</translation>
+        </message>
+        <message>
+            <source>Two-Color Reading</source>
+            <translation>Tweekleurig lezen</translation>
+        </message>
+        <message>
+            <source>Steady Text Edges</source>
+            <translation>Stabiele tekstranden</translation>
+        </message>
+        <message>
+            <source>Sharpen Text Only</source>
+            <translation>Alleen tekst verscherpen</translation>
+        </message>
+        <message>
+            <source>Warn When Out of Focus</source>
+            <translation>Waarschuw wanneer onscherp</translation>
+        </message>
+        <message>
+            <source>Suppress Glare</source>
+            <translation>Onderdruk verblinding</translation>
+        </message>
+        <message>
+            <source>NVIDIA Super Resolution</source>
+            <translation>NVIDIA Super Resolution</translation>
+        </message>
+        <message>
+            <source>Ultra quality (full frame, up to 1440p)</source>
+            <translation>Ultrakwaliteit (full frame, tot 1440p)</translation>
+        </message>
+        <message>
+            <source>Faster 2x mode (narrower view)</source>
+            <translation>Snellere 2x-modus (smallere weergave)</translation>
+        </message>
+        <message>
+            <source>Ignore 24 ms performance limit</source>
+            <translation>Negeer de prestatielimiet van 24 ms</translation>
+        </message>
+        <message>
+            <source>Off</source>
+            <translation>Uit</translation>
+        </message>
+        <message>
+            <source>Display colors</source>
+            <translation>Kleuren weergeven</translation>
+        </message>
+        <message>
+            <source>Normal colors</source>
+            <translation>Normale kleuren</translation>
+        </message>
+        <message>
+            <source>Contrast</source>
+            <translation>Contrasterend</translation>
+        </message>
+        <message>
+            <source>Brightness</source>
+            <translation>Helderheid</translation>
+        </message>
+        <message>
+            <source>Scene Explain</source>
+            <translation>Scène uitleggen</translation>
+        </message>
+        <message>
+            <source>Assistive Overlay</source>
+            <translation>Assisterende overlay</translation>
+        </message>
+        <message>
+            <source>Save drawing to notes when leaving Draw</source>
+            <translation>Sla de tekening op in notities wanneer u Draw verlaat</translation>
+        </message>
+        <message>
+            <source>AI Settings</source>
+            <translation>AI-instellingen</translation>
+        </message>
+        <message>
+            <source>Open AI Settings dialog</source>
+            <translation>Open het dialoogvenster AI-instellingen</translation>
+        </message>
+        <message>
+            <source>Open Notes</source>
+            <translation>Notities openen</translation>
+        </message>
+        <message>
+            <source>Open my OkuFlow folder</source>
+            <translation>Open mijn map OkuFlow</translation>
+        </message>
+        <message>
+            <source>Change OkuFlow folder...</source>
+            <translation>Wijzig de map OkuFlow...</translation>
+        </message>
+        <message>
+            <source>Setup &amp;&amp; Downloads...</source>
+            <translation>Installatie &amp;&amp; Downloads...</translation>
+        </message>
+        <message>
+            <source>Spatial Sharpen</source>
+            <translation>Ruimtelijk verscherpen</translation>
+        </message>
+        <message>
+            <source>Backend</source>
+            <translation>Achterkant</translation>
+        </message>
+        <message>
+            <source>Sharpness</source>
+            <translation>Scherpte</translation>
+        </message>
+        <message>
+            <source>Focus X:</source>
+            <translation>Focus X:</translation>
+        </message>
+        <message>
+            <source>Focus Y:</source>
+            <translation>Focus Y:</translation>
+        </message>
+        <message>
+            <source>Debug View</source>
+            <translation>Foutopsporingsweergave</translation>
+        </message>
+        <message>
+            <source>Show Focus Point</source>
+            <translation>Toon focuspunt</translation>
+        </message>
+        <message>
+            <source>Pipeline status</source>
+            <translation>Pijplijnstatus</translation>
+        </message>
+        <message>
+            <source>Performance percentiles</source>
+            <translation>Prestatiepercentielen</translation>
+        </message>
+        <message>
+            <source>Collecting timing samples…</source>
+            <translation>Tijdmonsters verzamelen…</translation>
+        </message>
+        <message>
+            <source>Photo</source>
+            <translation>Foto</translation>
+        </message>
+        <message>
+            <source>Record</source>
+            <translation>Opnemen</translation>
+        </message>
+        <message>
+            <source>Explain</source>
+            <translation>Leg uit</translation>
+        </message>
+        <message>
+            <source>Read</source>
+            <translation>Lees</translation>
+        </message>
+        <message>
+            <source>Draw</source>
+            <translation>Teken</translation>
+        </message>
+        <message>
+            <source>Capture original and processed photos</source>
+            <translation>Leg originele en bewerkte foto's vast</translation>
+        </message>
+        <message>
+            <source>Record original and processed videos</source>
+            <translation>Neem originele en bewerkte video's op</translation>
+        </message>
+        <message>
+            <source>Explain the current view</source>
+            <translation>Leg de huidige visie uit</translation>
+        </message>
+        <message>
+            <source>Read text in the current view</source>
+            <translation>Lees tekst in de huidige weergave</translation>
+        </message>
+        <message>
+            <source>Text Clarity</source>
+            <translation>Teksthelderheid</translation>
+        </message>
+        <message>
+            <source>Move</source>
+            <translation>Verplaatsen</translation>
+        </message>
+        <message>
+            <source>Pen</source>
+            <translation>Pen</translation>
+        </message>
+        <message>
+            <source>Line</source>
+            <translation>Lijn</translation>
+        </message>
+        <message>
+            <source>Shape</source>
+            <translation>Vorm</translation>
+        </message>
+        <message>
+            <source>Text</source>
+            <translation>Tekst</translation>
+        </message>
+        <message>
+            <source>Erase</source>
+            <translation>Wissen</translation>
+        </message>
+        <message>
+            <source>Undo</source>
+            <translation>Ongedaan maken</translation>
+        </message>
+        <message>
+            <source>Redo</source>
+            <translation>Opnieuw uitvoeren</translation>
+        </message>
+        <message>
+            <source>Save</source>
+            <translation>Opslaan</translation>
+        </message>
+        <message>
+            <source>Clear</source>
+            <translation>Wissen</translation>
+        </message>
+        <message>
+            <source>Done</source>
+            <translation>Klaar</translation>
+        </message>
+        <message>
+            <source>Pen options</source>
+            <translation>Pen-opties</translation>
+        </message>
+        <message>
+            <source>Thickness</source>
+            <translation>Dikte</translation>
+        </message>
+        <message>
+            <source>Type text, then press Enter</source>
+            <translation>Typ tekst en druk vervolgens op Enter</translation>
+        </message>
+        <message>
+            <source>Ask about this view...</source>
+            <translation>Vraag naar dit uitzicht...</translation>
+        </message>
+        <message>
+            <source>Ask</source>
+            <translation>Vraag</translation>
+        </message>
+        <message>
+            <source>Read Aloud</source>
+            <translation>Lees hardop</translation>
+        </message>
+        <message>
+            <source>Close result</source>
+            <translation>Resultaat sluiten</translation>
+        </message>
+        <message>
+            <source>New Conversation</source>
+            <translation>Nieuw gesprek</translation>
+        </message>
+        <message>
+            <source>Send</source>
+            <translation>Verzenden</translation>
+        </message>
+        <message>
+            <source>Rename</source>
+            <translation>Hernoemen</translation>
+        </message>
+        <message>
+            <source>Export</source>
+            <translation>Exporteren</translation>
+        </message>
+        <message>
+            <source>Delete</source>
+            <translation>Verwijderen</translation>
+        </message>
+        <message>
+            <source>Connect ChatGPT</source>
+            <translation>Verbind met ChatGPT</translation>
+        </message>
+        <message>
+            <source>Starting Codex...</source>
+            <translation>Codex wordt gestart...</translation>
+        </message>
+        <message>
+            <source>Ask about the current camera view.</source>
+            <translation>Vraag naar het huidige camerabeeld.</translation>
+        </message>
+        <message>
+            <source>Ask about what is visible...</source>
+            <translation>Vraag wat er zichtbaar is...</translation>
+        </message>
+        <message>
+            <source>Attach current view</source>
+            <translation>Huidige weergave bijvoegen</translation>
+        </message>
+        <message>
+            <source>AI Settings sections</source>
+            <translation>Secties AI-instellingen</translation>
+        </message>
+        <message>
+            <source>OpenAI-compatible server</source>
+            <translation>OpenAI-compatibele server</translation>
+        </message>
+        <message>
+            <source>AI provider:</source>
+            <translation>AI-aanbieder:</translation>
+        </message>
+        <message>
+            <source>Browse...</source>
+            <translation>Blader...</translation>
+        </message>
+        <message>
+            <source>Browse…</source>
+            <translation>Blader…</translation>
+        </message>
+        <message>
+            <source>Codex CLI path:</source>
+            <translation>Codex CLI pad:</translation>
+        </message>
+        <message>
+            <source>Codex model:</source>
+            <translation>Codex-model:</translation>
+        </message>
+        <message>
+            <source>Reasoning:</source>
+            <translation>Redeneerinspanning:</translation>
+        </message>
+        <message>
+            <source>Allow internet access</source>
+            <translation>Internettoegang toestaan</translation>
+        </message>
+        <message>
+            <source>Allow coding commands and file changes</source>
+            <translation>Sta coderingsopdrachten en bestandswijzigingen toe</translation>
+        </message>
+        <message>
+            <source>Required when coding is enabled</source>
+            <translation>Vereist wanneer codering is ingeschakeld</translation>
+        </message>
+        <message>
+            <source>Coding workspace:</source>
+            <translation>Codeerwerkruimte:</translation>
+        </message>
+        <message>
+            <source>Assistant behavior</source>
+            <translation>Assistent-gedrag</translation>
+        </message>
+        <message>
+            <source>Your instructions:</source>
+            <translation>Uw instructies:</translation>
+        </message>
+        <message>
+            <source>OpenAI-compatible vision server</source>
+            <translation>OpenAI-compatibele vision-server</translation>
+        </message>
+        <message>
+            <source>Server URL:</source>
+            <translation>Server-URL:</translation>
+        </message>
+        <message>
+            <source>API key:</source>
+            <translation>API-sleutel:</translation>
+        </message>
+        <message>
+            <source>Vision model:</source>
+            <translation>Visiemodel:</translation>
+        </message>
+        <message>
+            <source>Read aloud</source>
+            <translation>Lees hardop</translation>
+        </message>
+        <message>
+            <source>Voice:</source>
+            <translation>Stem:</translation>
+        </message>
+        <message>
+            <source>Speed:</source>
+            <translation>Snelheid:</translation>
+        </message>
+        <message>
+            <source>Preview</source>
+            <translation>Voorbeeld</translation>
+        </message>
+        <message>
+            <source>Lecture notes</source>
+            <translation>Aantekeningen bij de lezing</translation>
+        </message>
+        <message>
+            <source>Camera did not stop in time. Restart OkuFlow before changing cameras.</source>
+            <translation>Camera stopte niet op tijd. Start OkuFlow opnieuw op voordat u van camera wisselt.</translation>
+        </message>
+        <message>
+            <source>GPU stopped responding. Restart OkuFlow to resume video.</source>
+            <translation>GPU reageert niet meer. Start OkuFlow opnieuw om de video te hervatten.</translation>
+        </message>
+        <message>
+            <source>Lecture notes could not be saved.</source>
+            <translation>Lezingsaantekeningen konden niet worden opgeslagen.</translation>
+        </message>
+        <message>
+            <source>Saving lecture notes...</source>
+            <translation>Collegeaantekeningen opslaan...</translation>
+        </message>
+        <message>
+            <source>Write lecture notes file</source>
+            <translation>Schrijf een lesnotitiebestand</translation>
+        </message>
+        <message>
+            <source>None</source>
+            <translation>Geen</translation>
+        </message>
+        <message>
+            <source>Minimal</source>
+            <translation>Minimaal</translation>
+        </message>
+        <message>
+            <source>Low</source>
+            <translation>Laag</translation>
+        </message>
+        <message>
+            <source>Medium</source>
+            <translation>Middelmatig</translation>
+        </message>
+        <message>
+            <source>High</source>
+            <translation>Hoog</translation>
+        </message>
+        <message>
+            <source>Extra high</source>
+            <translation>Extra hoog</translation>
+        </message>
+        <message>
+            <source>Default</source>
+            <translation>Standaard</translation>
+        </message>
+        <message>
+            <source>Normal</source>
+            <translation>Normaal</translation>
+        </message>
+        <message>
+            <source>%1% slower</source>
+            <translation>%1% langzamer</translation>
+        </message>
+        <message>
+            <source>%1% faster</source>
+            <translation>%1% sneller</translation>
+        </message>
+        <message>
+            <source>Speech rate</source>
+            <translation>Spreeksnelheid</translation>
+        </message>
+        <message>
+            <source>OkuFlow will read this result using the selected voice.</source>
+            <translation>OkuFlow leest dit resultaat voor met de geselecteerde stem.</translation>
+        </message>
+        <message>
+            <source>Optional Reading and AI Tools</source>
+            <translation>Optionele lees- en AI-tools</translation>
+        </message>
+        <message>
+            <source>Install</source>
+            <translation>Installeren</translation>
+        </message>
+        <message>
+            <source>Remove</source>
+            <translation>Verwijderen</translation>
+        </message>
+        <message>
+            <source>Cancel Download</source>
+            <translation>Annuleer het downloaden</translation>
+        </message>
+        <message>
+            <source>Close</source>
+            <translation>Sluiten</translation>
+        </message>
+        <message>
+            <source>Don't ask again automatically</source>
+            <translation>Vraag het niet automatisch opnieuw</translation>
+        </message>
+        <message>
+            <source>Section heading. Activate to expand or collapse this settings group.</source>
+            <translation>Sectiekop. Activeer om deze instellingengroep uit of samen te vouwen.</translation>
+        </message>
+        <message>
+            <source>expanded</source>
+            <translation>uitgebreid</translation>
+        </message>
+        <message>
+            <source>collapsed</source>
+            <translation>ingeklapt</translation>
+        </message>
+        <message>
+            <source>%1 · %2 changed</source>
+            <translation>%1 · %2 gewijzigd</translation>
+        </message>
+        <message>
+            <source>%1, heading, %2</source>
+            <translation>%1, kop, %2</translation>
+        </message>
+        <message>
+            <source>%1, heading, %2, %3 changed</source>
+            <translation>%1, kop, %2, %3 gewijzigd</translation>
+        </message>
+        <message>
+            <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
+            <translation>Er is geen stem %1 geïnstalleerd: de huidige stem wordt gebruikt. Installeer er een onder Windows-instellingen → Tijd en taal → Spraak.</translation>
+        </message>
+        <message>
+            <source>Assistant request stopped.</source>
+            <translation>Assistent-verzoek gestopt.</translation>
+        </message>
+        <message>
+            <source>Attaching the current view...</source>
+            <translation>De huidige weergave bijvoegen...</translation>
+        </message>
+        <message>
+            <source>Capturing the current view...</source>
+            <translation>De huidige weergave vastleggen...</translation>
+        </message>
+        <message>
+            <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
+            <translation>Beeld onscherp. Tik op het telefoonscherm om opnieuw scherp te stellen voordat u tekst leest.</translation>
+        </message>
+        <message>
+            <source>Loading conversation...</source>
+            <translation>Gesprek laden...</translation>
+        </message>
+        <message>
+            <source>No lecture notes yet — use Read, Explain, or Assistant to add text.</source>
+            <translation>Nog geen collegeaantekeningen: gebruik Lezen, Uitleggen of Assistent om tekst toe te voegen.</translation>
+        </message>
+        <message>
+            <source>OkuFlow Assistant</source>
+            <translation>OkuFlow Assistent</translation>
+        </message>
+        <message>
+            <source>You</source>
+            <translation>U</translation>
+        </message>
+        <message>
+            <source>Capturing original and processed photos...</source>
+            <translation>Originele en bewerkte foto's maken...</translation>
+        </message>
+        <message>
+            <source>Delete Conversation</source>
+            <translation>Gesprek verwijderen</translation>
+        </message>
+        <message>
+            <source>Export Conversation</source>
+            <translation>Gesprek exporteren</translation>
+        </message>
+        <message>
+            <source>Permanently delete this OkuFlow assistant conversation?</source>
+            <translation>Dit OkuFlow assistent-gesprek definitief verwijderen?</translation>
+        </message>
+        <message>
+            <source>Reconnect ChatGPT</source>
+            <translation>Maak opnieuw verbinding met ChatGPT</translation>
+        </message>
+        <message>
+            <source>Rename Conversation</source>
+            <translation>Hernoem gesprek</translation>
+        </message>
+        <message>
+            <source>Stopped.</source>
+            <translation>Gestopt.</translation>
+        </message>
+        <message>
+            <source>The OkuFlow Analysis folder is unavailable.</source>
+            <translation>De map OkuFlow Analyse is niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Viewport motion limited to %1 FPS by this display.</source>
+            <translation>Viewport-beweging beperkt tot %1 FPS door dit scherm.</translation>
+        </message>
+        <message>
+            <source>Vision model: %1</source>
+            <translation>Visiemodel: %1</translation>
+        </message>
+        <message>
+            <source>Automatic screen correction continuing.</source>
+            <translation>Automatische schermcorrectie wordt voortgezet.</translation>
+        </message>
+        <message>
+            <source>Automatic screen correction stopped.</source>
+            <translation>Automatische schermcorrectie gestopt.</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>Annuleer</translation>
+        </message>
+        <message>
+            <source>Choose OkuFlow Folder</source>
+            <translation>Kies OkuFlow Map</translation>
+        </message>
+        <message>
+            <source>GPU camera capture is active with the safe copy fallback.</source>
+            <translation>GPU-camera-opname is actief met de fallback voor veilige kopieën.</translation>
+        </message>
+        <message>
+            <source>Later</source>
+            <translation>Later</translation>
+        </message>
+        <message>
+            <source>NVIDIA Super Resolution performance limit ignored.</source>
+            <translation>NVIDIA Super Resolution prestatielimiet genegeerd.</translation>
+        </message>
+        <message>
+            <source>NVIDIA Super Resolution performance limit restored.</source>
+            <translation>NVIDIA Super Resolution prestatielimiet hersteld.</translation>
+        </message>
+        <message>
+            <source>New OkuFlow files will be saved in %1.</source>
+            <translation>Nieuwe OkuFlow-bestanden worden opgeslagen in %1.</translation>
+        </message>
+        <message>
+            <source>Open OkuFlow Folder</source>
+            <translation>Open de map OkuFlow</translation>
+        </message>
+        <message>
+            <source>OkuFlow cannot use the selected folder.</source>
+            <translation>OkuFlow kan de geselecteerde map niet gebruiken.</translation>
+        </message>
+        <message>
+            <source>Opened your OkuFlow folder.</source>
+            <translation>Uw map OkuFlow geopend.</translation>
+        </message>
+        <message>
+            <source>Recording stopped because the microphone selection changed.</source>
+            <translation>De opname is gestopt omdat de microfoonselectie is gewijzigd.</translation>
+        </message>
+        <message>
+            <source>Screen correction moved back and tracking stopped.</source>
+            <translation>Schermcorrectie is teruggegaan en het volgen is gestopt.</translation>
+        </message>
+        <message>
+            <source>Select a camera before running the test.</source>
+            <translation>Selecteer een camera voordat u de test uitvoert.</translation>
+        </message>
+        <message>
+            <source>Stop recording before testing camera acceleration.</source>
+            <translation>Stop met opnemen voordat u de cameraversnelling test.</translation>
+        </message>
+        <message>
+            <source>Temporal blend</source>
+            <translation>Tijdelijke mix</translation>
+        </message>
+        <message>
+            <source>Testing GPU and compatibility capture in an isolated process...</source>
+            <translation>GPU- en compatibiliteitsregistratie testen in een geïsoleerd proces...</translation>
+        </message>
+        <message>
+            <source>Testing camera...</source>
+            <translation>Camera testen...</translation>
+        </message>
+        <message>
+            <source>The OkuFlow folder is unavailable.</source>
+            <translation>De map OkuFlow is niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source>The isolated camera test could not start: %1</source>
+            <translation>De geïsoleerde cameratest kan niet starten: %1</translation>
+        </message>
+        <message>
+            <source>Using the next screen correction.</source>
+            <translation>De volgende schermcorrectie gebruiken.</translation>
+        </message>
+        <message>
+            <source>Windows could not open:
+%1</source>
+            <translation>Windows kon niet openen:
+%1</translation>
+        </message>
+        <message>
+            <source>%1 (system default)</source>
+            <translation>%1 (systeemstandaard)</translation>
+        </message>
+        <message>
+            <source>%1 × %2 @ %3 fps</source>
+            <translation>%1 × %2 @ %3 fps</translation>
+        </message>
+        <message>
+            <source>Annotated view could not be saved.</source>
+            <translation>Geannoteerde weergave kan niet worden opgeslagen.</translation>
+        </message>
+        <message>
+            <source>Annotated view not saved: the image could not be queued.</source>
+            <translation>Geannoteerde weergave niet opgeslagen: de afbeelding kon niet in de wachtrij worden geplaatst.</translation>
+        </message>
+        <message>
+            <source>Annotated view not saved: the image writer is busy. Try again.</source>
+            <translation>Geannoteerde weergave niet opgeslagen: de afbeelding wordt nog weggeschreven. Probeer het opnieuw.</translation>
+        </message>
+        <message>
+            <source>Annotated view not saved: the viewport was unavailable.</source>
+            <translation>Geannoteerde weergave niet opgeslagen: de viewport was niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Camera Error</source>
+            <translation>Camerafout</translation>
+        </message>
+        <message>
+            <source>Camera reconnected.</source>
+            <translation>Camera opnieuw verbonden.</translation>
+        </message>
+        <message>
+            <source>Failed to start camera capture</source>
+            <translation>Kan camera-opname niet starten</translation>
+        </message>
+        <message>
+            <source>GPU camera acceleration could not start: %1</source>
+            <translation>GPU-cameraversnelling kan niet starten: %1</translation>
+        </message>
+        <message>
+            <source>GPU processing keeps failing - showing unprocessed video.</source>
+            <translation>GPU-verwerking mislukt steeds en toont onverwerkte video.</translation>
+        </message>
+        <message>
+            <source>GPU-accelerated camera capture passed startup validation.</source>
+            <translation>GPU-versnelde camera-opname heeft de opstartvalidatie doorstaan.</translation>
+        </message>
+        <message>
+            <source>Modes unavailable: %1</source>
+            <translation>Modi niet beschikbaar: %1</translation>
+        </message>
+        <message>
+            <source>No camera modes were reported.</source>
+            <translation>Er zijn geen cameramodi gerapporteerd.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: no processed frame was available.</source>
+            <translation>Foto niet opgeslagen: er was geen verwerkt frame beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>Foto niet opgeslagen: de map OkuFlow Foto's is niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the image could not be queued.</source>
+            <translation>Foto niet opgeslagen: de afbeelding kon niet in de wachtrij worden geplaatst.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the image writer is busy. Try again.</source>
+            <translation>Foto niet opgeslagen: de afbeelding wordt nog weggeschreven. Probeer het opnieuw.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the original camera frame could not be converted.</source>
+            <translation>Foto niet opgeslagen: het originele cameraframe kon niet worden geconverteerd.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the original camera frame could not be read back.</source>
+            <translation>Foto niet opgeslagen: het originele cameraframe kon niet worden teruggelezen.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the processed or original frame was unavailable.</source>
+            <translation>Foto niet opgeslagen: het verwerkte of originele frame was niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Reconnecting to camera…</source>
+            <translation>Opnieuw verbinding maken met de camera…</translation>
+        </message>
+        <message>
+            <source>Recording stopped: the original camera frame could not be converted.</source>
+            <translation>Opname gestopt: het originele cameraframe kon niet worden geconverteerd.</translation>
+        </message>
+        <message>
+            <source>Saving annotated view to lecture notes...</source>
+            <translation>Geannoteerde weergave opslaan in collegeaantekeningen...</translation>
+        </message>
+        <message>
+            <source>Saving original and processed photos...</source>
+            <translation>Originele en verwerkte foto's opslaan...</translation>
+        </message>
+        <message>
+            <source>The camera GPU texture could not be converted for CUDA.</source>
+            <translation>De GPU-textuur van de camera kan niet worden geconverteerd voor CUDA.</translation>
+        </message>
+        <message>
+            <source>Annotated view</source>
+            <translation>Geannoteerde weergave</translation>
+        </message>
+        <message>
+            <source>Finishing recording...</source>
+            <translation>Opname beëindigen...</translation>
+        </message>
+        <message>
+            <source>Finishing recording…</source>
+            <translation>Opname voltooien…</translation>
+        </message>
+        <message>
+            <source>Recording could not start.</source>
+            <translation>De opname kon niet starten.</translation>
+        </message>
+        <message>
+            <source>Recording could not start: %1</source>
+            <translation>Opname kon niet starten: %1</translation>
+        </message>
+        <message>
+            <source>Recording is starting...</source>
+            <translation>De opname begint...</translation>
+        </message>
+        <message>
+            <source>Recording saved. %1</source>
+            <translation>Opname opgeslagen. %1</translation>
+        </message>
+        <message>
+            <source>Recording stopped after reaching the 12-hour limit.</source>
+            <translation>De opname stopte nadat de limiet van 12 uur was bereikt.</translation>
+        </message>
+        <message>
+            <source>Recording stopped because an encoder rejected a frame.</source>
+            <translation>De opname is gestopt omdat een encoder een frame heeft afgewezen.</translation>
+        </message>
+        <message>
+            <source>Recording stopped because the audio encoder rejected a sample.</source>
+            <translation>De opname is gestopt omdat de audio-encoder een sample heeft afgewezen.</translation>
+        </message>
+        <message>
+            <source>Recording stopped before the first frame was written.</source>
+            <translation>De opname stopte voordat het eerste frame was geschreven.</translation>
+        </message>
+        <message>
+            <source>Stopping recording...</source>
+            <translation>Opname stoppen...</translation>
+        </message>
+        <message>
+            <source>The camera mode changed. Recording continues in part %1.</source>
+            <translation>De cameramodus is gewijzigd. De opname gaat gedeeltelijk door in %1.</translation>
+        </message>
+        <message>
+            <source>The recording canvas is invalid.</source>
+            <translation>Het opnamecanvas is ongeldig.</translation>
+        </message>
+        <message>
+            <source>No frames were dropped.</source>
+            <translation>Er zijn geen frames verwijderd.</translation>
+        </message>
+        <message>
+            <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
+            <translation>De opname is gestopt omdat de audioverwerking dit niet kon bijhouden of de invoer ongeldig was.</translation>
+        </message>
+        <message>
+            <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
+            <translation>Audio: %1 blokken verwijderd vóór codering, %2 afgewezen door de invoerlimiet.</translation>
+        </message>
+        <message>
+            <source>%1 frames were dropped (%2).</source>
+            <translation>%1 frames zijn verwijderd (%2).</translation>
+        </message>
+        <message>
+            <source>%1 frames used an estimated timestamp.</source>
+            <translation>%1 frames gebruikten een geschatte tijdstempel.</translation>
+        </message>
+        <message>
+            <source>Original video</source>
+            <translation>Origineel filmpje</translation>
+        </message>
+        <message>
+            <source>Processed video</source>
+            <translation>Verwerkte video</translation>
+        </message>
+        <message>
+            <source>with microphone audio</source>
+            <translation>met microfoonaudio</translation>
+        </message>
+        <message>
+            <source>CPU/system memory</source>
+            <translation>CPU/systeemgeheugen</translation>
+        </message>
+        <message>
+            <source>direct GPU</source>
+            <translation>directe GPU</translation>
+        </message>
+        <message>
+            <source>GPU-fed original and processed</source>
+            <translation>GPU-gevoed origineel en verwerkt</translation>
+        </message>
+        <message>
+            <source>GPU source with worker readback</source>
+            <translation>GPU-bron met teruglezing door werker</translation>
+        </message>
+        <message>
+            <source>Another assistant request is already running.</source>
+            <translation>Er is al een ander assistentverzoek actief.</translation>
+        </message>
+        <message>
+            <source>Assistant stopped.</source>
+            <translation>Assistent stopte.</translation>
+        </message>
+        <message>
+            <source>Assistive View</source>
+            <translation>Ondersteunende weergave</translation>
+        </message>
+        <message>
+            <source>Codex image preparation is busy. Try again in a moment.</source>
+            <translation>Codex beeldvoorbereiding is bezig. Probeer het zo nog eens.</translation>
+        </message>
+        <message>
+            <source>Could not prepare the current camera view.</source>
+            <translation>Kan het huidige camerabeeld niet voorbereiden.</translation>
+        </message>
+        <message>
+            <source>Failed to encode frame for VLM request.</source>
+            <translation>Kan frame voor VLM-verzoek niet coderen.</translation>
+        </message>
+        <message>
+            <source>Failed to prepare the current view for Codex.</source>
+            <translation>Kan de huidige weergave voor Codex niet voorbereiden.</translation>
+        </message>
+        <message>
+            <source>No camera frame is available to attach.</source>
+            <translation>Er is geen cameraframe beschikbaar om te bevestigen.</translation>
+        </message>
+        <message>
+            <source>Persistent Assistant conversations require the Codex subscription provider.</source>
+            <translation>Voor aanhoudende Assistent-gesprekken is de Codex-abonnementsprovider vereist.</translation>
+        </message>
+        <message>
+            <source>Photo captured</source>
+            <translation>Foto vastgelegd</translation>
+        </message>
+        <message>
+            <source>Preparing the current view...</source>
+            <translation>De huidige weergave voorbereiden...</translation>
+        </message>
+        <message>
+            <source>Querying VLM...</source>
+            <translation>VLM opvragen...</translation>
+        </message>
+        <message>
+            <source>Scene explanation</source>
+            <translation>Uitleg van scène</translation>
+        </message>
+        <message>
+            <source>Scene explanation is busy with a previous request. Try again in a moment.</source>
+            <translation>Scène-uitleg is bezig met een eerder verzoek. Probeer het zo nog eens.</translation>
+        </message>
+        <message>
+            <source>Sending the current camera frame and prompt</source>
+            <translation>Het huidige cameraframe en prompt verzenden</translation>
+        </message>
+        <message>
+            <source>Sending the prompt only</source>
+            <translation>Alleen de prompt verzenden</translation>
+        </message>
+        <message>
+            <source>Text on screen</source>
+            <translation>Tekst op scherm</translation>
+        </message>
+        <message>
+            <source>Thinking...</source>
+            <translation>Denken...</translation>
+        </message>
+        <message>
+            <source>VLM image preparation is busy. Try again in a moment.</source>
+            <translation>VLM-beeldvoorbereiding is bezig. Probeer het zo nog eens.</translation>
+        </message>
+        <message>
+            <source>VLM ready.</source>
+            <translation>VLM klaar.</translation>
+        </message>
+        <message>
+            <source>VLM request failed: %1</source>
+            <translation>VLM-verzoek mislukt: %1</translation>
+        </message>
+        <message>
+            <source>VLM response did not contain readable text.</source>
+            <translation>Het VLM-antwoord bevatte geen leesbare tekst.</translation>
+        </message>
+        <message>
+            <source>VLM response exceeded OkuFlow's safe size limit.</source>
+            <translation>De VLM-reactie overschreed de veilige groottelimiet van OkuFlow.</translation>
+        </message>
+        <message>
+            <source>VLM returned an empty description.</source>
+            <translation>VLM retourneerde een lege beschrijving.</translation>
+        </message>
+        <message>
+            <source>Video recorded</source>
+            <translation>Video opgenomen</translation>
+        </message>
+        <message>
+            <source>AI Provider</source>
+            <translation>AI-aanbieder</translation>
+        </message>
+        <message>
+            <source>Codex CLI Path</source>
+            <translation>Codex CLI Pad</translation>
+        </message>
+        <message>
+            <source>Codex Model</source>
+            <translation>Codex-model</translation>
+        </message>
+        <message>
+            <source>Codex Reasoning</source>
+            <translation>Codex-redeneerinspanning</translation>
+        </message>
+        <message>
+            <source>Assistant Instructions</source>
+            <translation>Assistent-instructies</translation>
+        </message>
+        <message>
+            <source>Built-in Codex Prompt</source>
+            <translation>Ingebouwde Codex Prompt</translation>
+        </message>
+        <message>
+            <source>VLM Server URL</source>
+            <translation>VLM-server-URL</translation>
+        </message>
+        <message>
+            <source>API Key</source>
+            <translation>API-sleutel</translation>
+        </message>
+        <message>
+            <source>Model</source>
+            <translation>Model</translation>
+        </message>
+        <message>
+            <source>Read Aloud Voice</source>
+            <translation>Voorleesstem</translation>
+        </message>
+        <message>
+            <source>Read Aloud Speed</source>
+            <translation>Snelheid voorlezen</translation>
+        </message>
+        <message>
+            <source>Preview Read Aloud Voice</source>
+            <translation>Voorbeeld Voorgelezen stem</translation>
+        </message>
+        <message>
+            <source>Write Lecture Notes File</source>
+            <translation>Schrijf een collegenotitiebestand</translation>
+        </message>
+        <message>
+            <source>Loading installed Windows voices...</source>
+            <translation>Geïnstalleerde Windows-stemmen laden...</translation>
+        </message>
+        <message>
+            <source>No installed Windows voices found</source>
+            <translation>Geen geïnstalleerde Windows-stemmen gevonden</translation>
+        </message>
+        <message>
+            <source>Text-to-speech is unavailable in this build</source>
+            <translation>Tekst-naar-spraak is niet beschikbaar in deze build</translation>
+        </message>
+        <message>
+            <source>Optional for local servers</source>
+            <translation>Optioneel voor lokale servers</translation>
+        </message>
+        <message>
+            <source>Choose an existing workspace folder before enabling coding.</source>
+            <translation>Kies een bestaande werkruimtemap voordat u codering inschakelt.</translation>
+        </message>
+        <message>
+            <source>Coding Workspace Required</source>
+            <translation>Codeerwerkruimte vereist</translation>
+        </message>
+        <message>
+            <source>Annotation mode on. Pen tool.</source>
+            <translation>Annotatiemodus ingeschakeld. Pen-gereedschap.</translation>
+        </message>
+        <message>
+            <source>Annotation options</source>
+            <translation>Annotatie-opties</translation>
+        </message>
+        <message>
+            <source>Annotation text</source>
+            <translation>Annotatie tekst</translation>
+        </message>
+        <message>
+            <source>Annotation thickness</source>
+            <translation>Dikte van annotatie</translation>
+        </message>
+        <message>
+            <source>Annotation tool</source>
+            <translation>Annotatiehulpmiddel</translation>
+        </message>
+        <message>
+            <source>Clear annotations</source>
+            <translation>Annotaties wissen</translation>
+        </message>
+        <message>
+            <source>Click the camera view, then type a label. Shortcut T.</source>
+            <translation>Klik op de cameraweergave en typ een label. Snelkoppeling T.</translation>
+        </message>
+        <message>
+            <source>Dashed</source>
+            <translation>Gestreept</translation>
+        </message>
+        <message>
+            <source>Dashed line style</source>
+            <translation>Stippellijnstijl</translation>
+        </message>
+        <message>
+            <source>Dashed stroke</source>
+            <translation>Gestreepte lijn</translation>
+        </message>
+        <message>
+            <source>Done drawing</source>
+            <translation>Klaar met tekenen</translation>
+        </message>
+        <message>
+            <source>Draw a dashed stroke with transparent gaps.</source>
+            <translation>Teken een stippellijn met transparante gaten.</translation>
+        </message>
+        <message>
+            <source>Draw a rectangle.</source>
+            <translation>Teken een rechthoek.</translation>
+        </message>
+        <message>
+            <source>Draw a straight line. Shortcut L.</source>
+            <translation>Teken een rechte lijn. Snelkoppeling L.</translation>
+        </message>
+        <message>
+            <source>Draw an ellipse.</source>
+            <translation>Teken een ellips.</translation>
+        </message>
+        <message>
+            <source>Draw an uninterrupted stroke.</source>
+            <translation>Teken een ononderbroken lijn.</translation>
+        </message>
+        <message>
+            <source>Draw freehand on the camera view. Shortcut P.</source>
+            <translation>Teken uit de vrije hand in het camerabeeld. Sneltoets P.</translation>
+        </message>
+        <message>
+            <source>Draw mode off.</source>
+            <translation>Tekenmodus uitgeschakeld.</translation>
+        </message>
+        <message>
+            <source>Draw rectangles or ellipses. Shortcut S.</source>
+            <translation>Teken rechthoeken of ellipsen. Snelkoppeling S.</translation>
+        </message>
+        <message>
+            <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
+            <translation>Annotaties die aan de camerascène zijn verankerd, tekenen, selecteren, vergroten/verkleinen, opslaan of wissen.</translation>
+        </message>
+        <message>
+            <source>Ellipse</source>
+            <translation>Ellips</translation>
+        </message>
+        <message>
+            <source>Ellipse shape</source>
+            <translation>Ellipsvorm</translation>
+        </message>
+        <message>
+            <source>Erase annotation tool</source>
+            <translation>Annotatietool wissen</translation>
+        </message>
+        <message>
+            <source>Erase tool</source>
+            <translation>Wishulpmiddel</translation>
+        </message>
+        <message>
+            <source>Leave Draw mode.</source>
+            <translation>Verlaat de tekenmodus.</translation>
+        </message>
+        <message>
+            <source>Lecture annotation canvas</source>
+            <translation>Annotatiecanvas voor lezingen</translation>
+        </message>
+        <message>
+            <source>Line tool</source>
+            <translation>Lijn gereedschap</translation>
+        </message>
+        <message>
+            <source>Move annotation tool</source>
+            <translation>Annotatietool verplaatsen</translation>
+        </message>
+        <message>
+            <source>Move tool</source>
+            <translation>Gereedschap verplaatsen</translation>
+        </message>
+        <message>
+            <source>Nothing selected</source>
+            <translation>Niets geselecteerd</translation>
+        </message>
+        <message>
+            <source>Pen tool</source>
+            <translation>Pen-gereedschap</translation>
+        </message>
+        <message>
+            <source>Rectangle</source>
+            <translation>Rechthoek</translation>
+        </message>
+        <message>
+            <source>Rectangle shape</source>
+            <translation>Rechthoekige vorm</translation>
+        </message>
+        <message>
+            <source>Redo annotation</source>
+            <translation>Annotatie opnieuw uitvoeren</translation>
+        </message>
+        <message>
+            <source>Remove a complete annotation. Shortcut E.</source>
+            <translation>Verwijder een volledige annotatie. Snelkoppeling E.</translation>
+        </message>
+        <message>
+            <source>Save a marked snapshot and clear all annotations.</source>
+            <translation>Sla een gemarkeerde momentopname op en wis alle annotaties.</translation>
+        </message>
+        <message>
+            <source>Save annotated view</source>
+            <translation>Geannoteerde weergave opslaan</translation>
+        </message>
+        <message>
+            <source>Save the marked view to lecture notes. Shortcut Control S.</source>
+            <translation>Sla de gemarkeerde weergave op in collegeaantekeningen. Sneltoetsbediening S.</translation>
+        </message>
+        <message>
+            <source>Select, move, or resize one annotation. Shortcut V.</source>
+            <translation>Selecteer, verplaats of wijzig het formaat van één annotatie. Snelkoppeling V.</translation>
+        </message>
+        <message>
+            <source>Selected annotation scaled</source>
+            <translation>Geselecteerde annotatie geschaald</translation>
+        </message>
+        <message>
+            <source>Selection cleared</source>
+            <translation>Selectie gewist</translation>
+        </message>
+        <message>
+            <source>Shape tool</source>
+            <translation>Vorm gereedschap</translation>
+        </message>
+        <message>
+            <source>Solid</source>
+            <translation>Solide</translation>
+        </message>
+        <message>
+            <source>Solid line style</source>
+            <translation>Stevige lijnstijl</translation>
+        </message>
+        <message>
+            <source>Solid stroke</source>
+            <translation>Doorgetrokken lijn</translation>
+        </message>
+        <message>
+            <source>Text entry canceled</source>
+            <translation>Tekstinvoer geannuleerd</translation>
+        </message>
+        <message>
+            <source>Text placed</source>
+            <translation>Tekst geplaatst</translation>
+        </message>
+        <message>
+            <source>Text size</source>
+            <translation>Tekstgrootte</translation>
+        </message>
+        <message>
+            <source>Text tool</source>
+            <translation>Tekst hulpmiddel</translation>
+        </message>
+        <message>
+            <source>Type annotation text. Press Enter to place it.</source>
+            <translation>Typ annotatietekst. Druk op Enter om het te plaatsen.</translation>
+        </message>
+        <message>
+            <source>Undo annotation</source>
+            <translation>Annotatie ongedaan maken</translation>
+        </message>
+        <message>
+            <source>Undo the last edit. Shortcut Control Z.</source>
+            <translation>Maak de laatste bewerking ongedaan. Sneltoetsbediening Z.</translation>
+        </message>
+        <message>
+            <source>Use %1 ink. The check mark indicates the selected color.</source>
+            <translation>Gebruik %1 inkt. Het vinkje geeft de geselecteerde kleur aan.</translation>
+        </message>
+        <message>
+            <source>Ask Assistant</source>
+            <translation>Vraag assistent</translation>
+        </message>
+        <message>
+            <source>Assistive result</source>
+            <translation>Ondersteunend resultaat</translation>
+        </message>
+        <message>
+            <source>Assistive result text</source>
+            <translation>Ondersteunende resultaattekst</translation>
+        </message>
+        <message>
+            <source>Assistive result title</source>
+            <translation>Ondersteunende resultaattitel</translation>
+        </message>
+        <message>
+            <source>Assistive results</source>
+            <translation>Ondersteunende resultaten</translation>
+        </message>
+        <message>
+            <source>Close assistive result</source>
+            <translation>Sluit hulpresultaat</translation>
+        </message>
+        <message>
+            <source>Hide the current assistant result</source>
+            <translation>Verberg het huidige assistentresultaat</translation>
+        </message>
+        <message>
+            <source>Move assistive panel</source>
+            <translation>Hulppaneel verplaatsen</translation>
+        </message>
+        <message>
+            <source>Question about the current view</source>
+            <translation>Vraag over de huidige weergave</translation>
+        </message>
+        <message>
+            <source>Read assistive result aloud</source>
+            <translation>Lees het hulpresultaat hardop voor</translation>
+        </message>
+        <message>
+            <source>Send the question with the current camera view to OkuFlow Assistant</source>
+            <translation>Stuur de vraag met de huidige cameraweergave naar OkuFlow Assistent</translation>
+        </message>
+        <message>
+            <source>Speak the current assistant result</source>
+            <translation>Spreek het huidige assistent-resultaat uit</translation>
+        </message>
+        <message>
+            <source>Streaming assistant result. Use arrow keys to read the text.</source>
+            <translation>Assistentresultaat wordt gestreamd. Gebruik de pijltjestoetsen om de tekst te lezen.</translation>
+        </message>
+        <message>
+            <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
+            <translation>Typ op elk gewenst moment een vervolgvraag. Verzenden wordt beschikbaar wanneer het huidige antwoord is voltooid.</translation>
+        </message>
+        <message>
+            <source>Apply custom</source>
+            <translation>Pas maatwerk toe</translation>
+        </message>
+        <message>
+            <source>Background color</source>
+            <translation>Achtergrondkleur</translation>
+        </message>
+        <message>
+            <source>Choose color stop %1</source>
+            <translation>Kies kleurstop %1</translation>
+        </message>
+        <message>
+            <source>Choose display colors</source>
+            <translation>Kies weergavekleuren</translation>
+        </message>
+        <message>
+            <source>Color stop %1 of %2</source>
+            <translation>Kleurstop %1 of %2</translation>
+        </message>
+        <message>
+            <source>Custom</source>
+            <translation>Aangepast</translation>
+        </message>
+        <message>
+            <source>Custom color mode</source>
+            <translation>Aangepaste kleurmodus</translation>
+        </message>
+        <message>
+            <source>Custom color preview</source>
+            <translation>Aangepast kleurvoorbeeld</translation>
+        </message>
+        <message>
+            <source>Custom display colors</source>
+            <translation>Aangepaste weergavekleuren</translation>
+        </message>
+        <message>
+            <source>Display color scheme</source>
+            <translation>Kleurenschema weergeven</translation>
+        </message>
+        <message>
+            <source>Display colors changed to %1</source>
+            <translation>Weergavekleuren gewijzigd in %1</translation>
+        </message>
+        <message>
+            <source>Display colors, %1</source>
+            <translation>Weergavekleuren, %1</translation>
+        </message>
+        <message>
+            <source>Display colors: %1</source>
+            <translation>Weergavekleuren: %1</translation>
+        </message>
+        <message>
+            <source>Effects</source>
+            <translation>Effecten</translation>
+        </message>
+        <message>
+            <source>Gradient</source>
+            <translation>Verloop</translation>
+        </message>
+        <message>
+            <source>Number of color stops</source>
+            <translation>Aantal kleurstops</translation>
+        </message>
+        <message>
+            <source>Posterize</source>
+            <translation>Posteriseren</translation>
+        </message>
+        <message>
+            <source>Reading colors</source>
+            <translation>Kleuren lezen</translation>
+        </message>
+        <message>
+            <source>Reset display colors to Normal colors</source>
+            <translation>Weergavekleuren terugzetten naar normale kleuren</translation>
+        </message>
+        <message>
+            <source>Reset to Normal colors</source>
+            <translation>Terugzetten naar normale kleuren</translation>
+        </message>
+        <message>
+            <source>Stepped colors</source>
+            <translation>Getrapte kleuren</translation>
+        </message>
+        <message>
+            <source>Text color</source>
+            <translation>Tekstkleur</translation>
+        </message>
+        <message>
+            <source>Two colors</source>
+            <translation>Twee kleuren</translation>
+        </message>
+        <message>
+            <source>Use hard color bands</source>
+            <translation>Gebruik harde kleurbanden</translation>
+        </message>
+        <message>
+            <source>Custom colors</source>
+            <translation>Aangepaste kleuren</translation>
+        </message>
+        <message>
+            <source>Advanced Tuning</source>
+            <translation>Geavanceerde afstemming</translation>
+        </message>
+        <message>
+            <source>Automatic screen correction</source>
+            <translation>Automatische schermcorrectie</translation>
+        </message>
+        <message>
+            <source>Automatically clarify text in the camera view</source>
+            <translation>Verduidelijk tekst automatisch in het camerabeeld</translation>
+        </message>
+        <message>
+            <source>Camera acceleration has not started yet.</source>
+            <translation>Cameraversnelling is nog niet begonnen.</translation>
+        </message>
+        <message>
+            <source>Camera acceleration mode</source>
+            <translation>Cameraversnellingsmodus</translation>
+        </message>
+        <message>
+            <source>Camera acceleration status</source>
+            <translation>Status van cameraversnelling</translation>
+        </message>
+        <message>
+            <source>Camera format notice</source>
+            <translation>Kennisgeving cameraformaat</translation>
+        </message>
+        <message>
+            <source>ChatGPT connection</source>
+            <translation>ChatGPT-verbinding</translation>
+        </message>
+        <message>
+            <source>Codex connection status</source>
+            <translation>Codex verbindingsstatus</translation>
+        </message>
+        <message>
+            <source>Codex usage</source>
+            <translation>Codex gebruik</translation>
+        </message>
+        <message>
+            <source>Configure the vision assistant and speech output</source>
+            <translation>Configureer de vision-assistent en spraakuitvoer</translation>
+        </message>
+        <message>
+            <source>Continue</source>
+            <translation>Ga door</translation>
+        </message>
+        <message>
+            <source>Continue Automatic Screen Correction</source>
+            <translation>Ga door met automatische schermcorrectie</translation>
+        </message>
+        <message>
+            <source>Controls pinned</source>
+            <translation>Bedieningselementen vastgezet</translation>
+        </message>
+        <message>
+            <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
+            <translation>Regelt een soepele pan- en zoompresentatie; De framesnelheid van de camera is ongewijzigd</translation>
+        </message>
+        <message>
+            <source>Current quick mode</source>
+            <translation>Huidige snelle modus</translation>
+        </message>
+        <message>
+            <source>Custom Setup</source>
+            <translation>Aangepaste installatie</translation>
+        </message>
+        <message>
+            <source>Describe the Scene</source>
+            <translation>Beschrijf de scène</translation>
+        </message>
+        <message>
+            <source>Device setting shared by all profiles.</source>
+            <translation>Apparaatinstelling gedeeld door alle profielen.</translation>
+        </message>
+        <message>
+            <source>Drag to resize Advanced settings</source>
+            <translation>Sleep om het formaat te wijzigen Geavanceerde instellingen</translation>
+        </message>
+        <message>
+            <source>Extra Stable off</source>
+            <translation>Extra Stabiel uit</translation>
+        </message>
+        <message>
+            <source>Extra Stable on</source>
+            <translation>Extra Stabiel aan</translation>
+        </message>
+        <message>
+            <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
+            <translation>Fill gebruikt het volledige zichtvenster zonder uit te rekken; Fit behoudt het volledige beeld met balken</translation>
+        </message>
+        <message>
+            <source>Finding one new screen correction...</source>
+            <translation>Eén nieuwe schermcorrectie zoeken...</translation>
+        </message>
+        <message>
+            <source>Finishing</source>
+            <translation>Afwerking</translation>
+        </message>
+        <message>
+            <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
+            <translation>Bevries het laatste scherpe frame tijdens een hobbel en keer vervolgens soepel terug naar live video</translation>
+        </message>
+        <message>
+            <source>GPU screen correction is unavailable.</source>
+            <translation>GPU-schermcorrectie is niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source>High Contrast</source>
+            <translation>Hoog contrast</translation>
+        </message>
+        <message>
+            <source>Ignore NVIDIA Super Resolution performance limit</source>
+            <translation>Negeer de prestatielimiet NVIDIA Super Resolution</translation>
+        </message>
+        <message>
+            <source>Set up Codex CLI and NVIDIA Video Effects</source>
+            <translation>Codex CLI en NVIDIA Video Effects instellen</translation>
+        </message>
+        <message>
+            <source>Keep It Steady</source>
+            <translation>Houd het stabiel</translation>
+        </message>
+        <message>
+            <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
+            <translation>Houd SuperRes actief, zelfs als de gemiddelde GPU-tijd groter is dan 24 ms</translation>
+        </message>
+        <message>
+            <source>Large Zoom</source>
+            <translation>Grote zoom</translation>
+        </message>
+        <message>
+            <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
+            <translation>Vergrendel het gemonteerde camerabeeld met behulp van volledige CUDA-stabilisatie</translation>
+        </message>
+        <message>
+            <source>Low Light</source>
+            <translation>Weinig licht</translation>
+        </message>
+        <message>
+            <source>Match camera (recommended)</source>
+            <translation>Matchcamera (aanbevolen)</translation>
+        </message>
+        <message>
+            <source>More device options</source>
+            <translation>Meer apparaatopties</translation>
+        </message>
+        <message>
+            <source>NVIDIA Image Scaling (default)</source>
+            <translation>NVIDIA Beeldschaling (standaard)</translation>
+        </message>
+        <message>
+            <source>NVIDIA Super Resolution status</source>
+            <translation>NVIDIA Super Resolution-status</translation>
+        </message>
+        <message>
+            <source>NVIDIA Video Effects runtime installed</source>
+            <translation>NVIDIA Video Effects runtime geïnstalleerd</translation>
+        </message>
+        <message>
+            <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
+            <translation>NVIDIA Video Effects runtime niet geïnstalleerd; gebruik Installatie en downloads</translation>
+        </message>
+        <message>
+            <source>Next Advanced section</source>
+            <translation>Volgende geavanceerde sectie</translation>
+        </message>
+        <message>
+            <source>Next quick mode</source>
+            <translation>Volgende snelle modus</translation>
+        </message>
+        <message>
+            <source>No microphone (video only)</source>
+            <translation>Geen microfoon (alleen video)</translation>
+        </message>
+        <message>
+            <source>Open controls and features help</source>
+            <translation>Hulp bij het openen van bedieningselementen en functies</translation>
+        </message>
+        <message>
+            <source>Open help</source>
+            <translation>Hulp openen</translation>
+        </message>
+        <message>
+            <source>OkuFlow Help</source>
+            <translation>OkuFlow Hulp</translation>
+        </message>
+        <message>
+            <source>OkuFlow controls and features guide</source>
+            <translation>OkuFlow handleiding voor bedieningselementen en functies</translation>
+        </message>
+        <message>
+            <source>Overlay a red marker at the current zoom focus</source>
+            <translation>Plaats een rode markering op de huidige zoomfocus</translation>
+        </message>
+        <message>
+            <source>Previous Advanced section</source>
+            <translation>Vorige Geavanceerde sectie</translation>
+        </message>
+        <message>
+            <source>Previous quick mode</source>
+            <translation>Vorige snelle modus</translation>
+        </message>
+        <message>
+            <source>Processing: CPU</source>
+            <translation>Verwerking: CPU</translation>
+        </message>
+        <message>
+            <source>Profile setting saved with the current quick option.</source>
+            <translation>Profielinstelling opgeslagen met de huidige snelle optie.</translation>
+        </message>
+        <message>
+            <source>Quick mode</source>
+            <translation>Snelle modus</translation>
+        </message>
+        <message>
+            <source>Quick mode changed</source>
+            <translation>Snelle modus gewijzigd</translation>
+        </message>
+        <message>
+            <source>Quick mode changed to %1</source>
+            <translation>Snelle modus gewijzigd in %1</translation>
+        </message>
+        <message>
+            <source>Read a Page</source>
+            <translation>Lees een pagina</translation>
+        </message>
+        <message>
+            <source>Reading</source>
+            <translation>Lezen</translation>
+        </message>
+        <message>
+            <source>Reading profile</source>
+            <translation>Profiel lezen</translation>
+        </message>
+        <message>
+            <source>Reset current profile tuning</source>
+            <translation>Reset huidige profielafstemming</translation>
+        </message>
+        <message>
+            <source>Reset profile-owned image and assistive tuning to defaults</source>
+            <translation>Reset de profieleigen afbeelding en hulpafstemming naar de standaardwaarden</translation>
+        </message>
+        <message>
+            <source>Resize Advanced settings</source>
+            <translation>Formaat wijzigen Geavanceerde instellingen</translation>
+        </message>
+        <message>
+            <source>Rotate input/output clockwise</source>
+            <translation>Draai de invoer/uitvoer met de klok mee</translation>
+        </message>
+        <message>
+            <source>Runtime not installed; use Setup &amp; Downloads</source>
+            <translation>Runtime niet geïnstalleerd; gebruik Installatie en downloads</translation>
+        </message>
+        <message>
+            <source>Save an annotated snapshot to lecture notes when Draw mode closes.</source>
+            <translation>Sla een geannoteerde momentopname op in collegeaantekeningen wanneer de Draw-modus wordt gesloten.</translation>
+        </message>
+        <message>
+            <source>See in Low Light</source>
+            <translation>Zie bij weinig licht</translation>
+        </message>
+        <message>
+            <source>Sharp Text</source>
+            <translation>Scherpe tekst</translation>
+        </message>
+        <message>
+            <source>Sharpen Text</source>
+            <translation>Tekst verscherpen</translation>
+        </message>
+        <message>
+            <source>Sharpening</source>
+            <translation>Slijpen</translation>
+        </message>
+        <message>
+            <source>Show a guide to OkuFlow controls and features</source>
+            <translation>Toon een handleiding voor de bedieningselementen en functies van OkuFlow</translation>
+        </message>
+        <message>
+            <source>Show all quick modes</source>
+            <translation>Toon alle snelle modi</translation>
+        </message>
+        <message>
+            <source>Show an on-screen control for moving the zoomed view</source>
+            <translation>Toon een besturingselement op het scherm voor het verplaatsen van de ingezoomde weergave</translation>
+        </message>
+        <message>
+            <source>Steady Text</source>
+            <translation>Vaste tekst</translation>
+        </message>
+        <message>
+            <source>Stop Automatic Screen Correction</source>
+            <translation>Automatische schermcorrectie stoppen</translation>
+        </message>
+        <message>
+            <source>Test camera acceleration</source>
+            <translation>Cameraversnelling testen</translation>
+        </message>
+        <message>
+            <source>Unavailable in this build</source>
+            <translation>Niet beschikbaar in deze build</translation>
+        </message>
+        <message>
+            <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
+            <translation>Gebruik NVIDIA Video Effects SuperRes bij 1,33x zoom en hoger; valt automatisch terug naar NIS</translation>
+        </message>
+        <message>
+            <source>Viewport setting shared by all profiles.</source>
+            <translation>Viewport-instelling gedeeld door alle profielen.</translation>
+        </message>
+        <message>
+            <source>Zoom In More</source>
+            <translation>Meer inzoomen</translation>
+        </message>
+        <message>
+            <source>Administrator approval was cancelled. Nothing was installed.</source>
+            <translation>Goedkeuring door de beheerder is geannuleerd. Er is niets geïnstalleerd.</translation>
+        </message>
+        <message>
+            <source>Codex CLI</source>
+            <translation>Codex CLI</translation>
+        </message>
+        <message>
+            <source>Downloading from vendor...</source>
+            <translation>Downloaden van leverancier...</translation>
+        </message>
+        <message>
+            <source>Install Codex CLI</source>
+            <translation>Installeer Codex CLI</translation>
+        </message>
+        <message>
+            <source>Installed</source>
+            <translation>Geïnstalleerd</translation>
+        </message>
+        <message>
+            <source>Installed and managed by OkuFlow
+%1</source>
+            <translation>Geïnstalleerd en beheerd door OkuFlow
+%1</translation>
+        </message>
+        <message>
+            <source>Installed system-wide
+%1
+Removal is managed by Windows.</source>
+            <translation>Systeembreed geïnstalleerd
+%1
+Het verwijderen wordt beheerd door Windows.</translation>
+        </message>
+        <message>
+            <source>NVIDIA Video Effects</source>
+            <translation>NVIDIA Video Effects</translation>
+        </message>
+        <message>
+            <source>NVIDIA installer running. Continue in the vendor installer window.</source>
+            <translation>NVIDIA installatieprogramma actief. Ga verder in het installatievenster van de leverancier.</translation>
+        </message>
+        <message>
+            <source>Not installed</source>
+            <translation>Niet geïnstalleerd</translation>
+        </message>
+        <message>
+            <source>Not installed. Install downloads the package for %1 GPUs.</source>
+            <translation>Niet geïnstalleerd. Installeren downloadt het pakket voor %1 GPU's.</translation>
+        </message>
+        <message>
+            <source>Open Codex CLI install folder</source>
+            <translation>Open de installatiemap Codex CLI</translation>
+        </message>
+        <message>
+            <source>Open Codex CLI setup guide</source>
+            <translation>Open de installatiehandleiding Codex CLI</translation>
+        </message>
+        <message>
+            <source>Open Install Folder</source>
+            <translation>Open de installatiemap</translation>
+        </message>
+        <message>
+            <source>Open Vendor Page</source>
+            <translation>Open de leverancierspagina</translation>
+        </message>
+        <message>
+            <source>Open Windows Apps</source>
+            <translation>Open Windows-apps</translation>
+        </message>
+        <message>
+            <source>Open the NVIDIA runtime uninstaller?</source>
+            <translation>Open het runtime-verwijderingsprogramma NVIDIA?</translation>
+        </message>
+        <message>
+            <source>Open the folder containing the detected Codex CLI</source>
+            <translation>Open de map met de gedetecteerde Codex CLI</translation>
+        </message>
+        <message>
+            <source>Open the official Codex CLI documentation</source>
+            <translation>Open de officiële Codex CLI-documentatie</translation>
+        </message>
+        <message>
+            <source>OkuFlow Setup Assistant</source>
+            <translation>OkuFlow Installatie-assistent</translation>
+        </message>
+        <message>
+            <source>Remove NVIDIA Video Effects</source>
+            <translation>Verwijder NVIDIA Video Effects</translation>
+        </message>
+        <message>
+            <source>Retrying from the alternate vendor host...</source>
+            <translation>Opnieuw proberen vanaf de host van de alternatieve leverancier...</translation>
+        </message>
+        <message>
+            <source>Setup Assistant</source>
+            <translation>Installatie-assistent</translation>
+        </message>
+        <message>
+            <source>Setup Guide</source>
+            <translation>Installatiehandleiding</translation>
+        </message>
+        <message>
+            <source>Setup in progress</source>
+            <translation>Installatie wordt uitgevoerd</translation>
+        </message>
+        <message>
+            <source>Setup progress</source>
+            <translation>Voortgang van het instellen</translation>
+        </message>
+        <message>
+            <source>Setup status</source>
+            <translation>Installatiestatus</translation>
+        </message>
+        <message>
+            <source>The Setup Assistant remains available from Advanced settings</source>
+            <translation>De Setup Assistant blijft beschikbaar via Geavanceerde instellingen</translation>
+        </message>
+        <message>
+            <source>The downloaded installer could not be opened for verification.</source>
+            <translation>Het gedownloade installatieprogramma kan niet worden geopend voor verificatie.</translation>
+        </message>
+        <message>
+            <source>The downloaded installer could not be read for verification.</source>
+            <translation>Het gedownloade installatieprogramma kon niet ter verificatie worden gelezen.</translation>
+        </message>
+        <message>
+            <source>The first transfer failed. Retrying with the Windows downloader...</source>
+            <translation>De eerste overdracht mislukte. Opnieuw proberen met de Windows-downloader...</translation>
+        </message>
+        <message>
+            <source>The installer did not complete successfully.</source>
+            <translation>Het installatieprogramma is niet succesvol voltooid.</translation>
+        </message>
+        <message>
+            <source>The installer failed SHA-256 verification and was deleted.</source>
+            <translation>Het installatieprogramma slaagde niet in de SHA-256-verificatie en werd verwijderd.</translation>
+        </message>
+        <message>
+            <source>The temporary download file could not be created.</source>
+            <translation>Het tijdelijke downloadbestand kon niet worden gemaakt.</translation>
+        </message>
+        <message>
+            <source>This system-wide copy must be removed through Windows Installed Apps</source>
+            <translation>Deze systeembrede kopie moet worden verwijderd via door Windows geïnstalleerde apps</translation>
+        </message>
+        <message>
+            <source>Unknown download error</source>
+            <translation>Onbekende downloadfout</translation>
+        </message>
+        <message>
+            <source>Update</source>
+            <translation>Bijwerken</translation>
+        </message>
+        <message>
+            <source>Update Codex CLI</source>
+            <translation>Codex CLI bijwerken</translation>
+        </message>
+        <message>
+            <source>Verified. Installing the official Codex CLI...</source>
+            <translation>Geverifieerd. De officiële Codex CLI installeren...</translation>
+        </message>
+        <message>
+            <source>Verified. Starting installer...</source>
+            <translation>Geverifieerd. Installatieprogramma starten...</translation>
+        </message>
+        <message>
+            <source>Windows could not start the verified installer.
+
+%1</source>
+            <translation>Windows kan het geverifieerde installatieprogramma niet starten.
+
+%1</translation>
+        </message>
+        <message>
+            <source>Download failed: %1</source>
+            <translation>Downloaden mislukt: %1</translation>
+        </message>
+        <message>
+            <source>Assistive hooks: off</source>
+            <translation>Hulpfuncties: uit</translation>
+        </message>
+        <message>
+            <source>Assistive hooks: Scene Explain</source>
+            <translation>Hulphaken: scène uitleggen</translation>
+        </message>
+        <message>
+            <source>Assistive hooks: Scene Explain with overlay</source>
+            <translation>Hulphaken: scène-uitleg met overlay</translation>
+        </message>
+        <message>
+            <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
+            <translation>Aangepaste configuratie van Advanced Tuning. Bewaar het als een snelle optie als het goed voelt.</translation>
+        </message>
+        <message>
+            <source>Current quick mode description</source>
+            <translation>Huidige beschrijving van de snelle modus</translation>
+        </message>
+        <message>
+            <source>Current Setup</source>
+            <translation>Huidige configuratie</translation>
+        </message>
+        <message>
+            <source>Profile tuning reset to OkuFlow defaults.</source>
+            <translation>Profielafstemming wordt gereset naar de standaardwaarden OkuFlow.</translation>
+        </message>
+        <message>
+            <source>Current profile tuning reset to defaults.</source>
+            <translation>Huidige profielafstemming wordt gereset naar de standaardwaarden.</translation>
+        </message>
+        <message>
+            <source>Quick option name:</source>
+            <translation>Naam van snelle optie:</translation>
+        </message>
+        <message>
+            <source>OkuFlow could not save settings.</source>
+            <translation>OkuFlow kan de instellingen niet opslaan.</translation>
+        </message>
+        <message>
+            <source>Blur sigma</source>
+            <translation>Sigma vervagen</translation>
+        </message>
+        <message>
+            <source>Blur radius</source>
+            <translation>Vervagen straal</translation>
+        </message>
+        <message>
+            <source>Performance timing percentiles</source>
+            <translation>Percentielen voor prestatietiming</translation>
+        </message>
+        <message>
+            <source>%1 status</source>
+            <translation>%1-status</translation>
+        </message>
+        <message>
+            <source>%1 download progress</source>
+            <translation>%1 downloadvoortgang</translation>
+        </message>
+        <message>
+            <source>Install %1</source>
+            <translation>Installeer %1</translation>
+        </message>
+        <message>
+            <source>Remove %1</source>
+            <translation>Verwijder %1</translation>
+        </message>
+        <message>
+            <source>Display colors, Normal colors</source>
+            <translation>Weergavekleuren, normale kleuren</translation>
+        </message>
+        <message>
+            <source>Stops: </source>
+            <translation>Haltes: </translation>
+        </message>
+        <message>
+            <source>Color stop %1 of 8</source>
+            <translation>Kleurstop %1 van 8</translation>
+        </message>
+        <message>
+            <source>%1 px</source>
+            <translation>%1 px</translation>
+        </message>
+        <message>
+            <source>Drawing thickness</source>
+            <translation>Dikte tekening</translation>
+        </message>
+        <message>
+            <source>AI settings sections</source>
+            <translation>Secties met AI-instellingen</translation>
+        </message>
+        <message>
+            <source>Model ID: %1</source>
+            <translation>Model-ID: %1</translation>
+        </message>
+        <message>
+            <source>%1 (current setting; unavailable in catalog)</source>
+            <translation>%1 (huidige instelling; niet beschikbaar in catalogus)</translation>
+        </message>
+        <message>
+            <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
+            <translation>Versnel snelle Ctrl+scroll-zoombewegingen; toetsenbordzoom blijft exact</translation>
+        </message>
+        <message>
+            <source>SuperRes powered by NVIDIA Maxine™</source>
+            <translation>SuperRes mogelijk gemaakt door NVIDIA Maxine™</translation>
+        </message>
+        <message>
+            <source>NVIDIA Maxine attribution</source>
+            <translation>NVIDIA Maxine-attributie</translation>
+        </message>
+        <message>
+            <source>setting shared by all profiles</source>
+            <translation>instelling gedeeld door alle profielen</translation>
+        </message>
+        <message>
+            <source>%1 profile</source>
+            <translation>%1 profiel</translation>
+        </message>
+        <message>
+            <source>%1 settings match</source>
+            <translation>%1 instellingen komen overeen</translation>
+        </message>
+        <message>
+            <source>Next screen correction, or find one new correction.%1</source>
+            <translation>Volgende schermcorrectie, of zoek een nieuwe correctie.%1</translation>
+        </message>
+        <message>
+            <source>Controls will hide automatically</source>
+            <translation>De bedieningselementen worden automatisch verborgen</translation>
+        </message>
+        <message>
+            <source>OkuFlow Lecture Notes</source>
+            <translation>OkuFlow Aantekeningen bij de lezing</translation>
+        </message>
+        <message>
+            <source>Started %1</source>
+            <translation>Gestart %1</translation>
+        </message>
+        <message>
+            <source>Captured processed camera view</source>
+            <translation>Vastgelegd verwerkt camerabeeld</translation>
+        </message>
+        <message>
+            <source>Processed camera view</source>
+            <translation>Verwerkt camerabeeld</translation>
+        </message>
+        <message>
+            <source>Original camera view</source>
+            <translation>Origineel camerabeeld</translation>
+        </message>
+        <message>
+            <source>Open original video</source>
+            <translation>Originele video openen</translation>
+        </message>
+        <message>
+            <source>Open processed video</source>
+            <translation>Verwerkte video openen</translation>
+        </message>
+        <message>
+            <source>Original camera video</source>
+            <translation>Originele cameravideo</translation>
+        </message>
+        <message>
+            <source>Original camera photo</source>
+            <translation>Originele camerafoto</translation>
+        </message>
+        <message>
+            <source>Processed camera video</source>
+            <translation>Verwerkte cameravideo</translation>
+        </message>
+        <message>
+            <source>Processed camera photo</source>
+            <translation>Verwerkte camerafoto</translation>
+        </message>
+        <message>
+            <source>Annotations cleared - snapshot</source>
+            <translation>Annotaties gewist - momentopname</translation>
+        </message>
+        <message>
+            <source>Annotation session ended - snapshot</source>
+            <translation>Annotatiesessie beëindigd - momentopname</translation>
+        </message>
+        <message>
+            <source>The conversation could not be exported to %1.</source>
+            <translation>Het gesprek kon niet worden geëxporteerd naar %1.</translation>
+        </message>
+        <message>
+            <source>Conversation exported to %1.</source>
+            <translation>Gesprek geëxporteerd naar %1.</translation>
+        </message>
+        <message>
+            <source>The paired photos could not be saved, so no files were kept. Try again.</source>
+            <translation>De gekoppelde foto's konden niet worden opgeslagen en er werden dus geen bestanden bewaard. Probeer het opnieuw.</translation>
+        </message>
+        <message>
+            <source>The paired photos could not be saved. A partial file may remain: %1</source>
+            <translation>De gekoppelde foto's konden niet worden opgeslagen. Er kan een gedeeltelijk bestand achterblijven: %1</translation>
+        </message>
+        <message>
+            <source>The saved OkuFlow folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
+            <translation>De opgeslagen map OkuFlow kan niet worden gebruikt (%1). Bestanden gaan naar de standaardmap Documenten totdat er een nieuwe map wordt gekozen.</translation>
+        </message>
+        <message>
+            <source>Lecture transcript</source>
+            <translation>Transcript van de lezing</translation>
+        </message>
+        <message>
+            <source>Expand all</source>
+            <translation>Alles uitvouwen</translation>
+        </message>
+        <message>
+            <source>Collapse all</source>
+            <translation>Alles samenvouwen</translation>
+        </message>
+        <message>
+            <source>Light or dark colors</source>
+            <translation>Lichte of donkere kleuren</translation>
+        </message>
+        <message>
+            <source>Original and processed video</source>
+            <translation>Originele en bewerkte video</translation>
+        </message>
+        <message>
+            <source>Original and processed photo</source>
+            <translation>Originele en bewerkte foto</translation>
+        </message>
+        <message>
+            <source>View the assistant analyzed</source>
+            <translation>Bekijk wat de assistent heeft geanalyseerd</translation>
+        </message>
+        <message>
+            <source>Conversation</source>
+            <translation>Gesprek</translation>
+        </message>
+        <message>
+            <source>New chat</source>
+            <translation>Nieuwe chat</translation>
+        </message>
+        <message>
+            <source>Started a new conversation.</source>
+            <translation>Een nieuw gesprek begonnen.</translation>
+        </message>
+        <message>
+            <source>Finish the current answer before starting a new chat.</source>
+            <translation>Beëindig het huidige antwoord voordat u een nieuwe chat start.</translation>
+        </message>
+        <message>
+            <source>Explain conversation</source>
+            <translation>Uitleggesprek</translation>
+        </message>
+        <message>
+            <source>Started a new conversation. The next Explain also starts a new conversation.</source>
+            <translation>Een nieuw gesprek begonnen. De volgende Uitleg begint ook een nieuw gesprek.</translation>
+        </message>
+        <message>
+            <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
+            <translation>Het huidige cameraframe en prompt worden verzonden naar Codex. Gesprek: opgeslagen uitleggesprek, vervolgd door elke uitleg. Tool internet: geblokkeerd. Codering en bestandswijzigingen: geblokkeerd.</translation>
+        </message>
+        <message>
+            <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
+            <translation>Het huidige cameraframe en prompt worden verzonden naar Codex. Gesprek: tijdelijk, nieuw voor elke Read. Tool internet: geblokkeerd. Codering en bestandswijzigingen: geblokkeerd.</translation>
+        </message>
+        <message>
+            <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
+            <translation>Het huidige cameraframe, de prompt en recente uitleg-antwoorden verzenden naar %1 (lokaal eindpunt). Gesprek: recente uitleg-antwoorden, alleen in het geheugen bewaard. Codeertools: niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
+            <translation>Het huidige cameraframe, de prompt en recente uitleg-antwoorden verzenden naar %1 (extern eindpunt). Gesprek: recente uitleg-antwoorden, alleen in het geheugen bewaard. Codeertools: niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Panel position</source>
+            <translation>Paneelpositie</translation>
+        </message>
+        <message>
+            <source>Floating</source>
+            <translation>Zwevend</translation>
+        </message>
+        <message>
+            <source>Dock left</source>
+            <translation>Dok links</translation>
+        </message>
+        <message>
+            <source>Dock right</source>
+            <translation>Dock rechts</translation>
+        </message>
+        <message>
+            <source>Release to dock left</source>
+            <translation>Laat los om links aan te leggen</translation>
+        </message>
+        <message>
+            <source>Release to dock right</source>
+            <translation>Laat los om rechts aan te meren</translation>
+        </message>
+        <message>
+            <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
+            <translation>Maakt door abonnementen ondersteunde functies Lezen, Uitleggen en Assistent mogelijk. Installeert de officiële Codex CLI voor uw Windows-account; Inloggen bij ChatGPT blijft een aparte stap.</translation>
+        </message>
+        <message>
+            <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
+            <translation>De cameraverbinding is verbroken. OkuFlow maakt automatisch opnieuw verbinding.</translation>
+        </message>
+        <message>
+            <source>Starting camera…</source>
+            <translation>Camera starten…</translation>
+        </message>
+        <message>
+            <source>No camera picture</source>
+            <translation>Geen camerabeeld</translation>
+        </message>
+        <message>
+            <source>Connect a camera, then choose it under Advanced, Device.</source>
+            <translation>Sluit een camera aan en kies deze vervolgens onder Geavanceerd, Apparaat.</translation>
+        </message>
+        <message>
+            <source>Choose a camera under Advanced, Device, or check that it is connected.</source>
+            <translation>Kies een camera onder Geavanceerd, Apparaat of controleer of deze is aangesloten.</translation>
+        </message>
+        <message>
+            <source>Number key %1</source>
+            <translation>Cijfertoets %1</translation>
+        </message>
+        <message>
+            <source>Shared settings</source>
+            <translation>Gedeelde instellingen</translation>
+        </message>
+        <message>
+            <source>Not saved into quick options</source>
+            <translation>Niet opgeslagen in snelle opties</translation>
+        </message>
+        <message>
+            <source>No matching settings</source>
+            <translation>Geen overeenkomende instellingen</translation>
+        </message>
+        <message>
+            <source>Settings search</source>
+            <translation>Instellingen zoeken</translation>
+        </message>
+        <message>
+            <source>Settings</source>
+            <translation>Instellingen</translation>
+        </message>
+        <message>
+            <source>Search image settings…</source>
+            <translation>Zoek afbeeldingsinstellingen…</translation>
+        </message>
+        <message>
+            <source>Search settings…</source>
+            <translation>Zoekinstellingen…</translation>
+        </message>
+        <message>
+            <source>Mode: %1</source>
+            <translation>Modus: %1</translation>
+        </message>
+        <message>
+            <source>Current mode</source>
+            <translation>Huidige modus</translation>
+        </message>
+        <message>
+            <source>Changes apply now. Save to keep them.</source>
+            <translation>Wijzigingen zijn nu van toepassing. Bewaar om ze te bewaren.</translation>
+        </message>
+        <message>
+            <source>Shared by all modes. Not saved into quick modes.</source>
+            <translation>Gedeeld door alle modi. Niet opgeslagen in snelle modi.</translation>
+        </message>
+        <message>
+            <source>Fine-tune text</source>
+            <translation>Tekst verfijnen</translation>
+        </message>
+        <message>
+            <source>Notes and files</source>
+            <translation>Notities en bestanden</translation>
+        </message>
+        <message>
+            <source>AI and downloads</source>
+            <translation>AI en downloads</translation>
+        </message>
+        <message>
+            <source>Troubleshooting</source>
+            <translation>Problemen oplossen</translation>
+        </message>
+        <message>
+            <source>View and navigation</source>
+            <translation>Bekijk en navigatie</translation>
+        </message>
+        <message>
+            <source>Colors and contrast</source>
+            <translation>Kleuren en contrast</translation>
+        </message>
+        <message>
+            <source>Steady image</source>
+            <translation>Stabiel beeld</translation>
+        </message>
+        <message>
+            <source>Straighten screen</source>
+            <translation>Scherm rechtzetten</translation>
+        </message>
+        <message>
+            <source>Soften image (blur)</source>
+            <translation>Afbeelding verzachten (vervagen)</translation>
+        </message>
+        <message>
+            <source>Horizontal position</source>
+            <translation>Horizontale positie</translation>
+        </message>
+        <message>
+            <source>Vertical position</source>
+            <translation>Verticale positie</translation>
+        </message>
+        <message>
+            <source>Camera resolution &amp;&amp; frame rate</source>
+            <translation>Cameraresolutie &amp;&amp; framesnelheid</translation>
+        </message>
+        <message>
+            <source>Save as Quick Mode</source>
+            <translation>Opslaan als snelle modus</translation>
+        </message>
+        <message>
+            <source>Reset Mode</source>
+            <translation>Reset-modus</translation>
+        </message>
+        <message>
+            <source>Quick mode name:</source>
+            <translation>Naam snelle modus:</translation>
+        </message>
+        <message>
+            <source>No matches here. %1 in Settings. Press Enter to show them.</source>
+            <translation>Geen overeenkomsten hier. %1 in Instellingen. Druk op Enter om ze weer te geven.</translation>
+        </message>
+        <message>
+            <source>No matches here. %1 in Image. Press Enter to show them.</source>
+            <translation>Geen overeenkomsten hier. %1 in afbeelding. Druk op Enter om ze weer te geven.</translation>
+        </message>
+        <message>
+            <source>Saved with the current quick mode.</source>
+            <translation>Opgeslagen met de huidige snelle modus.</translation>
+        </message>
+        <message>
+            <source>Shared setting, used by all modes.</source>
+            <translation>Gedeelde instelling, gebruikt door alle modi.</translation>
+        </message>
+        <message>
+            <source>Reset current mode to defaults</source>
+            <translation>Reset de huidige modus naar de standaardwaarden</translation>
+        </message>
+        <message>
+            <source>Resets this mode's image and assistant settings. Settings on the Settings tab are not changed.</source>
+            <translation>Reset de beeld- en assistentinstellingen van deze modus. Instellingen op het tabblad Instellingen worden niet gewijzigd.</translation>
+        </message>
+        <message>
+            <source>Connect a camera, then choose it under Settings, Camera.</source>
+            <translation>Sluit een camera aan en kies deze vervolgens onder Instellingen, Camera.</translation>
+        </message>
+        <message>
+            <source>Choose a camera under Settings, Camera, or check that it is connected.</source>
+            <translation>Kies een camera onder Instellingen, Camera, of controleer of deze is aangesloten.</translation>
+        </message>
+        <message>
+            <source>Language</source>
+            <translation>Taal</translation>
+        </message>
+        <message>
+            <source>Search image settings</source>
+            <translation>Zoek naar afbeeldingsinstellingen</translation>
+        </message>
+        <message>
+            <source>Search shared settings</source>
+            <translation>Zoek gedeelde instellingen</translation>
+        </message>
+        <message>
+            <source>Describe the current camera view</source>
+            <translation>Beschrijf het huidige camerabeeld</translation>
+        </message>
+        <message>
+            <source>Explain scene</source>
+            <translation>Scène uitleggen</translation>
+        </message>
+        <message>
+            <source>Stop scene explanation</source>
+            <translation>Stop scène-uitleg</translation>
+        </message>
+        <message>
+            <source>Stop the current scene explanation</source>
+            <translation>Stop de huidige scène-uitleg</translation>
+        </message>
+        <message>
+            <source>Reset this mode's image and assistant settings?
+
+Shared settings on the Settings tab will stay unchanged.</source>
+            <translation>De beeld- en assistentinstellingen van deze modus resetten?
+
+Gedeelde instellingen op het tabblad Instellingen blijven ongewijzigd.</translation>
+        </message>
+        <message>
+            <source>Hide UI</source>
+            <translation>Gebruikersinterface verbergen</translation>
+        </message>
+        <message>
+            <source>Show UI</source>
+            <translation>Toon gebruikersinterface</translation>
+        </message>
+        <message>
+            <source>Hide controls and assistant</source>
+            <translation>Verberg bedieningselementen en assistent</translation>
+        </message>
+        <message>
+            <source>Show controls and assistant</source>
+            <translation>Toon bedieningselementen en assistent</translation>
+        </message>
+        <message>
+            <source>Show or hide controls and assistant (Ctrl+H)</source>
+            <translation>Bedieningselementen en assistent tonen of verbergen (Ctrl+H)</translation>
+        </message>
+        <message>
+            <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
+            <translation>%1 kon zijn laatste fragment (0x%2) niet voltooien. Het bestand werd bewaard; afspelen is niet geverifieerd.</translation>
+        </message>
+        <message>
+            <source>Recording output path already exists; it was preserved.</source>
+            <translation>Opname-uitvoerpad bestaat al; het werd bewaard.</translation>
+        </message>
+        <message>
+            <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
+            <translation>Teksthelderheid past automatische verbetering toe. Opties voor fijnafstemming zijn alleen van toepassing als Teksthelderheid is ingeschakeld.</translation>
+        </message>
+        <message>
+            <source>More colors
+%1</source>
+            <translation>Meer kleuren
+%1</translation>
+        </message>
+        <message>
+            <source>Yellow on black</source>
+            <translation>Geel op zwart</translation>
+        </message>
+        <message>
+            <source>Black on yellow</source>
+            <translation>Zwart op geel</translation>
+        </message>
+        <message>
+            <source>Posterize 6</source>
+            <translation>Posterformaat 6</translation>
+        </message>
+        <message>
+            <source>Yellow text on black background</source>
+            <translation>Gele tekst op zwarte achtergrond</translation>
+        </message>
+        <message>
+            <source>Black text on yellow background</source>
+            <translation>Zwarte tekst op gele achtergrond</translation>
+        </message>
+        <message>
+            <source>Six color posterize effect</source>
+            <translation>Posterize-effect in zes kleuren</translation>
+        </message>
+        <message>
+            <source>AI service</source>
+            <translation>AI-service</translation>
+        </message>
+        <message>
+            <source>ChatGPT subscription (Codex)</source>
+            <translation>ChatGPT-abonnement (Codex)</translation>
+        </message>
+        <message>
+            <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
+            <translation>Lezen, uitleggen en Assistent gebruiken uw ChatGPT-abonnement via Codex CLI. Meld u aan met Connect ChatGPT op het tabblad Assistent in de geavanceerde modus.</translation>
+        </message>
+        <message>
+            <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
+            <translation>Lezen en uitleggen Stuur het camerabeeld naar de onderstaande server-URL. Afbeeldingen blijven alleen op deze computer staan ​​als die server erop draait, zoals LM Studio of Ollama bij localhost. Voor opgeslagen Assistent-gesprekken is het ChatGPT-abonnement vereist.</translation>
+        </message>
+        <message>
+            <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
+            <translation>OkuFlow stuurt deze instructie altijd naar Codex, gevolgd door uw instructies en de toestemmingsregels.</translation>
+        </message>
+        <message>
+            <source>Assistant instructions</source>
+            <translation>Assistent-instructies</translation>
+        </message>
+        <message>
+            <source>Explain prompt:</source>
+            <translation>Uitleg prompt:</translation>
+        </message>
+        <message>
+            <source>Advanced Assistant permissions</source>
+            <translation>Geavanceerde assistent-machtigingen</translation>
+        </message>
+        <message>
+            <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
+            <translation>Deze zijn alleen van toepassing op opgeslagen Assistent-gesprekken, inclusief vragen die worden gesteld door de zwevende Assistent. Lezen en uitleggen blijft altijd beperkt.</translation>
+        </message>
+        <message>
+            <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
+            <translation>Kies ChatGPT via Codex of een OpenAI-compatibele server</translation>
+        </message>
+        <message>
+            <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
+            <translation>Kies hoeveel redenering Codex gebruikt. Bij hogere niveaus kan het langer duren om te antwoorden.</translation>
+        </message>
+        <message>
+            <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
+            <translation>Toon of verberg de alleen-lezen instructie die OkuFlow altijd naar Codex stuurt</translation>
+        </message>
+        <message>
+            <source>Explain Prompt</source>
+            <translation>Uitleg Prompt</translation>
+        </message>
+        <message>
+            <source>Optional instructions sent with the camera view when you press Explain</source>
+            <translation>Optionele instructies die met de cameraweergave worden verzonden wanneer u op Uitleg drukt</translation>
+        </message>
+        <message>
+            <source>Installed
+%1
+Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
+            <translation>Geïnstalleerd
+%1
+Gebruik Connect ChatGPT op het tabblad Geavanceerde assistent om in te loggen.</translation>
+        </message>
+        <message>
+            <source>Could not load conversation.</source>
+            <translation>Kan gesprek niet laden.</translation>
+        </message>
+        <message>
+            <source>GPU upload busy %1</source>
+            <translation>GPU-upload bezig %1</translation>
+        </message>
+        <message>
+            <source>encoder backlog %1</source>
+            <translation>encoderachterstand %1</translation>
+        </message>
+        <message>
+            <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
+            <translation>Bij het opnemen worden samples overgeslagen omdat de voortgang van de encoder niet kon worden gecontroleerd. Stop de opname en start deze opnieuw als deze doorgaat.</translation>
+        </message>
+        <message>
+            <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
+            <translation>Bij het opnemen worden videoframes overgeslagen omdat de encoderwachtrij vol is. Verlaag de opnameresolutie of stop en start de opname opnieuw als deze doorgaat.</translation>
+        </message>
+        <message>
+            <source>Waiting for phone…</source>
+            <translation>Wachten op telefoon…</translation>
+        </message>
+        <message>
+            <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
+            <translation>Open OkuFlow Camera op de telefoon, sluit de USB-kabel aan en sta USB-foutopsporing toe. OkuFlow controleert de verbinding automatisch.</translation>
+        </message>
+        <message>
+            <source>Set up OkuFlow</source>
+            <translation>OkuFlow instellen</translation>
+        </message>
+        <message>
+            <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
+            <translation>Het Windows runtime-installatieprogramma is inbegrepen. Optionele AI-tools worden gedownload van hun leveranciers. Elk installatieprogramma wordt geverifieerd voordat het wordt uitgevoerd.</translation>
+        </message>
+        <message>
+            <source>Microsoft Windows runtime</source>
+            <translation>Microsoft Windows-runtime</translation>
+        </message>
+        <message>
+            <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
+            <translation>Windows-bibliotheken gebruikt door OkuFlow. De installatie maakt gebruik van het meegeleverde Microsoft-installatieprogramma en vereist mogelijk goedkeuring van de beheerder.</translation>
+        </message>
+        <message>
+            <source>Install for Windows</source>
+            <translation>Installeren voor Windows</translation>
+        </message>
+        <message>
+            <source>Install Microsoft Windows runtime</source>
+            <translation>Installeer Microsoft Windows-runtime</translation>
+        </message>
+        <message>
+            <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>
+            <translation>Gebruik de volledige ZIP OkuFlow om het Windows runtime-installatieprogramma op te nemen.</translation>
+        </message>
+        <message>
+            <source>The included Microsoft installer could not be verified. Download the complete OkuFlow ZIP again.</source>
+            <translation>Het meegeleverde Microsoft-installatieprogramma kan niet worden geverifieerd. Download de volledige OkuFlow ZIP opnieuw.</translation>
+        </message>
+        <message>
+            <source>Windows could not start the elevated installer (error %1).</source>
+            <translation>Windows kon het verhoogde installatieprogramma niet starten (fout %1).</translation>
+        </message>
+        <message>
+            <source>Microsoft installer running. Continue in the installer window.</source>
+            <translation>Microsoft-installatieprogramma actief. Ga verder in het installatievenster.</translation>
+        </message>
+        <message>
+            <source>Windows installer exit code: %1</source>
+            <translation>Afsluitcode van Windows-installatieprogramma: %1</translation>
+        </message>
+        <message>
+            <source>Installation completed. Restart Windows when convenient.</source>
+            <translation>Installatie voltooid. Start Windows opnieuw op wanneer dit handig is.</translation>
+        </message>
+        <message>
+            <source>Installation cancelled. You can try again later.</source>
+            <translation>Installatie geannuleerd. Je kunt het later opnieuw proberen.</translation>
+        </message>
+        <message>
+            <source>System default (%1)</source>
+            <translation>Systeemstandaard (%1)</translation>
+        </message>
+        <message>
+            <source>Restoring USB connection…</source>
+            <translation>USB-verbinding wordt hersteld…</translation>
+        </message>
+        <message>
+            <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
+            <translation>OkuFlow controleert de USB-verbinding en maakt automatisch opnieuw verbinding.</translation>
+        </message>
+    </context>
+</TS>

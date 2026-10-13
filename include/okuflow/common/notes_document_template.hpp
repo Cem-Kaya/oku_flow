@@ -13,7 +13,7 @@ namespace okuflow {
 // notes file; every control is at least 44 px tall and keyboard reachable.
 // Kept within MSVC string-literal limits by splitting into adjacent pieces.
 inline constexpr char kNotesDocumentTemplate[] = R"HTML(<!doctype html>
-<html lang="@@LANG@@" data-l10n-conversation="@@CONVOLABEL@@">
+<html lang="@@LANG@@" dir="@@DIR@@" data-l10n-conversation="@@CONVOLABEL@@">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -68,7 +68,7 @@ inline constexpr char kNotesDocumentTemplate[] = R"HTML(<!doctype html>
     button:hover { border-color: var(--accent); }
     button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
     button:disabled { cursor: wait; opacity: .6; }
-    .skip { position: absolute; left: .75rem; top: -4rem; z-index: 30; background: var(--accent); color: var(--accent-ink); padding: .6rem 1rem; border-radius: 10px; font-weight: 650; }
+    .skip { position: absolute; inset-inline-start: .75rem; top: -4rem; z-index: 30; background: var(--accent); color: var(--accent-ink); padding: .6rem 1rem; border-radius: 10px; font-weight: 650; }
     .skip:focus { top: .75rem; }
 )HTML"
 R"HTML(
@@ -91,16 +91,18 @@ R"HTML(
     .filters .n { font-variant-numeric: tabular-nums; opacity: .8; }
     /* Entry cards */
     details.note { --kind: var(--k-talk); position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin: .9rem 0; box-shadow: var(--shadow); overflow: hidden; }
-    details.note::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--kind); }
+    details.note::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: 0; width: 5px; background: var(--kind); }
     details.note[data-kind="video"] { --kind: var(--k-video); }
     details.note[data-kind="photo"] { --kind: var(--k-photo); }
     details.note[data-kind="ai"] { --kind: var(--k-ai); }
     details.note[data-kind="draw"] { --kind: var(--k-draw); }
     details.note[data-kind="convo"] { --kind: var(--k-convo); }
-    summary { cursor: pointer; list-style: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "ic ttl at chev" "ic prev at chev"; column-gap: .9rem; align-items: center; padding: .95rem 1.1rem .95rem 1.35rem; min-height: 3.8rem; }
+    summary { cursor: pointer; list-style: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "ic ttl at chev" "ic prev at chev"; column-gap: .9rem; align-items: center; padding-block: .95rem; padding-inline: 1.35rem 1.1rem; min-height: 3.8rem; }
     summary::-webkit-details-marker { display: none; }
     summary::after { content: ""; grid-area: chev; width: .7rem; height: .7rem; border-right: 2.5px solid var(--muted); border-bottom: 2.5px solid var(--muted); transform: rotate(-45deg); transition: transform .18s ease; margin: 0 .2rem 0 .1rem; }
     details[open] > summary::after { transform: rotate(45deg); }
+    :root[dir="rtl"] summary::after { transform: rotate(135deg); }
+    :root[dir="rtl"] details[open] > summary::after { transform: rotate(45deg); }
     details[open] > summary { border-bottom: 1px solid var(--line); }
     summary:hover h2.ttl { color: var(--accent); }
     .ic { grid-area: ic; width: 2.6rem; height: 2.6rem; border-radius: 13px; display: grid; place-items: center; color: var(--kind); background: color-mix(in srgb, var(--kind) 14%, var(--panel)); }
@@ -112,11 +114,11 @@ R"HTML(
     details[open] > summary .preview { display: none; }
     details[open] > summary { grid-template-areas: "ic ttl at chev" "ic ttl at chev"; }
     time.at { grid-area: at; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: .1rem .6rem; white-space: nowrap; }
-    .count { display: inline-block; margin-left: .45rem; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 .55rem; font-size: .78rem; font-weight: 600; vertical-align: middle; }
-    .note-body { padding: 1.15rem 1.4rem 1.4rem 1.6rem; }
+    .count { display: inline-block; margin-inline-start: .45rem; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 .55rem; font-size: .78rem; font-weight: 600; vertical-align: middle; }
+    .note-body { padding-block: 1.15rem 1.4rem; padding-inline: 1.6rem 1.4rem; }
     time { font-variant-numeric: tabular-nums; }
     .note-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-width: 70ch; font-size: 1.04rem; line-height: 1.7; }
-    .note-ask { margin: 0 0 1rem auto; width: fit-content; max-width: min(100%, 60ch); padding: .65rem 1rem; background: var(--bubble); border-radius: 16px 16px 4px 16px; font-weight: 600; overflow-wrap: anywhere; }
+    .note-ask { margin: 0 0 1rem; margin-inline-start: auto; width: fit-content; max-width: min(100%, 60ch); padding: .65rem 1rem; background: var(--bubble); border-radius: 16px; border-end-end-radius: 4px; font-weight: 600; overflow-wrap: anywhere; }
     :root[data-theme="contrast"] .note-ask { border: 2px solid var(--ink); }
     figure { margin: 0; }
     figure.ai-shot { margin: 0 0 1rem; max-width: 26rem; }
@@ -152,7 +154,7 @@ R"HTML(
     .transcribe-line.is-now button { color: var(--accent); border-color: var(--accent); }
     :root[data-theme="contrast"] .transcribe-line.is-now { outline: 2px solid var(--accent); }
     /* Back to top */
-    .to-top { position: fixed; right: max(1rem, calc((100vw - 60rem) / 2 - 4rem)); bottom: 1.2rem; z-index: 15; border-radius: 999px; box-shadow: var(--shadow); font-weight: 650; }
+    .to-top { position: fixed; inset-inline-end: max(1rem, calc((100vw - 60rem) / 2 - 4rem)); bottom: 1.2rem; z-index: 15; border-radius: 999px; box-shadow: var(--shadow); font-weight: 650; }
     @media (prefers-reduced-motion: reduce) { summary::after { transition: none; } html { scroll-behavior: auto; } }
     @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
     @media (max-width: 40rem) {
@@ -189,11 +191,82 @@ R"HTML(
     var SCALE_KEY = "okuflow-notes-scale";
     var THEMES = ["auto", "light", "dark", "contrast"];
     var TEXT = {
-      en: { smaller: "Smaller text", larger: "Larger text", colors: "Colors", auto: "Automatic", light: "Light", dark: "Dark", contrast: "High contrast", all: "All", show: "Show", video: "Recordings", photo: "Photos", ai: "Answers", draw: "Drawings", convo: "Conversations", talk: "Notes", read: "Read aloud", stopRead: "Stop reading", copy: "Copy", copied: "Copied", skip: "Skip to notes", top: "Back to top" },
-      tr: { smaller: "Yazıyı küçült", larger: "Yazıyı büyüt", colors: "Renkler", auto: "Otomatik", light: "Açık", dark: "Koyu", contrast: "Yüksek karşıtlık", all: "Tümü", show: "Göster", video: "Kayıtlar", photo: "Fotoğraflar", ai: "Yanıtlar", draw: "Çizimler", convo: "Sohbetler", talk: "Notlar", read: "Sesli oku", stopRead: "Okumayı durdur", copy: "Kopyala", copied: "Kopyalandı", skip: "Notlara geç", top: "Başa dön" },
-      de: { smaller: "Text verkleinern", larger: "Text vergrößern", colors: "Farben", auto: "Automatisch", light: "Hell", dark: "Dunkel", contrast: "Hoher Kontrast", all: "Alle", show: "Anzeigen", video: "Aufnahmen", photo: "Fotos", ai: "Antworten", draw: "Zeichnungen", convo: "Gespräche", talk: "Notizen", read: "Vorlesen", stopRead: "Vorlesen beenden", copy: "Kopieren", copied: "Kopiert", skip: "Zu den Notizen", top: "Nach oben" }
+      "en": {"smaller":"Smaller text","larger":"Larger text","colors":"Colors","auto":"Automatic","light":"Light","dark":"Dark","contrast":"High contrast","all":"All","show":"Show","video":"Recordings","photo":"Photos","ai":"Answers","draw":"Drawings","convo":"Conversations","talk":"Notes","read":"Read aloud","stopRead":"Stop reading","copy":"Copy","copied":"Copied","skip":"Skip to notes","top":"Back to top"},
+)HTML"
+R"HTML(
+      "tr": {"smaller":"Yazıyı küçült","larger":"Yazıyı büyüt","colors":"Renkler","auto":"Otomatik","light":"Açık","dark":"Koyu","contrast":"Yüksek karşıtlık","all":"Tümü","show":"Göster","video":"Kayıtlar","photo":"Fotoğraflar","ai":"Yanıtlar","draw":"Çizimler","convo":"Sohbetler","talk":"Notlar","read":"Sesli oku","stopRead":"Okumayı durdur","copy":"Kopyala","copied":"Kopyalandı","skip":"Notlara geç","top":"Başa dön"},
+)HTML"
+R"HTML(
+      "de": {"smaller":"Text verkleinern","larger":"Text vergrößern","colors":"Farben","auto":"Automatisch","light":"Hell","dark":"Dunkel","contrast":"Hoher Kontrast","all":"Alle","show":"Anzeigen","video":"Aufnahmen","photo":"Fotos","ai":"Antworten","draw":"Zeichnungen","convo":"Unterhaltungen","talk":"Notizen","read":"Vorlesen","stopRead":"Vorlesen beenden","copy":"Kopieren","copied":"Kopiert","skip":"Zu den Notizen","top":"Nach oben"},
+)HTML"
+R"HTML(
+      "fr": {"smaller":"Texte plus petit","larger":"Texte plus grand","colors":"Couleurs","auto":"Automatique","light":"Clair","dark":"Sombre","contrast":"Contraste élevé","all":"Tout","show":"Afficher","video":"Enregistrements","photo":"Photos","ai":"Réponses","draw":"Dessins","convo":"Conversations","talk":"Notes","read":"Lire à haute voix","stopRead":"Arrêter de lire","copy":"Copier","copied":"Copié","skip":"Passer aux notes","top":"Retour en haut"},
+)HTML"
+R"HTML(
+      "es": {"smaller":"Texto más pequeño","larger":"Texto más grande","colors":"Colores","auto":"Automático","light":"Luz","dark":"oscuro","contrast":"Alto contraste","all":"Todos","show":"Mostrar","video":"Grabaciones","photo":"Fotos","ai":"Respuestas","draw":"Dibujos","convo":"Conversaciones","talk":"Notas","read":"leer en voz alta","stopRead":"dejar de leer","copy":"Copiar","copied":"Copiado","skip":"Saltar a notas","top":"Volver arriba"},
+)HTML"
+R"HTML(
+      "it": {"smaller":"Testo più piccolo","larger":"Testo più grande","colors":"Colori","auto":"Automatico","light":"Luce","dark":"Buio","contrast":"Contrasto elevato","all":"Tutto","show":"Mostra","video":"Registrazioni","photo":"Foto","ai":"Risposte","draw":"Disegni","convo":"Conversazioni","talk":"Note","read":"Leggi ad alta voce","stopRead":"Smetti di leggere","copy":"Copia","copied":"Copiato","skip":"Passa alle note","top":"Torna all'inizio"},
+)HTML"
+R"HTML(
+      "pt-BR": {"smaller":"Texto menor","larger":"Texto maior","colors":"Cores","auto":"Automático","light":"Luz","dark":"Escuro","contrast":"Alto contraste","all":"Todos","show":"Mostrar","video":"Gravações","photo":"Fotos","ai":"Respostas","draw":"Desenhos","convo":"Conversas","talk":"Notas","read":"Leia em voz alta","stopRead":"Pare de ler","copy":"Copiar","copied":"Copiado","skip":"Pular para notas","top":"Voltar ao topo"},
+)HTML"
+R"HTML(
+      "ru": {"smaller":"Меньший текст","larger":"Текст большего размера","colors":"Цвета","auto":"Автоматический","light":"Светлая","dark":"Темный","contrast":"Высокая контрастность","all":"Все","show":"Показать","video":"Записи","photo":"Фотографии","ai":"Ответы","draw":"Рисунки","convo":"Разговоры","talk":"Заметки","read":"Читать вслух","stopRead":"Остановить чтение","copy":"Копировать","copied":"Скопировано","skip":"Перейти к заметкам","top":"Вернуться наверх"},
+)HTML"
+R"HTML(
+      "uk": {"smaller":"Менший текст","larger":"Більший текст","colors":"Кольори","auto":"Автоматичний","light":"світло","dark":"Темний","contrast":"Високий контраст","all":"все","show":"Показати","video":"Записи","photo":"Фотографії","ai":"Відповіді","draw":"Малюнки","convo":"Розмови","talk":"Нотатки","read":"Прочитайте вголос","stopRead":"Перестаньте читати","copy":"Копіювати","copied":"Скопійовано","skip":"Перейти до нотаток","top":"Повернутися до початку"},
+)HTML"
+R"HTML(
+      "ar": {"smaller":"نص أصغر","larger":"نص أكبر","colors":"الألوان","auto":"تلقائي","light":"ضوء","dark":"الظلام","contrast":"التباين العالي","all":"الكل","show":"عرض","video":"التسجيلات","photo":"صور","ai":"الإجابات","draw":"الرسومات","convo":"المحادثات","talk":"ملاحظات","read":"اقرأ بصوت عالٍ","stopRead":"توقف عن القراءة","copy":"نسخ","copied":"منقول","skip":"انتقل إلى الملاحظات","top":"العودة إلى الأعلى"},
+)HTML"
+R"HTML(
+      "hi": {"smaller":"छोटा पाठ","larger":"बड़ा पाठ","colors":"रंग","auto":"स्वचालित","light":"हल्का","dark":"गहरा","contrast":"उच्च कंट्रास्ट","all":"सब","show":"दिखाओ","video":"रिकॉर्डिंग","photo":"तस्वीरें","ai":"उत्तर","draw":"चित्र","convo":"बातचीत","talk":"नोट्स","read":"ज़ोर से पढ़ें","stopRead":"पढ़ना बंद करें","copy":"प्रतिलिपि","copied":"नकल की गई","skip":"नोट्स पर जाएं","top":"शीर्ष पर वापस जाएँ"},
+)HTML"
+R"HTML(
+      "ja": {"smaller":"小さい文字","larger":"大きな文字","colors":"色","auto":"自動","light":"ライト","dark":"ダーク","contrast":"ハイコントラスト","all":"すべて","show":"表示する","video":"録音","photo":"写真","ai":"答え","draw":"描画","convo":"会話","talk":"ノート","read":"声に出して読む","stopRead":"読み上げを停止","copy":"コピー","copied":"コピーされました","skip":"ノートにスキップ","top":"トップに戻る"},
+)HTML"
+R"HTML(
+      "ko": {"smaller":"더 작은 텍스트","larger":"더 큰 텍스트","colors":"색상","auto":"자동","light":"라이트","dark":"다크","contrast":"고대비","all":"모두","show":"쇼","video":"녹음","photo":"사진","ai":"답변","draw":"그림","convo":"대화","talk":"메모","read":"소리내어 읽기","stopRead":"읽기 중지","copy":"복사","copied":"복사됨","skip":"메모로 건너뛰기","top":"맨 위로 돌아가기"},
+)HTML"
+R"HTML(
+      "zh-Hans": {"smaller":"较小的文字","larger":"较大的文字","colors":"颜色","auto":"自动","light":"浅色","dark":"深色","contrast":"高对比度","all":"全部","show":"显示","video":"录音","photo":"照片","ai":"答案","draw":"绘图","convo":"对话","talk":"笔记","read":"大声朗读","stopRead":"停止阅读","copy":"复制","copied":"已复制","skip":"跳到笔记","top":"返回顶部"},
+)HTML"
+R"HTML(
+      "nl": {"smaller":"Kleinere tekst","larger":"Grotere tekst","colors":"Kleuren","auto":"Automatisch","light":"Licht","dark":"Donker","contrast":"Hoog contrast","all":"Allemaal","show":"Toon","video":"Opnames","photo":"Foto's","ai":"Antwoorden","draw":"tekeningen","convo":"Gesprekken","talk":"Notities","read":"Lees hardop","stopRead":"Stoppen met voorlezen","copy":"Kopieer","copied":"Gekopieerd","skip":"Ga naar notities","top":"Terug naar boven"},
+)HTML"
+R"HTML(
+      "pl": {"smaller":"Mniejszy tekst","larger":"Większy tekst","colors":"Kolory","auto":"Automatyczny","light":"Światło","dark":"Ciemny","contrast":"Wysoki kontrast","all":"Wszystko","show":"Pokaż","video":"Nagrania","photo":"Zdjęcia","ai":"Odpowiedzi","draw":"Rysunki","convo":"Rozmowy","talk":"Notatki","read":"Przeczytaj na głos","stopRead":"Przestań czytać","copy":"Kopiuj","copied":"Skopiowano","skip":"Przejdź do notatek","top":"Powrót do góry"},
+)HTML"
+R"HTML(
+      "cs": {"smaller":"Menší text","larger":"Větší text","colors":"Barvy","auto":"Automaticky","light":"Světlý","dark":"Tmavý","contrast":"Vysoký kontrast","all":"všechny","show":"Zobrazit","video":"Nahrávky","photo":"Fotografie","ai":"Odpovědi","draw":"Kresby","convo":"Konverzace","talk":"Poznámky","read":"Čtěte nahlas","stopRead":"Přestaňte číst","copy":"Kopírovat","copied":"Zkopírováno","skip":"Přejít na poznámky","top":"Zpět nahoru"},
+)HTML"
+R"HTML(
+      "sv": {"smaller":"Mindre text","larger":"Större text","colors":"Färger","auto":"Automatisk","light":"Ljus","dark":"Mörkt","contrast":"Hög kontrast","all":"Alla","show":"Visa","video":"Inspelningar","photo":"Foton","ai":"Svar","draw":"Teckningar","convo":"Samtal","talk":"Anteckningar","read":"Läs högt","stopRead":"Stoppa uppläsning","copy":"Kopiera","copied":"Kopierade","skip":"Hoppa till anteckningar","top":"Tillbaka till toppen"},
+)HTML"
+R"HTML(
+      "id": {"smaller":"Teks lebih kecil","larger":"Teks lebih besar","colors":"Warna","auto":"Otomatis","light":"Ringan","dark":"Gelap","contrast":"Kontras tinggi","all":"Semua","show":"Tunjukkan","video":"Rekaman","photo":"Foto","ai":"Jawaban","draw":"Gambar","convo":"Percakapan","talk":"Catatan","read":"Bacalah dengan lantang","stopRead":"Berhenti membaca","copy":"Salin","copied":"Disalin","skip":"Lewati ke catatan","top":"Kembali ke atas"},
+)HTML"
+R"HTML(
+      "vi": {"smaller":"Văn bản nhỏ hơn","larger":"Văn bản lớn hơn","colors":"Màu sắc","auto":"tự động","light":"Ánh sáng","dark":"Tối","contrast":"Độ tương phản cao","all":"Tất cả","show":"Hiển thị","video":"Bản ghi âm","photo":"Ảnh","ai":"Câu trả lời","draw":"Hình vẽ","convo":"Cuộc trò chuyện","talk":"Ghi chú","read":"Đọc to","stopRead":"Dừng đọc","copy":"Sao chép","copied":"Đã sao chép","skip":"Chuyển đến ghi chú","top":"Quay lại đầu trang"},
+)HTML"
+R"HTML(
+      "th": {"smaller":"ข้อความขนาดเล็กลง","larger":"ข้อความขนาดใหญ่ขึ้น","colors":"สี","auto":"อัตโนมัติ","light":"สว่าง","dark":"มืด","contrast":"คอนทราสต์สูง","all":"ทั้งหมด","show":"แสดง","video":"การบันทึก","photo":"ภาพถ่าย","ai":"คำตอบ","draw":"ภาพวาด","convo":"บทสนทนา","talk":"บันทึก","read":"อ่านออกเสียง","stopRead":"หยุดอ่าน","copy":"คัดลอก","copied":"คัดลอกแล้ว","skip":"ข้ามไปยังบันทึกย่อ","top":"กลับไปด้านบน"},
+)HTML"
+R"HTML(
+      "bn": {"smaller":"ছোট লেখা","larger":"বৃহত্তর পাঠ্য","colors":"রং","auto":"স্বয়ংক্রিয়","light":"হালকা","dark":"গাঢ়","contrast":"উচ্চ বৈসাদৃশ্য","all":"সব","show":"দেখান","video":"রেকর্ডিং","photo":"ফটো","ai":"উত্তর","draw":"অঙ্কন","convo":"কথোপকথন","talk":"নোট","read":"জোরে পড়ুন","stopRead":"পড়া বন্ধ করুন","copy":"কপি","copied":"কপি করা হয়েছে","skip":"নোট এড়িয়ে যান","top":"উপরে ফিরে যান"},
+)HTML"
+R"HTML(
+      "fa": {"smaller":"متن کوچکتر","larger":"متن بزرگتر","colors":"رنگ ها","auto":"خودکار","light":"نور","dark":"تاریک","contrast":"کنتراست بالا","all":"همه","show":"نمایش دهید","video":"ضبط ها","photo":"عکس ها","ai":"پاسخ ها","draw":"نقاشی ها","convo":"گفتگوها","talk":"یادداشت ها","read":"با صدای بلند بخوانید","stopRead":"خواندن را متوقف کنید","copy":"کپی کنید","copied":"کپی شده است","skip":"پرش به یادداشت ها","top":"بازگشت به بالا"},
+)HTML"
+R"HTML(
+      "he": {"smaller":"טקסט קטן יותר","larger":"טקסט גדול יותר","colors":"צבעים","auto":"אוטומטי","light":"בהיר","dark":"כהה","contrast":"ניגודיות גבוהה","all":"הכל","show":"הצג","video":"הקלטות","photo":"תמונות","ai":"תשובות","draw":"ציורים","convo":"שיחות","talk":"הערות","read":"קרא בקול רם","stopRead":"עצור הקראה","copy":"העתק","copied":"הועתק","skip":"דלג להערות","top":"חזרה למעלה"},
+)HTML"
+R"HTML(
+      "ur": {"smaller":"چھوٹا متن","larger":"بڑا متن","colors":"رنگ","auto":"خودکار","light":"ہلکا","dark":"گہرا","contrast":"ہائی کنٹراسٹ","all":"تمام","show":"دکھائیں۔","video":"ریکارڈنگز","photo":"تصاویر","ai":"جوابات","draw":"ڈرائنگ","convo":"بات چیت","talk":"نوٹس","read":"بلند آواز سے پڑھیں","stopRead":"پڑھنا بند کریں","copy":"کاپی","copied":"کاپی","skip":"نوٹس پر جائیں۔","top":"واپس اوپر"}
     };
-    var t = TEXT[(root.lang || "en").split("-")[0]] || TEXT.en;
+    var language = root.lang || "en";
+    var t = TEXT[language] || TEXT[language.split("-")[0]] || TEXT.en;
     var ICONS = {
       video: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5 21 7.5v9l-5-3z"/></svg>',
       photo: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.5"/><circle cx="12" cy="12.5" r="3.5"/><path d="M8.5 6 10 4h4l1.5 2"/></svg>',

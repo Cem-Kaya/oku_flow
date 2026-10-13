@@ -2,11 +2,14 @@
 
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
+#include "okuflow/app/app_language.hpp"
+
 #include <QObject>
-#include <QList>
-#include <QLocale>
 #include <QString>
 #include <QTranslator>
+
+#include <functional>
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 class QApplication;
@@ -15,29 +18,25 @@ QT_END_NAMESPACE
 
 namespace okuflow {
 
-enum class AppLanguage {
-    English,
-    Turkish,
-    German,
-};
-
-QString AppLanguageCode(AppLanguage language);
-QString AppLanguageNativeName(AppLanguage language);
-QString AppLanguageFlagResource(AppLanguage language);
-QLocale AppLanguageLocale(AppLanguage language);
-Qt::LayoutDirection AppLanguageLayoutDirection(AppLanguage language);
-QList<AppLanguage> SupportedAppLanguages();
-AppLanguage AppLanguageFromCode(const QString& code);
-AppLanguage AppLanguageFromSystemLocale();
-
 // Owns the installed Qt translator and applies live language changes to
 // OkuFlow's hand-built widget tree. The manager is intentionally app-owned:
 // it never reads or writes settings itself.
+//
+// Changes are load-then-swap: the requested catalog is loaded and installed
+// before the previous translator is removed, so a failed load leaves the
+// previous language, translator, locale and layout direction fully active.
 class LanguageManager final : public QObject {
     Q_OBJECT
 public:
+    // Maps a language to its embedded catalog path (empty for English).
+    using CatalogResolver = std::function<QString(AppLanguage)>;
+
+    // `catalogResolver` defaults to AppLanguageCatalogResource; tests pass a
+    // resolver that names a missing catalog to exercise failure handling.
     explicit LanguageManager(QApplication& application,
-                             QObject* parent = nullptr);
+                             QObject* parent = nullptr,
+                             CatalogResolver catalogResolver = {});
+    ~LanguageManager() override;
 
     AppLanguage language() const noexcept { return language_; }
     QString languageCode() const;
@@ -55,9 +54,9 @@ private:
     void ApplyLocale(AppLanguage language);
 
     QApplication* application_{};
-    QTranslator translator_;
+    CatalogResolver catalogResolver_;
+    std::unique_ptr<QTranslator> translator_;
     AppLanguage language_{AppLanguage::English};
-    bool translatorInstalled_{};
     bool applyingLanguage_{};
     bool forceRightToLeft_{};
 };

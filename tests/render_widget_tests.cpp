@@ -1,3 +1,4 @@
+#include "gui_test_support.hpp"
 #include "okuflow/ui/render_widget.hpp"
 #include "okuflow/d3d12/presenter.hpp"
 
@@ -143,8 +144,14 @@ void RenderWidgetTests::continuousResizingDoesNotStarvePresenter()
         widget.resize(500 + (++changes % 180), 450);
     });
     producer.start();
-    QTest::qWait(220);
+    // The contract is a presenter update while the resize producer is still
+    // active, after at least ten changes. Do not spend the full deadline once
+    // both conditions are observed; retain the same 220 ms failure deadline.
+    const bool progressed = QTest::qWaitFor([&] {
+        return changes >= 10 && updatedWhileMoving;
+    }, 220);
     producer.stop();
+    QVERIFY(progressed);
     QVERIFY(changes >= 10);
     QVERIFY(updatedWhileMoving);
     QTRY_COMPARE(QSize(presenter.ViewportWidth(), presenter.ViewportHeight()), NativeSize(widget));
@@ -304,5 +311,5 @@ void RenderWidgetTests::recordingAnnotationsPreserveTransparency()
 
 } // namespace okuflow
 
-QTEST_MAIN(okuflow::RenderWidgetTests)
+OKUFLOW_GUI_TEST_MAIN(okuflow::RenderWidgetTests)
 #include "render_widget_tests.moc"

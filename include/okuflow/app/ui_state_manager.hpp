@@ -29,7 +29,8 @@ public:
     UIStateManager(MainWindow& window, OkuFlowApp& app);
 
     settings::AdvancedConfig ReadConfigFromUI() const;
-    void ApplyConfigToUI(const settings::AdvancedConfig& config);
+    void ApplyConfigToUI(const settings::AdvancedConfig& config,
+                         bool preservePresetSelection = false);
     QSignalBlocker BlockSignals(QObject* object) const;
 
     RenderWidget* renderWidget_{};

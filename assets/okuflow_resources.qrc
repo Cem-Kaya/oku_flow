@@ -32,5 +32,27 @@
         <file alias="us.svg">flags/us.svg</file>
         <file alias="tr.svg">flags/tr.svg</file>
         <file alias="de.svg">flags/de.svg</file>
+        <file alias="fr.svg">flags/fr.svg</file>
+        <file alias="es.svg">flags/es.svg</file>
+        <file alias="it.svg">flags/it.svg</file>
+        <file alias="br.svg">flags/br.svg</file>
+        <file alias="ru.svg">flags/ru.svg</file>
+        <file alias="ua.svg">flags/ua.svg</file>
+        <file alias="ae.svg">flags/ae.svg</file>
+        <file alias="in.svg">flags/in.svg</file>
+        <file alias="jp.svg">flags/jp.svg</file>
+        <file alias="kr.svg">flags/kr.svg</file>
+        <file alias="cn.svg">flags/cn.svg</file>
+        <file alias="nl.svg">flags/nl.svg</file>
+        <file alias="pl.svg">flags/pl.svg</file>
+        <file alias="cz.svg">flags/cz.svg</file>
+        <file alias="se.svg">flags/se.svg</file>
+        <file alias="id.svg">flags/id.svg</file>
+        <file alias="vn.svg">flags/vn.svg</file>
+        <file alias="th.svg">flags/th.svg</file>
+        <file alias="bd.svg">flags/bd.svg</file>
+        <file alias="ir.svg">flags/ir.svg</file>
+        <file alias="il.svg">flags/il.svg</file>
+        <file alias="pk.svg">flags/pk.svg</file>
     </qresource>
 </RCC>

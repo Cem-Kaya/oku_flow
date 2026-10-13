@@ -141,6 +141,25 @@ class SetupStepTest {
     }
 
     @Test
+    fun settingsNavigationStartsAtBuildNumberWhenDeveloperStateIsHiddenOrOff() {
+        for (redacted in listOf(false, true)) {
+            val disabledOrUnknown = debuggingSettingEnabled(0, settingsRedacted = redacted)
+            val snapshot = ready.copy(
+                developerOptionsEnabled = disabledOrUnknown,
+                usbDebuggingEnabled = disabledOrUnknown,
+            )
+            // On older phones this resolves to the first prerequisite. Android
+            // 17 resolves to connection help, but neither may open a hidden
+            // Developer options activity that immediately closes with a toast.
+            assertEquals(SetupSettingsTarget.AboutPhone, primarySetupSettingsTarget(step(snapshot)))
+        }
+        assertEquals(SetupSettingsTarget.DeveloperOptions,
+            primarySetupSettingsTarget(step(ready.copy(usbDebuggingEnabled = false))))
+        assertNull(primarySetupSettingsTarget(step(ready.copy(cameraPermissionGranted = false))))
+        assertNull(primarySetupSettingsTarget(step(ready, HostLinkState.Streaming)))
+    }
+
+    @Test
     fun activeUsbAdbSkipsRedactedSettingsWithoutBypassingCameraPermission() {
         val connected = ready.copy(developerOptionsEnabled = null, usbDebuggingEnabled = null, usbAdbActive = true)
         assertEquals(SetupStep.OpenOkuFlow, step(connected))

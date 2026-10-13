@@ -15,33 +15,77 @@ $originalAndroidHome = $env:ANDROID_HOME
 $originalBuildRoot = $env:OKUFLOW_ANDROID_BUILD_DIR
 $exitCode = 0
 
+# The 25 OkuFlow Camera languages (AppLanguage.kt): English default plus these
+# qualified catalogs. Every catalog must be complete, keep the English format
+# arguments, and not leave English text as a placeholder translation.
+$androidLanguageFolders = @(
+    "values-tr", "values-de", "values-fr", "values-es", "values-it", "values-pt-rBR",
+    "values-ru", "values-uk", "values-ar", "values-hi", "values-ja", "values-ko",
+    "values-b+zh+Hans", "values-nl", "values-pl", "values-cs", "values-sv", "values-in",
+    "values-vi", "values-th", "values-bn", "values-fa", "values-iw", "values-ur"
+)
+# Names whose translation can legitimately equal English (brands, units).
+$androidIdenticalAllowed = @("app_name", "stream_details", "setting_mode_format")
+$androidIdenticalByFolder = @{ "values-nl" = @("setting_camera") }
+
+function Read-AndroidStrings {
+    param([string]$Path)
+    [xml]$catalog = Get-Content -LiteralPath $Path -Raw -Encoding utf8
+    $values = [ordered]@{}
+    foreach ($node in @($catalog.resources.ChildNodes |
+            Where-Object { $_.NodeType -eq [Xml.XmlNodeType]::Element })) {
+        $name = $node.GetAttribute("name")
+        if (-not $name) { throw "Unnamed resource in $Path" }
+        $key = "$($node.LocalName):$name"
+        if ($values.Contains($key)) { throw "Duplicate Android resource key in ${Path}: $key" }
+        $values[$key] = [string]$node.InnerText
+    }
+    if (-not $values.Count) { throw "Empty Android translation catalog: $Path" }
+    return $values
+}
+
+function Get-AndroidFormatArguments {
+    param([string]$Text)
+    return (@([regex]::Matches($Text, '%\d+\$[a-z]') | ForEach-Object { $_.Value } | Sort-Object) -join ",")
+}
+
 function Assert-AndroidTranslations {
     $resourcesRoot = Join-Path $androidRoot "app\src\main\res"
-    $sourceKeys = $null
-    foreach ($locale in @("values", "values-tr", "values-de")) {
-        $path = Join-Path $resourcesRoot "$locale\strings.xml"
-        [xml]$catalog = Get-Content -LiteralPath $path -Raw -Encoding utf8
-        $keys = @($catalog.resources.ChildNodes |
-            Where-Object { $_.NodeType -eq [Xml.XmlNodeType]::Element } |
-            ForEach-Object {
-                $name = $_.GetAttribute("name")
-                if (-not $name) { throw "Unnamed resource in $path" }
-                "$($_.Name):$name"
-            } | Sort-Object)
-        if (-not $keys.Count) { throw "Empty Android translation catalog: $path" }
-        $duplicates = @($keys | Group-Object | Where-Object Count -gt 1)
-        if ($duplicates.Count) { throw "Duplicate Android resource keys in ${path}: $($duplicates.Name -join ', ')" }
-        if ($null -eq $sourceKeys) {
-            $sourceKeys = $keys
-        } else {
-            $differences = @(Compare-Object -ReferenceObject $sourceKeys -DifferenceObject $keys)
-            if ($differences.Count) {
-                $details = ($differences | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" }) -join ", "
-                throw "Android translation key mismatch in ${path}: $details"
+    $present = @(Get-ChildItem -LiteralPath $resourcesRoot -Directory |
+        Where-Object { Test-Path (Join-Path $_.FullName "strings.xml") } |
+        ForEach-Object { $_.Name } | Where-Object { $_ -ne "values" } | Sort-Object)
+    $expectedFolders = @($androidLanguageFolders | Sort-Object)
+    $folderDifferences = @(Compare-Object -ReferenceObject $expectedFolders -DifferenceObject $present)
+    if ($folderDifferences.Count) {
+        $details = ($folderDifferences | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" }) -join ", "
+        throw "Android string catalogs differ from the supported language list: $details"
+    }
+    $source = Read-AndroidStrings (Join-Path $resourcesRoot "values\strings.xml")
+    $sourceKeys = @($source.Keys | Sort-Object)
+    foreach ($folder in $androidLanguageFolders) {
+        $path = Join-Path $resourcesRoot "$folder\strings.xml"
+        $catalog = Read-AndroidStrings $path
+        $differences = @(Compare-Object -ReferenceObject $sourceKeys -DifferenceObject @($catalog.Keys | Sort-Object))
+        if ($differences.Count) {
+            $details = ($differences | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" }) -join ", "
+            throw "Android translation key mismatch in ${path}: $details"
+        }
+        foreach ($key in $sourceKeys) {
+            $english = $source[$key]
+            $translated = $catalog[$key]
+            if ([string]::IsNullOrWhiteSpace($translated)) { throw "Empty Android translation in ${path}: $key" }
+            if ((Get-AndroidFormatArguments $english) -ne (Get-AndroidFormatArguments $translated)) {
+                throw "Android format arguments differ in ${path}: $key"
+            }
+            $name = $key.Split(":", 2)[1]
+            $legitimateIdentity = $androidIdenticalByFolder.ContainsKey($folder) -and
+                $androidIdenticalByFolder[$folder] -contains $name
+            if ($translated -ceq $english -and $androidIdenticalAllowed -notcontains $name -and -not $legitimateIdentity) {
+                throw "English placeholder translation in ${path}: $key"
             }
         }
     }
-    Write-Host "PASS: Android English/Turkish/German resource key parity ($($sourceKeys.Count) keys)"
+    Write-Host "PASS: Android resource key, format-argument and translation coverage for $($androidLanguageFolders.Count + 1) languages ($($sourceKeys.Count) keys)"
 }
 
 function Read-AdbAscii {

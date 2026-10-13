@@ -3,6 +3,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <thread>
 
 namespace okuflow {
 
@@ -101,4 +102,23 @@ private:
     bool abandoned_{};
     bool finished_{};
 };
+// Outcome of PollWithDeadline below.
+enum class BoundedPollOutcome { Completed, TimedOut, Abandoned };
+
+// Polls a nonblocking completion query (true = complete, false = still
+// pending) on a stop-coordinator thread until it completes, the deadline
+// expires, or the session is abandoned. Poll exceptions propagate. This
+// bounds shutdown query waits that would otherwise spin forever on a stuck
+// driver while the facade has already retained the session for process exit.
+template <typename Poll>
+BoundedPollOutcome PollWithDeadline(Poll&& poll, CaptureShutdown& shutdown,
+                                    std::chrono::steady_clock::time_point deadline)
+{
+    for (;;) {
+        if (poll()) return BoundedPollOutcome::Completed;
+        if (shutdown.IsAbandoned()) return BoundedPollOutcome::Abandoned;
+        if (std::chrono::steady_clock::now() >= deadline) return BoundedPollOutcome::TimedOut;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
 } // namespace okuflow

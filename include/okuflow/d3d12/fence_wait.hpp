@@ -8,6 +8,37 @@ namespace okuflow {
 
 enum class FenceWaitResult { Completed, TimedOut, DeviceLost, WaitFailed };
 enum class FenceEventResult { Signaled, TimedOut, Failed };
+enum class FenceProgressResult { Healthy, TimedOut, DeviceLost };
+
+// Polling only: observe actual submitted/completed fence values, never swap-chain
+// latency readiness. New submissions cannot renew a stalled completion deadline.
+// A timeout is sticky and never grants permission to retire an allocation.
+class FenceProgressWatchdog {
+public:
+    FenceProgressResult Observe(std::uint64_t submitted, std::uint64_t completed,
+                            std::uint64_t nowMs) noexcept {
+        if (failed_ != FenceProgressResult::Healthy) return failed_;
+        if (completed == std::numeric_limits<std::uint64_t>::max())
+            return failed_ = FenceProgressResult::DeviceLost;
+        if (completed >= submitted) {
+            pending_ = false;
+            completed_ = completed;
+            return FenceProgressResult::Healthy;
+        }
+        if (!pending_ || completed > completed_) {
+            pending_ = true;
+            completed_ = completed;
+            progressAtMs_ = nowMs;
+        } else if (nowMs - progressAtMs_ >= 1000) {
+            return failed_ = FenceProgressResult::TimedOut;
+        }
+        return FenceProgressResult::Healthy;
+    }
+private:
+    bool pending_{false};
+    std::uint64_t completed_{}, progressAtMs_{};
+    FenceProgressResult failed_{FenceProgressResult::Healthy};
+};
 
 // Event wakeups are hints only. Completion must be confirmed by the fence;
 // D3D12's UINT64_MAX device-removal sentinel is never successful completion.

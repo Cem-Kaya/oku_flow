@@ -31,6 +31,7 @@ public:
     void Teardown();
 
     bool IsReady() const;
+    bool IsFaulted() const;
     const std::string& LastError() const;
     const std::wstring& RuntimeDirectory() const;
 
@@ -39,7 +40,10 @@ public:
 
 private:
     class Impl;
-    std::unique_ptr<Impl> impl_;
+    std::shared_ptr<Impl> impl_;
+    class Worker;
+    std::unique_ptr<Worker> worker_;
+    std::string workerError_;
 };
 
 } // namespace okuflow

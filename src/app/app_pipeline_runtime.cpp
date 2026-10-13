@@ -175,8 +175,9 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
     if (phoneDiscovery_.valid()) {
         if (phoneDiscovery_.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) return;
         try {
-            auto [listed, discovered] = phoneDiscovery_.get();
-            if (listed) {
+            auto [discoveryStatus, discovered] = phoneDiscovery_.get();
+            phoneDiscoveryStatus_ = discoveryStatus;
+            if (discoveryStatus == PhoneDiscoveryStatus::Listed) {
                 const std::wstring selectedLink = selectedCameraIndex_ >= 0 &&
                         static_cast<size_t>(selectedCameraIndex_) < cameras_.size()
                     ? cameras_[static_cast<size_t>(selectedCameraIndex_)].symbolicLink : std::wstring();
@@ -202,7 +203,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                 for (const auto& phone : discovered) {
                     if (!phone.phoneSerial.empty() && phone.phoneCameraId.empty())
                         phoneRetries_[phone.phoneSerial].Observe(phone.phoneTransportId,
-                            phone.phoneAppReady, phone.phoneProblem);
+                            phone.phoneAppReady, phone.phoneProblem, phone.phoneServerEpoch);
                 }
                 const bool streamingPhone = cameraActive_ && selectedCameraIndex_ >= 0 &&
                     !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
@@ -233,6 +234,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                     UpdateCameraPlaceholder();
                 }
             }
+            UpdateCameraPlaceholder();
         } catch (const std::exception& error) {
             qWarning() << "Background phone discovery failed:" << error.what();
         }
@@ -243,12 +245,21 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
     if (cameraActive_ && selectedCameraIndex_ >= 0 &&
         static_cast<size_t>(selectedCameraIndex_) < cameras_.size())
         connectedSerial = cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial;
+    std::string recoverySerial;
+    const QString phonePrefix = QStringLiteral("okuflow-phone:");
+    if (automaticPhoneSelectionAllowed_ && connectedSerial.empty() &&
+        preferredPhoneCamera_.startsWith(phonePrefix))
+        recoverySerial = preferredPhoneCamera_.mid(phonePrefix.size()).section('/', 0, 0).toStdString();
     phoneDiscoveryTimer_.start();
     try {
-        phoneDiscovery_ = std::async(std::launch::async, [connectedSerial, canceled = &phoneDiscoveryCanceled_]() {
-            bool listed = false;
-            auto phones = PhoneCameraTransport::Enumerate(connectedSerial, canceled, &listed);
-            return std::make_pair(listed, std::move(phones));
+        phoneDiscovery_ = std::async(std::launch::async, [connectedSerial, recoverySerial,
+            serverIntent = automaticPhoneSelectionAllowed_ ? PhoneServerIntent::PhoneUse
+                                                          : PhoneServerIntent::ReleaseForWebcam,
+            canceled = &phoneDiscoveryCanceled_]() {
+            PhoneDiscoveryStatus status{};
+            auto phones = PhoneCameraTransport::Enumerate(connectedSerial, canceled, nullptr,
+                                                         recoverySerial, &status, serverIntent);
+            return std::make_pair(status, std::move(phones));
         });
     } catch (const std::exception& error) {
         qWarning() << "Cannot dispatch phone discovery:" << error.what();
@@ -439,6 +450,7 @@ void OkuFlowApp::HandleCudaProcessingFailure() {
 }
 
 bool OkuFlowApp::HandlePresenterFault() {
+    if (presenter_) presenter_->PollGpuProgress();
     if ((!presenter_ || !presenter_->IsFaulted()) &&
         (!cudaSurface_ || !cudaSurface_->IsFaulted())) return false;
     CancelPendingAssistantCaptures();
@@ -447,6 +459,8 @@ bool OkuFlowApp::HandlePresenterFault() {
     cpuSceneReady_ = false;
     if (!presenterFaultReported_) {
         presenterFaultReported_ = true;
+        if (cudaSurface_ && cudaSurface_->IsFaulted())
+            qWarning() << "CUDA pipeline stopped:" << QString::fromStdString(cudaSurface_->LastError());
         ShowStatusMessage(QStringLiteral(
             "GPU stopped responding. Restart OkuFlow to resume video."),
             15000, LivePoliteness::kAssertive);
@@ -809,7 +823,10 @@ bool OkuFlowApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
         if (recordingManager_) {
             recordingManager_->NotifyCaptureSafeCopyFallback();
         }
-        if (!mediaCapture_.ReadbackGpuFrame(frame)) {
+        const auto result = mediaCapture_.ReadbackGpuFrame(frame);
+        if (result != GpuFrameReadbackResult::Ready) {
+            if (result == GpuFrameReadbackResult::Pending && outGpuCompletionPending)
+                *outGpuCompletionPending = CaptureGpuPending::Readback;
             return false;
         }
     }
@@ -2122,20 +2139,36 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
         return false;
     }
 
+    const auto retainReadbackFrame = [&]() {
+        deferredGpuCameraFrame_ = std::move(frame);
+        pipelineOrchestrator_->NotifyCameraFrameAvailable(1);
+    };
+    // Finish the single retained copy before trying another direct GPU route.
+    // This also applies when a photo was canceled while its copy was pending.
+    if (mediaCapture_.HasPendingGpuReadback()) {
+        const auto result = mediaCapture_.ReadbackGpuFrame(frame);
+        if (result == GpuFrameReadbackResult::Pending) retainReadbackFrame();
+        if (result != GpuFrameReadbackResult::Ready) return false;
+    }
+
     currentCameraCaptureClock100ns_ = frame.captureClock100ns;
     CapturedFrame originalFrame;
     bool recordingActive = recordingManager_ && recordingManager_->IsActive();
     bool cpuOriginalRequired = photoCapturePending_;
-    if (cpuOriginalRequired &&
-        frame.data.empty() && frame.IsGpuResident() &&
-        !mediaCapture_.ReadbackGpuFrame(frame)) {
-        if (photoCapturePending_) {
+    if (cpuOriginalRequired && frame.data.empty() && frame.IsGpuResident()) {
+        const auto result = mediaCapture_.ReadbackGpuFrame(frame);
+        if (result == GpuFrameReadbackResult::Pending) {
+            retainReadbackFrame();
+            return false;
+        }
+        if (result == GpuFrameReadbackResult::Failed && photoCapturePending_) {
             ShowStatusMessage(
                 QStringLiteral(
                     "Photo not saved: the original camera frame could not be read back."),
                 8000);
             photoCapturePending_ = false;
             cpuOriginalRequired = false;
+            return false;
         }
     }
     if (cpuOriginalRequired) {
@@ -2181,6 +2214,7 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
             constexpr qint64 kGpuCompletionRetryBudgetMs = 25;
             startupRetryMaxMs_ = std::max(startupRetryMaxMs_, deferredGpuWaitTimer_.elapsed());
             if (gpuCompletionPending == CaptureGpuPending::CudaCopy ||
+                gpuCompletionPending == CaptureGpuPending::Readback ||
                 deferredGpuWaitTimer_.elapsed() <
                 kGpuCompletionRetryBudgetMs) {
                 {
@@ -2220,9 +2254,10 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
 
     QElapsedTimer cpuPreparationTimer;
     cpuPreparationTimer.start();
-    if (frame.data.empty() && frame.IsGpuResident() &&
-        !mediaCapture_.ReadbackGpuFrame(frame)) {
-        return true;
+    if (frame.data.empty() && frame.IsGpuResident()) {
+        const auto result = mediaCapture_.ReadbackGpuFrame(frame);
+        if (result == GpuFrameReadbackResult::Pending) retainReadbackFrame();
+        if (result != GpuFrameReadbackResult::Ready) return false;
     }
     if (recordingActive && !originalFrame.HasCpuPixels() &&
         !PrepareOriginalFrame(frame, originalFrame)) {

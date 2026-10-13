@@ -798,9 +798,11 @@ void MediaCaptureSession::PrepareAccelerationInteropRelease()
         return;
     }
 
-    // This executes only on the independently owned stop coordinator. A stuck
-    // driver may hold it indefinitely; the facade's deadline retains the entire
-    // session rather than treating a timeout as successful GPU completion.
+    // This executes only on the independently owned stop coordinator. The
+    // query poll is bounded (the same 1000 ms GPU-drain budget used for
+    // fences/CUDA streams) and also stops once the facade abandons the
+    // session: either way an unfinished wait throws, so a timeout is never
+    // treated as successful GPU completion and the session stays retained.
     Microsoft::WRL::ComPtr<ID3D11Query> completion;
     D3D11_QUERY_DESC queryDescription{};
     queryDescription.Query = D3D11_QUERY_EVENT;
@@ -808,12 +810,19 @@ void MediaCaptureSession::PrepareAccelerationInteropRelease()
         &queryDescription, completion.GetAddressOf()), "Create capture shutdown query");
     d3d11Context_->End(completion.Get());
     d3d11Context_->Flush();
-    HRESULT completionResult;
-    do {
-        completionResult = d3d11Context_->GetData(completion.Get(), nullptr, 0, 0);
-        if (completionResult == S_FALSE) Sleep(1);
-    } while (completionResult == S_FALSE);
-    ThrowIfFailed(completionResult, "Wait for capture producer completion");
+    const auto outcome = PollWithDeadline(
+        [&] {
+            const HRESULT result = d3d11Context_->GetData(completion.Get(), nullptr, 0, 0);
+            if (result == S_FALSE) return false;
+            ThrowIfFailed(result, "Wait for capture producer completion");
+            return true;
+        },
+        *shutdown_, std::chrono::steady_clock::now() + std::chrono::milliseconds(1000));
+    if (outcome != BoundedPollOutcome::Completed) {
+        throw std::runtime_error(outcome == BoundedPollOutcome::Abandoned
+            ? "Capture producer completion wait abandoned during shutdown"
+            : "Capture producer completion timed out during shutdown");
+    }
 
     // The capture thread is joined and producer work has completed. Keep the
     // shared BGRA allocation itself until the caller releases its CUDA import.
@@ -1032,6 +1041,10 @@ void MediaCaptureSession::ReleaseAccelerationResources()
     d3d11VideoDevice_.Reset();
     dxgiReadbackTexture_.Reset();
     videoProcessorInputFormat_ = DXGI_FORMAT_UNKNOWN;
+    gpuReadbackTexture_.Reset();
+    gpuReadbackQuery_.Reset();
+    gpuReadbackFrame_.reset();
+    gpuReadbackSubmitted_ = false;
     videoProcessorWidth_ = 0;
     videoProcessorHeight_ = 0;
     d3d11CudaNeedsCopy_ = false;
@@ -1121,7 +1134,7 @@ bool MediaCaptureSession::CopyGpuFrame(const FrameFormat& format, MediaFrame& fr
 
     const bool copied = CopyMappedCaptureTexture(mapped, sourceDescription.Format,
         sourceDescription.Width, sourceDescription.Height, format.width,
-        format.height, frame.data, frame.stride, readbackSubtype);
+        format.height, frame.data, frame.stride, readbackSubtype, frame.gpuVisibleX, frame.gpuVisibleY);
     d3d11Context_->Unmap(dxgiReadbackTexture_.Get(), 0);
     if (!copied) return false;
     frame.subtype = readbackSubtype;
@@ -1129,20 +1142,94 @@ bool MediaCaptureSession::CopyGpuFrame(const FrameFormat& format, MediaFrame& fr
     return true;
 }
 
-bool MediaCaptureSession::ReadbackGpuFrame(MediaFrame& frame)
+GpuFrameReadbackResult MediaCaptureSession::ReadbackGpuFrame(MediaFrame& frame)
 {
-    if (!frame.IsGpuResident()) {
-        return !frame.data.empty();
+    using Result = GpuFrameReadbackResult;
+    using Clock = std::chrono::steady_clock;
+    if (!gpuReadbackError_.empty()) return Result::Failed;
+    if (!frame.data.empty()) return Result::Ready;
+    if (!frame.IsGpuResident() || !d3d11Device_ || !d3d11Context_) return Result::Failed;
+    const auto fail = [&](const char* reason) {
+        // Keep the submitted sample, texture and query until the stop worker
+        // confirms producer completion. A deadline is not completion evidence.
+        gpuReadbackError_ = reason;
+        deviceLost_.store(true);
+        qWarning() << reason;
+        return Result::Failed;
+    };
+    if (!gpuReadbackFrame_) {
+        gpuReadbackFrame_ = frame;
+        gpuReadbackStarted_ = Clock::now();
+    } else if (gpuReadbackFrame_->gpuTexture.Get() != frame.gpuTexture.Get() ||
+               gpuReadbackFrame_->gpuSample.Get() != frame.gpuSample.Get() ||
+               gpuReadbackFrame_->gpuSubresource != frame.gpuSubresource ||
+               gpuReadbackFrame_->sequenceNumber != frame.sequenceNumber) {
+        return fail("Camera readback frame changed while its copy was pending");
     }
-    FrameFormat format{};
-    format.subtype = frame.subtype;
-    format.yuvColor = frame.yuvColor;
-    format.width = frame.width;
-    format.height = frame.height;
-    format.stride = frame.stride;
-    format.frameRateNumerator = frame.frameRateNumerator;
-    format.frameRateDenominator = frame.frameRateDenominator;
-    return CopyGpuFrame(format, frame);
+    if (Clock::now() - gpuReadbackStarted_ >= std::chrono::seconds(1))
+        return fail("Camera GPU readback timed out; reconnecting safely");
+
+    std::unique_lock lock(d3d11Mutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return Result::Pending;
+    D3D11_TEXTURE2D_DESC source{};
+    frame.gpuTexture->GetDesc(&source);
+    const UINT mipLevels = std::max(1u, source.MipLevels);
+    const UINT mip = frame.gpuSubresource % mipLevels;
+    if (mip >= 32 || frame.gpuSubresource / mipLevels >= source.ArraySize ||
+        source.SampleDesc.Count != 1)
+        return fail("Camera GPU readback has an invalid source layout");
+    source.Width = std::max(1u, source.Width >> mip);
+    source.Height = std::max(1u, source.Height >> mip);
+    if (!gpuReadbackSubmitted_) {
+        D3D11_TEXTURE2D_DESC previous{};
+        if (gpuReadbackTexture_) gpuReadbackTexture_->GetDesc(&previous);
+        if (!gpuReadbackTexture_ || previous.Width != source.Width ||
+            previous.Height != source.Height || previous.Format != source.Format) {
+            auto staging = source;
+            staging.MipLevels = 1;
+            staging.ArraySize = 1;
+            staging.Usage = D3D11_USAGE_STAGING;
+            staging.BindFlags = 0;
+            staging.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            staging.MiscFlags = 0;
+            gpuReadbackTexture_.Reset();
+            if (FAILED(d3d11Device_->CreateTexture2D(&staging, nullptr, &gpuReadbackTexture_)))
+                return fail("Camera GPU readback staging allocation failed");
+        }
+        if (!gpuReadbackQuery_) {
+            D3D11_QUERY_DESC query{};
+            query.Query = D3D11_QUERY_EVENT;
+            if (FAILED(d3d11Device_->CreateQuery(&query, &gpuReadbackQuery_)))
+                return fail("Camera GPU readback completion query failed");
+        }
+        d3d11Context_->CopySubresourceRegion(gpuReadbackTexture_.Get(), 0, 0, 0, 0,
+            frame.gpuTexture.Get(), frame.gpuSubresource, nullptr);
+        d3d11Context_->End(gpuReadbackQuery_.Get());
+        gpuReadbackSubmitted_ = true;
+        d3d11Context_->Flush(); // Submit once; retries never re-copy or wait.
+        return Result::Pending;
+    }
+    // GetData may flush producer dependencies, but never waits for completion.
+    // Some hardware decoder contexts need this even after the initial Flush.
+    const HRESULT complete = d3d11Context_->GetData(gpuReadbackQuery_.Get(), nullptr, 0, 0);
+    if (complete == S_FALSE) return Result::Pending;
+    if (FAILED(complete)) return fail("Camera GPU readback completion failed");
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    const HRESULT mapResult = d3d11Context_->Map(gpuReadbackTexture_.Get(), 0,
+        D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+    if (mapResult == DXGI_ERROR_WAS_STILL_DRAWING) return Result::Pending;
+    if (FAILED(mapResult) || !mapped.pData) return fail("Camera GPU readback mapping failed");
+    GUID subtype{};
+    const bool copied = CopyMappedCaptureTexture(mapped, source.Format, source.Width,
+        source.Height, frame.width, frame.height, frame.data, frame.stride, subtype,
+        frame.gpuVisibleX, frame.gpuVisibleY);
+    d3d11Context_->Unmap(gpuReadbackTexture_.Get(), 0);
+    if (!copied) return fail("Camera GPU readback pixels have an invalid layout");
+    frame.subtype = subtype;
+    frame.dataSize = frame.data.size();
+    gpuReadbackSubmitted_ = false;
+    gpuReadbackFrame_.reset();
+    return Result::Ready;
 }
 
 bool MediaCaptureSession::EnsureVideoProcessor(const MediaFrame& frame)
@@ -1152,6 +1239,9 @@ bool MediaCaptureSession::EnsureVideoProcessor(const MediaFrame& frame)
         return false;
     }
     const bool directBgraCopy = frame.gpuFormat == DXGI_FORMAT_B8G8R8A8_UNORM;
+    // Nonzero RGB apertures use the exact CPU copy fallback. The direct-copy
+    // helper's existing contract starts at (0,0).
+    if (directBgraCopy && (frame.gpuVisibleX || frame.gpuVisibleY)) return false;
     if ((directBgraCopy || (d3d11VideoProcessor_ &&
                            d3d11VideoProcessorOutputTexture_ && d3d11CudaOutputView_)) &&
         d3d11CudaTexture_ &&
@@ -1335,8 +1425,21 @@ GpuFramePreparationResult MediaCaptureSession::PrepareGpuFrameForCuda(
         return GpuFramePreparationResult::Unsupported;
     }
 
-    std::scoped_lock lock(d3d11Mutex_);
-    if (!activeCudaLease_.expired()) {
+    D3D11_TEXTURE2D_DESC allocation{};
+    frame.gpuTexture->GetDesc(&allocation);
+    const UINT sourceMips = std::max(1u, allocation.MipLevels);
+    const UINT sourceMip = frame.gpuSubresource % sourceMips;
+    if (sourceMip >= 32 || frame.gpuSubresource / sourceMips >= allocation.ArraySize)
+        return GpuFramePreparationResult::Unsupported;
+    const UINT allocationWidth = std::max(1u, allocation.Width >> sourceMip);
+    const UINT allocationHeight = std::max(1u, allocation.Height >> sourceMip);
+    if (frame.gpuVisibleX > allocationWidth || frame.gpuVisibleY > allocationHeight ||
+        frame.width > allocationWidth - frame.gpuVisibleX ||
+        frame.height > allocationHeight - frame.gpuVisibleY)
+        return GpuFramePreparationResult::Unsupported;
+
+    std::unique_lock lock(d3d11Mutex_, std::try_to_lock);
+    if (!lock.owns_lock() || !activeCudaLease_.expired()) {
         return GpuFramePreparationResult::Retry;
     }
     const auto leaseReadyTexture = [&]() {
@@ -1432,10 +1535,14 @@ GpuFramePreparationResult MediaCaptureSession::PrepareGpuFrameForCuda(
         0, 0,
         static_cast<LONG>(frame.width),
         static_cast<LONG>(frame.height)};
+    const RECT visibleFrame{
+        static_cast<LONG>(frame.gpuVisibleX), static_cast<LONG>(frame.gpuVisibleY),
+        static_cast<LONG>(frame.gpuVisibleX + frame.width),
+        static_cast<LONG>(frame.gpuVisibleY + frame.height)};
     d3d11VideoContext_->VideoProcessorSetOutputTargetRect(
         d3d11VideoProcessor_.Get(), TRUE, &fullFrame);
     d3d11VideoContext_->VideoProcessorSetStreamSourceRect(
-        d3d11VideoProcessor_.Get(), 0, TRUE, &fullFrame);
+        d3d11VideoProcessor_.Get(), 0, TRUE, &visibleFrame);
     d3d11VideoContext_->VideoProcessorSetStreamDestRect(
         d3d11VideoProcessor_.Get(), 0, TRUE, &fullFrame);
 

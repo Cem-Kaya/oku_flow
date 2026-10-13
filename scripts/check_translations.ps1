@@ -9,13 +9,51 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $translationDirectory = Join-Path $repoRoot "translations"
 $manifestPath = Join-Path $repoRoot "src\ui\translation_catalog.cpp"
-$catalogPaths = @(
-    (Join-Path $translationDirectory "okuflow_tr.ts"),
-    (Join-Path $translationDirectory "okuflow_de.ts")
+# Every non-English UI language in src/app/app_language.cpp, in picker order.
+# Turkish and German are the reference catalogs; every catalog must have the
+# exact same source set as the generated extraction manifest.
+$catalogLanguages = @(
+    "tr", "de", "fr", "es", "it", "pt_BR", "ru", "uk", "ar", "hi", "ja", "ko",
+    "zh_Hans", "nl", "pl", "cs", "sv", "id", "vi", "th", "bn", "fa", "he", "ur"
 )
+$catalogPaths = @($catalogLanguages | ForEach-Object {
+    Join-Path $translationDirectory "okuflow_$_.ts"
+})
+
+# Sources whose established translation can legitimately equal the English
+# text (product names, units, technical terms, internationally used words).
+# Anything else identical to its source is reported as an untranslated
+# English placeholder.
+$identicalAllowed =
+    [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($source in @(
+    "Sigma", "Normal", "Model", "Codex CLI", "NVIDIA Video Effects",
+    "NVIDIA Super Resolution", "Zoom", "Radius", "Backend", "Text",
+    "Minimal", "Ellipse", "%1 px", "API Key", "Assistant", "Status",
+    ("%1 " + [char]0x00D7 + " %2 @ %3 fps"), "OK")) {
+    [void]$identicalAllowed.Add($source)
+}
+
+# These words are spelled identically in the named languages. Keep exceptions
+# narrow and language-specific; untranslated English sentences still fail.
+$identicalByLanguage = @{
+    fr = @("Simple", "Orientation", "Conversation", "Application", "Assistant", "Image", "Rectangle")
+    nl = @("Camera", "Stop", "Focus X:", "Focus Y:", "Pen", "Later")
+}
+
+function Get-FormatTokens {
+    param([string]$Text)
+
+    $tokens = @([regex]::Matches($Text, '%L?\d|%n') |
+        ForEach-Object { $_.Value } | Sort-Object)
+    $escapedAmpersands = ([regex]::Matches($Text, '&&')).Count
+    $lineBreaks = ([regex]::Matches($Text, "`n")).Count
+    return "$($tokens -join ',')|&&=$escapedAmpersands|nl=$lineBreaks"
+}
 
 function Read-Catalog {
     param([string]$Path)
+    $language = [IO.Path]::GetFileNameWithoutExtension($Path).Substring("okuflow_".Length)
 
     $bytes = [IO.File]::ReadAllBytes($Path)
     for ($i = 0; $i -lt $bytes.Length; ++$i) {
@@ -48,6 +86,16 @@ function Read-Catalog {
         if ($translationNode.GetAttribute("type") -eq "unfinished" -or
             [string]::IsNullOrWhiteSpace($translation)) {
             throw "$Path has an empty or unfinished translation for: $source"
+        }
+        $sourceTokens = Get-FormatTokens $source
+        $translationTokens = Get-FormatTokens $translation
+        if ($sourceTokens -ne $translationTokens) {
+            throw "$Path changes placeholders, escaped ampersands, or line breaks ($sourceTokens -> $translationTokens) for: $source"
+        }
+        $legitimateIdentity = $identicalByLanguage.ContainsKey($language) -and
+            $identicalByLanguage[$language] -ccontains $source
+        if ($translation -ceq $source -and -not $identicalAllowed.Contains($source) -and -not $legitimateIdentity) {
+            throw "$Path leaves an English placeholder translation for: $source"
         }
         $translations[$source] = $translation
     }
@@ -148,9 +196,18 @@ function Compare-SourceSets {
     }
 }
 
+$unlisted = @(Get-ChildItem -LiteralPath $translationDirectory -Filter "okuflow_*.ts" |
+    Where-Object { $catalogPaths -notcontains $_.FullName } |
+    ForEach-Object { $_.Name })
+if ($unlisted.Count -gt 0) {
+    throw "Translation catalogs are not registered in check_translations.ps1: $($unlisted -join ', ')"
+}
+
 $turkish = Read-Catalog $catalogPaths[0]
-$german = Read-Catalog $catalogPaths[1]
-Compare-SourceSets "Turkish catalog" $turkish "German catalog" $german
+for ($index = 1; $index -lt $catalogPaths.Count; ++$index) {
+    $catalog = Read-Catalog $catalogPaths[$index]
+    Compare-SourceSets "Turkish catalog" $turkish "$($catalogLanguages[$index]) catalog" $catalog
+}
 
 $sortedSources = @($turkish.Keys | Sort-Object)
 if ($UpdateManifest) {
@@ -190,4 +247,4 @@ finally {
     Remove-Item $temporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "PASS: $($sortedSources.Count) complete Turkish/German translations match the extraction manifest."
+Write-Host "PASS: $($catalogPaths.Count) catalogs each have $($sortedSources.Count) complete translations matching the extraction manifest."

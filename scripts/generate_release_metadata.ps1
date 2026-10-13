@@ -26,10 +26,13 @@ $cudaToolkitVersion =
     }
 $ErrorActionPreference = 'Stop'
 $bundle = (Resolve-Path -LiteralPath $BundlePath).Path
+. (Join-Path $PSScriptRoot 'windows-installer/bundle_layout.ps1')
+$layout = Get-OkuFlowBundleLayout $bundle
+$payload = $layout.PayloadRoot
 $repository = (Resolve-Path -LiteralPath $RepositoryPath).Path
 $runtimePin = Get-Content (Join-Path $repository 'scripts/vc-runtime/pins.json') -Raw | ConvertFrom-Json
-$runtimeInstaller = Join-Path $bundle $runtimePin.installer.name
-$runtimeLicense = Join-Path $bundle 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'
+$runtimeInstaller = Join-Path $payload $runtimePin.installer.name
+$runtimeLicense = Join-Path $payload 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'
 if ((Get-FileHash -LiteralPath $runtimeInstaller).Hash.ToLowerInvariant() -ne $runtimePin.installer.sha256 -or
     (Get-FileHash -LiteralPath $runtimeLicense).Hash.ToLowerInvariant() -ne $runtimePin.licenseSha256) {
     throw 'Microsoft runtime installer/license differ from the reviewed pins.'
@@ -39,7 +42,7 @@ if ($runtimeSignature.Status -ne 'Valid' -or
     $runtimeSignature.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation(?:,|$)') {
     throw 'Microsoft runtime installer signature could not be verified.'
 }
-$d3dCompilerPath = Join-Path $bundle 'D3Dcompiler_47.dll'
+$d3dCompilerPath = Join-Path $payload 'D3Dcompiler_47.dll'
 $d3dCompilerVersion =
     if (Test-Path -LiteralPath $d3dCompilerPath -PathType Leaf) {
         $version = (Get-Item -LiteralPath $d3dCompilerPath).VersionInfo.FileVersion
@@ -49,7 +52,7 @@ $d3dCompilerVersion =
     }
 # stage_platform_tools.ps1 pins and verifies these files; the SBOM records
 # what was actually staged rather than repeating the pin.
-$platformToolsPath = Join-Path $bundle 'platform-tools'
+$platformToolsPath = Join-Path $payload 'platform-tools'
 foreach ($name in @('adb.exe', 'AdbWinApi.dll', 'AdbWinUsbApi.dll', 'NOTICE.txt', 'source.properties', 'adb-build.json')) {
     if (-not (Test-Path -LiteralPath (Join-Path $platformToolsPath $name) -PathType Leaf)) {
         throw "Required Android platform-tools file is missing: platform-tools/$name"
@@ -67,7 +70,7 @@ if (-not $adbBuild.sourceBuilt -or $adbBuild.protocol -ne 41) {
 }
 foreach ($record in $adbBuild.files) {
     if ($record.path.Contains('..') -or $record.path.Contains(':') -or
-        (Get-FileHash -LiteralPath (Join-Path $bundle $record.path)).Hash.ToLowerInvariant() -ne $record.sha256) {
+        (Get-FileHash -LiteralPath (Join-Path $payload $record.path)).Hash.ToLowerInvariant() -ne $record.sha256) {
         throw "adb runtime/source verification failed: $($record.path)"
     }
 }
@@ -111,7 +114,7 @@ $dirty = $LASTEXITCODE -ne 0 -or $statusLines.Count -gt 0
 
 $executable = Join-Path $bundle 'oku_flow.exe'
 $signature = Get-AuthenticodeSignature -LiteralPath $executable
-$executableSignatures = foreach ($name in @('oku_flow.exe', 'OkuFlowApp.exe')) {
+$executableSignatures = foreach ($name in @('oku_flow.exe', $layout.ApplicationRelativePath)) {
     $path = Join-Path $bundle $name
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required release executable missing: $name" }
     $signed = Get-AuthenticodeSignature -LiteralPath $path
@@ -142,13 +145,14 @@ $manifest = [ordered]@{
         }
     }
     executables = @($executableSignatures)
+    payloadDirectory = if ($layout.Prefix) { 'app' } else { '.' }
     windowsRuntime = [ordered]@{
         version = $runtimePin.version
         installation = 'system-wide, with user/admin approval only when required'
-        installer = $runtimePin.installer.name
+        installer = $layout.Prefix + $runtimePin.installer.name
         installerSha256 = $runtimePin.installer.sha256
         installerAuthenticode = [string]$runtimeSignature.Status
-        license = 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'
+        license = $layout.Prefix + 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'
     }
     files = @($fileRecords)
 }
@@ -410,14 +414,14 @@ $qtModules = @(
     'qtmultimedia',
     'qtspeech',
     'qtsvg')
-$pdfSbomPath = Join-Path $bundle (
+$pdfSbomPath = Join-Path $payload (
     "licenses/qt-sbom/qtpdf-{0}.spdx.json" -f $qtRuntimeVersion)
-if ((Test-Path -LiteralPath (Join-Path $bundle 'Qt6Pdf.dll')) -or
+if ((Test-Path -LiteralPath (Join-Path $payload 'Qt6Pdf.dll')) -or
     (Test-Path -LiteralPath $pdfSbomPath)) {
     $qtModules += 'qtpdf'
 }
 foreach ($module in $qtModules) {
-    $qtSbomPath = Join-Path $bundle (
+    $qtSbomPath = Join-Path $payload (
         "licenses/qt-sbom/{0}-{1}.spdx.json" -f $module, $qtRuntimeVersion)
     if (-not (Test-Path -LiteralPath $qtSbomPath -PathType Leaf)) {
         throw "Required Qt module SPDX document is missing: $qtSbomPath"
@@ -473,7 +477,7 @@ $sbom = [ordered]@{
         },
         [ordered]@{
             licenseId = 'LicenseRef-BoringSSL'
-            extractedText = Get-Content -LiteralPath (Join-Path $bundle 'licenses/adb/BORINGSSL_LICENSE.txt') -Raw
+            extractedText = Get-Content -LiteralPath (Join-Path $payload 'licenses/adb/BORINGSSL_LICENSE.txt') -Raw
             name = 'BoringSSL composite upstream license'
         },
         [ordered]@{
@@ -484,7 +488,7 @@ $sbom = [ordered]@{
         }
     ) + @(
         if ($cudaIsEnabled) {
-            $cudaEulaPath = Join-Path $bundle 'licenses/NVIDIA_CUDA_EULA.txt'
+            $cudaEulaPath = Join-Path $payload 'licenses/NVIDIA_CUDA_EULA.txt'
             [ordered]@{
                 licenseId = 'LicenseRef-NVIDIA-CUDA-EULA'
                 extractedText = Get-Content -LiteralPath $cudaEulaPath -Raw

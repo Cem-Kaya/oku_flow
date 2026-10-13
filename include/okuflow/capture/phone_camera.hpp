@@ -23,20 +23,47 @@ struct AdbServerEndpoint {
     bool supported{true};
     bool overridden{false};
     std::uint16_t port{5037};
+    // True only for the private loopback server this OkuFlow process
+    // launched itself (exact owned child in a kill-on-job-close job). An
+    // overridden endpoint or a pre-existing default-port listener is borrowed.
+    // Only separately proven reviewed legacy OkuFlow bundles qualify for
+    // deliberate reclamation; unknown/shared SDK servers remain untouched.
+    bool ownedByThisProcess{false};
 };
 AdbServerEndpoint ParseAdbServerEndpoint(std::string_view serverSocket, std::string_view serverPort,
                                          std::string_view serverAddress);
 
 // Test seam only; production never sets it. While set, adb traffic uses
 // 127.0.0.1:port (nonzero) and launchServer replaces the bundled adb bootstrap
-// (empty disables bootstrap). Setting or clearing it also resets the server
-// start throttle and the per-transport app-launch budget.
+// (empty disables bootstrap). The explicit owned-server fields opt into the
+// private production-wiring fixture only. Setting or clearing it resets the server
+// start/recovery throttles and the per-transport app-launch budget, and stops
+// any owned private server so fixtures can never interact with it.
 struct PhoneAdbTestHooks {
     std::uint16_t port{0};
     std::function<bool(std::uint16_t port)> launchServer;
+    // Private production-wiring fixture: port stands in for the default
+    // endpoint; only this explicit executable may be started on a fresh port.
+    std::wstring ownedServerExecutable;
+    std::vector<std::wstring> ownedServerArguments;
+    std::uint32_t borrowedHangConfirmationMs{5000};
 };
 void SetPhoneAdbTestHooks(std::optional<PhoneAdbTestHooks> hooks);
+// Stops only the private adb server this process launched and owns (exact
+// job-owned child). A borrowed pre-existing/overridden server is untouched.
+// Called on normal app teardown after capture stops; state is per-process
+// and never persisted. Safe to call repeatedly.
+void ShutdownOwnedAdbServer();
+// Private owned-server port while its exact child is running, else nullopt.
+std::optional<std::uint16_t> OwnedAdbServerPort();
 enum class PhoneVideoCodec { Avc, Hevc };
+// BorrowOnly has no lifecycle effects. PhoneUse enables guarded recovery and
+// bootstrap. ReleaseForWebcam retires an idle owned child without relaunching.
+enum class PhoneServerIntent { BorrowOnly, PhoneUse, ReleaseForWebcam };
+// Discovery failures remain distinct from a confirmed empty USB listing.
+enum class PhoneDiscoveryStatus {
+    Unknown, Listed, NoListener, ServerUnresponsive, EndpointUnsupported, OwnedServerRecovering
+};
 // System Annex B decoder, optionally sharing the capture session's D3D11 device manager.
 class PhoneVideoDecoder {
 public:
@@ -56,14 +83,32 @@ public:
     ~PhoneCameraTransport();
     // connectedSerial is never probed (it is live or about to be). listingSucceeded
     // becomes true only after adb returned a parsed USB listing; false means
-    // unknown, not absence. Probe replies set readiness/busy/problem.
+    // unknown, not absence. Probe replies set readiness/busy/problem. An
+    // optional recoverySerial permits guarded USB recovery only for the user's
+    // preferred idle phone; other discovered devices remain non-claiming.
+    // Only a caller with phone-use intent may request owned bootstrap; ordinary
+    // camera enumeration borrows an existing server without starting one.
     static std::vector<CameraDescriptor> Enumerate(
         const std::string& connectedSerial = {},
         const std::atomic<bool>* canceled = nullptr,
-        bool* listingSucceeded = nullptr);
+        bool* listingSucceeded = nullptr,
+        const std::string& recoverySerial = {},
+        PhoneDiscoveryStatus* status = nullptr,
+        PhoneServerIntent serverIntent = PhoneServerIntent::BorrowOnly);
     // Automatic starts launch the phone app at most once per serial and USB
     // transport. A deliberate user selection may restore that one launch.
     static void AllowAppLaunch(const std::string& serial);
+    // Worker-only recovery: reset only this currently authorized USB transport
+    // when adb host services respond but two full-token device shell health
+    // probes time out and a fresh non-claiming companion probe also times out.
+    // At most one request per phone/server per minute within this process
+    // (the throttles are not persisted across restarts), including across new
+    // transport IDs. Never restart/kill the server or reset busy/paused
+    // camera sessions. Returns true only when adb acknowledges a targeted
+    // reconnect request and the stale transport then disappears or
+    // re-registers under a new ID; discovery observes the phone afterward.
+    static bool RecoverStalledUsbTransport(const CameraDescriptor& descriptor,
+                                          const std::atomic<bool>* canceled = nullptr);
     bool Start(const CameraDescriptor& descriptor, IMFDXGIDeviceManager* manager,
                FrameCallback callback, CaptureErrorCallback errorCallback,
                const std::atomic<bool>* startupCanceled = nullptr);

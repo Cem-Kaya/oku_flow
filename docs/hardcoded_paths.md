@@ -111,7 +111,14 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
   proprietary libraries or model files.
 - Preferred environment variable: `%CUDA_PATH%`
 - Secondary probe: `%CUDA_PATH_V*%`
-- Hard-coded CUDA architectures in `cmake/CMakeLists.txt`: `75;86;89`
+- Hard-coded CUDA architectures in `cmake/CMakeLists.txt` (mirrored in the
+  presets and CUDA test targets): `75;80;86;89;90;100;103;120;121` — every
+  non-Jetson architecture the CUDA 13 toolkit can target, from Turing
+  (GTX 16/RTX 20) through Blackwell (`sm_120`, RTX 50) and GB10 (`sm_121`,
+  DGX Spark). CUDA 13 removed Maxwell/Pascal/Volta, so GTX 900/10-series
+  and Titan V cannot be targeted without returning to a CUDA 12.x toolkit.
+  No PTX fallback is embedded; `cuda_architecture_coverage` (CTest) checks
+  the built executable carries a cubin for each listed architecture.
 - The Windows target uses the static CUDA runtime, so release bundling does not
   copy `cudart`, `nvrtc`, `nvJitLink`, or other CUDA Toolkit DLLs.
   Its license comes from the selected toolkit's `EULA.txt` or newer `LICENSE`
@@ -122,6 +129,16 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
   - Current implementation still resolves `fp16` back to `rgba8`
 
 ## Build Directories
+
+USB recovery uses two consecutive 2000ms shell-response timeouts, a fresh
+1000ms non-claiming companion probe and a 2000ms post-ack transport-ID check.
+Definitive health/phone responses suppress further health probes for 30 seconds;
+reconnect requests have a 60-second cooldown per endpoint/phone. Both budgets
+are in-process and reset on restart. Ordinary discovery polls every 5 seconds.
+Capture shutdown bounds its D3D11 completion-query poll to 1000ms while retaining
+the facade's shared 1500ms stop deadline. These limits avoid unbounded GPU waits
+and never authorize killing or replacing a foreign/shared adb server.
+
 - `scripts/build_and_run.bat` configures `build\`
 - The helper prefers launching:
   1. `build\cmake\Release\oku_flow.exe`
@@ -145,6 +162,14 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
   `build\msvc-cuda-tests\tests\clamp_bump_replay_*`
 
 ## Output Directories
+- Test-gate evidence: `%LOCALAPPDATA%\OkuFlow\test-evidence\`, with one hashed
+  directory per canonical build/configuration and one JSON ledger per SHA-256
+  input inventory. Attempt JUnit/log names include a timestamp and random suffix.
+  `runner.lock` excludes concurrent tracked runners; `desktop.lock` is the
+  per-user Qt fixture lease, shared even across direct CTest invocations.
+  `OKUFLOW_TEST_RESUME=1` requests reuse, never an input mismatch override.
+  `scripts/test_test_gate.ps1` uses private GUID directories under
+  `%LOCALAPPDATA%\OkuFlow\test-gate-contract\`; nothing enters release bundles.
 - Release bundle output: `dist\OkuFlow\`
 - Default user-data root:
   `%USERPROFILE%\Documents\OkuFlow\` through
@@ -279,7 +304,11 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
   an input already at the cap remains native. All modes read models from the
   runtime's `models` subdirectory. After 60 timed runs SuperRes disables
   itself for the current CUDA surface when average runtime exceeds `24 ms`,
-  then uses NIS/FSR. Ten warmup runs are excluded.
+  then retains the base scene (NIS/FSR remains active only if enabled).
+  Ten warmup runs are excluded. Strength changes settle for 200 ms before
+  reloading. Model load/inference/teardown host calls each have a 1000 ms
+  deadline on an owned serial worker; timeout requires a restart and does
+  not authorize releasing unfinished GPU allocations.
 - NVIDIA architecture mapping for Setup Assistant downloads: compute 7.5 =
   Turing, 8.9 = Ada, other 8.x = Ampere, and 10.x or newer = Blackwell.
 
@@ -328,8 +357,14 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
   process-only development override and is never persisted.
 
 ## Redistributed Runtime Files
+- New bundles have one root launcher, `oku_flow.exe`; supporting EXEs, Qt DLLs,
+  plugins, runtime installer, platform-tools and third-party notices/source
+  archives live under `app/`. Flat published bundles remain readable. File
+  inventories use full root-relative paths; reviewed adb manifests retain their
+  original payload-relative paths and exact bytes.
 - The bundle script copies the executable, Qt deployment output, `LICENSE`,
   `COMMERCIAL.md`, `README.md` as `README.txt`,
+  `docs/portable_start_here.txt` as `START_HERE.txt`,
   `docs/THIRD_PARTY_LICENSES.md`, the Lucide
   notice, the applicable Qt/FFmpeg texts, exact Qt module SPDX documents,
   CUDA/FSR/NIS/Maxine-header notices for CUDA builds.
@@ -367,9 +402,11 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
   passes an explicit report path; the app uses its sibling `settings.json`
   instead of the normal Windows known-folder settings path. A child APPDATA
   environment override alone does not isolate Qt's Windows settings lookup.
-- `--startup-profile-ms` defaults to 15000 ms, bounded to 1000–60000 ms in the
-  app. The script accepts 1–30 seconds and 1–5 runs. Only profiling enables
-  its precise 20 ms Qt heartbeat with at most 3000 delay samples.
+- `--startup-profile-ms` defaults to 15000 ms, bounded to 1000–600000 ms in the
+  app. The script accepts 1–600 seconds and 1–5 runs. Only profiling enables
+  its precise 20 ms Qt heartbeat with at most 3000 delay samples. That sample
+  cap still applies to longer manual cable-recovery sessions. Ordinary app
+  launches have no profiling exit timer; UI capture delays remain 1–60000 ms.
 - Initial setup notices/checks wait 1500 ms after the window is shown. The
   initial camera worker starts before show, after app services/settings exist.
   D3D11 conversion retries remain bounded to 25 ms, with a single query per
@@ -385,7 +422,7 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 ## Android Companion
 
 - Package/application id: `com.okuflow`, Kotlin namespace `com.okuflow.camera`,
-  version code `3`, name `0.1.2`;
+  prepared version code `4`, name `0.1.3` (published code 3 / 0.1.2 is separate);
   min API `30`, compile API `37.2`, target API `37`. Pins live in
   `android/gradle/libs.versions.toml` and `android/app/build.gradle.kts`.
 - User-owned JDK: `%LOCALAPPDATA%\Programs\jdk-21`;
@@ -407,6 +444,12 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 - Settings preference file: `setup`; Boolean `camera_permanently_denied`
   defaults false and is cleared on camera grant. Backup and device-transfer
   rules exclude installation-specific data.
+- Language preference: Android 13+ framework `LocaleManager.applicationLocales`;
+  Android 11–12 private preference `language` / `tag`, absent = System default.
+  The 25 canonical language codes and Android qualifiers are documented in
+  [localization](localization.md). Windows persists `system` or an explicit code;
+  `pt-BR` and `zh-Hans` remain full tags. Embedded Qt resources use underscore
+  filenames (`okuflow_pt_BR.qm`, `okuflow_zh_Hans.qm`), never machine paths.
 - Exact tool versions, vendor SHA-256 values, and build commands:
   [`android/BUILDING.md`](../android/BUILDING.md).
 - Camera preferences: shared-preference file `camera`; defaults are automatic
@@ -423,7 +466,10 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   Pause, permission loss or debugging explicitly off stops it. New service
   requests require a resumed activity; foreground refusal waits for a new resume.
 - Encoder startup tries at most six candidates with 4 s first-frame deadlines.
-  Windows startup deadline 12 s and decoded buffer bound 64 MiB; Windows
+  Windows packet-silence and decoded-output deadlines are independently 12 s;
+  HEVC first output in each generation has a 4 s deadline. Reconfiguration and
+  packet arrivals never reset the decoded-output deadline. Decoded buffers are
+  bounded to 64 MiB; Windows
   H.264 limits 4096×2304 / 251658240 pixels per second. SEVERE thermal state
   requests at most 30 FPS; CRITICAL stops. See [`PROTOCOL.md`](../android/PROTOCOL.md).
 - Probe output: `%LOCALAPPDATA%\OkuFlow\camera-probes\<timestamp>`;
@@ -447,9 +493,37 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 - Adb lookup: `OKUFLOW_ADB_PATH`, executable-relative `platform-tools/adb.exe`,
   `ANDROID_HOME`, `ANDROID_SDK_ROOT`, PATH, then environment-derived
   `%LOCALAPPDATA%/Android/Sdk/platform-tools/adb.exe`. No user path is compiled.
-  Hidden direct loopback server starts are throttled to 30 s and never replace
-  or kill an existing listener. A server can keep its runtime files locked after
-  OkuFlow exits; use the documented `OkuFlow2` bundle fallback.
+  With no default listener/override, hidden direct server starts select a
+  private ephemeral loopback port. An exact owned child in a non-inherited
+  kill-on-close job dies at normal exit or process crash. Failed launch, child
+  exit and confirmed-hang relaunch attempts retain a 30 s cooldown. Existing
+  unknown listeners/overrides remain borrowed, never replaced or killed; their runtime
+  files may remain locked after OkuFlow exits (`OkuFlow2` fallback).
+  Owned health probes use a 100 ms connect deadline and 1000 ms per bounded
+  host-version read, with two consecutive failures before an idle restart.
+  Readiness polling uses a 5 s deadline and 50 ms slices (an in-progress bounded
+  probe can finish beyond that deadline). Live/starting phone sessions and
+  cancellation suppress restart. Lifecycle/port/budget state is process-local.
+  Bootstrap requires phone-use intent. Explicit webcam selection relinquishes
+  idle ownership. The child overrides `ADB_EMU=0` and `ADB_REJECT_KILL_SERVER=1`, logs its private port and
+  verifies the IPv4 loopback listener's PID against its held process. A dead
+  child can yield to a responsive default listener after its sessions finish; shutdown forbids any
+  later owned bootstrap. WinUSB exclusivity is documented in adb_distribution.md.
+- Cancellable adb lock waits use 20 ms slices; Port reads use a synchronize-only
+  atomic child snapshot. Server epochs observe loopback port/PID/creation time.
+  Borrowed hangs need two failures spanning 5 s before phone-intent recovery.
+  Legacy bundle reclamation pins `adb-build.json` SHA-256
+  `f91532bab5d146a1dd0dc646629afb8ce77a626c0cde0b015e71c8dfcbb00b1c`
+  (same as `scripts/adb-source/distribution.json`) and public v0.2.3 launcher
+  SHA-256 `8bff15f54bfe5111762cda157a3df9d9716f549b3c0bf2d9f612100ccc288b1d`
+  as its metadata-free fallback. The public ZIP matched
+  `4ec5e2605e70e021b8211a782abcefbffd9543519234dbe060fa80b16a428148`.
+  Keep reviewed pins and provenance docs aligned when changing releases.
+  Default reclamation mutex is `Local\OkuFlow.LegacyAdbRecovery.<SID>.<session>`;
+  acquisition is capped at 3 s, host-kill connect at 500 ms, graceful/forced exit
+  waits at 2 s each. Private fixtures inject their own manifest/launcher hashes,
+  root, scan scope, mutex and port, never the owner's port 5037. An unused shadow
+  hands back after an empty raw transport list and two healthy default probes.
 - Automatic activity launch is limited to one attempt per serial/transport.
   A manual phone selection renews it. Permission, busy and thermal probe
   problems wait for phone-state changes instead of forcing foreground every 5 s.

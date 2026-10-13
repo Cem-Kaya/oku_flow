@@ -2,6 +2,7 @@
 
 #include "okuflow/ui/annotation_overlay.hpp"
 #include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/theme_contrast.hpp"
 
 #include <QAccessible>
 #include <QAccessibleAnnouncementEvent>
@@ -187,7 +188,7 @@ void AnnotationOverlay::BuildToolbar()
             background: #a83cbe;
         }
         QToolButton:focus { border: 3px solid #d79ae6; }
-        QToolButton:disabled { color: #8f8f8f; }
+        QToolButton:disabled { color: #b8b8b8; }
         QToolButton#annotationDone {
             color: #ffffff;
             background: #a83cbe;
@@ -248,7 +249,11 @@ void AnnotationOverlay::BuildToolbar()
                                  const QString& iconName) {
         auto* button = new QToolButton();
         button->setText(text);
-        button->setIcon(QIcon(QStringLiteral(":/okuflow/icons/") + iconName));
+        // The rail is pinned dark; render its currentColor line icons in
+        // white explicitly instead of relying on the SVG engine's default.
+        button->setIcon(theme_contrast::ThemedIcon(
+            QStringLiteral(":/okuflow/icons/") + iconName,
+            QColor(QStringLiteral("#ffffff")), QColor(QStringLiteral("#b8b8b8"))));
         button->setIconSize(QSize(25, 25));
         button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
         button->setFixedSize(84, 72);
@@ -390,7 +395,9 @@ void AnnotationOverlay::BuildToolbar()
                                      const QString& iconName) {
         auto* button = new QToolButton();
         button->setText(text);
-        button->setIcon(QIcon(QStringLiteral(":/okuflow/icons/") + iconName));
+        button->setIcon(theme_contrast::ThemedIcon(
+            QStringLiteral(":/okuflow/icons/") + iconName,
+            QColor(QStringLiteral("#ffffff")), QColor(QStringLiteral("#b8b8b8"))));
         button->setIconSize(QSize(25, 25));
         button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
         button->setFixedSize(84, 72);
@@ -1048,14 +1055,16 @@ void AnnotationOverlay::UpdateDirectionalUi()
 {
     const bool rightToLeft = layoutDirection() == Qt::RightToLeft;
     if (undoButton_) {
-        undoButton_->setIcon(QIcon(
+        undoButton_->setIcon(theme_contrast::ThemedIcon(
             rightToLeft ? QStringLiteral(":/okuflow/icons/redo.svg")
-                        : QStringLiteral(":/okuflow/icons/undo.svg")));
+                        : QStringLiteral(":/okuflow/icons/undo.svg"),
+            QColor(QStringLiteral("#ffffff")), QColor(QStringLiteral("#b8b8b8"))));
     }
     if (redoButton_) {
-        redoButton_->setIcon(QIcon(
+        redoButton_->setIcon(theme_contrast::ThemedIcon(
             rightToLeft ? QStringLiteral(":/okuflow/icons/undo.svg")
-                        : QStringLiteral(":/okuflow/icons/redo.svg")));
+                        : QStringLiteral(":/okuflow/icons/redo.svg"),
+            QColor(QStringLiteral("#ffffff")), QColor(QStringLiteral("#b8b8b8"))));
     }
 }
 

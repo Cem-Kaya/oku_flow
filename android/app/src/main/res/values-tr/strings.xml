@@ -22,7 +22,7 @@
     <string name="camera_hint_settings">Ayarları açın, “İzinler”i seçin ve “Kamera”ya izin verin.</string>
 
     <string name="connect_usb_title">Bu telefonu bilgisayarınıza takın</string>
-    <string name="connect_usb_hint">Veri aktarabilen bir USB kablosu kullanın.</string>
+    <string name="connect_usb_hint">Bu telefon uygulaması, bilgisayarınızda Windows için OkuFlow gerektirir. okuflow.com’dan indirip açın. Veri aktarabilen bir USB kablosu kullanın.</string>
 
     <string name="open_okuflow_title">Bilgisayarınızda OkuFlow’u açın</string>
     <string name="open_okuflow_hint">USB hata ayıklama izni sorulursa yalnızca size ait, güvendiğiniz kişisel bilgisayara izin verin. Bu bilgisayar için “Her zaman izin ver” isteğe bağlıdır; paylaşılan bilgisayarda kapalı bırakın.</string>
@@ -99,4 +99,10 @@
     <string name="licenses_title">Açık kaynak lisansları</string>
     <string name="licenses_loading">Lisans bildirimleri yükleniyor…</string>
     <string name="licenses_unavailable">Lisans bildirimleri açılamadı. Kaynak deposunun lisans klasörünü kullanın.</string>
+    <string name="advanced_settings_open">Gelişmiş ayarları aç</string>
+    <string name="settings_language">Dil</string>
+    <string name="setting_language">Uygulama dili</string>
+    <string name="language_system_default">Sistem varsayılanı (%1$s)</string>
+    <string name="language_hint">Sistem varsayılanı telefonunuzun dilini izler. Başka bir seçim yalnızca bu uygulamada geçerlidir ve yeniden başlatmalardan sonra da korunur.</string>
+    <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
 </resources>

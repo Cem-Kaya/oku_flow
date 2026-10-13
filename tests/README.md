@@ -1,5 +1,141 @@
 # OkuFlow Tests
 
+## Background language checks
+
+`windows_runtime_contract` checks the public launcher with both flat and nested
+owned children, including Unicode arguments, original working directory,
+environment, stdout/stderr and exit code. It never installs the system runtime.
+`user_data_paths` rejects the parent bundle as well as nested runtime directories
+when selecting capture storage. `scripts/test_bundle_layout.ps1` uses synthetic
+private files for byte-preserving relocation, legacy/nested inventory checks,
+tampering and owner-data refusals. It is not clean-VM MSI acceptance.
+
+`language_catalog_contract` sets Qt's offscreen platform and creates no windows.
+It loads all 24 real compiled non-English catalogs, checks the 25-language
+registry, system/saved precedence and RTL direction, and confirms that a failed
+catalog replacement retains the current translation and locale. It also checks
+the native launcher's language/message table. Its `headless` label does not
+relabel or replace any existing native GUI fixture.
+
+Android `AppLanguageTest` validates canonical tags, regional matches, Chinese
+script precedence and legacy Hebrew/Indonesian tags through the JVM test gate.
+The sibling website's `test-transcribe-languages.mjs` checks all 25 Transcribe
+catalogs and locale selection through `npm run check`. Structural coverage does
+not verify fluent wording, screen readers or visible native layouts; see
+[localization](../docs/localization.md).
+
+## Selectable GUI cases and exact-inventory resumes
+
+`main_window_interactions.<slot>`, `annotation_overlay_interactions.<slot>`
+and `ai_settings_dialog_interactions.<slot>` are individual CTest entries using
+the existing three executables and Qt's test-function selectors. Every data
+row stays with its slot, including English/Turkish/German, viewport widths,
+provider choices and docking sides. `tests/gui_cases.cmake` discovers these
+out-of-class slot definitions at configure time; keep that source style when
+adding slots. The old suite names are still useful CTest regex prefixes.
+
+Labels `gui-idle`, `gui-input`, `gui-layout` and `gui-state` allow focused runs.
+They all retain `gui`; layout/state cases can still open native windows or
+exercise focus, and none is a desktop-free substitute. In particular, the
+three idle cases are separately selectable:
+
+- `main_window_interactions.mouseFocusedChromeCanIdleFade`
+- `main_window_interactions.unrelatedNativeInputCannotRevealChrome`
+- `main_window_interactions.keyboardFocusedChromeSurvivesNativeHandoff`
+
+All GUI entries have `RUN_SERIAL` and the `okuflow_desktop` CTest resource lock.
+Every native GUI executable also acquires the same per-user `QLockFile` before
+creating QApplication, refusing competing fixtures in another build/CTest
+process. This does not reserve the desktop against a person or browser; arrange
+a free desktop and never run browser automation concurrently.
+
+The tracked build and bundle scripts call `scripts/run_test_gate.ps1`, which
+runs CTest serially and archives each invocation's JUnit and console output
+under `%LOCALAPPDATA%\OkuFlow\test-evidence\`. A small JSON ledger is separate
+for each canonical build directory, configuration and SHA-256 inventory. It
+hashes repository source/test/script/resource inputs (including untracked,
+nonignored inputs), generated CTest/build configuration, build EXEs/DLLs/QMs,
+absolute command-file inputs, Qt/native runtime DLLs, graphics driver/display/DPI
+metadata, Windows boot identity, culture, CTest itself and relevant
+environment values (including PATH and Qt scaling). Only the environment digest
+is saved. The post-run inventory must still match. Any change invalidates all
+passes for that inventory conservatively; CPU, CUDA and bundle evidence never
+substitute for one another. Keep the same desktop/hardware setup; after changing
+monitors, native DPI, drivers or hardware, run a fresh gate rather than resume.
+
+First run the normal `scripts\agent_build.bat`. It now continues to CUDA after
+a CPU test failure, preserving independent configuration results. If the only
+problem is a recorded desktop interruption, stop competing input, then run:
+
+```powershell
+./scripts/agent_build.bat --retry-interrupted msvc-cpu-tests main_window_interactions.mouseFocusedChromeCanIdleFade
+$env:OKUFLOW_TEST_RESUME = '1'
+./scripts/agent_build.bat
+Remove-Item Env:OKUFLOW_TEST_RESUME
+```
+
+The retry command restores the same Visual Studio environment but does not
+rebuild or publish anything. Keep the original Qt/OKUFLOW environment overrides.
+It retries exactly one recorded interrupted case once, retains its original
+failure/log, and still returns failure if another required case is unresolved.
+The following resume runs normal compile/translation gates and reuses only
+matching CTest evidence. A changed inventory refuses resume: unset the flag,
+build and run a fresh complete gate. Do not use CTest's mutable LastTestsFailed
+file as evidence for another configuration or use `--repeat until-pass`.
+
+Only a single Qt failure explicitly marked `OKUFLOW_DESKTOP_INTERRUPTED:`
+(confirmed foreign foreground ownership or observed physical pointer movement), or
+desktop-lock refusal before QApplication, is eligible for `-RetryInterrupted`.
+Qt activation failure while the fixture owns foreground, or unknown native
+foreground ownership, remains an ordinary failure.
+An ordinary assertion, mixed failures, timeout, crash or unfinished invocation
+remains unresolved; it is never automatically retried. Fix the cause and build
+a new inventory. To investigate an unclassified failure, use a direct selected
+CTest run; that diagnostic cannot overwrite/clear ledger failure evidence.
+Missing results remain pending. Optional CTest/Qt skips remain visible and are
+executed again on a whole-suite resume, not reused as confirmed hardware passes.
+
+Lower-level commands, from the same configured build environment:
+
+```powershell
+# Discovery only: no fixture execution or QApplication.
+./scripts/run_test_gate.ps1 -Preset msvc-cpu-tests -List
+# Diagnostic native run: serial, but does not write gate-ledger credit.
+ctest --preset msvc-cpu-tests -L gui-idle --parallel 1 --output-on-failure
+# Explicit local build, including a bundle build's independent inventory:
+./scripts/run_test_gate.ps1 -BuildDirectory $env:OKUFLOW_BUNDLE_BUILD_DIR -Resume -RetryInterrupted 'main_window_interactions.mouseFocusedChromeCanIdleFade'
+```
+
+`-Test` selects exact CTest names, but the gate still fails until all required
+entries have results. `-ExcludeGui` is explicitly partial; a later matching
+whole-suite resume fills in GUI entries. A complete gate still requires the
+shipping compile, CPU and CUDA suites, and independent bundle CTest before
+publishing. The bundle's existing emergency test bypass remains visibly untested.
+
+For runner changes, run `pwsh -NoProfile -File scripts/test_test_gate.ps1 -CMake
+<cmake.exe>`. Its private command-line CTest fixtures verify partial/resume
+coverage, pass reuse, explicit interruption retry, refusal to retry assertions
+or mixed failures, retained logs, configuration/input/runtime/scale invalidation
+and visible optional skips. A mid-run mutation check verifies rejection and
+identification of the changed input; environment values remain hashed. It opens
+no GUI, camera, browser or adb server.
+Fixture CLI flags `--output` and `--trace` are reserved for generated results.
+Their paths remain part of the command fingerprint; the produced bytes do not.
+
+Annotation drag/keyboard fixtures use the native foreground helper before
+synthesizing input. Drag cancellation events log grab/activation state to aid
+diagnosis without weakening the production release, deactivation or hold rules.
+
+The refactor replaces unconditional layout/activation waits with bounded
+condition waits. Continuous-resize validation exits once its existing ten-change
+and presentation conditions hold, with the same 220 ms deadline. Negative
+idle-fade, stationary-pointer and docking debounce/hold observation intervals
+are retained. Earlier logs (`agent-build-zoom16-final.log`) measured main-window
+17.44/18.02 s and annotation 13.41/13.88 s in CPU/CUDA, with suite totals
+70.52/74.10 s; `bundle-0.2.3.log` recorded 80.62 s total. Those are pre-refactor
+measurements. Full/targeted GUI timing and desktop acceptance must be measured
+serially after integration; compilation or script fixtures do not establish it.
+
 `pipeline_timing_percentiles` checks pending-scene presentation during retained
 camera GPU-handoff retries: pan, zoom, and a native resize redraw use the held
 scene without advancing camera effects or recording. This scheduler fixture
@@ -27,8 +163,10 @@ the website publish directory, `OKUFLOW_TEST_NOTES` to the English generated
 notes file, and `OKUFLOW_TEST_EVIDENCE` to a local evidence directory.
 It checks carousel states/reduced motion/RTL and local notes media, filters,
 text-size persistence, contrast and narrow layouts; no camera/AI is used.
-Render all three drafts (`--lang en`, `--lang tr`, `--lang de`) first; it expects
-the `_tr.html` and `_de.html` siblings of the selected `_en.html` file.
+Render five drafts (`--lang en`, `tr`, `de`, `nl` and `ar`) first; it expects
+those siblings of the selected `_en.html` file. It checks localized toolbar
+labels and Arabic direction at 200% text. The carousel check requires one
+navigation dot per actual slide rather than a stale fixed scene count.
 Run it serially with the Windows GUI matrix. Evidence is not release media.
 
 `phone_camera_contract` checks USB connection-type protobuf parsing without
@@ -38,7 +176,38 @@ First-run selection prefers only a companion that answered its handshake;
 saved webcam and legacy numeric preferences still win. Android settings tests
 verify a new host session clears only the light. The HEVC row explicitly skips only when the optional decoder probe fails;
 H.264 remains required.
+Private fake-server rows also verify targeted USB recovery, a healthy device
+with a stuck camera, a hung shared server, stalled transport selection,
+replug races, old listing transport IDs, unsupported-service throttling,
+unauthorized/Wi-Fi exclusion, busy/problem/cancellation boundaries and automatic
+startup-failure recovery. Preferred idle discovery can reset its stalled phone;
+ordinary browsing and live ownership cannot. No fixture reaches port 5037,
+starts/stops a real server, opens a camera or steals desktop focus.
+The same contract uses a Qt-free `adb_owned_child_fixture` to verify exact
+job-owned child stop, cleanup after assignment failure, normal-owner and
+crashed-owner cleanup, confirmed idle-hang restart, one-slow-probe/live-session
+boundaries, cancellation during readiness, and repeated-call cooldown after
+failed launch or child exit. Sleep modes have no windows/network; fake-host modes
+bind only private fixture ports. Missing fixture registration is a test failure,
+never a skipped pass.
+Its native fake-adb mode checks actual bootstrap arguments/environment, PID
+ownership, private endpoint routing, explicit webcam intent/release, default
+server fallback after a child exits, owned recovery classification and the
+shutdown latch. Scripted lifecycle rows also cover concurrent callers, stopping
+during readiness, nonblocking observations/canceled lock waiters, temporary
+live-session deferral and foreign listener rejection. Production wiring also
+checks borrowed-hang shadow/handback, no handback with private transports, and
+epochs when a new server reuses the same transport ID.
 It uses no real camera, adb server or GUI. The original gray-scene fixture
+`adb_legacy_recovery` uses a separate Qt-free listener inside synthetic flat and
+nested bundles, pinned to fixture hashes on ephemeral ports. Native fixtures
+check raw-kill and exact-handle fallback, manifest/launcher mismatches, sibling
+and session refusal, cancellation, serialization, listener replacement before
+and after TCP connect, and no bytes sent to the replacement. The test-only sibling
+scope keeps a running owner app outside fixture assertions; no owner process is
+closed and no row is skipped for desktop use. These tests establish host lifecycle
+behavior, not real-phone WinUSB recovery or long-soak acceptance.
+
 `data/phone-camera.h264` was generated locally with:
 
 ```text
@@ -313,6 +482,14 @@ cmake --build --preset msvc-cuda-tests-build
 ctest --preset msvc-cuda-tests
 ```
 
+`cuda_architecture_coverage` needs no GPU: it runs `cuobjdump --list-elf`
+on the built application and fails unless a native cubin exists for every
+architecture in `CUDA_ARCHITECTURES` (`sm_75` through `sm_121`). A missing
+architecture (for example Blackwell `sm_120`) otherwise surfaces only as
+kernel-launch failures on that hardware; the shipped fatbin has no PTX
+fallback. The expected list lives in `tests/CMakeLists.txt` beside the
+CUDA test targets and must stay in sync with `cmake/CMakeLists.txt`.
+
 `text_clarity_sauvola_cuda` launches the production Sauvola mask kernel on
 pitched, generated luma and independent local-statistics fixtures. It checks
 uniform and slightly noisy dark backgrounds, bright and complementary dark
@@ -422,3 +599,14 @@ disk-full, crash, concurrent-process and file-growth races are not simulated
 by the normal gate.
 Rotation checks 264 padded/changing frames byte-for-byte against independent
 forward scatter; the optimized allocation probe separately establishes reuse.
+
+## Phone/GPU liveness regressions
+
+`deadline_worker`, `capture_shutdown`, `capture_buffer_layout`,
+`phone_camera_contract` and `fence_wait` exercise bounded vendor calls, retained
+readback pixels/resources, nonblocking mutex admission, padded NV12 crop planes,
+packet-without-frame stalls and idle GPU completion checks. WARP texture tests
+use fixture pixels and no camera or adb server. These checks do not establish
+real-phone + Maxine + Extra Stable acceptance. The NVIDIA runtime may be absent
+on a validation machine; report that limitation rather than treating the worker
+fixture as a hardware inference test.

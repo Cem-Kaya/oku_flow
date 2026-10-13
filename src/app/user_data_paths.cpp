@@ -25,6 +25,17 @@ QString NormalizeAbsolutePath(const QString& path)
     return QDir::cleanPath(QFileInfo(path.trimmed()).absoluteFilePath());
 }
 
+QString BundleInstallDirectory(const QString& directory)
+{
+    const QString normalized = NormalizeAbsolutePath(directory);
+    const QFileInfo runtime(normalized);
+    if (runtime.fileName().compare(QStringLiteral("app"), Qt::CaseInsensitive) == 0 &&
+        QFileInfo(QDir(runtime.absolutePath()).filePath(QStringLiteral("oku_flow.exe"))).isFile()) {
+        return runtime.absolutePath();
+    }
+    return normalized;
+}
+
 // Resolves Windows junctions/symlinks before a containment comparison. A
 // purely lexical check would accept a root that is a link pointing back
 // inside the install directory. The candidate may not exist yet, so the
@@ -135,7 +146,7 @@ QString PhotoPairKey(const QString& fileName,
 
 UserDataPaths::UserDataPaths(QString configuredRoot, QString installDirectory)
     : configuredRoot_(configuredRoot.trimmed()),
-      installDirectory_(NormalizeAbsolutePath(installDirectory))
+      installDirectory_(BundleInstallDirectory(installDirectory))
 {
     // Defense in depth for persisted roots that bypass ValidateRoot: a saved
     // directory later replaced with a junction into the install directory
@@ -171,7 +182,7 @@ UserDataValidationResult UserDataPaths::ValidateRoot(
         result.error = QStringLiteral("OkuFlow could not determine a folder.");
         return result;
     }
-    if (IsPathInside(result.normalizedRoot, installDirectory)) {
+    if (IsPathInside(result.normalizedRoot, BundleInstallDirectory(installDirectory))) {
         result.error = QStringLiteral(
             "Choose a folder outside the OkuFlow application folder. "
             "Application updates replace files in that folder.");

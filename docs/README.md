@@ -2,6 +2,10 @@
 
 Website: <https://okuflow.com>
 
+[Application languages](localization.md) describes the unreleased 25-language
+Windows/Android/notes/Transcribe coverage, system defaults, RTL behavior and
+remaining native-speaker/device acceptance.
+
 [Android CLI publishing](android_cli_publishing.md) explains owner-controlled
 Play API setup, private DPAPI credentials and validated testing-track releases.
 
@@ -28,8 +32,8 @@ OkuFlow is a Windows-only live magnification application that combines:
   live media encoding
 - Direct3D 12 for presentation and GPU texture management
 - CUDA for optional GPU processing through D3D12 external-memory interop
-- Qt Linguist catalogs embedded in the executable for live English, Turkish,
-  and German UI switching
+- Qt Linguist catalogs embedded in the executable for live switching among
+  [25 application languages](localization.md)
 
 ## Architecture At A Glance
 The current frame flow is:
@@ -294,6 +298,11 @@ The UI now has two states:
   Set `OKUFLOW_AGENT_EXCLUDE_GUI=1` only when desktop use is restricted; the
   explicitly partial matrix then excludes tests labelled `gui` and leaves
   native interaction validation pending.
+- `scripts/run_test_gate.ps1`: serial CTest execution with local, per-build
+  inventory-bound evidence. Main-window, annotation and AI-settings Qt slots
+  are independently selectable; explicit desktop-interruption retries preserve
+  earlier results without crediting application failures. The tracked build
+  and bundle scripts use it; see [test selection and resumes](../tests/README.md#selectable-gui-cases-and-exact-inventory-resumes).
 - `scripts/run_minimal_test.bat`: builds the app without launching it, then
   runs the DX12/CUDA sandbox harness when its `CMakeLists.txt` is present;
   otherwise it reports a successful optional-harness skip. It also builds the
@@ -361,9 +370,10 @@ legacy `powershell.exe` bridge.
   replace the NIS/FSR stage. The wrapper loads NVIDIA Video Effects only at
   runtime, resolves models from the runtime's `models` subdirectory, and runs
   a supported 4/3x pass on the shared CUDA stream; additional magnification is
-  applied afterward. It performs no host frame readback and returns to NIS
-  when unavailable or when its 60-frame steady-state average exceeds the 24 ms
-  latency target. Ten warmup samples are excluded. Inference uses a supported
+  applied afterward. It performs no host frame readback and retains the base
+  scene when unavailable or when its 60-frame steady-state average exceeds the 24 ms
+  latency target. NIS/FSR continues only when separately enabled. Ten warmup
+  samples are excluded. Inference uses a supported
   integer crop only when it contains the complete requested view;
   inference and presentation share SR geometry, including exact 4/3 for the
   advertised 1.33 step. Changed source/output extent or strength restarts the
@@ -576,7 +586,10 @@ legacy `powershell.exe` bridge.
   NVIDIA Video Effects runtime; hardware/runtime and visual-quality validation
   remains necessary across Turing, Ampere, Ada, and Blackwell systems.
 - SuperRes inference follows NVIDIA's synchronous sample path on OkuFlow's
-  CUDA stream. Its enhanced frame is the sole zoom result rather than a layer
+  CUDA stream, isolated on a serial host worker with a one-second deadline.
+  The UI caller still waits within that bound; fully asynchronous inference
+  remains future work. Unknown completion stops video with a persistent restart
+  message and quarantines resources. Its enhanced frame is the sole zoom result rather than a layer
   blended over a separately timed conventional zoom frame. Additional zoom
   uses the live focus point mapped into the clamped 4/3x source crop.
 - Subscription-backed AI depends on a compatible installed Codex CLI and

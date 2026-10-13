@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Keep values-tr and values-de in exact key parity with this file. -->
+<!-- Every values-* catalog must stay in exact key parity with this file (scripts/build_android.ps1). -->
 <resources>
     <string name="app_name">OkuFlow Camera</string>
 
@@ -23,7 +23,7 @@
     <string name="camera_hint_settings">Open settings, choose “Permissions”, then allow “Camera”.</string>
 
     <string name="connect_usb_title">Plug this phone into your computer</string>
-    <string name="connect_usb_hint">Use a USB cable that can transfer data.</string>
+    <string name="connect_usb_hint">This phone app needs OkuFlow for Windows on your PC. Download it from okuflow.com and open it. Use a USB cable that can transfer data.</string>
 
     <string name="open_okuflow_title">Open OkuFlow on your computer</string>
     <string name="open_okuflow_hint">If asked to allow USB debugging, allow only your own trusted private computer. “Always allow” is optional for that computer; leave it off on shared computers.</string>
@@ -100,4 +100,10 @@
     <string name="licenses_title">Open-source licenses</string>
     <string name="licenses_loading">Loading license notices…</string>
     <string name="licenses_unavailable">License notices could not be opened. Use the source repository license folder.</string>
+    <string name="advanced_settings_open">Open advanced settings</string>
+    <string name="settings_language">Language</string>
+    <string name="setting_language">App language</string>
+    <string name="language_system_default">System default (%1$s)</string>
+    <string name="language_hint">System default follows your phone’s language. Another choice applies only to this app and stays after restarts.</string>
+    <string name="stream_details">%1$d × %2$d · %3$d FPS · %4$s · %5$d Mbps</string>
 </resources>

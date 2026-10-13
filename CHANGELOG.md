@@ -1,10 +1,119 @@
 # Changelog
 
+## [Unreleased]
+
 - Simplified camera acceleration settings to one per-camera dropdown. Removed
   the redundant global compatibility checkbox and migrate its legacy enabled
   state to `Compatibility mode` for the selected physical camera.
 
-## [Unreleased]
+- Correct meaning-changing translation errors across the 25 UI languages after
+  a multi-model naturalness review (2026-10-14): Android setup hints
+  (“Starts off”, declining a permission, Build number, stabilization terms),
+  Qt polysemy keys (Draw, Record, Export, Fill/Fit, collapsed state, speech,
+  transcript, image writer), notes/Transcribe labels, launcher text, and
+  website homepage/Transcribe copy including replacing the Turkish
+  “etmen tabanlı erişilebilirlik” calque with “yapay zekâ destekli
+  erişilebilirlik”. Translations remain machine-assisted drafts that still
+  need native-speaker review; see `docs/localization.md`.
+
+- Own adb servers started by OkuFlow as private Windows job children. App exit
+  or crash stops only its exact child; an idle unresponsive owned server can
+  restart automatically after confirmation and a 30-second retry cooldown.
+  Reclaim a confirmed-hung adb from the reviewed legacy OkuFlow release
+  automatically; keep unknown/shared/overridden servers under their owner's control.
+  Preserve SDK fallback after child failure, prevent late shutdown launches,
+  count overlapping sessions and repair idle USB support before a new start.
+  Avoid bootstrap for explicit webcam use, release idle USB ownership, disable
+  emulator scanning and unsolicited server-kill requests, and show
+  automatic-recovery help in all 25 UI languages. Keep lock waits cancellable,
+  track server generations even when transport IDs repeat, and try an isolated
+  USB server when an unknown default listener hangs. Hand back only when the
+  private server has no transports and the default answers twice.
+
+- Make the Windows light theme readable: expanded headers, current-mode text,
+  subtitles, disabled labels and icons follow their surface palette. Refresh
+  contrast after theme changes and give the dark color editor complete text
+  roles; retain the floating controls' dark treatment.
+
+- Confirm two complete shell-response timeouts and a fresh non-claiming phone
+  probe before USB transport recovery. Verify the stale transport disappears
+  after acknowledgement, suppress redundant health checks, and bound capture's
+  shutdown GPU query while retaining incomplete resources safely.
+  Distinguish an unresponsive adb host connection from a missing phone and
+  provide localized automatic retry guidance, without terminating shared adb.
+
+- Keep bottom-left quick-mode selection and the Image panel's active mode
+  consistent through preset normalization. Restore the applied selection when
+  a saved preset cannot be resolved, and exclude legacy camera rotation from
+  profile equivalence.
+
+- Fix GPU processing on RTX 50-series (Blackwell) laptops: the CUDA fatbin
+  previously embedded kernels only for Turing/Ampere/Ada (`sm_75/86/89`), so
+  every effect kernel failed to launch on `sm_120` hardware while
+  copy-only frames still reported "GPU Ready". The build now embeds native
+  kernels for every non-Jetson architecture CUDA 13 targets
+  (`sm_75/80/86/89/90/100/103/120/121`, including GB10/Spark-class GPUs),
+  and a new `cuda_architecture_coverage` test fails the build if a cubin
+  goes missing.
+
+- Open About phone from Android connection help when Developer options are
+  hidden or disabled, rather than targeting a Settings screen that can close
+  immediately with a toast. Keep a separate USB-debugging shortcut for users
+  who already enabled Developer options, including Android 17's unknown state.
+  Disable Play language splits so all 25 selectable languages remain available
+  offline after installation, including on Android 11/12.
+
+- Recover a stalled selected-phone USB transport through a bounded adb health
+  check and a targeted reconnect, with a per-process, per-phone/server one-minute limit.
+  Preserve paused/busy camera states, unrelated devices and the shared adb
+  server. Preferred-phone discovery can recover while a fallback webcam runs.
+
+- Put supporting Windows binaries/runtime files in an app subfolder so the
+  ZIP has one visible launch EXE. Keep legacy flat bundles compatible, preserve
+  launcher forwarding, update MSI/signing/integrity paths, and protect the
+  parent install folder when choosing capture storage.
+
+- Add a portable ZIP `START_HERE.txt` guide naming oku_flow.exe as the launch
+  entry, explaining that OkuFlowApp.exe starts automatically, and pointing to
+  the MSI's single desktop shortcut. Keep both required executables together.
+
+- Make the Android cable-connection screen explicitly require the OkuFlow
+  Windows app, point to okuflow.com for downloading it, and retain the USB
+  data-cable instruction in all 25 languages and the illustrative screen draft.
+
+- Expand Windows, Android, local notes and browser transcription controls to
+  25 languages, including Dutch. Add a persistent System default choice,
+  native-name selectors, a gear beside Android Advanced settings, RTL layout
+  and bundled launcher text. Preserve the active Windows language if a new
+  catalog fails to load. Prepare Android 0.1.3 (version code 4).
+  New translations are machine-assisted drafts; fluent-speaker and native
+  large-type/screen-reader acceptance remain pending. See docs/localization.md.
+
+- Correct README download filenames to the published v0.2.3 MSI and ZIP assets
+  instead of the missing v0.2.2 filenames under that tag.
+
+- Allow isolated diagnostic sessions up to ten minutes for manual USB cable
+  recovery checks. Keep the normal app untimed and the profiler's default
+  15-second automatic exit unchanged.
+
+- Keep NVIDIA SuperRes active at high phone-camera zoom by skipping model
+  factors whose documented input-height limit is exceeded. A 4000x2256 phone
+  stream can use the supported 2x AI stage while desktop zoom remains 16x.
+
+- Detect stopped phone decoder output even while compressed packets continue,
+  and reconnect or try the existing HEVC-to-H.264 fallback. Preserve the
+  visible decoder aperture instead of displaying codec allocation padding.
+- Poll camera GPU readback without a blocking map, retain each submitted frame
+  until completion, and reconnect safely after its one-second deadline.
+- Bound NVIDIA SDK host calls and GPU completion stalls, retain unfinished
+  resources, and keep a visible restart message after a GPU fault. Coalesce
+  SuperRes strength changes and refresh forced zoom immediately. Report
+  SuperRes failure without claiming a disabled NIS effect is running.
+
+- Split Windows GUI regressions into selectable Qt test cases, isolate idle
+  and focus checks, and preserve exact-build test evidence for explicit
+  interruption reruns without repeating already-passing CPU/CUDA cases.
+  Keep desktop execution serial and application failures blocking.
 
 - Add owner-controlled Google Play CLI publishing for testing tracks, with
   private DPAPI credentials, exact bundle/version checks and local receipts.

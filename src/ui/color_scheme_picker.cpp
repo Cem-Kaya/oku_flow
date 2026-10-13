@@ -2,6 +2,7 @@
 
 #include "okuflow/ui/color_scheme_picker.hpp"
 
+#include "okuflow/ui/theme_contrast.hpp"
 #include "okuflow/ui/wheel_safe_combo_box.hpp"
 #include "okuflow/ui/ui_translation.hpp"
 
@@ -127,7 +128,11 @@ public:
         setAccessibleName(scheme.accessibleName);
         setToolTip(scheme.name);
         setProperty("schemeId", scheme.id);
-        setStyleSheet(QStringLiteral("QPushButton:checked { border:3px solid #c052d8; }"));
+        // Pin the checked surface here so paintEvent's highlighted-text
+        // choice is correct with or without the main window stylesheet.
+        setStyleSheet(QStringLiteral(
+            "QPushButton:checked { background: palette(highlight); "
+            "color: palette(highlighted-text); border:3px solid #c052d8; }"));
     }
     QSize sizeHint() const override { return QSize(148, 64); }
     QSize minimumSizeHint() const override { return QSize(100, 64); }
@@ -143,8 +148,9 @@ protected:
         const bool rtl = layoutDirection() == Qt::RightToLeft;
         const QRect swatch(rtl ? width() - 52 : 8, (height() - 28) / 2, 44, 28);
         painter.drawPixmap(swatch, SchemePixmap(scheme_, swatch.size()));
-        painter.setPen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled,
-                                      QPalette::ButtonText));
+        painter.setPen(palette().color(
+            isEnabled() ? QPalette::Active : QPalette::Disabled,
+            isChecked() ? QPalette::HighlightedText : QPalette::ButtonText));
         const QRect label = rtl ? QRect(8, 6, width() - 66, height() - 12)
                                 : QRect(60, 6, width() - 68, height() - 12);
         // Keep complete words on at most two lines. A long translated word
@@ -190,7 +196,7 @@ protected:
         }
         painter.restore();
         if (isChecked()) {
-            painter.setPen(QColor(QStringLiteral("#c052d8")));
+            painter.setPen(palette().color(QPalette::Active, QPalette::HighlightedText));
             painter.drawText(rect().adjusted(4, 0, -4, -2),
                              Qt::AlignBottom | Qt::AlignTrailing, QStringLiteral("✓"));
         }
@@ -394,19 +400,25 @@ void ColorSchemePicker::BuildPopup()
     popup_->setAttribute(Qt::WA_OpaquePaintEvent, true);
     popup_->setAttribute(Qt::WA_StyledBackground, true);
     popup_->setAutoFillBackground(true);
-    QPalette popupPalette = popup_->palette();
-    popupPalette.setColor(QPalette::Window, QColor(QStringLiteral("#161618")));
-    popup_->setPalette(popupPalette);
+    // The popover is pinned dark in both OS schemes. Give it a complete
+    // dark palette: inheriting only the Window role left light-theme black
+    // ButtonText/Text on the dark control surfaces (black-on-black).
+    popup_->setPalette(theme_contrast::PinnedDarkPalette(popup_->palette()));
     popup_->setStyleSheet(QStringLiteral(
         "QWidget#colorSchemePopup { background-color:#161618; "
         "border:2px solid #77777d; border-radius:6px; }"
-        "QLabel#pickerSection { color:rgba(255,255,255,150); font-weight:600; "
+        "QLabel#pickerSection { color:rgba(255,255,255,200); font-weight:600; "
         "font-size:11px; letter-spacing:1px; text-transform:uppercase; "
         "margin-top:4px; }"
         "QWidget#colorSchemePopup QPushButton, QWidget#colorSchemePopup QToolButton, "
         "QWidget#colorSchemePopup QComboBox, QWidget#colorSchemePopup QSpinBox { "
-        "min-height:32px; background:#232326; border:1px solid rgba(255,255,255,45); "
+        "min-height:32px; background:#232326; color:#f2f2f2; "
+        "border:1px solid rgba(255,255,255,45); "
         "border-radius:9px; padding:2px 10px; }"
+        "QWidget#colorSchemePopup QComboBox QAbstractItemView { "
+        "background:#232326; color:#f2f2f2; "
+        "selection-background-color: palette(highlight); "
+        "selection-color:#ffffff; }"
         "QWidget#colorSchemePopup QPushButton:hover, "
         "QWidget#colorSchemePopup QToolButton:hover { background:#2e2e33; }"
         "QWidget#colorSchemePopup QPushButton:focus, "
@@ -414,7 +426,8 @@ void ColorSchemePicker::BuildPopup()
         "QWidget#colorSchemePopup QComboBox:focus, "
         "QWidget#colorSchemePopup QSpinBox:focus { "
         "border:2px solid palette(highlight); }"
-        "QWidget#colorSchemePopup QCheckBox { spacing:8px; }"));
+        "QWidget#colorSchemePopup QCheckBox { spacing:8px; color:#f2f2f2; }"
+        "QWidget#colorSchemePopup QLabel { color:#f2f2f2; }"));
     popup_->installEventFilter(this);
 
     auto* root = new QVBoxLayout(popup_);
@@ -523,17 +536,18 @@ void ColorSchemePicker::BuildPopup()
             QColorDialog dialog(editorStops_[static_cast<std::size_t>(index)], popup_);
             dialog.setWindowTitle(QStringLiteral("Choose color stop %1").arg(index + 1));
             dialog.setOption(QColorDialog::DontUseNativeDialog, true);
+            dialog.setPalette(theme_contrast::PinnedDarkPalette(dialog.palette()));
             // Match the picker popover's look; also enlarge the tiny stock
             // controls — this dialog serves low-vision users.
             dialog.setStyleSheet(QStringLiteral(
-                "QColorDialog { background:#161618; font-size:12pt; }"
+                "QColorDialog { background:#161618; color:#f2f2f2; font-size:12pt; }"
                 "QColorDialog QPushButton { min-height:36px; min-width:96px; "
-                "background:#232326; border:1px solid rgba(255,255,255,45); "
+                "background:#232326; color:#f2f2f2; border:1px solid rgba(255,255,255,45); "
                 "border-radius:9px; padding:4px 14px; }"
                 "QColorDialog QPushButton:hover { background:#2e2e33; }"
                 "QColorDialog QPushButton:focus { border:2px solid palette(highlight); }"
                 "QColorDialog QSpinBox, QColorDialog QLineEdit { min-height:32px; "
-                "background:#232326; border:1px solid rgba(255,255,255,45); "
+                "background:#232326; color:#f2f2f2; border:1px solid rgba(255,255,255,45); "
                 "border-radius:9px; padding:2px 8px; }"
                 "QColorDialog QSpinBox:focus, QColorDialog QLineEdit:focus { "
                 "border:2px solid palette(highlight); }"

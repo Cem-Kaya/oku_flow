@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original OkuFlow gear for the Advanced settings entry; tinted by its Compose Icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M9.60,4.16 L10.16,1.56 L13.84,1.56 L14.40,4.16 L15.85,4.76 L18.08,3.32 L20.68,5.92 L19.24,8.15 L19.84,9.60 L22.44,10.16 L22.44,13.84 L19.84,14.40 L19.24,15.85 L20.68,18.08 L18.08,20.68 L15.85,19.24 L14.40,19.84 L13.84,22.44 L10.16,22.44 L9.60,19.84 L8.15,19.24 L5.92,20.68 L3.32,18.08 L4.76,15.85 L4.16,14.40 L1.56,13.84 L1.56,10.16 L4.16,9.60 L4.76,8.15 L3.32,5.92 L5.92,3.32 L8.15,4.76 Z M15.60,12 A3.6,3.6 0 1,0 8.40,12 A3.6,3.6 0 1,0 15.60,12 Z" />
+</vector>

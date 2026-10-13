@@ -16,6 +16,7 @@ class UserDataPathsTests : public QObject {
 private slots:
     void createsStableCategoryAndDateFolders();
     void rejectsApplicationDirectory();
+    void rejectsNestedBundleRoot();
     void rejectsJunctionIntoApplicationDirectory();
     void constructorRejectsPersistedRootInsideInstall();
     void completesInterruptedPhotoPairCommit();
@@ -107,6 +108,24 @@ void UserDataPathsTests::rejectsApplicationDirectory()
             QDir(install).filePath(QStringLiteral("captures")), install);
     QVERIFY(!result.ok);
     QVERIFY(result.error.contains(QStringLiteral("outside")));
+}
+
+void UserDataPathsTests::rejectsNestedBundleRoot()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString install = temporary.filePath(QStringLiteral("OkuFlow"));
+    const QString runtime = QDir(install).filePath(QStringLiteral("app"));
+    QVERIFY(QDir().mkpath(runtime));
+    QFile launcher(QDir(install).filePath(QStringLiteral("oku_flow.exe")));
+    QVERIFY(launcher.open(QIODevice::WriteOnly));
+    launcher.write("fixture");
+    launcher.close();
+    QVERIFY(!UserDataPaths::ValidateRoot(install, runtime).ok);
+    QVERIFY(!UserDataPaths::ValidateRoot(QDir(install).filePath(QStringLiteral("captures")), runtime).ok);
+    const UserDataPaths rejected(QDir(install).filePath(QStringLiteral("captures")), runtime);
+    QCOMPARE(rejected.ConfiguredRoot(), QString());
+    QVERIFY(UserDataPaths::ValidateRoot(temporary.filePath(QStringLiteral("outside")), runtime).ok);
 }
 
 void UserDataPathsTests::rejectsJunctionIntoApplicationDirectory()

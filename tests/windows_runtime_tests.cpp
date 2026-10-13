@@ -54,7 +54,22 @@ private slots:
         for (int i = 1; i < count; ++i) QCOMPARE(QString::fromWCharArray(parsed[i]), arguments[i - 1]);
         LocalFree(parsed);
     }
+    void payloadDirectory() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto root = directory.path();
+        QCOMPARE(QString::fromStdWString(okuflow::WindowsRuntimePayloadDirectory(root.toStdWString())), root);
+        QVERIFY(QDir().mkdir(directory.filePath("app")));
+        QCOMPARE(QDir::cleanPath(QString::fromStdWString(okuflow::WindowsRuntimePayloadDirectory(root.toStdWString()))),
+                 directory.filePath("app"));
+    }
+    void launcherPreservesChildContract_data() {
+        QTest::addColumn<bool>("nested");
+        QTest::newRow("legacy-flat") << false;
+        QTest::newRow("nested-runtime") << true;
+    }
     void launcherPreservesChildContract() {
+        QFETCH(bool, nested);
         // Never trigger UAC or change a machine with a missing runtime.
         if (!okuflow::IsSystemWindowsRuntimeReady()) QSKIP("Installed runtime needed for owned child forwarding fixture.");
         QTemporaryDir directory;
@@ -63,7 +78,9 @@ private slots:
         QVERIFY(QDir().mkdir(working));
         const QString launcher = directory.filePath("oku_flow.exe");
         QVERIFY(QFile::copy(QString::fromUtf8(OKUFLOW_LAUNCHER_TEST_BINARY), launcher));
-        QVERIFY(QFile::copy(QString::fromUtf8(OKUFLOW_LAUNCHER_TEST_CHILD), directory.filePath("OkuFlowApp.exe")));
+        const QString payload = nested ? directory.filePath("app") : directory.path();
+        QVERIFY(QDir().mkpath(payload));
+        QVERIFY(QFile::copy(QString::fromUtf8(OKUFLOW_LAUNCHER_TEST_CHILD), QDir(payload).filePath("OkuFlowApp.exe")));
         QProcess process;
         auto environment = QProcessEnvironment::systemEnvironment();
         environment.insert("OKUFLOW_LAUNCHER_FIXTURE", "inherited environment");

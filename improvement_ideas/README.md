@@ -97,6 +97,7 @@ that document is authoritative.
 | [`49-unused-code-census-2026-10-11.md`](49-unused-code-census-2026-10-11.md) | Verified unused-code cleanup, before/after census and CUDA binary evidence | **CLEANED — release + CPU 22/22 + CUDA 27/27; desktop deferred** |
 | [`51-okuflow-camera-android.md`](51-okuflow-camera-android.md) | Optional OkuFlow Camera Android source, USB streaming, Advanced settings and initial Windows receiver; normal cameras remain independent | **IMPLEMENTED PROTOTYPE — local contract/decoder checks pass; real-phone/full GUI acceptance and zoom bridge pending** |
 | [`embedding-stt-future-research-2026-10-13.md`](embedding-stt-future-research-2026-10-13.md) | EmbeddingGemma 2 audio embeddings, claimed STT conversion and Chrome/WebGPU feasibility | **RESEARCH ONLY — decoder/speed claim unverified; no transcription implementation change** |
+| [`muse-wonder-full-review-2026-10-13.md`](muse-wonder-full-review-2026-10-13.md) | Android, Windows, website and shared-code bug/UX review with parent source verification | **REVIEW COMPLETE — README links corrected locally; parent completed localization after Opus rate limit; runtime/design follow-ups open** |
 | [`android-crash-symbols-and-mapping.md`](android-crash-symbols-and-mapping.md) | Matching native crash symbols and genuine release mapping files | **FOLLOW-UP — diagnostic warnings do not block the 0.1.1 hotfix** |
 | [`verified-non-issues.md`](verified-non-issues.md) | Refuted findings — do not "fix" these | Read before analyzing |
 | [`done/`](done/README.md) | Completed plans (01, 02, 09, 11, 12, 13) | Provenance only |
@@ -110,3 +111,11 @@ reconcile the stale docs (03/02), then public-release follow-through (23), then
 stabilization architecture (14 Tier 3 / 25). Recording P6 DXVA/zero-copy is
 implemented under plan 28; its long no-tear soak passed, with camera-switch and
 device-removal recovery still awaiting physical-hardware acceptance.
+
+## Signing research
+
+- [Individual signing options in Türkiye](windows-signing-turkiye-research-2026-10-13.md)
+- [Opus independent review and corrections](windows-signing-opus-review-2026-10-13.md)
+
+Both are research, not purchased certificates or signed-release acceptance.
+Read the Opus correction about cloud-signing prices and the full PE inventory.

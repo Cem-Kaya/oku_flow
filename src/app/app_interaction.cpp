@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include "okuflow/capture/phone_camera.hpp"
 #include <QLocale>
 
 namespace okuflow {
@@ -199,11 +200,21 @@ void OkuFlowApp::UpdateCameraPlaceholder() {
     }
     QString title;
     QString detail;
-    if (!cameraActive_ && !cameraStartupPending_ && !preferredPhoneCamera_.isEmpty() &&
+    if (presenterFaultReported_) {
+        title = QStringLiteral("GPU stopped responding. Restart OkuFlow to resume video.");
+    } else if (!cameraActive_ && !cameraStartupPending_ && !preferredPhoneCamera_.isEmpty() &&
         automaticPhoneSelectionAllowed_) {
-        title = QStringLiteral("Waiting for phone…");
-        detail = QStringLiteral("Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.");
-        if (!lastCameraError_.isEmpty()) detail = lastCameraError_ + QStringLiteral(" ") + detail;
+        if (phoneDiscoveryStatus_ == PhoneDiscoveryStatus::OwnedServerRecovering ||
+            phoneDiscoveryStatus_ == PhoneDiscoveryStatus::ServerUnresponsive) {
+            title = QStringLiteral("Restoring USB connection…");
+            detail = QStringLiteral("OkuFlow is checking the USB connection and will reconnect automatically.");
+        } else {
+            title = QStringLiteral("Waiting for phone…");
+            detail = QStringLiteral("Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.");
+        }
+        if (phoneDiscoveryStatus_ != PhoneDiscoveryStatus::ServerUnresponsive &&
+            phoneDiscoveryStatus_ != PhoneDiscoveryStatus::OwnedServerRecovering && !lastCameraError_.isEmpty())
+            detail = lastCameraError_ + QStringLiteral(" ") + detail;
     } else if (!cameraActive_ && pipelineOrchestrator_->IsCameraReconnectPending()) {
         title = QStringLiteral("Reconnecting to camera…");
         detail = QStringLiteral("The camera connection was lost. OkuFlow is reconnecting automatically.");
@@ -228,6 +239,10 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
     QString detail;
     QString color;
     LivePoliteness politeness = LivePoliteness::kPolite;
+    const bool lightSurface = uiState_->processingStatusLabel_->palette().color(QPalette::Window).lightness() >= 128;
+    const QString errorColor = lightSurface ? QStringLiteral("#8a1f1f") : QStringLiteral("#ff9797");
+    const QString warningColor = lightSurface ? QStringLiteral("#7a4d00") : QStringLiteral("#f6c85f");
+    const QString readyColor = lightSurface ? QStringLiteral("#175c2e") : QStringLiteral("#71df8f");
 
     auto backendLabel = [this]() -> QString {
         if (autoTextClarityEnabled_) {
@@ -249,25 +264,37 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         return QStringLiteral("None");
     };
 
-    if (!cameraActive_ &&
+    if (presenterFaultReported_) {
+        text = QStringLiteral("GPU stopped responding. Restart OkuFlow to resume video.");
+        detail = text;
+        color = errorColor;
+        politeness = LivePoliteness::kAssertive;
+    } else if (!cameraActive_ &&
         pipelineOrchestrator_->IsCameraReconnectPending()) {
         text = QStringLiteral("Reconnecting to camera…");
         detail = QStringLiteral("Camera connection lost - reconnecting automatically");
-        color = QStringLiteral("#d17c00");
+        color = warningColor;
         politeness = LivePoliteness::kAssertive;
     } else if (!cameraActive_) {
         text = QStringLiteral("Camera Offline");
-        if (lastCameraError_.isEmpty()) {
+        color = errorColor;
+        politeness = LivePoliteness::kAssertive;
+        if (automaticPhoneSelectionAllowed_ && !preferredPhoneCamera_.isEmpty() &&
+            (phoneDiscoveryStatus_ == PhoneDiscoveryStatus::OwnedServerRecovering ||
+             phoneDiscoveryStatus_ == PhoneDiscoveryStatus::ServerUnresponsive)) {
+            text = QStringLiteral("Restoring USB connection…");
+            detail = QStringLiteral("OkuFlow is checking the USB connection and will reconnect automatically.");
+            color = warningColor;
+            politeness = LivePoliteness::kPolite;
+        } else if (lastCameraError_.isEmpty()) {
             detail = QStringLiteral("Processing: Idle (camera offline)");
         } else {
             detail = QStringLiteral("Processing: Idle (camera offline - %1)").arg(lastCameraError_);
         }
-        color = QStringLiteral("#c0392b");
-        politeness = LivePoliteness::kAssertive;
     } else if (debugViewEnabled_) {
         text = QStringLiteral("CPU Debug");
         detail = QStringLiteral("Processing: CPU (debug view)");
-        color = QStringLiteral("#d17c00");
+        color = warningColor;
     } else if (usingCudaLastFrame_ && cudaPipelineAvailable_) {
         text = QStringLiteral("GPU Ready");
         const QString backend = backendLabel();
@@ -285,13 +312,15 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
             detail.append(QStringLiteral(", %1")
                               .arg(QString::fromStdString(cudaSurface_->SuperResStatus())));
         }
-        color = QStringLiteral("#1c9c3e");
+        color = readyColor;
     } else {
         // CPU effects path is deprecated: without the GPU pipeline the app
         // shows unprocessed passthrough video.
         text = QStringLiteral("GPU Required");
         detail = QStringLiteral("GPU required - processing disabled (showing raw video)");
-        color = QStringLiteral("#c0392b");
+        if (cudaSurface_ && !cudaSurface_->LastError().empty())
+            detail.append(QStringLiteral("\n") + QString::fromStdString(cudaSurface_->LastError()));
+        color = errorColor;
         politeness = LivePoliteness::kAssertive;
     }
 
@@ -375,7 +404,7 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
     // Transient, non-modal notifications (disk-full recording stop, reconnect
     // give-up, ...) override the pipeline summary for a few seconds. The label
     // is refreshed every presented frame, so the message clears on its own.
-    if (!transientStatusMessage_.isEmpty()) {
+    if (!presenterFaultReported_ && !transientStatusMessage_.isEmpty()) {
         if (QDateTime::currentMSecsSinceEpoch() < transientStatusUntilMs_) {
             detail = text + QStringLiteral(" - ") + transientStatusMessage_;
             text = transientStatusMessage_;

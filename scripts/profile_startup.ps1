@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Executable,
     [string]$OutputDirectory = "build/startup-profile",
     [ValidateRange(1, 5)][int]$Runs = 2,
-    [ValidateRange(1, 30)][int]$DurationSeconds = 15,
+    [ValidateRange(1, 600)][int]$DurationSeconds = 15,
     [int]$CameraIndex = -1,
     [switch]$CompareLegacy,
     [switch]$AllowNoFrame,

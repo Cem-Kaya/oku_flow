@@ -9,8 +9,9 @@ It also contains the optional `PhoneCameraTransport` / `PhoneVideoDecoder`.
 Phone entries are appended after physical cameras and retain stable USB serial
 and optional camera-ID identities. Structured adb connection types distinguish
 USB from Wi-Fi even when Windows supplies no bus address. The existing local
-adb server is queried without starting, replacing or killing it. Absence or
-failure of that optional server leaves normal camera discovery intact.
+adb server is borrowed without replacing or killing it. If no default listener
+or endpoint override exists, OkuFlow can start its own private server. Failure
+of that optional server leaves normal camera discovery intact.
 
 On first launch, an authorized phone with a successful companion handshake is
 preferred. Saved webcam/phone identities and valid legacy indices take precedence.
@@ -118,10 +119,42 @@ problem without claiming the stream; active/starting phones are excluded.
 `PhoneRetryPolicy` backs off failed starts, resetting on a new transport or
 readiness transition. A working webcam is replaced only by a ready phone.
 
-The raw host connection honors local TCP adb endpoint overrides and never
-replaces a running server. Without an override/listener, a hidden bundled adb
-server may be launched directly, at most once every 30 seconds. It remains
-shared after OkuFlow exits. `PhoneAdbTestHooks` keeps contract tests off the
+The raw host connection honors local TCP adb endpoint overrides. Unknown/SDK
+borrowed servers remain untouched. Without an override/listener, a hidden bundled adb
+server is launched directly on a private ephemeral loopback port. Its exact
+process belongs to a non-inherited Windows kill-on-close job, so normal exit
+and owner crash both stop it. Two consecutive unresponsive host-version probes
+permit restarting only that child while no phone session is live or starting;
+failed launches and crashes retain the 30-second cooldown. `PhoneAdbTestHooks` keeps contract tests off the
 real server. The release bundles source-built adb and its complete dependency
 runtime with notices, source and relinking inputs. See
 [adb_distribution.md](../../docs/adb_distribution.md) for the pinned recipe.
+
+Owned bootstrap requires phone-use intent; explicit webcam selection prevents
+it and releases an idle owned child. WinUSB access is exclusive, so tools must
+borrow the same server (its private port is logged) or start SDK adb first.
+The child disables emulator scanning. Native IPv4 listener ownership is checked
+against its exact process before readiness. A dead child can yield to a newly
+available default server. Counted occupancy protects overlapping sessions, and
+a new `Run` repairs an idle server before registering its own reservation.
+Owned startup/recovery uses automatic-retry guidance in all 25 UI languages.
+Shutdown prevents later bootstrap and interrupts manager polling. Lifecycle
+lock waits are cancellable; live-child port snapshots are nonblocking and do
+not substitute for readiness. Server epochs combine port/PID/creation time so
+reused transport IDs cannot suppress renewed launch or recovery attempts.
+
+Two default-host failures spanning five seconds permit narrowly proven legacy
+OkuFlow bundle reclamation (manifest, adb image and launcher identity, exact
+held process, no sibling/session, serialized and revalidated before effects).
+Unknown listeners instead get an isolated shadow server; empty raw transport
+listing plus two healthy default probes permit handback. BorrowOnly discovery
+never retires or restarts support; explicit webcam intent only retires idle support.
+
+Non-protocol phone failures and preferred idle discovery may perform a guarded
+USB transport reset. A responsive host version/listing and a timed-out separate
+device echo distinguish transport stalls from camera/decoder problems. The
+same authorized USB attachment must remain listed afterward. Only that transport
+is reconnected, at most once per phone/server per minute; a new transport ID
+does not bypass this limit. Pause/busy/error codes, cancellation, unrelated
+phones and unknown shared server ownership remain intact. See the deliberate
+reviewed-legacy exception and WinUSB ownership limits in adb_distribution.md.

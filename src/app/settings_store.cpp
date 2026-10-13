@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "okuflow/app/settings_store.hpp"
+#include "okuflow/app/app_language.hpp"
 #include "okuflow/app/constants.hpp"
 
 #include <QCoreApplication>
@@ -634,13 +635,10 @@ namespace {
 std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
 {
     PersistentSettings settings;
-    const QString language =
-        root.value(QStringLiteral("language")).toString().trimmed().toLower();
-    if (language == QStringLiteral("en") ||
-        language == QStringLiteral("tr") ||
-        language == QStringLiteral("de")) {
-        settings.language = language;
-    }
+    // A supported code is an explicit choice; "system", a missing key, or an
+    // unknown value follows the Windows display language.
+    settings.language = NormalizeLanguagePreference(
+        root.value(QStringLiteral("language")).toString());
     settings.userDataRoot =
         root.value(QStringLiteral("paths"))
             .toObject()
@@ -953,12 +951,11 @@ std::optional<PersistentSettings> Load(const QString& path)
 QByteArray Serialize(const PersistentSettings& settings)
 {
     QJsonObject root;
-    const QString language = settings.language.trimmed().toLower();
+    const QString language = NormalizeLanguagePreference(settings.language);
     root.insert(QStringLiteral("language"),
-                language == QStringLiteral("tr") ||
-                        language == QStringLiteral("de")
-                    ? language
-                    : QStringLiteral("en"));
+                language.isEmpty()
+                    ? QString::fromLatin1(kSystemLanguagePreference)
+                    : language);
     root.insert(QStringLiteral("version"), kCurrentSettingsVersion);
     root.insert(QStringLiteral("paths"),
                 QJsonObject{{QStringLiteral("userDataRoot"),
@@ -1229,7 +1226,8 @@ bool AreConfigsEquivalent(const AdvancedConfig& lhs, const AdvancedConfig& rhs)
            withinUiStep(lhs.spatialSharpness, rhs.spatialSharpness, 0.005f) &&
            lhs.debugView == rhs.debugView &&
            lhs.focusMarker == rhs.focusMarker &&
-           SnapRotation(lhs.rotationQuarterTurns) == SnapRotation(rhs.rotationQuarterTurns) &&
+           // rotationQuarterTurns is legacy profile data: orientation is a
+           // top-level PersistentSettings value, so profiles ignore it here.
            lhs.vlmAssistEnabled == rhs.vlmAssistEnabled &&
            lhs.assistiveOverlayEnabled == rhs.assistiveOverlayEnabled &&
            lhs.stabilizationEnabled == rhs.stabilizationEnabled &&

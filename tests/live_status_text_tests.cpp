@@ -1,3 +1,4 @@
+#include "gui_test_support.hpp"
 #include "okuflow/ui/live_status_text.hpp"
 
 #include <QAccessible>
@@ -232,5 +233,5 @@ void LiveStatusTextTests::immediateStatusSupersedesPendingValue()
 
 } // namespace okuflow
 
-QTEST_MAIN(okuflow::LiveStatusTextTests)
+OKUFLOW_GUI_TEST_MAIN(okuflow::LiveStatusTextTests)
 #include "live_status_text_tests.moc"

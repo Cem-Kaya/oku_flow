@@ -194,7 +194,8 @@ settings::AdvancedConfig UIStateManager::ReadConfigFromUI() const
     return app_.settingsController_->DecorateLiveConfig(std::move(config));
 }
 
-void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
+void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config,
+                                     bool preservePresetSelection)
 {
     {
     SuspendGuard suspendConfigTracking(app_.configTrackingSuspended_);
@@ -423,7 +424,7 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config)
     }
     app_.UpdateControlEnabledStates();
     app_.UpdateSectionChangedCounts();
-    app_.SyncCurrentConfigToPersistence();
+    app_.SyncCurrentConfigToPersistence(preservePresetSelection);
     app_.UpdateProcessingStatusLabel();
 }
 

@@ -87,7 +87,10 @@ dark, contrast), SVG kind icons, kind filter chips, Read aloud/Copy on
 `.note-text` answers (Web Speech and Clipboard APIs, local only) and
 playback-synchronised transcript highlighting using the bridge's
 `data-start`/`data-end` row attributes. Its toolbar labels are an inline
-English/Turkish/German table keyed on the document language. The template is
+25-language table keyed on the full document language tag, then its primary
+subtag. The inline bridge uses the same lookup and the preview renderer supports
+all 25 languages. RTL locales use logical spacing and per-section `lang`/`dir`.
+The template is
 split into adjacent raw-string pieces to stay within MSVC literal limits and
 must not contain `http://` or a literal `<details` (asserted by the notes
 tests). `scripts/render_notes_preview.py` renders it with sample entries whose
@@ -96,11 +99,13 @@ markup mirrors `AssistiveRuntime`; update both when entry markup changes.
 At narrow widths the toolbar returns to document flow, controls wrap within
 the viewport, summary timestamps span their own row, and padding/icon sizing
 leaves room for 200% text. `scripts/test_notes_site_browser.mjs` validates
-these layouts against real generated EN/TR/DE fixture files in a private Chrome
+these layouts against real generated EN/TR/DE/NL/AR fixture files in a private Chrome
 profile, including loaded local images/video, filters, conversation grouping,
 expand/collapse and persisted text size. It also checks the sibling website's
 carousel, themes, reduced motion, Arabic navigation and narrow translations;
 fixtures, profiles and screenshots stay in local app data.
+Its scene-count assertion follows actual slides and requires matching navigation
+dots; notes checks include localized toolbar text and Arabic computed direction.
 
 Transcript timestamps retain 44 px targets. Playback follows only the transcript
 panel's internal scroll position, without moving the document. The small-screen
@@ -154,7 +159,7 @@ so metadata generation cannot silently accept an incomplete copy.
   it does not overwrite the phone preference. Phone errors are nonmodal.
   `PhoneRetryPolicy.Observe/Failed/Succeeded/CanAttempt` tracks per-transport
   readiness and 5/10/20/60-second failure backoff (at least 30 seconds for busy
-  or hot errors). Replug, recovery or changed problem resets that backoff.
+  or hot errors). Replug, recovery, changed problem or server epoch resets that backoff.
 - `PersistentSettings.cameraSelectionExplicit` distinguishes a user pick from
   an implicit first-run webcam. `OnCameraSelectionChanged` sets it and saves
   the stable link. `settings::LoadDetailed` infers an explicit preference for
@@ -168,16 +173,119 @@ so metadata generation cannot silently accept an incomplete copy.
   unsupported and malformed overrides disable phone support. `Endpoint`,
   `FindAdbExecutable` and `EnsureAdbServer` select an explicit path, bundled
   `platform-tools`, environment-owned SDK or PATH. Without an existing listener
-  or endpoint override, a hidden `server nodaemon` process binds loopback;
-  starts are throttled to 30 seconds. No adb client command can replace another
-  tool's server. The server remains available to other clients after exit.
+  or endpoint override, a hidden `-L tcp:<port> server nodaemon` child binds a
+  private ephemeral loopback port. `AdbServerEndpoint.ownedByThisProcess`
+  distinguishes this exact child from borrowed default/overridden servers.
+  `Endpoint` never redirects a failed owned session to the shared default port;
+  an unavailable owned child yields port zero until its manager can retry.
+  `EnsureAdbServer` returns readiness, serializes lifecycle changes, requires
+  bootstrap intent, yields a dead child to a new default listener and retires
+  idle ownership after explicit webcam intent. `PhoneServerIntent` separates
+  effect-free `BorrowOnly`, guarded `PhoneUse` and idle `ReleaseForWebcam`.
+  `RequireAdbServer` permits host traffic only after ready EnsureResult values.
+  `ListenerIdentity`/`ObserveServerIdentity` track port/PID/creation time;
+  `CameraDescriptor.phoneServerEpoch` renews launch/recovery/retry budgets even
+  when a restarted server reuses a transport ID. No epoch or PID is persisted.
+  Two default version failures spanning five seconds permit reviewed legacy
+  recovery or an isolated shadow child. Empty raw private transports and two
+  healthy default checks permit shadow handback; live reservations forbid it.
+- `OwnedChildProcess` in `capture/adb_owned_server.hpp/.cpp` creates a
+  non-inherited `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` job and launches suspended,
+  with only explicit NUL standard handles inherited. Assignment precedes
+  resume; failure cleans up the exact fresh process. `Stop` and the destructor
+  terminate only its held job/process handles; owner crash closes the job in
+  the kernel. `LaunchOptions.assignOverride` is a private test seam.
+  `environmentOverrides` builds a sorted Unicode child environment without
+  modifying the parent; production sets `ADB_EMU=0` and `ADB_REJECT_KILL_SERVER=1`.
+  `DuplicateObservationHandle` returns a non-inherited synchronize-only handle.
+  `OwnsListeningPort` uses
+  the native IPv4 TCP owner table to observe exact-child loopback ownership,
+  never as process-termination authority.
+- `OwnedAdbServer` serializes `EnsureRunning` and injects probe/launch/port/session
+  functions for private tests. `OwnedAdbServerPolicy` defaults to two consecutive
+  failed probes, a 5s readiness window, 50ms polling and 30s launch/restart
+  cooldown, including failures and already-reaped child exits. Cancellation is
+  checked before effects and after probes. Live/starting phone sessions suppress
+  restart. `EnsureResult` reports launch/ready/deferred/throttled/canceled/stopped
+  outcomes; `Port`, `OwnsRunningServer`, `LaunchCount` and `RestartCount` expose
+  process-local observations. `RunningSnapshot` holds an atomic shared
+  synchronize-only handle/port so `Port` never waits for a probe; it reports
+  child liveness, not host readiness. `EnsureRunning(..., false)` checks exact
+  listener health without lifecycle effects for ordinary enumeration.
+  Manager and lifecycle timed-lock waits
+  check cancellation every 20 ms. `ProbeAdbHostVersion` uses explicit ports, while
+  `CreateOwnedAdbServer` wires exact hidden children, emulator suppression,
+  native listener validation and runtime occupancy. `Stop` sets an atomic
+  request before waiting for the manager lock, interrupting the next polling
+  step. Restarts pick a fresh port rather than reusing accepted connections.
+  `ShutdownOwnedAdbServer` stops only this manager's child after discovery and
+  capture teardown; `OwnedAdbServerPort` returns its live private port. Nothing
+  persists PID ownership or runs global adb client kill commands.
+  `AdbRuntime.shutdownRequested` prevents later bootstrap by abandoned callers.
+- `TryReclaimLegacyBundledAdbServer` in `capture/adb_legacy_recovery.hpp/.cpp`
+  deliberately adopts only a confirmed-hung reviewed legacy bundle server.
+  `LegacyAdbRecoveryRequest` supplies phone intent, no-session snapshot/live
+  callback and cancel/shutdown latches. `LegacyAdbProvenanceExpectations` pins
+  the manifest, actual adb entry hash, canonical flat/nested layout and launcher
+  product metadata or reviewed launcher SHA. `LegacyAdbRecoveryPolicy` bounds
+  mutex/connect/exit waits; test-only callbacks and sibling scan scope isolate
+  private race fixtures. Classification and each effect revalidate the exact
+  held process creation/image, native listener, provenance and sibling/session
+  absence. A per-user/session mutex serializes reclaimers. Raw `host:kill` gets
+  post-connect revalidation; a failed bounded exit wait can use only the exact
+  held process handle. `LegacyAdbRecoveryResult` distinguishes recovered,
+  unmanaged, busy, identity-changed, canceled and failed, with structured detail
+  and observation diagnostics. Unknown/SDK/overridden servers are never stopped.
 - `PhoneAdbTestHooks` / `SetPhoneAdbTestHooks` isolate fake-socket tests on a
-  private random port and disable real bootstrap. `OccupiedPhone`, `MayLaunch`
+  private random port and disable real bootstrap; switching hooks stops any
+  previously owned child and resets test budgets. `OccupiedPhone`, `MayLaunch`
   and `AllowAppLaunch` prevent overlapping probes and repeated automatic
   activity launches for one USB transport. A manual camera pick renews the
   launch allowance. `ControlHello` accepts a token-free `probe:true` ACK,
   supports older tokened ACKs and reads coded ERROR packets. Real hello and
   video binding are retried together within a bounded connection window.
+  `ownedServerExecutable` / `ownedServerArguments` opt into the private fake
+  process fixture, with the hook port standing in for 5037. `OccupiedPhone`
+  increments/decrements per-serial counts so overlapping sessions remain
+  reserved; `Run` first repairs the idle server before registering its own slot.
+- `AdbHostReply` bounds raw host-query replies; `ListUsbPhones` separates USB
+  listing from companion probes and retains `transport_id` in legacy listings.
+  `PhoneCameraTransport.RecoverStalledUsbTransport` requires a responsive adb
+  version query, the same authorized USB serial/transport before and after a
+  pair of timed-out independent shell echoes, plus a fresh non-claiming companion
+  timeout, then sends `host-transport-id:ID:reconnect`. The echo checks require
+  all response bytes, not just one early byte. Post-ack listing must observe the
+  stale ID disappearing or changing within two seconds before success.
+  `AdbRuntime.nextUsbRecovery` limits requests to once per phone/server per
+  minute within the process across changing transport IDs, including unsupported
+  replies. A separate 30-second health-probe cooldown follows definitive answers;
+  neither throttle is persisted across restarts.
+  `UsbResponseTimeout` distinguishes timeout from explicit adb rejection/EOF.
+  `Run` refreshes its ID using bare USB listing rather than probing other phones,
+  and invokes recovery after non-protocol failures and socket unwinding;
+  coded camera errors and cancellation bypass it. `Enumerate` accepts an
+  optional preferred idle recovery serial. `PollPhoneCameraDiscovery` supplies
+  it only while automatic phone selection is allowed and no phone is active.
+  Active/starting phone probes, ordinary browsing and explicit webcam selection
+  retain their ownership rules. Acknowledgment is not a recovered video frame.
+- `PhoneDiscoveryStatus` distinguishes a parsed listing from missing listener,
+  unresponsive borrowed server, owned startup/recovery, unsupported endpoint
+  and unknown failure. `Enumerate` defaults its server intent to `BorrowOnly`;
+  background app discovery passes its automatic-phone intent. Its
+  optional status output reaches the app's background discovery future; a
+  stalled server preserves saved camera intent and shows translated automatic
+  retry guidance instead of generic missing-phone help. Discovery never
+  resets or terminates an unknown borrowed server; the reviewed-legacy rule
+  above handles detached OkuFlow support. GPU-required details retain the concrete CUDA error,
+  `OwnedServerRecovering` and `ServerUnresponsive` display localized automatic
+  retry with polite live announcements, suppressing stale errors and manual
+  process-management instructions. Device selection logs its compute capability
+  for field diagnostics.
+- `PollWithDeadline` / `BoundedPollOutcome` bound nonblocking shutdown queries
+  by completion, expiry and session abandonment. Capture's D3D11 `GetData` poll
+  uses a 1000ms deadline and throws on incomplete work, retaining the session.
+  The facade keeps its shared 1500ms stop deadline and logs individual quiesce,
+  consumer-release and final-release timings when stopping fails.
 - Android `UsbSocketServer.capabilityJson` warms a capability snapshot;
   `readChannel` answers probes without claiming a session. `writeDirect`
   returns discovery/busy replies, while `peerAllowed` and `videoBindExpired`
@@ -202,11 +310,56 @@ so metadata generation cannot silently accept an incomplete copy.
 - `scripts/test_adb_source_build.ps1` / `Read-Exact` / `Request-PrivateAdb` test
   protocol 41, device listing, loopback binding and hidden startup on a private
   port. Only its own child is stopped; the shared server remains untouched.
-- `ActivateFixtureWindow` in `main_window_tests.cpp` temporarily attaches the
+- `ActivateFixtureWindow` in `tests/gui_test_support.hpp` temporarily attaches the
   fixture thread's native input queue to obtain Windows foreground focus, then
   detaches immediately. Its bounded wait verifies both Win32 foreground and Qt
   activation before keyboard/idle assertions. GUI tests remain serial and need
   no human clicks; their original behavior assertions remain intact.
+- `test::DesktopLease` in that header acquires a per-user `QLockFile` before
+  QApplication through `OKUFLOW_GUI_TEST_MAIN`. All eight native GUI fixture
+  executables use it, so separate CTest/build processes cannot own competing
+  fixture windows. A refused lease exits 73 as an explicit interruption, not a
+  skipped/passing test. Activation now uses a bounded Qt condition wait instead
+  of an unconditional first 20 ms delay.
+  `ActivationFailureMessage` marks an interruption only when a known foreign
+  process owns native foreground; Qt/own-process or unknown activation failures
+  remain ordinary failures, ineligible for retry credit.
+- `okuflow_add_gui_cases` in `tests/gui_cases.cmake` registers each main-window,
+  annotation-overlay and AI-settings out-of-class Qt slot as a CTest selector,
+  excluding lifecycle and `_data` helpers while retaining all data rows. It
+  adds `gui` and an idle/input/layout/state label, a 30 s per-slot timeout,
+  `RUN_SERIAL`, desktop resource lock and the Qt runtime/logging environment.
+  The remaining GUI registrations also receive serial/resource-lock properties.
+- `MainWindowTests::modesGridSearchAndGeometry` and
+  `minimumViewportChromeFits` use bounded condition waits for focus and layout;
+  diagnostics and assertions are retained. Native activation/pointer
+  precondition assertions identify desktop interruptions explicitly.
+  `RenderWidgetTests::continuousResizingDoesNotStarvePresenter` waits for ten
+  resize changes and a concurrent presenter update within the original 220 ms
+  deadline, then verifies final dimensions and drains the presenter.
+- `scripts/run_test_gate.ps1` discovers CTest commands with `--show-only=json-v1`
+  and records serial runs with immutable per-attempt JUnit/console logs.
+  `Get-Digest` and `Get-InventoryDigest` bind the local ledger to build path,
+  configuration, repository/build/Qt/native-runtime/command inputs, driver and
+  display/DPI metadata, boot identity, culture and relevant environment
+  hashes; input changes conservatively invalidate prior passes. The snapshot
+  output contains per-component hashes, so a mid-run invalidation names changed
+  files or metadata without logging environment values or secrets.
+  Fixture `--output`/`--trace` arguments declare generated result paths; their
+  command strings remain hashed but their changing result bytes are excluded.
+  `Get-CaseResult` keeps assertions/mixed failures distinct from one explicitly
+  marked desktop interruption, and reports optional CTest/Qt skips separately.
+  `Save-Ledger` replaces only that inventory's JSON atomically; attempt logs stay
+  intact. Failed/unfinished cases never auto-retry; `-Resume -RetryInterrupted`
+  runs only an explicitly named recorded interruption once. Whole resumes rerun
+  optional skips. A missing/mismatched result cannot complete the gate.
+- `scripts/test_test_gate.ps1` uses `Assert-Contract`, `Invoke-Gate` and
+  `Read-Ledger` with private command-line CTest fixtures to check resume/retry,
+  partial coverage, failure/skip handling and inventory invalidation. It creates
+  no Qt windows and is run explicitly when the runner changes, not redundantly
+  inside every CPU/CUDA suite. `agent_build.bat --retry-interrupted` restores the
+  build's VS environment without compiling or publishing; the ordinary matrix
+  proceeds to CUDA after a CPU CTest failure, retaining both inventories.
 - `phone_camera_contract`, `phone_retry_policy` and settings tests cover
   delayed arrival, replacement devices, explicit selection, cached lenses,
   endpoint overrides, old/new probes, busy probes and cancellation against
@@ -389,6 +542,12 @@ Actual validation/limits: [review 46](../improvement_ideas/46-additional-opus-re
   gives inference/presentation one SR-only geometry, snapping pan by at most
   one source pixel and mapping advertised 1.33 to exact 4/3. Unsupported crops
   use existing fallback. Maxine `loadedStrength_` participates in load reuse.
+  `IsSuperResInputHeightSupported(...)` in `superres_scale_policy.hpp` filters
+  each candidate before SDK loading: 4x accepts input through 540p, 3x through
+  720p, and 2x/1.5x/4/3x through 2160p. `UpdateSuperResCache` keeps scanning
+  lower factors when a candidate exceeds its model limit, preserving desktop
+  zoom. Other SDK resolution checks still apply. The spatial geometry fixture
+  covers the 4000x2256 phone regression and model-height boundaries.
   `UpdateSuperResCache` restarts timing by source/output extent and strength;
   `discardSuperResTiming_` excludes an old pending sample after configuration
   or override changes. Unrelated text controls do not reload the effect.
@@ -446,6 +605,10 @@ source changes make no measured throughput or latency claim.
 - `scripts/build_and_run.bat`, `scripts/build_release_bundle.bat`, and
   `cmake/CMakePresets.json` default to Qt 6.12.0; translation validation and
   startup profiling use the same SDK default.
+- `scripts/build_release_bundle.bat` copies and requires `START_HERE.txt` from
+  `docs/portable_start_here.txt`, using the existing exact-byte copy helper.
+  It explains the public `oku_flow.exe` launch path and supporting application
+  file. Release metadata inventories and hashes the guide automatically.
 - `scripts/build_release_bundle.bat` stages the five required Qt module SPDX
   documents plus PDF when installed. `validate_staging_bundle` also requires PDF
   metadata if `Qt6Pdf.dll` is deployed.
@@ -503,7 +666,10 @@ source changes make no measured throughput or latency claim.
     annotated viewport snapshots
   - `src/app/app_interaction.cpp` — input routing, status, focus mapping
   - `src/app/app_controls.cpp` — processing-control slots
-  - `src/app/app_settings.cpp` — presets and persistent settings
+  - `src/app/app_settings.cpp` — presets and persistent settings. A clicked
+    preset's ID remains authoritative through control normalization; unresolved
+    presets repaint from the applied configuration. Startup restores the saved
+    ID before applying its live configuration.
   - `src/app/app_assistant.cpp` — Assistant and assistive actions
   - `src/app/app.cpp` — intentionally empty compatibility translation unit
 - The low-level CUDA/presentation entry points remain private `OkuFlowApp`
@@ -533,7 +699,8 @@ source changes make no measured throughput or latency claim.
   report/normal exit only with `--startup-profile=<path>`. Profiling loads and
   saves `settings.json` beside that report, explicitly isolating Windows
   known-folder settings. `--startup-profile-ms=<ms>` defaults to 15000 and
-  clamps to 1000–60000; `--startup-profile-legacy-camera` reproduces the former
+  clamps to 1000–600000, allowing ten-minute manual cable-recovery sessions;
+  `--startup-profile-legacy-camera` reproduces the former
   synchronous preliminary-reader sequence for comparison in the same build.
   `WriteStartupProfile()` atomically writes timings, actual camera arrivals,
   ingress drops, processed/presented counts, missed admission attempts, stage
@@ -790,6 +957,24 @@ source changes make no measured throughput or latency claim.
 - Caches the `MainWindow` widget accessors in one UI-only object and translates
   between controls and `settings::AdvancedConfig`. It centralizes signal
   blocking during programmatic configuration changes.
+- `ApplyConfigToUI(config, preservePresetSelection = false)` forwards the
+  identity policy to the final persistence sync. Preset activation and startup
+  preserve the selected ID; manual edits and Reset continue to re-match it.
+
+### `include/okuflow/ui/theme_contrast.hpp`
+
+- `RelativeLuminance`, `ContrastRatio`, `IsLightSurface` and `IsLightTheme`
+  derive readable light/dark choices from the current window palette.
+- Disabled/placeholder, warning and status helpers return scheme-specific ink;
+  `PinnedDarkPalette` fills text/base/button roles for the deliberately dark
+  colors popover and editor. `ThemedIcon` rasterizes the bundled SVGs with
+  normal/disabled stroke colors while retaining colored fills and original
+  assets. It adds no direct SVG-library dependency.
+- MainWindow's `ApplyThemeContrast`, `UpdateSuperResStatusStyle`, themed-icon
+  tracking and refresh helpers reapply contrast on palette/scheme changes.
+  Expanded section headers use their button text role, and quick-mode labels
+  use window text; expansion signals, keyboard order and translations remain.
+  Carousel Previous from Custom wraps to the last available quick mode.
 
 ### `include/okuflow/app/assistive_feature_manager.hpp`
 `okuflow::AssistiveFeatureManager`
@@ -928,8 +1113,9 @@ Namespace `okuflow::settings`
 - `struct PresetDefinition`
   - stage-1 quick-mode metadata: preset id, name, description, target config id, built-in flag
 - `struct PersistentSettings`
-  - persists global `language` as `en`, `tr`, or `de` (an absent legacy value
-    adopts a supported system locale once), `cameraIndex`, stable
+  - persists global `language` as `system` or a canonical supported code from
+    `app_language.hpp` (missing/unknown follows system preferences; explicit
+    legacy `en`/`tr`/`de` remains selected), `cameraIndex`, stable
     `cameraFormatStableId`,
     crash-safe `cameraAccelerationAttempt`, per-symbolic-link
     `CameraAccelerationSetting` mode/fallback/reason/date records plus the last
@@ -996,20 +1182,34 @@ Namespace `okuflow::settings`
   - `std::optional<AdvancedConfig> ResolveConfigForPreset(...)`
   - `bool AreConfigsEquivalent(...)` — compares slider-backed values at their
     representable UI precision so applied presets remain selected after
-    control quantization
+    control quantization. Legacy `rotationQuarterTurns` is excluded because
+    orientation is a shared camera setting, not part of a quick mode.
+
+### `include/okuflow/app/app_language.hpp`
+
+- `AppLanguage` is the 25-entry registry listed in [localization](localization.md).
+  `SupportedAppLanguages`, `AppLanguageCode`, `AppLanguageNativeName`,
+  `AppLanguageEnglishName`, `AppLanguageFlagResource`, `AppLanguageCatalogResource`,
+  `AppLanguageLocale` and `AppLanguageLayoutDirection` separate persisted tags,
+  model directives, picker text, embedded resources and locale/direction.
+- `AppLanguageFromCode` offers strict output-pointer and English-fallback
+  overloads. `AppLanguageFromLocaleTag`, `AppLanguageFromUiLanguages` and
+  `AppLanguageFromSystemLocale` preserve ordered system preferences, regional
+  variants, Chinese script precedence and legacy `iw`/`in` aliases.
+- `kSystemLanguagePreference`, `NormalizeLanguagePreference`,
+  `IsSystemLanguagePreference` and `ResolveLanguagePreference` implement the
+  persistent system/manual choice; explicit supported codes win.
 
 ### `include/okuflow/app/language_manager.hpp`
 `okuflow::LanguageManager`
 - Owns the process `QTranslator`, supported application locale, and live
   widget-tree retranslation. It does not own persistence; `OkuFlowApp`
   reads/writes the stable language code through `SettingsController`.
-- `AppLanguage` currently supports `English`, `Turkish`, and `German`.
-  `SupportedAppLanguages()`, `AppLanguageCode(...)`,
-  `AppLanguageNativeName(...)`, `AppLanguageFlagResource(...)`,
-  `AppLanguageLocale(...)`, and `AppLanguageLayoutDirection(...)` expose the
-  centralized language descriptor registry while keeping UI presentation
-  separate from stable serialized values.
-- `SetLanguage(...)` swaps the embedded `:/i18n/okuflow_<code>.qm`, applies
+- The constructor accepts an optional `CatalogResolver` for isolated failure
+  fixtures; production resolves embedded resources. The destructor removes its
+  owned translator. `SetLanguage` loads/installs the candidate before removing
+  the active translator, retaining language/locale/direction on load failure.
+  English removes the translator. A successful switch applies
   the matching `QLocale` and process layout direction, and re-translates every
   open top-level widget without reconstructing it or changing control
   selection.
@@ -1429,7 +1629,7 @@ Supporting types:
 ### `include/okuflow/common/response_language.hpp`
 `okuflow::AppendResponseLanguageDirective(...)`
 - Keeps built-in and user-authored model instructions intact while appending
-  `Respond in Turkish.` or `Respond in German.` for the selected UI language.
+  `Respond in <registry English language name>.` for the selected UI language.
   English adds no directive. This helper is shared by the Codex and
   OpenAI-compatible VLM request paths.
 
@@ -2596,14 +2796,19 @@ Namespace `okuflow`
 This separate Kotlin/Compose project sends encoded camera frames over USB.
 Native Windows consumes AVC and optional HEVC through the phone source below. See
 `android/README.md`, `android/PROTOCOL.md` and plan 51.
+The `connect_usb_hint` resource explains that the companion requires OkuFlow
+for Windows on the PC, directs users to okuflow.com, and asks them to open the
+desktop app and use a data-capable USB cable. All 25 catalogs and the EN/TR/DE
+illustrative draft carry the instruction; setup-state resolution is unchanged.
 
 | Source under `android/app/src/main/java/com/okuflow/camera/` | Contract |
 | --- | --- |
 | `MainActivity.kt` | `MainActivity.onCreate` sets dark edge-to-edge system bars, applies `FLAG_KEEP_SCREEN_ON` to every visible app panel, retains the normal lock-screen boundary, and installs `OkuFlowCameraTheme` / `OkuFlowCameraApp`. Launcher and adb starts reuse the `singleTask` activity. |
+| `settings/AppLanguage.kt` | `AppLanguage` has 25 canonical tags/native names. `fromTag` handles explicit codes; `forLocale` preserves regional/script and legacy tags. `AppLanguageStore.selected/select` use framework per-app locales on Android 13+ or private `language/tag` preferences on Android 11–12. `wrap` applies older-version Activity/Service context configuration; `systemLanguage` labels the phone-default choice. MainActivity and CameraStreamService wrap their base contexts. |
 | `setup/SetupStep.kt` | `DeviceSetupSnapshot` carries nullable developer/debugging settings, permission/USB flags and current `usbAdbActive` evidence. `canListenForHost` keeps permission/USB gates while allowing unknown debugging status. `debuggingSettingEnabled` maps Android 17 redacted zeros to unknown and preserves older disabled values. `SetupStep` includes optional `CheckUsbSetup` help, `HostConnected` (session open, camera starting/paused) and `Problem`. `resolveSetupStep(snapshot, link, problem)` accepts active USB adb evidence and never labels unknown settings disabled; a live Connected/Streaming session outranks the coarse USB reading, and a problem outranks an open session but never streaming, a missing cable or a setup prerequisite. |
 | `setup/DeviceSetupMonitor.kt` | `DeviceSetupMonitor.start/stop` register/unregister global-setting observers and USB/battery receivers; `start` reads both sticky values synchronously to avoid a false disconnected snapshot during service startup. `refresh` rereads settings/permission; `readDebuggingSetting` handles Android 17 redaction/read failure without a false disabled state. The protected USB broadcast adb flag is cleared on disconnect. `snapshot` is a read-only StateFlow. USB-state broadcasts are an OEM-dependent heuristic, not proof of an authorized OkuFlow session. |
 | `setup/SetupViewModel.kt` | Combines the monitor with `HostLink.state` and `HostLink.problem` (also exposed as `problem`). `onResumed`/`onPaused` set the service's visible-start gate; resuming clears a blocked-camera problem. `refresh` retries expired transient failures, refreshes prerequisites, clears saved denial and calls `startServiceIfReady`; a permission result while paused cannot start the service. `onCameraPermissionResult` retains denial across restart. `settings`, `diagnostics`, `updateSettings` bridge preferences/service. `onCleared` unregisters the monitor. |
-| `setup/SystemSettingsLauncher.kt` | `openAboutPhone`, `openDeveloperOptions`, `openPrivacySettings` (camera access switch) and `openAppDetails` try specific public Settings intents, then broader fallbacks for missing/restricted OEM activities. |
+| `setup/SystemSettingsLauncher.kt` | `openSetupSettings` uses `primarySetupSettingsTarget`: disabled developer setup and unknown-state `CheckUsbSetup` open About phone; the known USB-debugging prerequisite opens Developer options. `openAboutPhone`, `openDeveloperOptions`, `openPrivacySettings` (camera access switch) and `openAppDetails` try public Settings intents, then broader missing/restricted OEM fallbacks. `launchFirst` copies intents with `FLAG_ACTIVITY_NEW_TASK` so localized/application contexts also work. A successful start does not prove a hidden OEM activity stayed open. |
 | `setup/OemFamily.kt` | `OemFamily.fromManufacturer` chooses Samsung, Xiaomi/Redmi/POCO, OnePlus/OPPO/realme, or generic Build-number wording without changing the intent target. |
 | `link/HostLink.kt` | `HostLinkState` has Disconnected/Connected/Streaming. `HostProblem` names user-fixable failures (CameraBusy, CameraBlocked, NoCompatibleMode, CameraFailed, TooHot, ServiceFailed). `state`, `problem` and `details` (negotiated mode while connected) are published by the camera service through internal `publish`/`report`. A problem survives the host's disconnect after its ERROR packet and is cleared by a new session, the first streamed frame, cooling below CRITICAL (TooHot) or unplugging. |
 | `ui/HostProblemText.kt` | `problemTitle` / `problemHint` map each `HostProblem` to localized title and remedy strings. |
@@ -2622,15 +2827,31 @@ Native Windows consumes AVC and optional HEVC through the phone source below. Se
 | `link/WireProtocol.kt` | `Hello`/`Packet`, `readHello`, `readPacket`, `writePacket`, `framePayload`, `readExact` implement bounded little-endian v1 framing: control 64 KiB, video 16 MiB. |
 | `link/UsbSocketServer.kt` | Authenticates shell/root peers and binds one control/video pair with a random token; `onConnect` runs after the video channel is bound and before its ACK permits the first start request. `Channel.send/close` own bounded writer queues; `readChannel`, `control`, `state`, `metadata`, `frame`, `disconnect`, `close` handle generation gating, ping, EOF/timeouts and pressure without blocking the camera on network writes. `disconnectHost` retires both channels and capture while retaining the abstract listener for cable recovery. The watchdog reads its volatile write-start timestamp once per check and logs transport/queue failure categories without session tokens. `HostLimits` holds decoder ceilings. |
 
-`app/src/main/res/values{,-tr,-de}/strings.xml` have exact source-key parity.
+All 25 `app/src/main/res/values*/strings.xml` catalogs have exact source-key
+parity (98 keys). AGP generates the per-app locale configuration;
+`resources.properties` names the unqualified source locale `en-US`.
+The outlined Advanced entry uses `ic_settings_gear.xml` with one localized
+accessible name. `AdvancedSettingsPanel` includes a native-name language picker,
+selected-state choice semantics and exposure-slider value semantics. Navigation
+arrows follow `LocalLayoutDirection`; centered/justified setup text is preserved.
 `UsbSocketServer` serializes Connected/Disconnected callbacks with session
 binding/retirement, so old-host cleanup invalidates capture before a new host
 can claim the slot. Cleanup callback failures cannot escape the socket worker.
 `CameraStreamService` ignores queued thermal callbacks after destruction.
 The manifest declares CAMERA and camera foreground-service permissions without INTERNET, disables backup, and uses
 `res/xml/data_extraction_rules.xml` to exclude device-specific setup history.
+
+`SetupSettingsTarget` / `primarySetupSettingsTarget` are pure onboarding
+navigation policy, tested against resolved older disabled and Android 17
+redacted snapshots. Connection help keeps unknown distinct from off and offers
+separate Developer-mode (About phone) and USB-debugging (Developer options)
+actions. `StepContent` carries optional secondary action label/callback;
+`ActionPanel` exposes two independent footer controls instead of a nested
+whole-panel button when both are present. `ActionPill.modifier` supplies
+the primary button semantics; other single-action panels remain unchanged.
+`UsbSetupHelpPanelPreview` covers regular, German 200% and Arabic layouts.
 `SetupStepTest`, `OemFamilyTest`, `WireProtocolTest`, `StreamPolicyTest`,
-`CameraSettingsTest`, `CameraFailuresTest`, `LinkPolicyTest`, `StreamingIntentTest` and `ServiceLifecycleTest` provide 65 JVM checks, including partial-start listener ownership, visible/refused foreground-start policy, unplug prerequisite retention, older-setting behavior,
+`CameraSettingsTest`, `CameraFailuresTest`, `LinkPolicyTest`, `StreamingIntentTest`, `ServiceLifecycleTest` and `AppLanguageTest` provide 67 JVM checks, including locale/script matching, partial-start listener ownership, visible/refused foreground-start policy, unplug prerequisite retention, older-setting behavior,
 Android 17 redaction, USB evidence, connected/problem step priority, camera
 failure classification, the HEVC default with explicit-AVC preservation, exact dimension/rate bounds, legacy preference
 migration and camera-mode reconciliation. `CameraEngine.start` uses actual
@@ -2639,6 +2860,9 @@ are recorded in `android/DEVICE_VALIDATION.md`.
 
 `scripts/build_android.ps1` is the tracked Android validation entry point:
 `Assert-AndroidTranslations` rejects empty/duplicate/missing/extra locale keys;
+`Read-AndroidStrings` uses XML `LocalName` to avoid PowerShell's attribute-name
+adapter collision and checks format tokens across every locale. The Qt validator
+likewise requires all 24 non-English catalogs and exact source/format parity.
 it then runs `assembleDebug` / `testDebugUnitTest`, plus optional `lintDebug`.
 `Read-AdbAscii` reads bounded responses and `Assert-AdbServerCompatible`
 inspects the running server without killing it. `-Install` installs/launches
@@ -2780,13 +3004,34 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   `QuoteWindowsArgument` preserves Windows argv quoting;
   `ClassifyWindowsRuntimeInstallResult` handles success, newer-installed,
   restart, raw/HRESULT cancellation and failed detection.
+- `WindowsRuntimePayloadDirectory` selects the `app/` directory when present,
+  otherwise the legacy flat directory. It does not require the nested child
+  to exist before choosing that directory, preventing stale flat fallback.
+- `UserDataPaths`' internal `BundleInstallDirectory` recognizes a nested `app`
+  directory with a parent launcher. Constructor and `ValidateRoot` protect the
+  whole bundle before canonical/junction containment checks.
+- `scripts/windows-installer/bundle_layout.ps1::Get-OkuFlowBundleLayout` reports
+  root, payload root, prefix and child EXE path for legacy/nested snapshots.
+  Metadata uses root-relative file records and payload-relative reviewed adb
+  records. MSI signing/icon checks and guest downgrade checks follow this path.
+- `scripts/organize_release_bundle.ps1` relocates a fresh flat staging payload
+  into `app/` before metadata generation. It retains the root launcher/docs and
+  rejects existing payloads, metadata, captures and reparse points before moving.
+  `test_bundle_layout.ps1` checks synthetic byte/integrity and refusal cases.
 - `app/windows_runtime.hpp/.cpp`: `WindowsRuntimeStatus::Ready`,
   `CheckWindowsRuntime` and `VerifyWindowsRuntimeInstaller` expose Qt wrappers.
-- `src/launcher/main.cpp`: `Text` chooses preflight EN/TR/DE by Windows UI
-  language. `Inform` shows a native Common Controls v6 dialog.
+- `src/launcher/launcher_text.hpp`: native `Language` / `Message` enums and
+  `kText` provide 25 languages × 14 preflight messages without Qt dependencies.
+  `LanguageFromWindows` maps the UI LANGID (Traditional Chinese falls back to
+  English); `Translate` looks up text, `IsRightToLeft` selects dialog direction.
+- `src/launcher/main.cpp`: `Text` formats `%1` with a supplied error value using
+  Windows UI language before the Qt application starts. `Inform` shows a native
+  Common Controls v6 dialog with matching RTL flags.
   `PrepareWindowsRuntime` checks or offers the pinned vendor installer using
   an owned temporary copy. `wWinMain` forwards arguments, working directory,
   environment, redirected streams and child exit code to `OkuFlowApp.exe`.
+  New bundles launch `app/OkuFlowApp.exe`; the installer preflight uses that
+  same runtime directory. Runtime contract fixtures exercise both layouts.
 - `SetupAssistantDialog` accepts an optional injected runtime-check function
   for fixtures, adds the Windows dependency row and includes it in
   `NeedsSetup`. `BeginWindowsRuntimeInstall` prepares/verifies its private
@@ -2802,3 +3047,53 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   version admission and tampered installer rejection.
   `setup_assistant_interactions` checks supported/missing runtime presentation
   and incomplete-bundle behavior without executing installers.
+
+## Windows phone/GPU progress safeguards (2026-10-13)
+
+- `PhoneFrameProgress` in `capture/phone_frame_progress.hpp` tracks packet and
+  decoded-frame clocks separately. `BeginGeneration` restarts only the HEVC
+  first-output check; `FrameDecoded` is the only decoded-progress renewal.
+  `PhoneCameraTransport` uses `Check` on packet and idle iterations, preserving
+  the existing one-time HEVC fallback and reconnect policy.
+- `CaptureAperture` and `ResolveNv12DisplayAperture` in `capture/capture_buffer.hpp`
+  validate integral, even, in-bounds minimum/geometric display apertures and
+  use the negotiated phone dimensions when metadata is absent. The decoder
+  keeps allocation dimensions for buffers while publishing visible dimensions.
+  `MediaFrame::gpuVisibleX/Y` carries its GPU crop; `CopyMappedCaptureTexture`
+  crops both planes while keeping the UV origin at allocation height.
+- `GpuFrameReadbackResult` distinguishes `Ready`, `Pending` and `Failed`.
+  `MediaCaptureSession::ReadbackGpuFrame` queues one copy, retains the original
+  sample and texture, polls its query, and maps with `DO_NOT_WAIT`. It uses
+  `try_lock` and a one-second deadline. Failure requests reconnection while
+  retaining pending resources until the stop coordinator proves completion.
+  `HasPendingGpuReadback` and `CaptureGpuPending::Readback` keep the same frame
+  through `RunFrameTick`; retries do not re-copy or re-run temporal processing.
+- `FenceProgressWatchdog::Observe` observes submitted and completed values,
+  faults on one second without forward completion, and treats device-removal
+  sentinels as failure. New submissions do not renew the deadline. Idle or
+  occluded presentation with no outstanding GPU work remains healthy.
+  `D3D12Presenter::PollGpuProgress` runs at submissions and idle app ticks.
+- `HandlePresenterFault` logs CUDA causes and latches a persistent camera
+  placeholder and assertive processing status. Transient messages cannot hide
+  it. `OnTextClarityControlsChanged` marks viewport changes when SuperRes forces
+  zoom, including when no camera frames arrive.
+- `DeadlineWorker` runs owned serial host tasks on one independent thread.
+  `Execute` publishes completed results, distinguishes exceptions/deadlines,
+  and refuses later jobs after a timeout. Destruction requests shutdown without
+  joining a blocked vendor call. Borrowed resources must be retained by the
+  caller; the worker never treats a timeout as completion.
+- `MaxineSuperRes::Worker` selects the CUDA device and runs load, synchronous
+  inference and teardown within a one-second host deadline. `IsFaulted` forbids
+  further adapter access to a still-running SDK call. `CudaInteropSurface`
+  propagates this failure and quarantines its stream, images, buffers and SDK
+  owner. Strength changes settle for 200 ms before a model reload. The caller
+  still waits for a normal worker result; fully asynchronous inference is not
+  implemented by this guard. Performance override does not bypass safety bounds.
+
+Regression coverage: `deadline_worker` exercises completion publication, serial
+ownership, exceptions, timeout, rejected retries and destruction with a retained
+job. `capture_shutdown` adds WARP readback checks for single-copy pixel identity,
+mutex contention, deadline retention and mismatched frames. `capture_buffer_layout`
+covers padded NV12 and aperture crop offsets; phone/fence fixtures use fake clocks
+for silent decoder and completion stalls. These are local fixtures, not evidence
+of real-phone disconnect, Maxine visual quality or long-soak acceptance.

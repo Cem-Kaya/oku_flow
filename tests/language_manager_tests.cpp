@@ -1,3 +1,4 @@
+#include "gui_test_support.hpp"
 #include "okuflow/app/language_manager.hpp"
 #include "okuflow/common/response_language.hpp"
 #include "okuflow/ui/live_status_text.hpp"
@@ -350,5 +351,5 @@ void LanguageManagerTests::rtlDirectionPlumbing()
 
 } // namespace okuflow
 
-QTEST_MAIN(okuflow::LanguageManagerTests)
+OKUFLOW_GUI_TEST_MAIN(okuflow::LanguageManagerTests)
 #include "language_manager_tests.moc"

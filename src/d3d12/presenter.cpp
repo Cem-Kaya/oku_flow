@@ -426,6 +426,20 @@ bool D3D12Presenter::IsFaulted() const
     return faulted_;
 }
 
+bool D3D12Presenter::PollGpuProgress() noexcept
+{
+    if (faulted_) return false;
+    if (!fence_) return true; // Initialization has not created a timeline yet.
+    const auto submitted = std::max(LastGraphicsSignal(), LastExternalSignal());
+    const auto result = progressWatchdog_.Observe(
+        submitted, fence_->GetCompletedValue(), GetTickCount64());
+    if (result == FenceProgressResult::DeviceLost)
+        return MarkFenceFault("Device removed while polling GPU progress");
+    if (result == FenceProgressResult::TimedOut)
+        return MarkFenceFault("GPU completion stopped advancing; resources retained until restart");
+    return true;
+}
+
 bool D3D12Presenter::NeedsScenePresent() const
 {
     return scenePresentNeeded_;
@@ -781,7 +795,9 @@ UINT64 D3D12Presenter::ReserveExternalSignal() {
 }
 bool D3D12Presenter::CommitExternalSignal(UINT64 value) {
     if (faulted_) return false;
-    return sharedTimeline_.CommitExternal(value) || MarkFenceFault("Invalid external fence commit");
+    if (!sharedTimeline_.CommitExternal(value))
+        return MarkFenceFault("Invalid external fence commit");
+    return PollGpuProgress();
 }
 bool D3D12Presenter::CancelExternalSignal(UINT64 value) {
     if (faulted_) return false;
@@ -804,6 +820,7 @@ UINT64 D3D12Presenter::ReserveGraphicsSignal() {
 void D3D12Presenter::GraphicsSignalSubmitted(UINT64 value) noexcept {
     sharedTimeline_.GraphicsSubmitted(value);
     fenceValue_ = value;
+    PollGpuProgress();
 }
 
 UINT64 D3D12Presenter::GetLastSignaledFenceValue() const

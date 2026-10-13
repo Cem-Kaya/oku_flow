@@ -1,7 +1,9 @@
 #include "okuflow/common/spatial_cache_geometry.hpp"
+#include "okuflow/common/superres_scale_policy.hpp"
 
 #include <iostream>
 #include <limits>
+#include <utility>
 
 int main() {
     using namespace okuflow;
@@ -12,6 +14,28 @@ int main() {
             std::cerr << label << '\n';
         }
     };
+    // A 4000x2256 phone frame at 16x used to choose a 1000x564 ->
+    // 4000x2256 4x model, which the real SDK rejects with resolution error -16.
+    // Keep desktop zoom independent and allow its valid 2000x1128 2x crop.
+    check(!IsSuperResInputHeightSupported(2256u / 4u, 4u, 1u),
+          "phone 4x crop exceeds NVIDIA's 540p model limit");
+    check(IsSuperResInputHeightSupported(2256u / 2u, 2u, 1u),
+          "phone 2x crop must remain eligible at high viewport zoom");
+    check(IsSuperResInputHeightSupported(540u, 4u, 1u) &&
+          !IsSuperResInputHeightSupported(542u, 4u, 1u),
+          "4x model boundary must preserve 2160p output");
+    check(IsSuperResInputHeightSupported(720u, 3u, 1u) &&
+          !IsSuperResInputHeightSupported(722u, 3u, 1u),
+          "3x model boundary must preserve 2160p output");
+    for (const auto scale : {std::pair{2u, 1u}, std::pair{3u, 2u},
+                             std::pair{4u, 3u}}) {
+        check(IsSuperResInputHeightSupported(2160u, scale.first, scale.second) &&
+              !IsSuperResInputHeightSupported(2162u, scale.first, scale.second),
+              "lower-factor model input must stay within 2160p");
+    }
+    check(!IsSuperResInputHeightSupported(88u, 2u, 1u) &&
+          !IsSuperResInputHeightSupported(540u, 5u, 1u),
+          "undersized input and unknown factors must be rejected");
     for (const float zoom : {1.33f, 2.0f, 4.0f, 16.0f}) {
         for (const float focus : {0.0f, 0.37f, 1.0f}) {
             const auto view = ComputeViewTransform(

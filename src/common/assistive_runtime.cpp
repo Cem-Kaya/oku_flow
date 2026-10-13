@@ -4,6 +4,7 @@
 #include "okuflow/common/notes_document_template.hpp"
 #include "okuflow/common/notes_transcribe_bridge.hpp"
 #include "okuflow/common/response_language.hpp"
+#include "okuflow/app/app_language.hpp"
 #include "okuflow/common/codex_app_server_client.hpp"
 
 #include <QBuffer>
@@ -528,12 +529,7 @@ void AssistiveRuntime::SetConfig(const AssistiveRuntimeConfig& config)
 
 void AssistiveRuntime::SetResponseLanguage(const QString& languageCode)
 {
-    const QString normalized = languageCode.trimmed().toLower();
-    const QString next =
-        normalized == QStringLiteral("tr") ||
-                normalized == QStringLiteral("de")
-            ? normalized
-            : QStringLiteral("en");
+    const QString next = AppLanguageCode(AppLanguageFromCode(languageCode));
     if (responseLanguageCode_ == next) {
         return;
     }
@@ -678,6 +674,16 @@ bool IsSafeAttributeToken(const QString& value, const QString& extraCharacters)
         }
     }
     return true;
+}
+
+// Notes text direction for an HTML lang code: "rtl" for Arabic, Persian,
+// Hebrew and Urdu, otherwise "ltr".
+QString NotesTextDirection(const QString& languageCode)
+{
+    return AppLanguageLayoutDirection(AppLanguageFromCode(languageCode)) ==
+                   Qt::RightToLeft
+               ? QStringLiteral("rtl")
+               : QStringLiteral("ltr");
 }
 
 } // namespace
@@ -1561,6 +1567,8 @@ bool AssistiveRuntime::EnsureNotesFile()
                      QString::fromUtf8(kNotesTranscribeBridge));
     document.replace(QStringLiteral("@@LANG@@"),
                      documentLanguage.toHtmlEscaped());
+    document.replace(QStringLiteral("@@DIR@@"),
+                     NotesTextDirection(documentLanguage));
     document.replace(QStringLiteral("@@CONVOLABEL@@"),
                      QCoreApplication::translate("OkuFlow", "Conversation")
                          .toHtmlEscaped());
@@ -1918,6 +1926,7 @@ bool AssistiveRuntime::AppendNoteHtmlSection(const QString& heading,
         classes += QLatin1Char(' ') + metadata.cssClass;
     }
     attributes += QStringLiteral(" class=\"%1\"").arg(classes.toHtmlEscaped());
+    attributes += QStringLiteral(" dir=\"%1\"").arg(NotesTextDirection(sectionLanguage));
     if (IsSafeAttributeToken(metadata.dataRecordingSession, QStringLiteral("-"))) {
         attributes += QStringLiteral(" data-recording-session=\"%1\"")
                           .arg(metadata.dataRecordingSession.toHtmlEscaped());
@@ -2026,14 +2035,9 @@ bool AssistiveRuntime::SelectVoiceForResponseLanguage(bool notifyMissing)
         return false;
     }
 
-    QLocale targetLocale;
-    if (responseLanguageCode_ == QStringLiteral("tr")) {
-        targetLocale = QLocale(QLocale::Turkish, QLocale::Turkey);
-    } else if (responseLanguageCode_ == QStringLiteral("de")) {
-        targetLocale = QLocale(QLocale::German, QLocale::Germany);
-    } else {
-        targetLocale = QLocale(QLocale::English, QLocale::UnitedStates);
-    }
+    const AppLanguage responseLanguage =
+        AppLanguageFromCode(responseLanguageCode_);
+    const QLocale targetLocale = AppLanguageLocale(responseLanguage);
 
     const QVoice current = tts_->voice();
     if (current.locale().language() == targetLocale.language()) {
@@ -2063,12 +2067,7 @@ bool AssistiveRuntime::SelectVoiceForResponseLanguage(bool notifyMissing)
     if (notifyMissing &&
         warnedMissingVoiceLanguage_ != responseLanguageCode_) {
         warnedMissingVoiceLanguage_ = responseLanguageCode_;
-        const QString languageName =
-            responseLanguageCode_ == QStringLiteral("tr")
-                ? QStringLiteral("Türkçe")
-                : responseLanguageCode_ == QStringLiteral("de")
-                      ? QStringLiteral("Deutsch")
-                      : QStringLiteral("English");
+        const QString languageName = AppLanguageNativeName(responseLanguage);
         emit StatusNotice(
             QCoreApplication::translate(
                 "OkuFlow",

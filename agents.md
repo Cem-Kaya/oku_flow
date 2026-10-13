@@ -150,6 +150,11 @@ aligned with the project goals.
   optional harness as skipped without failing the validation run.
 
 ## Optional Startup Performance Validation
+- Manual cable-recovery profiles may run for 1–600 seconds while retaining
+  sibling fixture settings and normal automatic exit. Tell the owner the
+  actual deadline before requesting a physical unplug and start the live
+  session first. The default remains 15 seconds; ordinary app launches are
+  untimed. Heartbeat evidence retains at most its first 3000 samples.
 - Use tracked `scripts/profile_startup.ps1` for real-camera startup and UI
   latency measurements. It refuses an existing OkuFlow instance and launches
   only normally exiting profiling children with explicit isolated settings.
@@ -189,6 +194,11 @@ aligned with the project goals.
   demonstrated UI only.
 
 ## Desktop-Restricted Build Validation
+- The owner objects to GUI fixtures taking foreground control while using the
+  PC. Run them only during an explicitly free desktop session for that run;
+  later owner input/desktop use revokes that availability. Keep background
+  checks under `OKUFLOW_AGENT_EXCLUDE_GUI=1`, preserve interrupted/failed
+  evidence, and never treat that partial pass as full release validation.
 - When the owner reserves the desktop, set `OKUFLOW_AGENT_EXCLUDE_GUI=1`
   before running `scripts/agent_build.bat`. The script still compiles release,
   CPU and CUDA configurations and runs all tests without the `gui` label.
@@ -248,8 +258,9 @@ aligned with the project goals.
   serial/model as a default. Explicit webcam selection must survive sessions.
 - Fake-adb tests must set `PhoneAdbTestHooks` to a private local port with server
   launch disabled. Never probe the owner's port 5037 from unit tests or kill an
-  unrelated adb server. Runtime bootstrap uses a direct loopback bind only
-  when no listener/endpoint override exists, with a 30-second throttle.
+  unrelated adb server. Runtime bootstrap uses a private direct loopback bind
+  only with phone-use intent and no listener/endpoint override, with a
+  30-second throttle. Explicit webcam intent releases only an idle owned child.
 - The pinned adb staging helper retains exact notices. Before public release,
   resolve any open source/relinking obligations in `THIRD_PARTY_LICENSES.md`;
   a local successful staging test does not clear a redistribution gate.
@@ -361,3 +372,79 @@ aligned with the project goals.
   links when moving documentation and preserve existing technical details.
 - Distinguish published downloads from unreleased changes, submitted testing
   tracks from approval, and planned features from current capabilities.
+
+## Selectable GUI test evidence (2026-10-13)
+- GUI slot selectors and labels live in `tests/gui_cases.cmake`. Preserve every
+  Qt data row and keep GUI cases serial; all native GUI fixtures use
+  `tests/gui_test_support.hpp` to refuse concurrent desktop fixture processes.
+- The tracked build/bundle scripts archive CTest through `run_test_gate.ps1`.
+  `OKUFLOW_TEST_RESUME=1` reuses only matching source/build/runtime/environment
+  inventories in LocalAppData. A changed inventory needs a fresh built gate;
+  CPU, CUDA and bundle evidence are separate. Desktop/hardware changes need a
+  fresh gate too. Never substitute mutable `ctest --rerun-failed` state.
+- Use `scripts/agent_build.bat --retry-interrupted PRESET EXACT_CTEST_NAME`
+  only for a recorded desktop interruption. It executes that case once, keeps
+  the failed attempt and does not rebuild/publish. Application failures, mixed
+  failures, timeouts and unfinished invocations remain failures until repaired;
+  do not retry them until they happen to pass. See `tests/README.md`.
+- Run `scripts/test_test_gate.ps1 -CMake <cmake.exe>` after runner changes.
+  Its private command-line fixtures are desktop-free; they do not replace
+  serial GUI acceptance or the complete shipping/CPU/CUDA/bundle gates.
+
+## Localization validation (2026-10-13)
+- Application catalogs now cover 25 UI languages; keep all 24 non-English Qt
+  catalogs and Android's 24 qualified catalogs in exact source/format parity.
+  See `docs/localization.md` for full canonical tags and resource qualifiers.
+  Preserve saved explicit choices and the `system` preference. Do not silently
+  map Traditional Chinese to Simplified Chinese.
+- `language_catalog_contract` uses Qt offscreen and creates no native windows.
+  It complements, rather than replaces, serial native GUI and device acceptance.
+  The website's `test-transcribe-languages.mjs` runs through `npm run check`.
+- Newly added translations are machine-assisted drafts; structural coverage
+  does not prove fluent wording, font coverage, RTL layout or screen-reader
+  quality. Keep unpublished local builds distinct from Play/Windows releases.
+
+## Nested Windows bundle layout (2026-10-13)
+- New bundles keep one root launcher (`oku_flow.exe`) and move the complete
+  supporting runtime into `app/`. Deploy/hash/sign the inner
+  `app/OkuFlowApp.exe` and keep its Qt plugins, runtime installer, adb notices
+  and source files together. Preserve legacy flat bundle validation.
+- Organize only fresh owned staging with `organize_release_bundle.ps1`, before
+  metadata generation. Do not reorganize a user's existing bundle or captures.
+  Run `test_bundle_layout.ps1` and the tracked Windows matrix after path changes;
+  private dirty previews are not release or clean-VM MSI acceptance evidence.
+
+## Owned adb lifecycle (2026-10-13)
+- A server started by OkuFlow must run on a private loopback port as an exact
+  child assigned suspended to a non-inherited kill-on-close Windows job.
+  Normal shutdown and process crash clean up only that child. Existing default
+  listeners and endpoint overrides remain borrowed, except for the narrowly
+  reviewed legacy adoption contract below; never stop unknown/SDK servers.
+- Automatic owned-server restart requires confirmed host-version failure, no
+  live/starting phone session, cancellation checks and a 30-second cooldown
+  across failed launches and child exits. Do not persist PIDs as ownership proof.
+- Count overlapping phone occupancy reservations rather than erasing a serial
+  still used by another session. Repair an idle server before a new session
+  registers itself. Shutdown must prevent any later owned bootstrap.
+- Disable emulator scanning, verify the private listener against the exact
+  child, log its port and document WinUSB exclusivity. Five-second owned startup
+  and recovery report automatic retry. Do not redirect users to Task Manager;
+  preserve foreign server ownership while testing automatic recovery paths.
+- Keep lifecycle validation desktop-free with `adb_owned_child_fixture`, private
+  ports and scripted probes; missing fixture registration must fail the gate.
+
+## Automatic legacy USB recovery (2026-10-14)
+- Legacy adb reclamation is deliberate adoption of the reviewed OkuFlow bundle,
+  not historical kernel ownership proof. Require two version failures spanning
+  five seconds, phone intent, no live/starting sessions, canonical bundle layout,
+  pinned manifest/adb image and launcher identity, no sibling, named serialization,
+  and exact held-process/listener revalidation before every stop stage including
+  after TCP connect. Unknown/SDK/path overrides never qualify; tests use private
+  hashes, scan scopes and ports, never a real shared server.
+- Keep published launcher and adb manifest pins aligned with verified immutable
+  release evidence in docs/adb_distribution.md and docs/hardcoded_paths.md.
+  Recovery UI remains automatic, with no Task Manager instructions. Ordinary
+  BorrowOnly discovery has no lifecycle effects; webcam release cannot relaunch.
+- Lock waits must honor cancellation, port observations must remain nonblocking,
+  and server epochs must reset transport-ID budgets across adb generations.
+  Shadow handback requires no raw transports and two healthy default probes.

@@ -2,6 +2,14 @@
 
 This module owns the Qt widget layer.
 
+Inspector text follows the Windows light/dark palette, including expanded
+section headers, current quick mode, subtitles, disabled labels and placeholders.
+`theme_contrast.hpp` supplies paired colors, contrast calculations, a complete
+dark palette for the color editor, and surface-colored rasterized SVG icons.
+`MainWindow::ApplyThemeContrast` refreshes these on palette/scheme changes;
+floating chrome retains its deliberately dark surfaces. Actual native light,
+dark and runtime theme-switch acceptance remains part of the serial GUI gate.
+
 Settings > Camera provides a phone-only light button whose label follows capture
 metadata. The light starts off each connection and is never a saved preference.
 
@@ -35,7 +43,7 @@ Current contents:
   role-qualified accessible names, label text/name invalidation events,
   severity-aware announcements, deduplication, and diagnostic coalescing
 - `TranslateUi`, `SetLiveTranslationSource`, and
-  `RetranslateWidgetTree` for live English/Türkçe/Deutsch switching without
+  `RetranslateWidgetTree` for live switching among all 25 UI languages without
   reconstructing hand-built widgets; data-driven combo entries opt out. The
   app locale also controls layout direction, while manual Simple chrome and
   annotation rails use logical leading/trailing anchors so an English RTL

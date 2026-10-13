@@ -2,6 +2,13 @@
 
 ## Published channels (2026-10-13)
 
+The next portable/MSI build keeps supporting application/runtime files under
+`app/`, leaving `oku_flow.exe` as the only root-level EXE. `START_HERE.txt`
+explains launch and MSI shortcuts. Metadata and installer readers support both
+legacy flat and nested inventories; source-built adb notices/relinking files
+stay intact inside the runtime folder. This local change has not replaced the
+published v0.2.3 assets. Fresh clean-VM install/upgrade acceptance remains required.
+
 [GitHub v0.2.3](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.3)
 contains the immutable unsigned-preview MSI and portable ZIP. The exact public
 MSI passed the clean-VM install/upgrade/downgrade/uninstall acceptance checks.

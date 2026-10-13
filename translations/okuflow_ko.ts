@@ -1,0 +1,2941 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="ko" sourcelanguage="en_US">
+    <context>
+        <name>OkuFlow</name>
+        <message>
+            <source>Turn on phone light</source>
+            <translation>휴대전화 조명 켜기</translation>
+        </message>
+        <message>
+            <source>Turn off phone light</source>
+            <translation>전화기 조명을 꺼주세요</translation>
+        </message>
+        <message>
+            <source>Phone light</source>
+            <translation>전화 조명</translation>
+        </message>
+        <message>
+            <source>Starts off on each connection. Press to turn the phone light on or off.</source>
+            <translation>각 연결에서 시작됩니다. 전화기 조명을 켜거나 끄려면 누릅니다.</translation>
+        </message>
+        <message>
+            <source>Application</source>
+            <translation>애플리케이션</translation>
+        </message>
+        <message>
+            <source>Application language</source>
+            <translation>앱 언어</translation>
+        </message>
+        <message>
+            <source>Changes OkuFlow's interface language immediately. An assistant request already in progress keeps its original response language.</source>
+            <translation>OkuFlow의 인터페이스 언어를 즉시 변경합니다. 이미 진행 중인 어시스턴트 요청은 원래 응답 언어를 유지합니다.</translation>
+        </message>
+        <message>
+            <source>Changes the interface immediately. In-progress assistant requests use the language selected when they started.</source>
+            <translation>인터페이스를 즉시 변경합니다. 진행 중인 어시스턴트 요청은 시작 시 선택한 언어를 사용합니다.</translation>
+        </message>
+        <message>
+            <source>Language set to %1.</source>
+            <translation>언어가 %1로 설정되었습니다.</translation>
+        </message>
+        <message>
+            <source>The selected language could not be loaded.</source>
+            <translation>선택한 언어를 로드할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Simple</source>
+            <translation>단순</translation>
+        </message>
+        <message>
+            <source>Advanced</source>
+            <translation>고급</translation>
+        </message>
+        <message>
+            <source>Image</source>
+            <translation>이미지</translation>
+        </message>
+        <message>
+            <source>Assistant</source>
+            <translation>어시스턴트</translation>
+        </message>
+        <message>
+            <source>Device</source>
+            <translation>장치</translation>
+        </message>
+        <message>
+            <source>Recording</source>
+            <translation>녹음</translation>
+        </message>
+        <message>
+            <source>Profile</source>
+            <translation>프로필</translation>
+        </message>
+        <message>
+            <source>Diagnostics</source>
+            <translation>진단</translation>
+        </message>
+        <message>
+            <source>Shared by every profile</source>
+            <translation>모든 프로필에서 공유됨</translation>
+        </message>
+        <message>
+            <source>Saved into the selected quick option</source>
+            <translation>선택한 빠른 옵션에 저장됨</translation>
+        </message>
+        <message>
+            <source>Search settings...</source>
+            <translation>검색 설정...</translation>
+        </message>
+        <message>
+            <source>Search Advanced settings</source>
+            <translation>검색 고급 설정</translation>
+        </message>
+        <message>
+            <source>Type part of a setting name to reveal and focus matching controls.</source>
+            <translation>일치하는 컨트롤을 표시하고 집중하려면 설정 이름의 일부를 입력하세요.</translation>
+        </message>
+        <message>
+            <source>Camera</source>
+            <translation>카메라</translation>
+        </message>
+        <message>
+            <source>Orientation</source>
+            <translation>방향</translation>
+        </message>
+        <message>
+            <source>Camera acceleration</source>
+            <translation>카메라 가속</translation>
+        </message>
+        <message>
+            <source>Automatic (recommended)</source>
+            <translation>자동(권장)</translation>
+        </message>
+        <message>
+            <source>Always use GPU acceleration</source>
+            <translation>항상 GPU 가속 사용</translation>
+        </message>
+        <message>
+            <source>Compatibility mode</source>
+            <translation>호환성 모드</translation>
+        </message>
+        <message>
+            <source>Test this camera</source>
+            <translation>이 카메라를 테스트해 보세요</translation>
+        </message>
+        <message>
+            <source>Viewport motion rate</source>
+            <translation>뷰포트 모션 속도</translation>
+        </message>
+        <message>
+            <source>Auto (up to 120 FPS)</source>
+            <translation>자동(최대 120FPS)</translation>
+        </message>
+        <message>
+            <source>Match display</source>
+            <translation>디스플레이에 맞추기</translation>
+        </message>
+        <message>
+            <source>Viewport framing</source>
+            <translation>뷰포트 프레이밍</translation>
+        </message>
+        <message>
+            <source>Fill (crop)</source>
+            <translation>채우기(자르기)</translation>
+        </message>
+        <message>
+            <source>Fit (show all)</source>
+            <translation>핏(모두 표시)</translation>
+        </message>
+        <message>
+            <source>Save As Quick Option</source>
+            <translation>빠른 옵션으로 저장</translation>
+        </message>
+        <message>
+            <source>Reset Tuning</source>
+            <translation>튜닝 재설정</translation>
+        </message>
+        <message>
+            <source>Virtual Joystick</source>
+            <translation>가상 조이스틱</translation>
+        </message>
+        <message>
+            <source>Zoom wheel acceleration</source>
+            <translation>줌 휠 가속</translation>
+        </message>
+        <message>
+            <source>Shared by original and processed recordings</source>
+            <translation>원본 녹음과 처리된 녹음으로 공유됨</translation>
+        </message>
+        <message>
+            <source>Processed recording resolution</source>
+            <translation>처리된 녹음 해상도</translation>
+        </message>
+        <message>
+            <source>Camera and original recording resolution &amp;&amp; frame rate</source>
+            <translation>카메라 및 원본 녹화 해상도 &amp;&amp; 프레임 속도</translation>
+        </message>
+        <message>
+            <source>Automatic (driver's choice)</source>
+            <translation>자동 (드라이버 선택)</translation>
+        </message>
+        <message>
+            <source>Microphone</source>
+            <translation>마이크</translation>
+        </message>
+        <message>
+            <source>No microphone audio</source>
+            <translation>마이크 오디오 없음</translation>
+        </message>
+        <message>
+            <source>Magnification</source>
+            <translation>배율</translation>
+        </message>
+        <message>
+            <source>Magnification and image</source>
+            <translation>배율 및 이미지</translation>
+        </message>
+        <message>
+            <source>Readability</source>
+            <translation>가독성</translation>
+        </message>
+        <message>
+            <source>Stability</source>
+            <translation>안정성</translation>
+        </message>
+        <message>
+            <source>Screen fix</source>
+            <translation>화면 수정</translation>
+        </message>
+        <message>
+            <source>Text clarity</source>
+            <translation>텍스트 선명도</translation>
+        </message>
+        <message>
+            <source>Sharpen and focus</source>
+            <translation>선명하게 하고 집중하세요</translation>
+        </message>
+        <message>
+            <source>Black &amp;&amp; White</source>
+            <translation>블랙 &amp;&amp; 화이트</translation>
+        </message>
+        <message>
+            <source>Zoom</source>
+            <translation>줌</translation>
+        </message>
+        <message>
+            <source>Zoom %L1 times</source>
+            <translation>%L1배 확대</translation>
+        </message>
+        <message>
+            <source>Gaussian Blur</source>
+            <translation>가우시안 블러</translation>
+        </message>
+        <message>
+            <source>Sigma</source>
+            <translation>시그마</translation>
+        </message>
+        <message>
+            <source>Radius</source>
+            <translation>반경</translation>
+        </message>
+        <message>
+            <source>Temporal Smooth</source>
+            <translation>시간적 스무스</translation>
+        </message>
+        <message>
+            <source>Blend:</source>
+            <translation>혼합:</translation>
+        </message>
+        <message>
+            <source>Stabilize Image</source>
+            <translation>이미지 안정화</translation>
+        </message>
+        <message>
+            <source>Extra Stable (hold on shake)</source>
+            <translation>매우 안정적임(흔들면 고정됨)</translation>
+        </message>
+        <message>
+            <source>Straighten Screen (Keystone)</source>
+            <translation>화면 직선화(키스톤)</translation>
+        </message>
+        <message>
+            <source>Correction tracking:</source>
+            <translation>수정 추적:</translation>
+        </message>
+        <message>
+            <source>Back</source>
+            <translation>뒤로</translation>
+        </message>
+        <message>
+            <source>Stop</source>
+            <translation>중지</translation>
+        </message>
+        <message>
+            <source>Next</source>
+            <translation>다음</translation>
+        </message>
+        <message>
+            <source>Auto Contrast</source>
+            <translation>자동 대비</translation>
+        </message>
+        <message>
+            <source>Strength:</source>
+            <translation>강도:</translation>
+        </message>
+        <message>
+            <source>Auto Text Clarity</source>
+            <translation>자동 텍스트 선명도</translation>
+        </message>
+        <message>
+            <source>Flatten Background</source>
+            <translation>배경을 평평하게</translation>
+        </message>
+        <message>
+            <source>Adaptive Text</source>
+            <translation>적응형 텍스트</translation>
+        </message>
+        <message>
+            <source>Edge softness</source>
+            <translation>가장자리 부드러움</translation>
+        </message>
+        <message>
+            <source>Text polarity</source>
+            <translation>텍스트 극성</translation>
+        </message>
+        <message>
+            <source>Stroke weight</source>
+            <translation>스트로크 무게</translation>
+        </message>
+        <message>
+            <source>Smart Sharpen</source>
+            <translation>스마트 선명 효과</translation>
+        </message>
+        <message>
+            <source>Local Contrast (CLAHE)</source>
+            <translation>국소 대비(CLAHE)</translation>
+        </message>
+        <message>
+            <source>Two-Color Reading</source>
+            <translation>2색 판독</translation>
+        </message>
+        <message>
+            <source>Steady Text Edges</source>
+            <translation>안정된 텍스트 가장자리</translation>
+        </message>
+        <message>
+            <source>Sharpen Text Only</source>
+            <translation>텍스트만 선명하게 하기</translation>
+        </message>
+        <message>
+            <source>Warn When Out of Focus</source>
+            <translation>초점이 맞지 않을 때 경고</translation>
+        </message>
+        <message>
+            <source>Suppress Glare</source>
+            <translation>눈부심 억제</translation>
+        </message>
+        <message>
+            <source>NVIDIA Super Resolution</source>
+            <translation>NVIDIA Super Resolution</translation>
+        </message>
+        <message>
+            <source>Ultra quality (full frame, up to 1440p)</source>
+            <translation>초고화질(풀프레임, 최대 1440p)</translation>
+        </message>
+        <message>
+            <source>Faster 2x mode (narrower view)</source>
+            <translation>더 빠른 2x 모드(더 좁은 보기)</translation>
+        </message>
+        <message>
+            <source>Ignore 24 ms performance limit</source>
+            <translation>24ms 성능 제한 무시</translation>
+        </message>
+        <message>
+            <source>Off</source>
+            <translation>끄기</translation>
+        </message>
+        <message>
+            <source>Display colors</source>
+            <translation>디스플레이 색상</translation>
+        </message>
+        <message>
+            <source>Normal colors</source>
+            <translation>일반 색상</translation>
+        </message>
+        <message>
+            <source>Contrast</source>
+            <translation>대비</translation>
+        </message>
+        <message>
+            <source>Brightness</source>
+            <translation>밝기</translation>
+        </message>
+        <message>
+            <source>Scene Explain</source>
+            <translation>장면 설명</translation>
+        </message>
+        <message>
+            <source>Assistive Overlay</source>
+            <translation>보조 오버레이</translation>
+        </message>
+        <message>
+            <source>Save drawing to notes when leaving Draw</source>
+            <translation>Draw를 종료할 때 그림을 메모에 저장</translation>
+        </message>
+        <message>
+            <source>AI Settings</source>
+            <translation>AI 설정</translation>
+        </message>
+        <message>
+            <source>Open AI Settings dialog</source>
+            <translation>AI 설정 대화상자 열기</translation>
+        </message>
+        <message>
+            <source>Open Notes</source>
+            <translation>노트 열기</translation>
+        </message>
+        <message>
+            <source>Open my OkuFlow folder</source>
+            <translation>내 OkuFlow 폴더를 엽니다.</translation>
+        </message>
+        <message>
+            <source>Change OkuFlow folder...</source>
+            <translation>OkuFlow 폴더 변경...</translation>
+        </message>
+        <message>
+            <source>Setup &amp;&amp; Downloads...</source>
+            <translation>설정 &amp;&amp; 다운로드...</translation>
+        </message>
+        <message>
+            <source>Spatial Sharpen</source>
+            <translation>공간 선명</translation>
+        </message>
+        <message>
+            <source>Backend</source>
+            <translation>백엔드</translation>
+        </message>
+        <message>
+            <source>Sharpness</source>
+            <translation>선명도</translation>
+        </message>
+        <message>
+            <source>Focus X:</source>
+            <translation>초점 X:</translation>
+        </message>
+        <message>
+            <source>Focus Y:</source>
+            <translation>초점 Y:</translation>
+        </message>
+        <message>
+            <source>Debug View</source>
+            <translation>디버그 보기</translation>
+        </message>
+        <message>
+            <source>Show Focus Point</source>
+            <translation>초점 포인트 표시</translation>
+        </message>
+        <message>
+            <source>Pipeline status</source>
+            <translation>파이프라인 상태</translation>
+        </message>
+        <message>
+            <source>Performance percentiles</source>
+            <translation>성과 백분위수</translation>
+        </message>
+        <message>
+            <source>Collecting timing samples…</source>
+            <translation>타이밍 샘플 수집 중…</translation>
+        </message>
+        <message>
+            <source>Photo</source>
+            <translation>사진</translation>
+        </message>
+        <message>
+            <source>Record</source>
+            <translation>녹화</translation>
+        </message>
+        <message>
+            <source>Explain</source>
+            <translation>설명하다</translation>
+        </message>
+        <message>
+            <source>Read</source>
+            <translation>읽기</translation>
+        </message>
+        <message>
+            <source>Draw</source>
+            <translation>그리기</translation>
+        </message>
+        <message>
+            <source>Capture original and processed photos</source>
+            <translation>원본 및 처리된 사진 캡처</translation>
+        </message>
+        <message>
+            <source>Record original and processed videos</source>
+            <translation>원본 및 처리된 비디오 녹화</translation>
+        </message>
+        <message>
+            <source>Explain the current view</source>
+            <translation>현재 보기 설명</translation>
+        </message>
+        <message>
+            <source>Read text in the current view</source>
+            <translation>현재 보기에서 텍스트 읽기</translation>
+        </message>
+        <message>
+            <source>Text Clarity</source>
+            <translation>텍스트 선명도</translation>
+        </message>
+        <message>
+            <source>Move</source>
+            <translation>이동</translation>
+        </message>
+        <message>
+            <source>Pen</source>
+            <translation>펜</translation>
+        </message>
+        <message>
+            <source>Line</source>
+            <translation>라인</translation>
+        </message>
+        <message>
+            <source>Shape</source>
+            <translation>모양</translation>
+        </message>
+        <message>
+            <source>Text</source>
+            <translation>텍스트</translation>
+        </message>
+        <message>
+            <source>Erase</source>
+            <translation>지우기</translation>
+        </message>
+        <message>
+            <source>Undo</source>
+            <translation>실행 취소</translation>
+        </message>
+        <message>
+            <source>Redo</source>
+            <translation>다시 실행</translation>
+        </message>
+        <message>
+            <source>Save</source>
+            <translation>저장</translation>
+        </message>
+        <message>
+            <source>Clear</source>
+            <translation>지우기</translation>
+        </message>
+        <message>
+            <source>Done</source>
+            <translation>완료</translation>
+        </message>
+        <message>
+            <source>Pen options</source>
+            <translation>펜 옵션</translation>
+        </message>
+        <message>
+            <source>Thickness</source>
+            <translation>두께</translation>
+        </message>
+        <message>
+            <source>Type text, then press Enter</source>
+            <translation>텍스트를 입력한 다음 Enter를 누르세요.</translation>
+        </message>
+        <message>
+            <source>Ask about this view...</source>
+            <translation>이 뷰에 대해 물어보세요...</translation>
+        </message>
+        <message>
+            <source>Ask</source>
+            <translation>물어보세요</translation>
+        </message>
+        <message>
+            <source>Read Aloud</source>
+            <translation>소리내어 읽기</translation>
+        </message>
+        <message>
+            <source>Close result</source>
+            <translation>결과 닫기</translation>
+        </message>
+        <message>
+            <source>New Conversation</source>
+            <translation>새로운 대화</translation>
+        </message>
+        <message>
+            <source>Send</source>
+            <translation>보내기</translation>
+        </message>
+        <message>
+            <source>Rename</source>
+            <translation>이름 바꾸기</translation>
+        </message>
+        <message>
+            <source>Export</source>
+            <translation>내보내기</translation>
+        </message>
+        <message>
+            <source>Delete</source>
+            <translation>삭제</translation>
+        </message>
+        <message>
+            <source>Connect ChatGPT</source>
+            <translation>ChatGPT 연결</translation>
+        </message>
+        <message>
+            <source>Starting Codex...</source>
+            <translation>Codex 시작 중...</translation>
+        </message>
+        <message>
+            <source>Ask about the current camera view.</source>
+            <translation>현재 카메라 뷰에 대해 물어보세요.</translation>
+        </message>
+        <message>
+            <source>Ask about what is visible...</source>
+            <translation>눈에 보이는 것에 대해 물어보세요...</translation>
+        </message>
+        <message>
+            <source>Attach current view</source>
+            <translation>현재 보기 연결</translation>
+        </message>
+        <message>
+            <source>AI Settings sections</source>
+            <translation>AI 설정 섹션</translation>
+        </message>
+        <message>
+            <source>OpenAI-compatible server</source>
+            <translation>OpenAI 호환 서버</translation>
+        </message>
+        <message>
+            <source>AI provider:</source>
+            <translation>AI 제공업체:</translation>
+        </message>
+        <message>
+            <source>Browse...</source>
+            <translation>찾아보기...</translation>
+        </message>
+        <message>
+            <source>Browse…</source>
+            <translation>찾아보기…</translation>
+        </message>
+        <message>
+            <source>Codex CLI path:</source>
+            <translation>Codex CLI 경로:</translation>
+        </message>
+        <message>
+            <source>Codex model:</source>
+            <translation>Codex 모델:</translation>
+        </message>
+        <message>
+            <source>Reasoning:</source>
+            <translation>추론:</translation>
+        </message>
+        <message>
+            <source>Allow internet access</source>
+            <translation>인터넷 액세스 허용</translation>
+        </message>
+        <message>
+            <source>Allow coding commands and file changes</source>
+            <translation>코딩 명령 및 파일 변경 허용</translation>
+        </message>
+        <message>
+            <source>Required when coding is enabled</source>
+            <translation>코딩이 활성화된 경우 필수</translation>
+        </message>
+        <message>
+            <source>Coding workspace:</source>
+            <translation>코딩 작업 공간:</translation>
+        </message>
+        <message>
+            <source>Assistant behavior</source>
+            <translation>어시스턴트 행동</translation>
+        </message>
+        <message>
+            <source>Your instructions:</source>
+            <translation>귀하의 지시사항:</translation>
+        </message>
+        <message>
+            <source>OpenAI-compatible vision server</source>
+            <translation>OpenAI 호환 비전 서버</translation>
+        </message>
+        <message>
+            <source>Server URL:</source>
+            <translation>서버 URL:</translation>
+        </message>
+        <message>
+            <source>API key:</source>
+            <translation>API 키:</translation>
+        </message>
+        <message>
+            <source>Vision model:</source>
+            <translation>비전 모델:</translation>
+        </message>
+        <message>
+            <source>Read aloud</source>
+            <translation>소리내어 읽기</translation>
+        </message>
+        <message>
+            <source>Voice:</source>
+            <translation>음성:</translation>
+        </message>
+        <message>
+            <source>Speed:</source>
+            <translation>속도:</translation>
+        </message>
+        <message>
+            <source>Preview</source>
+            <translation>미리보기</translation>
+        </message>
+        <message>
+            <source>Lecture notes</source>
+            <translation>강의노트</translation>
+        </message>
+        <message>
+            <source>Camera did not stop in time. Restart OkuFlow before changing cameras.</source>
+            <translation>카메라가 제 시간에 멈추지 않았습니다. 카메라를 변경하기 전에 OkuFlow를 다시 시작하세요.</translation>
+        </message>
+        <message>
+            <source>GPU stopped responding. Restart OkuFlow to resume video.</source>
+            <translation>GPU가 응답을 멈췄습니다. 비디오를 재개하려면 OkuFlow를 다시 시작하세요.</translation>
+        </message>
+        <message>
+            <source>Lecture notes could not be saved.</source>
+            <translation>강의노트를 저장할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Saving lecture notes...</source>
+            <translation>강의 노트를 저장하는 중...</translation>
+        </message>
+        <message>
+            <source>Write lecture notes file</source>
+            <translation>강의노트 파일 작성</translation>
+        </message>
+        <message>
+            <source>None</source>
+            <translation>없음</translation>
+        </message>
+        <message>
+            <source>Minimal</source>
+            <translation>최소</translation>
+        </message>
+        <message>
+            <source>Low</source>
+            <translation>낮음</translation>
+        </message>
+        <message>
+            <source>Medium</source>
+            <translation>중간</translation>
+        </message>
+        <message>
+            <source>High</source>
+            <translation>높음</translation>
+        </message>
+        <message>
+            <source>Extra high</source>
+            <translation>매우 높음</translation>
+        </message>
+        <message>
+            <source>Default</source>
+            <translation>기본값</translation>
+        </message>
+        <message>
+            <source>Normal</source>
+            <translation>보통</translation>
+        </message>
+        <message>
+            <source>%1% slower</source>
+            <translation>%1% 더 느림</translation>
+        </message>
+        <message>
+            <source>%1% faster</source>
+            <translation>%1% 더 빨라짐</translation>
+        </message>
+        <message>
+            <source>Speech rate</source>
+            <translation>말하는 속도</translation>
+        </message>
+        <message>
+            <source>OkuFlow will read this result using the selected voice.</source>
+            <translation>OkuFlow는 선택한 음성을 사용하여 이 결과를 읽습니다.</translation>
+        </message>
+        <message>
+            <source>Optional Reading and AI Tools</source>
+            <translation>선택적 읽기 및 AI 도구</translation>
+        </message>
+        <message>
+            <source>Install</source>
+            <translation>설치</translation>
+        </message>
+        <message>
+            <source>Remove</source>
+            <translation>제거</translation>
+        </message>
+        <message>
+            <source>Cancel Download</source>
+            <translation>다운로드 취소</translation>
+        </message>
+        <message>
+            <source>Close</source>
+            <translation>닫기</translation>
+        </message>
+        <message>
+            <source>Don't ask again automatically</source>
+            <translation>자동으로 다시 묻지 않음</translation>
+        </message>
+        <message>
+            <source>Section heading. Activate to expand or collapse this settings group.</source>
+            <translation>섹션 제목. 이 설정 그룹을 확장하거나 축소하려면 활성화하세요.</translation>
+        </message>
+        <message>
+            <source>expanded</source>
+            <translation>확장됨</translation>
+        </message>
+        <message>
+            <source>collapsed</source>
+            <translation>접힌</translation>
+        </message>
+        <message>
+            <source>%1 · %2 changed</source>
+            <translation>%1 · %2 변경됨</translation>
+        </message>
+        <message>
+            <source>%1, heading, %2</source>
+            <translation>%1, 제목, %2</translation>
+        </message>
+        <message>
+            <source>%1, heading, %2, %3 changed</source>
+            <translation>%1, 제목, %2, %3 변경됨</translation>
+        </message>
+        <message>
+            <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
+            <translation>%1 음성이 설치되지 않았습니다. 현재 음성을 사용합니다. Windows 설정 → 시간 및 언어 → 음성에서 설치하세요.</translation>
+        </message>
+        <message>
+            <source>Assistant request stopped.</source>
+            <translation>어시스턴트 요청이 중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>Attaching the current view...</source>
+            <translation>현재 뷰를 연결하는 중...</translation>
+        </message>
+        <message>
+            <source>Capturing the current view...</source>
+            <translation>현재 보기를 캡처하는 중...</translation>
+        </message>
+        <message>
+            <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
+            <translation>초점이 맞지 않는 이미지입니다. 텍스트를 읽기 전에 다시 초점을 맞추려면 휴대폰 화면을 탭하세요.</translation>
+        </message>
+        <message>
+            <source>Loading conversation...</source>
+            <translation>대화 로드 중...</translation>
+        </message>
+        <message>
+            <source>No lecture notes yet — use Read, Explain, or Assistant to add text.</source>
+            <translation>아직 강의 노트가 없습니다. 텍스트를 추가하려면 읽기, 설명 또는 보조 도구를 사용하세요.</translation>
+        </message>
+        <message>
+            <source>OkuFlow Assistant</source>
+            <translation>OkuFlow 어시스턴트</translation>
+        </message>
+        <message>
+            <source>You</source>
+            <translation>당신</translation>
+        </message>
+        <message>
+            <source>Capturing original and processed photos...</source>
+            <translation>원본 및 처리된 사진을 캡처하는 중...</translation>
+        </message>
+        <message>
+            <source>Delete Conversation</source>
+            <translation>대화 삭제</translation>
+        </message>
+        <message>
+            <source>Export Conversation</source>
+            <translation>대화 내보내기</translation>
+        </message>
+        <message>
+            <source>Permanently delete this OkuFlow assistant conversation?</source>
+            <translation>이 OkuFlow 어시스턴트 대화를 영구 삭제하시겠습니까?</translation>
+        </message>
+        <message>
+            <source>Reconnect ChatGPT</source>
+            <translation>ChatGPT 다시 연결</translation>
+        </message>
+        <message>
+            <source>Rename Conversation</source>
+            <translation>대화 이름 바꾸기</translation>
+        </message>
+        <message>
+            <source>Stopped.</source>
+            <translation>중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>The OkuFlow Analysis folder is unavailable.</source>
+            <translation>OkuFlow 분석 폴더를 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Viewport motion limited to %1 FPS by this display.</source>
+            <translation>이 디스플레이에서는 뷰포트 모션이 %1 FPS로 제한됩니다.</translation>
+        </message>
+        <message>
+            <source>Vision model: %1</source>
+            <translation>비전 모델: %1</translation>
+        </message>
+        <message>
+            <source>Automatic screen correction continuing.</source>
+            <translation>자동 화면 수정이 계속됩니다.</translation>
+        </message>
+        <message>
+            <source>Automatic screen correction stopped.</source>
+            <translation>자동 화면 수정이 중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>취소</translation>
+        </message>
+        <message>
+            <source>Choose OkuFlow Folder</source>
+            <translation>OkuFlow 폴더를 선택하세요</translation>
+        </message>
+        <message>
+            <source>GPU camera capture is active with the safe copy fallback.</source>
+            <translation>GPU 카메라 캡처는 안전한 복사본 대체와 함께 활성화됩니다.</translation>
+        </message>
+        <message>
+            <source>Later</source>
+            <translation>나중에</translation>
+        </message>
+        <message>
+            <source>NVIDIA Super Resolution performance limit ignored.</source>
+            <translation>NVIDIA Super Resolution 성능 제한이 무시되었습니다.</translation>
+        </message>
+        <message>
+            <source>NVIDIA Super Resolution performance limit restored.</source>
+            <translation>NVIDIA Super Resolution 성능 제한이 복원되었습니다.</translation>
+        </message>
+        <message>
+            <source>New OkuFlow files will be saved in %1.</source>
+            <translation>새로운 OkuFlow 파일은 %1에 저장됩니다.</translation>
+        </message>
+        <message>
+            <source>Open OkuFlow Folder</source>
+            <translation>OkuFlow 폴더 열기</translation>
+        </message>
+        <message>
+            <source>OkuFlow cannot use the selected folder.</source>
+            <translation>OkuFlow 선택한 폴더를 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Opened your OkuFlow folder.</source>
+            <translation>OkuFlow 폴더를 열었습니다.</translation>
+        </message>
+        <message>
+            <source>Recording stopped because the microphone selection changed.</source>
+            <translation>마이크 선택이 변경되어 녹음이 중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>Screen correction moved back and tracking stopped.</source>
+            <translation>화면 보정이 뒤로 이동하고 추적이 중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>Select a camera before running the test.</source>
+            <translation>테스트를 실행하기 전에 카메라를 선택하세요.</translation>
+        </message>
+        <message>
+            <source>Stop recording before testing camera acceleration.</source>
+            <translation>카메라 가속을 테스트하기 전에 녹화를 중지하십시오.</translation>
+        </message>
+        <message>
+            <source>Temporal blend</source>
+            <translation>시간적 혼합</translation>
+        </message>
+        <message>
+            <source>Testing GPU and compatibility capture in an isolated process...</source>
+            <translation>격리된 프로세스에서 GPU 및 호환성 캡처 테스트...</translation>
+        </message>
+        <message>
+            <source>Testing camera...</source>
+            <translation>카메라 테스트 중...</translation>
+        </message>
+        <message>
+            <source>The OkuFlow folder is unavailable.</source>
+            <translation>OkuFlow 폴더는 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>The isolated camera test could not start: %1</source>
+            <translation>격리된 카메라 테스트를 시작할 수 없습니다: %1</translation>
+        </message>
+        <message>
+            <source>Using the next screen correction.</source>
+            <translation>다음 화면 수정을 사용합니다.</translation>
+        </message>
+        <message>
+            <source>Windows could not open:
+%1</source>
+            <translation>Windows를 열 수 없습니다:
+%1</translation>
+        </message>
+        <message>
+            <source>%1 (system default)</source>
+            <translation>%1 (시스템 기본값)</translation>
+        </message>
+        <message>
+            <source>%1 × %2 @ %3 fps</source>
+            <translation>%1 × %2 @ %3fps</translation>
+        </message>
+        <message>
+            <source>Annotated view could not be saved.</source>
+            <translation>주석이 달린 보기를 저장할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Annotated view not saved: the image could not be queued.</source>
+            <translation>주석이 달린 보기가 저장되지 않았습니다. 이미지를 대기열에 추가할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Annotated view not saved: the image writer is busy. Try again.</source>
+            <translation>주석이 달린 보기가 저장되지 않았습니다. 이미지가 아직 기록 중입니다. 다시 시도해 보세요.</translation>
+        </message>
+        <message>
+            <source>Annotated view not saved: the viewport was unavailable.</source>
+            <translation>주석이 달린 뷰가 저장되지 않았습니다. 뷰포트를 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Camera Error</source>
+            <translation>카메라 오류</translation>
+        </message>
+        <message>
+            <source>Camera reconnected.</source>
+            <translation>카메라가 다시 연결되었습니다.</translation>
+        </message>
+        <message>
+            <source>Failed to start camera capture</source>
+            <translation>카메라 캡처를 시작하지 못했습니다.</translation>
+        </message>
+        <message>
+            <source>GPU camera acceleration could not start: %1</source>
+            <translation>GPU 카메라 가속을 시작할 수 없습니다: %1</translation>
+        </message>
+        <message>
+            <source>GPU processing keeps failing - showing unprocessed video.</source>
+            <translation>GPU 처리가 계속 실패합니다. 처리되지 않은 비디오가 표시됩니다.</translation>
+        </message>
+        <message>
+            <source>GPU-accelerated camera capture passed startup validation.</source>
+            <translation>GPU 가속 카메라 캡처가 시작 검증을 통과했습니다.</translation>
+        </message>
+        <message>
+            <source>Modes unavailable: %1</source>
+            <translation>사용할 수 없는 모드: %1</translation>
+        </message>
+        <message>
+            <source>No camera modes were reported.</source>
+            <translation>보고된 카메라 모드가 없습니다.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: no processed frame was available.</source>
+            <translation>사진이 저장되지 않았습니다. 처리된 프레임이 없습니다.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>사진이 저장되지 않음: OkuFlow Photos 폴더를 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the image could not be queued.</source>
+            <translation>사진이 저장되지 않았습니다. 이미지를 대기열에 추가할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the image writer is busy. Try again.</source>
+            <translation>사진이 저장되지 않았습니다. 이미지가 아직 기록 중입니다. 다시 시도해 보세요.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the original camera frame could not be converted.</source>
+            <translation>사진이 저장되지 않았습니다. 원본 카메라 프레임을 변환할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the original camera frame could not be read back.</source>
+            <translation>사진이 저장되지 않음: 원본 카메라 프레임을 다시 읽을 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Photo not saved: the processed or original frame was unavailable.</source>
+            <translation>사진이 저장되지 않았습니다. 처리된 프레임이나 원본 프레임을 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Reconnecting to camera…</source>
+            <translation>카메라에 다시 연결하는 중…</translation>
+        </message>
+        <message>
+            <source>Recording stopped: the original camera frame could not be converted.</source>
+            <translation>녹화 중지됨: 원본 카메라 프레임을 변환할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Saving annotated view to lecture notes...</source>
+            <translation>주석이 달린 보기를 강의 노트에 저장하는 중...</translation>
+        </message>
+        <message>
+            <source>Saving original and processed photos...</source>
+            <translation>원본 및 처리된 사진을 저장하는 중...</translation>
+        </message>
+        <message>
+            <source>The camera GPU texture could not be converted for CUDA.</source>
+            <translation>CUDA에 대해 카메라 GPU 텍스처를 변환할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Annotated view</source>
+            <translation>주석이 달린 보기</translation>
+        </message>
+        <message>
+            <source>Finishing recording...</source>
+            <translation>녹음을 마치는 중...</translation>
+        </message>
+        <message>
+            <source>Finishing recording…</source>
+            <translation>녹음을 완료하는 중…</translation>
+        </message>
+        <message>
+            <source>Recording could not start.</source>
+            <translation>녹음을 시작할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Recording could not start: %1</source>
+            <translation>녹화를 시작할 수 없습니다: %1</translation>
+        </message>
+        <message>
+            <source>Recording is starting...</source>
+            <translation>녹화가 시작됩니다...</translation>
+        </message>
+        <message>
+            <source>Recording saved. %1</source>
+            <translation>녹음이 저장되었습니다. %1</translation>
+        </message>
+        <message>
+            <source>Recording stopped after reaching the 12-hour limit.</source>
+            <translation>12시간 제한에 도달한 후 녹화가 중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>Recording stopped because an encoder rejected a frame.</source>
+            <translation>인코더가 프레임을 거부하여 녹화가 중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>Recording stopped because the audio encoder rejected a sample.</source>
+            <translation>오디오 인코더가 샘플을 거부하여 녹음이 중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>Recording stopped before the first frame was written.</source>
+            <translation>첫 번째 프레임이 기록되기 전에 녹화가 중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>Stopping recording...</source>
+            <translation>녹음을 중지하는 중...</translation>
+        </message>
+        <message>
+            <source>The camera mode changed. Recording continues in part %1.</source>
+            <translation>카메라 모드가 변경되었습니다. %1 부분에서 녹화가 계속됩니다.</translation>
+        </message>
+        <message>
+            <source>The recording canvas is invalid.</source>
+            <translation>기록 캔버스가 유효하지 않습니다.</translation>
+        </message>
+        <message>
+            <source>No frames were dropped.</source>
+            <translation>프레임이 삭제되지 않았습니다.</translation>
+        </message>
+        <message>
+            <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
+            <translation>오디오 처리가 따라가지 못하거나 입력이 잘못되어 녹음이 중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
+            <translation>오디오: %1 블록은 인코딩 전에 삭제되었으며, %2는 입력 제한으로 인해 거부되었습니다.</translation>
+        </message>
+        <message>
+            <source>%1 frames were dropped (%2).</source>
+            <translation>%1 프레임이 삭제되었습니다(%2).</translation>
+        </message>
+        <message>
+            <source>%1 frames used an estimated timestamp.</source>
+            <translation>%1 프레임은 예상 타임스탬프를 사용했습니다.</translation>
+        </message>
+        <message>
+            <source>Original video</source>
+            <translation>원본 영상</translation>
+        </message>
+        <message>
+            <source>Processed video</source>
+            <translation>처리된 영상</translation>
+        </message>
+        <message>
+            <source>with microphone audio</source>
+            <translation>마이크 오디오 포함</translation>
+        </message>
+        <message>
+            <source>CPU/system memory</source>
+            <translation>CPU/시스템 메모리</translation>
+        </message>
+        <message>
+            <source>direct GPU</source>
+            <translation>직접 GPU</translation>
+        </message>
+        <message>
+            <source>GPU-fed original and processed</source>
+            <translation>GPU 공급 원본 및 처리됨</translation>
+        </message>
+        <message>
+            <source>GPU source with worker readback</source>
+            <translation>작업자 다시 읽기가 포함된 GPU 소스</translation>
+        </message>
+        <message>
+            <source>Another assistant request is already running.</source>
+            <translation>다른 어시스턴트 요청이 이미 실행 중입니다.</translation>
+        </message>
+        <message>
+            <source>Assistant stopped.</source>
+            <translation>어시스턴트가 중지되었습니다.</translation>
+        </message>
+        <message>
+            <source>Assistive View</source>
+            <translation>보조 보기</translation>
+        </message>
+        <message>
+            <source>Codex image preparation is busy. Try again in a moment.</source>
+            <translation>Codex 이미지 준비 중입니다. 잠시 후에 다시 시도해 보세요.</translation>
+        </message>
+        <message>
+            <source>Could not prepare the current camera view.</source>
+            <translation>현재 카메라 보기를 준비할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Failed to encode frame for VLM request.</source>
+            <translation>VLM 요청에 대한 프레임을 인코딩하지 못했습니다.</translation>
+        </message>
+        <message>
+            <source>Failed to prepare the current view for Codex.</source>
+            <translation>Codex에 대한 현재 보기를 준비하지 못했습니다.</translation>
+        </message>
+        <message>
+            <source>No camera frame is available to attach.</source>
+            <translation>부착할 수 있는 카메라 프레임이 없습니다.</translation>
+        </message>
+        <message>
+            <source>Persistent Assistant conversations require the Codex subscription provider.</source>
+            <translation>지속적인 어시스턴트 대화에는 Codex 구독 공급자가 필요합니다.</translation>
+        </message>
+        <message>
+            <source>Photo captured</source>
+            <translation>사진을 촬영했습니다</translation>
+        </message>
+        <message>
+            <source>Preparing the current view...</source>
+            <translation>현재 보기 준비 중...</translation>
+        </message>
+        <message>
+            <source>Querying VLM...</source>
+            <translation>VLM 쿼리 중...</translation>
+        </message>
+        <message>
+            <source>Scene explanation</source>
+            <translation>장면 설명</translation>
+        </message>
+        <message>
+            <source>Scene explanation is busy with a previous request. Try again in a moment.</source>
+            <translation>이전 요청으로 장면 설명이 진행 중입니다. 잠시 후에 다시 시도해 보세요.</translation>
+        </message>
+        <message>
+            <source>Sending the current camera frame and prompt</source>
+            <translation>현재 카메라 프레임 및 프롬프트 보내기</translation>
+        </message>
+        <message>
+            <source>Sending the prompt only</source>
+            <translation>프롬프트만 보내기</translation>
+        </message>
+        <message>
+            <source>Text on screen</source>
+            <translation>화면의 텍스트</translation>
+        </message>
+        <message>
+            <source>Thinking...</source>
+            <translation>생각하다...</translation>
+        </message>
+        <message>
+            <source>VLM image preparation is busy. Try again in a moment.</source>
+            <translation>VLM 이미지 준비가 진행 중입니다. 잠시 후에 다시 시도해 보세요.</translation>
+        </message>
+        <message>
+            <source>VLM ready.</source>
+            <translation>VLM이 준비되었습니다.</translation>
+        </message>
+        <message>
+            <source>VLM request failed: %1</source>
+            <translation>VLM 요청 실패: %1</translation>
+        </message>
+        <message>
+            <source>VLM response did not contain readable text.</source>
+            <translation>VLM 응답에 읽을 수 있는 텍스트가 포함되어 있지 않습니다.</translation>
+        </message>
+        <message>
+            <source>VLM response exceeded OkuFlow's safe size limit.</source>
+            <translation>VLM 응답이 OkuFlow의 안전 크기 제한을 초과했습니다.</translation>
+        </message>
+        <message>
+            <source>VLM returned an empty description.</source>
+            <translation>VLM이 빈 설명을 반환했습니다.</translation>
+        </message>
+        <message>
+            <source>Video recorded</source>
+            <translation>녹화된 영상</translation>
+        </message>
+        <message>
+            <source>AI Provider</source>
+            <translation>AI 제공업체</translation>
+        </message>
+        <message>
+            <source>Codex CLI Path</source>
+            <translation>Codex CLI 경로</translation>
+        </message>
+        <message>
+            <source>Codex Model</source>
+            <translation>Codex 모델</translation>
+        </message>
+        <message>
+            <source>Codex Reasoning</source>
+            <translation>Codex 추론</translation>
+        </message>
+        <message>
+            <source>Assistant Instructions</source>
+            <translation>어시스턴트 지침</translation>
+        </message>
+        <message>
+            <source>Built-in Codex Prompt</source>
+            <translation>내장 Codex 프롬프트</translation>
+        </message>
+        <message>
+            <source>VLM Server URL</source>
+            <translation>VLM 서버 URL</translation>
+        </message>
+        <message>
+            <source>API Key</source>
+            <translation>API 키</translation>
+        </message>
+        <message>
+            <source>Model</source>
+            <translation>모델</translation>
+        </message>
+        <message>
+            <source>Read Aloud Voice</source>
+            <translation>소리내어 읽기 음성</translation>
+        </message>
+        <message>
+            <source>Read Aloud Speed</source>
+            <translation>소리내어 읽기 속도</translation>
+        </message>
+        <message>
+            <source>Preview Read Aloud Voice</source>
+            <translation>소리내어 읽기 음성 미리보기</translation>
+        </message>
+        <message>
+            <source>Write Lecture Notes File</source>
+            <translation>강의 노트 파일 작성</translation>
+        </message>
+        <message>
+            <source>Loading installed Windows voices...</source>
+            <translation>설치된 Windows 음성 로드 중...</translation>
+        </message>
+        <message>
+            <source>No installed Windows voices found</source>
+            <translation>설치된 Windows 음성을 찾을 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Text-to-speech is unavailable in this build</source>
+            <translation>이 빌드에서는 텍스트 음성 변환을 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Optional for local servers</source>
+            <translation>로컬 서버의 경우 선택 사항</translation>
+        </message>
+        <message>
+            <source>Choose an existing workspace folder before enabling coding.</source>
+            <translation>코딩을 활성화하기 전에 기존 작업 영역 폴더를 선택하세요.</translation>
+        </message>
+        <message>
+            <source>Coding Workspace Required</source>
+            <translation>코딩 작업공간 필요</translation>
+        </message>
+        <message>
+            <source>Annotation mode on. Pen tool.</source>
+            <translation>주석 모드가 켜져 있습니다. 펜 도구.</translation>
+        </message>
+        <message>
+            <source>Annotation options</source>
+            <translation>주석 옵션</translation>
+        </message>
+        <message>
+            <source>Annotation text</source>
+            <translation>주석 텍스트</translation>
+        </message>
+        <message>
+            <source>Annotation thickness</source>
+            <translation>주석 두께</translation>
+        </message>
+        <message>
+            <source>Annotation tool</source>
+            <translation>주석 도구</translation>
+        </message>
+        <message>
+            <source>Clear annotations</source>
+            <translation>주석 지우기</translation>
+        </message>
+        <message>
+            <source>Click the camera view, then type a label. Shortcut T.</source>
+            <translation>카메라 보기를 클릭한 다음 라벨을 입력하세요. 바로가기 T.</translation>
+        </message>
+        <message>
+            <source>Dashed</source>
+            <translation>점선</translation>
+        </message>
+        <message>
+            <source>Dashed line style</source>
+            <translation>점선 스타일</translation>
+        </message>
+        <message>
+            <source>Dashed stroke</source>
+            <translation>점선 획</translation>
+        </message>
+        <message>
+            <source>Done drawing</source>
+            <translation>그리기 완료</translation>
+        </message>
+        <message>
+            <source>Draw a dashed stroke with transparent gaps.</source>
+            <translation>투명한 간격으로 점선을 그립니다.</translation>
+        </message>
+        <message>
+            <source>Draw a rectangle.</source>
+            <translation>직사각형을 그립니다.</translation>
+        </message>
+        <message>
+            <source>Draw a straight line. Shortcut L.</source>
+            <translation>직선을 그립니다. 바로가기 L.</translation>
+        </message>
+        <message>
+            <source>Draw an ellipse.</source>
+            <translation>타원을 그립니다.</translation>
+        </message>
+        <message>
+            <source>Draw an uninterrupted stroke.</source>
+            <translation>중단없는 스트로크를 그립니다.</translation>
+        </message>
+        <message>
+            <source>Draw freehand on the camera view. Shortcut P.</source>
+            <translation>카메라 뷰에 자유롭게 그림을 그립니다. 바로가기P</translation>
+        </message>
+        <message>
+            <source>Draw mode off.</source>
+            <translation>그리기 모드가 꺼졌습니다.</translation>
+        </message>
+        <message>
+            <source>Draw rectangles or ellipses. Shortcut S.</source>
+            <translation>직사각형이나 타원을 그립니다. 바로가기 S.</translation>
+        </message>
+        <message>
+            <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
+            <translation>카메라 장면에 고정된 주석을 그리거나 선택하거나 크기를 조정하거나 저장하거나 지울 수 있습니다.</translation>
+        </message>
+        <message>
+            <source>Ellipse</source>
+            <translation>타원</translation>
+        </message>
+        <message>
+            <source>Ellipse shape</source>
+            <translation>타원 모양</translation>
+        </message>
+        <message>
+            <source>Erase annotation tool</source>
+            <translation>주석 도구 지우기</translation>
+        </message>
+        <message>
+            <source>Erase tool</source>
+            <translation>지우기 도구</translation>
+        </message>
+        <message>
+            <source>Leave Draw mode.</source>
+            <translation>그리기 모드를 종료합니다.</translation>
+        </message>
+        <message>
+            <source>Lecture annotation canvas</source>
+            <translation>강의 주석 캔버스</translation>
+        </message>
+        <message>
+            <source>Line tool</source>
+            <translation>선 도구</translation>
+        </message>
+        <message>
+            <source>Move annotation tool</source>
+            <translation>주석 도구 이동</translation>
+        </message>
+        <message>
+            <source>Move tool</source>
+            <translation>도구 이동</translation>
+        </message>
+        <message>
+            <source>Nothing selected</source>
+            <translation>선택한 항목이 없습니다.</translation>
+        </message>
+        <message>
+            <source>Pen tool</source>
+            <translation>펜 도구</translation>
+        </message>
+        <message>
+            <source>Rectangle</source>
+            <translation>직사각형</translation>
+        </message>
+        <message>
+            <source>Rectangle shape</source>
+            <translation>직사각형 모양</translation>
+        </message>
+        <message>
+            <source>Redo annotation</source>
+            <translation>주석 다시 실행</translation>
+        </message>
+        <message>
+            <source>Remove a complete annotation. Shortcut E.</source>
+            <translation>전체 주석을 제거합니다. 바로가기 E.</translation>
+        </message>
+        <message>
+            <source>Save a marked snapshot and clear all annotations.</source>
+            <translation>표시된 스냅샷을 저장하고 모든 주석을 지웁니다.</translation>
+        </message>
+        <message>
+            <source>Save annotated view</source>
+            <translation>주석이 달린 보기 저장</translation>
+        </message>
+        <message>
+            <source>Save the marked view to lecture notes. Shortcut Control S.</source>
+            <translation>표시된 보기를 강의 노트에 저장합니다. 바로가기 컨트롤 S.</translation>
+        </message>
+        <message>
+            <source>Select, move, or resize one annotation. Shortcut V.</source>
+            <translation>하나의 주석을 선택, 이동 또는 크기 조정합니다. 바로가기V.</translation>
+        </message>
+        <message>
+            <source>Selected annotation scaled</source>
+            <translation>선택된 주석의 축척</translation>
+        </message>
+        <message>
+            <source>Selection cleared</source>
+            <translation>선택이 취소되었습니다.</translation>
+        </message>
+        <message>
+            <source>Shape tool</source>
+            <translation>모양 도구</translation>
+        </message>
+        <message>
+            <source>Solid</source>
+            <translation>솔리드</translation>
+        </message>
+        <message>
+            <source>Solid line style</source>
+            <translation>실선 스타일</translation>
+        </message>
+        <message>
+            <source>Solid stroke</source>
+            <translation>솔리드 스트로크</translation>
+        </message>
+        <message>
+            <source>Text entry canceled</source>
+            <translation>텍스트 입력이 취소되었습니다.</translation>
+        </message>
+        <message>
+            <source>Text placed</source>
+            <translation>배치된 텍스트</translation>
+        </message>
+        <message>
+            <source>Text size</source>
+            <translation>텍스트 크기</translation>
+        </message>
+        <message>
+            <source>Text tool</source>
+            <translation>텍스트 도구</translation>
+        </message>
+        <message>
+            <source>Type annotation text. Press Enter to place it.</source>
+            <translation>주석 텍스트를 입력합니다. Enter 키를 눌러 배치합니다.</translation>
+        </message>
+        <message>
+            <source>Undo annotation</source>
+            <translation>주석 실행 취소</translation>
+        </message>
+        <message>
+            <source>Undo the last edit. Shortcut Control Z.</source>
+            <translation>마지막 편집을 취소합니다. 바로가기 컨트롤 Z.</translation>
+        </message>
+        <message>
+            <source>Use %1 ink. The check mark indicates the selected color.</source>
+            <translation>%1 잉크를 사용하세요. 확인 표시는 선택한 색상을 나타냅니다.</translation>
+        </message>
+        <message>
+            <source>Ask Assistant</source>
+            <translation>어시스턴트에게 물어보세요</translation>
+        </message>
+        <message>
+            <source>Assistive result</source>
+            <translation>보조 결과</translation>
+        </message>
+        <message>
+            <source>Assistive result text</source>
+            <translation>보조 결과 텍스트</translation>
+        </message>
+        <message>
+            <source>Assistive result title</source>
+            <translation>보조 결과 제목</translation>
+        </message>
+        <message>
+            <source>Assistive results</source>
+            <translation>보조 결과</translation>
+        </message>
+        <message>
+            <source>Close assistive result</source>
+            <translation>보조 결과 닫기</translation>
+        </message>
+        <message>
+            <source>Hide the current assistant result</source>
+            <translation>현재 어시스턴트 결과 숨기기</translation>
+        </message>
+        <message>
+            <source>Move assistive panel</source>
+            <translation>보조 패널 이동</translation>
+        </message>
+        <message>
+            <source>Question about the current view</source>
+            <translation>현재 보기에 대한 질문</translation>
+        </message>
+        <message>
+            <source>Read assistive result aloud</source>
+            <translation>보조 결과를 소리내어 읽기</translation>
+        </message>
+        <message>
+            <source>Send the question with the current camera view to OkuFlow Assistant</source>
+            <translation>현재 카메라 뷰에 대한 질문을 OkuFlow 어시스턴트에게 보냅니다.</translation>
+        </message>
+        <message>
+            <source>Speak the current assistant result</source>
+            <translation>현재 어시스턴트 결과 말하기</translation>
+        </message>
+        <message>
+            <source>Streaming assistant result. Use arrow keys to read the text.</source>
+            <translation>스트리밍 어시스턴트 결과. 화살표 키를 사용하여 텍스트를 읽으세요.</translation>
+        </message>
+        <message>
+            <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
+            <translation>언제든지 후속 질문을 입력하세요. 현재 답변이 완료되면 보내기가 가능해집니다.</translation>
+        </message>
+        <message>
+            <source>Apply custom</source>
+            <translation>맞춤 적용</translation>
+        </message>
+        <message>
+            <source>Background color</source>
+            <translation>배경색</translation>
+        </message>
+        <message>
+            <source>Choose color stop %1</source>
+            <translation>색상 정지 선택 %1</translation>
+        </message>
+        <message>
+            <source>Choose display colors</source>
+            <translation>디스플레이 색상 선택</translation>
+        </message>
+        <message>
+            <source>Color stop %1 of %2</source>
+            <translation>%2의 컬러 정지 %1</translation>
+        </message>
+        <message>
+            <source>Custom</source>
+            <translation>맞춤</translation>
+        </message>
+        <message>
+            <source>Custom color mode</source>
+            <translation>사용자 정의 색상 모드</translation>
+        </message>
+        <message>
+            <source>Custom color preview</source>
+            <translation>사용자 정의 색상 미리보기</translation>
+        </message>
+        <message>
+            <source>Custom display colors</source>
+            <translation>사용자 정의 디스플레이 색상</translation>
+        </message>
+        <message>
+            <source>Display color scheme</source>
+            <translation>디스플레이 색 구성표</translation>
+        </message>
+        <message>
+            <source>Display colors changed to %1</source>
+            <translation>디스플레이 색상이 %1로 변경되었습니다.</translation>
+        </message>
+        <message>
+            <source>Display colors, %1</source>
+            <translation>디스플레이 색상, %1</translation>
+        </message>
+        <message>
+            <source>Display colors: %1</source>
+            <translation>디스플레이 색상: %1</translation>
+        </message>
+        <message>
+            <source>Effects</source>
+            <translation>효과</translation>
+        </message>
+        <message>
+            <source>Gradient</source>
+            <translation>그라데이션</translation>
+        </message>
+        <message>
+            <source>Number of color stops</source>
+            <translation>색상 정지점 수</translation>
+        </message>
+        <message>
+            <source>Posterize</source>
+            <translation>포스터라이즈</translation>
+        </message>
+        <message>
+            <source>Reading colors</source>
+            <translation>색상 읽기</translation>
+        </message>
+        <message>
+            <source>Reset display colors to Normal colors</source>
+            <translation>디스플레이 색상을 일반 색상으로 재설정</translation>
+        </message>
+        <message>
+            <source>Reset to Normal colors</source>
+            <translation>일반 색상으로 재설정</translation>
+        </message>
+        <message>
+            <source>Stepped colors</source>
+            <translation>단계별 색상</translation>
+        </message>
+        <message>
+            <source>Text color</source>
+            <translation>텍스트 색상</translation>
+        </message>
+        <message>
+            <source>Two colors</source>
+            <translation>두 가지 색상</translation>
+        </message>
+        <message>
+            <source>Use hard color bands</source>
+            <translation>하드 컬러 밴드 사용</translation>
+        </message>
+        <message>
+            <source>Custom colors</source>
+            <translation>맞춤 색상</translation>
+        </message>
+        <message>
+            <source>Advanced Tuning</source>
+            <translation>고급 튜닝</translation>
+        </message>
+        <message>
+            <source>Automatic screen correction</source>
+            <translation>자동 화면 보정</translation>
+        </message>
+        <message>
+            <source>Automatically clarify text in the camera view</source>
+            <translation>카메라 뷰의 텍스트를 자동으로 명확하게 합니다.</translation>
+        </message>
+        <message>
+            <source>Camera acceleration has not started yet.</source>
+            <translation>카메라 가속이 아직 시작되지 않았습니다.</translation>
+        </message>
+        <message>
+            <source>Camera acceleration mode</source>
+            <translation>카메라 가속 모드</translation>
+        </message>
+        <message>
+            <source>Camera acceleration status</source>
+            <translation>카메라 가속 상태</translation>
+        </message>
+        <message>
+            <source>Camera format notice</source>
+            <translation>카메라 포맷 공지</translation>
+        </message>
+        <message>
+            <source>ChatGPT connection</source>
+            <translation>ChatGPT 연결</translation>
+        </message>
+        <message>
+            <source>Codex connection status</source>
+            <translation>Codex 연결 상태</translation>
+        </message>
+        <message>
+            <source>Codex usage</source>
+            <translation>Codex 사용법</translation>
+        </message>
+        <message>
+            <source>Configure the vision assistant and speech output</source>
+            <translation>Vision Assistant 및 음성 출력 구성</translation>
+        </message>
+        <message>
+            <source>Continue</source>
+            <translation>계속</translation>
+        </message>
+        <message>
+            <source>Continue Automatic Screen Correction</source>
+            <translation>자동 화면 수정 계속</translation>
+        </message>
+        <message>
+            <source>Controls pinned</source>
+            <translation>컨트롤이 고정됨</translation>
+        </message>
+        <message>
+            <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
+            <translation>부드러운 팬 및 줌 프레젠테이션을 제어합니다. 카메라 프레임 속도는 변경되지 않습니다.</translation>
+        </message>
+        <message>
+            <source>Current quick mode</source>
+            <translation>현재 빠른 모드</translation>
+        </message>
+        <message>
+            <source>Custom Setup</source>
+            <translation>맞춤 설정</translation>
+        </message>
+        <message>
+            <source>Describe the Scene</source>
+            <translation>장면 설명</translation>
+        </message>
+        <message>
+            <source>Device setting shared by all profiles.</source>
+            <translation>모든 프로필에서 공유되는 장치 설정입니다.</translation>
+        </message>
+        <message>
+            <source>Drag to resize Advanced settings</source>
+            <translation>드래그하여 크기 조정 고급 설정</translation>
+        </message>
+        <message>
+            <source>Extra Stable off</source>
+            <translation>추가 안정 꺼짐</translation>
+        </message>
+        <message>
+            <source>Extra Stable on</source>
+            <translation>추가 안정</translation>
+        </message>
+        <message>
+            <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
+            <translation>채우기는 늘이지 않고 전체 뷰포트를 사용합니다. 맞춤은 막대가 포함된 전체 이미지를 유지합니다.</translation>
+        </message>
+        <message>
+            <source>Finding one new screen correction...</source>
+            <translation>새로운 화면 보정을 찾는 중...</translation>
+        </message>
+        <message>
+            <source>Finishing</source>
+            <translation>마무리</translation>
+        </message>
+        <message>
+            <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
+            <translation>부딪치는 동안 마지막 선명한 프레임에서 정지한 후 라이브 비디오로 부드럽게 돌아갑니다.</translation>
+        </message>
+        <message>
+            <source>GPU screen correction is unavailable.</source>
+            <translation>GPU 화면 보정을 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>High Contrast</source>
+            <translation>고대비</translation>
+        </message>
+        <message>
+            <source>Ignore NVIDIA Super Resolution performance limit</source>
+            <translation>NVIDIA Super Resolution 성능 제한 무시</translation>
+        </message>
+        <message>
+            <source>Set up Codex CLI and NVIDIA Video Effects</source>
+            <translation>Codex CLI 및 NVIDIA Video Effects 설정</translation>
+        </message>
+        <message>
+            <source>Keep It Steady</source>
+            <translation>꾸준히 유지하세요</translation>
+        </message>
+        <message>
+            <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
+            <translation>평균 GPU 시간이 24ms를 초과하더라도 SuperRes를 활성 상태로 유지합니다.</translation>
+        </message>
+        <message>
+            <source>Large Zoom</source>
+            <translation>대형 줌</translation>
+        </message>
+        <message>
+            <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
+            <translation>최대 강도의 CUDA 안정화를 사용하여 장착된 카메라 뷰를 잠급니다.</translation>
+        </message>
+        <message>
+            <source>Low Light</source>
+            <translation>저조도</translation>
+        </message>
+        <message>
+            <source>Match camera (recommended)</source>
+            <translation>카메라 일치(권장)</translation>
+        </message>
+        <message>
+            <source>More device options</source>
+            <translation>더 많은 장치 옵션</translation>
+        </message>
+        <message>
+            <source>NVIDIA Image Scaling (default)</source>
+            <translation>NVIDIA 이미지 크기 조정(기본값)</translation>
+        </message>
+        <message>
+            <source>NVIDIA Super Resolution status</source>
+            <translation>NVIDIA Super Resolution 상태</translation>
+        </message>
+        <message>
+            <source>NVIDIA Video Effects runtime installed</source>
+            <translation>NVIDIA Video Effects 런타임 설치됨</translation>
+        </message>
+        <message>
+            <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
+            <translation>NVIDIA Video Effects 런타임이 설치되지 않았습니다. 설정 및 다운로드 사용</translation>
+        </message>
+        <message>
+            <source>Next Advanced section</source>
+            <translation>다음 고급 섹션</translation>
+        </message>
+        <message>
+            <source>Next quick mode</source>
+            <translation>다음 빠른 모드</translation>
+        </message>
+        <message>
+            <source>No microphone (video only)</source>
+            <translation>마이크 없음(비디오만 해당)</translation>
+        </message>
+        <message>
+            <source>Open controls and features help</source>
+            <translation>컨트롤 및 기능 도움말 열기</translation>
+        </message>
+        <message>
+            <source>Open help</source>
+            <translation>도움말 열기</translation>
+        </message>
+        <message>
+            <source>OkuFlow Help</source>
+            <translation>OkuFlow 도움말</translation>
+        </message>
+        <message>
+            <source>OkuFlow controls and features guide</source>
+            <translation>OkuFlow 컨트롤 및 기능 가이드</translation>
+        </message>
+        <message>
+            <source>Overlay a red marker at the current zoom focus</source>
+            <translation>현재 확대/축소 초점에 빨간색 마커 오버레이</translation>
+        </message>
+        <message>
+            <source>Previous Advanced section</source>
+            <translation>이전 고급 섹션</translation>
+        </message>
+        <message>
+            <source>Previous quick mode</source>
+            <translation>이전 빠른 모드</translation>
+        </message>
+        <message>
+            <source>Processing: CPU</source>
+            <translation>처리: CPU</translation>
+        </message>
+        <message>
+            <source>Profile setting saved with the current quick option.</source>
+            <translation>현재 빠른 옵션으로 프로필 설정이 저장되었습니다.</translation>
+        </message>
+        <message>
+            <source>Quick mode</source>
+            <translation>빠른 모드</translation>
+        </message>
+        <message>
+            <source>Quick mode changed</source>
+            <translation>빠른 모드가 변경되었습니다.</translation>
+        </message>
+        <message>
+            <source>Quick mode changed to %1</source>
+            <translation>빠른 모드가 %1로 변경되었습니다.</translation>
+        </message>
+        <message>
+            <source>Read a Page</source>
+            <translation>페이지 읽기</translation>
+        </message>
+        <message>
+            <source>Reading</source>
+            <translation>독서</translation>
+        </message>
+        <message>
+            <source>Reading profile</source>
+            <translation>프로필 읽기</translation>
+        </message>
+        <message>
+            <source>Reset current profile tuning</source>
+            <translation>현재 프로필 조정 재설정</translation>
+        </message>
+        <message>
+            <source>Reset profile-owned image and assistive tuning to defaults</source>
+            <translation>프로필 소유 이미지 및 보조 조정을 기본값으로 재설정</translation>
+        </message>
+        <message>
+            <source>Resize Advanced settings</source>
+            <translation>크기 조정 고급 설정</translation>
+        </message>
+        <message>
+            <source>Rotate input/output clockwise</source>
+            <translation>입력/출력을 시계방향으로 회전</translation>
+        </message>
+        <message>
+            <source>Runtime not installed; use Setup &amp; Downloads</source>
+            <translation>런타임이 설치되지 않았습니다. 설정 및 다운로드 사용</translation>
+        </message>
+        <message>
+            <source>Save an annotated snapshot to lecture notes when Draw mode closes.</source>
+            <translation>그리기 모드가 닫힐 때 주석이 달린 스냅샷을 강의 노트에 저장합니다.</translation>
+        </message>
+        <message>
+            <source>See in Low Light</source>
+            <translation>낮은 조명에서 보기</translation>
+        </message>
+        <message>
+            <source>Sharp Text</source>
+            <translation>선명한 텍스트</translation>
+        </message>
+        <message>
+            <source>Sharpen Text</source>
+            <translation>텍스트 선명하게 하기</translation>
+        </message>
+        <message>
+            <source>Sharpening</source>
+            <translation>샤프닝</translation>
+        </message>
+        <message>
+            <source>Show a guide to OkuFlow controls and features</source>
+            <translation>OkuFlow 컨트롤 및 기능에 대한 가이드 표시</translation>
+        </message>
+        <message>
+            <source>Show all quick modes</source>
+            <translation>모든 빠른 모드 표시</translation>
+        </message>
+        <message>
+            <source>Show an on-screen control for moving the zoomed view</source>
+            <translation>확대된 보기를 이동하기 위한 화면 컨트롤 표시</translation>
+        </message>
+        <message>
+            <source>Steady Text</source>
+            <translation>꾸준한 텍스트</translation>
+        </message>
+        <message>
+            <source>Stop Automatic Screen Correction</source>
+            <translation>자동 화면 수정 중지</translation>
+        </message>
+        <message>
+            <source>Test camera acceleration</source>
+            <translation>카메라 가속 테스트</translation>
+        </message>
+        <message>
+            <source>Unavailable in this build</source>
+            <translation>이 빌드에서는 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
+            <translation>1.33배 확대/축소 이상에서 NVIDIA Video Effects SuperRes를 사용하세요. 자동으로 NIS로 폴백</translation>
+        </message>
+        <message>
+            <source>Viewport setting shared by all profiles.</source>
+            <translation>모든 프로필이 공유하는 뷰포트 설정입니다.</translation>
+        </message>
+        <message>
+            <source>Zoom In More</source>
+            <translation>더 확대</translation>
+        </message>
+        <message>
+            <source>Administrator approval was cancelled. Nothing was installed.</source>
+            <translation>관리자 승인이 취소되었습니다. 아무것도 설치되지 않았습니다.</translation>
+        </message>
+        <message>
+            <source>Codex CLI</source>
+            <translation>Codex CLI</translation>
+        </message>
+        <message>
+            <source>Downloading from vendor...</source>
+            <translation>공급업체에서 다운로드하는 중...</translation>
+        </message>
+        <message>
+            <source>Install Codex CLI</source>
+            <translation>Codex CLI 설치</translation>
+        </message>
+        <message>
+            <source>Installed</source>
+            <translation>설치됨</translation>
+        </message>
+        <message>
+            <source>Installed and managed by OkuFlow
+%1</source>
+            <translation>OkuFlow
+%1에 의해 설치 및 관리됩니다.</translation>
+        </message>
+        <message>
+            <source>Installed system-wide
+%1
+Removal is managed by Windows.</source>
+            <translation>시스템 전체에 설치됨
+%1
+제거는 Windows에서 관리됩니다.</translation>
+        </message>
+        <message>
+            <source>NVIDIA Video Effects</source>
+            <translation>NVIDIA Video Effects</translation>
+        </message>
+        <message>
+            <source>NVIDIA installer running. Continue in the vendor installer window.</source>
+            <translation>NVIDIA 설치 프로그램이 실행 중입니다. 공급업체 설치 프로그램 창에서 계속하세요.</translation>
+        </message>
+        <message>
+            <source>Not installed</source>
+            <translation>설치되지 않음</translation>
+        </message>
+        <message>
+            <source>Not installed. Install downloads the package for %1 GPUs.</source>
+            <translation>설치되지 않았습니다. 설치는 %1 GPU용 패키지를 다운로드합니다.</translation>
+        </message>
+        <message>
+            <source>Open Codex CLI install folder</source>
+            <translation>Codex CLI 설치 폴더 열기</translation>
+        </message>
+        <message>
+            <source>Open Codex CLI setup guide</source>
+            <translation>Codex CLI 설정 가이드 열기</translation>
+        </message>
+        <message>
+            <source>Open Install Folder</source>
+            <translation>설치 폴더 열기</translation>
+        </message>
+        <message>
+            <source>Open Vendor Page</source>
+            <translation>공급업체 페이지 열기</translation>
+        </message>
+        <message>
+            <source>Open Windows Apps</source>
+            <translation>Windows 앱 열기</translation>
+        </message>
+        <message>
+            <source>Open the NVIDIA runtime uninstaller?</source>
+            <translation>NVIDIA 런타임 제거 프로그램을 여시겠습니까?</translation>
+        </message>
+        <message>
+            <source>Open the folder containing the detected Codex CLI</source>
+            <translation>감지된 Codex CLI이 포함된 폴더를 엽니다.</translation>
+        </message>
+        <message>
+            <source>Open the official Codex CLI documentation</source>
+            <translation>공식 Codex CLI 문서 열기</translation>
+        </message>
+        <message>
+            <source>OkuFlow Setup Assistant</source>
+            <translation>OkuFlow 설정 도우미</translation>
+        </message>
+        <message>
+            <source>Remove NVIDIA Video Effects</source>
+            <translation>NVIDIA Video Effects 제거</translation>
+        </message>
+        <message>
+            <source>Retrying from the alternate vendor host...</source>
+            <translation>대체 공급업체 호스트에서 재시도 중...</translation>
+        </message>
+        <message>
+            <source>Setup Assistant</source>
+            <translation>설정 도우미</translation>
+        </message>
+        <message>
+            <source>Setup Guide</source>
+            <translation>설정 가이드</translation>
+        </message>
+        <message>
+            <source>Setup in progress</source>
+            <translation>설정 진행 중</translation>
+        </message>
+        <message>
+            <source>Setup progress</source>
+            <translation>설정 진행</translation>
+        </message>
+        <message>
+            <source>Setup status</source>
+            <translation>설정 상태</translation>
+        </message>
+        <message>
+            <source>The Setup Assistant remains available from Advanced settings</source>
+            <translation>설정 도우미는 고급 설정에서 계속 사용할 수 있습니다.</translation>
+        </message>
+        <message>
+            <source>The downloaded installer could not be opened for verification.</source>
+            <translation>확인을 위해 다운로드한 설치 프로그램을 열 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>The downloaded installer could not be read for verification.</source>
+            <translation>확인을 위해 다운로드한 설치 프로그램을 읽을 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>The first transfer failed. Retrying with the Windows downloader...</source>
+            <translation>첫 번째 전송이 실패했습니다. Windows 다운로더로 다시 시도하는 중...</translation>
+        </message>
+        <message>
+            <source>The installer did not complete successfully.</source>
+            <translation>설치 프로그램이 성공적으로 완료되지 않았습니다.</translation>
+        </message>
+        <message>
+            <source>The installer failed SHA-256 verification and was deleted.</source>
+            <translation>설치 프로그램이 SHA-256 확인에 실패하여 삭제되었습니다.</translation>
+        </message>
+        <message>
+            <source>The temporary download file could not be created.</source>
+            <translation>임시 다운로드 파일을 생성할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>This system-wide copy must be removed through Windows Installed Apps</source>
+            <translation>이 시스템 전체 복사본은 Windows에 설치된 앱을 통해 제거되어야 합니다.</translation>
+        </message>
+        <message>
+            <source>Unknown download error</source>
+            <translation>알 수 없는 다운로드 오류</translation>
+        </message>
+        <message>
+            <source>Update</source>
+            <translation>업데이트</translation>
+        </message>
+        <message>
+            <source>Update Codex CLI</source>
+            <translation>업데이트 Codex CLI</translation>
+        </message>
+        <message>
+            <source>Verified. Installing the official Codex CLI...</source>
+            <translation>확인되었습니다. 공식 Codex CLI 설치...</translation>
+        </message>
+        <message>
+            <source>Verified. Starting installer...</source>
+            <translation>확인되었습니다. 설치 프로그램을 시작하는 중...</translation>
+        </message>
+        <message>
+            <source>Windows could not start the verified installer.
+
+%1</source>
+            <translation>Windows에서 확인된 설치 프로그램을 시작할 수 없습니다.
+
+%1</translation>
+        </message>
+        <message>
+            <source>Download failed: %1</source>
+            <translation>다운로드 실패: %1</translation>
+        </message>
+        <message>
+            <source>Assistive hooks: off</source>
+            <translation>보조 기능: 꺼짐</translation>
+        </message>
+        <message>
+            <source>Assistive hooks: Scene Explain</source>
+            <translation>보조 후크: 장면 설명</translation>
+        </message>
+        <message>
+            <source>Assistive hooks: Scene Explain with overlay</source>
+            <translation>보조 후크: 오버레이가 포함된 장면 설명</translation>
+        </message>
+        <message>
+            <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
+            <translation>Advanced Tuning의 사용자 정의 구성. 적절하다고 생각되면 빠른 옵션으로 저장하세요.</translation>
+        </message>
+        <message>
+            <source>Current quick mode description</source>
+            <translation>현재 빠른 모드 설명</translation>
+        </message>
+        <message>
+            <source>Current Setup</source>
+            <translation>현재 설정</translation>
+        </message>
+        <message>
+            <source>Profile tuning reset to OkuFlow defaults.</source>
+            <translation>프로필 조정이 OkuFlow 기본값으로 재설정되었습니다.</translation>
+        </message>
+        <message>
+            <source>Current profile tuning reset to defaults.</source>
+            <translation>현재 프로필 조정이 기본값으로 재설정되었습니다.</translation>
+        </message>
+        <message>
+            <source>Quick option name:</source>
+            <translation>빠른 옵션 이름:</translation>
+        </message>
+        <message>
+            <source>OkuFlow could not save settings.</source>
+            <translation>OkuFlow 설정을 저장할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Blur sigma</source>
+            <translation>블러 시그마</translation>
+        </message>
+        <message>
+            <source>Blur radius</source>
+            <translation>흐림 반경</translation>
+        </message>
+        <message>
+            <source>Performance timing percentiles</source>
+            <translation>성능 타이밍 백분위수</translation>
+        </message>
+        <message>
+            <source>%1 status</source>
+            <translation>%1 상태</translation>
+        </message>
+        <message>
+            <source>%1 download progress</source>
+            <translation>%1 다운로드 진행 상황</translation>
+        </message>
+        <message>
+            <source>Install %1</source>
+            <translation>%1 설치</translation>
+        </message>
+        <message>
+            <source>Remove %1</source>
+            <translation>%1 제거</translation>
+        </message>
+        <message>
+            <source>Display colors, Normal colors</source>
+            <translation>디스플레이 색상, 일반 색상</translation>
+        </message>
+        <message>
+            <source>Stops: </source>
+            <translation>정류장: </translation>
+        </message>
+        <message>
+            <source>Color stop %1 of 8</source>
+            <translation>컬러 정지 %1 of 8</translation>
+        </message>
+        <message>
+            <source>%1 px</source>
+            <translation>%1픽셀</translation>
+        </message>
+        <message>
+            <source>Drawing thickness</source>
+            <translation>도면 두께</translation>
+        </message>
+        <message>
+            <source>AI settings sections</source>
+            <translation>AI 설정 섹션</translation>
+        </message>
+        <message>
+            <source>Model ID: %1</source>
+            <translation>모델 ID: %1</translation>
+        </message>
+        <message>
+            <source>%1 (current setting; unavailable in catalog)</source>
+            <translation>%1 (현재 설정, 카탈로그에서는 사용할 수 없음)</translation>
+        </message>
+        <message>
+            <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
+            <translation>빠른 Ctrl+스크롤 확대/축소 제스처를 가속화합니다. 키보드 확대/축소는 정확하게 유지됩니다.</translation>
+        </message>
+        <message>
+            <source>SuperRes powered by NVIDIA Maxine™</source>
+            <translation>NVIDIA Maxine™이 제공하는 SuperRes</translation>
+        </message>
+        <message>
+            <source>NVIDIA Maxine attribution</source>
+            <translation>NVIDIA 맥신 저작자 표시</translation>
+        </message>
+        <message>
+            <source>setting shared by all profiles</source>
+            <translation>모든 프로필에서 공유되는 설정</translation>
+        </message>
+        <message>
+            <source>%1 profile</source>
+            <translation>%1 프로필</translation>
+        </message>
+        <message>
+            <source>%1 settings match</source>
+            <translation>%1 설정 일치</translation>
+        </message>
+        <message>
+            <source>Next screen correction, or find one new correction.%1</source>
+            <translation>다음 화면 수정, 아니면 새로운 수정 하나를 찾아보세요.%1</translation>
+        </message>
+        <message>
+            <source>Controls will hide automatically</source>
+            <translation>컨트롤이 자동으로 숨겨집니다.</translation>
+        </message>
+        <message>
+            <source>OkuFlow Lecture Notes</source>
+            <translation>OkuFlow 강의노트</translation>
+        </message>
+        <message>
+            <source>Started %1</source>
+            <translation>시작됨 %1</translation>
+        </message>
+        <message>
+            <source>Captured processed camera view</source>
+            <translation>캡처된 처리된 카메라 보기</translation>
+        </message>
+        <message>
+            <source>Processed camera view</source>
+            <translation>처리된 카메라 보기</translation>
+        </message>
+        <message>
+            <source>Original camera view</source>
+            <translation>원본 카메라 뷰</translation>
+        </message>
+        <message>
+            <source>Open original video</source>
+            <translation>원본 영상 열기</translation>
+        </message>
+        <message>
+            <source>Open processed video</source>
+            <translation>처리된 영상 열기</translation>
+        </message>
+        <message>
+            <source>Original camera video</source>
+            <translation>원본 카메라 영상</translation>
+        </message>
+        <message>
+            <source>Original camera photo</source>
+            <translation>원본 카메라 사진</translation>
+        </message>
+        <message>
+            <source>Processed camera video</source>
+            <translation>처리된 카메라 영상</translation>
+        </message>
+        <message>
+            <source>Processed camera photo</source>
+            <translation>처리된 카메라 사진</translation>
+        </message>
+        <message>
+            <source>Annotations cleared - snapshot</source>
+            <translation>주석이 삭제됨 - 스냅샷</translation>
+        </message>
+        <message>
+            <source>Annotation session ended - snapshot</source>
+            <translation>주석 세션이 종료되었습니다. - 스냅샷</translation>
+        </message>
+        <message>
+            <source>The conversation could not be exported to %1.</source>
+            <translation>대화를 %1로 내보낼 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Conversation exported to %1.</source>
+            <translation>대화를 %1로 내보냈습니다.</translation>
+        </message>
+        <message>
+            <source>The paired photos could not be saved, so no files were kept. Try again.</source>
+            <translation>페어링된 사진을 저장할 수 없어 파일이 보관되지 않았습니다. 다시 시도해 보세요.</translation>
+        </message>
+        <message>
+            <source>The paired photos could not be saved. A partial file may remain: %1</source>
+            <translation>페어링된 사진을 저장할 수 없습니다. 부분 파일이 남아 있을 수 있습니다: %1</translation>
+        </message>
+        <message>
+            <source>The saved OkuFlow folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
+            <translation>저장된 OkuFlow 폴더(%1)는 사용할 수 없습니다. 새 폴더를 선택할 때까지 파일은 기본 문서 폴더로 이동됩니다.</translation>
+        </message>
+        <message>
+            <source>Lecture transcript</source>
+            <translation>강의 전사본</translation>
+        </message>
+        <message>
+            <source>Expand all</source>
+            <translation>모두 펼치기</translation>
+        </message>
+        <message>
+            <source>Collapse all</source>
+            <translation>모두 접기</translation>
+        </message>
+        <message>
+            <source>Light or dark colors</source>
+            <translation>밝은 색상 또는 어두운 색상</translation>
+        </message>
+        <message>
+            <source>Original and processed video</source>
+            <translation>원본 및 처리된 동영상</translation>
+        </message>
+        <message>
+            <source>Original and processed photo</source>
+            <translation>원본 및 처리된 사진</translation>
+        </message>
+        <message>
+            <source>View the assistant analyzed</source>
+            <translation>어시스턴트가 분석한 보기</translation>
+        </message>
+        <message>
+            <source>Conversation</source>
+            <translation>대화</translation>
+        </message>
+        <message>
+            <source>New chat</source>
+            <translation>새 채팅</translation>
+        </message>
+        <message>
+            <source>Started a new conversation.</source>
+            <translation>새로운 대화를 시작했습니다.</translation>
+        </message>
+        <message>
+            <source>Finish the current answer before starting a new chat.</source>
+            <translation>새 채팅을 시작하기 전에 현재 답변을 완료하세요.</translation>
+        </message>
+        <message>
+            <source>Explain conversation</source>
+            <translation>대화 설명하기</translation>
+        </message>
+        <message>
+            <source>Started a new conversation. The next Explain also starts a new conversation.</source>
+            <translation>새로운 대화를 시작했습니다. 다음 explain은 새로운 대화를 시작합니다.</translation>
+        </message>
+        <message>
+            <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
+            <translation>현재 카메라 프레임과 프롬프트를 Codex로 보냅니다. 대화: 저장된 설명 대화는 각 설명에 의해 계속됩니다. 도구 인터넷: 차단되었습니다. 코딩 및 파일 변경: 차단됨.</translation>
+        </message>
+        <message>
+            <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
+            <translation>현재 카메라 프레임과 프롬프트를 Codex로 보냅니다. 대화: 일시적이며 읽을 때마다 새롭습니다. 도구 인터넷: 차단되었습니다. 코딩 및 파일 변경: 차단됨.</translation>
+        </message>
+        <message>
+            <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
+            <translation>현재 카메라 프레임, 프롬프트 및 최근 설명 답변을 %1(로컬 엔드포인트)로 보냅니다. 대화: 최근의 설명 답변, 메모리에만 보관됩니다. 코딩 도구: 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
+            <translation>현재 카메라 프레임, 프롬프트 및 최근 설명 답변을 %1(원격 엔드포인트)로 보냅니다. 대화: 최근의 설명 답변, 메모리에만 보관됩니다. 코딩 도구: 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Panel position</source>
+            <translation>패널 위치</translation>
+        </message>
+        <message>
+            <source>Floating</source>
+            <translation>플로팅</translation>
+        </message>
+        <message>
+            <source>Dock left</source>
+            <translation>왼쪽 도킹</translation>
+        </message>
+        <message>
+            <source>Dock right</source>
+            <translation>오른쪽 도킹</translation>
+        </message>
+        <message>
+            <source>Release to dock left</source>
+            <translation>왼쪽 도킹에 놓기</translation>
+        </message>
+        <message>
+            <source>Release to dock right</source>
+            <translation>오른쪽 도킹에 놓습니다</translation>
+        </message>
+        <message>
+            <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
+            <translation>구독 지원 읽기, 설명 및 어시스턴트 기능을 강화합니다. Windows 계정에 공식 Codex CLI을 설치합니다. ChatGPT 로그인은 별도의 단계로 유지됩니다.</translation>
+        </message>
+        <message>
+            <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
+            <translation>카메라 연결이 끊어졌습니다. OkuFlow가 자동으로 다시 연결됩니다.</translation>
+        </message>
+        <message>
+            <source>Starting camera…</source>
+            <translation>카메라 시작 중…</translation>
+        </message>
+        <message>
+            <source>No camera picture</source>
+            <translation>카메라 사진이 없습니다</translation>
+        </message>
+        <message>
+            <source>Connect a camera, then choose it under Advanced, Device.</source>
+            <translation>카메라를 연결한 다음 고급, 장치에서 선택하세요.</translation>
+        </message>
+        <message>
+            <source>Choose a camera under Advanced, Device, or check that it is connected.</source>
+            <translation>고급, 장치에서 카메라를 선택하거나 연결되어 있는지 확인하세요.</translation>
+        </message>
+        <message>
+            <source>Number key %1</source>
+            <translation>숫자키 %1</translation>
+        </message>
+        <message>
+            <source>Shared settings</source>
+            <translation>공유 설정</translation>
+        </message>
+        <message>
+            <source>Not saved into quick options</source>
+            <translation>빠른 옵션에 저장되지 않음</translation>
+        </message>
+        <message>
+            <source>No matching settings</source>
+            <translation>일치하는 설정이 없습니다.</translation>
+        </message>
+        <message>
+            <source>Settings search</source>
+            <translation>설정 검색</translation>
+        </message>
+        <message>
+            <source>Settings</source>
+            <translation>설정</translation>
+        </message>
+        <message>
+            <source>Search image settings…</source>
+            <translation>이미지 설정 검색…</translation>
+        </message>
+        <message>
+            <source>Search settings…</source>
+            <translation>검색 설정…</translation>
+        </message>
+        <message>
+            <source>Mode: %1</source>
+            <translation>모드: %1</translation>
+        </message>
+        <message>
+            <source>Current mode</source>
+            <translation>현재 모드</translation>
+        </message>
+        <message>
+            <source>Changes apply now. Save to keep them.</source>
+            <translation>이제 변경사항이 적용됩니다. 보관하려면 저장하세요.</translation>
+        </message>
+        <message>
+            <source>Shared by all modes. Not saved into quick modes.</source>
+            <translation>모든 모드에서 공유됩니다. 빠른 모드에는 저장되지 않습니다.</translation>
+        </message>
+        <message>
+            <source>Fine-tune text</source>
+            <translation>텍스트 미세 조정</translation>
+        </message>
+        <message>
+            <source>Notes and files</source>
+            <translation>메모 및 파일</translation>
+        </message>
+        <message>
+            <source>AI and downloads</source>
+            <translation>AI 및 다운로드</translation>
+        </message>
+        <message>
+            <source>Troubleshooting</source>
+            <translation>문제 해결</translation>
+        </message>
+        <message>
+            <source>View and navigation</source>
+            <translation>보기 및 탐색</translation>
+        </message>
+        <message>
+            <source>Colors and contrast</source>
+            <translation>색상 및 대비</translation>
+        </message>
+        <message>
+            <source>Steady image</source>
+            <translation>안정된 이미지</translation>
+        </message>
+        <message>
+            <source>Straighten screen</source>
+            <translation>화면을 직선화</translation>
+        </message>
+        <message>
+            <source>Soften image (blur)</source>
+            <translation>이미지를 부드럽게(흐리게)</translation>
+        </message>
+        <message>
+            <source>Horizontal position</source>
+            <translation>수평 위치</translation>
+        </message>
+        <message>
+            <source>Vertical position</source>
+            <translation>수직 위치</translation>
+        </message>
+        <message>
+            <source>Camera resolution &amp;&amp; frame rate</source>
+            <translation>카메라 해상도 &amp;&amp; 프레임 속도</translation>
+        </message>
+        <message>
+            <source>Save as Quick Mode</source>
+            <translation>빠른 모드로 저장</translation>
+        </message>
+        <message>
+            <source>Reset Mode</source>
+            <translation>재설정 모드</translation>
+        </message>
+        <message>
+            <source>Quick mode name:</source>
+            <translation>빠른 모드 이름:</translation>
+        </message>
+        <message>
+            <source>No matches here. %1 in Settings. Press Enter to show them.</source>
+            <translation>일치하는 항목이 없습니다. %1 설정에서. Enter 키를 눌러 표시하세요.</translation>
+        </message>
+        <message>
+            <source>No matches here. %1 in Image. Press Enter to show them.</source>
+            <translation>일치하는 항목이 없습니다. %1 이미지. Enter 키를 눌러 표시하세요.</translation>
+        </message>
+        <message>
+            <source>Saved with the current quick mode.</source>
+            <translation>현재 빠른 모드로 저장되었습니다.</translation>
+        </message>
+        <message>
+            <source>Shared setting, used by all modes.</source>
+            <translation>모든 모드에서 사용되는 공유 설정입니다.</translation>
+        </message>
+        <message>
+            <source>Reset current mode to defaults</source>
+            <translation>현재 모드를 기본값으로 재설정</translation>
+        </message>
+        <message>
+            <source>Resets this mode's image and assistant settings. Settings on the Settings tab are not changed.</source>
+            <translation>이 모드의 이미지와 보조자 설정을 재설정합니다. 설정 탭의 설정은 변경되지 않습니다.</translation>
+        </message>
+        <message>
+            <source>Connect a camera, then choose it under Settings, Camera.</source>
+            <translation>카메라를 연결한 다음 설정, 카메라에서 선택하세요.</translation>
+        </message>
+        <message>
+            <source>Choose a camera under Settings, Camera, or check that it is connected.</source>
+            <translation>설정, 카메라에서 카메라를 선택하거나 연결되어 있는지 확인하세요.</translation>
+        </message>
+        <message>
+            <source>Language</source>
+            <translation>언어</translation>
+        </message>
+        <message>
+            <source>Search image settings</source>
+            <translation>검색 이미지 설정</translation>
+        </message>
+        <message>
+            <source>Search shared settings</source>
+            <translation>공유 설정 검색</translation>
+        </message>
+        <message>
+            <source>Describe the current camera view</source>
+            <translation>현재 카메라 뷰 설명</translation>
+        </message>
+        <message>
+            <source>Explain scene</source>
+            <translation>장면 설명</translation>
+        </message>
+        <message>
+            <source>Stop scene explanation</source>
+            <translation>정지 장면 설명</translation>
+        </message>
+        <message>
+            <source>Stop the current scene explanation</source>
+            <translation>현재 장면 설명을 중지합니다.</translation>
+        </message>
+        <message>
+            <source>Reset this mode's image and assistant settings?
+
+Shared settings on the Settings tab will stay unchanged.</source>
+            <translation>이 모드의 이미지와 보조 설정을 재설정하시겠습니까?
+
+설정 탭의 공유 설정은 변경되지 않습니다.</translation>
+        </message>
+        <message>
+            <source>Hide UI</source>
+            <translation>UI 숨기기</translation>
+        </message>
+        <message>
+            <source>Show UI</source>
+            <translation>UI 표시</translation>
+        </message>
+        <message>
+            <source>Hide controls and assistant</source>
+            <translation>컨트롤 및 도우미 숨기기</translation>
+        </message>
+        <message>
+            <source>Show controls and assistant</source>
+            <translation>컨트롤 및 어시스턴트 표시</translation>
+        </message>
+        <message>
+            <source>Show or hide controls and assistant (Ctrl+H)</source>
+            <translation>컨트롤 및 도우미 표시 또는 숨기기(Ctrl+H)</translation>
+        </message>
+        <message>
+            <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
+            <translation>%1는 최종 조각(0x%2)을 완료할 수 없습니다. 파일은 유지되었습니다. 재생이 확인되지 않았습니다.</translation>
+        </message>
+        <message>
+            <source>Recording output path already exists; it was preserved.</source>
+            <translation>녹화 출력 경로가 이미 존재합니다. 그것은 보존되었습니다.</translation>
+        </message>
+        <message>
+            <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
+            <translation>텍스트 선명도는 자동 향상을 적용합니다. 미세 조정 옵션은 텍스트 선명도가 켜져 있는 동안에만 적용됩니다.</translation>
+        </message>
+        <message>
+            <source>More colors
+%1</source>
+            <translation>더 많은 색상
+%1</translation>
+        </message>
+        <message>
+            <source>Yellow on black</source>
+            <translation>검정색 바탕에 노란색</translation>
+        </message>
+        <message>
+            <source>Black on yellow</source>
+            <translation>노란색 바탕에 검은색</translation>
+        </message>
+        <message>
+            <source>Posterize 6</source>
+            <translation>포스터라이즈 6</translation>
+        </message>
+        <message>
+            <source>Yellow text on black background</source>
+            <translation>검정색 배경에 노란색 텍스트</translation>
+        </message>
+        <message>
+            <source>Black text on yellow background</source>
+            <translation>노란색 배경에 검정색 텍스트</translation>
+        </message>
+        <message>
+            <source>Six color posterize effect</source>
+            <translation>6가지 색상 포스터라이즈 효과</translation>
+        </message>
+        <message>
+            <source>AI service</source>
+            <translation>AI 서비스</translation>
+        </message>
+        <message>
+            <source>ChatGPT subscription (Codex)</source>
+            <translation>ChatGPT 구독(Codex)</translation>
+        </message>
+        <message>
+            <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
+            <translation>읽기, 설명 및 도우미는 Codex CLI를 통해 ChatGPT 구독을 사용합니다. 고급 모드의 보조 탭에서 Connect ChatGPT로 로그인하세요.</translation>
+        </message>
+        <message>
+            <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
+            <translation>읽고 설명하면 카메라 뷰를 아래 서버 URL로 보냅니다. 이미지는 LM Studio 또는 localhost의 Ollama와 같은 서버가 실행되는 경우에만 이 컴퓨터에 유지됩니다. 저장된 어시스턴트 대화에는 ChatGPT 구독이 필요합니다.</translation>
+        </message>
+        <message>
+            <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
+            <translation>OkuFlow는 항상 이 명령을 Codex로 보내고 그 뒤에 사용자의 명령과 권한 규칙을 보냅니다.</translation>
+        </message>
+        <message>
+            <source>Assistant instructions</source>
+            <translation>어시스턴트 지침</translation>
+        </message>
+        <message>
+            <source>Explain prompt:</source>
+            <translation>설명 프롬프트:</translation>
+        </message>
+        <message>
+            <source>Advanced Assistant permissions</source>
+            <translation>고급 어시스턴트 권한</translation>
+        </message>
+        <message>
+            <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
+            <translation>이는 플로팅 어시스턴트의 질문을 포함하여 저장된 어시스턴트 대화에만 적용됩니다. 읽기 및 설명은 항상 제한되어 있습니다.</translation>
+        </message>
+        <message>
+            <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
+            <translation>Codex 또는 OpenAI 호환 서버를 통해 ChatGPT를 선택하세요.</translation>
+        </message>
+        <message>
+            <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
+            <translation>Codex가 얼마나 많은 추론을 사용할지 선택하세요. 레벨이 높을수록 응답하는 데 시간이 더 오래 걸릴 수 있습니다.</translation>
+        </message>
+        <message>
+            <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
+            <translation>읽기 전용 명령을 표시하거나 숨깁니다. OkuFlow는 항상 Codex로 보냅니다.</translation>
+        </message>
+        <message>
+            <source>Explain Prompt</source>
+            <translation>프롬프트 설명</translation>
+        </message>
+        <message>
+            <source>Optional instructions sent with the camera view when you press Explain</source>
+            <translation>설명을 누르면 카메라 보기와 함께 전송되는 선택적 지침</translation>
+        </message>
+        <message>
+            <source>Installed
+%1
+Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
+            <translation>설치됨
+%1
+고급 도우미 탭에서 Connect ChatGPT를 사용하여 로그인하세요.</translation>
+        </message>
+        <message>
+            <source>Could not load conversation.</source>
+            <translation>대화를 로드할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>GPU upload busy %1</source>
+            <translation>GPU 업로드 중 %1</translation>
+        </message>
+        <message>
+            <source>encoder backlog %1</source>
+            <translation>인코더 백로그 %1</translation>
+        </message>
+        <message>
+            <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
+            <translation>인코더 진행 상황을 확인할 수 없어 녹음이 샘플을 건너뛰는 중입니다. 계속되면 녹음을 중지했다가 다시 시작하세요.</translation>
+        </message>
+        <message>
+            <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
+            <translation>인코더 대기열이 꽉 차서 녹화 중 비디오 프레임을 건너뛰는 중입니다. 녹화 해상도를 낮추거나 녹화가 계속되면 녹화를 중지했다가 다시 시작하세요.</translation>
+        </message>
+        <message>
+            <source>Waiting for phone…</source>
+            <translation>전화를 기다리는 중…</translation>
+        </message>
+        <message>
+            <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
+            <translation>휴대폰에서 OkuFlow 카메라를 열고 USB 케이블을 연결한 후 USB 디버깅을 허용하세요. OkuFlow 자동으로 연결을 확인합니다.</translation>
+        </message>
+        <message>
+            <source>Set up OkuFlow</source>
+            <translation>OkuFlow 설정</translation>
+        </message>
+        <message>
+            <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
+            <translation>Windows 런타임 설치 프로그램이 포함되어 있습니다. 선택적 AI 도구는 해당 공급업체에서 다운로드됩니다. 모든 설치 프로그램은 실행되기 전에 확인됩니다.</translation>
+        </message>
+        <message>
+            <source>Microsoft Windows runtime</source>
+            <translation>마이크로소프트 윈도우 런타임</translation>
+        </message>
+        <message>
+            <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
+            <translation>OkuFlow에서 사용되는 Windows 라이브러리. 설치에는 포함된 Microsoft 설치 프로그램이 사용되며 관리자 승인이 필요할 수 있습니다.</translation>
+        </message>
+        <message>
+            <source>Install for Windows</source>
+            <translation>Windows용으로 설치</translation>
+        </message>
+        <message>
+            <source>Install Microsoft Windows runtime</source>
+            <translation>Microsoft Windows 런타임 설치</translation>
+        </message>
+        <message>
+            <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>
+            <translation>Windows 런타임 설치 프로그램을 포함하려면 전체 OkuFlow ZIP을 사용하세요.</translation>
+        </message>
+        <message>
+            <source>The included Microsoft installer could not be verified. Download the complete OkuFlow ZIP again.</source>
+            <translation>포함된 Microsoft 설치 프로그램을 확인할 수 없습니다. 전체 OkuFlow ZIP을 다시 다운로드하세요.</translation>
+        </message>
+        <message>
+            <source>Windows could not start the elevated installer (error %1).</source>
+            <translation>Windows에서 관리자 권한 설치 프로그램을 시작할 수 없습니다(오류 %1).</translation>
+        </message>
+        <message>
+            <source>Microsoft installer running. Continue in the installer window.</source>
+            <translation>Microsoft 설치 프로그램이 실행 중입니다. 설치 프로그램 창에서 계속하세요.</translation>
+        </message>
+        <message>
+            <source>Windows installer exit code: %1</source>
+            <translation>Windows 설치 프로그램 종료 코드: %1</translation>
+        </message>
+        <message>
+            <source>Installation completed. Restart Windows when convenient.</source>
+            <translation>설치가 완료되었습니다. 편리할 때 Windows를 다시 시작합니다.</translation>
+        </message>
+        <message>
+            <source>Installation cancelled. You can try again later.</source>
+            <translation>설치가 취소되었습니다. 나중에 다시 시도할 수 있습니다.</translation>
+        </message>
+        <message>
+            <source>System default (%1)</source>
+            <translation>시스템 기본값 (%1)</translation>
+        </message>
+        <message>
+            <source>Restoring USB connection…</source>
+            <translation>USB 연결을 복원하는 중…</translation>
+        </message>
+        <message>
+            <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
+            <translation>OkuFlow가 USB 연결을 확인하고 자동으로 다시 연결합니다.</translation>
+        </message>
+    </context>
+</TS>

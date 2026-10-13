@@ -1,0 +1,41 @@
+START OKUFLOW
+
+1. Extract the entire ZIP into a folder.
+2. Double-click oku_flow.exe to start OkuFlow.
+3. If prompted, follow the instructions to install the required Windows libraries.
+
+The app folder contains the required program components, including
+OkuFlowApp.exe, and is opened automatically. Keep app beside oku_flow.exe.
+
+Prefer a desktop shortcut? Download the MSI installer from https://okuflow.com.
+It creates an OkuFlow shortcut on the desktop and in the Start menu.
+
+Help and setup: https://okuflow.com
+Support: info@okuflow.com
+
+
+TÜRKÇE
+
+1. ZIP dosyasının tamamını bir klasöre çıkarın.
+2. OkuFlow'u başlatmak için oku_flow.exe dosyasına çift tıklayın.
+3. İstenirse gerekli Windows kitaplıklarını kurmak için ekrandaki adımları izleyin.
+
+app klasörü, OkuFlowApp.exe dahil gerekli program bileşenlerini içerir.
+oku_flow.exe bunları otomatik olarak açar. app klasörünü oku_flow.exe yanında tutun.
+
+Masaüstü kısayolu için https://okuflow.com adresinden MSI yükleyicisini indirin.
+Masaüstünde ve Başlat menüsünde OkuFlow kısayolu oluşturur.
+
+
+DEUTSCH
+
+1. Entpacken Sie die gesamte ZIP-Datei in einen Ordner.
+2. Starten Sie OkuFlow mit einem Doppelklick auf oku_flow.exe.
+3. Folgen Sie bei Bedarf den Anweisungen zur Installation der Windows-Bibliotheken.
+
+Der Ordner app enthält die erforderlichen Programmteile einschließlich
+OkuFlowApp.exe. Sie werden automatisch gestartet. Lassen Sie app neben oku_flow.exe.
+
+Laden Sie für eine Desktop-Verknüpfung das MSI-Installationsprogramm von
+https://okuflow.com herunter. Es erstellt OkuFlow-Verknüpfungen auf dem
+Desktop und im Startmenü.

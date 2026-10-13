@@ -34,6 +34,10 @@ const server = createServer(async (request, response) => {
 await new Promise(done => server.listen(0, '127.0.0.1', done));
 const origin = 'http://127.0.0.1:' + server.address().port;
 const errors = [];
+const carouselReady = () => {
+  const slides = document.querySelectorAll('.slides > .slide').length;
+  return slides > 0 && document.querySelectorAll('.carousel-dots button').length === slides;
+};
 let browser;
 try {
   browser = await puppeteer.launch({executablePath:process.env.OKUFLOW_TEST_CHROME, userDataDir:profile, headless:true, args:['--no-first-run']});
@@ -45,7 +49,7 @@ try {
   await page.goto(origin + '/?lang=en');
   await page.evaluate(() => localStorage.removeItem('okuflow-theme'));
   await page.reload();
-  await page.waitForFunction(() => document.querySelectorAll('.carousel-dots button').length === 4);
+  await page.waitForFunction(carouselReady);
   assert(await page.$eval('link[rel="icon"]', async link => {
     const image = new Image(); image.src = link.href; await image.decode();
     return image.naturalWidth > 0;
@@ -85,7 +89,7 @@ try {
   for (const locale of ['tr','de','ar','ja']) {
     await page.setViewport({width:320,height:900});
     await page.goto(origin + '/' + locale + '/');
-    await page.waitForFunction(() => document.querySelectorAll('.carousel-dots button').length === 4);
+    await page.waitForFunction(carouselReady);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), locale + ' overflow');
     await page.click('.carousel-dots button:nth-child(2)');
     await page.waitForFunction(() => {
@@ -159,16 +163,21 @@ try {
   await notes.screenshot({path:join(evidence, 'notes-contrast-200.png'),fullPage:true});
   await notes.evaluate(() => scrollTo({top:0,behavior:'instant'}));
   await notes.screenshot({path:join(evidence, 'notes-contrast-controls.png')});
-  for (const locale of ['tr','de']) {
+  for (const locale of ['tr','de','nl','ar']) {
     await notes.goto(pathToFileURL(notesPath.replace('_en.html', '_' + locale + '.html')).href);
     await notes.waitForFunction(() => document.querySelectorAll('.filters button').length > 2);
+    assert.equal(await notes.$eval('html', element => element.lang), locale);
+    assert.equal(await notes.$eval('html', element => getComputedStyle(element).direction),
+      locale === 'ar' ? 'rtl' : 'ltr');
+    const largerLabel = await notes.$eval('#btn-larger', element => element.getAttribute('aria-label'));
+    assert(largerLabel && largerLabel !== 'Larger text', locale + ' localized toolbar label');
     await notes.click('#btn-expand');
     for (let count=0; count<8; count++) await notes.click('#btn-larger');
     assert(await notes.evaluate(() => document.documentElement.scrollWidth <= innerWidth), locale + ' notes at 200%');
     await notes.screenshot({path:join(evidence, 'notes-' + locale + '-200.png'),fullPage:true});
   }
   assert.deepEqual(errors, []);
-  console.log('PASS: local notes media, filters, grouping, expand/collapse, persisted text size, contrast and 200% text at 320px');
+  console.log('PASS: local notes media, filters, grouping, expand/collapse, persisted text size, contrast, localized EN/TR/DE/NL/AR controls and 200% text at 320px');
 } catch (error) {
   for (const page of await browser?.pages() || []) {
     console.log('Failure page:', page.url(), await page.evaluate(() => [...document.querySelectorAll('body *')]

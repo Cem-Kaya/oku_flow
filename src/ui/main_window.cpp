@@ -14,6 +14,7 @@
 #include "okuflow/ui/live_status_text.hpp"
 #include "okuflow/ui/responsive_slider_row.hpp"
 #include "okuflow/ui/wheel_safe_combo_box.hpp"
+#include "okuflow/ui/theme_contrast.hpp"
 #include "okuflow/ui/ui_translation.hpp"
 
 #include <QAbstractItemModel>
@@ -33,6 +34,7 @@
 #include <QAbstractItemView>
 #include <QFrame>
 #include <QGridLayout>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
@@ -59,6 +61,7 @@
 #include <QSlider>
 #include <QSplitter>
 #include <QStyle>
+#include <QStyleHints>
 #include <QStyleOptionButton>
 #include <QStylePainter>
 #include <QTabWidget>
@@ -312,13 +315,20 @@ QString FormatPercent(int value)
 {
     const QLocale locale;
     const QString number = locale.toString(value);
+    // CLDR placement: Turkish prefixes the sign; these languages separate it
+    // with a narrow no-break space. Others attach the locale's own sign.
     switch (locale.language()) {
     case QLocale::Turkish:
         return QStringLiteral("%") + number;
     case QLocale::German:
+    case QLocale::French:
+    case QLocale::Spanish:
+    case QLocale::Russian:
+    case QLocale::Czech:
+    case QLocale::Swedish:
         return number + QStringLiteral(" %");
     default:
-        return number + QStringLiteral("%");
+        return number + locale.percent();
     }
 }
 
@@ -355,14 +365,9 @@ MainWindow::MainWindow()
 {
     setWindowTitle("OkuFlow");
     resize(1280, 720);
-    QPalette readablePalette = palette();
-    const QColor disabledText(QStringLiteral("#8f8f8f"));
-    readablePalette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
-    readablePalette.setColor(QPalette::Disabled, QPalette::ButtonText, disabledText);
-    readablePalette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
-    // The default dark-theme placeholder is too faint for low-vision users.
-    readablePalette.setColor(QPalette::PlaceholderText, QColor(QStringLiteral("#b3b3b3")));
-    setPalette(readablePalette);
+    // Scheme-aware readable disabled/placeholder text; refreshed again when
+    // the OS light/dark theme changes after startup (ApplyThemeContrast).
+    ApplyThemeContrast();
 
     // Whole-app readability: bigger base font, a strong visible focus outline
     // on every interactive control, and chunky slider handles. Palette roles
@@ -382,7 +387,8 @@ MainWindow::MainWindow()
             color: palette(highlighted-text);
         }
         QPushButton:focus, QToolButton:focus { border: 3px solid palette(highlight); }
-        QPushButton:disabled, QToolButton:disabled { color: #8f8f8f; }
+        /* Disabled text comes from the palette's Disabled roles, which
+           ApplyThemeContrast keeps readable in both OS schemes. */
         QComboBox {
             min-height: 32px;
             padding: 2px 10px;
@@ -421,11 +427,11 @@ MainWindow::MainWindow()
             border: 2px solid palette(dark);
         }
         QSlider::handle:horizontal:hover:enabled { background: palette(midlight); }
-        QSlider::groove:horizontal:disabled { background: #2e2e2e; }
-        QSlider::sub-page:horizontal:disabled { background: #5a5a5a; }
+        QSlider::groove:horizontal:disabled { background: palette(midlight); }
+        QSlider::sub-page:horizontal:disabled { background: palette(mid); }
         QSlider::handle:horizontal:disabled {
-            background: #2b2b2b;
-            border: 2px solid #5c5c5c;
+            background: palette(button);
+            border: 2px solid palette(mid);
         }
         QListWidget { border: 2px solid palette(mid); border-radius: 6px; }
         QListWidget:focus { border: 3px solid palette(highlight); }
@@ -436,11 +442,20 @@ MainWindow::MainWindow()
             font-weight: 600;
             border-radius: 4px;
             background: palette(button);
+            color: palette(button-text);
         }
-        QLabel#scopeSubtitle { color: #b3b3b3; }
-        QLabel#currentModeCaption { font-size: 11pt; font-weight: 600; color: #e6e6e6; }
-        QLabel#currentModeSummaryLabel { font-size: 15pt; font-weight: 700; color: #ffffff; }
-        QLabel#formatWarningLabel { color: #ffd166; font-weight: 600; }
+        /* Checked means expanded here, not selected: keep the header on its
+           button surface instead of the generic highlight/highlighted-text
+           pairing, which is white on near-white in the light theme. */
+        QToolButton#collapsibleHeader:checked {
+            background: palette(button);
+            color: palette(button-text);
+        }
+        QLabel#scopeSubtitle { color: palette(window-text); }
+        QLabel#currentModeCaption { font-size: 11pt; font-weight: 600; color: palette(window-text); }
+        QLabel#currentModeSummaryLabel { font-size: 15pt; font-weight: 700; color: palette(window-text); }
+        /* Its warning hue is scheme-paired per-widget in ApplyThemeContrast. */
+        QLabel#formatWarningLabel { font-weight: 600; }
         QPushButton#simpleModeButton, QPushButton#advancedModeButton {
             font-size: 13pt;
             font-weight: 600;
@@ -580,7 +595,7 @@ MainWindow::MainWindow()
             font-size: 13pt;
             font-weight: 600;
             padding: 8px 0 4px 0;
-            color: #d79ae6;
+            color: palette(window-text);
         }
         QLabel#featureStatusLabel {
             font-size: 10pt;
@@ -686,7 +701,7 @@ MainWindow::MainWindow()
                 this, &MainWindow::sectionStatesChanged);
         return section;
     };
-    const auto makeSearchEdit = [](const QString& objectName,
+    const auto makeSearchEdit = [this](const QString& objectName,
                                    const QString& placeholder,
                                    const QString& accessibleName) {
         auto* edit = new QLineEdit();
@@ -696,8 +711,8 @@ MainWindow::MainWindow()
         edit->setAccessibleName(accessibleName);
         edit->setAccessibleDescription(QStringLiteral(
             "Type part of a setting name to reveal and focus matching controls."));
-        edit->addAction(QIcon(QStringLiteral(":/okuflow/icons/search.svg")),
-                        QLineEdit::LeadingPosition);
+        SetThemedIcon(edit->addAction(QIcon(), QLineEdit::LeadingPosition),
+                      QStringLiteral(":/okuflow/icons/search.svg"));
         return edit;
     };
     // Visible counterpart of the match count the search field already reports
@@ -1050,9 +1065,9 @@ MainWindow::MainWindow()
     advancedKeystoneBackButton_ = new QPushButton("Back");
     advancedKeystonePauseButton_ = new QPushButton("Stop");
     advancedKeystoneNextButton_ = new QPushButton("Next");
-    advancedKeystoneBackButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/step-back.svg")));
-    advancedKeystonePauseButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/pause.svg")));
-    advancedKeystoneNextButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/step-forward.svg")));
+    advancedKeystoneBackButton_->setIcon(ThemedIconFor(QStringLiteral(":/okuflow/icons/step-back.svg")));
+    advancedKeystonePauseButton_->setIcon(ThemedIconFor(QStringLiteral(":/okuflow/icons/pause.svg")));
+    advancedKeystoneNextButton_->setIcon(ThemedIconFor(QStringLiteral(":/okuflow/icons/step-forward.svg")));
     for (auto* button : {advancedKeystoneBackButton_, advancedKeystonePauseButton_, advancedKeystoneNextButton_}) {
         button->setIconSize(QSize(22, 22));
     }
@@ -1413,6 +1428,10 @@ MainWindow::MainWindow()
     sharedLayout->addWidget(applicationSection_);
     applicationLanguageCombo_ = new WheelSafeComboBox();
     applicationLanguageCombo_->setIconSize(QSize(30, 20));
+    // Item 0 follows the Windows display language; its text names the
+    // language it currently resolves to and is refreshed on language change.
+    applicationLanguageCombo_->addItem(
+        QString(), QString::fromLatin1(kSystemLanguagePreference));
     for (AppLanguage language : SupportedAppLanguages()) {
         applicationLanguageCombo_->addItem(
             QIcon(AppLanguageFlagResource(language)),
@@ -1431,6 +1450,8 @@ MainWindow::MainWindow()
             "Changes the interface immediately. In-progress assistant "
             "requests use the language selected when they started."));
     SetComboItemsAreData(applicationLanguageCombo_);
+    applicationLanguageCombo_->setMaxVisibleItems(12);
+    refreshSystemLanguageItem();
     auto* languageLabel = new QLabel(QStringLiteral("Application language"));
     languageLabel->setBuddy(applicationLanguageCombo_);
     applicationLayout->addWidget(languageLabel);
@@ -1452,7 +1473,7 @@ MainWindow::MainWindow()
     sharedLayout->addWidget(aiDownloadsSection_);
     aiSettingsButton_ = new QPushButton(QStringLiteral("AI Settings"));
     aiSettingsButton_->setObjectName(QStringLiteral("advancedNavButton"));
-    aiSettingsButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/open-settings.svg")));
+    SetThemedIcon(aiSettingsButton_, QStringLiteral(":/okuflow/icons/open-settings.svg"));
     aiSettingsButton_->setIconSize(QSize(26, 26));
     aiSettingsButton_->setToolTip(QStringLiteral("Open AI Settings dialog"));
     aiSettingsButton_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -1531,7 +1552,7 @@ MainWindow::MainWindow()
 
     auto* assistantAiSettingsButton = new QPushButton(QStringLiteral("AI Settings"));
     assistantAiSettingsButton->setObjectName(QStringLiteral("advancedNavButton"));
-    assistantAiSettingsButton->setIcon(QIcon(QStringLiteral(":/okuflow/icons/open-settings.svg")));
+    SetThemedIcon(assistantAiSettingsButton, QStringLiteral(":/okuflow/icons/open-settings.svg"));
     assistantAiSettingsButton->setIconSize(QSize(26, 26));
     assistantAiSettingsButton->setToolTip(QStringLiteral("Open AI Settings dialog"));
     assistantAiSettingsButton->setAccessibleName(QStringLiteral("AI Settings"));
@@ -1637,7 +1658,7 @@ MainWindow::MainWindow()
     rightTabCornerLayout->setContentsMargins(4, 0, 0, 0);
     helpButton_ = new QToolButton();
     helpButton_->setObjectName(QStringLiteral("advancedTabArrow"));
-    helpButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/help.svg")));
+    SetThemedIcon(helpButton_, QStringLiteral(":/okuflow/icons/help.svg"));
     helpButton_->setIconSize(QSize(26, 26));
     helpButton_->setToolTip(QStringLiteral("Open controls and features help"));
     helpButton_->setAccessibleName(QStringLiteral("Open help"));
@@ -1758,9 +1779,9 @@ MainWindow::MainWindow()
     simpleKeystoneBackButton_ = new QPushButton();
     simpleKeystonePauseButton_ = new QPushButton();
     simpleKeystoneNextButton_ = new QPushButton();
-    simpleKeystoneBackButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/step-back.svg")));
-    simpleKeystonePauseButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/pause.svg")));
-    simpleKeystoneNextButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/step-forward.svg")));
+    simpleKeystoneBackButton_->setIcon(ThemedIconFor(QStringLiteral(":/okuflow/icons/step-back.svg")));
+    simpleKeystonePauseButton_->setIcon(ThemedIconFor(QStringLiteral(":/okuflow/icons/pause.svg")));
+    simpleKeystoneNextButton_->setIcon(ThemedIconFor(QStringLiteral(":/okuflow/icons/step-forward.svg")));
     for (QPushButton* button : {simpleKeystoneBackButton_, simpleKeystonePauseButton_,
                                 simpleKeystoneNextButton_}) {
         button->setIconSize(QSize(30, 30));
@@ -1773,11 +1794,11 @@ MainWindow::MainWindow()
     auto* bottomRightLayout = new QGridLayout(bottomRightPanel_);
     bottomRightLayout->setContentsMargins(10, 8, 8, 10);
     bottomRightLayout->setSpacing(6);
-    capturePhotoButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/camera.svg")));
-    recordButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/record.svg")));
-    explainNowButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/explain.svg")));
-    readTextButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/read.svg")));
-    annotationButton_->setIcon(QIcon(QStringLiteral(":/okuflow/icons/draw.svg")));
+    SetThemedIcon(capturePhotoButton_, QStringLiteral(":/okuflow/icons/camera.svg"));
+    recordButton_->setIcon(ThemedIconFor(QStringLiteral(":/okuflow/icons/record.svg")));
+    explainNowButton_->setIcon(ThemedIconFor(QStringLiteral(":/okuflow/icons/explain.svg")));
+    SetThemedIcon(readTextButton_, QStringLiteral(":/okuflow/icons/read.svg"));
+    SetThemedIcon(annotationButton_, QStringLiteral(":/okuflow/icons/draw.svg"));
     annotationButton_->setIconSize(QSize(28, 28));
     for (QPushButton* button : {capturePhotoButton_, recordButton_, explainNowButton_, readTextButton_}) {
         button->setIconSize(QSize(28, 28));
@@ -1965,8 +1986,8 @@ MainWindow::MainWindow()
                 }
             });
     connect(recordButton_, &QPushButton::toggled, this, [this](bool checked) {
-        recordButton_->setIcon(QIcon(checked ? QStringLiteral(":/okuflow/icons/record-stop.svg")
-                                             : QStringLiteral(":/okuflow/icons/record.svg")));
+        recordButton_->setIcon(ThemedIconFor(checked ? QStringLiteral(":/okuflow/icons/record-stop.svg")
+                                                     : QStringLiteral(":/okuflow/icons/record.svg")));
     });
 
     qApp->installEventFilter(this);
@@ -2274,6 +2295,11 @@ MainWindow::MainWindow()
     });
     setCentralWidget(central);
     setSimpleMode(true);
+    ApplyThemeContrast();
+    if (QStyleHints* hints = QGuiApplication::styleHints()) {
+        connect(hints, &QStyleHints::colorSchemeChanged, this,
+                [this](Qt::ColorScheme) { ApplyThemeContrast(true); });
+    }
 }
 
 MainWindow::~MainWindow()
@@ -2281,6 +2307,113 @@ MainWindow::~MainWindow()
     if (qApp) {
         qApp->removeNativeEventFilter(this);
         qApp->removeEventFilter(this);
+    }
+}
+
+QIcon MainWindow::ThemedIconFor(const QString& resourcePath) const
+{
+    const QPalette pal = palette();
+    return theme_contrast::ThemedIcon(
+        resourcePath, pal.color(QPalette::Active, QPalette::ButtonText),
+        pal.color(QPalette::Disabled, QPalette::ButtonText));
+}
+
+void MainWindow::SetThemedIcon(QAbstractButton* button,
+                               const QString& resourcePath)
+{
+    if (!button) return;
+    button->setIcon(ThemedIconFor(resourcePath));
+    themedButtonIcons_.emplace_back(button, resourcePath);
+}
+
+void MainWindow::SetThemedIcon(QAction* action, const QString& resourcePath)
+{
+    if (!action) return;
+    action->setIcon(ThemedIconFor(resourcePath));
+    themedActionIcons_.emplace_back(action, resourcePath);
+}
+
+void MainWindow::RefreshThemedIcons()
+{
+    for (const auto& [button, path] : themedButtonIcons_) {
+        if (button) button->setIcon(ThemedIconFor(path));
+    }
+    for (const auto& [action, path] : themedActionIcons_) {
+        if (action) action->setIcon(ThemedIconFor(path));
+    }
+    // State-dependent icons follow their current state, not a fixed path.
+    UpdateDirectionalUi();
+    if (recordButton_) {
+        recordButton_->setIcon(ThemedIconFor(
+            recordButton_->isChecked()
+                ? QStringLiteral(":/okuflow/icons/record-stop.svg")
+                : QStringLiteral(":/okuflow/icons/record.svg")));
+    }
+    if (explainNowButton_) {
+        explainNowButton_->setIcon(ThemedIconFor(
+            explainBusy_ ? QStringLiteral(":/okuflow/icons/record-stop.svg")
+                         : QStringLiteral(":/okuflow/icons/explain.svg")));
+    }
+    const QIcon pauseIcon(ThemedIconFor(
+        keystonePaused_ ? QStringLiteral(":/okuflow/icons/play.svg")
+                        : QStringLiteral(":/okuflow/icons/pause.svg")));
+    if (advancedKeystonePauseButton_) advancedKeystonePauseButton_->setIcon(pauseIcon);
+    if (simpleKeystonePauseButton_) simpleKeystonePauseButton_->setIcon(pauseIcon);
+    // Standard icons are pixmaps baked with the palette at creation time.
+    if (modeGridButton_) {
+        modeGridButton_->setIcon(
+            style()->standardIcon(QStyle::SP_FileDialogListView));
+    }
+}
+
+void MainWindow::UpdateSuperResStatusStyle()
+{
+    if (!mlTextSuperResolutionStatusLabel_ || !superResStatusKnown_) return;
+    const theme_contrast::StatusColors colors =
+        theme_contrast::StatusColorsFor(theme_contrast::IsLightTheme(palette()));
+    const QColor color = superResStatusOff_
+                             ? colors.off
+                             : superResStatusActive_ ? colors.active : colors.warning;
+    mlTextSuperResolutionStatusLabel_->setStyleSheet(
+        QStringLiteral("color: %1;").arg(color.name(QColor::HexRgb)));
+}
+
+void MainWindow::ApplyThemeContrast(bool rebaseFromApplication)
+{
+    if (applyingThemeContrast_) return;
+    const QScopedValueRollback<bool> guard(applyingThemeContrast_, true);
+    // On an application palette replacement (OS scheme switch), rebase onto
+    // the new application palette so no role can stay frozen at its
+    // construction-time value; the readable overrides are re-applied below.
+    QPalette pal = rebaseFromApplication ? QGuiApplication::palette() : palette();
+    const bool light = theme_contrast::IsLightTheme(pal);
+    const QColor disabled = theme_contrast::DisabledTextColor(light);
+    const QColor placeholder = theme_contrast::PlaceholderTextColor(light);
+    const bool paletteChanged =
+        rebaseFromApplication ||
+        pal.color(QPalette::Disabled, QPalette::WindowText) != disabled ||
+        pal.color(QPalette::Disabled, QPalette::ButtonText) != disabled ||
+        pal.color(QPalette::Disabled, QPalette::Text) != disabled ||
+        pal.color(QPalette::Active, QPalette::PlaceholderText) != placeholder;
+    if (paletteChanged) {
+        pal.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
+        pal.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
+        pal.setColor(QPalette::Disabled, QPalette::Text, disabled);
+        pal.setColor(QPalette::PlaceholderText, placeholder);
+        pal.setColor(QPalette::Disabled, QPalette::PlaceholderText, disabled);
+        setPalette(pal);
+    }
+    if (cameraFormatNoticeLabel_) {
+        cameraFormatNoticeLabel_->setStyleSheet(
+            QStringLiteral("color: %1;")
+                .arg(theme_contrast::WarningTextColor(light).name(QColor::HexRgb)));
+    }
+    UpdateSuperResStatusStyle();
+    const QColor iconColor = pal.color(QPalette::Active, QPalette::ButtonText);
+    if (iconColor != themedIconColor_ || disabled != themedIconDisabledColor_) {
+        themedIconColor_ = iconColor;
+        themedIconDisabledColor_ = disabled;
+        RefreshThemedIcons();
     }
 }
 
@@ -2628,8 +2761,8 @@ void MainWindow::ApplyExplainBusyUi()
 {
     if (!explainNowButton_) return;
     const QString title = explainBusy_ ? QStringLiteral("Stop") : QStringLiteral("Explain");
-    explainNowButton_->setIcon(QIcon(explainBusy_ ? QStringLiteral(":/okuflow/icons/record-stop.svg")
-                                                : QStringLiteral(":/okuflow/icons/explain.svg")));
+    explainNowButton_->setIcon(ThemedIconFor(explainBusy_ ? QStringLiteral(":/okuflow/icons/record-stop.svg")
+                                                          : QStringLiteral(":/okuflow/icons/explain.svg")));
     SetLiveText(explainNowButton_, title, LivePoliteness::kSilent,
                 explainBusy_ ? QStringLiteral("Stop scene explanation") : QStringLiteral("Explain scene"));
     explainNowButton_->setToolTip(TranslateUi(explainBusy_
@@ -2762,6 +2895,17 @@ QPushButton* MainWindow::testCameraAccelerationButton() const {
 QComboBox* MainWindow::recordingCanvasCombo() const {
     return recordingCanvasCombo_;
 }
+void MainWindow::refreshSystemLanguageItem()
+{
+    if (!applicationLanguageCombo_ || applicationLanguageCombo_->count() == 0) {
+        return;
+    }
+    applicationLanguageCombo_->setItemText(
+        0,
+        TranslateUi(QStringLiteral("System default (%1)"))
+            .arg(AppLanguageNativeName(AppLanguageFromSystemLocale())));
+}
+
 QComboBox* MainWindow::applicationLanguageCombo() const {
     return applicationLanguageCombo_;
 }
@@ -3040,12 +3184,10 @@ void MainWindow::setSuperResStatus(const QString& status,
                 QStringLiteral("NVIDIA Super Resolution status"));
     mlTextSuperResolutionStatusLabel_->setToolTip(status);
     mlTextSuperResolutionStatusLabel_->setAccessibleDescription(status);
-    const QString color = status == QStringLiteral("Off")
-                              ? QStringLiteral("#cfcfcf")
-                              : active ? QStringLiteral("#33d17a")
-                                       : QStringLiteral("#f6c85f");
-    mlTextSuperResolutionStatusLabel_->setStyleSheet(
-        QStringLiteral("color: %1;").arg(color));
+    superResStatusKnown_ = true;
+    superResStatusOff_ = status == QStringLiteral("Off");
+    superResStatusActive_ = active;
+    UpdateSuperResStatusStyle();
     if (mlTextSuperResolutionOverrideCheckbox_) {
         mlTextSuperResolutionOverrideCheckbox_->setVisible(
             maxineRuntimeInstalled_ &&
@@ -3117,8 +3259,9 @@ void MainWindow::setKeystoneTrackingControls(bool active,
     SetLiveText(advancedKeystonePauseButton_, pauseText,
                 LivePoliteness::kSilent,
                 QStringLiteral("Automatic screen correction"));
-    const QIcon pauseIcon(paused ? QStringLiteral(":/okuflow/icons/play.svg")
-                                 : QStringLiteral(":/okuflow/icons/pause.svg"));
+    keystonePaused_ = paused;
+    const QIcon pauseIcon(ThemedIconFor(paused ? QStringLiteral(":/okuflow/icons/play.svg")
+                                               : QStringLiteral(":/okuflow/icons/pause.svg")));
     advancedKeystonePauseButton_->setIcon(pauseIcon);
     simpleKeystonePauseButton_->setIcon(pauseIcon);
 
@@ -3180,7 +3323,7 @@ void MainWindow::ActivateRelativePreset(int offset)
     // the mode still displayed/applied when the grid was opened.
     int row = gridBrowsing_ ? gridOriginalRow_ : presetList_->currentRow();
     if (row < 0) {
-        row = 0;
+        row = offset < 0 ? count - 1 : 0;
     } else {
         row = (row + offset + count) % count;
     }
@@ -3978,6 +4121,7 @@ void MainWindow::changeEvent(QEvent* event)
         // translator, so decimal marks and percent placement change too.
         refreshSliderReadouts();
         refreshTextClarityUi();
+        refreshSystemLanguageItem();
         UpdateUiVisibilityControl();
         ApplyExplainBusyUi();
         UpdateAdvancedTabToolTips();
@@ -3997,6 +4141,13 @@ void MainWindow::changeEvent(QEvent* event)
                 FilterSettingsTab(SettingsScope::kShared, sharedSearchEdit_->text());
             }
         });
+    }
+    if (event && (event->type() == QEvent::PaletteChange ||
+                  event->type() == QEvent::ApplicationPaletteChange)) {
+        // The OS light/dark scheme (or an application palette replacement)
+        // changed after startup: scheme-paired colors and baked icon pixmaps
+        // must be re-derived. Own setPalette calls are guarded inside.
+        ApplyThemeContrast(event->type() == QEvent::ApplicationPaletteChange);
     }
     if (event && event->type() == QEvent::LayoutDirectionChange) {
         UpdateDirectionalUi();
@@ -4021,22 +4172,22 @@ void MainWindow::UpdateDirectionalUi()
                     : QStringLiteral(":/okuflow/icons/step-forward.svg");
 
     if (previousAdvancedTabButton_) {
-        previousAdvancedTabButton_->setIcon(QIcon(previousIcon));
+        previousAdvancedTabButton_->setIcon(ThemedIconFor(previousIcon));
     }
     if (nextAdvancedTabButton_) {
-        nextAdvancedTabButton_->setIcon(QIcon(nextIcon));
+        nextAdvancedTabButton_->setIcon(ThemedIconFor(nextIcon));
     }
     if (advancedKeystoneBackButton_) {
-        advancedKeystoneBackButton_->setIcon(QIcon(backIcon));
+        advancedKeystoneBackButton_->setIcon(ThemedIconFor(backIcon));
     }
     if (advancedKeystoneNextButton_) {
-        advancedKeystoneNextButton_->setIcon(QIcon(forwardIcon));
+        advancedKeystoneNextButton_->setIcon(ThemedIconFor(forwardIcon));
     }
     if (simpleKeystoneBackButton_) {
-        simpleKeystoneBackButton_->setIcon(QIcon(backIcon));
+        simpleKeystoneBackButton_->setIcon(ThemedIconFor(backIcon));
     }
     if (simpleKeystoneNextButton_) {
-        simpleKeystoneNextButton_->setIcon(QIcon(forwardIcon));
+        simpleKeystoneNextButton_->setIcon(ThemedIconFor(forwardIcon));
     }
     if (previousModeButton_) {
         previousModeButton_->setIcon(

@@ -71,6 +71,7 @@ std::vector<CameraDescriptor> MergePhoneCameraDiscovery(
         auto retained = old;
         if (attached != discovered.end()) {
             retained.phoneTransportId = attached->phoneTransportId;
+            retained.phoneServerEpoch = attached->phoneServerEpoch;
             retained.phoneAppReady = attached->phoneAppReady;
             retained.phoneBusy = attached->phoneBusy;
             retained.phoneProblem = attached->phoneProblem;
@@ -220,7 +221,11 @@ bool MediaCapture::StopCapture(const std::function<void(bool)>& beforeAccelerati
             RetainAbandonedSession(session);
         }
     }
+    // Stage timings only diagnose which stage consumed the shared 1500 ms
+    // budget; the bounded total contract itself is unchanged.
+    const auto stopStarted = deadline - std::chrono::milliseconds(1500);
     const bool quiesced = session->shutdown_->WaitQuiescent(deadline);
+    const auto quiescedAt = std::chrono::steady_clock::now();
     bool callbackSucceeded = true;
     session->releaseNotified_ = true;
     if (beforeAccelerationRelease) {
@@ -231,15 +236,24 @@ bool MediaCapture::StopCapture(const std::function<void(bool)>& beforeAccelerati
             qWarning() << "Capture consumer interop release failed; preserving producer backing";
         }
     }
+    const auto callbackAt = std::chrono::steady_clock::now();
     if (quiesced && callbackSucceeded) session->shutdown_->AllowRelease();
     else session->shutdown_->Abandon();
-    lastStopCompleted_ = quiesced && callbackSucceeded &&
-        session->shutdown_->WaitFinished(deadline) && !session->shutdown_->IsAbandoned();
+    const bool finished = session->shutdown_->WaitFinished(deadline);
+    const auto finishedAt = std::chrono::steady_clock::now();
+    lastStopCompleted_ = quiesced && callbackSucceeded && finished && !session->shutdown_->IsAbandoned();
     if (!lastStopCompleted_) {
         session->shutdown_->Abandon();
         RetainAbandonedSession(session);
         abandonedForExit_ = true;
-        qWarning() << "Camera stop exceeded its deadline; canceled session retained safely";
+        const auto stageMs = [](auto from, auto to) {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(to - from).count();
+        };
+        qWarning() << "Camera stop exceeded its deadline; canceled session retained safely"
+                   << "quiesceStageMs=" << stageMs(stopStarted, quiescedAt) << "quiesced=" << quiesced
+                   << "consumerReleaseStageMs=" << stageMs(quiescedAt, callbackAt)
+                   << "consumerReleaseOk=" << callbackSucceeded
+                   << "finalReleaseStageMs=" << stageMs(callbackAt, finishedAt) << "finished=" << finished;
     }
     return lastStopCompleted_;
 }
@@ -267,8 +281,10 @@ GpuFramePreparationResult MediaCapture::PrepareGpuFrameForCuda(
     }
     return session_->PrepareGpuFrameForCuda(frame, outTexture, outLease);
 }
-bool MediaCapture::ReadbackGpuFrame(MediaFrame& frame)
-{ return session_ && !session_->releaseNotified_ && session_->ReadbackGpuFrame(frame); }
+GpuFrameReadbackResult MediaCapture::ReadbackGpuFrame(MediaFrame& frame)
+{ return session_ && !session_->releaseNotified_ ? session_->ReadbackGpuFrame(frame) : GpuFrameReadbackResult::Failed; }
+bool MediaCapture::HasPendingGpuReadback() const
+{ return session_ && !session_->releaseNotified_ && session_->HasPendingGpuReadback(); }
 void MediaCapture::SetPhoneZoom(float ratio)
 { if (session_ && !session_->releaseNotified_ && session_->phoneTransport_) session_->phoneTransport_->SetZoom(ratio); }
 void MediaCapture::SetPhoneCamera(const std::string& id)

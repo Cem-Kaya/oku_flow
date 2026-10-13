@@ -1,6 +1,7 @@
 # First-party packaging helpers. Payloads and build tools stay outside Drive.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'bundle_layout.ps1')
 
 function Get-InstallerStableId([string]$Value) {
     $hash = [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Value.ToLowerInvariant()))
@@ -30,7 +31,7 @@ function New-VerifiedBundleSnapshot([string]$BundlePath, [string]$Destination) {
     }
     foreach ($record in $records) {
         $relative = [string]$record.path
-        if ($relative -match '(^/|\\|:|(^|/)\.\.?(/|$)|^(output|captures|android-signing)(/|$)|\.(jks|pfx|p12|key)$)' -or
+        if ($relative -match '(^/|\\|:|(^|/)\.\.?(/|$)|(^|/)(output|captures|android-signing)(/|$)|\.(jks|pfx|p12|key)$)' -or
             -not $paths.Add($relative)) { throw "Unsafe or duplicate bundle path: $relative" }
         $source = Get-Item -LiteralPath (Join-Path $bundle $relative)
         if ($source.Attributes -band [IO.FileAttributes]::ReparsePoint -or $source.Length -ne $record.bytes -or
@@ -42,10 +43,14 @@ function New-VerifiedBundleSnapshot([string]$BundlePath, [string]$Destination) {
         Copy-Item -LiteralPath $source.FullName -Destination $target
         if ((Get-FileHash -LiteralPath $target).Hash.ToLowerInvariant() -ne $record.sha256) { throw "Snapshot changed: $relative" }
     }
-    foreach ($required in @('oku_flow.exe','OkuFlowApp.exe','platform-tools/adb.exe','sources/adb-37.0.0-okuflow-source.zip','licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf')) {
+    $layout = Get-OkuFlowBundleLayout $Destination
+    foreach ($required in @('oku_flow.exe', $layout.ApplicationRelativePath,
+            ($layout.Prefix + 'platform-tools/adb.exe'),
+            ($layout.Prefix + 'sources/adb-37.0.0-okuflow-source.zip'),
+            ($layout.Prefix + 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'))) {
         if (-not $paths.Contains($required)) { throw "Incomplete bundle: $required" }
     }
-    [pscustomobject]@{manifest=$manifest;records=$records;path=$Destination}
+    [pscustomobject]@{manifest=$manifest;records=$records;path=$Destination;layout=$layout}
 }
 
 function Get-WindowsSdkTool([string]$Name) {

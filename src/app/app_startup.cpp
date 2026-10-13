@@ -128,7 +128,7 @@ void OkuFlowApp::ConfigureStartupProfiling() {
         else if (argument.startsWith(QStringLiteral("--startup-profile-ms="))) {
             bool valid = false;
             const int requested = argument.mid(21).toInt(&valid);
-            if (valid) durationMs = std::clamp(requested, 1000, 60000);
+            if (valid) durationMs = std::clamp(requested, 1000, 600000);
         } else if (argument == QStringLiteral("--startup-profile-legacy-camera"))
             startupSynchronousProfile_ = true;
     }

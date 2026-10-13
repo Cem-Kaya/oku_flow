@@ -3,6 +3,9 @@
 #if defined(_WIN32) && OKUFLOW_ENABLE_CUDA
 
 #include <windows.h>
+#include <cuda_runtime_api.h>
+#include <QDebug>
+#include "okuflow/common/deadline_worker.hpp"
 
 #include <algorithm>
 #include <array>
@@ -386,15 +389,61 @@ public:
     bool runtimeProbeAttempted_{};
 };
 
-MaxineSuperRes::MaxineSuperRes() : impl_(std::make_unique<Impl>()) {}
-MaxineSuperRes::~MaxineSuperRes() = default;
+class MaxineSuperRes::Worker {
+public:
+    DeadlineWorker worker;
+    int device{};
+    bool Execute(const std::function<bool()>& operation, const char* stage, std::string& error) {
+        auto success = std::make_shared<bool>(false);
+        auto deviceReady = std::make_shared<bool>(false);
+        const auto started = std::chrono::steady_clock::now();
+        const auto result = worker.Execute([operation, success, deviceReady, device = device] {
+            *deviceReady = cudaSetDevice(device) == cudaSuccess;
+            if (*deviceReady) *success = operation();
+        }, std::chrono::milliseconds(1000));
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count();
+        if (result != DeadlineWorker::Result::Completed) {
+            error = std::string("NVIDIA SuperRes ") + stage +
+                " did not complete safely; restart OkuFlow to resume video";
+            qWarning() << error.c_str() << "host time" << elapsed << "ms";
+            return false;
+        }
+        if (elapsed >= 50) qInfo() << "NVIDIA SuperRes" << stage << "host time" << elapsed << "ms";
+        if (!*deviceReady) error = "NVIDIA SuperRes could not select its CUDA device";
+        return *success;
+    }
+};
+
+MaxineSuperRes::MaxineSuperRes() : impl_(std::make_shared<Impl>()), worker_(std::make_unique<Worker>()) {
+    if (cudaGetDevice(&worker_->device) != cudaSuccess)
+        workerError_ = "NVIDIA SuperRes could not determine the CUDA device";
+}
+MaxineSuperRes::~MaxineSuperRes() {
+    if (!IsFaulted()) Teardown();
+    if (IsFaulted()) {
+        // A timed-out SDK host call may still use its stream and buffers. The
+        // surface quarantines borrowed allocations; retain SDK ownership too.
+        (void)new std::shared_ptr<Impl>(std::move(impl_));
+    }
+}
 
 bool MaxineSuperRes::Ensure(unsigned int sourceWidth,
                             unsigned int sourceHeight,
                             unsigned int destinationWidth,
                             unsigned int destinationHeight,
                             void* cudaStream) {
-    return impl_->Ensure(sourceWidth, sourceHeight, destinationWidth, destinationHeight, cudaStream);
+    if (IsFaulted()) return false;
+    // Avoid dispatch for an unchanged configuration; the previous call has
+    // completed before any Impl state is read from the caller thread.
+    if (impl_->effect_ && impl_->sourceWidth_ == sourceWidth && impl_->sourceHeight_ == sourceHeight &&
+        impl_->destinationWidth_ == destinationWidth && impl_->destinationHeight_ == destinationHeight &&
+        impl_->stream_ == cudaStream && impl_->loadedStrength_ == impl_->strength_) return true;
+    qInfo() << "NVIDIA SuperRes loading" << sourceWidth << "x" << sourceHeight
+            << "to" << destinationWidth << "x" << destinationHeight;
+    return worker_->Execute([owner = impl_, sourceWidth, sourceHeight, destinationWidth, destinationHeight, cudaStream] {
+        return owner->Ensure(sourceWidth, sourceHeight, destinationWidth, destinationHeight, cudaStream);
+    }, "model load", workerError_);
 }
 
 bool MaxineSuperRes::Ensure(int sourceWidth, int sourceHeight, int scale, void* cudaStream) {
@@ -411,18 +460,27 @@ bool MaxineSuperRes::Run(const void* sourceDevicePixels,
                          std::size_t sourcePitchBytes,
                          void* destinationDevicePixels,
                          std::size_t destinationPitchBytes) {
-    return impl_->Run(sourceDevicePixels, sourcePitchBytes,
-                      destinationDevicePixels, destinationPitchBytes);
+    if (IsFaulted()) return false;
+    return worker_->Execute([owner = impl_, sourceDevicePixels, sourcePitchBytes,
+                            destinationDevicePixels, destinationPitchBytes] {
+        return owner->Run(sourceDevicePixels, sourcePitchBytes, destinationDevicePixels, destinationPitchBytes);
+    }, "frame processing", workerError_);
 }
 
 void MaxineSuperRes::SetStrength(float strength) {
-    impl_->strength_ = std::clamp(strength, 0.0f, 1.0f);
+    if (!IsFaulted()) impl_->strength_ = std::clamp(strength, 0.0f, 1.0f);
 }
 
-void MaxineSuperRes::Teardown() { impl_->Teardown(); }
-bool MaxineSuperRes::IsReady() const { return impl_->effect_ != nullptr; }
-const std::string& MaxineSuperRes::LastError() const { return impl_->lastError_; }
-const std::wstring& MaxineSuperRes::RuntimeDirectory() const { return impl_->runtimeDirectory_; }
+void MaxineSuperRes::Teardown() {
+    if (!IsFaulted()) worker_->Execute([owner = impl_] { owner->Teardown(); return true; }, "teardown", workerError_);
+}
+bool MaxineSuperRes::IsReady() const { return !IsFaulted() && impl_->effect_ != nullptr; }
+bool MaxineSuperRes::IsFaulted() const { return !workerError_.empty(); }
+const std::string& MaxineSuperRes::LastError() const { return IsFaulted() ? workerError_ : impl_->lastError_; }
+const std::wstring& MaxineSuperRes::RuntimeDirectory() const {
+    static const std::wstring unavailable;
+    return IsFaulted() ? unavailable : impl_->runtimeDirectory_;
+}
 
 std::wstring MaxineSuperRes::FindRuntimeDirectory(const std::wstring& overrideDirectory) {
     const std::array<std::wstring, 3> explicitCandidates{
@@ -466,6 +524,7 @@ public:
     std::string error{"NVIDIA SuperRes requires the Windows CUDA build"};
     std::wstring runtimeDirectory;
 };
+class MaxineSuperRes::Worker {};
 
 MaxineSuperRes::MaxineSuperRes() : impl_(std::make_unique<Impl>()) {}
 MaxineSuperRes::~MaxineSuperRes() = default;
@@ -475,6 +534,7 @@ bool MaxineSuperRes::Run(const void*, std::size_t, void*, std::size_t) { return 
 void MaxineSuperRes::SetStrength(float) {}
 void MaxineSuperRes::Teardown() {}
 bool MaxineSuperRes::IsReady() const { return false; }
+bool MaxineSuperRes::IsFaulted() const { return false; }
 const std::string& MaxineSuperRes::LastError() const { return impl_->error; }
 const std::wstring& MaxineSuperRes::RuntimeDirectory() const { return impl_->runtimeDirectory; }
 std::wstring MaxineSuperRes::FindRuntimeDirectory(const std::wstring&) { return {}; }

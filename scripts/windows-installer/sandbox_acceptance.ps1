@@ -40,7 +40,8 @@ try{
         Assert-Fixture ((Get-FileHash -LiteralPath (Join-Path $install $record.path)).Hash.ToLowerInvariant() -eq $record.sha256) "Installed payload matches: $($record.path)"
     }
     Invoke-FixtureMsi '/i' (Join-Path $InputDirectory 'previous.msi') 'block-downgrade' $false
-    foreach($name in @('oku_flow.exe','OkuFlowApp.exe')){
+    $applicationPath = if ($inputData.files.path -contains 'app/OkuFlowApp.exe') { 'app/OkuFlowApp.exe' } else { 'OkuFlowApp.exe' }
+    foreach($name in @('oku_flow.exe', $applicationPath)){
         $expected=$inputData.files | Where-Object {$_.path -eq $name}
         Assert-Fixture ((Get-FileHash -LiteralPath (Join-Path $install $name)).Hash.ToLowerInvariant() -eq $expected.sha256) "Downgrade leaves current $name intact"
     }

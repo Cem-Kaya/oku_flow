@@ -13,6 +13,15 @@ import android.provider.Settings
  */
 object SystemSettingsLauncher {
 
+    /** Primary onboarding action; unknown debugging status starts at About phone. */
+    fun openSetupSettings(context: Context, step: SetupStep) {
+        when (primarySetupSettingsTarget(step)) {
+            SetupSettingsTarget.AboutPhone -> openAboutPhone(context)
+            SetupSettingsTarget.DeveloperOptions -> openDeveloperOptions(context)
+            null -> Unit
+        }
+    }
+
     /** "About phone" — where Build number is tapped seven times. */
     fun openAboutPhone(context: Context) {
         launchFirst(
@@ -56,7 +65,9 @@ object SystemSettingsLauncher {
     private fun launchFirst(context: Context, vararg candidates: Intent) {
         for (intent in candidates) {
             try {
-                context.startActivity(intent)
+                // Locale-wrapped/application contexts also launch safely; a
+                // successful start is not proof an OEM activity stayed open.
+                context.startActivity(Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 return
             } catch (notFound: ActivityNotFoundException) {
                 // Try the next, broader screen.

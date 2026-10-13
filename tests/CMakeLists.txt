@@ -1,4 +1,10 @@
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test)
+include(gui_cases.cmake)
+
+add_executable(deadline_worker_tests deadline_worker_tests.cpp)
+target_include_directories(deadline_worker_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(deadline_worker_tests PRIVATE Qt6::Test)
+add_test(NAME deadline_worker COMMAND deadline_worker_tests)
 
 add_executable(settings_store_tests
     settings_store_tests.cpp
@@ -6,6 +12,7 @@ add_executable(settings_store_tests
     ${PROJECT_SOURCE_DIR}/src/app/protected_secret_store.cpp
     ${PROJECT_SOURCE_DIR}/src/app/settings_controller.cpp
     ${PROJECT_SOURCE_DIR}/src/app/settings_store.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/app_language.cpp
 )
 
 target_include_directories(settings_store_tests PRIVATE
@@ -22,6 +29,8 @@ target_link_libraries(settings_store_tests PRIVATE
 add_test(NAME settings_store_round_trip COMMAND settings_store_tests)
 get_target_property(QT_QMAKE_EXECUTABLE Qt6::qmake IMPORTED_LOCATION)
 get_filename_component(QT_BIN_DIRECTORY "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
+set_tests_properties(deadline_worker PROPERTIES TIMEOUT 15
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 add_executable(launcher_fixture launcher_fixture.cpp)
 set_property(TARGET launcher_fixture PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 add_executable(windows_runtime_tests windows_runtime_tests.cpp ${PROJECT_SOURCE_DIR}/src/app/windows_runtime_contract.cpp)
@@ -85,22 +94,55 @@ set_tests_properties(user_data_paths PROPERTIES
 )
 
 if (WIN32)
+    add_executable(adb_legacy_fixture adb_legacy_fixture.cpp adb_legacy_fixture.rc)
+    target_compile_definitions(adb_legacy_fixture PRIVATE
+        NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    target_link_libraries(adb_legacy_fixture PRIVATE ws2_32)
+    set_property(TARGET adb_legacy_fixture PROPERTY MSVC_RUNTIME_LIBRARY
+        "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    add_executable(adb_legacy_recovery_tests adb_legacy_recovery_tests.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/adb_legacy_recovery.cpp)
+    target_include_directories(adb_legacy_recovery_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(adb_legacy_recovery_tests PRIVATE
+        Qt6::Core Qt6::Test iphlpapi ws2_32 version advapi32)
+    target_compile_definitions(adb_legacy_recovery_tests PRIVATE
+        NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE
+        OKUFLOW_ADB_LEGACY_FIXTURE="$<TARGET_FILE:adb_legacy_fixture>")
+    add_dependencies(adb_legacy_recovery_tests adb_legacy_fixture)
+    add_test(NAME adb_legacy_recovery COMMAND adb_legacy_recovery_tests)
+    set_tests_properties(adb_legacy_recovery PROPERTIES TIMEOUT 60
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+    add_executable(adb_owned_child_fixture
+        adb_owned_child_fixture.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/adb_owned_server.cpp)
+    target_include_directories(adb_owned_child_fixture PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_compile_definitions(adb_owned_child_fixture PRIVATE
+        NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    target_link_libraries(adb_owned_child_fixture PRIVATE iphlpapi ws2_32)
+    set_property(TARGET adb_owned_child_fixture PROPERTY MSVC_RUNTIME_LIBRARY
+        "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     add_executable(phone_camera_tests
         phone_camera_tests.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/adb_owned_server.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/adb_legacy_recovery.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/phone_camera.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/media_capture_facade.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/media_capture.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/capture_buffer.cpp)
     target_include_directories(phone_camera_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(phone_camera_tests PRIVATE
-        Qt6::Core Qt6::Network Qt6::Test d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
-    target_compile_definitions(phone_camera_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+        Qt6::Core Qt6::Network Qt6::Test iphlpapi ws2_32 version advapi32 d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
+    target_compile_definitions(phone_camera_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE
+        OKUFLOW_ADB_OWNED_CHILD_FIXTURE="$<TARGET_FILE:adb_owned_child_fixture>")
+    add_dependencies(phone_camera_tests adb_owned_child_fixture)
     add_test(NAME phone_camera_contract COMMAND phone_camera_tests)
-    set_tests_properties(phone_camera_contract PROPERTIES TIMEOUT 30
+    set_tests_properties(phone_camera_contract PROPERTIES TIMEOUT 180
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
     add_executable(capture_shutdown_tests
         capture_shutdown_tests.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/adb_owned_server.cpp
+        ${PROJECT_SOURCE_DIR}/src/capture/adb_legacy_recovery.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/media_capture_facade.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/media_capture.cpp
         ${PROJECT_SOURCE_DIR}/src/capture/phone_camera.cpp
@@ -108,7 +150,7 @@ if (WIN32)
     )
     target_include_directories(capture_shutdown_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(capture_shutdown_tests PRIVATE
-        Qt6::Core Qt6::Network Qt6::Test d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
+        Qt6::Core Qt6::Network Qt6::Test iphlpapi ws2_32 version advapi32 d3d11 d3d12 dxgi mf mfplat mfreadwrite mfuuid ole32 wmcodecdspuuid)
     target_compile_definitions(capture_shutdown_tests PRIVATE
         NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
     add_test(NAME capture_shutdown COMMAND capture_shutdown_tests)
@@ -277,6 +319,22 @@ set_tests_properties(live_accessible_status PROPERTIES
 )
 
 if (WIN32)
+    add_executable(language_catalog_contract_tests
+        language_catalog_contract_tests.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/app/language_manager.hpp
+        ${PROJECT_SOURCE_DIR}/src/app/language_manager.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/app_language.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp)
+    target_include_directories(language_catalog_contract_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(language_catalog_contract_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+    target_compile_definitions(language_catalog_contract_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    qt_add_resources(language_catalog_contract_tests "okuflow_catalog_contract_translations"
+        PREFIX "/i18n" BASE "${CMAKE_CURRENT_BINARY_DIR}/../cmake" FILES ${OKUFLOW_QM_FILES})
+    add_test(NAME language_catalog_contract COMMAND language_catalog_contract_tests)
+    set_tests_properties(language_catalog_contract PROPERTIES TIMEOUT 30 LABELS "headless"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+
     add_executable(language_manager_tests
         language_manager_tests.cpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/app/language_manager.hpp
@@ -284,6 +342,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/live_status_text.hpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ui_translation.hpp
         ${PROJECT_SOURCE_DIR}/src/app/language_manager.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/app_language.cpp
         ${PROJECT_SOURCE_DIR}/src/common/response_language.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
@@ -471,6 +530,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/src/app/assistive_feature_manager.cpp
         ${PROJECT_SOURCE_DIR}/src/app/user_data_paths.cpp
         ${PROJECT_SOURCE_DIR}/src/common/assistive_runtime.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/app_language.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_app_server_client.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_json_rpc_process.cpp
         ${PROJECT_SOURCE_DIR}/src/common/response_language.cpp
@@ -502,13 +562,7 @@ if (WIN32)
     target_compile_definitions(annotation_overlay_tests PRIVATE
         NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 
-    add_test(NAME annotation_overlay_interactions COMMAND annotation_overlay_tests)
-    set_tests_properties(annotation_overlay_interactions PROPERTIES
-        TIMEOUT 30
-        LABELS "gui"
-        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
-        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}"
-    )
+    okuflow_add_gui_cases(annotation_overlay_interactions annotation_overlay_tests AnnotationOverlayTests)
 
     add_executable(render_widget_tests
         render_widget_tests.cpp
@@ -536,6 +590,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
         ${PROJECT_SOURCE_DIR}/src/app/color_schemes.cpp
         ${PROJECT_SOURCE_DIR}/src/app/language_manager.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/app_language.cpp
     )
     target_include_directories(color_scheme_picker_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_compile_definitions(color_scheme_picker_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -567,10 +622,7 @@ if (WIN32)
         NOMINMAX WIN32_LEAN_AND_MEAN OKUFLOW_HAS_TTS=0)
     target_link_libraries(ai_settings_dialog_tests PRIVATE
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
-    add_test(NAME ai_settings_dialog_interactions COMMAND ai_settings_dialog_tests)
-    set_tests_properties(ai_settings_dialog_interactions PROPERTIES TIMEOUT 60 LABELS "gui"
-        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
-        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+    okuflow_add_gui_cases(ai_settings_dialog_interactions ai_settings_dialog_tests AiSettingsDialogTests)
 
     # Exercise the real MainWindow widget tree without constructing OkuFlowApp
     # or starting camera, account, and recording services. The test translation
@@ -587,6 +639,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/responsive_slider_row.hpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/app/language_manager.hpp
         ${PROJECT_SOURCE_DIR}/src/ui/main_window.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/app_language.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/render_widget.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/assistive_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/annotation_overlay.cpp
@@ -614,10 +667,7 @@ if (WIN32)
         BASE "${CMAKE_CURRENT_BINARY_DIR}/../cmake"
         FILES ${OKUFLOW_QM_FILES}
     )
-    add_test(NAME main_window_interactions COMMAND main_window_tests)
-    set_tests_properties(main_window_interactions PROPERTIES TIMEOUT 90 LABELS "gui"
-        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
-        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+    okuflow_add_gui_cases(main_window_interactions main_window_tests MainWindowTests)
 
     add_executable(notes_html_tests
         notes_html_tests.cpp
@@ -625,6 +675,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
         ${PROJECT_SOURCE_DIR}/src/common/assistive_runtime.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/app_language.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_app_server_client.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_json_rpc_process.cpp
         ${PROJECT_SOURCE_DIR}/src/common/response_language.cpp
@@ -664,6 +715,7 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
         ${PROJECT_SOURCE_DIR}/src/common/assistive_runtime.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/app_language.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_app_server_client.cpp
         ${PROJECT_SOURCE_DIR}/src/common/codex_json_rpc_process.cpp
         ${PROJECT_SOURCE_DIR}/src/common/response_language.cpp
@@ -689,7 +741,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     target_include_directories(yuv_color_cuda_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(yuv_color_cuda_tests PRIVATE CUDA::cudart_static)
     set_target_properties(yuv_color_cuda_tests PROPERTIES
-        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "75;86;89")
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121")
     add_test(NAME yuv_color_conversion_cuda COMMAND yuv_color_cuda_tests)
     set_tests_properties(yuv_color_conversion_cuda PROPERTIES
         TIMEOUT 30 SKIP_RETURN_CODE 77 LABELS "gpu")
@@ -701,7 +753,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     target_include_directories(text_clarity_cuda_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(text_clarity_cuda_tests PRIVATE CUDA::cudart_static)
     set_target_properties(text_clarity_cuda_tests PROPERTIES
-        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "75;86;89")
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121")
     add_test(NAME text_clarity_sauvola_cuda COMMAND text_clarity_cuda_tests)
     set_tests_properties(text_clarity_sauvola_cuda PROPERTIES
         TIMEOUT 30 SKIP_RETURN_CODE 77 LABELS "gpu")
@@ -717,7 +769,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     set_target_properties(stabilization_cuda_tests PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "75;86;89"
+        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
     )
     add_test(NAME stabilization_similarity_cuda
              COMMAND stabilization_cuda_tests)
@@ -738,7 +790,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     set_target_properties(spatial_upscaler_cuda_tests PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "75;86;89"
+        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
     )
     add_test(NAME spatial_upscaler_reference_cuda
              COMMAND spatial_upscaler_cuda_tests)
@@ -759,7 +811,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     set_target_properties(stabilization_replay_cuda PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "75;86;89"
+        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
     )
 
     add_test(NAME stabilization_replay_regression
@@ -775,4 +827,29 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
         LABELS "gpu"
     )
 
+    # The fatbin must carry native SASS for every supported architecture;
+    # a missing one only fails at kernel launch on that hardware. Keep this
+    # list in sync with CUDA_ARCHITECTURES in cmake/CMakeLists.txt.
+    find_program(OKUFLOW_CUOBJDUMP NAMES cuobjdump
+        HINTS ${CUDAToolkit_BIN_DIR} "$ENV{CUDA_PATH}/bin")
+    if(OKUFLOW_CUOBJDUMP)
+        add_test(NAME cuda_architecture_coverage
+            COMMAND ${CMAKE_COMMAND}
+                "-DOKUFLOW_CUOBJDUMP=${OKUFLOW_CUOBJDUMP}"
+                "-DOKUFLOW_EXECUTABLE=$<TARGET_FILE:oku_flow>"
+                "-DOKUFLOW_EXPECTED_ARCHS=75,80,86,89,90,100,103,120,121"
+                -P "${PROJECT_SOURCE_DIR}/tests/check_cuda_architectures.cmake")
+        set_tests_properties(cuda_architecture_coverage PROPERTIES TIMEOUT 60)
+    endif()
 endif()
+
+# Also serialize the small GUI suites that still run in one process. RUN_SERIAL
+# prevents overlap with non-GUI tests inside one CTest; the fixture lease also
+# prevents two separate CTest processes from opening competing GUI windows.
+get_property(okuflow_tests DIRECTORY PROPERTY TESTS)
+foreach(test IN LISTS okuflow_tests)
+    get_property(labels TEST "${test}" PROPERTY LABELS)
+    if("gui" IN_LIST labels)
+        set_tests_properties("${test}" PROPERTIES RUN_SERIAL TRUE RESOURCE_LOCK okuflow_desktop)
+    endif()
+endforeach()

@@ -28,7 +28,7 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
 - Streamed Assistant answers preserve selected text and a scrolled reading
   position. Draw rails scroll in short views.
   An unavailable speech voice retains its saved choice.
-- Live-switchable English, Turkish, and German UI under
+- Live-switchable [25-language UI](localization.md) under
   `Advanced > Settings > Language`. The flag-and-native-name selector changes
   visible labels, accessible names, status announcements, AI response
   language, locale-formatted values, and the preferred Read Aloud voice
@@ -161,6 +161,18 @@ CUDA configuration, runs the CPU suite, and then builds and runs the
 CUDA-enabled suite. The two real CTest presets treat an empty test directory as
 an error.
 
+GUI main-window, annotation and AI-settings slots are independently selectable;
+all native GUI fixtures remain serial, including across separate CTest
+processes. The tracked helpers archive CTest evidence through
+`scripts/run_test_gate.ps1`. After an explicitly identified desktop interruption,
+`scripts\agent_build.bat --retry-interrupted msvc-cpu-tests EXACT_CTEST_NAME`
+retries that one case without rebuilding. `OKUFLOW_TEST_RESUME=1` then reuses
+only matching source/build/runtime/environment evidence while retaining normal
+compile gates. Ordinary assertions and unfinished runs stay blocking; changed
+inputs require a fresh gate. CPU/CUDA/bundle results remain separate. See
+[selectable GUI tests and resume rules](../tests/README.md#selectable-gui-cases-and-exact-inventory-resumes)
+for commands, evidence paths and hardware/desktop limits.
+
 If the desktop is reserved, `set OKUFLOW_AGENT_EXCLUDE_GUI=1` before running the
 helper excludes tests labelled `gui` and marks the summary as partial validation.
 Leave it unset for the complete release gate.
@@ -261,8 +273,9 @@ vendor's alternate host without weakening verification.
 
 The new [`android/`](../android/README.md) project contains native Kotlin/Compose
 setup screens for Developer mode, USB debugging, camera permission, and
-connecting the cable. It follows the phone's English/Turkish/German language
-and shows one instruction and one large action at a time.
+connecting the cable. It follows a supported phone language by default, offers
+25 languages and a saved manual choice in Advanced settings, and shows one
+instruction and one large action at a time.
 
 The local Android toolchain is ready. Build the debug APK and run JVM tests
 with `pwsh -NoProfile -File scripts/build_android.ps1 -Lint`; see
@@ -329,6 +342,10 @@ files use that trial's data folder. The source settings hash is checked after
 each run. The profiler refuses to run alongside another OkuFlow instance and
 lets its own instances exit normally after 15 seconds. `-DurationSeconds`,
 `-CameraIndex`, `-SettingsPath`, and `-OutputDirectory` allow focused comparisons.
+Durations from 1 through 600 seconds are supported for manual cable-recovery
+checks; the default remains 15 seconds. Profiling always exits normally at its
+chosen deadline. Its heartbeat retains only the first 3000 delay samples, so a
+longer run's heartbeat percentiles do not cover the entire session.
 `-DurationSeconds 1 -AllowNoFrame` also permits a short close-during-startup
 check; absent a presented frame, its timings must not be used as a speed result.
 
@@ -353,15 +370,15 @@ profiling flags for ordinary operation.
   Camera selectors are temporarily disabled while the initial device opens.
 - `Simple` / `Advanced` switches between a full-view overlay UI and a right-side inspector. The live camera remains visible in both states.
 - `Application language` under the Advanced Settings tab's `Language`
-  section offers `English`, `Türkçe`, and `Deutsch` with their flags. The
-  selection is global, persists across restarts, and updates the open windows
-  in place. On first run OkuFlow follows a supported Windows display
-  language, otherwise it starts in English. An AI request already in progress
-  finishes in its old language; the next request follows the new choice.
-  The language registry also carries locale layout direction, so future RTL
-  catalogs can use the same picker and persistence path. RTL languages are not
-  offered yet because each still needs native wording, typography, and
-  screen-reader validation.
+  section offers System default and 25 native language names with decorative
+  flags. The selection is global, persists across restarts, and updates open
+  windows in place. Missing/unknown preferences follow Windows display
+  languages; an existing explicit choice wins. English is the unsupported
+  language fallback. A failed catalog switch preserves the current language.
+  Arabic, Persian, Hebrew and Urdu use RTL layout. An AI request already in
+  progress finishes in its old language; the next request follows the new
+  choice. [Localization](localization.md) lists codes, draft translation
+  provenance and the native wording/layout/screen-reader checks still pending.
 - `Viewport framing` under `Advanced > Settings > View and navigation`
   is a global viewport preference:
   `Fill (crop)` fills the camera area without distorting it, while `Fit (show
@@ -438,8 +455,12 @@ profiling flags for ordinary operation.
 - `NVIDIA Super Resolution` and its strength slider are profile-owned Advanced
   controls under `Advanced > Image > Sharpness`. Enabling
   it restores a useful strength when needed and raises zoom to the 1.33x
-  minimum. Maxine runs its supported 4/3x AI pass, with any additional zoom
-  applied afterward on the GPU. The result is consumed synchronously on the
+  minimum. Maxine selects an exact supported AI scale that fits the requested
+  crop and its model's resolution limit, with additional zoom applied afterward
+  on the GPU. The 4x model accepts input through 540p and 3x through 720p;
+  lower factors accept input through 2160p. A 4000x2256 phone stream therefore
+  uses its valid 2x AI stage even at 16x desktop zoom, instead of attempting an
+  unsupported 4x model. The result is consumed synchronously on the
   application CUDA stream and is not blended with a separately timed base
   frame; residual zoom maps the live pan focus into the AI crop. This prevents
   moving ghost layers. The status row distinguishes the source crop,
@@ -455,9 +476,16 @@ profiling flags for ordinary operation.
   camera remains native. The regular scene texture always follows the actual
   post-rotation camera resolution and is never fixed at 720p. Ultra and Faster
   2x are mutually exclusive profile choices. Unavailable or failed runtimes
-  fall back to NIS/FSR automatically and report the reason; a slow run can be
+  retain the base scene and report the reason; separately enabled NIS/FSR
+  remains available. A slow run can be
   kept on with the compact performance-limit checkbox until SuperRes is
   turned off.
+  Model load, synchronous SDK inference and teardown execute on one serial
+  worker with a one-second host deadline. The caller still waits within that
+  bound; this is not a fully asynchronous render pipeline. A deadline or SDK
+  exception faults the surface and retains its allocations until process exit,
+  rather than freeing resources a late SDK call may still access. Restart is
+  required after that fault. Strength changes settle for 200 ms before reload.
 - The bottom-left quick-mode carousel and its full preset grid remain available
   in Advanced mode, so presets can be changed without returning to Simple.
 - Advanced has separate `Image`, `Assistant`, and `Settings`
@@ -857,7 +885,43 @@ from the connected phone, with no built-in model or serial list.
 The Windows ZIP includes source-built adb, its USB support/dependency DLLs,
 license notices and corresponding source/relinking materials. Users do not
 need Android Studio or the SDK. OkuFlow starts a missing local adb server
-without a terminal and preserves an existing server. The Android APK is built
+without a terminal on a private ephemeral loopback port and preserves an
+existing or overridden server. Its exact child is assigned to a non-inherited
+Windows kill-on-close job before running: app close and crash both stop it.
+An idle owned server can restart after two confirmed unresponsive version
+probes, with a 30-second cooldown across failures/crashes; live/starting phone
+sessions and cancellation suppress restart. Borrowed servers remain under
+their owner's control. The Android APK is built
 and installed separately; some phone vendors require a separately installed
 Windows USB debugging driver. See [`docs/adb_distribution.md`](../docs/adb_distribution.md)
 for build provenance and redistribution terms.
+
+The owned server uses WinUSB exclusively, so a separate SDK server may not see
+its phones. Start SDK adb first for borrowed mode, or use the private port
+logged by OkuFlow for cooperating tools. Explicit webcam selection prevents
+owned bootstrap and releases idle USB ownership; automatic phone selection is
+phone-use intent. Emulator scanning is disabled. Owned startup has a five-second
+readiness window and localized automatic-retry status. A dead owned child can
+yield to a responsive new default listener after its sessions finish, while
+shutdown prevents late worker launches. Cancellable lifecycle lock waits and
+nonblocking live-child observations keep stop from waiting behind discovery.
+Port observation is not a readiness guarantee; startup checks the ready result.
+Server epochs reset retry/launch state even when a restarted adb reuses IDs.
+
+Confirmed default-server hangs (two failures spanning five seconds) try narrow
+reviewed-legacy OkuFlow reclamation: exact process handle, canonical bundle,
+pinned adb manifest/image, product metadata or pinned public launcher hash,
+no sibling/session, serialized and revalidated before stop effects. Unknown
+listeners remain untouched while a private shadow tries USB. Empty raw private
+transports plus two healthy default probes permit handback. `BorrowOnly` has no
+lifecycle effects; explicit webcam intent only releases idle owned support.
+See the provenance pins, private fixtures and limits in adb_distribution.md.
+
+### Progress deadlines
+
+Steady-state GPU completion and deferred camera readback have one-second
+progress deadlines. They observe actual completion, not camera FPS or VSync.
+A GPU fault retains unfinished resources and displays a persistent restart
+message. A readback failure instead enters the existing camera reconnect path.
+Phone packet and decoded-output progress are independent, so arriving compressed
+packets cannot indefinitely hide a decoder that stopped producing pictures.

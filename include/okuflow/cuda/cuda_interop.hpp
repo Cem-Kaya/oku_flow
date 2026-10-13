@@ -565,6 +565,8 @@ private:
     unsigned int superResTimingOutputWidth_{};
     unsigned int superResTimingOutputHeight_{};
     float superResTimingStrength_{-1.0f};
+    float superResRequestedStrength_{-1.0f};
+    std::uint64_t superResStrengthChangedAt_{};
     bool superResAutoDisabled_{};
     bool superResPerformanceOverride_{};
     // Setup/Load failures latch on the (source extent, factor) key so a broken

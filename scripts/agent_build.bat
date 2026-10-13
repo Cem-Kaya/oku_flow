@@ -15,8 +15,10 @@ set "RELEASE_RESULT=SKIP"
 set "CPU_RESULT=SKIP"
 set "CUDA_RESULT=SKIP"
 set "TEST_FILTER="
+set "TEST_RESUME="
+if "%OKUFLOW_TEST_RESUME%"=="1" set "TEST_RESUME=-Resume"
 if "%OKUFLOW_AGENT_EXCLUDE_GUI%"=="1" (
-    set "TEST_FILTER=-LE gui"
+    set "TEST_FILTER=-ExcludeGui"
     echo PARTIAL VALIDATION: desktop tests are explicitly excluded.
 )
 set "VSDEVCMD="
@@ -46,6 +48,20 @@ if not defined VSDEVCMD (
 call "%VSDEVCMD%" -arch=x64 -host_arch=x64 >nul
 if errorlevel 1 (
     echo FAIL: Visual Studio x64 developer environment could not be initialized.
+    goto :summary
+)
+
+rem Retry only a recorded desktop interruption, in the same VS environment.
+rem No rebuild or release publishing occurs in this mode.
+if /I "%~1"=="--retry-interrupted" (
+    pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -Preset "%~2" -Resume -RetryInterrupted "%~3"
+    if errorlevel 1 goto :retry_failed
+    popd
+    endlocal
+    exit /b 0
+)
+if not "%~1"=="" (
+    echo FAIL: unknown option. Use --retry-interrupted PRESET EXACT_CTEST_NAME.
     goto :summary
 )
 
@@ -84,13 +100,14 @@ if errorlevel 1 (
     set "CPU_RESULT=FAIL"
     goto :summary
 )
-ctest --preset msvc-cpu-tests %TEST_FILTER%
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -Preset msvc-cpu-tests %TEST_FILTER% %TEST_RESUME%
 if errorlevel 1 (
     set "CPU_RESULT=FAIL"
-    goto :summary
+) else (
+    set "CPU_RESULT=PASS"
 )
-set "CPU_RESULT=PASS"
 
+rem Preserve CUDA evidence even when a CPU desktop fixture was interrupted.
 echo ===== CUDA TEST GATE =====
 cmake --preset msvc-cuda-tests
 if errorlevel 1 (
@@ -102,7 +119,7 @@ if errorlevel 1 (
     set "CUDA_RESULT=FAIL"
     goto :summary
 )
-ctest --preset msvc-cuda-tests %TEST_FILTER%
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -Preset msvc-cuda-tests %TEST_FILTER% %TEST_RESUME%
 if errorlevel 1 (
     set "CUDA_RESULT=FAIL"
     goto :summary
@@ -124,3 +141,8 @@ if not "%CUDA_RESULT%"=="PASS" set "FINAL_RESULT=1"
 
 popd
 endlocal & exit /b %FINAL_RESULT%
+
+:retry_failed
+popd
+endlocal
+exit /b 1

@@ -2,7 +2,7 @@
 
 namespace okuflow {
 
-enum class CaptureGpuPending { None, CudaCopy, D3D11Query };
+enum class CaptureGpuPending { None, CudaCopy, D3D11Query, Readback };
 
 // Only D3D11 conversion deadlines select a slower input rung. A pending CUDA
 // copy still owns the producer and must resolve through its ownership deadline.

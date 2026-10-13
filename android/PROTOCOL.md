@@ -27,7 +27,10 @@ A peer whose credentials cannot be read is closed without affecting the
 listener. No INTERNET permission is
 declared. The peer uid alone does not prove that a connection uses a cable.
 
-Both hosts connect directly to the running adb server at `127.0.0.1:5037`.
+The Python host connects directly to the running adb server at `127.0.0.1:5037`.
+Windows borrows a listener there or an explicit local endpoint override. When
+neither exists, Windows launches an owned server on a private ephemeral
+loopback port and uses that endpoint for all host/transport requests.
 The initial `host:track-devices-proto-binary` snapshot identifies
 `ConnectionType.USB` and authorized `ConnectionState.DEVICE`. This works when
 native Windows adb supplies no bus address. Connections select that
@@ -35,11 +38,44 @@ native Windows adb supplies no bus address. Connections select that
 fall back to `host:devices-l`, accepting only entries with explicit `usb:`
 evidence. Wi-Fi, emulators and unknown transports are excluded. The Python probe never owns the server lifecycle. Windows polls in the
 background every five seconds and, without an existing listener or endpoint
-override, may directly start a hidden local `adb server nodaemon`. It never
+override, may directly start a hidden local `adb -L tcp:<port> server nodaemon`. It never
 runs client start-server/kill-server commands, upgrades or replaces another
 tool's server, or adds adb forwards. Local TCP endpoint overrides are honored;
 remote or unsupported endpoints are refused. Bootstrap retries wait at least
-30 seconds. The detached server remains shared after Windows app exit.
+30 seconds, including failed launches and unexpected child exits. The exact
+owned child is assigned to a non-inherited kill-on-close Windows job before
+it resumes; normal OkuFlow shutdown and process crash both terminate it.
+Owned bootstrap requires phone-use intent; an explicit webcam choice prevents
+it and relinquishes an idle owned server. Emulator scanning is disabled with
+`ADB_EMU=0`; owned support rejects external host-kill requests with
+`ADB_REJECT_KILL_SERVER=1`. WinUSB ownership can hide these phones from a second server;
+cooperating tools can use the logged private port or start SDK adb first.
+Readiness is polled for five seconds in 50ms slices. Two consecutive
+unresponsive host-version probes allow restarting only that owned child, with
+cancellation and live/starting camera sessions taking precedence. Pre-existing
+and overridden servers remain borrowed. Only confirmed-hung, reviewed legacy
+OkuFlow bundles qualify for the separately provenanced reclamation in
+docs/adb_distribution.md; unknown/SDK/overridden servers remain untouched.
+The host-version read deadline is one second per bounded field. Listener
+ownership is checked against the exact held child process; a foreign listener
+on a raced port is not accepted as owned. Dead children can yield to a newly
+responsive default server after its sessions finish. Startup/recovery reports automatic retry without
+manual process-management instructions. Shutdown latches out new owned launches.
+After a failed stream or idle preferred-phone probe, Windows may issue
+`host-transport-id:<id>:reconnect` only after a responsive adb version/listing
+and two consecutive 2-second full-token echo timeouts, followed by a fresh
+non-claiming companion timeout. The same authorized USB transport must remain
+listed after these checks. A per-process, per-phone/server one-minute limit
+survives transport-ID changes, but not process restarts. Healthy or definitive
+phone answers suppress health probes for 30 seconds. Busy/paused/error states and other discovered phones do
+not trigger recovery; other adb clients of the selected phone briefly lose
+that transport. Global hangs use the guarded owned/legacy lifecycle above,
+or a private shadow while an unknown listener remains untouched. An unused
+shadow hands back only after no raw transports and two healthy default probes.
+Server epochs include process creation time to distinguish reused transport IDs.
+After acknowledgment, a 2-second window must observe disappearance or
+a new transport ID before reporting transport recovery. Normal discovery and
+a fresh camera session follow; recovered transport is not successful video delivery.
 Schema reference: [AOSP devices.proto](https://android.googlesource.com/platform/packages/modules/adb/+/7806e425e18a48a0f9e580e381cdc86ed5478a4c/proto/devices.proto).
 
 One control connection and one video connection form a session. A second

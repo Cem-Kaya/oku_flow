@@ -13,6 +13,10 @@ bool SupportsWindowsRuntimeVersion(const WindowsRuntimeVersion& version);
 bool IsSystemWindowsRuntimeReady();
 bool VerifyWindowsRuntimeInstallerFile(const std::wstring& path);
 std::wstring WindowsExecutableDirectory();
+// New bundles use app/; flat developer/legacy bundles remain supported.
+// An existing app/ is authoritative so an incomplete update cannot fall
+// back silently to a stale flat child.
+std::wstring WindowsRuntimePayloadDirectory(const std::wstring& bundleDirectory);
 std::wstring QuoteWindowsArgument(const std::wstring& argument);
 WindowsRuntimeInstallResult ClassifyWindowsRuntimeInstallResult(std::uint32_t exitCode, bool installed);
 } // namespace okuflow

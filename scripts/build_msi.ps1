@@ -27,7 +27,7 @@ $work = Join-Path $env:LOCALAPPDATA "OkuFlow\installer-build\$Version-$([Guid]::
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 $snapshot = New-VerifiedBundleSnapshot $BundlePath (Join-Path $work 'payload')
 if (-not $AllowUnsignedPreview) {
-    foreach ($name in @('oku_flow.exe','OkuFlowApp.exe')) {
+    foreach ($name in @('oku_flow.exe', $snapshot.layout.ApplicationRelativePath)) {
         if ((Get-AuthenticodeSignature -LiteralPath (Join-Path $snapshot.path $name)).Status -ne 'Valid') { throw "Unsigned application: $name" }
     }
 }

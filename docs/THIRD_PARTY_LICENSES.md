@@ -9,6 +9,10 @@ first-party file-access/MessageChannel glue, not a bundled recognition engine.
 
 OkuFlow relies on several third-party SDKs and code drops. Keep this summary with any redistributed build and update it whenever dependencies or bundled notices change.
 
+The new localization resources are machine-assisted translations of first-party
+public UI text generated during development. They introduce no translation SDK
+or runtime service dependency. See [localization provenance and validation](localization.md).
+
 ## Qt 6
 - Upstream: <https://www.qt.io/>
 - License family: LGPL-3.0 / GPL-3.0 / commercial, depending on how Qt is obtained

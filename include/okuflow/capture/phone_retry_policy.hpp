@@ -7,12 +7,14 @@ namespace okuflow {
 // Per USB transport: transient failures back off; new transport/readiness resets it.
 class PhoneRetryPolicy {
 public:
-    void Observe(std::uint64_t transport, bool ready, const std::string& problem) {
-        if (transport != transport_ || (ready && !ready_) || problem != problem_) {
+    void Observe(std::uint64_t transport, bool ready, const std::string& problem,
+                 std::uint64_t serverEpoch = 0) {
+        if (transport != transport_ || serverEpoch != serverEpoch_ || (ready && !ready_) || problem != problem_) {
             failures_ = 0;
             nextAttemptMs_ = 0;
         }
         transport_ = transport;
+        serverEpoch_ = serverEpoch;
         ready_ = ready;
         problem_ = problem;
     }
@@ -27,6 +29,7 @@ public:
     void Succeeded() { failures_ = 0; nextAttemptMs_ = 0; }
 private:
     std::uint64_t transport_{};
+    std::uint64_t serverEpoch_{};
     bool ready_{};
     std::string problem_;
     unsigned failures_{};

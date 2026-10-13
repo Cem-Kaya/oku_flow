@@ -1,5 +1,6 @@
 #include "okuflow/capture/capture_shutdown.hpp"
 #include "okuflow/capture/media_capture.hpp"
+#include "../src/capture/media_capture_session.hpp"
 
 #include <QtTest/QtTest>
 #include <atomic>
@@ -9,9 +10,136 @@
 
 using namespace std::chrono_literals;
 
+namespace okuflow {
+struct CaptureReadbackTestAccess {
+    static void SetDevice(MediaCaptureSession& session, ID3D11Device* device,
+                          ID3D11DeviceContext* context) {
+        session.d3d11Device_ = device;
+        session.d3d11Context_ = context;
+    }
+    static void Expire(MediaCaptureSession& session) { session.gpuReadbackStarted_ -= 2s; }
+    static std::mutex& Mutex(MediaCaptureSession& session) { return session.d3d11Mutex_; }
+    static bool Retained(const MediaCaptureSession& session) {
+        return session.gpuReadbackFrame_.has_value() && session.gpuReadbackTexture_ &&
+               session.gpuReadbackQuery_ && session.gpuReadbackSubmitted_;
+    }
+};
+}
+
+namespace {
+struct ReadbackFixture {
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+    okuflow::MediaCaptureSession session;
+    okuflow::MediaFrame frame;
+    bool Initialize() {
+        const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
+        if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT, &level, 1, D3D11_SDK_VERSION,
+            &device, nullptr, &context))) return false;
+        okuflow::CaptureReadbackTestAccess::SetDevice(session, device.Get(), context.Get());
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = description.Height = 4;
+        description.MipLevels = description.ArraySize = description.SampleDesc.Count = 1;
+        description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        const std::uint32_t pixels[16] = {
+            0xffcc2211, 0xffcc2211, 0xffcc2211, 0xffcc2211,
+            0xffcc2211, 0xffcc2211, 0xffcc2211, 0xffcc2211,
+            0xffcc2211, 0xffcc2211, 0xffcc2211, 0xffcc2211,
+            0xffcc2211, 0xffcc2211, 0xffcc2211, 0xffcc2211};
+        D3D11_SUBRESOURCE_DATA initial{pixels, 16, 0};
+        if (FAILED(device->CreateTexture2D(&description, &initial, &frame.gpuTexture))) return false;
+        frame.width = frame.height = 4;
+        frame.gpuFormat = description.Format;
+        frame.sequenceNumber = 42;
+        return true;
+    }
+    ~ReadbackFixture() {
+        // WARP fixture only. Retire submitted test work before inspecting
+        // teardown; production performs this on its bounded stop coordinator.
+        if (context) {
+            Microsoft::WRL::ComPtr<ID3D11Query> query;
+            D3D11_QUERY_DESC description{D3D11_QUERY_EVENT, 0};
+            if (SUCCEEDED(device->CreateQuery(&description, &query))) {
+                context->End(query.Get());
+                context->Flush();
+                const auto deadline = std::chrono::steady_clock::now() + 2s;
+                while (context->GetData(query.Get(), nullptr, 0, 0) == S_FALSE &&
+                       std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+            }
+        }
+    }
+};
+}
+
 class CaptureShutdownTests : public QObject {
     Q_OBJECT
 private slots:
+    void readbackQueuesOnceAndReturnsTheRetainedPixels()
+    {
+        using Result = okuflow::GpuFrameReadbackResult;
+        ReadbackFixture fixture;
+        QVERIFY(fixture.Initialize());
+        QCOMPARE(fixture.session.ReadbackGpuFrame(fixture.frame), Result::Pending);
+        QVERIFY(fixture.session.HasPendingGpuReadback());
+        // Change the source after its first copy. Retrying must not copy again.
+        const std::uint32_t replacement[16]{};
+        fixture.context->UpdateSubresource(fixture.frame.gpuTexture.Get(), 0, nullptr, replacement, 16, 0);
+        Result result = Result::Pending;
+        QTRY_VERIFY_WITH_TIMEOUT((result = fixture.session.ReadbackGpuFrame(fixture.frame)) != Result::Pending, 1000);
+        QCOMPARE(result, Result::Ready);
+        QCOMPARE(fixture.frame.data.size(), std::size_t(64));
+        QCOMPARE(fixture.frame.data[0], std::uint8_t(0x11));
+        QCOMPARE(fixture.frame.data[1], std::uint8_t(0x22));
+        QCOMPARE(fixture.frame.data[2], std::uint8_t(0xcc));
+        QVERIFY(!fixture.session.HasPendingGpuReadback());
+    }
+
+    void expiredReadbackRetainsResourcesAndRequestsReconnect()
+    {
+        using Result = okuflow::GpuFrameReadbackResult;
+        ReadbackFixture fixture;
+        QVERIFY(fixture.Initialize());
+        QCOMPARE(fixture.session.ReadbackGpuFrame(fixture.frame), Result::Pending);
+        okuflow::CaptureReadbackTestAccess::Expire(fixture.session);
+        QCOMPARE(fixture.session.ReadbackGpuFrame(fixture.frame), Result::Failed);
+        QVERIFY(okuflow::CaptureReadbackTestAccess::Retained(fixture.session));
+        QVERIFY(fixture.session.ConsumeDeviceLost());
+        QVERIFY(!fixture.session.ConsumeDeviceLost());
+        QCOMPARE(fixture.session.ReadbackGpuFrame(fixture.frame), Result::Failed);
+    }
+
+    void readbackDoesNotBlockOnCaptureMutex()
+    {
+        ReadbackFixture fixture;
+        QVERIFY(fixture.Initialize());
+        std::promise<void> locked, release;
+        auto released = release.get_future();
+        std::thread owner([&] {
+            std::lock_guard lock(okuflow::CaptureReadbackTestAccess::Mutex(fixture.session));
+            locked.set_value();
+            released.wait();
+        });
+        locked.get_future().wait();
+        const auto start = std::chrono::steady_clock::now();
+        const auto result = fixture.session.ReadbackGpuFrame(fixture.frame);
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        release.set_value();
+        owner.join();
+        QCOMPARE(result, okuflow::GpuFrameReadbackResult::Pending);
+        QVERIFY(elapsed < 100ms);
+    }
+
+    void readbackRejectsAnotherFrameWhileCopyIsPending()
+    {
+        ReadbackFixture fixture;
+        QVERIFY(fixture.Initialize());
+        QCOMPARE(fixture.session.ReadbackGpuFrame(fixture.frame), okuflow::GpuFrameReadbackResult::Pending);
+        ++fixture.frame.sequenceNumber;
+        QCOMPARE(fixture.session.ReadbackGpuFrame(fixture.frame), okuflow::GpuFrameReadbackResult::Failed);
+        QVERIFY(okuflow::CaptureReadbackTestAccess::Retained(fixture.session));
+    }
+
     void savedCameraSelectionFollowsPhysicalIdentity()
     {
         const auto camera = [](const wchar_t* link) {
@@ -165,6 +293,41 @@ private slots:
         coordinator.join();
         QVERIFY(quiesced);
         QVERIFY(!completed);
+    }
+
+    void boundedPollCompletesAfterPendingPolls()
+    {
+        okuflow::CaptureShutdown control;
+        int calls = 0;
+        const auto outcome = okuflow::PollWithDeadline(
+            [&] { return ++calls >= 3; }, control,
+            std::chrono::steady_clock::now() + 1s);
+        QCOMPARE(outcome, okuflow::BoundedPollOutcome::Completed);
+        QCOMPARE(calls, 3);
+    }
+
+    void boundedPollTimesOutInsteadOfSpinningForever()
+    {
+        okuflow::CaptureShutdown control;
+        int calls = 0;
+        const auto started = std::chrono::steady_clock::now();
+        const auto outcome = okuflow::PollWithDeadline(
+            [&] { ++calls; return false; }, control, started + 25ms);
+        const auto elapsed = std::chrono::steady_clock::now() - started;
+        QCOMPARE(outcome, okuflow::BoundedPollOutcome::TimedOut);
+        QVERIFY(calls > 1);
+        QVERIFY(elapsed >= 25ms);
+        QVERIFY(elapsed < 1s);
+    }
+
+    void boundedPollStopsWhenSessionIsAbandoned()
+    {
+        okuflow::CaptureShutdown control;
+        const auto started = std::chrono::steady_clock::now();
+        const auto outcome = okuflow::PollWithDeadline(
+            [&] { control.Abandon(); return false; }, control, started + 60s);
+        QCOMPARE(outcome, okuflow::BoundedPollOutcome::Abandoned);
+        QVERIFY(std::chrono::steady_clock::now() - started < 1s);
     }
 };
 

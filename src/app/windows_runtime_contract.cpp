@@ -67,6 +67,13 @@ bool IsSystemWindowsRuntimeReady() {
     return count && count < MAX_PATH && RuntimeFilesReady(directory);
 }
 
+std::wstring WindowsRuntimePayloadDirectory(const std::wstring& bundleDirectory) {
+    const std::wstring nested = bundleDirectory + L"\\app";
+    const DWORD attributes = GetFileAttributesW(nested.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY)
+        ? nested : bundleDirectory;
+}
+
 std::wstring WindowsExecutableDirectory() {
     std::wstring path(32768, L'\0');
     const DWORD size = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));

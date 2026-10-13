@@ -1,5 +1,6 @@
 #pragma once
 #include "okuflow/d3d12/shared_timeline.hpp"
+#include "okuflow/d3d12/fence_wait.hpp"
 
 #ifdef _WIN32
 
@@ -42,6 +43,9 @@ public:
     void Initialize(HWND hwnd, UINT width, UINT height);
     bool IsInitialized() const;
     bool IsFaulted() const;
+    // Nonblocking, including while no camera frame arrives. A one-second lack
+    // of fence progress latches the same resource-retaining terminal fault.
+    bool PollGpuProgress() noexcept;
     bool NeedsScenePresent() const;
     UINT ViewportWidth() const;
     UINT ViewportHeight() const;
@@ -163,6 +167,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
     UINT64 fenceValue_{}; // Last successfully submitted graphics signal.
     SharedFenceTimeline sharedTimeline_;
+    FenceProgressWatchdog progressWatchdog_;
     bool QueueExternalDependency() noexcept;
     UINT64 ReserveGraphicsSignal();
     void GraphicsSignalSubmitted(UINT64 value) noexcept;

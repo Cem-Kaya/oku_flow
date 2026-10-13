@@ -18,6 +18,7 @@ import com.okuflow.camera.link.HostLink
 import com.okuflow.camera.link.HostLinkState
 import com.okuflow.camera.link.HostProblem
 import com.okuflow.camera.link.UsbSocketServer
+import com.okuflow.camera.settings.AppLanguageStore
 import com.okuflow.camera.settings.CameraSettingsStore
 import com.okuflow.camera.settings.CameraSettings
 import com.okuflow.camera.settings.StreamingIntentStore
@@ -71,6 +72,9 @@ class CameraStreamService : Service() {
         }
     }
 
+    // Notification text follows the app language on Android 11–12 too.
+    override fun attachBaseContext(newBase: Context) = super.attachBaseContext(AppLanguageStore.wrap(newBase))
+
     override fun onCreate() {
         super.onCreate()
         streamingIntent = StreamingIntentStore.get(this)
@@ -103,7 +107,8 @@ class CameraStreamService : Service() {
                     HostLink.publish(HostLinkState.Streaming)
                 }
                 val codec = if (state.optString("mime") == "video/hevc") "HEVC" else "H.264"
-                HostLink.details.value = "${state.optInt("width")} × ${state.optInt("height")} · ${state.optInt("fps")} FPS · $codec · ${state.optInt("bitrate") / 1_000_000} Mbps"
+                HostLink.details.value = getString(R.string.stream_details, state.optInt("width"), state.optInt("height"),
+                    state.optInt("fps"), codec, state.optInt("bitrate") / 1_000_000)
                 if (state.optString("event") == "streaming")
                     updateNotification(getString(R.string.service_streaming_notification, HostLink.details.value))
             }, onMetadata = { server.metadata(it) }, onFrame = { pts, seq, generation, flags, bytes ->

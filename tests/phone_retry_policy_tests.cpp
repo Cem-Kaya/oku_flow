@@ -4,6 +4,17 @@ using okuflow::PhoneRetryPolicy;
 class PhoneRetryPolicyTests : public QObject {
     Q_OBJECT
 private slots:
+    void serverReplacementResetsReusedTransportBackoff() {
+        PhoneRetryPolicy policy;
+        policy.Observe(1, true, "", 7);
+        policy.Failed(0);
+        policy.Failed(5000);
+        policy.Observe(1, true, "", 7);
+        QVERIFY(!policy.CanAttempt(5001));
+        // adb transport IDs restart at one after a new server is launched.
+        policy.Observe(1, true, "", 8);
+        QVERIFY(policy.CanAttempt(5001));
+    }
     void failureBackoffAndRecovery() {
         PhoneRetryPolicy policy;
         policy.Observe(7, true, "");

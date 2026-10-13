@@ -1,5 +1,15 @@
 # Real-device validation — 2026-10-11
 
+## Local multilingual update (2026-10-13)
+
+Code 4 / 0.1.3 is a local, unreleased 25-language build. APK assembly, 67 JVM
+tests, lint and exact 98-key resource parity pass. It has not been installed
+over the Play-signed code-3 app or visually inspected on a phone. Native font
+coverage, large text, RTL, TalkBack and Android 11–12 context switching remain
+acceptance checks. The physical streaming/recovery results below use earlier
+builds and do not establish those language checks. See
+[localization](../docs/localization.md).
+
 Debug companion and native Windows development build, tested on a Pixel 9 Pro
 Fold running Android 17/API 37, using an authorized USB adb transport. The PC
 uses an RTX 4090 and reports approximately 120 Hz at 5120 × 1440. G-SYNC
@@ -452,3 +462,86 @@ the existing shared adb server and logcat buffers were preserved. The Play app
 was not replaced, uninstalled, wiped or updated. Physical unplug/replug and
 background reconnect acceptance of the fixed Play-signed build remain pending;
 local JVM tests cannot establish those hardware results.
+
+## Windows combined-effects stress check, 2026-10-13
+
+The authorized Pixel USB feed negotiated HEVC 4000x2256 @ 24 FPS across six
+isolated 60-second Windows sessions, including NVIDIA Video Effects 0.7.6
+SuperRes at maximum strength, stabilization, Extra Stable, 16x zoom, pan,
+window resizing and silent dual recording. A high-resolution SuperRes model
+selection error was reproduced and fixed in Windows; the final run measured
+23.99 arrival FPS and 24.22 viewport FPS, with no GPU retry expiry or crash.
+Original/processed AV1 recordings decoded to 912 matching frames each.
+
+Force-stopping and reopening only `com.okuflow` during the stream caused
+Windows to detect connection loss and automatically return to the preferred
+phone after its endpoint returned. Android records the deliberate force-stop,
+with no new crash/ANR observed. The shared adb server and user settings were
+preserved. This verifies app/endpoint recovery, not physical cable removal.
+Physical unplug, sustained thermal behavior and older-phone acceptance remain
+open. See [the detailed Windows evidence](../docs/windows_crash_validation_2026-10-13.md)
+for exact sessions, counters, build hash and limitations.
+
+At 18:16 the owner reported a physical unplug/replug. The USB transport changed
+from ID 1 to ID 2 while `com.okuflow` retained PID 16398 and recorded no new
+crash/ANR. A subsequent Windows launch connected automatically at HEVC
+4000x2256 @ 24 FPS, with SuperRes and stabilization active, and exited normally
+after 20 seconds. Windows had already exited before the cable was unplugged;
+this does not establish physical cable-loss recovery during an active stream.
+Private evidence: `%LOCALAPPDATA%/OkuFlow/phone-heavy-check/replug-20261013-181651/`.
+
+At 18:30 the owner repeated the physical unplug/replug during an active Windows
+stream. USB disappeared for about five seconds and returned with a new
+transport ID. Both Android and Windows kept their process IDs; Windows detected
+loss, briefly used an available Windows camera and automatically resumed HEVC
+4000x2256 @ 24 FPS from the preferred phone. SuperRes reloaded and new-frame
+diagnostics continued. Android recorded no new crash/ANR. This verifies one
+live physical reconnect cycle on the Pixel with app version code 3 / 0.1.2.
+Long-soak, thermal and other-phone acceptance remain open. See the linked
+Windows report for nonzero drop/retry counters and the separate incomplete
+GUI gate. Private evidence:
+`%LOCALAPPDATA%/OkuFlow/phone-heavy-check/live-unplug-20261013-182903/`.
+
+## Settings navigation follow-up, 2026-10-13
+
+A tester screenshot shows connection help's Open settings action producing
+the system toast "Turn on Developer options first" without keeping Settings
+open. That panel previously launched Developer options even when debugging
+settings were redacted/unknown. An OEM activity can start successfully and
+then finish, so catching ActivityNotFoundException cannot provide a fallback.
+
+The unreleased update opens About phone as the primary Developer-mode action
+and offers a separate USB-debugging shortcut for users who have already
+enabled Developer options. Samsung's Build number is inside Software
+information; the app uses the public About-phone intent rather than relying
+on a private manufacturer activity. The two controls have separate click and
+accessibility ownership. Other onboarding panels retain their single large
+touch target. Settings intents support localized/application contexts.
+
+Debug assembly, all 68 JVM tests and lint passed through
+`scripts/build_android.ps1 -Lint`. The navigation regression covers older
+disabled settings and Android 17 redacted zeros, preserving known Developer
+options and camera/streaming boundaries. All 25 existing string catalogs retain
+98-key parity; no new untranslated labels were added. The illustrative draft
+and native previews include the two routes.
+
+Current debug APK: `%LOCALAPPDATA%/OkuFlow/android-multilingual-build/app/outputs/apk/debug/app-debug.apk`.
+SHA-256: `6981E0D3A186AB9E97A79317DFE6B920DBAF837839A2D7FB5913C426FCE4BA09`.
+Build log: `%LOCALAPPDATA%/OkuFlow/language-work/android-settings-navigation.log`.
+
+An isolated side-by-side production-component fixture was installed on the
+authorized Pixel 9 Pro Fold, Android 17, without replacing `com.okuflow`.
+Its actual ActionPanel and SystemSettingsLauncher rendered both buttons visibly.
+The primary button opened About phone; the secondary opened Developer options.
+Raw screenshots were inspected. About phone's hierarchy capture timed out,
+but the independent native screenshot shows the correct page. This fixture
+exercises the unknown-settings help panel, not a real developer-disabled phone:
+Developer options were already enabled on the Pixel and were not changed.
+The fixture was removed afterward; Play code 3 / version 0.1.2 was retained.
+Private evidence is under `%LOCALAPPDATA%/OkuFlow/settings-ui-check/` and is
+not promotional media or a released APK. Other OEM settings layouts and
+disabled-developer end-to-end acceptance remain pending.
+A read-only adb query found no attached device, so this APK was not installed
+and actual phone rendering/Settings navigation remain unverified. It has not
+replaced the Play-signed closed-test build. Large-type, RTL and TalkBack checks
+on the real phone remain pending.

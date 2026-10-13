@@ -10,38 +10,8 @@
 #include <QLocale>
 #include <QWidget>
 
-#include <array>
-
 namespace okuflow {
 namespace {
-
-struct LanguageDescriptor {
-    AppLanguage language;
-    const char* code;
-    const char* nativeName;
-    QLocale::Language localeLanguage;
-    QLocale::Territory localeTerritory;
-    const char* flagResource;
-};
-
-constexpr std::array<LanguageDescriptor, 3> kLanguages{{
-    {AppLanguage::English, "en", "English",
-     QLocale::English, QLocale::UnitedStates, ":/flags/us.svg"},
-    {AppLanguage::Turkish, "tr", "Türkçe",
-     QLocale::Turkish, QLocale::Turkey, ":/flags/tr.svg"},
-    {AppLanguage::German, "de", "Deutsch",
-     QLocale::German, QLocale::Germany, ":/flags/de.svg"},
-}};
-
-const LanguageDescriptor& Descriptor(AppLanguage language)
-{
-    for (const LanguageDescriptor& descriptor : kLanguages) {
-        if (descriptor.language == language) {
-            return descriptor;
-        }
-    }
-    return kLanguages.front();
-}
 
 bool ForceRtlRequested(const QApplication& application)
 {
@@ -58,70 +28,24 @@ bool ForceRtlRequested(const QApplication& application)
 
 } // namespace
 
-QString AppLanguageCode(AppLanguage language)
-{
-    return QString::fromLatin1(Descriptor(language).code);
-}
-
-QString AppLanguageNativeName(AppLanguage language)
-{
-    return QString::fromUtf8(Descriptor(language).nativeName);
-}
-
-QString AppLanguageFlagResource(AppLanguage language)
-{
-    return QString::fromLatin1(Descriptor(language).flagResource);
-}
-
-QLocale AppLanguageLocale(AppLanguage language)
-{
-    const LanguageDescriptor& descriptor = Descriptor(language);
-    return QLocale(descriptor.localeLanguage, descriptor.localeTerritory);
-}
-
-Qt::LayoutDirection AppLanguageLayoutDirection(AppLanguage language)
-{
-    return AppLanguageLocale(language).textDirection();
-}
-
-QList<AppLanguage> SupportedAppLanguages()
-{
-    QList<AppLanguage> languages;
-    languages.reserve(static_cast<qsizetype>(kLanguages.size()));
-    for (const LanguageDescriptor& descriptor : kLanguages) {
-        languages.push_back(descriptor.language);
-    }
-    return languages;
-}
-
-AppLanguage AppLanguageFromCode(const QString& code)
-{
-    const QString normalized = code.trimmed().toLower();
-    for (const LanguageDescriptor& descriptor : kLanguages) {
-        if (normalized == QLatin1String(descriptor.code)) {
-            return descriptor.language;
-        }
-    }
-    return AppLanguage::English;
-}
-
-AppLanguage AppLanguageFromSystemLocale()
-{
-    const QLocale::Language systemLanguage = QLocale::system().language();
-    for (const LanguageDescriptor& descriptor : kLanguages) {
-        if (descriptor.localeLanguage == systemLanguage) {
-            return descriptor.language;
-        }
-    }
-    return AppLanguage::English;
-}
-
-LanguageManager::LanguageManager(QApplication& application, QObject* parent)
+LanguageManager::LanguageManager(QApplication& application,
+                                 QObject* parent,
+                                 CatalogResolver catalogResolver)
     : QObject(parent),
       application_(&application),
+      catalogResolver_(catalogResolver ? std::move(catalogResolver)
+                                       : CatalogResolver(
+                                             &AppLanguageCatalogResource)),
       forceRightToLeft_(ForceRtlRequested(application))
 {
     application_->installEventFilter(this);
+}
+
+LanguageManager::~LanguageManager()
+{
+    if (application_ && translator_) {
+        application_->removeTranslator(translator_.get());
+    }
 }
 
 QString LanguageManager::languageCode() const
@@ -135,29 +59,32 @@ bool LanguageManager::SetLanguage(AppLanguage language, bool announce)
         return false;
     }
     if (language == language_ &&
-        (language == AppLanguage::English || translatorInstalled_)) {
+        (language == AppLanguage::English || translator_)) {
         ApplyLocale(language);
         return true;
     }
 
-    applyingLanguage_ = true;
-    if (translatorInstalled_) {
-        application_->removeTranslator(&translator_);
-        translatorInstalled_ = false;
-    }
-
+    // Load the candidate completely before touching the active translator.
+    std::unique_ptr<QTranslator> candidate;
     if (language != AppLanguage::English) {
-        const QString resourcePath =
-            QStringLiteral(":/i18n/okuflow_%1.qm")
-                .arg(AppLanguageCode(language));
-        if (!translator_.load(resourcePath) ||
-            !application_->installTranslator(&translator_)) {
-            applyingLanguage_ = false;
+        const QString resourcePath = catalogResolver_(language);
+        candidate = std::make_unique<QTranslator>();
+        if (resourcePath.isEmpty() || !candidate->load(resourcePath)) {
             emit languageChangeFailed(AppLanguageCode(language));
             return false;
         }
-        translatorInstalled_ = true;
     }
+
+    applyingLanguage_ = true;
+    if (candidate && !application_->installTranslator(candidate.get())) {
+        applyingLanguage_ = false;
+        emit languageChangeFailed(AppLanguageCode(language));
+        return false;
+    }
+    if (translator_) {
+        application_->removeTranslator(translator_.get());
+    }
+    translator_ = std::move(candidate);
 
     language_ = language;
     ApplyLocale(language);

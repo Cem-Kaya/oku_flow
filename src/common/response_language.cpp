@@ -1,17 +1,19 @@
 #include "okuflow/common/response_language.hpp"
 
+#include "okuflow/app/app_language.hpp"
+
 namespace okuflow {
 
 QString AppendResponseLanguageDirective(const QString& prompt,
                                         const QString& languageCode)
 {
-    QString directive;
-    const QString normalized = languageCode.trimmed().toLower();
-    if (normalized == QStringLiteral("tr")) {
-        directive = QStringLiteral("Respond in Turkish.");
-    } else if (normalized == QStringLiteral("de")) {
-        directive = QStringLiteral("Respond in German.");
-    }
+    AppLanguage language = AppLanguage::English;
+    const QString directive =
+        AppLanguageFromCode(languageCode, &language) &&
+                language != AppLanguage::English
+            ? QStringLiteral("Respond in %1.")
+                  .arg(AppLanguageEnglishName(language))
+            : QString();
     if (directive.isEmpty()) {
         return prompt;
     }
