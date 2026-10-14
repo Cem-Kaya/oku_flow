@@ -10,7 +10,7 @@
 
 Point a webcam, a document camera or your phone at the board. OkuFlow magnifies it live, sharpens the text and holds the picture steady. When you ask, its assistant reads the text, explains what it shows and keeps your lecture notes. Choose Read Aloud to hear an answer.
 
-[Website](https://okuflow.com) · [Download MSI](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.3-x64.msi) · [Portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.3-windows-x64.zip) · [Release notes](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.3)
+[Website](https://okuflow.com) · [Download MSI](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.4/OkuFlow-0.2.4-x64.msi) · [Portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.4/OkuFlow-0.2.4-windows-x64.zip) · [Release notes](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.4)
 
 ![OkuFlow Simple view showing a classroom chalkboard, with large camera controls](https://okuflow.com/media/okuflow-simple-206165dcd785.webp)
 
@@ -18,10 +18,10 @@ Point a webcam, a document camera or your phone at the board. OkuFlow magnifies 
 
 | At a glance | |
 | --- | --- |
-| Desktop | Windows 10 and 11, x64 |
+| Desktop | Windows 10 and 11, x64, on laptops and desktop PCs |
 | Cameras | Compatible USB/document cameras; optional Android USB companion in testing |
-| Enhancement | GPU-accelerated with NVIDIA CUDA; raw video only without a compatible GPU |
-| Languages | English, Turkish and German, switchable without restarting |
+| Enhancement | NVIDIA CUDA accelerates live image processing on a compatible GPU |
+| Languages | 25 interface languages, including Dutch, with system default and a saved choice |
 | Cost | Free and open source; hardware and optional AI provider access are separate |
 
 ## Accessibility should be accessible
@@ -66,20 +66,20 @@ Ask permission before recording a lecture or other people.
 
 You need three things:
 
-1. **A Windows 10 or 11 x64 PC.** Download the [v0.2.3 MSI installer](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.3-x64.msi), or extract the complete [portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.3/OkuFlow-0.2.3-windows-x64.zip) and run `oku_flow.exe`. Keep its adjacent runtime files together.
+1. **A Windows 10 or 11 x64 PC.** Download the [v0.2.4 MSI installer](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.4/OkuFlow-0.2.4-x64.msi), or extract the complete [portable ZIP](https://github.com/Cem-Kaya/oku_flow/releases/download/v0.2.4/OkuFlow-0.2.4-windows-x64.zip) and run `oku_flow.exe`. Keep its adjacent runtime files together.
 2. **A compatible camera.** Use a USB or document camera with Windows Media Foundation support, or the optional Android companion described below.
 3. **A compatible NVIDIA GPU for enhancement.** CUDA powers Text Clarity, stabilization, screen correction and colors. Without it, OkuFlow shows raw, unprocessed camera video with a clear on-screen notice.
 
-**v0.2.3 is an unsigned preview.** Windows SmartScreen may warn about an unrecognized app. Check the [release notes and known issues](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.3) before installing. Development documentation may describe changes newer than this download.
+**v0.2.4 is an unsigned preview.** Windows SmartScreen may warn about an unrecognized app. Check the [release notes and known issues](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.4) before installing. Development documentation may describe changes newer than this download.
 
 In the portable ZIP, open **oku_flow.exe**. It starts the required
-`OkuFlowApp.exe` component automatically. Keep all ZIP contents together.
+`app/OkuFlowApp.exe` component automatically. Keep all ZIP contents together.
 The MSI installer gives you a single **OkuFlow** shortcut to open.
-The next portable ZIP puts supporting files in an `app` folder, leaving one EXE
+The portable ZIP puts supporting files in an `app` folder, leaving one EXE
 at the top level. Keep that folder beside `oku_flow.exe`.
 
-The next app update adds 25 languages, including Dutch, a system-language
-default and a saved manual choice. This work is local and unreleased; see the
+The app supports 25 languages, including Dutch, a system-language
+default and a saved manual choice. See the
 [language coverage and validation notes](docs/localization.md).
 
 Optional extras, including the Codex CLI for Read and Explain and NVIDIA Super Resolution, are available through **Setup & Downloads** inside the app. Super Resolution requires the separately installed supported NVIDIA runtime. SuperRes powered by NVIDIA Maxine™.
@@ -88,7 +88,7 @@ Optional extras, including the Codex CLI for Read and Explain and NVIDIA Super R
 
 OkuFlow Camera sends your phone's camera to the Windows app over USB. It is optional; compatible USB/document cameras work without it.
 
-The companion is available through Google Play closed testing. **Android 0.1.2 (version code 3) is available to invited Alpha testers** through the [closed-test link](https://play.google.com/apps/testing/com.okuflow).
+The companion is available through Google Play closed testing. **Android 0.1.4 (version code 5) was submitted to Alpha** through the CLI. Google review and availability of this update have not been independently verified; code 3 / 0.1.2 is the last confirmed tester publication. Invited testers use the [closed-test link](https://play.google.com/apps/testing/com.okuflow).
 
 When the test is available to you, install OkuFlow Camera, enable USB debugging and authorize your computer on the phone. Connect the cable, keep the phone app open and select **Advanced → Settings → Camera → OkuFlow Camera**. Phone and desktop compatibility testing continues; see the [Android guide](android/README.md) for setup and current limits.
 

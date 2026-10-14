@@ -1,5 +1,9 @@
 # OkuFlow Code Reference
 
+`LanguageManagerTests::liveStatusRetranslatesAccessibly` expects the reviewed
+Turkish pipeline-status wording while retaining the accessible-name and text
+change-event assertions.
+
 The native idle-chrome tests align injected Qt mouse events with the observed
 cursor position, allow at most one logical pixel of mixed-DPI rounding, and
 detect interruptions using exact native pixels. Startup pointer/focus events

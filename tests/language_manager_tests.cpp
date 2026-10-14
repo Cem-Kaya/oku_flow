@@ -136,7 +136,7 @@ void LanguageManagerTests::liveStatusRetranslatesAccessibly()
     QVERIFY(manager.SetLanguage(AppLanguage::Turkish, false));
     QCOMPARE(label.text(), QStringLiteral("Kayıt"));
     QCOMPARE(label.accessibleName(),
-             QStringLiteral("İşlem hattı durumu: Kayıt"));
+             QStringLiteral("Görüntü işleme hattının durumu: Kayıt"));
     QVERIFY(std::find(accessibilityEvents_.cbegin(),
                       accessibilityEvents_.cend(),
                       QAccessible::NameChanged) !=
