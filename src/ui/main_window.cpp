@@ -3435,14 +3435,15 @@ void MainWindow::ShowModeAnnouncement(const QString& label, const QString& profi
 void MainWindow::MoveSimpleChrome()
 {
     if (updatingChromeGeometry_ || !renderWidget_) return;
-    // Qt dispatches owner Move synchronously from Windows' WM_MOVE. Stay in
-    // logical coordinates: native screen pixels cannot be added to these
-    // offsets across per-monitor DPI transitions.
+    // Native WM_MOVE arrives before Qt's queued geometry event. mapToGlobal
+    // reads the current HWND origin while keeping the cached offsets in Qt
+    // logical coordinates, including during later DPI reconciliation.
     if (chromeViewportSize_ != renderWidget_->size() ||
         chromeDevicePixelRatio_ != renderWidget_->devicePixelRatioF()) {
         UpdateSimpleChromeGeometry();
         return;
     }
+    QScopedValueRollback<bool> geometryGuard(updatingChromeGeometry_, true);
     const QPoint origin = renderWidget_->mapToGlobal(QPoint());
     const std::array<QWidget*, 8> peers{topLeftPanel_, bottomLeftPanel_,
         keystoneTrackingPanel_, bottomRightPanel_, modeGridPopup_, modeToast_,
@@ -4529,6 +4530,20 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         }
     }
     return QMainWindow::eventFilter(watched, event);
+}
+
+bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result)
+{
+    const auto* nativeMessage = static_cast<const MSG*>(message);
+    // External SetWindowPos and the Windows drag loop can queue Qt's Move
+    // event. Follow the actual native owner position before that queue runs;
+    // do not consume the message or create a native handle while checking it.
+    if (nativeMessage && nativeMessage->message == WM_MOVE &&
+        nativeMessage->hwnd == reinterpret_cast<HWND>(effectiveWinId()) &&
+        !IsIconic(nativeMessage->hwnd)) {
+        MoveSimpleChrome();
+    }
+    return QMainWindow::nativeEvent(eventType, message, result);
 }
 
 bool MainWindow::nativeEventFilter(const QByteArray&, void* message, qintptr*)

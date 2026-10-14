@@ -3,9 +3,10 @@
 This module owns the Qt widget layer.
 
 Floating chrome remains in native tool windows above both CPU and D3D12 render
-surfaces. Owner and render-origin moves reposition these peers synchronously
-using cached viewport-relative logical offsets, without translating or refitting
-layouts on each drag step. Size or device-pixel-ratio changes run the full fit;
+surfaces. The owner's native `WM_MOVE` repositions these peers before Qt's
+queued geometry event, using cached viewport-relative logical offsets without
+translating or refitting layouts on each drag step. Qt owner/render-origin events
+also reconcile placement. Size or device-pixel-ratio changes run the full fit;
 RTL, responsive strips, opacity, visibility and focus retain their existing
 contracts. Assistant and annotation overlays retain their own anchor handling.
 The serial native GUI regression checks immediate Qt and HWND displacement

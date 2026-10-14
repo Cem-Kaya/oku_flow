@@ -241,6 +241,7 @@ protected:
     void keyReleaseEvent(QKeyEvent* event) override;
     void changeEvent(QEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
+    bool nativeEvent(const QByteArray& eventType, void* message, qintptr* result) override;
     bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override;
 
 private:

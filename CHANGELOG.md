@@ -3,7 +3,8 @@
 ## [Unreleased]
 
 - Keep floating camera controls attached during native window dragging in both
-  Simple and Advanced views. Owner moves reposition them synchronously without
+  Simple and Advanced views. Native owner moves reposition them before Qt's
+  queued geometry event, without
   rebuilding translated toolbar layouts; resizing still refits the controls.
 
 - Fix white-on-white inspector labels under native tab styles in dark mode.
