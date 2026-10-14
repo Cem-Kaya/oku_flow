@@ -61,7 +61,8 @@ jobs:
           host: windows
           target: desktop
           arch: win64_msvc2022_64
-          modules: qtmultimedia qtspeech qtsvg qtimageformats
+          # Qt 6.12's base package already includes SVG and Linguist tools.
+          modules: qtmultimedia qtspeech qtimageformats
           dir: ${{ runner.temp }}
           cache: true
           cache-key-prefix: okuflow-qt-6.12.0-windows-msvc2022
