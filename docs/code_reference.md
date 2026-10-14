@@ -3179,3 +3179,11 @@ mutex contention, deadline retention and mismatched frames. `capture_buffer_layo
 covers padded NV12 and aperture crop offsets; phone/fence fixtures use fake clocks
 for silent decoder and completion stalls. These are local fixtures, not evidence
 of real-phone disconnect, Maxine visual quality or long-soak acceptance.
+
+### Release-publication timestamp helper
+
+`Get-PublicationUtcTimestamp(value)` in `scripts/windows-installer/publication_time.ps1`
+normalizes typed DateTime/DateTimeOffset and explicit-zone ISO timestamps to UTC.
+It rejects unspecified DateTime kinds and zone-free strings. The publisher uses
+it for freshness without losing JSON-generated UTC kinds through string coercion;
+`test_publication_time.ps1` is the desktop-free regression.

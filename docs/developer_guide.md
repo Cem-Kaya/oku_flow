@@ -943,3 +943,8 @@ A GPU fault retains unfinished resources and displays a persistent restart
 message. A readback failure instead enters the existing camera reconnect path.
 Phone packet and decoded-output progress are independent, so arriving compressed
 packets cannot indefinitely hide a decoder that stopped producing pictures.
+
+Release manifest freshness preserves the typed UTC timestamp returned by
+PowerShell JSON parsing. Run `pwsh -NoProfile -File scripts/test_publication_time.ps1`
+after changing publisher timestamp handling; its offline fixtures cover UTC,
+explicit offsets, JSON date conversion and rejection of ambiguous timestamps.

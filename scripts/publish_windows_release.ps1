@@ -9,6 +9,7 @@ param(
     [switch]$Publish
 )
 . (Join-Path $PSScriptRoot 'windows-installer/common.ps1')
+. (Join-Path $PSScriptRoot 'windows-installer/publication_time.ps1')
 $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $notes = (Resolve-Path -LiteralPath $NotesFile).Path
 $tag = "v$Version"
@@ -64,7 +65,7 @@ try {
         if (Test-Path -LiteralPath $manifestPath) {
             $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
             if ($manifest.sourceCommit -eq $sourceCommit -and -not $manifest.sourceTreeDirty -and
-                [DateTime]::Parse($manifest.generatedUtc).ToUniversalTime() -ge $started) { $path }
+                (Get-PublicationUtcTimestamp $manifest.generatedUtc) -ge $started) { $path }
         }
     } | Select-Object -Last 1
     if (-not $bundle) { throw 'No freshly tested, clean bundle matches this source commit.' }
