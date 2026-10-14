@@ -379,6 +379,15 @@ so metadata generation cannot silently accept an incomplete copy.
   intact. Failed/unfinished cases never auto-retry; `-Resume -RetryInterrupted`
   runs only an explicitly named recorded interruption once. Whole resumes rerun
   optional skips. A missing/mismatched result cannot complete the gate.
+- `.github/workflows/windows-checks.yml` installs the pinned Qt/MSVC toolchain,
+  builds the CPU preset and runs background/native GUI checks on a disposable
+  GitHub Windows VM. `scripts/run_windows_ci_gui.ps1` refuses local execution;
+  `OkuFlowCiDesktop.InputName()` reads the native input desktop with an exact
+  scoped handle, refusing session 0, noninteractive/locked desktops and Qt
+  offscreen overrides. It discovers registered CTest cases by label/exact name.
+  `all` fills the existing CPU gate's GUI entries; narrow diagnostics produce
+  separate JUnit/logs without whole-gate credit. Both paths retain serial
+  execution and every Qt data row. Workflow artifacts preserve the results.
 - `scripts/test_test_gate.ps1` uses `Assert-Contract`, `Invoke-Gate` and
   `Read-Ledger` with private command-line CTest fixtures to check resume/retry,
   partial coverage, failure/skip handling and inventory invalidation. It creates

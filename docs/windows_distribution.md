@@ -1,19 +1,40 @@
 # Windows installers, signing and updates
 
-## Published channels (2026-10-13)
+## Published channels (2026-10-14)
 
-The next portable/MSI build keeps supporting application/runtime files under
+[GitHub v0.2.4](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.4)
+contains the immutable unsigned-preview MSI and portable ZIP from clean source
+`c8c4cf1255084cbb2bb2fa969a3a59f7396bedb0`. Both public downloads were
+downloaded again and matched their reviewed SHA-256 hashes:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `OkuFlow-0.2.4-x64.msi` | `997ca100b1965952f9fbe646d38bc4c405fc413acf20ac4d514134c7a27557d7` |
+| `OkuFlow-0.2.4-windows-x64.zip` | `cf07dd470288d6f7167a06287c4356fad9e265d1f9faacbcf3d5419f70d42e18` |
+
+The release compiled successfully. Background CPU/CUDA tests passed; local
+native GUI evidence remains partial following the owner's limit on repeated
+desktop runs. The separate bundle CTest invocation used the explicit documented
+test bypass. This preview is not a claim of a complete shipping test gate.
+MSI structural checks verified all 152 payload files, installer actions and
+branded shortcuts. The disposable guest installed the previous MSI and upgraded
+to 0.2.4 successfully; shortcut images were captured there.
+
+The portable/MSI build keeps supporting application/runtime files under
 `app/`, leaving `oku_flow.exe` as the only root-level EXE. `START_HERE.txt`
 explains launch and MSI shortcuts. Metadata and installer readers support both
 legacy flat and nested inventories; source-built adb notices/relinking files
-stay intact inside the runtime folder. This local change has not replaced the
-published v0.2.3 assets. Fresh clean-VM install/upgrade acceptance remains required.
+stay intact inside the runtime folder. The website links to 0.2.4. Older release
+assets remain immutable; no new winget PR was submitted for 0.2.4.
+
+### Earlier 0.2.3 release
 
 [GitHub v0.2.3](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.3)
 contains the immutable unsigned-preview MSI and portable ZIP. The exact public
 MSI passed the clean-VM install/upgrade/downgrade/uninstall acceptance checks.
 [winget submission 451412](https://github.com/microsoft/winget-pkgs/pull/451412)
-requests `OkuFlow.OkuFlow` version 0.2.3; it is awaiting checks/review, so catalog
+requests `OkuFlow.OkuFlow` version 0.2.3; automated validation is complete and
+moderator merge is pending as of 2026-10-14, so catalog
 installation is not yet established. Microsoft Store has only the preparation
 entry and structural review package described below; no Store submission is
 claimed. Neither the GitHub MSI nor ZIP enables automatic app updates.

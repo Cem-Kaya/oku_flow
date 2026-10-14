@@ -2,9 +2,12 @@
 
 Website: <https://okuflow.com>
 
-[Application languages](localization.md) describes the unreleased 25-language
-Windows/Android/notes/Transcribe coverage, system defaults, RTL behavior and
-remaining native-speaker/device acceptance.
+[Application languages](localization.md) describes Windows 0.2.4's published
+25-language coverage, the Android Alpha submission, notes/Transcribe coverage,
+system defaults, RTL behavior and remaining native-speaker/device acceptance.
+
+[GitHub Windows checks](../tests/README.md#github-actions-away-from-the-owner-desktop)
+describes remote CPU/GUI validation, selectable diagnostics and evidence artifacts.
 
 [Translation review continuation](localization_review_2026-10-14.md) records
 the complete assigned Luna catalog scopes, failed-attempt recovery, per-language

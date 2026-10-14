@@ -1,11 +1,12 @@
 # Application languages
 
-The unreleased Windows and Android companions support 25 UI languages. This
+Windows 0.2.4 and the Android companion source support 25 UI languages. This
 includes the website's 14 homepage languages, Dutch and ten additional widely
 used languages. The browser transcription tool and newly generated local notes
 use the same 25-language set. Marketing homepages remain at 14 languages.
 
-Published Windows v0.2.3 and Play Android 0.1.2 (code 3) predate this work.
+Published Windows v0.2.4 includes the completed wording review. Play Android
+0.1.2 (code 3), the last independently verified tester build, predates this work.
 Android 0.1.4 (code 5), with the completed wording review, passed signed
 release checks and was committed to Alpha through the CLI on 2026-10-14.
 The API reads active code 5; Google review approval and tester availability

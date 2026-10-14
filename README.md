@@ -4,7 +4,7 @@
 
 # OkuFlow
 
-**Agentic accessibility, from any seat.**
+**Agentic accessibility.**
 
 **Built by the legally blind, for the legally blind.**
 
@@ -28,7 +28,7 @@ Point a webcam, a document camera or your phone at the board. OkuFlow magnifies 
 
 Assistive technology is too often expensive, tied to special hardware and hard to set up, even though the people who need it most cannot read the small print. OkuFlow grows from lived experience of low vision. We want affordable, independent use with cameras you already have, large high-contrast controls and spoken answers.
 
-- **It sees:** a live, steady, magnified view with Text Clarity, comfortable reading colors and correction for screens seen at an angle.
+- **It sees:** follow the class from any seat with a live, steady, magnified view, Text Clarity, comfortable reading colors and correction for screens seen at an angle.
 - **It understands:** ask the assistant to read the text in view, explain the scene or answer follow-up questions.
 - **It remembers:** photos, recordings and answers gather in lecture notes you can review after class; add transcripts locally from your recordings.
 

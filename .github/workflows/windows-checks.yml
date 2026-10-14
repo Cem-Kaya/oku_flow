@@ -1,0 +1,126 @@
+name: Windows checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: Checks to run on GitHub's Windows VM
+        type: choice
+        default: all
+        options:
+          - all
+          - background
+          - gui-all
+          - gui-state
+          - gui-layout
+          - gui-input
+          - gui-idle
+          - two-cases
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows CPU build and tests
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      OKUFLOW_CI_SCOPE: ${{ inputs.scope || 'all' }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Initialize private evidence paths
+        run: |
+          $evidence = Join-Path $env:RUNNER_TEMP 'okuflow-evidence'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          "OKUFLOW_CI_EVIDENCE=$evidence" >> $env:GITHUB_ENV
+          "OKUFLOW_UI_TEST_SCREENSHOTS=$evidence/screenshots" >> $env:GITHUB_ENV
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+          vsversion: '2022'
+      - name: Install matching Qt SDK
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4
+        with:
+          version: '6.12.0'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtmultimedia qtspeech qtsvg qtimageformats
+          dir: ${{ runner.temp }}
+          cache: true
+          cache-key-prefix: okuflow-qt-6.12.0-windows-msvc2022
+          setup-python: false
+      - name: Validate translations
+        run: ./scripts/check_translations.ps1 -QtPrefix $env:QT_ROOT_DIR
+      - name: Configure CPU test preset
+        run: |
+          cmake --preset msvc-cpu "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR" "-DQt6_DIR=$env:QT_ROOT_DIR/lib/cmake/Qt6"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Compile application and fixtures
+        id: build
+        run: |
+          cmake --build --preset msvc-cpu-build --parallel 4
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Background CPU checks
+        if: ${{ inputs.scope == '' || inputs.scope == 'all' || inputs.scope == 'background' }}
+        run: ./scripts/run_test_gate.ps1 -Preset msvc-cpu-tests -ExcludeGui
+      - name: Native GUI checks on the remote desktop
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && inputs.scope != 'background' }}
+        run: |
+          ./scripts/run_windows_ci_gui.ps1 -Scope $env:OKUFLOW_CI_SCOPE
+      - name: Preserve logs, results and screenshots
+        if: ${{ always() }}
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:OKUFLOW_CI_EVIDENCE | Out-Null
+          $ledger = Join-Path $env:LOCALAPPDATA 'OkuFlow/test-evidence'
+          if (Test-Path -LiteralPath $ledger) {
+            Copy-Item -LiteralPath $ledger -Destination "$env:OKUFLOW_CI_EVIDENCE/gates" -Recurse
+          }
+          $ctest = 'build/msvc-cpu/Testing'
+          if (Test-Path -LiteralPath $ctest) {
+            Copy-Item -LiteralPath $ctest -Destination "$env:OKUFLOW_CI_EVIDENCE/ctest" -Recurse
+          }
+          @"
+          ## Windows checks
+          These checks ran on GitHub's Windows VM, away from the owner's desktop.
+          Scope: $env:OKUFLOW_CI_SCOPE. Build: CPU-only, Qt 6.12.0 / MSVC 2022.
+          Logs, JUnit, gate inventories and captured UI images are in the evidence artifact.
+          CUDA, physical-phone/camera and installer acceptance remain separate hardware checks.
+          A selected GUI group is a diagnostic run, not complete release validation.
+          "@ >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: ${{ always() }}
+        with:
+          name: windows-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.OKUFLOW_CI_EVIDENCE }}
+          if-no-files-found: warn
+          retention-days: 14
+
+  protocol:
+    name: Android host protocol
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
+      - run: python -B -m unittest discover -s android/tests -v

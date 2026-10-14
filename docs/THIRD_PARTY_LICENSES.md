@@ -13,6 +13,15 @@ The new localization resources are machine-assisted translations of first-party
 public UI text generated during development. They introduce no translation SDK
 or runtime service dependency. See [localization provenance and validation](localization.md).
 
+## Development-only GitHub automation
+
+The Windows workflow uses commit-pinned `actions/checkout`, `actions/setup-python`,
+`actions/upload-artifact`, `jurplel/install-qt-action` and `ilammy/msvc-dev-cmd`.
+These actions and the Qt downloader `aqtinstall` are MIT-licensed development
+tools executed on GitHub runners, not added to OkuFlow release inventories.
+Their upstream licenses remain in their action repositories; downloaded Qt
+retains the separate terms and redistribution requirements below.
+
 ## Qt 6
 - Upstream: <https://www.qt.io/>
 - License family: LGPL-3.0 / GPL-3.0 / commercial, depending on how Qt is obtained

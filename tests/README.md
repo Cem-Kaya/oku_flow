@@ -1,5 +1,35 @@
 # OkuFlow Tests
 
+## GitHub Actions away from the owner desktop
+
+The [Windows checks workflow](../.github/workflows/windows-checks.yml) runs on
+GitHub's disposable `windows-2022` VM for main pushes and pull requests. It
+installs Qt 6.12.0, selects MSVC 2022, validates all Qt catalogs and builds the
+tracked `msvc-cpu` preset. Background checks run first through the existing
+gate. Native GUI checks then run serially on the remote Windows desktop and
+complete that same CPU inventory. An unavailable or locked input desktop is a
+failure, not an offscreen pass. Nothing installs a runner on the owner's PC.
+
+In GitHub **Actions → Windows checks → Run workflow**, select `background`,
+`gui-all`, a `gui-state/layout/input/idle` group, or `two-cases`. The last option
+runs only the docking-hold and mouse-idle slots previously interrupted locally.
+Manual selections preserve every Qt data row and run each selected CTest entry
+once; they do not replace complete gate evidence or retry until passing. The
+remaining GUI entries without a subgroup are included in `gui-all` and `all`.
+
+Each run uploads `windows-evidence-<run-id>-<attempt>` for 14 days with CTest
+logs/JUnit, input-desktop evidence, local gate ledgers and fixture screenshots
+when captured. A newer commit cancels an older run on the same ref; the workflow
+has read-only repository permissions and pinned action commits. A separate
+Linux job runs Python host-protocol tests without a phone or credentials.
+
+These hosted checks cover the CPU build and native UI, not the shipping CUDA
+matrix, Maxine, a physical phone/camera or MSI acceptance. They do not publish
+or sign anything. Those hardware checks need a suitable separate machine;
+never silently fall back to running GUI fixtures on the owner's desktop.
+The future Luna screenshot-review/test redesign is a separate backlog item,
+not an automatic visual reviewer implemented by this workflow.
+
 Idle-chrome fixtures establish and drain native cursor/focus input before
 manually expiring the idle timer. Requested Qt cursor coordinates allow only
 one logical pixel of mixed-DPI rounding; interruption checks compare exact

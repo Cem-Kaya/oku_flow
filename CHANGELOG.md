@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Add GitHub Actions Windows CPU builds, translation checks, serial native GUI
+  checks and Android host-protocol tests. Preserve remote evidence and allow
+  manual GUI group/two-case diagnostics without controlling the owner's PC.
+  CUDA and physical-device acceptance remain separate hardware checks.
+
+## [0.2.4] - 2026-10-14
+
 - Submit Android 0.1.4 (code 5) with the completed language wording review
   to Alpha after signed release tests, lint and artifact validation.
   Code 4 / 0.1.3 was already committed to the Alpha track and is retained as

@@ -136,6 +136,14 @@ The helper script:
 If Windows reports missing `Qt6*.dll` files, add the Qt `bin` directory to `PATH` or point `QT_PREFIX` / `Qt6_DIR` at the correct installation.
 
 ## Alternative Builds
+
+Routine checks now run in [GitHub Actions](https://github.com/Cem-Kaya/oku_flow/actions/workflows/windows-checks.yml)
+on a disposable Windows VM, including a CPU build and serial native GUI tests.
+The Actions page also permits individual GUI groups/two-case diagnostics and
+stores logs, JUnit and screenshots as artifacts. This does not use the owner's
+desktop or establish CUDA/physical-device acceptance; see
+[remote checks and their scope](../tests/README.md#github-actions-away-from-the-owner-desktop).
+
 ### CMake presets
 
 ```powershell

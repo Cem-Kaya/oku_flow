@@ -466,3 +466,16 @@ aligned with the project goals.
   placeholders, markup, shortcuts and visible control names, then runs the
   appropriate localization validators. Keep model review distinct from native-
   speaker and rendered-UI acceptance. See `docs/localization.md` for the policy.
+
+## Remote routine validation (2026-10-14)
+- Use `.github/workflows/windows-checks.yml` for routine CPU/native GUI checks
+  on GitHub's disposable Windows VM; do not install a runner on the owner's PC
+  or silently fall back to local GUI execution. `run_windows_ci_gui.ps1` requires
+  GitHub Actions and an unlocked interactive native input desktop.
+- Keep the CPU preset/toolchain and serial native behavior assertions intact.
+  Preserve logs, JUnit, gate inventories and available screenshots as artifacts.
+  Manual group/two-case diagnostics are partial and cannot replace full gates;
+  do not auto-repeat failed cases until they pass.
+- Hosted CPU/GUI checks do not establish CUDA, Maxine, physical phone/camera,
+  installer or shipping bundle acceptance. Run hardware-dependent checks on a
+  suitable separate machine; owner desktop restrictions continue to apply.
