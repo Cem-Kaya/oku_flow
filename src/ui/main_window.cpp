@@ -3447,12 +3447,17 @@ void MainWindow::MoveSimpleChrome()
 void MainWindow::MoveSimpleChrome(const QPoint& viewOrigin)
 {
     if (updatingChromeGeometry_ || !chromeViewportSize_.isValid()) return;
+    const QPoint delta = viewOrigin - chromeViewOrigin_;
+    if (delta.isNull()) return;
     QScopedValueRollback<bool> geometryGuard(updatingChromeGeometry_, true);
+    chromeViewOrigin_ = viewOrigin;
     const std::array<QWidget*, 8> peers{topLeftPanel_, bottomLeftPanel_,
         keystoneTrackingPanel_, bottomRightPanel_, modeGridPopup_, modeToast_,
         cameraPlaceholder_, uiVisibilityPanel_};
     for (size_t index = 0; index < peers.size(); ++index) {
-        if (peers[index]) peers[index]->move(viewOrigin + chromeOffsets_[index]);
+        // Preserve the peer's actual position after native pixel rounding,
+        // rather than restoring an offset cached before that rounding.
+        if (peers[index]) peers[index]->move(peers[index]->pos() + delta);
     }
 }
 
@@ -3723,12 +3728,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
             viewOrigin.x() + std::max(0, (viewWidth - placeholderWidth) / 2),
             viewOrigin.y() + std::max(0, (viewHeight - cameraPlaceholder_->height()) / 2));
     }
-    const std::array<QWidget*, 8> peers{topLeftPanel_, bottomLeftPanel_,
-        keystoneTrackingPanel_, bottomRightPanel_, modeGridPopup_, modeToast_,
-        cameraPlaceholder_, uiVisibilityPanel_};
-    for (size_t index = 0; index < peers.size(); ++index) {
-        if (peers[index]) chromeOffsets_[index] = peers[index]->pos() - viewOrigin;
-    }
+    chromeViewOrigin_ = viewOrigin;
     chromeViewportSize_ = renderWidget_->size();
     chromeViewOwnerOffset_ = viewOrigin - mapToGlobal(QPoint());
     chromeDevicePixelRatio_ = renderWidget_->devicePixelRatioF();
@@ -3813,7 +3813,6 @@ void MainWindow::UpdateUiVisibilityControl()
     const int offset = layoutDirection() == Qt::RightToLeft ? 4
         : std::max(4, renderWidget_->width() - uiVisibilityPanel_->width() - 4);
     uiVisibilityPanel_->move(origin.x() + offset, origin.y() + 4);
-    chromeOffsets_[7] = uiVisibilityPanel_->pos() - origin;
     const bool visible = isVisible() && !isMinimized() &&
         QApplication::applicationState() == Qt::ApplicationActive;
     uiVisibilityPanel_->setVisible(visible);

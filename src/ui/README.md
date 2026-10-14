@@ -4,7 +4,8 @@ This module owns the Qt widget layer.
 
 Floating chrome remains in native tool windows above both CPU and D3D12 render
 surfaces. The owner's native `WM_MOVE` repositions these peers before Qt's
-queued geometry event, using cached viewport-relative logical offsets without
+queued geometry event, translating their current positions by the viewport-origin
+delta without
 translating or refitting layouts on each drag step. Qt owner/render-origin events
 also reconcile placement. Size or device-pixel-ratio changes run the full fit;
 the native path converts the current Windows client origin around the matching
@@ -12,6 +13,8 @@ monitor origin into Qt logical coordinates, avoiding Qt's stale position at 1×.
 At other scales Qt already maps from the current render HWND, so the fast path
 keeps that native rounding. The 1× fallback retains the render-to-owner offset
 from completed global geometry, including native RTL placement.
+Moving actual peer positions preserves any native pixel rounding already applied
+to RTL/right-edge controls; a move does not restore a pre-rounding panel offset.
 RTL, responsive strips, opacity, visibility and focus retain their existing
 contracts. Assistant and annotation overlays retain their own anchor handling.
 The serial native GUI regression checks immediate Qt and HWND displacement

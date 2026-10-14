@@ -12,6 +12,7 @@
   rebuilding translated toolbar layouts; resizing still refits the controls.
   Preserve native render-origin rounding for scaled/RTL placement and check
   immediate movement remotely at 125%, 150% and 200% scale.
+  Translate current panel positions so native right-edge rounding is retained.
 
 - Fix white-on-white inspector labels under native tab styles in dark mode.
   Tab panes and all inspector pages now paint the current Window palette
