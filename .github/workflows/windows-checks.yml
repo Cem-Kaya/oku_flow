@@ -19,6 +19,7 @@ on:
           - gui-input
           - gui-idle
           - two-cases
+          - desktop
 
 permissions:
   contents: read
@@ -47,14 +48,22 @@ jobs:
           New-Item -ItemType Directory -Force -Path $evidence | Out-Null
           "OKUFLOW_CI_EVIDENCE=$evidence" >> $env:GITHUB_ENV
           "OKUFLOW_UI_TEST_SCREENSHOTS=$evidence/screenshots" >> $env:GITHUB_ENV
+      - name: Prepare remote GUI display
+        id: desktop
+        if: ${{ inputs.scope != 'background' }}
+        continue-on-error: true
+        run: ./scripts/run_windows_ci_gui.ps1 -PrepareDesktop
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        if: ${{ inputs.scope != 'desktop' }}
         with:
           python-version: '3.14'
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        if: ${{ inputs.scope != 'desktop' }}
         with:
           arch: x64
           vsversion: '2022'
       - name: Install matching Qt SDK
+        if: ${{ inputs.scope != 'desktop' }}
         uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4
         with:
           version: '6.12.0'
@@ -70,13 +79,16 @@ jobs:
           # Released aqt 3.3.0 lacks Qt 6.11+ split Windows repositories.
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
       - name: Validate translations
+        if: ${{ inputs.scope != 'desktop' }}
         run: ./scripts/check_translations.ps1 -QtPrefix $env:QT_ROOT_DIR
       - name: Configure CPU test preset
+        if: ${{ inputs.scope != 'desktop' }}
         run: |
           cmake --preset msvc-cpu "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR" "-DQt6_DIR=$env:QT_ROOT_DIR/lib/cmake/Qt6"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Compile application and fixtures
         id: build
+        if: ${{ inputs.scope != 'desktop' }}
         run: |
           cmake --build --preset msvc-cpu-build --parallel 4
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -86,7 +98,12 @@ jobs:
       - name: Native GUI checks on the remote desktop
         if: ${{ !cancelled() && steps.build.outcome == 'success' && inputs.scope != 'background' }}
         run: |
+          if ('${{ steps.desktop.outcome }}' != 'success') { throw 'Remote display preparation failed; see desktop evidence.' }
           ./scripts/run_windows_ci_gui.ps1 -Scope $env:OKUFLOW_CI_SCOPE
+      - name: Check display-only result
+        if: ${{ inputs.scope == 'desktop' }}
+        run: |
+          if ('${{ steps.desktop.outcome }}' != 'success') { throw 'Remote display preparation failed; see desktop evidence.' }
       - name: Preserve logs, results and screenshots
         if: ${{ always() }}
         run: |
@@ -102,7 +119,8 @@ jobs:
           @"
           ## Windows checks
           These checks ran on GitHub's Windows VM, away from the owner's desktop.
-          Scope: $env:OKUFLOW_CI_SCOPE. Build: CPU-only, Qt 6.12.0 / MSVC 2022.
+          Scope: $env:OKUFLOW_CI_SCOPE. Compiled scopes use CPU-only Qt 6.12.0 / MSVC 2022.
+          The desktop-only scope checks the display prerequisite without building or testing the application.
           Logs, JUnit, gate inventories and captured UI images are in the evidence artifact.
           CUDA, physical-phone/camera and installer acceptance remain separate hardware checks.
           A selected GUI group is a diagnostic run, not complete release validation.

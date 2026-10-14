@@ -9,6 +9,10 @@ tracked `msvc-cpu` preset. Background checks run first through the existing
 gate. Native GUI checks then run serially on the remote Windows desktop and
 complete that same CPU inventory. An unavailable or locked input desktop is a
 failure, not an offscreen pass. Nothing installs a runner on the owner's PC.
+Before building, the workflow requests a 1920×1080 display on that disposable
+VM and verifies its actual size. The default 1024×768 clips large native windows
+and changes geometry restoration. A refused/unchanged mode cannot pass GUI
+acceptance; the `desktop` manual scope checks only this prerequisite quickly.
 
 The Qt downloader is pinned to an upstream aqt commit that supports Qt 6.11+
 split Windows repositories; released aqt 3.3.0 cannot locate this SDK.

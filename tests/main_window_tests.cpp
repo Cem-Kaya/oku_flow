@@ -710,10 +710,16 @@ void MainWindowTests::inspectorContrastAppearance()
     }
     QVERIFY2(subtitle, "No visible scope subtitle");
 
-    const auto verifyGrabbedText = [&window](QWidget* headerWidget, QWidget* summaryWidget,
+    const auto verifyGrabbedText = [&window, light](QWidget* headerWidget, QWidget* summaryWidget,
                                              QWidget* subtitleWidget) {
         QCoreApplication::processEvents();
         const QImage shot = window.grab().toImage().convertToFormat(QImage::Format_RGB32);
+        const QString evidence = qEnvironmentVariable("OKUFLOW_UI_TEST_SCREENSHOTS");
+        if (!evidence.isEmpty()) {
+            QDir().mkpath(evidence);
+            shot.save(QDir(evidence).filePath(light ? QStringLiteral("inspector-contrast-light.png")
+                                                   : QStringLiteral("inspector-contrast-dark.png")));
+        }
         // The header crop skips its arrow so only the title text can pass.
         QVERIFY2(ReadablePixelCount(shot, ScaledWidgetRect(headerWidget, &window, shot, 4, 30), 4.5) >= 12,
                  "Expanded section header text is unreadable in this scheme");

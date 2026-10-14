@@ -472,6 +472,8 @@ aligned with the project goals.
   on GitHub's disposable Windows VM; do not install a runner on the owner's PC
   or silently fall back to local GUI execution. `run_windows_ci_gui.ps1` requires
   GitHub Actions and an unlocked interactive native input desktop.
+  Prepare and verify the disposable VM's 1920×1080 display before fingerprinting
+  the build; an unsupported mode is a failed prerequisite, not passing evidence.
 - Keep the CPU preset/toolchain and serial native behavior assertions intact.
   Preserve logs, JUnit, gate inventories and available screenshots as artifacts.
   Manual group/two-case diagnostics are partial and cannot replace full gates;

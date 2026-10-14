@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
     [ValidateSet('all', 'gui-all', 'gui-state', 'gui-layout', 'gui-input', 'gui-idle', 'two-cases')]
-    [string]$Scope = 'all'
+    [string]$Scope = 'all',
+    [switch]$PrepareDesktop
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,6 +23,19 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class OkuFlowCiDesktop {
+    [StructLayout(LayoutKind.Explicit, Size = 220)]
+    struct DisplayMode {
+        [FieldOffset(68)] public ushort Size;
+        [FieldOffset(72)] public uint Fields;
+        [FieldOffset(172)] public uint Width;
+        [FieldOffset(176)] public uint Height;
+    }
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern bool EnumDisplaySettings(string device, int mode, ref DisplayMode data);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int ChangeDisplaySettings(ref DisplayMode data, uint flags);
     [DllImport("user32.dll", SetLastError = true)]
     static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -39,6 +53,16 @@ public static class OkuFlowCiDesktop {
             return name.ToString();
         } finally { CloseDesktop(handle); }
     }
+    public static int EnsureDisplaySize() {
+        if (GetSystemMetrics(0) >= 1920 && GetSystemMetrics(1) >= 1080) return 0;
+        var mode = new DisplayMode { Size = 220 };
+        if (!EnumDisplaySettings(null, -1, ref mode)) return -100;
+        mode.Fields = 0x180000; // DM_PELSWIDTH | DM_PELSHEIGHT
+        mode.Width = 1920;
+        mode.Height = 1080;
+        int tested = ChangeDisplaySettings(ref mode, 2); // CDS_TEST
+        return tested == 0 ? ChangeDisplaySettings(ref mode, 0) : tested;
+    }
 }
 '@
 $desktop = [ordered]@{
@@ -47,6 +71,8 @@ $desktop = [ordered]@{
     interactive = [Environment]::UserInteractive
     inputDesktop = [OkuFlowCiDesktop]::InputName()
     scope = $Scope
+    width = [OkuFlowCiDesktop]::GetSystemMetrics(0)
+    height = [OkuFlowCiDesktop]::GetSystemMetrics(1)
 }
 $desktop | ConvertTo-Json | Set-Content -LiteralPath "$env:OKUFLOW_CI_EVIDENCE/desktop.json" -Encoding utf8
 if (!$desktop.interactive -or $desktop.session -eq 0 -or $desktop.inputDesktop -ne 'Default') {
@@ -55,6 +81,16 @@ if (!$desktop.interactive -or $desktop.session -eq 0 -or $desktop.inputDesktop -
 if ($env:QT_QPA_PLATFORM -and $env:QT_QPA_PLATFORM -ne 'windows') {
     throw 'Native GUI checks require the Windows Qt platform, not offscreen/minimal.'
 }
+if ($PrepareDesktop) {
+    $desktop.changeResult = [OkuFlowCiDesktop]::EnsureDisplaySize()
+    $desktop.width = [OkuFlowCiDesktop]::GetSystemMetrics(0)
+    $desktop.height = [OkuFlowCiDesktop]::GetSystemMetrics(1)
+    $desktop | ConvertTo-Json | Set-Content -LiteralPath "$env:OKUFLOW_CI_EVIDENCE/desktop-preparation.json" -Encoding utf8
+}
+if ($desktop.width -lt 1920 -or $desktop.height -lt 1080) {
+    throw 'The native GUI fixtures require a 1920x1080 remote desktop. The runner display is too small; do not weaken layout assertions.'
+}
+if ($PrepareDesktop) { exit 0 }
 
 $inventory = & ctest --preset msvc-cpu-tests --show-only=json-v1
 if ($LASTEXITCODE) { throw 'CTest inventory discovery failed.' }

@@ -388,6 +388,14 @@ so metadata generation cannot silently accept an incomplete copy.
   `all` fills the existing CPU gate's GUI entries; narrow diagnostics produce
   separate JUnit/logs without whole-gate credit. Both paths retain serial
   execution and every Qt data row. Workflow artifacts preserve the results.
+  `-PrepareDesktop` calls `EnsureDisplaySize()` only after the remote ownership
+  and interactive-session guards. Its explicit 220-byte `DisplayMode` preserves
+  native DEVMODEW layout, requests width/height after `CDS_TEST` and changes only
+  the disposable VM's current mode, without saving registry defaults. Both
+  preparation and test execution verify at least 1920×1080; an unsupported or
+  unchanged mode stays a failed prerequisite. `desktop` scope skips SDK/builds.
+  `MainWindowTests::inspectorContrastAppearance` retains its contrast assertions
+  and saves the exact grabbed light/dark image before checking rendered text.
 - `scripts/test_test_gate.ps1` uses `Assert-Contract`, `Invoke-Gate` and
   `Read-Ledger` with private command-line CTest fixtures to check resume/retry,
   partial coverage, failure/skip handling and inventory invalidation. It creates

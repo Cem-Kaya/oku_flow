@@ -25,6 +25,10 @@ directory and takes its actual prefix from `QT_ROOT_DIR`. It pins aqtinstall to
 repository layout. CI logs/screenshots go under `RUNNER_TEMP/okuflow-evidence`,
 never the owner's desktop or fixture settings. Action commits are pinned in the
 workflow; update them deliberately with CI validation.
+The native GUI runner requests a 1920×1080 display because fixtures include
+1600-pixel windows. This changes only the disposable GitHub VM's current mode,
+before inventory hashing; it is guarded against local invocation and does not
+change the owner's display. Unsupported modes fail with retained evidence.
 
 WiX 4.0.6 is SHA-256-pinned in `scripts/windows-installer/tools.json`; its
 developer-only binaries live under `%LOCALAPPDATA%\OkuFlow\installer-tools`.
