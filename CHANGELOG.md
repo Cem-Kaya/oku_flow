@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Keep floating camera controls attached during native window dragging in both
+  Simple and Advanced views. Owner moves reposition them synchronously without
+  rebuilding translated toolbar layouts; resizing still refits the controls.
+
 - Fix white-on-white inspector labels under native tab styles in dark mode.
   Tab panes and all inspector pages now paint the current Window palette
   surface, retaining readable text during runtime light/dark switches.

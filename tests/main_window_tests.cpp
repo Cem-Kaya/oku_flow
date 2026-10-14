@@ -44,6 +44,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cmath>
 #include <Windows.h>
 
 namespace okuflow {
@@ -300,6 +301,8 @@ private slots:
     void busyActionSurvivesGermanResize();
     void keyboardRegionsAndFindShortcut();
     void assistantInspectorTabTraversal();
+    void chromeFollowsNativeOwnerMove_data();
+    void chromeFollowsNativeOwnerMove();
     void minimumViewportChromeFits_data();
     void minimumViewportChromeFits();
     void bottomChromeFormsRectangularGroups_data();
@@ -1072,6 +1075,99 @@ void MainWindowTests::assistantInspectorTabTraversal()
     QTRY_VERIFY(history->hasFocus());
     QTest::keyClick(history, Qt::Key_Tab);
     QTRY_VERIFY(rename->hasFocus());
+}
+
+void MainWindowTests::chromeFollowsNativeOwnerMove_data()
+{
+    QTest::addColumn<bool>("simple");
+    QTest::addColumn<bool>("rtl");
+    QTest::newRow("simple-ltr") << true << false;
+    QTest::newRow("advanced-ltr") << false << false;
+    QTest::newRow("simple-rtl") << true << true;
+    QTest::newRow("advanced-rtl") << false << true;
+}
+
+void MainWindowTests::chromeFollowsNativeOwnerMove()
+{
+    QFETCH(bool, simple);
+    QFETCH(bool, rtl);
+    MainWindow window;
+    window.setLayoutDirection(rtl ? Qt::RightToLeft : Qt::LeftToRight);
+    window.setSimpleMode(simple);
+    window.resize(1100, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QVERIFY(ActivateFixtureWindow(&window));
+    auto* render = window.renderWidget();
+    QVERIFY(render);
+    const std::array<const char*, 8> names{"topLeftPanel", "bottomLeftPanel",
+        "keystoneTrackingPanel", "bottomRightPanel", "modeGridPopup", "modeToast",
+        "cameraPlaceholder", "uiVisibilityPanel"};
+    std::array<QWidget*, 8> peers{};
+    for (size_t index = 0; index < peers.size(); ++index) {
+        peers[index] = Named<QWidget>(window, names[index]);
+        QVERIFY(peers[index]);
+    }
+    // Drain startup layout/activation before observing only the native moves.
+    QTest::qWait(100);
+    class LayoutObserver final : public QObject {
+    public:
+        int requests{};
+        bool eventFilter(QObject*, QEvent* event) override {
+            if (event->type() == QEvent::LayoutRequest) ++requests;
+            return false;
+        }
+    } observer;
+    for (auto* peer : peers) peer->installEventFilter(&observer);
+    const HWND owner = reinterpret_cast<HWND>(window.winId());
+    for (const QPoint nativeDelta : {QPoint(57, 31), QPoint(-83, -49), QPoint(26, 18)}) {
+        std::array<QRect, 8> before{};
+        std::array<RECT, 8> nativeBefore{};
+        std::array<HWND, 8> nativePeers{};
+        for (size_t index = 0; index < peers.size(); ++index) {
+            if (peers[index]->isVisible()) {
+                nativePeers[index] = reinterpret_cast<HWND>(peers[index]->winId());
+                QVERIFY(GetWindowRect(nativePeers[index], &nativeBefore[index]));
+            }
+        }
+        for (size_t index = 0; index < peers.size(); ++index) before[index] = peers[index]->geometry();
+        const QPoint origin = render->mapToGlobal(QPoint());
+        RECT frame{};
+        QVERIFY(GetWindowRect(owner, &frame));
+        QVERIFY(SetWindowPos(owner, nullptr, frame.left + nativeDelta.x(),
+            frame.top + nativeDelta.y(), 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE));
+        // No deferred events before these assertions. Native pixels may differ
+        // from Qt logical pixels at non-unit scale; use the actual render delta.
+        const QPoint logicalDelta = render->mapToGlobal(QPoint()) - origin;
+        QVERIFY(!logicalDelta.isNull());
+        for (size_t index = 0; index < peers.size(); ++index) {
+            QCOMPARE(peers[index]->geometry(), before[index].translated(logicalDelta));
+            if (nativePeers[index]) {
+                RECT actual{};
+                QVERIFY(GetWindowRect(nativePeers[index], &actual));
+                // Qt positions tool windows in whole logical pixels. At
+                // fractional scale a native owner move can fall between them.
+                const int tolerance = qFuzzyCompare(render->devicePixelRatioF(), qreal(1))
+                    ? 0 : int(std::ceil(render->devicePixelRatioF()));
+                QVERIFY(std::abs(actual.left - nativeBefore[index].left - nativeDelta.x()) <= tolerance);
+                QVERIFY(std::abs(actual.top - nativeBefore[index].top - nativeDelta.y()) <= tolerance);
+                QCOMPARE(actual.right - actual.left, nativeBefore[index].right - nativeBefore[index].left);
+                QCOMPARE(actual.bottom - actual.top, nativeBefore[index].bottom - nativeBefore[index].top);
+            }
+        }
+        QCoreApplication::processEvents();
+        QCOMPARE(observer.requests, 0);
+    }
+    // Real viewport resizing still refits the responsive rectangular toolbar.
+    const int oldWidth = render->width();
+    window.resize(760, 600);
+    QTRY_VERIFY(render->width() != oldWidth);
+    QTRY_VERIFY(observer.requests > 0);
+    const QRect viewport = GlobalRect(render);
+    for (const char* name : {"bottomLeftPanel", "bottomRightPanel"}) {
+        const QRect panel = GlobalRect(Named<QWidget>(window, name));
+        QVERIFY(viewport.contains(panel));
+    }
 }
 
 void MainWindowTests::minimumViewportChromeFits_data()

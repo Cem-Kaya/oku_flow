@@ -3432,6 +3432,26 @@ void MainWindow::ShowModeAnnouncement(const QString& label, const QString& profi
     QAccessible::updateAccessibility(&accessibleAnnouncement);
 }
 
+void MainWindow::MoveSimpleChrome()
+{
+    if (updatingChromeGeometry_ || !renderWidget_) return;
+    // Qt dispatches owner Move synchronously from Windows' WM_MOVE. Stay in
+    // logical coordinates: native screen pixels cannot be added to these
+    // offsets across per-monitor DPI transitions.
+    if (chromeViewportSize_ != renderWidget_->size() ||
+        chromeDevicePixelRatio_ != renderWidget_->devicePixelRatioF()) {
+        UpdateSimpleChromeGeometry();
+        return;
+    }
+    const QPoint origin = renderWidget_->mapToGlobal(QPoint());
+    const std::array<QWidget*, 8> peers{topLeftPanel_, bottomLeftPanel_,
+        keystoneTrackingPanel_, bottomRightPanel_, modeGridPopup_, modeToast_,
+        cameraPlaceholder_, uiVisibilityPanel_};
+    for (size_t index = 0; index < peers.size(); ++index) {
+        if (peers[index]) peers[index]->move(origin + chromeOffsets_[index]);
+    }
+}
+
 void MainWindow::UpdateSimpleChromeGeometry()
 {
     if (updatingChromeGeometry_) return;
@@ -3699,6 +3719,15 @@ void MainWindow::UpdateSimpleChromeGeometry()
             viewOrigin.x() + std::max(0, (viewWidth - placeholderWidth) / 2),
             viewOrigin.y() + std::max(0, (viewHeight - cameraPlaceholder_->height()) / 2));
     }
+    const std::array<QWidget*, 8> peers{topLeftPanel_, bottomLeftPanel_,
+        keystoneTrackingPanel_, bottomRightPanel_, modeGridPopup_, modeToast_,
+        cameraPlaceholder_, uiVisibilityPanel_};
+    for (size_t index = 0; index < peers.size(); ++index) {
+        if (peers[index]) chromeOffsets_[index] = peers[index]->pos() - viewOrigin;
+    }
+    chromeViewportSize_ = renderWidget_->size();
+    chromeDevicePixelRatio_ = renderWidget_->devicePixelRatioF();
+
     // Reserve the actual visible native chrome, in render-relative coordinates.
     // SetSafeArea changes only untouched default assistant placement; saved or
     // user-adjusted geometry is retained by the overlay.
@@ -3779,6 +3808,7 @@ void MainWindow::UpdateUiVisibilityControl()
     const int offset = layoutDirection() == Qt::RightToLeft ? 4
         : std::max(4, renderWidget_->width() - uiVisibilityPanel_->width() - 4);
     uiVisibilityPanel_->move(origin.x() + offset, origin.y() + 4);
+    chromeOffsets_[7] = uiVisibilityPanel_->pos() - origin;
     const bool visible = isVisible() && !isMinimized() &&
         QApplication::applicationState() == Qt::ApplicationActive;
     uiVisibilityPanel_->setVisible(visible);
@@ -4432,9 +4462,12 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
     if (type == QEvent::Resize && (watched == imageTabPage_ || watched == advancedPanel_)) {
         UpdateProfileButtonLayout();
     }
+    if ((watched == this || watched == centralWidget() || watched == contentSplitter_ ||
+         watched == renderWidget_) && type == QEvent::Move) {
+        MoveSimpleChrome();
+    }
     if ((watched == this || watched == centralWidget() || watched == contentSplitter_) &&
-                           (type == QEvent::Move ||
-                            type == QEvent::Resize ||
+                           (type == QEvent::Resize ||
                             type == QEvent::WindowStateChange)) {
         QTimer::singleShot(0, this, &MainWindow::UpdateSimpleChromeGeometry);
     }

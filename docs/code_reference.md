@@ -2442,6 +2442,15 @@ Namespace `okuflow`
     even when a native tab style paints a light pane under a dark app palette.
     UI regressions compare actual enabled/disabled rendering and assert search
     icon bounds and vertical alignment.
+  - `MoveSimpleChrome()` synchronously repositions all eight chrome peers from
+    cached render-relative logical offsets on owner/ancestor/render Move events.
+    `UpdateSimpleChromeGeometry()` records the offsets, viewport size and DPR
+    after fitting; a size/DPR mismatch returns to that full fit. Pure moves
+    neither enqueue a fit nor alter layout, focus, visibility or opacity.
+    `UpdateUiVisibilityControl()` also refreshes its independent cached offset.
+    `MainWindowTests::chromeFollowsNativeOwnerMove` covers Simple/Advanced and
+    LTR/RTL, forward/reverse native moves, immediate Qt and visible HWND
+    displacement, no deferred layout requests, and real resize refitting.
   - `UpdateSimpleChromeGeometry()` gives the bottom chrome two shapes,
     exposed as the `chromeDock` dynamic property (`corner`/`strip`) on the
     carousel, keystone, and action panels. Corner groups hug the camera's

@@ -2,6 +2,16 @@
 
 This module owns the Qt widget layer.
 
+Floating chrome remains in native tool windows above both CPU and D3D12 render
+surfaces. Owner and render-origin moves reposition these peers synchronously
+using cached viewport-relative logical offsets, without translating or refitting
+layouts on each drag step. Size or device-pixel-ratio changes run the full fit;
+RTL, responsive strips, opacity, visibility and focus retain their existing
+contracts. Assistant and annotation overlays retain their own anchor handling.
+The serial native GUI regression checks immediate Qt and HWND displacement
+without draining deferred events, plus resize refitting. This verifies geometry,
+not a compositor frame rate or multi-monitor hardware acceptance.
+
 Inspector text follows the Windows light/dark palette, including expanded
 section headers, current quick mode, subtitles, disabled labels and placeholders.
 The tab panes and all three inspector pages explicitly paint the palette's

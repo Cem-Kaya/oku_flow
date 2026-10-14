@@ -251,6 +251,10 @@ private:
     void ShowModeAnnouncement(const QString& label, const QString& profileName);
     bool updatingChromeGeometry_{false};
     void UpdateSimpleChromeGeometry();
+    void MoveSimpleChrome();
+    std::array<QPoint, 8> chromeOffsets_{};
+    QSize chromeViewportSize_;
+    qreal chromeDevicePixelRatio_{};
     void UpdateCameraPlaceholderVisibility();
     void RevealSimpleChrome();
     void FadeSimpleChrome();
