@@ -19,6 +19,13 @@ This document tracks machine-specific defaults, generated output locations, and 
 
 ## Installer and icon tooling
 
+The GitHub Windows workflow installs Qt 6.12.0 under the runner's temporary
+directory and takes its actual prefix from `QT_ROOT_DIR`. It pins aqtinstall to
+`076e1659807d0b362a3ed684d54c2e9c775eb9c7` for the Qt 6.11+ architecture-split
+repository layout. CI logs/screenshots go under `RUNNER_TEMP/okuflow-evidence`,
+never the owner's desktop or fixture settings. Action commits are pinned in the
+workflow; update them deliberately with CI validation.
+
 WiX 4.0.6 is SHA-256-pinned in `scripts/windows-installer/tools.json`; its
 developer-only binaries live under `%LOCALAPPDATA%\OkuFlow\installer-tools`.
 MSI/MSIX snapshots and extraction evidence use `installer-build`, `store-build`

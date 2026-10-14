@@ -6,6 +6,8 @@
   checks and Android host-protocol tests. Preserve remote evidence and allow
   manual GUI group/two-case diagnostics without controlling the owner's PC.
   CUDA and physical-device acceptance remain separate hardware checks.
+- Pin the CI Qt downloader to upstream support for Qt 6.11+ Windows repository
+  layout and remove the host-protocol fixture's 50 ms scheduling assumption.
 
 ## [0.2.4] - 2026-10-14
 

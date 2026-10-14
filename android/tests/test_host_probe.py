@@ -107,9 +107,11 @@ class FakeAdb:
                 self.send(stream, probe.ACK, {"channel": "video"})
                 if not self.start_requested.wait(2):
                     raise AssertionError("No start")
-                for sequence in range(10):
+                sequence = 0
+                while not self.stopped.is_set():
                     payload = probe.FRAME_PREFIX.pack(sequence * 33333, sequence, 1) + b"\0\0\0\1\x65\x01"
                     stream.sendall(probe.HEADER.pack(probe.FRAME, 1, len(payload)) + payload)
+                    sequence += 1
                     time.sleep(0.015)
         except (OSError, EOFError):
             pass
@@ -186,7 +188,9 @@ class HostProbeTests(unittest.TestCase):
             client.command("camera", id="1")
             with tempfile.TemporaryDirectory() as root:
                 output = Path(root) / "capture"
-                result = probe.capture(client, output, 0.05)
+                # Validate the protocol, not scheduler/TCP delivery within 50 ms.
+                # Keep sending until the capture closes its own fixture socket.
+                result = probe.capture(client, output, 1.0)
                 self.assertGreaterEqual(result["generations"][1]["frames"], 3)
                 self.assertTrue((output / "camera-g1.h264").is_file())
                 self.assertTrue((output / "summary.json").is_file())

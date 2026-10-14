@@ -66,6 +66,8 @@ jobs:
           cache: true
           cache-key-prefix: okuflow-qt-6.12.0-windows-msvc2022
           setup-python: false
+          # Released aqt 3.3.0 lacks Qt 6.11+ split Windows repositories.
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
       - name: Validate translations
         run: ./scripts/check_translations.ps1 -QtPrefix $env:QT_ROOT_DIR
       - name: Configure CPU test preset

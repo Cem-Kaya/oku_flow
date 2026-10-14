@@ -10,6 +10,11 @@ gate. Native GUI checks then run serially on the remote Windows desktop and
 complete that same CPU inventory. An unavailable or locked input desktop is a
 failure, not an offscreen pass. Nothing installs a runner on the owner's PC.
 
+The Qt downloader is pinned to an upstream aqt commit that supports Qt 6.11+
+split Windows repositories; released aqt 3.3.0 cannot locate this SDK. The host
+protocol capture fixture streams until the client closes and has a one-second
+capture window; its packet/control assertions do not depend on 50 ms scheduling.
+
 In GitHub **Actions → Windows checks → Run workflow**, select `background`,
 `gui-all`, a `gui-state/layout/input/idle` group, or `two-cases`. The last option
 runs only the docking-hold and mouse-idle slots previously interrupted locally.

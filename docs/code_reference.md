@@ -3017,6 +3017,10 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   checks with no live adb changes. Viewport-to-phone zoom handoff remains pending.
   Canonical cold launch, missing-only legacy fallback and blocked-launch cases
   use isolated fake endpoints; `PhoneCameraClient` mirrors the same launch rules.
+  `FakeAdb.peer` emits ordered video packets until the fixture closes, instead of
+  ending after ten frames. The capture test keeps its packet/control assertions
+  with a one-second duration rather than requiring three frames in 50 ms;
+  this avoids coupling protocol correctness to host scheduler/TCP timing.
 
 ## Entry Point
 
