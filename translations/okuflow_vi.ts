@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>Bắt đầu trên mỗi kết nối. Nhấn để bật hoặc tắt đèn điện thoại.</translation>
+            <translation>Tắt khi mỗi lần kết nối bắt đầu. Nhấn để bật hoặc tắt đèn điện thoại.</translation>
         </message>
         <message>
             <source>Application</source>
@@ -89,11 +89,11 @@
         </message>
         <message>
             <source>Search Advanced settings</source>
-            <translation>Tìm kiếm Cài đặt nâng cao</translation>
+            <translation>Tìm trong cài đặt nâng cao</translation>
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>Nhập một phần tên cài đặt để hiển thị và lấy tiêu điểm điều khiển khớp.</translation>
+            <translation>Nhập một phần tên cài đặt để hiện và chuyển tiêu điểm đến các điều khiển phù hợp.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -101,7 +101,7 @@
         </message>
         <message>
             <source>Orientation</source>
-            <translation>định hướng</translation>
+            <translation>Hướng</translation>
         </message>
         <message>
             <source>Camera acceleration</source>
@@ -125,7 +125,7 @@
         </message>
         <message>
             <source>Viewport motion rate</source>
-            <translation>Tốc độ chuyển động của khung nhìn</translation>
+            <translation>Tốc độ làm mới khung nhìn</translation>
         </message>
         <message>
             <source>Auto (up to 120 FPS)</source>
@@ -133,19 +133,19 @@
         </message>
         <message>
             <source>Match display</source>
-            <translation>Khớp màn hình</translation>
+            <translation>Theo tần số màn hình</translation>
         </message>
         <message>
             <source>Viewport framing</source>
-            <translation>Khung khung nhìn</translation>
+            <translation>Cách căn khung hình</translation>
         </message>
         <message>
             <source>Fill (crop)</source>
-            <translation>Điền (cắt)</translation>
+            <translation>Lấp đầy (cắt xén)</translation>
         </message>
         <message>
             <source>Fit (show all)</source>
-            <translation>Phù hợp (hiển thị tất cả)</translation>
+            <translation>Vừa khung (hiển thị toàn bộ)</translation>
         </message>
         <message>
             <source>Save As Quick Option</source>
@@ -161,7 +161,7 @@
         </message>
         <message>
             <source>Zoom wheel acceleration</source>
-            <translation>Tăng tốc bánh xe zoom</translation>
+            <translation>Tăng tốc cuộn zoom</translation>
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
@@ -169,11 +169,11 @@
         </message>
         <message>
             <source>Processed recording resolution</source>
-            <translation>Độ phân giải ghi đã xử lý</translation>
+            <translation>Độ phân giải bản ghi đã xử lý</translation>
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
-            <translation>Camera và độ phân giải ghi gốc &amp;&amp; tốc độ khung hình</translation>
+            <translation>Độ phân giải camera và bản ghi gốc &amp;&amp; tốc độ khung hình</translation>
         </message>
         <message>
             <source>Automatic (driver's choice)</source>
@@ -205,7 +205,7 @@
         </message>
         <message>
             <source>Screen fix</source>
-            <translation>Sửa màn hình</translation>
+            <translation>Chỉnh màn hình</translation>
         </message>
         <message>
             <source>Text clarity</source>
@@ -213,7 +213,7 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>Làm sắc nét và tập trung</translation>
+            <translation>Làm sắc nét và lấy nét</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>tạm thời mượt mà</translation>
+            <translation>Làm mượt theo thời gian</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -253,7 +253,7 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>Cực kỳ ổn định (giữ rung)</translation>
+            <translation>Siêu ổn định (giữ khung hình khi bị rung)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
@@ -281,7 +281,7 @@
         </message>
         <message>
             <source>Strength:</source>
-            <translation>Sức mạnh:</translation>
+            <translation>Mức độ:</translation>
         </message>
         <message>
             <source>Auto Text Clarity</source>
@@ -289,7 +289,7 @@
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>Làm phẳng nền</translation>
+            <translation>Làm đều nền</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
@@ -301,11 +301,11 @@
         </message>
         <message>
             <source>Text polarity</source>
-            <translation>Phân cực văn bản</translation>
+            <translation>Đảo màu chữ</translation>
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>Trọng lượng hành trình</translation>
+            <translation>Độ dày nét</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -321,7 +321,7 @@
         </message>
         <message>
             <source>Steady Text Edges</source>
-            <translation>Các cạnh văn bản ổn định</translation>
+            <translation>Làm ổn định viền chữ</translation>
         </message>
         <message>
             <source>Sharpen Text Only</source>
@@ -413,7 +413,7 @@
         </message>
         <message>
             <source>Backend</source>
-            <translation>Phần phụ trợ</translation>
+            <translation>Bộ xử lý nền</translation>
         </message>
         <message>
             <source>Sharpness</source>
@@ -421,11 +421,11 @@
         </message>
         <message>
             <source>Focus X:</source>
-            <translation>Tập trung X:</translation>
+            <translation>Tâm nét X:</translation>
         </message>
         <message>
             <source>Focus Y:</source>
-            <translation>Tập trung Y:</translation>
+            <translation>Tâm nét Y:</translation>
         </message>
         <message>
             <source>Debug View</source>
@@ -437,7 +437,7 @@
         </message>
         <message>
             <source>Pipeline status</source>
-            <translation>Trạng thái đường ống</translation>
+            <translation>Trạng thái quy trình xử lý</translation>
         </message>
         <message>
             <source>Performance percentiles</source>
@@ -453,7 +453,7 @@
         </message>
         <message>
             <source>Record</source>
-            <translation>Ghi lại</translation>
+            <translation>Ghi hình</translation>
         </message>
         <message>
             <source>Explain</source>
@@ -477,7 +477,7 @@
         </message>
         <message>
             <source>Explain the current view</source>
-            <translation>Giải thích quan điểm hiện tại</translation>
+            <translation>Giải thích khung hình hiện tại</translation>
         </message>
         <message>
             <source>Read text in the current view</source>
@@ -497,7 +497,7 @@
         </message>
         <message>
             <source>Line</source>
-            <translation>dòng</translation>
+            <translation>Đường thẳng</translation>
         </message>
         <message>
             <source>Shape</source>
@@ -545,7 +545,7 @@
         </message>
         <message>
             <source>Ask about this view...</source>
-            <translation>Hỏi về quan điểm này...</translation>
+            <translation>Hỏi về khung hình này...</translation>
         </message>
         <message>
             <source>Ask</source>
@@ -589,7 +589,7 @@
         </message>
         <message>
             <source>Ask about the current camera view.</source>
-            <translation>Hỏi về chế độ xem camera hiện tại.</translation>
+            <translation>Hỏi về hình ảnh camera hiện tại.</translation>
         </message>
         <message>
             <source>Ask about what is visible...</source>
@@ -597,11 +597,11 @@
         </message>
         <message>
             <source>Attach current view</source>
-            <translation>Đính kèm chế độ xem hiện tại</translation>
+            <translation>Đính kèm hình ảnh hiện tại</translation>
         </message>
         <message>
             <source>AI Settings sections</source>
-            <translation>Phần cài đặt AI</translation>
+            <translation>Các mục cài đặt AI</translation>
         </message>
         <message>
             <source>OpenAI-compatible server</source>
@@ -625,7 +625,7 @@
         </message>
         <message>
             <source>Codex model:</source>
-            <translation>Codex mô hình:</translation>
+            <translation>Mô hình Codex:</translation>
         </message>
         <message>
             <source>Reasoning:</source>
@@ -637,15 +637,15 @@
         </message>
         <message>
             <source>Allow coding commands and file changes</source>
-            <translation>Cho phép các lệnh mã hóa và thay đổi tập tin</translation>
+            <translation>Cho phép lệnh lập trình và thay đổi tệp</translation>
         </message>
         <message>
             <source>Required when coding is enabled</source>
-            <translation>Bắt buộc khi bật mã hóa</translation>
+            <translation>Bắt buộc khi bật lập trình</translation>
         </message>
         <message>
             <source>Coding workspace:</source>
-            <translation>Không gian làm việc mã hóa:</translation>
+            <translation>Không gian làm việc lập trình:</translation>
         </message>
         <message>
             <source>Assistant behavior</source>
@@ -657,7 +657,7 @@
         </message>
         <message>
             <source>OpenAI-compatible vision server</source>
-            <translation>Máy chủ tầm nhìn tương thích với OpenAI</translation>
+            <translation>Máy chủ thị giác tương thích với OpenAI</translation>
         </message>
         <message>
             <source>Server URL:</source>
@@ -669,7 +669,7 @@
         </message>
         <message>
             <source>Vision model:</source>
-            <translation>Mô hình tầm nhìn:</translation>
+            <translation>Mô hình thị giác:</translation>
         </message>
         <message>
             <source>Read aloud</source>
@@ -709,7 +709,7 @@
         </message>
         <message>
             <source>Write lecture notes file</source>
-            <translation>Viết file ghi chú bài giảng</translation>
+            <translation>Ghi tệp ghi chú bài giảng</translation>
         </message>
         <message>
             <source>None</source>
@@ -785,7 +785,7 @@
         </message>
         <message>
             <source>Section heading. Activate to expand or collapse this settings group.</source>
-            <translation>Tiêu đề phần. Kích hoạt để mở rộng hoặc thu gọn nhóm cài đặt này.</translation>
+            <translation>Tiêu đề mục. Chọn để mở rộng hoặc thu gọn nhóm cài đặt này.</translation>
         </message>
         <message>
             <source>expanded</source>
@@ -809,7 +809,7 @@
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>Không có giọng nói %1 nào được cài đặt — sử dụng giọng nói hiện tại. Cài đặt một cái trong Cài đặt Windows → Thời gian &amp; Ngôn ngữ → Lời nói.</translation>
+            <translation>Chưa cài giọng đọc %1 — sẽ dùng giọng đọc hiện tại. Hãy cài thêm trong Cài đặt Windows → Thời gian &amp; Ngôn ngữ → Lời nói.</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -817,11 +817,11 @@
         </message>
         <message>
             <source>Attaching the current view...</source>
-            <translation>Đang đính kèm chế độ xem hiện tại...</translation>
+            <translation>Đang đính kèm hình ảnh hiện tại...</translation>
         </message>
         <message>
             <source>Capturing the current view...</source>
-            <translation>Đang chụp chế độ xem hiện tại...</translation>
+            <translation>Đang chụp hình ảnh hiện tại...</translation>
         </message>
         <message>
             <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
@@ -837,7 +837,7 @@
         </message>
         <message>
             <source>OkuFlow Assistant</source>
-            <translation>OkuFlow Trợ lý</translation>
+            <translation>Trợ lý OkuFlow</translation>
         </message>
         <message>
             <source>You</source>
@@ -885,11 +885,11 @@
         </message>
         <message>
             <source>Automatic screen correction continuing.</source>
-            <translation>Tiếp tục chỉnh sửa màn hình tự động.</translation>
+            <translation>Đang tiếp tục hiệu chỉnh màn hình tự động.</translation>
         </message>
         <message>
             <source>Automatic screen correction stopped.</source>
-            <translation>Đã dừng sửa màn hình tự động.</translation>
+            <translation>Đã dừng hiệu chỉnh màn hình tự động.</translation>
         </message>
         <message>
             <source>Cancel</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>Tính năng chụp ảnh bằng camera GPU đang hoạt động với tính năng sao chép dự phòng an toàn.</translation>
+            <translation>Đang dùng GPU để nhận hình ảnh từ camera, với phương án dự phòng sao chép an toàn.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -909,11 +909,11 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>NVIDIA Super Resolution bỏ qua giới hạn hiệu suất.</translation>
+            <translation>Đã bỏ qua giới hạn hiệu suất của NVIDIA Super Resolution.</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
-            <translation>NVIDIA Super Resolution giới hạn hiệu suất được khôi phục.</translation>
+            <translation>Đã khôi phục giới hạn hiệu suất của NVIDIA Super Resolution.</translation>
         </message>
         <message>
             <source>New OkuFlow files will be saved in %1.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>Tính năng chỉnh sửa màn hình được lùi lại và quá trình theo dõi đã dừng lại.</translation>
+            <translation>Đã hoàn nguyên hiệu chỉnh màn hình và dừng theo dõi.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -945,7 +945,7 @@
         </message>
         <message>
             <source>Stop recording before testing camera acceleration.</source>
-            <translation>Dừng ghi trước khi kiểm tra khả năng tăng tốc của máy ảnh.</translation>
+            <translation>Hãy dừng ghi trước khi kiểm tra tăng tốc GPU cho camera.</translation>
         </message>
         <message>
             <source>Temporal blend</source>
@@ -953,7 +953,7 @@
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>Kiểm tra GPU và khả năng ghi lại khả năng tương thích trong một quy trình riêng biệt...</translation>
+            <translation>Đang kiểm tra khả năng thu hình bằng GPU và chế độ tương thích trong một tiến trình riêng...</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -969,7 +969,7 @@
         </message>
         <message>
             <source>Using the next screen correction.</source>
-            <translation>Sử dụng hiệu chỉnh màn hình tiếp theo.</translation>
+            <translation>Đang dùng mức hiệu chỉnh màn hình tiếp theo.</translation>
         </message>
         <message>
             <source>Windows could not open:
@@ -991,15 +991,15 @@
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>Chế độ xem chú thích chưa được lưu: không thể xếp hàng hình ảnh.</translation>
+            <translation>Không lưu được hình ảnh có chú thích: không thể đưa ảnh vào hàng đợi.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>Chế độ xem chú thích chưa được lưu: ảnh vẫn đang được ghi. Hãy thử lại.</translation>
+            <translation>Không lưu được hình ảnh có chú thích: tác vụ ghi ảnh đang bận. Hãy thử lại.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
-            <translation>Chế độ xem chú thích chưa được lưu: chế độ xem không khả dụng.</translation>
+            <translation>Không lưu được hình ảnh có chú thích: khung hiển thị không khả dụng.</translation>
         </message>
         <message>
             <source>Camera Error</source>
@@ -1019,7 +1019,7 @@
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>Xử lý GPU liên tục không thành công - hiển thị video chưa được xử lý.</translation>
+            <translation>Xử lý bằng GPU liên tục gặp lỗi — đang hiển thị video chưa qua xử lý.</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
@@ -1043,11 +1043,11 @@
         </message>
         <message>
             <source>Photo not saved: the image could not be queued.</source>
-            <translation>Ảnh chưa được lưu: không thể xếp ảnh vào hàng đợi.</translation>
+            <translation>Không lưu được ảnh: không thể đưa ảnh vào hàng đợi xử lý.</translation>
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>Ảnh chưa được lưu: ảnh vẫn đang được ghi. Hãy thử lại.</translation>
+            <translation>Không lưu được ảnh: tác vụ ghi ảnh đang bận. Hãy thử lại.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
@@ -1067,11 +1067,11 @@
         </message>
         <message>
             <source>Recording stopped: the original camera frame could not be converted.</source>
-            <translation>Đã dừng ghi: không thể chuyển đổi khung hình camera gốc.</translation>
+            <translation>Đã dừng ghi hình: không thể chuyển đổi khung hình gốc từ camera.</translation>
         </message>
         <message>
             <source>Saving annotated view to lecture notes...</source>
-            <translation>Đang lưu chế độ xem chú thích vào ghi chú bài giảng...</translation>
+            <translation>Đang lưu hình ảnh có chú thích vào ghi chú bài giảng...</translation>
         </message>
         <message>
             <source>Saving original and processed photos...</source>
@@ -1079,7 +1079,7 @@
         </message>
         <message>
             <source>The camera GPU texture could not be converted for CUDA.</source>
-            <translation>Không thể chuyển đổi kết cấu GPU của máy ảnh cho CUDA.</translation>
+            <translation>Không thể chuyển đổi texture GPU của camera sang định dạng dùng được với CUDA.</translation>
         </message>
         <message>
             <source>Annotated view</source>
@@ -1135,7 +1135,7 @@
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
-            <translation>Canvas ghi âm không hợp lệ.</translation>
+            <translation>Vùng hình ghi hình không hợp lệ.</translation>
         </message>
         <message>
             <source>No frames were dropped.</source>
@@ -1179,11 +1179,11 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>Bản gốc và được xử lý bằng GPU</translation>
+            <translation>Hình gốc và hình đã xử lý, đều được nhận qua GPU</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>Nguồn GPU có tính năng đọc lại của nhân viên</translation>
+            <translation>Nguồn GPU có bước đọc dữ liệu về bằng tiến trình phụ trợ</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1291,7 +1291,7 @@
         </message>
         <message>
             <source>Codex CLI Path</source>
-            <translation>Codex CLI Đường dẫn</translation>
+            <translation>Đường dẫn Codex CLI</translation>
         </message>
         <message>
             <source>Codex Model</source>
@@ -1299,7 +1299,7 @@
         </message>
         <message>
             <source>Codex Reasoning</source>
-            <translation>Codex Suy luận</translation>
+            <translation>Mức độ suy luận của Codex</translation>
         </message>
         <message>
             <source>Assistant Instructions</source>
@@ -1307,7 +1307,7 @@
         </message>
         <message>
             <source>Built-in Codex Prompt</source>
-            <translation>Tích hợp sẵn Codex Nhắc nhở</translation>
+            <translation>Lời nhắc Codex tích hợp sẵn</translation>
         </message>
         <message>
             <source>VLM Server URL</source>
@@ -1319,19 +1319,19 @@
         </message>
         <message>
             <source>Model</source>
-            <translation>người mẫu</translation>
+            <translation>Mô hình</translation>
         </message>
         <message>
             <source>Read Aloud Voice</source>
-            <translation>Giọng đọc to</translation>
+            <translation>Giọng đọc thành tiếng</translation>
         </message>
         <message>
             <source>Read Aloud Speed</source>
-            <translation>Tốc độ đọc to</translation>
+            <translation>Tốc độ đọc thành tiếng</translation>
         </message>
         <message>
             <source>Preview Read Aloud Voice</source>
-            <translation>Xem trước giọng nói đọc to</translation>
+            <translation>Nghe thử giọng đọc thành tiếng</translation>
         </message>
         <message>
             <source>Write Lecture Notes File</source>
@@ -1355,11 +1355,11 @@
         </message>
         <message>
             <source>Choose an existing workspace folder before enabling coding.</source>
-            <translation>Chọn thư mục không gian làm việc hiện có trước khi bật mã hóa.</translation>
+            <translation>Hãy chọn thư mục không gian làm việc có sẵn trước khi bật tính năng lập trình.</translation>
         </message>
         <message>
             <source>Coding Workspace Required</source>
-            <translation>Yêu cầu không gian làm việc mã hóa</translation>
+            <translation>Cần có không gian làm việc lập trình</translation>
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
@@ -1387,7 +1387,7 @@
         </message>
         <message>
             <source>Click the camera view, then type a label. Shortcut T.</source>
-            <translation>Bấm vào chế độ xem camera, sau đó nhập nhãn. Phím tắt T</translation>
+            <translation>Nhấp vào hình ảnh camera rồi nhập nhãn. Phím tắt: T.</translation>
         </message>
         <message>
             <source>Dashed</source>
@@ -1427,7 +1427,7 @@
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
-            <translation>Vẽ tự do trên chế độ xem camera. Phím tắt P</translation>
+            <translation>Vẽ nét tự do trên hình ảnh camera. Phím tắt: P.</translation>
         </message>
         <message>
             <source>Draw mode off.</source>
@@ -1439,7 +1439,7 @@
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>Vẽ, chọn, thay đổi kích thước, lưu hoặc xóa các chú thích được gắn vào cảnh camera.</translation>
+            <translation>Vẽ, chọn, đổi kích thước, lưu hoặc xóa chú thích gắn với hình ảnh camera.</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1471,7 +1471,7 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>Di chuyển công cụ chú thích</translation>
+            <translation>Công cụ di chuyển chú thích</translation>
         </message>
         <message>
             <source>Move tool</source>
@@ -1511,7 +1511,7 @@
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>Lưu chế độ xem đã đánh dấu vào ghi chú bài giảng. Điều khiển phím tắt S.</translation>
+            <translation>Lưu hình ảnh đã đánh dấu vào ghi chú bài giảng. Phím tắt Ctrl+S.</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
@@ -1519,7 +1519,7 @@
         </message>
         <message>
             <source>Selected annotation scaled</source>
-            <translation>Chú thích đã chọn được thu nhỏ</translation>
+            <translation>Đã thay đổi kích thước chú thích được chọn</translation>
         </message>
         <message>
             <source>Selection cleared</source>
@@ -1531,7 +1531,7 @@
         </message>
         <message>
             <source>Solid</source>
-            <translation>chất rắn</translation>
+            <translation>Đặc</translation>
         </message>
         <message>
             <source>Solid line style</source>
@@ -1539,7 +1539,7 @@
         </message>
         <message>
             <source>Solid stroke</source>
-            <translation>nét đặc</translation>
+            <translation>Nét liền</translation>
         </message>
         <message>
             <source>Text entry canceled</source>
@@ -1567,7 +1567,7 @@
         </message>
         <message>
             <source>Undo the last edit. Shortcut Control Z.</source>
-            <translation>Hoàn tác chỉnh sửa cuối cùng. Điều khiển phím tắt Z.</translation>
+            <translation>Hoàn tác chỉnh sửa gần nhất. Phím tắt Ctrl+Z.</translation>
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
@@ -1579,23 +1579,23 @@
         </message>
         <message>
             <source>Assistive result</source>
-            <translation>Kết quả hỗ trợ</translation>
+            <translation>Kết quả trợ năng</translation>
         </message>
         <message>
             <source>Assistive result text</source>
-            <translation>Văn bản kết quả hỗ trợ</translation>
+            <translation>Nội dung kết quả trợ năng</translation>
         </message>
         <message>
             <source>Assistive result title</source>
-            <translation>Tiêu đề kết quả hỗ trợ</translation>
+            <translation>Tiêu đề kết quả trợ năng</translation>
         </message>
         <message>
             <source>Assistive results</source>
-            <translation>Kết quả hỗ trợ</translation>
+            <translation>Kết quả trợ năng</translation>
         </message>
         <message>
             <source>Close assistive result</source>
-            <translation>Đóng kết quả hỗ trợ</translation>
+            <translation>Đóng kết quả trợ năng</translation>
         </message>
         <message>
             <source>Hide the current assistant result</source>
@@ -1603,7 +1603,7 @@
         </message>
         <message>
             <source>Move assistive panel</source>
-            <translation>Di chuyển bảng trợ giúp</translation>
+            <translation>Di chuyển bảng trợ năng</translation>
         </message>
         <message>
             <source>Question about the current view</source>
@@ -1611,11 +1611,11 @@
         </message>
         <message>
             <source>Read assistive result aloud</source>
-            <translation>Đọc to kết quả hỗ trợ</translation>
+            <translation>Đọc kết quả trợ năng thành tiếng</translation>
         </message>
         <message>
             <source>Send the question with the current camera view to OkuFlow Assistant</source>
-            <translation>Gửi câu hỏi với chế độ xem camera hiện tại tới OkuFlow Trợ lý</translation>
+            <translation>Gửi câu hỏi kèm hình ảnh camera hiện tại cho Trợ lý OkuFlow</translation>
         </message>
         <message>
             <source>Speak the current assistant result</source>
@@ -1623,11 +1623,11 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>Kết quả trợ lý phát trực tuyến. Sử dụng các phím mũi tên để đọc văn bản.</translation>
+            <translation>Trợ lý đang trả lời. Dùng phím mũi tên để đọc nội dung.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
-            <translation>Nhập câu hỏi tiếp theo bất cứ lúc nào. Việc gửi sẽ khả dụng khi câu trả lời hiện tại kết thúc.</translation>
+            <translation>Bạn có thể nhập câu hỏi tiếp theo bất cứ lúc nào. Nút gửi sẽ khả dụng khi câu trả lời hiện tại hoàn tất.</translation>
         </message>
         <message>
             <source>Apply custom</source>
@@ -1667,7 +1667,7 @@
         </message>
         <message>
             <source>Display color scheme</source>
-            <translation>Hiển thị bảng màu</translation>
+            <translation>Bảng màu hiển thị</translation>
         </message>
         <message>
             <source>Display colors changed to %1</source>
@@ -1675,7 +1675,7 @@
         </message>
         <message>
             <source>Display colors, %1</source>
-            <translation>Hiển thị màu sắc, %1</translation>
+            <translation>Màu hiển thị, %1</translation>
         </message>
         <message>
             <source>Display colors: %1</source>
@@ -1687,11 +1687,11 @@
         </message>
         <message>
             <source>Gradient</source>
-            <translation>Độ dốc</translation>
+            <translation>Dải chuyển màu</translation>
         </message>
         <message>
             <source>Number of color stops</source>
-            <translation>Số lượng điểm dừng màu</translation>
+            <translation>Số điểm màu</translation>
         </message>
         <message>
             <source>Posterize</source>
@@ -1699,7 +1699,7 @@
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>Đọc màu</translation>
+            <translation>Màu đọc</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
@@ -1711,7 +1711,7 @@
         </message>
         <message>
             <source>Stepped colors</source>
-            <translation>Màu sắc bước</translation>
+            <translation>Màu phân bậc</translation>
         </message>
         <message>
             <source>Text color</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>Sử dụng dải màu cứng</translation>
+            <translation>Dùng các dải màu rõ ranh giới</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1735,7 +1735,7 @@
         </message>
         <message>
             <source>Automatic screen correction</source>
-            <translation>Chỉnh sửa màn hình tự động</translation>
+            <translation>Tự động hiệu chỉnh hình ảnh trên màn hình</translation>
         </message>
         <message>
             <source>Automatically clarify text in the camera view</source>
@@ -1743,11 +1743,11 @@
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
-            <translation>Tính năng tăng tốc máy ảnh chưa bắt đầu.</translation>
+            <translation>Tính năng tăng tốc camera chưa khởi chạy.</translation>
         </message>
         <message>
             <source>Camera acceleration mode</source>
-            <translation>Chế độ tăng tốc máy ảnh</translation>
+            <translation>Chế độ tăng tốc camera</translation>
         </message>
         <message>
             <source>Camera acceleration status</source>
@@ -1763,15 +1763,15 @@
         </message>
         <message>
             <source>Codex connection status</source>
-            <translation>Codex trạng thái kết nối</translation>
+            <translation>Trạng thái kết nối Codex</translation>
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex cách sử dụng</translation>
+            <translation>Mức sử dụng Codex</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
-            <translation>Định cấu hình trợ lý thị giác và đầu ra giọng nói</translation>
+            <translation>Thiết lập trợ lý thị giác và giọng nói đầu ra</translation>
         </message>
         <message>
             <source>Continue</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>Điều khiển trình bày xoay và thu phóng mượt mà; tốc độ khung hình của máy ảnh không thay đổi</translation>
+            <translation>Các điều khiển giúp thao tác lia và thu phóng mượt mà hơn; tốc độ khung hình camera không đổi</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1807,31 +1807,31 @@
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
-            <translation>Kéo để thay đổi kích thước Cài đặt nâng cao</translation>
+            <translation>Kéo để đổi kích thước cửa sổ Cài đặt nâng cao</translation>
         </message>
         <message>
             <source>Extra Stable off</source>
-            <translation>Tắt tính năng ổn định bổ sung</translation>
+            <translation>Chế độ Ổn định tăng cường: tắt</translation>
         </message>
         <message>
             <source>Extra Stable on</source>
-            <translation>Thêm ổn định trên</translation>
+            <translation>Chế độ Ổn định tăng cường: bật</translation>
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>Fill sử dụng toàn bộ khung nhìn mà không cần kéo dài; Fit bảo toàn toàn bộ hình ảnh bằng các thanh</translation>
+            <translation>Lấp đầy sử dụng toàn bộ vùng hiển thị mà không kéo giãn ảnh; Vừa khung giữ trọn ảnh và thêm viền</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
-            <translation>Đang tìm một cách chỉnh sửa màn hình mới...</translation>
+            <translation>Đang tìm một mức hiệu chỉnh hình ảnh mới...</translation>
         </message>
         <message>
             <source>Finishing</source>
-            <translation>hoàn thiện</translation>
+            <translation>Đang hoàn tất</translation>
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>Dừng lại ở khung hình sắc nét cuối cùng trong khi tăng tốc, sau đó quay lại video trực tiếp một cách mượt mà</translation>
+            <translation>Giữ khung hình rõ nét gần nhất khi camera bị rung, rồi chuyển mượt về hình ảnh trực tiếp</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1851,7 +1851,7 @@
         </message>
         <message>
             <source>Keep It Steady</source>
-            <translation>Giữ nó ổn định</translation>
+            <translation>Giữ hình ảnh ổn định</translation>
         </message>
         <message>
             <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>Khóa chế độ xem camera được gắn bằng cách sử dụng ổn định toàn bộ cường độ CUDA</translation>
+            <translation>Cố định hình ảnh camera gắn ngoài bằng tính năng ổn định CUDA ở mức tối đa</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1871,7 +1871,7 @@
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>Máy ảnh phù hợp (được khuyến nghị)</translation>
+            <translation>Theo camera (khuyên dùng)</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1879,7 +1879,7 @@
         </message>
         <message>
             <source>NVIDIA Image Scaling (default)</source>
-            <translation>NVIDIA Chia tỷ lệ hình ảnh (mặc định)</translation>
+            <translation>NVIDIA Image Scaling (mặc định)</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution status</source>
@@ -1891,7 +1891,7 @@
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>NVIDIA Video Effects thời gian chạy chưa được cài đặt; sử dụng Cài đặt &amp; Tải xuống</translation>
+            <translation>Chưa cài đặt môi trường chạy NVIDIA Video Effects; mở Cài đặt &amp; Tải xuống</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1915,7 +1915,7 @@
         </message>
         <message>
             <source>OkuFlow Help</source>
-            <translation>OkuFlow Trợ giúp</translation>
+            <translation>Trợ giúp OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
@@ -1923,7 +1923,7 @@
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
-            <translation>Xếp chồng điểm đánh dấu màu đỏ ở tiêu điểm thu phóng hiện tại</translation>
+            <translation>Hiện dấu màu đỏ tại tâm vùng phóng to hiện tại</translation>
         </message>
         <message>
             <source>Previous Advanced section</source>
@@ -1963,7 +1963,7 @@
         </message>
         <message>
             <source>Reading profile</source>
-            <translation>Đọc hồ sơ</translation>
+            <translation>Hồ sơ đọc</translation>
         </message>
         <message>
             <source>Reset current profile tuning</source>
@@ -1971,7 +1971,7 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>Đặt lại hình ảnh thuộc sở hữu của hồ sơ và điều chỉnh hỗ trợ về mặc định</translation>
+            <translation>Đặt lại về mặc định các tinh chỉnh hình ảnh và trợ năng của hồ sơ</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
@@ -1983,7 +1983,7 @@
         </message>
         <message>
             <source>Runtime not installed; use Setup &amp; Downloads</source>
-            <translation>Thời gian chạy chưa được cài đặt; sử dụng Cài đặt &amp; Tải xuống</translation>
+            <translation>Chưa cài đặt môi trường chạy; mở Cài đặt &amp; Tải xuống</translation>
         </message>
         <message>
             <source>Save an annotated snapshot to lecture notes when Draw mode closes.</source>
@@ -2015,19 +2015,19 @@
         </message>
         <message>
             <source>Show an on-screen control for moving the zoomed view</source>
-            <translation>Hiển thị điều khiển trên màn hình để di chuyển chế độ xem được thu phóng</translation>
+            <translation>Hiện nút trên màn hình để di chuyển vùng phóng to</translation>
         </message>
         <message>
             <source>Steady Text</source>
-            <translation>Văn bản ổn định</translation>
+            <translation>Ổn định văn bản</translation>
         </message>
         <message>
             <source>Stop Automatic Screen Correction</source>
-            <translation>Dừng tự động sửa màn hình</translation>
+            <translation>Dừng tự động hiệu chỉnh hình ảnh trên màn hình</translation>
         </message>
         <message>
             <source>Test camera acceleration</source>
-            <translation>Kiểm tra khả năng tăng tốc của máy ảnh</translation>
+            <translation>Kiểm tra tính năng tăng tốc camera</translation>
         </message>
         <message>
             <source>Unavailable in this build</source>
@@ -2035,11 +2035,11 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>Sử dụng NVIDIA Video Effects SuperRes ở mức thu phóng 1,33 lần trở lên; tự động quay trở lại NIS</translation>
+            <translation>Dùng NVIDIA Video Effects SuperRes khi phóng to từ 1,33× trở lên; tự động chuyển về NIS nếu cần</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
-            <translation>Cài đặt chế độ xem được chia sẻ bởi tất cả các cấu hình.</translation>
+            <translation>Cài đặt vùng hiển thị này được dùng chung cho mọi hồ sơ.</translation>
         </message>
         <message>
             <source>Zoom In More</source>
@@ -2075,9 +2075,9 @@
             <source>Installed system-wide
 %1
 Removal is managed by Windows.</source>
-            <translation>Được cài đặt trên toàn hệ thống
+            <translation>Đã cài đặt trên toàn hệ thống
 %1
-Việc xóa được quản lý bởi Windows.</translation>
+Việc gỡ cài đặt do Windows quản lý.</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects</source>
@@ -2117,7 +2117,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>Open the NVIDIA runtime uninstaller?</source>
-            <translation>Mở trình gỡ cài đặt thời gian chạy NVIDIA?</translation>
+            <translation>Mở công cụ gỡ cài đặt môi trường chạy NVIDIA?</translation>
         </message>
         <message>
             <source>Open the folder containing the detected Codex CLI</source>
@@ -2129,7 +2129,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>OkuFlow Setup Assistant</source>
-            <translation>OkuFlow Trợ lý thiết lập</translation>
+            <translation>Trợ lý thiết lập OkuFlow</translation>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
@@ -2161,7 +2161,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>The Setup Assistant remains available from Advanced settings</source>
-            <translation>Trợ lý thiết lập vẫn có sẵn từ cài đặt Nâng cao</translation>
+            <translation>Bạn vẫn có thể mở Trợ lý thiết lập trong phần Cài đặt nâng cao</translation>
         </message>
         <message>
             <source>The downloaded installer could not be opened for verification.</source>
@@ -2173,7 +2173,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>The first transfer failed. Retrying with the Windows downloader...</source>
-            <translation>Lần chuyển tiền đầu tiên không thành công. Đang thử lại bằng trình tải xuống Windows...</translation>
+            <translation>Lần tải đầu tiên không thành công. Đang thử lại bằng công cụ tải xuống của Windows...</translation>
         </message>
         <message>
             <source>The installer did not complete successfully.</source>
@@ -2189,7 +2189,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>Bản sao toàn hệ thống này phải được xóa thông qua Ứng dụng đã cài đặt Windows</translation>
+            <translation>Phải gỡ bản cài đặt toàn hệ thống này trong mục Ứng dụng đã cài đặt của Windows</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2229,11 +2229,11 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>Móc hỗ trợ: Giải thích cảnh</translation>
+            <translation>Tính năng hỗ trợ: Giải thích cảnh</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>Móc hỗ trợ: Giải thích cảnh với lớp phủ</translation>
+            <translation>Tính năng hỗ trợ: Giải thích cảnh kèm lớp phủ</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
@@ -2273,7 +2273,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>Performance timing percentiles</source>
-            <translation>Phần trăm thời gian thực hiện</translation>
+            <translation>Các phân vị thời gian xử lý</translation>
         </message>
         <message>
             <source>%1 status</source>
@@ -2325,7 +2325,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
-            <translation>Tăng tốc cử chỉ thu phóng cuộn Ctrl+cuộn nhanh; thu phóng bàn phím vẫn chính xác</translation>
+            <translation>Tăng tốc thao tác thu phóng nhanh bằng Ctrl+con lăn; thu phóng bằng bàn phím vẫn chính xác</translation>
         </message>
         <message>
             <source>SuperRes powered by NVIDIA Maxine™</source>
@@ -2333,7 +2333,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA Phân bổ tối đa</translation>
+            <translation>Ghi công NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2345,7 +2345,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>%1 settings match</source>
-            <translation>Cài đặt %1 khớp</translation>
+            <translation>Có %1 cài đặt khớp</translation>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
@@ -2365,7 +2365,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>Captured processed camera view</source>
-            <translation>Chế độ xem camera đã xử lý đã chụp</translation>
+            <translation>Đã chụp hình ảnh camera đã xử lý</translation>
         </message>
         <message>
             <source>Processed camera view</source>
@@ -2421,7 +2421,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>The paired photos could not be saved. A partial file may remain: %1</source>
-            <translation>Không thể lưu ảnh được ghép nối. Một phần tệp có thể vẫn còn: %1</translation>
+            <translation>Không thể lưu cặp ảnh. Có thể vẫn còn một tệp chưa hoàn chỉnh: %1</translation>
         </message>
         <message>
             <source>The saved OkuFlow folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
@@ -2445,7 +2445,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>Original and processed video</source>
-            <translation>Video gốc và đã qua xử lý</translation>
+            <translation>Video gốc và video đã xử lý</translation>
         </message>
         <message>
             <source>Original and processed photo</source>
@@ -2453,7 +2453,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>Xem chế độ xem trợ lý đã phân tích</translation>
+            <translation>Xem hình ảnh mà Trợ lý đã phân tích</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2481,19 +2481,19 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Đang gửi khung hình camera hiện tại và lời nhắc tới Codex. Cuộc trò chuyện: đã lưu Cuộc trò chuyện Giải thích, được tiếp tục bởi mỗi Giải thích. Công cụ internet: bị chặn. Thay đổi mã hóa và tập tin: bị chặn.</translation>
+            <translation>Đang gửi khung hình camera hiện tại và lời nhắc đến Codex. Cuộc trò chuyện: cuộc trò chuyện Giải thích đã lưu, được tiếp tục sau mỗi lần Giải thích. Internet: bị chặn. Không được dùng công cụ lập trình hoặc thay đổi tệp.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Đang gửi khung hình camera hiện tại và lời nhắc tới Codex. Hội thoại: tạm thời, mới cho mỗi lần đọc. Công cụ internet: bị chặn. Thay đổi mã hóa và tập tin: bị chặn.</translation>
+            <translation>Đang gửi khung hình camera hiện tại và lời nhắc đến Codex. Cuộc trò chuyện: tạm thời, tạo mới mỗi lần Đọc. Internet: bị chặn. Không được dùng công cụ lập trình hoặc thay đổi tệp.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Gửi khung hình camera hiện tại, lời nhắc và giải thích gần đây về các câu trả lời tới %1 (điểm cuối cục bộ). Hội thoại: gần đây Giải thích câu trả lời, chỉ lưu trong bộ nhớ. Công cụ mã hóa: không có sẵn.</translation>
+            <translation>Đang gửi khung hình camera hiện tại, lời nhắc và các câu trả lời gần đây từ Explain đến %1 (máy chủ cục bộ). Cuộc trò chuyện: chỉ giữ các câu trả lời Explain gần đây trong bộ nhớ. Công cụ lập trình: không khả dụng.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Gửi khung hình camera hiện tại, lời nhắc và giải thích gần đây về các câu trả lời tới %1 (điểm cuối từ xa). Hội thoại: gần đây Giải thích câu trả lời, chỉ lưu trong bộ nhớ. Công cụ mã hóa: không có sẵn.</translation>
+            <translation>Đang gửi khung hình camera hiện tại, lời nhắc và các câu trả lời gần đây từ Explain đến %1 (máy chủ từ xa). Cuộc trò chuyện: chỉ giữ các câu trả lời Explain gần đây trong bộ nhớ. Công cụ lập trình: không khả dụng.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2513,15 +2513,15 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>Release to dock left</source>
-            <translation>Thả vào đế bên trái</translation>
+            <translation>Thả để gắn bên trái</translation>
         </message>
         <message>
             <source>Release to dock right</source>
-            <translation>Thả vào đế bên phải</translation>
+            <translation>Thả để gắn bên phải</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>Hỗ trợ các tính năng Đọc, Giải thích và Trợ lý được đăng ký hỗ trợ. Cài đặt Codex CLI chính thức cho tài khoản Windows của bạn; Đăng nhập ChatGPT vẫn là một bước riêng biệt.</translation>
+            <translation>Cung cấp quyền sử dụng các tính năng Đọc, Giải thích và Trợ lý thông qua gói đăng ký. Cài Codex CLI chính thức cho tài khoản Windows của bạn; bạn cần đăng nhập ChatGPT riêng.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2573,7 +2573,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>Search settings…</source>
-            <translation>Cài đặt tìm kiếm…</translation>
+            <translation>Tìm cài đặt…</translation>
         </message>
         <message>
             <source>Mode: %1</source>
@@ -2653,11 +2653,11 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>Không có trận đấu nào ở đây. %1 trong Cài đặt. Nhấn Enter để hiển thị chúng.</translation>
+            <translation>Không có kết quả nào ở đây. Nhấn Enter để xem %1 kết quả trong Cài đặt.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>Không có trận đấu nào ở đây. %1 trong Hình ảnh. Nhấn Enter để hiển thị chúng.</translation>
+            <translation>Không có kết quả nào ở đây. Nhấn Enter để xem %1 kết quả trong Hình ảnh.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2705,7 +2705,7 @@ Việc xóa được quản lý bởi Windows.</translation>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>Giải thích cảnh dừng</translation>
+            <translation>Dừng giải thích cảnh</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
@@ -2745,11 +2745,11 @@ Cài đặt được chia sẻ trên tab Cài đặt sẽ không thay đổi.</t
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>Đường dẫn đầu ra ghi đã tồn tại; nó đã được bảo tồn.</translation>
+            <translation>Đường dẫn lưu bản ghi đã tồn tại; tệp hiện có được giữ nguyên.</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
-            <translation>Độ rõ ràng của văn bản áp dụng tính năng nâng cao tự động. Các tùy chọn tinh chỉnh chỉ áp dụng khi bật Độ rõ nét của văn bản.</translation>
+            <translation>Độ rõ văn bản tự động cải thiện hình ảnh. Các tùy chọn tinh chỉnh chỉ có hiệu lực khi bật tính năng này.</translation>
         </message>
         <message>
             <source>More colors
@@ -2763,11 +2763,11 @@ Cài đặt được chia sẻ trên tab Cài đặt sẽ không thay đổi.</t
         </message>
         <message>
             <source>Black on yellow</source>
-            <translation>Màu đen trên màu vàng</translation>
+            <translation>Đen trên nền vàng</translation>
         </message>
         <message>
             <source>Posterize 6</source>
-            <translation>Áp phích 6</translation>
+            <translation>Giảm sắc độ còn 6 màu</translation>
         </message>
         <message>
             <source>Yellow text on black background</source>
@@ -2779,7 +2779,7 @@ Cài đặt được chia sẻ trên tab Cài đặt sẽ không thay đổi.</t
         </message>
         <message>
             <source>Six color posterize effect</source>
-            <translation>Hiệu ứng posterize sáu màu</translation>
+            <translation>Hiệu ứng giảm sắc độ còn sáu màu</translation>
         </message>
         <message>
             <source>AI service</source>
@@ -2795,11 +2795,11 @@ Cài đặt được chia sẻ trên tab Cài đặt sẽ không thay đổi.</t
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>Đọc và giải thích gửi chế độ xem camera tới URL máy chủ bên dưới. Hình ảnh chỉ tồn tại trên máy tính này nếu máy chủ đó chạy trên nó, chẳng hạn như LM Studio hoặc Ollama tại localhost. Các cuộc trò chuyện đã lưu với Trợ lý cần đăng ký ChatGPT.</translation>
+            <translation>Đọc và Giải thích gửi hình ảnh camera đến URL máy chủ bên dưới. Hình ảnh chỉ ở lại máy tính này nếu máy chủ chạy ngay trên máy tính, chẳng hạn LM Studio hoặc Ollama tại localhost. Các cuộc trò chuyện Trợ lý đã lưu cần gói đăng ký ChatGPT.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
-            <translation>OkuFlow luôn gửi hướng dẫn này tới Codex, theo sau là hướng dẫn của bạn và các quy tắc cấp phép.</translation>
+            <translation>OkuFlow luôn gửi chỉ dẫn này đến Codex, tiếp theo là chỉ dẫn của bạn và các quy tắc về quyền.</translation>
         </message>
         <message>
             <source>Assistant instructions</source>
@@ -2843,7 +2843,7 @@ Cài đặt được chia sẻ trên tab Cài đặt sẽ không thay đổi.</t
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>Đã cài đặt
 %1
-Sử dụng Connect ChatGPT trên tab Trợ lý nâng cao để đăng nhập.</translation>
+Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để đăng nhập.</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2851,11 +2851,11 @@ Sử dụng Connect ChatGPT trên tab Trợ lý nâng cao để đăng nhập.</
         </message>
         <message>
             <source>GPU upload busy %1</source>
-            <translation>Đang bận tải lên GPU %1</translation>
+            <translation>GPU đang bận tải dữ liệu lên: %1</translation>
         </message>
         <message>
             <source>encoder backlog %1</source>
-            <translation>tồn đọng bộ mã hóa %1</translation>
+            <translation>Hàng đợi bộ mã hóa tồn: %1</translation>
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
@@ -2879,11 +2879,11 @@ Sử dụng Connect ChatGPT trên tab Trợ lý nâng cao để đăng nhập.</
         </message>
         <message>
             <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
-            <translation>Trình cài đặt thời gian chạy Windows được bao gồm. Các công cụ AI tùy chọn được tải xuống từ nhà cung cấp của họ. Mọi trình cài đặt đều được xác minh trước khi chạy.</translation>
+            <translation>Đã bao gồm trình cài đặt thư viện thời gian chạy Windows. Các công cụ AI tùy chọn được tải trực tiếp từ nhà cung cấp. Mỗi trình cài đặt đều được xác minh trước khi chạy.</translation>
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
-            <translation>Thời gian chạy Microsoft Windows</translation>
+            <translation>Thư viện thời gian chạy Microsoft Windows</translation>
         </message>
         <message>
             <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
@@ -2895,7 +2895,7 @@ Sử dụng Connect ChatGPT trên tab Trợ lý nâng cao để đăng nhập.</
         </message>
         <message>
             <source>Install Microsoft Windows runtime</source>
-            <translation>Cài đặt thời gian chạy Microsoft Windows</translation>
+            <translation>Cài đặt thư viện thời gian chạy Microsoft Windows</translation>
         </message>
         <message>
             <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>

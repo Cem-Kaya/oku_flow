@@ -5,15 +5,15 @@
         <name>OkuFlow</name>
         <message>
             <source>Turn on phone light</source>
-            <translation>Включить свет телефона</translation>
+            <translation>Включить фонарик телефона</translation>
         </message>
         <message>
             <source>Turn off phone light</source>
-            <translation>Выключить свет телефона</translation>
+            <translation>Выключить фонарик телефона</translation>
         </message>
         <message>
             <source>Phone light</source>
-            <translation>Свет телефона</translation>
+            <translation>Фонарик телефона</translation>
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>Введите часть имени параметра, чтобы отобразить и сфокусировать элементы управления сопоставлением.</translation>
+            <translation>Введите часть названия настройки, чтобы показать и перейти к соответствующим элементам управления.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -133,7 +133,7 @@
         </message>
         <message>
             <source>Match display</source>
-            <translation>По размеру экрана</translation>
+            <translation>Подстроить под экран</translation>
         </message>
         <message>
             <source>Viewport framing</source>
@@ -165,7 +165,7 @@
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
-            <translation>Совместно используются оригинальные и обработанные записи</translation>
+            <translation>Общая настройка для исходной и обработанной записей</translation>
         </message>
         <message>
             <source>Processed recording resolution</source>
@@ -241,11 +241,11 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>Временная гладкая</translation>
+            <translation>Временное сглаживание</translation>
         </message>
         <message>
             <source>Blend:</source>
-            <translation>Смесь:</translation>
+            <translation>Смешивание:</translation>
         </message>
         <message>
             <source>Stabilize Image</source>
@@ -253,7 +253,7 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>Экстрастабильный (удерживать встряхивание)</translation>
+            <translation>Повышенная стабилизация (компенсация тряски)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
@@ -261,7 +261,7 @@
         </message>
         <message>
             <source>Correction tracking:</source>
-            <translation>Отслеживание исправлений:</translation>
+            <translation>Отслеживание коррекции:</translation>
         </message>
         <message>
             <source>Back</source>
@@ -305,7 +305,7 @@
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>Вес хода</translation>
+            <translation>Толщина штриха</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -329,7 +329,7 @@
         </message>
         <message>
             <source>Warn When Out of Focus</source>
-            <translation>Предупреждать, когда вы находитесь вне фокуса</translation>
+            <translation>Предупреждать, если изображение не в фокусе</translation>
         </message>
         <message>
             <source>Suppress Glare</source>
@@ -397,7 +397,7 @@
         </message>
         <message>
             <source>Open my OkuFlow folder</source>
-            <translation>Откройте мою папку OkuFlow.</translation>
+            <translation>Открыть папку OkuFlow</translation>
         </message>
         <message>
             <source>Change OkuFlow folder...</source>
@@ -477,7 +477,7 @@
         </message>
         <message>
             <source>Explain the current view</source>
-            <translation>Объясните текущую точку зрения</translation>
+            <translation>Описать текущий вид</translation>
         </message>
         <message>
             <source>Read text in the current view</source>
@@ -669,7 +669,7 @@
         </message>
         <message>
             <source>Vision model:</source>
-            <translation>Модель видения:</translation>
+            <translation>Модель компьютерного зрения:</translation>
         </message>
         <message>
             <source>Read aloud</source>
@@ -789,7 +789,7 @@
         </message>
         <message>
             <source>expanded</source>
-            <translation>расширенный</translation>
+            <translation>развернуто</translation>
         </message>
         <message>
             <source>collapsed</source>
@@ -805,7 +805,7 @@
         </message>
         <message>
             <source>%1, heading, %2, %3 changed</source>
-            <translation>%1, заголовок, %2, %3 изменен</translation>
+            <translation>%1, заголовок, %2, %3 изменено</translation>
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
@@ -833,11 +833,11 @@
         </message>
         <message>
             <source>No lecture notes yet — use Read, Explain, or Assistant to add text.</source>
-            <translation>Конспектов лекций пока нет — используйте «Чтение», «Объяснение» или «Ассистент», чтобы добавить текст.</translation>
+            <translation>Конспектов лекций пока нет — воспользуйтесь командами «Прочитать», «Объяснить» или «Ассистент», чтобы добавить текст.</translation>
         </message>
         <message>
             <source>OkuFlow Assistant</source>
-            <translation>OkuFlow Помощник</translation>
+            <translation>Помощник OkuFlow</translation>
         </message>
         <message>
             <source>You</source>
@@ -853,7 +853,7 @@
         </message>
         <message>
             <source>Export Conversation</source>
-            <translation>Экспортный разговор</translation>
+            <translation>Экспортировать разговор</translation>
         </message>
         <message>
             <source>Permanently delete this OkuFlow assistant conversation?</source>
@@ -861,7 +861,7 @@
         </message>
         <message>
             <source>Reconnect ChatGPT</source>
-            <translation>Переподключить чатGPT</translation>
+            <translation>Переподключить ChatGPT</translation>
         </message>
         <message>
             <source>Rename Conversation</source>
@@ -869,7 +869,7 @@
         </message>
         <message>
             <source>Stopped.</source>
-            <translation>Остановился.</translation>
+            <translation>Остановлено.</translation>
         </message>
         <message>
             <source>The OkuFlow Analysis folder is unavailable.</source>
@@ -877,11 +877,11 @@
         </message>
         <message>
             <source>Viewport motion limited to %1 FPS by this display.</source>
-            <translation>На этом дисплее движение в окне просмотра ограничено %1 FPS.</translation>
+            <translation>Этот дисплей ограничивает частоту обновления изображения в области просмотра до %1 кадров/с.</translation>
         </message>
         <message>
             <source>Vision model: %1</source>
-            <translation>Модель видения: %1</translation>
+            <translation>Модель компьютерного зрения: %1</translation>
         </message>
         <message>
             <source>Automatic screen correction continuing.</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>Захват камеры с помощью графического процессора активен с возможностью безопасного копирования.</translation>
+            <translation>Захват изображения с камеры через GPU работает с резервным безопасным копированием.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -909,11 +909,11 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>Ограничение производительности NVIDIA Super Resolution игнорируется.</translation>
+            <translation>Ограничение производительности NVIDIA Super Resolution не применяется.</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
-            <translation>NVIDIA Super Resolution предел производительности восстановлен.</translation>
+            <translation>Ограничение производительности NVIDIA Super Resolution восстановлено.</translation>
         </message>
         <message>
             <source>New OkuFlow files will be saved in %1.</source>
@@ -929,7 +929,7 @@
         </message>
         <message>
             <source>Opened your OkuFlow folder.</source>
-            <translation>Открыл папку OkuFlow.</translation>
+            <translation>Папка OkuFlow открыта.</translation>
         </message>
         <message>
             <source>Recording stopped because the microphone selection changed.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>Коррекция экрана отодвинулась назад и отслеживание прекратилось.</translation>
+            <translation>Коррекция экрана вернулась в предыдущее положение, отслеживание остановлено.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -949,11 +949,11 @@
         </message>
         <message>
             <source>Temporal blend</source>
-            <translation>Временная смесь</translation>
+            <translation>Временное смешивание</translation>
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>Тестирование графического процессора и контроль совместимости в изолированном процессе...</translation>
+            <translation>Проверка захвата через GPU и совместимого режима в изолированном процессе...</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -969,7 +969,7 @@
         </message>
         <message>
             <source>Using the next screen correction.</source>
-            <translation>Используя очередную коррекцию экрана.</translation>
+            <translation>Используется следующая коррекция экрана.</translation>
         </message>
         <message>
             <source>Windows could not open:
@@ -991,11 +991,11 @@
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>Представление с аннотациями не сохранено: изображение не удалось поставить в очередь.</translation>
+            <translation>Аннотированный вид не сохранён: не удалось добавить изображение в очередь.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>Аннотированный вид не сохранён: изображение ещё записывается. Попробуйте ещё раз.</translation>
+            <translation>Аннотированный вид не сохранён: модуль записи изображения занят. Попробуйте ещё раз.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
@@ -1023,7 +1023,7 @@
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
-            <translation>Захват с камеры с ускорением на графическом процессоре прошел проверку при запуске.</translation>
+            <translation>Захват изображения с камеры с ускорением через GPU прошёл проверку при запуске.</translation>
         </message>
         <message>
             <source>Modes unavailable: %1</source>
@@ -1031,7 +1031,7 @@
         </message>
         <message>
             <source>No camera modes were reported.</source>
-            <translation>О режимах камеры не сообщалось.</translation>
+            <translation>Режимы камеры не обнаружены.</translation>
         </message>
         <message>
             <source>Photo not saved: no processed frame was available.</source>
@@ -1051,11 +1051,11 @@
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
-            <translation>Фотография не сохранена: исходный кадр камеры невозможно преобразовать.</translation>
+            <translation>Фотография не сохранена: не удалось преобразовать исходный кадр камеры.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be read back.</source>
-            <translation>Фотография не сохранена: исходный кадр камеры невозможно прочитать.</translation>
+            <translation>Фотография не сохранена: не удалось прочитать исходный кадр камеры.</translation>
         </message>
         <message>
             <source>Photo not saved: the processed or original frame was unavailable.</source>
@@ -1071,7 +1071,7 @@
         </message>
         <message>
             <source>Saving annotated view to lecture notes...</source>
-            <translation>Сохранение аннотированного представления в конспектах лекций...</translation>
+            <translation>Сохранение аннотированного вида в конспект лекции...</translation>
         </message>
         <message>
             <source>Saving original and processed photos...</source>
@@ -1111,7 +1111,7 @@
         </message>
         <message>
             <source>Recording stopped after reaching the 12-hour limit.</source>
-            <translation>Запись остановилась после достижения 12-часового лимита.</translation>
+            <translation>Запись остановлена: достигнут лимит в 12 часов.</translation>
         </message>
         <message>
             <source>Recording stopped because an encoder rejected a frame.</source>
@@ -1123,7 +1123,7 @@
         </message>
         <message>
             <source>Recording stopped before the first frame was written.</source>
-            <translation>Запись остановилась до того, как был записан первый кадр.</translation>
+            <translation>Запись остановлена до записи первого кадра.</translation>
         </message>
         <message>
             <source>Stopping recording...</source>
@@ -1131,7 +1131,7 @@
         </message>
         <message>
             <source>The camera mode changed. Recording continues in part %1.</source>
-            <translation>Режим камеры изменился. Запись продолжается частично %1.</translation>
+            <translation>Режим камеры изменился. Запись продолжается в части %1.</translation>
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
@@ -1143,19 +1143,19 @@
         </message>
         <message>
             <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
-            <translation>Запись остановлена, поскольку обработка звука не могла продолжаться или ввод был недействителен.</translation>
+            <translation>Запись остановлена: обработка звука не успевала за потоком данных либо входные данные были некорректны.</translation>
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>Аудио: блоки %1 отбрасываются перед кодированием, блоки %2 отклоняются из-за ограничения ввода.</translation>
+            <translation>Аудио: до кодирования отброшено блоков — %1; ограничением входного буфера отклонено — %2.</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
-            <translation>Кадры %1 были удалены (%2).</translation>
+            <translation>Пропущено кадров: %1 (%2).</translation>
         </message>
         <message>
             <source>%1 frames used an estimated timestamp.</source>
-            <translation>В кадрах %1 использовалась предполагаемая временная метка.</translation>
+            <translation>Для %1 кадров использовалась расчётная временная метка.</translation>
         </message>
         <message>
             <source>Original video</source>
@@ -1175,15 +1175,15 @@
         </message>
         <message>
             <source>direct GPU</source>
-            <translation>прямой графический процессор</translation>
+            <translation>напрямую через GPU</translation>
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>Исходный и обработанный с помощью графического процессора</translation>
+            <translation>Исходный и обработанный кадры поступают напрямую с GPU</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>Источник графического процессора с обратным чтением работника</translation>
+            <translation>Источник с GPU и считыванием данных рабочим потоком</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1191,7 +1191,7 @@
         </message>
         <message>
             <source>Assistant stopped.</source>
-            <translation>Ассистент остановился.</translation>
+            <translation>Ассистент остановлен.</translation>
         </message>
         <message>
             <source>Assistive View</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex подготовка изображения занята. Повторите попытку через минуту.</translation>
+            <translation>Подготовка изображения для Codex занята. Повторите попытку через минуту.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1215,11 +1215,11 @@
         </message>
         <message>
             <source>No camera frame is available to attach.</source>
-            <translation>Нет рамки камеры, которую можно было бы прикрепить.</translation>
+            <translation>Нет кадра с камеры, который можно прикрепить.</translation>
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>Для разговоров с постоянным помощником требуется поставщик подписки Codex.</translation>
+            <translation>Для сохранения истории разговоров с Ассистентом требуется провайдер Codex.</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1227,7 +1227,7 @@
         </message>
         <message>
             <source>Preparing the current view...</source>
-            <translation>Подготовка текущего представления...</translation>
+            <translation>Подготовка текущего вида...</translation>
         </message>
         <message>
             <source>Querying VLM...</source>
@@ -1243,7 +1243,7 @@
         </message>
         <message>
             <source>Sending the current camera frame and prompt</source>
-            <translation>Отправка текущего кадра камеры и подсказки</translation>
+            <translation>Отправка текущего кадра с камеры и промпта</translation>
         </message>
         <message>
             <source>Sending the prompt only</source>
@@ -1255,15 +1255,15 @@
         </message>
         <message>
             <source>Thinking...</source>
-            <translation>Думая...</translation>
+            <translation>Обработка запроса...</translation>
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
-            <translation>Подготовка образа VLM занята. Повторите попытку через минуту.</translation>
+            <translation>Подготовка изображения для VLM занята. Повторите попытку через минуту.</translation>
         </message>
         <message>
             <source>VLM ready.</source>
-            <translation>ВЛМ готов.</translation>
+            <translation>VLM готова.</translation>
         </message>
         <message>
             <source>VLM request failed: %1</source>
@@ -1291,15 +1291,15 @@
         </message>
         <message>
             <source>Codex CLI Path</source>
-            <translation>Codex CLI Путь</translation>
+            <translation>Путь к Codex CLI</translation>
         </message>
         <message>
             <source>Codex Model</source>
-            <translation>Codex Модель</translation>
+            <translation>Модель Codex</translation>
         </message>
         <message>
             <source>Codex Reasoning</source>
-            <translation>Codex Рассуждение</translation>
+            <translation>Режим рассуждения Codex</translation>
         </message>
         <message>
             <source>Assistant Instructions</source>
@@ -1331,11 +1331,11 @@
         </message>
         <message>
             <source>Preview Read Aloud Voice</source>
-            <translation>Предварительный просмотр, чтение вслух, голос</translation>
+            <translation>Прослушать голос чтения вслух</translation>
         </message>
         <message>
             <source>Write Lecture Notes File</source>
-            <translation>Записать файл конспектов лекций</translation>
+            <translation>Сохранить файл с конспектом лекции</translation>
         </message>
         <message>
             <source>Loading installed Windows voices...</source>
@@ -1355,7 +1355,7 @@
         </message>
         <message>
             <source>Choose an existing workspace folder before enabling coding.</source>
-            <translation>Прежде чем включать кодирование, выберите существующую папку рабочей области.</translation>
+            <translation>Перед включением режима программирования выберите существующую папку рабочего пространства.</translation>
         </message>
         <message>
             <source>Coding Workspace Required</source>
@@ -1379,7 +1379,7 @@
         </message>
         <message>
             <source>Annotation tool</source>
-            <translation>Инструмент аннотаций</translation>
+            <translation>Инструмент аннотации</translation>
         </message>
         <message>
             <source>Clear annotations</source>
@@ -1387,7 +1387,7 @@
         </message>
         <message>
             <source>Click the camera view, then type a label. Shortcut T.</source>
-            <translation>Нажмите вид камеры, затем введите метку. Короткий путь Т.</translation>
+            <translation>Щёлкните по изображению с камеры и введите подпись. Клавиша T.</translation>
         </message>
         <message>
             <source>Dashed</source>
@@ -1403,11 +1403,11 @@
         </message>
         <message>
             <source>Done drawing</source>
-            <translation>Готово рисование</translation>
+            <translation>Рисование завершено</translation>
         </message>
         <message>
             <source>Draw a dashed stroke with transparent gaps.</source>
-            <translation>Нарисуйте пунктирную обводку с прозрачными промежутками.</translation>
+            <translation>Нарисуйте пунктирную линию с прозрачными промежутками.</translation>
         </message>
         <message>
             <source>Draw a rectangle.</source>
@@ -1415,7 +1415,7 @@
         </message>
         <message>
             <source>Draw a straight line. Shortcut L.</source>
-            <translation>Нарисуйте прямую линию. Короткий путь Л.</translation>
+            <translation>Нарисуйте прямую линию. Клавиша L.</translation>
         </message>
         <message>
             <source>Draw an ellipse.</source>
@@ -1427,7 +1427,7 @@
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
-            <translation>Рисуйте от руки на экране камеры. Ярлык П.</translation>
+            <translation>Рисуйте от руки поверх изображения с камеры. Клавиша P.</translation>
         </message>
         <message>
             <source>Draw mode off.</source>
@@ -1435,11 +1435,11 @@
         </message>
         <message>
             <source>Draw rectangles or ellipses. Shortcut S.</source>
-            <translation>Нарисуйте прямоугольники или эллипсы. Короткий путь С.</translation>
+            <translation>Рисуйте прямоугольники или эллипсы. Клавиша S.</translation>
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>Рисуйте, выбирайте, изменяйте размер, сохраняйте или удаляйте аннотации, привязанные к сцене камеры.</translation>
+            <translation>Рисуйте аннотации поверх изображения с камеры, выбирайте их, меняйте размер, сохраняйте или удаляйте.</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1451,7 +1451,7 @@
         </message>
         <message>
             <source>Erase annotation tool</source>
-            <translation>Инструмент «Стереть аннотации»</translation>
+            <translation>Инструмент удаления аннотаций</translation>
         </message>
         <message>
             <source>Erase tool</source>
@@ -1463,7 +1463,7 @@
         </message>
         <message>
             <source>Lecture annotation canvas</source>
-            <translation>Полотно для аннотаций лекций</translation>
+            <translation>Холст для аннотаций лекции</translation>
         </message>
         <message>
             <source>Line tool</source>
@@ -1495,31 +1495,31 @@
         </message>
         <message>
             <source>Redo annotation</source>
-            <translation>Повторить аннотацию</translation>
+            <translation>Повторить действие с аннотацией</translation>
         </message>
         <message>
             <source>Remove a complete annotation. Shortcut E.</source>
-            <translation>Удалить полную аннотацию. Ярлык Е.</translation>
+            <translation>Удалить аннотацию целиком. Клавиша E.</translation>
         </message>
         <message>
             <source>Save a marked snapshot and clear all annotations.</source>
-            <translation>Сохраните отмеченный снимок и очистите все аннотации.</translation>
+            <translation>Сохранить снимок с пометками и удалить все аннотации.</translation>
         </message>
         <message>
             <source>Save annotated view</source>
-            <translation>Сохранить аннотированный вид</translation>
+            <translation>Сохранить изображение с аннотациями</translation>
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>Сохраните отмеченное представление в конспектах лекций. Ярлык управления S.</translation>
+            <translation>Сохранить изображение с пометками в конспект лекции. Сочетание клавиш Ctrl+S.</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
-            <translation>Выберите, переместите или измените размер одной аннотации. Короткий путь В.</translation>
+            <translation>Выбрать, переместить или изменить размер одной аннотации. Клавиша V.</translation>
         </message>
         <message>
             <source>Selected annotation scaled</source>
-            <translation>Выбранная аннотация масштабирована</translation>
+            <translation>Масштаб выбранной аннотации изменен</translation>
         </message>
         <message>
             <source>Selection cleared</source>
@@ -1527,11 +1527,11 @@
         </message>
         <message>
             <source>Shape tool</source>
-            <translation>Инструмент «Форма»</translation>
+            <translation>Инструмент «Фигуры»</translation>
         </message>
         <message>
             <source>Solid</source>
-            <translation>Твердый</translation>
+            <translation>Сплошной</translation>
         </message>
         <message>
             <source>Solid line style</source>
@@ -1555,7 +1555,7 @@
         </message>
         <message>
             <source>Text tool</source>
-            <translation>Текстовый инструмент</translation>
+            <translation>Инструмент «Текст»</translation>
         </message>
         <message>
             <source>Type annotation text. Press Enter to place it.</source>
@@ -1571,7 +1571,7 @@
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
-            <translation>Используйте чернила %1. Галочка указывает выбранный цвет.</translation>
+            <translation>Используйте цвет %1. Галочка показывает выбранный цвет.</translation>
         </message>
         <message>
             <source>Ask Assistant</source>
@@ -1579,31 +1579,31 @@
         </message>
         <message>
             <source>Assistive result</source>
-            <translation>Вспомогательный результат</translation>
+            <translation>Результат работы ассистента</translation>
         </message>
         <message>
             <source>Assistive result text</source>
-            <translation>Вспомогательный текст результата</translation>
+            <translation>Текст результата ассистента</translation>
         </message>
         <message>
             <source>Assistive result title</source>
-            <translation>Вспомогательное название результата</translation>
+            <translation>Заголовок результата ассистента</translation>
         </message>
         <message>
             <source>Assistive results</source>
-            <translation>Вспомогательные результаты</translation>
+            <translation>Результаты ассистента</translation>
         </message>
         <message>
             <source>Close assistive result</source>
-            <translation>Закрыть вспомогательный результат</translation>
+            <translation>Закрыть результат ассистента</translation>
         </message>
         <message>
             <source>Hide the current assistant result</source>
-            <translation>Скрыть текущий результат помощника</translation>
+            <translation>Скрыть текущий ответ ассистента</translation>
         </message>
         <message>
             <source>Move assistive panel</source>
-            <translation>Переместить вспомогательную панель</translation>
+            <translation>Переместить панель ассистента</translation>
         </message>
         <message>
             <source>Question about the current view</source>
@@ -1611,7 +1611,7 @@
         </message>
         <message>
             <source>Read assistive result aloud</source>
-            <translation>Прочитайте вслух вспомогательный результат</translation>
+            <translation>Прочитать результат ассистента вслух</translation>
         </message>
         <message>
             <source>Send the question with the current camera view to OkuFlow Assistant</source>
@@ -1623,7 +1623,7 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>Результат потокового помощника. Используйте клавиши со стрелками, чтобы прочитать текст.</translation>
+            <translation>Ответ ассистента формируется. Используйте клавиши со стрелками, чтобы читать текст.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1631,7 +1631,7 @@
         </message>
         <message>
             <source>Apply custom</source>
-            <translation>Применить пользовательские</translation>
+            <translation>Применить пользовательские настройки</translation>
         </message>
         <message>
             <source>Background color</source>
@@ -1639,7 +1639,7 @@
         </message>
         <message>
             <source>Choose color stop %1</source>
-            <translation>Выберите цветовую остановку %1</translation>
+            <translation>Выберите точку градиента %1</translation>
         </message>
         <message>
             <source>Choose display colors</source>
@@ -1647,7 +1647,7 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>Цветовая остановка %1 из %2</translation>
+            <translation>Точка градиента %1 из %2</translation>
         </message>
         <message>
             <source>Custom</source>
@@ -1655,7 +1655,7 @@
         </message>
         <message>
             <source>Custom color mode</source>
-            <translation>Пользовательский цветовой режим</translation>
+            <translation>Пользовательский режим цветов</translation>
         </message>
         <message>
             <source>Custom color preview</source>
@@ -1663,11 +1663,11 @@
         </message>
         <message>
             <source>Custom display colors</source>
-            <translation>Пользовательские цвета дисплея</translation>
+            <translation>Настраиваемые цвета экрана</translation>
         </message>
         <message>
             <source>Display color scheme</source>
-            <translation>Цветовая схема дисплея</translation>
+            <translation>Цветовая схема экрана</translation>
         </message>
         <message>
             <source>Display colors changed to %1</source>
@@ -1691,27 +1691,27 @@
         </message>
         <message>
             <source>Number of color stops</source>
-            <translation>Количество цветовых точек</translation>
+            <translation>Количество точек градиента</translation>
         </message>
         <message>
             <source>Posterize</source>
-            <translation>Постеризовать</translation>
+            <translation>Постеризация</translation>
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>Чтение цветов</translation>
+            <translation>Цвета для чтения</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
-            <translation>Сброс цветов дисплея до обычных цветов</translation>
+            <translation>Сбросить цвета экрана до обычных</translation>
         </message>
         <message>
             <source>Reset to Normal colors</source>
-            <translation>Вернуться к нормальным цветам</translation>
+            <translation>Сбросить до обычных цветов</translation>
         </message>
         <message>
             <source>Stepped colors</source>
-            <translation>Ступенчатые цвета</translation>
+            <translation>Цвета с резкими переходами</translation>
         </message>
         <message>
             <source>Text color</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>Используйте жёсткие цветные ленты</translation>
+            <translation>Использовать четкие границы между цветами</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1739,7 +1739,7 @@
         </message>
         <message>
             <source>Automatically clarify text in the camera view</source>
-            <translation>Автоматически уточнять текст в представлении камеры</translation>
+            <translation>Автоматически улучшать читаемость текста с камеры</translation>
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
@@ -1759,19 +1759,19 @@
         </message>
         <message>
             <source>ChatGPT connection</source>
-            <translation>ЧатGPT-соединение</translation>
+            <translation>Подключение к ChatGPT</translation>
         </message>
         <message>
             <source>Codex connection status</source>
-            <translation>Codex статус подключения</translation>
+            <translation>Состояние подключения Codex</translation>
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex использование</translation>
+            <translation>Использование Codex</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
-            <translation>Настройка голосового помощника и речевого вывода</translation>
+            <translation>Настроить ассистента компьютерного зрения и озвучивание</translation>
         </message>
         <message>
             <source>Continue</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>Управляет плавным панорамированием и масштабированием представления; частота кадров камеры не изменилась</translation>
+            <translation>Сглаживает панорамирование и масштабирование изображения; частота кадров камеры не меняется</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1807,7 +1807,7 @@
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
-            <translation>Перетащите, чтобы изменить размер. Дополнительные настройки.</translation>
+            <translation>Перетащите, чтобы изменить размер раздела «Дополнительные настройки»</translation>
         </message>
         <message>
             <source>Extra Stable off</source>
@@ -1815,23 +1815,23 @@
         </message>
         <message>
             <source>Extra Stable on</source>
-            <translation>Экстра стабильная вкл.</translation>
+            <translation>Дополнительная стабилизация включена</translation>
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>Заливка использует всю область просмотра без растягивания; Fit сохраняет все изображение с полосами.</translation>
+            <translation>«Заполнение» занимает всю область просмотра без растягивания; «Вписать» показывает изображение целиком с полосами.</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
-            <translation>Ищем одно новое исправление экрана...</translation>
+            <translation>Поиск новой коррекции экрана…</translation>
         </message>
         <message>
             <source>Finishing</source>
-            <translation>Отделка</translation>
+            <translation>Завершение</translation>
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>Зафиксируйте последний резкий кадр во время удара, а затем плавно вернитесь к живому видео.</translation>
+            <translation>При толчке задержать последний чёткий кадр, затем плавно вернуться к видео в реальном времени</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1843,7 +1843,7 @@
         </message>
         <message>
             <source>Ignore NVIDIA Super Resolution performance limit</source>
-            <translation>Игнорировать ограничение производительности NVIDIA Super Resolution</translation>
+            <translation>Игнорировать ограничение NVIDIA Super Resolution по производительности</translation>
         </message>
         <message>
             <source>Set up Codex CLI and NVIDIA Video Effects</source>
@@ -1851,19 +1851,19 @@
         </message>
         <message>
             <source>Keep It Steady</source>
-            <translation>Держите это устойчивым</translation>
+            <translation>Стабильное изображение</translation>
         </message>
         <message>
             <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
-            <translation>Сохраняйте SuperRes активным, даже если его среднее время графического процессора превышает 24 мс.</translation>
+            <translation>Оставлять SuperRes включённым, даже если среднее время обработки на GPU превышает 24 мс</translation>
         </message>
         <message>
             <source>Large Zoom</source>
-            <translation>Большой зум</translation>
+            <translation>Сильное увеличение</translation>
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>Заблокируйте вид установленной камеры, используя полноценную стабилизацию CUDA.</translation>
+            <translation>Зафиксировать изображение с установленной камеры с полной стабилизацией CUDA</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1871,7 +1871,7 @@
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>Матчевая камера (рекомендуется)</translation>
+            <translation>Формат камеры (рекомендуется)</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1879,7 +1879,7 @@
         </message>
         <message>
             <source>NVIDIA Image Scaling (default)</source>
-            <translation>NVIDIA Масштабирование изображения (по умолчанию)</translation>
+            <translation>NVIDIA Image Scaling (по умолчанию)</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution status</source>
@@ -1887,11 +1887,11 @@
         </message>
         <message>
             <source>NVIDIA Video Effects runtime installed</source>
-            <translation>NVIDIA Video Effects установлена среда выполнения</translation>
+            <translation>Среда выполнения NVIDIA Video Effects установлена</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>NVIDIA Video Effects среда выполнения не установлена; используйте настройку и загрузки</translation>
+            <translation>Среда выполнения NVIDIA Video Effects не установлена; откройте «Установка и загрузки»</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>Открытые элементы управления и функции помогают</translation>
+            <translation>Открыть справку по элементам управления и функциям</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1915,15 +1915,15 @@
         </message>
         <message>
             <source>OkuFlow Help</source>
-            <translation>OkuFlow Помощь</translation>
+            <translation>Справка OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
-            <translation>OkuFlow руководство по элементам управления и функциям</translation>
+            <translation>Руководство OkuFlow по элементам управления и функциям</translation>
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
-            <translation>Наложение красного маркера на текущий фокус масштабирования</translation>
+            <translation>Показать красный маркер в центре текущего увеличения</translation>
         </message>
         <message>
             <source>Previous Advanced section</source>
@@ -1939,7 +1939,7 @@
         </message>
         <message>
             <source>Profile setting saved with the current quick option.</source>
-            <translation>Настройка профиля сохранена с текущей быстрой опцией.</translation>
+            <translation>Настройка профиля сохранена для текущего быстрого режима.</translation>
         </message>
         <message>
             <source>Quick mode</source>
@@ -1971,27 +1971,27 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>Сброс изображения, принадлежащего профилю, и вспомогательных настроек до значений по умолчанию</translation>
+            <translation>Сбросить настройки изображения и ассистента для этого профиля</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
-            <translation>Изменить размер Дополнительные настройки</translation>
+            <translation>Изменить размер раздела «Дополнительные настройки»</translation>
         </message>
         <message>
             <source>Rotate input/output clockwise</source>
-            <translation>Поворот ввода/вывода по часовой стрелке</translation>
+            <translation>Повернуть изображение на входе и выходе по часовой стрелке</translation>
         </message>
         <message>
             <source>Runtime not installed; use Setup &amp; Downloads</source>
-            <translation>Среда выполнения не установлена; используйте настройку и загрузки</translation>
+            <translation>Среда выполнения не установлена; откройте «Установка и загрузки»</translation>
         </message>
         <message>
             <source>Save an annotated snapshot to lecture notes when Draw mode closes.</source>
-            <translation>Сохраните аннотированный снимок в конспектах лекций после закрытия режима рисования.</translation>
+            <translation>При закрытии режима рисования сохранить снимок с аннотациями в конспект лекции.</translation>
         </message>
         <message>
             <source>See in Low Light</source>
-            <translation>Смотрите при слабом освещении</translation>
+            <translation>Просмотр при слабом освещении</translation>
         </message>
         <message>
             <source>Sharp Text</source>
@@ -1999,11 +1999,11 @@
         </message>
         <message>
             <source>Sharpen Text</source>
-            <translation>Повышение резкости текста</translation>
+            <translation>Повысить резкость текста</translation>
         </message>
         <message>
             <source>Sharpening</source>
-            <translation>Заточка</translation>
+            <translation>Повышение резкости</translation>
         </message>
         <message>
             <source>Show a guide to OkuFlow controls and features</source>
@@ -2015,11 +2015,11 @@
         </message>
         <message>
             <source>Show an on-screen control for moving the zoomed view</source>
-            <translation>Отображение экранного элемента управления для перемещения увеличенного изображения</translation>
+            <translation>Показать экранный элемент управления для перемещения увеличенного изображения</translation>
         </message>
         <message>
             <source>Steady Text</source>
-            <translation>Устойчивый текст</translation>
+            <translation>Стабильный текст</translation>
         </message>
         <message>
             <source>Stop Automatic Screen Correction</source>
@@ -2035,11 +2035,11 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>Используйте NVIDIA Video Effects SuperRes с увеличением 1,33x и выше; автоматически возвращается к NIS</translation>
+            <translation>Использовать NVIDIA Video Effects SuperRes при увеличении от 1,33×; при недоступности автоматически переключаться на NIS</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
-            <translation>Настройка видового экрана общая для всех профилей.</translation>
+            <translation>Настройка области просмотра общая для всех профилей.</translation>
         </message>
         <message>
             <source>Zoom In More</source>
@@ -2047,7 +2047,7 @@
         </message>
         <message>
             <source>Administrator approval was cancelled. Nothing was installed.</source>
-            <translation>Одобрение администратора было отменено. Ничего не было установлено.</translation>
+            <translation>Запрос прав администратора отменён. Ничего не установлено.</translation>
         </message>
         <message>
             <source>Codex CLI</source>
@@ -2055,11 +2055,11 @@
         </message>
         <message>
             <source>Downloading from vendor...</source>
-            <translation>Скачивание от поставщика...</translation>
+            <translation>Загрузка с сайта поставщика…</translation>
         </message>
         <message>
             <source>Install Codex CLI</source>
-            <translation>Установите Codex CLI</translation>
+            <translation>Установить Codex CLI</translation>
         </message>
         <message>
             <source>Installed</source>
@@ -2068,7 +2068,7 @@
         <message>
             <source>Installed and managed by OkuFlow
 %1</source>
-            <translation>Установлен и управляется OkuFlow
+            <translation>Установлено и обслуживается OkuFlow
 %1</translation>
         </message>
         <message>
@@ -2085,7 +2085,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA installer running. Continue in the vendor installer window.</source>
-            <translation>Установщик NVIDIA запущен. Продолжайте в окне установщика поставщика.</translation>
+            <translation>Установщик NVIDIA запущен. Продолжите установку в его окне.</translation>
         </message>
         <message>
             <source>Not installed</source>
@@ -2093,15 +2093,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>Не установлено. При установке загружается пакет для графических процессоров %1.</translation>
+            <translation>Не установлено. При установке будет загружен пакет для графических процессоров %1.</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
-            <translation>Откройте папку установки Codex CLI.</translation>
+            <translation>Открыть папку установки Codex CLI</translation>
         </message>
         <message>
             <source>Open Codex CLI setup guide</source>
-            <translation>Откройте руководство по настройке Codex CLI.</translation>
+            <translation>Открыть руководство по настройке Codex CLI</translation>
         </message>
         <message>
             <source>Open Install Folder</source>
@@ -2109,11 +2109,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Open Vendor Page</source>
-            <translation>Открыть страницу продавца</translation>
+            <translation>Открыть сайт производителя</translation>
         </message>
         <message>
             <source>Open Windows Apps</source>
-            <translation>Откройте приложения Windows</translation>
+            <translation>Открыть раздел «Установленные приложения» Windows</translation>
         </message>
         <message>
             <source>Open the NVIDIA runtime uninstaller?</source>
@@ -2121,7 +2121,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Open the folder containing the detected Codex CLI</source>
-            <translation>Откройте папку, содержащую обнаруженный Codex CLI</translation>
+            <translation>Открыть папку с найденным Codex CLI</translation>
         </message>
         <message>
             <source>Open the official Codex CLI documentation</source>
@@ -2129,7 +2129,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>OkuFlow Setup Assistant</source>
-            <translation>OkuFlow Ассистент настройки</translation>
+            <translation>Ассистент настройки OkuFlow</translation>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
@@ -2137,11 +2137,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Retrying from the alternate vendor host...</source>
-            <translation>Повторная попытка с хоста альтернативного поставщика...</translation>
+            <translation>Повторная попытка загрузки с резервного сервера поставщика…</translation>
         </message>
         <message>
             <source>Setup Assistant</source>
-            <translation>Ассистент настройки</translation>
+            <translation>Помощник по настройке</translation>
         </message>
         <message>
             <source>Setup Guide</source>
@@ -2153,11 +2153,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Setup progress</source>
-            <translation>Ход настройки</translation>
+            <translation>Ход установки</translation>
         </message>
         <message>
             <source>Setup status</source>
-            <translation>Статус настройки</translation>
+            <translation>Состояние установки</translation>
         </message>
         <message>
             <source>The Setup Assistant remains available from Advanced settings</source>
@@ -2181,7 +2181,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The installer failed SHA-256 verification and was deleted.</source>
-            <translation>Программа установки не прошла проверку SHA-256 и была удалена.</translation>
+            <translation>Установщик не прошёл проверку SHA-256, поэтому файл был удалён.</translation>
         </message>
         <message>
             <source>The temporary download file could not be created.</source>
@@ -2189,7 +2189,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>Эту общесистемную копию необходимо удалить через установленные приложения Windows.</translation>
+            <translation>Эту копию, установленную для всех пользователей, нужно удалить в разделе «Установленные приложения» Windows.</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2229,7 +2229,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>Вспомогательные зацепки: объяснение сцены</translation>
+            <translation>Вспомогательные функции: объяснение сцены</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
@@ -2237,7 +2237,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
-            <translation>Пользовательская конфигурация из Advanced Tuning. Сохраните его как быстрый вариант, когда он покажется вам нужным.</translation>
+            <translation>Пользовательская конфигурация из раздела Advanced Tuning. Сохраните её как быстрый вариант, когда она вас устроит.</translation>
         </message>
         <message>
             <source>Current quick mode description</source>
@@ -2249,7 +2249,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Profile tuning reset to OkuFlow defaults.</source>
-            <translation>Настройка профиля сброшена до значений по умолчанию OkuFlow.</translation>
+            <translation>Настройки профиля сброшены к значениям по умолчанию в OkuFlow.</translation>
         </message>
         <message>
             <source>Current profile tuning reset to defaults.</source>
@@ -2281,11 +2281,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>%1 download progress</source>
-            <translation>%1 ход загрузки</translation>
+            <translation>Ход загрузки %1</translation>
         </message>
         <message>
             <source>Install %1</source>
-            <translation>Установите %1</translation>
+            <translation>Установить %1</translation>
         </message>
         <message>
             <source>Remove %1</source>
@@ -2293,7 +2293,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Display colors, Normal colors</source>
-            <translation>Цвета дисплея, нормальные цвета</translation>
+            <translation>Цвета экрана, обычные цвета</translation>
         </message>
         <message>
             <source>Stops: </source>
@@ -2301,7 +2301,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Color stop %1 of 8</source>
-            <translation>Цветовая остановка %1 из 8</translation>
+            <translation>Цветовой маркер %1 из 8</translation>
         </message>
         <message>
             <source>%1 px</source>
@@ -2325,7 +2325,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
-            <translation>Ускорьте быстрые жесты масштабирования Ctrl + прокрутка; масштабирование клавиатуры остается точным</translation>
+            <translation>Ускоряет масштабирование быстрыми жестами Ctrl+прокрутка; масштабирование с клавиатуры остаётся точным</translation>
         </message>
         <message>
             <source>SuperRes powered by NVIDIA Maxine™</source>
@@ -2333,7 +2333,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA Атрибуция Максин</translation>
+            <translation>Указание авторства NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2345,11 +2345,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>%1 settings match</source>
-            <translation>%1 настройки совпадают</translation>
+            <translation>Совпадают настройки: %1</translation>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>Следующее исправление экрана или найдите одно новое исправление.%1</translation>
+            <translation>Следующая коррекция экрана или поиск новой коррекции.%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2361,11 +2361,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Started %1</source>
-            <translation>Началось %1</translation>
+            <translation>Запущено: %1</translation>
         </message>
         <message>
             <source>Captured processed camera view</source>
-            <translation>Захваченный обработанный вид с камеры</translation>
+            <translation>Снимок обработанного изображения с камеры</translation>
         </message>
         <message>
             <source>Processed camera view</source>
@@ -2425,7 +2425,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The saved OkuFlow folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
-            <translation>Сохраненную папку OkuFlow использовать невозможно (%1). Файлы будут перемещаться в папку «Документы» по умолчанию, пока не будет выбрана новая папка.</translation>
+            <translation>Не удалось использовать сохранённую папку OkuFlow (%1). До выбора новой папки файлы будут сохраняться в папку «Документы» по умолчанию.</translation>
         </message>
         <message>
             <source>Lecture transcript</source>
@@ -2453,7 +2453,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>Просмотрите анализ помощника</translation>
+            <translation>Посмотрите, что проанализировал помощник</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2465,7 +2465,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Started a new conversation.</source>
-            <translation>Начал новый разговор.</translation>
+            <translation>Начат новый разговор.</translation>
         </message>
         <message>
             <source>Finish the current answer before starting a new chat.</source>
@@ -2477,23 +2477,23 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
-            <translation>Начал новый разговор. Следующее объяснение также начинает новый разговор.</translation>
+            <translation>Начат новый разговор. Следующее нажатие «Объяснить» также начнёт новый разговор.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Отправка текущего кадра камеры и запроса на Codex. Разговор: сохраненный разговор объяснения, продолжаемый каждым объяснением. Интернет инструмента: заблокирован. Кодирование и изменение файлов: заблокировано.</translation>
+            <translation>Отправка текущего кадра камеры и запроса в Codex. Диалог: сохранённый диалог «Объяснить», который продолжается при каждом нажатии «Объяснить». Доступ инструментов к интернету: закрыт. Создание и изменение файлов: запрещено.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Отправка текущего кадра камеры и запроса на Codex. Разговор: временный, новый при каждом прочтении. Интернет инструмента: заблокирован. Кодирование и изменение файлов: заблокировано.</translation>
+            <translation>Отправка текущего кадра камеры и запроса в Codex. Диалог: временный, новый при каждом нажатии «Читать». Доступ инструментов к интернету: закрыт. Создание и изменение файлов: запрещено.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Отправка текущего кадра камеры, приглашения и последних ответов объяснения на адрес %1 (локальная конечная точка). Разговор: недавние ответы Объяснения, сохраняемые только в памяти. Инструменты кодирования: недоступны.</translation>
+            <translation>Отправка текущего кадра камеры, запроса и последних ответов «Объяснить» на %1 (локальный сервер). Диалог: последние ответы «Объяснить», хранящиеся только в памяти. Инструменты для работы с кодом недоступны.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Отправка текущего кадра камеры, приглашения и последних ответов «Объяснение» на %1 (удаленная конечная точка). Разговор: недавние ответы Объяснения, сохраняемые только в памяти. Инструменты кодирования: недоступны.</translation>
+            <translation>Отправка текущего кадра камеры, запроса и последних ответов «Объяснить» на %1 (удалённый сервер). Диалог: последние ответы «Объяснить», хранящиеся только в памяти. Инструменты для работы с кодом недоступны.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2505,7 +2505,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Dock left</source>
-            <translation>Док слева</translation>
+            <translation>Прикрепить слева</translation>
         </message>
         <message>
             <source>Dock right</source>
@@ -2513,7 +2513,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Release to dock left</source>
-            <translation>Отпустите, чтобы состыковать влево</translation>
+            <translation>Отпустите, чтобы прикрепить слева</translation>
         </message>
         <message>
             <source>Release to dock right</source>
@@ -2521,7 +2521,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>Доступны функции чтения, объяснения и помощника, поддерживаемые подпиской. Устанавливает официальную версию Codex CLI для вашей учетной записи Windows; Вход в ChatGPT остается отдельным шагом.</translation>
+            <translation>Открывает доступ к функциям «Читать», «Объяснить» и «Ассистент», работающим по подписке. Устанавливает официальный Codex CLI для вашей учётной записи Windows; вход в ChatGPT выполняется отдельно.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2573,7 +2573,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Search settings…</source>
-            <translation>Настройки поиска…</translation>
+            <translation>Поиск настроек…</translation>
         </message>
         <message>
             <source>Mode: %1</source>
@@ -2585,11 +2585,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Changes apply now. Save to keep them.</source>
-            <translation>Изменения вступают в силу сейчас. Сохраните, чтобы сохранить их.</translation>
+            <translation>Изменения применяются сразу. Сохраните их, чтобы они сохранились.</translation>
         </message>
         <message>
             <source>Shared by all modes. Not saved into quick modes.</source>
-            <translation>Общий для всех режимов. Не сохраняется в быстрых режимах.</translation>
+            <translation>Используется во всех режимах. Не сохраняется в быстрых режимах.</translation>
         </message>
         <message>
             <source>Fine-tune text</source>
@@ -2645,7 +2645,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Reset Mode</source>
-            <translation>Режим сброса</translation>
+            <translation>Сбросить режим</translation>
         </message>
         <message>
             <source>Quick mode name:</source>
@@ -2653,11 +2653,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>Здесь нет совпадений. %1 в настройках. Нажмите Enter, чтобы показать их.</translation>
+            <translation>Здесь совпадений нет. Найдите %1 в разделе «Настройки». Нажмите Enter, чтобы перейти к ним.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>Здесь нет совпадений. %1 на изображении. Нажмите Enter, чтобы показать их.</translation>
+            <translation>Здесь совпадений нет. Найдите %1 в разделе «Изображение». Нажмите Enter, чтобы перейти к ним.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2705,7 +2705,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>Объяснение стоп-сцены</translation>
+            <translation>Остановить объяснение сцены</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
@@ -2741,11 +2741,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
-            <translation>%1 не удалось завершить свой последний фрагмент (0x%2). Файл был сохранен; воспроизведение не проверено.</translation>
+            <translation>%1 не удалось завершить последний фрагмент (0x%2). Файл сохранён; воспроизведение не проверено.</translation>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>Путь вывода записи уже существует; оно сохранилось.</translation>
+            <translation>Файл записи по этому пути уже существует; он сохранён.</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
@@ -2791,15 +2791,15 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>«Чтение», «Объяснение» и «Ассистент» используют вашу подписку ChatGPT через Codex CLI. Войдите в систему с помощью Connect ChatGPT на вкладке «Ассистент» в расширенном режиме.</translation>
+            <translation>Функции «Читать», «Объяснить» и «Ассистент» используют вашу подписку ChatGPT через Codex CLI. Чтобы войти, нажмите «Подключить ChatGPT» на вкладке «Ассистент» в расширенном режиме.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>Прочтите и объясните, отправьте изображение с камеры на URL-адрес сервера, указанный ниже. Изображения остаются на этом компьютере, только если на нем работает этот сервер, например LM Studio или Ollama на локальном хосте. Для сохраненных разговоров с Ассистентом требуется подписка ChatGPT.</translation>
+            <translation>Функции «Читать» и «Объяснить» отправляют изображение с камеры на указанный ниже URL сервера. Изображения остаются на этом компьютере, только если сервер запущен здесь, например LM Studio или Ollama на localhost. Для сохранённых диалогов с «Ассистентом» нужна подписка ChatGPT.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
-            <translation>OkuFlow всегда отправляет эту инструкцию на Codex, за которой следуют ваши инструкции и правила разрешения.</translation>
+            <translation>OkuFlow всегда отправляет эту инструкцию в Codex, а за ней — ваши инструкции и правила доступа.</translation>
         </message>
         <message>
             <source>Assistant instructions</source>
@@ -2807,7 +2807,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Explain prompt:</source>
-            <translation>Промпт объяснения:</translation>
+            <translation>Запрос для «Объяснить»:</translation>
         </message>
         <message>
             <source>Advanced Assistant permissions</source>
@@ -2815,7 +2815,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>Они применяются только к сохраненным разговорам с Ассистентом, включая вопросы, заданные плавающим Ассистентом. Чтение и объяснение всегда остаются ограниченными.</translation>
+            <translation>Эти разрешения применяются только к сохранённым диалогам с «Ассистентом», включая вопросы, заданные во всплывающем окне «Ассистент». Функции «Читать» и «Объяснить» всегда работают с ограничениями.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2823,15 +2823,15 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
-            <translation>Выберите, сколько рассуждений Codex использует. Ответы на более высокие уровни могут занять больше времени.</translation>
+            <translation>Выберите уровень рассуждений Codex. При более высоком уровне ответ может занять больше времени.</translation>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>Показать или скрыть инструкцию только для чтения OkuFlow всегда отправляет на Codex</translation>
+            <translation>Показать или скрыть инструкцию, которую OkuFlow всегда отправляет в Codex и которую нельзя изменить</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>Объясните подсказку</translation>
+            <translation>Запрос для «Объяснить»</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
@@ -2843,7 +2843,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>Установлено
 %1
-Для входа в систему используйте Connect ChatGPT на вкладке «Расширенный помощник».</translation>
+Чтобы войти, нажмите «Подключить ChatGPT» на вкладке «Ассистент» в расширенном режиме.</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2855,15 +2855,15 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>encoder backlog %1</source>
-            <translation>отставание кодировщика %1</translation>
+            <translation>Очередь кодировщика %1</translation>
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
-            <translation>Запись пропускает семплы, поскольку не удалось проверить ход работы кодировщика. Остановите и возобновите запись, если она продолжается.</translation>
+            <translation>При записи пропускаются отсчёты: не удалось проверить работу кодировщика. Если это продолжится, остановите запись и запустите её снова.</translation>
         </message>
         <message>
             <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
-            <translation>Запись пропускает видеокадры, поскольку очередь кодировщика заполнена. Уменьшите разрешение записи или остановите и возобновите запись, если она продолжается.</translation>
+            <translation>При записи пропускаются видеокадры: очередь кодировщика заполнена. Уменьшите разрешение записи или, если это продолжится, остановите запись и запустите её снова.</translation>
         </message>
         <message>
             <source>Waiting for phone…</source>
@@ -2871,7 +2871,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
-            <translation>Откройте OkuFlow Камера на телефоне, подключите USB-кабель и разрешите отладку по USB. OkuFlow автоматически проверяет соединение.</translation>
+            <translation>Откройте приложение OkuFlow Camera на телефоне, подключите USB-кабель и разрешите отладку по USB. OkuFlow проверит подключение автоматически.</translation>
         </message>
         <message>
             <source>Set up OkuFlow</source>
@@ -2879,7 +2879,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
-            <translation>Включен установщик среды выполнения Windows. Дополнительные инструменты искусственного интеллекта загружаются у их поставщиков. Каждый установщик проверяется перед запуском.</translation>
+            <translation>Установщик среды выполнения Windows входит в комплект. Дополнительные инструменты ИИ загружаются с сайтов их разработчиков. Перед запуском проверяется каждый установщик.</translation>
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
@@ -2887,7 +2887,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
-            <translation>Библиотеки Windows, используемые OkuFlow. При установке используется прилагаемый установщик Microsoft и может потребоваться одобрение администратора.</translation>
+            <translation>Библиотеки Windows, необходимые OkuFlow. Для установки используется прилагаемый установщик Microsoft; может потребоваться подтверждение администратора.</translation>
         </message>
         <message>
             <source>Install for Windows</source>
@@ -2927,7 +2927,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>System default (%1)</source>
-            <translation>Системный язык (%1)</translation>
+            <translation>Системный вариант (%1)</translation>
         </message>
         <message>
             <source>Restoring USB connection…</source>
@@ -2935,7 +2935,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
-            <translation>OkuFlow проверяет USB-соединение и подключится снова автоматически.</translation>
+            <translation>OkuFlow проверяет USB-подключение и автоматически восстановит соединение.</translation>
         </message>
     </context>
 </TS>

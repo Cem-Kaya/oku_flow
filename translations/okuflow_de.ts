@@ -813,7 +813,7 @@
         </message>
         <message>
             <source>Assistant request stopped.</source>
-            <translation>Assistentenanfrage gestoppt.</translation>
+            <translation>Anfrage an den Assistenten abgebrochen.</translation>
         </message>
         <message>
             <source>Attaching the current view...</source>
@@ -825,7 +825,7 @@
         </message>
         <message>
             <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
-            <translation>Bild unscharf. Tippen Sie vor dem Lesen des Textes auf den Telefonbildschirm, um neu zu fokussieren.</translation>
+            <translation>Bild unscharf. Tippen Sie auf den Telefonbildschirm, um den Fokus vor dem Lesen neu einzustellen.</translation>
         </message>
         <message>
             <source>Loading conversation...</source>
@@ -877,7 +877,7 @@
         </message>
         <message>
             <source>Viewport motion limited to %1 FPS by this display.</source>
-            <translation>Die Ansichtsbewegung wird von dieser Anzeige auf %1 FPS begrenzt.</translation>
+            <translation>Die Bewegung im Ansichtsfenster wird durch dieses Display auf %1 FPS begrenzt.</translation>
         </message>
         <message>
             <source>Vision model: %1</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>GPU-Kameraaufnahme ist mit sicherem Kopierersatz aktiv.</translation>
+            <translation>Die GPU-Kameraaufnahme läuft mit der sicheren Kopierlösung.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>Die Bildschirmkorrektur wurde zurückgesetzt und die Verfolgung gestoppt.</translation>
+            <translation>Die Bildschirmkorrektur wurde zurückgenommen und die Nachführung gestoppt.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -949,7 +949,7 @@
         </message>
         <message>
             <source>Temporal blend</source>
-            <translation>Zeitliche Mischung</translation>
+            <translation>Zeitliche Überblendung</translation>
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
@@ -991,11 +991,11 @@
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>Markierte Ansicht nicht gespeichert: Das Bild konnte nicht eingereiht werden.</translation>
+            <translation>Markierte Ansicht nicht gespeichert: Das Bild konnte nicht in die Warteschlange gestellt werden.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>Markierte Ansicht nicht gespeichert: Der Bildschreiber ist beschäftigt. Versuchen Sie es erneut.</translation>
+            <translation>Markierte Ansicht nicht gespeichert: Der Bildspeicher ist gerade ausgelastet. Versuchen Sie es erneut.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
@@ -1043,11 +1043,11 @@
         </message>
         <message>
             <source>Photo not saved: the image could not be queued.</source>
-            <translation>Foto nicht gespeichert: Das Bild konnte nicht eingereiht werden.</translation>
+            <translation>Foto nicht gespeichert: Das Bild konnte nicht in die Warteschlange gestellt werden.</translation>
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>Foto nicht gespeichert: Der Bildschreiber ist beschäftigt. Versuchen Sie es erneut.</translation>
+            <translation>Foto nicht gespeichert: Der Bildspeicher ist gerade ausgelastet. Versuchen Sie es erneut.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
@@ -1179,11 +1179,11 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>GPU-gespeistes Original und bearbeitete Ausgabe</translation>
+            <translation>Original und bearbeitete Ausgabe direkt von der GPU</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>GPU-Quelle mit Worker-Rücklesen</translation>
+            <translation>GPU-Quelle mit Rücklesen durch einen Hintergrundprozess</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1195,7 +1195,7 @@
         </message>
         <message>
             <source>Assistive View</source>
-            <translation>Assistive Ansicht</translation>
+            <translation>Unterstützende Ansicht</translation>
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
@@ -1355,7 +1355,7 @@
         </message>
         <message>
             <source>Choose an existing workspace folder before enabling coding.</source>
-            <translation>Wählen Sie vor dem Aktivieren der Programmierung einen vorhandenen Arbeitsbereichsordner.</translation>
+            <translation>Wählen Sie einen vorhandenen Arbeitsordner aus, bevor Sie die Codebearbeitung aktivieren.</translation>
         </message>
         <message>
             <source>Coding Workspace Required</source>
@@ -1439,7 +1439,7 @@
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>Zeichnen, wählen, skalieren, speichern oder löschen Sie Anmerkungen, die an der Kameraszene verankert sind.</translation>
+            <translation>Zeichnen Sie Anmerkungen in der Kameraszene, wählen Sie sie aus, ändern Sie ihre Größe, speichern oder löschen Sie sie.</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1515,7 +1515,7 @@
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
-            <translation>Wählen, verschieben oder skalieren Sie eine Anmerkung. Tastenkürzel V.</translation>
+            <translation>Wählen Sie eine Anmerkung aus und verschieben oder skalieren Sie sie. Tastenkürzel V.</translation>
         </message>
         <message>
             <source>Selected annotation scaled</source>
@@ -1579,7 +1579,7 @@
         </message>
         <message>
             <source>Assistive result</source>
-            <translation>Assistives Ergebnis</translation>
+            <translation>Ergebnis der Assistenz</translation>
         </message>
         <message>
             <source>Assistive result text</source>
@@ -1591,11 +1591,11 @@
         </message>
         <message>
             <source>Assistive results</source>
-            <translation>Assistive Ergebnisse</translation>
+            <translation>Ergebnisse der Assistenz</translation>
         </message>
         <message>
             <source>Close assistive result</source>
-            <translation>Assistives Ergebnis schließen</translation>
+            <translation>Ergebnis der Assistenz schließen</translation>
         </message>
         <message>
             <source>Hide the current assistant result</source>
@@ -1627,7 +1627,7 @@
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
-            <translation>Geben Sie jederzeit eine Folgefrage ein. Senden wird verfügbar, wenn die aktuelle Antwort beendet ist.</translation>
+            <translation>Geben Sie jederzeit eine Folgefrage ein. Senden ist möglich, sobald die aktuelle Antwort abgeschlossen ist.</translation>
         </message>
         <message>
             <source>Apply custom</source>
@@ -1695,7 +1695,7 @@
         </message>
         <message>
             <source>Posterize</source>
-            <translation>Posterisieren</translation>
+            <translation>Posterisierung</translation>
         </message>
         <message>
             <source>Reading colors</source>
@@ -1811,11 +1811,11 @@
         </message>
         <message>
             <source>Extra Stable off</source>
-            <translation>Besonders stabil aus</translation>
+            <translation>Extra-Stabilisierung aus</translation>
         </message>
         <message>
             <source>Extra Stable on</source>
-            <translation>Besonders stabil ein</translation>
+            <translation>Extra-Stabilisierung ein</translation>
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
@@ -1831,7 +1831,7 @@
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>Bei einem Stoß den letzten scharfen Frame halten und dann sanft zum Livevideo zurückkehren</translation>
+            <translation>Bei einem Stoß das letzte scharfe Bild halten und dann sanft zum Livevideo zurückkehren</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1919,7 +1919,7 @@
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
-            <translation>Leitfaden zu OkuFlow-Bedienelementen und -Funktionen</translation>
+            <translation>Leitfaden zu OkuFlow-Bedienelementen und Funktionen</translation>
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
@@ -2093,7 +2093,7 @@ Die Entfernung wird von Windows verwaltet.</translation>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>Nicht installiert. „Installieren“ lädt das Paket für %1-GPUs herunter.</translation>
+            <translation>Nicht installiert. Mit „Installieren“ wird das Paket für %1-GPUs heruntergeladen.</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
@@ -2189,7 +2189,7 @@ Die Entfernung wird von Windows verwaltet.</translation>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>Diese systemweite Kopie muss über Windows-Installierte-Apps entfernt werden</translation>
+            <translation>Diese systemweite Installation muss über „Installierte Apps“ in Windows entfernt werden.</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2325,7 +2325,7 @@ Die Entfernung wird von Windows verwaltet.</translation>
         </message>
         <message>
             <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
-            <translation>Schnelle Strg+Scroll-Zoomgesten beschleunigen; Tastaturzoom bleibt exakt</translation>
+            <translation>Zoomgesten mit Strg+Scrollen beschleunigen; der Zoom per Tastatur bleibt präzise</translation>
         </message>
         <message>
             <source>SuperRes powered by NVIDIA Maxine™</source>
@@ -2333,7 +2333,7 @@ Die Entfernung wird von Windows verwaltet.</translation>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA-Maxine-Namensnennung</translation>
+            <translation>Quellenangabe zu NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2445,11 +2445,11 @@ Die Entfernung wird von Windows verwaltet.</translation>
         </message>
         <message>
             <source>Original and processed video</source>
-            <translation>Original- und Verarbeitungsvideo</translation>
+            <translation>Originalvideo und verarbeitetes Video</translation>
         </message>
         <message>
             <source>Original and processed photo</source>
-            <translation>Original- und Verarbeitungsfoto</translation>
+            <translation>Originalfoto und verarbeitetes Foto</translation>
         </message>
         <message>
             <source>View the assistant analyzed</source>
@@ -2481,19 +2481,19 @@ Die Entfernung wird von Windows verwaltet.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Aktueller Kameraframe und Anweisung werden an Codex gesendet. Unterhaltung: gespeicherte Erklären-Unterhaltung, die jedes Erklären fortsetzt. Internet für Werkzeuge: blockiert. Programmierung und Dateiänderungen: blockiert.</translation>
+            <translation>Der aktuelle Kameraframe und die Anweisung werden an Codex gesendet. Unterhaltung: gespeichertes Gespräch zum Erklären, das mit jedem Aufruf von „Erklären“ fortgesetzt wird. Werkzeugzugriff auf das Internet: gesperrt. Programmierung und Dateiänderungen: gesperrt.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Aktueller Kameraframe und Anweisung werden an Codex gesendet. Unterhaltung: temporär, für jedes Lesen neu. Internet für Werkzeuge: blockiert. Programmierung und Dateiänderungen: blockiert.</translation>
+            <translation>Der aktuelle Kameraframe und die Anweisung werden an Codex gesendet. Unterhaltung: temporär, für jeden Aufruf von „Lesen“ neu. Werkzeugzugriff auf das Internet: gesperrt. Programmierung und Dateiänderungen: gesperrt.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Aktueller Kameraframe, Anweisung und letzte Erklären-Antworten werden an %1 gesendet (lokaler Endpunkt). Unterhaltung: letzte Erklären-Antworten, nur im Arbeitsspeicher. Programmierwerkzeuge: nicht verfügbar.</translation>
+            <translation>Der aktuelle Kameraframe, die Anweisung und die letzten Antworten auf „Erklären“ werden an %1 gesendet (lokaler Endpunkt). Unterhaltung: die letzten Antworten auf „Erklären“, nur im Arbeitsspeicher gespeichert. Programmierwerkzeuge: nicht verfügbar.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Aktueller Kameraframe, Anweisung und letzte Erklären-Antworten werden an %1 gesendet (entfernter Endpunkt). Unterhaltung: letzte Erklären-Antworten, nur im Arbeitsspeicher. Programmierwerkzeuge: nicht verfügbar.</translation>
+            <translation>Der aktuelle Kameraframe, die Anweisung und die letzten Antworten auf „Erklären“ werden an %1 gesendet (entfernter Endpunkt). Unterhaltung: die letzten Antworten auf „Erklären“, nur im Arbeitsspeicher gespeichert. Programmierwerkzeuge: nicht verfügbar.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2521,7 +2521,7 @@ Die Entfernung wird von Windows verwaltet.</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>Unterstützt die abonnementbasierten Funktionen Lesen, Erklären und Assistent. Installiert die offizielle Codex CLI für Ihr Windows-Konto; die ChatGPT-Anmeldung erfolgt separat.</translation>
+            <translation>Ermöglicht die abonnementbasierten Funktionen „Lesen“, „Erklären“ und „Assistent“. Installiert die offizielle Codex CLI für Ihr Windows-Konto; die Anmeldung bei ChatGPT erfolgt separat.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2653,11 +2653,11 @@ Die Entfernung wird von Windows verwaltet.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>Hier keine Treffer. %1 in Einstellungen. Zum Anzeigen Eingabe drücken.</translation>
+            <translation>Hier gibt es keine Treffer. %1 unter „Einstellungen“. Drücken Sie die Eingabetaste, um sie anzuzeigen.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>Hier keine Treffer. %1 in Bild. Zum Anzeigen Eingabe drücken.</translation>
+            <translation>Hier gibt es keine Treffer. %1 unter „Bild“. Drücken Sie die Eingabetaste, um sie anzuzeigen.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2709,7 +2709,7 @@ Die Entfernung wird von Windows verwaltet.</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
-            <translation>Aktuelle Szenenbeschreibung stoppen</translation>
+            <translation>Aktuelle Szenenerklärung stoppen</translation>
         </message>
         <message>
             <source>Reset this mode's image and assistant settings?
@@ -2859,7 +2859,7 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
-            <translation>Aufnahme-Samples werden übersprungen, weil der Encoder-Fortschritt nicht geprüft werden konnte. Stoppen und starten Sie die Aufnahme erneut, wenn dies anhält.</translation>
+            <translation>Bei der Aufnahme werden Samples übersprungen, weil der Fortschritt des Encoders nicht geprüft werden konnte. Wenn das weiterhin geschieht, stoppen Sie die Aufnahme und starten Sie sie erneut.</translation>
         </message>
         <message>
             <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>

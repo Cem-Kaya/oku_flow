@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>Skriv en del av ett inställningsnamn för att visa och fokusera matchningskontroller.</translation>
+            <translation>Skriv en del av ett inställningsnamn för att visa och fokusera på matchande reglage.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -125,7 +125,7 @@
         </message>
         <message>
             <source>Viewport motion rate</source>
-            <translation>Viewport rörelsehastighet</translation>
+            <translation>Bildrutans uppdateringsfrekvens</translation>
         </message>
         <message>
             <source>Auto (up to 120 FPS)</source>
@@ -137,7 +137,7 @@
         </message>
         <message>
             <source>Viewport framing</source>
-            <translation>Viewport inramning</translation>
+            <translation>Bildrutans beskärning</translation>
         </message>
         <message>
             <source>Fill (crop)</source>
@@ -153,7 +153,7 @@
         </message>
         <message>
             <source>Reset Tuning</source>
-            <translation>Återställ Tuning</translation>
+            <translation>Återställ justeringar</translation>
         </message>
         <message>
             <source>Virtual Joystick</source>
@@ -173,7 +173,7 @@
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
-            <translation>Kamera och originalinspelningsupplösning &amp;&amp; bildhastighet</translation>
+            <translation>Kamerans och originalinspelningens upplösning &amp;&amp; bildfrekvens</translation>
         </message>
         <message>
             <source>Automatic (driver's choice)</source>
@@ -205,7 +205,7 @@
         </message>
         <message>
             <source>Screen fix</source>
-            <translation>Skärmfix</translation>
+            <translation>Korrigera bildperspektiv</translation>
         </message>
         <message>
             <source>Text clarity</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>Tidsmässigt jämn</translation>
+            <translation>Temporal utjämning</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -253,7 +253,7 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>Extra stabil (håll i skaka)</translation>
+            <translation>Extra stabil (håll kvar vid skakningar)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
@@ -289,7 +289,7 @@
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>Platta till bakgrund</translation>
+            <translation>Jämna ut bakgrunden</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
@@ -305,7 +305,7 @@
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>Slagvikt</translation>
+            <translation>Linjetjocklek</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -329,7 +329,7 @@
         </message>
         <message>
             <source>Warn When Out of Focus</source>
-            <translation>Varna när du inte är i fokus</translation>
+            <translation>Varna när bilden är oskarp</translation>
         </message>
         <message>
             <source>Suppress Glare</source>
@@ -381,7 +381,7 @@
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
-            <translation>Spara ritningen till anteckningar när du lämnar Draw</translation>
+            <translation>Spara ritningen i anteckningarna när du lämnar ritläget</translation>
         </message>
         <message>
             <source>AI Settings</source>
@@ -409,7 +409,7 @@
         </message>
         <message>
             <source>Spatial Sharpen</source>
-            <translation>Spatial skärpa</translation>
+            <translation>Rumslig skärpa</translation>
         </message>
         <message>
             <source>Backend</source>
@@ -437,7 +437,7 @@
         </message>
         <message>
             <source>Pipeline status</source>
-            <translation>Rörledningsstatus</translation>
+            <translation>Status för bildbehandlingen</translation>
         </message>
         <message>
             <source>Performance percentiles</source>
@@ -545,7 +545,7 @@
         </message>
         <message>
             <source>Ask about this view...</source>
-            <translation>Fråga om denna utsikt...</translation>
+            <translation>Fråga om den här vyn…</translation>
         </message>
         <message>
             <source>Ask</source>
@@ -669,7 +669,7 @@
         </message>
         <message>
             <source>Vision model:</source>
-            <translation>Vision modell:</translation>
+            <translation>Synmodell:</translation>
         </message>
         <message>
             <source>Read aloud</source>
@@ -797,7 +797,7 @@
         </message>
         <message>
             <source>%1 · %2 changed</source>
-            <translation>%1 · %2 ändrad</translation>
+            <translation>%1 · %2 ändrades</translation>
         </message>
         <message>
             <source>%1, heading, %2</source>
@@ -805,15 +805,15 @@
         </message>
         <message>
             <source>%1, heading, %2, %3 changed</source>
-            <translation>%1, rubrik, %2, %3 ändrad</translation>
+            <translation>%1, rubrik, %2, %3 ändrades</translation>
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>Ingen %1 röst är installerad — med den aktuella rösten. Installera en under Windows-inställningar → Tid och språk → Tal.</translation>
+            <translation>Ingen röst av typen %1 är installerad — den aktuella rösten används. Installera en under Windows-inställningar → Tid och språk → Tal.</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
-            <translation>Assistentbegäran stoppad.</translation>
+            <translation>Assistentens begäran avbröts.</translation>
         </message>
         <message>
             <source>Attaching the current view...</source>
@@ -821,11 +821,11 @@
         </message>
         <message>
             <source>Capturing the current view...</source>
-            <translation>Fångar den aktuella vyn...</translation>
+            <translation>Tar en bild av det aktuella kamerafältet...</translation>
         </message>
         <message>
             <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
-            <translation>Bild ur fokus. Tryck på telefonskärmen för att fokusera om innan du läser text.</translation>
+            <translation>Bilden är oskarp. Tryck på telefonskärmen för att ställa in skärpan igen innan du läser texten.</translation>
         </message>
         <message>
             <source>Loading conversation...</source>
@@ -837,7 +837,7 @@
         </message>
         <message>
             <source>OkuFlow Assistant</source>
-            <translation>OkuFlow Assistent</translation>
+            <translation>OkuFlow-assistenten</translation>
         </message>
         <message>
             <source>You</source>
@@ -845,7 +845,7 @@
         </message>
         <message>
             <source>Capturing original and processed photos...</source>
-            <translation>Fångar original och bearbetade foton...</translation>
+            <translation>Tar originalbilder och bearbetade bilder...</translation>
         </message>
         <message>
             <source>Delete Conversation</source>
@@ -857,7 +857,7 @@
         </message>
         <message>
             <source>Permanently delete this OkuFlow assistant conversation?</source>
-            <translation>Vill du ta bort denna OkuFlow assistentkonversation permanent?</translation>
+            <translation>Vill du ta bort den här OkuFlow-assistentkonversationen permanent?</translation>
         </message>
         <message>
             <source>Reconnect ChatGPT</source>
@@ -869,7 +869,7 @@
         </message>
         <message>
             <source>Stopped.</source>
-            <translation>Slutade.</translation>
+            <translation>Stoppad.</translation>
         </message>
         <message>
             <source>The OkuFlow Analysis folder is unavailable.</source>
@@ -877,11 +877,11 @@
         </message>
         <message>
             <source>Viewport motion limited to %1 FPS by this display.</source>
-            <translation>Viewport-rörelsen begränsad till %1 FPS av denna skärm.</translation>
+            <translation>Rörelsen i visningsområdet begränsas till %1 FPS av skärmen.</translation>
         </message>
         <message>
             <source>Vision model: %1</source>
-            <translation>Vision modell: %1</translation>
+            <translation>Synmodell: %1</translation>
         </message>
         <message>
             <source>Automatic screen correction continuing.</source>
@@ -897,11 +897,11 @@
         </message>
         <message>
             <source>Choose OkuFlow Folder</source>
-            <translation>Välj OkuFlow Mapp</translation>
+            <translation>Välj OkuFlow-mapp</translation>
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>GPU-kamerafångst är aktivt med den säkra kopian.</translation>
+            <translation>GPU-kamerainhämtning är aktiv med den säkra kopieringslösningen.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -909,11 +909,11 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>NVIDIA Super Resolution prestandagräns ignorerad.</translation>
+            <translation>Prestandagränsen för NVIDIA Super Resolution ignorerades.</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
-            <translation>NVIDIA Super Resolution prestandagräns återställd.</translation>
+            <translation>Prestandagränsen för NVIDIA Super Resolution återställdes.</translation>
         </message>
         <message>
             <source>New OkuFlow files will be saved in %1.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>Skärmkorrigeringen flyttades tillbaka och spårningen stoppades.</translation>
+            <translation>Skärmkorrigeringen återställdes och spårningen stoppades.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -945,15 +945,15 @@
         </message>
         <message>
             <source>Stop recording before testing camera acceleration.</source>
-            <translation>Sluta spela in innan du testar kameraaccelerationen.</translation>
+            <translation>Stoppa inspelningen innan du testar kamerans GPU-acceleration.</translation>
         </message>
         <message>
             <source>Temporal blend</source>
-            <translation>Temporell blandning</translation>
+            <translation>Tidsmässig utjämning</translation>
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>Testar GPU och kompatibilitetsfångst i en isolerad process...</translation>
+            <translation>Testar GPU-inhämtning och kompatibilitetsläge i en isolerad process...</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -969,12 +969,12 @@
         </message>
         <message>
             <source>Using the next screen correction.</source>
-            <translation>Använder nästa skärmkorrigering.</translation>
+            <translation>Använder nästa korrigering av skärmbilden.</translation>
         </message>
         <message>
             <source>Windows could not open:
 %1</source>
-            <translation>Windows kunde inte öppnas:
+            <translation>Windows kunde inte öppna:
 %1</translation>
         </message>
         <message>
@@ -991,15 +991,15 @@
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>Annoterad vy har inte sparats: bilden kunde inte köas.</translation>
+            <translation>Den annoterade bilden sparades inte: den kunde inte läggas i kön.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>Annoterad vy har inte sparats: bilden skrivs fortfarande. Försök igen.</translation>
+            <translation>Den annoterade bilden sparades inte: bildskrivaren är upptagen. Försök igen.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
-            <translation>Annoterad vy har inte sparats: visningsporten var inte tillgänglig.</translation>
+            <translation>Den annoterade bilden sparades inte: visningsområdet var inte tillgängligt.</translation>
         </message>
         <message>
             <source>Camera Error</source>
@@ -1011,23 +1011,23 @@
         </message>
         <message>
             <source>Failed to start camera capture</source>
-            <translation>Det gick inte att starta kamerainspelning</translation>
+            <translation>Det gick inte att starta kamerainhämtningen</translation>
         </message>
         <message>
             <source>GPU camera acceleration could not start: %1</source>
-            <translation>GPU-kameraacceleration kunde inte starta: %1</translation>
+            <translation>Kamerans GPU-acceleration kunde inte starta: %1</translation>
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>GPU-bearbetning misslyckas hela tiden - visar obearbetad video.</translation>
+            <translation>GPU-bearbetningen misslyckas upprepade gånger – visar obearbetad video.</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
-            <translation>GPU-accelererad kamerainspelning klarade startvalideringen.</translation>
+            <translation>GPU-accelererad kamerainhämtning klarade startvalideringen.</translation>
         </message>
         <message>
             <source>Modes unavailable: %1</source>
-            <translation>Lägen otillgängliga: %1</translation>
+            <translation>Följande lägen är inte tillgängliga: %1</translation>
         </message>
         <message>
             <source>No camera modes were reported.</source>
@@ -1035,31 +1035,31 @@
         </message>
         <message>
             <source>Photo not saved: no processed frame was available.</source>
-            <translation>Fotot har inte sparats: ingen bearbetad ram var tillgänglig.</translation>
+            <translation>Fotot sparades inte: ingen bearbetad bildruta fanns tillgänglig.</translation>
         </message>
         <message>
             <source>Photo not saved: the OkuFlow Photos folder is unavailable.</source>
-            <translation>Fotot har inte sparats: mappen OkuFlow Foton är inte tillgänglig.</translation>
+            <translation>Fotot sparades inte: mappen OkuFlow Photos är inte tillgänglig.</translation>
         </message>
         <message>
             <source>Photo not saved: the image could not be queued.</source>
-            <translation>Fotot har inte sparats: bilden kunde inte köas.</translation>
+            <translation>Fotot sparades inte: bilden kunde inte läggas i kön.</translation>
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>Bilden har inte sparats: bilden skrivs fortfarande. Försök igen.</translation>
+            <translation>Fotot sparades inte: bildskrivaren är upptagen. Försök igen.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
-            <translation>Fotot har inte sparats: den ursprungliga kameraramen kunde inte konverteras.</translation>
+            <translation>Fotot sparades inte: den ursprungliga kamerabildrutan kunde inte konverteras.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be read back.</source>
-            <translation>Fotot har inte sparats: den ursprungliga kameraramen kunde inte läsas tillbaka.</translation>
+            <translation>Fotot sparades inte: den ursprungliga kamerabildrutan kunde inte läsas in igen.</translation>
         </message>
         <message>
             <source>Photo not saved: the processed or original frame was unavailable.</source>
-            <translation>Fotot har inte sparats: den bearbetade eller originalramen var inte tillgänglig.</translation>
+            <translation>Fotot sparades inte: varken den bearbetade eller den ursprungliga bildrutan fanns tillgänglig.</translation>
         </message>
         <message>
             <source>Reconnecting to camera…</source>
@@ -1067,19 +1067,19 @@
         </message>
         <message>
             <source>Recording stopped: the original camera frame could not be converted.</source>
-            <translation>Inspelningen stoppades: den ursprungliga kameraramen kunde inte konverteras.</translation>
+            <translation>Inspelningen stoppades: den ursprungliga kamerabildrutan kunde inte konverteras.</translation>
         </message>
         <message>
             <source>Saving annotated view to lecture notes...</source>
-            <translation>Sparar kommenterad vy till föreläsningsanteckningar...</translation>
+            <translation>Sparar den annoterade bilden i föreläsningsanteckningarna...</translation>
         </message>
         <message>
             <source>Saving original and processed photos...</source>
-            <translation>Sparar original och bearbetade foton...</translation>
+            <translation>Sparar originalbilder och bearbetade bilder...</translation>
         </message>
         <message>
             <source>The camera GPU texture could not be converted for CUDA.</source>
-            <translation>Kamerans GPU-struktur kunde inte konverteras för CUDA.</translation>
+            <translation>Kamerans GPU-textur kunde inte konverteras för CUDA.</translation>
         </message>
         <message>
             <source>Annotated view</source>
@@ -1131,31 +1131,31 @@
         </message>
         <message>
             <source>The camera mode changed. Recording continues in part %1.</source>
-            <translation>Kameraläget ändrades. Inspelningen fortsätter delvis %1.</translation>
+            <translation>Kameraläget ändrades. Inspelningen fortsätter i del %1.</translation>
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
-            <translation>Inspelningsduken är ogiltig.</translation>
+            <translation>Inspelningsytan är ogiltig.</translation>
         </message>
         <message>
             <source>No frames were dropped.</source>
-            <translation>Inga ramar tappades.</translation>
+            <translation>Inga bildrutor tappades.</translation>
         </message>
         <message>
             <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
-            <translation>Inspelningen avbröts eftersom ljudbehandlingen inte kunde hänga med eller inmatningen var ogiltig.</translation>
+            <translation>Inspelningen stoppades eftersom ljudbehandlingen inte hann med eller ljudindata var ogiltiga.</translation>
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>Ljud: %1 block släpptes före kodning, %2 avvisades av ingångsgränsen.</translation>
+            <translation>Ljud: %1 block tappades före kodning, %2 avvisades på grund av indatagränsen.</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
-            <translation>%1 ramar togs bort (%2).</translation>
+            <translation>%1 bildrutor tappades (%2).</translation>
         </message>
         <message>
             <source>%1 frames used an estimated timestamp.</source>
-            <translation>%1 ramar använde en uppskattad tidsstämpel.</translation>
+            <translation>Tidsstämpeln uppskattades för %1 bildrutor.</translation>
         </message>
         <message>
             <source>Original video</source>
@@ -1175,31 +1175,31 @@
         </message>
         <message>
             <source>direct GPU</source>
-            <translation>direkt GPU</translation>
+            <translation>Direkt från GPU:n</translation>
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>GPU-matat original och bearbetat</translation>
+            <translation>Original och bearbetad video från GPU:n</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>GPU-källa med arbetaravläsning</translation>
+            <translation>GPU-källa med avläsning via arbetsprocess</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
-            <translation>En annan assistentbegäran körs redan.</translation>
+            <translation>En annan begäran till assistenten pågår redan.</translation>
         </message>
         <message>
             <source>Assistant stopped.</source>
-            <translation>Assistenten stannade.</translation>
+            <translation>Assistenten stoppades.</translation>
         </message>
         <message>
             <source>Assistive View</source>
-            <translation>Assisterande vy</translation>
+            <translation>Hjälpvy</translation>
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex bildförberedelse är upptagen. Försök igen om ett ögonblick.</translation>
+            <translation>Bildförberedelsen för Codex pågår. Försök igen om en stund.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1207,7 +1207,7 @@
         </message>
         <message>
             <source>Failed to encode frame for VLM request.</source>
-            <translation>Det gick inte att koda ram för VLM-begäran.</translation>
+            <translation>Det gick inte att koda bildrutan för VLM-begäran.</translation>
         </message>
         <message>
             <source>Failed to prepare the current view for Codex.</source>
@@ -1215,11 +1215,11 @@
         </message>
         <message>
             <source>No camera frame is available to attach.</source>
-            <translation>Det finns ingen kameraram att fästa.</translation>
+            <translation>Det finns ingen kamerabildruta att bifoga.</translation>
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>Ihållande assistentkonversationer kräver prenumerationsleverantören Codex.</translation>
+            <translation>Permanenta assistentkonversationer kräver Codex som prenumerationsleverantör.</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1239,11 +1239,11 @@
         </message>
         <message>
             <source>Scene explanation is busy with a previous request. Try again in a moment.</source>
-            <translation>Scenförklaring är upptagen med en tidigare begäran. Försök igen om ett ögonblick.</translation>
+            <translation>En tidigare begäran om scenförklaring pågår. Försök igen om en stund.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt</source>
-            <translation>Skickar den aktuella kameraramen och uppmaningen</translation>
+            <translation>Skickar den aktuella kamerabildrutan och prompten</translation>
         </message>
         <message>
             <source>Sending the prompt only</source>
@@ -1259,7 +1259,7 @@
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
-            <translation>VLM-bildförberedelser är upptagna. Försök igen om ett ögonblick.</translation>
+            <translation>Bildförberedelsen för VLM pågår. Försök igen om en stund.</translation>
         </message>
         <message>
             <source>VLM ready.</source>
@@ -1275,7 +1275,7 @@
         </message>
         <message>
             <source>VLM response exceeded OkuFlow's safe size limit.</source>
-            <translation>VLM-svaret överskred OkuFlows säkra storleksgräns.</translation>
+            <translation>VLM-svaret överskred OkuFlows gräns för säker storlek.</translation>
         </message>
         <message>
             <source>VLM returned an empty description.</source>
@@ -1291,27 +1291,27 @@
         </message>
         <message>
             <source>Codex CLI Path</source>
-            <translation>Codex CLI Sökväg</translation>
+            <translation>Sökväg till Codex CLI</translation>
         </message>
         <message>
             <source>Codex Model</source>
-            <translation>Codex Modell</translation>
+            <translation>Codex-modell</translation>
         </message>
         <message>
             <source>Codex Reasoning</source>
-            <translation>Codex Resonemang</translation>
+            <translation>Codex-resonemang</translation>
         </message>
         <message>
             <source>Assistant Instructions</source>
-            <translation>Assistent instruktioner</translation>
+            <translation>Instruktioner för assistenten</translation>
         </message>
         <message>
             <source>Built-in Codex Prompt</source>
-            <translation>Inbyggd Codex Fråga</translation>
+            <translation>Inbyggd Codex-prompt</translation>
         </message>
         <message>
             <source>VLM Server URL</source>
-            <translation>VLM-server-URL</translation>
+            <translation>URL till VLM-servern</translation>
         </message>
         <message>
             <source>API Key</source>
@@ -1331,7 +1331,7 @@
         </message>
         <message>
             <source>Preview Read Aloud Voice</source>
-            <translation>Förhandsgranska Läs högt Röst</translation>
+            <translation>Förhandslyssna på uppläsningsrösten</translation>
         </message>
         <message>
             <source>Write Lecture Notes File</source>
@@ -1347,7 +1347,7 @@
         </message>
         <message>
             <source>Text-to-speech is unavailable in this build</source>
-            <translation>Text-till-tal är inte tillgängligt i den här versionen</translation>
+            <translation>Talsyntes är inte tillgänglig i den här versionen</translation>
         </message>
         <message>
             <source>Optional for local servers</source>
@@ -1363,7 +1363,7 @@
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
-            <translation>Anteckningsläge på. Pennverktyg.</translation>
+            <translation>Anteckningsläget är på. Pennverktyget är valt.</translation>
         </message>
         <message>
             <source>Annotation options</source>
@@ -1375,7 +1375,7 @@
         </message>
         <message>
             <source>Annotation thickness</source>
-            <translation>Anteckningstjocklek</translation>
+            <translation>Tjocklek på anteckningslinjen</translation>
         </message>
         <message>
             <source>Annotation tool</source>
@@ -1383,7 +1383,7 @@
         </message>
         <message>
             <source>Clear annotations</source>
-            <translation>Rensa kommentarer</translation>
+            <translation>Rensa anteckningar</translation>
         </message>
         <message>
             <source>Click the camera view, then type a label. Shortcut T.</source>
@@ -1395,7 +1395,7 @@
         </message>
         <message>
             <source>Dashed line style</source>
-            <translation>Streckad linje stil</translation>
+            <translation>Streckad linjestil</translation>
         </message>
         <message>
             <source>Dashed stroke</source>
@@ -1407,7 +1407,7 @@
         </message>
         <message>
             <source>Draw a dashed stroke with transparent gaps.</source>
-            <translation>Rita ett streckat drag med genomskinliga luckor.</translation>
+            <translation>Rita en streckad linje med genomskinliga mellanrum.</translation>
         </message>
         <message>
             <source>Draw a rectangle.</source>
@@ -1423,7 +1423,7 @@
         </message>
         <message>
             <source>Draw an uninterrupted stroke.</source>
-            <translation>Rita ett oavbrutet slag.</translation>
+            <translation>Rita en sammanhängande linje.</translation>
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
@@ -1439,7 +1439,7 @@
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>Rita, välj, ändra storlek, spara eller rensa kommentarer som är förankrade i kamerascenen.</translation>
+            <translation>Rita, markera, ändra storlek på, spara eller rensa anteckningar som är fästa vid kamerabilden.</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1451,11 +1451,11 @@
         </message>
         <message>
             <source>Erase annotation tool</source>
-            <translation>Radera anteckningsverktyg</translation>
+            <translation>Verktyg för att radera anteckningar</translation>
         </message>
         <message>
             <source>Erase tool</source>
-            <translation>Radera verktyg</translation>
+            <translation>Radergummi</translation>
         </message>
         <message>
             <source>Leave Draw mode.</source>
@@ -1463,7 +1463,7 @@
         </message>
         <message>
             <source>Lecture annotation canvas</source>
-            <translation>Föreläsningsanteckningsduk</translation>
+            <translation>Anteckningsyta för föreläsningen</translation>
         </message>
         <message>
             <source>Line tool</source>
@@ -1471,11 +1471,11 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>Flytta annoteringsverktyg</translation>
+            <translation>Verktyg för att flytta anteckningar</translation>
         </message>
         <message>
             <source>Move tool</source>
-            <translation>Flytta verktyg</translation>
+            <translation>Flyttverktyg</translation>
         </message>
         <message>
             <source>Nothing selected</source>
@@ -1495,7 +1495,7 @@
         </message>
         <message>
             <source>Redo annotation</source>
-            <translation>Gör om anteckningen</translation>
+            <translation>Gör om anteckningsåtgärden</translation>
         </message>
         <message>
             <source>Remove a complete annotation. Shortcut E.</source>
@@ -1503,7 +1503,7 @@
         </message>
         <message>
             <source>Save a marked snapshot and clear all annotations.</source>
-            <translation>Spara en markerad ögonblicksbild och rensa alla kommentarer.</translation>
+            <translation>Spara en markerad ögonblicksbild och ta bort alla anteckningar.</translation>
         </message>
         <message>
             <source>Save annotated view</source>
@@ -1511,7 +1511,7 @@
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>Spara den markerade vyn till föreläsningsanteckningar. Genvägskontroll S.</translation>
+            <translation>Spara den markerade vyn i föreläsningsanteckningarna. Kortkommando Ctrl+S.</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
@@ -1519,7 +1519,7 @@
         </message>
         <message>
             <source>Selected annotation scaled</source>
-            <translation>Vald anteckning skalad</translation>
+            <translation>Storleken på anteckningen har ändrats</translation>
         </message>
         <message>
             <source>Selection cleared</source>
@@ -1535,7 +1535,7 @@
         </message>
         <message>
             <source>Solid line style</source>
-            <translation>Solid linje stil</translation>
+            <translation>Heldragen linjestil</translation>
         </message>
         <message>
             <source>Solid stroke</source>
@@ -1571,7 +1571,7 @@
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
-            <translation>Använd %1 bläck. Bocken indikerar den valda färgen.</translation>
+            <translation>Använd färgen %1. Bockmarkeringen visar vilken färg som är vald.</translation>
         </message>
         <message>
             <source>Ask Assistant</source>
@@ -1579,23 +1579,23 @@
         </message>
         <message>
             <source>Assistive result</source>
-            <translation>Hjälpresultat</translation>
+            <translation>Resultat från hjälpmedelsfunktionen</translation>
         </message>
         <message>
             <source>Assistive result text</source>
-            <translation>Hjälpresultat text</translation>
+            <translation>Text i resultatet från hjälpmedelsfunktionen</translation>
         </message>
         <message>
             <source>Assistive result title</source>
-            <translation>Titel för hjälpresultat</translation>
+            <translation>Titel på resultatet från hjälpmedelsfunktionen</translation>
         </message>
         <message>
             <source>Assistive results</source>
-            <translation>Hjälpresultat</translation>
+            <translation>Resultat från hjälpmedelsfunktionen</translation>
         </message>
         <message>
             <source>Close assistive result</source>
-            <translation>Stäng hjälpresultat</translation>
+            <translation>Stäng resultatet från hjälpmedelsfunktionen</translation>
         </message>
         <message>
             <source>Hide the current assistant result</source>
@@ -1611,7 +1611,7 @@
         </message>
         <message>
             <source>Read assistive result aloud</source>
-            <translation>Läs hjälpresultatet högt</translation>
+            <translation>Läs upp resultatet från hjälpmedelsfunktionen</translation>
         </message>
         <message>
             <source>Send the question with the current camera view to OkuFlow Assistant</source>
@@ -1623,11 +1623,11 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>Resultat för streamingassistent. Använd piltangenterna för att läsa texten.</translation>
+            <translation>Assistentens svar visas löpande. Använd piltangenterna för att läsa texten.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
-            <translation>Skriv en följdfråga när som helst. Sändning blir tillgänglig när det aktuella svaret är klart.</translation>
+            <translation>Skriv en följdfråga när som helst. Du kan skicka den när det aktuella svaret är klart.</translation>
         </message>
         <message>
             <source>Apply custom</source>
@@ -1667,7 +1667,7 @@
         </message>
         <message>
             <source>Display color scheme</source>
-            <translation>Visa färgschema</translation>
+            <translation>Färgschema för skärmen</translation>
         </message>
         <message>
             <source>Display colors changed to %1</source>
@@ -1699,11 +1699,11 @@
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>Läsa färger</translation>
+            <translation>Läsläge för färger</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
-            <translation>Återställ bildskärmsfärger till normala färger</translation>
+            <translation>Återställ skärmfärgerna till normalläget</translation>
         </message>
         <message>
             <source>Reset to Normal colors</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>Använd hårda färgband</translation>
+            <translation>Använd tydliga färgband utan mjuka övergångar</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1763,15 +1763,15 @@
         </message>
         <message>
             <source>Codex connection status</source>
-            <translation>Codex anslutningsstatus</translation>
+            <translation>Anslutningsstatus för Codex</translation>
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex användning</translation>
+            <translation>Användning av Codex</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
-            <translation>Konfigurera visionassistenten och talutgång</translation>
+            <translation>Konfigurera synassistenten och talutmatningen</translation>
         </message>
         <message>
             <source>Continue</source>
@@ -1783,11 +1783,11 @@
         </message>
         <message>
             <source>Controls pinned</source>
-            <translation>Kontroller fästa</translation>
+            <translation>Kontrollerna är fästa</translation>
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>Styr mjuk panorering och zoompresentation; kamerans bildhastighet är oförändrad</translation>
+            <translation>Reglagen ger mjuk panorering och zoomning; kamerans bildfrekvens påverkas inte</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1819,7 +1819,7 @@
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>Fill använder hela visningsporten utan att sträcka sig; Fit bevarar hela bilden med staplar</translation>
+            <translation>Fyll ut använder hela visningsytan utan att förvränga bilden; Anpassa visar hela bilden med kanter</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1827,11 +1827,11 @@
         </message>
         <message>
             <source>Finishing</source>
-            <translation>Efterbehandling</translation>
+            <translation>Slutför</translation>
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>Frys på den sista skarpa bilden under en stöt och återgå sedan smidigt till livevideo</translation>
+            <translation>Frys bilden på den senaste skarpa bildrutan vid en stöt och återgå sedan mjukt till realtidsvideon</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1843,7 +1843,7 @@
         </message>
         <message>
             <source>Ignore NVIDIA Super Resolution performance limit</source>
-            <translation>Ignorera NVIDIA Super Resolution prestandagräns</translation>
+            <translation>Ignorera prestandagränsen för NVIDIA Super Resolution</translation>
         </message>
         <message>
             <source>Set up Codex CLI and NVIDIA Video Effects</source>
@@ -1863,11 +1863,11 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>Lås den monterade kameravyn med fullstyrka CUDA stabilisering</translation>
+            <translation>Lås kameravyn med full CUDA-stabilisering</translation>
         </message>
         <message>
             <source>Low Light</source>
-            <translation>Lågt ljus</translation>
+            <translation>Svagt ljus</translation>
         </message>
         <message>
             <source>Match camera (recommended)</source>
@@ -1879,7 +1879,7 @@
         </message>
         <message>
             <source>NVIDIA Image Scaling (default)</source>
-            <translation>NVIDIA Bildskalning (standard)</translation>
+            <translation>NVIDIA Image Scaling (standard)</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution status</source>
@@ -1887,11 +1887,11 @@
         </message>
         <message>
             <source>NVIDIA Video Effects runtime installed</source>
-            <translation>NVIDIA Video Effects körtid installerad</translation>
+            <translation>NVIDIA Video Effects-körmiljön är installerad</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>NVIDIA Video Effects körtid inte installerad; använd Setup &amp; Downloads</translation>
+            <translation>NVIDIA Video Effects-körmiljön är inte installerad. Använd Installation och nedladdningar.</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>Öppna kontroller och funktioner hjälp</translation>
+            <translation>Öppna hjälpen för kontroller och funktioner</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1915,15 +1915,15 @@
         </message>
         <message>
             <source>OkuFlow Help</source>
-            <translation>OkuFlow Hjälp</translation>
+            <translation>Hjälp för OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
-            <translation>OkuFlow guide för kontroller och funktioner</translation>
+            <translation>Guide till OkuFlows kontroller och funktioner</translation>
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
-            <translation>Lägg över en röd markering vid det aktuella zoomfokuset</translation>
+            <translation>Visa en röd markering vid den aktuella zoompunkten</translation>
         </message>
         <message>
             <source>Previous Advanced section</source>
@@ -1971,7 +1971,7 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>Återställ profilägd bild och hjälpinställning till standardinställningarna</translation>
+            <translation>Återställ profilens bild- och hjälpmedelsinställningar till standardvärdena</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
@@ -1979,11 +1979,11 @@
         </message>
         <message>
             <source>Rotate input/output clockwise</source>
-            <translation>Rotera ingång/utgång medurs</translation>
+            <translation>Rotera in- och utdata medurs</translation>
         </message>
         <message>
             <source>Runtime not installed; use Setup &amp; Downloads</source>
-            <translation>Runtime inte installerad; använd Setup &amp; Downloads</translation>
+            <translation>Körmiljön är inte installerad. Använd Installation och nedladdningar.</translation>
         </message>
         <message>
             <source>Save an annotated snapshot to lecture notes when Draw mode closes.</source>
@@ -2007,7 +2007,7 @@
         </message>
         <message>
             <source>Show a guide to OkuFlow controls and features</source>
-            <translation>Visa en guide till OkuFlow kontroller och funktioner</translation>
+            <translation>Visa en guide till OkuFlows kontroller och funktioner</translation>
         </message>
         <message>
             <source>Show all quick modes</source>
@@ -2035,11 +2035,11 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>Använd NVIDIA Video Effects SuperRes vid 1,33x zoom och högre; faller tillbaka till NIS automatiskt</translation>
+            <translation>Använd NVIDIA Video Effects SuperRes vid 1,33× förstoring och högre. Växlar automatiskt till NIS om det behövs.</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
-            <translation>Viewport-inställning delas av alla profiler.</translation>
+            <translation>Inställningen för visningsytan delas av alla profiler.</translation>
         </message>
         <message>
             <source>Zoom In More</source>
@@ -2047,7 +2047,7 @@
         </message>
         <message>
             <source>Administrator approval was cancelled. Nothing was installed.</source>
-            <translation>Administratörs godkännande avbröts. Ingenting var installerat.</translation>
+            <translation>Administratörsgodkännandet avbröts. Ingenting installerades.</translation>
         </message>
         <message>
             <source>Codex CLI</source>
@@ -2068,16 +2068,16 @@
         <message>
             <source>Installed and managed by OkuFlow
 %1</source>
-            <translation>Installerad och hanterad av OkuFlow
+            <translation>Installerat och hanteras av OkuFlow
 %1</translation>
         </message>
         <message>
             <source>Installed system-wide
 %1
 Removal is managed by Windows.</source>
-            <translation>Installerad i hela systemet
+            <translation>Installerat för hela systemet
 %1
-Borttagning hanteras av Windows.</translation>
+Avinstallation hanteras av Windows.</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects</source>
@@ -2085,7 +2085,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>NVIDIA installer running. Continue in the vendor installer window.</source>
-            <translation>NVIDIA installationsprogram körs. Fortsätt i leverantörens installationsfönster.</translation>
+            <translation>NVIDIA-installationsprogrammet körs. Fortsätt i installationsfönstret.</translation>
         </message>
         <message>
             <source>Not installed</source>
@@ -2093,7 +2093,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>Ej installerad. Install laddar ner paketet för %1 GPU:er.</translation>
+            <translation>Inte installerat. Välj Installera för att hämta paketet för %1 GPU:er.</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
@@ -2101,7 +2101,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Open Codex CLI setup guide</source>
-            <translation>Öppna Codex CLI installationsguide</translation>
+            <translation>Öppna installationsguiden för Codex CLI</translation>
         </message>
         <message>
             <source>Open Install Folder</source>
@@ -2113,15 +2113,15 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Open Windows Apps</source>
-            <translation>Öppna Windows Apps</translation>
+            <translation>Öppna Installerade appar i Windows</translation>
         </message>
         <message>
             <source>Open the NVIDIA runtime uninstaller?</source>
-            <translation>Öppna NVIDIA runtime uninstaller?</translation>
+            <translation>Öppna avinstallationsprogrammet för NVIDIA-körmiljön?</translation>
         </message>
         <message>
             <source>Open the folder containing the detected Codex CLI</source>
-            <translation>Öppna mappen som innehåller den upptäckta Codex CLI</translation>
+            <translation>Öppna mappen där den identifierade Codex CLI-installationen finns</translation>
         </message>
         <message>
             <source>Open the official Codex CLI documentation</source>
@@ -2129,7 +2129,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>OkuFlow Setup Assistant</source>
-            <translation>OkuFlow Inställningsassistent</translation>
+            <translation>OkuFlow-installationsassistent</translation>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
@@ -2137,7 +2137,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Retrying from the alternate vendor host...</source>
-            <translation>Försöker igen från den alternativa leverantörsvärden...</translation>
+            <translation>Försöker igen från leverantörens alternativa server …</translation>
         </message>
         <message>
             <source>Setup Assistant</source>
@@ -2157,11 +2157,11 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Setup status</source>
-            <translation>Inställningsstatus</translation>
+            <translation>Installationsstatus</translation>
         </message>
         <message>
             <source>The Setup Assistant remains available from Advanced settings</source>
-            <translation>Inställningsassistenten förblir tillgänglig från avancerade inställningar</translation>
+            <translation>Installationsassistenten finns också tillgänglig under Avancerade inställningar</translation>
         </message>
         <message>
             <source>The downloaded installer could not be opened for verification.</source>
@@ -2173,7 +2173,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>The first transfer failed. Retrying with the Windows downloader...</source>
-            <translation>Den första överföringen misslyckades. Försöker igen med Windows-nedladdningsprogrammet...</translation>
+            <translation>Den första nedladdningen misslyckades. Försöker igen med Windows nedladdningsverktyg …</translation>
         </message>
         <message>
             <source>The installer did not complete successfully.</source>
@@ -2181,7 +2181,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>The installer failed SHA-256 verification and was deleted.</source>
-            <translation>Installationsprogrammet misslyckades med SHA-256-verifieringen och togs bort.</translation>
+            <translation>Installationsfilen klarade inte SHA-256-verifieringen och togs bort.</translation>
         </message>
         <message>
             <source>The temporary download file could not be created.</source>
@@ -2189,7 +2189,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>Denna systemomfattande kopia måste tas bort via Windows-installerade appar</translation>
+            <translation>Den här systemomfattande installationen måste avinstalleras via Installerade appar i Windows</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2229,11 +2229,11 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>Assisterande krokar: Scenförklaring</translation>
+            <translation>Hjälpfunktioner: scenförklaring</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>Assisterande krokar: Scenförklara med överlägg</translation>
+            <translation>Hjälpfunktioner: scenförklaring med överlägg</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
@@ -2273,7 +2273,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Performance timing percentiles</source>
-            <translation>Prestanda timing percentiler</translation>
+            <translation>Percentiler för prestandamätningar</translation>
         </message>
         <message>
             <source>%1 status</source>
@@ -2325,7 +2325,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
-            <translation>Accelerera snabba Ctrl+scroll-zoomgester; tangentbordszoom förblir exakt</translation>
+            <translation>Snabba på zoom med Ctrl+scroll; tangentbordszoom förblir exakt</translation>
         </message>
         <message>
             <source>SuperRes powered by NVIDIA Maxine™</source>
@@ -2437,7 +2437,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Collapse all</source>
-            <translation>Komprimera alla</translation>
+            <translation>Fäll ihop alla</translation>
         </message>
         <message>
             <source>Light or dark colors</source>
@@ -2477,23 +2477,23 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
-            <translation>Startade en ny konversation. Nästa Explain startar också en ny konversation.</translation>
+            <translation>En ny konversation startades. Nästa gång du väljer Förklara startas också en ny konversation.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Skickar den aktuella kameraramen och uppmaningen till Codex. Konversation: sparad Explain-konversation, fortsättning av varje Explain. Verktygsinternet: blockerad. Kodning och filändringar: blockerad.</translation>
+            <translation>Den aktuella kamerabilden och instruktionen skickas till Codex. Konversation: sparad Förklara-konversation som fortsätter varje gång du väljer Förklara. Verktygsåtkomst till internet: blockerad. Kodning och filändringar: blockerade.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Skickar den aktuella kameraramen och uppmaningen till Codex. Konversation: tillfälligt, nytt för varje läsning. Verktygsinternet: blockerad. Kodning och filändringar: blockerad.</translation>
+            <translation>Den aktuella kamerabilden och instruktionen skickas till Codex. Konversation: tillfällig, ny för varje gång du väljer Läs. Verktygsåtkomst till internet: blockerad. Kodning och filändringar: blockerade.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Skickar den aktuella kameraramen, uppmaningen och de senaste Förklara svaren till %1 (lokal slutpunkt). Konversation: nyligen Förklara svar, endast sparade i minnet. Kodningsverktyg: ej tillgängligt.</translation>
+            <translation>Den aktuella kamerabilden, instruktionen och de senaste svaren från Förklara skickas till %1 (lokal serveradress). Konversation: de senaste Förklara-svaren, sparas bara i minnet. Kodningsverktyg: inte tillgängliga.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Skickar den aktuella kameraramen, uppmaningen och de senaste Förklara svaren till %1 (fjärrslutpunkt). Konversation: nyligen Förklara svar, endast sparade i minnet. Kodningsverktyg: ej tillgängligt.</translation>
+            <translation>Den aktuella kamerabilden, instruktionen och de senaste svaren från Förklara skickas till %1 (fjärrserveradress). Konversation: de senaste Förklara-svaren, sparas bara i minnet. Kodningsverktyg: inte tillgängliga.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2521,7 +2521,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>Aktiverar prenumerationsstödda läs-, förklara- och assistentfunktioner. Installerar den officiella Codex CLI för ditt Windows-konto; ChatGPT-inloggning förblir ett separat steg.</translation>
+            <translation>Aktiverar funktionerna Läs, Förklara och Assistent som ingår i prenumerationen. Installerar officiella Codex CLI för ditt Windows-konto; du loggar in på ChatGPT separat.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2537,11 +2537,11 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Connect a camera, then choose it under Advanced, Device.</source>
-            <translation>Anslut en kamera och välj den sedan under Avancerat, Enhet.</translation>
+            <translation>Anslut en kamera och välj den sedan under Inställningar &gt; Kamera.</translation>
         </message>
         <message>
             <source>Choose a camera under Advanced, Device, or check that it is connected.</source>
-            <translation>Välj en kamera under Avancerat, Enhet eller kontrollera att den är ansluten.</translation>
+            <translation>Välj en kamera under Inställningar &gt; Kamera, eller kontrollera att den är ansluten.</translation>
         </message>
         <message>
             <source>Number key %1</source>
@@ -2705,7 +2705,7 @@ Borttagning hanteras av Windows.</translation>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>Stop scen förklaring</translation>
+            <translation>Stoppa scenförklaringen</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
@@ -2745,7 +2745,7 @@ Delade inställningar på fliken Inställningar förblir oförändrade.</transla
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>Inspelningsutgångsvägen finns redan; den bevarades.</translation>
+            <translation>Sökvägen för inspelningen finns redan och har inte ändrats.</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
@@ -2791,11 +2791,11 @@ Delade inställningar på fliken Inställningar förblir oförändrade.</transla
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>Läs, förklara och assistent använder din ChatGPT-prenumeration via Codex CLI. Logga in med Connect ChatGPT på fliken Assistant i avancerat läge.</translation>
+            <translation>Läs, Förklara och Assistent använder din ChatGPT-prenumeration via Codex CLI. Logga in med Anslut ChatGPT på fliken Assistent i avancerat läge.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>Läs och förklara skicka kameravyn till serverns URL nedan. Bilder stannar på den här datorn endast om den servern körs på den, till exempel LM Studio eller Ollama på localhost. Sparade assistentkonversationer kräver ChatGPT-prenumerationen.</translation>
+            <translation>Läs och Förklara skickar kameravyn till serveradressen nedan. Bilderna lämnar inte den här datorn om servern körs lokalt, till exempel LM Studio eller Ollama på localhost. Sparade Assistent-konversationer kräver en ChatGPT-prenumeration.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
@@ -2815,7 +2815,7 @@ Delade inställningar på fliken Inställningar förblir oförändrade.</transla
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>Dessa gäller bara sparade assistentkonversationer, inklusive frågor från den flytande assistenten. Läs och förklara alltid begränsas.</translation>
+            <translation>De här behörigheterna gäller bara sparade Assistent-konversationer, även frågor som ställs via den flytande Assistenten. Läs och Förklara är alltid begränsade.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2841,9 +2841,9 @@ Delade inställningar på fliken Inställningar förblir oförändrade.</transla
             <source>Installed
 %1
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
-            <translation>Installerad
+            <translation>Installerat
 %1
-Använd Connect ChatGPT på fliken Advanced Assistant för att logga in.</translation>
+Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2859,7 +2859,7 @@ Använd Connect ChatGPT på fliken Advanced Assistant för att logga in.</transl
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
-            <translation>Inspelningen hoppar över prover eftersom kodarförloppet inte kunde kontrolleras. Stoppa och starta om inspelningen om den fortsätter.</translation>
+            <translation>Inspelningen hoppar över bildrutor eftersom kodarens förlopp inte kunde kontrolleras. Stoppa och starta om inspelningen om problemet fortsätter.</translation>
         </message>
         <message>
             <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
@@ -2879,11 +2879,11 @@ Använd Connect ChatGPT på fliken Advanced Assistant för att logga in.</transl
         </message>
         <message>
             <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
-            <translation>Windows runtime installationsprogrammet ingår. Valfria AI-verktyg laddas ner från deras leverantörer. Varje installationsprogram verifieras innan det körs.</translation>
+            <translation>Installationsprogrammet för Windows-körmiljön ingår. Valfria AI-verktyg hämtas från respektive leverantör. Varje installationsprogram verifieras innan det körs.</translation>
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
-            <translation>Microsoft Windows körningsmiljö</translation>
+            <translation>Microsofts Windows-körmiljö</translation>
         </message>
         <message>
             <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
@@ -2895,11 +2895,11 @@ Använd Connect ChatGPT på fliken Advanced Assistant för att logga in.</transl
         </message>
         <message>
             <source>Install Microsoft Windows runtime</source>
-            <translation>Installera Microsoft Windows runtime</translation>
+            <translation>Installera Microsofts Windows-körmiljö</translation>
         </message>
         <message>
             <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>
-            <translation>Använd hela OkuFlow ZIP för att inkludera Windows runtime installationsprogrammet.</translation>
+            <translation>Använd det fullständiga OkuFlow-ziparkivet för att få med installationsprogrammet för Windows-körmiljön.</translation>
         </message>
         <message>
             <source>The included Microsoft installer could not be verified. Download the complete OkuFlow ZIP again.</source>

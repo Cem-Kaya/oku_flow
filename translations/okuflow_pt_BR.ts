@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>Começa em cada conexão. Pressione para ligar ou desligar a luz do telefone.</translation>
+            <translation>A luz começa desligada a cada conexão. Pressione para ligá-la ou desligá-la.</translation>
         </message>
         <message>
             <source>Application</source>
@@ -85,7 +85,7 @@
         </message>
         <message>
             <source>Search settings...</source>
-            <translation>Configurações de pesquisa...</translation>
+            <translation>Pesquisar configurações...</translation>
         </message>
         <message>
             <source>Search Advanced settings</source>
@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>Digite parte do nome de uma configuração para revelar e focar os controles correspondentes.</translation>
+            <translation>Digite parte do nome de uma configuração para exibir os controles correspondentes e dar foco a eles.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -125,7 +125,7 @@
         </message>
         <message>
             <source>Viewport motion rate</source>
-            <translation>Taxa de movimento da janela de visualização</translation>
+            <translation>Taxa de atualização da área de visualização</translation>
         </message>
         <message>
             <source>Auto (up to 120 FPS)</source>
@@ -153,7 +153,7 @@
         </message>
         <message>
             <source>Reset Tuning</source>
-            <translation>Redefinir ajuste</translation>
+            <translation>Redefinir ajustes</translation>
         </message>
         <message>
             <source>Virtual Joystick</source>
@@ -213,7 +213,7 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>Afie e concentre-se</translation>
+            <translation>Nitidez e foco</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
@@ -225,7 +225,7 @@
         </message>
         <message>
             <source>Zoom %L1 times</source>
-            <translation>Zoom %L1 vezes</translation>
+            <translation>Zoom de %L1×</translation>
         </message>
         <message>
             <source>Gaussian Blur</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>Temporal suave</translation>
+            <translation>Suavização temporal</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -253,11 +253,11 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>Extra estável (segure o shake)</translation>
+            <translation>Estabilidade extra (compensa tremores)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
-            <translation>Endireitar tela (Keystone)</translation>
+            <translation>Corrigir perspectiva (keystone)</translation>
         </message>
         <message>
             <source>Correction tracking:</source>
@@ -281,7 +281,7 @@
         </message>
         <message>
             <source>Strength:</source>
-            <translation>Força:</translation>
+            <translation>Intensidade:</translation>
         </message>
         <message>
             <source>Auto Text Clarity</source>
@@ -289,7 +289,7 @@
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>Achatar fundo</translation>
+            <translation>Uniformizar o fundo</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
@@ -305,7 +305,7 @@
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>Peso do curso</translation>
+            <translation>Espessura do traço</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -321,19 +321,19 @@
         </message>
         <message>
             <source>Steady Text Edges</source>
-            <translation>Bordas de texto estáveis</translation>
+            <translation>Estabilizar as bordas do texto</translation>
         </message>
         <message>
             <source>Sharpen Text Only</source>
-            <translation>Afiar apenas texto</translation>
+            <translation>Aumentar a nitidez apenas do texto</translation>
         </message>
         <message>
             <source>Warn When Out of Focus</source>
-            <translation>Avisar quando estiver fora de foco</translation>
+            <translation>Avisar quando a imagem estiver desfocada</translation>
         </message>
         <message>
             <source>Suppress Glare</source>
-            <translation>Suprimir brilho</translation>
+            <translation>Reduzir reflexos</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution</source>
@@ -341,7 +341,7 @@
         </message>
         <message>
             <source>Ultra quality (full frame, up to 1440p)</source>
-            <translation>Ultra qualidade (full frame, até 1440p)</translation>
+            <translation>Qualidade ultra (quadro inteiro, até 1440p)</translation>
         </message>
         <message>
             <source>Faster 2x mode (narrower view)</source>
@@ -357,7 +357,7 @@
         </message>
         <message>
             <source>Display colors</source>
-            <translation>Exibir cores</translation>
+            <translation>Cores da tela</translation>
         </message>
         <message>
             <source>Normal colors</source>
@@ -381,7 +381,7 @@
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
-            <translation>Salve o desenho nas notas ao sair do Draw</translation>
+            <translation>Salvar o desenho nas notas ao sair do modo Desenho</translation>
         </message>
         <message>
             <source>AI Settings</source>
@@ -389,7 +389,7 @@
         </message>
         <message>
             <source>Open AI Settings dialog</source>
-            <translation>Abra a caixa de diálogo Configurações de IA</translation>
+            <translation>Abrir a janela Configurações de IA</translation>
         </message>
         <message>
             <source>Open Notes</source>
@@ -457,11 +457,11 @@
         </message>
         <message>
             <source>Explain</source>
-            <translation>Explique</translation>
+            <translation>Explicar</translation>
         </message>
         <message>
             <source>Read</source>
-            <translation>Leia</translation>
+            <translation>Ler</translation>
         </message>
         <message>
             <source>Draw</source>
@@ -553,7 +553,7 @@
         </message>
         <message>
             <source>Read Aloud</source>
-            <translation>Leia em voz alta</translation>
+            <translation>Ler em voz alta</translation>
         </message>
         <message>
             <source>Close result</source>
@@ -589,7 +589,7 @@
         </message>
         <message>
             <source>Ask about the current camera view.</source>
-            <translation>Pergunte sobre a visão atual da câmera.</translation>
+            <translation>Faça perguntas sobre a imagem atual da câmera.</translation>
         </message>
         <message>
             <source>Ask about what is visible...</source>
@@ -613,7 +613,7 @@
         </message>
         <message>
             <source>Browse...</source>
-            <translation>Navegar...</translation>
+            <translation>Procurar...</translation>
         </message>
         <message>
             <source>Browse…</source>
@@ -621,7 +621,7 @@
         </message>
         <message>
             <source>Codex CLI path:</source>
-            <translation>Codex CLI caminho:</translation>
+            <translation>Caminho do Codex CLI:</translation>
         </message>
         <message>
             <source>Codex model:</source>
@@ -641,11 +641,11 @@
         </message>
         <message>
             <source>Required when coding is enabled</source>
-            <translation>Obrigatório quando a codificação está habilitada</translation>
+            <translation>Obrigatório quando a programação está ativada</translation>
         </message>
         <message>
             <source>Coding workspace:</source>
-            <translation>Espaço de trabalho de codificação:</translation>
+            <translation>Pasta de trabalho para programação:</translation>
         </message>
         <message>
             <source>Assistant behavior</source>
@@ -657,7 +657,7 @@
         </message>
         <message>
             <source>OpenAI-compatible vision server</source>
-            <translation>Servidor de visão compatível com OpenAI</translation>
+            <translation>Servidor de visão computacional compatível com OpenAI</translation>
         </message>
         <message>
             <source>Server URL:</source>
@@ -673,7 +673,7 @@
         </message>
         <message>
             <source>Read aloud</source>
-            <translation>Leia em voz alta</translation>
+            <translation>Leitura em voz alta</translation>
         </message>
         <message>
             <source>Voice:</source>
@@ -693,7 +693,7 @@
         </message>
         <message>
             <source>Camera did not stop in time. Restart OkuFlow before changing cameras.</source>
-            <translation>A câmera não parou no tempo. Reinicie OkuFlow antes de trocar de câmera.</translation>
+            <translation>A câmera não parou a tempo. Reinicie o OkuFlow antes de trocar de câmera.</translation>
         </message>
         <message>
             <source>GPU stopped responding. Restart OkuFlow to resume video.</source>
@@ -709,7 +709,7 @@
         </message>
         <message>
             <source>Write lecture notes file</source>
-            <translation>Escrever arquivo de notas de aula</translation>
+            <translation>Salvar arquivo de notas da aula</translation>
         </message>
         <message>
             <source>None</source>
@@ -809,7 +809,7 @@
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>Nenhuma voz %1 está instalada — usando a voz atual. Instale um em Configurações do Windows → Hora e idioma → Fala.</translation>
+            <translation>Nenhuma voz %1 está instalada; será usada a voz atual. Instale uma em Configurações do Windows → Hora e idioma → Fala.</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -837,7 +837,7 @@
         </message>
         <message>
             <source>OkuFlow Assistant</source>
-            <translation>OkuFlow Assistente</translation>
+            <translation>Assistente OkuFlow</translation>
         </message>
         <message>
             <source>You</source>
@@ -877,7 +877,7 @@
         </message>
         <message>
             <source>Viewport motion limited to %1 FPS by this display.</source>
-            <translation>Movimento da janela de visualização limitado a %1 FPS por esta exibição.</translation>
+            <translation>A movimentação da área de visualização foi limitada a %1 FPS por este monitor.</translation>
         </message>
         <message>
             <source>Vision model: %1</source>
@@ -885,7 +885,7 @@
         </message>
         <message>
             <source>Automatic screen correction continuing.</source>
-            <translation>Correção automática de tela continuando.</translation>
+            <translation>A correção automática da tela continua.</translation>
         </message>
         <message>
             <source>Automatic screen correction stopped.</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>A captura da câmera GPU está ativa com o substituto de cópia segura.</translation>
+            <translation>A captura da câmera por GPU está ativa com o modo alternativo de cópia segura.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -909,7 +909,7 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>NVIDIA Super Resolution limite de desempenho ignorado.</translation>
+            <translation>Limite de desempenho do NVIDIA Super Resolution ignorado.</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
@@ -929,7 +929,7 @@
         </message>
         <message>
             <source>Opened your OkuFlow folder.</source>
-            <translation>Abriu sua pasta OkuFlow.</translation>
+            <translation>Sua pasta do OkuFlow foi aberta.</translation>
         </message>
         <message>
             <source>Recording stopped because the microphone selection changed.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>A correção da tela retrocedeu e o rastreamento foi interrompido.</translation>
+            <translation>A correção da tela voltou à posição anterior e o rastreamento foi interrompido.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -999,7 +999,7 @@
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
-            <translation>Vista anotada não salva: a janela de visualização estava indisponível.</translation>
+            <translation>A visualização anotada não foi salva: a área de visualização estava indisponível.</translation>
         </message>
         <message>
             <source>Camera Error</source>
@@ -1019,7 +1019,7 @@
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>O processamento da GPU continua falhando – mostrando vídeo não processado.</translation>
+            <translation>O processamento da GPU continua falhando — exibindo o vídeo sem processamento.</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
@@ -1035,31 +1035,31 @@
         </message>
         <message>
             <source>Photo not saved: no processed frame was available.</source>
-            <translation>Foto não salva: nenhum quadro processado estava disponível.</translation>
+            <translation>A foto não foi salva: nenhum quadro processado estava disponível.</translation>
         </message>
         <message>
             <source>Photo not saved: the OkuFlow Photos folder is unavailable.</source>
-            <translation>Foto não salva: a pasta OkuFlow Fotos não está disponível.</translation>
+            <translation>A foto não foi salva: a pasta Fotos do OkuFlow não está disponível.</translation>
         </message>
         <message>
             <source>Photo not saved: the image could not be queued.</source>
-            <translation>Foto não salva: a imagem não pôde ser colocada na fila.</translation>
+            <translation>A foto não foi salva: não foi possível adicionar a imagem à fila.</translation>
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>Foto não salva: o gravador de imagens está ocupado. Tente novamente.</translation>
+            <translation>A foto não foi salva: o gravador de imagens está ocupado. Tente novamente.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
-            <translation>Foto não salva: não foi possível converter o quadro original da câmera.</translation>
+            <translation>A foto não foi salva: não foi possível converter o quadro original da câmera.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be read back.</source>
-            <translation>Foto não salva: não foi possível ler o quadro original da câmera.</translation>
+            <translation>A foto não foi salva: não foi possível recuperar o quadro original da câmera.</translation>
         </message>
         <message>
             <source>Photo not saved: the processed or original frame was unavailable.</source>
-            <translation>Foto não salva: a moldura processada ou original não estava disponível.</translation>
+            <translation>A foto não foi salva: o quadro processado ou original não estava disponível.</translation>
         </message>
         <message>
             <source>Reconnecting to camera…</source>
@@ -1135,7 +1135,7 @@
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
-            <translation>A tela de gravação é inválida.</translation>
+            <translation>A área de gravação é inválida.</translation>
         </message>
         <message>
             <source>No frames were dropped.</source>
@@ -1147,11 +1147,11 @@
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>Áudio: blocos %1 descartados antes da codificação, %2 rejeitados pelo limite de entrada.</translation>
+            <translation>Áudio: %1 blocos descartados antes da codificação; %2 rejeitados pelo limite de entrada.</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
-            <translation>Os quadros %1 foram eliminados (%2).</translation>
+            <translation>%1 quadros foram descartados (%2).</translation>
         </message>
         <message>
             <source>%1 frames used an estimated timestamp.</source>
@@ -1167,7 +1167,7 @@
         </message>
         <message>
             <source>with microphone audio</source>
-            <translation>com microfone de áudio</translation>
+            <translation>com áudio do microfone</translation>
         </message>
         <message>
             <source>CPU/system memory</source>
@@ -1179,11 +1179,11 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>Original alimentado por GPU e processado</translation>
+            <translation>Original e processado, com entrada pela GPU</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>Fonte de GPU com leitura de trabalho</translation>
+            <translation>Fonte da GPU com leitura de retorno pelo worker</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1191,7 +1191,7 @@
         </message>
         <message>
             <source>Assistant stopped.</source>
-            <translation>Assistente parou.</translation>
+            <translation>O assistente foi interrompido.</translation>
         </message>
         <message>
             <source>Assistive View</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex a preparação da imagem está ocupada. Tente novamente em alguns instantes.</translation>
+            <translation>A preparação da imagem pelo Codex está ocupada. Tente novamente em alguns instantes.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1215,7 +1215,7 @@
         </message>
         <message>
             <source>No camera frame is available to attach.</source>
-            <translation>Nenhuma moldura de câmera está disponível para anexar.</translation>
+            <translation>Nenhum quadro da câmera está disponível para anexar.</translation>
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
@@ -1243,7 +1243,7 @@
         </message>
         <message>
             <source>Sending the current camera frame and prompt</source>
-            <translation>Enviando o quadro e o prompt da câmera atual</translation>
+            <translation>Enviando o quadro atual da câmera e o prompt</translation>
         </message>
         <message>
             <source>Sending the prompt only</source>
@@ -1259,7 +1259,7 @@
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
-            <translation>A preparação da imagem VLM está ocupada. Tente novamente em alguns instantes.</translation>
+            <translation>A preparação da imagem para o VLM está ocupada. Tente novamente em alguns instantes.</translation>
         </message>
         <message>
             <source>VLM ready.</source>
@@ -1291,15 +1291,15 @@
         </message>
         <message>
             <source>Codex CLI Path</source>
-            <translation>Codex CLI Caminho</translation>
+            <translation>Caminho do Codex CLI</translation>
         </message>
         <message>
             <source>Codex Model</source>
-            <translation>Codex Modelo</translation>
+            <translation>Modelo do Codex</translation>
         </message>
         <message>
             <source>Codex Reasoning</source>
-            <translation>Codex Raciocínio</translation>
+            <translation>Raciocínio do Codex</translation>
         </message>
         <message>
             <source>Assistant Instructions</source>
@@ -1307,7 +1307,7 @@
         </message>
         <message>
             <source>Built-in Codex Prompt</source>
-            <translation>Alerta Codex integrado</translation>
+            <translation>Prompt integrado do Codex</translation>
         </message>
         <message>
             <source>VLM Server URL</source>
@@ -1331,11 +1331,11 @@
         </message>
         <message>
             <source>Preview Read Aloud Voice</source>
-            <translation>Visualização de voz lida em voz alta</translation>
+            <translation>Prévia da voz de leitura em voz alta</translation>
         </message>
         <message>
             <source>Write Lecture Notes File</source>
-            <translation>Escrever arquivo de notas de aula</translation>
+            <translation>Salvar arquivo de notas de aula</translation>
         </message>
         <message>
             <source>Loading installed Windows voices...</source>
@@ -1343,7 +1343,7 @@
         </message>
         <message>
             <source>No installed Windows voices found</source>
-            <translation>Nenhuma voz instalada do Windows encontrada</translation>
+            <translation>Nenhuma voz do Windows instalada foi encontrada</translation>
         </message>
         <message>
             <source>Text-to-speech is unavailable in this build</source>
@@ -1439,7 +1439,7 @@
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>Desenhe, selecione, redimensione, salve ou limpe anotações ancoradas na cena da câmera.</translation>
+            <translation>Desenhe, selecione, redimensione, salve ou limpe anotações fixadas à cena da câmera.</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1451,7 +1451,7 @@
         </message>
         <message>
             <source>Erase annotation tool</source>
-            <translation>Ferramenta apagar anotação</translation>
+            <translation>Ferramenta para apagar anotações</translation>
         </message>
         <message>
             <source>Erase tool</source>
@@ -1471,7 +1471,7 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>Mover ferramenta de anotação</translation>
+            <translation>Ferramenta para mover anotações</translation>
         </message>
         <message>
             <source>Move tool</source>
@@ -1503,7 +1503,7 @@
         </message>
         <message>
             <source>Save a marked snapshot and clear all annotations.</source>
-            <translation>Salve um instantâneo marcado e limpe todas as anotações.</translation>
+            <translation>Salve uma captura anotada e limpe todas as anotações.</translation>
         </message>
         <message>
             <source>Save annotated view</source>
@@ -1511,7 +1511,7 @@
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>Salve a visualização marcada nas notas de aula. Controle de atalho S.</translation>
+            <translation>Salve a visualização anotada nas notas de aula. Atalho Ctrl+S.</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
@@ -1519,7 +1519,7 @@
         </message>
         <message>
             <source>Selected annotation scaled</source>
-            <translation>Anotação selecionada dimensionada</translation>
+            <translation>Anotação selecionada redimensionada</translation>
         </message>
         <message>
             <source>Selection cleared</source>
@@ -1579,19 +1579,19 @@
         </message>
         <message>
             <source>Assistive result</source>
-            <translation>Resultado assistencial</translation>
+            <translation>Resultado do assistente</translation>
         </message>
         <message>
             <source>Assistive result text</source>
-            <translation>Texto de resultado auxiliar</translation>
+            <translation>Texto do resultado do assistente</translation>
         </message>
         <message>
             <source>Assistive result title</source>
-            <translation>Título do resultado auxiliar</translation>
+            <translation>Título do resultado do assistente</translation>
         </message>
         <message>
             <source>Assistive results</source>
-            <translation>Resultados assistenciais</translation>
+            <translation>Resultados do assistente</translation>
         </message>
         <message>
             <source>Close assistive result</source>
@@ -1615,7 +1615,7 @@
         </message>
         <message>
             <source>Send the question with the current camera view to OkuFlow Assistant</source>
-            <translation>Envie a pergunta com a visualização atual da câmera para OkuFlow Assistente</translation>
+            <translation>Envie a pergunta e a visualização atual da câmera ao assistente do OkuFlow</translation>
         </message>
         <message>
             <source>Speak the current assistant result</source>
@@ -1623,7 +1623,7 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>Resultado do assistente de streaming. Use as teclas de seta para ler o texto.</translation>
+            <translation>Resposta do assistente em andamento. Use as teclas de seta para ler o texto.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1631,7 +1631,7 @@
         </message>
         <message>
             <source>Apply custom</source>
-            <translation>Aplicar personalizado</translation>
+            <translation>Aplicar configuração personalizada</translation>
         </message>
         <message>
             <source>Background color</source>
@@ -1639,7 +1639,7 @@
         </message>
         <message>
             <source>Choose color stop %1</source>
-            <translation>Escolha a parada de cor %1</translation>
+            <translation>Escolha o ponto de cor %1</translation>
         </message>
         <message>
             <source>Choose display colors</source>
@@ -1647,7 +1647,7 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>Parada de cor %1 de %2</translation>
+            <translation>Ponto de cor %1 de %2</translation>
         </message>
         <message>
             <source>Custom</source>
@@ -1691,7 +1691,7 @@
         </message>
         <message>
             <source>Number of color stops</source>
-            <translation>Número de paradas de cor</translation>
+            <translation>Número de pontos de cor</translation>
         </message>
         <message>
             <source>Posterize</source>
@@ -1699,7 +1699,7 @@
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>Lendo cores</translation>
+            <translation>Cores de leitura</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>Use faixas de cores fortes</translation>
+            <translation>Use faixas de cores bem definidas</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1739,7 +1739,7 @@
         </message>
         <message>
             <source>Automatically clarify text in the camera view</source>
-            <translation>Esclareça automaticamente o texto na visualização da câmera</translation>
+            <translation>Aumente automaticamente a nitidez do texto na imagem da câmera</translation>
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
@@ -1763,11 +1763,11 @@
         </message>
         <message>
             <source>Codex connection status</source>
-            <translation>Codex status da conexão</translation>
+            <translation>Status da conexão do Codex</translation>
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex uso</translation>
+            <translation>Uso do Codex</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>Controla a apresentação suave de panorâmica e zoom; a taxa de quadros da câmera permanece inalterada</translation>
+            <translation>Controla a suavidade da panorâmica e do zoom; a taxa de quadros da câmera não muda</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1819,7 +1819,7 @@
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>Preencher usa a janela de visualização completa sem esticar; Ajustar preserva a imagem inteira com barras</translation>
+            <translation>Preencher ocupa toda a área de visualização sem esticar a imagem; Ajustar mostra a imagem inteira com barras</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1827,11 +1827,11 @@
         </message>
         <message>
             <source>Finishing</source>
-            <translation>Acabamento</translation>
+            <translation>Finalizando</translation>
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>Congele no último quadro nítido durante uma colisão e retorne suavemente ao vídeo ao vivo</translation>
+            <translation>Congele no último quadro nítido durante um solavanco e depois retome suavemente o vídeo ao vivo</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1843,7 +1843,7 @@
         </message>
         <message>
             <source>Ignore NVIDIA Super Resolution performance limit</source>
-            <translation>Ignorar limite de desempenho NVIDIA Super Resolution</translation>
+            <translation>Ignorar o limite de desempenho do NVIDIA Super Resolution</translation>
         </message>
         <message>
             <source>Set up Codex CLI and NVIDIA Video Effects</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>Bloqueie a visualização da câmera montada usando estabilização CUDA de força total</translation>
+            <translation>Estabilize a imagem da câmera montada com a intensidade máxima da estabilização CUDA</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1871,7 +1871,7 @@
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>Câmera correspondente (recomendado)</translation>
+            <translation>Igualar à câmera (recomendado)</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1879,7 +1879,7 @@
         </message>
         <message>
             <source>NVIDIA Image Scaling (default)</source>
-            <translation>NVIDIA Dimensionamento de imagem (padrão)</translation>
+            <translation>NVIDIA Image Scaling (padrão)</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution status</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>Ajuda para controles e recursos abertos</translation>
+            <translation>Abrir a ajuda sobre controles e recursos</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1915,11 +1915,11 @@
         </message>
         <message>
             <source>OkuFlow Help</source>
-            <translation>OkuFlow Ajuda</translation>
+            <translation>Ajuda do OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
-            <translation>OkuFlow guia de controles e recursos</translation>
+            <translation>Guia de controles e recursos do OkuFlow</translation>
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
@@ -1971,7 +1971,7 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>Redefinir a imagem de propriedade do perfil e o ajuste de assistência para os padrões</translation>
+            <translation>Restaurar os ajustes de imagem e de assistência deste perfil aos valores padrão</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
@@ -1999,15 +1999,15 @@
         </message>
         <message>
             <source>Sharpen Text</source>
-            <translation>Afiar texto</translation>
+            <translation>Aumentar a nitidez do texto</translation>
         </message>
         <message>
             <source>Sharpening</source>
-            <translation>Afiação</translation>
+            <translation>Nitidez</translation>
         </message>
         <message>
             <source>Show a guide to OkuFlow controls and features</source>
-            <translation>Mostrar um guia para controles e recursos OkuFlow</translation>
+            <translation>Mostrar um guia dos controles e recursos do OkuFlow</translation>
         </message>
         <message>
             <source>Show all quick modes</source>
@@ -2035,7 +2035,7 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>Use NVIDIA Video Effects SuperRes com zoom de 1,33x e superior; volta ao NIS automaticamente</translation>
+            <translation>Use o NVIDIA Video Effects SuperRes a partir de 1,33x de zoom; se necessário, use o NIS automaticamente</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
@@ -2085,7 +2085,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>NVIDIA installer running. Continue in the vendor installer window.</source>
-            <translation>NVIDIA instalador em execução. Continue na janela do instalador do fornecedor.</translation>
+            <translation>O instalador da NVIDIA está em execução. Continue na janela do instalador.</translation>
         </message>
         <message>
             <source>Not installed</source>
@@ -2097,11 +2097,11 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
-            <translation>Abra a pasta de instalação Codex CLI</translation>
+            <translation>Abrir a pasta de instalação do Codex CLI</translation>
         </message>
         <message>
             <source>Open Codex CLI setup guide</source>
-            <translation>Abra o guia de configuração Codex CLI</translation>
+            <translation>Abrir o guia de configuração do Codex CLI</translation>
         </message>
         <message>
             <source>Open Install Folder</source>
@@ -2117,7 +2117,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Open the NVIDIA runtime uninstaller?</source>
-            <translation>Abrir o desinstalador de tempo de execução NVIDIA?</translation>
+            <translation>Abrir o desinstalador do runtime da NVIDIA?</translation>
         </message>
         <message>
             <source>Open the folder containing the detected Codex CLI</source>
@@ -2125,11 +2125,11 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Open the official Codex CLI documentation</source>
-            <translation>Abra a documentação oficial Codex CLI</translation>
+            <translation>Abrir a documentação oficial do Codex CLI</translation>
         </message>
         <message>
             <source>OkuFlow Setup Assistant</source>
-            <translation>OkuFlow Assistente de configuração</translation>
+            <translation>Assistente de configuração do OkuFlow</translation>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
@@ -2181,7 +2181,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>The installer failed SHA-256 verification and was deleted.</source>
-            <translation>O instalador falhou na verificação SHA-256 e foi excluído.</translation>
+            <translation>O instalador não passou na verificação SHA-256 e foi excluído.</translation>
         </message>
         <message>
             <source>The temporary download file could not be created.</source>
@@ -2189,7 +2189,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>Esta cópia de todo o sistema deve ser removida por meio dos aplicativos instalados do Windows</translation>
+            <translation>Esta cópia instalada para todo o sistema deve ser removida em Aplicativos instalados do Windows</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2229,7 +2229,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>Ganchos auxiliares: Cena Explicada</translation>
+            <translation>Recursos assistivos: Explicar cena</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
@@ -2237,7 +2237,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
-            <translation>Configuração personalizada do Advanced Tuning. Salve-o como uma opção rápida quando parecer certo.</translation>
+            <translation>Configuração personalizada do Advanced Tuning. Quando estiver do jeito que você quer, salve-a como opção rápida.</translation>
         </message>
         <message>
             <source>Current quick mode description</source>
@@ -2261,11 +2261,11 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>OkuFlow could not save settings.</source>
-            <translation>OkuFlow não foi possível salvar as configurações.</translation>
+            <translation>Não foi possível salvar as configurações do OkuFlow.</translation>
         </message>
         <message>
             <source>Blur sigma</source>
-            <translation>Desfocar sigma</translation>
+            <translation>Sigma do desfoque</translation>
         </message>
         <message>
             <source>Blur radius</source>
@@ -2281,7 +2281,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>%1 download progress</source>
-            <translation>%1 progresso do download</translation>
+            <translation>Progresso do download de %1</translation>
         </message>
         <message>
             <source>Install %1</source>
@@ -2325,7 +2325,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
-            <translation>Acelere gestos rápidos de Ctrl+scroll zoom; o zoom do teclado permanece exato</translation>
+            <translation>Acelera o zoom em gestos rápidos de Ctrl+rolagem; o zoom pelo teclado continua preciso</translation>
         </message>
         <message>
             <source>SuperRes powered by NVIDIA Maxine™</source>
@@ -2333,7 +2333,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA Atribuição Maxine</translation>
+            <translation>Créditos do NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2345,11 +2345,11 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>%1 settings match</source>
-            <translation>%1 configurações correspondentes</translation>
+            <translation>%1 configurações correspondem</translation>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>Próxima correção de tela ou encontre uma nova correção.%1</translation>
+            <translation>Próxima correção da tela ou encontrar uma nova correção.%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2453,7 +2453,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>Veja a vista analisada pelo assistente</translation>
+            <translation>Ver a imagem analisada pelo assistente</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2465,7 +2465,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Started a new conversation.</source>
-            <translation>Iniciou uma nova conversa.</translation>
+            <translation>Uma nova conversa foi iniciada.</translation>
         </message>
         <message>
             <source>Finish the current answer before starting a new chat.</source>
@@ -2477,23 +2477,23 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
-            <translation>Iniciou uma nova conversa. O próximo Explicar também inicia uma nova conversa.</translation>
+            <translation>Uma nova conversa foi iniciada. A próxima vez que você usar Explicar, outra conversa será iniciada.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Enviando o quadro da câmera atual e prompt para Codex. Conversa: conversa explicada salva, continuada por cada explicação. Internet da ferramenta: bloqueada. Codificação e alterações de arquivo: bloqueadas.</translation>
+            <translation>Enviando a imagem atual da câmera e o comando para o Codex. Conversa: conversa salva do Explicar, retomada a cada uso de Explicar. Acesso da ferramenta à internet: bloqueado. Recursos de programação e alteração de arquivos: bloqueados.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Enviando o quadro da câmera atual e prompt para Codex. Conversa: temporária, nova a cada leitura. Internet da ferramenta: bloqueada. Codificação e alterações de arquivo: bloqueadas.</translation>
+            <translation>Enviando a imagem atual da câmera e o comando para o Codex. Conversa: temporária, uma nova a cada uso de Ler. Acesso da ferramenta à internet: bloqueado. Recursos de programação e alteração de arquivos: bloqueados.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Enviando o quadro da câmera atual, o prompt e as respostas recentes do Explique para %1 (endpoint local). Conversa: respostas recentes do Explique, mantidas apenas na memória. Ferramentas de codificação: indisponíveis.</translation>
+            <translation>Enviando a imagem atual da câmera, o comando e as respostas recentes de Explicar para %1 (servidor local). Conversa: respostas recentes de Explicar, mantidas apenas na memória. Ferramentas de programação: indisponíveis.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Enviando o quadro da câmera atual, o prompt e as respostas recentes do Explique para %1 (endpoint remoto). Conversa: respostas recentes do Explique, mantidas apenas na memória. Ferramentas de codificação: indisponíveis.</translation>
+            <translation>Enviando a imagem atual da câmera, o comando e as respostas recentes de Explicar para %1 (servidor remoto). Conversa: respostas recentes de Explicar, mantidas apenas na memória. Ferramentas de programação: indisponíveis.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2521,7 +2521,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>Oferece recursos de leitura, explicação e assistente com suporte de assinatura. Instala o Codex CLI oficial para sua conta do Windows; O login do ChatGPT permanece uma etapa separada.</translation>
+            <translation>Habilita os recursos Ler, Explicar e Assistente com a assinatura. Instala o Codex CLI oficial para sua conta do Windows; o login no ChatGPT é uma etapa separada.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2573,7 +2573,7 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Search settings…</source>
-            <translation>Configurações de pesquisa…</translation>
+            <translation>Pesquisar configurações…</translation>
         </message>
         <message>
             <source>Mode: %1</source>
@@ -2585,11 +2585,11 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>Changes apply now. Save to keep them.</source>
-            <translation>As alterações se aplicam agora. Salve para mantê-los.</translation>
+            <translation>As alterações são aplicadas imediatamente. Salve para mantê-las.</translation>
         </message>
         <message>
             <source>Shared by all modes. Not saved into quick modes.</source>
-            <translation>Compartilhado por todos os modos. Não salvo nos modos rápidos.</translation>
+            <translation>Compartilhada por todos os modos. Não é salva nos modos rápidos.</translation>
         </message>
         <message>
             <source>Fine-tune text</source>
@@ -2653,11 +2653,11 @@ A remoção é gerenciada pelo Windows.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>Não há correspondências aqui. %1 em Configurações. Pressione Enter para mostrá-los.</translation>
+            <translation>Nenhuma correspondência aqui. %1 em Configurações. Pressione Enter para exibi-las.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>Não há correspondências aqui. %1 na imagem. Pressione Enter para mostrá-los.</translation>
+            <translation>Nenhuma correspondência aqui. %1 em Imagem. Pressione Enter para exibi-las.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2741,15 +2741,15 @@ As configurações compartilhadas na guia Configurações permanecerão inaltera
         </message>
         <message>
             <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
-            <translation>%1 não conseguiu terminar seu fragmento final (0x%2). O arquivo foi retido; a reprodução não foi verificada.</translation>
+            <translation>%1 não conseguiu concluir o fragmento final (0x%2). O arquivo foi mantido, mas a reprodução não foi verificada.</translation>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>O caminho de saída de gravação já existe; foi preservado.</translation>
+            <translation>Já existe um arquivo no caminho de saída da gravação; ele foi mantido.</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
-            <translation>Text Clarity aplica aprimoramento automático. As opções de ajuste fino se aplicam somente enquanto a Clareza do Texto está ativada.</translation>
+            <translation>A Clareza do texto aplica aprimoramentos automaticamente. As opções de ajuste fino só funcionam enquanto esse recurso está ativado.</translation>
         </message>
         <message>
             <source>More colors
@@ -2791,11 +2791,11 @@ As configurações compartilhadas na guia Configurações permanecerão inaltera
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>Leia, explique e ajude usando sua assinatura ChatGPT por meio do Codex CLI. Faça login com Connect ChatGPT na guia Assistente no modo Avançado.</translation>
+            <translation>Os recursos Ler, Explicar e Assistente usam sua assinatura do ChatGPT por meio do Codex CLI. Faça login em “Conectar ao ChatGPT”, na guia Assistente do modo Avançado.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>Ler e explicar envia a visualização da câmera para o URL do servidor abaixo. As imagens permanecem neste computador somente se o servidor for executado nele, como LM Studio ou Ollama em localhost. As conversas salvas do Assistente precisam da assinatura do ChatGPT.</translation>
+            <translation>Os recursos Ler e Explicar enviam a imagem da câmera para o endereço do servidor abaixo. As imagens permanecem neste computador somente se o servidor estiver sendo executado nele, como o LM Studio ou o Ollama em localhost. As conversas salvas do Assistente exigem uma assinatura do ChatGPT.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
@@ -2807,7 +2807,7 @@ As configurações compartilhadas na guia Configurações permanecerão inaltera
         </message>
         <message>
             <source>Explain prompt:</source>
-            <translation>Prompt do Explain:</translation>
+            <translation>Instrução para Explicar:</translation>
         </message>
         <message>
             <source>Advanced Assistant permissions</source>
@@ -2815,27 +2815,27 @@ As configurações compartilhadas na guia Configurações permanecerão inaltera
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>Isso se aplica apenas a conversas salvas do Assistente, incluindo perguntas feitas pelo Assistente flutuante. Leia e explique sempre fique restrito.</translation>
+            <translation>Estas permissões se aplicam apenas às conversas salvas do Assistente, inclusive às perguntas feitas pelo Assistente flutuante. Os recursos Ler e Explicar permanecem sempre restritos.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
-            <translation>Escolha ChatGPT através de Codex ou um servidor compatível com OpenAI</translation>
+            <translation>Escolha entre o ChatGPT pelo Codex e um servidor compatível com a API da OpenAI</translation>
         </message>
         <message>
             <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
-            <translation>Escolha quanto raciocínio Codex usa. Níveis mais altos podem demorar mais para responder.</translation>
+            <translation>Escolha o nível de raciocínio usado pelo Codex. Níveis mais altos podem levar mais tempo para responder.</translation>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>Mostrar ou ocultar a instrução somente leitura OkuFlow sempre envia para Codex</translation>
+            <translation>Mostrar ou ocultar a instrução somente para leitura que o OkuFlow sempre envia ao Codex</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>Explique o prompt</translation>
+            <translation>Instrução para Explicar</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
-            <translation>Instruções opcionais enviadas com a visualização da câmera quando você pressiona Explicar</translation>
+            <translation>Instruções opcionais enviadas junto com a imagem da câmera ao selecionar Explicar</translation>
         </message>
         <message>
             <source>Installed
@@ -2843,7 +2843,7 @@ As configurações compartilhadas na guia Configurações permanecerão inaltera
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>Instalado
 %1
-Use o Connect ChatGPT na guia Assistente Avançado para fazer login.</translation>
+Use “Conectar ao ChatGPT” na guia Assistente do modo Avançado para fazer login.</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2855,7 +2855,7 @@ Use o Connect ChatGPT na guia Assistente Avançado para fazer login.</translatio
         </message>
         <message>
             <source>encoder backlog %1</source>
-            <translation>pendência do codificador %1</translation>
+            <translation>Fila do codificador: %1</translation>
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
@@ -2871,7 +2871,7 @@ Use o Connect ChatGPT na guia Assistente Avançado para fazer login.</translatio
         </message>
         <message>
             <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
-            <translation>Abra OkuFlow Câmera no telefone, conecte o cabo USB e permita a depuração USB. OkuFlow verifica a conexão automaticamente.</translation>
+            <translation>Abra o OkuFlow Camera no telefone, conecte o cabo USB e autorize a depuração USB. O OkuFlow verifica a conexão automaticamente.</translation>
         </message>
         <message>
             <source>Set up OkuFlow</source>
@@ -2879,7 +2879,7 @@ Use o Connect ChatGPT na guia Assistente Avançado para fazer login.</translatio
         </message>
         <message>
             <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
-            <translation>O instalador de tempo de execução do Windows está incluído. Ferramentas opcionais de IA são baixadas de seus fornecedores. Cada instalador é verificado antes de ser executado.</translation>
+            <translation>O instalador do ambiente de execução do Windows está incluído. As ferramentas opcionais de IA são baixadas diretamente dos respectivos fornecedores. Cada instalador é verificado antes de ser executado.</translation>
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
@@ -2895,7 +2895,7 @@ Use o Connect ChatGPT na guia Assistente Avançado para fazer login.</translatio
         </message>
         <message>
             <source>Install Microsoft Windows runtime</source>
-            <translation>Instale o tempo de execução do Microsoft Windows</translation>
+            <translation>Instalar o ambiente de execução do Microsoft Windows</translation>
         </message>
         <message>
             <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>

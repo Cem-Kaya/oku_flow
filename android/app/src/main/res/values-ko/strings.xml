@@ -61,7 +61,7 @@
     <string name="connected_title">OkuFlow에 연결됨</string>
     <string name="connected_hint">컴퓨터가 연결되었습니다. 카메라 영상을 기다리고 있습니다.</string>
     <string name="problem_busy_title">카메라가 사용 중입니다</string>
-    <string name="problem_busy_hint">카메라를 사용하는 다른 앱을 닫습니다. OkuFlow 잠시 동안 다시 시도합니다. 사진이 나오지 않으면 OkuFlow 카메라 목록에서 해당 휴대폰을 다시 선택하세요.</string>
+    <string name="problem_busy_hint">카메라를 사용하는 다른 앱을 닫습니다. OkuFlow에서 잠시 동안 다시 시도합니다. 사진이 나오지 않으면 OkuFlow 카메라 목록에서 해당 휴대폰을 다시 선택하세요.</string>
     <string name="problem_blocked_title">카메라 접근이 차단되었습니다</string>
     <string name="problem_blocked_hint">개인 정보 보호 설정이나 빠른 설정에서 카메라 액세스를 켜세요. 그런 다음 OkuFlow의 카메라 목록에서 해당 전화기를 다시 선택하세요.</string>
     <string name="problem_mode_title">이 비디오 모드를 사용할 수 없습니다</string>
@@ -75,7 +75,7 @@
     <string name="privacy_identity">OkuFlow 카메라는 Cem Kaya에서 제공합니다. 2026년 10월 12일에 업데이트되었습니다. 이 정책은 Android 컴패니언에 적용되며 Windows용 OkuFlow와의 연결을 설명합니다.</string>
     <string name="privacy_access">카메라 권한이 있으면 앱이 라이브 카메라 비디오를 인코딩하고 인증된 USB 디버깅 연결을 통해 컴퓨터에 보냅니다. 또한 카메라 기능, 코덱 및 캡처 설정, 프레임 타이밍, 오류 정보도 전송합니다. 전화 앱에는 인터넷 권한이 없으며 마이크, 위치 또는 연락처 액세스를 요청하지 않습니다.</string>
     <string name="privacy_retention">휴대폰에서 비디오는 녹화로 저장되지 않고 스트리밍을 위해 메모리에 보관됩니다. 카메라 및 설정 기본 설정은 로컬에 저장됩니다. 새로운 연결이 시작되면 표시등이 다시 꺼집니다. 자동 설정 복원은 카메라 기본 설정을 재설정합니다. Android 앱 저장 공간 제어 또는 제거로 인해 저장된 환경설정이 제거됩니다. 앱 데이터의 백업 및 기기 전송이 비활성화되었습니다.</string>
-    <string name="privacy_windows">OkuFlow Windows용은 사진, 녹음, 메모 및 진단 로그를 컴퓨터에 저장할 수 있습니다. 선택적인 AI 기능을 사용하면 선택한 Codex 또는 비전 서비스로 이미지와 질문을 보낼 수 있습니다. 해당 서비스에는 자체 개인 정보 보호 및 보존 조건이 있습니다. Windows를 통해 저장된 컴퓨터 파일을 삭제합니다. 이 전화 앱을 지워도 해당 앱이나 공급자가 보유한 데이터는 삭제되지 않습니다.</string>
+    <string name="privacy_windows">Windows용 OkuFlow는 사진, 동영상 녹화, 메모, 진단 로그를 컴퓨터에 저장할 수 있습니다. 선택적인 AI 기능을 사용하면 이미지와 질문이 선택한 Codex 또는 비전 서비스로 전송될 수 있습니다. 해당 서비스에는 자체 개인정보 보호 및 데이터 보관 조건이 있습니다. 컴퓨터에 저장된 파일은 Windows에서 삭제하세요. 이 휴대전화 앱의 데이터를 지워도 해당 파일이나 제공업체가 보관하는 데이터는 삭제되지 않습니다.</string>
     <string name="privacy_usb">신뢰하는 컴퓨터에서만 USB 디버깅을 승인하세요. 승인된 디버깅 연결을 통해 컴퓨터는 전화에 대한 광범위한 액세스를 제공합니다. 완료되면 케이블을 분리하십시오. 개발자 옵션에서 USB 디버깅을 끄거나 디버깅 인증을 취소할 수 있습니다. USB 인증은 암호화된 비디오 전송에 대한 주장이 아닙니다.</string>
     <string name="privacy_contact">개인정보 관련 질문: 공개 OkuFlow 저장소 문제를 통해 Cem Kaya에게 문의하세요. 문제는 공개됩니다. 카메라 이미지, 자격 증명 또는 개인 문서를 게시하지 마십시오. 공개 정책 또는 연락처 링크를 열려면 브라우저와 GitHub 연결이 사용됩니다.</string>
     <string name="privacy_public">공개 개인 정보 보호 정책</string>

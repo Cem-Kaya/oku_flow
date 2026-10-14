@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>각 연결에서 시작됩니다. 전화기 조명을 켜거나 끄려면 누릅니다.</translation>
+            <translation>연결할 때마다 꺼진 상태로 시작합니다. 누르면 휴대전화 조명을 켜거나 끕니다.</translation>
         </message>
         <message>
             <source>Application</source>
@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>일치하는 컨트롤을 표시하고 집중하려면 설정 이름의 일부를 입력하세요.</translation>
+            <translation>설정 이름 일부를 입력하면 일치하는 컨트롤이 표시되고 포커스가 이동합니다.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -165,7 +165,7 @@
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
-            <translation>원본 녹음과 처리된 녹음으로 공유됨</translation>
+            <translation>원본 및 처리된 녹화에서 공유</translation>
         </message>
         <message>
             <source>Processed recording resolution</source>
@@ -213,7 +213,7 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>선명하게 하고 집중하세요</translation>
+            <translation>선명도 및 초점</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
@@ -253,7 +253,7 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>매우 안정적임(흔들면 고정됨)</translation>
+            <translation>추가 안정화(흔들릴 때 화면 고정)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
@@ -289,7 +289,7 @@
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>배경을 평평하게</translation>
+            <translation>배경 평탄화</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
@@ -305,7 +305,7 @@
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>스트로크 무게</translation>
+            <translation>획 두께</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -441,7 +441,7 @@
         </message>
         <message>
             <source>Performance percentiles</source>
-            <translation>성과 백분위수</translation>
+            <translation>성능 백분위수</translation>
         </message>
         <message>
             <source>Collecting timing samples…</source>
@@ -597,7 +597,7 @@
         </message>
         <message>
             <source>Attach current view</source>
-            <translation>현재 보기 연결</translation>
+            <translation>현재 화면 첨부</translation>
         </message>
         <message>
             <source>AI Settings sections</source>
@@ -785,7 +785,7 @@
         </message>
         <message>
             <source>Section heading. Activate to expand or collapse this settings group.</source>
-            <translation>섹션 제목. 이 설정 그룹을 확장하거나 축소하려면 활성화하세요.</translation>
+            <translation>섹션 제목입니다. 선택하면 이 설정 그룹을 펼치거나 접습니다.</translation>
         </message>
         <message>
             <source>expanded</source>
@@ -833,7 +833,7 @@
         </message>
         <message>
             <source>No lecture notes yet — use Read, Explain, or Assistant to add text.</source>
-            <translation>아직 강의 노트가 없습니다. 텍스트를 추가하려면 읽기, 설명 또는 보조 도구를 사용하세요.</translation>
+            <translation>아직 강의 노트가 없습니다. 읽기, 설명 또는 어시스턴트를 사용해 텍스트를 추가하세요.</translation>
         </message>
         <message>
             <source>OkuFlow Assistant</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>GPU 카메라 캡처는 안전한 복사본 대체와 함께 활성화됩니다.</translation>
+            <translation>안전 복사 대체 경로를 사용해 GPU 카메라 캡처가 작동 중입니다.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>화면 보정이 뒤로 이동하고 추적이 중지되었습니다.</translation>
+            <translation>화면 보정이 이전 상태로 돌아갔고 추적이 중지되었습니다.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -969,7 +969,7 @@
         </message>
         <message>
             <source>Using the next screen correction.</source>
-            <translation>다음 화면 수정을 사용합니다.</translation>
+            <translation>다음 화면 보정값을 사용합니다.</translation>
         </message>
         <message>
             <source>Windows could not open:
@@ -995,7 +995,7 @@
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>주석이 달린 보기가 저장되지 않았습니다. 이미지가 아직 기록 중입니다. 다시 시도해 보세요.</translation>
+            <translation>주석이 추가된 화면을 저장하지 못했습니다. 이미지 저장 작업 중입니다. 다시 시도하세요.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
@@ -1031,7 +1031,7 @@
         </message>
         <message>
             <source>No camera modes were reported.</source>
-            <translation>보고된 카메라 모드가 없습니다.</translation>
+            <translation>카메라에서 지원 모드 정보를 받지 못했습니다.</translation>
         </message>
         <message>
             <source>Photo not saved: no processed frame was available.</source>
@@ -1079,7 +1079,7 @@
         </message>
         <message>
             <source>The camera GPU texture could not be converted for CUDA.</source>
-            <translation>CUDA에 대해 카메라 GPU 텍스처를 변환할 수 없습니다.</translation>
+            <translation>카메라의 GPU 텍스처를 CUDA용으로 변환할 수 없습니다.</translation>
         </message>
         <message>
             <source>Annotated view</source>
@@ -1119,7 +1119,7 @@
         </message>
         <message>
             <source>Recording stopped because the audio encoder rejected a sample.</source>
-            <translation>오디오 인코더가 샘플을 거부하여 녹음이 중지되었습니다.</translation>
+            <translation>오디오 인코더가 샘플을 처리하지 못해 녹화가 중지되었습니다.</translation>
         </message>
         <message>
             <source>Recording stopped before the first frame was written.</source>
@@ -1135,7 +1135,7 @@
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
-            <translation>기록 캔버스가 유효하지 않습니다.</translation>
+            <translation>녹화 영상의 캔버스 설정이 올바르지 않습니다.</translation>
         </message>
         <message>
             <source>No frames were dropped.</source>
@@ -1143,11 +1143,11 @@
         </message>
         <message>
             <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
-            <translation>오디오 처리가 따라가지 못하거나 입력이 잘못되어 녹음이 중지되었습니다.</translation>
+            <translation>오디오 처리가 입력 속도를 따라가지 못했거나 입력이 올바르지 않아 녹화가 중지되었습니다.</translation>
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>오디오: %1 블록은 인코딩 전에 삭제되었으며, %2는 입력 제한으로 인해 거부되었습니다.</translation>
+            <translation>오디오: 인코딩 전에 누락된 블록 %1개, 입력 제한으로 거부된 블록 %2개</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
@@ -1179,11 +1179,11 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>GPU 공급 원본 및 처리됨</translation>
+            <translation>GPU 입력 원본 및 처리 영상</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>작업자 다시 읽기가 포함된 GPU 소스</translation>
+            <translation>작업 스레드에서 다시 읽는 GPU 소스</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1219,7 +1219,7 @@
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>지속적인 어시스턴트 대화에는 Codex 구독 공급자가 필요합니다.</translation>
+            <translation>어시스턴트 대화를 저장하려면 Codex 구독 공급자를 사용해야 합니다.</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1255,7 +1255,7 @@
         </message>
         <message>
             <source>Thinking...</source>
-            <translation>생각하다...</translation>
+            <translation>생각 중...</translation>
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
@@ -1359,11 +1359,11 @@
         </message>
         <message>
             <source>Coding Workspace Required</source>
-            <translation>코딩 작업공간 필요</translation>
+            <translation>코딩 작업 공간이 필요합니다</translation>
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
-            <translation>주석 모드가 켜져 있습니다. 펜 도구.</translation>
+            <translation>주석 모드를 켰습니다. 펜 도구를 선택했습니다.</translation>
         </message>
         <message>
             <source>Annotation options</source>
@@ -1423,11 +1423,11 @@
         </message>
         <message>
             <source>Draw an uninterrupted stroke.</source>
-            <translation>중단없는 스트로크를 그립니다.</translation>
+            <translation>끊김 없는 선을 그립니다.</translation>
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
-            <translation>카메라 뷰에 자유롭게 그림을 그립니다. 바로가기P</translation>
+            <translation>카메라 화면에 자유롭게 그립니다. 단축키: P.</translation>
         </message>
         <message>
             <source>Draw mode off.</source>
@@ -1451,7 +1451,7 @@
         </message>
         <message>
             <source>Erase annotation tool</source>
-            <translation>주석 도구 지우기</translation>
+            <translation>주석 지우개 도구</translation>
         </message>
         <message>
             <source>Erase tool</source>
@@ -1519,7 +1519,7 @@
         </message>
         <message>
             <source>Selected annotation scaled</source>
-            <translation>선택된 주석의 축척</translation>
+            <translation>선택한 주석 크기 조정됨</translation>
         </message>
         <message>
             <source>Selection cleared</source>
@@ -1767,7 +1767,7 @@
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex 사용법</translation>
+            <translation>Codex 사용량</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
@@ -1807,7 +1807,7 @@
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
-            <translation>드래그하여 크기 조정 고급 설정</translation>
+            <translation>고급 설정 창 크기를 조정하려면 끌어 놓으세요</translation>
         </message>
         <message>
             <source>Extra Stable off</source>
@@ -1819,7 +1819,7 @@
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>채우기는 늘이지 않고 전체 뷰포트를 사용합니다. 맞춤은 막대가 포함된 전체 이미지를 유지합니다.</translation>
+            <translation>채우기는 화면을 늘이지 않고 뷰포트를 가득 채웁니다. 맞춤은 여백을 두고 이미지 전체를 표시합니다.</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1831,7 +1831,7 @@
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>부딪치는 동안 마지막 선명한 프레임에서 정지한 후 라이브 비디오로 부드럽게 돌아갑니다.</translation>
+            <translation>흔들림이 감지되면 마지막으로 선명한 화면을 고정한 뒤 실시간 영상으로 부드럽게 돌아갑니다.</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1851,7 +1851,7 @@
         </message>
         <message>
             <source>Keep It Steady</source>
-            <translation>꾸준히 유지하세요</translation>
+            <translation>흔들림 줄이기</translation>
         </message>
         <message>
             <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>최대 강도의 CUDA 안정화를 사용하여 장착된 카메라 뷰를 잠급니다.</translation>
+            <translation>최대 강도의 CUDA 손떨림 보정으로 고정형 카메라 화면을 안정화합니다.</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1963,7 +1963,7 @@
         </message>
         <message>
             <source>Reading profile</source>
-            <translation>프로필 읽기</translation>
+            <translation>읽기 프로필</translation>
         </message>
         <message>
             <source>Reset current profile tuning</source>
@@ -1971,7 +1971,7 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>프로필 소유 이미지 및 보조 조정을 기본값으로 재설정</translation>
+            <translation>프로필별 영상 및 보조 기능 설정을 기본값으로 재설정</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
@@ -2019,7 +2019,7 @@
         </message>
         <message>
             <source>Steady Text</source>
-            <translation>꾸준한 텍스트</translation>
+            <translation>흔들림 없는 글자</translation>
         </message>
         <message>
             <source>Stop Automatic Screen Correction</source>
@@ -2035,7 +2035,7 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>1.33배 확대/축소 이상에서 NVIDIA Video Effects SuperRes를 사용하세요. 자동으로 NIS로 폴백</translation>
+            <translation>확대율이 1.33배 이상이면 NVIDIA Video Effects SuperRes를 사용합니다. 사용할 수 없으면 자동으로 NIS로 전환합니다.</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
@@ -2297,11 +2297,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stops: </source>
-            <translation>정류장: </translation>
+            <translation>색상 정지점:</translation>
         </message>
         <message>
             <source>Color stop %1 of 8</source>
-            <translation>컬러 정지 %1 of 8</translation>
+            <translation>색상 정지점 %1/8</translation>
         </message>
         <message>
             <source>%1 px</source>
@@ -2309,7 +2309,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Drawing thickness</source>
-            <translation>도면 두께</translation>
+            <translation>그리기 두께</translation>
         </message>
         <message>
             <source>AI settings sections</source>
@@ -2349,7 +2349,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>다음 화면 수정, 아니면 새로운 수정 하나를 찾아보세요.%1</translation>
+            <translation>다음 화면 보정으로 이동하거나 새 보정을 찾으세요.%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2453,7 +2453,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>어시스턴트가 분석한 보기</translation>
+            <translation>어시스턴트가 분석한 화면 보기</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2477,15 +2477,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
-            <translation>새로운 대화를 시작했습니다. 다음 explain은 새로운 대화를 시작합니다.</translation>
+            <translation>새 대화를 시작했습니다. 다음에 ‘설명’을 실행해도 새 대화가 시작됩니다.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>현재 카메라 프레임과 프롬프트를 Codex로 보냅니다. 대화: 저장된 설명 대화는 각 설명에 의해 계속됩니다. 도구 인터넷: 차단되었습니다. 코딩 및 파일 변경: 차단됨.</translation>
+            <translation>현재 카메라 화면과 프롬프트를 Codex로 보냅니다. 대화: 저장된 설명 대화를 각 설명에서 이어갑니다. 도구의 인터넷 사용: 차단됨. 코딩 및 파일 변경: 차단됨.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>현재 카메라 프레임과 프롬프트를 Codex로 보냅니다. 대화: 일시적이며 읽을 때마다 새롭습니다. 도구 인터넷: 차단되었습니다. 코딩 및 파일 변경: 차단됨.</translation>
+            <translation>현재 카메라 화면과 프롬프트를 Codex로 보냅니다. 대화: 임시 대화이며 읽기를 실행할 때마다 새로 시작됩니다. 도구의 인터넷 사용: 차단됨. 코딩 및 파일 변경: 차단됨.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
@@ -2521,7 +2521,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>구독 지원 읽기, 설명 및 어시스턴트 기능을 강화합니다. Windows 계정에 공식 Codex CLI을 설치합니다. ChatGPT 로그인은 별도의 단계로 유지됩니다.</translation>
+            <translation>ChatGPT 구독으로 읽기, 설명, 어시스턴트 기능을 사용할 수 있습니다. Windows 계정에 공식 Codex CLI를 설치하며, ChatGPT 로그인은 별도로 해야 합니다.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2533,7 +2533,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No camera picture</source>
-            <translation>카메라 사진이 없습니다</translation>
+            <translation>카메라 영상이 없습니다</translation>
         </message>
         <message>
             <source>Connect a camera, then choose it under Advanced, Device.</source>
@@ -2621,7 +2621,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Straighten screen</source>
-            <translation>화면을 직선화</translation>
+            <translation>화면 기울기 보정</translation>
         </message>
         <message>
             <source>Soften image (blur)</source>
@@ -2653,11 +2653,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>일치하는 항목이 없습니다. %1 설정에서. Enter 키를 눌러 표시하세요.</translation>
+            <translation>여기에 일치하는 항목이 없습니다. 설정에서 %1개를 찾았습니다. Enter 키를 눌러 표시하세요.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>일치하는 항목이 없습니다. %1 이미지. Enter 키를 눌러 표시하세요.</translation>
+            <translation>여기에 일치하는 항목이 없습니다. 이미지 설정에서 %1개를 찾았습니다. Enter 키를 눌러 표시하세요.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2705,7 +2705,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>정지 장면 설명</translation>
+            <translation>장면 설명 중지</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
@@ -2741,11 +2741,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
-            <translation>%1는 최종 조각(0x%2)을 완료할 수 없습니다. 파일은 유지되었습니다. 재생이 확인되지 않았습니다.</translation>
+            <translation>%1의 마지막 조각(0x%2)을 완료하지 못했습니다. 파일은 보존되었지만 재생 여부는 확인되지 않았습니다.</translation>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>녹화 출력 경로가 이미 존재합니다. 그것은 보존되었습니다.</translation>
+            <translation>녹화 출력 경로가 이미 있어 기존 항목을 보존했습니다.</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
@@ -2791,11 +2791,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>읽기, 설명 및 도우미는 Codex CLI를 통해 ChatGPT 구독을 사용합니다. 고급 모드의 보조 탭에서 Connect ChatGPT로 로그인하세요.</translation>
+            <translation>읽기, 설명, 어시스턴트 기능은 Codex CLI를 통해 ChatGPT 구독을 사용합니다. 고급 모드의 어시스턴트 탭에서 ‘ChatGPT 연결’을 눌러 로그인하세요.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>읽고 설명하면 카메라 뷰를 아래 서버 URL로 보냅니다. 이미지는 LM Studio 또는 localhost의 Ollama와 같은 서버가 실행되는 경우에만 이 컴퓨터에 유지됩니다. 저장된 어시스턴트 대화에는 ChatGPT 구독이 필요합니다.</translation>
+            <translation>읽기와 설명 기능은 아래 서버 URL로 카메라 화면을 보냅니다. LM Studio나 localhost의 Ollama처럼 서버가 이 컴퓨터에서 실행 중일 때만 이미지가 이 컴퓨터에 남습니다. 저장된 어시스턴트 대화를 사용하려면 ChatGPT 구독이 필요합니다.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
@@ -2827,11 +2827,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>읽기 전용 명령을 표시하거나 숨깁니다. OkuFlow는 항상 Codex로 보냅니다.</translation>
+            <translation>OkuFlow가 Codex에 항상 보내는 읽기 전용 지침 표시/숨기기</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>프롬프트 설명</translation>
+            <translation>설명 프롬프트</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>

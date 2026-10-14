@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>प्रत्येक कनेक्शन पर प्रारंभ होता है. फ़ोन की लाइट चालू या बंद करने के लिए दबाएँ।</translation>
+            <translation>हर बार कनेक्ट होने पर यह बंद रहती है। फ़ोन की लाइट चालू या बंद करने के लिए दबाएँ।</translation>
         </message>
         <message>
             <source>Application</source>
@@ -29,11 +29,11 @@
         </message>
         <message>
             <source>Changes OkuFlow's interface language immediately. An assistant request already in progress keeps its original response language.</source>
-            <translation>OkuFlow की इंटरफ़ेस भाषा को तुरंत बदलता है। पहले से चल रहा सहायक अनुरोध अपनी मूल प्रतिक्रिया भाषा रखता है।</translation>
+            <translation>OkuFlow के इंटरफ़ेस की भाषा तुरंत बदल जाती है। पहले से चल रहे सहायक अनुरोध की प्रतिक्रिया भाषा वही रहती है जो पहले चुनी गई थी।</translation>
         </message>
         <message>
             <source>Changes the interface immediately. In-progress assistant requests use the language selected when they started.</source>
-            <translation>इंटरफ़ेस तुरंत बदलता है. प्रगतिरत सहायक अनुरोध प्रारंभ होने पर चयनित भाषा का उपयोग करते हैं।</translation>
+            <translation>इंटरफ़ेस तुरंत बदल जाता है। पहले से चल रहे सहायक अनुरोध शुरू होते समय चुनी गई भाषा का उपयोग करते हैं।</translation>
         </message>
         <message>
             <source>Language set to %1.</source>
@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>मिलान नियंत्रणों को प्रकट करने और फ़ोकस करने के लिए सेटिंग नाम का भाग टाइप करें।</translation>
+            <translation>मिलते-जुलते कंट्रोल दिखाने और उन पर फ़ोकस करने के लिए सेटिंग के नाम का कोई हिस्सा टाइप करें।</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -165,7 +165,7 @@
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
-            <translation>मूल और संसाधित रिकॉर्डिंग द्वारा साझा किया गया</translation>
+            <translation>मूल और प्रोसेस की गई, दोनों रिकॉर्डिंग के लिए साझा</translation>
         </message>
         <message>
             <source>Processed recording resolution</source>
@@ -205,7 +205,7 @@
         </message>
         <message>
             <source>Screen fix</source>
-            <translation>स्क्रीन ठीक करें</translation>
+            <translation>स्क्रीन सीधी करें</translation>
         </message>
         <message>
             <source>Text clarity</source>
@@ -213,7 +213,7 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>तेज़ करें और ध्यान केंद्रित करें</translation>
+            <translation>शार्पन और फ़ोकस</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>अस्थायी चिकना</translation>
+            <translation>टेम्पोरल स्मूदिंग</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -253,7 +253,7 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>अतिरिक्त स्थिर (हिला कर रखें)</translation>
+            <translation>ज़्यादा स्थिर (कंपन के दौरान थामे रखें)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
@@ -301,7 +301,7 @@
         </message>
         <message>
             <source>Text polarity</source>
-            <translation>पाठ ध्रुवता</translation>
+            <translation>टेक्स्ट का रंग संयोजन</translation>
         </message>
         <message>
             <source>Stroke weight</source>
@@ -321,7 +321,7 @@
         </message>
         <message>
             <source>Steady Text Edges</source>
-            <translation>स्थिर पाठ किनारे</translation>
+            <translation>टेक्स्ट के किनारों को स्थिर रखें</translation>
         </message>
         <message>
             <source>Sharpen Text Only</source>
@@ -373,7 +373,7 @@
         </message>
         <message>
             <source>Scene Explain</source>
-            <translation>दृश्य स्पष्ट करें</translation>
+            <translation>दृश्य समझाएँ</translation>
         </message>
         <message>
             <source>Assistive Overlay</source>
@@ -409,7 +409,7 @@
         </message>
         <message>
             <source>Spatial Sharpen</source>
-            <translation>स्थानिक पैनापन</translation>
+            <translation>स्पैशियल शार्पनिंग</translation>
         </message>
         <message>
             <source>Backend</source>
@@ -441,7 +441,7 @@
         </message>
         <message>
             <source>Performance percentiles</source>
-            <translation>प्रदर्शन प्रतिशतक</translation>
+            <translation>परफ़ॉर्मेंस पर्सेंटाइल</translation>
         </message>
         <message>
             <source>Collecting timing samples…</source>
@@ -721,7 +721,7 @@
         </message>
         <message>
             <source>Low</source>
-            <translation>नीचा</translation>
+            <translation>कम</translation>
         </message>
         <message>
             <source>Medium</source>
@@ -729,7 +729,7 @@
         </message>
         <message>
             <source>High</source>
-            <translation>ऊँचा</translation>
+            <translation>ज़्यादा</translation>
         </message>
         <message>
             <source>Extra high</source>
@@ -761,7 +761,7 @@
         </message>
         <message>
             <source>Optional Reading and AI Tools</source>
-            <translation>वैकल्पिक पढ़ना और एआई उपकरण</translation>
+            <translation>वैकल्पिक पठन और AI टूल</translation>
         </message>
         <message>
             <source>Install</source>
@@ -785,7 +785,7 @@
         </message>
         <message>
             <source>Section heading. Activate to expand or collapse this settings group.</source>
-            <translation>अनुभाग शीर्षक. इस सेटिंग समूह को विस्तृत या संक्षिप्त करने के लिए सक्रिय करें।</translation>
+            <translation>अनुभाग शीर्षक। इस सेटिंग समूह को खोलने या बंद करने के लिए चुनें।</translation>
         </message>
         <message>
             <source>expanded</source>
@@ -809,7 +809,7 @@
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>कोई %1 आवाज स्थापित नहीं है - वर्तमान आवाज का उपयोग कर। विंडोज़ सेटिंग्स → समय और भाषा → भाषण के अंतर्गत एक इंस्टॉल करें।</translation>
+            <translation>%1 की कोई आवाज़ इंस्टॉल नहीं है—मौजूदा आवाज़ का उपयोग किया जा रहा है। इसे Windows Settings → Time &amp; Language → Speech में इंस्टॉल करें।</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -825,7 +825,7 @@
         </message>
         <message>
             <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
-            <translation>छवि फ़ोकस से बाहर. टेक्स्ट पढ़ने से पहले दोबारा फोकस करने के लिए फोन स्क्रीन पर टैप करें।</translation>
+            <translation>छवि धुंधली है। टेक्स्ट पढ़ने से पहले फ़ोकस ठीक करने के लिए फ़ोन की स्क्रीन पर टैप करें।</translation>
         </message>
         <message>
             <source>Loading conversation...</source>
@@ -845,7 +845,7 @@
         </message>
         <message>
             <source>Capturing original and processed photos...</source>
-            <translation>मूल और संसाधित फ़ोटो कैप्चर करना...</translation>
+            <translation>मूल और संसाधित फ़ोटो ली जा रही हैं...</translation>
         </message>
         <message>
             <source>Delete Conversation</source>
@@ -853,11 +853,11 @@
         </message>
         <message>
             <source>Export Conversation</source>
-            <translation>निर्यात वार्तालाप</translation>
+            <translation>वार्तालाप निर्यात करें</translation>
         </message>
         <message>
             <source>Permanently delete this OkuFlow assistant conversation?</source>
-            <translation>इस OkuFlow सहायक वार्तालाप को स्थायी रूप से हटाएं?</translation>
+            <translation>क्या आप OkuFlow Assistant की यह बातचीत हमेशा के लिए हटाना चाहते हैं?</translation>
         </message>
         <message>
             <source>Reconnect ChatGPT</source>
@@ -913,7 +913,7 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
-            <translation>NVIDIA Super Resolution प्रदर्शन सीमा बहाल।</translation>
+            <translation>NVIDIA Super Resolution की प्रदर्शन सीमा बहाल कर दी गई।</translation>
         </message>
         <message>
             <source>New OkuFlow files will be saved in %1.</source>
@@ -929,7 +929,7 @@
         </message>
         <message>
             <source>Opened your OkuFlow folder.</source>
-            <translation>आपका OkuFlow फ़ोल्डर खोला।</translation>
+            <translation>आपका OkuFlow फ़ोल्डर खोल दिया गया है।</translation>
         </message>
         <message>
             <source>Recording stopped because the microphone selection changed.</source>
@@ -953,7 +953,7 @@
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>एक अलग प्रक्रिया में GPU और अनुकूलता कैप्चर का परीक्षण...</translation>
+            <translation>अलग प्रक्रिया में GPU और compatibility capture की जाँच की जा रही है...</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -969,12 +969,12 @@
         </message>
         <message>
             <source>Using the next screen correction.</source>
-            <translation>अगले स्क्रीन सुधार का उपयोग करना।</translation>
+            <translation>अगला स्क्रीन सुधार लागू किया जा रहा है।</translation>
         </message>
         <message>
             <source>Windows could not open:
 %1</source>
-            <translation>विंडोज़ नहीं खुल सकी:
+            <translation>Windows यह नहीं खोल सका:
 %1</translation>
         </message>
         <message>
@@ -1019,7 +1019,7 @@
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>GPU प्रसंस्करण विफल रहता है - असंसाधित वीडियो दिखा रहा है।</translation>
+            <translation>GPU प्रोसेसिंग बार-बार विफल हो रही है—बिना प्रोसेस किया हुआ वीडियो दिखाया जा रहा है।</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
@@ -1031,7 +1031,7 @@
         </message>
         <message>
             <source>No camera modes were reported.</source>
-            <translation>कोई कैमरा मोड रिपोर्ट नहीं किया गया.</translation>
+            <translation>कैमरे ने कोई मोड नहीं बताया।</translation>
         </message>
         <message>
             <source>Photo not saved: no processed frame was available.</source>
@@ -1083,7 +1083,7 @@
         </message>
         <message>
             <source>Annotated view</source>
-            <translation>एनोटेट दृश्य</translation>
+            <translation>टिप्पणियों वाला दृश्य</translation>
         </message>
         <message>
             <source>Finishing recording...</source>
@@ -1135,11 +1135,11 @@
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
-            <translation>रिकॉर्डिंग कैनवास अमान्य है.</translation>
+            <translation>रिकॉर्डिंग का कैनवास मान्य नहीं है।</translation>
         </message>
         <message>
             <source>No frames were dropped.</source>
-            <translation>कोई फ़्रेम नहीं गिराया गया.</translation>
+            <translation>कोई फ़्रेम छूटा नहीं।</translation>
         </message>
         <message>
             <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
@@ -1147,11 +1147,11 @@
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>ऑडियो: एन्कोडिंग से पहले %1 ब्लॉक हटा दिए गए, %2 इनपुट सीमा द्वारा अस्वीकार कर दिया गया।</translation>
+            <translation>ऑडियो: एन्कोडिंग से पहले %1 ब्लॉक छूट गए; इनपुट सीमा के कारण %2 ब्लॉक अस्वीकार हुए।</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
-            <translation>%1 फ़्रेम गिरा दिए गए (%2)।</translation>
+            <translation>%1 फ़्रेम छूट गए (%2)।</translation>
         </message>
         <message>
             <source>%1 frames used an estimated timestamp.</source>
@@ -1179,7 +1179,7 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>जीपीयू-फेड मूल और संसाधित</translation>
+            <translation>GPU से मिले मूल और संसाधित फ़्रेम</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex छवि तैयारी व्यस्त है। थोड़ी देर में पुनः प्रयास करें.</translation>
+            <translation>Codex के लिए छवि तैयार की जा रही है। थोड़ी देर बाद फिर कोशिश करें।</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1223,7 +1223,7 @@
         </message>
         <message>
             <source>Photo captured</source>
-            <translation>फोटो खींच लिया गया</translation>
+            <translation>फ़ोटो ले ली गई</translation>
         </message>
         <message>
             <source>Preparing the current view...</source>
@@ -1231,7 +1231,7 @@
         </message>
         <message>
             <source>Querying VLM...</source>
-            <translation>वीएलएम से पूछताछ की जा रही है...</translation>
+            <translation>VLM से जानकारी ली जा रही है...</translation>
         </message>
         <message>
             <source>Scene explanation</source>
@@ -1247,7 +1247,7 @@
         </message>
         <message>
             <source>Sending the prompt only</source>
-            <translation>केवल संकेत भेज रहा हूँ</translation>
+            <translation>सिर्फ़ प्रॉम्प्ट भेजा जा रहा है</translation>
         </message>
         <message>
             <source>Text on screen</source>
@@ -1255,7 +1255,7 @@
         </message>
         <message>
             <source>Thinking...</source>
-            <translation>सोच रहा हूँ...</translation>
+            <translation>विचार किया जा रहा है...</translation>
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
@@ -1331,7 +1331,7 @@
         </message>
         <message>
             <source>Preview Read Aloud Voice</source>
-            <translation>पूर्वावलोकन जोर से पढ़ें आवाज</translation>
+            <translation>पढ़कर सुनाने वाली आवाज़ का पूर्वावलोकन करें</translation>
         </message>
         <message>
             <source>Write Lecture Notes File</source>
@@ -1363,7 +1363,7 @@
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
-            <translation>एनोटेशन मोड चालू. कलम के उपकरण।</translation>
+            <translation>एनोटेशन मोड चालू है। पेन टूल चुना गया है।</translation>
         </message>
         <message>
             <source>Annotation options</source>
@@ -1395,7 +1395,7 @@
         </message>
         <message>
             <source>Dashed line style</source>
-            <translation>धराशायी रेखा शैली</translation>
+            <translation>डैश वाली रेखा की शैली</translation>
         </message>
         <message>
             <source>Dashed stroke</source>
@@ -1403,11 +1403,11 @@
         </message>
         <message>
             <source>Done drawing</source>
-            <translation>ड्राइंग पूरी हो गई</translation>
+            <translation>ड्रॉइंग पूरी करें</translation>
         </message>
         <message>
             <source>Draw a dashed stroke with transparent gaps.</source>
-            <translation>पारदर्शी अंतराल के साथ एक धराशायी स्ट्रोक बनाएं।</translation>
+            <translation>बीच में पारदर्शी अंतराल वाली डैशदार रेखा खींचें।</translation>
         </message>
         <message>
             <source>Draw a rectangle.</source>
@@ -1471,7 +1471,7 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>एनोटेशन टूल ले जाएँ</translation>
+            <translation>एनोटेशन खिसकाने का टूल</translation>
         </message>
         <message>
             <source>Move tool</source>
@@ -1511,7 +1511,7 @@
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>चिह्नित दृश्य को व्याख्यान नोट्स में सहेजें। शॉर्टकट नियंत्रण एस.</translation>
+            <translation>चिह्नित दृश्य को व्याख्यान नोट्स में सहेजें। शॉर्टकट: Ctrl+S</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
@@ -1519,7 +1519,7 @@
         </message>
         <message>
             <source>Selected annotation scaled</source>
-            <translation>चयनित एनोटेशन स्केल किया गया</translation>
+            <translation>चयनित एनोटेशन का आकार बदला गया</translation>
         </message>
         <message>
             <source>Selection cleared</source>
@@ -1567,7 +1567,7 @@
         </message>
         <message>
             <source>Undo the last edit. Shortcut Control Z.</source>
-            <translation>अंतिम संपादन पूर्ववत करें. शॉर्टकट नियंत्रण Z.</translation>
+            <translation>पिछला बदलाव वापस लें। शॉर्टकट: Ctrl+Z</translation>
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
@@ -1623,11 +1623,11 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>स्ट्रीमिंग सहायक परिणाम. पाठ को पढ़ने के लिए तीर कुंजियों का उपयोग करें.</translation>
+            <translation>सहायक का जवाब आ रहा है। पाठ पढ़ने के लिए तीर कुंजियाँ दबाएँ।</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
-            <translation>किसी भी समय अनुवर्ती प्रश्न टाइप करें. वर्तमान उत्तर समाप्त होने पर भेजना उपलब्ध हो जाता है।</translation>
+            <translation>आप कभी भी अगला सवाल लिख सकते हैं। मौजूदा जवाब पूरा होने पर उसे भेज सकेंगे।</translation>
         </message>
         <message>
             <source>Apply custom</source>
@@ -1639,7 +1639,7 @@
         </message>
         <message>
             <source>Choose color stop %1</source>
-            <translation>रंग स्टॉप चुनें %1</translation>
+            <translation>रंग-ढाल का %1वाँ बिंदु चुनें</translation>
         </message>
         <message>
             <source>Choose display colors</source>
@@ -1647,7 +1647,7 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>%2 का कलर स्टॉप %1</translation>
+            <translation>%2 में से रंग-ढाल का बिंदु %1</translation>
         </message>
         <message>
             <source>Custom</source>
@@ -1667,7 +1667,7 @@
         </message>
         <message>
             <source>Display color scheme</source>
-            <translation>रंग योजना प्रदर्शित करें</translation>
+            <translation>डिस्प्ले की रंग योजना</translation>
         </message>
         <message>
             <source>Display colors changed to %1</source>
@@ -1675,7 +1675,7 @@
         </message>
         <message>
             <source>Display colors, %1</source>
-            <translation>रंग प्रदर्शित करें, %1</translation>
+            <translation>डिस्प्ले के रंग, %1</translation>
         </message>
         <message>
             <source>Display colors: %1</source>
@@ -1699,7 +1699,7 @@
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>रंग पढ़ना</translation>
+            <translation>पढ़ने के लिए रंग</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>कठोर रंग के बैंड का प्रयोग करें</translation>
+            <translation>रंगों के स्पष्ट पट्टों का उपयोग करें</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1771,7 +1771,7 @@
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
-            <translation>विज़न असिस्टेंट और स्पीच आउटपुट कॉन्फ़िगर करें</translation>
+            <translation>दृश्य-सहायक और बोलकर सुनाने की सुविधा सेट करें</translation>
         </message>
         <message>
             <source>Continue</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>स्मूथ पैन और ज़ूम प्रस्तुति को नियंत्रित करता है; कैमरा फ़्रेम दर अपरिवर्तित है</translation>
+            <translation>इससे पैन और ज़ूम का प्रदर्शन सुचारू होता है; कैमरे की फ़्रेम दर नहीं बदलती</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1811,15 +1811,15 @@
         </message>
         <message>
             <source>Extra Stable off</source>
-            <translation>अतिरिक्त स्थिर बंद</translation>
+            <translation>अतिरिक्त स्थिरता बंद</translation>
         </message>
         <message>
             <source>Extra Stable on</source>
-            <translation>अतिरिक्त स्थिर</translation>
+            <translation>अतिरिक्त स्थिरता चालू</translation>
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>फिल बिना स्ट्रेचिंग के पूर्ण व्यूपोर्ट का उपयोग करता है; फिट पूरी छवि को बार के साथ सुरक्षित रखता है</translation>
+            <translation>Fill पूरी स्क्रीन में बिना खींचे दिखाता है; Fit पूरी छवि को किनारों पर खाली जगह के साथ दिखाता है</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1831,7 +1831,7 @@
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>टक्कर के दौरान आखिरी नुकीले फ्रेम पर रुकें, फिर आसानी से लाइव वीडियो पर लौट आएं</translation>
+            <translation>झटका लगने पर आखिरी स्पष्ट फ़्रेम पर स्थिर रहें, फिर धीरे से लाइव वीडियो पर लौटें</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>पूर्ण-शक्ति CUDA स्थिरीकरण का उपयोग करके माउंट किए गए कैमरा दृश्य को लॉक करें</translation>
+            <translation>CUDA की पूरी स्थिरीकरण क्षमता से लगे हुए कैमरे का दृश्य स्थिर रखें</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1871,7 +1871,7 @@
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>मैच कैमरा (अनुशंसित)</translation>
+            <translation>कैमरे के अनुसार (अनुशंसित)</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>खुले नियंत्रण और सुविधाएँ मदद करती हैं</translation>
+            <translation>नियंत्रणों और सुविधाओं की सहायता खोलें</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1923,7 +1923,7 @@
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
-            <translation>वर्तमान ज़ूम फ़ोकस पर एक लाल मार्कर ओवरले करें</translation>
+            <translation>ज़ूम के मौजूदा केंद्र पर लाल निशान दिखाएँ</translation>
         </message>
         <message>
             <source>Previous Advanced section</source>
@@ -1963,7 +1963,7 @@
         </message>
         <message>
             <source>Reading profile</source>
-            <translation>प्रोफ़ाइल पढ़ना</translation>
+            <translation>पढ़ने की प्रोफ़ाइल</translation>
         </message>
         <message>
             <source>Reset current profile tuning</source>
@@ -1971,7 +1971,7 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>प्रोफ़ाइल-स्वामित्व वाली छवि और सहायक ट्यूनिंग को डिफ़ॉल्ट पर रीसेट करें</translation>
+            <translation>इस प्रोफ़ाइल की छवि और सहायक सुविधाओं की सेटिंग डिफ़ॉल्ट पर लौटाएँ</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
@@ -1995,7 +1995,7 @@
         </message>
         <message>
             <source>Sharp Text</source>
-            <translation>तीव्र पाठ</translation>
+            <translation>साफ़ पाठ</translation>
         </message>
         <message>
             <source>Sharpen Text</source>
@@ -2035,7 +2035,7 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>1.33x ज़ूम और इससे अधिक पर NVIDIA Video Effects SuperRes का उपयोग करें; स्वचालित रूप से एनआईएस में वापस आ जाता है</translation>
+            <translation>1.33x या उससे अधिक ज़ूम पर NVIDIA Video Effects SuperRes का उपयोग करें; उपलब्ध न होने पर यह अपने-आप NIS पर आ जाता है</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
@@ -2075,9 +2075,9 @@
             <source>Installed system-wide
 %1
 Removal is managed by Windows.</source>
-            <translation>स्थापित सिस्टम-वाइड
+            <translation>पूरे सिस्टम में स्थापित
 %1
-रिमूवल को विंडोज़ द्वारा प्रबंधित किया जाता है।</translation>
+इसे Windows के Installed Apps से हटाएँ।</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects</source>
@@ -2093,7 +2093,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>स्थापित नहीं. %1 GPU के लिए पैकेज डाउनलोड इंस्टॉल करें।</translation>
+            <translation>इंस्टॉल नहीं है। Install दबाने पर %1 GPU के लिए पैकेज डाउनलोड होगा।</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
@@ -2181,7 +2181,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The installer failed SHA-256 verification and was deleted.</source>
-            <translation>इंस्टॉलर SHA-256 सत्यापन विफल रहा और हटा दिया गया।</translation>
+            <translation>इंस्टॉलर SHA-256 सत्यापन में विफल रहा और उसे हटा दिया गया।</translation>
         </message>
         <message>
             <source>The temporary download file could not be created.</source>
@@ -2189,7 +2189,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>इस सिस्टम-व्यापी प्रतिलिपि को विंडोज़ इंस्टॉल किए गए ऐप्स के माध्यम से हटाया जाना चाहिए</translation>
+            <translation>इस पूरे-सिस्टम इंस्टॉलेशन को Windows के Installed Apps से हटाना होगा</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2229,11 +2229,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>सहायक हुक: दृश्य स्पष्ट करें</translation>
+            <translation>सहायक सुविधाएँ: दृश्य समझाएँ</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>सहायक हुक: ओवरले के साथ दृश्य की व्याख्या करें</translation>
+            <translation>सहायक सुविधाएँ: ओवरले के साथ दृश्य समझाएँ</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
@@ -2265,11 +2265,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Blur sigma</source>
-            <translation>धुंधला सिग्मा</translation>
+            <translation>ब्लर सिग्मा</translation>
         </message>
         <message>
             <source>Blur radius</source>
-            <translation>धुंधली त्रिज्या</translation>
+            <translation>ब्लर रेडियस</translation>
         </message>
         <message>
             <source>Performance timing percentiles</source>
@@ -2297,7 +2297,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stops: </source>
-            <translation>रुकता है: </translation>
+            <translation>स्टॉप:</translation>
         </message>
         <message>
             <source>Color stop %1 of 8</source>
@@ -2349,7 +2349,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>अगला स्क्रीन सुधार, या एक नया सुधार ढूंढें।%1</translation>
+            <translation>अगला स्क्रीन सुधार लागू करें, या नया सुधार खोजें।%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2361,7 +2361,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Started %1</source>
-            <translation>प्रारंभ %1</translation>
+            <translation>%1 शुरू हुआ</translation>
         </message>
         <message>
             <source>Captured processed camera view</source>
@@ -2421,7 +2421,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The paired photos could not be saved. A partial file may remain: %1</source>
-            <translation>युग्मित फ़ोटो सहेजे नहीं जा सके. एक आंशिक फ़ाइल रह सकती है: %1</translation>
+            <translation>जोड़ी वाली फ़ोटो सहेजी नहीं जा सकीं। एक अधूरी फ़ाइल बची हो सकती है: %1</translation>
         </message>
         <message>
             <source>The saved OkuFlow folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
@@ -2453,7 +2453,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>सहायक द्वारा विश्लेषित दृश्य देखें</translation>
+            <translation>सहायक ने जिस दृश्य का विश्लेषण किया, उसे देखें</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2473,27 +2473,27 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Explain conversation</source>
-            <translation>स्पष्टीकरण बातचीत</translation>
+            <translation>समझाने वाली बातचीत</translation>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
-            <translation>एक नई बातचीत शुरू हुई. अगला स्पष्टीकरण एक नई बातचीत भी शुरू करता है।</translation>
+            <translation>नई बातचीत शुरू हुई। अगली बार “समझाएँ” दबाने पर भी नई बातचीत शुरू होगी।</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>वर्तमान कैमरा फ़्रेम भेजा जा रहा है और Codex पर संकेत दिया जा रहा है। वार्तालाप: सहेजा गया स्पष्ट करें वार्तालाप, प्रत्येक स्पष्टीकरण द्वारा जारी रखा गया। टूल इंटरनेट: अवरुद्ध. कोडिंग और फ़ाइल परिवर्तन: अवरुद्ध.</translation>
+            <translation>वर्तमान कैमरा फ़्रेम और प्रॉम्प्ट Codex को भेजे जा रहे हैं। बातचीत: सहेजी गई “समझाएँ” बातचीत, जिसे हर बार “समझाएँ” दबाने पर आगे बढ़ाया जाता है। टूल इंटरनेट: अवरुद्ध। कोडिंग और फ़ाइल में बदलाव: अवरुद्ध।</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>वर्तमान कैमरा फ़्रेम भेजा जा रहा है और Codex पर संकेत दिया जा रहा है। वार्तालाप: अस्थायी, प्रत्येक पढ़ने के लिए नया। टूल इंटरनेट: अवरुद्ध. कोडिंग और फ़ाइल परिवर्तन: अवरुद्ध.</translation>
+            <translation>वर्तमान कैमरा फ़्रेम और प्रॉम्प्ट Codex को भेजे जा रहे हैं। बातचीत: अस्थायी; हर बार “पढ़ें” दबाने पर नई बातचीत। टूल इंटरनेट: अवरुद्ध। कोडिंग और फ़ाइल में बदलाव: अवरुद्ध।</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>%1 (स्थानीय समापन बिंदु) पर वर्तमान कैमरा फ़्रेम, प्रॉम्प्ट और हाल के स्पष्टीकरण उत्तर भेजना। वार्तालाप: हाल ही में उत्तर स्पष्ट करें, केवल स्मृति में रखा गया है। कोडिंग उपकरण: अनुपलब्ध.</translation>
+            <translation>वर्तमान कैमरा फ़्रेम, प्रॉम्प्ट और हाल के “समझाएँ” जवाब %1 (स्थानीय एंडपॉइंट) को भेजे जा रहे हैं। बातचीत: हाल के “समझाएँ” जवाब, केवल मेमोरी में रखे गए हैं। कोडिंग टूल: उपलब्ध नहीं।</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>%1 (रिमोट एंडपॉइंट) पर वर्तमान कैमरा फ्रेम, प्रॉम्प्ट और हाल के स्पष्टीकरण उत्तर भेजना। वार्तालाप: हाल ही में उत्तर स्पष्ट करें, केवल स्मृति में रखा गया है। कोडिंग उपकरण: अनुपलब्ध.</translation>
+            <translation>वर्तमान कैमरा फ़्रेम, प्रॉम्प्ट और हाल के “समझाएँ” जवाब %1 (रिमोट एंडपॉइंट) को भेजे जा रहे हैं। बातचीत: हाल के “समझाएँ” जवाब, केवल मेमोरी में रखे गए हैं। कोडिंग टूल: उपलब्ध नहीं।</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2505,7 +2505,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Dock left</source>
-            <translation>गोदी बाएँ</translation>
+            <translation>बाईं ओर डॉक करें</translation>
         </message>
         <message>
             <source>Dock right</source>
@@ -2513,7 +2513,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Release to dock left</source>
-            <translation>बायीं ओर गोदी में छोड़ें</translation>
+            <translation>बाईं ओर डॉक करने के लिए छोड़ें</translation>
         </message>
         <message>
             <source>Release to dock right</source>
@@ -2521,7 +2521,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>सदस्यता-समर्थित पढ़ने, समझाने और सहायक सुविधाओं को शक्ति प्रदान करता है। आपके विंडोज़ खाते के लिए आधिकारिक Codex CLI इंस्टॉल करता है; चैटजीपीटी साइन-इन एक अलग चरण है।</translation>
+            <translation>सदस्यता के साथ मिलने वाली “पढ़ें”, “समझाएँ” और Assistant सुविधाएँ उपलब्ध कराता है। आपके Windows खाते के लिए आधिकारिक Codex CLI इंस्टॉल करता है; ChatGPT में साइन इन करना अलग से होगा।</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2537,11 +2537,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Connect a camera, then choose it under Advanced, Device.</source>
-            <translation>कैमरा कनेक्ट करें, फिर उसे एडवांस्ड, डिवाइस के अंतर्गत चुनें।</translation>
+            <translation>कैमरा कनेक्ट करें, फिर Advanced &gt; Device में उसे चुनें।</translation>
         </message>
         <message>
             <source>Choose a camera under Advanced, Device, or check that it is connected.</source>
-            <translation>उन्नत, डिवाइस के अंतर्गत एक कैमरा चुनें, या जांचें कि यह कनेक्ट है।</translation>
+            <translation>Advanced &gt; Device में कैमरा चुनें, या जाँचें कि वह कनेक्ट है।</translation>
         </message>
         <message>
             <source>Number key %1</source>
@@ -2657,7 +2657,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>यहां कोई मेल नहीं है. %1 छवि में। उन्हें दिखाने के लिए Enter दबाएँ.</translation>
+            <translation>यहाँ कोई मिलान नहीं मिला। %1 इमेज सेटिंग्स में हैं। उन्हें दिखाने के लिए Enter दबाएँ।</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2705,11 +2705,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>दृश्य स्पष्टीकरण बंद करो</translation>
+            <translation>दृश्य की व्याख्या रोकें</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
-            <translation>वर्तमान दृश्य स्पष्टीकरण बंद करो</translation>
+            <translation>मौजूदा दृश्य की व्याख्या रोकें</translation>
         </message>
         <message>
             <source>Reset this mode's image and assistant settings?
@@ -2741,11 +2741,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
-            <translation>%1 अपना अंतिम टुकड़ा (0x%2) समाप्त नहीं कर सका। फ़ाइल बरकरार रखी गई थी; प्लेबैक सत्यापित नहीं किया गया है.</translation>
+            <translation>%1 अंतिम फ़्रैगमेंट (0x%2) पूरा नहीं कर सका। फ़ाइल रखी गई है; प्लेबैक की पुष्टि नहीं हुई है।</translation>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>रिकॉर्डिंग आउटपुट पथ पहले से मौजूद है; इसे संरक्षित कर लिया गया.</translation>
+            <translation>रिकॉर्डिंग की आउटपुट फ़ाइल पहले से मौजूद है; उसे सुरक्षित रखा गया है।</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
@@ -2791,15 +2791,15 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>पढ़ें, समझाएं और सहायक Codex CLI के माध्यम से अपनी ChatGPT सदस्यता का उपयोग करें। उन्नत मोड में सहायक टैब पर कनेक्ट चैटजीपीटी के साथ साइन इन करें।</translation>
+            <translation>“पढ़ें”, “समझाएँ” और Assistant, Codex CLI के ज़रिए आपकी ChatGPT सदस्यता का उपयोग करते हैं। साइन इन करने के लिए Advanced मोड के Assistant टैब में Connect ChatGPT चुनें।</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>पढ़ें और समझाएं, कैमरा व्यू को नीचे दिए गए सर्वर यूआरएल पर भेजें। छवियाँ इस कंप्यूटर पर तभी रहती हैं जब वह सर्वर उस पर चलता है, जैसे एलएम स्टूडियो या लोकलहोस्ट पर ओलामा। सहेजे गए Assistant वार्तालापों के लिए ChatGPT सदस्यता की आवश्यकता होती है।</translation>
+            <translation>“पढ़ें” और “समझाएँ” कैमरे का दृश्य नीचे दिए गए सर्वर URL पर भेजते हैं। छवियाँ इसी कंप्यूटर पर तभी रहती हैं जब सर्वर यहीं चलता हो, जैसे localhost पर LM Studio या Ollama। Assistant की सहेजी गई बातचीत के लिए ChatGPT सदस्यता चाहिए।</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
-            <translation>OkuFlow हमेशा इस निर्देश को Codex पर भेजता है, आपके निर्देशों और अनुमति नियमों के बाद।</translation>
+            <translation>OkuFlow हमेशा यह निर्देश Codex को भेजता है, फिर आपके निर्देश और अनुमति नियम भेजता है।</translation>
         </message>
         <message>
             <source>Assistant instructions</source>
@@ -2827,23 +2827,23 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>केवल-पढ़ने के लिए निर्देश दिखाएं या छुपाएं OkuFlow हमेशा Codex पर भेजता है</translation>
+            <translation>OkuFlow द्वारा Codex को हमेशा भेजा जाने वाला निर्देश दिखाएँ या छिपाएँ</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>शीघ्र स्पष्ट करें</translation>
+            <translation>समझाने का प्रॉम्प्ट</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
-            <translation>जब आप व्याख्या दबाते हैं तो कैमरा दृश्य के साथ वैकल्पिक निर्देश भेजे जाते हैं</translation>
+            <translation>“समझाएँ” दबाने पर कैमरे के दृश्य के साथ वैकल्पिक निर्देश भेजे जाते हैं</translation>
         </message>
         <message>
             <source>Installed
 %1
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
-            <translation>इंस्टॉल किया गया
+            <translation>इंस्टॉल हो गया
 %1
-साइन इन करने के लिए एडवांस्ड असिस्टेंट टैब पर कनेक्ट चैटजीपीटी का उपयोग करें।</translation>
+साइन इन करने के लिए Advanced के Assistant टैब में Connect ChatGPT चुनें।</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2867,7 +2867,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Waiting for phone…</source>
-            <translation>फ़ोन का इंतज़ार कर रहा हूँ...</translation>
+            <translation>फ़ोन का इंतज़ार हो रहा है…</translation>
         </message>
         <message>
             <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
@@ -2887,7 +2887,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
-            <translation>OkuFlow द्वारा उपयोग की जाने वाली विंडोज़ लाइब्रेरी। इंस्टॉलेशन शामिल Microsoft इंस्टॉलर का उपयोग करता है और व्यवस्थापक अनुमोदन का अनुरोध कर सकता है।</translation>
+            <translation>OkuFlow जिन Windows लाइब्रेरी का उपयोग करता है। इन्हें इंस्टॉल करने के लिए शामिल Microsoft इंस्टॉलर चलेगा और प्रशासक की अनुमति माँगी जा सकती है।</translation>
         </message>
         <message>
             <source>Install for Windows</source>

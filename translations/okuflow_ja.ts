@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>各接続で開始されます。押すと電話ライトがオンまたはオフになります。</translation>
+            <translation>接続のたびにライトはオフの状態で開始します。押すとオン／オフを切り替えられます。</translation>
         </message>
         <message>
             <source>Application</source>
@@ -29,7 +29,7 @@
         </message>
         <message>
             <source>Changes OkuFlow's interface language immediately. An assistant request already in progress keeps its original response language.</source>
-            <translation>OkuFlow のインターフェース言語を直ちに変更します。すでに進行中のアシスタント要求は、元の応答言語を保持します。</translation>
+            <translation>OkuFlow の表示言語をすぐに変更します。進行中のアシスタントへのリクエストには、開始時の応答言語が引き続き使われます。</translation>
         </message>
         <message>
             <source>Changes the interface immediately. In-progress assistant requests use the language selected when they started.</source>
@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>設定名の一部を入力すると、一致するコントロールが表示され、フォーカスされます。</translation>
+            <translation>設定名の一部を入力すると、一致する項目が表示され、その設定にフォーカスします。</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -125,7 +125,7 @@
         </message>
         <message>
             <source>Viewport motion rate</source>
-            <translation>ビューポートのモーション レート</translation>
+            <translation>表示領域の更新頻度</translation>
         </message>
         <message>
             <source>Auto (up to 120 FPS)</source>
@@ -137,11 +137,11 @@
         </message>
         <message>
             <source>Viewport framing</source>
-            <translation>ビューポートのフレーミング</translation>
+            <translation>表示領域の表示範囲</translation>
         </message>
         <message>
             <source>Fill (crop)</source>
-            <translation>塗りつぶし（トリミング）</translation>
+            <translation>画面いっぱいに表示（端を切り取る）</translation>
         </message>
         <message>
             <source>Fit (show all)</source>
@@ -153,7 +153,7 @@
         </message>
         <message>
             <source>Reset Tuning</source>
-            <translation>リセットチューニング</translation>
+            <translation>調整をリセット</translation>
         </message>
         <message>
             <source>Virtual Joystick</source>
@@ -165,7 +165,7 @@
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
-            <translation>オリジナルの録音と処理された録音で共有</translation>
+            <translation>元映像と処理後の録画で共有</translation>
         </message>
         <message>
             <source>Processed recording resolution</source>
@@ -205,7 +205,7 @@
         </message>
         <message>
             <source>Screen fix</source>
-            <translation>画面の修正</translation>
+            <translation>画面補正</translation>
         </message>
         <message>
             <source>Text clarity</source>
@@ -213,7 +213,7 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>鮮明にして焦点を合わせる</translation>
+            <translation>鮮明化とピント調整</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>時間的滑らかさ</translation>
+            <translation>時間方向の平滑化</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -253,7 +253,7 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>非常に安定した (シェイクを保持)</translation>
+            <translation>さらに安定（揺れに合わせて映像を保持）</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
@@ -285,11 +285,11 @@
         </message>
         <message>
             <source>Auto Text Clarity</source>
-            <translation>自動テキストの鮮明さ</translation>
+            <translation>テキストの自動鮮明化</translation>
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>背景を平らにする</translation>
+            <translation>背景を平坦化</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
@@ -301,11 +301,11 @@
         </message>
         <message>
             <source>Text polarity</source>
-            <translation>テキスト極性</translation>
+            <translation>文字の明暗</translation>
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>ストローク重量</translation>
+            <translation>線の太さ</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -321,7 +321,7 @@
         </message>
         <message>
             <source>Steady Text Edges</source>
-            <translation>安定したテキストエッジ</translation>
+            <translation>文字の輪郭を安定化</translation>
         </message>
         <message>
             <source>Sharpen Text Only</source>
@@ -333,7 +333,7 @@
         </message>
         <message>
             <source>Suppress Glare</source>
-            <translation>眩しさを抑える</translation>
+            <translation>反射光を抑える</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution</source>
@@ -345,7 +345,7 @@
         </message>
         <message>
             <source>Faster 2x mode (narrower view)</source>
-            <translation>高速 2x モード (狭い視野)</translation>
+            <translation>高速な2倍モード（表示範囲が狭くなります）</translation>
         </message>
         <message>
             <source>Ignore 24 ms performance limit</source>
@@ -381,7 +381,7 @@
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
-            <translation>Draw を終了するときに描画をノートに保存する</translation>
+            <translation>描画モードを終了するときに、描画をノートに保存</translation>
         </message>
         <message>
             <source>AI Settings</source>
@@ -409,7 +409,7 @@
         </message>
         <message>
             <source>Spatial Sharpen</source>
-            <translation>空間シャープニング</translation>
+            <translation>空間方向のシャープ化</translation>
         </message>
         <message>
             <source>Backend</source>
@@ -469,11 +469,11 @@
         </message>
         <message>
             <source>Capture original and processed photos</source>
-            <translation>オリジナルの写真と加工された写真を撮影する</translation>
+            <translation>元画像と処理後の画像を撮影</translation>
         </message>
         <message>
             <source>Record original and processed videos</source>
-            <translation>オリジナルのビデオと処理されたビデオを録画する</translation>
+            <translation>元映像と処理後の映像を録画</translation>
         </message>
         <message>
             <source>Explain the current view</source>
@@ -545,7 +545,7 @@
         </message>
         <message>
             <source>Ask about this view...</source>
-            <translation>この景色について質問してください...</translation>
+            <translation>この映像について質問…</translation>
         </message>
         <message>
             <source>Ask</source>
@@ -589,15 +589,15 @@
         </message>
         <message>
             <source>Ask about the current camera view.</source>
-            <translation>現在のカメラのビューについて質問します。</translation>
+            <translation>現在のカメラ映像について質問できます。</translation>
         </message>
         <message>
             <source>Ask about what is visible...</source>
-            <translation>何が見えるのかを尋ねる...</translation>
+            <translation>映っているものについて質問…</translation>
         </message>
         <message>
             <source>Attach current view</source>
-            <translation>現在のビューをアタッチする</translation>
+            <translation>現在の映像を添付</translation>
         </message>
         <message>
             <source>AI Settings sections</source>
@@ -637,7 +637,7 @@
         </message>
         <message>
             <source>Allow coding commands and file changes</source>
-            <translation>コマンドのコーディングとファイルの変更を許可する</translation>
+            <translation>コード実行コマンドとファイル変更を許可</translation>
         </message>
         <message>
             <source>Required when coding is enabled</source>
@@ -657,7 +657,7 @@
         </message>
         <message>
             <source>OpenAI-compatible vision server</source>
-            <translation>OpenAI対応ビジョンサーバー</translation>
+            <translation>OpenAI互換の画像認識サーバー</translation>
         </message>
         <message>
             <source>Server URL:</source>
@@ -697,7 +697,7 @@
         </message>
         <message>
             <source>GPU stopped responding. Restart OkuFlow to resume video.</source>
-            <translation>GPU が応答を停止しました。 OkuFlow を再起動してビデオを再開します。</translation>
+            <translation>GPU が応答しなくなりました。動画を再開するには OkuFlow を再起動してください。</translation>
         </message>
         <message>
             <source>Lecture notes could not be saved.</source>
@@ -709,7 +709,7 @@
         </message>
         <message>
             <source>Write lecture notes file</source>
-            <translation>講義ノートファイルを作成する</translation>
+            <translation>講義ノートファイルに書き込む</translation>
         </message>
         <message>
             <source>None</source>
@@ -745,7 +745,7 @@
         </message>
         <message>
             <source>%1% slower</source>
-            <translation>%1% 遅くなりました</translation>
+            <translation>%1% 遅い</translation>
         </message>
         <message>
             <source>%1% faster</source>
@@ -761,7 +761,7 @@
         </message>
         <message>
             <source>Optional Reading and AI Tools</source>
-            <translation>オプションの読み取りツールと AI ツール</translation>
+            <translation>読み上げ・AIツール（任意）</translation>
         </message>
         <message>
             <source>Install</source>
@@ -781,15 +781,15 @@
         </message>
         <message>
             <source>Don't ask again automatically</source>
-            <translation>自動的に再度質問しない</translation>
+            <translation>今後、自動で確認しない</translation>
         </message>
         <message>
             <source>Section heading. Activate to expand or collapse this settings group.</source>
-            <translation>セクションの見出し。この設定グループを展開または折りたたむにはアクティブにします。</translation>
+            <translation>セクション見出し。この設定グループを展開または折りたたむには、選択してください。</translation>
         </message>
         <message>
             <source>expanded</source>
-            <translation>拡張された</translation>
+            <translation>展開</translation>
         </message>
         <message>
             <source>collapsed</source>
@@ -809,7 +809,7 @@
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>%1 音声はインストールされていません - 現在の音声を使用します。 Windows の [設定] → [時刻と言語] → [音声] でインストールします。</translation>
+            <translation>%1の音声がインストールされていないため、現在の音声を使用します。Windowsの［設定］→［時刻と言語］→［音声］からインストールしてください。</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -825,7 +825,7 @@
         </message>
         <message>
             <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
-            <translation>画像の焦点が合っていません。テキストを読む前に、電話画面をタップして再度焦点を合わせます。</translation>
+            <translation>ピントが合っていません。文字を読む前に、スマートフォンの画面をタップしてピントを合わせ直してください。</translation>
         </message>
         <message>
             <source>Loading conversation...</source>
@@ -845,7 +845,7 @@
         </message>
         <message>
             <source>Capturing original and processed photos...</source>
-            <translation>オリジナルの写真と加工された写真をキャプチャしています...</translation>
+            <translation>元画像と処理後の画像を撮影しています…</translation>
         </message>
         <message>
             <source>Delete Conversation</source>
@@ -869,7 +869,7 @@
         </message>
         <message>
             <source>Stopped.</source>
-            <translation>止まった。</translation>
+            <translation>停止しました。</translation>
         </message>
         <message>
             <source>The OkuFlow Analysis folder is unavailable.</source>
@@ -877,7 +877,7 @@
         </message>
         <message>
             <source>Viewport motion limited to %1 FPS by this display.</source>
-            <translation>この表示により、ビューポートのモーションは %1 FPS に制限されます。</translation>
+            <translation>このディスプレイでは、ビューポートの更新が最大%1 FPSに制限されます。</translation>
         </message>
         <message>
             <source>Vision model: %1</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>GPU カメラ キャプチャはセーフ コピー フォールバックでアクティブになります。</translation>
+            <translation>安全なコピー方式でGPUカメラキャプチャを実行中です。</translation>
         </message>
         <message>
             <source>Later</source>
@@ -909,11 +909,11 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>NVIDIA Super Resolution パフォーマンス制限は無視されました。</translation>
+            <translation>NVIDIA Super Resolutionの性能制限を適用しませんでした。</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
-            <translation>NVIDIA Super Resolution パフォーマンス制限が回復されました。</translation>
+            <translation>NVIDIA Super Resolutionの性能制限を元に戻しました。</translation>
         </message>
         <message>
             <source>New OkuFlow files will be saved in %1.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>画面補正が後退し、トラッキングが停止しました。</translation>
+            <translation>画面補正が元に戻り、追跡が停止しました。</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -949,11 +949,11 @@
         </message>
         <message>
             <source>Temporal blend</source>
-            <translation>時間的ブレンド</translation>
+            <translation>時間方向の合成</translation>
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>分離されたプロセスで GPU と互換性キャプチャをテストしています...</translation>
+            <translation>独立したプロセスでGPUキャプチャと互換モードのキャプチャをテストしています…</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -974,7 +974,7 @@
         <message>
             <source>Windows could not open:
 %1</source>
-            <translation>Windows を開けませんでした:
+            <translation>Windowsで次を開けませんでした：
 %1</translation>
         </message>
         <message>
@@ -995,7 +995,7 @@
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>注釈付きビューは保存されません: イメージ ライタがビジー状態です。もう一度やり直してください。</translation>
+            <translation>注釈付き画像を保存できませんでした。画像の保存処理中です。しばらくしてからもう一度お試しください。</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
@@ -1019,7 +1019,7 @@
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>GPU 処理が失敗し続け、未処理のビデオが表示されます。</translation>
+            <translation>GPU処理に繰り返し失敗したため、未処理の映像を表示しています。</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
@@ -1031,15 +1031,15 @@
         </message>
         <message>
             <source>No camera modes were reported.</source>
-            <translation>カメラモードは報告されていません。</translation>
+            <translation>カメラから撮影モードの情報が返されませんでした。</translation>
         </message>
         <message>
             <source>Photo not saved: no processed frame was available.</source>
-            <translation>写真は保存されませんでした: 利用可能な処理済みフレームがありませんでした。</translation>
+            <translation>写真を保存できませんでした。処理済みフレームを取得できませんでした。</translation>
         </message>
         <message>
             <source>Photo not saved: the OkuFlow Photos folder is unavailable.</source>
-            <translation>写真が保存されていません: OkuFlow 写真フォルダーが使用できません。</translation>
+            <translation>写真を保存できませんでした。OkuFlowの写真フォルダーを利用できません。</translation>
         </message>
         <message>
             <source>Photo not saved: the image could not be queued.</source>
@@ -1047,7 +1047,7 @@
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>写真が保存されていません: 画像ライターがビジー状態です。もう一度やり直してください。</translation>
+            <translation>写真を保存できませんでした。画像の保存処理中です。しばらくしてからもう一度お試しください。</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
@@ -1087,7 +1087,7 @@
         </message>
         <message>
             <source>Finishing recording...</source>
-            <translation>録音を終了しています...</translation>
+            <translation>録画を終了しています…</translation>
         </message>
         <message>
             <source>Finishing recording…</source>
@@ -1103,7 +1103,7 @@
         </message>
         <message>
             <source>Recording is starting...</source>
-            <translation>録音が始まっています...</translation>
+            <translation>録画を開始しています…</translation>
         </message>
         <message>
             <source>Recording saved. %1</source>
@@ -1111,7 +1111,7 @@
         </message>
         <message>
             <source>Recording stopped after reaching the 12-hour limit.</source>
-            <translation>12 時間の制限に達すると録画が停止されました。</translation>
+            <translation>12時間の上限に達したため、録画を停止しました。</translation>
         </message>
         <message>
             <source>Recording stopped because an encoder rejected a frame.</source>
@@ -1131,11 +1131,11 @@
         </message>
         <message>
             <source>The camera mode changed. Recording continues in part %1.</source>
-            <translation>カメラモードが変わりました。 %1 の部分は記録が継続されます。</translation>
+            <translation>カメラの撮影モードが変わりました。録画はパート%1として続きます。</translation>
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
-            <translation>記録キャンバスが無効です。</translation>
+            <translation>録画のキャンバス設定が無効です。</translation>
         </message>
         <message>
             <source>No frames were dropped.</source>
@@ -1147,7 +1147,7 @@
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>オーディオ: %1 ブロックはエンコード前にドロップされ、%2 は入力制限によって拒否されました。</translation>
+            <translation>音声：エンコード前に%1ブロックを破棄、入力上限により%2ブロックを受け付けませんでした。</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
@@ -1175,15 +1175,15 @@
         </message>
         <message>
             <source>direct GPU</source>
-            <translation>ダイレクトGPU</translation>
+            <translation>GPU直接処理</translation>
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>GPU から供給されたオリジナルと処理済み</translation>
+            <translation>GPUから入力した元映像と処理後の映像</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>ワーカーリードバックを備えた GPU ソース</translation>
+            <translation>GPU入力・ワーカー経由の読み戻し</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1191,7 +1191,7 @@
         </message>
         <message>
             <source>Assistant stopped.</source>
-            <translation>アシスタントが止まった。</translation>
+            <translation>アシスタントを停止しました。</translation>
         </message>
         <message>
             <source>Assistive View</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex 画像の準備が忙しいです。しばらくしてからもう一度試してください。</translation>
+            <translation>Codex用画像を準備中です。しばらくしてからもう一度お試しください。</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1215,11 +1215,11 @@
         </message>
         <message>
             <source>No camera frame is available to attach.</source>
-            <translation>取り付け可能なカメラフレームはありません。</translation>
+            <translation>添付できるカメラ映像がありません。</translation>
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>永続アシスタントの会話には、Codex サブスクリプション プロバイダーが必要です。</translation>
+            <translation>Assistantの会話を保存するには、Codexのサブスクリプションプロバイダーが必要です。</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1239,7 +1239,7 @@
         </message>
         <message>
             <source>Scene explanation is busy with a previous request. Try again in a moment.</source>
-            <translation>シーン説明は先のリクエストで忙しいです。しばらくしてからもう一度試してください。</translation>
+            <translation>前のリクエストを処理中です。しばらくしてからもう一度お試しください。</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt</source>
@@ -1259,7 +1259,7 @@
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
-            <translation>VLM イメージの準備がビジー状態です。しばらくしてからもう一度試してください。</translation>
+            <translation>VLM用の画像を準備中です。しばらくしてからもう一度お試しください。</translation>
         </message>
         <message>
             <source>VLM ready.</source>
@@ -1283,7 +1283,7 @@
         </message>
         <message>
             <source>Video recorded</source>
-            <translation>録画されたビデオ</translation>
+            <translation>録画しました</translation>
         </message>
         <message>
             <source>AI Provider</source>
@@ -1323,7 +1323,7 @@
         </message>
         <message>
             <source>Read Aloud Voice</source>
-            <translation>音声読み上げ</translation>
+            <translation>読み上げ音声</translation>
         </message>
         <message>
             <source>Read Aloud Speed</source>
@@ -1335,7 +1335,7 @@
         </message>
         <message>
             <source>Write Lecture Notes File</source>
-            <translation>講義ノートファイルを作成する</translation>
+            <translation>講義ノートファイルに書き込む</translation>
         </message>
         <message>
             <source>Loading installed Windows voices...</source>
@@ -1375,7 +1375,7 @@
         </message>
         <message>
             <source>Annotation thickness</source>
-            <translation>注釈の厚さ</translation>
+            <translation>注釈の線の太さ</translation>
         </message>
         <message>
             <source>Annotation tool</source>
@@ -1407,7 +1407,7 @@
         </message>
         <message>
             <source>Draw a dashed stroke with transparent gaps.</source>
-            <translation>透明なギャップのある破線のストロークを描きます。</translation>
+            <translation>間隔の空いた破線を描きます。</translation>
         </message>
         <message>
             <source>Draw a rectangle.</source>
@@ -1427,7 +1427,7 @@
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
-            <translation>カメラビュー上にフリーハンドで描画します。ショートカットP.</translation>
+            <translation>カメラ映像にフリーハンドで描画します。ショートカット：P</translation>
         </message>
         <message>
             <source>Draw mode off.</source>
@@ -1439,7 +1439,7 @@
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>カメラ シーンに固定された注釈を描画、選択、サイズ変更、保存、またはクリアします。</translation>
+            <translation>カメラ映像に固定した注釈の描画、選択、サイズ変更、保存、削除ができます。</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1471,7 +1471,7 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>注釈ツールの移動</translation>
+            <translation>注釈の移動ツール</translation>
         </message>
         <message>
             <source>Move tool</source>
@@ -1519,7 +1519,7 @@
         </message>
         <message>
             <source>Selected annotation scaled</source>
-            <translation>選択した注釈の拡大縮小</translation>
+            <translation>選択した注釈のサイズを変更しました</translation>
         </message>
         <message>
             <source>Selection cleared</source>
@@ -1531,7 +1531,7 @@
         </message>
         <message>
             <source>Solid</source>
-            <translation>固体</translation>
+            <translation>単色</translation>
         </message>
         <message>
             <source>Solid line style</source>
@@ -1539,7 +1539,7 @@
         </message>
         <message>
             <source>Solid stroke</source>
-            <translation>ソリッドストローク</translation>
+            <translation>実線</translation>
         </message>
         <message>
             <source>Text entry canceled</source>
@@ -1547,7 +1547,7 @@
         </message>
         <message>
             <source>Text placed</source>
-            <translation>配置されたテキスト</translation>
+            <translation>テキストを配置しました</translation>
         </message>
         <message>
             <source>Text size</source>
@@ -1579,23 +1579,23 @@
         </message>
         <message>
             <source>Assistive result</source>
-            <translation>支援結果</translation>
+            <translation>アシスタントの回答</translation>
         </message>
         <message>
             <source>Assistive result text</source>
-            <translation>補助的な結果テキスト</translation>
+            <translation>アシスタントの回答本文</translation>
         </message>
         <message>
             <source>Assistive result title</source>
-            <translation>支援結果のタイトル</translation>
+            <translation>アシスタントの回答タイトル</translation>
         </message>
         <message>
             <source>Assistive results</source>
-            <translation>支援結果</translation>
+            <translation>アシスタントの回答</translation>
         </message>
         <message>
             <source>Close assistive result</source>
-            <translation>支援結果を閉じる</translation>
+            <translation>アシスタントの回答を閉じる</translation>
         </message>
         <message>
             <source>Hide the current assistant result</source>
@@ -1611,7 +1611,7 @@
         </message>
         <message>
             <source>Read assistive result aloud</source>
-            <translation>支援結果を読み上げる</translation>
+            <translation>アシスタントの回答を読み上げる</translation>
         </message>
         <message>
             <source>Send the question with the current camera view to OkuFlow Assistant</source>
@@ -1623,7 +1623,7 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>ストリーミングアシスタントの結果。矢印キーを使用してテキストを読みます。</translation>
+            <translation>アシスタントが回答中です。矢印キーで回答を読み進められます。</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1639,7 +1639,7 @@
         </message>
         <message>
             <source>Choose color stop %1</source>
-            <translation>カラーストップを選択してください %1</translation>
+            <translation>色の停止位置%1を選択</translation>
         </message>
         <message>
             <source>Choose display colors</source>
@@ -1647,7 +1647,7 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>カラーストップ %1/%2</translation>
+            <translation>色の停止位置：%1/%2</translation>
         </message>
         <message>
             <source>Custom</source>
@@ -1691,7 +1691,7 @@
         </message>
         <message>
             <source>Number of color stops</source>
-            <translation>カラーストップ数</translation>
+            <translation>色の停止位置の数</translation>
         </message>
         <message>
             <source>Posterize</source>
@@ -1699,7 +1699,7 @@
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>色の読み方</translation>
+            <translation>読み取り用の色</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
@@ -1711,7 +1711,7 @@
         </message>
         <message>
             <source>Stepped colors</source>
-            <translation>ステップカラー</translation>
+            <translation>段階的な色</translation>
         </message>
         <message>
             <source>Text color</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>ハードカラーバンドを使用する</translation>
+            <translation>色の境目をはっきりさせる</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1743,15 +1743,15 @@
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
-            <translation>カメラの加速はまだ開始されていません。</translation>
+            <translation>カメラの高速化はまだ始まっていません。</translation>
         </message>
         <message>
             <source>Camera acceleration mode</source>
-            <translation>カメラ加速モード</translation>
+            <translation>カメラ処理の高速化モード</translation>
         </message>
         <message>
             <source>Camera acceleration status</source>
-            <translation>カメラの加速ステータス</translation>
+            <translation>カメラ処理の高速化状態</translation>
         </message>
         <message>
             <source>Camera format notice</source>
@@ -1767,7 +1767,7 @@
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex 使用法</translation>
+            <translation>Codexの使用状況</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>スムーズなパンとズームのプレゼンテーションを制御します。カメラのフレームレートは変更されません</translation>
+            <translation>パンとズームの表示を滑らかにします。カメラのフレームレートは変わりません</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1807,23 +1807,23 @@
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
-            <translation>ドラッグしてサイズを変更します 詳細設定</translation>
+            <translation>ドラッグして詳細設定のサイズを変更</translation>
         </message>
         <message>
             <source>Extra Stable off</source>
-            <translation>エクストラ安定オフ</translation>
+            <translation>強力な手ぶれ補正：オフ</translation>
         </message>
         <message>
             <source>Extra Stable on</source>
-            <translation>非常に安定したオン</translation>
+            <translation>強力な手ぶれ補正：オン</translation>
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>塗りつぶしは、拡大せずにビューポート全体を使用します。 Fit は画像全体をバー付きで保持します</translation>
+            <translation>「画面いっぱい」は画像を引き伸ばさずに表示します。「全体表示」は画像全体を余白付きで表示します</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
-            <translation>新しい画面修正を 1 つ見つけています...</translation>
+            <translation>新しい画面補正を1つ検出しています…</translation>
         </message>
         <message>
             <source>Finishing</source>
@@ -1831,7 +1831,7 @@
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>バンプ中に最後のシャープなフレームでフリーズし、その後スムーズにライブビデオに戻ります</translation>
+            <translation>揺れたときは最後の鮮明な映像で一時停止し、その後滑らかにライブ映像に戻ります</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1859,11 +1859,11 @@
         </message>
         <message>
             <source>Large Zoom</source>
-            <translation>大ズーム</translation>
+            <translation>大きく拡大</translation>
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>最大強度のCUDA安定化機能を使用して、取り付けられたカメラのビューをロックします</translation>
+            <translation>CUDA手ぶれ補正を最大にして、固定カメラの映像を安定させる</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1871,7 +1871,7 @@
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>マッチカメラ（推奨）</translation>
+            <translation>カメラに合わせる（推奨）</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1923,7 +1923,7 @@
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
-            <translation>現在のズーム フォーカスに赤いマーカーを重ねます</translation>
+            <translation>現在の拡大位置に赤いマーカーを表示する</translation>
         </message>
         <message>
             <source>Previous Advanced section</source>
@@ -1939,7 +1939,7 @@
         </message>
         <message>
             <source>Profile setting saved with the current quick option.</source>
-            <translation>現在のクイック オプションで保存されたプロファイル設定。</translation>
+            <translation>プロファイル設定を現在のクイックモードに保存しました。</translation>
         </message>
         <message>
             <source>Quick mode</source>
@@ -1963,7 +1963,7 @@
         </message>
         <message>
             <source>Reading profile</source>
-            <translation>読書プロフィール</translation>
+            <translation>読み取り用プロファイル</translation>
         </message>
         <message>
             <source>Reset current profile tuning</source>
@@ -1971,11 +1971,11 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>プロファイルが所有するイメージと支援チューニングをデフォルトにリセットする</translation>
+            <translation>プロファイルごとの映像設定とアシスタント設定を既定値に戻す</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
-            <translation>サイズ変更の詳細設定</translation>
+            <translation>詳細設定のサイズを変更</translation>
         </message>
         <message>
             <source>Rotate input/output clockwise</source>
@@ -1995,7 +1995,7 @@
         </message>
         <message>
             <source>Sharp Text</source>
-            <translation>シャープなテキスト</translation>
+            <translation>文字をくっきり表示</translation>
         </message>
         <message>
             <source>Sharpen Text</source>
@@ -2003,7 +2003,7 @@
         </message>
         <message>
             <source>Sharpening</source>
-            <translation>研ぐ</translation>
+            <translation>シャープ化</translation>
         </message>
         <message>
             <source>Show a guide to OkuFlow controls and features</source>
@@ -2015,11 +2015,11 @@
         </message>
         <message>
             <source>Show an on-screen control for moving the zoomed view</source>
-            <translation>ズームビューを移動するためのオンスクリーンコントロールを表示します</translation>
+            <translation>拡大表示を移動するための画面上の操作ボタンを表示する</translation>
         </message>
         <message>
             <source>Steady Text</source>
-            <translation>安定したテキスト</translation>
+            <translation>文字を安定して表示</translation>
         </message>
         <message>
             <source>Stop Automatic Screen Correction</source>
@@ -2027,7 +2027,7 @@
         </message>
         <message>
             <source>Test camera acceleration</source>
-            <translation>カメラの加速度をテストする</translation>
+            <translation>カメラ処理の高速化をテストする</translation>
         </message>
         <message>
             <source>Unavailable in this build</source>
@@ -2035,7 +2035,7 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>1.33 倍以上のズームで NVIDIA Video Effects SuperRes を使用します。自動的に NIS にフォールバックします</translation>
+            <translation>1.33倍以上に拡大するとNVIDIA Video Effects SuperResを使用し、利用できない場合は自動的にNISに切り替えます</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
@@ -2068,8 +2068,8 @@
         <message>
             <source>Installed and managed by OkuFlow
 %1</source>
-            <translation>OkuFlow
-%1 によってインストールおよび管理されます</translation>
+            <translation>OkuFlowによってインストール・管理されています
+%1</translation>
         </message>
         <message>
             <source>Installed system-wide
@@ -2093,7 +2093,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>インストールされていません。 [インストール] では、%1 GPU のパッケージがダウンロードされます。</translation>
+            <translation>未インストールです。「インストール」を選ぶと、%1向けのパッケージをダウンロードします。</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
@@ -2113,7 +2113,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Open Windows Apps</source>
-            <translation>Windows アプリを開く</translation>
+            <translation>Windowsの「インストールされているアプリ」を開く</translation>
         </message>
         <message>
             <source>Open the NVIDIA runtime uninstaller?</source>
@@ -2137,7 +2137,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Retrying from the alternate vendor host...</source>
-            <translation>代替ベンダー ホストから再試行しています...</translation>
+            <translation>別の配布元サーバーから再試行しています…</translation>
         </message>
         <message>
             <source>Setup Assistant</source>
@@ -2189,7 +2189,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>このシステム全体のコピーは、Windows にインストールされているアプリを通じて削除する必要があります</translation>
+            <translation>このシステム全体のインストールは、Windowsの「インストールされているアプリ」からアンインストールしてください</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2201,7 +2201,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Update Codex CLI</source>
-            <translation>更新Codex CLI</translation>
+            <translation>Codex CLIを更新</translation>
         </message>
         <message>
             <source>Verified. Installing the official Codex CLI...</source>
@@ -2237,7 +2237,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
-            <translation>Advanced Tuning のカスタム構成。適切だと感じたときにクイックオプションとして保存してください。</translation>
+            <translation>詳細調整で設定した内容です。しっくりきたらクイック設定として保存できます。</translation>
         </message>
         <message>
             <source>Current quick mode description</source>
@@ -2249,11 +2249,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Profile tuning reset to OkuFlow defaults.</source>
-            <translation>プロファイル調整はデフォルトの OkuFlow にリセットされます。</translation>
+            <translation>プロファイルの調整設定をOkuFlowの初期設定に戻しました。</translation>
         </message>
         <message>
             <source>Current profile tuning reset to defaults.</source>
-            <translation>現在のプロファイル調整がデフォルトにリセットされます。</translation>
+            <translation>現在のプロファイルの調整設定を初期設定に戻しました。</translation>
         </message>
         <message>
             <source>Quick option name:</source>
@@ -2297,11 +2297,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stops: </source>
-            <translation>停留所: </translation>
+            <translation>停止位置:</translation>
         </message>
         <message>
             <source>Color stop %1 of 8</source>
-            <translation>カラーストップ %1/8</translation>
+            <translation>色の停止位置 %1/8</translation>
         </message>
         <message>
             <source>%1 px</source>
@@ -2309,7 +2309,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Drawing thickness</source>
-            <translation>絞り厚さ</translation>
+            <translation>描画の太さ</translation>
         </message>
         <message>
             <source>AI settings sections</source>
@@ -2325,7 +2325,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
-            <translation>Ctrl+スクロールズームジェスチャーを高速化します。キーボードのズームは正確なまま</translation>
+            <translation>Ctrl＋スクロールによる素早いズーム操作を高速化します。キーボードズームの精度は変わりません</translation>
         </message>
         <message>
             <source>SuperRes powered by NVIDIA Maxine™</source>
@@ -2333,7 +2333,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA マキシンの帰属</translation>
+            <translation>NVIDIA Maxineのクレジット</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2349,7 +2349,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>次の画面修正、または新しい修正を 1 つ見つけます。%1</translation>
+            <translation>次の画面補正、または新しい補正を1つ探します。%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2421,7 +2421,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The paired photos could not be saved. A partial file may remain: %1</source>
-            <translation>ペアリングした写真を保存できませんでした。部分的なファイルが残る場合があります: %1</translation>
+            <translation>2枚の写真を保存できませんでした。未完成のファイルが残っている可能性があります: %1</translation>
         </message>
         <message>
             <source>The saved OkuFlow folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
@@ -2453,7 +2453,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>アシスタントが分析したビューを表示</translation>
+            <translation>アシスタントが分析した映像を表示</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2481,19 +2481,19 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>現在のカメラ フレームとプロンプトを Codex に送信します。会話: 保存された Explain 会話。各 Explain によって継続されます。ツールインターネット: ブロックされました。コーディングとファイルの変更: ブロックされます。</translation>
+            <translation>現在のカメラ映像とプロンプトをCodexに送信します。会話: 保存済みの「説明」会話を、説明のたびに続けます。インターネット利用: 不可。コード作成とファイル変更: 不可。</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>現在のカメラ フレームとプロンプトを Codex に送信します。会話: 一時的で、読むたびに新しいもの。ツールインターネット: ブロックされました。コーディングとファイルの変更: ブロックされます。</translation>
+            <translation>現在のカメラ映像とプロンプトをCodexに送信します。会話: 一時的で、「読み取り」のたびに新しく作成されます。インターネット利用: 不可。コード作成とファイル変更: 不可。</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>現在のカメラ フレーム、プロンプト、および最近の Explain 回答を %1 (ローカル エンドポイント) に送信します。会話: 最近の説明の回答。記憶のみに保持されます。コーディングツール: 利用不可。</translation>
+            <translation>現在のカメラ映像、プロンプト、最近の「説明」の回答を%1（ローカルエンドポイント）に送信します。会話: 最近の「説明」の回答のみをメモリ上に保持します。コード作成ツール: 利用できません。</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>現在のカメラ フレーム、プロンプト、および最近の Explain 回答を %1 (リモート エンドポイント) に送信します。会話: 最近の説明の回答。記憶のみに保持されます。コーディングツール: 利用不可。</translation>
+            <translation>現在のカメラ映像、プロンプト、最近の「説明」の回答を%1（リモートエンドポイント）に送信します。会話: 最近の「説明」の回答のみをメモリ上に保持します。コード作成ツール: 利用できません。</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2505,7 +2505,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Dock left</source>
-            <translation>ドック左</translation>
+            <translation>左にドッキング</translation>
         </message>
         <message>
             <source>Dock right</source>
@@ -2513,15 +2513,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Release to dock left</source>
-            <translation>左のドックに放します</translation>
+            <translation>左側にドッキングするには、ここで離します</translation>
         </message>
         <message>
             <source>Release to dock right</source>
-            <translation>放して右にドッキング</translation>
+            <translation>右側にドッキングするには、ここで離します</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>サブスクリプションに基づく読み取り、説明、アシスタント機能を強化します。 Windows アカウントに公式の Codex CLI をインストールします。 ChatGPT サインインは別の手順のままです。</translation>
+            <translation>サブスクリプションを利用する「読み取り」「説明」「アシスタント」機能を使えるようにします。Windowsアカウントに公式Codex CLIをインストールします。ChatGPTへのサインインは別途必要です。</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2585,7 +2585,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Changes apply now. Save to keep them.</source>
-            <translation>変更はすぐに適用されます。保存して保存します。</translation>
+            <translation>変更はすぐに反映されます。保持するには保存してください。</translation>
         </message>
         <message>
             <source>Shared by all modes. Not saved into quick modes.</source>
@@ -2653,11 +2653,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>ここには一致はありません。設定の%1。 Enter を押して表示します。</translation>
+            <translation>ここには一致する項目がありません。設定に%1件あります。Enterキーを押すと表示します。</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>ここには一致はありません。画像の%1。 Enter キーを押して表示します。</translation>
+            <translation>ここには一致する項目がありません。画像設定に%1件あります。Enterキーを押すと表示します。</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2689,7 +2689,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Search image settings</source>
-            <translation>画像検索設定</translation>
+            <translation>画像設定を検索</translation>
         </message>
         <message>
             <source>Search shared settings</source>
@@ -2705,7 +2705,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>ストップシーン説明</translation>
+            <translation>シーンの説明を停止</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
@@ -2745,7 +2745,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>録音出力パスはすでに存在します。保存されていました。</translation>
+            <translation>録画ファイルの保存先にはすでにファイルがあるため、上書きしませんでした。</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
@@ -2791,11 +2791,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>読み取り、説明、アシスタントは、Codex CLI を通じて ChatGPT サブスクリプションを使用します。詳細モードの [アシスタント] タブで Connect ChatGPT を使用してサインインします。</translation>
+            <translation>「読み取り」「説明」「アシスタント」はCodex CLI経由でChatGPTサブスクリプションを使用します。詳細モードの[アシスタント]タブで[ChatGPTに接続]を選び、サインインしてください。</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>読んで説明すると、カメラ ビューが以下のサーバー URL に送信されます。イメージは、ローカルホストの LM Studio や Ollama などのサーバーがコンピュータ上で実行されている場合にのみ、このコンピュータに残ります。保存されたアシスタントの会話には ChatGPT サブスクリプションが必要です。</translation>
+            <translation>「読み取り」と「説明」では、カメラ映像を以下のサーバーURLに送信します。LM StudioやOllamaなどのサーバーをこのコンピューター上（localhost）で実行している場合に限り、画像は外部に送信されません。保存した「アシスタント」の会話にはChatGPTサブスクリプションが必要です。</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
@@ -2823,7 +2823,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
-            <translation>推論 Codex がどの程度使用するかを選択します。レベルが高くなると、回答に時間がかかることがあります。</translation>
+            <translation>Codexの推論の深さを選択します。高いレベルほど回答に時間がかかる場合があります。</translation>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
@@ -2831,7 +2831,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>プロンプトの説明</translation>
+            <translation>説明用プロンプト</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
@@ -2843,7 +2843,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>インストール済み
 %1
-「詳細アシスタント」タブの「Connect ChatGPT」を使用してサインインします。</translation>
+サインインするには、詳細モードの[アシスタント]タブで[ChatGPTに接続]を選択してください。</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2859,7 +2859,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
-            <translation>エンコーダーの進行状況を確認できなかったため、録音はサンプルをスキップしています。録画が継続する場合は停止し、再開します。</translation>
+            <translation>エンコーダーの進行状況を確認できないため、録画の一部がスキップされています。続く場合は録画を停止して、再開してください。</translation>
         </message>
         <message>
             <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>

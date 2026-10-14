@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">OkuFlow 相机</string>
-    <string name="step_counter">%2$d 的步骤 %1$d</string>
+    <string name="step_counter">第 %1$d 步，共 %2$d 步</string>
     <string name="action_open_settings">打开设置</string>
     <string name="action_allow_camera">允许使用相机</string>
     <string name="developer_title">打开开发者模式</string>

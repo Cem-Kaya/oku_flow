@@ -13,7 +13,7 @@
     <string name="usb_debugging_hint">เปิด \"การแก้ไขข้อบกพร่อง USB\" เชื่อมต่อกับคอมพิวเตอร์ส่วนตัวที่เชื่อถือได้ของคุณเองเท่านั้น</string>
     <string name="check_usb_title">ตรวจสอบการเชื่อมต่อ USB</string>
     <string name="check_usb_hint">เปิด OkuFlow บนคอมพิวเตอร์ของคุณ หากไม่สามารถเชื่อมต่อได้ ให้ตรวจสอบว่าการแก้ไขจุดบกพร่อง USB เปิดอยู่ และอนุญาตคอมพิวเตอร์เครื่องนี้เมื่อถูกถาม หากไม่มีตัวเลือกสำหรับนักพัฒนา ให้เปิดเกี่ยวกับโทรศัพท์แล้วแตะหมายเลขบิลด์ 7 ครั้ง</string>
-    <string name="camera_title">ขออนุญาติเปิดกล้อง.</string>
+    <string name="camera_title">อนุญาตให้ใช้กล้อง</string>
     <string name="camera_hint">โทรศัพท์เครื่องนี้สตรีมกล้องด้วย USB คุณสมบัติเสริมของ Windows AI สามารถส่งรูปภาพไปยังบริการที่คุณเลือกได้</string>
     <string name="camera_hint_settings">เปิดการตั้งค่า เลือก “สิทธิ์” จากนั้นอนุญาต “กล้อง”</string>
     <string name="connect_usb_title">เสียบโทรศัพท์เครื่องนี้เข้ากับคอมพิวเตอร์ของคุณ</string>
@@ -59,7 +59,7 @@
     <string name="service_notification">พร้อมสำหรับการเชื่อมต่อกล้อง USB</string>
     <string name="thermal_stopped">กล้องหยุดเพื่อปกป้องโทรศัพท์ ปล่อยให้เครื่องเย็นลง จากนั้นเลือกโทรศัพท์อีกครั้งในรายการกล้องของ OkuFlow</string>
     <string name="connected_title">เชื่อมต่อกับ OkuFlow</string>
-    <string name="connected_hint">คอมพิวเตอร์ของคุณเชื่อมต่ออยู่ รอถ่ายวีดีโอจากกล้องครับ.</string>
+    <string name="connected_hint">คอมพิวเตอร์ของคุณเชื่อมต่อแล้ว กำลังรอภาพจากกล้อง</string>
     <string name="problem_busy_title">กล้องไม่ว่าง</string>
     <string name="problem_busy_hint">ปิดแอพอื่นๆ ที่ใช้กล้อง OkuFlow ลองอีกครั้งในช่วงเวลาสั้นๆ หากภาพไม่กลับมา ให้เลือกโทรศัพท์อีกครั้งในรายการกล้องของ OkuFlow</string>
     <string name="problem_blocked_title">การเข้าถึงกล้องถูกบล็อก</string>

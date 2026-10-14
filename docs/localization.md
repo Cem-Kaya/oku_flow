@@ -6,8 +6,11 @@ used languages. The browser transcription tool and newly generated local notes
 use the same 25-language set. Marketing homepages remain at 14 languages.
 
 Published Windows v0.2.3 and Play Android 0.1.2 (code 3) predate this work.
-The prepared Android version is 0.1.3 (code 4); building it locally does not
-install it, upload it or release it to testers.
+Android 0.1.4 (code 5), with the completed wording review, passed signed
+release checks and was committed to Alpha through the CLI on 2026-10-14.
+The API reads active code 5; Google review approval and tester availability
+are separate and have not been independently verified. Code 4 remains an
+archived earlier signed inventory.
 
 | Language | Stable code | Android resource qualifier |
 | --- | --- | --- |
@@ -131,6 +134,24 @@ lint), and website key/placeholder parity was verified locally; the
 website's `npm run check` was not run because Node.js is not installed on
 the current PATH. No build of the Windows application was run for these
 string-only changes.
+
+### Full catalog review continuation, 2026-10-14
+
+The subsequent Luna round assigned all 17,472 non-English Qt entries to 96
+182-entry review scopes, plus 24 scopes for Android, launcher, notes and website
+surfaces. Failed Unicode/file-tool attempts were replaced; an additional review
+covered the Russian tables explicitly left unread. The coordinating developer
+applied 4,383 distinct locale/key corrections relative to the preceding app
+commit and website HEAD. Reviewers remained read-only and the cancelled Spark
+fixer was not used. See the [coverage, per-language counts and decisions](localization_review_2026-10-14.md).
+
+Qt catalog validation, Android debug assembly/68 JVM tests/lint and the
+website's complete `npm run check` passed. The existing portable Node toolchain
+made website validation available despite Node being absent from the normal
+PATH. Windows background compilation/tests use the tracked matrix with GUI
+excluded; inspect the retained matrix log for its result. Full assigned model
+review coverage does not establish native-speaker approval, rendered layouts,
+screen-reader quality or a public release.
 
 ## Validation
 

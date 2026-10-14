@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>เริ่มต้นในแต่ละการเชื่อมต่อ กดเพื่อเปิดหรือปิดไฟโทรศัพท์</translation>
+            <translation>ไฟโทรศัพท์ปิดอยู่ทุกครั้งที่เชื่อมต่อ กดเพื่อเปิดหรือปิดไฟโทรศัพท์</translation>
         </message>
         <message>
             <source>Application</source>
@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>พิมพ์ส่วนหนึ่งของชื่อการตั้งค่าเพื่อแสดงและเน้นการควบคุมการจับคู่</translation>
+            <translation>พิมพ์ชื่อการตั้งค่าเพียงบางส่วน เพื่อแสดงและเลือกตัวควบคุมที่ตรงกัน</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -125,7 +125,7 @@
         </message>
         <message>
             <source>Viewport motion rate</source>
-            <translation>อัตราการเคลื่อนไหวของวิวพอร์ต</translation>
+            <translation>อัตราการอัปเดตภาพในพื้นที่แสดงผล</translation>
         </message>
         <message>
             <source>Auto (up to 120 FPS)</source>
@@ -133,7 +133,7 @@
         </message>
         <message>
             <source>Match display</source>
-            <translation>ให้พอดีกับจอแสดงผล</translation>
+            <translation>ให้ตรงกับอัตรารีเฟรชของจอ</translation>
         </message>
         <message>
             <source>Viewport framing</source>
@@ -165,15 +165,15 @@
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
-            <translation>แบ่งปันโดยการบันทึกต้นฉบับและประมวลผล</translation>
+            <translation>ใช้ร่วมกันระหว่างวิดีโอต้นฉบับและวิดีโอที่ประมวลผลแล้ว</translation>
         </message>
         <message>
             <source>Processed recording resolution</source>
-            <translation>ความละเอียดในการบันทึกที่ประมวลผลแล้ว</translation>
+            <translation>ความละเอียดของวิดีโอที่บันทึกหลังประมวลผล</translation>
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
-            <translation>ความละเอียดของกล้องและการบันทึกต้นฉบับ &amp;&amp; อัตราเฟรม</translation>
+            <translation>ความละเอียดของกล้องและวิดีโอต้นฉบับ &amp;&amp; อัตราเฟรม</translation>
         </message>
         <message>
             <source>Automatic (driver's choice)</source>
@@ -205,7 +205,7 @@
         </message>
         <message>
             <source>Screen fix</source>
-            <translation>แก้ไขหน้าจอ</translation>
+            <translation>ปรับภาพหน้าจอให้ตรง</translation>
         </message>
         <message>
             <source>Text clarity</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>ราบรื่นชั่วคราว</translation>
+            <translation>ลดภาพสั่นไหวระหว่างเฟรม</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -253,7 +253,7 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>มีเสถียรภาพเป็นพิเศษ (กดค้างไว้เขย่า)</translation>
+            <translation>เสถียรเป็นพิเศษ (คงภาพไว้เมื่อกล้องสั่น)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
@@ -281,7 +281,7 @@
         </message>
         <message>
             <source>Strength:</source>
-            <translation>ความแข็งแกร่ง:</translation>
+            <translation>ระดับ:</translation>
         </message>
         <message>
             <source>Auto Text Clarity</source>
@@ -301,19 +301,19 @@
         </message>
         <message>
             <source>Text polarity</source>
-            <translation>ขั้วข้อความ</translation>
+            <translation>โทนข้อความ</translation>
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>น้ำหนักโรคหลอดเลือดสมอง</translation>
+            <translation>ความหนาของเส้น</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
-            <translation>สมาร์ทคมชัด</translation>
+            <translation>เพิ่มความคมชัดอัจฉริยะ</translation>
         </message>
         <message>
             <source>Local Contrast (CLAHE)</source>
-            <translation>ความแตกต่างในท้องถิ่น (CLAHE)</translation>
+            <translation>คอนทราสต์เฉพาะจุด (CLAHE)</translation>
         </message>
         <message>
             <source>Two-Color Reading</source>
@@ -321,7 +321,7 @@
         </message>
         <message>
             <source>Steady Text Edges</source>
-            <translation>ขอบข้อความคงที่</translation>
+            <translation>ลดการสั่นไหวของขอบข้อความ</translation>
         </message>
         <message>
             <source>Sharpen Text Only</source>
@@ -349,7 +349,7 @@
         </message>
         <message>
             <source>Ignore 24 ms performance limit</source>
-            <translation>ละเว้นขีดจำกัดประสิทธิภาพ 24 ms</translation>
+            <translation>ไม่จำกัดเวลา 24 ms เพื่อประสิทธิภาพ</translation>
         </message>
         <message>
             <source>Off</source>
@@ -373,11 +373,11 @@
         </message>
         <message>
             <source>Scene Explain</source>
-            <translation>ฉากอธิบาย</translation>
+            <translation>อธิบายฉาก</translation>
         </message>
         <message>
             <source>Assistive Overlay</source>
-            <translation>การซ้อนทับแบบช่วยเหลือ</translation>
+            <translation>ภาพซ้อนเพื่อช่วยการมองเห็น</translation>
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
@@ -429,7 +429,7 @@
         </message>
         <message>
             <source>Debug View</source>
-            <translation>มุมมองการแก้ปัญหา</translation>
+            <translation>มุมมองสำหรับดีบัก</translation>
         </message>
         <message>
             <source>Show Focus Point</source>
@@ -473,7 +473,7 @@
         </message>
         <message>
             <source>Record original and processed videos</source>
-            <translation>บันทึกวิดีโอต้นฉบับและประมวลผลแล้ว</translation>
+            <translation>บันทึกวิดีโอต้นฉบับและวิดีโอที่ผ่านการประมวลผล</translation>
         </message>
         <message>
             <source>Explain the current view</source>
@@ -545,7 +545,7 @@
         </message>
         <message>
             <source>Ask about this view...</source>
-            <translation>ถามถึงวิวนี้ครับ...</translation>
+            <translation>ถามเกี่ยวกับภาพนี้…</translation>
         </message>
         <message>
             <source>Ask</source>
@@ -621,7 +621,7 @@
         </message>
         <message>
             <source>Codex CLI path:</source>
-            <translation>Codex CLI เส้นทาง:</translation>
+            <translation>เส้นทาง Codex CLI:</translation>
         </message>
         <message>
             <source>Codex model:</source>
@@ -637,15 +637,15 @@
         </message>
         <message>
             <source>Allow coding commands and file changes</source>
-            <translation>อนุญาตคำสั่งการเข้ารหัสและการเปลี่ยนแปลงไฟล์</translation>
+            <translation>อนุญาตให้ใช้คำสั่งเขียนโค้ดและแก้ไขไฟล์</translation>
         </message>
         <message>
             <source>Required when coding is enabled</source>
-            <translation>จำเป็นเมื่อเปิดใช้งานการเข้ารหัส</translation>
+            <translation>จำเป็นเมื่อเปิดใช้การเขียนโค้ด</translation>
         </message>
         <message>
             <source>Coding workspace:</source>
-            <translation>พื้นที่ทำงานการเข้ารหัส:</translation>
+            <translation>โฟลเดอร์สำหรับเขียนโค้ด:</translation>
         </message>
         <message>
             <source>Assistant behavior</source>
@@ -657,7 +657,7 @@
         </message>
         <message>
             <source>OpenAI-compatible vision server</source>
-            <translation>เซิร์ฟเวอร์การมองเห็นที่เข้ากันได้กับ OpenAI</translation>
+            <translation>เซิร์ฟเวอร์ประมวลผลภาพที่เข้ากันได้กับ OpenAI</translation>
         </message>
         <message>
             <source>Server URL:</source>
@@ -669,7 +669,7 @@
         </message>
         <message>
             <source>Vision model:</source>
-            <translation>รูปแบบการมองเห็น:</translation>
+            <translation>โมเดลประมวลผลภาพ:</translation>
         </message>
         <message>
             <source>Read aloud</source>
@@ -693,7 +693,7 @@
         </message>
         <message>
             <source>Camera did not stop in time. Restart OkuFlow before changing cameras.</source>
-            <translation>กล้องไม่ได้หยุดทันเวลา รีสตาร์ท OkuFlow ก่อนเปลี่ยนกล้อง</translation>
+            <translation>กล้องหยุดทำงานไม่ทันเวลา โปรดรีสตาร์ต OkuFlow ก่อนเปลี่ยนกล้อง</translation>
         </message>
         <message>
             <source>GPU stopped responding. Restart OkuFlow to resume video.</source>
@@ -785,7 +785,7 @@
         </message>
         <message>
             <source>Section heading. Activate to expand or collapse this settings group.</source>
-            <translation>ส่วนหัวของส่วน เปิดใช้งานเพื่อขยายหรือยุบกลุ่มการตั้งค่านี้</translation>
+            <translation>หัวข้อส่วนนี้ แตะเพื่อขยายหรือยุบกลุ่มการตั้งค่า</translation>
         </message>
         <message>
             <source>expanded</source>
@@ -809,7 +809,7 @@
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>ไม่มีการติดตั้งเสียง %1 — โดยใช้เสียงปัจจุบัน ติดตั้งภายใต้การตั้งค่า Windows → เวลาและภาษา → คำพูด</translation>
+            <translation>ไม่มีเสียง %1 ติดตั้งอยู่ จึงใช้เสียงปัจจุบัน หากต้องการติดตั้ง ให้ไปที่การตั้งค่า Windows → เวลาและภาษา → การพูด</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -845,7 +845,7 @@
         </message>
         <message>
             <source>Capturing original and processed photos...</source>
-            <translation>การถ่ายภาพต้นฉบับและภาพที่ผ่านการประมวลผล...</translation>
+            <translation>กำลังจับภาพต้นฉบับและภาพที่ประมวลผลแล้ว...</translation>
         </message>
         <message>
             <source>Delete Conversation</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>การจับภาพด้วยกล้อง GPU ทำงานโดยมีทางเลือกสำรองการทำสำเนาที่ปลอดภัย</translation>
+            <translation>กำลังจับภาพจากกล้องด้วย GPU โดยใช้วิธีสำรองแบบคัดลอกข้อมูลที่ปลอดภัย</translation>
         </message>
         <message>
             <source>Later</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>การแก้ไขหน้าจอถูกย้ายกลับไปและการติดตามหยุดลง</translation>
+            <translation>เลื่อนการแก้ไขหน้าจอกลับแล้ว และหยุดติดตามแล้ว</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -953,7 +953,7 @@
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>การทดสอบ GPU และการจับความเข้ากันได้ในกระบวนการแยก...</translation>
+            <translation>กำลังทดสอบการจับภาพด้วย GPU และแบบเข้ากันได้ในโปรเซสแยก...</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -991,15 +991,15 @@
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>ไม่ได้บันทึกมุมมองคำอธิบายประกอบ: ไม่สามารถจัดคิวรูปภาพได้</translation>
+            <translation>ไม่ได้บันทึกภาพที่ใส่คำอธิบายประกอบ: ไม่สามารถเข้าคิวภาพได้</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>ไม่ได้บันทึกมุมมองคำอธิบายประกอบ: กำลังเขียนภาพอยู่ ลองอีกครั้ง</translation>
+            <translation>ไม่ได้บันทึกภาพที่ใส่คำอธิบายประกอบ: ระบบกำลังบันทึกภาพอยู่ ลองอีกครั้ง</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
-            <translation>ไม่ได้บันทึกมุมมองคำอธิบายประกอบ: วิวพอร์ตไม่พร้อมใช้งาน</translation>
+            <translation>ไม่ได้บันทึกภาพที่ใส่คำอธิบายประกอบ: ไม่มีภาพจากวิวพอร์ตให้บันทึก</translation>
         </message>
         <message>
             <source>Camera Error</source>
@@ -1019,7 +1019,7 @@
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>การประมวลผล GPU ล้มเหลวอย่างต่อเนื่อง - แสดงวิดีโอที่ยังไม่ได้ประมวลผล</translation>
+            <translation>การประมวลผลด้วย GPU ล้มเหลวซ้ำ ๆ จึงแสดงวิดีโอที่ยังไม่ผ่านการประมวลผล</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
@@ -1039,7 +1039,7 @@
         </message>
         <message>
             <source>Photo not saved: the OkuFlow Photos folder is unavailable.</source>
-            <translation>ไม่ได้บันทึกรูปภาพ: โฟลเดอร์ OkuFlow รูปภาพ ไม่พร้อมใช้งาน</translation>
+            <translation>ไม่ได้บันทึกภาพถ่าย: โฟลเดอร์ Photos ของ OkuFlow ไม่พร้อมใช้งาน</translation>
         </message>
         <message>
             <source>Photo not saved: the image could not be queued.</source>
@@ -1047,19 +1047,19 @@
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>ไม่ได้บันทึกรูปภาพ: กำลังเขียนภาพอยู่ ลองอีกครั้ง</translation>
+            <translation>ไม่ได้บันทึกภาพถ่าย: ระบบกำลังบันทึกภาพอยู่ ลองอีกครั้ง</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
-            <translation>ไม่ได้บันทึกรูปภาพ: ไม่สามารถแปลงกรอบกล้องดั้งเดิมได้</translation>
+            <translation>ไม่ได้บันทึกภาพถ่าย: แปลงเฟรมภาพต้นฉบับจากกล้องไม่ได้</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be read back.</source>
-            <translation>ไม่ได้บันทึกรูปภาพ: ไม่สามารถอ่านเฟรมเดิมของกล้องกลับได้</translation>
+            <translation>ไม่ได้บันทึกภาพถ่าย: อ่านเฟรมภาพต้นฉบับจากกล้องกลับมาไม่ได้</translation>
         </message>
         <message>
             <source>Photo not saved: the processed or original frame was unavailable.</source>
-            <translation>ไม่ได้บันทึกรูปภาพ: เฟรมที่ประมวลผลแล้วหรือเฟรมดั้งเดิมไม่พร้อมใช้งาน</translation>
+            <translation>ไม่ได้บันทึกภาพถ่าย: ไม่มีเฟรมภาพต้นฉบับหรือเฟรมที่ประมวลผลแล้ว</translation>
         </message>
         <message>
             <source>Reconnecting to camera…</source>
@@ -1079,7 +1079,7 @@
         </message>
         <message>
             <source>The camera GPU texture could not be converted for CUDA.</source>
-            <translation>ไม่สามารถแปลงพื้นผิว GPU ของกล้องสำหรับ CUDA</translation>
+            <translation>แปลงเท็กซ์เจอร์ GPU ของกล้องสำหรับ CUDA ไม่ได้</translation>
         </message>
         <message>
             <source>Annotated view</source>
@@ -1107,7 +1107,7 @@
         </message>
         <message>
             <source>Recording saved. %1</source>
-            <translation>บันทึกการบันทึกแล้ว %1</translation>
+            <translation>บันทึกวิดีโอแล้ว %1</translation>
         </message>
         <message>
             <source>Recording stopped after reaching the 12-hour limit.</source>
@@ -1119,7 +1119,7 @@
         </message>
         <message>
             <source>Recording stopped because the audio encoder rejected a sample.</source>
-            <translation>การบันทึกหยุดลงเนื่องจากตัวเข้ารหัสเสียงปฏิเสธตัวอย่าง</translation>
+            <translation>การบันทึกหยุดลงเพราะตัวเข้ารหัสเสียงปฏิเสธข้อมูลเสียงหนึ่งชุด</translation>
         </message>
         <message>
             <source>Recording stopped before the first frame was written.</source>
@@ -1135,7 +1135,7 @@
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
-            <translation>พื้นที่การบันทึกไม่ถูกต้อง</translation>
+            <translation>ขนาดเฟรมสำหรับบันทึกไม่ถูกต้อง</translation>
         </message>
         <message>
             <source>No frames were dropped.</source>
@@ -1143,11 +1143,11 @@
         </message>
         <message>
             <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
-            <translation>การบันทึกหยุดลงเนื่องจากการประมวลผลเสียงไม่สามารถติดตามได้หรืออินพุตไม่ถูกต้อง</translation>
+            <translation>การบันทึกหยุดลงเพราะระบบประมวลผลเสียงไม่ทัน หรือข้อมูลเสียงขาเข้าไม่ถูกต้อง</translation>
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>เสียง: %1 บล็อกหลุดก่อนการเข้ารหัส %2 ถูกปฏิเสธโดยขีดจำกัดอินพุต</translation>
+            <translation>เสียง: มีข้อมูล %1 บล็อกหลุดก่อนเข้ารหัส และ %2 บล็อกถูกปฏิเสธเพราะเกินขีดจำกัดข้อมูลขาเข้า</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
@@ -1179,11 +1179,11 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>ต้นฉบับและประมวลผลที่ป้อนด้วย GPU</translation>
+            <translation>ภาพต้นฉบับและภาพที่ประมวลผลแล้วจาก GPU</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>แหล่ง GPU พร้อมการอ่านกลับของผู้ปฏิบัติงาน</translation>
+            <translation>แหล่งภาพจาก GPU พร้อมการอ่านข้อมูลกลับโดยโปรเซสงาน</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex การเตรียมรูปภาพยุ่งมาก โปรดลองอีกครั้งในอีกสักครู่</translation>
+            <translation>Codex กำลังเตรียมภาพอยู่ ลองอีกครั้งในอีกสักครู่</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1215,11 +1215,11 @@
         </message>
         <message>
             <source>No camera frame is available to attach.</source>
-            <translation>ไม่มีกรอบกล้องให้ติด</translation>
+            <translation>ไม่มีเฟรมภาพจากกล้องให้แนบ</translation>
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>การสนทนาของ Assistant แบบถาวรจำเป็นต้องมีผู้ให้บริการสมัครสมาชิก Codex</translation>
+            <translation>บทสนทนา Assistant แบบต่อเนื่องต้องใช้ผู้ให้บริการ Codex ที่ต้องสมัครสมาชิก</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1239,15 +1239,15 @@
         </message>
         <message>
             <source>Scene explanation is busy with a previous request. Try again in a moment.</source>
-            <translation>คำอธิบายฉากไม่ว่างกับคำขอก่อนหน้า โปรดลองอีกครั้งในอีกสักครู่</translation>
+            <translation>ระบบกำลังประมวลผลคำขออธิบายฉากก่อนหน้า ลองอีกครั้งในอีกสักครู่</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt</source>
-            <translation>กำลังส่งเฟรมกล้องปัจจุบันและแจ้ง</translation>
+            <translation>กำลังส่งเฟรมภาพจากกล้องปัจจุบันพร้อมพรอมต์</translation>
         </message>
         <message>
             <source>Sending the prompt only</source>
-            <translation>ส่งข้อความแจ้งเท่านั้น</translation>
+            <translation>กำลังส่งพรอมต์เท่านั้น</translation>
         </message>
         <message>
             <source>Text on screen</source>
@@ -1259,7 +1259,7 @@
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
-            <translation>การเตรียมอิมเมจ VLM ไม่ว่าง โปรดลองอีกครั้งในอีกสักครู่</translation>
+            <translation>ระบบกำลังเตรียมภาพสำหรับ VLM ลองอีกครั้งในอีกสักครู่</translation>
         </message>
         <message>
             <source>VLM ready.</source>
@@ -1387,11 +1387,11 @@
         </message>
         <message>
             <source>Click the camera view, then type a label. Shortcut T.</source>
-            <translation>คลิกมุมมองกล้อง จากนั้นพิมพ์ป้าย ทางลัด ต.</translation>
+            <translation>คลิกภาพจากกล้อง แล้วพิมพ์ป้ายกำกับ ใช้ปุ่ม T เป็นทางลัด</translation>
         </message>
         <message>
             <source>Dashed</source>
-            <translation>ประ</translation>
+            <translation>เส้นประ</translation>
         </message>
         <message>
             <source>Dashed line style</source>
@@ -1423,11 +1423,11 @@
         </message>
         <message>
             <source>Draw an uninterrupted stroke.</source>
-            <translation>วาดจังหวะอย่างต่อเนื่อง</translation>
+            <translation>วาดเส้นต่อเนื่อง</translation>
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
-            <translation>วาดภาพด้วยมือเปล่าในมุมมองกล้อง ทางลัด ป.</translation>
+            <translation>วาดด้วยมือเปล่าบนภาพจากกล้อง ใช้ปุ่ม P เป็นทางลัด</translation>
         </message>
         <message>
             <source>Draw mode off.</source>
@@ -1435,11 +1435,11 @@
         </message>
         <message>
             <source>Draw rectangles or ellipses. Shortcut S.</source>
-            <translation>วาดรูปสี่เหลี่ยมหรือวงรี ทางลัด ส.</translation>
+            <translation>วาดสี่เหลี่ยมหรือวงรี ใช้ปุ่ม S เป็นทางลัด</translation>
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>วาด เลือก ปรับขนาด บันทึก หรือล้างคำอธิบายประกอบที่ยึดกับฉากของกล้อง</translation>
+            <translation>วาด เลือก ปรับขนาด บันทึก หรือล้างคำอธิบายประกอบที่ยึดตำแหน่งตามภาพจากกล้อง</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1451,11 +1451,11 @@
         </message>
         <message>
             <source>Erase annotation tool</source>
-            <translation>ลบเครื่องมือคำอธิบายประกอบ</translation>
+            <translation>เครื่องมือลบคำอธิบายประกอบ</translation>
         </message>
         <message>
             <source>Erase tool</source>
-            <translation>ลบเครื่องมือ</translation>
+            <translation>เครื่องมือลบ</translation>
         </message>
         <message>
             <source>Leave Draw mode.</source>
@@ -1463,7 +1463,7 @@
         </message>
         <message>
             <source>Lecture annotation canvas</source>
-            <translation>ผืนผ้าใบคำอธิบายประกอบการบรรยาย</translation>
+            <translation>พื้นที่วาดคำอธิบายประกอบการบรรยาย</translation>
         </message>
         <message>
             <source>Line tool</source>
@@ -1471,7 +1471,7 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>ย้ายเครื่องมือคำอธิบายประกอบ</translation>
+            <translation>เครื่องมือย้ายคำอธิบายประกอบ</translation>
         </message>
         <message>
             <source>Move tool</source>
@@ -1499,7 +1499,7 @@
         </message>
         <message>
             <source>Remove a complete annotation. Shortcut E.</source>
-            <translation>ลบคำอธิบายประกอบที่สมบูรณ์ ทางลัด E</translation>
+            <translation>ลบคำอธิบายประกอบทั้งหมด กด E</translation>
         </message>
         <message>
             <source>Save a marked snapshot and clear all annotations.</source>
@@ -1511,7 +1511,7 @@
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>บันทึกมุมมองที่ทำเครื่องหมายไว้ในบันทึกการบรรยาย การควบคุมทางลัด S.</translation>
+            <translation>บันทึกภาพมุมมองที่ใส่เครื่องหมายลงในบันทึกการบรรยาย กด Ctrl+S</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
@@ -1531,7 +1531,7 @@
         </message>
         <message>
             <source>Solid</source>
-            <translation>แข็ง</translation>
+            <translation>ทึบ</translation>
         </message>
         <message>
             <source>Solid line style</source>
@@ -1567,7 +1567,7 @@
         </message>
         <message>
             <source>Undo the last edit. Shortcut Control Z.</source>
-            <translation>เลิกทำการแก้ไขครั้งล่าสุด การควบคุมทางลัด Z</translation>
+            <translation>เลิกทำการแก้ไขล่าสุด กด Ctrl+Z</translation>
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
@@ -1623,7 +1623,7 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>ผลลัพธ์ตัวช่วยสตรีมมิ่ง ใช้ปุ่มลูกศรเพื่ออ่านข้อความ</translation>
+            <translation>กำลังแสดงคำตอบจากผู้ช่วย ใช้ปุ่มลูกศรเพื่ออ่านข้อความ</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1647,7 +1647,7 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>หยุดสี %1 จาก %2</translation>
+            <translation>จุดสี %1 จากทั้งหมด %2 จุด</translation>
         </message>
         <message>
             <source>Custom</source>
@@ -1683,7 +1683,7 @@
         </message>
         <message>
             <source>Effects</source>
-            <translation>ผลกระทบ</translation>
+            <translation>เอฟเฟ็กต์</translation>
         </message>
         <message>
             <source>Gradient</source>
@@ -1695,11 +1695,11 @@
         </message>
         <message>
             <source>Posterize</source>
-            <translation>โพสเทอร์ไรซ์</translation>
+            <translation>ลดจำนวนระดับสี</translation>
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>การอ่านสี</translation>
+            <translation>สีสำหรับอ่าน</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>ใช้แถบสีเข้ม</translation>
+            <translation>ใช้แถบสีแบบแบ่งขั้นชัดเจน</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1739,7 +1739,7 @@
         </message>
         <message>
             <source>Automatically clarify text in the camera view</source>
-            <translation>ชี้แจงข้อความในมุมมองกล้องโดยอัตโนมัติ</translation>
+            <translation>ปรับข้อความในภาพจากกล้องให้อ่านชัดขึ้นโดยอัตโนมัติ</translation>
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>ควบคุมการนำเสนอการแพนและซูมได้อย่างราบรื่น อัตราเฟรมของกล้องไม่เปลี่ยนแปลง</translation>
+            <translation>การควบคุมนี้ช่วยให้การเลื่อนและซูมราบรื่นขึ้น โดยไม่เปลี่ยนอัตราเฟรมของกล้อง</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1819,7 +1819,7 @@
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>การเติมใช้วิวพอร์ตแบบเต็มโดยไม่ยืดออก Fit จะรักษาภาพทั้งหมดด้วยแถบ</translation>
+            <translation>Fill ใช้พื้นที่แสดงผลทั้งหมดโดยไม่ยืดภาพ ส่วน Fit แสดงภาพครบทั้งภาพพร้อมแถบด้านข้าง</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1827,11 +1827,11 @@
         </message>
         <message>
             <source>Finishing</source>
-            <translation>จบ</translation>
+            <translation>กำลังดำเนินการให้เสร็จ</translation>
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>หยุดที่เฟรมสุดท้ายที่คมชัดระหว่างการชน จากนั้นจึงกลับสู่วิดีโอสดได้อย่างราบรื่น</translation>
+            <translation>เมื่อกล้องกระเทือน ให้ค้างภาพที่คมชัดล่าสุดไว้ แล้วค่อยกลับไปแสดงภาพสดอย่างราบรื่น</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1851,7 +1851,7 @@
         </message>
         <message>
             <source>Keep It Steady</source>
-            <translation>ให้มันมั่นคง</translation>
+            <translation>ช่วยให้ภาพนิ่ง</translation>
         </message>
         <message>
             <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>ล็อคมุมมองกล้องที่ติดตั้งโดยใช้ระบบป้องกันภาพสั่นไหว CUDA แบบเต็มกำลัง</translation>
+            <translation>ล็อกภาพจากกล้องที่ติดตั้งไว้ด้วยระบบกันสั่น CUDA เต็มกำลัง</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1891,7 +1891,7 @@
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>NVIDIA Video Effects ไม่ได้ติดตั้งรันไทม์ ใช้การตั้งค่าและดาวน์โหลด</translation>
+            <translation>ยังไม่ได้ติดตั้งรันไทม์ NVIDIA Video Effects ไปที่ Setup &amp; Downloads</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>เปิดส่วนควบคุมและความช่วยเหลือเกี่ยวกับฟีเจอร์</translation>
+            <translation>เปิดคู่มือการควบคุมและฟีเจอร์</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1915,11 +1915,11 @@
         </message>
         <message>
             <source>OkuFlow Help</source>
-            <translation>OkuFlow ช่วยด้วย</translation>
+            <translation>ความช่วยเหลือของ OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
-            <translation>OkuFlow คู่มือการควบคุมและคุณสมบัติ</translation>
+            <translation>คู่มือการควบคุมและฟีเจอร์ของ OkuFlow</translation>
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
@@ -1963,7 +1963,7 @@
         </message>
         <message>
             <source>Reading profile</source>
-            <translation>กำลังอ่านโปรไฟล์</translation>
+            <translation>โปรไฟล์การอ่าน</translation>
         </message>
         <message>
             <source>Reset current profile tuning</source>
@@ -1971,7 +1971,7 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>รีเซ็ตรูปภาพของโปรไฟล์และการปรับแต่งแบบช่วยเหลือเป็นค่าเริ่มต้น</translation>
+            <translation>รีเซ็ตการปรับภาพและการช่วยเหลือของโปรไฟล์กลับเป็นค่าเริ่มต้น</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
@@ -2003,7 +2003,7 @@
         </message>
         <message>
             <source>Sharpening</source>
-            <translation>การลับคม</translation>
+            <translation>การเพิ่มความคมชัด</translation>
         </message>
         <message>
             <source>Show a guide to OkuFlow controls and features</source>
@@ -2035,7 +2035,7 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>ใช้ NVIDIA Video Effects SuperRes ที่ระยะซูม 1.33 เท่าขึ้นไป ย้อนกลับไปยัง NIS โดยอัตโนมัติ</translation>
+            <translation>ใช้ NVIDIA Video Effects SuperRes เมื่อซูมตั้งแต่ 1.33 เท่าขึ้นไป หากใช้ไม่ได้ ระบบจะเปลี่ยนไปใช้ NIS โดยอัตโนมัติ</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
@@ -2075,9 +2075,9 @@
             <source>Installed system-wide
 %1
 Removal is managed by Windows.</source>
-            <translation>ติดตั้งทั่วทั้งระบบ
+            <translation>ติดตั้งสำหรับผู้ใช้ทุกคนแล้ว
 %1
-การลบได้รับการจัดการโดย Windows</translation>
+ถอนการติดตั้งผ่าน Windows</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects</source>
@@ -2085,7 +2085,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA installer running. Continue in the vendor installer window.</source>
-            <translation>NVIDIA ตัวติดตั้งกำลังทำงานอยู่ ดำเนินการต่อในหน้าต่างตัวติดตั้งของผู้จำหน่าย</translation>
+            <translation>ตัวติดตั้ง NVIDIA กำลังทำงานอยู่ ดำเนินการต่อในหน้าต่างติดตั้งของ NVIDIA</translation>
         </message>
         <message>
             <source>Not installed</source>
@@ -2093,11 +2093,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>ไม่ได้ติดตั้ง ติดตั้งดาวน์โหลดแพ็คเกจสำหรับ %1 GPU</translation>
+            <translation>ยังไม่ได้ติดตั้ง เลือกติดตั้งเพื่อดาวน์โหลดแพ็กเกจสำหรับ GPU %1</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
-            <translation>เปิด Codex CLI ติดตั้งโฟลเดอร์</translation>
+            <translation>เปิดโฟลเดอร์ติดตั้ง Codex CLI</translation>
         </message>
         <message>
             <source>Open Codex CLI setup guide</source>
@@ -2129,7 +2129,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>OkuFlow Setup Assistant</source>
-            <translation>OkuFlow ผู้ช่วยการตั้งค่า</translation>
+            <translation>ผู้ช่วยตั้งค่า OkuFlow</translation>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
@@ -2137,7 +2137,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Retrying from the alternate vendor host...</source>
-            <translation>กำลังลองใหม่จากโฮสต์ของผู้ขายรายอื่น...</translation>
+            <translation>กำลังลองดาวน์โหลดอีกครั้งจากเซิร์ฟเวอร์สำรองของผู้ให้บริการ...</translation>
         </message>
         <message>
             <source>Setup Assistant</source>
@@ -2189,7 +2189,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>สำเนาทั้งระบบนี้จะต้องถูกลบออกผ่านแอพที่ติดตั้ง Windows</translation>
+            <translation>ต้องถอนการติดตั้งสำเนานี้สำหรับผู้ใช้ทุกคนผ่านหน้าแอปที่ติดตั้งใน Windows</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2205,7 +2205,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Verified. Installing the official Codex CLI...</source>
-            <translation>ตรวจสอบแล้ว กำลังติดตั้งอย่างเป็นทางการ Codex CLI...</translation>
+            <translation>ตรวจสอบแล้ว กำลังติดตั้ง Codex CLI อย่างเป็นทางการ...</translation>
         </message>
         <message>
             <source>Verified. Starting installer...</source>
@@ -2229,15 +2229,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>ตะขอช่วยเหลือ: อธิบายฉาก</translation>
+            <translation>ฟังก์ชันช่วยการเข้าถึง: อธิบายฉาก</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>ตะขอช่วยเหลือ: อธิบายฉากพร้อมการซ้อนทับ</translation>
+            <translation>ฟังก์ชันช่วยการเข้าถึง: อธิบายฉากพร้อมแสดงคำอธิบายซ้อนบนภาพ</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
-            <translation>การกำหนดค่าแบบกำหนดเองจากการปรับแต่งขั้นสูง บันทึกเป็นตัวเลือกด่วนเมื่อรู้สึกว่าใช่</translation>
+            <translation>การตั้งค่าแบบกำหนดเองจากการปรับแต่งขั้นสูง หากพอใจแล้วให้บันทึกเป็นตัวเลือกด่วน</translation>
         </message>
         <message>
             <source>Current quick mode description</source>
@@ -2297,11 +2297,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stops: </source>
-            <translation>หยุด: </translation>
+            <translation>จุดสี:</translation>
         </message>
         <message>
             <source>Color stop %1 of 8</source>
-            <translation>หยุดสี %1 จาก 8</translation>
+            <translation>จุดสีที่ %1 จาก 8</translation>
         </message>
         <message>
             <source>%1 px</source>
@@ -2325,7 +2325,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
-            <translation>เร่งความเร็วอย่างรวดเร็วด้วยท่าทางการซูม Ctrl+scroll; การซูมแป้นพิมพ์ยังคงแม่นยำ</translation>
+            <translation>เร่งการซูมด้วย Ctrl+scroll ให้เร็วขึ้น ส่วนการซูมด้วยแป้นพิมพ์ยังคงปรับได้อย่างแม่นยำ</translation>
         </message>
         <message>
             <source>SuperRes powered by NVIDIA Maxine™</source>
@@ -2333,7 +2333,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA การระบุแหล่งที่มาของแม็กซีน</translation>
+            <translation>การระบุแหล่งที่มาของ NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2345,11 +2345,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>%1 settings match</source>
-            <translation>%1 การตั้งค่าตรงกัน</translation>
+            <translation>การตั้งค่าตรงกัน %1 รายการ</translation>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>แก้ไขหน้าจอถัดไปหรือค้นหาการแก้ไขใหม่%1</translation>
+            <translation>ปรับแก้หน้าจอถัดไป หรือค้นหาการปรับแก้ใหม่หนึ่งรายการ%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2361,7 +2361,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Started %1</source>
-            <translation>เริ่มต้น %1</translation>
+            <translation>เริ่มเมื่อ %1</translation>
         </message>
         <message>
             <source>Captured processed camera view</source>
@@ -2401,11 +2401,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Annotations cleared - snapshot</source>
-            <translation>คำอธิบายประกอบถูกล้างแล้ว - สแนปชอต</translation>
+            <translation>ล้างคำอธิบายประกอบแล้ว — ภาพนิ่ง</translation>
         </message>
         <message>
             <source>Annotation session ended - snapshot</source>
-            <translation>เซสชันคำอธิบายประกอบสิ้นสุดลง - สแนปชอต</translation>
+            <translation>จบเซสชันคำอธิบายประกอบแล้ว — ภาพนิ่ง</translation>
         </message>
         <message>
             <source>The conversation could not be exported to %1.</source>
@@ -2445,7 +2445,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Original and processed video</source>
-            <translation>วิดีโอต้นฉบับและประมวลผล</translation>
+            <translation>วิดีโอต้นฉบับและวิดีโอที่ประมวลผลแล้ว</translation>
         </message>
         <message>
             <source>Original and processed photo</source>
@@ -2453,7 +2453,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>ดูมุมมองที่ผู้ช่วยวิเคราะห์</translation>
+            <translation>ดูภาพที่ผู้ช่วยวิเคราะห์</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2473,7 +2473,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Explain conversation</source>
-            <translation>การสนทนาคำอธิบาย</translation>
+            <translation>บทสนทนาสำหรับ Explain</translation>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
@@ -2481,19 +2481,19 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>กำลังส่งเฟรมกล้องปัจจุบันและแจ้งให้ Codex การสนทนา: บันทึกการสนทนาอธิบายแล้ว ดำเนินการต่อโดยอธิบายแต่ละรายการ อินเทอร์เน็ตเครื่องมือ: ถูกบล็อก การเปลี่ยนแปลงการเข้ารหัสและไฟล์: ถูกบล็อก</translation>
+            <translation>กำลังส่งภาพจากกล้องปัจจุบันและพรอมป์ต์ไปยัง Codex การสนทนา: บันทึกไว้และใช้ต่อเนื่องเมื่อกด Explain แต่ละครั้ง อินเทอร์เน็ตของเครื่องมือ: ถูกบล็อก การเขียนโค้ดและแก้ไขไฟล์: ถูกบล็อก</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>กำลังส่งเฟรมกล้องปัจจุบันและแจ้งให้ Codex การสนทนา: ชั่วคราว ใหม่สำหรับการอ่านแต่ละครั้ง อินเทอร์เน็ตเครื่องมือ: ถูกบล็อก การเปลี่ยนแปลงการเข้ารหัสและไฟล์: ถูกบล็อก</translation>
+            <translation>กำลังส่งภาพจากกล้องปัจจุบันและพรอมป์ต์ไปยัง Codex การสนทนา: ใช้ชั่วคราวและเริ่มใหม่ทุกครั้งที่กด Read อินเทอร์เน็ตของเครื่องมือ: ถูกบล็อก การเขียนโค้ดและแก้ไขไฟล์: ถูกบล็อก</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>การส่งเฟรมกล้องปัจจุบัน การแจ้ง และล่าสุด อธิบายคำตอบของ %1 (จุดสิ้นสุดภายในเครื่อง) การสนทนา: อธิบายคำตอบล่าสุด เก็บไว้ในหน่วยความจำเท่านั้น เครื่องมือเข้ารหัส: ไม่พร้อมใช้งาน</translation>
+            <translation>กำลังส่งภาพจากกล้องปัจจุบัน พรอมป์ต์ และคำตอบ Explain ล่าสุดไปยัง %1 (ปลายทางในเครื่อง) การสนทนา: ใช้คำตอบ Explain ล่าสุด ซึ่งเก็บไว้ในหน่วยความจำเท่านั้น เครื่องมือเขียนโค้ด: ใช้งานไม่ได้</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>การส่งเฟรมกล้องปัจจุบัน พรอมต์ และล่าสุด อธิบายคำตอบของ %1 (ปลายทางระยะไกล) การสนทนา: อธิบายคำตอบล่าสุด เก็บไว้ในหน่วยความจำเท่านั้น เครื่องมือเข้ารหัส: ไม่พร้อมใช้งาน</translation>
+            <translation>กำลังส่งภาพจากกล้องปัจจุบัน พรอมป์ต์ และคำตอบ Explain ล่าสุดไปยัง %1 (ปลายทางระยะไกล) การสนทนา: ใช้คำตอบ Explain ล่าสุด ซึ่งเก็บไว้ในหน่วยความจำเท่านั้น เครื่องมือเขียนโค้ด: ใช้งานไม่ได้</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2505,7 +2505,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Dock left</source>
-            <translation>ท่าเรือไปทางซ้าย</translation>
+            <translation>เทียบชิดซ้าย</translation>
         </message>
         <message>
             <source>Dock right</source>
@@ -2517,11 +2517,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Release to dock right</source>
-            <translation>ปล่อยเพื่อยึดชิดขวา</translation>
+            <translation>ปล่อยเพื่อเทียบชิดขวา</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>ขับเคลื่อนฟีเจอร์การอ่าน อธิบาย และผู้ช่วยที่สนับสนุนการสมัครรับข้อมูล ติดตั้ง Codex CLI อย่างเป็นทางการสำหรับบัญชี Windows ของคุณ การลงชื่อเข้าใช้ ChatGPT ยังคงเป็นขั้นตอนแยกต่างหาก</translation>
+            <translation>ใช้การสมัครสมาชิกเพื่อเปิดใช้ฟีเจอร์ Read, Explain และ Assistant โดยติดตั้ง Codex CLI อย่างเป็นทางการสำหรับบัญชี Windows ของคุณ คุณยังต้องลงชื่อเข้าใช้ ChatGPT แยกต่างหาก</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2537,11 +2537,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Connect a camera, then choose it under Advanced, Device.</source>
-            <translation>เชื่อมต่อกล้อง จากนั้นเลือกภายใต้ขั้นสูง อุปกรณ์</translation>
+            <translation>เชื่อมต่อกล้อง แล้วเลือกกล้องที่ การตั้งค่าขั้นสูง &gt; อุปกรณ์</translation>
         </message>
         <message>
             <source>Choose a camera under Advanced, Device, or check that it is connected.</source>
-            <translation>เลือกกล้องภายใต้ขั้นสูง อุปกรณ์ หรือตรวจสอบว่ามีการเชื่อมต่ออยู่</translation>
+            <translation>เลือกกล้องที่ การตั้งค่าขั้นสูง &gt; อุปกรณ์ หรือตรวจสอบว่าเชื่อมต่อกล้องแล้ว</translation>
         </message>
         <message>
             <source>Number key %1</source>
@@ -2573,7 +2573,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Search settings…</source>
-            <translation>การตั้งค่าการค้นหา...</translation>
+            <translation>ค้นหาการตั้งค่า…</translation>
         </message>
         <message>
             <source>Mode: %1</source>
@@ -2585,7 +2585,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Changes apply now. Save to keep them.</source>
-            <translation>การเปลี่ยนแปลงมีผลทันที เก็บไว้เก็บไว้.</translation>
+            <translation>การเปลี่ยนแปลงมีผลทันที กดบันทึกเพื่อเก็บการเปลี่ยนแปลงไว้</translation>
         </message>
         <message>
             <source>Shared by all modes. Not saved into quick modes.</source>
@@ -2617,7 +2617,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Steady image</source>
-            <translation>ภาพลักษณ์ที่มั่นคง</translation>
+            <translation>ภาพนิ่งไม่สั่น</translation>
         </message>
         <message>
             <source>Straighten screen</source>
@@ -2653,11 +2653,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>ไม่มีการแข่งขันที่นี่ %1 ในการตั้งค่า กด Enter เพื่อแสดง</translation>
+            <translation>ไม่พบรายการที่ตรงกันที่นี่ พบ %1 รายการในการตั้งค่า กด Enter เพื่อแสดง</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>ไม่มีการแข่งขันที่นี่ %1 ในภาพ กด Enter เพื่อแสดง</translation>
+            <translation>ไม่พบรายการที่ตรงกันที่นี่ พบ %1 รายการในภาพ กด Enter เพื่อแสดง</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2673,7 +2673,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Resets this mode's image and assistant settings. Settings on the Settings tab are not changed.</source>
-            <translation>รีเซ็ตการตั้งค่ารูปภาพและตัวช่วยของโหมดนี้ การตั้งค่าบนแท็บการตั้งค่าจะไม่เปลี่ยนแปลง</translation>
+            <translation>รีเซ็ตการตั้งค่าภาพและ Assistant ของโหมดนี้ โดยไม่เปลี่ยนการตั้งค่าในแท็บการตั้งค่า</translation>
         </message>
         <message>
             <source>Connect a camera, then choose it under Settings, Camera.</source>
@@ -2681,7 +2681,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Choose a camera under Settings, Camera, or check that it is connected.</source>
-            <translation>เลือกกล้องภายใต้การตั้งค่า กล้อง หรือตรวจสอบว่าเชื่อมต่อแล้ว</translation>
+            <translation>เลือกกล้องที่ การตั้งค่า &gt; กล้อง หรือตรวจสอบว่าเชื่อมต่อกล้องแล้ว</translation>
         </message>
         <message>
             <source>Language</source>
@@ -2715,9 +2715,9 @@ Removal is managed by Windows.</source>
             <source>Reset this mode's image and assistant settings?
 
 Shared settings on the Settings tab will stay unchanged.</source>
-            <translation>รีเซ็ตการตั้งค่ารูปภาพและผู้ช่วยของโหมดนี้หรือไม่
+            <translation>รีเซ็ตการตั้งค่าภาพและ Assistant ของโหมดนี้หรือไม่
 
- การตั้งค่าที่แชร์บนแท็บการตั้งค่าจะไม่เปลี่ยนแปลง</translation>
+การตั้งค่าที่ใช้ร่วมกันในแท็บการตั้งค่าจะไม่เปลี่ยนแปลง</translation>
         </message>
         <message>
             <source>Hide UI</source>
@@ -2741,15 +2741,15 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
-            <translation>%1 ไม่สามารถทำให้แฟรกเมนต์สุดท้ายเสร็จสิ้นได้ (0x%2) ไฟล์ถูกเก็บรักษาไว้ การเล่นยังไม่ได้รับการตรวจสอบ</translation>
+            <translation>%1 ไม่สามารถปิดส่วนข้อมูลสุดท้ายได้ (0x%2) ระบบเก็บไฟล์ไว้แล้ว แต่ยังไม่ได้ตรวจสอบว่าเล่นได้หรือไม่</translation>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>มีเส้นทางเอาต์พุตการบันทึกอยู่แล้ว มันถูกเก็บรักษาไว้</translation>
+            <translation>มีไฟล์ในตำแหน่งบันทึกนี้อยู่แล้ว ระบบคงไฟล์เดิมไว้</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
-            <translation>ความชัดเจนของข้อความใช้การปรับปรุงอัตโนมัติ ตัวเลือกการปรับแต่งแบบละเอียดจะใช้เฉพาะในขณะที่เปิดความชัดเจนของข้อความเท่านั้น</translation>
+            <translation>Text Clarity จะปรับภาพให้อัตโนมัติ ตัวเลือกปรับละเอียดจะใช้ได้เมื่อเปิด Text Clarity เท่านั้น</translation>
         </message>
         <message>
             <source>More colors
@@ -2767,7 +2767,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Posterize 6</source>
-            <translation>โปสเตอร์ 6</translation>
+            <translation>โปสเตอร์ไรซ์ 6 สี</translation>
         </message>
         <message>
             <source>Yellow text on black background</source>
@@ -2779,7 +2779,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Six color posterize effect</source>
-            <translation>เอฟเฟกต์โปสเตอร์หกสี</translation>
+            <translation>เอฟเฟกต์โปสเตอร์ไรซ์ 6 สี</translation>
         </message>
         <message>
             <source>AI service</source>
@@ -2791,11 +2791,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>อ่าน อธิบาย และ Assistant ใช้การสมัครสมาชิก ChatGPT ของคุณผ่าน Codex CLI ลงชื่อเข้าใช้ด้วย Connect ChatGPT บนแท็บ Assistant ในโหมดขั้นสูง</translation>
+            <translation>ฟีเจอร์ Read, Explain และ Assistant ใช้การสมัครสมาชิก ChatGPT ของคุณผ่าน Codex CLI ลงชื่อเข้าใช้โดยเลือก Connect ChatGPT ในแท็บ Assistant ของโหมดขั้นสูง</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>อ่านและอธิบายส่งมุมมองกล้องไปยัง URL เซิร์ฟเวอร์ด้านล่าง รูปภาพจะคงอยู่ในคอมพิวเตอร์เครื่องนี้เฉพาะในกรณีที่เซิร์ฟเวอร์นั้นทำงานอยู่ เช่น LM Studio หรือ Ollama ที่ localhost การสนทนาของ Assistant ที่บันทึกไว้ต้องสมัครสมาชิก ChatGPT</translation>
+            <translation>ฟีเจอร์ Read และ Explain จะส่งภาพจากกล้องไปยัง URL ของเซิร์ฟเวอร์ด้านล่าง ภาพจะอยู่ในคอมพิวเตอร์เครื่องนี้เท่านั้นเมื่อเซิร์ฟเวอร์ทำงานอยู่บนเครื่องนี้ เช่น LM Studio หรือ Ollama ที่ localhost ส่วนบทสนทนา Assistant ที่บันทึกไว้ต้องใช้การสมัครสมาชิก ChatGPT</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
@@ -2815,7 +2815,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>สิ่งเหล่านี้ใช้ได้กับการสนทนาของ Assistant ที่บันทึกไว้เท่านั้น รวมถึงคำถามที่ถามจาก Assistant แบบลอยด้วย อ่านและอธิบายจะถูกจำกัดอยู่เสมอ</translation>
+            <translation>การตั้งค่าเหล่านี้ใช้เฉพาะกับบทสนทนา Assistant ที่บันทึกไว้ รวมถึงคำถามจาก Assistant แบบลอย ส่วน Read และ Explain จะยังคงถูกจำกัดสิทธิ์เสมอ</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2827,11 +2827,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>แสดงหรือซ่อนคำสั่งแบบอ่านอย่างเดียว OkuFlow จะส่งไปที่ Codex เสมอ</translation>
+            <translation>แสดงหรือซ่อนคำสั่งที่ OkuFlow ส่งให้ Codex ทุกครั้ง ซึ่งดูได้อย่างเดียวและแก้ไขไม่ได้</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>อธิบายพร้อมท์</translation>
+            <translation>พรอมป์ต์สำหรับ Explain</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
@@ -2843,7 +2843,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>ติดตั้งแล้ว
 %1
-ใช้ Connect ChatGPT บนแท็บ Advanced Assistant เพื่อลงชื่อเข้าใช้</translation>
+เลือก Connect ChatGPT ในแท็บ Assistant ของโหมดขั้นสูงเพื่อลงชื่อเข้าใช้</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2851,11 +2851,11 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>GPU upload busy %1</source>
-            <translation>การอัปโหลด GPU ไม่ว่าง %1</translation>
+            <translation>GPU กำลังอัปโหลดข้อมูล ไม่ว่าง %1</translation>
         </message>
         <message>
             <source>encoder backlog %1</source>
-            <translation>ตัวเข้ารหัสที่ค้างอยู่ %1</translation>
+            <translation>งานค้างในคิวตัวเข้ารหัส %1</translation>
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
@@ -2871,7 +2871,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
-            <translation>เปิด OkuFlow กล้อง บนโทรศัพท์ เชื่อมต่อสาย USB และอนุญาตการแก้ไขข้อบกพร่อง USB OkuFlow ตรวจสอบการเชื่อมต่อโดยอัตโนมัติ</translation>
+            <translation>เปิดแอป OkuFlow Camera บนโทรศัพท์ เชื่อมต่อสาย USB และอนุญาตการดีบัก USB แล้ว OkuFlow จะตรวจสอบการเชื่อมต่อโดยอัตโนมัติ</translation>
         </message>
         <message>
             <source>Set up OkuFlow</source>

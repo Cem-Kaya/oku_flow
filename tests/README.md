@@ -1,5 +1,11 @@
 # OkuFlow Tests
 
+Idle-chrome fixtures establish and drain native cursor/focus input before
+manually expiring the idle timer. Requested Qt cursor coordinates allow only
+one logical pixel of mixed-DPI rounding; interruption checks compare exact
+native pixels. Hidden-chrome, unrelated-input and deliberate-move assertions
+remain unchanged.
+
 ## Background language checks
 
 `windows_runtime_contract` checks the public launcher with both flat and nested

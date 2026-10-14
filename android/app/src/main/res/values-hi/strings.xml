@@ -32,7 +32,7 @@
     <string name="setting_camera">कैमरा</string>
     <string name="camera_front">फ्रंट कैमरा</string>
     <string name="camera_back">रियर कैमरा</string>
-    <string name="setting_mode">संकल्प और फ्रेम दर</string>
+    <string name="setting_mode">रिज़ॉल्यूशन और फ़्रेम दर</string>
     <string name="setting_mode_format">%1$d × %2$d @ %3$d एफपीएस</string>
     <string name="setting_modes_loading">कैमरा मोड ढूंढे जा रहे हैं...</string>
     <string name="setting_modes_unavailable">कोई रिकॉर्डिंग मोड उपलब्ध नहीं है</string>

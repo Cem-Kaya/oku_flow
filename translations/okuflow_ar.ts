@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>يبدأ عند كل اتصال. اضغط لتشغيل ضوء الهاتف أو إيقاف تشغيله.</translation>
+            <translation>يكون الضوء مطفأً عند كل اتصال. اضغط لتشغيله أو إطفائه.</translation>
         </message>
         <message>
             <source>Application</source>
@@ -77,7 +77,7 @@
         </message>
         <message>
             <source>Shared by every profile</source>
-            <translation>مشتركة من قبل كل ملف تعريف</translation>
+            <translation>مشتركة بين جميع الملفات الشخصية</translation>
         </message>
         <message>
             <source>Saved into the selected quick option</source>
@@ -101,7 +101,7 @@
         </message>
         <message>
             <source>Orientation</source>
-            <translation>التوجه</translation>
+            <translation>الاتجاه</translation>
         </message>
         <message>
             <source>Camera acceleration</source>
@@ -133,7 +133,7 @@
         </message>
         <message>
             <source>Match display</source>
-            <translation>ملاءمة الشاشة</translation>
+            <translation>مطابقة الشاشة</translation>
         </message>
         <message>
             <source>Viewport framing</source>
@@ -153,7 +153,7 @@
         </message>
         <message>
             <source>Reset Tuning</source>
-            <translation>إعادة ضبط</translation>
+            <translation>إعادة ضبط الإعدادات الدقيقة</translation>
         </message>
         <message>
             <source>Virtual Joystick</source>
@@ -165,7 +165,7 @@
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
-            <translation>مشتركة من خلال التسجيلات الأصلية والمعالجة</translation>
+            <translation>مشتركة بين التسجيلات الأصلية والمعالجة</translation>
         </message>
         <message>
             <source>Processed recording resolution</source>
@@ -173,7 +173,7 @@
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
-            <translation>الكاميرا ودقة التسجيل الأصلية &amp;&amp; معدل الإطارات</translation>
+            <translation>دقة الكاميرا والتسجيل الأصلي ومعدل الإطارات &amp;&amp;</translation>
         </message>
         <message>
             <source>Automatic (driver's choice)</source>
@@ -213,7 +213,7 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>شحذ والتركيز</translation>
+            <translation>زيادة الحدة والتركيز</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
@@ -225,7 +225,7 @@
         </message>
         <message>
             <source>Zoom %L1 times</source>
-            <translation>تكبير %L1 مرات</translation>
+            <translation>التكبير بمقدار %L1 مرة</translation>
         </message>
         <message>
             <source>Gaussian Blur</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>السلس الزمني</translation>
+            <translation>التنعيم الزمني</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -253,11 +253,11 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>ثبات إضافي (استمر في الاهتزاز)</translation>
+            <translation>ثبات إضافي (تثبيت الصورة عند الاهتزاز)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
-            <translation>تصويب الشاشة (كيستون)</translation>
+            <translation>تصحيح منظور الشاشة (Keystone)</translation>
         </message>
         <message>
             <source>Correction tracking:</source>
@@ -289,7 +289,7 @@
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>تتسطح الخلفية</translation>
+            <translation>تسطيح الخلفية</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
@@ -301,15 +301,15 @@
         </message>
         <message>
             <source>Text polarity</source>
-            <translation>قطبية النص</translation>
+            <translation>تباين النص (فاتح/داكن)</translation>
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>وزن السكتة الدماغية</translation>
+            <translation>سماكة الخط</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
-            <translation>شحذ الذكية</translation>
+            <translation>زيادة الحدة الذكية</translation>
         </message>
         <message>
             <source>Local Contrast (CLAHE)</source>
@@ -321,7 +321,7 @@
         </message>
         <message>
             <source>Steady Text Edges</source>
-            <translation>حواف النص ثابتة</translation>
+            <translation>تثبيت حواف النص</translation>
         </message>
         <message>
             <source>Sharpen Text Only</source>
@@ -329,11 +329,11 @@
         </message>
         <message>
             <source>Warn When Out of Focus</source>
-            <translation>تحذير عند الخروج من التركيز</translation>
+            <translation>التحذير عند عدم وضوح التركيز</translation>
         </message>
         <message>
             <source>Suppress Glare</source>
-            <translation>قمع الوهج</translation>
+            <translation>تقليل الوهج</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution</source>
@@ -377,7 +377,7 @@
         </message>
         <message>
             <source>Assistive Overlay</source>
-            <translation>تراكب مساعد</translation>
+            <translation>طبقة مساعدة على الصورة</translation>
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
@@ -409,7 +409,7 @@
         </message>
         <message>
             <source>Spatial Sharpen</source>
-            <translation>الحدة المكانية</translation>
+            <translation>زيادة الحدة المكانية</translation>
         </message>
         <message>
             <source>Backend</source>
@@ -421,11 +421,11 @@
         </message>
         <message>
             <source>Focus X:</source>
-            <translation>التركيز العاشر:</translation>
+            <translation>إحداثي التركيز X:</translation>
         </message>
         <message>
             <source>Focus Y:</source>
-            <translation>التركيز ص:</translation>
+            <translation>إحداثي التركيز Y:</translation>
         </message>
         <message>
             <source>Debug View</source>
@@ -437,11 +437,11 @@
         </message>
         <message>
             <source>Pipeline status</source>
-            <translation>حالة خط الأنابيب</translation>
+            <translation>حالة المعالجة</translation>
         </message>
         <message>
             <source>Performance percentiles</source>
-            <translation>النسب المئوية للأداء</translation>
+            <translation>المئينات للأداء</translation>
         </message>
         <message>
             <source>Collecting timing samples…</source>
@@ -453,7 +453,7 @@
         </message>
         <message>
             <source>Record</source>
-            <translation>سجل</translation>
+            <translation>تسجيل</translation>
         </message>
         <message>
             <source>Explain</source>
@@ -489,7 +489,7 @@
         </message>
         <message>
             <source>Move</source>
-            <translation>تحرك</translation>
+            <translation>نقل</translation>
         </message>
         <message>
             <source>Pen</source>
@@ -621,11 +621,11 @@
         </message>
         <message>
             <source>Codex CLI path:</source>
-            <translation>Codex CLI المسار:</translation>
+            <translation>مسار Codex CLI:</translation>
         </message>
         <message>
             <source>Codex model:</source>
-            <translation>Codex الموديل:</translation>
+            <translation>نموذج Codex:</translation>
         </message>
         <message>
             <source>Reasoning:</source>
@@ -637,7 +637,7 @@
         </message>
         <message>
             <source>Allow coding commands and file changes</source>
-            <translation>السماح بأوامر الترميز وتغييرات الملفات</translation>
+            <translation>السماح بأوامر البرمجة وتعديل الملفات</translation>
         </message>
         <message>
             <source>Required when coding is enabled</source>
@@ -693,7 +693,7 @@
         </message>
         <message>
             <source>Camera did not stop in time. Restart OkuFlow before changing cameras.</source>
-            <translation>الكاميرا لم تتوقف في الوقت المناسب. أعد تشغيل OkuFlow قبل تغيير الكاميرات.</translation>
+            <translation>لم تتوقف الكاميرا في الوقت المحدد. أعد تشغيل OkuFlow قبل تغيير الكاميرا.</translation>
         </message>
         <message>
             <source>GPU stopped responding. Restart OkuFlow to resume video.</source>
@@ -781,11 +781,11 @@
         </message>
         <message>
             <source>Don't ask again automatically</source>
-            <translation>لا تسأل مرة أخرى تلقائيا</translation>
+            <translation>عدم السؤال تلقائيًا مرة أخرى</translation>
         </message>
         <message>
             <source>Section heading. Activate to expand or collapse this settings group.</source>
-            <translation>عنوان القسم. قم بالتنشيط لتوسيع مجموعة الإعدادات هذه أو طيها.</translation>
+            <translation>عنوان قسم. فعّل لتوسيع مجموعة الإعدادات هذه أو طيّها.</translation>
         </message>
         <message>
             <source>expanded</source>
@@ -797,7 +797,7 @@
         </message>
         <message>
             <source>%1 · %2 changed</source>
-            <translation>%1 · %2 تم التغيير</translation>
+            <translation>تم تغيير %1 · %2</translation>
         </message>
         <message>
             <source>%1, heading, %2</source>
@@ -805,11 +805,11 @@
         </message>
         <message>
             <source>%1, heading, %2, %3 changed</source>
-            <translation>%1، العنوان، %2، %3 تم تغييره</translation>
+            <translation>%1، عنوان، %2، تم تغيير %3</translation>
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>لم يتم تثبيت صوت %1 — باستخدام الصوت الحالي. قم بتثبيت واحد ضمن إعدادات Windows → الوقت واللغة → الكلام.</translation>
+            <translation>لا يوجد صوت %1 مثبّت، لذا سيُستخدم الصوت الحالي. ثبّت صوتًا من إعدادات Windows → الوقت واللغة → الكلام.</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -837,7 +837,7 @@
         </message>
         <message>
             <source>OkuFlow Assistant</source>
-            <translation>OkuFlow مساعد</translation>
+            <translation>مساعد OkuFlow</translation>
         </message>
         <message>
             <source>You</source>
@@ -877,7 +877,7 @@
         </message>
         <message>
             <source>Viewport motion limited to %1 FPS by this display.</source>
-            <translation>تقتصر حركة منفذ العرض على %1 FPS بواسطة هذه الشاشة.</translation>
+            <translation>تحدّ هذه الشاشة من حركة منفذ العرض إلى %1 FPS.</translation>
         </message>
         <message>
             <source>Vision model: %1</source>
@@ -897,7 +897,7 @@
         </message>
         <message>
             <source>Choose OkuFlow Folder</source>
-            <translation>اختر OkuFlow المجلد</translation>
+            <translation>اختر مجلد OkuFlow</translation>
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
@@ -909,11 +909,11 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>NVIDIA Super Resolution تم تجاهل حد الأداء.</translation>
+            <translation>تم تجاهل حد أداء NVIDIA Super Resolution.</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
-            <translation>NVIDIA Super Resolution تمت استعادة حد الأداء.</translation>
+            <translation>تمت استعادة حد أداء NVIDIA Super Resolution.</translation>
         </message>
         <message>
             <source>New OkuFlow files will be saved in %1.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>تم إرجاع تصحيح الشاشة إلى الخلف وتوقف التتبع.</translation>
+            <translation>تراجع تصحيح الشاشة وتوقف التتبع.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -991,15 +991,15 @@
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>لم يتم حفظ العرض التوضيحي: لا يمكن وضع الصورة في قائمة الانتظار.</translation>
+            <translation>لم يُحفظ العرض المشروح: تعذّرت إضافة الصورة إلى قائمة الانتظار.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>لم يتم حفظ العرض التوضيحي: ما تزال الصورة قيد الكتابة. حاول ثانية.</translation>
+            <translation>لم يُحفظ العرض المشروح: أداة حفظ الصور مشغولة. حاول مرة أخرى.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
-            <translation>لم يتم حفظ العرض التوضيحي: لم يكن إطار العرض متاحًا.</translation>
+            <translation>لم يُحفظ العرض المشروح: تعذّر الوصول إلى منفذ العرض.</translation>
         </message>
         <message>
             <source>Camera Error</source>
@@ -1147,7 +1147,7 @@
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>الصوت: تم إسقاط كتل %1 قبل التشفير، وتم رفض %2 بواسطة حد الإدخال.</translation>
+            <translation>الصوت: أُسقطت %1 كتل قبل الترميز، ورفُضت %2 كتل بسبب حد الإدخال.</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
@@ -1179,7 +1179,7 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>وحدة معالجة الرسومات الأصلية والمعالجة</translation>
+            <translation>الأصلية والمعالجة الواردتان من GPU</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex تحضير الصورة مشغول. حاول مرة أخرى بعد قليل.</translation>
+            <translation>تحضير صورة Codex مشغول. حاول مرة أخرى بعد قليل.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1291,7 +1291,7 @@
         </message>
         <message>
             <source>Codex CLI Path</source>
-            <translation>Codex CLI المسار</translation>
+            <translation>مسار Codex CLI</translation>
         </message>
         <message>
             <source>Codex Model</source>
@@ -1307,7 +1307,7 @@
         </message>
         <message>
             <source>Built-in Codex Prompt</source>
-            <translation>المدمج في Codex موجه</translation>
+            <translation>الموجّه المضمّن في Codex</translation>
         </message>
         <message>
             <source>VLM Server URL</source>
@@ -1463,7 +1463,7 @@
         </message>
         <message>
             <source>Lecture annotation canvas</source>
-            <translation>قماش الشرح للمحاضرة</translation>
+            <translation>لوحة التعليق التوضيحي للمحاضرة</translation>
         </message>
         <message>
             <source>Line tool</source>
@@ -1471,11 +1471,11 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>أداة نقل التعليقات التوضيحية</translation>
+            <translation>أداة تحريك التعليقات التوضيحية</translation>
         </message>
         <message>
             <source>Move tool</source>
-            <translation>أداة التحرك</translation>
+            <translation>أداة التحريك</translation>
         </message>
         <message>
             <source>Nothing selected</source>
@@ -1499,11 +1499,11 @@
         </message>
         <message>
             <source>Remove a complete annotation. Shortcut E.</source>
-            <translation>إزالة التعليق التوضيحي الكامل. الاختصار E.</translation>
+            <translation>إزالة تعليق توضيحي بالكامل. الاختصار: E.</translation>
         </message>
         <message>
             <source>Save a marked snapshot and clear all annotations.</source>
-            <translation>احفظ لقطة مميزة وامسح جميع التعليقات التوضيحية.</translation>
+            <translation>احفظ لقطة تتضمن التعليقات التوضيحية، ثم امسحها كلها.</translation>
         </message>
         <message>
             <source>Save annotated view</source>
@@ -1511,11 +1511,11 @@
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>احفظ العرض المحدد في ملاحظات المحاضرة. التحكم في الاختصار S.</translation>
+            <translation>احفظ العرض المُعلَّم في ملاحظات المحاضرة. الاختصار: Ctrl+S.</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
-            <translation>تحديد تعليق توضيحي واحد أو نقله أو تغيير حجمه. الاختصار V.</translation>
+            <translation>حدِّد تعليقًا توضيحيًا واحدًا أو حرّكه أو غيّر حجمه. الاختصار: V.</translation>
         </message>
         <message>
             <source>Selected annotation scaled</source>
@@ -1523,7 +1523,7 @@
         </message>
         <message>
             <source>Selection cleared</source>
-            <translation>تم مسح التحديد</translation>
+            <translation>أُزيل التحديد</translation>
         </message>
         <message>
             <source>Shape tool</source>
@@ -1531,11 +1531,11 @@
         </message>
         <message>
             <source>Solid</source>
-            <translation>صلب</translation>
+            <translation>متصل</translation>
         </message>
         <message>
             <source>Solid line style</source>
-            <translation>نمط الخط الصلب</translation>
+            <translation>نمط الخط المتصل</translation>
         </message>
         <message>
             <source>Solid stroke</source>
@@ -1571,11 +1571,11 @@
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
-            <translation>استخدم %1 الحبر. تشير علامة الاختيار إلى اللون المحدد.</translation>
+            <translation>استخدم حبر %1. تشير علامة الاختيار إلى اللون المحدد.</translation>
         </message>
         <message>
             <source>Ask Assistant</source>
-            <translation>اسأل مساعد</translation>
+            <translation>اسأل المساعد</translation>
         </message>
         <message>
             <source>Assistive result</source>
@@ -1623,7 +1623,7 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>نتيجة المساعد المتدفقة. استخدم مفاتيح الأسهم لقراءة النص.</translation>
+            <translation>يجري عرض إجابة المساعد. استخدم مفاتيح الأسهم لقراءة النص.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1631,7 +1631,7 @@
         </message>
         <message>
             <source>Apply custom</source>
-            <translation>تطبيق مخصص</translation>
+            <translation>تطبيق الإعدادات المخصصة</translation>
         </message>
         <message>
             <source>Background color</source>
@@ -1647,7 +1647,7 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>توقف اللون %1 من %2</translation>
+            <translation>نقطة اللون %1 من %2</translation>
         </message>
         <message>
             <source>Custom</source>
@@ -1667,7 +1667,7 @@
         </message>
         <message>
             <source>Display color scheme</source>
-            <translation>عرض نظام الألوان</translation>
+            <translation>نظام ألوان العرض</translation>
         </message>
         <message>
             <source>Display colors changed to %1</source>
@@ -1691,7 +1691,7 @@
         </message>
         <message>
             <source>Number of color stops</source>
-            <translation>عدد توقفات اللون</translation>
+            <translation>عدد نقاط اللون</translation>
         </message>
         <message>
             <source>Posterize</source>
@@ -1699,19 +1699,19 @@
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>ألوان القراءة</translation>
+            <translation>ألوان مخصصة للقراءة</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
-            <translation>إعادة تعيين ألوان العرض إلى الألوان العادية</translation>
+            <translation>إعادة ألوان العرض إلى الوضع الطبيعي</translation>
         </message>
         <message>
             <source>Reset to Normal colors</source>
-            <translation>إعادة التعيين إلى الألوان العادية</translation>
+            <translation>إعادة الألوان إلى الوضع الطبيعي</translation>
         </message>
         <message>
             <source>Stepped colors</source>
-            <translation>الألوان المتدرجة</translation>
+            <translation>ألوان متدرجة على خطوات</translation>
         </message>
         <message>
             <source>Text color</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>استخدم أشرطة الألوان الصلبة</translation>
+            <translation>استخدم نطاقات لونية واضحة الحدود</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1755,7 +1755,7 @@
         </message>
         <message>
             <source>Camera format notice</source>
-            <translation>إشعار تنسيق الكاميرا</translation>
+            <translation>تنبيه بشأن تنسيق الكاميرا</translation>
         </message>
         <message>
             <source>ChatGPT connection</source>
@@ -1763,15 +1763,15 @@
         </message>
         <message>
             <source>Codex connection status</source>
-            <translation>Codex حالة الاتصال</translation>
+            <translation>حالة اتصال Codex</translation>
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex الاستخدام</translation>
+            <translation>استخدام Codex</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
-            <translation>تكوين مساعد الرؤية وإخراج الكلام</translation>
+            <translation>إعداد مساعد الرؤية وإخراج الصوت</translation>
         </message>
         <message>
             <source>Continue</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>يتحكم في العرض التقديمي السلس والتكبير/التصغير؛ معدل إطارات الكاميرا لم يتغير</translation>
+            <translation>يتحكم في سلاسة تحريك العرض وتكبيره؛ ولا يتغير معدل إطارات الكاميرا</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1803,7 +1803,7 @@
         </message>
         <message>
             <source>Device setting shared by all profiles.</source>
-            <translation>إعداد الجهاز مشترك من قبل جميع الملفات الشخصية.</translation>
+            <translation>هذا الإعداد خاص بالجهاز وتستخدمه جميع الملفات الشخصية.</translation>
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
@@ -1811,15 +1811,15 @@
         </message>
         <message>
             <source>Extra Stable off</source>
-            <translation>إيقاف الثبات الزائد</translation>
+            <translation>الثبات الإضافي متوقف</translation>
         </message>
         <message>
             <source>Extra Stable on</source>
-            <translation>اضافية مستقرة على</translation>
+            <translation>الثبات الإضافي مفعّل</translation>
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>يستخدم التعبئة إطار العرض الكامل دون تمديده؛ يحافظ Fit على الصورة بأكملها باستخدام الأشرطة</translation>
+            <translation>يملأ وضع «ملء» إطار العرض دون تمديد الصورة؛ ويحافظ وضع «احتواء» على الصورة كاملة مع ظهور أشرطة</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1827,15 +1827,15 @@
         </message>
         <message>
             <source>Finishing</source>
-            <translation>التشطيب</translation>
+            <translation>جارٍ الإنهاء</translation>
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>قم بالتجميد على آخر إطار حاد أثناء الارتطام، ثم عد بسلاسة إلى الفيديو المباشر</translation>
+            <translation>جمّد الصورة عند آخر إطار واضح أثناء الاهتزاز، ثم عُد بسلاسة إلى الفيديو المباشر</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
-            <translation>تصحيح شاشة GPU غير متاح.</translation>
+            <translation>تصحيح الشاشة باستخدام GPU غير متاح.</translation>
         </message>
         <message>
             <source>High Contrast</source>
@@ -1843,7 +1843,7 @@
         </message>
         <message>
             <source>Ignore NVIDIA Super Resolution performance limit</source>
-            <translation>تجاهل NVIDIA Super Resolution حد الأداء</translation>
+            <translation>تجاهل حد الأداء الخاص بـ NVIDIA Super Resolution</translation>
         </message>
         <message>
             <source>Set up Codex CLI and NVIDIA Video Effects</source>
@@ -1851,11 +1851,11 @@
         </message>
         <message>
             <source>Keep It Steady</source>
-            <translation>يبقيه ثابتا</translation>
+            <translation>ثبّت الصورة</translation>
         </message>
         <message>
             <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
-            <translation>حافظ على نشاط SuperRes حتى عندما يتجاوز متوسط وقت GPU الخاص به 24 مللي ثانية</translation>
+            <translation>أبقِ SuperRes مفعّلًا حتى عندما يتجاوز متوسط زمن معالج GPU ‏24 مللي ثانية</translation>
         </message>
         <message>
             <source>Large Zoom</source>
@@ -1863,15 +1863,15 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>قم بقفل عرض الكاميرا المثبتة باستخدام التثبيت الكامل CUDA</translation>
+            <translation>ثبّت صورة الكاميرا المركّبة باستخدام تثبيت CUDA بكامل قوته</translation>
         </message>
         <message>
             <source>Low Light</source>
-            <translation>ضوء منخفض</translation>
+            <translation>إضاءة خافتة</translation>
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>مطابقة الكاميرا (مستحسن)</translation>
+            <translation>مطابقة إعدادات الكاميرا (موصى به)</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1879,19 +1879,19 @@
         </message>
         <message>
             <source>NVIDIA Image Scaling (default)</source>
-            <translation>NVIDIA تحجيم الصورة (افتراضي)</translation>
+            <translation>NVIDIA Image Scaling (افتراضي)</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution status</source>
-            <translation>NVIDIA Super Resolution الحالة</translation>
+            <translation>حالة NVIDIA Super Resolution</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects runtime installed</source>
-            <translation>NVIDIA Video Effects وقت التشغيل مثبت</translation>
+            <translation>وقت تشغيل NVIDIA Video Effects مثبّت</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>NVIDIA Video Effects وقت التشغيل غير مثبت؛ استخدم الإعداد والتنزيلات</translation>
+            <translation>وقت تشغيل NVIDIA Video Effects غير مثبّت؛ استخدم «الإعداد والتنزيلات»</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>فتح الضوابط والميزات مساعدة</translation>
+            <translation>فتح مساعدة عناصر التحكم والميزات</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1915,15 +1915,15 @@
         </message>
         <message>
             <source>OkuFlow Help</source>
-            <translation>OkuFlow مساعدة</translation>
+            <translation>مساعدة OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
-            <translation>OkuFlow دليل الضوابط والمميزات</translation>
+            <translation>دليل عناصر التحكم والميزات في OkuFlow</translation>
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
-            <translation>قم بتراكب علامة حمراء عند تركيز التكبير/التصغير الحالي</translation>
+            <translation>أظهر علامة حمراء عند موضع التركيز الحالي للتكبير</translation>
         </message>
         <message>
             <source>Previous Advanced section</source>
@@ -1939,7 +1939,7 @@
         </message>
         <message>
             <source>Profile setting saved with the current quick option.</source>
-            <translation>تم حفظ إعداد الملف الشخصي باستخدام الخيار السريع الحالي.</translation>
+            <translation>حُفظ إعداد الملف الشخصي مع الخيار السريع الحالي.</translation>
         </message>
         <message>
             <source>Quick mode</source>
@@ -1967,11 +1967,11 @@
         </message>
         <message>
             <source>Reset current profile tuning</source>
-            <translation>إعادة ضبط ضبط الملف الشخصي الحالي</translation>
+            <translation>إعادة ضبط إعدادات الملف الشخصي الحالي</translation>
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>إعادة تعيين الصورة المملوكة للملف الشخصي والضبط المساعد على الإعدادات الافتراضية</translation>
+            <translation>إعادة إعدادات الصورة والمساعدة الخاصة بالملف الشخصي إلى الوضع الافتراضي</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
@@ -1979,35 +1979,35 @@
         </message>
         <message>
             <source>Rotate input/output clockwise</source>
-            <translation>قم بتدوير الإدخال/الإخراج في اتجاه عقارب الساعة</translation>
+            <translation>أدر الصورة الواردة والصادرة باتجاه عقارب الساعة</translation>
         </message>
         <message>
             <source>Runtime not installed; use Setup &amp; Downloads</source>
-            <translation>وقت التشغيل غير مثبت؛ استخدم الإعداد والتنزيلات</translation>
+            <translation>وقت التشغيل غير مثبّت؛ استخدم «الإعداد والتنزيلات»</translation>
         </message>
         <message>
             <source>Save an annotated snapshot to lecture notes when Draw mode closes.</source>
-            <translation>احفظ لقطة توضيحية في ملاحظات المحاضرة عند إغلاق وضع الرسم.</translation>
+            <translation>احفظ لقطة تتضمن التعليقات التوضيحية في ملاحظات المحاضرة عند إغلاق وضع الرسم.</translation>
         </message>
         <message>
             <source>See in Low Light</source>
-            <translation>انظر في الإضاءة المنخفضة</translation>
+            <translation>عرض في إضاءة خافتة</translation>
         </message>
         <message>
             <source>Sharp Text</source>
-            <translation>نص حاد</translation>
+            <translation>نص واضح</translation>
         </message>
         <message>
             <source>Sharpen Text</source>
-            <translation>شحذ النص</translation>
+            <translation>زيادة وضوح النص</translation>
         </message>
         <message>
             <source>Sharpening</source>
-            <translation>شحذ</translation>
+            <translation>زيادة الحدة</translation>
         </message>
         <message>
             <source>Show a guide to OkuFlow controls and features</source>
-            <translation>عرض دليل لعناصر التحكم والميزات OkuFlow</translation>
+            <translation>عرض دليل عناصر التحكم والميزات في OkuFlow</translation>
         </message>
         <message>
             <source>Show all quick modes</source>
@@ -2015,11 +2015,11 @@
         </message>
         <message>
             <source>Show an on-screen control for moving the zoomed view</source>
-            <translation>إظهار عنصر تحكم على الشاشة لتحريك العرض المكبر</translation>
+            <translation>إظهار عنصر تحكم على الشاشة لتحريك الصورة المكبّرة</translation>
         </message>
         <message>
             <source>Steady Text</source>
-            <translation>نص ثابت</translation>
+            <translation>نص مستقر</translation>
         </message>
         <message>
             <source>Stop Automatic Screen Correction</source>
@@ -2035,11 +2035,11 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>استخدم NVIDIA Video Effects SuperRes عند تكبير 1.33x وما فوق؛ يعود إلى شيكل تلقائيا</translation>
+            <translation>استخدم NVIDIA Video Effects SuperRes عند تكبير 1.33x أو أكثر؛ وسيعود تلقائيًا إلى NIS عند الحاجة</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
-            <translation>يتم مشاركة إعداد Viewport بواسطة جميع الملفات الشخصية.</translation>
+            <translation>هذا الإعداد الخاص بإطار العرض تستخدمه جميع الملفات الشخصية.</translation>
         </message>
         <message>
             <source>Zoom In More</source>
@@ -2055,7 +2055,7 @@
         </message>
         <message>
             <source>Downloading from vendor...</source>
-            <translation>جاري التحميل من البائع...</translation>
+            <translation>جارٍ التنزيل من موقع المورّد...</translation>
         </message>
         <message>
             <source>Install Codex CLI</source>
@@ -2075,9 +2075,9 @@
             <source>Installed system-wide
 %1
 Removal is managed by Windows.</source>
-            <translation>تم التثبيت على مستوى النظام 
+            <translation>مثبّت على مستوى النظام
 %1
-تتم إدارة الإزالة بواسطة Windows.</translation>
+تتولى Windows إدارة إزالته.</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects</source>
@@ -2085,7 +2085,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA installer running. Continue in the vendor installer window.</source>
-            <translation>NVIDIA تشغيل المثبت. تابع في نافذة تثبيت البائع.</translation>
+            <translation>مُثبّت NVIDIA قيد التشغيل. تابع في نافذة المُثبّت.</translation>
         </message>
         <message>
             <source>Not installed</source>
@@ -2093,15 +2093,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>غير مثبت. قم بتثبيت تنزيل الحزمة الخاصة بوحدات معالجة الرسوميات %1.</translation>
+            <translation>غير مثبّت. يؤدي التثبيت إلى تنزيل الحزمة لوحدات معالجة الرسوميات %1.</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
-            <translation>افتح مجلد التثبيت Codex CLI</translation>
+            <translation>افتح مجلد تثبيت Codex CLI</translation>
         </message>
         <message>
             <source>Open Codex CLI setup guide</source>
-            <translation>افتح دليل الإعداد Codex CLI</translation>
+            <translation>افتح دليل إعداد Codex CLI</translation>
         </message>
         <message>
             <source>Open Install Folder</source>
@@ -2117,19 +2117,19 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Open the NVIDIA runtime uninstaller?</source>
-            <translation>هل تريد فتح برنامج إلغاء التثبيت وقت التشغيل NVIDIA؟</translation>
+            <translation>هل تريد فتح أداة إزالة وقت تشغيل NVIDIA؟</translation>
         </message>
         <message>
             <source>Open the folder containing the detected Codex CLI</source>
-            <translation>افتح المجلد الذي يحتوي على Codex CLI المكتشف</translation>
+            <translation>افتح المجلد الذي يوجد فيه Codex CLI الذي تم العثور عليه</translation>
         </message>
         <message>
             <source>Open the official Codex CLI documentation</source>
-            <translation>افتح الوثائق الرسمية Codex CLI</translation>
+            <translation>افتح الوثائق الرسمية لـCodex CLI</translation>
         </message>
         <message>
             <source>OkuFlow Setup Assistant</source>
-            <translation>OkuFlow مساعد الإعداد</translation>
+            <translation>مساعد إعداد OkuFlow</translation>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
@@ -2149,11 +2149,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Setup in progress</source>
-            <translation>الإعداد قيد التقدم</translation>
+            <translation>جارٍ الإعداد</translation>
         </message>
         <message>
             <source>Setup progress</source>
-            <translation>تقدم الإعداد</translation>
+            <translation>التقدم في الإعداد</translation>
         </message>
         <message>
             <source>Setup status</source>
@@ -2169,7 +2169,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The downloaded installer could not be read for verification.</source>
-            <translation>تعذرت قراءة المثبت الذي تم تنزيله للتحقق منه.</translation>
+            <translation>تعذرت قراءة ملف التثبيت الذي تم تنزيله للتحقق منه.</translation>
         </message>
         <message>
             <source>The first transfer failed. Retrying with the Windows downloader...</source>
@@ -2181,15 +2181,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The installer failed SHA-256 verification and was deleted.</source>
-            <translation>فشل برنامج التثبيت في التحقق من SHA-256 وتم حذفه.</translation>
+            <translation>لم يجتز ملف التثبيت التحقق باستخدام SHA-256، لذا حُذف.</translation>
         </message>
         <message>
             <source>The temporary download file could not be created.</source>
-            <translation>لا يمكن إنشاء ملف التنزيل المؤقت.</translation>
+            <translation>تعذّر إنشاء ملف التنزيل المؤقت.</translation>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>يجب إزالة هذه النسخة على مستوى النظام من خلال تطبيقات Windows المثبتة</translation>
+            <translation>يجب إزالة هذه النسخة المثبّتة على مستوى النظام من خلال «التطبيقات المثبّتة» في Windows</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2205,11 +2205,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Verified. Installing the official Codex CLI...</source>
-            <translation>تم التحقق منه. تثبيت Codex CLI الرسمي...</translation>
+            <translation>تم التحقق. جارٍ تثبيت Codex CLI الرسمي...</translation>
         </message>
         <message>
             <source>Verified. Starting installer...</source>
-            <translation>تم التحقق منه. بدء التثبيت...</translation>
+            <translation>تم التحقق. جارٍ بدء برنامج التثبيت...</translation>
         </message>
         <message>
             <source>Windows could not start the verified installer.
@@ -2229,15 +2229,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>الخطافات المساعدة: شرح المشهد</translation>
+            <translation>وظائف المساعدة: شرح المشهد</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>الخطافات المساعدة: شرح المشهد مع التراكب</translation>
+            <translation>وظائف المساعدة: شرح المشهد مع طبقة تراكبية</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
-            <translation>التكوين المخصص من الضبط المتقدم. احفظه كخيار سريع عندما تشعر أنه مناسب.</translation>
+            <translation>إعداد مخصص من «الضبط المتقدم». احفظه كخيار سريع عندما يناسبك.</translation>
         </message>
         <message>
             <source>Current quick mode description</source>
@@ -2249,11 +2249,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Profile tuning reset to OkuFlow defaults.</source>
-            <translation>إعادة تعيين ضبط الملف الشخصي إلى الإعدادات الافتراضية OkuFlow.</translation>
+            <translation>أُعيد ضبط إعدادات الملف الشخصي إلى الإعدادات الافتراضية لـ OkuFlow.</translation>
         </message>
         <message>
             <source>Current profile tuning reset to defaults.</source>
-            <translation>إعادة تعيين ضبط الملف الشخصي الحالي إلى الإعدادات الافتراضية.</translation>
+            <translation>أُعيد ضبط إعدادات الملف الشخصي الحالي إلى الإعدادات الافتراضية.</translation>
         </message>
         <message>
             <source>Quick option name:</source>
@@ -2261,7 +2261,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>OkuFlow could not save settings.</source>
-            <translation>OkuFlow تعذر حفظ الإعدادات.</translation>
+            <translation>تعذّر على OkuFlow حفظ الإعدادات.</translation>
         </message>
         <message>
             <source>Blur sigma</source>
@@ -2269,7 +2269,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Blur radius</source>
-            <translation>طمس نصف قطرها</translation>
+            <translation>نصف قطر التمويه</translation>
         </message>
         <message>
             <source>Performance timing percentiles</source>
@@ -2297,7 +2297,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stops: </source>
-            <translation>توقف: </translation>
+            <translation>نقاط التوقف:</translation>
         </message>
         <message>
             <source>Color stop %1 of 8</source>
@@ -2333,7 +2333,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA ماكسين الإسناد</translation>
+            <translation>نسبة الفضل إلى NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2341,15 +2341,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>%1 profile</source>
-            <translation>%1 الملف الشخصي</translation>
+            <translation>الملف الشخصي %1</translation>
         </message>
         <message>
             <source>%1 settings match</source>
-            <translation>%1 الإعدادات متطابقة</translation>
+            <translation>تتطابق الإعدادات (%1)</translation>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>تصحيح الشاشة التالي، أو ابحث عن تصحيح جديد.%1</translation>
+            <translation>انتقل إلى تصحيح الشاشة التالي، أو ابحث عن تصحيح جديد.%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2357,11 +2357,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>OkuFlow Lecture Notes</source>
-            <translation>OkuFlow ملاحظات المحاضرة</translation>
+            <translation>ملاحظات محاضرات OkuFlow</translation>
         </message>
         <message>
             <source>Started %1</source>
-            <translation>بدأت %1</translation>
+            <translation>بدأ: %1</translation>
         </message>
         <message>
             <source>Captured processed camera view</source>
@@ -2393,7 +2393,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Processed camera video</source>
-            <translation>معالجة فيديو الكاميرا</translation>
+            <translation>فيديو الكاميرا المُعالَج</translation>
         </message>
         <message>
             <source>Processed camera photo</source>
@@ -2401,11 +2401,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Annotations cleared - snapshot</source>
-            <translation>تم مسح التعليقات التوضيحية - لقطة</translation>
+            <translation>مُسحت التعليقات التوضيحية — لقطة</translation>
         </message>
         <message>
             <source>Annotation session ended - snapshot</source>
-            <translation>انتهت جلسة التعليق التوضيحي - لقطة</translation>
+            <translation>انتهت جلسة التعليقات التوضيحية — لقطة</translation>
         </message>
         <message>
             <source>The conversation could not be exported to %1.</source>
@@ -2417,15 +2417,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The paired photos could not be saved, so no files were kept. Try again.</source>
-            <translation>لا يمكن حفظ الصور المقترنة، لذلك لم يتم الاحتفاظ بأي ملفات. حاول ثانية.</translation>
+            <translation>تعذّر حفظ الصورتين معًا، لذلك لم يُحفَظ أي ملف. حاول مرة أخرى.</translation>
         </message>
         <message>
             <source>The paired photos could not be saved. A partial file may remain: %1</source>
-            <translation>لا يمكن حفظ الصور المقترنة. قد يبقى ملف جزئي: %1</translation>
+            <translation>تعذّر حفظ الصورتين معًا. قد يبقى ملف غير مكتمل: %1</translation>
         </message>
         <message>
             <source>The saved OkuFlow folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
-            <translation>لا يمكن استخدام المجلد OkuFlow المحفوظ (%1). ستنتقل الملفات إلى مجلد المستندات الافتراضي حتى يتم اختيار مجلد جديد.</translation>
+            <translation>تعذّر استخدام مجلد OkuFlow المحفوظ (%1). ستُحفظ الملفات في مجلد المستندات الافتراضي إلى أن تختار مجلدًا جديدًا.</translation>
         </message>
         <message>
             <source>Lecture transcript</source>
@@ -2481,23 +2481,23 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>إرسال إطار الكاميرا الحالي والمطالبة بـ Codex. المحادثة: شرح المحادثة المحفوظة، تابع كل شرح. أداة الإنترنت: محظورة. الترميز وتغييرات الملف: محظورة.</translation>
+            <translation>جارٍ إرسال إطار الكاميرا الحالي والتعليمات إلى Codex. المحادثة: محادثة «شرح» محفوظة، وتتابعها كل عملية شرح. الوصول إلى الإنترنت: محظور. أدوات البرمجة وتغيير الملفات: محظورة.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>إرسال إطار الكاميرا الحالي والمطالبة بـ Codex. المحادثة: مؤقتة، جديدة لكل قراءة. أداة الإنترنت: محظورة. الترميز وتغييرات الملف: محظورة.</translation>
+            <translation>جارٍ إرسال إطار الكاميرا الحالي والتعليمات إلى Codex. المحادثة: مؤقتة، وتُنشأ من جديد مع كل عملية قراءة. الوصول إلى الإنترنت: محظور. أدوات البرمجة وتغيير الملفات: محظورة.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>إرسال إطار الكاميرا الحالي والموجه والإجابات الحديثة إلى %1 (نقطة النهاية المحلية). المحادثة: إجابات توضيحية حديثة، محفوظة في الذاكرة فقط. أدوات الترميز: غير متوفرة.</translation>
+            <translation>جارٍ إرسال إطار الكاميرا الحالي والتعليمات وإجابات «شرح» الأخيرة إلى %1 (نقطة نهاية محلية). المحادثة: تقتصر على إجابات «شرح» الأخيرة، وتُحفَظ في الذاكرة فقط. أدوات البرمجة: غير متاحة.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>إرسال إطار الكاميرا الحالي والموجه والإجابات الحديثة إلى %1 (نقطة النهاية البعيدة). المحادثة: إجابات توضيحية حديثة، محفوظة في الذاكرة فقط. أدوات الترميز: غير متوفرة.</translation>
+            <translation>جارٍ إرسال إطار الكاميرا الحالي والتعليمات وإجابات «شرح» الأخيرة إلى %1 (نقطة نهاية بعيدة). المحادثة: تقتصر على إجابات «شرح» الأخيرة، وتُحفَظ في الذاكرة فقط. أدوات البرمجة: غير متاحة.</translation>
         </message>
         <message>
             <source>Panel position</source>
-            <translation>موقف اللوحة</translation>
+            <translation>موضع اللوحة</translation>
         </message>
         <message>
             <source>Floating</source>
@@ -2505,7 +2505,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Dock left</source>
-            <translation>قفص الاتهام اليسار</translation>
+            <translation>إرساء إلى اليسار</translation>
         </message>
         <message>
             <source>Dock right</source>
@@ -2513,19 +2513,19 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Release to dock left</source>
-            <translation>الافراج عن قفص الاتهام اليسار</translation>
+            <translation>أفلِت لإرساء اللوحة إلى اليسار</translation>
         </message>
         <message>
             <source>Release to dock right</source>
-            <translation>حرّر للإرساء إلى اليمين</translation>
+            <translation>أفلِت لإرساء اللوحة إلى اليمين</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>تشغيل ميزات القراءة والشرح والمساعد المدعومة بالاشتراك. تثبيت Codex CLI الرسمي لحساب Windows الخاص بك؛ يظل تسجيل الدخول إلى ChatGPT خطوة منفصلة.</translation>
+            <translation>يتيح ميزات «القراءة» و«الشرح» و«المساعد» المشمولة بالاشتراك. ويثبّت Codex CLI الرسمي لحسابك على Windows؛ أما تسجيل الدخول إلى ChatGPT فيتم في خطوة منفصلة.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
-            <translation>تم فقدان اتصال الكاميرا. OkuFlow يتم إعادة الاتصال تلقائيًا.</translation>
+            <translation>انقطع اتصال الكاميرا. يعيد OkuFlow الاتصال تلقائيًا.</translation>
         </message>
         <message>
             <source>Starting camera…</source>
@@ -2533,15 +2533,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No camera picture</source>
-            <translation>لا توجد صورة الكاميرا</translation>
+            <translation>لا تظهر صورة من الكاميرا</translation>
         </message>
         <message>
             <source>Connect a camera, then choose it under Advanced, Device.</source>
-            <translation>قم بتوصيل الكاميرا، ثم اخترها ضمن خيارات متقدمة، الجهاز.</translation>
+            <translation>وصّل كاميرا، ثم اخترها من «متقدم» &gt; «الجهاز».</translation>
         </message>
         <message>
             <source>Choose a camera under Advanced, Device, or check that it is connected.</source>
-            <translation>اختر كاميرا ضمن خيارات متقدمة، أو الجهاز، أو تأكد من أنها متصلة.</translation>
+            <translation>اختر كاميرا من «متقدم» &gt; «الجهاز»، أو تحقّق من أنها متصلة.</translation>
         </message>
         <message>
             <source>Number key %1</source>
@@ -2553,7 +2553,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Not saved into quick options</source>
-            <translation>لم يتم حفظه في الخيارات السريعة</translation>
+            <translation>غير محفوظ ضمن الخيارات السريعة</translation>
         </message>
         <message>
             <source>No matching settings</source>
@@ -2573,7 +2573,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Search settings…</source>
-            <translation>إعدادات البحث...</translation>
+            <translation>ابحث في الإعدادات…</translation>
         </message>
         <message>
             <source>Mode: %1</source>
@@ -2585,11 +2585,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Changes apply now. Save to keep them.</source>
-            <translation>تنطبق التغييرات الآن. حفظ للحفاظ عليها.</translation>
+            <translation>تُطبَّق التغييرات الآن. احفظها للاحتفاظ بها.</translation>
         </message>
         <message>
             <source>Shared by all modes. Not saved into quick modes.</source>
-            <translation>مشتركة من قبل جميع الأوضاع. لم يتم حفظه في الأوضاع السريعة.</translation>
+            <translation>تستخدمه جميع الأوضاع. لا يُحفَظ ضمن الأوضاع السريعة.</translation>
         </message>
         <message>
             <source>Fine-tune text</source>
@@ -2621,7 +2621,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Straighten screen</source>
-            <translation>تصويب الشاشة</translation>
+            <translation>استقامة الشاشة</translation>
         </message>
         <message>
             <source>Soften image (blur)</source>
@@ -2645,7 +2645,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Reset Mode</source>
-            <translation>وضع إعادة الضبط</translation>
+            <translation>إعادة ضبط الوضع</translation>
         </message>
         <message>
             <source>Quick mode name:</source>
@@ -2653,11 +2653,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>لا توجد مباريات هنا. %1 في الإعدادات. اضغط على Enter لإظهارهم.</translation>
+            <translation>لا توجد نتائج مطابقة هنا. توجد %1 في «الإعدادات». اضغط Enter لعرضها.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>لا توجد مباريات هنا. %1 في الصورة. اضغط على Enter لإظهارهم.</translation>
+            <translation>لا توجد نتائج مطابقة هنا. توجد %1 في «الصورة». اضغط Enter لعرضها.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2677,11 +2677,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Connect a camera, then choose it under Settings, Camera.</source>
-            <translation>قم بتوصيل الكاميرا، ثم اخترها ضمن الإعدادات، ثم الكاميرا.</translation>
+            <translation>وصّل كاميرا، ثم اخترها من «الإعدادات» &gt; «الكاميرا».</translation>
         </message>
         <message>
             <source>Choose a camera under Settings, Camera, or check that it is connected.</source>
-            <translation>اختر كاميرا ضمن الإعدادات، أو الكاميرا، أو تأكد من أنها متصلة.</translation>
+            <translation>اختر كاميرا من «الإعدادات» &gt; «الكاميرا»، أو تحقّق من أنها متصلة.</translation>
         </message>
         <message>
             <source>Language</source>
@@ -2705,7 +2705,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>وقف شرح المشهد</translation>
+            <translation>إيقاف شرح المشهد</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
@@ -2741,7 +2741,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
-            <translation>%1 لم يتمكن من إنهاء الجزء النهائي (0x%2). تم الاحتفاظ بالملف؛ لم يتم التحقق من التشغيل.</translation>
+            <translation>تعذّر على %1 إنهاء الجزء الأخير (0x%2). احتُفظ بالملف، لكن لم يُتحقّق من إمكانية تشغيله.</translation>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
@@ -2767,7 +2767,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Posterize 6</source>
-            <translation>التتالي 6</translation>
+            <translation>تأثير التدرّج اللوني بستة مستويات</translation>
         </message>
         <message>
             <source>Yellow text on black background</source>
@@ -2779,7 +2779,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Six color posterize effect</source>
-            <translation>تأثير تقليل مستويات اللون بستة ألوان</translation>
+            <translation>تأثير التحويل إلى ستة ألوان مسطّحة</translation>
         </message>
         <message>
             <source>AI service</source>
@@ -2791,15 +2791,15 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>استخدم القراءة والشرح والمساعد اشتراك ChatGPT الخاص بك من خلال Codex CLI. قم بتسجيل الدخول باستخدام Connect ChatGPT في علامة التبويب "المساعد" في الوضع المتقدم.</translation>
+            <translation>تستخدم ميزات «القراءة» و«الشرح» و«المساعد» اشتراك ChatGPT عبر Codex CLI. سجّل الدخول عبر «Connect ChatGPT» في علامة تبويب «المساعد» ضمن الوضع المتقدم.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>اقرأ واشرح وأرسل عرض الكاميرا إلى عنوان URL للخادم أدناه. تبقى الصور على هذا الكمبيوتر فقط إذا كان هذا الخادم يعمل عليه، مثل LM Studio أو Ollama at localhost. تحتاج محادثات المساعد المحفوظة إلى اشتراك ChatGPT.</translation>
+            <translation>ترسل ميزتا «القراءة» و«الشرح» مشهد الكاميرا إلى عنوان URL للخادم أدناه. تبقى الصور على هذا الكمبيوتر فقط إذا كان الخادم يعمل عليه، مثل LM Studio أو Ollama على localhost. تتطلب محادثات «المساعد» المحفوظة اشتراك ChatGPT.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
-            <translation>OkuFlow يرسل دائمًا هذه التعليمات إلى Codex، متبوعة بتعليماتك وقواعد الأذونات.</translation>
+            <translation>يرسل OkuFlow هذه التعليمات دائمًا إلى Codex، تليها تعليماتك وقواعد الأذونات.</translation>
         </message>
         <message>
             <source>Assistant instructions</source>
@@ -2807,7 +2807,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Explain prompt:</source>
-            <translation>موجه الشرح:</translation>
+            <translation>تعليمات الشرح:</translation>
         </message>
         <message>
             <source>Advanced Assistant permissions</source>
@@ -2815,7 +2815,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>تنطبق هذه فقط على محادثات المساعد المحفوظة، بما في ذلك الأسئلة المطروحة من المساعد العائم. القراءة والشرح تظل مقيدة دائمًا.</translation>
+            <translation>تنطبق هذه الإعدادات على محادثات «المساعد» المحفوظة فقط، بما فيها الأسئلة المرسلة من «المساعد» العائم. وتظل ميزتا «القراءة» و«الشرح» مقيّدتين دائمًا.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2823,19 +2823,19 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
-            <translation>اختر مقدار المنطق الذي يستخدمه Codex. يمكن أن تستغرق المستويات الأعلى وقتًا أطول للإجابة.</translation>
+            <translation>اختر مستوى الاستدلال الذي يستخدمه Codex. قد تستغرق المستويات الأعلى وقتًا أطول لتقديم الإجابة.</translation>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>إظهار أو إخفاء تعليمات القراءة فقط OkuFlow تُرسل دائمًا إلى Codex</translation>
+            <translation>إظهار أو إخفاء التعليمات المخصّصة للقراءة فقط التي يرسلها OkuFlow دائمًا إلى Codex</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>شرح موجه</translation>
+            <translation>تعليمات الشرح</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
-            <translation>يتم إرسال التعليمات الاختيارية مع عرض الكاميرا عند الضغط على "شرح".</translation>
+            <translation>تُرسَل تعليمات اختيارية مع مشهد الكاميرا عند الضغط على «شرح».</translation>
         </message>
         <message>
             <source>Installed
@@ -2843,7 +2843,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>تم التثبيت
 %1
-استخدم Connect ChatGPT في علامة التبويب "المساعد المتقدم" لتسجيل الدخول.</translation>
+سجّل الدخول عبر «Connect ChatGPT» في علامة تبويب «المساعد» ضمن الوضع المتقدم.</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2851,19 +2851,19 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>GPU upload busy %1</source>
-            <translation>تحميل GPU مشغول %1</translation>
+            <translation>عملية رفع البيانات إلى GPU مشغولة %1</translation>
         </message>
         <message>
             <source>encoder backlog %1</source>
-            <translation>تراكم التشفير %1</translation>
+            <translation>تراكم مهام الترميز %1</translation>
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
-            <translation>يؤدي التسجيل إلى تخطي العينات لأنه لا يمكن التحقق من تقدم برنامج التشفير. قم بإيقاف التسجيل وإعادة تشغيله إذا استمر.</translation>
+            <translation>يتخطى التسجيل بعض العينات لتعذّر التحقق من تقدّم الترميز. أوقف التسجيل ثم ابدأه من جديد إذا استمر ذلك.</translation>
         </message>
         <message>
             <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
-            <translation>يؤدي التسجيل إلى تخطي إطارات الفيديو لأن قائمة انتظار برنامج التشفير ممتلئة. قم بخفض دقة التسجيل أو إيقاف التسجيل وإعادة تشغيله إذا استمر.</translation>
+            <translation>يتخطى التسجيل إطارات فيديو لأن قائمة انتظار الترميز ممتلئة. خفّض دقة التسجيل أو أوقفه ثم ابدأه من جديد إذا استمر ذلك.</translation>
         </message>
         <message>
             <source>Waiting for phone…</source>
@@ -2871,7 +2871,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
-            <translation>افتح الكاميرا OkuFlow على الهاتف، وقم بتوصيل كابل USB، واسمح بتصحيح أخطاء USB. OkuFlow يتحقق من الاتصال تلقائيا.</translation>
+            <translation>افتح تطبيق OkuFlow Camera على الهاتف، وصّل كابل USB، واسمح بتصحيح أخطاء USB. يتحقّق OkuFlow من الاتصال تلقائيًا.</translation>
         </message>
         <message>
             <source>Set up OkuFlow</source>
@@ -2879,7 +2879,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
-            <translation>يتم تضمين مثبت وقت تشغيل Windows. يتم تنزيل أدوات الذكاء الاصطناعي الاختيارية من مورديها. يتم التحقق من كل مثبت قبل تشغيله.</translation>
+            <translation>يتضمن البرنامج مُثبّت وقت تشغيل Windows. تُنزَّل أدوات الذكاء الاصطناعي الاختيارية من الجهات المورّدة لها. ويُتحقّق من كل مُثبّت قبل تشغيله.</translation>
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
@@ -2887,7 +2887,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
-            <translation>مكتبات Windows المستخدمة بواسطة OkuFlow. يستخدم التثبيت برنامج تثبيت Microsoft المضمن وقد يطلب موافقة المسؤول.</translation>
+            <translation>مكتبات Windows التي يستخدمها OkuFlow. يجري التثبيت باستخدام مُثبّت Microsoft المضمّن، وقد يتطلب موافقة المسؤول.</translation>
         </message>
         <message>
             <source>Install for Windows</source>
@@ -2907,11 +2907,11 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Windows could not start the elevated installer (error %1).</source>
-            <translation>تعذر على Windows بدء تشغيل برنامج التثبيت المرتفع (الخطأ %1).</translation>
+            <translation>تعذّر على Windows تشغيل مُثبّت بصلاحيات المسؤول (الخطأ %1).</translation>
         </message>
         <message>
             <source>Microsoft installer running. Continue in the installer window.</source>
-            <translation>تشغيل برنامج تثبيت Microsoft. تابع في نافذة التثبيت.</translation>
+            <translation>مُثبّت Microsoft قيد التشغيل. تابِع في نافذته.</translation>
         </message>
         <message>
             <source>Windows installer exit code: %1</source>

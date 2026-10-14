@@ -37,8 +37,8 @@ foreach ($source in @(
 # These words are spelled identically in the named languages. Keep exceptions
 # narrow and language-specific; untranslated English sentences still fail.
 $identicalByLanguage = @{
-    fr = @("Simple", "Orientation", "Conversation", "Application", "Assistant", "Image", "Rectangle")
-    nl = @("Camera", "Stop", "Focus X:", "Focus Y:", "Pen", "Later")
+    fr = @("Simple", "Orientation", "Conversation", "Application", "Assistant", "Image", "Rectangle", "Microphone", "Photo")
+    nl = @("Camera", "Stop", "Focus X:", "Focus Y:", "Pen", "Later", "Contrast")
 }
 
 function Get-FormatTokens {

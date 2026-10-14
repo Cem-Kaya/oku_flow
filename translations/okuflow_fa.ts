@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>در هر اتصال شروع می شود. برای روشن یا خاموش کردن چراغ تلفن فشار دهید.</translation>
+            <translation>چراغ در هر بار اتصال خاموش است. برای روشن یا خاموش کردن چراغ گوشی، دکمه را فشار دهید.</translation>
         </message>
         <message>
             <source>Application</source>
@@ -29,7 +29,7 @@
         </message>
         <message>
             <source>Changes OkuFlow's interface language immediately. An assistant request already in progress keeps its original response language.</source>
-            <translation>بلافاصله زبان رابط OkuFlow را تغییر می‌دهد. درخواست دستیار در حال انجام، زبان پاسخ اصلی خود را حفظ می کند.</translation>
+            <translation>زبان رابط OkuFlow را فوراً تغییر می‌دهد. درخواست دستیارِ در حال اجرا، به همان زبان پاسخ می‌دهد که با آن آغاز شده است.</translation>
         </message>
         <message>
             <source>Changes the interface immediately. In-progress assistant requests use the language selected when they started.</source>
@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>بخشی از نام یک تنظیم را تایپ کنید تا کنترل‌های منطبق آشکار و متمرکز شوند.</translation>
+            <translation>بخشی از نام یک تنظیم را وارد کنید تا کنترل‌های مرتبط نمایش داده شوند و فوکوس بگیرند.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -125,7 +125,7 @@
         </message>
         <message>
             <source>Viewport motion rate</source>
-            <translation>نرخ حرکت درگاه دید</translation>
+            <translation>نرخ حرکت نمای تصویر</translation>
         </message>
         <message>
             <source>Auto (up to 120 FPS)</source>
@@ -137,7 +137,7 @@
         </message>
         <message>
             <source>Viewport framing</source>
-            <translation>قاب نمای پورت</translation>
+            <translation>کادربندی نمای تصویر</translation>
         </message>
         <message>
             <source>Fill (crop)</source>
@@ -145,7 +145,7 @@
         </message>
         <message>
             <source>Fit (show all)</source>
-            <translation>مناسب (نمایش همه)</translation>
+            <translation>جا دادن (نمایش کامل تصویر)</translation>
         </message>
         <message>
             <source>Save As Quick Option</source>
@@ -153,7 +153,7 @@
         </message>
         <message>
             <source>Reset Tuning</source>
-            <translation>تنظیم مجدد را تنظیم کنید</translation>
+            <translation>بازنشانی تنظیمات</translation>
         </message>
         <message>
             <source>Virtual Joystick</source>
@@ -173,7 +173,7 @@
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
-            <translation>دوربین و وضوح ضبط اصلی &amp;&amp; نرخ فریم</translation>
+            <translation>وضوح تصویر دوربین و ضبط اصلی &amp;&amp; نرخ فریم</translation>
         </message>
         <message>
             <source>Automatic (driver's choice)</source>
@@ -205,7 +205,7 @@
         </message>
         <message>
             <source>Screen fix</source>
-            <translation>تعمیر صفحه نمایش</translation>
+            <translation>اصلاح صفحه</translation>
         </message>
         <message>
             <source>Text clarity</source>
@@ -213,7 +213,7 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>تیز کردن و تمرکز</translation>
+            <translation>وضوح و فوکوس</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
@@ -221,7 +221,7 @@
         </message>
         <message>
             <source>Zoom</source>
-            <translation>بزرگنمایی ضربه بزنید؛</translation>
+            <translation>بزرگ‌نمایی</translation>
         </message>
         <message>
             <source>Zoom %L1 times</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>صاف زمانی</translation>
+            <translation>هموارسازی زمانی</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -253,11 +253,11 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>فوق العاده پایدار (لرزش را نگه دارید)</translation>
+            <translation>پایداری بیشتر (حفظ تصویر هنگام لرزش)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
-            <translation>صاف کردن صفحه (Keystone)</translation>
+            <translation>صاف‌کردن تصویر (Keystone)</translation>
         </message>
         <message>
             <source>Correction tracking:</source>
@@ -285,11 +285,11 @@
         </message>
         <message>
             <source>Auto Text Clarity</source>
-            <translation>شفافیت خودکار متن</translation>
+            <translation>بهبود خودکار وضوح متن</translation>
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>صاف کردن پس زمینه</translation>
+            <translation>یکنواخت‌سازی پس‌زمینه</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
@@ -301,15 +301,15 @@
         </message>
         <message>
             <source>Text polarity</source>
-            <translation>قطبیت متن</translation>
+            <translation>رنگ متن (روشن یا تیره)</translation>
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>وزن سکته مغزی</translation>
+            <translation>ضخامت خط</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
-            <translation>تیز کردن هوشمند</translation>
+            <translation>وضوح هوشمند</translation>
         </message>
         <message>
             <source>Local Contrast (CLAHE)</source>
@@ -321,11 +321,11 @@
         </message>
         <message>
             <source>Steady Text Edges</source>
-            <translation>لبه های متن ثابت</translation>
+            <translation>تثبیت لبه‌های متن</translation>
         </message>
         <message>
             <source>Sharpen Text Only</source>
-            <translation>فقط متن را تیز کنید</translation>
+            <translation>فقط متن را واضح‌تر کنید</translation>
         </message>
         <message>
             <source>Warn When Out of Focus</source>
@@ -333,7 +333,7 @@
         </message>
         <message>
             <source>Suppress Glare</source>
-            <translation>تابش خیره کننده را سرکوب کنید</translation>
+            <translation>کاهش بازتاب خیره‌کننده</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution</source>
@@ -381,7 +381,7 @@
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
-            <translation>هنگام خروج از Draw، طراحی را در یادداشت‌ها ذخیره کنید</translation>
+            <translation>هنگام خروج از حالت ترسیم، نقاشی را در یادداشت‌ها ذخیره کنید</translation>
         </message>
         <message>
             <source>AI Settings</source>
@@ -409,7 +409,7 @@
         </message>
         <message>
             <source>Spatial Sharpen</source>
-            <translation>تیز کردن فضایی</translation>
+            <translation>وضوح‌بخشی مکانی</translation>
         </message>
         <message>
             <source>Backend</source>
@@ -425,7 +425,7 @@
         </message>
         <message>
             <source>Focus Y:</source>
-            <translation>تمرکز Y:</translation>
+            <translation>مختصات Y فوکوس:</translation>
         </message>
         <message>
             <source>Debug View</source>
@@ -437,7 +437,7 @@
         </message>
         <message>
             <source>Pipeline status</source>
-            <translation>وضعیت خط لوله</translation>
+            <translation>وضعیت pipeline</translation>
         </message>
         <message>
             <source>Performance percentiles</source>
@@ -477,7 +477,7 @@
         </message>
         <message>
             <source>Explain the current view</source>
-            <translation>دیدگاه فعلی را توضیح دهید</translation>
+            <translation>نمای فعلی را توضیح دهید</translation>
         </message>
         <message>
             <source>Read text in the current view</source>
@@ -545,7 +545,7 @@
         </message>
         <message>
             <source>Ask about this view...</source>
-            <translation>از این منظره بپرسید...</translation>
+            <translation>دربارهٔ این نما بپرسید…</translation>
         </message>
         <message>
             <source>Ask</source>
@@ -593,7 +593,7 @@
         </message>
         <message>
             <source>Ask about what is visible...</source>
-            <translation>از آنچه قابل مشاهده است بپرس...</translation>
+            <translation>دربارهٔ چیزهایی که دیده می‌شوند بپرسید…</translation>
         </message>
         <message>
             <source>Attach current view</source>
@@ -613,11 +613,11 @@
         </message>
         <message>
             <source>Browse...</source>
-            <translation>مرور...</translation>
+            <translation>انتخاب…</translation>
         </message>
         <message>
             <source>Browse…</source>
-            <translation>مرور…</translation>
+            <translation>انتخاب…</translation>
         </message>
         <message>
             <source>Codex CLI path:</source>
@@ -637,11 +637,11 @@
         </message>
         <message>
             <source>Allow coding commands and file changes</source>
-            <translation>دستورات کدگذاری و تغییرات فایل را مجاز کنید</translation>
+            <translation>اجازهٔ اجرای فرمان‌های کدنویسی و ایجاد تغییر در فایل‌ها</translation>
         </message>
         <message>
             <source>Required when coding is enabled</source>
-            <translation>زمانی که کدنویسی فعال است لازم است</translation>
+            <translation>برای فعال‌کردن کدنویسی الزامی است</translation>
         </message>
         <message>
             <source>Coding workspace:</source>
@@ -669,7 +669,7 @@
         </message>
         <message>
             <source>Vision model:</source>
-            <translation>مدل چشم انداز:</translation>
+            <translation>مدل بینایی:</translation>
         </message>
         <message>
             <source>Read aloud</source>
@@ -745,7 +745,7 @@
         </message>
         <message>
             <source>%1% slower</source>
-            <translation>%1% کندتر</translation>
+            <translation>%1٪ کندتر</translation>
         </message>
         <message>
             <source>%1% faster</source>
@@ -761,7 +761,7 @@
         </message>
         <message>
             <source>Optional Reading and AI Tools</source>
-            <translation>خواندن اختیاری و ابزارهای هوش مصنوعی</translation>
+            <translation>ابزارهای اختیاریِ خواندن و هوش مصنوعی</translation>
         </message>
         <message>
             <source>Install</source>
@@ -781,11 +781,11 @@
         </message>
         <message>
             <source>Don't ask again automatically</source>
-            <translation>دوباره به صورت خودکار سوال نکنید</translation>
+            <translation>دیگر خودکار نپرس</translation>
         </message>
         <message>
             <source>Section heading. Activate to expand or collapse this settings group.</source>
-            <translation>عنوان بخش برای بزرگ کردن یا کوچک کردن این گروه تنظیمات را فعال کنید.</translation>
+            <translation>عنوان بخش. برای باز یا بسته کردن این گروه تنظیمات، آن را فعال کنید.</translation>
         </message>
         <message>
             <source>expanded</source>
@@ -809,7 +809,7 @@
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>صدای %1 نصب نشده است — با استفاده از صدای فعلی. یکی را در تنظیمات ویندوز → زمان و زبان → گفتار نصب کنید.</translation>
+            <translation>صدای %1 نصب نیست؛ از صدای فعلی استفاده می‌شود. برای نصب صدا به تنظیمات ویندوز → زمان و زبان → گفتار بروید.</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -817,15 +817,15 @@
         </message>
         <message>
             <source>Attaching the current view...</source>
-            <translation>در حال پیوست کردن نمای فعلی...</translation>
+            <translation>در حال افزودن نمای فعلی…</translation>
         </message>
         <message>
             <source>Capturing the current view...</source>
-            <translation>گرفتن نمای فعلی...</translation>
+            <translation>در حال ثبت نمای فعلی…</translation>
         </message>
         <message>
             <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
-            <translation>تصویر خارج از فوکوس برای فوکوس مجدد قبل از خواندن متن، روی صفحه گوشی ضربه بزنید.</translation>
+            <translation>تصویر تار است. پیش از خواندن متن، برای تنظیم دوبارهٔ فوکوس روی صفحهٔ گوشی بزنید.</translation>
         </message>
         <message>
             <source>Loading conversation...</source>
@@ -833,11 +833,11 @@
         </message>
         <message>
             <source>No lecture notes yet — use Read, Explain, or Assistant to add text.</source>
-            <translation>هنوز یادداشتی برای سخنرانی وجود ندارد - برای افزودن متن از Read، Explain یا Assistant استفاده کنید.</translation>
+            <translation>هنوز یادداشتی برای سخنرانی ندارید؛ برای افزودن متن از «خواندن»، «توضیح» یا «دستیار» استفاده کنید.</translation>
         </message>
         <message>
             <source>OkuFlow Assistant</source>
-            <translation>OkuFlow دستیار</translation>
+            <translation>دستیار OkuFlow</translation>
         </message>
         <message>
             <source>You</source>
@@ -853,7 +853,7 @@
         </message>
         <message>
             <source>Export Conversation</source>
-            <translation>صادرات مکالمه</translation>
+            <translation>صادر کردن گفتگو</translation>
         </message>
         <message>
             <source>Permanently delete this OkuFlow assistant conversation?</source>
@@ -877,7 +877,7 @@
         </message>
         <message>
             <source>Viewport motion limited to %1 FPS by this display.</source>
-            <translation>حرکت درگاه نمایش توسط این نمایشگر به %1 FPS محدود شده است.</translation>
+            <translation>نرخ حرکت نمای دوربین به‌دلیل محدودیت نمایشگر به %1 فریم‌برثانیه کاهش یافته است.</translation>
         </message>
         <message>
             <source>Vision model: %1</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>ضبط دوربین GPU با کپی مجدد ایمن فعال است.</translation>
+            <translation>دریافت تصویر دوربین با GPU فعال است و از روش جایگزینِ کپی ایمن استفاده می‌شود.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -929,7 +929,7 @@
         </message>
         <message>
             <source>Opened your OkuFlow folder.</source>
-            <translation>پوشه OkuFlow خود را باز کرد.</translation>
+            <translation>پوشهٔ OkuFlow باز شد.</translation>
         </message>
         <message>
             <source>Recording stopped because the microphone selection changed.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>تصحیح صفحه به عقب برگشت و ردیابی متوقف شد.</translation>
+            <translation>اصلاح خودکار صفحه به وضعیت قبلی برگشت و ردیابی متوقف شد.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -945,7 +945,7 @@
         </message>
         <message>
             <source>Stop recording before testing camera acceleration.</source>
-            <translation>قبل از آزمایش شتاب دوربین، ضبط را متوقف کنید.</translation>
+            <translation>پیش از آزمودن شتاب‌دهی دوربین، ضبط را متوقف کنید.</translation>
         </message>
         <message>
             <source>Temporal blend</source>
@@ -953,7 +953,7 @@
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>تست GPU و ضبط سازگاری در یک فرآیند ایزوله...</translation>
+            <translation>در حال آزمودن دریافت تصویر با GPU و روش سازگار در فرایندی جداگانه…</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -965,16 +965,16 @@
         </message>
         <message>
             <source>The isolated camera test could not start: %1</source>
-            <translation>آزمایش دوربین ایزوله شروع نشد: %1</translation>
+            <translation>آزمون دوربین در فرایند جداگانه شروع نشد: %1</translation>
         </message>
         <message>
             <source>Using the next screen correction.</source>
-            <translation>با استفاده از تصحیح صفحه بعدی.</translation>
+            <translation>از اصلاح بعدی صفحه استفاده می‌شود.</translation>
         </message>
         <message>
             <source>Windows could not open:
 %1</source>
-            <translation>ویندوز باز نشد:
+            <translation>ویندوز نتوانست این مورد را باز کند:
 %1</translation>
         </message>
         <message>
@@ -991,15 +991,15 @@
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>نمای حاشیه نویسی ذخیره نشد: تصویر را نمی توان در صف قرار داد.</translation>
+            <translation>نمای حاشیه‌نویسی‌شده ذخیره نشد: تصویر در صف قرار نگرفت.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>نمای حاشیه‌نویسی ذخیره نشد: تصویر هنوز در حال نوشته‌شدن است. دوباره امتحان کنید.</translation>
+            <translation>نمای حاشیه‌نویسی‌شده ذخیره نشد: ابزار ذخیرهٔ تصویر مشغول است. دوباره تلاش کنید.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
-            <translation>نمای حاشیه نویسی ذخیره نشد: درگاه دید در دسترس نبود.</translation>
+            <translation>نمای حاشیه‌نویسی‌شده ذخیره نشد: نمای دوربین در دسترس نبود.</translation>
         </message>
         <message>
             <source>Camera Error</source>
@@ -1011,19 +1011,19 @@
         </message>
         <message>
             <source>Failed to start camera capture</source>
-            <translation>ضبط دوربین شروع نشد</translation>
+            <translation>دریافت تصویر دوربین شروع نشد</translation>
         </message>
         <message>
             <source>GPU camera acceleration could not start: %1</source>
-            <translation>شتاب دوربین GPU شروع نشد: %1</translation>
+            <translation>شتاب‌دهی دوربین با GPU شروع نشد: %1</translation>
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>پردازش GPU مدام با مشکل مواجه می شود - ویدیوی پردازش نشده را نشان می دهد.</translation>
+            <translation>پردازش GPU پی‌درپی ناموفق است؛ ویدیوی خام نمایش داده می‌شود.</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
-            <translation>ضبط دوربین با شتاب GPU اعتبار راه اندازی را پشت سر گذاشت.</translation>
+            <translation>دریافت تصویر دوربین با شتاب‌دهی GPU آزمون آغاز به کار را با موفقیت گذراند.</translation>
         </message>
         <message>
             <source>Modes unavailable: %1</source>
@@ -1039,15 +1039,15 @@
         </message>
         <message>
             <source>Photo not saved: the OkuFlow Photos folder is unavailable.</source>
-            <translation>عکس ذخیره نشد: پوشه OkuFlow Photos در دسترس نیست.</translation>
+            <translation>عکس ذخیره نشد: پوشهٔ عکس‌های OkuFlow در دسترس نیست.</translation>
         </message>
         <message>
             <source>Photo not saved: the image could not be queued.</source>
-            <translation>عکس ذخیره نشد: تصویر را نمی توان در صف قرار داد.</translation>
+            <translation>عکس ذخیره نشد: تصویر در صف قرار نگرفت.</translation>
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>عکس ذخیره نشد: تصویر هنوز در حال نوشته‌شدن است. دوباره امتحان کنید.</translation>
+            <translation>عکس ذخیره نشد: ابزار ذخیرهٔ تصویر مشغول است. دوباره تلاش کنید.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
@@ -1055,7 +1055,7 @@
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be read back.</source>
-            <translation>عکس ذخیره نشد: قاب اصلی دوربین قابل خواندن نیست.</translation>
+            <translation>عکس ذخیره نشد: خواندن دوبارهٔ فریم اصلی دوربین ممکن نبود.</translation>
         </message>
         <message>
             <source>Photo not saved: the processed or original frame was unavailable.</source>
@@ -1083,7 +1083,7 @@
         </message>
         <message>
             <source>Annotated view</source>
-            <translation>نمای مشروح</translation>
+            <translation>نمای حاشیه‌نویسی‌شده</translation>
         </message>
         <message>
             <source>Finishing recording...</source>
@@ -1123,7 +1123,7 @@
         </message>
         <message>
             <source>Recording stopped before the first frame was written.</source>
-            <translation>ضبط قبل از نوشته شدن اولین فریم متوقف شد.</translation>
+            <translation>ضبط پیش از ثبت نخستین فریم متوقف شد.</translation>
         </message>
         <message>
             <source>Stopping recording...</source>
@@ -1135,19 +1135,19 @@
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
-            <translation>بوم ضبط شده نامعتبر است.</translation>
+            <translation>اندازهٔ قاب ضبط معتبر نیست.</translation>
         </message>
         <message>
             <source>No frames were dropped.</source>
-            <translation>هیچ فریمی رها نشد.</translation>
+            <translation>هیچ فریمی از دست نرفت.</translation>
         </message>
         <message>
             <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
-            <translation>ضبط متوقف شد زیرا پردازش صدا ادامه پیدا نکرد یا ورودی نامعتبر بود.</translation>
+            <translation>ضبط متوقف شد؛ پردازش صدا از ورودی عقب ماند یا ورودی نامعتبر بود.</translation>
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>صدا: بلوک‌های %1 قبل از رمزگذاری حذف شدند، %2 با محدودیت ورودی رد شدند.</translation>
+            <translation>صدا: %1 بلوک پیش از رمزگذاری از دست رفت؛ %2 بلوک دیگر از سقف ورودی فراتر رفت.</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
@@ -1155,7 +1155,7 @@
         </message>
         <message>
             <source>%1 frames used an estimated timestamp.</source>
-            <translation>فریم‌های %1 از مهر زمانی تخمینی استفاده کردند.</translation>
+            <translation>برای %1 فریم، زمان‌مهر تخمینی به‌کار رفت.</translation>
         </message>
         <message>
             <source>Original video</source>
@@ -1179,11 +1179,11 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>اصلی و پردازش شده با GPU تغذیه می شود</translation>
+            <translation>نسخه‌های اصلی و پردازش‌شده با ورودی GPU</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>منبع GPU با بازخوانی کارگر</translation>
+            <translation>منبع GPU با خواندن مجدد توسط پردازش‌گر</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1195,11 +1195,11 @@
         </message>
         <message>
             <source>Assistive View</source>
-            <translation>نمای کمکی</translation>
+            <translation>نمای دسترس‌پذیری</translation>
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>آماده سازی تصویر Codex مشغول است. یک لحظه دیگر دوباره امتحان کنید.</translation>
+            <translation>آماده‌سازی تصویر در Codex مشغول است. کمی بعد دوباره تلاش کنید.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1215,11 +1215,11 @@
         </message>
         <message>
             <source>No camera frame is available to attach.</source>
-            <translation>هیچ قاب دوربینی برای اتصال در دسترس نیست.</translation>
+            <translation>فریم دوربینی برای افزودن در دسترس نیست.</translation>
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>مکالمات دستیار دائمی به ارائه دهنده اشتراک Codex نیاز دارد.</translation>
+            <translation>گفتگوهای پایدار دستیار فقط با ارائه‌دهندهٔ اشتراکی Codex در دسترس‌اند.</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1231,7 +1231,7 @@
         </message>
         <message>
             <source>Querying VLM...</source>
-            <translation>درخواست VLM...</translation>
+            <translation>در حال پرس‌وجو از مدل بینایی…</translation>
         </message>
         <message>
             <source>Scene explanation</source>
@@ -1239,15 +1239,15 @@
         </message>
         <message>
             <source>Scene explanation is busy with a previous request. Try again in a moment.</source>
-            <translation>توضیح صحنه مشغول درخواست قبلی است. یک لحظه دیگر دوباره امتحان کنید.</translation>
+            <translation>درخواست قبلیِ توضیح صحنه هنوز در حال انجام است. کمی بعد دوباره تلاش کنید.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt</source>
-            <translation>ارسال فریم و درخواست فعلی دوربین</translation>
+            <translation>ارسال فریم فعلی دوربین همراه با دستور</translation>
         </message>
         <message>
             <source>Sending the prompt only</source>
-            <translation>فقط ارسال درخواست</translation>
+            <translation>ارسال دستور، بدون تصویر</translation>
         </message>
         <message>
             <source>Text on screen</source>
@@ -1259,7 +1259,7 @@
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
-            <translation>آماده سازی تصویر VLM مشغول است. یک لحظه دیگر دوباره امتحان کنید.</translation>
+            <translation>آماده‌سازی تصویر برای مدل بینایی در حال انجام است. کمی بعد دوباره تلاش کنید.</translation>
         </message>
         <message>
             <source>VLM ready.</source>
@@ -1275,11 +1275,11 @@
         </message>
         <message>
             <source>VLM response exceeded OkuFlow's safe size limit.</source>
-            <translation>پاسخ VLM از حد مجاز اندازه ایمن OkuFlow فراتر رفت.</translation>
+            <translation>اندازهٔ پاسخ مدل بینایی از سقف ایمن OkuFlow بیشتر شد.</translation>
         </message>
         <message>
             <source>VLM returned an empty description.</source>
-            <translation>VLM یک توضیح خالی برگرداند.</translation>
+            <translation>مدل بینایی توضیحی برنگرداند.</translation>
         </message>
         <message>
             <source>Video recorded</source>
@@ -1291,15 +1291,15 @@
         </message>
         <message>
             <source>Codex CLI Path</source>
-            <translation>Codex CLI مسیر</translation>
+            <translation>مسیر Codex CLI</translation>
         </message>
         <message>
             <source>Codex Model</source>
-            <translation>Codex مدل</translation>
+            <translation>مدل Codex</translation>
         </message>
         <message>
             <source>Codex Reasoning</source>
-            <translation>Codex استدلال</translation>
+            <translation>استدلال Codex</translation>
         </message>
         <message>
             <source>Assistant Instructions</source>
@@ -1307,11 +1307,11 @@
         </message>
         <message>
             <source>Built-in Codex Prompt</source>
-            <translation>اعلان Codex داخلی</translation>
+            <translation>دستور آمادهٔ Codex</translation>
         </message>
         <message>
             <source>VLM Server URL</source>
-            <translation>آدرس سرور VLM</translation>
+            <translation>نشانی سرور مدل بینایی</translation>
         </message>
         <message>
             <source>API Key</source>
@@ -1323,15 +1323,15 @@
         </message>
         <message>
             <source>Read Aloud Voice</source>
-            <translation>صدای خواندن با صدای بلند</translation>
+            <translation>صدای بلندخوانی</translation>
         </message>
         <message>
             <source>Read Aloud Speed</source>
-            <translation>سرعت خواندن با صدای بلند</translation>
+            <translation>سرعت بلندخوانی</translation>
         </message>
         <message>
             <source>Preview Read Aloud Voice</source>
-            <translation>پیش نمایش خواندن با صدای بلند</translation>
+            <translation>پیش‌شنیدن صدای بلندخوانی</translation>
         </message>
         <message>
             <source>Write Lecture Notes File</source>
@@ -1347,7 +1347,7 @@
         </message>
         <message>
             <source>Text-to-speech is unavailable in this build</source>
-            <translation>تبدیل متن به گفتار در این ساختنی در دسترس نیست</translation>
+            <translation>تبدیل متن به گفتار در این نسخه در دسترس نیست</translation>
         </message>
         <message>
             <source>Optional for local servers</source>
@@ -1359,7 +1359,7 @@
         </message>
         <message>
             <source>Coding Workspace Required</source>
-            <translation>فضای کاری کدنویسی مورد نیاز است</translation>
+            <translation>انتخاب فضای کاری برای کدنویسی الزامی است</translation>
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
@@ -1391,7 +1391,7 @@
         </message>
         <message>
             <source>Dashed</source>
-            <translation>بریده بریده</translation>
+            <translation>خط‌چین</translation>
         </message>
         <message>
             <source>Dashed line style</source>
@@ -1399,7 +1399,7 @@
         </message>
         <message>
             <source>Dashed stroke</source>
-            <translation>خط بریده‌بریده</translation>
+            <translation>خط‌چین</translation>
         </message>
         <message>
             <source>Done drawing</source>
@@ -1423,11 +1423,11 @@
         </message>
         <message>
             <source>Draw an uninterrupted stroke.</source>
-            <translation>یک سکته مغزی بدون وقفه بکشید.</translation>
+            <translation>یک خط پیوسته بکشید.</translation>
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
-            <translation>با دست آزاد روی نمای دوربین بکشید. میانبر P.</translation>
+            <translation>روی تصویر دوربین آزادانه بکشید. میان‌بر: P</translation>
         </message>
         <message>
             <source>Draw mode off.</source>
@@ -1439,7 +1439,7 @@
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>حاشیه نویسی های متصل به صحنه دوربین را بکشید، انتخاب کنید، تغییر اندازه دهید، ذخیره کنید یا پاک کنید.</translation>
+            <translation>حاشیه‌نویسی‌های متصل به تصویر دوربین را ترسیم، انتخاب، تغییر اندازه، ذخیره یا پاک کنید.</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1451,7 +1451,7 @@
         </message>
         <message>
             <source>Erase annotation tool</source>
-            <translation>پاک کردن ابزار حاشیه نویسی</translation>
+            <translation>ابزار پاک‌کردن حاشیه‌نویسی</translation>
         </message>
         <message>
             <source>Erase tool</source>
@@ -1459,7 +1459,7 @@
         </message>
         <message>
             <source>Leave Draw mode.</source>
-            <translation>از حالت Draw خارج شوید.</translation>
+            <translation>از حالت ترسیم خارج شوید.</translation>
         </message>
         <message>
             <source>Lecture annotation canvas</source>
@@ -1471,7 +1471,7 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>ابزار حاشیه نویسی حرکت</translation>
+            <translation>ابزار جابه‌جایی حاشیه‌نویسی</translation>
         </message>
         <message>
             <source>Move tool</source>
@@ -1503,11 +1503,11 @@
         </message>
         <message>
             <source>Save a marked snapshot and clear all annotations.</source>
-            <translation>یک عکس فوری علامت‌گذاری شده ذخیره کنید و همه حاشیه‌نویسی‌ها را پاک کنید.</translation>
+            <translation>تصویرِ ثبت‌شده را ذخیره کنید و همهٔ حاشیه‌نویسی‌ها را پاک کنید.</translation>
         </message>
         <message>
             <source>Save annotated view</source>
-            <translation>ذخیره نمای مشروح</translation>
+            <translation>ذخیرهٔ نمای حاشیه‌نویسی‌شده</translation>
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
@@ -1519,7 +1519,7 @@
         </message>
         <message>
             <source>Selected annotation scaled</source>
-            <translation>حاشیه نویسی انتخاب شده مقیاس شده است</translation>
+            <translation>اندازهٔ حاشیه‌نویسی انتخاب‌شده تغییر کرد</translation>
         </message>
         <message>
             <source>Selection cleared</source>
@@ -1527,19 +1527,19 @@
         </message>
         <message>
             <source>Shape tool</source>
-            <translation>ابزار شکل دادن</translation>
+            <translation>ابزار رسم شکل</translation>
         </message>
         <message>
             <source>Solid</source>
-            <translation>جامد</translation>
+            <translation>یکدست</translation>
         </message>
         <message>
             <source>Solid line style</source>
-            <translation>سبک خط جامد</translation>
+            <translation>سبک خط یکدست</translation>
         </message>
         <message>
             <source>Solid stroke</source>
-            <translation>خط ممتد</translation>
+            <translation>خط یکدست</translation>
         </message>
         <message>
             <source>Text entry canceled</source>
@@ -1563,7 +1563,7 @@
         </message>
         <message>
             <source>Undo annotation</source>
-            <translation>لغو حاشیه نویسی</translation>
+            <translation>واگردانی حاشیه‌نویسی</translation>
         </message>
         <message>
             <source>Undo the last edit. Shortcut Control Z.</source>
@@ -1571,7 +1571,7 @@
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
-            <translation>از جوهر %1 استفاده کنید. علامت تیک رنگ انتخاب شده را نشان می دهد.</translation>
+            <translation>از رنگ %1 استفاده کنید. علامت تیک، رنگ انتخاب‌شده را نشان می‌دهد.</translation>
         </message>
         <message>
             <source>Ask Assistant</source>
@@ -1579,19 +1579,19 @@
         </message>
         <message>
             <source>Assistive result</source>
-            <translation>نتیجه کمکی</translation>
+            <translation>پاسخ دستیار</translation>
         </message>
         <message>
             <source>Assistive result text</source>
-            <translation>متن نتیجه کمکی</translation>
+            <translation>متن پاسخ دستیار</translation>
         </message>
         <message>
             <source>Assistive result title</source>
-            <translation>عنوان نتیجه کمکی</translation>
+            <translation>عنوان پاسخ دستیار</translation>
         </message>
         <message>
             <source>Assistive results</source>
-            <translation>نتایج کمکی</translation>
+            <translation>پاسخ‌های دستیار</translation>
         </message>
         <message>
             <source>Close assistive result</source>
@@ -1611,27 +1611,27 @@
         </message>
         <message>
             <source>Read assistive result aloud</source>
-            <translation>نتیجه کمکی را با صدای بلند بخوانید</translation>
+            <translation>پاسخ دستیار را با صدای بلند بخوانید</translation>
         </message>
         <message>
             <source>Send the question with the current camera view to OkuFlow Assistant</source>
-            <translation>سوال را با نمای دوربین فعلی به OkuFlow Assistant ارسال کنید</translation>
+            <translation>پرسش را همراه نمای فعلی دوربین برای دستیار OkuFlow بفرستید</translation>
         </message>
         <message>
             <source>Speak the current assistant result</source>
-            <translation>نتیجه دستیار فعلی را بیان کنید</translation>
+            <translation>پاسخ فعلی دستیار را بخوانید</translation>
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>نتیجه دستیار پخش جریانی. برای خواندن متن از کلیدهای جهت دار استفاده کنید.</translation>
+            <translation>پاسخ دستیار در حال پخش است. برای خواندن متن از کلیدهای جهت‌نما استفاده کنید.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
-            <translation>هر زمان خواستید یک سوال بعدی را تایپ کنید. ارسال زمانی در دسترس می شود که پاسخ فعلی به پایان برسد.</translation>
+            <translation>هر زمان خواستید پرسش دیگری بنویسید. پس از پایان پاسخ فعلی می‌توانید آن را ارسال کنید.</translation>
         </message>
         <message>
             <source>Apply custom</source>
-            <translation>سفارشی اعمال کنید</translation>
+            <translation>اعمال تنظیمات سفارشی</translation>
         </message>
         <message>
             <source>Background color</source>
@@ -1639,7 +1639,7 @@
         </message>
         <message>
             <source>Choose color stop %1</source>
-            <translation>انتخاب توقف رنگ %1</translation>
+            <translation>انتخاب نقطهٔ رنگی %1</translation>
         </message>
         <message>
             <source>Choose display colors</source>
@@ -1647,7 +1647,7 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>توقف رنگ %1 از %2</translation>
+            <translation>نقطهٔ رنگی %1 از %2</translation>
         </message>
         <message>
             <source>Custom</source>
@@ -1667,7 +1667,7 @@
         </message>
         <message>
             <source>Display color scheme</source>
-            <translation>نمایش طرح رنگ</translation>
+            <translation>طرح رنگ نمایش</translation>
         </message>
         <message>
             <source>Display colors changed to %1</source>
@@ -1687,11 +1687,11 @@
         </message>
         <message>
             <source>Gradient</source>
-            <translation>گرادیان</translation>
+            <translation>طیف رنگی</translation>
         </message>
         <message>
             <source>Number of color stops</source>
-            <translation>تعداد توقف‌های رنگ</translation>
+            <translation>تعداد نقاط رنگی</translation>
         </message>
         <message>
             <source>Posterize</source>
@@ -1699,7 +1699,7 @@
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>خواندن رنگ ها</translation>
+            <translation>رنگ‌های مطالعه</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>از نوارهای رنگی سخت استفاده کنید</translation>
+            <translation>از نوارهای رنگی با مرزهای تیز استفاده کنید</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1743,19 +1743,19 @@
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
-            <translation>شتاب دوربین هنوز شروع نشده است.</translation>
+            <translation>شتاب‌دهی دوربین هنوز آغاز نشده است.</translation>
         </message>
         <message>
             <source>Camera acceleration mode</source>
-            <translation>حالت شتاب دوربین</translation>
+            <translation>حالت شتاب‌دهی دوربین</translation>
         </message>
         <message>
             <source>Camera acceleration status</source>
-            <translation>وضعیت شتاب دوربین</translation>
+            <translation>وضعیت شتاب‌دهی دوربین</translation>
         </message>
         <message>
             <source>Camera format notice</source>
-            <translation>اطلاعیه فرمت دوربین</translation>
+            <translation>پیام قالب دوربین</translation>
         </message>
         <message>
             <source>ChatGPT connection</source>
@@ -1763,11 +1763,11 @@
         </message>
         <message>
             <source>Codex connection status</source>
-            <translation>Codex وضعیت اتصال</translation>
+            <translation>وضعیت اتصال Codex</translation>
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex استفاده</translation>
+            <translation>میزان استفاده از Codex</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
@@ -1787,15 +1787,15 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>نمایش پان و زوم صاف را کنترل می کند. نرخ فریم دوربین بدون تغییر است</translation>
+            <translation>این کنترل‌ها حرکت و بزرگ‌نمایی روان تصویر را تنظیم می‌کنند؛ نرخ فریم دوربین تغییر نمی‌کند.</translation>
         </message>
         <message>
             <source>Current quick mode</source>
-            <translation>حالت سریع فعلی</translation>
+            <translation>حالت فوری فعلی</translation>
         </message>
         <message>
             <source>Custom Setup</source>
-            <translation>تنظیم سفارشی</translation>
+            <translation>راه‌اندازی دلخواه</translation>
         </message>
         <message>
             <source>Describe the Scene</source>
@@ -1803,7 +1803,7 @@
         </message>
         <message>
             <source>Device setting shared by all profiles.</source>
-            <translation>تنظیم دستگاه توسط همه نمایه ها به اشتراک گذاشته شده است.</translation>
+            <translation>این تنظیم دستگاه بین همهٔ نمایه‌ها مشترک است.</translation>
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
@@ -1811,19 +1811,19 @@
         </message>
         <message>
             <source>Extra Stable off</source>
-            <translation>پایدار اضافی خاموش</translation>
+            <translation>حالت پایداری بیشتر خاموش است</translation>
         </message>
         <message>
             <source>Extra Stable on</source>
-            <translation>پایدار اضافی روشن است</translation>
+            <translation>حالت پایداری بیشتر روشن است</translation>
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>Fill از نمای کامل بدون کشش استفاده می کند. Fit کل تصویر را با نوارها حفظ می کند</translation>
+            <translation>«پر کردن» کل کادر دید را بدون کشیدگی می‌پوشاند؛ «جاسازی» کل تصویر را همراه نوارهای کناری نشان می‌دهد.</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
-            <translation>پیدا کردن یک اصلاح صفحه نمایش جدید...</translation>
+            <translation>در حال یافتن اصلاح جدید صفحه…</translation>
         </message>
         <message>
             <source>Finishing</source>
@@ -1831,7 +1831,7 @@
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>در طول یک ضربه روی آخرین فریم تیز ثابت کنید، سپس به آرامی به ویدیوی زنده بازگردید</translation>
+            <translation>هنگام تکان، تصویر را روی آخرین فریم واضح ثابت نگه می‌دارد و سپس به‌نرمی به تصویر زنده برمی‌گردد</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1855,7 +1855,7 @@
         </message>
         <message>
             <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
-            <translation>حتی زمانی که میانگین زمان پردازش گرافیکی آن از 24 میلی‌ثانیه بیشتر شود، SuperRes را فعال نگه دارید</translation>
+            <translation>SuperRes را حتی اگر میانگین زمان پردازش GPU آن از ۲۴ میلی‌ثانیه بیشتر شد، فعال نگه دارید</translation>
         </message>
         <message>
             <source>Large Zoom</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>قفل نمای دوربین نصب شده با استفاده از تثبیت کننده تمام قدرت CUDA</translation>
+            <translation>نمای دوربینِ نصب‌شده را با تثبیت‌سازی کامل CUDA ثابت نگه دارید</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1871,7 +1871,7 @@
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>دوربین مسابقه (توصیه می شود)</translation>
+            <translation>هماهنگ با دوربین (پیشنهادی)</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1879,7 +1879,7 @@
         </message>
         <message>
             <source>NVIDIA Image Scaling (default)</source>
-            <translation>NVIDIA مقیاس‌بندی تصویر (پیش‌فرض)</translation>
+            <translation>NVIDIA Image Scaling (پیش‌فرض)</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution status</source>
@@ -1887,11 +1887,11 @@
         </message>
         <message>
             <source>NVIDIA Video Effects runtime installed</source>
-            <translation>NVIDIA Video Effects زمان اجرا نصب شده است</translation>
+            <translation>محیط اجرایی NVIDIA Video Effects نصب شده است</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>NVIDIA Video Effects زمان اجرا نصب نشده است. از Setup &amp; Downloads استفاده کنید</translation>
+            <translation>محیط اجرایی NVIDIA Video Effects نصب نیست؛ از «راه‌اندازی و دریافت‌ها» استفاده کنید</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1899,7 +1899,7 @@
         </message>
         <message>
             <source>Next quick mode</source>
-            <translation>حالت سریع بعدی</translation>
+            <translation>حالت فوری بعدی</translation>
         </message>
         <message>
             <source>No microphone (video only)</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>کنترل‌های باز و ویژگی‌ها کمک می‌کنند</translation>
+            <translation>راهنمای کنترل‌ها و قابلیت‌ها را باز کنید</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1915,7 +1915,7 @@
         </message>
         <message>
             <source>OkuFlow Help</source>
-            <translation>OkuFlow راهنما</translation>
+            <translation>راهنمای OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
@@ -1923,7 +1923,7 @@
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
-            <translation>یک نشانگر قرمز را در فوکوس بزرگنمایی فعلی قرار دهید</translation>
+            <translation>نشانگر قرمزی را روی نقطهٔ مرکزی بزرگ‌نمایی فعلی نمایش دهید</translation>
         </message>
         <message>
             <source>Previous Advanced section</source>
@@ -1931,7 +1931,7 @@
         </message>
         <message>
             <source>Previous quick mode</source>
-            <translation>حالت سریع قبلی</translation>
+            <translation>حالت فوری قبلی</translation>
         </message>
         <message>
             <source>Processing: CPU</source>
@@ -1939,19 +1939,19 @@
         </message>
         <message>
             <source>Profile setting saved with the current quick option.</source>
-            <translation>تنظیم نمایه با گزینه سریع فعلی ذخیره شد.</translation>
+            <translation>تنظیم نمایه همراه با گزینهٔ فوری فعلی ذخیره شد.</translation>
         </message>
         <message>
             <source>Quick mode</source>
-            <translation>حالت سریع</translation>
+            <translation>حالت فوری</translation>
         </message>
         <message>
             <source>Quick mode changed</source>
-            <translation>حالت سریع تغییر کرد</translation>
+            <translation>حالت فوری تغییر کرد</translation>
         </message>
         <message>
             <source>Quick mode changed to %1</source>
-            <translation>حالت سریع به %1 تغییر یافت</translation>
+            <translation>حالت فوری به %1 تغییر کرد</translation>
         </message>
         <message>
             <source>Read a Page</source>
@@ -1959,11 +1959,11 @@
         </message>
         <message>
             <source>Reading</source>
-            <translation>خواندن</translation>
+            <translation>در حال خواندن</translation>
         </message>
         <message>
             <source>Reading profile</source>
-            <translation>خواندن نمایه</translation>
+            <translation>نمایهٔ مطالعه</translation>
         </message>
         <message>
             <source>Reset current profile tuning</source>
@@ -1971,7 +1971,7 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>تصویر متعلق به نمایه و تنظیم کمکی را به حالت پیش فرض بازنشانی کنید</translation>
+            <translation>تنظیمات تصویر و دستیارِ وابسته به نمایه را به مقادیر پیش‌فرض برگردانید</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
@@ -1983,27 +1983,27 @@
         </message>
         <message>
             <source>Runtime not installed; use Setup &amp; Downloads</source>
-            <translation>زمان اجرا نصب نشده است. از Setup &amp; Downloads استفاده کنید</translation>
+            <translation>محیط اجرایی نصب نیست؛ از «راه‌اندازی و دریافت‌ها» استفاده کنید</translation>
         </message>
         <message>
             <source>Save an annotated snapshot to lecture notes when Draw mode closes.</source>
-            <translation>هنگامی که حالت Draw بسته می شود، یک عکس فوری حاشیه نویسی را در یادداشت های سخنرانی ذخیره کنید.</translation>
+            <translation>با بسته‌شدن حالت ترسیم، تصویر حاشیه‌نویسی‌شده را در یادداشت‌های سخنرانی ذخیره کنید.</translation>
         </message>
         <message>
             <source>See in Low Light</source>
-            <translation>در کم نور ببینید</translation>
+            <translation>دید در نور کم</translation>
         </message>
         <message>
             <source>Sharp Text</source>
-            <translation>متن شارپ</translation>
+            <translation>متن واضح</translation>
         </message>
         <message>
             <source>Sharpen Text</source>
-            <translation>تیز کردن متن</translation>
+            <translation>واضح‌تر کردن متن</translation>
         </message>
         <message>
             <source>Sharpening</source>
-            <translation>تیز کردن</translation>
+            <translation>وضوح‌بخشی</translation>
         </message>
         <message>
             <source>Show a guide to OkuFlow controls and features</source>
@@ -2011,15 +2011,15 @@
         </message>
         <message>
             <source>Show all quick modes</source>
-            <translation>نمایش همه حالت های سریع</translation>
+            <translation>نمایش همهٔ حالت‌های فوری</translation>
         </message>
         <message>
             <source>Show an on-screen control for moving the zoomed view</source>
-            <translation>یک کنترل روی صفحه نمایش برای جابجایی نمای بزرگنمایی شده</translation>
+            <translation>کنترل جابه‌جایی نمای بزرگ‌شده را روی صفحه نمایش دهید</translation>
         </message>
         <message>
             <source>Steady Text</source>
-            <translation>متن ثابت</translation>
+            <translation>متن پایدار</translation>
         </message>
         <message>
             <source>Stop Automatic Screen Correction</source>
@@ -2027,19 +2027,19 @@
         </message>
         <message>
             <source>Test camera acceleration</source>
-            <translation>تست شتاب دوربین</translation>
+            <translation>آزمایش شتاب‌دهی دوربین</translation>
         </message>
         <message>
             <source>Unavailable in this build</source>
-            <translation>در این ساختنی موجود نیست</translation>
+            <translation>در این نسخه در دسترس نیست</translation>
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>از NVIDIA Video Effects SuperRes در زوم 1.33 برابر و بالاتر استفاده کنید. به طور خودکار به NIS برمی گردد</translation>
+            <translation>در بزرگ‌نمایی ۱٫۳۳ برابر و بیشتر از SuperRes در NVIDIA Video Effects استفاده کنید؛ در غیر این صورت، برنامه به‌طور خودکار به NIS برمی‌گردد.</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
-            <translation>تنظیم درگاه دید توسط همه نمایه ها به اشتراک گذاشته شده است.</translation>
+            <translation>این تنظیم کادر دید بین همهٔ نمایه‌ها مشترک است.</translation>
         </message>
         <message>
             <source>Zoom In More</source>
@@ -2047,7 +2047,7 @@
         </message>
         <message>
             <source>Administrator approval was cancelled. Nothing was installed.</source>
-            <translation>تایید مدیر لغو شد. هیچی نصب نشد</translation>
+            <translation>تأیید مدیر لغو شد. چیزی نصب نشد.</translation>
         </message>
         <message>
             <source>Codex CLI</source>
@@ -2055,7 +2055,7 @@
         </message>
         <message>
             <source>Downloading from vendor...</source>
-            <translation>دانلود از فروشنده...</translation>
+            <translation>در حال دریافت از وب‌سایت سازنده…</translation>
         </message>
         <message>
             <source>Install Codex CLI</source>
@@ -2075,9 +2075,9 @@
             <source>Installed system-wide
 %1
 Removal is managed by Windows.</source>
-            <translation>نصب شده در سراسر سیستم
+            <translation>در سراسر سیستم نصب شده است
 %1
-حذف توسط ویندوز مدیریت می شود.</translation>
+حذف آن از طریق ویندوز انجام می‌شود.</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects</source>
@@ -2085,7 +2085,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA installer running. Continue in the vendor installer window.</source>
-            <translation>نصب کننده NVIDIA در حال اجرا است. در پنجره نصب کننده فروشنده ادامه دهید.</translation>
+            <translation>نصب‌کنندهٔ NVIDIA در حال اجراست. کار را در پنجرهٔ نصب‌کننده ادامه دهید.</translation>
         </message>
         <message>
             <source>Not installed</source>
@@ -2093,7 +2093,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>نصب نشده است. بسته را برای پردازنده‌های گرافیکی %1 نصب کنید.</translation>
+            <translation>نصب نشده است. با انتخاب «نصب»، بستهٔ مخصوص GPUهای %1 دریافت می‌شود.</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
@@ -2109,7 +2109,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Open Vendor Page</source>
-            <translation>صفحه فروشنده را باز کنید</translation>
+            <translation>باز کردن صفحهٔ سازنده</translation>
         </message>
         <message>
             <source>Open Windows Apps</source>
@@ -2117,7 +2117,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Open the NVIDIA runtime uninstaller?</source>
-            <translation>حذف کننده زمان اجرا NVIDIA را باز کنید؟</translation>
+            <translation>حذف‌کنندهٔ محیط اجرایی NVIDIA را باز می‌کنید؟</translation>
         </message>
         <message>
             <source>Open the folder containing the detected Codex CLI</source>
@@ -2129,7 +2129,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>OkuFlow Setup Assistant</source>
-            <translation>OkuFlow دستیار راه اندازی</translation>
+            <translation>دستیار راه‌اندازی OkuFlow</translation>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
@@ -2137,7 +2137,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Retrying from the alternate vendor host...</source>
-            <translation>تلاش مجدد از میزبان فروشنده جایگزین...</translation>
+            <translation>تلاش دوباره از سرور جایگزین سازنده…</translation>
         </message>
         <message>
             <source>Setup Assistant</source>
@@ -2161,7 +2161,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The Setup Assistant remains available from Advanced settings</source>
-            <translation>Setup Assistant از تنظیمات پیشرفته در دسترس باقی می ماند</translation>
+            <translation>دستیار راه‌اندازی از بخش تنظیمات پیشرفته همچنان در دسترس است</translation>
         </message>
         <message>
             <source>The downloaded installer could not be opened for verification.</source>
@@ -2169,11 +2169,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The downloaded installer could not be read for verification.</source>
-            <translation>نصب کننده دانلود شده برای تأیید قابل خواندن نیست.</translation>
+            <translation>نصب‌کنندهٔ دریافت‌شده برای بررسی خوانده نشد.</translation>
         </message>
         <message>
             <source>The first transfer failed. Retrying with the Windows downloader...</source>
-            <translation>اولین انتقال ناموفق بود. تلاش مجدد با دانلودر ویندوز...</translation>
+            <translation>دریافت اولیه ناموفق بود. تلاش دوباره با ابزار دریافت ویندوز…</translation>
         </message>
         <message>
             <source>The installer did not complete successfully.</source>
@@ -2181,7 +2181,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The installer failed SHA-256 verification and was deleted.</source>
-            <translation>نصب کننده تأیید SHA-256 را انجام نداد و حذف شد.</translation>
+            <translation>نصب‌کننده در بررسی SHA-256 ناموفق بود و حذف شد.</translation>
         </message>
         <message>
             <source>The temporary download file could not be created.</source>
@@ -2189,7 +2189,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>این کپی در سراسر سیستم باید از طریق برنامه های نصب شده ویندوز حذف شود</translation>
+            <translation>این نسخهٔ نصب‌شده برای همهٔ کاربران باید از بخش «برنامه‌های نصب‌شده» ویندوز حذف شود</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2209,7 +2209,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Verified. Starting installer...</source>
-            <translation>تایید شده است. شروع نصب...</translation>
+            <translation>تأیید شد. در حال اجرای نصب‌کننده…</translation>
         </message>
         <message>
             <source>Windows could not start the verified installer.
@@ -2233,11 +2233,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>قلاب های کمکی: صحنه را با پوشش توضیح دهید</translation>
+            <translation>قابلیت‌های کمکی: توضیح صحنه همراه با هم‌پوشانی</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
-            <translation>پیکربندی سفارشی از Advanced Tuning. زمانی که احساس کردید آن را به عنوان یک گزینه سریع ذخیره کنید.</translation>
+            <translation>پیکربندی سفارشی از بخش Advanced Tuning. وقتی مناسب بود، آن را به‌عنوان گزینهٔ سریع ذخیره کنید.</translation>
         </message>
         <message>
             <source>Current quick mode description</source>
@@ -2265,7 +2265,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Blur sigma</source>
-            <translation>سیگما را محو کنید</translation>
+            <translation>سیگمای تاری</translation>
         </message>
         <message>
             <source>Blur radius</source>
@@ -2297,11 +2297,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stops: </source>
-            <translation>توقف می کند: </translation>
+            <translation>توقف‌ها:  </translation>
         </message>
         <message>
             <source>Color stop %1 of 8</source>
-            <translation>توقف رنگ %1 از 8</translation>
+            <translation>ایستگاه رنگی %1 از ۸</translation>
         </message>
         <message>
             <source>%1 px</source>
@@ -2325,7 +2325,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
-            <translation>تسریع حرکات زوم سریع Ctrl+Scroll. زوم صفحه کلید دقیق باقی می ماند</translation>
+            <translation>حرکت‌های سریع بزرگ‌نمایی با Ctrl+چرخ‌ماوس را روان‌تر کنید؛ بزرگ‌نمایی صفحه‌کلید همچنان دقیق می‌ماند.</translation>
         </message>
         <message>
             <source>SuperRes powered by NVIDIA Maxine™</source>
@@ -2333,7 +2333,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA انتساب Maxine</translation>
+            <translation>ذکر NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2345,11 +2345,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>%1 settings match</source>
-            <translation>تنظیمات %1 مطابقت دارد</translation>
+            <translation>%1 تنظیم با هم مطابقت دارند</translation>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>تصحیح صفحه بعدی، یا یک اصلاح جدید پیدا کنید.%1</translation>
+            <translation>اصلاح بعدی صفحه، یا یافتن اصلاحی تازه.%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2365,7 +2365,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Captured processed camera view</source>
-            <translation>نمای دوربین پردازش شده را ضبط کرد</translation>
+            <translation>نمای پردازش‌شدهٔ دوربین ثبت شد</translation>
         </message>
         <message>
             <source>Processed camera view</source>
@@ -2401,11 +2401,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Annotations cleared - snapshot</source>
-            <translation>حاشیه نویسی پاک شد - عکس فوری</translation>
+            <translation>حاشیه‌نویسی‌ها پاک شدند — تصویر ثبت‌شده</translation>
         </message>
         <message>
             <source>Annotation session ended - snapshot</source>
-            <translation>جلسه حاشیه نویسی به پایان رسید - عکس فوری</translation>
+            <translation>جلسهٔ حاشیه‌نویسی پایان یافت — تصویر ثبت‌شده</translation>
         </message>
         <message>
             <source>The conversation could not be exported to %1.</source>
@@ -2421,11 +2421,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The paired photos could not be saved. A partial file may remain: %1</source>
-            <translation>عکس های جفت شده ذخیره نمی شوند. ممکن است یک فایل جزئی باقی بماند: %1</translation>
+            <translation>ذخیرهٔ دو عکس ممکن نشد. ممکن است فایل ناقصی باقی مانده باشد: %1</translation>
         </message>
         <message>
             <source>The saved OkuFlow folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
-            <translation>پوشه OkuFlow ذخیره شده قابل استفاده نیست (%1). تا زمانی که یک پوشه جدید انتخاب شود، فایل ها به پوشه اسناد پیش فرض می روند.</translation>
+            <translation>از پوشهٔ ذخیره‌شدهٔ OkuFlow نمی‌توان استفاده کرد (%1). تا انتخاب پوشه‌ای تازه، فایل‌ها در پوشهٔ پیش‌فرض Documents ذخیره می‌شوند.</translation>
         </message>
         <message>
             <source>Lecture transcript</source>
@@ -2453,7 +2453,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>نمای تحلیل‌شده توسط دستیار را ببینید</translation>
+            <translation>مشاهدهٔ نمایی که دستیار تحلیل کرده است</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2465,7 +2465,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Started a new conversation.</source>
-            <translation>مکالمه جدیدی را شروع کرد.</translation>
+            <translation>گفت‌وگوی تازه‌ای آغاز شد.</translation>
         </message>
         <message>
             <source>Finish the current answer before starting a new chat.</source>
@@ -2473,27 +2473,27 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Explain conversation</source>
-            <translation>گفتگوی توضیحی</translation>
+            <translation>گفت‌وگوی توضیح</translation>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
-            <translation>مکالمه جدیدی را شروع کرد. توضیح بعدی نیز مکالمه جدیدی را آغاز می کند.</translation>
+            <translation>گفت‌وگوی تازه‌ای آغاز شد. اجرای بعدی Explain نیز گفت‌وگوی تازه‌ای را آغاز می‌کند.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>ارسال فریم و درخواست فعلی دوربین به Codex. مکالمه: مکالمه Explain ذخیره شده است که توسط هر توضیح ادامه می یابد. اینترنت ابزار: مسدود شده است. کدگذاری و تغییرات فایل: مسدود شده است.</translation>
+            <translation>در حال ارسال فریم فعلی دوربین و درخواست به Codex. گفت‌وگو: گفت‌وگوی ذخیره‌شدهٔ Explain که با هر بار اجرای Explain ادامه می‌یابد. دسترسی ابزار به اینترنت: مسدود. کدنویسی و تغییر فایل‌ها: مسدود.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>ارسال فریم و درخواست فعلی دوربین به Codex. مکالمه: موقت، جدید برای هر خواندن. اینترنت ابزار: مسدود شده است. کدگذاری و تغییرات فایل: مسدود شده است.</translation>
+            <translation>در حال ارسال فریم فعلی دوربین و درخواست به Codex. گفت‌وگو: موقت و برای هر بار اجرای Read تازه است. دسترسی ابزار به اینترنت: مسدود. کدنویسی و تغییر فایل‌ها: مسدود.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>ارسال فریم دوربین فعلی، درخواست، و پاسخ‌های توضیح اخیر به %1 (نقطه پایانی محلی). مکالمه: پاسخ های اخیر توضیح دهید که فقط در حافظه نگهداری می شوند. ابزار کدنویسی: در دسترس نیست.</translation>
+            <translation>در حال ارسال فریم فعلی دوربین، درخواست و پاسخ‌های اخیر Explain به %1 (نشانی محلی). گفت‌وگو: پاسخ‌های اخیر Explain که فقط در حافظه نگه‌داری می‌شوند. ابزارهای کدنویسی: در دسترس نیستند.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>ارسال فریم دوربین فعلی، درخواست، و پاسخ‌های توضیح اخیر به %1 (نقطه پایانی راه دور). مکالمه: پاسخ های اخیر توضیح دهید که فقط در حافظه نگهداری می شوند. ابزار کدنویسی: در دسترس نیست.</translation>
+            <translation>در حال ارسال فریم فعلی دوربین، درخواست و پاسخ‌های اخیر Explain به %1 (نشانی راه‌دور). گفت‌وگو: پاسخ‌های اخیر Explain که فقط در حافظه نگه‌داری می‌شوند. ابزارهای کدنویسی: در دسترس نیستند.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2505,23 +2505,23 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Dock left</source>
-            <translation>اسکله سمت چپ</translation>
+            <translation>چسباندن به چپ</translation>
         </message>
         <message>
             <source>Dock right</source>
-            <translation>به سمت راست پهلو بگیرید</translation>
+            <translation>چسباندن به راست</translation>
         </message>
         <message>
             <source>Release to dock left</source>
-            <translation>رها کنید به اسکله سمت چپ</translation>
+            <translation>رها کنید تا پنل به چپ بچسبد</translation>
         </message>
         <message>
             <source>Release to dock right</source>
-            <translation>به سمت راست رها کنید</translation>
+            <translation>رها کنید تا پنل به راست بچسبد</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>ویژگی‌های خواندن، توضیح و دستیار مبتنی بر اشتراک را پشتیبانی می‌کند. Codex CLI رسمی را برای حساب ویندوز شما نصب می کند. ورود به سیستم ChatGPT همچنان یک مرحله جداگانه است.</translation>
+            <translation>قابلیت‌های Read، Explain و Assistant را که به اشتراک وابسته‌اند فعال می‌کند. Codex CLI رسمی را برای حساب ویندوزتان نصب می‌کند؛ ورود به ChatGPT مرحله‌ای جداگانه است.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2537,11 +2537,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Connect a camera, then choose it under Advanced, Device.</source>
-            <translation>یک دوربین را وصل کنید، سپس آن را در قسمت Advanced, Device انتخاب کنید.</translation>
+            <translation>دوربینی را وصل کنید، سپس از بخش Advanced، گزینهٔ Device آن را انتخاب کنید.</translation>
         </message>
         <message>
             <source>Choose a camera under Advanced, Device, or check that it is connected.</source>
-            <translation>دوربینی را در قسمت Advanced، Device انتخاب کنید یا بررسی کنید که متصل است.</translation>
+            <translation>از بخش Advanced، گزینهٔ Device دوربینی را انتخاب کنید یا از اتصال آن مطمئن شوید.</translation>
         </message>
         <message>
             <source>Number key %1</source>
@@ -2585,11 +2585,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Changes apply now. Save to keep them.</source>
-            <translation>تغییرات در حال حاضر اعمال می شود. پس انداز کنید تا آنها را نگه دارید.</translation>
+            <translation>تغییرات اکنون اعمال می‌شوند. برای نگه‌داشتنشان ذخیره کنید.</translation>
         </message>
         <message>
             <source>Shared by all modes. Not saved into quick modes.</source>
-            <translation>به اشتراک گذاشته شده توسط همه حالت ها در حالت های سریع ذخیره نمی شود.</translation>
+            <translation>بین همهٔ حالت‌ها مشترک است و در حالت‌های سریع ذخیره نمی‌شود.</translation>
         </message>
         <message>
             <source>Fine-tune text</source>
@@ -2625,7 +2625,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Soften image (blur)</source>
-            <translation>نرم کردن تصویر (تار)</translation>
+            <translation>نرم‌کردن تصویر (محو کردن)</translation>
         </message>
         <message>
             <source>Horizontal position</source>
@@ -2645,7 +2645,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Reset Mode</source>
-            <translation>حالت بازنشانی</translation>
+            <translation>بازنشانی حالت</translation>
         </message>
         <message>
             <source>Quick mode name:</source>
@@ -2653,11 +2653,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>اینجا منطبق نیست. %1 در تنظیمات. Enter را فشار دهید تا آنها را نشان دهید.</translation>
+            <translation>اینجا موردی پیدا نشد. %1 مورد در تنظیمات؛ برای نمایش، Enter را بزنید.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>اینجا منطبق نیست. %1 در تصویر. Enter را فشار دهید تا آنها را نشان دهید.</translation>
+            <translation>اینجا موردی پیدا نشد. %1 مورد در تصویر؛ برای نمایش، Enter را بزنید.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2673,15 +2673,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Resets this mode's image and assistant settings. Settings on the Settings tab are not changed.</source>
-            <translation>تنظیمات تصویر و دستیار این حالت را بازنشانی می کند. تنظیمات در برگه تنظیمات تغییر نمی کند.</translation>
+            <translation>تنظیمات تصویر و دستیار این حالت را به پیش‌فرض برمی‌گرداند. تنظیمات زبانهٔ Settings تغییر نمی‌کنند.</translation>
         </message>
         <message>
             <source>Connect a camera, then choose it under Settings, Camera.</source>
-            <translation>یک دوربین را وصل کنید، سپس آن را در قسمت تنظیمات، دوربین انتخاب کنید.</translation>
+            <translation>دوربینی را وصل کنید، سپس از بخش Settings، گزینهٔ Camera آن را انتخاب کنید.</translation>
         </message>
         <message>
             <source>Choose a camera under Settings, Camera, or check that it is connected.</source>
-            <translation>دوربینی را در قسمت تنظیمات، دوربین انتخاب کنید یا بررسی کنید که متصل است.</translation>
+            <translation>از بخش Settings، گزینهٔ Camera دوربینی را انتخاب کنید یا از اتصال آن مطمئن شوید.</translation>
         </message>
         <message>
             <source>Language</source>
@@ -2715,9 +2715,9 @@ Removal is managed by Windows.</source>
             <source>Reset this mode's image and assistant settings?
 
 Shared settings on the Settings tab will stay unchanged.</source>
-            <translation>تنظیمات تصویر و دستیار این حالت بازنشانی شود؟
+            <translation>تنظیمات تصویر و دستیار این حالت بازنشانی شوند؟
 
-تنظیمات اشتراک‌گذاری شده در برگه تنظیمات بدون تغییر باقی می‌مانند.</translation>
+تنظیمات مشترک در زبانهٔ Settings بدون تغییر می‌مانند.</translation>
         </message>
         <message>
             <source>Hide UI</source>
@@ -2741,11 +2741,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
-            <translation>%1 نتوانست قطعه نهایی خود را تمام کند (0x%2). پرونده حفظ شد. پخش تایید نشده است.</translation>
+            <translation>%1 نتوانست بخش پایانی را کامل کند (0x%2). فایل حفظ شد؛ پخش آن تأیید نشده است.</translation>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>مسیر خروجی ضبط از قبل وجود دارد. حفظ شد</translation>
+            <translation>مسیر خروجی ضبط از قبل وجود داشت و دست‌نخورده باقی ماند.</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
@@ -2795,11 +2795,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>بخوانید و توضیح دهید نمای دوربین را به آدرس سرور زیر ارسال کنید. تصاویر تنها در صورتی روی این رایانه باقی می مانند که سرور روی آن اجرا شود، مانند LM Studio یا Olama در localhost. مکالمات دستیار ذخیره شده به اشتراک ChatGPT نیاز دارند.</translation>
+            <translation>قابلیت‌های Read و Explain نمای دوربین را به نشانی سرور زیر می‌فرستند. تصاویر فقط زمانی روی این رایانه می‌مانند که سرور روی همین دستگاه اجرا شود؛ مانند LM Studio یا Ollama در localhost. گفت‌وگوهای ذخیره‌شدهٔ Assistant به اشتراک ChatGPT نیاز دارند.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
-            <translation>OkuFlow همیشه این دستورالعمل را به Codex ارسال می‌کند و دستورالعمل‌های شما و قوانین مجوز را دنبال می‌کند.</translation>
+            <translation>OkuFlow همیشه این دستورالعمل را به Codex می‌فرستد؛ سپس دستورالعمل‌های شما و قواعد مجوز را اضافه می‌کند.</translation>
         </message>
         <message>
             <source>Assistant instructions</source>
@@ -2815,7 +2815,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>این موارد فقط برای مکالمات ذخیره شده «دستیار»، از جمله سؤالاتی که از «دستیار شناور» پرسیده می شود، اعمال می شود. بخوانید و توضیح دهید همیشه محدود بمانید.</translation>
+            <translation>این موارد فقط برای گفت‌وگوهای ذخیره‌شدهٔ Assistant، از جمله پرسش‌هایی که از دستیار شناور می‌پرسید، کاربرد دارند. قابلیت‌های Read و Explain همیشه محدود باقی می‌مانند.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2823,11 +2823,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
-            <translation>میزان استفاده از استدلال Codex را انتخاب کنید. سطوح بالاتر ممکن است مدت بیشتری طول بکشد تا پاسخ داده شود.</translation>
+            <translation>میزان استدلال Codex را انتخاب کنید. سطح‌های بالاتر ممکن است پاسخ‌گویی را طولانی‌تر کنند.</translation>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>نمایش یا پنهان کردن دستورالعمل فقط خواندنی OkuFlow همیشه به Codex ارسال می‌شود</translation>
+            <translation>نمایش یا پنهان‌کردن دستورالعمل فقط‌خواندنی‌ای که OkuFlow همیشه به Codex می‌فرستد</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
@@ -2835,7 +2835,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
-            <translation>با فشار دادن توضیح، دستورالعمل‌های اختیاری با نمای دوربین ارسال می‌شوند</translation>
+            <translation>دستورالعمل‌های اختیاری که با فشردن Explain همراه نمای دوربین فرستاده می‌شوند</translation>
         </message>
         <message>
             <source>Installed
@@ -2851,19 +2851,19 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>GPU upload busy %1</source>
-            <translation>بارگذاری پردازنده گرافیکی مشغول است %1</translation>
+            <translation>بارگذاری GPU مشغول است: %1</translation>
         </message>
         <message>
             <source>encoder backlog %1</source>
-            <translation>بک لاگ رمزگذار %1</translation>
+            <translation>صف عقب‌افتادهٔ رمزگذار: %1</translation>
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
-            <translation>ضبط نمونه‌ها را رد می‌کند زیرا پیشرفت رمزگذار قابل بررسی نیست. در صورت ادامه ضبط، ضبط را متوقف و مجدداً شروع کنید.</translation>
+            <translation>ضبط به‌دلیل ناممکن‌بودن بررسی پیشرفت رمزگذار، از برخی نمونه‌ها می‌گذرد. اگر ادامه یافت، ضبط را متوقف و دوباره شروع کنید.</translation>
         </message>
         <message>
             <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
-            <translation>ضبط فریم‌های ویدیو را رد می‌کند زیرا صف رمزگذار پر است. وضوح ضبط را کاهش دهید یا در صورت ادامه ضبط، ضبط را متوقف و مجدداً شروع کنید.</translation>
+            <translation>ضبط به‌دلیل پر بودن صف رمزگذار، از برخی فریم‌های ویدیو می‌گذرد. وضوح ضبط را کاهش دهید یا اگر ادامه یافت، ضبط را متوقف و دوباره شروع کنید.</translation>
         </message>
         <message>
             <source>Waiting for phone…</source>
@@ -2871,7 +2871,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
-            <translation>دوربین OkuFlow را در تلفن باز کنید، کابل USB را وصل کنید و به اشکال‌زدایی USB اجازه دهید. OkuFlow اتصال را به طور خودکار بررسی می کند.</translation>
+            <translation>برنامهٔ OkuFlow Camera را در تلفن باز کنید، کابل USB را وصل کنید و اشکال‌زدایی USB را مجاز کنید. OkuFlow اتصال را خودکار بررسی می‌کند.</translation>
         </message>
         <message>
             <source>Set up OkuFlow</source>
@@ -2879,7 +2879,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
-            <translation>نصب کننده زمان اجرا ویندوز گنجانده شده است. ابزارهای اختیاری هوش مصنوعی از فروشندگان خود دانلود می شوند. هر نصب کننده قبل از اجرا تأیید می شود.</translation>
+            <translation>نصب‌کنندهٔ محیط اجرایی ویندوز همراه برنامه است. ابزارهای اختیاری هوش مصنوعی از وب‌سایت سازندگانشان دریافت می‌شوند. هر نصب‌کننده پیش از اجرا تأیید می‌شود.</translation>
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
@@ -2887,7 +2887,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
-            <translation>کتابخانه های ویندوز استفاده شده توسط OkuFlow. نصب از نصب کننده مایکروسافت ارائه شده استفاده می کند و ممکن است از سرپرست درخواست تأیید کند.</translation>
+            <translation>کتابخانه‌های ویندوز که OkuFlow به آن‌ها نیاز دارد. نصب با نصب‌کنندهٔ مایکروسافتِ همراه انجام می‌شود و ممکن است تأیید مدیر سیستم را بخواهد.</translation>
         </message>
         <message>
             <source>Install for Windows</source>
@@ -2895,19 +2895,19 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Install Microsoft Windows runtime</source>
-            <translation>زمان اجرا مایکروسافت ویندوز را نصب کنید</translation>
+            <translation>نصب محیط اجرایی Microsoft Windows</translation>
         </message>
         <message>
             <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>
-            <translation>از ZIP کامل OkuFlow برای اضافه کردن نصب کننده زمان اجرا ویندوز استفاده کنید.</translation>
+            <translation>برای داشتن نصب‌کنندهٔ محیط اجرایی ویندوز، فایل ZIP کامل OkuFlow را دریافت کنید.</translation>
         </message>
         <message>
             <source>The included Microsoft installer could not be verified. Download the complete OkuFlow ZIP again.</source>
-            <translation>نصب کننده مایکروسافت شامل تأیید نشد. زیپ کامل OkuFlow را دوباره دانلود کنید.</translation>
+            <translation>تأیید نصب‌کنندهٔ مایکروسافتِ همراه برنامه ممکن نشد. فایل ZIP کامل OkuFlow را دوباره دریافت کنید.</translation>
         </message>
         <message>
             <source>Windows could not start the elevated installer (error %1).</source>
-            <translation>ویندوز نتوانست نصب کننده بالا را راه اندازی کند (خطای %1).</translation>
+            <translation>ویندوز نتوانست نصب‌کننده را با دسترسی مدیر اجرا کند (خطای %1).</translation>
         </message>
         <message>
             <source>Microsoft installer running. Continue in the installer window.</source>

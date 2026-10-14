@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>מתחיל בכל חיבור. לחץ כדי להדליק או לכבות את נורית הטלפון.</translation>
+            <translation>כבויה עם כל חיבור. לחצו כדי להפעיל או לכבות את תאורת הטלפון.</translation>
         </message>
         <message>
             <source>Application</source>
@@ -33,7 +33,7 @@
         </message>
         <message>
             <source>Changes the interface immediately. In-progress assistant requests use the language selected when they started.</source>
-            <translation>משנה את הממשק באופן מיידי. בקשות מסייעות בתהליך משתמשות בשפה שנבחרה כשהן התחילו.</translation>
+            <translation>הממשק משתנה מיד. בקשות של העוזר שכבר מתבצעות משתמשות בשפה שנבחרה כשהחלו.</translation>
         </message>
         <message>
             <source>Language set to %1.</source>
@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>הקלד חלק משם הגדרה כדי לחשוף ולמקד בקרי התאמה.</translation>
+            <translation>הקלידו חלק משם ההגדרה כדי להציג את הפקדים התואמים ולהעביר אליהם את המיקוד.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -125,7 +125,7 @@
         </message>
         <message>
             <source>Viewport motion rate</source>
-            <translation>קצב תנועת Viewport</translation>
+            <translation>קצב התנועה באזור התצוגה</translation>
         </message>
         <message>
             <source>Auto (up to 120 FPS)</source>
@@ -133,11 +133,11 @@
         </message>
         <message>
             <source>Match display</source>
-            <translation>תצוגת התאמה</translation>
+            <translation>התאמה לקצב הרענון של המסך</translation>
         </message>
         <message>
             <source>Viewport framing</source>
-            <translation>מסגור נקודת מבט</translation>
+            <translation>מסגור אזור התצוגה</translation>
         </message>
         <message>
             <source>Fill (crop)</source>
@@ -173,7 +173,7 @@
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
-            <translation>מצלמה ורזולוציית הקלטה מקורית &amp;&amp; קצב פריימים</translation>
+            <translation>רזולוציית המצלמה וההקלטה המקורית &amp;&amp; קצב הפריימים</translation>
         </message>
         <message>
             <source>Automatic (driver's choice)</source>
@@ -213,7 +213,7 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>חידוד והתמקד</translation>
+            <translation>חידוד ומיקוד</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
@@ -225,7 +225,7 @@
         </message>
         <message>
             <source>Zoom %L1 times</source>
-            <translation>זום %L1 פעמים</translation>
+            <translation>הגדלה פי %L1</translation>
         </message>
         <message>
             <source>Gaussian Blur</source>
@@ -241,11 +241,11 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>חלק זמני</translation>
+            <translation>החלקה לאורך זמן</translation>
         </message>
         <message>
             <source>Blend:</source>
-            <translation>תערובת:</translation>
+            <translation>מיזוג:</translation>
         </message>
         <message>
             <source>Stabilize Image</source>
@@ -253,11 +253,11 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>יציב במיוחד (תחזיק מעמד לנער)</translation>
+            <translation>יציב במיוחד (שומר על יציבות בזמן רעידות)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
-            <translation>יישור מסך (Keystone)</translation>
+            <translation>יישור המסך (Keystone)</translation>
         </message>
         <message>
             <source>Correction tracking:</source>
@@ -289,11 +289,11 @@
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>שטח רקע</translation>
+            <translation>השטחת הרקע</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
-            <translation>טקסט מסתגל</translation>
+            <translation>טקסט אדפטיבי</translation>
         </message>
         <message>
             <source>Edge softness</source>
@@ -305,7 +305,7 @@
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>משקל שבץ</translation>
+            <translation>עובי הקו</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -329,7 +329,7 @@
         </message>
         <message>
             <source>Warn When Out of Focus</source>
-            <translation>אזהרה כאשר לא בפוקוס</translation>
+            <translation>התרעה כשהתמונה אינה ממוקדת</translation>
         </message>
         <message>
             <source>Suppress Glare</source>
@@ -345,7 +345,7 @@
         </message>
         <message>
             <source>Faster 2x mode (narrower view)</source>
-            <translation>מצב פי 2 מהיר יותר (תצוגה צרה יותר)</translation>
+            <translation>מצב מהיר פי 2 (שדה ראייה צר יותר)</translation>
         </message>
         <message>
             <source>Ignore 24 ms performance limit</source>
@@ -381,7 +381,7 @@
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
-            <translation>שמור את הציור בהערות כשאתה עוזב את Draw</translation>
+            <translation>שמירת הציור בהערות ביציאה ממצב הציור</translation>
         </message>
         <message>
             <source>AI Settings</source>
@@ -393,7 +393,7 @@
         </message>
         <message>
             <source>Open Notes</source>
-            <translation>פתח את הערות</translation>
+            <translation>פתיחת ההערות</translation>
         </message>
         <message>
             <source>Open my OkuFlow folder</source>
@@ -405,7 +405,7 @@
         </message>
         <message>
             <source>Setup &amp;&amp; Downloads...</source>
-            <translation>הגדרת &amp;&amp; הורדות...</translation>
+            <translation>התקנה &amp;&amp; הורדות...</translation>
         </message>
         <message>
             <source>Spatial Sharpen</source>
@@ -413,7 +413,7 @@
         </message>
         <message>
             <source>Backend</source>
-            <translation>אחורי</translation>
+            <translation>Backend</translation>
         </message>
         <message>
             <source>Sharpness</source>
@@ -437,15 +437,15 @@
         </message>
         <message>
             <source>Pipeline status</source>
-            <translation>מצב צינור</translation>
+            <translation>מצב צינור העיבוד</translation>
         </message>
         <message>
             <source>Performance percentiles</source>
-            <translation>אחוזי ביצועים</translation>
+            <translation>אחוזונים של זמני ביצוע</translation>
         </message>
         <message>
             <source>Collecting timing samples…</source>
-            <translation>אוסף דגימות תזמון...</translation>
+            <translation>נאספים נתוני תזמון…</translation>
         </message>
         <message>
             <source>Photo</source>
@@ -517,7 +517,7 @@
         </message>
         <message>
             <source>Redo</source>
-            <translation>בצע מחדש</translation>
+            <translation>חזרה על הפעולה</translation>
         </message>
         <message>
             <source>Save</source>
@@ -545,7 +545,7 @@
         </message>
         <message>
             <source>Ask about this view...</source>
-            <translation>שאל על הנוף הזה...</translation>
+            <translation>שאל על התצוגה הזו…</translation>
         </message>
         <message>
             <source>Ask</source>
@@ -585,7 +585,7 @@
         </message>
         <message>
             <source>Starting Codex...</source>
-            <translation>מתחיל את Codex...</translation>
+            <translation>מפעיל את Codex…</translation>
         </message>
         <message>
             <source>Ask about the current camera view.</source>
@@ -601,7 +601,7 @@
         </message>
         <message>
             <source>AI Settings sections</source>
-            <translation>קטעי הגדרות AI</translation>
+            <translation>מקטעים בהגדרות ה-AI</translation>
         </message>
         <message>
             <source>OpenAI-compatible server</source>
@@ -637,15 +637,15 @@
         </message>
         <message>
             <source>Allow coding commands and file changes</source>
-            <translation>אפשר פקודות קידוד ושינויי קבצים</translation>
+            <translation>לאפשר פקודות קוד ושינויים בקבצים</translation>
         </message>
         <message>
             <source>Required when coding is enabled</source>
-            <translation>נדרש כאשר קידוד מופעל</translation>
+            <translation>נדרש כשהרשאת הקוד מופעלת</translation>
         </message>
         <message>
             <source>Coding workspace:</source>
-            <translation>סביבת עבודה לקידוד:</translation>
+            <translation>תיקיית העבודה לקוד:</translation>
         </message>
         <message>
             <source>Assistant behavior</source>
@@ -657,7 +657,7 @@
         </message>
         <message>
             <source>OpenAI-compatible vision server</source>
-            <translation>שרת ראייה תואם OpenAI</translation>
+            <translation>שרת חזון תואם ל-OpenAI</translation>
         </message>
         <message>
             <source>Server URL:</source>
@@ -697,7 +697,7 @@
         </message>
         <message>
             <source>GPU stopped responding. Restart OkuFlow to resume video.</source>
-            <translation>GPU הפסיק להגיב. הפעל מחדש את OkuFlow כדי לחדש את הסרטון.</translation>
+            <translation>ה-GPU הפסיק להגיב. הפעילו מחדש את OkuFlow כדי לחדש את הווידאו.</translation>
         </message>
         <message>
             <source>Lecture notes could not be saved.</source>
@@ -709,7 +709,7 @@
         </message>
         <message>
             <source>Write lecture notes file</source>
-            <translation>כתוב קובץ הערות להרצאה</translation>
+            <translation>כתיבת קובץ הערות להרצאה</translation>
         </message>
         <message>
             <source>None</source>
@@ -797,7 +797,7 @@
         </message>
         <message>
             <source>%1 · %2 changed</source>
-            <translation>%1 · %2 השתנה</translation>
+            <translation>%1 · %2 השתנו</translation>
         </message>
         <message>
             <source>%1, heading, %2</source>
@@ -805,11 +805,11 @@
         </message>
         <message>
             <source>%1, heading, %2, %3 changed</source>
-            <translation>%1, כותרת, %2, %3 השתנה</translation>
+            <translation>%1, כותרת, %2, %3 השתנו</translation>
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>לא מותקן קול %1 - באמצעות הקול הנוכחי. התקן אחד תחת הגדרות Windows ← זמן ושפה ← דיבור.</translation>
+            <translation>לא מותקן קול %1 — נעשה שימוש בקול הנוכחי. אפשר להתקין קול בהגדרות Windows ← זמן ושפה ← דיבור.</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -833,11 +833,11 @@
         </message>
         <message>
             <source>No lecture notes yet — use Read, Explain, or Assistant to add text.</source>
-            <translation>עדיין אין הערות הרצאה - השתמש בקריאה, הסבר או עוזר כדי להוסיף טקסט.</translation>
+            <translation>עדיין אין הערות להרצאה. השתמשו ב״הקראה״, ״הסבר״ או ״העוזר״ כדי להוסיף טקסט.</translation>
         </message>
         <message>
             <source>OkuFlow Assistant</source>
-            <translation>OkuFlow עוזר</translation>
+            <translation>העוזר של OkuFlow</translation>
         </message>
         <message>
             <source>You</source>
@@ -857,11 +857,11 @@
         </message>
         <message>
             <source>Permanently delete this OkuFlow assistant conversation?</source>
-            <translation>למחוק לצמיתות את שיחת העוזר OkuFlow?</translation>
+            <translation>למחוק לצמיתות את השיחה הזו עם העוזר של OkuFlow?</translation>
         </message>
         <message>
             <source>Reconnect ChatGPT</source>
-            <translation>חבר מחדש את ChatGPT</translation>
+            <translation>התחבר מחדש ל־ChatGPT</translation>
         </message>
         <message>
             <source>Rename Conversation</source>
@@ -873,15 +873,15 @@
         </message>
         <message>
             <source>The OkuFlow Analysis folder is unavailable.</source>
-            <translation>תיקיית הניתוח OkuFlow אינה זמינה.</translation>
+            <translation>תיקיית Analysis של OkuFlow אינה זמינה.</translation>
         </message>
         <message>
             <source>Viewport motion limited to %1 FPS by this display.</source>
-            <translation>תנועת נקודת מבט מוגבלת ל-%1 FPS על ידי תצוגה זו.</translation>
+            <translation>קצב התנועה באזור התצוגה מוגבל ל־%1 FPS בגלל המסך הזה.</translation>
         </message>
         <message>
             <source>Vision model: %1</source>
-            <translation>דגם חזון: %1</translation>
+            <translation>מודל ראייה: %1</translation>
         </message>
         <message>
             <source>Automatic screen correction continuing.</source>
@@ -897,11 +897,11 @@
         </message>
         <message>
             <source>Choose OkuFlow Folder</source>
-            <translation>בחר תיקיה OkuFlow</translation>
+            <translation>בחירת תיקיית OkuFlow</translation>
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>לכידת מצלמת GPU פעילה עם החזרה להעתקה בטוחה.</translation>
+            <translation>לכידת המצלמה ב‑GPU פעילה, עם שימוש בעותק גיבוי בטוח.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -909,27 +909,27 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>התעלמה ממגבלת הביצועים NVIDIA Super Resolution.</translation>
+            <translation>מגבלת הביצועים של NVIDIA Super Resolution לא הוחלה.</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
-            <translation>NVIDIA Super Resolution מגבלת הביצועים שוחזרה.</translation>
+            <translation>מגבלת הביצועים של NVIDIA Super Resolution שוחזרה.</translation>
         </message>
         <message>
             <source>New OkuFlow files will be saved in %1.</source>
-            <translation>קבצי OkuFlow חדשים יישמרו ב%1.</translation>
+            <translation>קבצים חדשים של OkuFlow יישמרו בתיקייה %1.</translation>
         </message>
         <message>
             <source>Open OkuFlow Folder</source>
-            <translation>פתח את התיקיה OkuFlow</translation>
+            <translation>פתיחת תיקיית OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow cannot use the selected folder.</source>
-            <translation>OkuFlow לא יכול להשתמש בתיקייה שנבחרה.</translation>
+            <translation>לא ניתן להשתמש בתיקייה שנבחרה.</translation>
         </message>
         <message>
             <source>Opened your OkuFlow folder.</source>
-            <translation>פתח את התיקיה OkuFlow שלך.</translation>
+            <translation>תיקיית OkuFlow שלך נפתחה.</translation>
         </message>
         <message>
             <source>Recording stopped because the microphone selection changed.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>תיקון המסך זז אחורה והמעקב הופסק.</translation>
+            <translation>תיקון המסך חזר לאחור והמעקב נעצר.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -953,7 +953,7 @@
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>בדיקת GPU ולכידת תאימות בתהליך מבודד...</translation>
+            <translation>בודק לכידה באמצעות GPU ולכידה במצב תאימות בתהליך נפרד...</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -961,7 +961,7 @@
         </message>
         <message>
             <source>The OkuFlow folder is unavailable.</source>
-            <translation>התיקיה OkuFlow אינה זמינה.</translation>
+            <translation>תיקיית OkuFlow אינה זמינה.</translation>
         </message>
         <message>
             <source>The isolated camera test could not start: %1</source>
@@ -969,12 +969,12 @@
         </message>
         <message>
             <source>Using the next screen correction.</source>
-            <translation>שימוש בתיקון המסך הבא.</translation>
+            <translation>משתמש בתיקון המסך הבא.</translation>
         </message>
         <message>
             <source>Windows could not open:
 %1</source>
-            <translation>חלונות לא הצליחו לפתוח:
+            <translation>Windows לא הצליחה לפתוח:
 %1</translation>
         </message>
         <message>
@@ -987,19 +987,19 @@
         </message>
         <message>
             <source>Annotated view could not be saved.</source>
-            <translation>לא ניתן היה לשמור את התצוגה המוערת.</translation>
+            <translation>לא ניתן היה לשמור את התצוגה עם ההערות.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>תצוגה מוערת לא נשמרה: לא ניתן היה להעמיד את התמונה בתור.</translation>
+            <translation>התצוגה עם ההערות לא נשמרה: לא ניתן היה להוסיף את התמונה לתור.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>תצוגה מוערת לא נשמרה: התמונה עדיין נכתבת. נסה שוב.</translation>
+            <translation>התצוגה עם ההערות לא נשמרה: שומר התמונות עסוק. נסו שוב.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
-            <translation>תצוגה מוערת לא נשמרה: נקודת התצוגה לא הייתה זמינה.</translation>
+            <translation>התצוגה עם ההערות לא נשמרה: אזור התצוגה לא היה זמין.</translation>
         </message>
         <message>
             <source>Camera Error</source>
@@ -1011,19 +1011,19 @@
         </message>
         <message>
             <source>Failed to start camera capture</source>
-            <translation>התחלת לכידת המצלמה נכשלה</translation>
+            <translation>הפעלת לכידת המצלמה נכשלה</translation>
         </message>
         <message>
             <source>GPU camera acceleration could not start: %1</source>
-            <translation>האצת מצלמת GPU לא הייתה יכולה להתחיל: %1</translation>
+            <translation>לא ניתן היה להפעיל האצת מצלמה באמצעות GPU: %1</translation>
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>עיבוד GPU ממשיך להיכשל - מציג וידאו לא מעובד.</translation>
+            <translation>עיבוד ה‑GPU נכשל שוב ושוב — מוצג וידאו ללא עיבוד.</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
-            <translation>לכידת מצלמה מואצת ב-GPU עברה את אימות ההפעלה.</translation>
+            <translation>לכידת המצלמה המואצת באמצעות GPU עברה את בדיקת האתחול.</translation>
         </message>
         <message>
             <source>Modes unavailable: %1</source>
@@ -1043,23 +1043,23 @@
         </message>
         <message>
             <source>Photo not saved: the image could not be queued.</source>
-            <translation>התמונה לא נשמרה: לא ניתן היה להציב את התמונה בתור.</translation>
+            <translation>התמונה לא נשמרה: לא ניתן היה להוסיף אותה לתור.</translation>
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>התמונה לא נשמרה: התמונה עדיין נכתבת. נסה שוב.</translation>
+            <translation>התמונה לא נשמרה: שומר התמונות עסוק. נסו שוב.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
-            <translation>התמונה לא נשמרה: לא ניתן היה להמיר את מסגרת המצלמה המקורית.</translation>
+            <translation>התמונה לא נשמרה: לא ניתן היה להמיר את פריים המקור מהמצלמה.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be read back.</source>
-            <translation>התמונה לא נשמרה: לא ניתן היה לקרוא את מסגרת המצלמה המקורית.</translation>
+            <translation>התמונה לא נשמרה: לא ניתן היה לקרוא מחדש את פריים המקור מהמצלמה.</translation>
         </message>
         <message>
             <source>Photo not saved: the processed or original frame was unavailable.</source>
-            <translation>התמונה לא נשמרה: המסגרת המעובדת או המקורית לא הייתה זמינה.</translation>
+            <translation>התמונה לא נשמרה: הפריים המעובד או פריים המקור לא היו זמינים.</translation>
         </message>
         <message>
             <source>Reconnecting to camera…</source>
@@ -1071,7 +1071,7 @@
         </message>
         <message>
             <source>Saving annotated view to lecture notes...</source>
-            <translation>שומר תצוגה מוערת להערות ההרצאה...</translation>
+            <translation>שומר את התצוגה עם ההערות בהערות ההרצאה...</translation>
         </message>
         <message>
             <source>Saving original and processed photos...</source>
@@ -1079,7 +1079,7 @@
         </message>
         <message>
             <source>The camera GPU texture could not be converted for CUDA.</source>
-            <translation>לא ניתן היה להמיר את מרקם ה-GPU של המצלמה עבור CUDA.</translation>
+            <translation>לא ניתן היה להמיר את מרקם ה‑GPU של המצלמה לשימוש ב‑CUDA.</translation>
         </message>
         <message>
             <source>Annotated view</source>
@@ -1095,11 +1095,11 @@
         </message>
         <message>
             <source>Recording could not start.</source>
-            <translation>ההקלטה לא הצליחה להתחיל.</translation>
+            <translation>לא ניתן היה להתחיל את ההקלטה.</translation>
         </message>
         <message>
             <source>Recording could not start: %1</source>
-            <translation>ההקלטה לא הייתה יכולה להתחיל: %1</translation>
+            <translation>לא ניתן היה להתחיל את ההקלטה: %1</translation>
         </message>
         <message>
             <source>Recording is starting...</source>
@@ -1115,7 +1115,7 @@
         </message>
         <message>
             <source>Recording stopped because an encoder rejected a frame.</source>
-            <translation>ההקלטה הופסקה מכיוון שמקודד דחה מסגרת.</translation>
+            <translation>ההקלטה הופסקה כי המקודד דחה פריים.</translation>
         </message>
         <message>
             <source>Recording stopped because the audio encoder rejected a sample.</source>
@@ -1123,7 +1123,7 @@
         </message>
         <message>
             <source>Recording stopped before the first frame was written.</source>
-            <translation>ההקלטה הופסקה לפני כתיבת הפריים הראשון.</translation>
+            <translation>ההקלטה הופסקה לפני שנכתב הפריים הראשון.</translation>
         </message>
         <message>
             <source>Stopping recording...</source>
@@ -1131,11 +1131,11 @@
         </message>
         <message>
             <source>The camera mode changed. Recording continues in part %1.</source>
-            <translation>מצב המצלמה השתנה. ההקלטה נמשכת בחלקה %1.</translation>
+            <translation>מצב המצלמה השתנה. ההקלטה נמשכת בחלק %1.</translation>
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
-            <translation>בד ההקלטה לא חוקי.</translation>
+            <translation>משטח ההקלטה אינו תקין.</translation>
         </message>
         <message>
             <source>No frames were dropped.</source>
@@ -1147,15 +1147,15 @@
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>אודיו: %1 בלוקים נפטרו לפני הקידוד, %2 נדחו על ידי מגבלת הקלט.</translation>
+            <translation>שמע: %1 מקטעים הושמטו לפני הקידוד, ו־%2 נדחו בגלל מגבלת הקלט.</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
-            <translation>%1 מסגרות הושמטו (%2).</translation>
+            <translation>%1 פריימים הושמטו (%2).</translation>
         </message>
         <message>
             <source>%1 frames used an estimated timestamp.</source>
-            <translation>%1 מסגרות השתמשו בחותמת זמן משוערת.</translation>
+            <translation>לפריימים %1 הוקצתה חותמת זמן משוערת.</translation>
         </message>
         <message>
             <source>Original video</source>
@@ -1171,7 +1171,7 @@
         </message>
         <message>
             <source>CPU/system memory</source>
-            <translation>זיכרון מעבד/מערכת</translation>
+            <translation>זיכרון ה‑CPU / זיכרון המערכת</translation>
         </message>
         <message>
             <source>direct GPU</source>
@@ -1179,15 +1179,15 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>מקורי ומעובד עם GPU</translation>
+            <translation>מקוריים ומעובדים שמוזנים דרך ה‑GPU</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>מקור GPU עם קריאה חוזרת של עובד</translation>
+            <translation>מקור GPU עם קריאה חוזרת בידי תהליך עבודה</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
-            <translation>בקשת עוזר נוספת כבר פועלת.</translation>
+            <translation>בקשה נוספת לעוזר כבר מתבצעת.</translation>
         </message>
         <message>
             <source>Assistant stopped.</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex הכנת התמונה עמוסה. נסה שוב בעוד רגע.</translation>
+            <translation>הכנת התמונה ב‑Codex מתבצעת כרגע. נסו שוב בעוד רגע.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1207,7 +1207,7 @@
         </message>
         <message>
             <source>Failed to encode frame for VLM request.</source>
-            <translation>קידוד המסגרת עבור בקשת VLM נכשל.</translation>
+            <translation>לא ניתן היה לקודד את הפריים עבור בקשת VLM.</translation>
         </message>
         <message>
             <source>Failed to prepare the current view for Codex.</source>
@@ -1215,11 +1215,11 @@
         </message>
         <message>
             <source>No camera frame is available to attach.</source>
-            <translation>אין מסגרת למצלמה זמינה לחיבור.</translation>
+            <translation>אין פריים מהמצלמה שאפשר לצרף.</translation>
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>שיחות מתמיד של Assistant דורשות את ספק המנוי Codex.</translation>
+            <translation>שיחות Assistant שנשמרות לאורך זמן דורשות שימוש בספק המנויים Codex.</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1231,7 +1231,7 @@
         </message>
         <message>
             <source>Querying VLM...</source>
-            <translation>מחפש VLM...</translation>
+            <translation>שולח שאילתה ל‑VLM...</translation>
         </message>
         <message>
             <source>Scene explanation</source>
@@ -1239,15 +1239,15 @@
         </message>
         <message>
             <source>Scene explanation is busy with a previous request. Try again in a moment.</source>
-            <translation>הסבר הסצנה עסוק בבקשה קודמת. נסה שוב בעוד רגע.</translation>
+            <translation>הסבר הסצנה עדיין מעבד בקשה קודמת. נסו שוב בעוד רגע.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt</source>
-            <translation>שליחת המסגרת וההודעה הנוכחית של המצלמה</translation>
+            <translation>שולח את פריים המצלמה הנוכחי ואת ההנחיה</translation>
         </message>
         <message>
             <source>Sending the prompt only</source>
-            <translation>שליחת הבקשה בלבד</translation>
+            <translation>שולח את ההנחיה בלבד</translation>
         </message>
         <message>
             <source>Text on screen</source>
@@ -1259,7 +1259,7 @@
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
-            <translation>הכנת תמונת VLM עמוסה. נסה שוב בעוד רגע.</translation>
+            <translation>הכנת התמונה עבור VLM מתבצעת כרגע. נסו שוב בעוד רגע.</translation>
         </message>
         <message>
             <source>VLM ready.</source>
@@ -1291,11 +1291,11 @@
         </message>
         <message>
             <source>Codex CLI Path</source>
-            <translation>Codex CLI נתיב</translation>
+            <translation>נתיב Codex CLI</translation>
         </message>
         <message>
             <source>Codex Model</source>
-            <translation>Codex דגם</translation>
+            <translation>מודל Codex</translation>
         </message>
         <message>
             <source>Codex Reasoning</source>
@@ -1307,7 +1307,7 @@
         </message>
         <message>
             <source>Built-in Codex Prompt</source>
-            <translation>מובנה Codex הנחיה</translation>
+            <translation>הנחיית Codex המובנית</translation>
         </message>
         <message>
             <source>VLM Server URL</source>
@@ -1331,11 +1331,11 @@
         </message>
         <message>
             <source>Preview Read Aloud Voice</source>
-            <translation>תצוגה מקדימה של קריאת קול בקול</translation>
+            <translation>השמעת קול ההקראה לדוגמה</translation>
         </message>
         <message>
             <source>Write Lecture Notes File</source>
-            <translation>כתוב קובץ הערות להרצאה</translation>
+            <translation>כתיבת קובץ הערות להרצאה</translation>
         </message>
         <message>
             <source>Loading installed Windows voices...</source>
@@ -1347,7 +1347,7 @@
         </message>
         <message>
             <source>Text-to-speech is unavailable in this build</source>
-            <translation>טקסט לדיבור אינו זמין במבנה הזה</translation>
+            <translation>הקראת טקסט אינה זמינה בגרסה הזו</translation>
         </message>
         <message>
             <source>Optional for local servers</source>
@@ -1355,15 +1355,15 @@
         </message>
         <message>
             <source>Choose an existing workspace folder before enabling coding.</source>
-            <translation>בחר תיקיית סביבת עבודה קיימת לפני הפעלת קידוד.</translation>
+            <translation>כדי להפעיל את מצב הקוד, בחרו תחילה תיקיית סביבת עבודה קיימת.</translation>
         </message>
         <message>
             <source>Coding Workspace Required</source>
-            <translation>נדרשת סביבת עבודה בקידוד</translation>
+            <translation>נדרשת תיקיית סביבת עבודה לקוד</translation>
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
-            <translation>מצב הערות מופעל. כלי עט.</translation>
+            <translation>מצב ההערות פעיל. כלי עט.</translation>
         </message>
         <message>
             <source>Annotation options</source>
@@ -1375,11 +1375,11 @@
         </message>
         <message>
             <source>Annotation thickness</source>
-            <translation>עובי ביאור</translation>
+            <translation>עובי הקו</translation>
         </message>
         <message>
             <source>Annotation tool</source>
-            <translation>כלי הערות</translation>
+            <translation>כלי סימון</translation>
         </message>
         <message>
             <source>Clear annotations</source>
@@ -1403,7 +1403,7 @@
         </message>
         <message>
             <source>Done drawing</source>
-            <translation>סיימתי לצייר</translation>
+            <translation>סיום הציור</translation>
         </message>
         <message>
             <source>Draw a dashed stroke with transparent gaps.</source>
@@ -1415,7 +1415,7 @@
         </message>
         <message>
             <source>Draw a straight line. Shortcut L.</source>
-            <translation>צייר קו ישר. קיצור ל.</translation>
+            <translation>ציור קו ישר. קיצור: L.</translation>
         </message>
         <message>
             <source>Draw an ellipse.</source>
@@ -1423,11 +1423,11 @@
         </message>
         <message>
             <source>Draw an uninterrupted stroke.</source>
-            <translation>צייר שבץ ללא הפרעה.</translation>
+            <translation>צייר קו רציף.</translation>
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
-            <translation>צייר ביד חופשית בתצוגת המצלמה. קיצור פ.</translation>
+            <translation>ציור ביד חופשית על תצוגת המצלמה. קיצור: P.</translation>
         </message>
         <message>
             <source>Draw mode off.</source>
@@ -1435,11 +1435,11 @@
         </message>
         <message>
             <source>Draw rectangles or ellipses. Shortcut S.</source>
-            <translation>צייר מלבנים או אליפסות. קיצור דרך ש.</translation>
+            <translation>ציור מלבנים או אליפסות. קיצור: S.</translation>
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>צייר, בחר, שנה גודל, שמור או נקה הערות המעוגנות לסצינת המצלמה.</translation>
+            <translation>ציירו, בחרו, שנו גודל, שמרו או נקו סימונים המעוגנים לסצנת המצלמה.</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1451,15 +1451,15 @@
         </message>
         <message>
             <source>Erase annotation tool</source>
-            <translation>כלי מחק הערות</translation>
+            <translation>כלי למחיקת סימונים</translation>
         </message>
         <message>
             <source>Erase tool</source>
-            <translation>כלי למחוק</translation>
+            <translation>כלי מחיקה</translation>
         </message>
         <message>
             <source>Leave Draw mode.</source>
-            <translation>עזוב את מצב ציור.</translation>
+            <translation>יציאה ממצב ציור</translation>
         </message>
         <message>
             <source>Lecture annotation canvas</source>
@@ -1471,11 +1471,11 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>העבר את כלי ההערות</translation>
+            <translation>כלי להעברת הערות</translation>
         </message>
         <message>
             <source>Move tool</source>
-            <translation>העברת כלי</translation>
+            <translation>כלי הזזה</translation>
         </message>
         <message>
             <source>Nothing selected</source>
@@ -1495,7 +1495,7 @@
         </message>
         <message>
             <source>Redo annotation</source>
-            <translation>בצע מחדש הערה</translation>
+            <translation>בצע שוב את פעולת ההערה</translation>
         </message>
         <message>
             <source>Remove a complete annotation. Shortcut E.</source>
@@ -1507,11 +1507,11 @@
         </message>
         <message>
             <source>Save annotated view</source>
-            <translation>שמור תצוגה מוערת</translation>
+            <translation>שמור תצוגה עם סימונים</translation>
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>שמור את התצוגה המסומנת להערות ההרצאה. בקרת קיצור S.</translation>
+            <translation>שמור את התצוגה עם הסימונים בהערות ההרצאה. קיצור מקשים: Ctrl+S.</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
@@ -1519,7 +1519,7 @@
         </message>
         <message>
             <source>Selected annotation scaled</source>
-            <translation>קנה המידה של ההערה שנבחרה</translation>
+            <translation>גודל הסימון שנבחר השתנה</translation>
         </message>
         <message>
             <source>Selection cleared</source>
@@ -1563,11 +1563,11 @@
         </message>
         <message>
             <source>Undo annotation</source>
-            <translation>בטל את ההערה</translation>
+            <translation>בטל את פעולת ההערה האחרונה</translation>
         </message>
         <message>
             <source>Undo the last edit. Shortcut Control Z.</source>
-            <translation>בטל את העריכה האחרונה. בקרת קיצור Z.</translation>
+            <translation>בטל את העריכה האחרונה. קיצור מקשים: Ctrl+Z.</translation>
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
@@ -1575,7 +1575,7 @@
         </message>
         <message>
             <source>Ask Assistant</source>
-            <translation>תשאל את עוזר</translation>
+            <translation>שאל את העוזר</translation>
         </message>
         <message>
             <source>Assistive result</source>
@@ -1583,11 +1583,11 @@
         </message>
         <message>
             <source>Assistive result text</source>
-            <translation>טקסט תוצאה מסייע</translation>
+            <translation>טקסט התוצאה של כלי העזר</translation>
         </message>
         <message>
             <source>Assistive result title</source>
-            <translation>כותרת תוצאה מסייעת</translation>
+            <translation>כותרת התוצאה של כלי העזר</translation>
         </message>
         <message>
             <source>Assistive results</source>
@@ -1619,11 +1619,11 @@
         </message>
         <message>
             <source>Speak the current assistant result</source>
-            <translation>אמור את תוצאת העוזר הנוכחית</translation>
+            <translation>הקרא בקול את התשובה הנוכחית של העוזר</translation>
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>תוצאת עוזר סטרימינג. השתמש במקשי החצים כדי לקרוא את הטקסט.</translation>
+            <translation>התשובה של העוזר מתקבלת בזמן אמת. השתמש במקשי החצים כדי לקרוא את הטקסט.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1631,7 +1631,7 @@
         </message>
         <message>
             <source>Apply custom</source>
-            <translation>החל מותאם אישית</translation>
+            <translation>החל הגדרה מותאמת אישית</translation>
         </message>
         <message>
             <source>Background color</source>
@@ -1687,7 +1687,7 @@
         </message>
         <message>
             <source>Gradient</source>
-            <translation>שיפוע</translation>
+            <translation>מעבר צבע</translation>
         </message>
         <message>
             <source>Number of color stops</source>
@@ -1695,7 +1695,7 @@
         </message>
         <message>
             <source>Posterize</source>
-            <translation>פוסטריזציה</translation>
+            <translation>הפחתת מספר גווני הצבע</translation>
         </message>
         <message>
             <source>Reading colors</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>השתמש ברצועות צבע קשות</translation>
+            <translation>השתמש ברצועות צבע חדות</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1763,11 +1763,11 @@
         </message>
         <message>
             <source>Codex connection status</source>
-            <translation>Codex מצב חיבור</translation>
+            <translation>מצב החיבור של Codex</translation>
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex שימוש</translation>
+            <translation>שימוש ב-Codex</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>שולט בהזזה חלקה ובמצגת זום; קצב הפריימים של המצלמה אינו משתנה</translation>
+            <translation>הפקד משפיע על החלקות של הזזת התצוגה וההגדלה; קצב הפריימים של המצלמה לא משתנה</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1815,11 +1815,11 @@
         </message>
         <message>
             <source>Extra Stable on</source>
-            <translation>אקסטרה יציב דולק</translation>
+            <translation>Extra Stable מופעל</translation>
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>מילוי משתמש בשדה התצוגה המלא ללא מתיחה; התאמה משמרת את כל התמונה עם פסים</translation>
+            <translation>מילוי מנצל את כל אזור התצוגה בלי למתוח את התמונה; התאמה מציגה את התמונה כולה עם שוליים</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1827,11 +1827,11 @@
         </message>
         <message>
             <source>Finishing</source>
-            <translation>גימור</translation>
+            <translation>מסיים...</translation>
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>קפא על הפריים החד האחרון במהלך חבטה, ואז חזור בצורה חלקה לווידאו חי</translation>
+            <translation>הקפא את התמונה החדה האחרונה בזמן טלטלה, ואז חזור בהדרגה לתמונה החיה</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1851,7 +1851,7 @@
         </message>
         <message>
             <source>Keep It Steady</source>
-            <translation>שמור על זה יציב</translation>
+            <translation>ייצוב יציב</translation>
         </message>
         <message>
             <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>נעל את תצוגת המצלמה המותקנת באמצעות ייצוב CUDA בעוצמה מלאה</translation>
+            <translation>ייצב את תמונת המצלמה במלוא העוצמה באמצעות CUDA</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1879,7 +1879,7 @@
         </message>
         <message>
             <source>NVIDIA Image Scaling (default)</source>
-            <translation>NVIDIA קנה מידה תמונה (ברירת מחדל)</translation>
+            <translation>NVIDIA Image Scaling (ברירת מחדל)</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution status</source>
@@ -1887,11 +1887,11 @@
         </message>
         <message>
             <source>NVIDIA Video Effects runtime installed</source>
-            <translation>NVIDIA Video Effects מותקן זמן ריצה</translation>
+            <translation>סביבת זמן הריצה של NVIDIA Video Effects מותקנת</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>NVIDIA Video Effects זמן ריצה לא מותקן; השתמש בהגדרות והורדות</translation>
+            <translation>סביבת זמן הריצה של NVIDIA Video Effects לא מותקנת; עבור אל „התקנה והורדות”</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>פתיחת פקדים ותכונות עזרה</translation>
+            <translation>פתח את העזרה על הפקדים והתכונות</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1919,11 +1919,11 @@
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
-            <translation>OkuFlow מדריך פקדים ותכונות</translation>
+            <translation>מדריך הפקדים והתכונות של OkuFlow</translation>
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
-            <translation>שכף סמן אדום במוקד הזום הנוכחי</translation>
+            <translation>הצג סמן אדום במוקד ההגדלה הנוכחי</translation>
         </message>
         <message>
             <source>Previous Advanced section</source>
@@ -1971,11 +1971,11 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>אפס את התמונה בבעלות הפרופיל ואת הכוונון המסייע לברירות המחדל</translation>
+            <translation>אפס לברירות המחדל את הגדרות התמונה והסיוע של הפרופיל</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
-            <translation>שנה גודל הגדרות מתקדמות</translation>
+            <translation>שנה את גודל חלונית ההגדרות המתקדמות</translation>
         </message>
         <message>
             <source>Rotate input/output clockwise</source>
@@ -1983,15 +1983,15 @@
         </message>
         <message>
             <source>Runtime not installed; use Setup &amp; Downloads</source>
-            <translation>זמן ריצה לא מותקן; השתמש בהגדרות והורדות</translation>
+            <translation>סביבת זמן הריצה לא מותקנת; עבור אל „התקנה והורדות”</translation>
         </message>
         <message>
             <source>Save an annotated snapshot to lecture notes when Draw mode closes.</source>
-            <translation>שמור תמונת מצב מוערת להערות הרצאה כאשר מצב ציור נסגר.</translation>
+            <translation>כשמצב הציור נסגר, שמור צילום מסך עם הסימונים בהערות ההרצאה.</translation>
         </message>
         <message>
             <source>See in Low Light</source>
-            <translation>ראה באור נמוך</translation>
+            <translation>הצג בתאורה חלשה</translation>
         </message>
         <message>
             <source>Sharp Text</source>
@@ -2019,7 +2019,7 @@
         </message>
         <message>
             <source>Steady Text</source>
-            <translation>טקסט קבוע</translation>
+            <translation>ייצוב טקסט</translation>
         </message>
         <message>
             <source>Stop Automatic Screen Correction</source>
@@ -2031,15 +2031,15 @@
         </message>
         <message>
             <source>Unavailable in this build</source>
-            <translation>לא זמין במבנה הזה</translation>
+            <translation>לא זמין בגרסה הזאת</translation>
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>השתמש ב-NVIDIA Video Effects SuperRes בזום של 1.33x ומעלה; יורד חזרה לשקלים אוטומטית</translation>
+            <translation>השתמש ב-NVIDIA Video Effects SuperRes בהגדלה של פי 1.33 ומעלה; במקרה הצורך, המערכת תחזור אוטומטית ל-NIS</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
-            <translation>הגדרת נקודת מבט משותפת לכל הפרופילים.</translation>
+            <translation>הגדרת אזור התצוגה משותפת לכל הפרופילים.</translation>
         </message>
         <message>
             <source>Zoom In More</source>
@@ -2085,7 +2085,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA installer running. Continue in the vendor installer window.</source>
-            <translation>NVIDIA מתקין פועל. המשך בחלון המתקין של הספק.</translation>
+            <translation>תוכנית ההתקנה של NVIDIA פועלת. המשך בחלון ההתקנה של הספק.</translation>
         </message>
         <message>
             <source>Not installed</source>
@@ -2093,11 +2093,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>לא מותקן. התקנה מורידה את החבילה עבור %1 GPUs.</translation>
+            <translation>לא מותקן. לחיצה על „התקנה” תוריד את החבילה עבור כרטיסי GPU מסוג %1.</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
-            <translation>פתח את תיקיית ההתקנה Codex CLI</translation>
+            <translation>פתח את תיקיית ההתקנה של Codex CLI</translation>
         </message>
         <message>
             <source>Open Codex CLI setup guide</source>
@@ -2117,7 +2117,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Open the NVIDIA runtime uninstaller?</source>
-            <translation>האם לפתוח את תוכנית הסרת זמן הריצה NVIDIA?</translation>
+            <translation>לפתוח את תוכנית הסרת סביבת זמן הריצה של NVIDIA?</translation>
         </message>
         <message>
             <source>Open the folder containing the detected Codex CLI</source>
@@ -2125,11 +2125,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Open the official Codex CLI documentation</source>
-            <translation>פתח את התיעוד הרשמי Codex CLI</translation>
+            <translation>פתח את התיעוד הרשמי של Codex CLI</translation>
         </message>
         <message>
             <source>OkuFlow Setup Assistant</source>
-            <translation>OkuFlow עוזר התקנה</translation>
+            <translation>עוזר ההתקנה של OkuFlow</translation>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
@@ -2137,11 +2137,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Retrying from the alternate vendor host...</source>
-            <translation>מנסה שוב מהמארח של הספק החלופי...</translation>
+            <translation>מנסה שוב משרת חלופי של הספק...</translation>
         </message>
         <message>
             <source>Setup Assistant</source>
-            <translation>עוזר הגדרות</translation>
+            <translation>עוזר ההתקנה</translation>
         </message>
         <message>
             <source>Setup Guide</source>
@@ -2157,11 +2157,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Setup status</source>
-            <translation>סטטוס הגדרה</translation>
+            <translation>מצב ההתקנה</translation>
         </message>
         <message>
             <source>The Setup Assistant remains available from Advanced settings</source>
-            <translation>עוזר ההתקנה נשאר זמין מהגדרות מתקדמות</translation>
+            <translation>אפשר לפתוח את עוזר ההתקנה גם דרך „הגדרות מתקדמות”</translation>
         </message>
         <message>
             <source>The downloaded installer could not be opened for verification.</source>
@@ -2189,7 +2189,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>יש להסיר עותק זה בכל המערכת באמצעות אפליקציות מותקנות של Windows</translation>
+            <translation>יש להסיר את העותק הזה דרך „יישומים מותקנים” ב-Windows</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2205,7 +2205,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Verified. Installing the official Codex CLI...</source>
-            <translation>מְאוּמָת. מתקין את הרשמי Codex CLI...</translation>
+            <translation>האימות הצליח. מתקין את Codex CLI הרשמי...</translation>
         </message>
         <message>
             <source>Verified. Starting installer...</source>
@@ -2229,15 +2229,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>ווים מסייעים: הסצנה הסבר</translation>
+            <translation>תכונות עזר: הסבר סצנה</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>ווים מסייעים: הסצנה הסבר עם שכבת-על</translation>
+            <translation>תכונות עזר: הסבר סצנה עם שכבת־על</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
-            <translation>תצורה מותאמת אישית מ-Advanced Tuning. שמור אותו כאפשרות מהירה כשזה מרגיש נכון.</translation>
+            <translation>תצורה מותאמת אישית מתוך Advanced Tuning. שמור אותה כאפשרות מהירה כשתהיה מרוצה ממנה.</translation>
         </message>
         <message>
             <source>Current quick mode description</source>
@@ -2281,7 +2281,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>%1 download progress</source>
-            <translation>%1 התקדמות ההורדה</translation>
+            <translation>התקדמות ההורדה של %1</translation>
         </message>
         <message>
             <source>Install %1</source>
@@ -2333,7 +2333,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA ייחוס מקסין</translation>
+            <translation>ייחוס ל־NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2349,7 +2349,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>תיקון המסך הבא, או מצא תיקון אחד חדש.%1</translation>
+            <translation>עבור לתיקון המסך הבא, או חפש תיקון חדש.%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2357,7 +2357,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>OkuFlow Lecture Notes</source>
-            <translation>OkuFlow הערות הרצאה</translation>
+            <translation>הערות הרצאה של OkuFlow</translation>
         </message>
         <message>
             <source>Started %1</source>
@@ -2413,7 +2413,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Conversation exported to %1.</source>
-            <translation>השיחה מיוצאת אל %1.</translation>
+            <translation>השיחה יוצאה אל %1.</translation>
         </message>
         <message>
             <source>The paired photos could not be saved, so no files were kept. Try again.</source>
@@ -2425,7 +2425,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The saved OkuFlow folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
-            <translation>לא ניתן להשתמש בתיקייה השמורה OkuFlow (%1). הקבצים יעברו לתיקיית ברירת המחדל של המסמכים עד שתבחר תיקיה חדשה.</translation>
+            <translation>לא ניתן להשתמש בתיקיית OkuFlow השמורה (%1). הקבצים יישמרו בתיקיית המסמכים המוגדרת כברירת מחדל עד לבחירת תיקייה חדשה.</translation>
         </message>
         <message>
             <source>Lecture transcript</source>
@@ -2481,19 +2481,19 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>שולח את המסגרת וההודעה הנוכחית של המצלמה אל Codex. שיחה: שיחת הסבר נשמרה, בהמשך כל הסבר. כלי אינטרנט: חסום. שינויי קידוד וקבצים: חסום.</translation>
+            <translation>שולח ל־Codex את תמונת המצלמה הנוכחית ואת ההנחיה. שיחה: שיחת Explain שמורה, שכל פעולת Explain ממשיכה. גישה לאינטרנט באמצעות כלים: חסומה. כתיבת קוד ושינוי קבצים: חסומים.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>שולח את המסגרת וההודעה הנוכחית של המצלמה אל Codex. שיחה: זמנית, חדשה לכל קריאה. כלי אינטרנט: חסום. שינויי קידוד וקבצים: חסום.</translation>
+            <translation>שולח ל־Codex את תמונת המצלמה הנוכחית ואת ההנחיה. שיחה: זמנית, חדשה בכל פעולת Read. גישה לאינטרנט באמצעות כלים: חסומה. כתיבת קוד ושינוי קבצים: חסומים.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>שליחת המסגרת הנוכחית של המצלמה, הבקשה ואחרונה הסבר תשובות ל-%1 (נקודת קצה מקומית). שיחה: אחרונות הסבר תשובות, נשמר בזיכרון בלבד. כלי קידוד: לא זמין.</translation>
+            <translation>שולח ל־%1 (נקודת קצה מקומית) את תמונת המצלמה הנוכחית, את ההנחיה ואת התשובות האחרונות של Explain. שיחה: התשובות האחרונות של Explain נשמרות בזיכרון בלבד. כלי קידוד: לא זמינים.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>שליחת המסגרת הנוכחית של המצלמה, הבקשה ואחרונה הסבר תשובות ל-%1 (נקודת קצה מרוחקת). שיחה: אחרונות הסבר תשובות, נשמר בזיכרון בלבד. כלי קידוד: לא זמין.</translation>
+            <translation>שולח ל־%1 (נקודת קצה מרוחקת) את תמונת המצלמה הנוכחית, את ההנחיה ואת התשובות האחרונות של Explain. שיחה: התשובות האחרונות של Explain נשמרות בזיכרון בלבד. כלי קידוד: לא זמינים.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2521,7 +2521,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>מאפשר תכונות קריאה, הסבר ו-Assistant מגובות מנוי. מתקין את הרשמי Codex CLI עבור חשבון Windows שלך; הכניסה ל-ChatGPT נשארת שלב נפרד.</translation>
+            <translation>מאפשר להשתמש בתכונות Read, Explain ו־Assistant הכלולות במינוי. מתקין את Codex CLI הרשמי עבור חשבון Windows שלך; הכניסה ל־ChatGPT היא שלב נפרד.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2573,7 +2573,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Search settings…</source>
-            <translation>הגדרות חיפוש...</translation>
+            <translation>חפש בהגדרות…</translation>
         </message>
         <message>
             <source>Mode: %1</source>
@@ -2653,11 +2653,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>אין כאן התאמות. %1 בהגדרות. הקש Enter כדי להציג אותם.</translation>
+            <translation>אין כאן התאמות. %1 בהגדרות. הקש Enter כדי להציג אותן.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>אין כאן התאמות. %1 בתמונה. הקש Enter כדי להציג אותם.</translation>
+            <translation>אין כאן התאמות. %1 בתמונה. הקש Enter כדי להציג אותן.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2705,7 +2705,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>הסבר על סצנה</translation>
+            <translation>עצור את הסבר הסצנה</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
@@ -2745,11 +2745,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>נתיב פלט הקלטה כבר קיים; זה נשמר.</translation>
+            <translation>נתיב הפלט של ההקלטה כבר קיים; הוא נשמר.</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
-            <translation>Text Clarity מחיל שיפור אוטומטי. אפשרויות כוונון עדין חלות רק כאשר בהירות טקסט מופעלת.</translation>
+            <translation>Text Clarity משפרת את התמונה באופן אוטומטי. אפשרויות הכוונון העדין חלות רק כאשר Text Clarity מופעלת.</translation>
         </message>
         <message>
             <source>More colors
@@ -2767,7 +2767,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Posterize 6</source>
-            <translation>פוסטרים 6</translation>
+            <translation>הפחתת צבעים ל־6 גוונים</translation>
         </message>
         <message>
             <source>Yellow text on black background</source>
@@ -2791,15 +2791,15 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>קרא, הסבר ו-Assistant השתמשו במנוי ChatGPT שלכם דרך Codex CLI. היכנס באמצעות Connect ChatGPT בכרטיסייה Assistant במצב מתקדם.</translation>
+            <translation>התכונות Read, Explain ו־Assistant משתמשות במינוי ChatGPT שלך דרך Codex CLI. כדי להתחבר, בחר Connect ChatGPT בכרטיסייה Assistant במצב Advanced.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>קרא והסבר שלח את תצוגת המצלמה לכתובת ה-URL של השרת למטה. תמונות נשארות במחשב הזה רק אם השרת הזה פועל עליו, כמו LM Studio או Ollama ב-localhost. שיחות עם Assistant שמורות זקוקות למינוי ChatGPT.</translation>
+            <translation>Read ו־Explain שולחות את תצוגת המצלמה לכתובת השרת שמופיעה למטה. התמונות נשארות במחשב הזה רק אם השרת פועל בו, למשל LM Studio או Ollama ב־localhost. שיחות Assistant שמורות דורשות מינוי ChatGPT.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
-            <translation>OkuFlow תמיד שולח את ההוראה הזו אל Codex, ואחריו ההוראות שלך וכללי ההרשאה.</translation>
+            <translation>OkuFlow תמיד שולח ל־Codex את ההוראה הזו, ואחריה את ההוראות שלך ואת כללי ההרשאה.</translation>
         </message>
         <message>
             <source>Assistant instructions</source>
@@ -2815,7 +2815,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>אלה חלים רק על שיחות Assistant שמורות, כולל שאלות שנשאלו מה-Assistant הצף. קרא והסביר תמיד תישאר מוגבל.</translation>
+            <translation>הגדרות אלה חלות רק על שיחות Assistant שמורות, כולל שאלות שנשאלות דרך Assistant הצף. Read ו־Explain נשארות תמיד מוגבלות.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2823,19 +2823,19 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
-            <translation>בחר בכמה נימוקים Codex משתמש. רמות גבוהות יותר עשויות להימשך זמן רב יותר לענות.</translation>
+            <translation>בחר את רמת ההנמקה של Codex. רמות גבוהות יותר עשויות להאריך את זמן התשובה.</translation>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>הצג או הסתר את ההוראה לקריאה בלבד OkuFlow שולחת תמיד אל Codex</translation>
+            <translation>הצג או הסתר את ההוראה לקריאה בלבד ש־OkuFlow שולחת תמיד ל־Codex</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>הסבר הנחה</translation>
+            <translation>הנחיית Explain</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
-            <translation>הוראות אופציונליות שנשלחות עם תצוגת המצלמה כאשר אתה לוחץ על הסבר</translation>
+            <translation>הוראות נוספות שנשלחות עם תצוגת המצלמה בלחיצה על Explain</translation>
         </message>
         <message>
             <source>Installed
@@ -2843,7 +2843,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>מותקן
 %1
-השתמש ב-Connect ChatGPT בכרטיסייה Advanced Assistant כדי להיכנס.</translation>
+בחר Connect ChatGPT בכרטיסייה Assistant במצב Advanced כדי להתחבר.</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2863,7 +2863,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
-            <translation>ההקלטה היא דילוג על מסגרות וידאו מכיוון שתור המקודד מלא. הורד את רזולוציית ההקלטה או עצור והתחל את ההקלטה אם היא נמשכת.</translation>
+            <translation>ההקלטה מדלגת על פריימים של וידאו כי תור המקודד מלא. הנמך את רזולוציית ההקלטה, או עצור והפעל אותה מחדש אם הדילוג נמשך.</translation>
         </message>
         <message>
             <source>Waiting for phone…</source>
@@ -2871,7 +2871,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
-            <translation>פתח את המצלמה OkuFlow בטלפון, חבר את כבל ה-USB ואפשר איתור באגים ב-USB. OkuFlow בודק את החיבור באופן אוטומטי.</translation>
+            <translation>פתח בטלפון את האפליקציה OkuFlow Camera, חבר את כבל ה־USB ואשר ניפוי באגים ב־USB. OkuFlow בודקת את החיבור באופן אוטומטי.</translation>
         </message>
         <message>
             <source>Set up OkuFlow</source>
@@ -2879,7 +2879,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
-            <translation>מתקין זמן הריצה של Windows כלול. כלי AI אופציונלי מורידים מהספקים שלהם. כל מתקין מאומת לפני שהוא פועל.</translation>
+            <translation>מתקין סביבת הריצה של Windows כלול. כלי AI אופציונליים מורדים מהספקים שלהם. כל תוכנית התקנה מאומתת לפני הפעלתה.</translation>
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
@@ -2887,7 +2887,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
-            <translation>ספריות Windows בשימוש על ידי OkuFlow. ההתקנה משתמשת במתקין ההתקנה של Microsoft הכלול ועשויה לבקש אישור מנהל מערכת.</translation>
+            <translation>ספריות Windows ש־OkuFlow משתמשת בהן. ההתקנה מתבצעת באמצעות תוכנית ההתקנה של Microsoft הכלולה, וייתכן שתידרש הרשאת מנהל מערכת.</translation>
         </message>
         <message>
             <source>Install for Windows</source>

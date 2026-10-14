@@ -1436,19 +1436,25 @@ void MainWindowTests::mouseFocusedChromeCanIdleFade()
     const QPoint clickGlobal = window.simpleModeButton()->mapToGlobal(clickLocal);
     QCursor::setPos(clickGlobal);
     QCoreApplication::processEvents();
-    QCOMPARE(QCursor::pos(), clickGlobal);
+    const QPoint observedClickGlobal = QCursor::pos();
+    // Windows rounds native pixels when Qt maps a mixed-DPI desktop. Check
+    // the requested location within that rounding bound, then inject the
+    // event at the actual cursor location rather than a different baseline.
+    QVERIFY(qAbs(observedClickGlobal.x() - clickGlobal.x()) <= 1);
+    QVERIFY(qAbs(observedClickGlobal.y() - clickGlobal.y()) <= 1);
+    const QPoint observedClickLocal = window.simpleModeButton()->mapFromGlobal(observedClickGlobal);
+    QVERIFY(window.simpleModeButton()->rect().contains(observedClickLocal));
     QTest::mouseClick(window.simpleModeButton(), Qt::LeftButton, Qt::NoModifier,
-                      clickLocal);
+                      observedClickLocal);
     QTRY_VERIFY(window.simpleModeButton()->hasFocus());
     QVERIFY(idle->isActive());
     const QPointF stationaryGlobal(QCursor::pos());
     POINT stationaryNative{};
     QVERIFY(GetCursorPos(&stationaryNative));
-    const auto pointerIsStationary = [stationaryGlobal, stationaryNative] {
+    const auto pointerIsStationary = [stationaryNative] {
         POINT current{};
         return GetCursorPos(&current) &&
-               current.x == stationaryNative.x && current.y == stationaryNative.y &&
-               QCursor::pos() == stationaryGlobal.toPoint();
+               current.x == stationaryNative.x && current.y == stationaryNative.y;
     };
     // A real single-shot timeout is no longer active when its signal runs.
     idle->stop();
@@ -1485,8 +1491,12 @@ void MainWindowTests::mouseFocusedChromeCanIdleFade()
     const QPointF global = window.renderWidget()->mapToGlobal(local.toPoint());
     QCursor::setPos(global.toPoint());
     QCoreApplication::processEvents();
-    QCOMPARE(QCursor::pos(), global.toPoint());
-    QMouseEvent move(QEvent::MouseMove, local, local, global,
+    const QPointF observedGlobal(QCursor::pos());
+    QVERIFY(qAbs(observedGlobal.x() - global.x()) <= 1);
+    QVERIFY(qAbs(observedGlobal.y() - global.y()) <= 1);
+    QVERIFY(observedGlobal != stationaryGlobal);
+    const QPointF observedLocal = window.renderWidget()->mapFromGlobal(observedGlobal.toPoint());
+    QMouseEvent move(QEvent::MouseMove, observedLocal, observedLocal, observedGlobal,
                      Qt::NoButton, Qt::NoButton, Qt::NoModifier);
     QCoreApplication::sendEvent(window.renderWidget(), &move);
     QTRY_VERIFY(top->isVisible());
@@ -1494,6 +1504,11 @@ void MainWindowTests::mouseFocusedChromeCanIdleFade()
 
 void MainWindowTests::unrelatedNativeInputCannotRevealChrome()
 {
+    POINT ownerPointer{};
+    QVERIFY(GetCursorPos(&ownerPointer));
+    const auto restorePointer = qScopeGuard([ownerPointer] {
+        SetCursorPos(ownerPointer.x, ownerPointer.y);
+    });
     class NativeInputWindow final : public MainWindow {
     public:
         using MainWindow::nativeEventFilter;
@@ -1507,7 +1522,14 @@ void MainWindowTests::unrelatedNativeInputCannotRevealChrome()
     auto* idle = Named<QTimer>(window, "simpleChromeIdleTimer");
     QVERIFY(top && idle);
     QTRY_VERIFY(top->isVisible());
+    // Drain the native move/enter events before manually expiring the idle
+    // timer. Otherwise startup positioning can legitimately reveal chrome
+    // after the fixture has already requested its fade.
+    QCursor::setPos(window.renderWidget()->mapToGlobal(window.renderWidget()->rect().center()));
+    QCoreApplication::processEvents();
+    QTest::qWait(100);
     window.renderWidget()->setFocus(Qt::MouseFocusReason);
+    QTRY_VERIFY(window.renderWidget()->hasFocus());
     idle->stop();
     QVERIFY(QMetaObject::invokeMethod(idle, "timeout", Qt::DirectConnection));
     QTRY_VERIFY(!top->isVisible());

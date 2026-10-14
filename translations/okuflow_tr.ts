@@ -29,7 +29,7 @@
         </message>
         <message>
             <source>Changes OkuFlow's interface language immediately. An assistant request already in progress keeps its original response language.</source>
-            <translation>OkuFlow arayüz dilini hemen değiştirir. Devam eden bir asistan isteği başladığı yanıt dilini korur.</translation>
+            <translation>OkuFlow arayüz dilini hemen değiştirir. Devam eden asistan isteklerinde, istek başladığında seçili olan yanıt dili kullanılır.</translation>
         </message>
         <message>
             <source>Changes the interface immediately. In-progress assistant requests use the language selected when they started.</source>
@@ -113,7 +113,7 @@
         </message>
         <message>
             <source>Always use GPU acceleration</source>
-            <translation>Her zaman GPU hızlandırma kullan</translation>
+            <translation>Her zaman GPU hızlandırmasını kullan</translation>
         </message>
         <message>
             <source>Compatibility mode</source>
@@ -137,7 +137,7 @@
         </message>
         <message>
             <source>Viewport framing</source>
-            <translation>Görünüm çerçeveleme</translation>
+            <translation>Görüntü alanını kadraja sığdırma</translation>
         </message>
         <message>
             <source>Fill (crop)</source>
@@ -157,7 +157,7 @@
         </message>
         <message>
             <source>Virtual Joystick</source>
-            <translation>Sanal Kumanda</translation>
+            <translation>Sanal joystick</translation>
         </message>
         <message>
             <source>Zoom wheel acceleration</source>
@@ -165,7 +165,7 @@
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
-            <translation>Orijinal ve işlenmiş kayıtlar tarafından paylaşılır</translation>
+            <translation>Orijinal ve işlenmiş kayıtlar için ortak</translation>
         </message>
         <message>
             <source>Processed recording resolution</source>
@@ -173,7 +173,7 @@
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
-            <translation>Kamera ve orijinal kayıt çözünürlüğü &amp;&amp; kare hızı</translation>
+            <translation>Kamera ve orijinal kaydın çözünürlüğü &amp;&amp; kare hızı</translation>
         </message>
         <message>
             <source>Automatic (driver's choice)</source>
@@ -213,7 +213,7 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>Keskinlik ve odak</translation>
+            <translation>Keskinleştir ve odakla</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
@@ -253,11 +253,11 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>Ekstra Sabit (sarsıntıda tut)</translation>
+            <translation>Ekstra sabitleme (sarsıntıda görüntüyü koru)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
-            <translation>Ekranı Düzelt (Çarpıklık)</translation>
+            <translation>Ekran perspektifini düzelt (keystone)</translation>
         </message>
         <message>
             <source>Correction tracking:</source>
@@ -321,7 +321,7 @@
         </message>
         <message>
             <source>Steady Text Edges</source>
-            <translation>Sabit Metin Kenarları</translation>
+            <translation>Metin kenarlarını sabitle</translation>
         </message>
         <message>
             <source>Sharpen Text Only</source>
@@ -437,7 +437,7 @@
         </message>
         <message>
             <source>Pipeline status</source>
-            <translation>İşlem hattı durumu</translation>
+            <translation>Görüntü işleme hattının durumu</translation>
         </message>
         <message>
             <source>Performance percentiles</source>
@@ -657,7 +657,7 @@
         </message>
         <message>
             <source>OpenAI-compatible vision server</source>
-            <translation>OpenAI uyumlu görüntü sunucusu</translation>
+            <translation>OpenAI uyumlu görsel yapay zekâ sunucusu</translation>
         </message>
         <message>
             <source>Server URL:</source>
@@ -669,7 +669,7 @@
         </message>
         <message>
             <source>Vision model:</source>
-            <translation>Görüntü modeli:</translation>
+            <translation>Görsel yapay zekâ modeli:</translation>
         </message>
         <message>
             <source>Read aloud</source>
@@ -709,7 +709,7 @@
         </message>
         <message>
             <source>Write lecture notes file</source>
-            <translation>Ders notları dosyasına yaz</translation>
+            <translation>Ders notları dosyasını yaz</translation>
         </message>
         <message>
             <source>None</source>
@@ -717,7 +717,7 @@
         </message>
         <message>
             <source>Minimal</source>
-            <translation>En az</translation>
+            <translation>Asgari</translation>
         </message>
         <message>
             <source>Low</source>
@@ -825,7 +825,7 @@
         </message>
         <message>
             <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
-            <translation>Görüntü odak dışında. Metni okumadan önce yeniden odaklamak için telefon ekranına dokunun.</translation>
+            <translation>Görüntü net değil. Metni okumadan önce yeniden netlemek için telefon ekranına dokunun.</translation>
         </message>
         <message>
             <source>Loading conversation...</source>
@@ -877,7 +877,7 @@
         </message>
         <message>
             <source>Viewport motion limited to %1 FPS by this display.</source>
-            <translation>Görünüm hareketi bu ekran tarafından %1 FPS ile sınırlandı.</translation>
+            <translation>Bu ekran, görünüm hareketini %1 FPS ile sınırlıyor.</translation>
         </message>
         <message>
             <source>Vision model: %1</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>GPU kamera yakalama, güvenli kopyalama yedeğiyle etkin.</translation>
+            <translation>GPU kamera yakalama, güvenli kopyalama yedeği kullanılarak etkin.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>Ekran düzeltme geri alındı ve izleme durduruldu.</translation>
+            <translation>Ekran düzeltme önceki konumuna döndürüldü ve izleme durduruldu.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -969,7 +969,7 @@
         </message>
         <message>
             <source>Using the next screen correction.</source>
-            <translation>Sonraki ekran düzeltme kullanılıyor.</translation>
+            <translation>Bir sonraki ekran düzeltmesi kullanılıyor.</translation>
         </message>
         <message>
             <source>Windows could not open:
@@ -987,19 +987,19 @@
         </message>
         <message>
             <source>Annotated view could not be saved.</source>
-            <translation>Açıklamalı görünüm kaydedilemedi.</translation>
+            <translation>İşaretlenmiş görünüm kaydedilemedi.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>Açıklamalı görünüm kaydedilmedi: görüntü sıraya alınamadı.</translation>
+            <translation>İşaretlenmiş görünüm kaydedilmedi: görüntü sıraya alınamadı.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>Açıklamalı görünüm kaydedilmedi: görüntü hâlâ yazılıyor. Tekrar deneyin.</translation>
+            <translation>İşaretlenmiş görünüm kaydedilmedi: görüntü kaydediliyor. Tekrar deneyin.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
-            <translation>Açıklamalı görünüm kaydedilmedi: görünüm alanı kullanılamıyordu.</translation>
+            <translation>İşaretlenmiş görünüm kaydedilmedi: görünüm alanı kullanılamıyordu.</translation>
         </message>
         <message>
             <source>Camera Error</source>
@@ -1031,7 +1031,7 @@
         </message>
         <message>
             <source>No camera modes were reported.</source>
-            <translation>Kamera modu bildirilmedi.</translation>
+            <translation>Kamera modları bildirilmedi.</translation>
         </message>
         <message>
             <source>Photo not saved: no processed frame was available.</source>
@@ -1047,7 +1047,7 @@
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>Fotoğraf kaydedilmedi: görüntü hâlâ yazılıyor. Tekrar deneyin.</translation>
+            <translation>Fotoğraf kaydedilmedi: görüntü kaydediliyor. Tekrar deneyin.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
@@ -1055,7 +1055,7 @@
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be read back.</source>
-            <translation>Fotoğraf kaydedilmedi: orijinal kamera karesi geri okunamadı.</translation>
+            <translation>Fotoğraf kaydedilmedi: orijinal kamera karesi yeniden okunamadı.</translation>
         </message>
         <message>
             <source>Photo not saved: the processed or original frame was unavailable.</source>
@@ -1071,7 +1071,7 @@
         </message>
         <message>
             <source>Saving annotated view to lecture notes...</source>
-            <translation>Açıklamalı görünüm ders notlarına kaydediliyor...</translation>
+            <translation>İşaretlenmiş görünüm ders notlarına kaydediliyor...</translation>
         </message>
         <message>
             <source>Saving original and processed photos...</source>
@@ -1083,7 +1083,7 @@
         </message>
         <message>
             <source>Annotated view</source>
-            <translation>Açıklamalı görünüm</translation>
+            <translation>İşaretlenmiş görünüm</translation>
         </message>
         <message>
             <source>Finishing recording...</source>
@@ -1147,7 +1147,7 @@
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>Ses: Kodlamadan önce %1 blok düşürüldü, girdi sınırı %2 bloğu reddetti.</translation>
+            <translation>Ses: Kodlamadan önce %1 blok düşürüldü; giriş sınırı %2 bloğu reddetti.</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
@@ -1155,7 +1155,7 @@
         </message>
         <message>
             <source>%1 frames used an estimated timestamp.</source>
-            <translation>%1 kare tahmini zaman damgası kullandı.</translation>
+            <translation>%1 kare için tahmini zaman damgası kullanıldı.</translation>
         </message>
         <message>
             <source>Original video</source>
@@ -1179,11 +1179,11 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>GPU beslemeli orijinal ve işlenmiş</translation>
+            <translation>GPU'dan beslenen orijinal ve işlenmiş görüntüler</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>iş parçacığı geri okumalı GPU kaynağı</translation>
+            <translation>İşçi iş parçacığıyla geri okunan GPU kaynağı</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex görüntü hazırlama meşgul. Biraz sonra tekrar deneyin.</translation>
+            <translation>Codex görüntüyü hazırlıyor. Biraz sonra tekrar deneyin.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1231,7 +1231,7 @@
         </message>
         <message>
             <source>Querying VLM...</source>
-            <translation>VLM sorgulanıyor...</translation>
+            <translation>VLM'ye sorgu gönderiliyor...</translation>
         </message>
         <message>
             <source>Scene explanation</source>
@@ -1299,7 +1299,7 @@
         </message>
         <message>
             <source>Codex Reasoning</source>
-            <translation>Codex Akıl Yürütme</translation>
+            <translation>Codex'in Akıl Yürütme Düzeyi</translation>
         </message>
         <message>
             <source>Assistant Instructions</source>
@@ -1347,7 +1347,7 @@
         </message>
         <message>
             <source>Text-to-speech is unavailable in this build</source>
-            <translation>Bu derlemede metinden konuşmaya kullanılamıyor</translation>
+            <translation>Bu derlemede metin okuma özelliği kullanılamıyor</translation>
         </message>
         <message>
             <source>Optional for local servers</source>
@@ -1363,27 +1363,27 @@
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
-            <translation>Açıklama modu açık. Kalem aracı.</translation>
+            <translation>İşaretleme modu açık. Kalem aracı.</translation>
         </message>
         <message>
             <source>Annotation options</source>
-            <translation>Açıklama seçenekleri</translation>
+            <translation>İşaretleme seçenekleri</translation>
         </message>
         <message>
             <source>Annotation text</source>
-            <translation>Açıklama metni</translation>
+            <translation>İşaretleme metni</translation>
         </message>
         <message>
             <source>Annotation thickness</source>
-            <translation>Açıklama kalınlığı</translation>
+            <translation>İşaretleme kalınlığı</translation>
         </message>
         <message>
             <source>Annotation tool</source>
-            <translation>Açıklama aracı</translation>
+            <translation>İşaretleme aracı</translation>
         </message>
         <message>
             <source>Clear annotations</source>
-            <translation>Açıklamaları temizle</translation>
+            <translation>İşaretlemeleri temizle</translation>
         </message>
         <message>
             <source>Click the camera view, then type a label. Shortcut T.</source>
@@ -1439,7 +1439,7 @@
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>Kamera sahnesine bağlı açıklamaları çizin, seçin, yeniden boyutlandırın, kaydedin veya temizleyin.</translation>
+            <translation>Kamera sahnesine bağlı işaretlemeleri çizin, seçin, yeniden boyutlandırın, kaydedin veya temizleyin.</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1451,7 +1451,7 @@
         </message>
         <message>
             <source>Erase annotation tool</source>
-            <translation>Açıklama silme aracı</translation>
+            <translation>İşaretleme silme aracı</translation>
         </message>
         <message>
             <source>Erase tool</source>
@@ -1463,7 +1463,7 @@
         </message>
         <message>
             <source>Lecture annotation canvas</source>
-            <translation>Ders açıklama tuvali</translation>
+            <translation>Ders üzerine açıklama ekleme alanı</translation>
         </message>
         <message>
             <source>Line tool</source>
@@ -1571,7 +1571,7 @@
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
-            <translation>%1 mürekkep kullan. Onay işareti seçili rengi gösterir.</translation>
+            <translation>%1 rengini kullan. Onay işareti seçili rengi gösterir.</translation>
         </message>
         <message>
             <source>Ask Assistant</source>
@@ -1623,7 +1623,7 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>Akış halinde gelen asistan sonucu. Metni okumak için ok tuşlarını kullanın.</translation>
+            <translation>Asistan yanıtı akış hâlinde geliyor. Metni okumak için ok tuşlarını kullanın.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1687,7 +1687,7 @@
         </message>
         <message>
             <source>Gradient</source>
-            <translation>Gradyan</translation>
+            <translation>Renk geçişi</translation>
         </message>
         <message>
             <source>Number of color stops</source>
@@ -1743,7 +1743,7 @@
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
-            <translation>Kamera hızlandırma henüz başlamadı.</translation>
+            <translation>Kamera hızlandırması henüz başlamadı.</translation>
         </message>
         <message>
             <source>Camera acceleration mode</source>
@@ -1823,7 +1823,7 @@
         </message>
         <message>
             <source>Finding one new screen correction...</source>
-            <translation>Yeni bir ekran düzeltme bulunuyor...</translation>
+            <translation>Yeni bir ekran düzeltmesi bulunuyor...</translation>
         </message>
         <message>
             <source>Finishing</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>Takılı kamera görünümünü tam güçlü CUDA sabitlemeyle kilitle</translation>
+            <translation>Bağlı kameranın görüntüsünü CUDA ile tam güçte sabitleyerek kilitle</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1971,7 +1971,7 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>Profile ait görüntü ve yardımcı ayarları varsayılanlara sıfırla</translation>
+            <translation>Profile ait görüntü ve yardımcı özellik ayarlarını varsayılanlara sıfırla</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
@@ -2233,7 +2233,7 @@ Kaldırma Windows tarafından yönetilir.</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>Yardımcı özellikler: katmanlı Sahne Açıklaması</translation>
+            <translation>Yardımcı özellikler: bindirmeli Sahne Açıklaması</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
@@ -2473,7 +2473,7 @@ Kaldırma Windows tarafından yönetilir.</translation>
         </message>
         <message>
             <source>Explain conversation</source>
-            <translation>Açıklama sohbeti</translation>
+            <translation>Açıkla konuşması</translation>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
@@ -2481,19 +2481,19 @@ Kaldırma Windows tarafından yönetilir.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Geçerli kamera karesi ve istem Codex'e gönderiliyor. Sohbet: kayıtlı Açıkla sohbeti, her Açıkla isteğiyle sürdürülür. Araç internet erişimi: engelli. Kodlama ve dosya değişiklikleri: engelli.</translation>
+            <translation>Geçerli kamera karesi ve istem Codex’e gönderiliyor. Konuşma: kayıtlı Açıkla konuşması; her Açıkla işleminde devam eder. Araçların internet erişimi engellendi. Kod yazma ve dosya değiştirme engellendi.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Geçerli kamera karesi ve istem Codex'e gönderiliyor. Sohbet: geçici, her Oku isteği için yeni. Araç internet erişimi: engelli. Kodlama ve dosya değişiklikleri: engelli.</translation>
+            <translation>Geçerli kamera karesi ve istem Codex’e gönderiliyor. Konuşma: geçici; her Oku işleminde yenisi başlatılır. Araçların internet erişimi engellendi. Kod yazma ve dosya değiştirme engellendi.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Geçerli kamera karesi, istem ve son Açıkla yanıtları %1 adresine gönderiliyor (yerel uç nokta). Sohbet: son Açıkla yanıtları, yalnızca bellekte tutulur. Kodlama araçları: kullanılamaz.</translation>
+            <translation>Geçerli kamera karesi, istem ve son Açıkla yanıtları %1 adresindeki yerel uç noktaya gönderiliyor. Konuşma geçmişinde yalnızca bellekte tutulan son Açıkla yanıtları bulunur. Kodlama araçları kullanılamıyor.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Geçerli kamera karesi, istem ve son Açıkla yanıtları %1 adresine gönderiliyor (uzak uç nokta). Sohbet: son Açıkla yanıtları, yalnızca bellekte tutulur. Kodlama araçları: kullanılamaz.</translation>
+            <translation>Geçerli kamera karesi, istem ve son Açıkla yanıtları %1 adresindeki uzak uç noktaya gönderiliyor. Konuşma geçmişinde yalnızca bellekte tutulan son Açıkla yanıtları bulunur. Kodlama araçları kullanılamıyor.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2521,7 +2521,7 @@ Kaldırma Windows tarafından yönetilir.</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>Aboneliğe dayalı Oku, Açıkla ve Asistan özelliklerini sağlar. Windows hesabınız için resmi Codex CLI aracını yükler; ChatGPT oturumu açmak ayrı bir adımdır.</translation>
+            <translation>Aboneliğinizle çalışan Oku, Açıkla ve Asistan özelliklerini etkinleştirir. Windows hesabınız için resmî Codex CLI’ı yükler. ChatGPT’de oturum açmanız ayrıca gerekir.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2791,7 +2791,7 @@ Ayarlar sekmesindeki ortak ayarlar değişmeyecek.</translation>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>Oku, Açıkla ve Asistan, Codex CLI üzerinden ChatGPT aboneliğinizi kullanır. Gelişmiş moddaki Asistan sekmesinde ChatGPT Bağlantısı ile giriş yapın.</translation>
+            <translation>Oku, Açıkla ve Asistan özellikleri ChatGPT aboneliğinizi Codex CLI üzerinden kullanır. Gelişmiş modda Asistan sekmesindeki ChatGPT’ye Bağlan seçeneğiyle oturum açın.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
@@ -2815,7 +2815,7 @@ Ayarlar sekmesindeki ortak ayarlar değişmeyecek.</translation>
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>Bunlar yalnızca kaydedilen Asistan konuşmalarına ve yüzen Asistan’dan sorulan sorulara uygulanır. Oku ve Açıkla her zaman kısıtlı kalır.</translation>
+            <translation>Bunlar yalnızca kaydedilen Asistan konuşmalarında, kayan Asistan penceresinden sorulanlar da dâhil, geçerlidir. Oku ve Açıkla özellikleri her zaman kısıtlı kalır.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2891,7 +2891,7 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         </message>
         <message>
             <source>Install for Windows</source>
-            <translation>Windows için kur</translation>
+            <translation>Windows’a yükle</translation>
         </message>
         <message>
             <source>Install Microsoft Windows runtime</source>
@@ -2907,7 +2907,7 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         </message>
         <message>
             <source>Windows could not start the elevated installer (error %1).</source>
-            <translation>Windows yönetici yetkili yükleyiciyi başlatamadı (hata %1).</translation>
+            <translation>Windows, yönetici izniyle çalıştırılan yükleyiciyi başlatamadı (hata %1).</translation>
         </message>
         <message>
             <source>Microsoft installer running. Continue in the installer window.</source>

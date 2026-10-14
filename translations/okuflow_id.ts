@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>Dimulai pada setiap koneksi. Tekan untuk menghidupkan atau mematikan lampu telepon.</translation>
+            <translation>Setiap kali tersambung, lampu ponsel dalam keadaan mati. Tekan untuk menyalakan atau mematikannya.</translation>
         </message>
         <message>
             <source>Application</source>
@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>Ketikkan bagian dari nama pengaturan untuk menampilkan dan memfokuskan kontrol yang cocok.</translation>
+            <translation>Ketik sebagian nama setelan untuk menampilkan kontrol yang cocok dan memindahkan fokus ke sana.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -153,7 +153,7 @@
         </message>
         <message>
             <source>Reset Tuning</source>
-            <translation>Atur Ulang Penyetelan</translation>
+            <translation>Atur ulang setelan</translation>
         </message>
         <message>
             <source>Virtual Joystick</source>
@@ -165,7 +165,7 @@
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
-            <translation>Dibagikan berdasarkan rekaman asli dan olahan</translation>
+            <translation>Berlaku untuk rekaman asli dan hasil olahan</translation>
         </message>
         <message>
             <source>Processed recording resolution</source>
@@ -173,7 +173,7 @@
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
-            <translation>Kamera dan resolusi rekaman asli kecepatan bingkai &amp;&amp;</translation>
+            <translation>Resolusi kamera dan rekaman asli &amp;&amp; laju bingkai</translation>
         </message>
         <message>
             <source>Automatic (driver's choice)</source>
@@ -229,7 +229,7 @@
         </message>
         <message>
             <source>Gaussian Blur</source>
-            <translation>Gaussian kabur</translation>
+            <translation>Buram Gaussian</translation>
         </message>
         <message>
             <source>Sigma</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>Halus Sementara</translation>
+            <translation>Penghalusan temporal</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -305,7 +305,7 @@
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>Berat pukulan</translation>
+            <translation>Ketebalan goresan</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -321,7 +321,7 @@
         </message>
         <message>
             <source>Steady Text Edges</source>
-            <translation>Tepi Teks Stabil</translation>
+            <translation>Stabilkan tepi teks</translation>
         </message>
         <message>
             <source>Sharpen Text Only</source>
@@ -329,7 +329,7 @@
         </message>
         <message>
             <source>Warn When Out of Focus</source>
-            <translation>Peringatkan Saat Tidak Fokus</translation>
+            <translation>Beri peringatan saat gambar tidak fokus</translation>
         </message>
         <message>
             <source>Suppress Glare</source>
@@ -357,7 +357,7 @@
         </message>
         <message>
             <source>Display colors</source>
-            <translation>Menampilkan warna</translation>
+            <translation>Tampilan warna</translation>
         </message>
         <message>
             <source>Normal colors</source>
@@ -377,11 +377,11 @@
         </message>
         <message>
             <source>Assistive Overlay</source>
-            <translation>Hamparan Bantu</translation>
+            <translation>Overlay bantuan</translation>
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
-            <translation>Simpan gambar ke catatan saat meninggalkan Draw</translation>
+            <translation>Simpan gambar ke catatan saat keluar dari mode menggambar</translation>
         </message>
         <message>
             <source>AI Settings</source>
@@ -413,7 +413,7 @@
         </message>
         <message>
             <source>Backend</source>
-            <translation>Bagian belakang</translation>
+            <translation>Backend</translation>
         </message>
         <message>
             <source>Sharpness</source>
@@ -437,7 +437,7 @@
         </message>
         <message>
             <source>Pipeline status</source>
-            <translation>Status saluran pipa</translation>
+            <translation>Status pipeline</translation>
         </message>
         <message>
             <source>Performance percentiles</source>
@@ -621,7 +621,7 @@
         </message>
         <message>
             <source>Codex CLI path:</source>
-            <translation>Codex CLI jalur:</translation>
+            <translation>Jalur Codex CLI:</translation>
         </message>
         <message>
             <source>Codex model:</source>
@@ -637,11 +637,11 @@
         </message>
         <message>
             <source>Allow coding commands and file changes</source>
-            <translation>Izinkan perintah pengkodean dan perubahan file</translation>
+            <translation>Izinkan perintah untuk menulis kode dan mengubah file</translation>
         </message>
         <message>
             <source>Required when coding is enabled</source>
-            <translation>Diperlukan saat pengkodean diaktifkan</translation>
+            <translation>Wajib diisi jika fitur coding diaktifkan</translation>
         </message>
         <message>
             <source>Coding workspace:</source>
@@ -809,7 +809,7 @@
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>Tidak ada suara %1 yang dipasang — menggunakan suara saat ini. Instal satu di bawah Pengaturan Windows → Waktu &amp; Bahasa → Ucapan.</translation>
+            <translation>Suara %1 belum terpasang; suara saat ini akan digunakan. Pasang suara melalui Pengaturan Windows → Waktu &amp; Bahasa → Ucapan.</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>Pengambilan kamera GPU aktif dengan penggantian salinan aman.</translation>
+            <translation>Pengambilan kamera melalui GPU aktif dengan mekanisme cadangan penyalinan yang aman.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -909,11 +909,11 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>NVIDIA Super Resolution batas kinerja diabaikan.</translation>
+            <translation>Batas kinerja NVIDIA Super Resolution diabaikan.</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
-            <translation>NVIDIA Super Resolution batas kinerja dipulihkan.</translation>
+            <translation>Batas kinerja NVIDIA Super Resolution dipulihkan.</translation>
         </message>
         <message>
             <source>New OkuFlow files will be saved in %1.</source>
@@ -929,7 +929,7 @@
         </message>
         <message>
             <source>Opened your OkuFlow folder.</source>
-            <translation>Buka folder OkuFlow Anda.</translation>
+            <translation>Folder OkuFlow Anda telah dibuka.</translation>
         </message>
         <message>
             <source>Recording stopped because the microphone selection changed.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>Koreksi layar dipindahkan kembali dan pelacakan dihentikan.</translation>
+            <translation>Koreksi layar kembali ke posisi sebelumnya dan pelacakan berhenti.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -974,7 +974,7 @@
         <message>
             <source>Windows could not open:
 %1</source>
-            <translation>Windows tidak dapat terbuka:
+            <translation>Windows tidak dapat membuka:
 %1</translation>
         </message>
         <message>
@@ -1147,15 +1147,15 @@
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>Audio: %1 blok dihilangkan sebelum pengkodean, %2 ditolak oleh batas input.</translation>
+            <translation>Audio: %1 blok dibuang sebelum dikodekan; %2 blok ditolak karena batas masukan.</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
-            <translation>%1 bingkai dijatuhkan (%2).</translation>
+            <translation>%1 bingkai dibuang (%2).</translation>
         </message>
         <message>
             <source>%1 frames used an estimated timestamp.</source>
-            <translation>Bingkai %1 menggunakan perkiraan stempel waktu.</translation>
+            <translation>Stempel waktu untuk %1 bingkai diperkirakan.</translation>
         </message>
         <message>
             <source>Original video</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex persiapan gambar sedang sibuk. Coba lagi sebentar lagi.</translation>
+            <translation>Persiapan gambar Codex sedang berlangsung. Coba lagi sebentar.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1219,7 +1219,7 @@
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>Percakapan Asisten Persisten memerlukan penyedia langganan Codex.</translation>
+            <translation>Percakapan Asisten yang disimpan secara persisten memerlukan penyedia langganan Codex.</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1243,7 +1243,7 @@
         </message>
         <message>
             <source>Sending the current camera frame and prompt</source>
-            <translation>Mengirim bingkai kamera saat ini dan meminta</translation>
+            <translation>Mengirim bingkai kamera saat ini dan prompt</translation>
         </message>
         <message>
             <source>Sending the prompt only</source>
@@ -1291,7 +1291,7 @@
         </message>
         <message>
             <source>Codex CLI Path</source>
-            <translation>Codex CLI Jalur</translation>
+            <translation>Jalur Codex CLI</translation>
         </message>
         <message>
             <source>Codex Model</source>
@@ -1299,7 +1299,7 @@
         </message>
         <message>
             <source>Codex Reasoning</source>
-            <translation>Codex Penalaran</translation>
+            <translation>Penalaran Codex</translation>
         </message>
         <message>
             <source>Assistant Instructions</source>
@@ -1331,7 +1331,7 @@
         </message>
         <message>
             <source>Preview Read Aloud Voice</source>
-            <translation>Pratinjau Baca dengan Keras Suara</translation>
+            <translation>Pratinjau suara baca nyaring</translation>
         </message>
         <message>
             <source>Write Lecture Notes File</source>
@@ -1363,7 +1363,7 @@
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
-            <translation>Mode anotasi aktif. Alat pena.</translation>
+            <translation>Mode anotasi aktif. Alat pena dipilih.</translation>
         </message>
         <message>
             <source>Annotation options</source>
@@ -1451,7 +1451,7 @@
         </message>
         <message>
             <source>Erase annotation tool</source>
-            <translation>Hapus alat anotasi</translation>
+            <translation>Alat penghapus anotasi</translation>
         </message>
         <message>
             <source>Erase tool</source>
@@ -1471,7 +1471,7 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>Pindahkan alat anotasi</translation>
+            <translation>Alat untuk memindahkan anotasi</translation>
         </message>
         <message>
             <source>Move tool</source>
@@ -1511,7 +1511,7 @@
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>Simpan tampilan yang ditandai ke catatan kuliah. Kontrol Pintasan S.</translation>
+            <translation>Simpan tampilan beranotasi ke catatan kuliah. Pintasan Ctrl+S.</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
@@ -1587,7 +1587,7 @@
         </message>
         <message>
             <source>Assistive result title</source>
-            <translation>Judul hasil asistif</translation>
+            <translation>Judul hasil bantuan</translation>
         </message>
         <message>
             <source>Assistive results</source>
@@ -1611,11 +1611,11 @@
         </message>
         <message>
             <source>Read assistive result aloud</source>
-            <translation>Bacakan hasil asistif dengan lantang</translation>
+            <translation>Bacakan hasil bantuan</translation>
         </message>
         <message>
             <source>Send the question with the current camera view to OkuFlow Assistant</source>
-            <translation>Kirim pertanyaan dengan tampilan kamera saat ini ke OkuFlow Asisten</translation>
+            <translation>Kirim pertanyaan beserta tampilan kamera saat ini ke Asisten OkuFlow</translation>
         </message>
         <message>
             <source>Speak the current assistant result</source>
@@ -1623,11 +1623,11 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>Hasil asisten streaming. Gunakan tombol panah untuk membaca teks.</translation>
+            <translation>Hasil dari asisten sedang dimuat. Gunakan tombol panah untuk membaca teks.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
-            <translation>Ketik pertanyaan tindak lanjut kapan saja. Pengiriman tersedia ketika jawaban saat ini selesai.</translation>
+            <translation>Anda dapat mengetik pertanyaan lanjutan kapan saja. Tombol kirim aktif setelah jawaban ini selesai.</translation>
         </message>
         <message>
             <source>Apply custom</source>
@@ -1639,7 +1639,7 @@
         </message>
         <message>
             <source>Choose color stop %1</source>
-            <translation>Pilih warna berhenti %1</translation>
+            <translation>Pilih titik warna %1</translation>
         </message>
         <message>
             <source>Choose display colors</source>
@@ -1647,11 +1647,11 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>Warna berhenti %1 dari %2</translation>
+            <translation>Titik warna %1 dari %2</translation>
         </message>
         <message>
             <source>Custom</source>
-            <translation>Adat</translation>
+            <translation>Khusus</translation>
         </message>
         <message>
             <source>Custom color mode</source>
@@ -1667,7 +1667,7 @@
         </message>
         <message>
             <source>Display color scheme</source>
-            <translation>Menampilkan skema warna</translation>
+            <translation>Skema warna tampilan</translation>
         </message>
         <message>
             <source>Display colors changed to %1</source>
@@ -1699,7 +1699,7 @@
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>Membaca warna</translation>
+            <translation>Warna untuk membaca</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
@@ -1711,7 +1711,7 @@
         </message>
         <message>
             <source>Stepped colors</source>
-            <translation>Warna melangkah</translation>
+            <translation>Warna bertingkat</translation>
         </message>
         <message>
             <source>Text color</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>Gunakan pita berwarna keras</translation>
+            <translation>Gunakan pita warna dengan batas tegas</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1739,7 +1739,7 @@
         </message>
         <message>
             <source>Automatically clarify text in the camera view</source>
-            <translation>Klarifikasi teks secara otomatis dalam tampilan kamera</translation>
+            <translation>Perjelas teks pada tampilan kamera secara otomatis</translation>
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
@@ -1759,19 +1759,19 @@
         </message>
         <message>
             <source>ChatGPT connection</source>
-            <translation>Koneksi ObrolanGPT</translation>
+            <translation>Koneksi ChatGPT</translation>
         </message>
         <message>
             <source>Codex connection status</source>
-            <translation>Codex status koneksi</translation>
+            <translation>Status koneksi Codex</translation>
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex penggunaan</translation>
+            <translation>Penggunaan Codex</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
-            <translation>Konfigurasikan asisten penglihatan dan keluaran ucapan</translation>
+            <translation>Atur asisten visual dan keluaran suara</translation>
         </message>
         <message>
             <source>Continue</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>Mengontrol presentasi pan dan zoom yang mulus; kecepatan bingkai kamera tidak berubah</translation>
+            <translation>Kontrol ini membuat pergerakan dan pembesaran tampilan lebih mulus; laju bingkai kamera tetap sama</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1807,7 +1807,7 @@
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
-            <translation>Seret untuk mengubah ukuran Pengaturan lanjutan</translation>
+            <translation>Seret untuk mengubah ukuran panel Pengaturan lanjutan</translation>
         </message>
         <message>
             <source>Extra Stable off</source>
@@ -1819,7 +1819,7 @@
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>Isian menggunakan area pandang penuh tanpa meregang; Fit mempertahankan seluruh gambar dengan bilah</translation>
+            <translation>Isi memenuhi seluruh area tampilan tanpa meregangkan gambar; Sesuaikan menampilkan seluruh gambar dengan bilah</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1827,11 +1827,11 @@
         </message>
         <message>
             <source>Finishing</source>
-            <translation>Penyelesaian</translation>
+            <translation>Menyelesaikan…</translation>
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>Hentikan frame tajam terakhir saat terjadi benturan, lalu kembali ke video langsung dengan lancar</translation>
+            <translation>Tahan bingkai terakhir yang tajam saat kamera terguncang, lalu kembali ke video langsung dengan mulus</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1855,7 +1855,7 @@
         </message>
         <message>
             <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
-            <translation>Tetap aktifkan SuperRes meskipun waktu GPU rata-rata melebihi 24 ms</translation>
+            <translation>Biarkan SuperRes tetap aktif meskipun waktu pemrosesan GPU rata-rata melebihi 24 ms</translation>
         </message>
         <message>
             <source>Large Zoom</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>Kunci tampilan kamera terpasang menggunakan stabilisasi CUDA kekuatan penuh</translation>
+            <translation>Kunci tampilan kamera dengan stabilisasi CUDA pada kekuatan penuh</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1871,7 +1871,7 @@
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>Cocokkan kamera (disarankan)</translation>
+            <translation>Ikuti pengaturan kamera (disarankan)</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1879,7 +1879,7 @@
         </message>
         <message>
             <source>NVIDIA Image Scaling (default)</source>
-            <translation>NVIDIA Penskalaan Gambar (default)</translation>
+            <translation>NVIDIA Image Scaling (bawaan)</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution status</source>
@@ -1887,11 +1887,11 @@
         </message>
         <message>
             <source>NVIDIA Video Effects runtime installed</source>
-            <translation>NVIDIA Video Effects waktu proses diinstal</translation>
+            <translation>Runtime NVIDIA Video Effects terinstal</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>NVIDIA Video Effects runtime tidak diinstal; gunakan Pengaturan &amp; Unduhan</translation>
+            <translation>Runtime NVIDIA Video Effects belum terinstal; buka Penyiapan &amp; Unduhan</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>Buka kontrol dan fitur bantuan</translation>
+            <translation>Buka panduan kontrol dan fitur</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1915,15 +1915,15 @@
         </message>
         <message>
             <source>OkuFlow Help</source>
-            <translation>OkuFlow Bantuan</translation>
+            <translation>Bantuan OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
-            <translation>OkuFlow panduan kontrol dan fitur</translation>
+            <translation>Panduan kontrol dan fitur OkuFlow</translation>
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
-            <translation>Hamparkan penanda merah pada fokus zoom saat ini</translation>
+            <translation>Tampilkan penanda merah di titik fokus pembesaran saat ini</translation>
         </message>
         <message>
             <source>Previous Advanced section</source>
@@ -1955,7 +1955,7 @@
         </message>
         <message>
             <source>Read a Page</source>
-            <translation>Membaca Halaman</translation>
+            <translation>Bacakan satu halaman</translation>
         </message>
         <message>
             <source>Reading</source>
@@ -1967,15 +1967,15 @@
         </message>
         <message>
             <source>Reset current profile tuning</source>
-            <translation>Setel ulang penyetelan profil saat ini</translation>
+            <translation>Atur ulang penyesuaian profil saat ini</translation>
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>Setel ulang gambar milik profil dan penyetelan bantuan ke default</translation>
+            <translation>Kembalikan pengaturan gambar dan bantuan milik profil ke nilai bawaan</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
-            <translation>Ubah ukuran Pengaturan lanjutan</translation>
+            <translation>Ubah ukuran panel Pengaturan lanjutan</translation>
         </message>
         <message>
             <source>Rotate input/output clockwise</source>
@@ -1983,11 +1983,11 @@
         </message>
         <message>
             <source>Runtime not installed; use Setup &amp; Downloads</source>
-            <translation>Waktu proses tidak diinstal; gunakan Pengaturan &amp; Unduhan</translation>
+            <translation>Runtime belum terinstal; buka Penyiapan &amp; Unduhan</translation>
         </message>
         <message>
             <source>Save an annotated snapshot to lecture notes when Draw mode closes.</source>
-            <translation>Simpan snapshot yang dianotasi ke catatan kuliah saat mode Gambar ditutup.</translation>
+            <translation>Simpan cuplikan beranotasi ke catatan kuliah saat mode menggambar ditutup.</translation>
         </message>
         <message>
             <source>See in Low Light</source>
@@ -2003,7 +2003,7 @@
         </message>
         <message>
             <source>Sharpening</source>
-            <translation>Mengasah</translation>
+            <translation>Penajaman</translation>
         </message>
         <message>
             <source>Show a guide to OkuFlow controls and features</source>
@@ -2035,7 +2035,7 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>Gunakan NVIDIA Video Effects SuperRes pada zoom 1,33x ke atas; jatuh kembali ke NIS secara otomatis</translation>
+            <translation>Gunakan NVIDIA Video Effects SuperRes pada pembesaran 1,33x atau lebih; sistem otomatis beralih ke NIS jika diperlukan</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
@@ -2093,7 +2093,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>Tidak dipasang. Instal unduh paket untuk %1 GPU.</translation>
+            <translation>Belum terinstal. Pilih Instal untuk mengunduh paket bagi GPU %1.</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
@@ -2117,7 +2117,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Open the NVIDIA runtime uninstaller?</source>
-            <translation>Buka uninstaller runtime NVIDIA?</translation>
+            <translation>Buka program penghapus runtime NVIDIA?</translation>
         </message>
         <message>
             <source>Open the folder containing the detected Codex CLI</source>
@@ -2129,7 +2129,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>OkuFlow Setup Assistant</source>
-            <translation>OkuFlow Asisten Pengaturan</translation>
+            <translation>Asisten Penyiapan OkuFlow</translation>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
@@ -2137,7 +2137,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Retrying from the alternate vendor host...</source>
-            <translation>Mencoba lagi dari host vendor alternatif...</translation>
+            <translation>Mencoba lagi melalui server penyedia alternatif...</translation>
         </message>
         <message>
             <source>Setup Assistant</source>
@@ -2161,7 +2161,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>The Setup Assistant remains available from Advanced settings</source>
-            <translation>Setup Assistant tetap tersedia dari pengaturan Lanjutan</translation>
+            <translation>Asisten Penyiapan tetap dapat dibuka dari Pengaturan lanjutan</translation>
         </message>
         <message>
             <source>The downloaded installer could not be opened for verification.</source>
@@ -2177,11 +2177,11 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>The installer did not complete successfully.</source>
-            <translation>Penginstal tidak berhasil diselesaikan.</translation>
+            <translation>Proses instalasi tidak berhasil diselesaikan.</translation>
         </message>
         <message>
             <source>The installer failed SHA-256 verification and was deleted.</source>
-            <translation>Penginstal gagal dalam verifikasi SHA-256 dan telah dihapus.</translation>
+            <translation>Berkas penginstal gagal dalam verifikasi SHA-256 dan telah dihapus.</translation>
         </message>
         <message>
             <source>The temporary download file could not be created.</source>
@@ -2189,7 +2189,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>Salinan seluruh sistem ini harus dihapus melalui Aplikasi yang Diinstal Windows</translation>
+            <translation>Versi yang terinstal untuk seluruh sistem ini harus dihapus melalui Aplikasi Terinstal Windows</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2229,11 +2229,11 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>Kait bantu: Penjelasan Adegan</translation>
+            <translation>Fitur bantuan: Penjelasan Adegan</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>Kait bantu: Adegan Jelaskan dengan overlay</translation>
+            <translation>Fitur bantuan: Penjelasan Adegan dengan overlay</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
@@ -2265,7 +2265,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Blur sigma</source>
-            <translation>Mengaburkan sigma</translation>
+            <translation>Sigma keburaman</translation>
         </message>
         <message>
             <source>Blur radius</source>
@@ -2297,11 +2297,11 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Stops: </source>
-            <translation>Berhenti: </translation>
+            <translation>Titik warna:</translation>
         </message>
         <message>
             <source>Color stop %1 of 8</source>
-            <translation>Warna berhenti %1 dari 8</translation>
+            <translation>Titik warna %1 dari 8</translation>
         </message>
         <message>
             <source>%1 px</source>
@@ -2333,7 +2333,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA Atribusi maxine</translation>
+            <translation>Atribusi NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2349,7 +2349,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>Koreksi layar berikutnya, atau temukan satu koreksi baru.%1</translation>
+            <translation>Lanjutkan ke koreksi layar berikutnya, atau temukan koreksi baru.%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2357,7 +2357,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>OkuFlow Lecture Notes</source>
-            <translation>OkuFlow Catatan Kuliah</translation>
+            <translation>Catatan Kuliah OkuFlow</translation>
         </message>
         <message>
             <source>Started %1</source>
@@ -2481,19 +2481,19 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Mengirim bingkai kamera saat ini dan meminta ke Codex. Percakapan: disimpan Jelaskan percakapan, dilanjutkan dengan masing-masing Jelaskan. Alat internet: diblokir. Perubahan pengkodean dan file: diblokir.</translation>
+            <translation>Mengirim bingkai kamera saat ini dan instruksi ke Codex. Percakapan: percakapan Jelaskan tersimpan, dilanjutkan setiap kali fitur Jelaskan digunakan. Akses internet: diblokir. Pengodean dan perubahan file: diblokir.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Mengirim bingkai kamera saat ini dan meminta ke Codex. Percakapan: sementara, baru untuk setiap Bacaan. Alat internet: diblokir. Perubahan pengkodean dan file: diblokir.</translation>
+            <translation>Mengirim bingkai kamera saat ini dan instruksi ke Codex. Percakapan: sementara, baru setiap kali fitur Baca digunakan. Akses internet: diblokir. Pengodean dan perubahan file: diblokir.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Mengirim bingkai kamera saat ini, perintah, dan jawaban Jelaskan terkini ke %1 (titik akhir lokal). Percakapan: jawaban Jelaskan terkini, hanya disimpan dalam memori. Alat pengkodean: tidak tersedia.</translation>
+            <translation>Mengirim bingkai kamera saat ini, instruksi, dan jawaban terbaru dari fitur Jelaskan ke %1 (server lokal). Percakapan: hanya berisi jawaban terbaru dari fitur Jelaskan dan disimpan di memori. Alat pengodean: tidak tersedia.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Mengirim bingkai kamera saat ini, perintah, dan jawaban Jelaskan terkini ke %1 (titik akhir jarak jauh). Percakapan: jawaban Jelaskan terkini, hanya disimpan dalam memori. Alat pengkodean: tidak tersedia.</translation>
+            <translation>Mengirim bingkai kamera saat ini, instruksi, dan jawaban terbaru dari fitur Jelaskan ke %1 (server jarak jauh). Percakapan: hanya berisi jawaban terbaru dari fitur Jelaskan dan disimpan di memori. Alat pengodean: tidak tersedia.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2505,23 +2505,23 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Dock left</source>
-            <translation>Dermaga kiri</translation>
+            <translation>Tempatkan di kiri</translation>
         </message>
         <message>
             <source>Dock right</source>
-            <translation>Dock ke kanan</translation>
+            <translation>Tempatkan di kanan</translation>
         </message>
         <message>
             <source>Release to dock left</source>
-            <translation>Lepaskan ke dok ke kiri</translation>
+            <translation>Lepaskan untuk menempatkan di kiri</translation>
         </message>
         <message>
             <source>Release to dock right</source>
-            <translation>Lepaskan untuk dock ke kanan</translation>
+            <translation>Lepaskan untuk menempatkan di kanan</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>Mendukung fitur Baca, Penjelasan, dan Asisten yang didukung langganan. Menginstal Codex CLI resmi untuk akun Windows Anda; Proses masuk ChatGPT tetap merupakan langkah terpisah.</translation>
+            <translation>Mengaktifkan fitur Baca, Jelaskan, dan Asisten yang memerlukan langganan. Menginstal Codex CLI resmi untuk akun Windows Anda; Anda tetap perlu masuk ke ChatGPT secara terpisah.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2569,11 +2569,11 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Search image settings…</source>
-            <translation>Setelan gambar penelusuran…</translation>
+            <translation>Cari pengaturan gambar…</translation>
         </message>
         <message>
             <source>Search settings…</source>
-            <translation>Setelan penelusuran…</translation>
+            <translation>Cari pengaturan…</translation>
         </message>
         <message>
             <source>Mode: %1</source>
@@ -2637,7 +2637,7 @@ Penghapusan dikelola oleh Windows.</translation>
         </message>
         <message>
             <source>Camera resolution &amp;&amp; frame rate</source>
-            <translation>Resolusi kamera kecepatan bingkai &amp;&amp;</translation>
+            <translation>Resolusi kamera &amp;&amp; laju bingkai</translation>
         </message>
         <message>
             <source>Save as Quick Mode</source>
@@ -2745,7 +2745,7 @@ Pengaturan bersama pada tab Pengaturan tidak akan berubah.</translation>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>Jalur keluaran rekaman sudah ada; itu dilestarikan.</translation>
+            <translation>Lokasi penyimpanan rekaman sudah ada; file yang ada tetap dipertahankan.</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
@@ -2787,7 +2787,7 @@ Pengaturan bersama pada tab Pengaturan tidak akan berubah.</translation>
         </message>
         <message>
             <source>ChatGPT subscription (Codex)</source>
-            <translation>Langganan ObrolanGPT (Codex)</translation>
+            <translation>Langganan ChatGPT (Codex)</translation>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
@@ -2795,7 +2795,7 @@ Pengaturan bersama pada tab Pengaturan tidak akan berubah.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>Baca dan Jelaskan kirim tampilan kamera ke URL server di bawah ini. Gambar tetap ada di komputer ini hanya jika server tersebut berjalan di dalamnya, seperti LM Studio atau Ollama di localhost. Percakapan Asisten yang disimpan memerlukan langganan ChatGPT.</translation>
+            <translation>Fitur Baca dan Jelaskan mengirim tampilan kamera ke URL server di bawah ini. Gambar hanya tetap berada di komputer ini jika server tersebut berjalan di komputer ini, misalnya LM Studio atau Ollama di localhost. Percakapan Asisten yang disimpan memerlukan langganan ChatGPT.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
@@ -2815,7 +2815,7 @@ Pengaturan bersama pada tab Pengaturan tidak akan berubah.</translation>
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>Ini hanya berlaku untuk percakapan Asisten yang disimpan, termasuk pertanyaan yang diajukan dari Asisten mengambang. Membaca dan Menjelaskan selalu dibatasi.</translation>
+            <translation>Pengaturan ini hanya berlaku untuk percakapan Asisten yang disimpan, termasuk pertanyaan melalui Asisten mengambang. Fitur Baca dan Jelaskan selalu tetap dibatasi.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2823,11 +2823,11 @@ Pengaturan bersama pada tab Pengaturan tidak akan berubah.</translation>
         </message>
         <message>
             <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
-            <translation>Pilih seberapa banyak alasan yang digunakan Codex. Level yang lebih tinggi membutuhkan waktu lebih lama untuk dijawab.</translation>
+            <translation>Pilih tingkat penalaran yang digunakan Codex. Tingkat yang lebih tinggi dapat membuat jawaban lebih lama.</translation>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>Tampilkan atau sembunyikan instruksi hanya-baca OkuFlow selalu dikirimkan ke Codex</translation>
+            <translation>Tampilkan atau sembunyikan instruksi hanya-baca yang selalu dikirim OkuFlow ke Codex</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
@@ -2843,7 +2843,7 @@ Pengaturan bersama pada tab Pengaturan tidak akan berubah.</translation>
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>Terpasang
 %1
-Gunakan Connect ChatGPT pada tab Asisten Tingkat Lanjut untuk masuk.</translation>
+Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2855,7 +2855,7 @@ Gunakan Connect ChatGPT pada tab Asisten Tingkat Lanjut untuk masuk.</translatio
         </message>
         <message>
             <source>encoder backlog %1</source>
-            <translation>simpanan encoder %1</translation>
+            <translation>Antrean tertunda encoder %1</translation>
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
@@ -2883,7 +2883,7 @@ Gunakan Connect ChatGPT pada tab Asisten Tingkat Lanjut untuk masuk.</translatio
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
-            <translation>Waktu proses Microsoft Windows</translation>
+            <translation>Runtime Microsoft Windows</translation>
         </message>
         <message>
             <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
@@ -2895,7 +2895,7 @@ Gunakan Connect ChatGPT pada tab Asisten Tingkat Lanjut untuk masuk.</translatio
         </message>
         <message>
             <source>Install Microsoft Windows runtime</source>
-            <translation>Instal waktu proses Microsoft Windows</translation>
+            <translation>Instal runtime Microsoft Windows</translation>
         </message>
         <message>
             <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>
@@ -2907,7 +2907,7 @@ Gunakan Connect ChatGPT pada tab Asisten Tingkat Lanjut untuk masuk.</translatio
         </message>
         <message>
             <source>Windows could not start the elevated installer (error %1).</source>
-            <translation>Windows tidak dapat memulai penginstal yang ditinggikan (kesalahan %1).</translation>
+            <translation>Windows tidak dapat menjalankan installer dengan hak administrator (kesalahan %1).</translation>
         </message>
         <message>
             <source>Microsoft installer running. Continue in the installer window.</source>

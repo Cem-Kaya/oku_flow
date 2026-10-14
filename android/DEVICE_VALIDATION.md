@@ -1,13 +1,23 @@
 # Real-device validation — 2026-10-11
 
-## Local multilingual update (2026-10-13)
+## Multilingual update acceptance (2026-10-14)
 
-Code 4 / 0.1.3 is a local, unreleased 25-language build. APK assembly, 67 JVM
-tests, lint and exact 98-key resource parity pass. It has not been installed
-over the Play-signed code-3 app or visually inspected on a phone. Native font
-coverage, large text, RTL, TalkBack and Android 11–12 context switching remain
-acceptance checks. The physical streaming/recovery results below use earlier
-builds and do not establish those language checks. See
+A side-by-side debug fixture of the code-4 production sources was tested on
+the connected Pixel without replacing the installed Play-signed code-3 app.
+Actual English, Turkish and Dutch screenshots showed the settings gear and
+language controls. Saved language and explicit Pause survived activity
+reopening. A 15-second HEVC 4000×3000 stream measured approximately 29.7
+arrival FPS, with no crash or ANR observed. The fixture was then uninstalled
+and the original Play app restored. Evidence stays in
+`%LOCALAPPDATA%\OkuFlow\publication-20261014\phone-ui` and
+`phone-code4-stream`.
+
+Code 5 / 0.1.4 adds the completed wording corrections and passed 68 release
+JVM tests, lint and exact 98-key resource parity. It was committed to Alpha
+through the CLI, but has not been tested as a Play-signed upgrade. Coverage
+of every language's fonts, large text, RTL, TalkBack and Android 11–12 context
+switching remains pending. The physical streaming/recovery results below
+use earlier builds and do not establish those checks. See
 [localization](../docs/localization.md).
 
 Debug companion and native Windows development build, tested on a Pixel 9 Pro

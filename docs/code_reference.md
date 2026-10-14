@@ -1,5 +1,27 @@
 # OkuFlow Code Reference
 
+The native idle-chrome tests align injected Qt mouse events with the observed
+cursor position, allow at most one logical pixel of mixed-DPI rounding, and
+detect interruptions using exact native pixels. Startup pointer/focus events
+are drained before the unrelated-input fixture expires its timer.
+
+## Localization resources and validator, 2026-10-14
+
+The 24 `translations/okuflow_*.ts` catalogs retain 728 source keys each.
+`scripts/check_translations.ps1::Read-Catalog` retains exact source, format,
+markup and line-ending checks. Its French and Dutch identical-cognate tables
+also permit genuine identical words such as French `Microphone`/`Photo` and
+Dutch `Contrast`, without permitting untranslated English sentences.
+
+`common/notes_document_template.hpp` and `common/notes_transcribe_bridge.hpp`
+retain their 25 inline language maps. The corrected viewer labels distinguish
+video recordings from audio, and bridge guidance matches the visible Transcribe
+action. `launcher::kText` retains 25 rows of 14 preflight messages; corrections
+change wording and agreement without changing runtime-preflight behavior.
+The [review record](localization_review_2026-10-14.md) documents source inventories,
+correction counts and validation. No translation keys or runtime dependencies
+were added.
+
 ## Android CLI publishing
 
 `scripts/configure_android_play.ps1` validates a local Google service-account

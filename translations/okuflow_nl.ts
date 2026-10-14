@@ -89,11 +89,11 @@
         </message>
         <message>
             <source>Search Advanced settings</source>
-            <translation>Zoeken Geavanceerde instellingen</translation>
+            <translation>Geavanceerde instellingen doorzoeken</translation>
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>Typ een deel van de naam van een instelling om overeenkomende besturingselementen weer te geven en scherp te stellen.</translation>
+            <translation>Typ een deel van de naam van een instelling om overeenkomende bedieningselementen te tonen en de focus erop te plaatsen.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -125,7 +125,7 @@
         </message>
         <message>
             <source>Viewport motion rate</source>
-            <translation>Bewegingssnelheid van de viewport</translation>
+            <translation>Verversingssnelheid van het weergavegebied</translation>
         </message>
         <message>
             <source>Auto (up to 120 FPS)</source>
@@ -205,7 +205,7 @@
         </message>
         <message>
             <source>Screen fix</source>
-            <translation>Schermreparatie</translation>
+            <translation>Beeldcorrectie</translation>
         </message>
         <message>
             <source>Text clarity</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>Tijdelijk glad</translation>
+            <translation>Tijdelijke vloeiendheid</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -253,11 +253,11 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>Extra stabiel (schudden)</translation>
+            <translation>Extra stabiel (houdt het beeld vast bij beweging)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
-            <translation>Scherm rechttrekken (Keystone)</translation>
+            <translation>Beeld rechtzetten (keystonecorrectie)</translation>
         </message>
         <message>
             <source>Correction tracking:</source>
@@ -289,7 +289,7 @@
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>Maak de achtergrond plat</translation>
+            <translation>Achtergrond egaliseren</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
@@ -305,7 +305,7 @@
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>Slaggewicht</translation>
+            <translation>Lijndikte</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -365,7 +365,7 @@
         </message>
         <message>
             <source>Contrast</source>
-            <translation>Contrasterend</translation>
+            <translation>Contrast</translation>
         </message>
         <message>
             <source>Brightness</source>
@@ -381,7 +381,7 @@
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
-            <translation>Sla de tekening op in notities wanneer u Draw verlaat</translation>
+            <translation>Sla de tekening op in de notities wanneer u de tekenmodus afsluit</translation>
         </message>
         <message>
             <source>AI Settings</source>
@@ -413,7 +413,7 @@
         </message>
         <message>
             <source>Backend</source>
-            <translation>Achterkant</translation>
+            <translation>Backend</translation>
         </message>
         <message>
             <source>Sharpness</source>
@@ -477,7 +477,7 @@
         </message>
         <message>
             <source>Explain the current view</source>
-            <translation>Leg de huidige visie uit</translation>
+            <translation>Beschrijf de huidige weergave</translation>
         </message>
         <message>
             <source>Read text in the current view</source>
@@ -545,7 +545,7 @@
         </message>
         <message>
             <source>Ask about this view...</source>
-            <translation>Vraag naar dit uitzicht...</translation>
+            <translation>Stel een vraag over deze weergave...</translation>
         </message>
         <message>
             <source>Ask</source>
@@ -621,7 +621,7 @@
         </message>
         <message>
             <source>Codex CLI path:</source>
-            <translation>Codex CLI pad:</translation>
+            <translation>Pad naar Codex CLI:</translation>
         </message>
         <message>
             <source>Codex model:</source>
@@ -629,7 +629,7 @@
         </message>
         <message>
             <source>Reasoning:</source>
-            <translation>Redeneerinspanning:</translation>
+            <translation>Redenering:</translation>
         </message>
         <message>
             <source>Allow internet access</source>
@@ -645,11 +645,11 @@
         </message>
         <message>
             <source>Coding workspace:</source>
-            <translation>Codeerwerkruimte:</translation>
+            <translation>Werkruimte voor code:</translation>
         </message>
         <message>
             <source>Assistant behavior</source>
-            <translation>Assistent-gedrag</translation>
+            <translation>Gedrag van de assistent</translation>
         </message>
         <message>
             <source>Your instructions:</source>
@@ -657,7 +657,7 @@
         </message>
         <message>
             <source>OpenAI-compatible vision server</source>
-            <translation>OpenAI-compatibele vision-server</translation>
+            <translation>OpenAI-compatibele server voor beeldanalyse</translation>
         </message>
         <message>
             <source>Server URL:</source>
@@ -669,7 +669,7 @@
         </message>
         <message>
             <source>Vision model:</source>
-            <translation>Visiemodel:</translation>
+            <translation>Beeldanalysemodel:</translation>
         </message>
         <message>
             <source>Read aloud</source>
@@ -705,11 +705,11 @@
         </message>
         <message>
             <source>Saving lecture notes...</source>
-            <translation>Collegeaantekeningen opslaan...</translation>
+            <translation>Collegeaantekeningen worden opgeslagen...</translation>
         </message>
         <message>
             <source>Write lecture notes file</source>
-            <translation>Schrijf een lesnotitiebestand</translation>
+            <translation>Bestand met collegeaantekeningen schrijven</translation>
         </message>
         <message>
             <source>None</source>
@@ -809,7 +809,7 @@
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>Er is geen stem %1 geïnstalleerd: de huidige stem wordt gebruikt. Installeer er een onder Windows-instellingen → Tijd en taal → Spraak.</translation>
+            <translation>Er is geen %1-stem geïnstalleerd. De huidige stem wordt gebruikt. Installeer er een via Windows-instellingen → Tijd en taal → Spraak.</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -909,7 +909,7 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>NVIDIA Super Resolution prestatielimiet genegeerd.</translation>
+            <translation>Limiet voor NVIDIA Super Resolution-prestaties genegeerd.</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>Schermcorrectie is teruggegaan en het volgen is gestopt.</translation>
+            <translation>De schermcorrectie is teruggezet en de tracking is gestopt.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -949,11 +949,11 @@
         </message>
         <message>
             <source>Temporal blend</source>
-            <translation>Tijdelijke mix</translation>
+            <translation>Temporele menging</translation>
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>GPU- en compatibiliteitsregistratie testen in een geïsoleerd proces...</translation>
+            <translation>GPU-opname en compatibiliteitsopname testen in een geïsoleerd proces...</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -1019,7 +1019,7 @@
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>GPU-verwerking mislukt steeds en toont onverwerkte video.</translation>
+            <translation>GPU-verwerking blijft mislukken; onbewerkte video wordt weergegeven.</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
@@ -1179,7 +1179,7 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>GPU-gevoed origineel en verwerkt</translation>
+            <translation>Origineel en verwerkt beeld via de GPU</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex beeldvoorbereiding is bezig. Probeer het zo nog eens.</translation>
+            <translation>Codex is bezig de afbeelding voor te bereiden. Probeer het zo meteen opnieuw.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1219,7 +1219,7 @@
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>Voor aanhoudende Assistent-gesprekken is de Codex-abonnementsprovider vereist.</translation>
+            <translation>Voor blijvende assistentgesprekken is Codex als abonnementsprovider vereist.</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1331,11 +1331,11 @@
         </message>
         <message>
             <source>Preview Read Aloud Voice</source>
-            <translation>Voorbeeld Voorgelezen stem</translation>
+            <translation>Voorbeeld van de voorleesstem</translation>
         </message>
         <message>
             <source>Write Lecture Notes File</source>
-            <translation>Schrijf een collegenotitiebestand</translation>
+            <translation>Bestand met collegeaantekeningen opslaan</translation>
         </message>
         <message>
             <source>Loading installed Windows voices...</source>
@@ -1359,7 +1359,7 @@
         </message>
         <message>
             <source>Coding Workspace Required</source>
-            <translation>Codeerwerkruimte vereist</translation>
+            <translation>Werkruimte voor coderen vereist</translation>
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
@@ -1455,7 +1455,7 @@
         </message>
         <message>
             <source>Erase tool</source>
-            <translation>Wishulpmiddel</translation>
+            <translation>Wisgereedschap</translation>
         </message>
         <message>
             <source>Leave Draw mode.</source>
@@ -1471,7 +1471,7 @@
         </message>
         <message>
             <source>Move annotation tool</source>
-            <translation>Annotatietool verplaatsen</translation>
+            <translation>Annotatie verplaatsen</translation>
         </message>
         <message>
             <source>Move tool</source>
@@ -1495,7 +1495,7 @@
         </message>
         <message>
             <source>Redo annotation</source>
-            <translation>Annotatie opnieuw uitvoeren</translation>
+            <translation>Annotatie opnieuw toepassen</translation>
         </message>
         <message>
             <source>Remove a complete annotation. Shortcut E.</source>
@@ -1511,7 +1511,7 @@
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>Sla de gemarkeerde weergave op in collegeaantekeningen. Sneltoetsbediening S.</translation>
+            <translation>Sla de gemarkeerde weergave op in de collegeaantekeningen. Sneltoets Ctrl+S.</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
@@ -1531,11 +1531,11 @@
         </message>
         <message>
             <source>Solid</source>
-            <translation>Solide</translation>
+            <translation>Effen</translation>
         </message>
         <message>
             <source>Solid line style</source>
-            <translation>Stevige lijnstijl</translation>
+            <translation>Effen lijnstijl</translation>
         </message>
         <message>
             <source>Solid stroke</source>
@@ -1567,7 +1567,7 @@
         </message>
         <message>
             <source>Undo the last edit. Shortcut Control Z.</source>
-            <translation>Maak de laatste bewerking ongedaan. Sneltoetsbediening Z.</translation>
+            <translation>Maak de laatste bewerking ongedaan. Sneltoets Ctrl+Z.</translation>
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
@@ -1595,7 +1595,7 @@
         </message>
         <message>
             <source>Close assistive result</source>
-            <translation>Sluit hulpresultaat</translation>
+            <translation>Sluit het assistentresultaat</translation>
         </message>
         <message>
             <source>Hide the current assistant result</source>
@@ -1611,11 +1611,11 @@
         </message>
         <message>
             <source>Read assistive result aloud</source>
-            <translation>Lees het hulpresultaat hardop voor</translation>
+            <translation>Lees het assistentresultaat hardop voor</translation>
         </message>
         <message>
             <source>Send the question with the current camera view to OkuFlow Assistant</source>
-            <translation>Stuur de vraag met de huidige cameraweergave naar OkuFlow Assistent</translation>
+            <translation>Stuur de vraag samen met de huidige camerabeeldweergave naar OkuFlow Assistant</translation>
         </message>
         <message>
             <source>Speak the current assistant result</source>
@@ -1627,11 +1627,11 @@
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
-            <translation>Typ op elk gewenst moment een vervolgvraag. Verzenden wordt beschikbaar wanneer het huidige antwoord is voltooid.</translation>
+            <translation>Typ op elk gewenst moment een vervolgvraag. Je kunt deze versturen zodra het huidige antwoord klaar is.</translation>
         </message>
         <message>
             <source>Apply custom</source>
-            <translation>Pas maatwerk toe</translation>
+            <translation>Aangepast toepassen</translation>
         </message>
         <message>
             <source>Background color</source>
@@ -1667,7 +1667,7 @@
         </message>
         <message>
             <source>Display color scheme</source>
-            <translation>Kleurenschema weergeven</translation>
+            <translation>Weergavekleurenschema</translation>
         </message>
         <message>
             <source>Display colors changed to %1</source>
@@ -1695,11 +1695,11 @@
         </message>
         <message>
             <source>Posterize</source>
-            <translation>Posteriseren</translation>
+            <translation>Poster-effect</translation>
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>Kleuren lezen</translation>
+            <translation>Leesbare kleuren</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>Gebruik harde kleurbanden</translation>
+            <translation>Gebruik scherpe kleurovergangen</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1755,7 +1755,7 @@
         </message>
         <message>
             <source>Camera format notice</source>
-            <translation>Kennisgeving cameraformaat</translation>
+            <translation>Melding over het cameraformaat</translation>
         </message>
         <message>
             <source>ChatGPT connection</source>
@@ -1771,7 +1771,7 @@
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
-            <translation>Configureer de vision-assistent en spraakuitvoer</translation>
+            <translation>Stel de visuele assistent en spraakuitvoer in</translation>
         </message>
         <message>
             <source>Continue</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>Regelt een soepele pan- en zoompresentatie; De framesnelheid van de camera is ongewijzigd</translation>
+            <translation>Regelt vloeiend pannen en zoomen; de camera behoudt dezelfde beeldsnelheid</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1795,7 +1795,7 @@
         </message>
         <message>
             <source>Custom Setup</source>
-            <translation>Aangepaste installatie</translation>
+            <translation>Aangepaste configuratie</translation>
         </message>
         <message>
             <source>Describe the Scene</source>
@@ -1807,7 +1807,7 @@
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
-            <translation>Sleep om het formaat te wijzigen Geavanceerde instellingen</translation>
+            <translation>Sleep om het venster Geavanceerde instellingen groter of kleiner te maken</translation>
         </message>
         <message>
             <source>Extra Stable off</source>
@@ -1819,7 +1819,7 @@
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>Fill gebruikt het volledige zichtvenster zonder uit te rekken; Fit behoudt het volledige beeld met balken</translation>
+            <translation>Vullen gebruikt het hele weergavevenster zonder uitrekken; Passend maakt het hele beeld zichtbaar met balken</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1831,7 +1831,7 @@
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>Bevries het laatste scherpe frame tijdens een hobbel en keer vervolgens soepel terug naar live video</translation>
+            <translation>Houd tijdens een schok het laatste scherpe beeld vast en schakel daarna vloeiend terug naar de livevideo</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
@@ -1843,7 +1843,7 @@
         </message>
         <message>
             <source>Ignore NVIDIA Super Resolution performance limit</source>
-            <translation>Negeer de prestatielimiet NVIDIA Super Resolution</translation>
+            <translation>Negeer de prestatielimiet voor NVIDIA Super Resolution</translation>
         </message>
         <message>
             <source>Set up Codex CLI and NVIDIA Video Effects</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>Vergrendel het gemonteerde camerabeeld met behulp van volledige CUDA-stabilisatie</translation>
+            <translation>Stabiliseer het gemonteerde camerabeeld maximaal met CUDA</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1871,7 +1871,7 @@
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>Matchcamera (aanbevolen)</translation>
+            <translation>Afstemmen op camera (aanbevolen)</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1891,7 +1891,7 @@
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>NVIDIA Video Effects runtime niet geïnstalleerd; gebruik Installatie en downloads</translation>
+            <translation>NVIDIA Video Effects-runtime niet geïnstalleerd; ga naar Installatie en downloads</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>Hulp bij het openen van bedieningselementen en functies</translation>
+            <translation>Open de help over bedieningselementen en functies</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1967,15 +1967,15 @@
         </message>
         <message>
             <source>Reset current profile tuning</source>
-            <translation>Reset huidige profielafstemming</translation>
+            <translation>Herstel de afstemming van het huidige profiel</translation>
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>Reset de profieleigen afbeelding en hulpafstemming naar de standaardwaarden</translation>
+            <translation>Herstel de beeld- en assistentinstellingen van dit profiel naar de standaardwaarden</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
-            <translation>Formaat wijzigen Geavanceerde instellingen</translation>
+            <translation>Formaat van Geavanceerde instellingen wijzigen</translation>
         </message>
         <message>
             <source>Rotate input/output clockwise</source>
@@ -2003,7 +2003,7 @@
         </message>
         <message>
             <source>Sharpening</source>
-            <translation>Slijpen</translation>
+            <translation>Verscherping</translation>
         </message>
         <message>
             <source>Show a guide to OkuFlow controls and features</source>
@@ -2019,7 +2019,7 @@
         </message>
         <message>
             <source>Steady Text</source>
-            <translation>Vaste tekst</translation>
+            <translation>Stabiele tekst</translation>
         </message>
         <message>
             <source>Stop Automatic Screen Correction</source>
@@ -2035,7 +2035,7 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>Gebruik NVIDIA Video Effects SuperRes bij 1,33x zoom en hoger; valt automatisch terug naar NIS</translation>
+            <translation>Gebruik NVIDIA Video Effects SuperRes vanaf 1,33× zoom; schakelt automatisch over op NIS</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
@@ -2085,7 +2085,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>NVIDIA installer running. Continue in the vendor installer window.</source>
-            <translation>NVIDIA installatieprogramma actief. Ga verder in het installatievenster van de leverancier.</translation>
+            <translation>Het NVIDIA-installatieprogramma wordt uitgevoerd. Ga verder in het installatievenster.</translation>
         </message>
         <message>
             <source>Not installed</source>
@@ -2093,7 +2093,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>Niet geïnstalleerd. Installeren downloadt het pakket voor %1 GPU's.</translation>
+            <translation>Niet geïnstalleerd. Kies Installeren om het pakket voor %1 GPU's te downloaden.</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
@@ -2117,7 +2117,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Open the NVIDIA runtime uninstaller?</source>
-            <translation>Open het runtime-verwijderingsprogramma NVIDIA?</translation>
+            <translation>Het verwijderprogramma voor de NVIDIA-runtime openen?</translation>
         </message>
         <message>
             <source>Open the folder containing the detected Codex CLI</source>
@@ -2153,7 +2153,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Setup progress</source>
-            <translation>Voortgang van het instellen</translation>
+            <translation>Voortgang van de installatie</translation>
         </message>
         <message>
             <source>Setup status</source>
@@ -2173,7 +2173,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>The first transfer failed. Retrying with the Windows downloader...</source>
-            <translation>De eerste overdracht mislukte. Opnieuw proberen met de Windows-downloader...</translation>
+            <translation>De eerste downloadpoging is mislukt. Opnieuw proberen met de Windows-downloader...</translation>
         </message>
         <message>
             <source>The installer did not complete successfully.</source>
@@ -2181,7 +2181,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>The installer failed SHA-256 verification and was deleted.</source>
-            <translation>Het installatieprogramma slaagde niet in de SHA-256-verificatie en werd verwijderd.</translation>
+            <translation>Het installatiebestand is verwijderd omdat het de SHA-256-controle niet heeft doorstaan.</translation>
         </message>
         <message>
             <source>The temporary download file could not be created.</source>
@@ -2189,7 +2189,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>Deze systeembrede kopie moet worden verwijderd via door Windows geïnstalleerde apps</translation>
+            <translation>Deze systeembrede installatie moet worden verwijderd via Geïnstalleerde apps in Windows</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2229,11 +2229,11 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>Hulphaken: scène uitleggen</translation>
+            <translation>Hulpfuncties: scène uitleggen</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>Hulphaken: scène-uitleg met overlay</translation>
+            <translation>Hulpfuncties: scène-uitleg met overlay</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
@@ -2249,11 +2249,11 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Profile tuning reset to OkuFlow defaults.</source>
-            <translation>Profielafstemming wordt gereset naar de standaardwaarden OkuFlow.</translation>
+            <translation>De profielinstellingen zijn teruggezet naar de standaardwaarden van OkuFlow.</translation>
         </message>
         <message>
             <source>Current profile tuning reset to defaults.</source>
-            <translation>Huidige profielafstemming wordt gereset naar de standaardwaarden.</translation>
+            <translation>De huidige profielinstellingen zijn teruggezet naar de standaardwaarden.</translation>
         </message>
         <message>
             <source>Quick option name:</source>
@@ -2265,11 +2265,11 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Blur sigma</source>
-            <translation>Sigma vervagen</translation>
+            <translation>Vervagingssigma</translation>
         </message>
         <message>
             <source>Blur radius</source>
-            <translation>Vervagen straal</translation>
+            <translation>Vervagingsstraal</translation>
         </message>
         <message>
             <source>Performance timing percentiles</source>
@@ -2349,7 +2349,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>Volgende schermcorrectie, of zoek een nieuwe correctie.%1</translation>
+            <translation>Naar de volgende schermcorrectie gaan of een nieuwe correctie zoeken.%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2477,23 +2477,23 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
-            <translation>Een nieuw gesprek begonnen. De volgende Uitleg begint ook een nieuw gesprek.</translation>
+            <translation>Nieuw gesprek gestart. De volgende keer dat u op Uitleg drukt, start ook een nieuw gesprek.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Het huidige cameraframe en prompt worden verzonden naar Codex. Gesprek: opgeslagen uitleggesprek, vervolgd door elke uitleg. Tool internet: geblokkeerd. Codering en bestandswijzigingen: geblokkeerd.</translation>
+            <translation>Het huidige camerabeeld en de prompt worden naar Codex verzonden. Gesprek: opgeslagen uitleggesprek, dat bij elke uitleg wordt voortgezet. Internettoegang voor tools: geblokkeerd. Programmeren en bestanden wijzigen: geblokkeerd.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Het huidige cameraframe en prompt worden verzonden naar Codex. Gesprek: tijdelijk, nieuw voor elke Read. Tool internet: geblokkeerd. Codering en bestandswijzigingen: geblokkeerd.</translation>
+            <translation>Het huidige camerabeeld en de prompt worden naar Codex verzonden. Gesprek: tijdelijk; voor elke keer dat u op Lezen drukt, wordt een nieuw gesprek gestart. Internettoegang voor tools: geblokkeerd. Programmeren en bestanden wijzigen: geblokkeerd.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Het huidige cameraframe, de prompt en recente uitleg-antwoorden verzenden naar %1 (lokaal eindpunt). Gesprek: recente uitleg-antwoorden, alleen in het geheugen bewaard. Codeertools: niet beschikbaar.</translation>
+            <translation>Het huidige camerabeeld, de prompt en de recente uitlegantwoorden worden naar %1 (lokaal eindpunt) verzonden. Gesprek: recente uitlegantwoorden, alleen in het geheugen bewaard. Programmeerhulpmiddelen: niet beschikbaar.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Het huidige cameraframe, de prompt en recente uitleg-antwoorden verzenden naar %1 (extern eindpunt). Gesprek: recente uitleg-antwoorden, alleen in het geheugen bewaard. Codeertools: niet beschikbaar.</translation>
+            <translation>Het huidige camerabeeld, de prompt en de recente uitlegantwoorden worden naar %1 (extern eindpunt) verzonden. Gesprek: recente uitlegantwoorden, alleen in het geheugen bewaard. Programmeerhulpmiddelen: niet beschikbaar.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2505,7 +2505,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Dock left</source>
-            <translation>Dok links</translation>
+            <translation>Links vastzetten</translation>
         </message>
         <message>
             <source>Dock right</source>
@@ -2513,15 +2513,15 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Release to dock left</source>
-            <translation>Laat los om links aan te leggen</translation>
+            <translation>Laat los om links vast te zetten</translation>
         </message>
         <message>
             <source>Release to dock right</source>
-            <translation>Laat los om rechts aan te meren</translation>
+            <translation>Laat los om rechts vast te zetten</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>Maakt door abonnementen ondersteunde functies Lezen, Uitleggen en Assistent mogelijk. Installeert de officiële Codex CLI voor uw Windows-account; Inloggen bij ChatGPT blijft een aparte stap.</translation>
+            <translation>Hiermee krijgt u toegang tot Lezen, Uitleggen en Assistent via uw abonnement. De officiële Codex CLI wordt voor uw Windows-account geïnstalleerd; daarna moet u zich apart aanmelden bij ChatGPT.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2573,7 +2573,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Search settings…</source>
-            <translation>Zoekinstellingen…</translation>
+            <translation>Instellingen zoeken…</translation>
         </message>
         <message>
             <source>Mode: %1</source>
@@ -2585,7 +2585,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Changes apply now. Save to keep them.</source>
-            <translation>Wijzigingen zijn nu van toepassing. Bewaar om ze te bewaren.</translation>
+            <translation>Wijzigingen zijn direct van kracht. Sla ze op om ze te behouden.</translation>
         </message>
         <message>
             <source>Shared by all modes. Not saved into quick modes.</source>
@@ -2609,7 +2609,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>View and navigation</source>
-            <translation>Bekijk en navigatie</translation>
+            <translation>Weergave en navigatie</translation>
         </message>
         <message>
             <source>Colors and contrast</source>
@@ -2645,7 +2645,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Reset Mode</source>
-            <translation>Reset-modus</translation>
+            <translation>Modus resetten</translation>
         </message>
         <message>
             <source>Quick mode name:</source>
@@ -2657,7 +2657,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>Geen overeenkomsten hier. %1 in afbeelding. Druk op Enter om ze weer te geven.</translation>
+            <translation>Hier geen resultaten. %1 in Beeld. Druk op Enter om ze te tonen.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2673,7 +2673,7 @@ Het verwijderen wordt beheerd door Windows.</translation>
         </message>
         <message>
             <source>Resets this mode's image and assistant settings. Settings on the Settings tab are not changed.</source>
-            <translation>Reset de beeld- en assistentinstellingen van deze modus. Instellingen op het tabblad Instellingen worden niet gewijzigd.</translation>
+            <translation>Hiermee zet u de beeld- en assistentinstellingen van deze modus terug. De instellingen op het tabblad Instellingen blijven ongewijzigd.</translation>
         </message>
         <message>
             <source>Connect a camera, then choose it under Settings, Camera.</source>
@@ -2745,7 +2745,7 @@ Gedeelde instellingen op het tabblad Instellingen blijven ongewijzigd.</translat
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>Opname-uitvoerpad bestaat al; het werd bewaard.</translation>
+            <translation>Het uitvoerpad voor de opname bestaat al; het bestaande bestand is behouden.</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
@@ -2767,7 +2767,7 @@ Gedeelde instellingen op het tabblad Instellingen blijven ongewijzigd.</translat
         </message>
         <message>
             <source>Posterize 6</source>
-            <translation>Posterformaat 6</translation>
+            <translation>Posteriseren 6</translation>
         </message>
         <message>
             <source>Yellow text on black background</source>
@@ -2779,7 +2779,7 @@ Gedeelde instellingen op het tabblad Instellingen blijven ongewijzigd.</translat
         </message>
         <message>
             <source>Six color posterize effect</source>
-            <translation>Posterize-effect in zes kleuren</translation>
+            <translation>Posteriseereffect met zes kleuren</translation>
         </message>
         <message>
             <source>AI service</source>
@@ -2791,11 +2791,11 @@ Gedeelde instellingen op het tabblad Instellingen blijven ongewijzigd.</translat
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>Lezen, uitleggen en Assistent gebruiken uw ChatGPT-abonnement via Codex CLI. Meld u aan met Connect ChatGPT op het tabblad Assistent in de geavanceerde modus.</translation>
+            <translation>Lezen, Uitleggen en Assistent gebruiken uw ChatGPT-abonnement via de Codex CLI. Meld u aan via ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>Lezen en uitleggen Stuur het camerabeeld naar de onderstaande server-URL. Afbeeldingen blijven alleen op deze computer staan ​​als die server erop draait, zoals LM Studio of Ollama bij localhost. Voor opgeslagen Assistent-gesprekken is het ChatGPT-abonnement vereist.</translation>
+            <translation>Lezen en Uitleggen sturen het camerabeeld naar de server-URL hieronder. Afbeeldingen blijven alleen op deze computer als de server hier draait, bijvoorbeeld LM Studio of Ollama op localhost. Voor opgeslagen Assistentgesprekken is een ChatGPT-abonnement nodig.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
@@ -2815,7 +2815,7 @@ Gedeelde instellingen op het tabblad Instellingen blijven ongewijzigd.</translat
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>Deze zijn alleen van toepassing op opgeslagen Assistent-gesprekken, inclusief vragen die worden gesteld door de zwevende Assistent. Lezen en uitleggen blijft altijd beperkt.</translation>
+            <translation>Deze instellingen gelden alleen voor opgeslagen Assistentgesprekken, ook voor vragen aan de zwevende Assistent. Lezen en Uitleggen blijven altijd beperkt.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2843,7 +2843,7 @@ Gedeelde instellingen op het tabblad Instellingen blijven ongewijzigd.</translat
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>Geïnstalleerd
 %1
-Gebruik Connect ChatGPT op het tabblad Geavanceerde assistent om in te loggen.</translation>
+Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u aan te melden.</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>

@@ -6,6 +6,10 @@ Website: <https://okuflow.com>
 Windows/Android/notes/Transcribe coverage, system defaults, RTL behavior and
 remaining native-speaker/device acceptance.
 
+[Translation review continuation](localization_review_2026-10-14.md) records
+the complete assigned Luna catalog scopes, failed-attempt recovery, per-language
+correction counts, rejected proposals and local validation limits.
+
 [Android CLI publishing](android_cli_publishing.md) explains owner-controlled
 Play API setup, private DPAPI credentials and validated testing-track releases.
 

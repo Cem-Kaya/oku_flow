@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Submit Android 0.1.4 (code 5) with the completed language wording review
+  to Alpha after signed release tests, lint and artifact validation.
+  Code 4 / 0.1.3 was already committed to the Alpha track and is retained as
+  its own immutable signed inventory; Google review and device availability
+  remain separate from the CLI commit.
+
 - Simplified camera acceleration settings to one per-camera dropdown. Removed
   the redundant global compatibility checkbox and migrate its legacy enabled
   state to `Compatibility mode` for the selected physical camera.
@@ -15,6 +21,13 @@
   “etmen tabanlı erişilebilirlik” calque with “yapay zekâ destekli
   erişilebilirlik”. Translations remain machine-assisted drafts that still
   need native-speaker review; see `docs/localization.md`.
+
+  Follow with complete assigned Luna review scopes for all 17,472 translated
+  Qt entries and the remaining app/website text. Apply 4,383 distinct wording
+  corrections, repair misleading privacy and transcription labels, and align
+  instructions with visible controls. Preserve English source keys and the
+  existing published-release descriptions. See the per-language inventory in
+  `docs/localization_review_2026-10-14.md` for coverage and validation limits.
 
 - Own adb servers started by OkuFlow as private Windows job children. App exit
   or crash stops only its exact child; an idle unresponsive owned server can

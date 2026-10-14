@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>Spustí se při každém připojení. Stisknutím zapnete nebo vypnete osvětlení telefonu.</translation>
+            <translation>Při každém připojení je vypnuté. Stisknutím světlo telefonu zapnete nebo vypnete.</translation>
         </message>
         <message>
             <source>Application</source>
@@ -93,7 +93,7 @@
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>Zadejte část názvu nastavení, chcete-li odhalit a zaměřit odpovídající ovládací prvky.</translation>
+            <translation>Zadejte část názvu nastavení. Zobrazí se odpovídající ovládací prvky a přesune se na ně fokus.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -153,7 +153,7 @@
         </message>
         <message>
             <source>Reset Tuning</source>
-            <translation>Resetovat ladění</translation>
+            <translation>Obnovit výchozí nastavení</translation>
         </message>
         <message>
             <source>Virtual Joystick</source>
@@ -173,7 +173,7 @@
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
-            <translation>Fotoaparát a původní rozlišení záznamu &amp;&amp; snímková frekvence</translation>
+            <translation>Rozlišení fotoaparátu a původního záznamu &amp;&amp; snímková frekvence</translation>
         </message>
         <message>
             <source>Automatic (driver's choice)</source>
@@ -213,7 +213,7 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>Zaostřit a zaostřit</translation>
+            <translation>Doostřit a zaostřit</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
@@ -253,11 +253,11 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>Extra stabilní (vydržte při protřepávání)</translation>
+            <translation>Extra stabilní (udrží obraz i při chvění)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
-            <translation>Narovnat obrazovku (Keystone)</translation>
+            <translation>Narovnat obraz (korekce lichoběžníkového zkreslení)</translation>
         </message>
         <message>
             <source>Correction tracking:</source>
@@ -285,11 +285,11 @@
         </message>
         <message>
             <source>Auto Text Clarity</source>
-            <translation>Automatická čistota textu</translation>
+            <translation>Automatické zlepšení čitelnosti textu</translation>
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>Vyrovnat pozadí</translation>
+            <translation>Potlačit nerovnoměrné pozadí</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
@@ -305,7 +305,7 @@
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>Hmotnost zdvihu</translation>
+            <translation>Tloušťka tahu</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -329,7 +329,7 @@
         </message>
         <message>
             <source>Warn When Out of Focus</source>
-            <translation>Upozornit na rozostřený</translation>
+            <translation>Upozornit při rozostření</translation>
         </message>
         <message>
             <source>Suppress Glare</source>
@@ -381,7 +381,7 @@
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
-            <translation>Když opustíte Draw, uložte kresbu do poznámek</translation>
+            <translation>Při ukončení kreslení uložit kresbu do poznámek</translation>
         </message>
         <message>
             <source>AI Settings</source>
@@ -421,11 +421,11 @@
         </message>
         <message>
             <source>Focus X:</source>
-            <translation>Zaostření X:</translation>
+            <translation>Osa zaostření X:</translation>
         </message>
         <message>
             <source>Focus Y:</source>
-            <translation>Zaměření Y:</translation>
+            <translation>Osa zaostření Y:</translation>
         </message>
         <message>
             <source>Debug View</source>
@@ -437,7 +437,7 @@
         </message>
         <message>
             <source>Pipeline status</source>
-            <translation>Stav potrubí</translation>
+            <translation>Stav zpracovatelského řetězce</translation>
         </message>
         <message>
             <source>Performance percentiles</source>
@@ -621,7 +621,7 @@
         </message>
         <message>
             <source>Codex CLI path:</source>
-            <translation>Codex CLI cesta:</translation>
+            <translation>Cesta k nástroji Codex CLI:</translation>
         </message>
         <message>
             <source>Codex model:</source>
@@ -637,7 +637,7 @@
         </message>
         <message>
             <source>Allow coding commands and file changes</source>
-            <translation>Povolit kódování příkazů a změny souborů</translation>
+            <translation>Povolit provádění příkazů a změny souborů</translation>
         </message>
         <message>
             <source>Required when coding is enabled</source>
@@ -645,7 +645,7 @@
         </message>
         <message>
             <source>Coding workspace:</source>
-            <translation>Pracovní plocha kódování:</translation>
+            <translation>Pracovní složka pro kódování:</translation>
         </message>
         <message>
             <source>Assistant behavior</source>
@@ -657,7 +657,7 @@
         </message>
         <message>
             <source>OpenAI-compatible vision server</source>
-            <translation>Vision server kompatibilní s OpenAI</translation>
+            <translation>Server pro analýzu obrazu kompatibilní s OpenAI</translation>
         </message>
         <message>
             <source>Server URL:</source>
@@ -669,7 +669,7 @@
         </message>
         <message>
             <source>Vision model:</source>
-            <translation>Model vidění:</translation>
+            <translation>Model pro analýzu obrazu:</translation>
         </message>
         <message>
             <source>Read aloud</source>
@@ -709,7 +709,7 @@
         </message>
         <message>
             <source>Write lecture notes file</source>
-            <translation>Napište soubor poznámek k přednášce</translation>
+            <translation>Zapsat soubor s poznámkami z přednášky</translation>
         </message>
         <message>
             <source>None</source>
@@ -745,11 +745,11 @@
         </message>
         <message>
             <source>%1% slower</source>
-            <translation>%1% pomalejší</translation>
+            <translation>O %1 % pomalejší</translation>
         </message>
         <message>
             <source>%1% faster</source>
-            <translation>%1% rychlejší</translation>
+            <translation>O %1 % rychlejší</translation>
         </message>
         <message>
             <source>Speech rate</source>
@@ -781,7 +781,7 @@
         </message>
         <message>
             <source>Don't ask again automatically</source>
-            <translation>Neptejte se znovu automaticky</translation>
+            <translation>Automaticky se už neptat</translation>
         </message>
         <message>
             <source>Section heading. Activate to expand or collapse this settings group.</source>
@@ -789,11 +789,11 @@
         </message>
         <message>
             <source>expanded</source>
-            <translation>rozšířené</translation>
+            <translation>rozbaleno</translation>
         </message>
         <message>
             <source>collapsed</source>
-            <translation>sbalené</translation>
+            <translation>sbaleno</translation>
         </message>
         <message>
             <source>%1 · %2 changed</source>
@@ -809,7 +809,7 @@
         </message>
         <message>
             <source>No %1 voice is installed — using the current voice. Install one under Windows Settings → Time &amp; Language → Speech.</source>
-            <translation>Není nainstalován žádný hlas %1 — pomocí aktuálního hlasu. Nainstalujte jej v části Nastavení systému Windows → Čas a jazyk → Řeč.</translation>
+            <translation>Hlas %1 není nainstalován, proto se používá aktuální hlas. Další hlas nainstalujete v Nastavení systému Windows → Čas a jazyk → Řeč.</translation>
         </message>
         <message>
             <source>Assistant request stopped.</source>
@@ -817,15 +817,15 @@
         </message>
         <message>
             <source>Attaching the current view...</source>
-            <translation>Připojování aktuálního pohledu...</translation>
+            <translation>Připojování aktuálního záběru…</translation>
         </message>
         <message>
             <source>Capturing the current view...</source>
-            <translation>Snímání aktuálního pohledu...</translation>
+            <translation>Pořizování aktuálního záběru…</translation>
         </message>
         <message>
             <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
-            <translation>Obrázek rozostřený. Před čtením textu klepněte na obrazovku telefonu a znovu zaostřete.</translation>
+            <translation>Obraz je rozostřený. Před čtením textu klepnutím na obrazovku telefonu znovu zaostřete.</translation>
         </message>
         <message>
             <source>Loading conversation...</source>
@@ -833,19 +833,19 @@
         </message>
         <message>
             <source>No lecture notes yet — use Read, Explain, or Assistant to add text.</source>
-            <translation>Zatím žádné poznámky k přednášce – k přidání textu použijte funkci Číst, Vysvětlit nebo Asistenta.</translation>
+            <translation>Zatím tu nejsou žádné poznámky k přednášce. Přidejte text pomocí funkcí Číst, Vysvětlit nebo Asistent.</translation>
         </message>
         <message>
             <source>OkuFlow Assistant</source>
-            <translation>OkuFlow Asistent</translation>
+            <translation>Asistent OkuFlow</translation>
         </message>
         <message>
             <source>You</source>
-            <translation>vy</translation>
+            <translation>Vy</translation>
         </message>
         <message>
             <source>Capturing original and processed photos...</source>
-            <translation>Pořizování originálních a zpracovaných fotografií...</translation>
+            <translation>Pořizování původních a upravených fotografií…</translation>
         </message>
         <message>
             <source>Delete Conversation</source>
@@ -857,11 +857,11 @@
         </message>
         <message>
             <source>Permanently delete this OkuFlow assistant conversation?</source>
-            <translation>Trvale smazat tuto konverzaci asistenta OkuFlow?</translation>
+            <translation>Opravdu chcete trvale smazat tuto konverzaci s asistentem OkuFlow?</translation>
         </message>
         <message>
             <source>Reconnect ChatGPT</source>
-            <translation>Znovu připojte ChatGPT</translation>
+            <translation>Znovu připojit ChatGPT</translation>
         </message>
         <message>
             <source>Rename Conversation</source>
@@ -873,23 +873,23 @@
         </message>
         <message>
             <source>The OkuFlow Analysis folder is unavailable.</source>
-            <translation>Složka analýzy OkuFlow není k dispozici.</translation>
+            <translation>Složka OkuFlow Analysis není dostupná.</translation>
         </message>
         <message>
             <source>Viewport motion limited to %1 FPS by this display.</source>
-            <translation>Pohyb výřezu je tímto zobrazením omezen na %1 FPS.</translation>
+            <translation>Tento displej omezuje pohyb výřezu na %1 FPS.</translation>
         </message>
         <message>
             <source>Vision model: %1</source>
-            <translation>Model vidění: %1</translation>
+            <translation>Model pro rozpoznávání obrazu: %1</translation>
         </message>
         <message>
             <source>Automatic screen correction continuing.</source>
-            <translation>Automatická korekce obrazovky pokračuje.</translation>
+            <translation>Automatická korekce obrazu pokračuje.</translation>
         </message>
         <message>
             <source>Automatic screen correction stopped.</source>
-            <translation>Automatická korekce obrazovky byla zastavena.</translation>
+            <translation>Automatická korekce obrazu byla zastavena.</translation>
         </message>
         <message>
             <source>Cancel</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>Snímání kamery GPU je aktivní s nouzovou zálohou bezpečné kopie.</translation>
+            <translation>Snímání z kamery přes GPU běží se záložním bezpečným kopírováním.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -909,19 +909,19 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>NVIDIA Super Resolution limit výkonu ignorován.</translation>
+            <translation>Omezení výkonu NVIDIA Super Resolution bylo ignorováno.</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
-            <translation>Limit výkonu NVIDIA Super Resolution obnoven.</translation>
+            <translation>Omezení výkonu NVIDIA Super Resolution bylo obnoveno.</translation>
         </message>
         <message>
             <source>New OkuFlow files will be saved in %1.</source>
-            <translation>Nové soubory OkuFlow budou uloženy do %1.</translation>
+            <translation>Nové soubory OkuFlow se budou ukládat do složky %1.</translation>
         </message>
         <message>
             <source>Open OkuFlow Folder</source>
-            <translation>Otevřete složku OkuFlow</translation>
+            <translation>Otevřít složku OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow cannot use the selected folder.</source>
@@ -929,15 +929,15 @@
         </message>
         <message>
             <source>Opened your OkuFlow folder.</source>
-            <translation>Otevřeli jste složku OkuFlow.</translation>
+            <translation>Složka OkuFlow byla otevřena.</translation>
         </message>
         <message>
             <source>Recording stopped because the microphone selection changed.</source>
-            <translation>Nahrávání se zastavilo, protože se změnil výběr mikrofonu.</translation>
+            <translation>Nahrávání bylo zastaveno, protože se změnil vybraný mikrofon.</translation>
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>Oprava obrazovky se přesunula zpět a sledování se zastavilo.</translation>
+            <translation>Korekce obrazu se vrátila zpět a sledování bylo zastaveno.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -945,19 +945,19 @@
         </message>
         <message>
             <source>Stop recording before testing camera acceleration.</source>
-            <translation>Před testováním zrychlení kamery zastavte záznam.</translation>
+            <translation>Před testem akcelerace kamery zastavte nahrávání.</translation>
         </message>
         <message>
             <source>Temporal blend</source>
-            <translation>Časová směs</translation>
+            <translation>Časové prolnutí</translation>
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>Testování GPU a zachycení kompatibility v izolovaném procesu...</translation>
+            <translation>Testování snímání přes GPU a kompatibilního snímání v izolovaném procesu…</translation>
         </message>
         <message>
             <source>Testing camera...</source>
-            <translation>Testování fotoaparátu...</translation>
+            <translation>Testování kamery…</translation>
         </message>
         <message>
             <source>The OkuFlow folder is unavailable.</source>
@@ -965,16 +965,16 @@
         </message>
         <message>
             <source>The isolated camera test could not start: %1</source>
-            <translation>Test izolované kamery nelze spustit: %1</translation>
+            <translation>Test kamery v izolovaném procesu se nepodařilo spustit: %1</translation>
         </message>
         <message>
             <source>Using the next screen correction.</source>
-            <translation>Pomocí další opravy obrazovky.</translation>
+            <translation>Používá se další korekce obrazu.</translation>
         </message>
         <message>
             <source>Windows could not open:
 %1</source>
-            <translation>Systém Windows nelze otevřít:
+            <translation>Systému Windows se nepodařilo otevřít:
 %1</translation>
         </message>
         <message>
@@ -987,23 +987,23 @@
         </message>
         <message>
             <source>Annotated view could not be saved.</source>
-            <translation>Zobrazení s poznámkami se nepodařilo uložit.</translation>
+            <translation>Označený záběr se nepodařilo uložit.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>Zobrazení s poznámkami nebylo uloženo: obrázek nelze zařadit do fronty.</translation>
+            <translation>Označený záběr nebyl uložen: nepodařilo se zařadit obrázek do fronty.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>Pohled s poznámkami není uložen: zapisovač obrázků je zaneprázdněn. Zkuste to znovu.</translation>
+            <translation>Označený záběr nebyl uložen: ukládání obrázků právě probíhá. Zkuste to znovu.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
-            <translation>Pohled s poznámkami nebyl uložen: výřez nebyl dostupný.</translation>
+            <translation>Označený záběr nebyl uložen: zobrazení kamery nebylo dostupné.</translation>
         </message>
         <message>
             <source>Camera Error</source>
-            <translation>Chyba fotoaparátu</translation>
+            <translation>Chyba kamery</translation>
         </message>
         <message>
             <source>Camera reconnected.</source>
@@ -1011,19 +1011,19 @@
         </message>
         <message>
             <source>Failed to start camera capture</source>
-            <translation>Spuštění snímání kamerou se nezdařilo</translation>
+            <translation>Nepodařilo se spustit snímání z kamery</translation>
         </message>
         <message>
             <source>GPU camera acceleration could not start: %1</source>
-            <translation>Akceleraci kamery GPU nelze spustit: %1</translation>
+            <translation>Akceleraci snímání z kamery přes GPU se nepodařilo spustit: %1</translation>
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>Zpracování GPU stále selhává – zobrazuje se nezpracované video.</translation>
+            <translation>Zpracování přes GPU opakovaně selhává. Zobrazuje se neupravené video.</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
-            <translation>Snímání z kamery s akcelerací GPU prošlo ověřením při spuštění.</translation>
+            <translation>Snímání z kamery akcelerované GPU úspěšně prošlo úvodní kontrolou.</translation>
         </message>
         <message>
             <source>Modes unavailable: %1</source>
@@ -1031,7 +1031,7 @@
         </message>
         <message>
             <source>No camera modes were reported.</source>
-            <translation>Nebyly hlášeny žádné režimy fotoaparátu.</translation>
+            <translation>Nebyly nalezeny žádné režimy kamery.</translation>
         </message>
         <message>
             <source>Photo not saved: no processed frame was available.</source>
@@ -1039,39 +1039,39 @@
         </message>
         <message>
             <source>Photo not saved: the OkuFlow Photos folder is unavailable.</source>
-            <translation>Fotografie není uložena: složka Fotografie OkuFlow není k dispozici.</translation>
+            <translation>Fotografie nebyla uložena: složka OkuFlow Photos není dostupná.</translation>
         </message>
         <message>
             <source>Photo not saved: the image could not be queued.</source>
-            <translation>Fotografie nebyla uložena: obrázek nelze zařadit do fronty.</translation>
+            <translation>Fotografie nebyla uložena: obrázek se nepodařilo zařadit do fronty.</translation>
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>Fotografie není uložena: zapisovač obrázků je zaneprázdněn. Zkuste to znovu.</translation>
+            <translation>Fotografie nebyla uložena: ukládání obrázků právě probíhá. Zkuste to znovu.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
-            <translation>Fotografie nebyla uložena: původní rám fotoaparátu nelze převést.</translation>
+            <translation>Fotografie nebyla uložena: původní snímek z kamery se nepodařilo převést.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be read back.</source>
-            <translation>Fotografie nebyla uložena: původní snímek fotoaparátu nelze načíst.</translation>
+            <translation>Fotografie nebyla uložena: nepodařilo se zpětně načíst původní snímek z kamery.</translation>
         </message>
         <message>
             <source>Photo not saved: the processed or original frame was unavailable.</source>
-            <translation>Fotografie nebyla uložena: zpracovaný nebo původní rámeček nebyl k dispozici.</translation>
+            <translation>Fotografie nebyla uložena: upravený ani původní snímek nebyl k dispozici.</translation>
         </message>
         <message>
             <source>Reconnecting to camera…</source>
-            <translation>Opětovné připojování ke kameře…</translation>
+            <translation>Znovu se připojuje kamera…</translation>
         </message>
         <message>
             <source>Recording stopped: the original camera frame could not be converted.</source>
-            <translation>Záznam zastaven: Původní snímek kamery nelze převést.</translation>
+            <translation>Nahrávání bylo zastaveno: původní snímek z kamery se nepodařilo převést.</translation>
         </message>
         <message>
             <source>Saving annotated view to lecture notes...</source>
-            <translation>Ukládání komentovaného pohledu do poznámek k přednášce...</translation>
+            <translation>Ukládání označeného záběru do poznámek k přednášce…</translation>
         </message>
         <message>
             <source>Saving original and processed photos...</source>
@@ -1079,11 +1079,11 @@
         </message>
         <message>
             <source>The camera GPU texture could not be converted for CUDA.</source>
-            <translation>Texturu GPU fotoaparátu nelze převést pro CUDA.</translation>
+            <translation>Texturu kamery v paměti GPU se nepodařilo převést pro CUDA.</translation>
         </message>
         <message>
             <source>Annotated view</source>
-            <translation>Komentovaný pohled</translation>
+            <translation>Označený záběr</translation>
         </message>
         <message>
             <source>Finishing recording...</source>
@@ -1095,35 +1095,35 @@
         </message>
         <message>
             <source>Recording could not start.</source>
-            <translation>Nahrávání nelze spustit.</translation>
+            <translation>Nahrávání se nepodařilo spustit.</translation>
         </message>
         <message>
             <source>Recording could not start: %1</source>
-            <translation>Nahrávání nelze spustit: %1</translation>
+            <translation>Nahrávání se nepodařilo spustit: %1</translation>
         </message>
         <message>
             <source>Recording is starting...</source>
-            <translation>Nahrávání začíná...</translation>
+            <translation>Spouštění nahrávání…</translation>
         </message>
         <message>
             <source>Recording saved. %1</source>
-            <translation>Záznam uložen. %1</translation>
+            <translation>Nahrávání bylo uloženo. %1</translation>
         </message>
         <message>
             <source>Recording stopped after reaching the 12-hour limit.</source>
-            <translation>Záznam se zastavil po dosažení 12hodinového limitu.</translation>
+            <translation>Nahrávání bylo zastaveno po dosažení limitu 12 hodin.</translation>
         </message>
         <message>
             <source>Recording stopped because an encoder rejected a frame.</source>
-            <translation>Záznam se zastavil, protože kodér odmítl snímek.</translation>
+            <translation>Nahrávání bylo zastaveno, protože kodér odmítl snímek.</translation>
         </message>
         <message>
             <source>Recording stopped because the audio encoder rejected a sample.</source>
-            <translation>Nahrávání se zastavilo, protože kodér zvuku odmítl vzorek.</translation>
+            <translation>Nahrávání bylo zastaveno, protože zvukový kodér odmítl vzorek.</translation>
         </message>
         <message>
             <source>Recording stopped before the first frame was written.</source>
-            <translation>Záznam se zastavil před zapsáním prvního snímku.</translation>
+            <translation>Nahrávání bylo zastaveno před uložením prvního snímku.</translation>
         </message>
         <message>
             <source>Stopping recording...</source>
@@ -1131,11 +1131,11 @@
         </message>
         <message>
             <source>The camera mode changed. Recording continues in part %1.</source>
-            <translation>Režim fotoaparátu se změnil. Záznam pokračuje v části %1.</translation>
+            <translation>Režim kamery se změnil. Nahrávání pokračuje v části %1.</translation>
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
-            <translation>Nahrávací plátno je neplatné.</translation>
+            <translation>Plocha pro nahrávání není platná.</translation>
         </message>
         <message>
             <source>No frames were dropped.</source>
@@ -1143,19 +1143,19 @@
         </message>
         <message>
             <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
-            <translation>Nahrávání se zastavilo, protože zpracování zvuku nestíhá nebo je vstup neplatný.</translation>
+            <translation>Nahrávání bylo zastaveno, protože zpracování zvuku nestíhalo nebo byl vstup neplatný.</translation>
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>Zvuk: %1 bloky vynechány před kódováním, %2 zamítnuto vstupním limitem.</translation>
+            <translation>Zvuk: před kódováním bylo vynecháno %1 bloků, %2 bloků překročilo vstupní limit.</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
-            <translation>%1 snímků bylo zahozeno (%2).</translation>
+            <translation>Vynecháno snímků: %1 (%2).</translation>
         </message>
         <message>
             <source>%1 frames used an estimated timestamp.</source>
-            <translation>%1 snímků používá odhadované časové razítko.</translation>
+            <translation>Odhadované časové razítko použilo %1 snímků.</translation>
         </message>
         <message>
             <source>Original video</source>
@@ -1171,19 +1171,19 @@
         </message>
         <message>
             <source>CPU/system memory</source>
-            <translation>CPU/systémová paměť</translation>
+            <translation>Procesor / systémová paměť</translation>
         </message>
         <message>
             <source>direct GPU</source>
-            <translation>přímé GPU</translation>
+            <translation>přímo přes GPU</translation>
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>Originální a zpracované GPU</translation>
+            <translation>Původní a upravený obraz z GPU</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>Zdroj GPU s pracovním čtením</translation>
+            <translation>Zdroj z GPU se zpětným načtením pracovním vláknem</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1191,7 +1191,7 @@
         </message>
         <message>
             <source>Assistant stopped.</source>
-            <translation>Asistent se zastavil.</translation>
+            <translation>Asistent byl zastaven.</translation>
         </message>
         <message>
             <source>Assistive View</source>
@@ -1199,55 +1199,55 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Příprava snímku Codex je zaneprázdněná. Zkuste to znovu za chvíli.</translation>
+            <translation>Codex právě připravuje obrázek. Zkuste to za chvíli znovu.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
-            <translation>Nelze připravit aktuální pohled kamery.</translation>
+            <translation>Nepodařilo se připravit aktuální záběr z kamery.</translation>
         </message>
         <message>
             <source>Failed to encode frame for VLM request.</source>
-            <translation>Nepodařilo se zakódovat rámec pro požadavek VLM.</translation>
+            <translation>Snímek se nepodařilo zakódovat pro požadavek VLM.</translation>
         </message>
         <message>
             <source>Failed to prepare the current view for Codex.</source>
-            <translation>Nepodařilo se připravit aktuální pohled pro Codex.</translation>
+            <translation>Nepodařilo se připravit aktuální záběr pro Codex.</translation>
         </message>
         <message>
             <source>No camera frame is available to attach.</source>
-            <translation>Není k dispozici rám fotoaparátu k připevnění.</translation>
+            <translation>Není k dispozici snímek z kamery, který by bylo možné připojit.</translation>
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>Trvalé konverzace Asistenta vyžadují poskytovatele předplatného Codex.</translation>
+            <translation>Pro trvalé konverzace s asistentem je nutné zvolit poskytovatele předplatného Codex.</translation>
         </message>
         <message>
             <source>Photo captured</source>
-            <translation>Fotka zachycena</translation>
+            <translation>Fotografie pořízena</translation>
         </message>
         <message>
             <source>Preparing the current view...</source>
-            <translation>Příprava aktuálního zobrazení...</translation>
+            <translation>Příprava aktuálního záběru…</translation>
         </message>
         <message>
             <source>Querying VLM...</source>
-            <translation>Dotaz na VLM...</translation>
+            <translation>Odesílání dotazu modelu VLM…</translation>
         </message>
         <message>
             <source>Scene explanation</source>
-            <translation>Vysvětlení scény</translation>
+            <translation>Popis scény</translation>
         </message>
         <message>
             <source>Scene explanation is busy with a previous request. Try again in a moment.</source>
-            <translation>Vysvětlení scény je zaneprázdněno předchozím požadavkem. Zkuste to znovu za chvíli.</translation>
+            <translation>Zpracovává se předchozí požadavek na popis scény. Zkuste to za chvíli znovu.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt</source>
-            <translation>Odeslání aktuálního snímku kamery a výzvy</translation>
+            <translation>Odesílání aktuálního snímku z kamery a zadání</translation>
         </message>
         <message>
             <source>Sending the prompt only</source>
-            <translation>Odeslání pouze výzvy</translation>
+            <translation>Odesílání pouze zadání</translation>
         </message>
         <message>
             <source>Text on screen</source>
@@ -1255,19 +1255,19 @@
         </message>
         <message>
             <source>Thinking...</source>
-            <translation>Přemýšlím...</translation>
+            <translation>Zpracovávání…</translation>
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
-            <translation>Příprava obrazu VLM je zaneprázdněná. Zkuste to znovu za chvíli.</translation>
+            <translation>Model VLM právě připravuje obrázek. Zkuste to za chvíli znovu.</translation>
         </message>
         <message>
             <source>VLM ready.</source>
-            <translation>VLM připraven.</translation>
+            <translation>Model VLM je připraven.</translation>
         </message>
         <message>
             <source>VLM request failed: %1</source>
-            <translation>Požadavek VLM selhal: %1</translation>
+            <translation>Požadavek modelu VLM se nezdařil: %1</translation>
         </message>
         <message>
             <source>VLM response did not contain readable text.</source>
@@ -1275,15 +1275,15 @@
         </message>
         <message>
             <source>VLM response exceeded OkuFlow's safe size limit.</source>
-            <translation>Odpověď VLM překročila limit bezpečné velikosti OkuFlow.</translation>
+            <translation>Odpověď modelu VLM překročila bezpečný limit velikosti v OkuFlow.</translation>
         </message>
         <message>
             <source>VLM returned an empty description.</source>
-            <translation>VLM vrátil prázdný popis.</translation>
+            <translation>Model VLM vrátil prázdný popis.</translation>
         </message>
         <message>
             <source>Video recorded</source>
-            <translation>Video natočeno</translation>
+            <translation>Video bylo nahráno</translation>
         </message>
         <message>
             <source>AI Provider</source>
@@ -1291,7 +1291,7 @@
         </message>
         <message>
             <source>Codex CLI Path</source>
-            <translation>Codex CLI Cesta</translation>
+            <translation>Cesta k Codex CLI</translation>
         </message>
         <message>
             <source>Codex Model</source>
@@ -1299,7 +1299,7 @@
         </message>
         <message>
             <source>Codex Reasoning</source>
-            <translation>Codex Zdůvodnění</translation>
+            <translation>Úroveň uvažování Codex</translation>
         </message>
         <message>
             <source>Assistant Instructions</source>
@@ -1307,7 +1307,7 @@
         </message>
         <message>
             <source>Built-in Codex Prompt</source>
-            <translation>Vestavěná výzva Codex</translation>
+            <translation>Přednastavené zadání pro Codex</translation>
         </message>
         <message>
             <source>VLM Server URL</source>
@@ -1331,11 +1331,11 @@
         </message>
         <message>
             <source>Preview Read Aloud Voice</source>
-            <translation>Náhled hlasového čtení</translation>
+            <translation>Vyzkoušet hlas předčítání</translation>
         </message>
         <message>
             <source>Write Lecture Notes File</source>
-            <translation>Napište soubor poznámek k přednáškám</translation>
+            <translation>Zapisovat poznámky k přednášce do souboru</translation>
         </message>
         <message>
             <source>Loading installed Windows voices...</source>
@@ -1347,23 +1347,23 @@
         </message>
         <message>
             <source>Text-to-speech is unavailable in this build</source>
-            <translation>Převod textu na řeč není v tomto sestavení k dispozici</translation>
+            <translation>Předčítání textu není v této verzi dostupné</translation>
         </message>
         <message>
             <source>Optional for local servers</source>
-            <translation>Volitelné pro místní servery</translation>
+            <translation>U místních serverů není povinné</translation>
         </message>
         <message>
             <source>Choose an existing workspace folder before enabling coding.</source>
-            <translation>Před povolením kódování vyberte existující složku pracovního prostoru.</translation>
+            <translation>Než povolíte práci s kódem, vyberte existující pracovní složku.</translation>
         </message>
         <message>
             <source>Coding Workspace Required</source>
-            <translation>Je vyžadován pracovní prostor kódování</translation>
+            <translation>Je nutné vybrat pracovní složku pro práci s kódem</translation>
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
-            <translation>Režim anotace je zapnutý. Nástroj pero.</translation>
+            <translation>Režim anotací je zapnutý. Nástroj: pero.</translation>
         </message>
         <message>
             <source>Annotation options</source>
@@ -1375,11 +1375,11 @@
         </message>
         <message>
             <source>Annotation thickness</source>
-            <translation>Tloušťka anotace</translation>
+            <translation>Tloušťka čáry</translation>
         </message>
         <message>
             <source>Annotation tool</source>
-            <translation>Nástroj pro poznámky</translation>
+            <translation>Nástroj pro anotace</translation>
         </message>
         <message>
             <source>Clear annotations</source>
@@ -1387,7 +1387,7 @@
         </message>
         <message>
             <source>Click the camera view, then type a label. Shortcut T.</source>
-            <translation>Klikněte na pohled kamery a zadejte popisek. Zkratka T.</translation>
+            <translation>Klikněte do obrazu kamery a napište popisek. Klávesová zkratka: T.</translation>
         </message>
         <message>
             <source>Dashed</source>
@@ -1399,15 +1399,15 @@
         </message>
         <message>
             <source>Dashed stroke</source>
-            <translation>Přerušovaný tah</translation>
+            <translation>Čárkovaná čára</translation>
         </message>
         <message>
             <source>Done drawing</source>
-            <translation>Hotovo kreslení</translation>
+            <translation>Dokončit kreslení</translation>
         </message>
         <message>
             <source>Draw a dashed stroke with transparent gaps.</source>
-            <translation>Nakreslete čárkovaný tah s průhlednými mezerami.</translation>
+            <translation>Nakreslete čárkovanou čáru s průhlednými mezerami.</translation>
         </message>
         <message>
             <source>Draw a rectangle.</source>
@@ -1423,11 +1423,11 @@
         </message>
         <message>
             <source>Draw an uninterrupted stroke.</source>
-            <translation>Nakreslete nepřerušovaný tah.</translation>
+            <translation>Nakreslete souvislou čáru.</translation>
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
-            <translation>Kreslit volnou rukou na pohled kamery. Zkratka P.</translation>
+            <translation>Kreslete od ruky do obrazu kamery. Klávesová zkratka: P.</translation>
         </message>
         <message>
             <source>Draw mode off.</source>
@@ -1435,11 +1435,11 @@
         </message>
         <message>
             <source>Draw rectangles or ellipses. Shortcut S.</source>
-            <translation>Nakreslete obdélníky nebo elipsy. Zkratka S.</translation>
+            <translation>Kreslete obdélníky nebo elipsy. Klávesová zkratka: S.</translation>
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>Nakreslete, vyberte, změňte velikost, uložte nebo vymažte poznámky ukotvené ke scéně fotoaparátu.</translation>
+            <translation>Kreslete, vybírejte, měňte velikost, ukládejte nebo odstraňujte anotace ukotvené k obrazu kamery.</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1455,11 +1455,11 @@
         </message>
         <message>
             <source>Erase tool</source>
-            <translation>Nástroj pro vymazání</translation>
+            <translation>Guma</translation>
         </message>
         <message>
             <source>Leave Draw mode.</source>
-            <translation>Opusťte režim kreslení.</translation>
+            <translation>Ukončit režim kreslení</translation>
         </message>
         <message>
             <source>Lecture annotation canvas</source>
@@ -1475,7 +1475,7 @@
         </message>
         <message>
             <source>Move tool</source>
-            <translation>Přesunout nástroj</translation>
+            <translation>Nástroj pro přesouvání</translation>
         </message>
         <message>
             <source>Nothing selected</source>
@@ -1499,7 +1499,7 @@
         </message>
         <message>
             <source>Remove a complete annotation. Shortcut E.</source>
-            <translation>Odstraňte úplnou anotaci. Zkratka E.</translation>
+            <translation>Odstranit celou anotaci. Klávesová zkratka: E.</translation>
         </message>
         <message>
             <source>Save a marked snapshot and clear all annotations.</source>
@@ -1511,7 +1511,7 @@
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>Uložte označený pohled do poznámek k přednášce. Ovládání klávesových zkratek S.</translation>
+            <translation>Uložit pohled s anotacemi do poznámek k přednášce. Klávesová zkratka: Ctrl+S.</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
@@ -1519,7 +1519,7 @@
         </message>
         <message>
             <source>Selected annotation scaled</source>
-            <translation>Měřítko vybrané anotace</translation>
+            <translation>Velikost vybrané anotace změněna</translation>
         </message>
         <message>
             <source>Selection cleared</source>
@@ -1531,7 +1531,7 @@
         </message>
         <message>
             <source>Solid</source>
-            <translation>Pevné</translation>
+            <translation>Plná</translation>
         </message>
         <message>
             <source>Solid line style</source>
@@ -1567,11 +1567,11 @@
         </message>
         <message>
             <source>Undo the last edit. Shortcut Control Z.</source>
-            <translation>Vraťte zpět poslední úpravu. Zkratkové ovládání Z.</translation>
+            <translation>Vrátit poslední úpravu zpět. Klávesová zkratka: Ctrl+Z.</translation>
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
-            <translation>Použijte inkoust %1. Zatržítko označuje vybranou barvu.</translation>
+            <translation>Použít barvu %1. Zaškrtnutí označuje vybranou barvu.</translation>
         </message>
         <message>
             <source>Ask Assistant</source>
@@ -1587,7 +1587,7 @@
         </message>
         <message>
             <source>Assistive result title</source>
-            <translation>Titul asistenčního výsledku</translation>
+            <translation>Nadpis výsledku asistenta</translation>
         </message>
         <message>
             <source>Assistive results</source>
@@ -1603,7 +1603,7 @@
         </message>
         <message>
             <source>Move assistive panel</source>
-            <translation>Posuňte asistenční panel</translation>
+            <translation>Přesunout panel asistenta</translation>
         </message>
         <message>
             <source>Question about the current view</source>
@@ -1611,7 +1611,7 @@
         </message>
         <message>
             <source>Read assistive result aloud</source>
-            <translation>Přečtěte si asistenční výsledek nahlas</translation>
+            <translation>Přečíst výsledek asistenta nahlas</translation>
         </message>
         <message>
             <source>Send the question with the current camera view to OkuFlow Assistant</source>
@@ -1623,7 +1623,7 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>Výsledek asistenta streamování. Pomocí kláves se šipkami čtěte text.</translation>
+            <translation>Výsledek asistenta se průběžně načítá. Text můžete číst šipkami.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1647,7 +1647,7 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>Zastavení barvy %1 z %2</translation>
+            <translation>Barevný bod %1 z %2</translation>
         </message>
         <message>
             <source>Custom</source>
@@ -1699,11 +1699,11 @@
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>Čtení barev</translation>
+            <translation>Barvy pro čtení</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
-            <translation>Obnovte barvy displeje na normální barvy</translation>
+            <translation>Obnovit barvy zobrazení na normální</translation>
         </message>
         <message>
             <source>Reset to Normal colors</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>Použijte tvrdé barevné pásy</translation>
+            <translation>Použít ostré barevné přechody</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1739,19 +1739,19 @@
         </message>
         <message>
             <source>Automatically clarify text in the camera view</source>
-            <translation>Automaticky vyjasnit text v pohledu kamery</translation>
+            <translation>Automaticky zvýšit čitelnost textu v obrazu z kamery</translation>
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
-            <translation>Akcelerace fotoaparátu ještě nezačala.</translation>
+            <translation>Akcelerace kamery ještě nebyla spuštěna.</translation>
         </message>
         <message>
             <source>Camera acceleration mode</source>
-            <translation>Režim zrychlení fotoaparátu</translation>
+            <translation>Režim akcelerace kamery</translation>
         </message>
         <message>
             <source>Camera acceleration status</source>
-            <translation>Stav zrychlení fotoaparátu</translation>
+            <translation>Stav akcelerace kamery</translation>
         </message>
         <message>
             <source>Camera format notice</source>
@@ -1763,15 +1763,15 @@
         </message>
         <message>
             <source>Codex connection status</source>
-            <translation>Codex stav připojení</translation>
+            <translation>Stav připojení ke Codexu</translation>
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex využití</translation>
+            <translation>Využití Codexu</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
-            <translation>Nakonfigurujte asistenta vidění a hlasový výstup</translation>
+            <translation>Nastavit asistenta pro rozpoznávání obrazu a hlasový výstup</translation>
         </message>
         <message>
             <source>Continue</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>Ovládá plynulé posouvání a přibližování; snímková frekvence fotoaparátu se nemění</translation>
+            <translation>Ovládací prvky zajišťují plynulé posouvání a přibližování; snímková frekvence kamery se nemění</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1807,23 +1807,23 @@
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
-            <translation>Přetažením změňte velikost Upřesnit nastavení</translation>
+            <translation>Tažením změňte velikost okna Pokročilá nastavení</translation>
         </message>
         <message>
             <source>Extra Stable off</source>
-            <translation>Extra stabilní vypnuto</translation>
+            <translation>Extra stabilizace vypnuta</translation>
         </message>
         <message>
             <source>Extra Stable on</source>
-            <translation>Extra stabilní zapnuto</translation>
+            <translation>Extra stabilizace zapnuta</translation>
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>Vyplnit používá celý výřez bez roztažení; Přizpůsobit zachová celý obraz s pruhy</translation>
+            <translation>Režim Vyplnit využije celé zobrazovací pole bez deformace; režim Přizpůsobit zobrazí celý obraz s pruhy</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
-            <translation>Hledání jedné nové opravy obrazovky...</translation>
+            <translation>Hledá se nová korekce obrazu...</translation>
         </message>
         <message>
             <source>Finishing</source>
@@ -1831,11 +1831,11 @@
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
-            <translation>Zmrazit na posledním ostrém snímku během nárazu a poté se plynule vrátit k živému videu</translation>
+            <translation>Při otřesu obraz na chvíli zastavit na posledním ostrém snímku a potom plynule přejít zpět k živému videu</translation>
         </message>
         <message>
             <source>GPU screen correction is unavailable.</source>
-            <translation>Korekce obrazovky GPU není k dispozici.</translation>
+            <translation>Korekce obrazu pomocí GPU není k dispozici.</translation>
         </message>
         <message>
             <source>High Contrast</source>
@@ -1851,11 +1851,11 @@
         </message>
         <message>
             <source>Keep It Steady</source>
-            <translation>Udržujte to stabilní</translation>
+            <translation>Stabilní obraz</translation>
         </message>
         <message>
             <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
-            <translation>Udržujte SuperRes aktivní, i když jeho průměrná doba GPU překročí 24 ms</translation>
+            <translation>Ponechat SuperRes zapnutý i při překročení průměrné doby zpracování na GPU 24 ms</translation>
         </message>
         <message>
             <source>Large Zoom</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>Uzamkněte pohled připojené kamery pomocí plné stabilizace CUDA</translation>
+            <translation>Stabilizovat obraz z připojené kamery pomocí CUDA na plný výkon</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1871,7 +1871,7 @@
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>Zápasový fotoaparát (doporučeno)</translation>
+            <translation>Podle kamery (doporučeno)</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1879,7 +1879,7 @@
         </message>
         <message>
             <source>NVIDIA Image Scaling (default)</source>
-            <translation>NVIDIA Měřítko obrázku (výchozí)</translation>
+            <translation>NVIDIA Image Scaling (výchozí)</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution status</source>
@@ -1887,11 +1887,11 @@
         </message>
         <message>
             <source>NVIDIA Video Effects runtime installed</source>
-            <translation>NVIDIA Video Effects runtime nainstalováno</translation>
+            <translation>Runtime NVIDIA Video Effects je nainstalovaný</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>runtime NVIDIA Video Effects není nainstalováno; použijte Nastavení a stahování</translation>
+            <translation>Runtime NVIDIA Video Effects není nainstalovaný; použijte Nastavení a stahování</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1907,7 +1907,7 @@
         </message>
         <message>
             <source>Open controls and features help</source>
-            <translation>Otevřené ovládací prvky a funkce pomáhají</translation>
+            <translation>Otevřít nápovědu k ovládacím prvkům a funkcím</translation>
         </message>
         <message>
             <source>Open help</source>
@@ -1915,15 +1915,15 @@
         </message>
         <message>
             <source>OkuFlow Help</source>
-            <translation>OkuFlow Nápověda</translation>
+            <translation>Nápověda OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
-            <translation>OkuFlow ovládací prvky a průvodce funkcemi</translation>
+            <translation>Průvodce ovládacími prvky a funkcemi OkuFlow</translation>
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
-            <translation>Překryjte červenou značku na aktuálním ohnisku přiblížení</translation>
+            <translation>Zobrazit červenou značku v místě aktuálního středu zvětšení</translation>
         </message>
         <message>
             <source>Previous Advanced section</source>
@@ -1939,7 +1939,7 @@
         </message>
         <message>
             <source>Profile setting saved with the current quick option.</source>
-            <translation>Nastavení profilu uloženo s aktuální rychlou možností.</translation>
+            <translation>Nastavení profilu bylo uloženo spolu s aktuální volbou rychlého režimu.</translation>
         </message>
         <message>
             <source>Quick mode</source>
@@ -1967,15 +1967,15 @@
         </message>
         <message>
             <source>Reset current profile tuning</source>
-            <translation>Resetovat aktuální ladění profilu</translation>
+            <translation>Obnovit výchozí nastavení aktuálního profilu</translation>
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>Resetujte obrázek vlastněný profilem a asistenční ladění na výchozí hodnoty</translation>
+            <translation>Obnovit výchozí nastavení obrazu a asistivních funkcí pro aktuální profil</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
-            <translation>Změnit velikost Pokročilá nastavení</translation>
+            <translation>Změnit velikost okna Pokročilá nastavení</translation>
         </message>
         <message>
             <source>Rotate input/output clockwise</source>
@@ -1983,7 +1983,7 @@
         </message>
         <message>
             <source>Runtime not installed; use Setup &amp; Downloads</source>
-            <translation>Runtime není nainstalováno; použijte Nastavení a stahování</translation>
+            <translation>Runtime není nainstalovaný; použijte Nastavení a stahování</translation>
         </message>
         <message>
             <source>Save an annotated snapshot to lecture notes when Draw mode closes.</source>
@@ -2015,7 +2015,7 @@
         </message>
         <message>
             <source>Show an on-screen control for moving the zoomed view</source>
-            <translation>Zobrazit ovládací prvek na obrazovce pro pohyb přiblíženého pohledu</translation>
+            <translation>Zobrazit ovládací prvek pro posouvání zvětšeného obrazu</translation>
         </message>
         <message>
             <source>Steady Text</source>
@@ -2023,11 +2023,11 @@
         </message>
         <message>
             <source>Stop Automatic Screen Correction</source>
-            <translation>Zastavit automatickou korekci obrazovky</translation>
+            <translation>Zastavit automatickou korekci obrazu</translation>
         </message>
         <message>
             <source>Test camera acceleration</source>
-            <translation>Otestujte zrychlení fotoaparátu</translation>
+            <translation>Otestovat akceleraci kamery</translation>
         </message>
         <message>
             <source>Unavailable in this build</source>
@@ -2035,7 +2035,7 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>Použijte NVIDIA Video Effects SuperRes při 1,33x zoomu a vyšším; automaticky přejde zpět do NIS</translation>
+            <translation>Používat NVIDIA Video Effects SuperRes při zvětšení 1,33× a vyšším; při nižším zvětšení se automaticky použije NIS</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
@@ -2229,15 +2229,15 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>Pomocné háčky: Vysvětlení scény</translation>
+            <translation>Asistenční funkce: Vysvětlení scény</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
-            <translation>Pomocné háčky: Vysvětlení scény s překrytím</translation>
+            <translation>Asistenční funkce: Vysvětlení scény s překryvem</translation>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
-            <translation>Vlastní konfigurace z Advanced Tuning. Uložte si to jako rychlou volbu, až to bude vhodné.</translation>
+            <translation>Vlastní nastavení z nabídky Advanced Tuning. Až vám bude vyhovovat, uložte si ho jako rychlou volbu.</translation>
         </message>
         <message>
             <source>Current quick mode description</source>
@@ -2265,7 +2265,7 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Blur sigma</source>
-            <translation>Rozmazat sigma</translation>
+            <translation>Sigma rozostření</translation>
         </message>
         <message>
             <source>Blur radius</source>
@@ -2273,7 +2273,7 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Performance timing percentiles</source>
-            <translation>Percentily načasování výkonu</translation>
+            <translation>Percentily časů běhu</translation>
         </message>
         <message>
             <source>%1 status</source>
@@ -2325,7 +2325,7 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
-            <translation>Zrychlete rychlá gesta přiblížení Ctrl+posun; zoom klávesnice zůstává přesný</translation>
+            <translation>Zrychlit rychlá gesta přiblížení pomocí Ctrl+posouvání kolečka; přiblížení klávesami zůstává přesné</translation>
         </message>
         <message>
             <source>SuperRes powered by NVIDIA Maxine™</source>
@@ -2333,7 +2333,7 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA Maxine přiřazení</translation>
+            <translation>Uvedení autorství NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2349,7 +2349,7 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>Další oprava obrazovky nebo najděte jednu novou opravu.%1</translation>
+            <translation>Přejděte na další opravu obrazovky nebo najděte novou.%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2365,7 +2365,7 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Captured processed camera view</source>
-            <translation>Zachycený zpracovaný pohled kamery</translation>
+            <translation>Pořízený snímek zpracovaného obrazu z kamery</translation>
         </message>
         <message>
             <source>Processed camera view</source>
@@ -2453,7 +2453,7 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>Zobrazit pohled analyzovaný asistentem</translation>
+            <translation>Zobrazit obraz analyzovaný asistentem</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2473,7 +2473,7 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Explain conversation</source>
-            <translation>Vysvětlovací konverzace</translation>
+            <translation>Konverzace k vysvětlení</translation>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
@@ -2481,19 +2481,19 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Odeslání aktuálního snímku kamery a výzvy na Codex. Konverzace: uložená konverzace Vysvětlit, pokračuje každým Vysvětlit. Internet nástroje: blokován. Kódování a změny souborů: blokováno.</translation>
+            <translation>Odesílá se aktuální snímek z kamery a zadání do Codexu. Konverzace: uložená konverzace pro funkci Vysvětlit, v níž každé další vysvětlení pokračuje. Přístup k internetu: blokován. Úpravy kódu a souborů: blokovány.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Odeslání aktuálního snímku kamery a výzvy na Codex. Konverzace: dočasná, nová pro každé přečtení. Internet nástroje: blokován. Kódování a změny souborů: blokováno.</translation>
+            <translation>Odesílá se aktuální snímek z kamery a zadání do Codexu. Konverzace: dočasná, nová při každém použití funkce Číst. Přístup k internetu: blokován. Úpravy kódu a souborů: blokovány.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Odeslání aktuálního snímku kamery, výzvy a posledních odpovědí Vysvětlení na %1 (místní koncový bod). Konverzace: poslední odpovědi Vysvětlení, uložené pouze v paměti. Nástroje pro kódování: nedostupné.</translation>
+            <translation>Odesílá se aktuální snímek z kamery, zadání a nedávné odpovědi funkce Vysvětlit na %1 (místní server). Konverzace: nedávné odpovědi funkce Vysvětlit, uchovávané pouze v paměti. Nástroje pro práci s kódem: nedostupné.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Odeslání aktuálního snímku kamery, výzvy a posledních odpovědí Vysvětlení na %1 (vzdálený koncový bod). Konverzace: poslední odpovědi Vysvětlení, uložené pouze v paměti. Nástroje pro kódování: nedostupné.</translation>
+            <translation>Odesílá se aktuální snímek z kamery, zadání a nedávné odpovědi funkce Vysvětlit na %1 (vzdálený server). Konverzace: nedávné odpovědi funkce Vysvětlit, uchovávané pouze v paměti. Nástroje pro práci s kódem: nedostupné.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2513,15 +2513,15 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Release to dock left</source>
-            <translation>Uvolněte do doku vlevo</translation>
+            <translation>Puštěním ukotvíte vlevo</translation>
         </message>
         <message>
             <source>Release to dock right</source>
-            <translation>Uvolněte pro ukotvení vpravo</translation>
+            <translation>Puštěním ukotvíte vpravo</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>Poskytuje funkce čtení, vysvětlení a asistenta podporované předplatným. Nainstaluje oficiální Codex CLI pro váš účet Windows; Přihlášení přes ChatGPT zůstává samostatným krokem.</translation>
+            <translation>Zpřístupňuje funkce Číst, Vysvětlit a Asistent, které využívají předplatné. Nainstaluje oficiální Codex CLI pro váš účet ve Windows; k ChatGPT se přihlásíte zvlášť.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2573,7 +2573,7 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Search settings…</source>
-            <translation>Nastavení vyhledávání…</translation>
+            <translation>Hledat v nastavení…</translation>
         </message>
         <message>
             <source>Mode: %1</source>
@@ -2653,11 +2653,11 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>Tady nejsou žádné zápasy. %1 v Nastavení. Stisknutím klávesy Enter je zobrazíte.</translation>
+            <translation>Tady se nic nenašlo. %1 v Nastavení. Stisknutím klávesy Enter zobrazíte výsledky.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>Tady nejsou žádné zápasy. %1 na obrázku. Stisknutím klávesy Enter je zobrazíte.</translation>
+            <translation>Tady se nic nenašlo. %1 v Obrazu. Stisknutím klávesy Enter zobrazíte výsledky.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2705,7 +2705,7 @@ Odstranění je řízeno systémem Windows.</translation>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>Vysvětlení scény zastavení</translation>
+            <translation>Zastavit vysvětlování scény</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
@@ -2741,15 +2741,15 @@ Sdílená nastavení na kartě Nastavení zůstanou nezměněna.</translation>
         </message>
         <message>
             <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
-            <translation>%1 nemohl dokončit svůj konečný fragment (0x%2). Soubor byl zachován; přehrávání nebylo ověřeno.</translation>
+            <translation>%1 nedokázal dokončit poslední část souboru (0x%2). Soubor byl zachován; jeho přehratelnost nebyla ověřena.</translation>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>Výstupní cesta záznamu již existuje; bylo zachováno.</translation>
+            <translation>Soubor v cílovém umístění záznamu již existuje; zůstal zachován.</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
-            <translation>Text Clarity aplikuje automatické vylepšení. Možnosti jemného doladění se použijí pouze při zapnuté funkci Čistota textu.</translation>
+            <translation>Funkce Text Clarity obraz automaticky vylepšuje. Možnosti jemného doladění jsou dostupné, jen když je tato funkce zapnutá.</translation>
         </message>
         <message>
             <source>More colors
@@ -2767,7 +2767,7 @@ Sdílená nastavení na kartě Nastavení zůstanou nezměněna.</translation>
         </message>
         <message>
             <source>Posterize 6</source>
-            <translation>Posterizovat 6</translation>
+            <translation>Posterizace (6 barev)</translation>
         </message>
         <message>
             <source>Yellow text on black background</source>
@@ -2791,15 +2791,15 @@ Sdílená nastavení na kartě Nastavení zůstanou nezměněna.</translation>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>Číst, vysvětlovat a asistent používat vaše předplatné ChatGPT prostřednictvím Codex CLI. Přihlaste se pomocí Connect ChatGPT na kartě Asistent v pokročilém režimu.</translation>
+            <translation>Funkce Číst, Vysvětlit a Asistent využívají vaše předplatné ChatGPT prostřednictvím Codex CLI. Přihlaste se přes Connect ChatGPT na kartě Asistent v pokročilém režimu.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>Přečíst a vysvětlit odešlete pohled z kamery na níže uvedenou adresu URL serveru. Obrázky zůstanou na tomto počítači pouze v případě, že na něm běží daný server, jako je LM Studio nebo Ollama na localhost. Uložené konverzace Asistenta vyžadují předplatné ChatGPT.</translation>
+            <translation>Funkce Číst a Vysvětlit odesílají obraz z kamery na níže uvedenou adresu serveru. Obrázky zůstanou v tomto počítači pouze tehdy, když server běží místně, například LM Studio nebo Ollama na localhostu. Uložené konverzace funkce Asistent vyžadují předplatné ChatGPT.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
-            <translation>OkuFlow vždy odešle tento pokyn na Codex, následovaný vašimi pokyny a pravidly povolení.</translation>
+            <translation>OkuFlow vždy odešle Codexu tento pokyn, za ním vaše pokyny a pravidla oprávnění.</translation>
         </message>
         <message>
             <source>Assistant instructions</source>
@@ -2815,7 +2815,7 @@ Sdílená nastavení na kartě Nastavení zůstanou nezměněna.</translation>
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>Ty se vztahují pouze na uložené konverzace Asistenta, včetně otázek položených z plovoucího Asistenta. Číst a vysvětlovat vždy zůstaňte omezeni.</translation>
+            <translation>Tato oprávnění se vztahují pouze na uložené konverzace asistenta, včetně otázek položených v plovoucím panelu asistenta. Funkce Číst a Vysvětlit zůstávají vždy omezené.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2827,15 +2827,15 @@ Sdílená nastavení na kartě Nastavení zůstanou nezměněna.</translation>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>Zobrazit nebo skrýt instrukce pouze pro čtení OkuFlow vždy odesílá Codex</translation>
+            <translation>Zobrazit nebo skrýt pokyn, který OkuFlow vždy odesílá Codexu a který nelze upravit</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>Vysvětlete Výzva</translation>
+            <translation>Zadání pro funkci Vysvětlit</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
-            <translation>Volitelné pokyny odeslané s pohledem kamery, když stisknete Vysvětlit</translation>
+            <translation>Volitelné pokyny odesílané spolu s obrazem z kamery po stisknutí tlačítka Vysvětlit</translation>
         </message>
         <message>
             <source>Installed
@@ -2843,7 +2843,7 @@ Sdílená nastavení na kartě Nastavení zůstanou nezměněna.</translation>
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>Nainstalováno
 %1
-Přihlaste se pomocí Connect ChatGPT na kartě Advanced Assistant.</translation>
+Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2851,7 +2851,7 @@ Přihlaste se pomocí Connect ChatGPT na kartě Advanced Assistant.</translation
         </message>
         <message>
             <source>GPU upload busy %1</source>
-            <translation>Nahrávání GPU je zaneprázdněné %1</translation>
+            <translation>Nahrávání na GPU zaneprázdněno: %1</translation>
         </message>
         <message>
             <source>encoder backlog %1</source>
@@ -2859,11 +2859,11 @@ Přihlaste se pomocí Connect ChatGPT na kartě Advanced Assistant.</translation
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
-            <translation>Nahrávání přeskakuje vzorky, protože nelze zkontrolovat průběh kodéru. Zastavte a restartujte nahrávání, pokud pokračuje.</translation>
+            <translation>Nahrávání přeskakuje vzorky, protože nelze ověřit, zda kodér postupuje. Pokud problém přetrvá, nahrávání zastavte a znovu spusťte.</translation>
         </message>
         <message>
             <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
-            <translation>Nahrávání přeskakuje snímky videa, protože fronta kodéru je plná. Snižte rozlišení nahrávání nebo zastavte a restartujte nahrávání, pokud pokračuje.</translation>
+            <translation>Nahrávání přeskakuje snímky videa, protože fronta kodéru je plná. Pokud problém přetrvá, snižte rozlišení záznamu nebo nahrávání zastavte a znovu spusťte.</translation>
         </message>
         <message>
             <source>Waiting for phone…</source>
@@ -2871,7 +2871,7 @@ Přihlaste se pomocí Connect ChatGPT na kartě Advanced Assistant.</translation
         </message>
         <message>
             <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
-            <translation>Otevřete fotoaparát OkuFlow na telefonu, připojte kabel USB a povolte ladění USB. OkuFlow zkontroluje připojení automaticky.</translation>
+            <translation>Otevřete v telefonu aplikaci OkuFlow Camera, připojte kabel USB a povolte ladění USB. OkuFlow připojení zkontroluje automaticky.</translation>
         </message>
         <message>
             <source>Set up OkuFlow</source>
@@ -2883,7 +2883,7 @@ Přihlaste se pomocí Connect ChatGPT na kartě Advanced Assistant.</translation
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
-            <translation>Runtime Microsoft Windows</translation>
+            <translation>Běhové knihovny Microsoft Windows</translation>
         </message>
         <message>
             <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
@@ -2895,11 +2895,11 @@ Přihlaste se pomocí Connect ChatGPT na kartě Advanced Assistant.</translation
         </message>
         <message>
             <source>Install Microsoft Windows runtime</source>
-            <translation>Nainstalujte runtime Microsoft Windows</translation>
+            <translation>Nainstalovat běhové knihovny Microsoft Windows</translation>
         </message>
         <message>
             <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>
-            <translation>Použijte kompletní OkuFlow ZIP k zahrnutí instalačního programu pro Windows.</translation>
+            <translation>Stáhněte kompletní ZIP OkuFlow, který obsahuje instalační program běhových knihoven Windows.</translation>
         </message>
         <message>
             <source>The included Microsoft installer could not be verified. Download the complete OkuFlow ZIP again.</source>

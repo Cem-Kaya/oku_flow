@@ -1,5 +1,20 @@
 # OkuFlow Camera closed-test readiness
 
+## Alpha CLI update (2026-10-14)
+
+Signed 0.1.4 (code 5), including the completed 25-language wording review,
+passed 68 release JVM tests, lint, resource parity and APK/AAB artifact checks.
+Google validated and committed it to Alpha; a separate API read confirmed
+active code 5. Its AAB SHA-256 is
+`e21651558aa521b3d17a5468a07aff0e1ab0b8a4e6ed6e39ccbc1f78a6b68614`.
+The exact signed APK/AAB, generated mapping/configuration, validation report
+and dependency inventory are archived outside the repository. Native debug
+metadata remains unavailable from the stripped dependency. This supersedes
+the earlier code-4 CLI commit, without changing that immutable inventory.
+Google review approval, tester availability and Play-signed upgrade acceptance
+have not been independently verified for code 5; the Console evidence below
+describes the earlier code-3 publication.
+
 ## Verified Console and update status (2026-10-13)
 
 Google Play Console now lists Alpha version code 3 / 0.1.2 as **Available to

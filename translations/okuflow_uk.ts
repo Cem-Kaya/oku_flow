@@ -13,11 +13,11 @@
         </message>
         <message>
             <source>Phone light</source>
-            <translation>Світло телефону</translation>
+            <translation>Підсвічування телефона</translation>
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>Запускається при кожному підключенні. Натисніть, щоб увімкнути або вимкнути підсвічування телефону.</translation>
+            <translation>Під час кожного підключення вимкнене. Натисніть, щоб увімкнути або вимкнути підсвічування телефона.</translation>
         </message>
         <message>
             <source>Application</source>
@@ -45,11 +45,11 @@
         </message>
         <message>
             <source>Simple</source>
-            <translation>просто</translation>
+            <translation>Простий</translation>
         </message>
         <message>
             <source>Advanced</source>
-            <translation>Просунутий</translation>
+            <translation>Розширений</translation>
         </message>
         <message>
             <source>Image</source>
@@ -77,7 +77,7 @@
         </message>
         <message>
             <source>Shared by every profile</source>
-            <translation>Спільно для кожного профілю</translation>
+            <translation>Спільне для всіх профілів</translation>
         </message>
         <message>
             <source>Saved into the selected quick option</source>
@@ -89,11 +89,11 @@
         </message>
         <message>
             <source>Search Advanced settings</source>
-            <translation>Пошук Розширені налаштування</translation>
+            <translation>Пошук у розширених налаштуваннях</translation>
         </message>
         <message>
             <source>Type part of a setting name to reveal and focus matching controls.</source>
-            <translation>Введіть частину назви налаштувань, щоб відкрити та сфокусувати відповідні елементи керування.</translation>
+            <translation>Введіть частину назви параметра, щоб показати відповідні елементи керування та перейти до них.</translation>
         </message>
         <message>
             <source>Camera</source>
@@ -125,7 +125,7 @@
         </message>
         <message>
             <source>Viewport motion rate</source>
-            <translation>Швидкість руху вікна перегляду</translation>
+            <translation>Частота оновлення області перегляду</translation>
         </message>
         <message>
             <source>Auto (up to 120 FPS)</source>
@@ -141,7 +141,7 @@
         </message>
         <message>
             <source>Fill (crop)</source>
-            <translation>Заливка (обрізка)</translation>
+            <translation>Заповнити (обрізати)</translation>
         </message>
         <message>
             <source>Fit (show all)</source>
@@ -153,7 +153,7 @@
         </message>
         <message>
             <source>Reset Tuning</source>
-            <translation>Скинути налаштування</translation>
+            <translation>Скинути корекцію</translation>
         </message>
         <message>
             <source>Virtual Joystick</source>
@@ -165,15 +165,15 @@
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
-            <translation>Спільне використання оригінальних і оброблених записів</translation>
+            <translation>Спільне для оригінальних і оброблених записів</translation>
         </message>
         <message>
             <source>Processed recording resolution</source>
-            <translation>Оброблена роздільна здатність запису</translation>
+            <translation>Роздільна здатність обробленого запису</translation>
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
-            <translation>Камера та оригінальна роздільна здатність запису &amp;&amp; частота кадрів</translation>
+            <translation>Камера та роздільна здатність &amp;&amp; частота кадрів оригінального запису</translation>
         </message>
         <message>
             <source>Automatic (driver's choice)</source>
@@ -205,7 +205,7 @@
         </message>
         <message>
             <source>Screen fix</source>
-            <translation>Виправлення екрану</translation>
+            <translation>Корекція екрана</translation>
         </message>
         <message>
             <source>Text clarity</source>
@@ -213,19 +213,19 @@
         </message>
         <message>
             <source>Sharpen and focus</source>
-            <translation>Чіткість і фокус</translation>
+            <translation>Різкість і фокус</translation>
         </message>
         <message>
             <source>Black &amp;&amp; White</source>
-            <translation>Чорний &amp;&amp; Білий</translation>
+            <translation>Чорний &amp;&amp; білий</translation>
         </message>
         <message>
             <source>Zoom</source>
-            <translation>Збільшити</translation>
+            <translation>Масштаб</translation>
         </message>
         <message>
             <source>Zoom %L1 times</source>
-            <translation>Збільшити %L1 разів</translation>
+            <translation>Масштаб %L1×</translation>
         </message>
         <message>
             <source>Gaussian Blur</source>
@@ -241,11 +241,11 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>Скронева гладка</translation>
+            <translation>Часове згладжування</translation>
         </message>
         <message>
             <source>Blend:</source>
-            <translation>Суміш:</translation>
+            <translation>Змішування:</translation>
         </message>
         <message>
             <source>Stabilize Image</source>
@@ -253,7 +253,7 @@
         </message>
         <message>
             <source>Extra Stable (hold on shake)</source>
-            <translation>Надстабільність (утримування під час струсу)</translation>
+            <translation>Додаткова стабілізація (утримувати під час тремтіння)</translation>
         </message>
         <message>
             <source>Straighten Screen (Keystone)</source>
@@ -261,7 +261,7 @@
         </message>
         <message>
             <source>Correction tracking:</source>
-            <translation>Відстеження виправлень:</translation>
+            <translation>Відстеження корекції:</translation>
         </message>
         <message>
             <source>Back</source>
@@ -281,7 +281,7 @@
         </message>
         <message>
             <source>Strength:</source>
-            <translation>Міцність:</translation>
+            <translation>Інтенсивність:</translation>
         </message>
         <message>
             <source>Auto Text Clarity</source>
@@ -289,7 +289,7 @@
         </message>
         <message>
             <source>Flatten Background</source>
-            <translation>Зрівняти фон</translation>
+            <translation>Згладити фон</translation>
         </message>
         <message>
             <source>Adaptive Text</source>
@@ -305,11 +305,11 @@
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>Вага удару</translation>
+            <translation>Товщина штриха</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
-            <translation>Розумна різкість</translation>
+            <translation>Інтелектуальне підвищення різкості</translation>
         </message>
         <message>
             <source>Local Contrast (CLAHE)</source>
@@ -325,15 +325,15 @@
         </message>
         <message>
             <source>Sharpen Text Only</source>
-            <translation>Збільшити чіткість лише тексту</translation>
+            <translation>Підвищити різкість лише тексту</translation>
         </message>
         <message>
             <source>Warn When Out of Focus</source>
-            <translation>Попереджати, коли не у фокусі</translation>
+            <translation>Попереджати, коли зображення не у фокусі</translation>
         </message>
         <message>
             <source>Suppress Glare</source>
-            <translation>Придушення відблисків</translation>
+            <translation>Усувати відблиски</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution</source>
@@ -373,15 +373,15 @@
         </message>
         <message>
             <source>Scene Explain</source>
-            <translation>Пояснити сцену</translation>
+            <translation>Пояснення сцени</translation>
         </message>
         <message>
             <source>Assistive Overlay</source>
-            <translation>Допоміжне накладання</translation>
+            <translation>Допоміжний шар</translation>
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
-            <translation>Збережіть малюнок у нотатках, коли виходите з Draw</translation>
+            <translation>Зберігати малюнок у нотатках після виходу з режиму Draw</translation>
         </message>
         <message>
             <source>AI Settings</source>
@@ -437,11 +437,11 @@
         </message>
         <message>
             <source>Pipeline status</source>
-            <translation>Статус трубопроводу</translation>
+            <translation>Стан конвеєра</translation>
         </message>
         <message>
             <source>Performance percentiles</source>
-            <translation>Процентилі продуктивності</translation>
+            <translation>Перцентилі продуктивності</translation>
         </message>
         <message>
             <source>Collecting timing samples…</source>
@@ -469,7 +469,7 @@
         </message>
         <message>
             <source>Capture original and processed photos</source>
-            <translation>Робіть оригінальні та оброблені фотографії</translation>
+            <translation>Зробити оригінальні та оброблені фотографії</translation>
         </message>
         <message>
             <source>Record original and processed videos</source>
@@ -481,7 +481,7 @@
         </message>
         <message>
             <source>Read text in the current view</source>
-            <translation>Прочитати текст у поточному поданні</translation>
+            <translation>Прочитати текст у поточному зображенні</translation>
         </message>
         <message>
             <source>Text Clarity</source>
@@ -545,11 +545,11 @@
         </message>
         <message>
             <source>Ask about this view...</source>
-            <translation>Запитайте про цей погляд...</translation>
+            <translation>Запитати про це зображення...</translation>
         </message>
         <message>
             <source>Ask</source>
-            <translation>Запитуйте</translation>
+            <translation>Запитати</translation>
         </message>
         <message>
             <source>Read Aloud</source>
@@ -589,7 +589,7 @@
         </message>
         <message>
             <source>Ask about the current camera view.</source>
-            <translation>Запитайте про поточний вигляд камери.</translation>
+            <translation>Запитати про поточне зображення з камери.</translation>
         </message>
         <message>
             <source>Ask about what is visible...</source>
@@ -613,11 +613,11 @@
         </message>
         <message>
             <source>Browse...</source>
-            <translation>Огляд...</translation>
+            <translation>Вибрати...</translation>
         </message>
         <message>
             <source>Browse…</source>
-            <translation>Перегляд…</translation>
+            <translation>Вибрати…</translation>
         </message>
         <message>
             <source>Codex CLI path:</source>
@@ -625,7 +625,7 @@
         </message>
         <message>
             <source>Codex model:</source>
-            <translation>Codex модель:</translation>
+            <translation>Модель Codex:</translation>
         </message>
         <message>
             <source>Reasoning:</source>
@@ -641,11 +641,11 @@
         </message>
         <message>
             <source>Required when coding is enabled</source>
-            <translation>Потрібний, якщо кодування ввімкнено</translation>
+            <translation>Потрібно, якщо ввімкнено режим кодування</translation>
         </message>
         <message>
             <source>Coding workspace:</source>
-            <translation>Робоча область кодування:</translation>
+            <translation>Робоча папка для кодування:</translation>
         </message>
         <message>
             <source>Assistant behavior</source>
@@ -657,7 +657,7 @@
         </message>
         <message>
             <source>OpenAI-compatible vision server</source>
-            <translation>OpenAI-сумісний сервер бачення</translation>
+            <translation>OpenAI-сумісний сервер комп’ютерного зору</translation>
         </message>
         <message>
             <source>Server URL:</source>
@@ -669,7 +669,7 @@
         </message>
         <message>
             <source>Vision model:</source>
-            <translation>Модель зору:</translation>
+            <translation>Модель комп’ютерного зору:</translation>
         </message>
         <message>
             <source>Read aloud</source>
@@ -689,7 +689,7 @@
         </message>
         <message>
             <source>Lecture notes</source>
-            <translation>Конспект лекцiй</translation>
+            <translation>Нотатки лекцій</translation>
         </message>
         <message>
             <source>Camera did not stop in time. Restart OkuFlow before changing cameras.</source>
@@ -701,19 +701,19 @@
         </message>
         <message>
             <source>Lecture notes could not be saved.</source>
-            <translation>Не вдалося зберегти конспекти лекцій.</translation>
+            <translation>Не вдалося зберегти нотатки лекції.</translation>
         </message>
         <message>
             <source>Saving lecture notes...</source>
-            <translation>Збереження конспектів лекцій...</translation>
+            <translation>Збереження нотаток лекції...</translation>
         </message>
         <message>
             <source>Write lecture notes file</source>
-            <translation>Написати файл конспектів лекцій</translation>
+            <translation>Записати файл нотаток лекції</translation>
         </message>
         <message>
             <source>None</source>
-            <translation>Жодного</translation>
+            <translation>Немає</translation>
         </message>
         <message>
             <source>Minimal</source>
@@ -785,11 +785,11 @@
         </message>
         <message>
             <source>Section heading. Activate to expand or collapse this settings group.</source>
-            <translation>Заголовок розділу. Активуйте, щоб розгорнути або згорнути цю групу налаштувань.</translation>
+            <translation>Заголовок розділу. Натисніть, щоб розгорнути або згорнути цю групу налаштувань.</translation>
         </message>
         <message>
             <source>expanded</source>
-            <translation>розширено</translation>
+            <translation>розгорнуто</translation>
         </message>
         <message>
             <source>collapsed</source>
@@ -825,7 +825,7 @@
         </message>
         <message>
             <source>Image out of focus. Tap the phone screen to refocus before reading text.</source>
-            <translation>Зображення не в фокусі. Торкніться екрана телефону, щоб змінити фокус перед читанням тексту.</translation>
+            <translation>Зображення не у фокусі. Торкніться екрана телефону, щоб сфокусувати камеру перед читанням тексту.</translation>
         </message>
         <message>
             <source>Loading conversation...</source>
@@ -833,11 +833,11 @@
         </message>
         <message>
             <source>No lecture notes yet — use Read, Explain, or Assistant to add text.</source>
-            <translation>Ще немає конспектів лекцій — використовуйте Read, Explain або Assistant, щоб додати текст.</translation>
+            <translation>Конспект лекції ще порожній — скористайтеся функціями Read, Explain або Assistant, щоб додати текст.</translation>
         </message>
         <message>
             <source>OkuFlow Assistant</source>
-            <translation>OkuFlow Помічник</translation>
+            <translation>Помічник OkuFlow</translation>
         </message>
         <message>
             <source>You</source>
@@ -869,7 +869,7 @@
         </message>
         <message>
             <source>Stopped.</source>
-            <translation>Зупинився.</translation>
+            <translation>Зупинено.</translation>
         </message>
         <message>
             <source>The OkuFlow Analysis folder is unavailable.</source>
@@ -901,7 +901,7 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>Зйомка камерою графічного процесора активна з безпечним резервним копіюванням.</translation>
+            <translation>Захоплення відео з камери через GPU працює з резервним копіюванням для безпеки.</translation>
         </message>
         <message>
             <source>Later</source>
@@ -909,11 +909,11 @@
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
-            <translation>NVIDIA Super Resolution обмеження продуктивності проігноровано.</translation>
+            <translation>Обмеження продуктивності NVIDIA Super Resolution проігноровано.</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit restored.</source>
-            <translation>NVIDIA Super Resolution обмеження продуктивності відновлено.</translation>
+            <translation>Обмеження продуктивності NVIDIA Super Resolution відновлено.</translation>
         </message>
         <message>
             <source>New OkuFlow files will be saved in %1.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>Корекцію екрана повернуто назад і відстеження зупинено.</translation>
+            <translation>Корекцію екрана скасовано, відстеження зупинено.</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -953,7 +953,7 @@
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>Тестування графічного процесора та захоплення сумісності в ізольованому процесі...</translation>
+            <translation>Перевірка GPU-захоплення та захоплення в режимі сумісності в ізольованому процесі...</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -974,7 +974,7 @@
         <message>
             <source>Windows could not open:
 %1</source>
-            <translation>Не вдалося відкрити Windows: 
+            <translation>Windows не вдалося відкрити:
 %1</translation>
         </message>
         <message>
@@ -995,7 +995,7 @@
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>Анотований вигляд не збережено: програма для запису зображень зайнята. Спробуйте знову.</translation>
+            <translation>Анотований вигляд не збережено: модуль збереження зображень зайнятий. Спробуйте ще раз.</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
@@ -1019,11 +1019,11 @@
         </message>
         <message>
             <source>GPU processing keeps failing - showing unprocessed video.</source>
-            <translation>Обробка графічного процесора продовжує збої - показує необроблене відео.</translation>
+            <translation>Обробка на GPU постійно дає збої — показано відео без обробки.</translation>
         </message>
         <message>
             <source>GPU-accelerated camera capture passed startup validation.</source>
-            <translation>Запис камери з прискоренням GPU пройшов перевірку під час запуску.</translation>
+            <translation>Захоплення відео з камери з GPU-прискоренням успішно пройшло початкову перевірку.</translation>
         </message>
         <message>
             <source>Modes unavailable: %1</source>
@@ -1031,7 +1031,7 @@
         </message>
         <message>
             <source>No camera modes were reported.</source>
-            <translation>Про режими камери не повідомляється.</translation>
+            <translation>Камера не повернула список режимів.</translation>
         </message>
         <message>
             <source>Photo not saved: no processed frame was available.</source>
@@ -1051,11 +1051,11 @@
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
-            <translation>Фото не збережено: вихідну рамку камери не можна перетворити.</translation>
+            <translation>Фото не збережено: не вдалося перетворити оригінальний кадр із камери.</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be read back.</source>
-            <translation>Фото не збережено: оригінальний кадр фотоапарата неможливо прочитати.</translation>
+            <translation>Фото не збережено: не вдалося зчитати оригінальний кадр із камери.</translation>
         </message>
         <message>
             <source>Photo not saved: the processed or original frame was unavailable.</source>
@@ -1071,7 +1071,7 @@
         </message>
         <message>
             <source>Saving annotated view to lecture notes...</source>
-            <translation>Збереження анотованого подання до конспектів лекцій...</translation>
+            <translation>Збереження анотованого зображення в конспекті лекції...</translation>
         </message>
         <message>
             <source>Saving original and processed photos...</source>
@@ -1119,7 +1119,7 @@
         </message>
         <message>
             <source>Recording stopped because the audio encoder rejected a sample.</source>
-            <translation>Запис зупинено, оскільки аудіокодер відхилив семпл.</translation>
+            <translation>Запис зупинено, оскільки аудіокодер відхилив відлік.</translation>
         </message>
         <message>
             <source>Recording stopped before the first frame was written.</source>
@@ -1143,19 +1143,19 @@
         </message>
         <message>
             <source>Recording stopped because audio processing could not keep up or the input was invalid.</source>
-            <translation>Запис зупинено, оскільки обробка аудіо не встигає або введення було недійсним.</translation>
+            <translation>Запис зупинено: обробка аудіо не встигала за потоком або вхідні дані були некоректними.</translation>
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>Аудіо: блоки %1 видалені перед кодуванням, %2 відхилені обмеженням введення.</translation>
+            <translation>Аудіо: перед кодуванням відкинуто блоків — %1; лімітом вхідних даних відхилено — %2.</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
-            <translation>Кадри %1 були видалені (%2).</translation>
+            <translation>Втрачено кадрів: %1 (%2).</translation>
         </message>
         <message>
             <source>%1 frames used an estimated timestamp.</source>
-            <translation>Кадри %1 використовували орієнтовну позначку часу.</translation>
+            <translation>Для %1 кадрів використано розраховану позначку часу.</translation>
         </message>
         <message>
             <source>Original video</source>
@@ -1163,7 +1163,7 @@
         </message>
         <message>
             <source>Processed video</source>
-            <translation>Оброблено відео</translation>
+            <translation>Оброблене відео</translation>
         </message>
         <message>
             <source>with microphone audio</source>
@@ -1175,7 +1175,7 @@
         </message>
         <message>
             <source>direct GPU</source>
-            <translation>прямий GPU</translation>
+            <translation>Безпосередньо через GPU</translation>
         </message>
         <message>
             <source>GPU-fed original and processed</source>
@@ -1183,7 +1183,7 @@
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>Джерело графічного процесора з робочим зворотним зв’язком</translation>
+            <translation>Джерело з GPU зі зчитуванням даних у робочому потоці</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1199,7 +1199,7 @@
         </message>
         <message>
             <source>Codex image preparation is busy. Try again in a moment.</source>
-            <translation>Codex триває підготовка зображення. Повторіть спробу за мить.</translation>
+            <translation>Модуль підготовки зображень Codex зайнятий. Спробуйте ще раз за мить.</translation>
         </message>
         <message>
             <source>Could not prepare the current camera view.</source>
@@ -1215,11 +1215,11 @@
         </message>
         <message>
             <source>No camera frame is available to attach.</source>
-            <translation>Немає рамки камери, яку можна прикріпити.</translation>
+            <translation>Немає кадру з камери, який можна додати.</translation>
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>Постійні розмови Помічника потребують постачальника підписки Codex.</translation>
+            <translation>Для збереження розмов з Assistant потрібен провайдер Codex.</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1255,7 +1255,7 @@
         </message>
         <message>
             <source>Thinking...</source>
-            <translation>Думаючи...</translation>
+            <translation>Обробка запиту...</translation>
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
@@ -1291,15 +1291,15 @@
         </message>
         <message>
             <source>Codex CLI Path</source>
-            <translation>Codex CLI Шлях</translation>
+            <translation>Шлях до Codex CLI</translation>
         </message>
         <message>
             <source>Codex Model</source>
-            <translation>Codex Модель</translation>
+            <translation>Модель Codex</translation>
         </message>
         <message>
             <source>Codex Reasoning</source>
-            <translation>Codex Міркування</translation>
+            <translation>Рівень міркування Codex</translation>
         </message>
         <message>
             <source>Assistant Instructions</source>
@@ -1335,7 +1335,7 @@
         </message>
         <message>
             <source>Write Lecture Notes File</source>
-            <translation>Напишіть файл конспектів лекцій</translation>
+            <translation>Зберегти файл конспекту лекції</translation>
         </message>
         <message>
             <source>Loading installed Windows voices...</source>
@@ -1387,7 +1387,7 @@
         </message>
         <message>
             <source>Click the camera view, then type a label. Shortcut T.</source>
-            <translation>Клацніть вид камери, а потім введіть мітку. Ярлик Т.</translation>
+            <translation>Клацніть зображення з камери й введіть підпис. Клавіша T.</translation>
         </message>
         <message>
             <source>Dashed</source>
@@ -1403,7 +1403,7 @@
         </message>
         <message>
             <source>Done drawing</source>
-            <translation>Готовий малюнок</translation>
+            <translation>Малювання завершено</translation>
         </message>
         <message>
             <source>Draw a dashed stroke with transparent gaps.</source>
@@ -1427,7 +1427,7 @@
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
-            <translation>Draw freehand on the camera view. Ярлик P.</translation>
+            <translation>Малюйте від руки на зображенні з камери. Клавіша P.</translation>
         </message>
         <message>
             <source>Draw mode off.</source>
@@ -1435,7 +1435,7 @@
         </message>
         <message>
             <source>Draw rectangles or ellipses. Shortcut S.</source>
-            <translation>Draw rectangles or ellipses. Ярлик S.</translation>
+            <translation>Малюйте прямокутники або еліпси. Клавіша S.</translation>
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
@@ -1463,7 +1463,7 @@
         </message>
         <message>
             <source>Lecture annotation canvas</source>
-            <translation>Канва анотації лекції</translation>
+            <translation>Полотно для анотацій лекції</translation>
         </message>
         <message>
             <source>Line tool</source>
@@ -1499,11 +1499,11 @@
         </message>
         <message>
             <source>Remove a complete annotation. Shortcut E.</source>
-            <translation>Видалити повну анотацію. Ярлик Е.</translation>
+            <translation>Видалити анотацію повністю. Клавіша E.</translation>
         </message>
         <message>
             <source>Save a marked snapshot and clear all annotations.</source>
-            <translation>Збережіть позначений знімок і очистіть усі анотації.</translation>
+            <translation>Зберегти знімок з анотаціями й очистити всі анотації.</translation>
         </message>
         <message>
             <source>Save annotated view</source>
@@ -1511,11 +1511,11 @@
         </message>
         <message>
             <source>Save the marked view to lecture notes. Shortcut Control S.</source>
-            <translation>Збережіть позначений вигляд до конспекту лекції. Комбінація клавіш S.</translation>
+            <translation>Зберегти вигляд з анотаціями до конспекту лекції. Сполучення клавіш Ctrl+S.</translation>
         </message>
         <message>
             <source>Select, move, or resize one annotation. Shortcut V.</source>
-            <translation>Виберіть, перемістіть або змініть розмір однієї анотації. Ярлик V.</translation>
+            <translation>Вибрати, перемістити або змінити розмір анотації. Клавіша V.</translation>
         </message>
         <message>
             <source>Selected annotation scaled</source>
@@ -1531,7 +1531,7 @@
         </message>
         <message>
             <source>Solid</source>
-            <translation>Твердий</translation>
+            <translation>Суцільний</translation>
         </message>
         <message>
             <source>Solid line style</source>
@@ -1547,7 +1547,7 @@
         </message>
         <message>
             <source>Text placed</source>
-            <translation>Розміщений текст</translation>
+            <translation>Текст розміщено</translation>
         </message>
         <message>
             <source>Text size</source>
@@ -1563,7 +1563,7 @@
         </message>
         <message>
             <source>Undo annotation</source>
-            <translation>Скасувати анотацію</translation>
+            <translation>Скасувати останню дію з анотацією</translation>
         </message>
         <message>
             <source>Undo the last edit. Shortcut Control Z.</source>
@@ -1571,7 +1571,7 @@
         </message>
         <message>
             <source>Use %1 ink. The check mark indicates the selected color.</source>
-            <translation>Використовуйте чорнило %1. Галочка вказує на вибраний колір.</translation>
+            <translation>Колір пера %1. Позначка показує вибраний колір.</translation>
         </message>
         <message>
             <source>Ask Assistant</source>
@@ -1583,7 +1583,7 @@
         </message>
         <message>
             <source>Assistive result text</source>
-            <translation>Текст допоміжного результату</translation>
+            <translation>Текст результату помічника</translation>
         </message>
         <message>
             <source>Assistive result title</source>
@@ -1599,7 +1599,7 @@
         </message>
         <message>
             <source>Hide the current assistant result</source>
-            <translation>Приховати поточний результат помічника</translation>
+            <translation>Приховати поточну відповідь помічника</translation>
         </message>
         <message>
             <source>Move assistive panel</source>
@@ -1623,7 +1623,7 @@
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>Результат потокового помічника. Використовуйте клавіші зі стрілками, щоб прочитати текст.</translation>
+            <translation>Помічник формує відповідь. Щоб читати текст, використовуйте клавіші зі стрілками.</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1631,7 +1631,7 @@
         </message>
         <message>
             <source>Apply custom</source>
-            <translation>Застосувати настроюване</translation>
+            <translation>Застосувати власні налаштування</translation>
         </message>
         <message>
             <source>Background color</source>
@@ -1639,7 +1639,7 @@
         </message>
         <message>
             <source>Choose color stop %1</source>
-            <translation>Виберіть кольорову зупинку %1</translation>
+            <translation>Вибрати точку градієнта %1</translation>
         </message>
         <message>
             <source>Choose display colors</source>
@@ -1647,7 +1647,7 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>Кольорова зупинка %1 з %2</translation>
+            <translation>Точка градієнта %1 із %2</translation>
         </message>
         <message>
             <source>Custom</source>
@@ -1655,15 +1655,15 @@
         </message>
         <message>
             <source>Custom color mode</source>
-            <translation>Індивідуальний кольоровий режим</translation>
+            <translation>Власний режим кольорів</translation>
         </message>
         <message>
             <source>Custom color preview</source>
-            <translation>Користувацький попередній перегляд кольорів</translation>
+            <translation>Попередній перегляд власних кольорів</translation>
         </message>
         <message>
             <source>Custom display colors</source>
-            <translation>Індивідуальні кольори дисплея</translation>
+            <translation>Власні кольори дисплея</translation>
         </message>
         <message>
             <source>Display color scheme</source>
@@ -1691,7 +1691,7 @@
         </message>
         <message>
             <source>Number of color stops</source>
-            <translation>Кількість кольорових маркерів</translation>
+            <translation>Кількість точок градієнта</translation>
         </message>
         <message>
             <source>Posterize</source>
@@ -1703,7 +1703,7 @@
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
-            <translation>Скинути кольори дисплея до звичайних кольорів</translation>
+            <translation>Скинути кольори дисплея до звичайного режиму</translation>
         </message>
         <message>
             <source>Reset to Normal colors</source>
@@ -1711,7 +1711,7 @@
         </message>
         <message>
             <source>Stepped colors</source>
-            <translation>Ступінчасті кольори</translation>
+            <translation>Кольори з чіткими переходами</translation>
         </message>
         <message>
             <source>Text color</source>
@@ -1723,7 +1723,7 @@
         </message>
         <message>
             <source>Use hard color bands</source>
-            <translation>Використовуйте жорсткі кольорові стрічки</translation>
+            <translation>Використовувати різкі межі між кольорами</translation>
         </message>
         <message>
             <source>Custom colors</source>
@@ -1739,7 +1739,7 @@
         </message>
         <message>
             <source>Automatically clarify text in the camera view</source>
-            <translation>Автоматичне уточнення тексту в поданні камери</translation>
+            <translation>Автоматично покращувати чіткість тексту в зображенні з камери</translation>
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
@@ -1763,11 +1763,11 @@
         </message>
         <message>
             <source>Codex connection status</source>
-            <translation>Codex стан підключення</translation>
+            <translation>Стан підключення Codex</translation>
         </message>
         <message>
             <source>Codex usage</source>
-            <translation>Codex використання</translation>
+            <translation>Використання Codex</translation>
         </message>
         <message>
             <source>Configure the vision assistant and speech output</source>
@@ -1787,7 +1787,7 @@
         </message>
         <message>
             <source>Controls smooth pan and zoom presentation; camera frame rate is unchanged</source>
-            <translation>Керує плавним панорамуванням і масштабуванням презентації; частота кадрів камери не змінюється</translation>
+            <translation>Керує плавністю панорамування та масштабування; частота кадрів камери не змінюється</translation>
         </message>
         <message>
             <source>Current quick mode</source>
@@ -1807,19 +1807,19 @@
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
-            <translation>Перетягніть, щоб змінити розмір Розширені налаштування</translation>
+            <translation>Перетягніть, щоб змінити розмір панелі «Додаткові налаштування»</translation>
         </message>
         <message>
             <source>Extra Stable off</source>
-            <translation>Extra Stable вимкнено</translation>
+            <translation>Режим Extra Stable вимкнено</translation>
         </message>
         <message>
             <source>Extra Stable on</source>
-            <translation>Додаткова стабільність увімкнена</translation>
+            <translation>Режим Extra Stable увімкнено</translation>
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>Заливка використовує повне вікно перегляду без розтягування; Fit preserves the entire image with bars</translation>
+            <translation>Режим «Заповнити» використовує всю область перегляду без розтягування; режим «Умістити» показує все зображення з полями</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1827,7 +1827,7 @@
         </message>
         <message>
             <source>Finishing</source>
-            <translation>Оздоблення</translation>
+            <translation>Завершення</translation>
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
@@ -1851,11 +1851,11 @@
         </message>
         <message>
             <source>Keep It Steady</source>
-            <translation>Тримайте його стабільно</translation>
+            <translation>Стабільне зображення</translation>
         </message>
         <message>
             <source>Keep SuperRes active even when its average GPU time exceeds 24 ms</source>
-            <translation>Зберігайте SuperRes активним, навіть якщо середній час GPU перевищує 24 мс</translation>
+            <translation>Не вимикати SuperRes, навіть якщо середній час обробки на GPU перевищує 24 мс</translation>
         </message>
         <message>
             <source>Large Zoom</source>
@@ -1871,7 +1871,7 @@
         </message>
         <message>
             <source>Match camera (recommended)</source>
-            <translation>Збіг камери (рекомендовано)</translation>
+            <translation>Як у камери (рекомендовано)</translation>
         </message>
         <message>
             <source>More device options</source>
@@ -1879,7 +1879,7 @@
         </message>
         <message>
             <source>NVIDIA Image Scaling (default)</source>
-            <translation>NVIDIA Масштабування зображення (за замовчуванням)</translation>
+            <translation>NVIDIA Image Scaling (за замовчуванням)</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution status</source>
@@ -1887,11 +1887,11 @@
         </message>
         <message>
             <source>NVIDIA Video Effects runtime installed</source>
-            <translation>NVIDIA Video Effects встановлено середовище виконання</translation>
+            <translation>Середовище виконання NVIDIA Video Effects встановлено</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects runtime not installed; use Setup &amp; Downloads</source>
-            <translation>NVIDIA Video Effects середовище виконання не встановлено; використовуйте налаштування та завантаження</translation>
+            <translation>Середовище виконання NVIDIA Video Effects не встановлено; відкрийте «Налаштування й завантаження»</translation>
         </message>
         <message>
             <source>Next Advanced section</source>
@@ -1915,11 +1915,11 @@
         </message>
         <message>
             <source>OkuFlow Help</source>
-            <translation>OkuFlow Довідка</translation>
+            <translation>Довідка OkuFlow</translation>
         </message>
         <message>
             <source>OkuFlow controls and features guide</source>
-            <translation>OkuFlow елементи керування та посібник з функцій</translation>
+            <translation>Посібник з елементів керування та функцій OkuFlow</translation>
         </message>
         <message>
             <source>Overlay a red marker at the current zoom focus</source>
@@ -1927,7 +1927,7 @@
         </message>
         <message>
             <source>Previous Advanced section</source>
-            <translation>Попередній Розширений розділ</translation>
+            <translation>Попередній розділ «Додаткові налаштування»</translation>
         </message>
         <message>
             <source>Previous quick mode</source>
@@ -1975,7 +1975,7 @@
         </message>
         <message>
             <source>Resize Advanced settings</source>
-            <translation>Змінити розмір Додаткові параметри</translation>
+            <translation>Змінити розмір панелі «Додаткові налаштування»</translation>
         </message>
         <message>
             <source>Rotate input/output clockwise</source>
@@ -2003,7 +2003,7 @@
         </message>
         <message>
             <source>Sharpening</source>
-            <translation>Заточка</translation>
+            <translation>Підвищення різкості</translation>
         </message>
         <message>
             <source>Show a guide to OkuFlow controls and features</source>
@@ -2039,7 +2039,7 @@
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
-            <translation>Параметр Viewport спільний для всіх профілів.</translation>
+            <translation>Параметр області перегляду спільний для всіх профілів.</translation>
         </message>
         <message>
             <source>Zoom In More</source>
@@ -2068,14 +2068,14 @@
         <message>
             <source>Installed and managed by OkuFlow
 %1</source>
-            <translation>Встановлено та керовано OkuFlow
+            <translation>Встановлено; керування здійснює OkuFlow
 %1</translation>
         </message>
         <message>
             <source>Installed system-wide
 %1
 Removal is managed by Windows.</source>
-            <translation>Установлено для всієї системи
+            <translation>Установлено для всіх користувачів системи
 %1
 Видаленням керує Windows.</translation>
         </message>
@@ -2085,7 +2085,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA installer running. Continue in the vendor installer window.</source>
-            <translation>NVIDIA інсталятор працює. Продовжте у вікні інсталятора постачальника.</translation>
+            <translation>Інсталятор NVIDIA запущено. Продовжте у вікні інсталятора.</translation>
         </message>
         <message>
             <source>Not installed</source>
@@ -2093,7 +2093,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>Не встановлено. Інсталяція завантажує пакет для графічних процесорів %1.</translation>
+            <translation>Не встановлено. Під час встановлення буде завантажено пакет для графічних процесорів %1.</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
@@ -2129,7 +2129,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>OkuFlow Setup Assistant</source>
-            <translation>OkuFlow Помічник із налаштування</translation>
+            <translation>Помічник із налаштування OkuFlow</translation>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
@@ -2189,7 +2189,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>Цю загальносистемну копію потрібно видалити за допомогою встановлених програм Windows</translation>
+            <translation>Цю копію, установлену для всієї системи, потрібно видалити через розділ «Інстальовані програми» Windows</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2229,7 +2229,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain</source>
-            <translation>Допоміжні гачки: Пояснення сцени</translation>
+            <translation>Допоміжні функції: пояснення сцени</translation>
         </message>
         <message>
             <source>Assistive hooks: Scene Explain with overlay</source>
@@ -2237,7 +2237,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
-            <translation>Спеціальна конфігурація з Advanced Tuning. Збережіть це як швидкий варіант, коли це буде потрібно.</translation>
+            <translation>Власні налаштування з Advanced Tuning. Коли результат вас влаштує, збережіть їх як швидкий варіант.</translation>
         </message>
         <message>
             <source>Current quick mode description</source>
@@ -2249,15 +2249,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Profile tuning reset to OkuFlow defaults.</source>
-            <translation>Налаштування профілю скинуто до значень за замовчуванням OkuFlow.</translation>
+            <translation>Налаштування профілю скинуто до стандартних значень OkuFlow.</translation>
         </message>
         <message>
             <source>Current profile tuning reset to defaults.</source>
-            <translation>Поточне налаштування профілю скидається до значень за замовчуванням.</translation>
+            <translation>Налаштування поточного профілю скинуто до стандартних значень.</translation>
         </message>
         <message>
             <source>Quick option name:</source>
-            <translation>Швидка назва опції:</translation>
+            <translation>Назва швидкого варіанта:</translation>
         </message>
         <message>
             <source>OkuFlow could not save settings.</source>
@@ -2273,7 +2273,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Performance timing percentiles</source>
-            <translation>Процентилі часу продуктивності</translation>
+            <translation>Перцентилі часу виконання</translation>
         </message>
         <message>
             <source>%1 status</source>
@@ -2281,7 +2281,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>%1 download progress</source>
-            <translation>%1 прогрес завантаження</translation>
+            <translation>Хід завантаження %1</translation>
         </message>
         <message>
             <source>Install %1</source>
@@ -2301,7 +2301,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Color stop %1 of 8</source>
-            <translation>Кольорова зупинка %1 з 8</translation>
+            <translation>Колірна точка %1 із 8</translation>
         </message>
         <message>
             <source>%1 px</source>
@@ -2325,7 +2325,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Accelerate fast Ctrl+scroll zoom gestures; keyboard zoom remains exact</source>
-            <translation>Прискорення швидких жестів масштабування Ctrl+прокручування; масштабування клавіатури залишається точним</translation>
+            <translation>Прискорити швидке масштабування прокручуванням із Ctrl; масштабування клавіатурою залишається точним</translation>
         </message>
         <message>
             <source>SuperRes powered by NVIDIA Maxine™</source>
@@ -2333,7 +2333,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA Атрибуція Максін</translation>
+            <translation>Зазначення авторства NVIDIA Maxine</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2341,7 +2341,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>%1 profile</source>
-            <translation>%1 профіль</translation>
+            <translation>%1 профілів</translation>
         </message>
         <message>
             <source>%1 settings match</source>
@@ -2349,7 +2349,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Next screen correction, or find one new correction.%1</source>
-            <translation>Наступне виправлення екрана або знайдіть одне нове виправлення.%1</translation>
+            <translation>Перейти до наступного виправлення екрана або знайти нове.%1</translation>
         </message>
         <message>
             <source>Controls will hide automatically</source>
@@ -2357,7 +2357,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>OkuFlow Lecture Notes</source>
-            <translation>OkuFlow Конспекти лекцій</translation>
+            <translation>Конспекти лекцій OkuFlow</translation>
         </message>
         <message>
             <source>Started %1</source>
@@ -2365,7 +2365,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Captured processed camera view</source>
-            <translation>Захоплений оброблений вигляд камери</translation>
+            <translation>Знімок обробленого зображення з камери</translation>
         </message>
         <message>
             <source>Processed camera view</source>
@@ -2389,11 +2389,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Original camera photo</source>
-            <translation>Оригінальна фотокамера</translation>
+            <translation>Оригінальне фото з камери</translation>
         </message>
         <message>
             <source>Processed camera video</source>
-            <translation>Оброблено відео з камери</translation>
+            <translation>Оброблене відео з камери</translation>
         </message>
         <message>
             <source>Processed camera photo</source>
@@ -2449,11 +2449,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Original and processed photo</source>
-            <translation>Оригінал і оброблена фотографія</translation>
+            <translation>Оригінальне й оброблене фото</translation>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>Переглянути вигляд, який проаналізував помічник</translation>
+            <translation>Переглянути зображення, яке проаналізував помічник</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2465,7 +2465,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Started a new conversation.</source>
-            <translation>Розпочав нову розмову.</translation>
+            <translation>Розпочато нову розмову.</translation>
         </message>
         <message>
             <source>Finish the current answer before starting a new chat.</source>
@@ -2477,23 +2477,23 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
-            <translation>Розпочав нову розмову. Наступне пояснення також починає нову розмову.</translation>
+            <translation>Розпочато нову розмову. Наступне натискання «Пояснити» також почне нову розмову.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Надсилання поточного кадру камери та підказки на Codex. Розмова: збережена бесіда пояснення, продовжена кожним поясненням. Інструмент Інтернет: заблоковано. Кодування та зміни файлів: заблоковано.</translation>
+            <translation>Надсилання поточного кадру камери й запиту до Codex. Розмова: збережена бесіда «Пояснити», яку продовжує кожне наступне пояснення. Інтернет: недоступний. Написання коду та змінення файлів: заборонені.</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>Надсилання поточного кадру камери та підказки на Codex. Розмова: тимчасова, нова для кожного Прочитаного. Інструмент Інтернет: заблоковано. Кодування та зміни файлів: заблоковано.</translation>
+            <translation>Надсилання поточного кадру камери й запиту до Codex. Розмова: тимчасова, нова для кожного натискання «Читати». Інтернет: недоступний. Написання коду та змінення файлів: заборонені.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Надсилання поточного кадру камери, підказки та останніх відповідей Explain на %1 (локальна кінцева точка). Розмова: нещодавні пояснювальні відповіді, зберігаються лише в пам’яті. Інструменти кодування: недоступні.</translation>
+            <translation>Надсилання поточного кадру камери, запиту й останніх відповідей «Пояснити» до %1 (локальний сервер). Контекст: останні відповіді «Пояснити», зберігаються лише в пам'яті. Інструменти для роботи з кодом недоступні.</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (remote endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
-            <translation>Надсилання поточного кадру камери, підказки та останніх відповідей Explain на %1 (віддалена кінцева точка). Розмова: нещодавні пояснювальні відповіді, зберігаються лише в пам’яті. Інструменти кодування: недоступні.</translation>
+            <translation>Надсилання поточного кадру камери, запиту й останніх відповідей «Пояснити» до %1 (віддалений сервер). Контекст: останні відповіді «Пояснити», зберігаються лише в пам'яті. Інструменти для роботи з кодом недоступні.</translation>
         </message>
         <message>
             <source>Panel position</source>
@@ -2521,7 +2521,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>Підтримує функції Read, Explain і Assistant, які підтримуються підпискою. Встановлює офіційний Codex CLI для вашого облікового запису Windows; Вхід у ChatGPT залишається окремим кроком.</translation>
+            <translation>Забезпечує роботу функцій «Читати», «Пояснити» й «Помічник», доступних за підпискою. Встановлює офіційний Codex CLI для вашого облікового запису Windows; увійти в ChatGPT потрібно окремо.</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2545,7 +2545,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Number key %1</source>
-            <translation>Цифровий ключ %1</translation>
+            <translation>Клавіша з цифрою %1</translation>
         </message>
         <message>
             <source>Shared settings</source>
@@ -2585,11 +2585,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Changes apply now. Save to keep them.</source>
-            <translation>Зміни діють зараз. Збережіть, щоб зберегти їх.</translation>
+            <translation>Зміни вже застосовано. Збережіть їх, щоб вони залишилися.</translation>
         </message>
         <message>
             <source>Shared by all modes. Not saved into quick modes.</source>
-            <translation>Спільний для всіх режимів. Не зберігається в швидких режимах.</translation>
+            <translation>Спільне для всіх режимів налаштування. Не зберігається у швидких режимах.</translation>
         </message>
         <message>
             <source>Fine-tune text</source>
@@ -2617,7 +2617,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Steady image</source>
-            <translation>Стійке зображення</translation>
+            <translation>Стабілізація зображення</translation>
         </message>
         <message>
             <source>Straighten screen</source>
@@ -2625,7 +2625,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Soften image (blur)</source>
-            <translation>Пом'якшення зображення (розмивання)</translation>
+            <translation>Пом'якшити зображення (розмиття)</translation>
         </message>
         <message>
             <source>Horizontal position</source>
@@ -2645,7 +2645,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Reset Mode</source>
-            <translation>Режим скидання</translation>
+            <translation>Скинути режим</translation>
         </message>
         <message>
             <source>Quick mode name:</source>
@@ -2653,11 +2653,11 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>Тут немає збігів. %1 у налаштуваннях. Натисніть Enter, щоб показати їх.</translation>
+            <translation>Тут збігів немає. Знайдено %1 у налаштуваннях. Натисніть Enter, щоб переглянути їх.</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>Тут немає збігів. %1 на зображенні. Натисніть Enter, щоб показати їх.</translation>
+            <translation>Тут збігів немає. Знайдено %1 у налаштуваннях зображення. Натисніть Enter, щоб переглянути їх.</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
@@ -2673,7 +2673,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Resets this mode's image and assistant settings. Settings on the Settings tab are not changed.</source>
-            <translation>Скидає налаштування зображення та помічника цього режиму. Налаштування на вкладці Налаштування не змінюються.</translation>
+            <translation>Скидає налаштування зображення й помічника для цього режиму. Налаштування на вкладці «Налаштування» не змінюються.</translation>
         </message>
         <message>
             <source>Connect a camera, then choose it under Settings, Camera.</source>
@@ -2705,7 +2705,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>Пояснення сцени зупинки</translation>
+            <translation>Зупинити пояснення сцени</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
@@ -2749,7 +2749,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
-            <translation>Чіткість тексту застосовує автоматичне покращення. Параметри точного налаштування застосовуються, лише коли ввімкнено параметр Чіткість тексту.</translation>
+            <translation>Функція «Чіткість тексту» автоматично покращує зображення. Параметри точного налаштування діють, лише коли її ввімкнено.</translation>
         </message>
         <message>
             <source>More colors
@@ -2791,15 +2791,15 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>Read, Explain, and Assistant використовуйте вашу підписку ChatGPT через Codex CLI. Увійдіть за допомогою Connect ChatGPT на вкладці «Помічник» у розширеному режимі.</translation>
+            <translation>Функції «Читати», «Пояснити» й «Помічник» використовують вашу підписку ChatGPT через Codex CLI. Увійдіть, натиснувши «Підключити ChatGPT» на вкладці «Помічник» у розширеному режимі.</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>Прочитайте та поясніть, надішліть зображення камери на URL-адресу сервера нижче. Зображення залишаються на цьому комп’ютері, лише якщо на ньому працює сервер, наприклад LM Studio або Ollama на локальному хості. Для збережених бесід Асистента потрібна підписка ChatGPT.</translation>
+            <translation>Функції «Читати» й «Пояснити» надсилають зображення з камери на URL-адресу сервера нижче. Зображення залишаються на цьому комп'ютері, лише якщо сервер запущено локально, наприклад LM Studio або Ollama на localhost. Для збереження бесід із помічником потрібна підписка ChatGPT.</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
-            <translation>OkuFlow завжди надсилає цю інструкцію до Codex, а потім ваші інструкції та правила дозволу.</translation>
+            <translation>OkuFlow завжди надсилає цю інструкцію Codex, а потім — ваші інструкції та правила доступу.</translation>
         </message>
         <message>
             <source>Assistant instructions</source>
@@ -2807,7 +2807,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Explain prompt:</source>
-            <translation>Промпт пояснення:</translation>
+            <translation>Запит для пояснення:</translation>
         </message>
         <message>
             <source>Advanced Assistant permissions</source>
@@ -2815,7 +2815,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>Вони стосуються лише збережених розмов Помічника, включно з запитаннями, заданими плаваючим Помічником. Читання та пояснення завжди залишаються обмеженими.</translation>
+            <translation>Ці дозволи стосуються лише збережених бесід із помічником, зокрема запитань, надісланих через плаваючу панель помічника. Функції «Читати» й «Пояснити» завжди мають обмежений доступ.</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
@@ -2823,27 +2823,27 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
-            <translation>Виберіть, скільки міркувань використовує Codex. Відповідь на вищий рівень може зайняти більше часу.</translation>
+            <translation>Виберіть рівень міркування Codex. За вищого рівня відповідь може надійти пізніше.</translation>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>Показати або приховати інструкцію лише для читання, яку OkuFlow завжди надсилає до Codex</translation>
+            <translation>Показати або приховати інструкцію, яку OkuFlow завжди надсилає Codex і яку не можна редагувати</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>Пояснити підказку</translation>
+            <translation>Запит для пояснення</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
-            <translation>Додаткові інструкції, які надсилаються разом із камерою, коли ви натискаєте Пояснити</translation>
+            <translation>Додаткові інструкції, які надсилаються разом із зображенням з камери, коли ви натискаєте «Пояснити»</translation>
         </message>
         <message>
             <source>Installed
 %1
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
-            <translation>Встановлено
+            <translation>Установлено
 %1
-Використовуйте Connect ChatGPT на вкладці Advanced Assistant, щоб увійти.</translation>
+Щоб увійти, натисніть «Підключити ChatGPT» на вкладці «Помічник» у розширеному режимі.</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2855,7 +2855,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>encoder backlog %1</source>
-            <translation>відставання кодувальника %1</translation>
+            <translation>Черга кодера %1</translation>
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
@@ -2879,7 +2879,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
-            <translation>Інсталятор середовища виконання Windows включено. Додаткові інструменти AI завантажуються від їх постачальників. Кожен інсталятор перевіряється перед запуском.</translation>
+            <translation>Інсталятор середовища виконання Windows входить до комплекту. Додаткові інструменти ШІ завантажуються з сайтів їхніх постачальників. Перед запуском перевіряється кожен інсталятор.</translation>
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
@@ -2887,7 +2887,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Windows libraries used by OkuFlow. Installation uses the included Microsoft installer and may request administrator approval.</source>
-            <translation>Бібліотеки Windows, які використовує OkuFlow. Для встановлення використовується інсталятор Microsoft, що входить до комплекту, і може знадобитися дозвіл адміністратора.</translation>
+            <translation>Бібліотеки Windows, потрібні для роботи OkuFlow. Для встановлення використовується інсталятор Microsoft із комплекту; може знадобитися дозвіл адміністратора.</translation>
         </message>
         <message>
             <source>Install for Windows</source>
@@ -2895,11 +2895,11 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Install Microsoft Windows runtime</source>
-            <translation>Встановіть середовище виконання Microsoft Windows</translation>
+            <translation>Установити середовище виконання Microsoft Windows</translation>
         </message>
         <message>
             <source>Use the complete OkuFlow ZIP to include the Windows runtime installer.</source>
-            <translation>Використовуйте повний архів OkuFlow ZIP, щоб включити програму встановлення Windows.</translation>
+            <translation>Завантажте повний ZIP-архів OkuFlow, до якого входить інсталятор середовища виконання Windows.</translation>
         </message>
         <message>
             <source>The included Microsoft installer could not be verified. Download the complete OkuFlow ZIP again.</source>
@@ -2907,7 +2907,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Windows could not start the elevated installer (error %1).</source>
-            <translation>Windows не вдалося запустити програму встановлення з адміністраторами (помилка %1).</translation>
+            <translation>Windows не вдалося запустити інсталятор із правами адміністратора (помилка %1).</translation>
         </message>
         <message>
             <source>Microsoft installer running. Continue in the installer window.</source>
@@ -2927,7 +2927,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>System default (%1)</source>
-            <translation>Мова системи (%1)</translation>
+            <translation>За замовчуванням у системі (%1)</translation>
         </message>
         <message>
             <source>Restoring USB connection…</source>
@@ -2935,7 +2935,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
-            <translation>OkuFlow перевіряє USB-з’єднання та підключиться знову автоматично.</translation>
+            <translation>OkuFlow перевіряє USB-з'єднання та автоматично відновить його.</translation>
         </message>
     </context>
 </TS>

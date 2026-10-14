@@ -17,7 +17,7 @@
     <string name="camera_hint">Deze telefoon streamt de camera via USB. Optionele Windows AI-functies kunnen afbeeldingen naar de door u geselecteerde service verzenden.</string>
     <string name="camera_hint_settings">Open de instellingen, kies \'Rechten\' en sta vervolgens \'Camera\' toe.</string>
     <string name="connect_usb_title">Sluit deze telefoon aan op uw computer</string>
-    <string name="connect_usb_hint">Deze telefoonapp heeft OkuFlow voor Windows op je pc nodig. Download het van okuflow.com en open het. Gebruik een USB-kabel waarmee je gegevens kunt overzetten.</string>
+    <string name="connect_usb_hint">Deze telefoonapp heeft OkuFlow voor Windows op uw pc nodig. Download het van okuflow.com en open het. Gebruik een USB-kabel waarmee u gegevens kunt overzetten.</string>
     <string name="open_okuflow_title">Open OkuFlow op uw computer</string>
     <string name="open_okuflow_hint">Als u wordt gevraagd om USB-foutopsporing toe te staan, sta dan alleen uw eigen vertrouwde privécomputer toe. “Altijd toestaan” is optioneel voor die computer; laat het uitgeschakeld op gedeelde computers.</string>
     <string name="streaming_title">Streamen naar OkuFlow</string>
@@ -52,7 +52,7 @@
     <string name="focus_hint">Wanneer autofocus is uitgeschakeld, wordt de scherpstelling ingesteld op oneindig voor inhoud op afstand.</string>
     <string name="setting_torch">Cameralicht</string>
     <string name="torch_host_hint">Begint uitgeschakeld. Gebruik de telefoonlampknop onder Camera-instellingen in OkuFlow op uw computer.</string>
-    <string name="setting_exposure">Blootstelling: %1$d</string>
+    <string name="setting_exposure">Belichting: %1$d</string>
     <string name="exposure_hint">Ga naar links voor een donkerder beeld, naar rechts voor een helderder beeld.</string>
     <string name="setting_status">Streamstatus</string>
     <string name="settings_reset">Automatische instellingen herstellen</string>
@@ -74,7 +74,7 @@
     <string name="privacy_title">Privacybeleid</string>
     <string name="privacy_identity">OkuFlow Camera wordt geleverd door Cem Kaya. Bijgewerkt op 12 oktober 2026. Dit beleid heeft betrekking op de Android-companion en legt de verbinding ervan met OkuFlow voor Windows uit.</string>
     <string name="privacy_access">Met cameratoestemming codeert de app live cameravideo en verzendt deze via een geautoriseerde USB-foutopsporingsverbinding naar uw computer. Het verzendt ook cameramogelijkheden, codec- en opname-instellingen, frametiming en foutinformatie. De telefoonapp heeft geen internettoestemming en vraagt ​​geen toegang tot de microfoon, locatie of contacten.</string>
-    <string name="privacy_retention">Op de telefoon wordt video in het geheugen bewaard om te streamen in plaats van opgeslagen als opnames. Camera- en instellingsvoorkeuren worden lokaal opgeslagen; het lampje gaat uit bij een nieuwe verbinding. Automatische instellingen herstellen reset de cameravoorkeuren. Opslagcontroles voor Android-apps of het verwijderen van opgeslagen voorkeuren. Back-up en apparaatoverdracht van app-gegevens zijn uitgeschakeld.</string>
+    <string name="privacy_retention">Op de telefoon wordt video in het geheugen bewaard om te streamen in plaats van opgeslagen als opnames. Camera- en instellingsvoorkeuren worden lokaal opgeslagen; het lampje gaat uit bij een nieuwe verbinding. Automatische instellingen herstellen reset de cameravoorkeuren. Via de opslaginstellingen van Android of door de app te verwijderen, kunt u opgeslagen voorkeuren wissen. Back-up en apparaatoverdracht van app-gegevens zijn uitgeschakeld.</string>
     <string name="privacy_windows">OkuFlow voor Windows kan foto\'s, opnamen, notities en diagnostische logbestanden op uw computer opslaan. Als u de optionele AI-functies gebruikt, kunnen afbeeldingen en vragen naar de door u geselecteerde Codex- of visiedienst worden gestuurd. Die dienst heeft zijn eigen privacy- en bewaarvoorwaarden. Verwijder opgeslagen computerbestanden via Windows; Als u deze telefoon-app wist, worden deze of door de provider bewaarde gegevens niet verwijderd.</string>
     <string name="privacy_usb">Autoriseer USB-foutopsporing alleen op een computer die u vertrouwt. Een geautoriseerde foutopsporingsverbinding geeft de computer brede toegang tot de telefoon. Koppel de kabel los als u klaar bent; U kunt USB-foutopsporing uitschakelen of de foutopsporingsmachtigingen intrekken in de ontwikkelaarsopties. USB-autorisatie is geen claim van gecodeerde video-overdracht.</string>
     <string name="privacy_contact">Privacyvragen: neem contact op met Cem Kaya via de openbare OkuFlow repositoryproblemen. Problemen zijn openbaar; plaats geen camerabeelden, inloggegevens of privédocumenten. Als u de openbare beleids- of contactlink opent, wordt uw browser en de verbinding met GitHub gebruikt.</string>
@@ -82,13 +82,13 @@
     <string name="privacy_contact_action">Contact via publieke kwesties</string>
     <string name="notification_optional_hint">U kunt de cameraservicemelding weergeven in het meldingenpaneel. Dit is optioneel; weigeren stopt het streamen niet.</string>
     <string name="notification_optional_action">Cameramelding weergeven</string>
-    <string name="service_connected_notification">Verbonden met OkuFlow; wachten op filmpje</string>
+    <string name="service_connected_notification">Verbonden met OkuFlow; wachten op camerabeeld</string>
     <string name="service_streaming_notification">Streamen naar OkuFlow: %1$s</string>
     <string name="action_pause_streaming">Pauzeer het streamen</string>
     <string name="action_resume_streaming">Streaming hervatten</string>
     <string name="paused_title">Streaming onderbroken</string>
     <string name="paused_hint">De camera is gestopt. Kies Streaming hervatten wanneer u klaar bent. Als u opnieuw verbinding maakt of de app opnieuw opent, blijft deze gepauzeerd.</string>
-    <string name="pause_save_failed">De camera is gepauzeerd, maar deze keuze kan niet worden opgeslagen. Houd de kabel los voordat u de app opnieuw opent. Probeer het streamen opnieuw te hervatten nadat je de app-opslag hebt gecontroleerd.</string>
+    <string name="pause_save_failed">De camera is gepauzeerd, maar deze keuze kan niet worden opgeslagen. Houd de kabel los voordat u de app opnieuw opent. Probeer het streamen opnieuw te hervatten nadat u de opslag van de app hebt gecontroleerd.</string>
     <string name="licenses_title">Open source-licenties</string>
     <string name="licenses_loading">Licentiekennisgevingen laden…</string>
     <string name="licenses_unavailable">Licentiekennisgevingen konden niet worden geopend. Gebruik de licentiemap van de bronrepository.</string>

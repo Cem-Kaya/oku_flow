@@ -17,7 +17,7 @@
         </message>
         <message>
             <source>Starts off on each connection. Press to turn the phone light on or off.</source>
-            <translation>在每个连接上启动。按下可打开或关闭电话灯。</translation>
+            <translation>每次连接时默认关闭。按下可打开或关闭手机补光灯。</translation>
         </message>
         <message>
             <source>Application</source>
@@ -69,7 +69,7 @@
         </message>
         <message>
             <source>Profile</source>
-            <translation>公司简介</translation>
+            <translation>配置方案</translation>
         </message>
         <message>
             <source>Diagnostics</source>
@@ -77,7 +77,7 @@
         </message>
         <message>
             <source>Shared by every profile</source>
-            <translation>每个个人资料共享</translation>
+            <translation>所有配置方案共用</translation>
         </message>
         <message>
             <source>Saved into the selected quick option</source>
@@ -125,7 +125,7 @@
         </message>
         <message>
             <source>Viewport motion rate</source>
-            <translation>视口运动速率</translation>
+            <translation>视口刷新率</translation>
         </message>
         <message>
             <source>Auto (up to 120 FPS)</source>
@@ -153,7 +153,7 @@
         </message>
         <message>
             <source>Reset Tuning</source>
-            <translation>重置调音</translation>
+            <translation>重置调节</translation>
         </message>
         <message>
             <source>Virtual Joystick</source>
@@ -165,11 +165,11 @@
         </message>
         <message>
             <source>Shared by original and processed recordings</source>
-            <translation>由原始录音和处理后的录音共享</translation>
+            <translation>原始录制和处理后录制共用</translation>
         </message>
         <message>
             <source>Processed recording resolution</source>
-            <translation>处理后的录音分辨率</translation>
+            <translation>处理后录制的分辨率</translation>
         </message>
         <message>
             <source>Camera and original recording resolution &amp;&amp; frame rate</source>
@@ -241,7 +241,7 @@
         </message>
         <message>
             <source>Temporal Smooth</source>
-            <translation>颞平滑</translation>
+            <translation>时域平滑</translation>
         </message>
         <message>
             <source>Blend:</source>
@@ -305,7 +305,7 @@
         </message>
         <message>
             <source>Stroke weight</source>
-            <translation>行程重量</translation>
+            <translation>笔画粗细</translation>
         </message>
         <message>
             <source>Smart Sharpen</source>
@@ -377,7 +377,7 @@
         </message>
         <message>
             <source>Assistive Overlay</source>
-            <translation>辅助覆盖</translation>
+            <translation>辅助叠加层</translation>
         </message>
         <message>
             <source>Save drawing to notes when leaving Draw</source>
@@ -441,7 +441,7 @@
         </message>
         <message>
             <source>Performance percentiles</source>
-            <translation>绩效百分位数</translation>
+            <translation>性能百分位数</translation>
         </message>
         <message>
             <source>Collecting timing samples…</source>
@@ -477,7 +477,7 @@
         </message>
         <message>
             <source>Explain the current view</source>
-            <translation>解释一下目前的观点</translation>
+            <translation>解释当前画面</translation>
         </message>
         <message>
             <source>Read text in the current view</source>
@@ -545,7 +545,7 @@
         </message>
         <message>
             <source>Ask about this view...</source>
-            <translation>询问这个观点...</translation>
+            <translation>询问当前画面…</translation>
         </message>
         <message>
             <source>Ask</source>
@@ -693,7 +693,7 @@
         </message>
         <message>
             <source>Camera did not stop in time. Restart OkuFlow before changing cameras.</source>
-            <translation>镜头没有及时停下来。更换相机之前重新启动OkuFlow。</translation>
+            <translation>相机未能及时停止。更换相机前请重启 OkuFlow。</translation>
         </message>
         <message>
             <source>GPU stopped responding. Restart OkuFlow to resume video.</source>
@@ -745,11 +745,11 @@
         </message>
         <message>
             <source>%1% slower</source>
-            <translation>%1% 慢</translation>
+            <translation>慢 %1%</translation>
         </message>
         <message>
             <source>%1% faster</source>
-            <translation>%1% 快</translation>
+            <translation>快 %1%</translation>
         </message>
         <message>
             <source>Speech rate</source>
@@ -789,7 +789,7 @@
         </message>
         <message>
             <source>expanded</source>
-            <translation>扩大</translation>
+            <translation>已展开</translation>
         </message>
         <message>
             <source>collapsed</source>
@@ -869,7 +869,7 @@
         </message>
         <message>
             <source>Stopped.</source>
-            <translation>停了。</translation>
+            <translation>已停止。</translation>
         </message>
         <message>
             <source>The OkuFlow Analysis folder is unavailable.</source>
@@ -881,7 +881,7 @@
         </message>
         <message>
             <source>Vision model: %1</source>
-            <translation>视觉型号：%1</translation>
+            <translation>视觉模型：%1</translation>
         </message>
         <message>
             <source>Automatic screen correction continuing.</source>
@@ -901,11 +901,11 @@
         </message>
         <message>
             <source>GPU camera capture is active with the safe copy fallback.</source>
-            <translation>GPU 相机捕获处于活动状态，并具有安全复制后备功能。</translation>
+            <translation>GPU 相机采集已启用，当前使用安全的复制回退方式。</translation>
         </message>
         <message>
             <source>Later</source>
-            <translation>后来</translation>
+            <translation>稍后</translation>
         </message>
         <message>
             <source>NVIDIA Super Resolution performance limit ignored.</source>
@@ -937,7 +937,7 @@
         </message>
         <message>
             <source>Screen correction moved back and tracking stopped.</source>
-            <translation>屏幕校正向后移动并且跟踪停止。</translation>
+            <translation>屏幕校正已回退，跟踪已停止。</translation>
         </message>
         <message>
             <source>Select a camera before running the test.</source>
@@ -953,7 +953,7 @@
         </message>
         <message>
             <source>Testing GPU and compatibility capture in an isolated process...</source>
-            <translation>在隔离进程中测试 GPU 和兼容性捕获...</translation>
+            <translation>正在独立进程中测试 GPU 采集和兼容模式采集…</translation>
         </message>
         <message>
             <source>Testing camera...</source>
@@ -969,7 +969,7 @@
         </message>
         <message>
             <source>Using the next screen correction.</source>
-            <translation>使用下一个屏幕校正。</translation>
+            <translation>正在应用下一次屏幕校正。</translation>
         </message>
         <message>
             <source>Windows could not open:
@@ -991,11 +991,11 @@
         </message>
         <message>
             <source>Annotated view not saved: the image could not be queued.</source>
-            <translation>带注释的视图未保存：图像无法排队。</translation>
+            <translation>未保存已标注的画面：无法将图像加入保存队列。</translation>
         </message>
         <message>
             <source>Annotated view not saved: the image writer is busy. Try again.</source>
-            <translation>带注释的视图未保存：图像仍在写入。再试一次。</translation>
+            <translation>未保存已标注的画面：图像写入器正忙，请重试。</translation>
         </message>
         <message>
             <source>Annotated view not saved: the viewport was unavailable.</source>
@@ -1011,7 +1011,7 @@
         </message>
         <message>
             <source>Failed to start camera capture</source>
-            <translation>无法启动相机拍摄</translation>
+            <translation>无法启动相机采集</translation>
         </message>
         <message>
             <source>GPU camera acceleration could not start: %1</source>
@@ -1031,7 +1031,7 @@
         </message>
         <message>
             <source>No camera modes were reported.</source>
-            <translation>没有报告相机模式。</translation>
+            <translation>未检测到相机模式。</translation>
         </message>
         <message>
             <source>Photo not saved: no processed frame was available.</source>
@@ -1043,11 +1043,11 @@
         </message>
         <message>
             <source>Photo not saved: the image could not be queued.</source>
-            <translation>照片未保存：图像无法排队。</translation>
+            <translation>照片未保存：无法将图像加入保存队列。</translation>
         </message>
         <message>
             <source>Photo not saved: the image writer is busy. Try again.</source>
-            <translation>照片未保存：图像仍在写入。再试一次。</translation>
+            <translation>照片未保存：图像写入器正忙，请重试。</translation>
         </message>
         <message>
             <source>Photo not saved: the original camera frame could not be converted.</source>
@@ -1059,7 +1059,7 @@
         </message>
         <message>
             <source>Photo not saved: the processed or original frame was unavailable.</source>
-            <translation>照片未保存：处理后的或原始的帧不可用。</translation>
+            <translation>照片未保存：处理后画面或原始画面不可用。</translation>
         </message>
         <message>
             <source>Reconnecting to camera…</source>
@@ -1079,7 +1079,7 @@
         </message>
         <message>
             <source>The camera GPU texture could not be converted for CUDA.</source>
-            <translation>无法转换 CUDA 的相机 GPU 纹理。</translation>
+            <translation>无法将相机 GPU 纹理转换为 CUDA 可用格式。</translation>
         </message>
         <message>
             <source>Annotated view</source>
@@ -1087,11 +1087,11 @@
         </message>
         <message>
             <source>Finishing recording...</source>
-            <translation>录音完成...</translation>
+            <translation>正在完成录制…</translation>
         </message>
         <message>
             <source>Finishing recording…</source>
-            <translation>录制完成...</translation>
+            <translation>正在完成录制…</translation>
         </message>
         <message>
             <source>Recording could not start.</source>
@@ -1103,7 +1103,7 @@
         </message>
         <message>
             <source>Recording is starting...</source>
-            <translation>录音开始...</translation>
+            <translation>正在开始录制…</translation>
         </message>
         <message>
             <source>Recording saved. %1</source>
@@ -1127,11 +1127,11 @@
         </message>
         <message>
             <source>Stopping recording...</source>
-            <translation>停止录音...</translation>
+            <translation>正在停止录制…</translation>
         </message>
         <message>
             <source>The camera mode changed. Recording continues in part %1.</source>
-            <translation>相机模式改变了。 %1 部分继续录音。</translation>
+            <translation>相机模式已更改。录制将在第 %1 部分继续。</translation>
         </message>
         <message>
             <source>The recording canvas is invalid.</source>
@@ -1147,7 +1147,7 @@
         </message>
         <message>
             <source>Audio: %1 blocks dropped before encoding, %2 rejected by the input limit.</source>
-            <translation>音频：%1 块在编码前被丢弃，%2 因输入限制而被拒绝。</translation>
+            <translation>音频：%1 个数据块在编码前被丢弃，%2 个因输入数量上限而被拒绝。</translation>
         </message>
         <message>
             <source>%1 frames were dropped (%2).</source>
@@ -1159,7 +1159,7 @@
         </message>
         <message>
             <source>Original video</source>
-            <translation>原创视频</translation>
+            <translation>原始视频</translation>
         </message>
         <message>
             <source>Processed video</source>
@@ -1179,11 +1179,11 @@
         </message>
         <message>
             <source>GPU-fed original and processed</source>
-            <translation>GPU 提供原始数据和处理后的数据</translation>
+            <translation>由 GPU 提供原始及处理后画面</translation>
         </message>
         <message>
             <source>GPU source with worker readback</source>
-            <translation>具有工作器回读功能的 GPU 源</translation>
+            <translation>GPU 源，由工作线程回读</translation>
         </message>
         <message>
             <source>Another assistant request is already running.</source>
@@ -1191,7 +1191,7 @@
         </message>
         <message>
             <source>Assistant stopped.</source>
-            <translation>助理停了下来。</translation>
+            <translation>助手已停止。</translation>
         </message>
         <message>
             <source>Assistive View</source>
@@ -1215,11 +1215,11 @@
         </message>
         <message>
             <source>No camera frame is available to attach.</source>
-            <translation>没有可安装的相机框架。</translation>
+            <translation>没有可附加的相机画面。</translation>
         </message>
         <message>
             <source>Persistent Assistant conversations require the Codex subscription provider.</source>
-            <translation>持久助手对话需要 Codex 订阅提供商。</translation>
+            <translation>持续保存助手对话需要使用 Codex 订阅服务。</translation>
         </message>
         <message>
             <source>Photo captured</source>
@@ -1255,7 +1255,7 @@
         </message>
         <message>
             <source>Thinking...</source>
-            <translation>想着……</translation>
+            <translation>正在思考…</translation>
         </message>
         <message>
             <source>VLM image preparation is busy. Try again in a moment.</source>
@@ -1275,7 +1275,7 @@
         </message>
         <message>
             <source>VLM response exceeded OkuFlow's safe size limit.</source>
-            <translation>VLM 响应超出了OkuFlow 的安全大小限制。</translation>
+            <translation>VLM 回复超出 OkuFlow 的安全长度限制。</translation>
         </message>
         <message>
             <source>VLM returned an empty description.</source>
@@ -1295,7 +1295,7 @@
         </message>
         <message>
             <source>Codex Model</source>
-            <translation>Codex 型号</translation>
+            <translation>Codex 模型</translation>
         </message>
         <message>
             <source>Codex Reasoning</source>
@@ -1303,11 +1303,11 @@
         </message>
         <message>
             <source>Assistant Instructions</source>
-            <translation>辅助说明</translation>
+            <translation>助手指令</translation>
         </message>
         <message>
             <source>Built-in Codex Prompt</source>
-            <translation>内置Codex提示符</translation>
+            <translation>内置 Codex 提示词</translation>
         </message>
         <message>
             <source>VLM Server URL</source>
@@ -1359,11 +1359,11 @@
         </message>
         <message>
             <source>Coding Workspace Required</source>
-            <translation>需要编码工作空间</translation>
+            <translation>需要代码工作区</translation>
         </message>
         <message>
             <source>Annotation mode on. Pen tool.</source>
-            <translation>注释模式开启。钢笔工具。</translation>
+            <translation>标注模式已开启。当前工具：画笔。</translation>
         </message>
         <message>
             <source>Annotation options</source>
@@ -1387,7 +1387,7 @@
         </message>
         <message>
             <source>Click the camera view, then type a label. Shortcut T.</source>
-            <translation>单击相机视图，然后键入标签。捷径T。</translation>
+            <translation>点击相机画面，然后输入标签。快捷键 T。</translation>
         </message>
         <message>
             <source>Dashed</source>
@@ -1423,11 +1423,11 @@
         </message>
         <message>
             <source>Draw an uninterrupted stroke.</source>
-            <translation>画出不间断的笔画。</translation>
+            <translation>绘制连续线条。</translation>
         </message>
         <message>
             <source>Draw freehand on the camera view. Shortcut P.</source>
-            <translation>在相机视图上徒手绘制。快捷方式P。</translation>
+            <translation>在相机画面上自由绘制。快捷键 P。</translation>
         </message>
         <message>
             <source>Draw mode off.</source>
@@ -1435,11 +1435,11 @@
         </message>
         <message>
             <source>Draw rectangles or ellipses. Shortcut S.</source>
-            <translation>绘制矩形或椭圆形。快捷方式S。</translation>
+            <translation>绘制矩形或椭圆。快捷键 S。</translation>
         </message>
         <message>
             <source>Draw, select, resize, save, or clear annotations anchored to the camera scene.</source>
-            <translation>绘制、选择、调整大小、保存或清除锚定到相机场景的注释。</translation>
+            <translation>绘制、选择、调整大小、保存或清除锚定在相机画面中的标注。</translation>
         </message>
         <message>
             <source>Ellipse</source>
@@ -1531,7 +1531,7 @@
         </message>
         <message>
             <source>Solid</source>
-            <translation>固体</translation>
+            <translation>实心</translation>
         </message>
         <message>
             <source>Solid line style</source>
@@ -1619,11 +1619,11 @@
         </message>
         <message>
             <source>Speak the current assistant result</source>
-            <translation>说出当前辅助结果</translation>
+            <translation>朗读当前助手结果</translation>
         </message>
         <message>
             <source>Streaming assistant result. Use arrow keys to read the text.</source>
-            <translation>流媒体助理结果。使用箭头键阅读文本。</translation>
+            <translation>助手正在生成回答。使用方向键阅读文本。</translation>
         </message>
         <message>
             <source>Type a follow-up question at any time. Sending becomes available when the current answer finishes.</source>
@@ -1631,7 +1631,7 @@
         </message>
         <message>
             <source>Apply custom</source>
-            <translation>申请定制</translation>
+            <translation>应用自定义设置</translation>
         </message>
         <message>
             <source>Background color</source>
@@ -1647,7 +1647,7 @@
         </message>
         <message>
             <source>Color stop %1 of %2</source>
-            <translation>%2 颜色停止%1</translation>
+            <translation>第 %1 个色标，共 %2 个</translation>
         </message>
         <message>
             <source>Custom</source>
@@ -1699,7 +1699,7 @@
         </message>
         <message>
             <source>Reading colors</source>
-            <translation>读颜色</translation>
+            <translation>阅读配色</translation>
         </message>
         <message>
             <source>Reset display colors to Normal colors</source>
@@ -1739,7 +1739,7 @@
         </message>
         <message>
             <source>Automatically clarify text in the camera view</source>
-            <translation>自动澄清相机视图中的文本</translation>
+            <translation>自动增强相机画面中文字的清晰度</translation>
         </message>
         <message>
             <source>Camera acceleration has not started yet.</source>
@@ -1807,7 +1807,7 @@
         </message>
         <message>
             <source>Drag to resize Advanced settings</source>
-            <translation>拖动以调整大小 高级设置</translation>
+            <translation>拖动以调整“高级设置”窗口的大小</translation>
         </message>
         <message>
             <source>Extra Stable off</source>
@@ -1819,7 +1819,7 @@
         </message>
         <message>
             <source>Fill uses the full viewport without stretching; Fit preserves the entire image with bars</source>
-            <translation>填充使用整个视口而不拉伸；拟合保留整个图像的条形</translation>
+            <translation>“填充”会占满整个视口且不拉伸画面；“适应”会完整显示图像，并在周围留出边框</translation>
         </message>
         <message>
             <source>Finding one new screen correction...</source>
@@ -1827,7 +1827,7 @@
         </message>
         <message>
             <source>Finishing</source>
-            <translation>整理</translation>
+            <translation>正在完成</translation>
         </message>
         <message>
             <source>Freeze on the last sharp frame during a bump, then smoothly return to live video</source>
@@ -1863,7 +1863,7 @@
         </message>
         <message>
             <source>Lock the mounted camera view using full-strength CUDA stabilization</source>
-            <translation>使用全强度CUDA稳定锁定已安装的摄像机视图</translation>
+            <translation>使用满强度 CUDA 防抖锁定固定安装的相机画面</translation>
         </message>
         <message>
             <source>Low Light</source>
@@ -1931,7 +1931,7 @@
         </message>
         <message>
             <source>Previous quick mode</source>
-            <translation>以前的快速模式</translation>
+            <translation>上一个快速模式</translation>
         </message>
         <message>
             <source>Processing: CPU</source>
@@ -1939,7 +1939,7 @@
         </message>
         <message>
             <source>Profile setting saved with the current quick option.</source>
-            <translation>使用当前快速选项保存的配置文件设置。</translation>
+            <translation>配置文件设置已随当前快速选项保存。</translation>
         </message>
         <message>
             <source>Quick mode</source>
@@ -1963,7 +1963,7 @@
         </message>
         <message>
             <source>Reading profile</source>
-            <translation>阅读简介</translation>
+            <translation>阅读配置</translation>
         </message>
         <message>
             <source>Reset current profile tuning</source>
@@ -1971,11 +1971,11 @@
         </message>
         <message>
             <source>Reset profile-owned image and assistive tuning to defaults</source>
-            <translation>将配置文件拥有的图像和辅助调整重置为默认值</translation>
+            <translation>将此配置中的图像和辅助功能调校设置恢复为默认值</translation>
         </message>
         <message>
             <source>Resize Advanced settings</source>
-            <translation>调整大小 高级设置</translation>
+            <translation>调整“高级设置”窗口的大小</translation>
         </message>
         <message>
             <source>Rotate input/output clockwise</source>
@@ -2035,7 +2035,7 @@
         </message>
         <message>
             <source>Use NVIDIA Video Effects SuperRes at 1.33x zoom and above; falls back to NIS automatically</source>
-            <translation>在 1.33 倍及以上变焦下使用 NVIDIA Video Effects SuperRes；自动回退到 NIS</translation>
+            <translation>放大倍数达到 1.33 倍及以上时使用 NVIDIA Video Effects SuperRes；不可用时自动改用 NIS</translation>
         </message>
         <message>
             <source>Viewport setting shared by all profiles.</source>
@@ -2068,16 +2068,16 @@
         <message>
             <source>Installed and managed by OkuFlow
 %1</source>
-            <translation>由OkuFlow
-%1安装和管理</translation>
+            <translation>由 OkuFlow 安装并管理
+%1</translation>
         </message>
         <message>
             <source>Installed system-wide
 %1
 Removal is managed by Windows.</source>
-            <translation>系统范围内安装的
+            <translation>已安装到系统范围
 %1
-删除由Windows管理。</translation>
+请通过 Windows 管理的方式卸载。</translation>
         </message>
         <message>
             <source>NVIDIA Video Effects</source>
@@ -2093,7 +2093,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Not installed. Install downloads the package for %1 GPUs.</source>
-            <translation>未安装。安装下载 %1 GPU 的软件包。</translation>
+            <translation>尚未安装。点击“安装”即可下载适用于 %1 GPU 的软件包。</translation>
         </message>
         <message>
             <source>Open Codex CLI install folder</source>
@@ -2133,7 +2133,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Remove NVIDIA Video Effects</source>
-            <translation>删除NVIDIA Video Effects</translation>
+            <translation>卸载 NVIDIA Video Effects</translation>
         </message>
         <message>
             <source>Retrying from the alternate vendor host...</source>
@@ -2173,7 +2173,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The first transfer failed. Retrying with the Windows downloader...</source>
-            <translation>第一次转账失败。正在使用 Windows 下载器重试...</translation>
+            <translation>首次下载失败。正在改用 Windows 下载工具重试…</translation>
         </message>
         <message>
             <source>The installer did not complete successfully.</source>
@@ -2189,7 +2189,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>This system-wide copy must be removed through Windows Installed Apps</source>
-            <translation>必须通过 Windows 安装的应用程序删除此系统范围的副本</translation>
+            <translation>必须通过 Windows“已安装的应用”卸载此系统范围安装的副本</translation>
         </message>
         <message>
             <source>Unknown download error</source>
@@ -2237,7 +2237,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Custom configuration from Advanced Tuning. Save it as a quick option when it feels right.</source>
-            <translation>高级调整的自定义配置。当感觉合适时，将其保存为快速选项。</translation>
+            <translation>来自“高级调整”的自定义配置。满意后可将其保存为快速选项。</translation>
         </message>
         <message>
             <source>Current quick mode description</source>
@@ -2297,7 +2297,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stops: </source>
-            <translation>停靠站： </translation>
+            <translation>色标：</translation>
         </message>
         <message>
             <source>Color stop %1 of 8</source>
@@ -2309,7 +2309,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Drawing thickness</source>
-            <translation>拉伸厚度</translation>
+            <translation>绘制粗细</translation>
         </message>
         <message>
             <source>AI settings sections</source>
@@ -2333,7 +2333,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>NVIDIA Maxine attribution</source>
-            <translation>NVIDIA 玛克辛归属</translation>
+            <translation>NVIDIA Maxine 署名</translation>
         </message>
         <message>
             <source>setting shared by all profiles</source>
@@ -2341,7 +2341,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>%1 profile</source>
-            <translation>%1 简介</translation>
+            <translation>%1 配置文件</translation>
         </message>
         <message>
             <source>%1 settings match</source>
@@ -2425,7 +2425,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>The saved OkuFlow folder cannot be used (%1). Files will go to the default Documents folder until a new folder is chosen.</source>
-            <translation>无法使用保存的OkuFlow文件夹(%1)。文件将转到默认的文档文件夹，直到选择新文件夹。</translation>
+            <translation>无法使用已保存的 OkuFlow 文件夹（%1）。在选择新文件夹前，文件将保存到默认的“文档”文件夹。</translation>
         </message>
         <message>
             <source>Lecture transcript</source>
@@ -2453,7 +2453,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>View the assistant analyzed</source>
-            <translation>查看助手分析</translation>
+            <translation>查看助手分析的内容</translation>
         </message>
         <message>
             <source>Conversation</source>
@@ -2469,7 +2469,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Finish the current answer before starting a new chat.</source>
-            <translation>在开始新的聊天之前完成当前的答案。</translation>
+            <translation>请先等待当前回答完成，再开始新对话。</translation>
         </message>
         <message>
             <source>Explain conversation</source>
@@ -2477,15 +2477,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Started a new conversation. The next Explain also starts a new conversation.</source>
-            <translation>开始了新的对话。下一个解释也会开始新的对话。</translation>
+            <translation>已开始新对话。下次点击“解释”也会开启新对话。</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: saved Explain conversation, continued by each Explain. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>将当前相机帧和提示发送至Codex。对话：保存的解释对话，由每个解释继续。工具互联网：被封锁。编码和文件更改：被阻止。</translation>
+            <translation>正在将当前相机画面和提示词发送到 Codex。对话：沿用已保存的“解释”对话，每次点击“解释”都会继续该对话。工具联网：已禁用。代码执行和文件修改：已禁用。</translation>
         </message>
         <message>
             <source>Sending the current camera frame and prompt to Codex. Conversation: temporary, new for each Read. Tool internet: blocked. Coding and file changes: blocked.</source>
-            <translation>将当前相机帧和提示发送至Codex。对话：临时的，每次阅读都会有新内容。工具互联网：被封锁。编码和文件更改：被阻止。</translation>
+            <translation>正在将当前相机画面和提示词发送到 Codex。对话：临时对话，每次点击“阅读”都会新建。工具联网：已禁用。代码执行和文件修改：已禁用。</translation>
         </message>
         <message>
             <source>Sending the current camera frame, prompt, and recent Explain answers to %1 (local endpoint). Conversation: recent Explain answers, kept in memory only. Coding tools: unavailable.</source>
@@ -2505,7 +2505,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Dock left</source>
-            <translation>码头左侧</translation>
+            <translation>停靠在左侧</translation>
         </message>
         <message>
             <source>Dock right</source>
@@ -2513,15 +2513,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Release to dock left</source>
-            <translation>释放至左侧停靠</translation>
+            <translation>松开以停靠在左侧</translation>
         </message>
         <message>
             <source>Release to dock right</source>
-            <translation>释放至右侧停靠</translation>
+            <translation>松开以停靠在右侧</translation>
         </message>
         <message>
             <source>Powers subscription-backed Read, Explain, and Assistant features. Installs the official Codex CLI for your Windows account; ChatGPT sign-in remains a separate step.</source>
-            <translation>支持订阅支持的阅读、解释和助理功能。为您的 Windows 帐户安装官方 Codex CLI； ChatGPT 登录仍然是一个单独的步骤。</translation>
+            <translation>为依托订阅提供的“阅读”“解释”和“助手”功能提供支持。此操作会为你的 Windows 帐户安装官方 Codex CLI；ChatGPT 登录仍需单独完成。</translation>
         </message>
         <message>
             <source>The camera connection was lost. OkuFlow is reconnecting automatically.</source>
@@ -2533,7 +2533,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No camera picture</source>
-            <translation>没有相机图片</translation>
+            <translation>无相机画面</translation>
         </message>
         <message>
             <source>Connect a camera, then choose it under Advanced, Device.</source>
@@ -2589,7 +2589,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Shared by all modes. Not saved into quick modes.</source>
-            <translation>所有模式共享。未保存为快速模式。</translation>
+            <translation>所有模式共用；不会保存到快速模式中。</translation>
         </message>
         <message>
             <source>Fine-tune text</source>
@@ -2621,7 +2621,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Straighten screen</source>
-            <translation>拉直屏幕</translation>
+            <translation>画面倾斜校正</translation>
         </message>
         <message>
             <source>Soften image (blur)</source>
@@ -2653,15 +2653,15 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>No matches here. %1 in Settings. Press Enter to show them.</source>
-            <translation>这里没有匹配项。设置中的%1。按 Enter 键显示它们。</translation>
+            <translation>此处没有匹配项。设置中有 %1 个结果。按 Enter 键查看。</translation>
         </message>
         <message>
             <source>No matches here. %1 in Image. Press Enter to show them.</source>
-            <translation>这里没有匹配项。图像中的%1。按 Enter 键显示它们。</translation>
+            <translation>此处没有匹配项。图像中有 %1 个结果。按 Enter 键查看。</translation>
         </message>
         <message>
             <source>Saved with the current quick mode.</source>
-            <translation>使用当前快速模式保存。</translation>
+            <translation>已随当前快速模式保存。</translation>
         </message>
         <message>
             <source>Shared setting, used by all modes.</source>
@@ -2673,7 +2673,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Resets this mode's image and assistant settings. Settings on the Settings tab are not changed.</source>
-            <translation>重置该模式的图像和辅助设置。设置选项卡上的设置不会更改。</translation>
+            <translation>这会重置此模式的图像和助手设置。“设置”选项卡中的设置不会受影响。</translation>
         </message>
         <message>
             <source>Connect a camera, then choose it under Settings, Camera.</source>
@@ -2705,7 +2705,7 @@ Removal is managed by Windows.</source>
         </message>
         <message>
             <source>Stop scene explanation</source>
-            <translation>停止场景说明</translation>
+            <translation>停止场景解说</translation>
         </message>
         <message>
             <source>Stop the current scene explanation</source>
@@ -2741,11 +2741,11 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>%1 could not finish its final fragment (0x%2). The file was retained; playback has not been verified.</source>
-            <translation>%1 无法完成其最终片段 (0x%2)。文件被保留；播放尚未验证。</translation>
+            <translation>%1 未能完成最后一个片段（0x%2）。文件已保留，但尚未验证能否播放。</translation>
         </message>
         <message>
             <source>Recording output path already exists; it was preserved.</source>
-            <translation>录音输出路径已存在；它被保存下来了。</translation>
+            <translation>录制输出路径已存在，原文件已保留。</translation>
         </message>
         <message>
             <source>Text Clarity applies automatic enhancement. Fine-tune options apply only while Text Clarity is on.</source>
@@ -2791,15 +2791,15 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Read, Explain, and Assistant use your ChatGPT subscription through the Codex CLI. Sign in with Connect ChatGPT on the Assistant tab in Advanced mode.</source>
-            <translation>阅读、解释和协助通过 Codex CLI 使用您的 ChatGPT 订阅。在高级模式下使用“助理”选项卡上的 Connect ChatGPT 登录。</translation>
+            <translation>“阅读”“解释”和“助手”功能通过 Codex CLI 使用你的 ChatGPT 订阅。请在高级模式的“助手”选项卡中点击“连接 ChatGPT”登录。</translation>
         </message>
         <message>
             <source>Read and Explain send the camera view to the server URL below. Images stay on this computer only if that server runs on it, such as LM Studio or Ollama at localhost. Saved Assistant conversations need the ChatGPT subscription.</source>
-            <translation>阅读并解释将相机视图发送到下面的服务器 URL。仅当该服务器在该计算机上运行时，图像才会保留在该计算机上，例如本地主机上的 LM Studio 或 Ollama。保存的助手对话需要 ChatGPT 订阅。</translation>
+            <translation>“阅读”和“解释”会将相机画面发送到下方的服务器 URL。只有当服务器运行在本机时（例如通过 localhost 运行 LM Studio 或 Ollama），图像才会留在这台电脑上。保存的“助手”对话需要 ChatGPT 订阅。</translation>
         </message>
         <message>
             <source>OkuFlow always sends this instruction to Codex, followed by your instructions and the permission rules.</source>
-            <translation>OkuFlow 始终将此指令发送至 Codex，然后是您的指令和权限规则。</translation>
+            <translation>OkuFlow 每次都会先向 Codex 发送此指令，再发送你的指令和权限规则。</translation>
         </message>
         <message>
             <source>Assistant instructions</source>
@@ -2807,7 +2807,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>Explain prompt:</source>
-            <translation>解释提示词：</translation>
+            <translation>“解释”提示：</translation>
         </message>
         <message>
             <source>Advanced Assistant permissions</source>
@@ -2815,27 +2815,27 @@ Shared settings on the Settings tab will stay unchanged.</source>
         </message>
         <message>
             <source>These apply only to saved Assistant conversations, including questions asked from the floating Assistant. Read and Explain always stay restricted.</source>
-            <translation>这些仅适用于已保存的助理对话，包括浮动助理提出的问题。阅读和解释始终受到限制。</translation>
+            <translation>这些权限仅适用于已保存的“助手”对话，包括通过浮动助手提出的问题。“阅读”和“解释”始终受限。</translation>
         </message>
         <message>
             <source>Choose ChatGPT through Codex or an OpenAI-compatible server</source>
-            <translation>通过Codex选择ChatGPT或OpenAI兼容服务器</translation>
+            <translation>选择通过 Codex 使用 ChatGPT，或连接兼容 OpenAI API 的服务器</translation>
         </message>
         <message>
             <source>Choose how much reasoning Codex uses. Higher levels can take longer to answer.</source>
-            <translation>选择 Codex 使用多少推理。更高级别可能需要更长的时间才能回答。</translation>
+            <translation>选择 Codex 的推理强度。级别越高，回答可能越慢。</translation>
         </message>
         <message>
             <source>Show or hide the read-only instruction OkuFlow always sends to Codex</source>
-            <translation>显示或隐藏只读指令OkuFlow总是发送到Codex</translation>
+            <translation>显示或隐藏 OkuFlow 每次都会发送给 Codex 的只读指令</translation>
         </message>
         <message>
             <source>Explain Prompt</source>
-            <translation>解释提示</translation>
+            <translation>“解释”提示</translation>
         </message>
         <message>
             <source>Optional instructions sent with the camera view when you press Explain</source>
-            <translation>当您按“说明”时，随摄像头视图一起发送的可选说明</translation>
+            <translation>点击“解释”时，随相机画面一同发送的可选指令</translation>
         </message>
         <message>
             <source>Installed
@@ -2843,7 +2843,7 @@ Shared settings on the Settings tab will stay unchanged.</source>
 Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>已安装
 %1
-使用高级助手选项卡上的 Connect ChatGPT 登录。</translation>
+请在高级模式的“助手”选项卡中点击“连接 ChatGPT”登录。</translation>
         </message>
         <message>
             <source>Could not load conversation.</source>
@@ -2859,11 +2859,11 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Recording is skipping samples because encoder progress could not be checked. Stop and restart recording if it continues.</source>
-            <translation>录制正在跳过样本，因为无法检查编码器进度。如果继续录制，请停止并重新开始录制。</translation>
+            <translation>无法检查编码器进度，录制过程中正在跳过采样。若问题持续，请停止录制后重新开始。</translation>
         </message>
         <message>
             <source>Recording is skipping video frames because the encoder queue is full. Lower the recording resolution or stop and restart recording if it continues.</source>
-            <translation>由于编码器队列已满，录制正在跳过视频帧。如果继续录制，请降低录制分辨率或停止并重新开始录制。</translation>
+            <translation>编码器队列已满，录制过程中正在跳过视频帧。若问题持续，请降低录制分辨率，或停止录制后重新开始。</translation>
         </message>
         <message>
             <source>Waiting for phone…</source>
@@ -2871,7 +2871,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Open OkuFlow Camera on the phone, connect the USB cable, and allow USB debugging. OkuFlow checks the connection automatically.</source>
-            <translation>在手机上打开OkuFlow相机，连接USB线，并允许USB调试。 OkuFlow 自动检查连接。</translation>
+            <translation>在手机上打开 OkuFlow Camera，连接 USB 线缆并允许 USB 调试。OkuFlow 会自动检查连接。</translation>
         </message>
         <message>
             <source>Set up OkuFlow</source>
@@ -2879,7 +2879,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>The Windows runtime installer is included. Optional AI tools are downloaded from their vendors. Every installer is verified before it runs.</source>
-            <translation>包含 Windows 运行时安装程序。可选的人工智能工具是从供应商那里下载的。每个安装程序在运行之前都会经过验证。</translation>
+            <translation>ZIP 中已包含 Windows 运行时安装程序。可选 AI 工具会从其供应商处下载。每个安装程序运行前都会经过验证。</translation>
         </message>
         <message>
             <source>Microsoft Windows runtime</source>
@@ -2907,7 +2907,7 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         </message>
         <message>
             <source>Windows could not start the elevated installer (error %1).</source>
-            <translation>Windows 无法启动提升的安装程序（错误 %1）。</translation>
+            <translation>Windows 无法启动以管理员权限运行的安装程序（错误 %1）。</translation>
         </message>
         <message>
             <source>Microsoft installer running. Continue in the installer window.</source>

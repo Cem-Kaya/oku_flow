@@ -10,12 +10,16 @@ The phone app requires OkuFlow for Windows on the computer. Download it from
 supports data transfer. The phone's cable-connection screen explains this
 requirement in all 25 supported languages.
 
-The next update, 0.1.3 (code 4), adds 25 UI languages including Dutch. New
+The Alpha update, 0.1.4 (code 5), includes the completed wording review
+across the 25 UI languages, including Dutch. New
 installations follow the phone language; **Advanced settings → Language** offers
 a saved manual choice and System default. The Advanced entry has a gear icon.
 Arabic, Persian, Hebrew and Urdu use RTL layouts. See the [language coverage,
 draft wording and acceptance limits](../docs/localization.md). This local build
-has not replaced the published closed-test 0.1.2 (code 3).
+was validated and committed to Alpha through the CLI on 2026-10-14.
+review approval and tester availability have not been independently verified.
+The last verified Console publication remains 0.1.2 (code 3). Code 4 / 0.1.3
+and code 5 / 0.1.4 retain separate signed diagnostic inventories.
 
 ## Status
 
