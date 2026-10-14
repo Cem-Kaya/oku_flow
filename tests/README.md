@@ -13,6 +13,8 @@ Before building, the workflow requests a 1920×1080 display on that disposable
 VM and verifies its actual size. The default 1024×768 clips large native windows
 and changes geometry restoration. A refused/unchanged mode cannot pass GUI
 acceptance; the `desktop` manual scope checks only this prerequisite quickly.
+The first remote preparation verified session 2, the Default input desktop and
+an actual 1920×1080 mode change; no owner display settings were changed.
 
 The Qt downloader is pinned to an upstream aqt commit that supports Qt 6.11+
 split Windows repositories; released aqt 3.3.0 cannot locate this SDK.

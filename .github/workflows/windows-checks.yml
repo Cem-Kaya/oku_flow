@@ -98,12 +98,12 @@ jobs:
       - name: Native GUI checks on the remote desktop
         if: ${{ !cancelled() && steps.build.outcome == 'success' && inputs.scope != 'background' }}
         run: |
-          if ('${{ steps.desktop.outcome }}' != 'success') { throw 'Remote display preparation failed; see desktop evidence.' }
+          if ('${{ steps.desktop.outcome }}' -ne 'success') { throw 'Remote display preparation failed; see desktop evidence.' }
           ./scripts/run_windows_ci_gui.ps1 -Scope $env:OKUFLOW_CI_SCOPE
       - name: Check display-only result
         if: ${{ inputs.scope == 'desktop' }}
         run: |
-          if ('${{ steps.desktop.outcome }}' != 'success') { throw 'Remote display preparation failed; see desktop evidence.' }
+          if ('${{ steps.desktop.outcome }}' -ne 'success') { throw 'Remote display preparation failed; see desktop evidence.' }
       - name: Preserve logs, results and screenshots
         if: ${{ always() }}
         run: |
