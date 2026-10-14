@@ -79,6 +79,30 @@ language preference at that point. Newly written notes contain all viewer and
 handoff labels inline; existing notes are not rewritten. The browser tool uses
 the notes' requested language or supported browser preferences.
 
+## Translation authoring and review policy
+
+Future translations must express the intended meaning naturally in the target
+language. Do not translate word for word or accept unchecked automatic output.
+Machine-generated drafts require contextual rewriting and review before use.
+Use a familiar local phrase, or an established English term when forcing a
+literal translation would sound unnatural.
+
+Every new or changed translated string must be checked by a small,
+language-capable review agent, such as Luna. For large catalogs, assign chunks
+of about 100-200 entries per agent. Supply the English source, stable key,
+target text and UI context. Cover every affected surface: Qt, Android, launcher,
+notes, transcription bridge, marketing pages and browser transcription.
+
+Reviewers remain read-only and return an OK/flagged/unread verdict for each
+assigned entry, with a proposed natural replacement and reason for each finding.
+Do not substitute sampling or a worst-issues cap for complete assigned coverage.
+Reconcile actual key inventories with the verdicts, and replace failed or
+incomplete reviews. The coordinating developer applies vetted corrections while
+preserving semantics, privacy claims, placeholders, markup, keyboard shortcuts
+and consistency between visible labels and instructions, then runs the relevant
+validators below. Model review and structural checks do not establish native-
+speaker approval or rendered-layout and screen-reader acceptance.
+
 ## Coverage and provenance
 
 Each of the 24 non-English Qt catalogs contains 728 complete source entries;

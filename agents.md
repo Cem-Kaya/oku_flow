@@ -448,3 +448,21 @@ aligned with the project goals.
 - Lock waits must honor cancellation, port observations must remain nonblocking,
   and server epochs must reset transport-ID budgets across adb generations.
   Shadow handback requires no raw transports and two healthy default probes.
+
+## Translation authoring and small-agent review (2026-10-14)
+- Do not translate word for word or accept unchecked automatic translations.
+  Write natural target-language UI copy from the intended meaning and context.
+  Prefer an established English term when a forced local calque sounds worse.
+- Future translation additions and edits require read-only review by small,
+  language-capable subagents, such as Luna. Split large catalogs into manageable
+  chunks (about 100-200 entries); review every new or changed string, not a sample
+  or a capped worst-issues list. Cover all affected app and website surfaces.
+- Give reviewers the English source, target text, stable key and UI context.
+  Require an OK/flagged/unread verdict for every assigned entry, with natural
+  replacements and reasons for findings. Reconcile coverage against actual keys.
+- Replace failed or incomplete review attempts before declaring coverage complete.
+  A terminal task or a successful parity check does not prove linguistic review.
+  The coordinating agent applies vetted fixes, preserving meaning, privacy claims,
+  placeholders, markup, shortcuts and visible control names, then runs the
+  appropriate localization validators. Keep model review distinct from native-
+  speaker and rendered-UI acceptance. See `docs/localization.md` for the policy.

@@ -378,7 +378,8 @@ profiling flags for ordinary operation.
   Arabic, Persian, Hebrew and Urdu use RTL layout. An AI request already in
   progress finishes in its old language; the next request follows the new
   choice. [Localization](localization.md) lists codes, draft translation
-  provenance and the native wording/layout/screen-reader checks still pending.
+  provenance, the required small-agent translation review policy and the native
+  wording/layout/screen-reader checks still pending.
 - `Viewport framing` under `Advanced > Settings > View and navigation`
   is a global viewport preference:
   `Fill (crop)` fills the camera area without distorting it, while `Fit (show
