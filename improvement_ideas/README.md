@@ -49,6 +49,11 @@ completed capture, UI and GPU results with individual root verdicts and limits.
 
 ## Files
 
+The [owner's future test redesign in plan 24](24-test-build-gates.md#future-test-redesign-requested-by-the-owner-2026-10-14)
+records screenshot review by small agents such as Luna, behavior-focused
+assertions, fewer desktop interruptions and reuse of independent test evidence.
+It is a requested follow-up, not an implemented replacement for release gates.
+
 Status column is a summary of [`00-status-and-priority.md`](00-status-and-priority.md);
 that document is authoritative.
 

@@ -11,6 +11,12 @@ not as work. Refuted findings live in
 
 ## High-priority phone and recording follow-up added 2026-10-12
 
+The owner's [future test redesign request, 2026-10-14](24-test-build-gates.md#future-test-redesign-requested-by-the-owner-2026-10-14)
+is also recorded: replace brittle copy expectations with behavior checks and
+use small agents such as Luna to review actual screenshots. Reduce foreground
+input and repeated unchanged checks. This is future architecture work; current
+release gates still apply.
+
 The owner marked the [Windows phone-path and recording follow-up in plan 51](51-okuflow-camera-android.md#high-priority-follow-up-2026-10-12)
 **P1 / high priority**. Address the stale Windows bundle's Android launch path,
 misleading blocked-launch message and missing viewport-to-phone zoom bridge.

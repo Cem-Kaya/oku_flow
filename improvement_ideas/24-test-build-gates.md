@@ -1,5 +1,52 @@
 # Plan 24 — Test and Build Gates
 
+## Future test redesign requested by the owner (2026-10-14)
+
+**Requested follow-up; not implemented in the current release.** The owner
+does not want release checks to enforce exact translated wording or to decide
+whether a screen looks good through hard-coded text assertions. Small
+language-capable agents, such as Luna, should inspect genuine screenshots for
+wording, readability, contrast, layout and the visible UI state.
+
+The 0.2.4 release preparation demonstrated the cost: approved German and
+Turkish copy changes invalidated literal expectations without a product
+regression, while pointer/focus-sensitive fixtures interrupted packaging.
+Keep the failed attempts as evidence when redesigning the harness.
+
+Proposed work:
+
+1. Inventory literal-copy assertions. Replace incidental wording comparisons
+   with stable control identities and behavior checks: saved state, language
+   switching, event emission, format/placeholder parity, navigation and
+   accessible relationships. Keep exact data/protocol assertions where bytes
+   are actually part of the contract. Audit whether test coverage measures
+   product behavior or merely repeats the implementation.
+2. Capture actual Windows, Android and website screens in repeatable scenarios.
+   Cover light/dark themes, supported languages, RTL, large text and narrow
+   layouts. Give Luna the screenshots, intended state, source meaning and
+   relevant UI context; require explicit per-screen findings with evidence.
+   Use linguistic review alongside screenshots, since images alone cannot
+   establish complete catalog coverage or screen-reader behavior.
+3. Separate desktop-free behavior tests, native interaction acceptance and
+   screenshot review. Reduce foreground/pointer control to cases that truly
+   need native input; explore a dedicated test desktop or disposable machine
+   so the owner can keep working.
+4. Improve failure diagnostics and reuse. Retain Qt assertion output and the
+   screenshot for every failed case, distinguish desktop interruptions from
+   app defects, and rerun only affected independent cases with validated
+   dependencies. Preserve old attempts and never silently accept missing
+   evidence or reuse a pass for changed behavior.
+5. Measure total release time, time spent rebuilding/repeating unchanged
+   checks, interruption recovery and false failures before and after the
+   redesign. Deliberately inject a behavior defect, a translation omission,
+   unreadable contrast and clipping to show the new checks still catch them.
+
+Model screenshot review is a review tool, not proof of functional correctness
+or an automatic replacement for deterministic protocol, persistence, lifecycle
+and accessibility-event tests. Define uncertainty handling and human escalation
+before making model verdicts a publication gate. Keep this redesign separate
+from the currently required tracked release gates until reviewed and validated.
+
 Status: **IMPLEMENTED / VERIFY COMMIT CONTENTS.** Proposed 2026-07-24,
 re-audited and expanded 2026-07-28, then implemented and validated on Windows
 the same day. The CPU matrix passed 4/4 tests, the CUDA matrix passed 6/6
