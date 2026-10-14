@@ -2437,6 +2437,9 @@ Namespace `okuflow`
     dialogs above those tool windows.
   - Constructor styles mute disabled slider fills and handles; the search
     fields' internal icon buttons retain Qt geometry without toolbar padding.
+    Tab panes and the Image/Settings/Assistant pages explicitly paint
+    `palette(window)`, pairing their WindowText labels with the actual surface
+    even when a native tab style paints a light pane under a dark app palette.
     UI regressions compare actual enabled/disabled rendering and assert search
     icon bounds and vertical alignment.
   - `UpdateSimpleChromeGeometry()` gives the bottom chrome two shapes,

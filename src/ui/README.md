@@ -4,6 +4,9 @@ This module owns the Qt widget layer.
 
 Inspector text follows the Windows light/dark palette, including expanded
 section headers, current quick mode, subtitles, disabled labels and placeholders.
+The tab panes and all three inspector pages explicitly paint the palette's
+Window surface. Native styles that otherwise retain a white pane cannot leave
+white dark-theme labels on that white background, including after a scheme switch.
 `theme_contrast.hpp` supplies paired colors, contrast calculations, a complete
 dark palette for the color editor, and surface-colored rasterized SVG icons.
 `MainWindow::ApplyThemeContrast` refreshes these on palette/scheme changes;

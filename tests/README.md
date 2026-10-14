@@ -15,6 +15,9 @@ and changes geometry restoration. A refused/unchanged mode cannot pass GUI
 acceptance; the `desktop` manual scope checks only this prerequisite quickly.
 The first remote preparation verified session 2, the Default input desktop and
 an actual 1920×1080 mode change; no owner display settings were changed.
+The contrast regression checks actual light/dark text pixels before and after
+a runtime scheme switch. Inspector panes explicitly paint the matching Window
+surface; native-style rendering cannot silently substitute a white pane.
 
 The Qt downloader is pinned to an upstream aqt commit that supports Qt 6.11+
 split Windows repositories; released aqt 3.3.0 cannot locate this SDK.

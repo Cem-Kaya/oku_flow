@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Fix white-on-white inspector labels under native tab styles in dark mode.
+  Tab panes and all inspector pages now paint the current Window palette
+  surface, retaining readable text during runtime light/dark switches.
 - Add GitHub Actions Windows CPU builds, translation checks, serial native GUI
   checks and Android host-protocol tests. Preserve remote evidence and allow
   manual GUI group/two-case diagnostics without controlling the owner's PC.

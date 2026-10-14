@@ -374,6 +374,12 @@ MainWindow::MainWindow()
     // are used throughout so the native light/dark theme is preserved.
     setStyleSheet(QStringLiteral(R"(
         QWidget { font-size: 12pt; }
+        /* Native tab styles can paint a light pane even when the app palette
+           is dark. Pair the inspector's text with an explicit Window surface. */
+        QTabWidget::pane,
+        QWidget#imageTabPage, QWidget#settingsTabPage, QWidget#assistantTabPage {
+            background: palette(window);
+        }
         QPushButton, QToolButton {
             min-height: 32px;
             padding: 4px 14px;
