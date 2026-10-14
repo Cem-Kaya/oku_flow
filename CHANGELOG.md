@@ -10,6 +10,8 @@
   Simple and Advanced views. Native owner moves reposition them before Qt's
   queued geometry event, without
   rebuilding translated toolbar layouts; resizing still refits the controls.
+  Preserve native render-origin rounding for scaled/RTL placement and check
+  immediate movement remotely at 125%, 150% and 200% scale.
 
 - Fix white-on-white inspector labels under native tab styles in dark mode.
   Tab panes and all inspector pages now paint the current Window palette

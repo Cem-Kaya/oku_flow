@@ -3730,6 +3730,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
         if (peers[index]) chromeOffsets_[index] = peers[index]->pos() - viewOrigin;
     }
     chromeViewportSize_ = renderWidget_->size();
+    chromeViewOwnerOffset_ = viewOrigin - mapToGlobal(QPoint());
     chromeDevicePixelRatio_ = renderWidget_->devicePixelRatioF();
 
     // Reserve the actual visible native chrome, in render-relative coordinates.
@@ -4544,6 +4545,12 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
     if (nativeMessage && nativeMessage->message == WM_MOVE &&
         nativeMessage->hwnd == reinterpret_cast<HWND>(effectiveWinId()) &&
         !IsIconic(nativeMessage->hwnd) && renderWidget_) {
+        // With scaling active Qt maps through the current native render HWND.
+        // Keep its native child-origin rounding, including RTL placement.
+        if (!qFuzzyCompare(renderWidget_->devicePixelRatioF(), qreal(1))) {
+            MoveSimpleChrome(renderWidget_->mapToGlobal(QPoint()));
+            return QMainWindow::nativeEvent(eventType, message, result);
+        }
         // At 100% scaling QWindow::mapToGlobal uses its cached position,
         // which Qt has not updated yet. Convert the actual client origin
         // around its monitor's origin instead of scaling absolute desktop
@@ -4568,7 +4575,7 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
                 // Use relative widget coordinates: global Qt geometry can
                 // still be stale here. Later Qt events reconcile size/DPR;
                 // this fast path only positions the already fitted peers.
-                MoveSimpleChrome(logicalClientOrigin + renderWidget_->mapTo(this, QPoint()));
+                MoveSimpleChrome(logicalClientOrigin + chromeViewOwnerOffset_);
                 break;
             }
         }

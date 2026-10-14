@@ -2458,6 +2458,9 @@ Namespace `okuflow`
     The explicit-origin overload uses `ClientToScreen`, the matching native/Qt
     monitor origins and the screen DPR, avoiding stale Qt globals at 1× scaling.
     It only repositions existing layouts; later Qt events reconcile size/DPR.
+    At non-unit DPR it uses Qt's live native render mapping, preserving child
+    origin rounding. Unit-scale moves use the render-to-owner offset captured
+    from completed global geometry, rather than recomputing logical parent offsets.
     Qt owner/ancestor/render Move events also reconcile placement.
     `UpdateSimpleChromeGeometry()` records the offsets, viewport size and DPR
     after fitting; a size/DPR mismatch returns to that full fit. Pure moves

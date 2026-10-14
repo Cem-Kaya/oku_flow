@@ -491,3 +491,6 @@ aligned with the project goals.
   use the configured certificate. Logs/snapshots/receipts remain in LocalAppData.
   Existing instances, user captures and foreign Sandbox guests remain untouched.
   This command does not submit winget or Microsoft Store entries.
+- The remote workflow additionally exercises immediate native panel movement
+  at 125%, 150% and 200% Qt scale after its serial GUI group. These are separate
+  environment inventories; they do not replace actual mixed-monitor acceptance.

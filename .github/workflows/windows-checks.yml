@@ -100,6 +100,20 @@ jobs:
         run: |
           if ('${{ steps.desktop.outcome }}' -ne 'success') { throw 'Remote display preparation failed; see desktop evidence.' }
           ./scripts/run_windows_ci_gui.ps1 -Scope $env:OKUFLOW_CI_SCOPE
+      # Moving native child surfaces can round differently from their logical
+      # parent offsets. Validate the same immediate assertions at other scales.
+      - name: Scaled native panel movement regression
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && (inputs.scope == '' || inputs.scope == 'all' || inputs.scope == 'gui-all' || inputs.scope == 'gui-layout') }}
+        run: |
+          if ('${{ steps.desktop.outcome }}' -ne 'success') { throw 'Remote display preparation failed.' }
+          Copy-Item -LiteralPath build/msvc-cpu/Testing -Destination "$env:OKUFLOW_CI_EVIDENCE/ctest-standard" -Recurse
+          foreach ($scale in @('1.25', '1.5', '2')) {
+            $env:QT_SCALE_FACTOR = $scale
+            Write-Host "Scaled motion diagnostic: QT_SCALE_FACTOR=$scale (separate from the full standard-scale gate)"
+            ctest --preset msvc-cpu-tests --parallel 1 --output-on-failure --no-tests=error -R '^main_window_interactions\.chromeFollowsNativeOwnerMove$' --output-junit "$env:OKUFLOW_CI_EVIDENCE/motion-$scale.xml" 2>&1 | Tee-Object -FilePath "$env:OKUFLOW_CI_EVIDENCE/motion-$scale.log"
+            if ($LASTEXITCODE) { throw "Scaled motion failed at $scale; preserve the failed diagnostic." }
+          }
+          Remove-Item Env:QT_SCALE_FACTOR
       - name: Check display-only result
         if: ${{ inputs.scope == 'desktop' }}
         run: |

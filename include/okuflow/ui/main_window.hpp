@@ -255,6 +255,7 @@ private:
     void MoveSimpleChrome();
     void MoveSimpleChrome(const QPoint& viewOrigin);
     std::array<QPoint, 8> chromeOffsets_{};
+    QPoint chromeViewOwnerOffset_;
     QSize chromeViewportSize_;
     qreal chromeDevicePixelRatio_{};
     void UpdateCameraPlaceholderVisibility();

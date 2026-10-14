@@ -1,5 +1,11 @@
 # OkuFlow Tests
 
+The remote Windows workflow retains its complete standard-scale gate, then runs
+the immediate native panel movement fixture at Qt scale 1.25, 1.5 and 2. Each
+scaled diagnostic keeps its own JUnit/log and leaves the standard CTest evidence
+archived separately. These selected cases are additional scaling coverage, not
+full scaled-suite, mixed-monitor, CUDA or physical-device acceptance.
+
 ## GitHub Actions away from the owner desktop
 
 The [Windows checks workflow](../.github/workflows/windows-checks.yml) runs on
