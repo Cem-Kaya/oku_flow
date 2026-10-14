@@ -4538,6 +4538,19 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result)
 {
     const auto* nativeMessage = static_cast<const MSG*>(message);
+    // Snapshot the actual viewport origin before Windows changes the owner.
+    // Full fitting can precede a native child-origin rounding adjustment;
+    // using that earlier origin would add an unrelated pixel to the first
+    // scaled RTL move. WM_WINDOWPOSCHANGING still sees the old native geometry.
+    if (nativeMessage && nativeMessage->message == WM_WINDOWPOSCHANGING &&
+        nativeMessage->hwnd == reinterpret_cast<HWND>(effectiveWinId()) &&
+        !updatingChromeGeometry_ && renderWidget_ && chromeViewportSize_.isValid()) {
+        const auto* position = reinterpret_cast<const WINDOWPOS*>(nativeMessage->lParam);
+        if (position && !(position->flags & SWP_NOMOVE) &&
+            (position->flags & SWP_NOSIZE) && !IsIconic(nativeMessage->hwnd)) {
+            chromeViewOrigin_ = renderWidget_->mapToGlobal(QPoint());
+        }
+    }
     // External SetWindowPos and the Windows drag loop can queue Qt's Move
     // event. Follow the actual native owner position before that queue runs;
     // do not consume the message or create a native handle while checking it.

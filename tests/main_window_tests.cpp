@@ -1141,6 +1141,13 @@ void MainWindowTests::chromeFollowsNativeOwnerMove()
         const QPoint logicalDelta = render->mapToGlobal(QPoint()) - origin;
         QVERIFY(!logicalDelta.isNull());
         for (size_t index = 0; index < peers.size(); ++index) {
+            if (peers[index]->geometry() != before[index].translated(logicalDelta)) {
+                qInfo() << "Native chrome move mismatch" << names[index]
+                        << "DPR" << render->devicePixelRatioF()
+                        << "viewport before/after" << origin << render->mapToGlobal(QPoint())
+                        << "native delta" << nativeDelta
+                        << "peer before/after" << before[index] << peers[index]->geometry();
+            }
             QCOMPARE(peers[index]->geometry(), before[index].translated(logicalDelta));
             if (nativePeers[index]) {
                 RECT actual{};

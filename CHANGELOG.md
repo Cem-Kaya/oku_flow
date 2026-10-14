@@ -13,6 +13,8 @@
   Preserve native render-origin rounding for scaled/RTL placement and check
   immediate movement remotely at 125%, 150% and 200% scale.
   Translate current panel positions so native right-edge rounding is retained.
+  Snapshot the live viewport before a native owner move, excluding late
+  child-origin rounding from its displacement.
 
 - Fix white-on-white inspector labels under native tab styles in dark mode.
   Tab panes and all inspector pages now paint the current Window palette

@@ -15,6 +15,9 @@ keeps that native rounding. The 1× fallback retains the render-to-owner offset
 from completed global geometry, including native RTL placement.
 Moving actual peer positions preserves any native pixel rounding already applied
 to RTL/right-edge controls; a move does not restore a pre-rounding panel offset.
+For pure native moves, `WM_WINDOWPOSCHANGING` snapshots the current viewport
+origin before Windows moves the owner. This avoids treating a late child-origin
+rounding adjustment after fitting as part of the first owner displacement.
 RTL, responsive strips, opacity, visibility and focus retain their existing
 contracts. Assistant and annotation overlays retain their own anchor handling.
 The serial native GUI regression checks immediate Qt and HWND displacement

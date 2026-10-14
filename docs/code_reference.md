@@ -2464,6 +2464,9 @@ Namespace `okuflow`
     origin rounding. Unit-scale moves use the render-to-owner offset captured
     from completed global geometry, rather than recomputing logical parent offsets.
     Qt owner/ancestor/render Move events also reconcile placement.
+    For pure moves, `WM_WINDOWPOSCHANGING` snapshots the actual render origin
+    before Windows changes the owner. The first scaled RTL displacement therefore
+    excludes any child-origin rounding that occurred after full fitting.
     `UpdateSimpleChromeGeometry()` records the render origin, viewport size and DPR
     after fitting; a size/DPR mismatch returns to that full fit. Pure moves
     neither enqueue a fit nor alter layout, focus, visibility or opacity.
