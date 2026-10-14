@@ -7,6 +7,8 @@ surfaces. The owner's native `WM_MOVE` repositions these peers before Qt's
 queued geometry event, using cached viewport-relative logical offsets without
 translating or refitting layouts on each drag step. Qt owner/render-origin events
 also reconcile placement. Size or device-pixel-ratio changes run the full fit;
+the native path converts the current Windows client origin around the matching
+monitor origin into Qt logical coordinates, avoiding Qt's stale position at 1×.
 RTL, responsive strips, opacity, visibility and focus retain their existing
 contracts. Assistant and annotation overlays retain their own anchor handling.
 The serial native GUI regression checks immediate Qt and HWND displacement

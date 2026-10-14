@@ -54,6 +54,7 @@
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QScreen>
 #include <QShortcut>
 #include <QShowEvent>
 #include <QSizePolicy>
@@ -3435,21 +3436,23 @@ void MainWindow::ShowModeAnnouncement(const QString& label, const QString& profi
 void MainWindow::MoveSimpleChrome()
 {
     if (updatingChromeGeometry_ || !renderWidget_) return;
-    // Native WM_MOVE arrives before Qt's queued geometry event. mapToGlobal
-    // reads the current HWND origin while keeping the cached offsets in Qt
-    // logical coordinates, including during later DPI reconciliation.
     if (chromeViewportSize_ != renderWidget_->size() ||
         chromeDevicePixelRatio_ != renderWidget_->devicePixelRatioF()) {
         UpdateSimpleChromeGeometry();
         return;
     }
+    MoveSimpleChrome(renderWidget_->mapToGlobal(QPoint()));
+}
+
+void MainWindow::MoveSimpleChrome(const QPoint& viewOrigin)
+{
+    if (updatingChromeGeometry_ || !chromeViewportSize_.isValid()) return;
     QScopedValueRollback<bool> geometryGuard(updatingChromeGeometry_, true);
-    const QPoint origin = renderWidget_->mapToGlobal(QPoint());
     const std::array<QWidget*, 8> peers{topLeftPanel_, bottomLeftPanel_,
         keystoneTrackingPanel_, bottomRightPanel_, modeGridPopup_, modeToast_,
         cameraPlaceholder_, uiVisibilityPanel_};
     for (size_t index = 0; index < peers.size(); ++index) {
-        if (peers[index]) peers[index]->move(origin + chromeOffsets_[index]);
+        if (peers[index]) peers[index]->move(viewOrigin + chromeOffsets_[index]);
     }
 }
 
@@ -4540,8 +4543,35 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
     // do not consume the message or create a native handle while checking it.
     if (nativeMessage && nativeMessage->message == WM_MOVE &&
         nativeMessage->hwnd == reinterpret_cast<HWND>(effectiveWinId()) &&
-        !IsIconic(nativeMessage->hwnd)) {
-        MoveSimpleChrome();
+        !IsIconic(nativeMessage->hwnd) && renderWidget_) {
+        // At 100% scaling QWindow::mapToGlobal uses its cached position,
+        // which Qt has not updated yet. Convert the actual client origin
+        // around its monitor's origin instead of scaling absolute desktop
+        // coordinates (which would drift on non-primary monitors).
+        POINT clientOrigin{};
+        MONITORINFO monitorInfo{};
+        monitorInfo.cbSize = sizeof(monitorInfo);
+        const HMONITOR monitor = MonitorFromWindow(nativeMessage->hwnd, MONITOR_DEFAULTTONEAREST);
+        if (ClientToScreen(nativeMessage->hwnd, &clientOrigin) && monitor &&
+            GetMonitorInfoW(monitor, &monitorInfo)) {
+            const QPoint monitorOrigin(monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top);
+            for (QScreen* targetScreen : QGuiApplication::screens()) {
+                // Qt 6.12 exposes a friendly display name, not the GDI device
+                // name. Windows Qt keeps each monitor's unscaled desktop
+                // origin, so geometry identifies the matching Qt screen.
+                if (targetScreen->geometry().topLeft() != monitorOrigin) continue;
+                const qreal ratio = targetScreen->devicePixelRatio();
+                if (ratio <= 0) break;
+                const QPoint logicalClientOrigin = targetScreen->geometry().topLeft() +
+                    QPoint(qRound((clientOrigin.x - monitorInfo.rcMonitor.left) / ratio),
+                           qRound((clientOrigin.y - monitorInfo.rcMonitor.top) / ratio));
+                // Use relative widget coordinates: global Qt geometry can
+                // still be stale here. Later Qt events reconcile size/DPR;
+                // this fast path only positions the already fitted peers.
+                MoveSimpleChrome(logicalClientOrigin + renderWidget_->mapTo(this, QPoint()));
+                break;
+            }
+        }
     }
     return QMainWindow::nativeEvent(eventType, message, result);
 }

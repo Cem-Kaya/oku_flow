@@ -253,6 +253,7 @@ private:
     bool updatingChromeGeometry_{false};
     void UpdateSimpleChromeGeometry();
     void MoveSimpleChrome();
+    void MoveSimpleChrome(const QPoint& viewOrigin);
     std::array<QPoint, 8> chromeOffsets_{};
     QSize chromeViewportSize_;
     qreal chromeDevicePixelRatio_{};
