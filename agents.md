@@ -481,3 +481,13 @@ aligned with the project goals.
 - Hosted CPU/GUI checks do not establish CUDA, Maxine, physical phone/camera,
   installer or shipping bundle acceptance. Run hardware-dependent checks on a
   suitable separate machine; owner desktop restrictions continue to apply.
+
+## Automated Windows release orchestration (2026-10-14)
+- Use `scripts/publish_windows_release.ps1` for build-to-publication automation.
+  It preserves full tracked matrix/bundle gates, clean source and immutable
+  versions; `-Publish` requires disposable installer acceptance and rehashed
+  draft downloads. Do not substitute hosted CPU/GUI results for its hardware gate.
+- Explicitly unsigned previews require `-AllowUnsignedPreview`; signed releases
+  use the configured certificate. Logs/snapshots/receipts remain in LocalAppData.
+  Existing instances, user captures and foreign Sandbox guests remain untouched.
+  This command does not submit winget or Microsoft Store entries.

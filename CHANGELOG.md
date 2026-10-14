@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Automate the full Windows build, CPU/CUDA/bundle gates, MSI/ZIP packaging,
+  disposable installer acceptance and verified GitHub draft-to-publication
+  process with one command. Existing versioned downloads remain immutable.
+
 - Keep floating camera controls attached during native window dragging in both
   Simple and Advanced views. Native owner moves reposition them before Qt's
   queued geometry event, without

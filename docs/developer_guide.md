@@ -217,6 +217,15 @@ no Maxine import library and ships no proprietary runtime or model files.
 
 ### Release bundle
 
+For a complete build-to-GitHub release, use `scripts/publish_windows_release.ps1`
+with a new version, reviewed notes, a previous MSI fixture and `-Publish`.
+It calls the tracked matrix and bundle gates, verifies both packages, exercises
+the installer only inside a disposable guest, then rehashes uploaded draft assets
+before publication. See [release automation](windows_distribution.md#automated-build-package-and-publication).
+The ordinary GitHub CPU/GUI workflow produces test evidence, not CUDA release
+downloads. Run the release command on a suitable NVIDIA/Windows machine with an
+explicitly free test desktop; it refuses partial/bypassed gates.
+
 ```bat
 scripts\build_release_bundle.bat
 ```

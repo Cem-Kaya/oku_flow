@@ -19,6 +19,13 @@ This document tracks machine-specific defaults, generated output locations, and 
 
 ## Installer and icon tooling
 
+Release orchestration uses `%LOCALAPPDATA%\OkuFlow\release-runs\<version>-<guid>`
+for logs, immutable payload snapshots, upload verification and temporary notes.
+Its default artifact directory is `%LOCALAPPDATA%\OkuFlow\releases\<version>`;
+`-OutputDirectory` must name a fresh directory. Publication targets only
+`Cem-Kaya/oku_flow` and immutable `v<version>` tags. Authentication comes from
+the existing GitHub CLI session; no credentials enter packages or receipts.
+
 The GitHub Windows workflow installs Qt 6.12.0 under the runner's temporary
 directory and takes its actual prefix from `QT_ROOT_DIR`. It pins aqtinstall to
 `076e1659807d0b362a3ed684d54c2e9c775eb9c7` for the Qt 6.11+ architecture-split

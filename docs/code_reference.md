@@ -1,5 +1,14 @@
 # OkuFlow Code Reference
 
+## Windows release orchestration
+
+`scripts/publish_windows_release.ps1` invokes the tracked shipping/CPU/CUDA and
+bundle gates, snapshots the clean resulting inventory, builds and validates MSI
+and ZIP, optionally runs disposable installer acceptance, and publishes only
+after uploaded draft assets match local hashes. `Assert-CleanSource` binds each
+stage to the initial clean commit and refuses changes during the run. It does
+not submit Store/winget entries or install an acceptance MSI on the host.
+
 `LanguageManagerTests::liveStatusRetranslatesAccessibly` expects the reviewed
 Turkish pipeline-status wording while retaining the accessible-name and text
 change-event assertions.

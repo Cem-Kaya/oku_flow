@@ -64,6 +64,36 @@ a running OkuFlow. Finish a recording and close the app before upgrading.
 
 ## Build and validate an MSI
 
+### Automated build, package and publication
+
+`scripts/publish_windows_release.ps1` joins the existing release steps into one
+command on a suitably equipped Windows/NVIDIA build machine. It runs the full
+tracked shipping/CPU/CUDA matrix and the separate shipping-bundle CTest gate,
+then builds the MSI and verifies every ZIP entry against the same bundle.
+It refuses a dirty/changing checkout, excluded GUI checks, bypassed bundle tests,
+existing version tags and existing output directories. It never closes OkuFlow.
+
+```powershell
+pwsh -NoProfile -File scripts/publish_windows_release.ps1 -Version 0.2.5 `
+  -NotesFile C:\release-notes\0.2.5.md -AllowUnsignedPreview `
+  -PreviousInstallerPath C:\release-fixtures\OkuFlow-0.2.4-x64.msi -Publish
+```
+
+`-Publish` also requires the tracked disposable Windows VM installer acceptance.
+The command uploads MSI, ZIP and checksums to a draft, downloads and rehashes all
+three, then publishes it as latest. Failed uploads/verification leave a draft;
+inspect it before retrying rather than replacing versioned bytes. Omitting
+`-Publish` prepares local artifacts only. Unsigned publication is explicitly
+labelled an unsigned preview; without that switch a trusted signing identity is
+required. Private logs and receipts stay in LocalAppData. No winget PR or Store
+submission is made.
+
+The routine GitHub CPU/GUI workflow still does not build shipping downloads:
+its hosted VM has no NVIDIA hardware for the CUDA shipping gate. This command
+automates release work without installing a runner on the owner's PC or treating
+hosted CPU tests as hardware acceptance. Native tests need an explicitly free
+desktop for that run; background operation does not waive that requirement.
+
 First run `scripts/agent_build.bat` and `scripts/build_release_bundle.bat`.
 Use the normal complete test gates, serially on a free desktop. The bundle
 script selects executables from the active CMake generator's output layout;
