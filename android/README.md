@@ -17,7 +17,7 @@ a saved manual choice and System default. The Advanced entry has a gear icon.
 Arabic, Persian, Hebrew and Urdu use RTL layouts. See the [language coverage,
 draft wording and acceptance limits](../docs/localization.md). This local build
 was validated and committed to Alpha through the CLI on 2026-10-14.
-review approval and tester availability have not been independently verified.
+Review approval and tester availability have not been independently verified.
 The last verified Console publication remains 0.1.2 (code 3). Code 4 / 0.1.3
 and code 5 / 0.1.4 retain separate signed diagnostic inventories.
 
