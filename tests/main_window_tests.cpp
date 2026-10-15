@@ -3,6 +3,7 @@
 #include "okuflow/app/language_manager.hpp"
 #include "okuflow/common/visible_chat_session.hpp"
 #include "okuflow/ui/assistive_overlay.hpp"
+#include "okuflow/ui/agent_control_panel.hpp"
 #include "okuflow/ui/collapsible_section.hpp"
 #include "okuflow/ui/main_window.hpp"
 #include "okuflow/ui/theme_contrast.hpp"
@@ -304,6 +305,7 @@ private slots:
     void busyActionSurvivesGermanResize();
     void keyboardRegionsAndFindShortcut();
     void assistantInspectorTabTraversal();
+    void floatingAssistantTabTraversal();
     void chromeFollowsNativeOwnerMove_data();
     void chromeFollowsNativeOwnerMove();
     void minimumViewportChromeFits_data();
@@ -1129,6 +1131,41 @@ void MainWindowTests::assistantInspectorTabTraversal()
     QTest::keyClick(rename,Qt::Key_Escape);QTRY_VERIFY(!history->isVisible());
     QTRY_VERIFY(view->attachmentCheckbox()->hasFocus());
 
+}
+
+void MainWindowTests::floatingAssistantTabTraversal()
+{
+    MainWindow window;window.resize(1280,900);window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    AssistiveOverlay overlay(window.renderWidget());
+    auto* view=overlay.chatView();
+    overlay.SetChatSnapshot({{"conversationId","keyboard-fixture"},{"draft","keep this question"}});
+    overlay.ShowChat(true);overlay.SetControlRoutingNotice(true,true);
+    QTRY_VERIFY(overlay.isVisible());
+    QVERIFY2(ActivateFixtureWindow(&overlay),test::ActivationFailureMessage());
+    auto* start=overlay.findChild<QPushButton*>(QStringLiteral("agentStartConversation"));
+    auto* without=overlay.findChild<QPushButton*>(QStringLiteral("agentSendWithoutControl"));
+    QVERIFY(start && without && start->isVisible() && without->isVisible());
+    view->composer()->setFocus();QTRY_VERIFY(view->composer()->hasFocus());
+    QTest::keyClick(view->composer(),Qt::Key_Backtab);QTRY_VERIFY(without->hasFocus());
+    QTest::keyClick(without,Qt::Key_Backtab);QTRY_VERIFY(start->hasFocus());
+    overlay.agentControlPanel()->RefreshRoutingNotice(false);
+    auto* probe=overlay.findChild<QPushButton*>(QStringLiteral("agentRoutingCapabilityTest"));
+    QVERIFY(probe);QTRY_VERIFY(probe->hasFocus());
+    overlay.agentControlPanel()->RefreshRoutingNotice(true);QTRY_VERIFY(start->hasFocus());
+    QTest::keyClick(start,Qt::Key_Tab);QTRY_VERIFY(without->hasFocus());
+    QTest::keyClick(without,Qt::Key_Tab);QTRY_VERIFY(view->composer()->hasFocus());
+    view->ShowHistory();
+    view->historyList()->addItem(QStringLiteral("Fixture history"));
+    view->renameButton()->setEnabled(true);
+    view->historyList()->setFocus();QTRY_VERIFY(view->historyList()->hasFocus());
+    QTest::keyClick(view->historyList(),Qt::Key_Tab);QTRY_VERIFY(view->renameButton()->hasFocus());
+    view->CloseDrawer();view->ShowSettings();
+    auto* ai=view->findChild<QPushButton*>(QStringLiteral("chatAISettings"));
+    QVERIFY(ai && ai->isVisible());
+    ai->setFocus();QTRY_VERIFY(ai->hasFocus());
+    QTest::keyClick(ai,Qt::Key_Tab);QTRY_VERIFY(view->connectButton()->hasFocus());
+    SaveScreenshot(window,QStringLiteral("floating-assistant-keyboard"));
 }
 
 void MainWindowTests::chromeFollowsNativeOwnerMove_data()

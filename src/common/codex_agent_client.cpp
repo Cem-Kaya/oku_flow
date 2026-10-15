@@ -72,6 +72,8 @@ void CodexAgentClient::Configure(QString executable,QString model,QString effort
 {
     const auto configuration=++configurationEpoch_;
     if(executable_==executable && model_==model && effort_==effort && instructions_==instructions)return;
+    // A tested capability belongs to the previous configuration only.
+    const bool invalidated=available_ || probing_;
     Shutdown();
     if(configuration!=configurationEpoch_)return;
     executable_=std::move(executable); model_=std::move(model);
@@ -82,6 +84,7 @@ void CodexAgentClient::Configure(QString executable,QString model,QString effort
     workspace_=QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
         .filePath(QStringLiteral("OkuFlow/agent-control"));
     QDir().mkpath(workspace_);
+    if(invalidated)emit AvailabilityChanged(false,QStringLiteral("configuration_changed"));
 }
 void CodexAgentClient::SetControlService(agent::AppControlService* service)
 {

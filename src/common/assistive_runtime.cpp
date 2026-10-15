@@ -932,6 +932,26 @@ bool AssistiveRuntime::BeginControlAnswer(const QString& prompt, std::function<v
     return true;
 }
 
+void AssistiveRuntime::PrepareControlImagePreview(const QByteArray& jpeg, std::function<void()> ready)
+{
+    if (!controlAnswerPending_ || !chatTicket_ || !chatSession_->Current(*chatTicket_)) return;
+    const auto ticket=*chatTicket_;
+    if (jpeg.isEmpty() || jpeg.size()>256*1024) { if (ready) ready(); return; }
+    QPointer<AssistiveRuntime> owner(this);
+    const bool queued=imagePreparationPool_ && imagePreparationPool_->tryStart([owner,ticket,jpeg,ready]() {
+        const auto preview=ChatImagePreview(QImage::fromData(jpeg,"JPG"));
+        if (!owner) return;
+        QMetaObject::invokeMethod(owner,[owner,ticket,preview,ready]() {
+            if (!owner || !owner->controlAnswerPending_ || !owner->chatTicket_ ||
+                *owner->chatTicket_!=ticket || !owner->chatSession_->Current(ticket)) return;
+            owner->chatSession_->SetImagePreview(ticket,preview);
+            if (ready) ready();
+        },Qt::QueuedConnection);
+    });
+    // An optional local preview must never block an otherwise valid request.
+    if (!queued && ready) ready();
+}
+
 void AssistiveRuntime::ControlAnswerStarted(const QString& threadId, const QString& turnId)
 {
     if (controlAnswerPending_ && chatTicket_) { chatSession_->Bind(*chatTicket_,threadId,turnId); emit AssistantTurnStarted(threadId,turnId,true); return; }

@@ -12,6 +12,7 @@
 #include "okuflow/common/assistive_runtime.hpp"
 #include "okuflow/common/codex_app_server_client.hpp"
 #include <QScopeGuard>
+#include <QThreadPool>
 
 namespace {
 
@@ -345,6 +346,42 @@ private slots:
         QFile notes(runtime.notesFilePath()); QVERIFY(notes.open(QIODevice::ReadOnly)); const auto html=notes.readAll();
         QCOMPARE(html.count("<div class=\"note-body\">"),3);
         QVERIFY(html.contains("answer 1")); QVERIFY(html.contains("answer 2")); QVERIFY(html.contains("answer 3"));
+    }
+    void controlFramePreviewIsBoundedAndRejectsRetiredTickets()
+    {
+        okuflow::AssistiveRuntime runtime;
+        QImage frame(800,600,QImage::Format_RGB32);frame.fill(Qt::green);
+        QByteArray jpeg;QBuffer buffer(&jpeg);QVERIFY(buffer.open(QIODevice::WriteOnly));
+        QVERIFY(frame.save(&buffer,"JPG"));
+        QVERIFY(runtime.PrepareChatTurn("Describe",okuflow::ChatBackendKind::Agent));
+        QVERIFY(runtime.BeginControlAnswer("Describe",{}));
+        int continuations=0;
+        runtime.PrepareControlImagePreview(jpeg,[&] {++continuations;});
+        QTRY_COMPARE(continuations,1);
+        const auto user=runtime.ChatSession().Snapshot()["messages"].toArray()[0].toObject();
+        const auto bytes=QByteArray::fromBase64(user["imagePreviewJpeg"].toString().toLatin1());
+        QVERIFY(bytes.size()<=64*1024);
+        const auto preview=QImage::fromData(bytes,"JPG");QVERIFY(!preview.isNull());
+        QCOMPARE(preview.size(),QSize(320,240));
+        QVERIFY(!QJsonDocument(runtime.ChatSession().TextContext()).toJson().contains("imagePreviewJpeg"));
+        runtime.CompleteControlAnswer({}, {},"Done",{},false);
+        QVERIFY(runtime.PrepareChatTurn("Old turn",okuflow::ChatBackendKind::Agent));
+        QVERIFY(runtime.BeginControlAnswer("Old turn",{}));
+        runtime.PrepareControlImagePreview(jpeg,[&] {++continuations;});
+        // Retire the ticket before delivering the queued result. It cannot
+        // update or start a different turn even if its worker already finished.
+        runtime.imagePreparationPool_->waitForDone();
+        runtime.CompleteControlAnswer({}, {},{},"canceled",true);
+        runtime.ResetVisibleChat();
+        QVERIFY(runtime.PrepareChatTurn("New turn",okuflow::ChatBackendKind::Agent));
+        QVERIFY(runtime.BeginControlAnswer("New turn",{}));
+        QCoreApplication::processEvents();
+        QCOMPARE(continuations,1);
+        QVERIFY(!runtime.ChatSession().Snapshot()["messages"].toArray()[0].toObject().contains("imagePreviewJpeg"));
+        runtime.PrepareControlImagePreview("invalid JPEG",[&] {++continuations;});
+        QTRY_COMPARE(continuations,2);
+        QVERIFY(!runtime.ChatSession().Snapshot()["messages"].toArray()[0].toObject().contains("imagePreviewJpeg"));
+        runtime.CompleteControlAnswer({}, {},"Done",{},false);
     }
     void sharedChatControlStreamingHasOneAuthoritativeAnswer()
     {

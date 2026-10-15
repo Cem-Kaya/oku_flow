@@ -6,6 +6,7 @@
 #include "okuflow/ui/assistive_overlay.hpp"
 
 #include <QAction>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QMenu>
 #include <QLineEdit>
@@ -34,6 +35,7 @@
 #include <windowsx.h>
 
 #include <cmath>
+#include <algorithm>
 
 namespace okuflow {
 namespace {
@@ -387,8 +389,14 @@ void AnnotationOverlayTests::assistantReadingActionsAndSafeDefault()
     QVERIFY(body && read && placement && question);
     QVERIFY(body->font().pixelSize() >= 18);
     QVERIFY(read->height() >= 44);
-    QCOMPARE(chat.FocusTargets()[0], body);
-    QCOMPARE(chat.FocusTargets()[1], read);
+    const auto targets=chat.FocusTargets();
+    QCOMPARE(targets.front(), body);
+    const auto composer=std::find(targets.begin(),targets.end(),question);
+    QVERIFY(composer!=targets.end());
+    QVERIFY(std::distance(composer,targets.end())>=4);
+    QCOMPARE(*(composer+1),read);
+    QCOMPARE(*(composer+2),chat.chatView()->attachmentCheckbox());
+    QCOMPARE(*(composer+3),chat.chatView()->sendButton());
     QVERIFY(chat.findChildren<QComboBox*>().isEmpty());
     QCOMPARE(placement->menu()->actions().size(), 3);
     QSignalSpy speech(chat.chatView(), &AssistantChatView::ChatReadAloudRequested);

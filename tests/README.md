@@ -803,6 +803,11 @@ views, aspect ratio and cleanup on New. The compact footer fixture checks
 non-overlapping 360px layouts in both directions/themes, native checkable
 accessibility/Space/full-target activation and composer-to-footer Tab order.
 The shared-chat test also checks the floating window's outer Tab bridge inventory.
+`main_window_interactions.floatingAssistantTabTraversal` separately exercises
+real foreground Tab/Shift+Tab through the floating routing choices and drawer
+actions, with the production MainWindow application-wide filter installed.
+The annotation fixture checks the current composer-to-footer order rather
+than an obsolete absolute index for Read Aloud.
 The fixture embeds the production icon resources for meaningful captures.
 This offscreen bridge-level check does
 not replace manual Windows Magnifier/Narrator acceptance. It starts
@@ -851,6 +856,10 @@ question and placeholder, authoritative terminal replacement, isolated backend
 IDs, immutable kinds, retirement fences, safe history restoration and bounded
 completed text context, bounded memory-only frame previews and stale-preview
 rejection. The store fixture verifies that thumbnail bytes never reach disk.
+`assistive_preparation` also prepares authorized control thumbnails on the real
+worker pool, checks dimensions/aspect and pixel-free context, then retires a
+ticket before queued completion to reject both late preview and continuation.
+An invalid optional JPEG must not prevent continuation of an admitted turn.
 `assistive_preparation` verifies real thumbnail publication in fake Codex and
 loopback HTTP image turns, Read isolation and text-only follow-ups, and adds private loopback
 HTTP Explain/followup/Read/notes ownership, held-answer reset, retained tool-free

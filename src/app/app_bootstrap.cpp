@@ -853,9 +853,9 @@ bool OkuFlowApp::Initialize()
             this, [this]() { OpenUserDataFolder(); });
     connect(mainWindow_.get(), &MainWindow::changeUserDataFolderRequested,
             this, [this]() { ChangeUserDataFolder(); });
-    if (uiState_->assistantConnectButton_) {
-        connect(uiState_->assistantConnectButton_, &QPushButton::clicked,
-                this, [this]() { assistiveManager_->Runtime().StartCodexLogin(); });
+    for (QPushButton* button : {uiState_->assistantConnectButton_, floatingChat->connectButton()}) {
+        if (button) connect(button, &QPushButton::clicked,
+                            this, [this]() { assistiveManager_->Runtime().StartCodexLogin(); });
     }
     const auto syncFloatingHistory = [this,floatingChat] {
         const auto* selected = floatingChat->historyList()->currentItem();
@@ -1008,37 +1008,46 @@ bool OkuFlowApp::Initialize()
         });
 
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexServerStateChanged,
-            this, [this](bool ready, const QString& status) {
+            this, [this,mainChat,floatingChat](bool ready, const QString& status) {
                 codexReady_ = ready;
                 SetLiveText(uiState_->assistantConnectionLabel_, status,
                             LivePoliteness::kPolite,
                             QStringLiteral("Codex connection status"));
+                // The floating header mirrors the same state; only Advanced announces it.
+                SetLiveText(floatingChat->connectionLabel(), status, LivePoliteness::kSilent,
+                            QStringLiteral("Codex connection status"));
+                for (auto* chat : {mainChat,floatingChat}) chat->SetConnectionState(codexReady_ && codexSignedIn_);
                 SetAssistantBusy(assistiveManager_->Runtime().ChatSession().Busy() || assistiveManager_->Runtime().IsForegroundBusy());
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexAccountChanged,
-            this, [this](bool signedIn, const QString& label, const QString& planType) {
+            this, [this,mainChat,floatingChat](bool signedIn, const QString& label, const QString& planType) {
                 codexSignedIn_ = signedIn;
                 const QString plan = planType.trimmed();
+                const QString account = plan.isEmpty()
+                    ? label
+                    : QStringLiteral("%1 (%2)").arg(label, plan);
                 SetLiveText(
                     uiState_->assistantConnectionLabel_,
-                    plan.isEmpty()
-                        ? label
-                        : QStringLiteral("%1 (%2)").arg(label, plan),
+                    account,
                     LivePoliteness::kPolite,
                     QStringLiteral("Codex connection status"));
-                SetLiveText(
-                    uiState_->assistantConnectButton_,
-                    signedIn ? QStringLiteral("Reconnect ChatGPT")
-                             : QStringLiteral("Connect ChatGPT"),
-                    LivePoliteness::kSilent,
-                    QStringLiteral("ChatGPT connection"));
+                SetLiveText(floatingChat->connectionLabel(), account, LivePoliteness::kSilent,
+                            QStringLiteral("Codex connection status"));
+                for (QPushButton* button : {uiState_->assistantConnectButton_, floatingChat->connectButton()})
+                    SetLiveText(
+                        button,
+                        signedIn ? QStringLiteral("Reconnect ChatGPT")
+                                 : QStringLiteral("Connect ChatGPT"),
+                        LivePoliteness::kSilent,
+                        QStringLiteral("ChatGPT connection"));
+                for (auto* chat : {mainChat,floatingChat}) chat->SetConnectionState(codexReady_ && codexSignedIn_);
                 SetAssistantBusy(assistiveManager_->Runtime().ChatSession().Busy() || assistiveManager_->Runtime().IsForegroundBusy());
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexModelsChanged,
-            this, [this](const QStringList&, const QString& selectedModel) {
+            this, [this,floatingChat](const QStringList&, const QString& selectedModel) {
                 if (!selectedModel.isEmpty()) {
-                    uiState_->assistantConnectionLabel_->setToolTip(
-                        QStringLiteral("Vision model: %1").arg(selectedModel));
+                    for (QLabel* label : {uiState_->assistantConnectionLabel_, floatingChat->connectionLabel()})
+                        label->setToolTip(QStringLiteral("Vision model: %1").arg(selectedModel));
                 }
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexModelCatalogChanged,
@@ -1047,10 +1056,11 @@ bool OkuFlowApp::Initialize()
                 selectedCodexModel_ = selectedModel;
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexRateLimitChanged,
-            this, [this](const QString& summary) {
-                SetLiveText(uiState_->assistantUsageLabel_, summary,
-                            LivePoliteness::kSilent,
-                            QStringLiteral("Codex usage"));
+            this, [this,floatingChat](const QString& summary) {
+                for (QLabel* label : {uiState_->assistantUsageLabel_, floatingChat->usageLabel()})
+                    SetLiveText(label, summary,
+                                LivePoliteness::kSilent,
+                                QStringLiteral("Codex usage"));
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexLoginUrlReady,
             this, [](const QUrl& url) { QDesktopServices::openUrl(url); });

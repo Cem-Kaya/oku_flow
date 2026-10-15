@@ -45,6 +45,7 @@ private slots:
     void leaseBundleDefaultsAndCannotWiden();
     void boundedTranscriptAndExplicitEndpointTest();
     void floatingRoutingRefusalPreservesQuestion();
+    void routingReadinessOffersExplicitTest();
     void sharedChatDraftAndKeyboard();
     void escapedMessagesSelectionAndReadIsolation();
     void chatAccessibleCharacterGeometry();
@@ -252,6 +253,36 @@ void AgentControlPanelTests::floatingRoutingRefusalPreservesQuestion()
     // A pure view keeps the draft until the app-owned model accepts it.
     overlay.SetChatSnapshot({{"conversationId","accepted"},{"draft",""},{"busy",true}});
     QVERIFY(question->toPlainText().isEmpty());
+}
+void AgentControlPanelTests::routingReadinessOffersExplicitTest()
+{
+    AgentControlPanel panel;panel.SetEnabled(true,false);
+    QSignalSpy tests(&panel,&AgentControlPanel::capabilityTestRequested);
+    QSignalSpy starts(&panel,&AgentControlPanel::startControlConversationRequested);
+    QSignalSpy announcements(&panel,&AgentControlPanel::statusAnnouncementRequested);
+    auto* start=Find<QPushButton>(panel,"agentStartConversation");
+    auto* probe=Find<QPushButton>(panel,"agentRoutingCapabilityTest");
+    QVERIFY(start && probe);
+    panel.SetRoutingNotice(true,false);
+    QVERIFY(start->isHidden());QVERIFY(!probe->isHidden());
+    QCOMPARE(tests.size(),0);
+    const int shownAnnouncements=announcements.size();
+    panel.RefreshRoutingNotice(false);QCOMPARE(announcements.size(),shownAnnouncements);
+    probe->click();QCOMPARE(tests.size(),1);
+    panel.SetCapabilityStatus("Checking tool support...");
+    QCOMPARE(tests.size(),1);
+    panel.RefreshRoutingNotice(true);
+    QVERIFY(!start->isHidden());QVERIFY(probe->isHidden());
+    QCOMPARE(starts.size(),0);
+    const int readyAnnouncements=announcements.size();
+    panel.RefreshRoutingNotice(true);QCOMPARE(announcements.size(),readyAnnouncements);
+    panel.RefreshRoutingNotice(false);
+    QVERIFY(start->isHidden());QVERIFY(!probe->isHidden());
+    QCOMPARE(tests.size(),1); // Reconfiguration never launches another probe.
+    panel.SetRoutingNotice(false);
+    panel.RefreshRoutingNotice(true);
+    QVERIFY(panel.routingNoticeWidget()->isHidden());
+    QVERIFY(!Find<QLabel>(panel,"agentPanelStatus")->isHidden());
 }
 void AgentControlPanelTests::sharedChatDraftAndKeyboard()
 {

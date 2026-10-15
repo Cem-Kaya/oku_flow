@@ -118,6 +118,9 @@ public:
     // Dedicated agent adapters share answer/notes presentation, not tool
     // authority or the ordinary Codex child. All calls are runtime-thread only.
     bool BeginControlAnswer(const QString& prompt, std::function<void()> stop);
+    // Local-only thumbnail of the authorized initial frame. Completion is
+    // ticket-guarded and never adds pixels to provider/history context.
+    void PrepareControlImagePreview(const QByteArray& jpeg, std::function<void()> ready);
     void ControlAnswerStarted(const QString& threadId, const QString& turnId);
     void ControlAnswerDelta(const QString& threadId, const QString& turnId, const QString& delta);
     void CompleteControlAnswer(const QString& threadId, const QString& turnId,

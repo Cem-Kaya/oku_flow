@@ -7,6 +7,7 @@
 #include <QScrollBar>
 #include <QSignalBlocker>
 #include <array>
+#include <utility>
 #include <QUuid>
 #include "okuflow/ui/assistant_chat_view.hpp"
 
@@ -171,13 +172,15 @@ void OkuFlowApp::SubmitAssistantPromptText(const QString& prompt,
 {
     auto& runtime = assistiveManager_->Runtime();
     runtime.CancelPeriodicForUserTurn();
+    // "Send without control" covers exactly this submission, admitted or not.
+    const bool withoutControl = std::exchange(sendWithoutControlOnce_, false);
     if (prompt.trimmed().isEmpty() || pendingOnDemandAnalysis_ || runtime.IsBusy() ||
         runtime.ChatSession().Busy() || pendingAssistantFramePrompt_) return;
     CancelAssistantHistoryLoad();
     runtime.ChatSession().SetDraft(prompt);
     const auto kind = runtime.ChatSession().Snapshot().value("kind").toString();
     const bool attachFrame = runtime.ChatSession().AttachCurrentView();
-    const bool embedded = settingsController_->MutableSettings().assistive.agentControlEnabled && !sendWithoutControlOnce_;
+    const bool embedded = settingsController_->MutableSettings().assistive.agentControlEnabled && !withoutControl;
     const bool legacy = kind == "assistant" || kind == "coding";
     if (kind == "agent" || (legacy && embedded)) {
         mainWindow_->agentControlPanel()->SetRoutingNotice(true,AgentReady());
@@ -192,7 +195,6 @@ void OkuFlowApp::SubmitAssistantPromptText(const QString& prompt,
     const auto backend = embedded ? ChatBackendKind::Agent : kind == "coding" ? ChatBackendKind::Coding :
         kind == "assistant" ? ChatBackendKind::Assistant : ChatBackendKind::Explain;
     if (!runtime.PrepareChatTurn(prompt,backend)) return;
-    sendWithoutControlOnce_ = false;
     agentConversationSelected_ = embedded;
     if (embedded) {
         agentFrames_ = attachFrame; // explicit composer action, source-scoped by Begin
@@ -443,8 +445,8 @@ void OkuFlowApp::SetAssistantBusy(bool busy)
     if (uiState_->assistantNewButton_) {
         uiState_->assistantNewButton_->setEnabled(!busy);
     }
-    if (uiState_->assistantConnectButton_) {
-        uiState_->assistantConnectButton_->setEnabled(!busy);
+    for (QPushButton* button : {uiState_->assistantConnectButton_, assistiveManager_->Overlay().chatView()->connectButton()}) {
+        if (button) button->setEnabled(!busy);
     }
     if (uiState_->assistantPromptEdit_) {
         uiState_->assistantPromptEdit_->setEnabled(true);

@@ -34,7 +34,11 @@ public:
     // the source; arbitrary safe DTO/provider text still remains plain text.
     void SetStatus(const QString& text, bool assertive = false, bool coalesce = true);
     void SetCapabilityStatus(const QString& text);
+    // Without tool support the row offers the explicit capability test instead
+    // of a control conversation; RefreshRoutingNotice updates a shown row only.
     void SetRoutingNotice(bool visible, bool canStartControl = true);
+    void RefreshRoutingNotice(bool canStartControl);
+    bool routingNoticeShown() const { return !routingRow_->isHidden(); }
     QWidget* routingNoticeWidget() const { return routingRow_; }
     QWidget* approvalWidget() const { return approvalRow_; }
     QPushButton* approvalDenyButton() const { return deny_; }
@@ -66,13 +70,13 @@ private:
     void Retranslate();
     QCheckBox *photos_{}, *recording_{};
     QCheckBox *leaseFrames_{}, *leaseSource_{}, *leasePhotos_{}, *leaseRecording_{};
-    QLabel *status_{}, *approvalSummary_{}, *approvalExpiry_{}, *connection_{}, *leaseStatus_{}, *capability_{};
+    QLabel *status_{}, *routingMessage_{}, *approvalSummary_{}, *approvalExpiry_{}, *connection_{}, *leaseStatus_{}, *capability_{};
     QPlainTextEdit *approvalArguments_{}, *transcript_{};
     QWidget *approvalRow_{}, *externalSection_{}, *bundle_{}, *routingRow_{};
     QWidget* approvalDetails_{};
     QPushButton *allow_{}, *deny_{}, *reviewLease_{}, *issueLease_{}, *revokeLease_{};
-    QPushButton* startControl_{};
-    QString approvalId_, connectionId_, connectionIdentity_;
+    QPushButton *startControl_{}, *routingTest_{};
+    QString approvalId_, connectionId_, connectionIdentity_, capabilityText_;
     QJsonObject approvalRecord_, leaseRecord_;
     QElapsedTimer approvalClock_, leaseClock_;
     qint64 approvalRemainingMs_{}, leaseAbsoluteMs_{}, leaseIdleMs_{};

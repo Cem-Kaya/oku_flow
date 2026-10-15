@@ -389,6 +389,23 @@ private slots:
         client.SetControlService(&service);QSignalSpy done(&client,&CodexAgentClient::TurnFinished);
         QVERIFY(!client.SubmitTurn("fabricated","zoom"));QCOMPARE(done.size(),0);QCOMPARE(target.effects,0);
     }
+    void reconfigurationInvalidatesTestedReadiness() {
+        AgentTarget target;AppControlService service(target);service.SetEnabled(true,false);
+        CodexAgentClient client;QVERIFY(Ready(client,service));
+        QSignalSpy availability(&client,&CodexAgentClient::AvailabilityChanged);
+        client.Configure(QStringLiteral(OKUFLOW_FAKE_AGENT_BINARY),{},"low",{});
+        QCOMPARE(availability.size(),0);QVERIFY(client.IsReady());
+        client.Configure(QStringLiteral(OKUFLOW_FAKE_AGENT_BINARY),"changed","low",{});
+        QCOMPARE(availability.size(),1);QVERIFY(!availability[0][0].toBool());
+        QVERIFY(!client.IsReady());QVERIFY(!client.IsTurnActive());
+        // No implicit probe: readiness returns only through another explicit test.
+        QTest::qWait(200);QCOMPARE(availability.size(),1);
+        QSignalSpy done(&client,&CodexAgentClient::TurnFinished);
+        const auto context=service.Begin({ContextKind::EmbeddedTurn,"trusted",1,{}});
+        QVERIFY(!context.isEmpty());QVERIFY(!client.SubmitTurn(context,"zoom"));
+        QCOMPARE(done.size(),0);QCOMPARE(target.effects,0);service.End(context);
+        client.TestCapability();QTRY_VERIFY_WITH_TIMEOUT(client.IsReady() && !client.IsTurnActive(),10000);
+    }
     void nestedConfigurationRetainsNewestModel() {
         AgentTarget target;AppControlService service(target);service.SetEnabled(true,false);
         CodexAgentClient client;client.SetControlService(&service);

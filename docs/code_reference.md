@@ -3366,6 +3366,10 @@ clears image-bearing memory and emits one completion. Private `IsCurrent`,
   and focus restoration. `FocusApproval` deliberately focuses Deny.
   `DrawerContainsFocus` lets the main window defer its outer Tab bridge to
   native traversal inside an open overlay drawer.
+  `RefreshTabOrder` inserts native approval/routing controls between the
+  transcript and composer actions. MainWindow defers its outer cross-window
+  bridge whenever focus is within the visible floating Assistant, preserving
+  native toolbar, drawer, decision and busy-action navigation.
   `RefreshIcons` follows palette changes, including the moved floating header.
   Finite Explain-origin metadata adds a trusted camera tag.
   `SetConnectionState` and `SetUndoAvailable` mirror app state without authority.
@@ -3400,7 +3404,12 @@ clears image-bearing memory and emits one completion. Private `IsCurrent`,
   start off. `AppendAction` bounds plain activity to 128 blocks/32 KiB and emits
   `actionReceiptAdded`; app-owned receipts attach only to their original row.
   `SetStatus` routes persistent accessibility; `SetCapabilityStatus` is display
-  only. `RequestStopAndUndo` is shared by visible and shortcut paths.
+  only and mirrors the pending test state into a shown routing notice.
+  `SetRoutingNotice` chooses an explicit capability test or ready conversation
+  action; `RefreshRoutingNotice` changes a shown row without opening hidden UI.
+  `routingNoticeShown` exposes local visibility without implying authorization.
+  The existing disabled-control status remains visible in the settings drawer.
+  `RequestStopAndUndo` is shared by visible and shortcut paths.
   Trusted activation signals are session grants, approval/lease/revoke, stop/undo,
   capability testing and routing choices. The obsolete `enabledChanged` signal
   remains source-compatible but is never emitted by this panel.
@@ -3419,7 +3428,8 @@ clears image-bearing memory and emits one completion. Private `IsCurrent`,
   fixtures; the destructor releases that pane. `SetControlRoutingNotice`, `QuestionDraft`, `ClearQuestionDraft` retain
   refused shared questions until app acceptance. Existing manager forwarding
   emits QuestionSubmitted/NewChatRequested once; `FocusTargets` exposes the
-  seven reading/editing/placement controls of the current view.
+  chat-entry/footer/placement controls of the current view; native traversal
+  inside it also includes dynamically visible routing and approval controls.
   An explicit `EscapeRequested` activates the camera owner before returning
   focus to its render target; passive snapshots never activate either window.
 - `MainWindow::RefreshControlReadouts` executes registered native readout
@@ -3478,6 +3488,15 @@ app-created recording owner on provider/master changes. `TestAgentCapability`
 requires explicit UI activation. `StartAgentConversation` preserves the draft
 and never submits it; `SubmitAgentPrompt` obtains the app-owned context and uses
 only a current authorized viewport observation for an initial image.
+Readiness changes refresh shown routing choices in both views. A control-enabled
+but untested submission offers the explicit capability test; configuration
+changes retire old readiness. `SubmitAssistantPromptText` consumes the tool-free
+override at entry even if admission is refused; the native fallback moves a
+restored Agent-kind chat to a new Explain conversation while preserving its draft.
+`StartAgentConversation` clears any old one-shot override. `Initialize` binds
+both Connect ChatGPT buttons to the same runtime login action and mirrors
+server/account state, connection dots and model tooltips to both chat headers.
+`SetAssistantBusy` gates both login buttons together.
 `CancelAgentTurn` cancels provider work and exact context; its optional undo
 path calls `StopAndUndo` before provider cancellation and lease revocation, so
 temporary camera ownership is still available when requesting restoration.
@@ -3638,6 +3657,12 @@ finite `origin:"explain"` presentation tag; other origins omit it.
 `SetImagePreview` accepts only the active turn's bounded JPEG payload and keeps
 at most eight thumbnails of 64 KiB each in memory. Restore, text/bridge context
 and the history store's explicit serialization omit `imagePreviewJpeg`.
+`AssistiveRuntime::PrepareControlImagePreview(jpeg, ready)` prepares the
+authorized initial control frame on the existing bounded worker pool, publishes
+only to the still-current control ticket, then continues provider submission.
+Cancellation/reset rejects both the late thumbnail and continuation; a busy
+worker pool omits this optional preview without blocking the request.
+`SubmitAgentPrompt` rechecks frame permission and source epoch after this wait.
 `ChatImagePreview` derives a maximum-320-pixel JPEG from the exact preparation
 worker frame; both HTTP and Codex publish it only after existing generation
 checks and successful image preparation. `CompleteAssistantPreparation` accepts

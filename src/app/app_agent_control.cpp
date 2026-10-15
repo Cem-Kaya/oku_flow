@@ -78,8 +78,11 @@ void OkuFlowApp::InitializeAgentControl()
     agentIpc_ = std::make_unique<mcp::AppIpcEndpoint>(*controlService_,this);
     agentCodex_->SetControlService(controlService_.get()); agentHttp_->SetControlService(controlService_.get());
     const auto panels = [this] { return AgentPanels(mainWindow_.get(),assistiveManager_.get()); };
-    connect(agentCodex_.get(),&CodexAgentClient::AvailabilityChanged,this,[this,panels](bool ready,const QString&) {
-        for (auto* panel : panels()) panel->SetCapabilityStatus(ready ? "Tool support ready" : "Tool support unavailable");
+    connect(agentCodex_.get(),&CodexAgentClient::AvailabilityChanged,this,[this,panels](bool ready,const QString& code) {
+        for (auto* panel : panels()) {
+            panel->SetCapabilityStatus(ready ? "Tool support ready" : code == "checking" ? "Checking tool support..." : "Tool support unavailable");
+            panel->RefreshRoutingNotice(AgentReady());
+        }
         SetAssistantBusy(assistiveManager_->Runtime().IsBusy() || assistiveManager_->Runtime().ChatSession().Busy());
         if (!ready && !agentContext_.isEmpty()) CancelAgentTurn();
     });
@@ -128,10 +131,19 @@ void OkuFlowApp::InitializeAgentControl()
         connect(panel,&AgentControlPanel::capabilityTestRequested,this,&OkuFlowApp::TestAgentCapability);
         connect(panel,&AgentControlPanel::startControlConversationRequested,this,&OkuFlowApp::StartAgentConversation);
         connect(panel,&AgentControlPanel::sendWithoutControlRequested,this,[this,panels] {
-            sendWithoutControlOnce_ = true; agentConversationSelected_ = false;
+            auto& runtime = assistiveManager_->Runtime();
+            if (runtime.IsBusy() || runtime.ChatSession().Busy()) return;
+            const auto draft = runtime.ChatSession().Draft();
+            // A restored control conversation cannot carry a tool-free turn, so
+            // the same question continues in a fresh tool-free Explain chat.
+            if (runtime.ChatSession().Snapshot().value("kind").toString() == "agent") {
+                StartNewAssistantConversationAs(ChatBackendKind::Explain); runtime.ChatSession().SetDraft(draft);
+            }
+            agentConversationSelected_ = false;
             for (auto* view : panels()) view->SetRoutingNotice(false);
             assistiveManager_->Overlay().SetControlRoutingNotice(false);
-            SubmitAssistantPromptText(assistiveManager_->Runtime().ChatSession().Draft(),false,false);
+            sendWithoutControlOnce_ = true; // consumed by this one submission
+            SubmitAssistantPromptText(draft,false,false);
         });
     };
     for (auto* panel : panels()) bindPanel(panel);
@@ -196,6 +208,7 @@ void OkuFlowApp::RefreshAgentControlSettings()
         config.agentControlEnabled,config.codexCodingEnabled,config.codexInternetEnabled,
         config.codexWorkspaceDirectory}).toJson(QJsonDocument::Compact);
     const auto digest=QCryptographicHash::hash(identity,QCryptographicHash::Sha256);
+    const auto previousDigest=agentConfigDigest_;
     if(!agentConfigDigest_.isEmpty() && agentConfigDigest_!=digest) {
         CancelAgentTurn();controlService_->RetireOwner(agentOwner_);
         agentOwner_=Id();agentFrames_=agentPhotos_=agentRecording_=false;
@@ -207,11 +220,15 @@ void OkuFlowApp::RefreshAgentControlSettings()
     agentCodex_->Configure(program,config.codexModel,config.codexReasoningEffort,config.assistantInstructions);
     agentHttp_->Configure({QUrl(endpoint),model,key.toUtf8(),HttpAgentToolMode::Tools});
     agentIpc_->SetEnabled(config.externalMcpEnabled);
+    const bool reconfigured=agentConfigDigest_!=previousDigest;
     for (auto* panel : AgentPanels(mainWindow_.get(),assistiveManager_.get())) {
         panel->SetEnabled(config.agentControlEnabled,config.externalMcpEnabled);
         panel->SetSessionGrants(agentFrames_,agentPhotos_,agentRecording_);
         panel->SetStatus(config.agentControlEnabled?QStringLiteral("Assistant control"):
             QStringLiteral("Assistant control is off"));
+        // A changed configuration has not been tested yet; never keep a stale "ready".
+        if (reconfigured) panel->SetCapabilityStatus(AgentReady()?QStringLiteral("Tool support ready"):QString());
+        panel->RefreshRoutingNotice(AgentReady());
     }
     SetAssistantBusy(assistiveManager_->Runtime().IsBusy() || assistiveManager_->Runtime().ChatSession().Busy());
 }
@@ -224,8 +241,10 @@ void OkuFlowApp::TestAgentCapability()
     if(Codex(settingsController_->MutableSettings().assistive))agentCodex_->TestCapability();
     else agentHttp_->TestCapability([self=QPointer<OkuFlowApp>(this)](HttpAgentCapability capability,QString) {
         if(!self)return;
-        for (auto* panel : AgentPanels(self->mainWindow_.get(),self->assistiveManager_.get()))
+        for (auto* panel : AgentPanels(self->mainWindow_.get(),self->assistiveManager_.get())) {
             panel->SetCapabilityStatus(capability.available?QStringLiteral("Tool support ready"):QStringLiteral("Tool support unavailable"));
+            panel->RefreshRoutingNotice(self->AgentReady());
+        }
         self->SetAssistantBusy(self->assistiveManager_->Runtime().IsBusy() || self->assistiveManager_->Runtime().ChatSession().Busy());
     });
 }
@@ -237,7 +256,8 @@ void OkuFlowApp::StartAgentConversation()
     if (runtime.ChatSession().Snapshot().value("kind").toString() != "explain") {
         runtime.ResetVisibleChat(); runtime.ChatSession().SetDraft(draft);
     }
-    agentConversationSelected_ = true; agentConversationId_.clear(); agentCodex_->ResetConversation();
+    agentConversationSelected_ = true; sendWithoutControlOnce_ = false;
+    agentConversationId_.clear(); agentCodex_->ResetConversation();
     for (auto* panel : AgentPanels(mainWindow_.get(),assistiveManager_.get())) panel->SetRoutingNotice(false);
     assistiveManager_->Overlay().SetControlRoutingNotice(false);
     // Native routing choice preserves the question and visible Explain history.
@@ -310,7 +330,18 @@ void OkuFlowApp::SubmitAgentPrompt(const QString& prompt)
             self->assistiveManager_->Runtime().CompleteControlAnswer({}, {}, {},
                 result.content.value("error").toObject().value("code").toString("no_frame"),false);return;
         }
-        start(std::move(result.jpeg));
+        const auto jpeg=std::move(result.jpeg);
+        const auto sourceEpoch=self->controlService_->Stamp().sourceEpoch;
+        self->assistiveManager_->Runtime().PrepareControlImagePreview(jpeg,
+            [self,generation,sourceEpoch,start,jpeg]() {
+                if (!self || generation!=self->agentGeneration_ || self->agentContext_.isEmpty()) return;
+                if (self->controlService_->Stamp().sourceEpoch!=sourceEpoch ||
+                    !self->controlService_->ContextStatus().value("grants").toObject().value("frames").toBool()) {
+                    self->controlService_->End(self->agentContext_);self->agentContext_.clear();
+                    self->assistiveManager_->Runtime().CompleteControlAnswer({}, {}, {},"consent_required",false);return;
+                }
+                start(jpeg);
+            });
     });
 }
 void OkuFlowApp::CancelAgentTurn(bool undo)

@@ -4388,8 +4388,13 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
             event->accept();
             return true;
         }
+        const auto* floatingChat = findChild<AssistiveOverlay*>();
+        const auto* focus = QApplication::focusWidget();
+        const bool nativeChatTraversal = floatingChat && floatingChat->isVisible() && focus &&
+            (focus == floatingChat || floatingChat->isAncestorOf(focus));
         if ((key->key() == Qt::Key_Tab || key->key() == Qt::Key_Backtab) &&
             !(key->modifiers() & (Qt::ControlModifier | Qt::AltModifier)) &&
+            !nativeChatTraversal &&
             !(assistantChatView_ && assistantChatView_->DrawerContainsFocus()) &&
             !modeGridPopup_->isVisible()) {
             std::vector<QWidget*> focusOrder{

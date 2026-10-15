@@ -70,6 +70,7 @@ private:
     void OpenDrawer(QWidget* drawer);
     void RenderMessages();
     void RefreshActions();
+    void RefreshTabOrder();
     void RefreshIcons();
     QWidget *header_{}, *body_{}, *bodyContent_{}, *settingsDrawer_{}, *historyDrawer_{}, *actionStrip_{};
     QScrollArea* settingsScroll_{};

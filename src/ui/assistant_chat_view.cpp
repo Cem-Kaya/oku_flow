@@ -324,8 +324,25 @@ void AssistantChatView::RefreshActions()
     readAloud_->setEnabled(completed&&!busy);actionStrip_->setVisible(busy||undoAvailable_);
 }
 void AssistantChatView::SetSettingsWidget(QWidget* widget){settingsScroll_->setWidget(widget);}
-void AssistantChatView::SetApprovalWidget(QWidget* widget){approval_=widget;qobject_cast<QVBoxLayout*>(bodyContent_->layout())->addWidget(widget);}
-void AssistantChatView::SetRoutingWidget(QWidget* widget){routing_=widget;qobject_cast<QVBoxLayout*>(bodyContent_->layout())->addWidget(widget);}
+void AssistantChatView::RefreshTabOrder()
+{
+    QWidget* previous=transcript_;
+    for (auto* row : {approval_,routing_}) {
+        if (!row) continue;
+        for (auto* target : row->findChildren<QWidget*>()) {
+            if (target->focusPolicy() & Qt::TabFocus) {
+                QWidget::setTabOrder(previous,target);previous=target;
+            }
+        }
+    }
+    for (QWidget* target : {static_cast<QWidget*>(stop_),static_cast<QWidget*>(stopUndo_),
+            static_cast<QWidget*>(composer_),static_cast<QWidget*>(readAloud_),
+            static_cast<QWidget*>(attachment_),static_cast<QWidget*>(send_)}) {
+        QWidget::setTabOrder(previous,target);previous=target;
+    }
+}
+void AssistantChatView::SetApprovalWidget(QWidget* widget){approval_=widget;qobject_cast<QVBoxLayout*>(bodyContent_->layout())->addWidget(widget);RefreshTabOrder();}
+void AssistantChatView::SetRoutingWidget(QWidget* widget){routing_=widget;qobject_cast<QVBoxLayout*>(bodyContent_->layout())->addWidget(widget);RefreshTabOrder();}
 void AssistantChatView::SetAttachCurrentView(bool value){const QSignalBlocker block(attachment_);attachment_->setChecked(value);}
 bool AssistantChatView::attachCurrentView() const{return attachment_->isChecked();}
 void AssistantChatView::SetUndoAvailable(bool value){undoAvailable_=value;RefreshActions();}

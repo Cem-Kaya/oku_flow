@@ -3,6 +3,7 @@
 #include <QJsonArray>
 #include "okuflow/ui/ui_translation.hpp"
 #include "okuflow/ui/live_status_text.hpp"
+#include <QApplication>
 #include <QCheckBox>
 #include <QEvent>
 #include <QGroupBox>
@@ -148,7 +149,6 @@ AgentControlPanel::AgentControlPanel(QWidget* parent) : QWidget(parent)
     recording_ = Check(layout, QStringLiteral("Allow the Assistant to start and stop recordings it started"), "agentRecordingGrant");
     Text(layout, QStringLiteral("Ask permission before recording a lecture or other people."));
     status_ = Text(layout, QStringLiteral("Assistant control is off"), "agentPanelStatus");
-    status_->hide();
     approvalRow_ = new QWidget;
     approvalRow_->setObjectName(QStringLiteral("agentApprovalRow"));
     approvalRow_->setAttribute(Qt::WA_StyledBackground);
@@ -180,10 +180,13 @@ AgentControlPanel::AgentControlPanel(QWidget* parent) : QWidget(parent)
 
     routingRow_ = new QWidget;
     auto* routing = new QVBoxLayout(routingRow_);
-    Text(routing, QStringLiteral("Controlling OkuFlow needs its own conversation."));
+    routingMessage_ = Text(routing, QStringLiteral("Controlling OkuFlow needs its own conversation."), "agentRoutingMessage");
     startControl_ = Button(routing, QStringLiteral("Start control conversation"), "agentStartConversation");
+    routingTest_ = Button(routing, QStringLiteral("Test endpoint tool support now"), "agentRoutingCapabilityTest");
     auto* without = Button(routing, QStringLiteral("Send without control"), "agentSendWithoutControl");
     connect(startControl_, &QPushButton::clicked, this, &AgentControlPanel::startControlConversationRequested);
+    connect(routingTest_, &QPushButton::clicked, this, &AgentControlPanel::capabilityTestRequested);
+    routingTest_->hide();
     connect(without, &QPushButton::clicked, this, &AgentControlPanel::sendWithoutControlRequested);
     layout->addWidget(routingRow_);
     routingRow_->hide();
@@ -409,13 +412,28 @@ void AgentControlPanel::SetStatus(const QString& text, bool assertive, bool coal
 }
 void AgentControlPanel::SetCapabilityStatus(const QString& text)
 {
-    SetLiveText(capability_,text.left(2048),LivePoliteness::kSilent);
+    capabilityText_=text.left(2048);
+    SetLiveText(capability_,capabilityText_,LivePoliteness::kSilent);
+    if (!routingTest_->isHidden())
+        SetLiveText(routingMessage_,capabilityText_.isEmpty()?QStringLiteral("Tool support unavailable"):capabilityText_,LivePoliteness::kSilent);
 }
 void AgentControlPanel::SetRoutingNotice(bool visible, bool canStart)
 {
+    // Keyboard focus stays in the row when its offered action changes.
+    const bool focused = routingRow_->isAncestorOf(QApplication::focusWidget());
     startControl_->setVisible(canStart);
+    routingTest_->setVisible(!canStart);
+    const QString message = canStart ? QStringLiteral("Controlling OkuFlow needs its own conversation.")
+        : capabilityText_.isEmpty() ? QStringLiteral("Tool support unavailable") : capabilityText_;
+    SetLiveText(routingMessage_,message,LivePoliteness::kSilent);
     routingRow_->setVisible(visible);
-    if (visible) emit statusAnnouncementRequested(Ui("Controlling OkuFlow needs its own conversation."),true,false);
+    if (visible && focused) (canStart ? startControl_ : routingTest_)->setFocus(Qt::OtherFocusReason);
+    if (visible) emit statusAnnouncementRequested(message,true,false);
+}
+void AgentControlPanel::RefreshRoutingNotice(bool canStart)
+{
+    if (routingRow_->isHidden() || startControl_->isHidden() != canStart) return;
+    SetRoutingNotice(true,canStart);
 }
 void AgentControlPanel::RequestStopAndUndo() { emit stopAndUndoRequested(); }
 void AgentControlPanel::Retranslate() { RetranslateWidgetTree(this); UpdateCountdowns(); SetExternalConnection(connectionId_, connectionIdentity_); }

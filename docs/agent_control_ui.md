@@ -26,9 +26,13 @@ messages only. Explicit Explain-origin rows carry a small translated Explain
 camera tag from finite app-owned metadata, never a backend identity.
 The body uses root-level paragraphs instead of HTML table cells: Qt accessibility
 must report the actual word positions in both docked and floating views.
-Image-bearing ordinary Explain/follow-up turns display the prepared camera frame
+Image-bearing Explain/follow-up and authorized control turns display the prepared camera frame
 as a bounded thumbnail. Up to eight previews remain in memory only; local chat
 history, exported history and subsequent text context exclude their bytes.
+Control thumbnails use the same preparation worker and size limits; a retired
+turn cannot publish a late preview or start a provider request. The initial
+control image is rechecked against its source epoch and current frame grant
+after preparation, before provider submission.
 
 The composer footer places manual Read Aloud at the leading edge, followed by
 flexible space, a compact camera attachment switch and Send. Read Aloud stays
@@ -38,6 +42,9 @@ keyboard focus and the existing camera-permission tooltip. Its thumb position
 and palette colors distinguish on/off; the row mirrors in right-to-left layouts.
 Tab order follows composer, Read Aloud, attachment, Send. Stop/Undo remain in a
 separate strip only while needed.
+Floating chat uses native Qt traversal within its full view, including routing,
+approval, Stop/Undo and drawer controls, rather than the outer chrome's short
+focus list. Routing and approval controls precede the composer in that chain.
 Attach current view is the current-turn/current-source camera grant.
 Photos and control-owned recordings have separate session grants in
 the settings drawer, with the recording-permission reminder. No grant is saved.
@@ -47,6 +54,13 @@ lease identity/times/budgets/revoke and collapsed About control and Activity log
 Incoming traffic never opens or issues a lease; fresh optional grants start off,
 and active bundles cannot be widened. The capability test uses synthetic input,
 no camera image and no settings mutation.
+When control is enabled but provider tool support has not been established,
+the routing row exposes the explicit capability test instead of offering only
+a tool-free fallback. A successful test enables the control-conversation choice.
+The settings drawer shows the disabled-control status; AI Settings remains the
+sole owner of the master permission. Both chat views share connection status,
+and each Connect ChatGPT button reaches the same login action. A provider
+configuration change invalidates stale capability readiness.
 
 Approvals are contextual native chat cards with a human action question,
 optional app-owned target display, expiry, Allow once and Deny. The question uses an explicit 20px native font;

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Repair Assistant control readiness routing, one-shot tool-free fallback,
+  synchronized connection status and floating chat keyboard navigation. Show
+  bounded memory-only image previews for authorized control turns as well.
+
 - Move Assistant/Explain Read Aloud into the composer footer and replace the
   attachment checkbox presentation with a compact camera switch beside Send,
   preserving native keyboard, screen-reader and current-turn permission behavior.
