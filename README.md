@@ -14,8 +14,6 @@ Point a webcam, a document camera or your phone at the board. OkuFlow magnifies 
 
 ![OkuFlow Simple view showing a classroom chalkboard, with large camera controls](https://okuflow.com/media/okuflow-simple-206165dcd785.webp)
 
-*OkuFlow running on a demonstration scene. These screenshots show the interface and its tools; they are not real-camera quality or performance measurements.*
-
 | At a glance | |
 | --- | --- |
 | Desktop | Windows 10 and 11, x64, on laptops and desktop PCs |
@@ -38,11 +36,11 @@ OkuFlow is a **live camera magnifier**, for a page on your desk, a whiteboard or
 
 **Text Clarity** helps camera text stand out with background flattening, glare suppression, automatic text polarity, sharpening and stroke-weight controls. It chooses a paper, board or mixed-content treatment, with two-color reading when you prefer it.
 
-![OkuFlow Text Clarity applied to the classroom chalkboard demonstration scene](https://okuflow.com/media/okuflow-text-162a80541c93.webp)
+![OkuFlow Text Clarity applied to a classroom chalkboard](https://okuflow.com/media/okuflow-text-162a80541c93.webp)
 
 **Display colors** turn the picture into a high-contrast pair. Choose colors such as yellow on black, white on black or black on cyan, then adjust contrast and brightness for your eyes.
 
-![OkuFlow high-contrast display colors on the classroom demonstration scene](https://okuflow.com/media/okuflow-colors-4655e6a5b477.webp)
+![OkuFlow high-contrast display colors on a classroom chalkboard](https://okuflow.com/media/okuflow-colors-4655e6a5b477.webp)
 
 **Start simple. Go deeper when you need to.** Simple gives the camera the whole window, with quick modes such as Read a Page, Projector Screen and Whiteboard. Advanced keeps the live view beside every setting. Zoom and pan, stabilize a mounted camera, or straighten a screen viewed at an angle.
 
