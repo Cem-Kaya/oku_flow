@@ -2994,8 +2994,8 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>הפעולות „קרא” ו„הסבר” נשארות ללא שינוי.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>השליטה כבויה כברירת מחדל. כשהיא מופעלת, העוזר יכול לכוונן את התצוגה. תמונות מצלמה ולכידות מסך דורשות הרשאה נפרדת. לעצירה ולביטול השינוי, הקישו Ctrl+Shift+U.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>כשהתכונה מופעלת, העוזר יכול לכוונן את התצוגה. תמונות מהמצלמה ותמונות או הקלטות דורשות הרשאה נפרדת. לעצירת השליטה ולביטול השינויים, הקישו Ctrl+Shift+U.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

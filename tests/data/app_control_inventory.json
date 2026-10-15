@@ -5750,7 +5750,7 @@
   ],
   "commonContract": {
     "clock": "monotonic",
-    "masters": "default_off_UI_only",
+    "masters": "embedded_default_on_external_default_off_UI_only_preserve_saved_choices",
     "leases": "external300s_absolute60s_idle_immutable_bundle",
     "undo": "per_field_revision_and_native_user_wins; no_undo_capture_or_network",
     "identity": "generated_session_device_handles; never_symbolic_links_endpoint_ids_serials_paths_secrets",

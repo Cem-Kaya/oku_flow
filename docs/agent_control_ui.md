@@ -10,9 +10,12 @@ Advanced retains Image / Assistant / Settings. Assistant is one chat view with
 a compact connection, New, History and settings header, a large transcript and
 a fixed composer. History opens a drawer with selected-row Rename/Export/Delete.
 The settings drawer overlays the transcript, closes with Escape and restores
-focus. AI Settings alone owns the persisted embedded/external master switches,
-both initially off. Enabling Assistant control unchecks/disables ordinary coding
-and internet permissions; saving cannot retain conflicting enabled bits. Session permissions are never duplicated as master switches.
+focus. AI Settings alone owns the persisted embedded/external master switches:
+Assistant control initially on and External MCP control initially off. Saved
+choices are preserved; absent keys and pre-control settings use these defaults.
+Enabling Assistant control unchecks/disables ordinary coding and internet
+permissions; saving cannot retain conflicting enabled bits. Session permissions
+are never duplicated as master switches.
 
 Advanced and floating Explain render the same app-owned `VisibleChatSession`:
 conversation identity, rows, draft, attachment and busy state. Each view retains
@@ -95,6 +98,11 @@ with 799 finished sources. German/Dutch Details are reviewed cognates with narro
 locale-specific validator exceptions. Model wording review does not establish
 native-speaker, font, RTL or screen-reader acceptance.
 
+The 2026-10-16 default change removes the obsolete default-off sentence from
+the control explanation. Read-only Luna reviews covered that changed entry in
+all 24 languages; dangling references and misleading screenshot terms were
+corrected. This wording review remains separate from rendered/native acceptance.
+
 `agent_control_panel_headless` runs Qt offscreen with no camera, provider, bridge,
 settings store or native foreground window. It covers user-only grants, exact
 single-use/expired approvals, canonical 90° orientation, lease defaults/no widening,
@@ -109,7 +117,7 @@ run `agent_control_capture.exe --output <absolute LocalAppData evidence folder>`
 The fixture forces offscreen and constructs real MainWindow/AiSettingsDialog
 with in-memory defaults. At1672×941, matching the concept viewport, it captures
 chat with a pending photo approval, the direct approval card, the settings drawer
-and default-off AI Settings masters, plus a separate 360px Arabic RTL chat
+and AI Settings masters (Assistant control on, External MCP control off), plus a separate 360px Arabic RTL chat
 and floating Explain view. The fixture also checks master/coding exclusivity. Connection/message text is synthetic and
 clearly fixture-labelled; no provider is contacted. MainWindow capture composes
 actual native widget peers; approval/dialog captures are direct QWidget grabs.

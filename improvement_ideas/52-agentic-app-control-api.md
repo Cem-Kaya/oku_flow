@@ -1199,9 +1199,11 @@ development/owner permission flow; both exist only inside the finished app.
 **Standing grants** are explicit toggles the user sets in OkuFlow's UI,
 checked at dispatch:
 
-- **Master switches** (persisted, default off, §14.4): *Assistant control*
-  (embedded) and *External MCP control*, in AI Settings. First activation
-  shows an accessible explanation. They ship in the core phase, before any
+- **Master switches** (persisted, §14.4): *Assistant control*
+  (embedded, default on) and *External MCP control* (default off), in AI Settings.
+  This default policy supersedes the original default-off proposal per the owner's
+  2026-10-16 decision; saved explicit choices remain unchanged. Both controls
+  have an accessible explanation. They ship in the core phase, before any
   live adapter — nothing can mutate state before they exist.
 - *Frame grant* (embedded, per turn): from the pre-turn privacy notice
   (§11.4); voided by a source change.

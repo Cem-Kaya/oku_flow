@@ -817,8 +817,10 @@ acceptance. Serial disposable Windows native cases remain separate.
 Explicitly build `agent_control_capture` and run `--output` with an absolute
 LocalAppData folder. The real production MainWindow is rendered at 1672×941 to
 match the approved chat-first concept, with synthetic chat and pending photo
-approval, a settings drawer and default-off AI Settings. It loads no settings
-store or service. Actual peer-widget grabs are composed; installed Segoe UI is
+approval, a settings drawer and AI Settings with built-in control on / external
+MCP off defaults. Settings round trips cover explicit opt-out, missing keys and
+legacy migration; coding dialog fixtures explicitly disable built-in control.
+It loads no settings store or service. Actual peer-widget grabs are composed; installed Segoe UI is
 registered for Windows offscreen. Keep originals, retain failed captures and
 rerender instead of repairing pixels. See `docs/agent_control_ui.md`.
 

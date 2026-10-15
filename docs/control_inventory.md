@@ -136,7 +136,8 @@ coupled changes. Native edits win over stale agent plans, and undo skips fields
 the user changed. Capture, account/network requests, committed files and
 device actions cannot be represented as reversible preference undo. Async
 operations require truthful retained operation states and exact owner/session
-identity. Preserve default-off masters, immutable UI-issued lease bundles,
+identity. Preserve the built-in master default on, external master default off,
+explicit saved choices, immutable UI-issued lease bundles,
 monotonic 300-second absolute/60-second idle limits and existing budgets.
 
 ## Native behavior that must survive expansion

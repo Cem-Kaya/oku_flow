@@ -2994,8 +2994,8 @@ Use “Conectar ao ChatGPT” na guia Assistente do modo Avançado para fazer lo
             <translation>As conversas de controle não podem acessar a internet, executar comandos de código nem alterar arquivos. Ler e Explicar continuam iguais.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>O controle fica desativado por padrão. Quando ativado, o Assistente pode ajustar a visualização. Imagens da câmera e fotos exigem permissões separadas. Pare e desfaça com Ctrl+Shift+U.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Quando ativado, o Assistente pode ajustar a visualização. Imagens da câmera e fotos exigem permissões separadas. Pare e desfaça com Ctrl+Shift+U.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

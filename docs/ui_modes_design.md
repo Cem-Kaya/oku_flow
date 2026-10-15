@@ -336,8 +336,9 @@ Text Clarity is the master for automatic enhancement and its stored refinements.
 Assistant owns chat only within the unchanged Image / Assistant / Settings
 contract. One compact header contains connection, New, History and a settings
 gear; the transcript fills the body above a fixed composer. History and settings
-are overlays, never additional tabs. AI Settings alone owns the default-off
-persisted embedded/external masters. The gear contains unsaved session grants,
+are overlays, never additional tabs. AI Settings alone owns the persisted
+embedded/external masters: built-in control defaults on, external MCP off, and
+saved choices are preserved. The gear contains unsaved session grants,
 external lease review/status/revoke, capability testing, About control and Activity.
 
 Advanced and floating Explain are views of one `VisibleChatSession`, including

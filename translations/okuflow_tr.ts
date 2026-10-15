@@ -2994,8 +2994,8 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
             <translation>Denetim konuşmaları internet erişimini, kod çalıştırma komutlarını veya dosya değişikliklerini kullanamaz. Oku ve Açıkla değişmeden kalır.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>Denetim varsayılan olarak kapalıdır. Açıldığında Asistan görünümü ayarlayabilir. Kamera görüntüleri ve fotoğraflar için ayrıca izin gerekir. Ctrl+Shift+U ile durdurup geri alın.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Açıldığında Asistan görünümü ayarlayabilir. Kamera görüntüleri ve fotoğraflar için ayrıca izin gerekir. Ctrl+Shift+U ile durdurup geri alın.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

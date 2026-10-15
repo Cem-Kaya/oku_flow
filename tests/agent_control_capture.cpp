@@ -93,7 +93,6 @@ int main(int argc,char** argv)
         saved &= panel->approvalWidget()->grab().save(directory.filePath(QStringLiteral("02-photo-approval.png")));
         view->ShowSettings();QApplication::processEvents();saved &= SaveWindow(window,directory.filePath(QStringLiteral("03-settings-drawer.png")));view->CloseDrawer();
         okuflow::settings::AssistiveSettings settings;settings.codexExecutablePath.clear();settings.vlmApiKey.clear();
-        settings.agentControlEnabled=false;settings.externalMcpEnabled=false;
         okuflow::AiSettingsDialog dialog(settings,&window);dialog.resize(820,900);dialog.show();
         if(auto* scroll=dialog.findChild<QScrollArea*>())scroll->ensureWidgetVisible(dialog.findChild<QCheckBox*>(QStringLiteral("agentControlEnabled")),0,170);
         QApplication::processEvents();saved &= dialog.grab().save(directory.filePath(QStringLiteral("04-ai-settings-masters.png")));

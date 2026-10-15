@@ -2994,8 +2994,8 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>제어 대화에서는 인터넷에 접속하거나 코딩 명령을 실행하거나 파일을 변경할 수 없습니다. 읽기와 설명 기능은 그대로 사용할 수 있습니다.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>제어는 기본적으로 꺼져 있습니다. 켜면 Assistant가 화면을 조정할 수 있습니다. 카메라 이미지와 촬영 사진에는 별도의 권한이 필요합니다. Ctrl+Shift+U를 눌러 중지하고 실행을 취소하세요.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>켜면 Assistant가 화면을 조정할 수 있습니다. 카메라 이미지와 촬영 사진에는 별도의 권한이 필요합니다. Ctrl+Shift+U를 눌러 중지하고 실행을 취소하세요.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

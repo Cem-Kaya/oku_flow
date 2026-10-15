@@ -242,7 +242,7 @@ AgentControlPanel::AgentControlPanel(QWidget* parent) : QWidget(parent)
     layout->addWidget(transcript_);transcript_->hide();connect(activity,&QPushButton::toggled,transcript_,&QWidget::setVisible);
     auto* about=Button(layout,QStringLiteral("About control"),"agentAboutDisclosure");about->setCheckable(true);
     auto* aboutContent=new QWidget;auto* aboutLayout=new QVBoxLayout(aboutContent);
-    Text(aboutLayout,QStringLiteral("Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U."));
+    Text(aboutLayout,QStringLiteral("When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U."));
     Text(aboutLayout,QStringLiteral("External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it."));
     Text(aboutLayout,QStringLiteral("This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings."));
     layout->addWidget(aboutContent);aboutContent->hide();connect(about,&QPushButton::toggled,aboutContent,&QWidget::setVisible);

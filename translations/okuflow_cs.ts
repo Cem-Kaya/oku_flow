@@ -2994,8 +2994,8 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
             <translation>Konverzace s ovládáním nemohou používat internet, příkazy pro práci s kódem ani měnit soubory. Funkce „Přečtěte si“ a „Vysvětlete“ zůstávají beze změny.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>Ovládání je ve výchozím nastavení vypnuté. Po zapnutí může Asistent upravit zobrazení. Snímky z kamery a pořízené snímky vyžadují samostatné oprávnění. Zastavte ovládání a vraťte změny zpět pomocí Ctrl+Shift+U.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Po zapnutí může Asistent upravit zobrazení. Snímky z kamery a pořízené snímky vyžadují samostatné oprávnění. Zastavte ovládání a vraťte změny zpět pomocí Ctrl+Shift+U.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

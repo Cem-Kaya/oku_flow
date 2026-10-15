@@ -2994,8 +2994,8 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
             <translation>Samtal med styrning kan inte använda internet, kodkommandon eller filändringar. Läs och Förklara fungerar som vanligt.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>Styrning är av som standard. När den aktiveras kan Assistenten justera vyn. Kamerabilder och skärmbilder kräver separata tillstånd. Stoppa styrningen och ångra ändringar med Ctrl+Shift+U.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>När den aktiveras kan Assistenten justera vyn. Kamerabilder och foton och inspelningar kräver separata tillstånd. Stoppa styrningen och ångra ändringar med Ctrl+Shift+U.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

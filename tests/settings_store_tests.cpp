@@ -213,7 +213,7 @@ private slots:
 void SettingsStoreTests::controlSettingsAndConversationKinds()
 {
     PersistentSettings settings;
-    QVERIFY(!settings.assistive.agentControlEnabled);
+    QVERIFY(settings.assistive.agentControlEnabled);
     QVERIFY(!settings.assistive.externalMcpEnabled);
     settings.assistive.agentControlEnabled = true;
     settings.assistive.externalMcpEnabled = true;
@@ -229,6 +229,24 @@ void SettingsStoreTests::controlSettingsAndConversationKinds()
     QVERIFY(loaded->assistive.agentControlEnabled); QVERIFY(loaded->assistive.externalMcpEnabled);
     QCOMPARE(loaded->codexConversations.front().kind,QStringLiteral("agent"));
     QCOMPARE(loaded->codexConversations.front().toolsetVersion,QStringLiteral("dev-core"));
+    // A persisted opt-out must survive the new default, including after save.
+    settings.assistive.agentControlEnabled = false;
+    settings.assistive.externalMcpEnabled = false;
+    QVERIFY(Save(path,settings));
+    const auto disabled = Load(path); QVERIFY(disabled);
+    QVERIFY(!disabled->assistive.agentControlEnabled);
+    QVERIFY(!disabled->assistive.externalMcpEnabled);
+    // Missing keys in current files use the same defaults as a fresh install.
+    auto missing = root;
+    auto assistive = missing.value(QStringLiteral("assistive")).toObject();
+    assistive.remove(QStringLiteral("agentControlEnabled"));
+    assistive.remove(QStringLiteral("externalMcpEnabled"));
+    missing[QStringLiteral("assistive")] = assistive;
+    QFile missingFile(path); QVERIFY(missingFile.open(QIODevice::WriteOnly|QIODevice::Truncate));
+    missingFile.write(QJsonDocument(missing).toJson()); missingFile.close();
+    const auto defaults = Load(path); QVERIFY(defaults);
+    QVERIFY(defaults->assistive.agentControlEnabled);
+    QVERIFY(!defaults->assistive.externalMcpEnabled);
     for (const QString kind : {QString(),QStringLiteral("agent"),QStringLiteral("coding"),QStringLiteral("future-power"),QStringLiteral("AGENT")}) {
         QJsonObject legacy = root; legacy[QStringLiteral("version")] = 16;
         QJsonObject entry{{QStringLiteral("threadId"),QStringLiteral("legacy-fixture")},{QStringLiteral("explain"),true}};
@@ -237,7 +255,7 @@ void SettingsStoreTests::controlSettingsAndConversationKinds()
         QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly|QIODevice::Truncate));
         file.write(QJsonDocument(legacy).toJson()); file.close();
         const auto migrated = Load(path); QVERIFY(migrated);
-        QVERIFY(!migrated->assistive.agentControlEnabled); QVERIFY(!migrated->assistive.externalMcpEnabled);
+        QVERIFY(migrated->assistive.agentControlEnabled); QVERIFY(!migrated->assistive.externalMcpEnabled);
         const QString expected = kind.isNull() ? QStringLiteral("explain")
             : (kind == QStringLiteral("agent") || kind == QStringLiteral("coding") ? kind : QStringLiteral("assistant"));
         QCOMPARE(migrated->codexConversations.front().kind,expected);

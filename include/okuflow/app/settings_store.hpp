@@ -103,7 +103,7 @@ struct AdvancedConfig {
 // AI / assistive configuration. Values here take precedence; the matching
 // OKUFLOW_* environment variables act as fallbacks when a field is empty.
 struct AssistiveSettings {
-    bool agentControlEnabled{false};
+    bool agentControlEnabled{true};
     bool externalMcpEnabled{false};
     QString aiProvider{QStringLiteral("codex")};
     QString codexExecutablePath;

@@ -2994,8 +2994,8 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <translation>سہولتیں “پڑھیں” اور “وضاحت کریں۔” جوں کی توں رہتی ہیں۔</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>کنٹرول پہلے سے بند ہوتا ہے۔ فعال ہونے پر اسسٹنٹ منظر ایڈجسٹ کر سکتا ہے۔ کیمرے کی تصاویر اور کیپچرز کے لیے الگ اجازت درکار ہے۔ روکنے اور تبدیلی واپس لینے کے لیے Ctrl+Shift+U دبائیں۔</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>فعال ہونے پر اسسٹنٹ منظر ایڈجسٹ کر سکتا ہے۔ کیمرے کی تصاویر اور ویڈیو ریکارڈنگز کے لیے الگ اجازت درکار ہے۔ روکنے اور تبدیلی واپس لینے کے لیے Ctrl+Shift+U دبائیں۔</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>
