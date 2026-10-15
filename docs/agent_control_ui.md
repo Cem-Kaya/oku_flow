@@ -30,8 +30,16 @@ Image-bearing ordinary Explain/follow-up turns display the prepared camera frame
 as a bounded thumbnail. Up to eight previews remain in memory only; local chat
 history, exported history and subsequent text context exclude their bytes.
 
-Attach current view is the current-turn/current-source camera grant beside the
-composer. Photos and control-owned recordings have separate session grants in
+The composer footer places manual Read Aloud at the leading edge, followed by
+flexible space, a compact camera attachment switch and Send. Read Aloud stays
+visible but disabled until a completed answer is available. The switch retains
+native checkbox accessibility, Space activation, a 44px hit target, visible
+keyboard focus and the existing camera-permission tooltip. Its thumb position
+and palette colors distinguish on/off; the row mirrors in right-to-left layouts.
+Tab order follows composer, Read Aloud, attachment, Send. Stop/Undo remain in a
+separate strip only while needed.
+Attach current view is the current-turn/current-source camera grant.
+Photos and control-owned recordings have separate session grants in
 the settings drawer, with the recording-permission reminder. No grant is saved.
 Source changes and retired contexts revoke authority in the app service.
 The drawer also contains external permissions, explicit endpoint tool testing,

@@ -799,7 +799,12 @@ refused drafts, shared draft/attachment/keyboard submission, escaped messages,
 selection, completed-only manual TTS and independent Read presentation.
 It also compares accessible character rectangles with painted cursor lines at
 multiple widths/scroll positions and verifies actual JPEG resources in both chat
-views, aspect ratio and cleanup on New. This offscreen bridge-level check does
+views, aspect ratio and cleanup on New. The compact footer fixture checks
+non-overlapping 360px layouts in both directions/themes, native checkable
+accessibility/Space/full-target activation and composer-to-footer Tab order.
+The shared-chat test also checks the floating window's outer Tab bridge inventory.
+The fixture embeds the production icon resources for meaningful captures.
+This offscreen bridge-level check does
 not replace manual Windows Magnifier/Narrator acceptance. It starts
 no camera/provider/bridge/browser and claims no native focus or screen-reader
 acceptance. Serial disposable Windows native cases remain separate.

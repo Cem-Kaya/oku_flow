@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Move Assistant/Explain Read Aloud into the composer footer and replace the
+  attachment checkbox presentation with a compact camera switch beside Send,
+  preserving native keyboard, screen-reader and current-turn permission behavior.
+
 - Correct Assistant chat text geometry exposed to screen readers by removing
   table-based message layout in both the floating Explain and Advanced views.
   Image-bearing Explain/follow-up turns now show an aspect-preserving frame

@@ -1,5 +1,6 @@
 add_executable(agent_control_panel_tests
     agent_control_panel_tests.cpp
+    ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/color_scheme_picker.hpp
     ${PROJECT_SOURCE_DIR}/src/ui/color_scheme_picker.cpp
     ${PROJECT_SOURCE_DIR}/src/app/color_schemes.cpp

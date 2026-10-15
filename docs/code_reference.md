@@ -2744,11 +2744,9 @@ Namespace `okuflow`
   without discarding the draft. When ready, it sends the current view to the
   shared persistent Assistant conversation. Read Aloud remains manual
   and strips the visible `Read Text` / `Scene Explain` section labels from its speech
-  payload. Read Aloud and the secondary New Conversation action sit directly
-  below the answer, stacking at narrow widths. The question field and Ask
-  form the bottom row. Focus order follows answer, Read Aloud, New Conversation,
-  question, Ask, panel position, and Close. Disabled Ask is visually dimmed;
-  Read Aloud uses a white focus ring against its purple background.
+  payload. Explain uses `AssistantChatView` with New Conversation in its header
+  and a question above the Read Aloud / attachment / Send footer. The separate
+  Read result pane retains its own controls. Disabled submission is visually dimmed.
   The question field handles unmodified Escape directly: its first
   press clears a nonempty draft, and an empty-field press returns focus to the
   camera without dismissing the answer. An active header drag still cancels
@@ -2806,9 +2804,10 @@ Namespace `okuflow`
   - `QRect RelativeGeometry() const`
   - `void SetDockPosition(const QString& position)` — floating/left/right layout;
     `QString DockPosition() const` returns the stable setting token
-  - `std::array<QWidget*, 7> FocusTargets() const` — result text, Read Aloud,
-    question field, Ask, New Conversation, panel position, and Close in
-    reading-first keyboard order for the Simple-mode focus loop
+  - `std::vector<QWidget*> FocusTargets() const` — the Simple-mode outer focus
+    bridge starts at the transcript, then New, question, Read Aloud, attachment,
+    Send, panel position and Close for Explain chat. The legacy separate result
+    list retains its seven controls. The footer order matches native traversal.
 - Signals:
   - `Dismissed()`
   - `ReadAloudRequested(const QString& text)`
@@ -3371,6 +3370,15 @@ clears image-bearing memory and emits one completion. Private `IsCurrent`,
   Finite Explain-origin metadata adds a trusted camera tag.
   `SetConnectionState` and `SetUndoAvailable` mirror app state without authority.
   Accessors expose header, transcript, composer and history actions for binding.
+  The composer footer orders manual Read Aloud, flexible space, attachment and
+  Send; `RefreshActions` keeps Read Aloud visible but disabled without a completed
+  idle answer and reserves the transient action strip for Stop/Undo.
+  The private `ChatAttachmentSwitch` is a `QCheckBox` with fixed 80x44 size hints,
+  a whole-widget `hitButton` and palette-aware `paintEvent` for the bundled camera
+  icon, track, position-changing thumb and focus outline. Native checkable state,
+  Space handling, translated name/tooltip and model bindings are preserved.
+  `RefreshIcons` also refreshes its camera icon. Tab order follows the footer and
+  all geometry mirrors with the layout direction.
   `ChatDraftEdited`, `ChatAttachmentChanged`, `ChatSubmitted`, `ChatNewRequested`,
   `ChatHistoryRequested`, `ChatSelected`, `ChatReadAloudRequested`, Stop/Undo and
   AISettings signals represent explicit UI actions. Enter sends once, Shift+Enter

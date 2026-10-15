@@ -7,6 +7,7 @@
 #include <QEvent>
 #include <QApplication>
 #include <QActionGroup>
+#include <QCheckBox>
 #include <QMenu>
 #include <QTextBlockFormat>
 #include <QHBoxLayout>
@@ -1252,9 +1253,9 @@ void AssistiveOverlay::SetControlRoutingNotice(bool visible, bool canStartContro
 void AssistiveOverlay::ClearQuestionDraft() { if(chatView_)chatView_->composer()->clear();else questionEdit_->clear(); }
 QString AssistiveOverlay::QuestionDraft() const { return chatView_?chatView_->composer()->toPlainText():questionEdit_->text(); }
 
-std::array<QWidget*, 7> AssistiveOverlay::FocusTargets() const
+std::vector<QWidget*> AssistiveOverlay::FocusTargets() const
 {
-    if(chatView_)return {chatView_->transcript(),chatView_->readAloudButton(),chatView_->newButton(),chatView_->composer(),chatView_->sendButton(),dockPositionButton_,closeButton_};
+    if(chatView_)return {chatView_->transcript(),chatView_->newButton(),chatView_->composer(),chatView_->readAloudButton(),chatView_->attachmentCheckbox(),chatView_->sendButton(),dockPositionButton_,closeButton_};
     return {bodyView_, readAloudButton_, newChatButton_, questionEdit_,askButton_,dockPositionButton_,closeButton_};
 }
 

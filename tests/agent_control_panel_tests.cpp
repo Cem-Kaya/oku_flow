@@ -3,6 +3,7 @@
 #include "okuflow/common/visible_chat_session.hpp"
 #include "okuflow/ui/color_scheme_picker.hpp"
 #include "okuflow/ui/ui_translation.hpp"
+#include "okuflow/ui/theme_contrast.hpp"
 #include <QLocale>
 #include <QComboBox>
 #include <QSpinBox>
@@ -30,6 +31,7 @@
 #include <QSignalSpy>
 #include <QTextDocument>
 #include <QtTest>
+#include <algorithm>
 
 using okuflow::AgentControlPanel;
 class AgentControlPanelTests final : public QObject {
@@ -47,6 +49,7 @@ private slots:
     void escapedMessagesSelectionAndReadIsolation();
     void chatAccessibleCharacterGeometry();
     void chatFramePreviewsRenderInBothViews();
+    void compactComposerActions();
     void orientationUsesCanonicalDegrees();
     void customRecipeAbsenceRestoresSilently();
 };
@@ -286,6 +289,14 @@ void AgentControlPanelTests::sharedChatDraftAndKeyboard()
     QTest::keyClick(main.composer(),Qt::Key_Return);
     QCOMPARE(sends.size(),1);
     QVERIFY(model.Complete(*ticket,"done"));
+    // MainWindow's cross-window Tab bridge uses this list, not Qt's local chain.
+    okuflow::AssistiveOverlay overlay;
+    const auto targets=overlay.FocusTargets();
+    const auto question=std::find(targets.begin(),targets.end(),overlay.chatView()->composer());
+    QVERIFY(question!=targets.end());QVERIFY(std::distance(question,targets.end())>=4);
+    QCOMPARE(*(question+1),overlay.chatView()->readAloudButton());
+    QCOMPARE(*(question+2),overlay.chatView()->attachmentCheckbox());
+    QCOMPARE(*(question+3),overlay.chatView()->sendButton());
     QSignalSpy speech(&main,&okuflow::AssistantChatView::ChatReadAloudRequested);
     QCOMPARE(speech.size(),0);
     main.readAloudButton()->click();
@@ -401,6 +412,58 @@ void AgentControlPanelTests::chatFramePreviewsRenderInBothViews()
     model.New();
     QVERIFY(!main.transcript()->toHtml().contains("okuflow-chat-preview-"));
     QVERIFY(!floating.transcript()->toHtml().contains("okuflow-chat-preview-"));
+}
+void AgentControlPanelTests::compactComposerActions()
+{
+    QVERIFY(QFontDatabase::addApplicationFont(QDir(qEnvironmentVariable("WINDIR")).filePath("Fonts/segoeui.ttf"))>=0);
+    const QPalette original=QApplication::palette();
+    const QFont originalFont=QApplication::font();
+    QFont uiFont=originalFont;uiFont.setPointSize(12);QApplication::setFont(uiFont);
+    for(const bool dark:{false,true})for(const bool rtl:{false,true}) {
+        QApplication::setPalette(dark?okuflow::theme_contrast::PinnedDarkPalette(original):original);
+        okuflow::AssistantChatView view;
+        view.setLayoutDirection(rtl?Qt::RightToLeft:Qt::LeftToRight);
+        view.resize(360,700);
+        view.SetChatSnapshot({{"conversationId","composer"},{"draft","A question"},{"messages",QJsonArray{
+            QJsonObject{{"id","a"},{"role","assistant"},{"text","A completed answer."},{"status","completed"},{"complete",true}}
+        }}});
+        view.show();QApplication::processEvents();
+        auto* read=view.readAloudButton();auto* attach=view.attachmentCheckbox();auto* send=view.sendButton();
+        const auto bounds=[&view](QWidget* widget) {return QRect(widget->mapTo(&view,QPoint{}),widget->size());};
+        const auto readRect=bounds(read),attachRect=bounds(attach),sendRect=bounds(send),composerRect=bounds(view.composer());
+        QVERIFY(read->isVisible()&&read->isEnabled());
+        QVERIFY(readRect.top()>composerRect.bottom());
+        QCOMPARE(readRect.center().y(),sendRect.center().y());
+        QCOMPARE(attachRect.center().y(),sendRect.center().y());
+        QVERIFY(!readRect.intersects(attachRect));QVERIFY(!attachRect.intersects(sendRect));
+        QVERIFY(view.rect().contains(readRect)&&view.rect().contains(attachRect)&&view.rect().contains(sendRect));
+        if(rtl)QVERIFY(sendRect.right()<attachRect.left()&&attachRect.right()<readRect.left());
+        else QVERIFY(readRect.right()<attachRect.left()&&attachRect.right()<sendRect.left());
+        QVERIFY(attach->height()>=44);QVERIFY(attach->width()<=84);
+        auto* accessible=QAccessible::queryAccessibleInterface(attach);QVERIFY(accessible);
+        QCOMPARE(accessible->role(),QAccessible::CheckBox);
+        QVERIFY(accessible->state().checkable);QVERIFY(!accessible->state().checked);
+        QVERIFY(!accessible->text(QAccessible::Name).isEmpty());
+        QSignalSpy changes(&view,&okuflow::AssistantChatView::ChatAttachmentChanged);
+        QTest::keyClick(attach,Qt::Key_Space);
+        QVERIFY(attach->isChecked());QVERIFY(accessible->state().checked);QCOMPARE(changes.size(),1);
+        QTest::mouseClick(attach,Qt::LeftButton,Qt::NoModifier,QPoint(2,2));
+        QVERIFY(!attach->isChecked());QCOMPARE(changes.size(),2);
+        const auto nextTab=[](QWidget* from) {
+            auto* next=from->nextInFocusChain();
+            while(next!=from&&(!(next->focusPolicy()&Qt::TabFocus)||!next->isVisible()||!next->isEnabled()))next=next->nextInFocusChain();
+            return next;
+        };
+        QCOMPARE(nextTab(view.composer()),read);
+        QCOMPARE(nextTab(read),attach);QCOMPARE(nextTab(attach),send);
+        const auto evidence=qEnvironmentVariable("OKUFLOW_UI_TEST_SCREENSHOTS");
+        if(!evidence.isEmpty()&&!rtl) {
+            QVERIFY(QDir().mkpath(evidence));
+            QVERIFY(view.grab().save(QDir(evidence).filePath(dark?"chat-composer-dark.png":"chat-composer-light.png")));
+        }
+    }
+    QApplication::setPalette(original);
+    QApplication::setFont(originalFont);
 }
 void AgentControlPanelTests::orientationUsesCanonicalDegrees()
 {

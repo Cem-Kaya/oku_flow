@@ -215,10 +215,12 @@ so. First use positions the panel below the top Simple controls. Position and
 size are stored relative to the camera surface, restored on restart, and
 clamped when the available view changes.
 
-Read Aloud and New Conversation sit directly below the answer, with the
-question and Ask controls below them. The two answer actions stack when a narrow
-floating or docked panel cannot fit their natural widths. Keyboard order follows
-this visual sequence before Panel position and Close.
+Explain chat uses the shared Assistant composer: the question sits above a
+single footer with Read Aloud at the leading edge and a compact camera attachment
+switch beside Send at the trailing edge. The switch and Read Aloud retain native
+keyboard/accessibility behavior; the footer mirrors for right-to-left layouts.
+New Conversation remains in the compact header. Read's separate result pane
+retains its own presentation.
 
 ## Settings Ownership
 

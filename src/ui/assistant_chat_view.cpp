@@ -18,12 +18,14 @@
 #include <QListWidget>
 #include <QLocale>
 #include <QPlainTextEdit>
+#include <QPainter>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QShortcut>
 #include <QSignalBlocker>
+#include <QStyle>
 #include <QTextBrowser>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -35,6 +37,43 @@
 
 namespace okuflow {
 namespace {
+// Keep Qt's checkable accessibility and keyboard behavior, with a compact
+// camera/switch presentation instead of a second long composer label.
+class ChatAttachmentSwitch final : public QCheckBox {
+public:
+    explicit ChatAttachmentSwitch(QWidget* parent=nullptr):QCheckBox(parent)
+    {
+        setText(QStringLiteral("Attach current view"));
+        setMinimumSize(80,44);
+        setSizePolicy(QSizePolicy::Fixed,QSizePolicy::Fixed);
+        setCursor(Qt::PointingHandCursor);
+    }
+    QSize sizeHint() const override {return QSize(80,44);}
+    QSize minimumSizeHint() const override {return sizeHint();}
+protected:
+    bool hitButton(const QPoint& point) const override {return rect().contains(point);}
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);painter.setRenderHint(QPainter::Antialiasing);
+        const auto group=isEnabled()?QPalette::Active:QPalette::Disabled;
+        const auto ink=palette().color(group,QPalette::ButtonText);
+        const auto visual=[this](const QRect& area) {return QStyle::visualRect(layoutDirection(),rect(),area);};
+        icon().paint(&painter,visual(QRect(6,12,20,20)),Qt::AlignCenter,isEnabled()?QIcon::Normal:QIcon::Disabled);
+        const QRect track=visual(QRect(32,10,44,24));
+        const QColor fill=palette().color(group,isChecked()?QPalette::Highlight:QPalette::Button);
+        QColor thumb=palette().color(group,isChecked()?QPalette::HighlightedText:QPalette::ButtonText);
+        if(theme_contrast::ContrastRatio(fill,thumb)<3.0)
+            thumb=theme_contrast::ContrastRatio(fill,Qt::white)>theme_contrast::ContrastRatio(fill,Qt::black)?Qt::white:Qt::black;
+        painter.setPen(QPen(ink,1.5));painter.setBrush(fill);
+        painter.drawRoundedRect(track,12,12);
+        const QRect knob=visual(QRect(isChecked()?55:35,13,18,18));
+        painter.setPen(Qt::NoPen);painter.setBrush(thumb);painter.drawEllipse(knob);
+        if(hasFocus()) {
+            painter.setPen(QPen(ink,2));painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(rect().adjusted(1,1,-1,-1),5,5);
+        }
+    }
+};
 QPushButton* Action(const QString& text,const char* name,QWidget* parent=nullptr)
 {
     auto* button=new QPushButton(text,parent);
@@ -141,7 +180,7 @@ AssistantChatView::AssistantChatView(QWidget* parent):QWidget(parent)
     auto* active=new QHBoxLayout(actionStrip_);active->setContentsMargins(12,2,12,2);
     stop_=Action(QStringLiteral("Stop"),"chatStop");stopUndo_=Action(QStringLiteral("Stop and undo (Ctrl+Shift+U)"),"chatStopUndo");
     readAloud_=Action(QStringLiteral("Read Aloud"),"chatReadAloud");
-    active->addWidget(stop_);active->addWidget(stopUndo_);active->addWidget(readAloud_);active->addStretch(1);
+    active->addWidget(stop_);active->addWidget(stopUndo_);active->addStretch(1);
     root->addWidget(actionStrip_);actionStrip_->hide();
     connect(stop_,&QPushButton::clicked,this,&AssistantChatView::StopRequested);
     connect(stopUndo_,&QPushButton::clicked,this,&AssistantChatView::StopAndUndoRequested);
@@ -162,19 +201,21 @@ AssistantChatView::AssistantChatView(QWidget* parent):QWidget(parent)
     composer_->installEventFilter(this);composer_->setTabChangesFocus(true);
     composer_->setMinimumHeight(64);composer_->setMaximumHeight(82);compose->addWidget(composer_);
     auto* composeActions=new QHBoxLayout;
-    attachment_=new QCheckBox(QStringLiteral("Attach current view"));attachment_->setObjectName(QStringLiteral("chatAttachView"));
+    composeActions->setSpacing(6);
+    composeActions->addWidget(readAloud_);composeActions->addStretch(1);
+    attachment_=new ChatAttachmentSwitch;attachment_->setObjectName(QStringLiteral("chatAttachView"));
     attachment_->setAccessibleName(QStringLiteral("Allow camera views for this turn"));
     attachment_->setToolTip(QStringLiteral("Camera views are sent to the selected provider. This permission ends with the turn or a camera source change."));
-    attachment_->setMinimumHeight(44);attachment_->setChecked(false);composeActions->addWidget(attachment_);composeActions->addStretch(1);
+    attachment_->setChecked(false);composeActions->addWidget(attachment_);
     send_=Action(QStringLiteral("Send"),"chatSend");send_->setIcon(theme_contrast::ThemedIcon(QStringLiteral(":/okuflow/icons/chat-send.svg"),palette().color(QPalette::HighlightedText),palette().color(QPalette::Disabled,QPalette::ButtonText)));send_->setIconSize(QSize(22,22));
     composeActions->addWidget(send_);compose->addLayout(composeActions);root->addWidget(composerArea);
     connect(composer_,&QPlainTextEdit::textChanged,this,[this]{RefreshActions();emit ChatDraftEdited(composer_->toPlainText());});
     connect(attachment_,&QCheckBox::toggled,this,&AssistantChatView::ChatAttachmentChanged);
     connect(send_,&QPushButton::clicked,this,[this]{if(!snapshot_.value("busy").toBool()&&!composer_->toPlainText().trimmed().isEmpty())emit ChatSubmitted(composer_->toPlainText());});
-    const QList<QWidget*> focusOrder{new_,historyButton,settingsButton,transcript_,stop_,stopUndo_,readAloud_,composer_,attachment_,send_};
+    const QList<QWidget*> focusOrder{new_,historyButton,settingsButton,transcript_,stop_,stopUndo_,composer_,readAloud_,attachment_,send_};
     for(int i=1;i<focusOrder.size();++i)QWidget::setTabOrder(focusOrder[i-1],focusOrder[i]);
     QWidget::setTabOrder(history_,rename_);QWidget::setTabOrder(rename_,export_);QWidget::setTabOrder(export_,delete_);
-    RefreshActions();
+    RefreshIcons();RefreshActions();
 }
 void AssistantChatView::SetChatSnapshot(const QJsonObject& value)
 {
@@ -280,7 +321,7 @@ void AssistantChatView::RefreshActions()
     attachment_->setEnabled(!busy||attachment_->isChecked());
     stop_->setVisible(busy);stop_->setEnabled(busy);stopUndo_->setVisible(busy||undoAvailable_);
     bool completed=false;for(const auto row:snapshot_.value("messages").toArray()){const auto message=row.toObject();completed|=message.value("role").toString()=="assistant"&&message.value("status").toString()=="completed"&&message.value("complete").toBool();}
-    readAloud_->setVisible(completed&&!busy);readAloud_->setEnabled(completed&&!busy);actionStrip_->setVisible(busy||undoAvailable_||completed);
+    readAloud_->setEnabled(completed&&!busy);actionStrip_->setVisible(busy||undoAvailable_);
 }
 void AssistantChatView::SetSettingsWidget(QWidget* widget){settingsScroll_->setWidget(widget);}
 void AssistantChatView::SetApprovalWidget(QWidget* widget){approval_=widget;qobject_cast<QVBoxLayout*>(bodyContent_->layout())->addWidget(widget);}
@@ -315,6 +356,7 @@ void AssistantChatView::RefreshIcons()
     const auto icon=[this](const QString& resource,bool send=false){return theme_contrast::ThemedIcon(resource,palette().color(send?QPalette::HighlightedText:QPalette::ButtonText),palette().color(QPalette::Disabled,QPalette::ButtonText));};
     new_->setIcon(icon(QStringLiteral(":/okuflow/icons/chat-new.svg")));
     send_->setIcon(icon(QStringLiteral(":/okuflow/icons/chat-send.svg"),true));
+    attachment_->setIcon(icon(QStringLiteral(":/okuflow/icons/camera.svg")));
     if(auto* history=header_->findChild<QToolButton*>(QStringLiteral("chatHistory")))history->setIcon(icon(QStringLiteral(":/okuflow/icons/chat-history.svg")));
     if(auto* settings=header_->findChild<QToolButton*>(QStringLiteral("chatSettings")))settings->setIcon(icon(QStringLiteral(":/okuflow/icons/chat-settings.svg")));
 }

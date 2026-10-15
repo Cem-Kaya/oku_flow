@@ -10,6 +10,7 @@
 #include "okuflow/ui/agent_control_panel.hpp"
 
 #include <array>
+#include <vector>
 
 QT_BEGIN_NAMESPACE
 class QEvent;
@@ -56,9 +57,9 @@ public:
     QRect RelativeGeometry() const;
     void SetDockPosition(const QString& position);
     QString DockPosition() const;
-    // Reading-first order matching the visual layout: answer, Read Aloud,
-    // New Conversation, question, Ask, panel position, Close.
-    std::array<QWidget*, 7> FocusTargets() const;
+    // Reading-first outer focus bridge; chat footer follows question,
+    // Read Aloud, attachment, Send. The separate result pane keeps its own list.
+    std::vector<QWidget*> FocusTargets() const;
 
 signals:
     void Dismissed();
