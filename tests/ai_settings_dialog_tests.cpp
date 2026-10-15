@@ -117,6 +117,7 @@ class AiSettingsDialogTests final : public QObject {
 private slots:
     void clearedApiKeyRetainsProtectedCredentialId();
     void unavailableVoicePreservesSavedChoice();
+    void assistantControlDefaultsAndSavedOptOut();
     void codexExplainPromptIsEditableAndReturned();
     void serverProviderPreservesHiddenCodexPreferences();
     void codingWorkspaceRejectsInvalidPathThenAcceptsCorrection_data();
@@ -143,6 +144,23 @@ void AiSettingsDialogTests::unavailableVoicePreservesSavedChoice()
     const auto result = dialog.result();
     QCOMPARE(result.ttsVoiceName, initial.ttsVoiceName);
     QCOMPARE(result.ttsVoiceLocale, initial.ttsVoiceLocale);
+}
+
+void AiSettingsDialogTests::assistantControlDefaultsAndSavedOptOut()
+{
+    settings::AssistiveSettings initial;
+    AiSettingsDialog defaults(initial);
+    auto* control = defaults.findChild<QCheckBox*>(QStringLiteral("agentControlEnabled"));
+    auto* external = defaults.findChild<QCheckBox*>(QStringLiteral("externalMcpEnabled"));
+    QVERIFY(control); QVERIFY(external);
+    QVERIFY(control->isChecked()); QVERIFY(!external->isChecked());
+    QVERIFY(defaults.result().agentControlEnabled);
+    control->setChecked(false);
+    const auto disabled = defaults.result();
+    QVERIFY(!disabled.agentControlEnabled);
+    AiSettingsDialog restored(disabled);
+    QVERIFY(!restored.findChild<QCheckBox*>(QStringLiteral("agentControlEnabled"))->isChecked());
+    QVERIFY(!restored.result().agentControlEnabled);
 }
 
 void AiSettingsDialogTests::clearedApiKeyRetainsProtectedCredentialId()
@@ -213,6 +231,7 @@ void AiSettingsDialogTests::codexExplainPromptIsEditableAndReturned()
 void AiSettingsDialogTests::serverProviderPreservesHiddenCodexPreferences()
 {
     settings::AssistiveSettings initial;
+    initial.agentControlEnabled = false;
     initial.codexCodingEnabled = true;
     initial.codexInternetEnabled = true;
     initial.codexWorkspaceDirectory = QStringLiteral("invalid-relative-workspace");
@@ -276,6 +295,7 @@ void AiSettingsDialogTests::codingWorkspaceRejectsInvalidPathThenAcceptsCorrecti
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
     settings::AssistiveSettings initial;
+    initial.agentControlEnabled = false;
     initial.codexCodingEnabled = true;
     initial.codexWorkspaceDirectory = relative
         ? QStringLiteral(".")

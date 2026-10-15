@@ -358,7 +358,7 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
     externalMcpCheckbox_->setChecked(initial.externalMcpEnabled);
     controlForm->addRow(agentControlCheckbox_);
     controlForm->addRow(externalMcpCheckbox_);
-    auto* controlNotice = new QLabel(QStringLiteral("Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U."));
+    auto* controlNotice = new QLabel(QStringLiteral("When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U."));
     controlNotice->setTextFormat(Qt::PlainText);
     controlNotice->setWordWrap(true);
     controlForm->addRow(controlNotice);

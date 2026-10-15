@@ -9,8 +9,8 @@ Development bridges stay outside release inventories.
 arbitration, exact approvals, scoped grants, field revisions, bounded events,
 idempotency, budgets and conflict-aware undo. Providers submit `ControlRequest`
 and receive `ControlResult` callbacks. IPC workers first post onto the GUI
-thread. Only trusted app UI invokes permission/lifetime methods. Master switches
-default off; permission deadlines use a monotonic, fixture-injectable clock.
+thread. Only trusted app UI invokes permission/lifetime methods. The built-in master defaults on and external MCP defaults off; saved choices
+are preserved. Session image/capture grants stay off. Permission deadlines use a monotonic, fixture-injectable clock.
 
 `AppControlTarget` adapts typed fields to existing production transitions.
 It detects no-ops, preserves zoom/pan preset identity, rejects unsupported preset

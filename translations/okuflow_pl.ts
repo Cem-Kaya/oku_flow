@@ -2994,8 +2994,8 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
             <translation>Rozmowy ze sterowaniem nie mogą korzystać z internetu, poleceń dotyczących kodu ani zmieniać plików. Funkcje „Przeczytaj” i „Wyjaśnij” pozostają bez zmian.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>Sterowanie jest domyślnie wyłączone. Po włączeniu Asystent może dostosowywać widok. Obrazy z kamery i zrzuty ekranu wymagają osobnej zgody. Zatrzymaj sterowanie i cofnij zmiany skrótem Ctrl+Shift+U.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Po włączeniu Asystent może dostosowywać widok. Obrazy z kamery i zdjęcia i nagrania wymagają osobnej zgody. Zatrzymaj sterowanie i cofnij zmiany skrótem Ctrl+Shift+U.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

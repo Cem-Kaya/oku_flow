@@ -966,8 +966,10 @@ acceptance. Keep the dedicated agent child independent of Read/Explain history.
 
 Plan 52 is being implemented in an isolated feature worktree. The typed core
 and shared production capture entry points have desktop-free fixtures; this is
-not a published MCP API or completed Assistant-control feature. Master switches
-default off. Settings schema 17 records only switches and conversation kind/
+not a published MCP API or completed Assistant-control feature. Built-in
+Assistant control defaults on; External MCP control defaults off.
+Saved version-17 choices are preserved. Missing keys and pre-control settings
+use these defaults. Settings schema 17 records only switches and conversation kind/
 toolset; session grants, approvals, leases, operations and undo never persist.
 Unknown conversation kinds are tool-free. Unsaved changes remain live until
 exit; restart loads the last successfully committed settings file.
@@ -986,7 +988,8 @@ Build `agent_control_capture` explicitly and run `--output` with an absolute
 LocalAppData evidence folder. It constructs production Qt widgets with fixture
 settings, forces offscreen and registers installed Segoe UI. The 1672×941 state
 matches the approved chat-first concept: chat, contextual photo approval, settings
-drawer and separate default-off AI Settings masters. It creates no app service,
+drawer and separate AI Settings masters. The built-in control default is on;
+external MCP remains off. It creates no app service,
 provider, camera or owner foreground window. Actual native widget peers are
 composed without repairing pixels. Preserve raw originals and compare the same
 viewport/state before recording visual findings. This does not replace native

@@ -3314,10 +3314,14 @@ that session. `CurrentSessionInfo` retains identity through stopping/finalizing.
 `RecordingSessionCompletion`, owner id and actual audio; queued completions
 report the ended session rather than querying a replacement.
 
-Settings version 17 adds default-off `agentControlEnabled`/`externalMcpEnabled`,
+Settings version 17 records `agentControlEnabled` (default true) and
+`externalMcpEnabled` (default false),
 conversation `kind` and `toolsetVersion`. `EffectiveConversationKind` infers
 legacy Explain only for absent/unassigned kind and maps unknown values to
-tool-free Assistant. Version-16 loading never restores new control switches.
+tool-free Assistant. `AssistiveSettings` and `AssistiveFromJson` use these
+defaults for missing control keys. Pre-version-17 loading ignores unsupported
+control keys and uses the same defaults; version-17 explicit true/false values
+survive loading and saving. Camera/capture grants remain transient and off.
 `agent_control_contract`, `settings_store_round_trip` and `recording_manager`
 exercise malformed arguments, deduplication, approval replacement, cancellation,
 user edits, safe durable outcomes and exact-session stop without windows.

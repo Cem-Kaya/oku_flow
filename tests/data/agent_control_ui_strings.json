@@ -71,7 +71,7 @@
   },
   {
     "key": "agent_ui_17",
-    "source": "Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.",
+    "source": "When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.",
     "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
   },
   {

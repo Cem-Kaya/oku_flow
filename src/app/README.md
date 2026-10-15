@@ -31,8 +31,8 @@ Microphone capture runs only while recording and sends PCM to the recorder.
 Obsolete recording settings are ignored on load and omitted on save; there is
 no settings migration.
 
-Agent control is in development under agent/ (plan 52), with default-off
-switches and desktop-free core fixtures. app_agent_capture.cpp owns named photo,
+Agent control is in development under agent/ (plan 52), with built-in
+Assistant control on by default, external MCP off, and desktop-free core fixtures. app_agent_capture.cpp owns named photo,
 recording-admission and exact-session stop methods shared by native buttons and
 typed adapters. Recording admission precedes microphone acquisition; callbacks
 retain operation/session identity through finalization. This is not a published

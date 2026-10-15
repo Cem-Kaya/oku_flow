@@ -2994,8 +2994,8 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
             <translation>Steuerungsgespräche können nicht auf das Internet zugreifen, Codebefehle ausführen oder Dateien ändern. Lesen und Erklären bleiben unverändert.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>Die Steuerung ist standardmäßig ausgeschaltet. Wenn sie eingeschaltet ist, kann der Assistent die Ansicht anpassen. Kamerabilder und Aufnahmen benötigen eine separate Berechtigung. Mit Ctrl+Shift+U stoppen und rückgängig machen.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Ist die Steuerung aktiviert, kann der Assistent die Ansicht anpassen. Kamerabilder und Fotos oder Aufnahmen benötigen eine separate Berechtigung. Mit Ctrl+Shift+U die Steuerung stoppen und Änderungen rückgängig machen.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

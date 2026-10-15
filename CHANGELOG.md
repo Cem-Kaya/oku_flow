@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Enable built-in Assistant control by default for new and pre-control settings.
+  Preserve saved on/off choices and keep external MCP and camera/capture grants
+  separate. Update the control explanation in all 24 translated catalogs.
+
 - Repair Assistant control readiness routing, one-shot tool-free fallback,
   synchronized connection status and floating chat keyboard navigation. Show
   bounded memory-only image previews for authorized control turns as well.

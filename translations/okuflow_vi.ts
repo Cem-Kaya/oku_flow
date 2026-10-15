@@ -2994,8 +2994,8 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
             <translation>Các cuộc trò chuyện điều khiển không thể truy cập Internet, chạy lệnh lập trình hoặc sửa tệp. Tính năng Đọc và Giải thích vẫn giữ nguyên.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>Điều khiển mặc định đang tắt. Khi bật, Trợ lý có thể điều chỉnh khung nhìn. Hình ảnh camera và ảnh chụp cần quyền riêng. Nhấn Ctrl+Shift+U để dừng và hoàn tác.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Khi bật, Trợ lý có thể điều chỉnh khung nhìn. Hình ảnh camera và ảnh chụp cần quyền riêng. Nhấn Ctrl+Shift+U để dừng và hoàn tác.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

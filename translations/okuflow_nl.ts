@@ -2994,8 +2994,8 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
             <translation>Gesprekken met bediening kunnen geen internettoegang, codeeropdrachten of bestandswijzigingen gebruiken. De functies Lees en Leg uit blijven ongewijzigd.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>Bediening staat standaard uit. Als je dit inschakelt, kan de Assistent de beeldweergave aanpassen. Voor camerabeelden en schermafbeeldingen is aparte toestemming nodig. Stop de bediening en maak wijzigingen ongedaan met Ctrl+Shift+U.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Als je dit inschakelt, kan de Assistent de beeldweergave aanpassen. Voor camerabeelden en foto’s en opnamen is aparte toestemming nodig. Stop de bediening en maak wijzigingen ongedaan met Ctrl+Shift+U.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

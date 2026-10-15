@@ -2994,8 +2994,8 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
             <translation>Percakapan kontrol tidak dapat mengakses internet, menjalankan perintah coding, atau mengubah file. Fitur Baca dan Jelaskan tetap seperti semula.</translation>
         </message>
         <message>
-            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
-            <translation>Kontrol nonaktif secara default. Saat diaktifkan, Asisten dapat menyesuaikan tampilan. Gambar kamera dan foto memerlukan izin terpisah. Tekan Ctrl+Shift+U untuk menghentikan dan membatalkan tindakan.</translation>
+            <source>When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Saat diaktifkan, Asisten dapat menyesuaikan tampilan. Gambar kamera dan foto memerlukan izin terpisah. Tekan Ctrl+Shift+U untuk menghentikan dan membatalkan tindakan.</translation>
         </message>
         <message>
             <source>Controlling OkuFlow needs its own conversation.</source>

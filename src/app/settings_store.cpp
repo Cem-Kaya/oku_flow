@@ -484,7 +484,8 @@ QJsonObject AssistiveToJson(const AssistiveSettings& assistive)
 AssistiveSettings AssistiveFromJson(const QJsonObject& object)
 {
     AssistiveSettings assistive;
-    assistive.agentControlEnabled = object.value(QStringLiteral("agentControlEnabled")).toBool(false);
+    assistive.agentControlEnabled = object.value(QStringLiteral("agentControlEnabled"))
+                                       .toBool(assistive.agentControlEnabled);
     assistive.externalMcpEnabled = object.value(QStringLiteral("externalMcpEnabled")).toBool(false);
     assistive.aiProvider = object.value(QStringLiteral("aiProvider")).toString(assistive.aiProvider);
     assistive.codexExecutablePath = object.value(QStringLiteral("codexExecutablePath")).toString();
@@ -801,7 +802,7 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
 
     settings.assistive = AssistiveFromJson(root.value(QStringLiteral("assistive")).toObject());
     if (version < 17) {
-        settings.assistive.agentControlEnabled = false;
+        settings.assistive.agentControlEnabled = AssistiveSettings{}.agentControlEnabled;
         settings.assistive.externalMcpEnabled = false;
     }
 
