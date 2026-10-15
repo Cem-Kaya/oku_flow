@@ -1038,3 +1038,8 @@ Turn that native intent off through its native control before changing those
 preferences. The separate scoped scene tool remains context/frame-budget
 bound. Native editor strings above finite wire limits remain unchanged;
 values too large for a projection explicitly require native UI inspection.
+
+Release manifest freshness preserves the typed UTC timestamp returned by
+PowerShell JSON parsing. Run `pwsh -NoProfile -File scripts/test_publication_time.ps1`
+after changing publisher timestamp handling; its offline fixtures cover UTC,
+explicit offsets, JSON date conversion and rejection of ambiguous timestamps.
