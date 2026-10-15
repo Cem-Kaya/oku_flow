@@ -577,11 +577,22 @@ ctest --preset msvc-cuda-tests
 
 `cuda_architecture_coverage` needs no GPU: it runs `cuobjdump --list-elf`
 on the built application and fails unless a native cubin exists for every
-architecture in `CUDA_ARCHITECTURES` (`sm_75` through `sm_121`). A missing
-architecture (for example Blackwell `sm_120`) otherwise surfaces only as
-kernel-launch failures on that hardware; the shipped fatbin has no PTX
-fallback. The expected list lives in `tests/CMakeLists.txt` beside the
-CUDA test targets and must stay in sync with `cmake/CMakeLists.txt`.
+architecture in the selected inventory (`sm_61` is included with CUDA 12.9).
+A missing native image (for example Pascal `sm_61` or Blackwell `sm_120`)
+can otherwise leave kernel launches dependent on driver/PTX compatibility.
+The gate requires native cubins regardless of embedded PTX.
+`cmake/CudaTargets.cmake` supplies the expected inventory and every
+CUDA target. `cuda_target_policy` checks both toolkit branches without a GPU.
+CUDA 12.9 includes `sm_61`; CUDA 13 deliberately excludes it.
+
+`cuda_toolchain_benchmark` is an explicit `EXCLUDE_FROM_ALL` target, never a
+CTest case or CI/release gate. It measures 20 production linear-kernel stages
+at 1080p and 4K using CUDA events (20 warmups, 31 batches of 10), reports median
+and p95 GPU time, host submission median and output checksums. Inputs are
+deterministic; allocations/transfers/readback are outside timing. It uses no
+camera, phone, provider, Maxine or native window. The one-time toolchain report
+in `docs/cuda_toolchain_comparison.md` records compiler flags, hardware,
+correctness checks and limitations; no automatic recurring benchmark is added.
 
 `text_clarity_sauvola_cuda` launches the production Sauvola mask kernel on
 pitched, generated luma and independent local-statistics fixtures. It checks

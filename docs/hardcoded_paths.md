@@ -129,12 +129,18 @@ documented Qt 6.12.0 SDK; `-QtPrefix` overrides it.
   proprietary libraries or model files.
 - Preferred environment variable: `%CUDA_PATH%`
 - Secondary probe: `%CUDA_PATH_V*%`
-- Hard-coded CUDA architectures in `cmake/CMakeLists.txt` (mirrored in the
-  presets and CUDA test targets): `75;80;86;89;90;100;103;120;121` — every
-  non-Jetson architecture the CUDA 13 toolkit can target, from Turing
-  (GTX 16/RTX 20) through Blackwell (`sm_120`, RTX 50) and GB10 (`sm_121`,
-  DGX Spark). CUDA 13 removed Maxwell/Pascal/Volta, so GTX 900/10-series
-  and Titan V cannot be targeted without returning to a CUDA 12.x toolkit.
+- `cmake/CudaTargets.cmake` selects one shared native architecture inventory:
+  CUDA 12.9: `61;75;80;86;89;90;100;103;120;121`; CUDA 13:
+  `75;80;86;89;90;100;103;120;121`. The application, CUDA fixtures and cubin
+  inventory all consume it. `sm_61` covers the intended GTX 1070 test system;
+  it does not establish hardware acceptance or add Maxwell/Volta targets.
+- `OKUFLOW_CUDA_TOOLKIT_ROOT` selects an explicit toolkit for a fresh build
+  directory. Without it normal CMake CUDA discovery must resolve CUDA 12.9;
+  CUDA 13 requires an explicit comparison root. The local
+  side-by-side CUDA 12.9.2 developer installation is under
+  `%LOCALAPPDATA%/OkuFlow/toolchains/cuda-12.9.2/toolkit`, assembled from
+  NVIDIA's SHA-256-verified Windows component archives. CUDA 13.4 and the
+  NVIDIA driver remain unchanged; no toolkit is shipped with the app.
   No PTX fallback is embedded; `cuda_architecture_coverage` (CTest) checks
   the built executable carries a cubin for each listed architecture.
 - The Windows target uses the static CUDA runtime, so release bundling does not

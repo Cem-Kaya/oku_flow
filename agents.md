@@ -528,3 +528,15 @@ aligned with the project goals.
   not consent or an endpoint. Verify only reviewed Windows imports with VS2022
   dumpbin. Run `scripts/test_mcp_bundle.ps1` and `test_bundle_layout.ps1` after
   contract changes; synthetic passes do not establish release or guest acceptance.
+
+## CUDA 12 compatibility and one-time compiler comparison
+- CUDA 12.9 builds add Pascal `sm_61` for GTX 10-series testing. Keep the
+  application, fixtures and cubin inventory on `cmake/CudaTargets.cmake`;
+  CUDA 13 must never request a removed Pascal target.
+- Use an explicit `OKUFLOW_CUDA_TOOLKIT_ROOT` and fresh cache for side-by-side
+  toolkit builds. Do not replace the owner's NVIDIA driver to install a toolkit.
+  CUDA 12.9 is the default; CUDA 13 requires an explicitly selected comparison
+  root and must never be silently selected by normal discovery.
+- The CUDA toolchain benchmark is opt-in, excluded from default builds and
+  CTest. Its one-time comparison is not a recurring validation requirement.
+  Compiler/cubin coverage on RTX hardware is not physical GTX 1070 acceptance.

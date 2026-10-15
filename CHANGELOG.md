@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Default to CUDA 12.9 for compatibility builds, with native Pascal `sm_61`
+  code for GTX 10-series testing alongside modern RTX targets. CUDA 13 remains
+  explicitly selectable for comparisons. Added an opt-in one-time compiler /
+  kernel comparison; GTX 1070 device acceptance remains separate.
+
 - Preserve selection and scrolling in approval Details during countdown and
   service-event refreshes, while still replacing changed review contents.
 - Request temporary camera restoration before canceling the owning agent/lease,

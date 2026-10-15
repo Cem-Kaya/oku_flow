@@ -273,6 +273,15 @@ set "QT_PREFIX=%QT_ROOT%"
 exit /b 0
 
 :resolve_cuda_license
+if defined OKUFLOW_CUDA_TOOLKIT_ROOT (
+    if exist "%OKUFLOW_CUDA_TOOLKIT_ROOT%\EULA.txt" set "CUDA_LICENSE_PATH=%OKUFLOW_CUDA_TOOLKIT_ROOT%\EULA.txt"
+    if not defined CUDA_LICENSE_PATH if exist "%OKUFLOW_CUDA_TOOLKIT_ROOT%\LICENSE" set "CUDA_LICENSE_PATH=%OKUFLOW_CUDA_TOOLKIT_ROOT%\LICENSE"
+    if not defined CUDA_LICENSE_PATH (
+        echo ERROR: The explicitly selected OkuFlow CUDA toolkit has no license.
+        exit /b 1
+    )
+    exit /b 0
+)
 if defined CUDA_PATH if exist "%CUDA_PATH%\EULA.txt" set "CUDA_LICENSE_PATH=%CUDA_PATH%\EULA.txt"
 if not defined CUDA_LICENSE_PATH if defined CUDAToolkit_ROOT if exist "%CUDAToolkit_ROOT%\EULA.txt" set "CUDA_LICENSE_PATH=%CUDAToolkit_ROOT%\EULA.txt"
 rem Recent toolkits install the same license material as LICENSE.

@@ -9,6 +9,10 @@ system defaults, RTL behavior and remaining native-speaker/device acceptance.
 [GitHub Windows checks](../tests/README.md#github-actions-away-from-the-owner-desktop)
 describes remote CPU/GUI validation, selectable diagnostics and evidence artifacts.
 
+[One-time CUDA toolchain comparison](cuda_toolchain_comparison.md) records
+CUDA 12.9/13.4 kernel measurements, the two tested MSVC compilers, Pascal
+build coverage and the separate physical GTX 1070 acceptance requirement.
+
 [Translation review continuation](localization_review_2026-10-14.md) records
 the complete assigned Luna catalog scopes, failed-attempt recovery, per-language
 correction counts, rejected proposals and local validation limits.

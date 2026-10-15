@@ -1,6 +1,6 @@
 # Asserts that the built application embeds native SASS for every CUDA
 # architecture OkuFlow claims to support. A missing architecture only fails
-# at kernel-launch time on that hardware (no PTX fallback is shipped), so
+# at kernel-launch time or depend on driver/PTX compatibility, so
 # this inventory check runs on the build machine instead. Invoke with:
 #   cmake -DOKUFLOW_CUOBJDUMP=<cuobjdump> -DOKUFLOW_EXECUTABLE=<exe>
 #         -DOKUFLOW_EXPECTED_ARCHS=75,80,... -P check_cuda_architectures.cmake

@@ -1,0 +1,11 @@
+# One architecture inventory for the application and every CUDA fixture.
+function(okuflow_select_cuda_architectures compiler_version output)
+    if(compiler_version VERSION_LESS 12.9)
+        message(FATAL_ERROR "OkuFlow requires CUDA Toolkit 12.9 or newer")
+    endif()
+    set(architectures 75 80 86 89 90 100 103 120 121)
+    if(compiler_version VERSION_LESS 13.0)
+        list(PREPEND architectures 61)
+    endif()
+    set(${output} "${architectures}" PARENT_SCOPE)
+endfunction()

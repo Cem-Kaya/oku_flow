@@ -85,6 +85,12 @@ retains the separate terms and redistribution requirements below.
 ## NVIDIA CUDA Toolkit
 - Upstream: <https://developer.nvidia.com/cuda-toolkit>
 - License: NVIDIA CUDA Toolkit EULA
+- Side-by-side developer comparison uses NVIDIA's official CUDA 12.9.2
+  component ZIPs (including nvcc 12.9.86), verified against its redistrib
+  manifest. Component notices remain beside the local install; the exact
+  compiler-package `LICENSE` is retained at the assembled toolkit root for
+  release notice staging. No compiler, toolkit archive or new third-party
+  implementation is added to the repository or application payload.
 - OkuFlow redistribution scope:
   - CUDA-enabled builds link `cudart_static` into `oku_flow.exe`
   - no standalone CUDA Toolkit runtime DLLs, headers, compilers, or developer

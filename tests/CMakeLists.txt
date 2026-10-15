@@ -1,5 +1,7 @@
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test)
 include(gui_cases.cmake)
+add_test(NAME cuda_target_policy
+    COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/cuda_target_policy.cmake")
 
 add_executable(deadline_worker_tests deadline_worker_tests.cpp)
 target_include_directories(deadline_worker_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
@@ -765,7 +767,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     target_include_directories(yuv_color_cuda_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(yuv_color_cuda_tests PRIVATE CUDA::cudart_static)
     set_target_properties(yuv_color_cuda_tests PROPERTIES
-        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121")
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}")
     add_test(NAME yuv_color_conversion_cuda COMMAND yuv_color_cuda_tests)
     set_tests_properties(yuv_color_conversion_cuda PROPERTIES
         TIMEOUT 30 SKIP_RETURN_CODE 77 LABELS "gpu")
@@ -777,7 +779,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     target_include_directories(text_clarity_cuda_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(text_clarity_cuda_tests PRIVATE CUDA::cudart_static)
     set_target_properties(text_clarity_cuda_tests PROPERTIES
-        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121")
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}")
     add_test(NAME text_clarity_sauvola_cuda COMMAND text_clarity_cuda_tests)
     set_tests_properties(text_clarity_sauvola_cuda PROPERTIES
         TIMEOUT 30 SKIP_RETURN_CODE 77 LABELS "gpu")
@@ -793,7 +795,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     set_target_properties(stabilization_cuda_tests PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
+        CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}"
     )
     add_test(NAME stabilization_similarity_cuda
              COMMAND stabilization_cuda_tests)
@@ -814,7 +816,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     set_target_properties(spatial_upscaler_cuda_tests PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
+        CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}"
     )
     add_test(NAME spatial_upscaler_reference_cuda
              COMMAND spatial_upscaler_cuda_tests)
@@ -835,7 +837,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     set_target_properties(stabilization_replay_cuda PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
+        CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}"
     )
 
     add_test(NAME stabilization_replay_regression
@@ -851,17 +853,17 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
         LABELS "gpu"
     )
 
-    # The fatbin must carry native SASS for every supported architecture;
-    # a missing one only fails at kernel launch on that hardware. Keep this
-    # list in sync with CUDA_ARCHITECTURES in cmake/CMakeLists.txt.
+    # Require native SASS independently of driver/PTX compatibility.
+    # The inventory is selected once by cmake/CudaTargets.cmake.
     find_program(OKUFLOW_CUOBJDUMP NAMES cuobjdump
         HINTS ${CUDAToolkit_BIN_DIR} "$ENV{CUDA_PATH}/bin")
     if(OKUFLOW_CUOBJDUMP)
+        string(JOIN "," expected_cuda_architectures ${OKUFLOW_CUDA_ARCHITECTURES})
         add_test(NAME cuda_architecture_coverage
             COMMAND ${CMAKE_COMMAND}
                 "-DOKUFLOW_CUOBJDUMP=${OKUFLOW_CUOBJDUMP}"
                 "-DOKUFLOW_EXECUTABLE=$<TARGET_FILE:oku_flow>"
-                "-DOKUFLOW_EXPECTED_ARCHS=75,80,86,89,90,100,103,120,121"
+                "-DOKUFLOW_EXPECTED_ARCHS=${expected_cuda_architectures}"
                 -P "${PROJECT_SOURCE_DIR}/tests/check_cuda_architectures.cmake")
         set_tests_properties(cuda_architecture_coverage PROPERTIES TIMEOUT 60)
     endif()

@@ -1,5 +1,21 @@
 # OkuFlow Code Reference
 
+## CUDA toolkit selection and one-time comparison
+
+`cmake/CudaTargets.cmake::okuflow_select_cuda_architectures` selects the shared
+application/fixture/cubin inventory from the actual compiler version, adding
+Pascal `sm_61` for CUDA 12.9 while retaining the modern targets in CUDA 13.
+`OKUFLOW_CUDA_TOOLKIT_ROOT` optionally pins the compiler and FindCUDAToolkit
+root before language initialization; switching toolkits requires a fresh cache.
+Normal discovery refuses CUDA 13 rather than silently changing the CUDA 12.9
+default. CUDA 13 remains available through an explicit comparison root.
+`tests/cuda_toolchain_benchmark.cu::{Check,Buffer,Events,Percentile,Measure,RunSize}`
+implements the opt-in, desktop-free one-time production-kernel comparison.
+`Measure` excludes allocation/upload/readback from CUDA-event timing and emits
+JSONL timing/identity/checksum records. It is not in default builds or CTest.
+The bundle's `resolve_cuda_license` label prioritizes this explicit root and
+refuses a missing selected-toolkit license instead of staging another version.
+
 ## Windows release orchestration
 
 `scripts/publish_windows_release.ps1` invokes the tracked shipping/CPU/CUDA and

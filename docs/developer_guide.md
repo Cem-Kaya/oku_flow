@@ -110,7 +110,15 @@ CUDA is the processing path; the CPU effects pipeline is deprecated. When the D3
 - Visual Studio 2022 with the Desktop C++ workload and Windows SDK.
 - Qt 6.12.0 for `msvc2022_64`, or matching overrides via `QT_PREFIX` / `Qt6_DIR`.
 - CMake 3.23 or newer.
-- NVIDIA GPU plus CUDA Toolkit 13.x if you want the CUDA path.
+- NVIDIA GPU plus CUDA Toolkit 12.9 if you want the default CUDA path.
+  CUDA 12.9 is the compatibility build for Pascal GTX 10-series (`sm_61`)
+  through RTX 50-series. CUDA 13 comparison builds require an explicit toolkit
+  root and retain Turing and newer targets; normal discovery cannot silently
+  select CUDA 13.
+  Physical GTX 1070 acceptance remains separate from compilation coverage.
+  `OKUFLOW_CUDA_TOOLKIT_ROOT` optionally selects a side-by-side toolkit in a
+  fresh build directory. See the [one-time toolchain comparison](cuda_toolchain_comparison.md)
+  for measured kernel results and the portable local installation.
 - Optional: NVIDIA Video Effects runtime for Maxine SuperRes and Codex CLI
   for subscription-backed Read, Explain, and Assistant features. OkuFlow
   offers verified vendor downloads through `Setup & Downloads`.
