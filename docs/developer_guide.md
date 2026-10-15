@@ -147,6 +147,10 @@ If Windows reports missing `Qt6*.dll` files, add the Qt `bin` directory to `PATH
 
 Routine checks now run in [GitHub Actions](https://github.com/Cem-Kaya/oku_flow/actions/workflows/windows-checks.yml)
 on a disposable Windows VM, including a CPU build and serial native GUI tests.
+MSVC setup uses Microsoft's installed Visual Studio 2022 developer shell through
+`scripts/initialize_windows_ci_toolchain.ps1`, exporting its x64 environment to
+later Actions steps without a JavaScript setup-action dependency. Android host
+protocol checks use the explicit `ubuntu-24.04` image rather than a moving alias.
 The Actions page also permits individual GUI groups/two-case diagnostics and
 stores logs, JUnit and screenshots as artifacts. This does not use the owner's
 desktop or establish CUDA/physical-device acceptance; see

@@ -406,7 +406,13 @@ so metadata generation cannot silently accept an incomplete copy.
   runs only an explicitly named recorded interruption once. Whole resumes rerun
   optional skips. A missing/mismatched result cannot complete the gate.
 - `.github/workflows/windows-checks.yml` installs the pinned Qt/MSVC toolchain,
-  builds the CPU preset and runs background/native GUI checks on a disposable
+  using `scripts/initialize_windows_ci_toolchain.ps1` to discover only VS 2022
+  with `vswhere`, invoke Microsoft's installed developer PowerShell for x64,
+  verify the compiler belongs to that installation, and export changed environment
+  values through the Actions environment file. `-EnvironmentFile` permits a
+  private desktop-free validation file; no JavaScript action is required for MSVC.
+  The Android host job pins `ubuntu-24.04` to avoid moving-image migrations.
+  The workflow builds the CPU preset and runs background/native GUI checks on a disposable
   GitHub Windows VM. `scripts/run_windows_ci_gui.ps1` refuses local execution;
   `OkuFlowCiDesktop.InputName()` reads the native input desktop with an exact
   scoped handle, refusing session 0, noninteractive/locked desktops and Qt

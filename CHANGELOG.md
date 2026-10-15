@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Remove the deprecated Node 20 MSVC setup action from Windows CI by using
+  Microsoft's installed Visual Studio 2022 developer shell directly. Pin Android
+  host checks to Ubuntu 24.04 instead of the moving latest-image alias.
+
 - Default to CUDA 12.9 for compatibility builds, with native Pascal `sm_61`
   code for GTX 10-series testing alongside modern RTX targets. CUDA 13 remains
   explicitly selectable for comparisons. Added an opt-in one-time compiler /

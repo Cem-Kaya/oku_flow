@@ -32,6 +32,10 @@ directory and takes its actual prefix from `QT_ROOT_DIR`. It pins aqtinstall to
 repository layout. CI logs/screenshots go under `RUNNER_TEMP/okuflow-evidence`,
 never the owner's desktop or fixture settings. Action commits are pinned in the
 workflow; update them deliberately with CI validation.
+MSVC setup discovers only Visual Studio 2022 (`[17.0,18.0)`) and uses its installed
+`Common7/Tools/Launch-VsDevShell.ps1` with x64 host/target. Android host protocol
+checks pin `ubuntu-24.04`; review that image deliberately rather than inheriting
+`ubuntu-latest` migrations.
 The native GUI runner requests a 1920×1080 display because fixtures include
 1600-pixel windows. This changes only the disposable GitHub VM's current mode,
 before inventory hashing; it is guarded against local invocation and does not

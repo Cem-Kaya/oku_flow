@@ -16,9 +16,11 @@ or runtime service dependency. See [localization provenance and validation](loca
 ## Development-only GitHub automation
 
 The Windows workflow uses commit-pinned `actions/checkout`, `actions/setup-python`,
-`actions/upload-artifact`, `jurplel/install-qt-action` and `ilammy/msvc-dev-cmd`.
+`actions/upload-artifact` and `jurplel/install-qt-action`.
 These actions and the Qt downloader `aqtinstall` are MIT-licensed development
 tools executed on GitHub runners, not added to OkuFlow release inventories.
+MSVC initialization invokes the runner's installed Microsoft Visual Studio
+developer shell directly; no third-party MSVC setup action is downloaded.
 Their upstream licenses remain in their action repositories; downloaded Qt
 retains the separate terms and redistribution requirements below.
 

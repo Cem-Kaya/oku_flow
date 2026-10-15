@@ -540,3 +540,11 @@ aligned with the project goals.
 - The CUDA toolchain benchmark is opt-in, excluded from default builds and
   CTest. Its one-time comparison is not a recurring validation requirement.
   Compiler/cubin coverage on RTX hardware is not physical GTX 1070 acceptance.
+
+## CI toolchain setup and runner images
+- Initialize hosted MSVC with `scripts/initialize_windows_ci_toolchain.ps1` and
+  Microsoft's installed VS 2022 developer shell. Keep discovery restricted to
+  17.x and export its x64 environment to later steps; do not restore a deprecated
+  Node-based MSVC setup action or suppress its runtime warning.
+- Android host protocol checks pin Ubuntu 24.04. Review runner-image migrations
+  explicitly rather than inheriting the moving `ubuntu-latest` alias.
