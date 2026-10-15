@@ -1,0 +1,162 @@
+[
+  {
+    "key": "agent_chat_01",
+    "source": "New",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_02",
+    "source": "History",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_03",
+    "source": "Assistant settings",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_04",
+    "source": "Assistant Connection",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_05",
+    "source": "Assistant Conversation",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_06",
+    "source": "Assistant Question",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_07",
+    "source": "Assistant History",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_08",
+    "source": "Details",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_09",
+    "source": "&Allow once",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_10",
+    "source": "Activity log",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_11",
+    "source": "About control",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_12",
+    "source": "Send this camera view to the selected provider?",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_13",
+    "source": "Take a photo of this view?",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_14",
+    "source": "Start recording this view?",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_15",
+    "source": "Stop this recording?",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_16",
+    "source": "Stop the recording started at %1?",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_17",
+    "source": "Rotate the camera view to %1°?",
+    "context": "Native exact approval question. Rotate displayed camera CONTENT to the absolute clockwise angle %1 degrees (0/90/180/270), not by a relative increment, and do not imply physical movement or optical camera/gimbal change. Only explicit Allow once button executes immutable args; text is a question with no authority. Preserve %1, ° and question intent."
+  },
+  {
+    "key": "agent_chat_18",
+    "source": "Switch camera source?",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_19",
+    "source": "Review this action?",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_20",
+    "source": "Permission request %1: %2",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_21",
+    "source": "Expires in %1 seconds",
+    "context": "Native Qt chat-only Assistant redesign. New starts a conversation; History opens a drawer; settings contains nonpersisted capture grants, external leases, About control, Activity log; AI Settings alone owns persisted master switches. Assistant Connection/Conversation/Question/History are accessible roles, not commands. Approval question is HUMAN display only; only Allow once or Deny button can authorize exact immutable action. Preserve %N and one & mnemonic. ° is absolute clockwise content orientation angle, not optical camera motion. Translate naturally, do not imply chat text grants consent."
+  },
+  {
+    "key": "agent_chat_22",
+    "source": "The request could not finish.",
+    "context": "Native chat assistant message failure footer. Fixed app text when provider request fails; do not reveal raw diagnostics or imply completion. Partial text stays visible; only completed messages can be read aloud."
+  },
+  {
+    "key": "agent_chat_23",
+    "source": "Request stopped",
+    "context": "Native chat interrupted/canceled assistant message footer. User Stop or cancel ended the request; partial text remains, not a completed answer. No new request auto-started."
+  },
+  {
+    "key": "agent_chat_24",
+    "source": "View updated: %1",
+    "context": "First-party native chat action receipt, NOT model text or tool arguments. %1 is a localized allowlisted field/value list from app-owned execution or conflict-aware undo. View updated means actual applied changes. Restored reports fields actually undone; Skipped reports fields the user changed so undo did not overwrite them. Settings saving failure does NOT imply applied view changes were rolled back. Action completed/failed are bounded operation outcomes; Permission denied means no approved action executed. Preserve %1 and meaning; no paths/accounts/raw JSON."
+  },
+  {
+    "key": "agent_chat_25",
+    "source": "Restored: %1",
+    "context": "First-party native chat action receipt, NOT model text or tool arguments. %1 is a localized allowlisted field/value list from app-owned execution or conflict-aware undo. View updated means actual applied changes. Restored reports fields actually undone; Skipped reports fields the user changed so undo did not overwrite them. Settings saving failure does NOT imply applied view changes were rolled back. Action completed/failed are bounded operation outcomes; Permission denied means no approved action executed. Preserve %1 and meaning; no paths/accounts/raw JSON."
+  },
+  {
+    "key": "agent_chat_26",
+    "source": "Skipped: %1",
+    "context": "First-party native chat action receipt, NOT model text or tool arguments. %1 is a localized allowlisted field/value list from app-owned execution or conflict-aware undo. View updated means actual applied changes. Restored reports fields actually undone; Skipped reports fields the user changed so undo did not overwrite them. Settings saving failure does NOT imply applied view changes were rolled back. Action completed/failed are bounded operation outcomes; Permission denied means no approved action executed. Preserve %1 and meaning; no paths/accounts/raw JSON."
+  },
+  {
+    "key": "agent_chat_27",
+    "source": "Settings could not be saved.",
+    "context": "First-party native chat action receipt, NOT model text or tool arguments. %1 is a localized allowlisted field/value list from app-owned execution or conflict-aware undo. View updated means actual applied changes. Restored reports fields actually undone; Skipped reports fields the user changed so undo did not overwrite them. Settings saving failure does NOT imply applied view changes were rolled back. Action completed/failed are bounded operation outcomes; Permission denied means no approved action executed. Preserve %1 and meaning; no paths/accounts/raw JSON."
+  },
+  {
+    "key": "agent_chat_28",
+    "source": "Action completed.",
+    "context": "First-party native chat action receipt, NOT model text or tool arguments. %1 is a localized allowlisted field/value list from app-owned execution or conflict-aware undo. View updated means actual applied changes. Restored reports fields actually undone; Skipped reports fields the user changed so undo did not overwrite them. Settings saving failure does NOT imply applied view changes were rolled back. Action completed/failed are bounded operation outcomes; Permission denied means no approved action executed. Preserve %1 and meaning; no paths/accounts/raw JSON."
+  },
+  {
+    "key": "agent_chat_29",
+    "source": "Action could not be completed.",
+    "context": "First-party native chat action receipt, NOT model text or tool arguments. %1 is a localized allowlisted field/value list from app-owned execution or conflict-aware undo. View updated means actual applied changes. Restored reports fields actually undone; Skipped reports fields the user changed so undo did not overwrite them. Settings saving failure does NOT imply applied view changes were rolled back. Action completed/failed are bounded operation outcomes; Permission denied means no approved action executed. Preserve %1 and meaning; no paths/accounts/raw JSON."
+  },
+  {
+    "key": "agent_chat_30",
+    "source": "Permission denied.",
+    "context": "First-party native chat action receipt, NOT model text or tool arguments. %1 is a localized allowlisted field/value list from app-owned execution or conflict-aware undo. View updated means actual applied changes. Restored reports fields actually undone; Skipped reports fields the user changed so undo did not overwrite them. Settings saving failure does NOT imply applied view changes were rolled back. Action completed/failed are bounded operation outcomes; Permission denied means no approved action executed. Preserve %1 and meaning; no paths/accounts/raw JSON."
+  },
+  {
+    "key": "agent_chat_31",
+    "source": "On",
+    "context": "Enabled/on state of an app-owned magnifier setting in a plain human action receipt, paired with existing Off. Not a button command or granting permission. Translate naturally as an enabled switch state."
+  },
+  {
+    "key": "agent_chat_32",
+    "source": "Conversation history could not be updated.",
+    "context": "First-party local conversation history atomic save/rename/delete failed. The answer may already have completed; generic safe status without provider diagnostics, paths or secrets; do not imply the answer failed."
+  }
+]

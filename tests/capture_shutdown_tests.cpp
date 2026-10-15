@@ -1,17 +1,31 @@
 #include "okuflow/capture/capture_shutdown.hpp"
 #include "okuflow/capture/media_capture.hpp"
+#include "okuflow/capture/phone_camera.hpp"
 #include "../src/capture/media_capture_session.hpp"
 
 #include <QtTest/QtTest>
 #include <atomic>
 #include <future>
 #include <memory>
+#include <stdexcept>
 #include <thread>
 
 using namespace std::chrono_literals;
 
 namespace okuflow {
 struct CaptureReadbackTestAccess {
+    static std::shared_ptr<MediaCaptureSession> Session(MediaCapture& capture) { return capture.session_; }
+    static void AttachSyntheticPhone(MediaCapture& capture) {
+        capture.session_->phoneTransport_=std::make_shared<PhoneCameraTransport>();
+        capture.session_->running_.store(true);
+    }
+    static void SetCaptureWorker(MediaCapture& capture, std::shared_future<void> release) {
+        capture.session_->captureThread_ = std::thread([release] { release.wait(); });
+    }
+    static void HoldConsumer(MediaCapture& capture, const std::shared_ptr<void>& lease) {
+        capture.session_->activeCudaLease_ = lease;
+    }
+    static void ExpireStop(MediaCapture& capture) { capture.session_->stopDeadline_ -= 2s; }
     static void SetDevice(MediaCaptureSession& session, ID3D11Device* device,
                           ID3D11DeviceContext* context) {
         session.d3d11Device_ = device;
@@ -27,6 +41,14 @@ struct CaptureReadbackTestAccess {
 }
 
 namespace {
+// Never leave a fixture worker blocked when a Qt assertion returns early.
+struct StopWorkerGate {
+    std::promise<void> release;
+    std::shared_future<void> future{release.get_future().share()};
+    bool released{};
+    void Open() { if (!released) { released = true; release.set_value(); } }
+    ~StopWorkerGate() { Open(); }
+};
 struct ReadbackFixture {
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
@@ -75,6 +97,168 @@ struct ReadbackFixture {
 class CaptureShutdownTests : public QObject {
     Q_OBJECT
 private slots:
+    void boundedPhoneTorchAdmissionEndsAtExactSplitStop() {
+        okuflow::MediaCapture capture;
+        const auto token=std::make_shared<std::atomic<bool>>(false);
+        const auto deadline=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()+1000;
+        QVERIFY(!capture.SetPhoneTorch(true,token,deadline));
+        okuflow::CaptureReadbackTestAccess::AttachSyntheticPhone(capture);
+        QVERIFY(capture.SetPhoneTorch(true,token,deadline));QVERIFY(!capture.PhoneTorchEnabled());
+        capture.BeginStopCapture();QVERIFY(token->load());
+        QVERIFY(!capture.SetPhoneTorch(true,std::make_shared<std::atomic<bool>>(false),deadline));
+        QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(),okuflow::CaptureStopStatus::ReadyToRelease,500);
+        capture.ReleaseStoppedCapture(true);
+        QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(),okuflow::CaptureStopStatus::Completed,500);
+    }
+    void legacyStopRunsConsumerCallbackOnceWhileBackingIsRetained()
+    {
+        okuflow::MediaCapture capture;
+        const auto session = okuflow::CaptureReadbackTestAccess::Session(capture);
+        int calls = 0;
+        bool backingRetained = false;
+        QVERIFY(capture.StopCapture([&](bool quiescent) {
+            ++calls;
+            const auto state = session->shutdown_->Poll();
+            backingRetained = quiescent && state.quiescent && !state.finished;
+        }));
+        QVERIFY(backingRetained);
+        QCOMPARE(calls, 1);
+        QVERIFY(capture.StopCapture([&](bool) { ++calls; }));
+        QCOMPARE(calls, 1);
+    }
+
+    void legacyConsumerExceptionPreservesProducerBacking()
+    {
+        okuflow::MediaCapture capture;
+        const auto session = okuflow::CaptureReadbackTestAccess::Session(capture);
+        QVERIFY(!capture.StopCapture([](bool) { throw std::runtime_error("fixture consumer failure"); }));
+        QVERIFY(capture.WasAbandoned());
+        QVERIFY(session->retainedForExit_.load());
+        QTRY_VERIFY_WITH_TIMEOUT(session->shutdown_->Poll().finished, 1000);
+        QCOMPARE(capture.PollStopCapture(), okuflow::CaptureStopStatus::Failed);
+    }
+
+    void splitStopReturnsImmediatelyAndRevokesProducerAccess()
+    {
+        using Status = okuflow::CaptureStopStatus;
+        okuflow::MediaCapture capture;
+        StopWorkerGate gate;
+        okuflow::CaptureReadbackTestAccess::SetCaptureWorker(capture, gate.future);
+        const auto session = okuflow::CaptureReadbackTestAccess::Session(capture);
+        const auto start = std::chrono::steady_clock::now();
+        capture.BeginStopCapture();
+        capture.BeginStopCapture(); // same session, no additional stop worker
+        QCOMPARE(capture.PollStopCapture(), Status::WaitingForQuiescence);
+        QVERIFY(std::chrono::steady_clock::now() - start < 100ms);
+        QVERIFY(!session->shutdown_->TryEnterDelivery());
+        QCOMPARE(capture.CurrentFrameRate(), 0.0);
+        okuflow::MediaFrame frame;
+        QCOMPARE(capture.ReadbackGpuFrame(frame), okuflow::GpuFrameReadbackResult::Failed);
+        okuflow::CameraDescriptor next;
+        next.symbolicLink = L"fixture-next-camera";
+        QVERIFY(!capture.StartCapture(next, nullptr, {}));
+        QVERIFY(capture.LastSymbolicLink().empty());
+        gate.Open();
+        QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(), Status::ReadyToRelease, 1000);
+        capture.ReleaseStoppedCapture(true);
+        QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(), Status::Completed, 1000);
+        QVERIFY(!capture.WasAbandoned());
+    }
+
+    void splitStopPreservesBackingThroughExactConsumerLease()
+    {
+        using Status = okuflow::CaptureStopStatus;
+        okuflow::MediaCapture capture;
+        auto lease = std::make_shared<int>(42);
+        okuflow::CaptureReadbackTestAccess::HoldConsumer(capture, lease);
+        const auto session = okuflow::CaptureReadbackTestAccess::Session(capture);
+        capture.BeginStopCapture();
+        QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(), Status::ReadyToRelease, 1000);
+        QVERIFY(!session->shutdown_->Poll().finished);
+        capture.ReleaseStoppedCapture(true);
+        QCOMPARE(capture.PollStopCapture(), Status::WaitingForRelease);
+        QVERIFY(!session->shutdown_->Poll().finished);
+        lease.reset();
+        QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(), Status::Completed, 1000);
+        capture.ReleaseStoppedCapture(false); // repeated acknowledgment has no effect
+        QVERIFY(capture.StopCapture());
+    }
+
+    void splitStopDeadlineRetainsBlockedSessionAndCannotRestart()
+    {
+        using Status = okuflow::CaptureStopStatus;
+        okuflow::MediaCapture capture;
+        StopWorkerGate gate;
+        okuflow::CaptureReadbackTestAccess::SetCaptureWorker(capture, gate.future);
+        const auto session = okuflow::CaptureReadbackTestAccess::Session(capture);
+        capture.BeginStopCapture();
+        okuflow::CaptureReadbackTestAccess::ExpireStop(capture);
+        const auto start = std::chrono::steady_clock::now();
+        QCOMPARE(capture.PollStopCapture(), Status::Failed);
+        QVERIFY(std::chrono::steady_clock::now() - start < 100ms);
+        QVERIFY(capture.WasAbandoned());
+        QVERIFY(session->retainedForExit_.load());
+        capture.ReleaseStoppedCapture(true);
+        QVERIFY(session->shutdown_->IsAbandoned());
+        gate.Open();
+        QTRY_VERIFY_WITH_TIMEOUT(session->shutdown_->Poll().finished, 1000);
+        QCOMPARE(capture.PollStopCapture(), Status::Failed);
+        okuflow::CameraDescriptor next;
+        next.symbolicLink = L"fixture-next-camera";
+        QVERIFY(!capture.StartCapture(next, nullptr, {}));
+        QCOMPARE(okuflow::CaptureReadbackTestAccess::Session(capture).get(), session.get());
+        QVERIFY(!capture.StopCapture());
+    }
+
+    void splitStopEarlyConsumerAcknowledgmentFailsClosed()
+    {
+        using Status = okuflow::CaptureStopStatus;
+        okuflow::MediaCapture capture;
+        StopWorkerGate gate;
+        okuflow::CaptureReadbackTestAccess::SetCaptureWorker(capture, gate.future);
+        const auto session = okuflow::CaptureReadbackTestAccess::Session(capture);
+        capture.BeginStopCapture();
+        capture.ReleaseStoppedCapture(true);
+        QCOMPARE(capture.PollStopCapture(), Status::Failed);
+        gate.Open();
+        QTRY_VERIFY_WITH_TIMEOUT(session->shutdown_->Poll().finished, 1000);
+        QVERIFY(session->shutdown_->IsAbandoned());
+    }
+
+    void splitStopSwapTransfersPendingSessionAndDeadline()
+    {
+        using Status = okuflow::CaptureStopStatus;
+        okuflow::MediaCapture original, adopted;
+        StopWorkerGate gate;
+        okuflow::CaptureReadbackTestAccess::SetCaptureWorker(original, gate.future);
+        const auto session = okuflow::CaptureReadbackTestAccess::Session(original);
+        original.BeginStopCapture();
+        adopted.Swap(original);
+        QCOMPARE(okuflow::CaptureReadbackTestAccess::Session(adopted).get(), session.get());
+        QCOMPARE(adopted.PollStopCapture(), Status::WaitingForQuiescence);
+        gate.Open();
+        QTRY_COMPARE_WITH_TIMEOUT(adopted.PollStopCapture(), Status::ReadyToRelease, 1000);
+        adopted.ReleaseStoppedCapture(true);
+        QTRY_COMPARE_WITH_TIMEOUT(adopted.PollStopCapture(), Status::Completed, 1000);
+        QVERIFY(original.StopCapture());
+    }
+
+    void splitStopCompletionUsesWorkerTimestampRatherThanGuiPollTime()
+    {
+        using Status = okuflow::CaptureStopStatus;
+        okuflow::MediaCapture capture;
+        const auto session = okuflow::CaptureReadbackTestAccess::Session(capture);
+        capture.BeginStopCapture();
+        QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(), Status::ReadyToRelease, 1000);
+        capture.ReleaseStoppedCapture(true);
+        QTRY_VERIFY_WITH_TIMEOUT(session->shutdown_->Poll().finished, 1000);
+        // Simulate an event-loop delay after worker completion without sleeping.
+        // Its deadline remains later than the actual worker-finished timestamp.
+        session->stopDeadline_ = session->shutdown_->Poll().finishedAt;
+        QCOMPARE(capture.PollStopCapture(), Status::Completed);
+        QVERIFY(!capture.WasAbandoned());
+    }
+
     void readbackQueuesOnceAndReturnsTheRetainedPixels()
     {
         using Result = okuflow::GpuFrameReadbackResult;

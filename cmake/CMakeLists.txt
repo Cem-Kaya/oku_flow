@@ -21,6 +21,7 @@ endif()
 
 file(GLOB_RECURSE OKUFLOW_CPP_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/*.cpp)
 list(FILTER OKUFLOW_CPP_SOURCES EXCLUDE REGEX "/src/launcher/")
+list(FILTER OKUFLOW_CPP_SOURCES EXCLUDE REGEX "/src/mcp/")
 if (OKUFLOW_ENABLE_CUDA)
     file(GLOB_RECURSE OKUFLOW_CUDA_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/*.cu)
 endif()
@@ -67,9 +68,14 @@ target_sources(oku_flow PRIVATE
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/view_transform.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/assistive_runtime.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_agent_client.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/common/http_agent_client.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/common/visible_chat_session.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/d3d12/presenter.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/main_window.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/agent_control_panel.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistant_chat_view.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistive_overlay.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/annotation_overlay.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/joystick_overlay.hpp
@@ -234,6 +240,10 @@ if (WIN32)
     endif()
 else()
     message(WARNING "OkuFlow is intended to be built on Windows with CUDA, Qt6, and Direct3D12 support.")
+endif()
+
+if (WIN32)
+    include(Mcp.cmake)
 endif()
 
 if (OKUFLOW_ENABLE_TESTS)

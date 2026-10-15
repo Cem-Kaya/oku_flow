@@ -2937,5 +2937,313 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow kontroluje připojení USB a automaticky se znovu připojí.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>&amp;Zamítnout</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>Upravit zobrazení (vyžadováno)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>Povolit zobrazení z kamery pro toto kolo</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>Povolit fotografie pro tuto relaci</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>Povolit Asistentovi spouštět a zastavovat jím zahájená nahrávání</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>Schválit dočasný přístup</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>Před nahráváním přednášky nebo jiných lidí požádat o svolení.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>Záznam akcí Asistenta</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>Ovládání Asistentem</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>Ovládání Asistentem je vypnuté</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>Stav ovládání Asistentem</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>Zobrazení z kamery se odesílá vybranému poskytovateli. Toto oprávnění skončí s kolem konverzace nebo při změně zdroje kamery.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>Připojený klient: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>Konverzace s ovládáním nemohou používat internet, příkazy pro práci s kódem ani měnit soubory. Funkce „Přečtěte si“ a „Vysvětlete“ zůstávají beze změny.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Ovládání je ve výchozím nastavení vypnuté. Po zapnutí může Asistent upravit zobrazení. Snímky z kamery a pořízené snímky vyžadují samostatné oprávnění. Zastavte ovládání a vraťte změny zpět pomocí Ctrl+Shift+U.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>Ovládání OkuFlow vyžaduje samostatnou konverzaci.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>Přesné argumenty akce</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>Externí ovládání trvá nejvýše 5 minut a skončí po 60 sekundách nečinnosti. Zastavíte ho odpojením klienta MCP nebo volbou Odebrat dočasný přístup.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>Oprávnění externího ovládání</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>Externí ovládání: zbývá %1 s; časový limit nečinnosti je %2 s. Změny zobrazení: %3; snímky z kamery: %4; fotografie: %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>Externí ovládání MCP</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>Oprávnění dočasného přístupu</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>Žádný aktivní dočasný přístup</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>Není připojen žádný externí klient</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>Orientace a zdroj kamery (nikdy během nahrávání)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>Zkontrolovat oprávnění dočasného přístupu</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>Odebrat dočasný přístup</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>Odesílat zobrazení z kamery (až 6 za dobu přístupu)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>Odeslat bez ovládání</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>Spouštět a zastavovat jím zahájená nahrávání (pro spuštění musí zbývat alespoň 30 sekund)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>Zahájit konverzaci s ovládáním</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>Zastavit a vrátit zpět (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>Pořizovat fotografie (v rámci limitu akcí dočasného přístupu)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>Ověřit, zda koncový bod podporuje nástroje</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>Tento výslovný test odešle syntetický požadavek na nástroj nakonfigurovanému koncovému bodu. Neodešle žádný snímek z kamery ani nezmění nastavení.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>Změny zobrazení: až 60 za dobu přístupu. Oprávnění nelze během přístupu rozšířit; odeberte přístup a udělte nový.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>Podpora nástrojů je dostupná</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>Podpora nástrojů není dostupná</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>Ověřuje se podpora nástrojů...</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>Nová konverzace</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>Historie</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>Nastavení Asistenta</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>Připojení Asistenta</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>Konverzace s Asistentem</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>Dotaz na Asistenta</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>Historie Asistenta</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>Podrobnosti</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>&amp;Jednou povolit</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>Záznam aktivit</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>O ovládání</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>Odeslat zobrazení z kamery vybranému poskytovateli?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>Pořídit fotografii tohoto zobrazení?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>Spustit nahrávání tohoto zobrazení?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>Zastavit toto nahrávání?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>Zastavit nahrávání zahájené v %1?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>Nastavit absolutní úhel otočení obrazu z kamery na %1°?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>Přepnout zdroj kamery?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>Zkontrolovat tuto akci?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>Žádost o oprávnění %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>Platnost vyprší za %1 s</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>Požadavek se nepodařilo dokončit.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>Požadavek zastaven</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>Zobrazení aktualizováno: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>Obnoveno: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>Nepřepsáno: %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>Nastavení se nepodařilo uložit.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>Akce dokončena.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>Akci se nepodařilo dokončit.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>Oprávnění zamítnuto.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>Zapnuto</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>Historii konverzace se nepodařilo aktualizovat.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>Změnit nastavení kamery?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>Změnit předvolby nahrávání?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>Změnit poskytovatele, model nebo pokyny Asistenta?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>Změnit nastavení poznámek a ukládání?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>Změnit nastavení kreslení?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>Změnit nastavení kreslení a uložit fotografii?</translation>
+        </message>
     </context>
 </TS>

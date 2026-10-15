@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <memory>
+#include "okuflow/common/visible_chat_session.hpp"
 
 
 QT_BEGIN_NAMESPACE
@@ -77,8 +78,15 @@ public:
         const QString& prompt,
         const QString& languageCode);
     void SetModes(bool vlmEnabled);
+    // Profile/visibility changes own only periodic analysis. Explicit user
+    // Read/Explain/Assistant preparations and replies keep their lifetime.
+    void SetPeriodicAnalysisEnabled(bool enabled);
     bool WantsAnalysis() const;
     bool IsBusy() const;
+    bool IsForegroundBusy() const { return IsBusy() && !visionRequestPeriodic_; }
+    void CancelPeriodicForUserTurn();
+    void ReserveForegroundCapture() { CancelPeriodicForUserTurn(); foregroundCaptureReserved_ = true; }
+    void ReleaseForegroundCapture() { foregroundCaptureReserved_ = false; }
     bool IsCodexTurnActive() const;
 
     void SubmitFrame(const uint8_t* bgraData, int width, int height);
@@ -92,12 +100,34 @@ public:
     void DismissOverlay();
     void StartCodexLogin();
     void StopAssistant();
+    VisibleChatSession& ChatSession() { return *chatSession_; }
+    const VisibleChatSession& ChatSession() const { return *chatSession_; }
+    bool HasChatTurn() const { return chatTicket_.has_value() || publishingChatEvent_; }
+    bool PrepareChatTurn(const QString& text, ChatBackendKind backend,
+                         ChatRequestOrigin origin = ChatRequestOrigin::Followup);
+    void SubmitExplainFollowup(const QString& prompt, const uint8_t* data = nullptr,
+                              int width = 0, int height = 0, bool attach = false);
+    void ResetVisibleChat(ChatBackendKind kind = ChatBackendKind::Explain);
+    void FailPreparedChat(const QString& error);
+    void StopReadAloud() { StopSpeech(); }
+    // Independent tool-free scene lane: app-issued guard is checked at actual
+    // pixel submission and completion. No chat rows or automatic speech.
+    bool SubmitScopedScene(const QByteArray& jpeg, std::function<bool()> guard,
+                           std::function<void(bool)> completion);
+    void CancelScopedScene();
+    // Dedicated agent adapters share answer/notes presentation, not tool
+    // authority or the ordinary Codex child. All calls are runtime-thread only.
+    bool BeginControlAnswer(const QString& prompt, std::function<void()> stop);
+    void ControlAnswerStarted(const QString& threadId, const QString& turnId);
+    void ControlAnswerDelta(const QString& threadId, const QString& turnId, const QString& delta);
+    void CompleteControlAnswer(const QString& threadId, const QString& turnId,
+                              const QString& text, const QString& error, bool interrupted);
     void SubmitAssistantPrompt(const QString& prompt,
                                const QString& threadId,
                                const uint8_t* bgraData,
                                int width,
                                int height,
-                               bool attachFrame);
+                               bool attachFrame, bool permitCoding = false);
     void LoadAssistantConversation(const QString& threadId);
     void CancelAssistantConversationLoad();
     void RenameAssistantConversation(const QString& threadId, const QString& name);
@@ -167,7 +197,8 @@ private:
     // continueExplain marks a user-requested Explain that continues the
     // Explain conversation; periodic analyses and Read stay independent.
     void StartVlm(const uint8_t* bgraData, int width, int height,
-                  bool readText = false, bool continueExplain = false);
+                  bool readText = false, bool continueExplain = false,
+                  bool periodic = false);
     void StartCodexVlm(const uint8_t* bgraData,
                        int width,
                        int height,
@@ -238,6 +269,9 @@ private:
     void StopSpeech();
     bool SelectVoiceForResponseLanguage(bool notifyMissing);
     void EmitPrivacyNoticeIfChanged(const QString& summary);
+    void FinishChat(const QString& text, const QString& error = {}, bool interrupted = false);
+    void PublishChatFinished(const QString& thread, const QString& turn, const QString& text,
+                             const QString& error, bool interrupted, bool persistent);
 
     AssistiveRuntimeConfig config_;
     QString responseLanguageCode_{QStringLiteral("en")};
@@ -249,6 +283,7 @@ private:
     bool vlmForcedVisible_{false};
     bool vlmPreparationPending_{false};
     bool vlmPreparationPersistent_{false};
+    bool visionRequestPeriodic_{false};
     bool warnedDegenerateFrame_{false};
     bool overlayDismissed_{false};
     std::uint64_t vlmPreparationGeneration_{};
@@ -273,6 +308,13 @@ private:
     std::unique_ptr<QThreadPool> imagePreparationPool_;
     QNetworkAccessManager* networkManager_{};
     QNetworkReply* activeReply_{};
+    QNetworkReply* scopedSceneReply_{};
+    std::unique_ptr<CodexAppServerClient> scopedSceneCodex_;
+    quint64 scopedSceneGeneration_{};
+    bool scopedSceneBusy_{};
+    std::function<bool()> scopedSceneGuard_;
+    std::function<void(bool)> scopedSceneCompletion_;
+    void FinishScopedScene(quint64 generation,const QString& text);
     bool vlmResponseTooLarge_{false};
     QString vlmPreparationThreadId_;
     QString explainThreadId_;
@@ -284,6 +326,15 @@ private:
     bool vlmRequestRecordsExplainHistory_{false};
     QString lastPrivacyNotice_;
     std::unique_ptr<CodexAppServerClient> codexClient_;
+    std::unique_ptr<VisibleChatSession> chatSession_;
+    std::optional<ChatTurnTicket> chatTicket_;
+    ChatBackendKind chatBackend_{ChatBackendKind::Explain};
+    ChatRequestOrigin chatOrigin_{ChatRequestOrigin::Followup};
+    bool assistantPermitCoding_{};
+    bool publishingChatEvent_{};
+    bool foregroundCaptureReserved_{};
+    bool controlAnswerPending_{};
+    std::function<void()> controlAnswerStop_;
 #if OKUFLOW_HAS_TTS
     QTextToSpeech* tts_{};
 #endif

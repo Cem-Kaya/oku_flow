@@ -319,3 +319,22 @@ and [runtime license](https://visualstudio.microsoft.com/license-terms/vs2022-cr
 See [Windows runtime setup](windows_runtime_setup.md) for staging, provenance
 and remaining clean-VM acceptance. The license text and installer must be
 reviewed together whenever pins are refreshed.
+
+The agent-control compatibility profile contains first-party factual records
+from local Codex 0.160.1 offline feature/schema generation. It does not vendor a
+Codex SDK, generated implementation or model. The owner-installed CLI remains
+a separate prerequisite; no new third-party runtime is introduced by this gate.
+
+## Development-only MCP interoperability fixture
+
+The bounded JSON/schema parser, Qt-free stdio bridge, Windows named-pipe
+security glue and application endpoint are first-party OkuFlow code. They add
+no MCP SDK or third-party runtime to the Windows package. The bridge uses
+Windows APIs, bcrypt and the existing Microsoft static CRT redistribution.
+
+The opt-in independent-client fixture pins `@modelcontextprotocol/sdk` 1.32.1
+and its exact MIT notice in `tests/mcp-sdk/`; the lock file records its
+MIT/ISC/BSD development-only dependencies. Install this fixture outside the
+checkout with lifecycle scripts disabled. It is never bundled into OkuFlow,
+Android artifacts or installer payloads. Passing it proves interoperability
+with a private synthetic application, not a live provider or camera.

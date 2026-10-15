@@ -1,0 +1,25 @@
+option(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE "Build opt-in actual-app offscreen control acceptance (CPU dev-full only)" OFF)
+if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
+    if(OKUFLOW_ENABLE_CUDA OR NOT OKUFLOW_CONTROL_CATALOG_EDITION STREQUAL "dev-full")
+        message(FATAL_ERROR "Native control fixture requires explicit CPU dev-full configuration; it does not promote v1")
+    endif()
+    get_target_property(_native_sources oku_flow SOURCES)
+    list(FILTER _native_sources EXCLUDE REGEX "/src/app/main\\.cpp$")
+    add_executable(native_app_control_fixture EXCLUDE_FROM_ALL native_app_control_fixture.cpp ${_native_sources})
+    foreach(_property INCLUDE_DIRECTORIES COMPILE_DEFINITIONS COMPILE_OPTIONS LINK_LIBRARIES LINK_OPTIONS)
+        get_target_property(_value oku_flow ${_property})
+        if(_value)
+            set_property(TARGET native_app_control_fixture PROPERTY ${_property} "${_value}")
+        endif()
+    endforeach()
+    target_link_libraries(native_app_control_fixture PRIVATE Qt6::Test)
+    set_target_properties(native_app_control_fixture PROPERTIES WIN32_EXECUTABLE FALSE OUTPUT_NAME oku_flow
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/native-control")
+    add_dependencies(native_app_control_fixture release_okuflow_translations okuflow_mcp)
+    add_custom_command(TARGET native_app_control_fixture POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:okuflow_mcp> $<TARGET_FILE_DIR:native_app_control_fixture>/okuflow_mcp.exe)
+    add_test(NAME native_app_control_offscreen COMMAND native_app_control_fixture)
+    set_tests_properties(native_app_control_offscreen PROPERTIES TIMEOUT 60 LABELS "headless;native-control-opt-in"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+endif()

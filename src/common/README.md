@@ -2,6 +2,13 @@
 
 This module contains shared processing and output helpers that are reused across the app.
 
+`ComputeZoomAnchorCenter` shares the real cropped view geometry with native
+wheel/keyboard zoom. Its desktop-free fixture verifies anchor position across
+landscape/portrait/aspect changes and clamped old centers, rejecting malformed
+points. `AsyncCleanup` owns detached driver-resource closures and retains
+failed cleanup resources; camera callers must acknowledge release only after
+its completed status. These development changes still require hardware gates.
+
 Current contents:
 - shared annotation rendering preserves caller clip regions, including the
   live Assistant exclusion, while restricting ink to the scene destination
@@ -52,3 +59,35 @@ all destination pixels. No bulk zero-fill is required for an equal-size
 frame. The byte-exact regression includes padded source rows, changing
 non-square dimensions, alpha, negative turns and no-op turns. Peak capacities
 remain retained; this does not establish an application FPS improvement.
+
+The dedicated agent profile is isolated from the ordinary Codex client. Its
+offline version/feature gate produces no live provider traffic. See plan 52;
+agent controls and MCP remain under development, not public release capability.
+Profile-driven periodic analysis changes preserve user-requested reply ownership
+through `SetPeriodicAnalysisEnabled`, while explicit Stop stays unconditional.
+
+`http_agent_client.cpp` supplies the isolated OpenAI-compatible agent loop. It
+requires an explicit frame-free capability test and app-issued control context;
+editing endpoint/model/key never sends inference. Modern tools and legacy functions
+use distinct transcript roles. Every round is prevalidated before sequential core
+submissions, and observation images follow all tool replies and are not resent.
+Network errors expose fixed codes; API keys stay in Authorization headers. Private
+loopback HTTP fixtures exercise the adapter without a provider, camera or desktop.
+
+Shared chat presentation lives in `visible_chat_session.cpp`, independent of
+widgets and credentials. The runtime admits generation-tagged Explain/followup
+turns, replaces streamed replies once, and keeps Read/periodic analysis outside
+the transcript. Completed text context can bridge isolated backend segments;
+historical frames and control grants cannot cross that bridge. Explicit
+attachments remain turn-scoped. Notes/media ownership remains runtime-owned.
+
+`visible_chat_session_store.cpp` persists bounded mixed logical chat text via
+atomic QSaveFile records in an owned app-data directory. Restart restores the
+full shared transcript and draft without backend IDs, images or authority.
+Legacy provider histories remain separate; pending streamed rows are not saved
+as completed answers. Failed/interrupted rows stay outside followup context.
+
+The scoped scene lane in AssistiveRuntime is independent from shared chat and
+native Read/periodic ownership. Its app-issued frame guard fences actual HTTP
+submission, delayed Codex turn/start and terminal presentation/notes. It stays
+tool-free, temporary, silent and bounded by the requesting core context.

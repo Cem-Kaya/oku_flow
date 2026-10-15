@@ -2937,5 +2937,313 @@ Utilisez Connect ChatGPT dans l'onglet Assistant avancé pour vous connecter.</t
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow vérifie la connexion USB et se reconnectera automatiquement.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>&amp;Refuser</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>Régler la vue (obligatoire)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>Autoriser les vues caméra pour ce tour</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>Autoriser les photos pour cette session</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>Autoriser l’Assistant à démarrer et arrêter les enregistrements qu’il a lancés</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>Approuver l’autorisation temporaire</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>Demandez l’autorisation avant d’enregistrer un cours ou d’autres personnes.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>Journal des actions de l’Assistant</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>Contrôle de l’Assistant</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>Le contrôle de l’Assistant est désactivé</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>État du contrôle de l’Assistant</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>Les vues caméra sont envoyées au fournisseur sélectionné. Cette autorisation prend fin avec le tour ou lorsque la source caméra change.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>Client connecté : %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>Les conversations de contrôle ne peuvent pas accéder à Internet, exécuter des commandes de code ni modifier des fichiers. Lire et Expliquer restent inchangés.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Le contrôle est désactivé par défaut. Lorsqu’il est activé, l’Assistant peut régler la vue. Les images caméra et les captures nécessitent une autorisation distincte. Arrêter et annuler avec Ctrl+Shift+U.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>Le contrôle d’OkuFlow nécessite sa propre conversation.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>Arguments exacts de l’action</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>Le contrôle externe dure au plus 5 minutes et prend fin après 60 secondes d’inactivité. Déconnectez le client MCP ou choisissez « Révoquer l’autorisation » pour l’arrêter.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>Autorisations du contrôle externe</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>Contrôle externe : encore %1 secondes ; expiration pour inactivité dans %2 secondes. Changements de vue : %3 ; vues caméra : %4 ; photos : %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>Contrôle MCP externe</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>Autorisations temporaires</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>Aucune autorisation active</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>Aucun client externe connecté</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>Orientation et source caméra (jamais pendant un enregistrement)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>Examiner les autorisations temporaires</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>Révoquer l’autorisation</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>Envoyer des vues caméra (jusqu’à 6 par autorisation)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>Envoyer sans contrôle</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>Démarrer et arrêter les enregistrements lancés par l’Assistant (au moins 30 secondes restantes pour démarrer)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>Démarrer une conversation de contrôle</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>Arrêter et annuler (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>Prendre des photos (dans la limite d’actions de l’autorisation)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>Tester maintenant la prise en charge des outils par le point de terminaison</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>Ce test explicite envoie une requête d’outil synthétique au point de terminaison configuré. Il n’envoie aucune image caméra et ne modifie aucun paramètre.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>Changements de vue : jusqu’à 60 par autorisation. Les autorisations ne peuvent pas être étendues pendant une autorisation ; révoquez-la et accordez-en une nouvelle.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>Prise en charge des outils disponible</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>Prise en charge des outils indisponible</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>Vérification de la prise en charge des outils...</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>Nouveau</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>Historique</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>Paramètres de l’Assistant</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>Connexion de l’Assistant</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>Conversation avec l’Assistant</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>Question à l’Assistant</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>Historique de l’Assistant</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>Détails</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>&amp;Autoriser une fois</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>Journal d’activité</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>À propos du contrôle</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>Envoyer cette vue caméra au fournisseur sélectionné ?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>Prendre une photo de cette vue ?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>Démarrer l’enregistrement de cette vue ?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>Arrêter cet enregistrement ?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>Arrêter l’enregistrement commencé à %1 ?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>Faire pivoter la vue caméra dans le sens horaire jusqu’à l’angle absolu de %1° ?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>Changer de source caméra ?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>Examiner cette action ?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>Demande d’autorisation %1 : %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>Expire dans %1 s</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>La requête n’a pas pu aboutir.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>Requête interrompue</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>Vue mise à jour : %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>Valeurs rétablies : %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>Modifications de l’utilisateur conservées : %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>Les paramètres n’ont pas pu être enregistrés.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>Action terminée.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>L’action n’a pas pu être terminée.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>Autorisation refusée.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>Activé</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>L’historique des conversations n’a pas pu être mis à jour.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>Modifier les réglages de la caméra ?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>Modifier les préférences d’enregistrement ?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>Modifier le fournisseur, le modèle ou les instructions de l’Assistant ?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>Modifier les réglages des notes et de la sortie ?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>Modifier les réglages du dessin ?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>Modifier les réglages du dessin et enregistrer une photo ?</translation>
+        </message>
     </context>
 </TS>

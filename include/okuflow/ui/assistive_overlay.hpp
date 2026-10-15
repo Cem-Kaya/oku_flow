@@ -6,6 +6,8 @@
 #include <QElapsedTimer>
 #include <QPointer>
 #include <QRect>
+#include "okuflow/ui/assistant_chat_view.hpp"
+#include "okuflow/ui/agent_control_panel.hpp"
 
 #include <array>
 
@@ -31,13 +33,25 @@ class AssistiveOverlay : public QDockWidget {
     Q_OBJECT
 public:
     explicit AssistiveOverlay(QWidget* parent = nullptr);
+    ~AssistiveOverlay() override;
 
     void SetContent(const QString& title, const QString& body, bool visible);
+    void SetReadContent(const QString& title,const QString& body,bool visible);
+    void SetChatSnapshot(const QJsonObject& snapshot);
+    void ShowChat(bool visible);
+    QWidget* ReadResultPane() const { return readResultPane_; }
+    QTextBrowser* ReadBody() const { return bodyView_; }
+    AssistantChatView* chatView() const { return chatView_; }
+    AgentControlPanel* agentControlPanel() const { return agentControlPanel_; }
     // Temporarily hide all presentation while retaining content and the
     // latest requested visibility. This does not dismiss or cancel a turn.
     void SetUiSuppressed(bool suppressed);
     void SetSafeArea(const QRect& relativeSafeArea);
     void SetBusy(bool busy);
+    // Inline routing refusal keeps the question intact and never takes focus.
+    void SetControlRoutingNotice(bool visible, bool canStartControl = true);
+    void ClearQuestionDraft();
+    QString QuestionDraft() const;
     void RestoreRelativeGeometry(const QRect& geometry);
     QRect RelativeGeometry() const;
     void SetDockPosition(const QString& position);
@@ -51,6 +65,8 @@ signals:
     void ReadAloudRequested(const QString& text);
     void QuestionSubmitted(const QString& question);
     void NewChatRequested();
+    void StartControlConversationRequested();
+    void SendWithoutControlRequested();
 
 protected:
     bool event(QEvent* event) override;
@@ -92,6 +108,15 @@ private:
     QTextBrowser* bodyView_{};
     QLineEdit* questionEdit_{};
     QPushButton* askButton_{};
+    QWidget* controlRoutingRow_{};
+    QPushButton* startControlButton_{};
+    QPushButton* sendWithoutControlButton_{};
+    bool controlRoutingRequired_{};
+    AssistantChatView* chatView_{};
+    AgentControlPanel* agentControlPanel_{};
+    QPointer<QWidget> readResultPane_;
+    QLabel* readTitle_{};
+    bool readDesiredVisible_{};
     QPushButton* readAloudButton_{};
     QToolButton* dockPositionButton_{};
     std::array<QAction*, 3> dockPositionActions_{};

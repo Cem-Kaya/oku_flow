@@ -1,13 +1,14 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include "okuflow/app/agent/app_control_target.hpp"
 #include <QLocale>
 #include "okuflow/capture/phone_camera.hpp"
 
 namespace okuflow {
 
 void OkuFlowApp::OnCameraSelectionChanged(int index) {
-    if (cameraStartupPending_ || index < 0 || static_cast<size_t>(index) >= cameras_.size()) {
+    if (index < 0 || static_cast<size_t>(index) >= cameras_.size()) {
         return;
     }
 
@@ -20,11 +21,16 @@ void OkuFlowApp::OnCameraSelectionChanged(int index) {
     settingsController_->MutableSettings().cameraSelectionExplicit = true;
     settingsController_->MutableSettings().cameraSymbolicLink =
         QString::fromStdWString(cameras_[static_cast<size_t>(index)].symbolicLink);
+    cameraIntent_.SelectManual(settingsController_->MutableSettings().cameraSymbolicLink,index);
+    if (controlService_) controlService_->SourceChanged();
+    if (recordingManager_) {
+        if (const auto session = recordingManager_->CurrentSessionInfo()) StopRecording(session->id);
+    }
     if (automaticPhoneSelectionAllowed_) {
         phoneRetries_[cameras_[static_cast<size_t>(index)].phoneSerial].Succeeded();
         PhoneCameraTransport::AllowAppLaunch(cameras_[static_cast<size_t>(index)].phoneSerial);
     }
-    StartCameraCapture(static_cast<size_t>(index));
+    StartCameraCapture(static_cast<size_t>(index),true,false,false,agent::CameraSourceOrigin::Manual);
     SavePersistentSettings();
 }
 
@@ -313,6 +319,7 @@ void OkuFlowApp::OnCameraAccelerationModeChanged(int index)
     acceleration.decidedOn =
         QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     settingsController_->MutableSettings().cameraAccelerationAttempt.clear();
+    if(controlTarget_)controlTarget_->NoteNativeCameraAcceleration(key);
     SavePersistentSettings();
     StartCameraCapture(
         static_cast<size_t>(selectedCameraIndex_));
@@ -324,10 +331,11 @@ void OkuFlowApp::OnCameraFormatChanged(int index) {
     }
     settingsController_->MutableSettings().cameraFormatStableId =
         uiState_->cameraFormatCombo_->itemData(index).toString();
+    cameraIntent_.SetSavedFormat(settingsController_->MutableSettings().cameraFormatStableId);
     SavePersistentSettings();
     if (selectedCameraIndex_ >= 0 &&
         static_cast<size_t>(selectedCameraIndex_) < cameras_.size()) {
-        StartCameraCapture(static_cast<size_t>(selectedCameraIndex_));
+        StartCameraCapture(static_cast<size_t>(selectedCameraIndex_),true,false,false,agent::CameraSourceOrigin::Manual);
     }
 }
 
@@ -347,6 +355,19 @@ void OkuFlowApp::OnMicrophoneSelectionChanged(int index)
         StopMicrophoneCapture();
     }
     SavePersistentSettings();
+}
+void OkuFlowApp::SetRecordingCanvasMode(RecordingCanvasMode mode) {
+    settingsController_->MutableSettings().recordingCanvasMode = mode;
+    if (recordingManager_) recordingManager_->SetCanvasMode(mode);
+    UpdateSectionChangedCounts(); SavePersistentSettings();
+}
+bool OkuFlowApp::SetPhoneTorch(bool enabled,std::shared_ptr<std::atomic<bool>> canceled,qint64 deadlineSteadyMs) {
+    if(!cameraActive_ || !mediaCapture_.PhoneTorchAvailable())return false;
+    if(canceled) {
+        if(!mediaCapture_.SetPhoneTorch(enabled,std::move(canceled),deadlineSteadyMs))return false;
+    } else mediaCapture_.SetPhoneTorch(enabled);
+    if(controlTarget_)controlTarget_->NoteTorchRequest(enabled);
+    pipelineOrchestrator_->MarkViewportDirty();return true;
 }
 
 bool OkuFlowApp::StartSelectedMicrophone()
@@ -503,9 +524,46 @@ void OkuFlowApp::OnZoomToggled(bool checked) {
 }
 
 void OkuFlowApp::OnZoomAmountChanged(int value) {
-    zoomAmount_ = std::max(1.0f, static_cast<float>(value) / static_cast<float>(kZoomSliderScale));
-    pipelineOrchestrator_->MarkViewportDirty();
-    SyncCurrentConfigToPersistence();
+    SetZoom(static_cast<float>(value)/kZoomSliderScale,{},false);
+}
+
+void OkuFlowApp::SetZoom(float amount, std::optional<QPointF> anchor, bool enable, bool recenterAnchor) {
+    if (!uiState_->zoomSlider_) return;
+    const float before = zoomAmount_;
+    const float beforeEffective = zoomEnabled_ ? before : 1.0f;
+    const bool enableChanged = enable && !zoomEnabled_;
+    if (enableChanged) {
+        if (uiState_->zoomCheckbox_) {
+            const QSignalBlocker blocker(uiState_->zoomCheckbox_); uiState_->zoomCheckbox_->setChecked(true);
+        }
+        zoomEnabled_ = true; UpdateControlEnabledStates();
+    }
+    const int requested = std::clamp(static_cast<int>(std::lround(amount*kZoomSliderScale)),
+        uiState_->zoomSlider_->minimum(),uiState_->zoomSlider_->maximum());
+    const float after = std::max(1.0f,float(requested)/kZoomSliderScale);
+    const bool changed = after != before;
+    if (changed) {
+        const QSignalBlocker blocker(uiState_->zoomSlider_); uiState_->zoomSlider_->setValue(requested);
+        zoomAmount_ = after;
+    }
+    if (anchor && (changed || recenterAnchor)) {
+        float x = anchor->x(), y = anchor->y();
+        if (!recenterAnchor && uiState_->renderWidget_ && processedFrameWidth_ && processedFrameHeight_) {
+            const auto width = static_cast<unsigned int>(std::max(1,uiState_->renderWidget_->width()));
+            const auto height = static_cast<unsigned int>(std::max(1,uiState_->renderWidget_->height()));
+            const auto fit = pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fit
+                ? ViewportFitMode::kFit : ViewportFitMode::kFill;
+            const auto previous = ComputeViewTransform(processedFrameWidth_,processedFrameHeight_,width,height,beforeEffective,zoomCenterX_,zoomCenterY_,fit);
+            const auto next = ComputeViewTransform(processedFrameWidth_,processedFrameHeight_,width,height,after,zoomCenterX_,zoomCenterY_,fit);
+            if (!ComputeZoomAnchorCenter(previous,next,float(anchor->x()),float(anchor->y()),x,y)) {
+                x = zoomCenterX_; y = zoomCenterY_;
+            }
+        }
+        SetZoomCenter(x,y,true,true);
+    } else if (changed || enableChanged) SyncCurrentConfigToPersistence(true);
+    if (changed || enableChanged || (anchor && recenterAnchor)) {
+        pipelineOrchestrator_->MarkViewportDirty(); UpdateProcessingStatusLabel();
+    }
 }
 
 void OkuFlowApp::OnDebugViewToggled(bool checked) {
@@ -532,6 +590,10 @@ void OkuFlowApp::OnZoomCenterYChanged(int value) {
 }
 
 void OkuFlowApp::OnRotationSelectionChanged(int index) {
+    SetRotationQuarterTurns(index);
+}
+
+void OkuFlowApp::SetRotationQuarterTurns(int index) {
     if (!uiState_->rotationCombo_) {
         return;
     }
@@ -829,7 +891,7 @@ void OkuFlowApp::ChangeUserDataFolder()
     }
 
     QString error;
-    if (!userDataPaths_->SetConfiguredRoot(selected, &error)) {
+    if (!SetUserDataRoot(selected, &error)) {
         QMessageBox::warning(
             mainWindow_.get(),
             QStringLiteral("Choose OkuFlow Folder"),
@@ -839,16 +901,20 @@ void OkuFlowApp::ChangeUserDataFolder()
         return;
     }
 
-    settingsController_->MutableSettings().userDataRoot =
-        userDataPaths_->ConfiguredRoot();
-    assistiveManager_->ApplySettings(
-        settingsController_->MutableSettings().assistive);
-    SavePersistentSettings();
-
     const QString message =
         QStringLiteral("New OkuFlow files will be saved in %1.")
             .arg(QDir::toNativeSeparators(userDataPaths_->Root()));
     ShowStatusMessage(message, 7000);
+}
+bool OkuFlowApp::SetUserDataRoot(const QString& path, QString* error) {
+    if (!userDataPaths_ || !settingsController_ || !userDataPaths_->SetConfiguredRoot(path,error)) return false;
+    settingsController_->MutableSettings().userDataRoot = userDataPaths_->ConfiguredRoot();
+    if (!controlTarget_ || !controlTarget_->IsApplyingControlledTransition()) {
+        if (controlTarget_) controlTarget_->RememberOutputRoot(userDataPaths_->ConfiguredRoot());
+        assistiveManager_->ApplySettings(settingsController_->MutableSettings().assistive);
+        SavePersistentSettings();
+    }
+    return true;
 }
 
 void OkuFlowApp::OnKeystoneStepBack() {
@@ -1125,6 +1191,23 @@ void OkuFlowApp::OnDisplayColorSchemeChanged() {
     }
     UpdateProcessingStatusLabel();
     SyncCurrentConfigToPersistence();
+}
+bool OkuFlowApp::SetDisplayColorSchemeById(const QString& id) {
+    const auto* scheme = color_schemes::FindBuiltInColorScheme(id);
+    if (!scheme || !uiState_->displayColorPicker_) return false;
+    if (color_schemes::SchemesEquivalent(displayColorScheme_,*scheme)) return true;
+    uiState_->displayColorPicker_->setCurrentScheme(*scheme);
+    OnDisplayColorSchemeChanged(); return true;
+}
+void OkuFlowApp::SetViewportFitMode(settings::ViewportFitModeSetting mode, bool save) {
+    if (settingsController_->MutableSettings().viewportFitMode == mode) return;
+    settingsController_->MutableSettings().viewportFitMode = mode;
+    if (uiState_->viewportFitCombo_) {
+        const QSignalBlocker blocker(uiState_->viewportFitCombo_);
+        uiState_->viewportFitCombo_->setCurrentIndex(mode == settings::ViewportFitModeSetting::Fit ? 1 : 0);
+    }
+    pipelineOrchestrator_->SetViewportFitMode(mode); UpdateSectionChangedCounts();
+    if (save) SavePersistentSettings();
 }
 void OkuFlowApp::OnContrastChanged(int value) {
     contrast_ = std::clamp(static_cast<float>(value) / 100.0f, 0.25f, 4.0f);

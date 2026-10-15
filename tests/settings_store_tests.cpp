@@ -164,6 +164,7 @@ class SettingsStoreTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void controlSettingsAndConversationKinds();
     void defaultsUseLunaLow();
     void automaticFallbackPreservesPreferredCamera();
     void modelDefaultsPreserveExplicitSelections();
@@ -171,6 +172,7 @@ private slots:
     void roundTripPreservesAdvancedConfig();
     void textClarityMasterPreservesDormantPreferences();
     void textClarityEffectiveSettingsGateEntireFamily();
+    void textClarityStageSelectionHonorsEveryRefinement();
     void invalidLanguageFallsBackToMigrationDefault();
     void loadsRemovedGlobalCompatibilityForMigration();
     void migratesLegacyV1();
@@ -192,6 +194,9 @@ private slots:
     void missingPrimaryRecoversBackup_data();
     void missingPrimaryRecoversBackup();
     void controllerReportsSizeLimitAndKeepsValidPrimary();
+    void committedSnapshotSeparatesLiveAndFailedSave();
+    void committedSnapshotTracksRecoveredBackup();
+    void committedSnapshotTracksPartialCredentialCommit();
     void capHoldsDocumentedCapacity();
     void credentialDeletionRetries_data();
     void credentialDeletionRetries();
@@ -204,6 +209,40 @@ private slots:
     void presetIdentitySurvivesApplyTimeMutations();
     void danglingPresetResolutionLeavesSelectionUnchanged();
 };
+
+void SettingsStoreTests::controlSettingsAndConversationKinds()
+{
+    PersistentSettings settings;
+    QVERIFY(!settings.assistive.agentControlEnabled);
+    QVERIFY(!settings.assistive.externalMcpEnabled);
+    settings.assistive.agentControlEnabled = true;
+    settings.assistive.externalMcpEnabled = true;
+    CodexConversation agent; agent.threadId = QStringLiteral("agent-fixture");
+    agent.kind = QStringLiteral("agent"); agent.toolsetVersion = QStringLiteral("dev-core");
+    settings.codexConversations.push_back(agent);
+    const auto root = QJsonDocument::fromJson(Serialize(settings)).object();
+    QCOMPARE(root.value(QStringLiteral("version")).toInt(),17);
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("settings.json"));
+    QVERIFY(Save(path,settings));
+    const auto loaded = Load(path); QVERIFY(loaded);
+    QVERIFY(loaded->assistive.agentControlEnabled); QVERIFY(loaded->assistive.externalMcpEnabled);
+    QCOMPARE(loaded->codexConversations.front().kind,QStringLiteral("agent"));
+    QCOMPARE(loaded->codexConversations.front().toolsetVersion,QStringLiteral("dev-core"));
+    for (const QString kind : {QString(),QStringLiteral("agent"),QStringLiteral("coding"),QStringLiteral("future-power"),QStringLiteral("AGENT")}) {
+        QJsonObject legacy = root; legacy[QStringLiteral("version")] = 16;
+        QJsonObject entry{{QStringLiteral("threadId"),QStringLiteral("legacy-fixture")},{QStringLiteral("explain"),true}};
+        if (!kind.isNull()) entry[QStringLiteral("kind")] = kind;
+        legacy[QStringLiteral("codexConversations")] = QJsonArray{entry};
+        QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly|QIODevice::Truncate));
+        file.write(QJsonDocument(legacy).toJson()); file.close();
+        const auto migrated = Load(path); QVERIFY(migrated);
+        QVERIFY(!migrated->assistive.agentControlEnabled); QVERIFY(!migrated->assistive.externalMcpEnabled);
+        const QString expected = kind.isNull() ? QStringLiteral("explain")
+            : (kind == QStringLiteral("agent") || kind == QStringLiteral("coding") ? kind : QStringLiteral("assistant"));
+        QCOMPARE(migrated->codexConversations.front().kind,expected);
+    }
+}
 
 void SettingsStoreTests::automaticFallbackPreservesPreferredCamera()
 {
@@ -301,6 +340,42 @@ void SettingsStoreTests::textClarityEffectiveSettingsGateEntireFamily()
             effective.enableSelectiveSharpen && effective.enableFocusDetection && effective.enableGlareSuppression);
 }
 
+void SettingsStoreTests::textClarityStageSelectionHonorsEveryRefinement()
+{
+    // Exercise the selection actually consumed by CUDA, not only the master
+    // normalization copy. Previously CUDA re-enabled unchecked refinements.
+    for (int master = 0; master < 2; ++master) {
+        for (unsigned mask = 0; mask < 512; ++mask) {
+            ProcessingSettings preferences;
+            preferences.enableAutoTextClarity = master != 0;
+            preferences.enableBackgroundFlatten = (mask & 1) != 0;
+            preferences.enableAdaptiveBinarization = (mask & 2) != 0;
+            preferences.enableSmartSharpen = (mask & 4) != 0;
+            preferences.enableClahe = (mask & 8) != 0;
+            preferences.enableTwoColorText = (mask & 16) != 0;
+            preferences.enableTextHysteresis = (mask & 32) != 0;
+            preferences.enableSelectiveSharpen = (mask & 64) != 0;
+            preferences.enableFocusDetection = (mask & 128) != 0;
+            preferences.enableGlareSuppression = (mask & 256) != 0;
+            const auto stages = preferences.TextClarityStages();
+            const std::array actual{stages.background, stages.adaptive, stages.smartSharpen,
+                stages.clahe, stages.twoColor, stages.hysteresis, stages.selectiveSharpen,
+                stages.focus, stages.glare};
+            for (unsigned child = 0; child < actual.size(); ++child)
+                QCOMPARE(actual[child], master != 0 && (mask & (1u << child)) != 0);
+            QCOMPARE(stages.pipeline, master != 0 && (mask & (1 | 2 | 4 | 8 | 128 | 256)) != 0);
+            auto effective = preferences;
+            effective.ApplyTextClarityMaster();
+            const auto normalized = effective.TextClarityStages();
+            QCOMPARE(normalized.background, stages.background);
+            QCOMPARE(normalized.adaptive, stages.adaptive);
+            QCOMPARE(normalized.smartSharpen, stages.smartSharpen);
+            QCOMPARE(normalized.selectiveSharpen, stages.selectiveSharpen);
+            QCOMPARE(normalized.pipeline, stages.pipeline);
+        }
+    }
+}
+
 void SettingsStoreTests::defaultsUseLunaLow()
 {
     const PersistentSettings settings;
@@ -366,7 +441,7 @@ void SettingsStoreTests::migratesMisspelledTerraModel()
     QVERIFY(migratedFile.open(QIODevice::ReadOnly));
     const QJsonObject migratedRoot =
         QJsonDocument::fromJson(migratedFile.readAll()).object();
-    QCOMPARE(migratedRoot.value(QStringLiteral("version")).toInt(), 16);
+    QCOMPARE(migratedRoot.value(QStringLiteral("version")).toInt(), 17);
     QCOMPARE(
         migratedRoot.value(QStringLiteral("assistive"))
             .toObject()
@@ -1222,6 +1297,109 @@ void SettingsStoreTests::controllerReportsSizeLimitAndKeepsValidPrimary()
     QVERIFY(saved.has_value());
     QCOMPARE(saved->cameraIndex, 7);
     QCOMPARE(saved->assistive.assistantInstructions, QStringLiteral("Short."));
+}
+
+void SettingsStoreTests::committedSnapshotSeparatesLiveAndFailedSave()
+{
+    QTemporaryDir dir; QVERIFY(dir.isValid());
+    const auto path = dir.filePath(QStringLiteral("settings.json"));
+    bool refuse = false;
+    SettingsController::StorageOperations storage;
+    storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
+        return !refuse && Save(target,value);
+    };
+    SettingsController controller(path,storage);
+    QVERIFY(!controller.LastCommittedSettings()); // defaults have no file yet
+    auto initial = controller.Settings().currentConfig;
+    initial.zoomAmount = 2.0f;
+    controller.MutableSettings().language = QStringLiteral("pt_br");
+    QVERIFY(controller.Save(initial));
+    QVERIFY(controller.LastCommittedSettings());
+    QCOMPARE(controller.LastCommittedSettings()->language,QStringLiteral("pt-BR"));
+    const auto committedBytes = ReadBytes(path);
+    QCOMPARE(Serialize(*controller.LastCommittedSettings()),committedBytes);
+    controller.MutableSettings().currentConfig.zoomAmount = 4.0f;
+    controller.MutableSettings().assistive.ttsRate = 0.5;
+    QCOMPARE(controller.LastCommittedSettings()->currentConfig.zoomAmount,2.0f);
+    refuse = true;
+    auto changed = controller.Settings().currentConfig;
+    changed.zoomAmount = 8.0f;
+    QVERIFY(!controller.Save(changed));
+    QCOMPARE(controller.Settings().currentConfig.zoomAmount,8.0f);
+    QCOMPARE(controller.LastCommittedSettings()->currentConfig.zoomAmount,2.0f);
+    QCOMPARE(Serialize(*controller.LastCommittedSettings()),committedBytes);
+    QCOMPARE(ReadBytes(path),committedBytes);
+    refuse = false;
+    QVERIFY(controller.Save(changed));
+    QCOMPARE(controller.LastCommittedSettings()->currentConfig.zoomAmount,8.0f);
+    QCOMPARE(controller.LastCommittedSettings()->assistive.ttsRate,0.5);
+    QCOMPARE(Serialize(*controller.LastCommittedSettings()),ReadBytes(path));
+    SettingsController reopened(path);
+    QVERIFY(reopened.LastCommittedSettings());
+    QCOMPARE(Serialize(*reopened.LastCommittedSettings()),ReadBytes(path));
+}
+
+void SettingsStoreTests::committedSnapshotTracksRecoveredBackup()
+{
+    QTemporaryDir dir; QVERIFY(dir.isValid());
+    const auto path = dir.filePath(QStringLiteral("settings.json"));
+    PersistentSettings backup; backup.currentConfig.zoomAmount = 3.0f;
+    QVERIFY(Save(path+QStringLiteral(".backup"),backup));
+    SettingsController::StorageOperations storage;
+    storage.saveSettings = [](const QString&,const PersistentSettings&) { return false; };
+    SettingsController controller(path,storage);
+    QVERIFY(controller.LastCommittedSettings());
+    QCOMPARE(controller.LastCommittedSettings()->currentConfig.zoomAmount,3.0f);
+    QVERIFY(!QFileInfo::exists(path)); // snapshot describes last valid persisted backup
+    controller.MutableSettings().currentConfig.zoomAmount = 5.0f;
+    QCOMPARE(controller.LastCommittedSettings()->currentConfig.zoomAmount,3.0f);
+}
+
+void SettingsStoreTests::committedSnapshotTracksPartialCredentialCommit()
+{
+    QTemporaryDir dir; QVERIFY(dir.isValid());
+    const auto path = dir.filePath(QStringLiteral("settings.json"));
+    PersistentSettings initial;
+    initial.assistive.vlmCredentialId = QStringLiteral("snapshot-fixture");
+    QVERIFY(Save(path,initial));
+    bool failRemoval = true, failCleanup = false;
+    int saves = 0;
+    SettingsController::StorageOperations storage;
+    storage.readSecret = [](const QString&) {
+        return ProtectedSecretResult{ProtectedSecretResult::Status::Found,QStringLiteral("fixture-only-secret"),{}};
+    };
+    storage.writeSecret = [](const QString&,const QString&,QString*) { return true; };
+    storage.removeSecret = [&](const QString&,QString* error) {
+        if (failRemoval) { *error = QStringLiteral("fixture removal failed"); return false; }
+        return true;
+    };
+    storage.saveSettings = [&](const QString& target,const PersistentSettings& value) {
+        ++saves;
+        if (failCleanup && value.assistive.pendingCredentialRemovals.isEmpty()) return false;
+        return Save(target,value);
+    };
+    SettingsController controller(path,storage);
+    QVERIFY(controller.LastCommittedSettings());
+    QVERIFY(controller.LastCommittedSettings()->assistive.vlmApiKey.isEmpty());
+    QVERIFY(!controller.Settings().assistive.vlmApiKey.isEmpty());
+    controller.MutableSettings().assistive.vlmApiKey.clear();
+    auto changed = controller.Settings().currentConfig; changed.zoomAmount = 6.0f;
+    QVERIFY(!controller.Save(changed)); // settings committed, later removal failed
+    QCOMPARE(saves,1);
+    QCOMPARE(controller.LastCommittedSettings()->currentConfig.zoomAmount,6.0f);
+    QVERIFY(controller.LastCommittedSettings()->assistive.vlmCredentialId.isEmpty());
+    QCOMPARE(controller.LastCommittedSettings()->assistive.pendingCredentialRemovals.size(),1);
+    QCOMPARE(Serialize(*controller.LastCommittedSettings()),ReadBytes(path));
+    failRemoval = false; failCleanup = true;
+    QVERIFY(!controller.Save(changed)); // initial commit succeeded, cleanup commit refused
+    QCOMPARE(saves,3);
+    QCOMPARE(controller.LastCommittedSettings()->assistive.pendingCredentialRemovals.size(),1);
+    QCOMPARE(Serialize(*controller.LastCommittedSettings()),ReadBytes(path));
+    failCleanup = false;
+    QVERIFY(controller.Save(changed));
+    QVERIFY(controller.LastCommittedSettings()->assistive.pendingCredentialRemovals.isEmpty());
+    QVERIFY(controller.LastCommittedSettings()->assistive.vlmApiKey.isEmpty());
+    QCOMPARE(Serialize(*controller.LastCommittedSettings()),ReadBytes(path));
 }
 
 void SettingsStoreTests::capHoldsDocumentedCapacity()

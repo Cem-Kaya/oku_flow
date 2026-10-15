@@ -2937,5 +2937,313 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow בודק את חיבור ה-USB ויתחבר מחדש באופן אוטומטי.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>&amp;דחה</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>כוונון התצוגה (נדרש)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>לאפשר תצוגות מצלמה לסבב הזה</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>לאפשר תמונות במהלך ההפעלה הזו</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>לאפשר לעוזר להתחיל ולעצור הקלטות שהוא התחיל</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>אישור הרשאה זמנית</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>יש לבקש רשות לפני הקלטת הרצאה או אנשים אחרים.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>תמליל פעולות העוזר</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>שליטת העוזר</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>שליטת העוזר כבויה</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>מצב שליטת העוזר</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>תצוגות המצלמה נשלחות לספק שנבחר. ההרשאה מסתיימת עם סיום הסבב או בעת החלפת מקור המצלמה.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>לקוח מחובר: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>הפעולות „קרא” ו„הסבר” נשארות ללא שינוי.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>השליטה כבויה כברירת מחדל. כשהיא מופעלת, העוזר יכול לכוונן את התצוגה. תמונות מצלמה ולכידות מסך דורשות הרשאה נפרדת. לעצירה ולביטול השינוי, הקישו Ctrl+Shift+U.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>שליטה ב‑OkuFlow מחייבת שיחה נפרדת.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>ארגומנטים מדויקים של הפעולה</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>השליטה החיצונית נמשכת עד 5 דקות לכל היותר ומסתיימת אחרי 60 שניות ללא פעילות. כדי לעצור אותה, נתקו את לקוח MCP או בחרו „ביטול הרשאה זמנית”.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>הרשאות שליטה חיצונית</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>שליטה חיצונית: נותרו %1 שניות; נותרו %2 שניות עד לפקיעת זמן חוסר הפעילות. שינויי תצוגה: %3; תצוגות מצלמה: %4; תמונות: %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>שליטת MCP חיצונית</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>ההרשאות שניתנו במסגרת ההרשאה הזמנית</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>אין הרשאה זמנית פעילה</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>אין לקוח חיצוני מחובר</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>כיוון ומקור המצלמה (לעולם לא במהלך הקלטה)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>סקירת הרשאות ההרשאה הזמנית</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>ביטול הרשאה זמנית</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>שליחת תצוגות מצלמה (עד 6 לכל הרשאה זמנית)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>שליחה ללא שליטה</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>התחלה ועצירה של הקלטות שהעוזר התחיל (נדרשות לפחות 30 שניות שנותרו כדי להתחיל)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>התחלת שיחת שליטה</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>עצירה וביטול (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>צילום תמונות (במסגרת מכסת הפעולות של ההרשאה הזמנית)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>בדיקת התמיכה של נקודת הקצה בכלים עכשיו</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>הבדיקה המפורשת הזו שולחת בקשת כלי סינתטית לנקודת הקצה שהוגדרה. היא אינה שולחת תמונת מצלמה ואינה משנה הגדרות.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>שינויי תצוגה: עד 60 לכל הרשאה זמנית. אי אפשר להרחיב הרשאות במהלך תקופת ההרשאה; בטלו אותה והנפיקו חדשה.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>התמיכה בכלים זמינה</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>התמיכה בכלים אינה זמינה</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>בודקים את התמיכה בכלים...</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>שיחה חדשה</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>היסטוריית שיחות</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>הגדרות העוזר</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>חיבור העוזר</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>שיחת העוזר</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>שאלה לעוזר</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>היסטוריית העוזר</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>פרטים</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>&amp;אפשר פעם אחת</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>יומן פעילות</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>מידע על השליטה</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>לאשר שליחה של תצוגת המצלמה הזו לספק שנבחר?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>לאשר צילום של התצוגה הזו?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>לאשר התחלת הקלטה של התצוגה הזו?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>לעצור את ההקלטה הזו?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>לעצור את ההקלטה שהתחילה ב־%1?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>לסובב את תצוגת המצלמה לזווית מוחלטת של %1° בכיוון השעון?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>להחליף את מקור המצלמה?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>לבדוק את הפעולה הזו?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>בקשת הרשאה %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>התוקף יפוג בעוד %1 שניות</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>לא ניתן היה להשלים את הבקשה.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>הבקשה נעצרה</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>התצוגה עודכנה: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>שוחזרו: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>דולגו: %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>שמירת ההגדרות נכשלה.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>הפעולה הושלמה.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>לא ניתן היה להשלים את הפעולה.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>ההרשאה נדחתה.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>מופעל</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>לא ניתן היה לעדכן את היסטוריית השיחות.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>לשנות את הגדרות המצלמה?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>לשנות את העדפות ההקלטה?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>לשנות את ספק העוזר, את המודל או את ההוראות?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>לשנות את הגדרות ההערות והפלט?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>לשנות את הגדרות הציור?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>לשנות את הגדרות הציור ולשמור תמונה?</translation>
+        </message>
     </context>
 </TS>

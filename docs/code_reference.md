@@ -20,7 +20,8 @@ are drained before the unrelated-input fixture expires its timer.
 
 ## Localization resources and validator, 2026-10-14
 
-The 24 `translations/okuflow_*.ts` catalogs retain 728 source keys each.
+The 24 `translations/okuflow_*.ts` catalogs contain 805 source keys each in
+the local chat/control development work.
 `scripts/check_translations.ps1::Read-Catalog` retains exact source, format,
 markup and line-ending checks. Its French and Dutch identical-cognate tables
 also permit genuine identical words such as French `Microphone`/`Photo` and
@@ -427,6 +428,19 @@ so metadata generation cannot silently accept an incomplete copy.
   handshake. `ResolveSavedCameraIndex` still honors saved identity/legacy index;
   only an unconfigured first launch prefers a ready companion over index zero.
 - `PhoneCameraTransport.SetTorch` coalesces a session-only Boolean command;
+  its bounded Boolean-returning overload takes a nonnull shared atomic
+  cancellation token and positive `steady_clock` milliseconds deadline. The
+  native one-argument void entry point is preserved. `QueueTorch` stores desired
+  state/token/deadline/generation under the transport mutex; superseding native
+  or actor commands cancel the prior actor token. `SendPendingTorch` and
+  `SendTorchCommand` guard the actual socket write against cancellation, expiry
+  and stale generation, including a record already dequeued. `RetirePendingTorch`
+  revokes pending tokens on cancellation, retry and worker exit.
+  `ApplyTorchAcknowledgment` updates actual state only from phone status, never
+  from admission or cancellation; bytes already emitted can still be acknowledged.
+  `MediaCapture.SetPhoneTorch` has the corresponding bounded overload and rejects
+  absent/non-running phone sessions and split-stop access without retaining app
+  references. Deadlines use the steady-clock epoch, not wall-clock/Qt elapsed time.
   `TorchAvailable`/`TorchEnabled` expose atomics from capture metadata. A fresh
   connection clears pending light requests and sends explicit light-off before
   Start, including HEVC fallback. `MediaCapture.SetPhoneTorch`,
@@ -1399,6 +1413,20 @@ Types:
     own bounded GPU drain; true means producer work completed and its backing
     remains alive for consumer release. False requires retaining imports.
     A failed stop retains the entire session until process exit.
+  - `void BeginStopCapture()` immediately revokes callback entry and facade
+    GPU/phone operations, then starts at most one stop worker owning the exact
+    shared session. `CaptureStopStatus PollStopCapture()` reads only control
+    state and returns `WaitingForQuiescence`, `ReadyToRelease`,
+    `WaitingForRelease`, `Completed` or sticky `Failed` without driver waits.
+    `void ReleaseStoppedCapture(bool consumerSafe)` permits producer teardown
+    only after quiescence and successful cleanup of that session's consumer
+    imports; early/unsafe acknowledgment retains the session. The total split
+    stop deadline is 1500 ms, including consumer cleanup and final release.
+    Worker completion timestamps preserve success across delayed UI polling.
+    An unfinished split stop cannot implicitly release consumer imports through
+    `StartCapture`, `Shutdown` or destruction; the legacy wrapper remains bounded.
+    `CaptureShutdown::Poll()` snapshots quiescence (including entered callbacks),
+    abandonment, completion and its monotonic timestamp under a control-only lock.
   - `bool WasAbandoned() const` is sticky: further capture starts/enumeration
     are refused and app shutdown skips `MFShutdown` / `CoUninitialize`.
   - `const std::string& LastError() const`
@@ -1533,7 +1561,7 @@ Types:
   - `BuiltInAssistantInstructions()` returns the read-only OkuFlow identity
     prompt shown in AI Settings
   - `RefreshAccount()` / `StartChatGptLogin()`
-  - `RequestVisionTurn(prompt, imagePath, threadId, bool persistent, bool retainThread = false)` / `InterruptTurn()`
+  - `RequestVisionTurn(prompt, imagePath, threadId, bool persistent, bool retainThread = false, bool permitCoding = true)` / `InterruptTurn()`
     - `persistent` = Advanced Assistant turn (stored thread, opt-in
       permissions). Non-persistent with `retainThread` = Explain: a stored
       (`ephemeral: false`) thread under the restricted vision policy. If
@@ -1580,17 +1608,18 @@ Supporting types:
   or the configured scene prompt. Read omits interface-language directives and
   HTTP conversational preferences to preserve source text. It keeps answers up to the
   existing 256 Ki-character cap and records them under `Text on screen`;
-  Explain keeps its short overlay preview and full notes text. The HTTP
-  `BuildVlmRequestBody` token limit is 4096 for Read and 180 for Explain.
+  Explain keeps its full shared-chat answer and full notes text. The HTTP
+  `BuildVlmRequestBody` token limit is 4096 for Read, 180 for Explain, and
+  2048 for a typed tool-free followup.
 - Explain continuity (`continueExplain`, set by `SubmitFrameForced` for
   Explain only): with Codex, `StartCodexVlm(..., bool retainThread)` continues
   `explainThreadId_`, or opens a stored thread whose id arrives through
   `RetainedThreadStarted`. Read always uses a new ephemeral thread. A
   continuing request appends `ExplainContinuationPrompt` (describe this view,
   use earlier views only as context). With an OpenAI-compatible server,
-  `explainHistory_` keeps the last 4 Explain answers (each at most 1200
-  characters, text only, in memory); `BuildVlmRequestBody` resends them as
-  user/assistant pairs before the current request. Read and periodic analyses
+  the shared store supplies the last 4 completed exchanges (each answer at
+  most 1200 characters, text only, in memory); `BuildVlmRequestBody` resends
+  role/content pairs before the current request. Read and periodic analyses
   neither send nor extend it; a provider, server URL, or model change clears it.
   Explain results reach lecture notes exactly as before (`FinishVlmSuccess`).
 - There is one vision busy state. A second forced request reports status
@@ -1643,8 +1672,7 @@ Supporting types:
     id into `PersistentSettings::explainThreadId`, lists the thread with
     `CodexConversation::explain`, and on a completed Explain refreshes that
     entry's `updatedAt` and preview. `StartNewAssistantConversation()` also
-    calls `StartNewExplainConversation()` when the Explain conversation is
-    open or selected, or when the provider is not Codex.
+    always resets the visible Explain chat and its private backend bindings.
   - `void NoteCapturedPhotoPair(const QString& originalPath, const QString& processedPath)` — appends synchronized original and processed images to the HTML lecture notes
   - `void NoteCapturedVideoPair(const QString& originalPath, const QString& processedPath)` — appends synchronized playable MP4 controls and direct links to the HTML lecture notes
   - `void NoteAnnotationSnapshot(const QString& filePath, const QString& heading)`
@@ -2019,6 +2047,10 @@ Supporting types:
   - `kInvert` preserves the legacy per-channel inversion path
   - `kLumaLut` maps byte luma through the active 256-entry table
 - `struct ProcessingSettings`
+  - `TextStageActivity` and `TextClarityStages()` select the nine child effects
+    from the master and each individual preference. CUDA dispatch consumes this
+    selection directly; enabling the master never re-enables an unchecked
+    refinement. `pipeline` reports whether a text-processing entry stage runs.
   - `ApplyTextClarityMaster()` suppresses all nine child text-stage flags on
     an effective frame settings copy when Text Clarity is off. Saved options,
     independent Black & White, display colors, and Maxine remain unchanged.
@@ -3179,3 +3211,585 @@ mutex contention, deadline retention and mismatched frames. `capture_buffer_layo
 covers padded NV12 and aperture crop offsets; phone/fence fixtures use fake clocks
 for silent decoder and completion stalls. These are local fixtures, not evidence
 of real-phone disconnect, Maxine visual quality or long-soak acceptance.
+
+### Dedicated Codex agent launch profile
+
+`CodexAgentProfile` and `CodexAgentLaunchProfile` in
+`common/codex_agent_profile.hpp` validate the offline CLI version and the exact
+feature name/stability inventory before constructing a restricted agent-only
+launch. They disable provider/execution features and only produce bare-key
+MCP overrides after validating every inventory name. Initialization explicitly
+opts into the experimental API. This does not establish runtime tool acceptance.
+The first-party profile under `assets/codex-agent/` records local offline facts;
+`codex_agent_profile_contract` checks malformed/version-drift/name-injection
+boundaries without a real Codex process or credentials.
+
+`AssistiveRuntime::SetPeriodicAnalysisEnabled` preserves explicit user
+Read/Explain/Assistant work when profile/overlay configuration disables periodic
+analysis. `StartVlm` stamps request origin; only periodic-owned preparation/reply
+may be canceled by that setting. The legacy explicit `SetModes` stop behavior
+remains available; manager profile transitions use the scoped method.
+
+## Agent-control development core
+
+`include/okuflow/app/agent/` mirrors `src/app/agent/`:
+
+- `control_registry.hpp/.cpp`: `CatalogEdition`, `Tier`, `ToolId` and
+  `ToolDescriptor` define the finite catalog. `CatalogEditionName`,
+  `ControlRegistry` and `FindControlTool` return immutable, Qt-free descriptors
+  and draft-07 schemas for development editions and gated `v1`.
+- `app_control_service.hpp/.cpp`: `Field`, `FieldWrite`, `ControlPlan`,
+  `ControlResult`, `ControlRequest`, `ContextKind`, `ControlGrants` and
+  `ContextSpec` form the typed boundary. `IAppControlTarget` exposes safe state,
+  field plans/transitions, queries, async execution and exact recording cleanup.
+  `AppControlService` provides `SetEnabled`, `Begin`, `End`, `SetGrants`,
+  `SourceChanged`, `NativeFieldsChanged`, queued `Submit`, `ResolveApproval`,
+  `PendingApproval`, `StopAndUndo`, `SetEventSink` and `Edition`. Private
+  `Normalize`, `Dispatch`, `Run`, `Authorized`, `Stale`, `Ask`, `Finish`,
+  `ValidContext`, `Event`, `Expire` and monotonic `Now` enforce admission,
+  revisions, budgets, delivery and single-use approval lifetime. `FieldName`
+  fixes DTO field names; `ControlResult::Failure` allowlists failure codes.
+  `Continue` refuses an external lease's observe, camera-source, photo and
+  recording tools with `denied_by_policy` when the lease bundle lacks that
+  toggle, before `Prepare` can report availability.
+- `app_control_target.hpp/.cpp`: `AppControlTarget` implements state/fields,
+  `Prepare`, `Apply`, `Save`, `Query`, `Execute`, modal/user/recording predicates,
+  `StopOwnedRecording` and `NoticeNativeChanges` against `OkuFlowApp`.
+  `ProfileFields` is the finite profile inventory; `CreatePhoto`, `PhotoState`,
+  `CancelPhotoReadback` and `RecordingEnded` retain durable operation identity.
+- `operation_tracker.hpp/.cpp`: `OperationKind`, `OperationState`,
+  `OperationRecord`, `OperationStateName` and `OperationTracker` define legal
+  progress. `Create`, `Advance`, `SetSession`, `Get`, `SafeStatus`, `Prune` and
+  monotonic `Now` reject stale/illegal terminal changes, bound retained records,
+  and sanitize outcomes.
+
+`OkuFlowApp::ControlService` exposes the adapter entry. Initialization owns the
+service/target; destruction retires them before capture resources. Native
+configuration synchronization reports changed field revisions. In
+`app_agent_capture.cpp`, `RequestPhotoCapture`, `RequestRecording` and
+`StopRecording` replace button lambdas with named production entry points.
+Photo readback/writer callbacks retain an operation id through paired commit.
+`RecordingManager::SetRequested` accepts an optional app-owned reserved session;
+`StopSession` checks its expected id and `SetSessionAudioResult` changes only
+that session. `CurrentSessionInfo` retains identity through stopping/finalizing.
+`RecordingSessionInfo` adds `RecordingOwnerKind`, `RecordingAudioRequest`,
+`RecordingSessionCompletion`, owner id and actual audio; queued completions
+report the ended session rather than querying a replacement.
+
+Settings version 17 adds default-off `agentControlEnabled`/`externalMcpEnabled`,
+conversation `kind` and `toolsetVersion`. `EffectiveConversationKind` infers
+legacy Explain only for absent/unassigned kind and maps unknown values to
+tool-free Assistant. Version-16 loading never restores new control switches.
+`agent_control_contract`, `settings_store_round_trip` and `recording_manager`
+exercise malformed arguments, deduplication, approval replacement, cancellation,
+user edits, safe durable outcomes and exact-session stop without windows.
+These fixtures do not establish completed provider/MCP or native acceptance.
+
+### Bounded HTTP agent transport
+
+`common/http_agent_client.hpp` defines `HttpAgentToolMode` (Off, Tools,
+LegacyFunctions), `HttpAgentConfig` (exact endpoint/model/header-only API key),
+`HttpAgentTurn` (app-issued context/origin and authorized initial viewport),
+`HttpAgentOutcome` (text/fixed error code/interruption) and
+`HttpAgentCapability` (session verdict and optional parallel-flag acceptance).
+`HttpAgentClient::Configure` and `SetControlService` cancel obsolete work without
+performing inference. Independent configuration/service epochs retain the newest
+settings when cancellation callbacks change them again. `TestCapability` is the explicit one-request, frame-free
+capability action; its optional boolean tests `parallel_tool_calls:false`.
+`Capability` is session-only and keyed by endpoint/model/wire mode; credentials
+invalidate cached verdicts. `Start` requires an active app-issued embedded context,
+validated configuration and successful capability test; `Busy` reports ownership.
+`Cancel` aborts the exact reply/pending core call; generation and context checks
+retire late callbacks. The adapter never issues a context, consent or grant.
+
+The implementation's `Descriptors` converts the authoritative registry to provider
+function schemas; `ParseCalls` validates the entire round, including exact service
+argument validation, before `RunNextCall` submits calls sequentially. Original
+assistant objects preserve argument strings/objects; tool replies retain call order,
+then authorized observations form a user image message. `StripImages` removes prior
+images before another round. `Post` bounds serialized requests and refuses redirects;
+`ReplyFinished` bounds response bytes and maps failures to fixed codes. `Finish`
+clears image-bearing memory and emits one completion. Private `IsCurrent`,
+`ConfigurationValid` and `ProfileKey` enforce origin/configuration/capability rules.
+
+## Assistant chat and consent widgets
+
+- `AssistantChatView` (`ui/assistant_chat_view.hpp/.cpp`) renders trusted
+  `SetChatSnapshot` DTOs into escaped native chat bubbles. Draft/attachment/busy
+  belong to the app model; selection/scroll remain per view. `SetSettingsWidget`,
+  `SetApprovalWidget` and `SetRoutingWidget` place native consent content.
+  `ShowSettings`, `ShowHistory` and `CloseDrawer` provide overlays with Escape
+  and focus restoration. `FocusApproval` deliberately focuses Deny.
+  `DrawerContainsFocus` lets the main window defer its outer Tab bridge to
+  native traversal inside an open overlay drawer.
+  `RefreshIcons` follows palette changes, including the moved floating header.
+  Finite Explain-origin metadata adds a trusted camera tag.
+  `SetConnectionState` and `SetUndoAvailable` mirror app state without authority.
+  Accessors expose header, transcript, composer and history actions for binding.
+  `ChatDraftEdited`, `ChatAttachmentChanged`, `ChatSubmitted`, `ChatNewRequested`,
+  `ChatHistoryRequested`, `ChatSelected`, `ChatReadAloudRequested`, Stop/Undo and
+  AISettings signals represent explicit UI actions. Enter sends once, Shift+Enter
+  inserts a newline. Incoming text/receipts never execute markup or consent.
+- `AgentControlPanel` (`ui/agent_control_panel.hpp/.cpp`) supplies settings-sheet
+  content and detached `approvalWidget`/`routingNoticeWidget`. `SetEnabled` mirrors
+  persisted masters but provides no duplicate switches; `SetSessionGrants`
+  restores turn/session state without authorization signals. `SetPendingApproval`
+  displays a human question from a finite tool map, immutable target display and
+  expiry; collapsed Details retains exact canonical identity/normalized JSON.
+  `ClearPendingApproval`, `hasPendingApproval`, `approvalDenyButton` and
+  `FocusPendingApproval` support explicit navigation and single-use decisions.
+  Orientation uses canonical `degreesClockwise`; recording time is localized.
+  `NativeChangeSummary` maps a finite set of canonical normalized scalar image
+  fields to existing translated labels and locale-formatted values; it never
+  copies raw model strings or changes approval authority.
+- `SetExternalConnection` never opens a section. `SetExternalLease` mirrors
+  `ContextStatus` with read-only active grants, times and budgets. Optional grants
+  start off. `AppendAction` bounds plain activity to 128 blocks/32 KiB and emits
+  `actionReceiptAdded`; app-owned receipts attach only to their original row.
+  `SetStatus` routes persistent accessibility; `SetCapabilityStatus` is display
+  only. `RequestStopAndUndo` is shared by visible and shortcut paths.
+  Trusted activation signals are session grants, approval/lease/revoke, stop/undo,
+  capability testing and routing choices. The obsolete `enabledChanged` signal
+  remains source-compatible but is never emitted by this panel.
+- `MainWindow::assistantChatView`, `agentControlPanel`, `agentLiveRegionLabel`
+  expose presentation and the persistent live region outside hideable chrome.
+  `focusAgentApproval` reveals Advanced Assistant and focuses Deny only for a
+  pending record. Application Ctrl+Shift+A/U work with ordinary chrome hidden.
+  `AiSettingsDialog::result` alone owns persisted embedded/external masters;
+  `UpdateProviderFields` unchecks/disables coding/internet when control is on,
+  and result guards against conflicting enabled permissions;
+  it never saves session grants, approvals or leases.
+- `AssistiveOverlay::SetChatSnapshot` updates the same pure chat view without
+  raising/showing it; `ShowChat` is reserved for explicit admitted Explain.
+  `SetReadContent` owns a separate result pane and never mutates chat; legacy
+  `SetContent` delegates to that Read path. `ReadResultPane`/`ReadBody` expose its separate result for semantic
+  fixtures; the destructor releases that pane. `SetControlRoutingNotice`, `QuestionDraft`, `ClearQuestionDraft` retain
+  refused shared questions until app acceptance. Existing manager forwarding
+  emits QuestionSubmitted/NewChatRequested once; `FocusTargets` exposes the
+  seven reading/editing/placement controls of the current view.
+  An explicit `EscapeRequested` activates the camera owner before returning
+  focus to its render target; passive snapshots never activate either window.
+- `MainWindow::RefreshControlReadouts` executes registered native readout
+  refreshers after a signal-blocked typed control batch, without synthetic
+  slider events. `ColorSchemePicker::clearCustomScheme` silently restores the
+  original absent custom recipe and editor defaults for internal atomic undo.
+- Native chat regression fixtures bind `VisibleChatSession::SnapshotChanged`
+  to both views, inspect the independent `ReadBody`, and retain each view's
+  selection and scrolling during deltas. Docking fixtures press a verified bare
+  margin on `chatView()->headerWidget()`, preserving native move/latch/cancel
+  assertions rather than targeting the hidden legacy toolbar.
+
+`MainWindow::setAnnotationMode`, `AnnotationOverlay::SetActive` and `SetTool`
+accept an explicit `preserveFocus` flag, defaulting off for manual controls.
+App-owned controlled transitions pass it to avoid focusing the canvas, Draw
+button or selected tool. Controlled canvas admission uses
+`WA_ShowWithoutActivating`; `ShowToolOptions` retains announcements and normal
+manual focus behavior while suppressing controlled focus transfers. The native
+controlled-toggle fixture verifies owner focus through off/on and tool changes
+while preserving ink, undo/redo and the manual-exit clearing contract.
+
+## Dedicated agent provider and answer ownership (0.3.1 development)
+
+`CodexAgentClient` is a separate, restricted JSONL child. `Configure` retires its
+own process/session when provider identity changes; `TestCapability` explicitly
+runs bounded offline preflight and a tiny no-frame dynamic-tool round trip.
+`SubmitTurn` requires an active app-issued embedded context, matched catalog,
+confirmed capability and initial-frame grant. `StartThread`/`StartTurn` declare
+only the shared registry, use a controlled read-only working directory and bind
+the turn exclusively from its correlated start reply. `HandleCall` buffers at
+most eight pre-ack calls without effects; `DispatchCall` denies wrong/retired
+turns and undeclared tools. `Answer` returns only common safe DTOs and bounded
+view observations. `Tick` uses monotonic deadlines and cancels exact queued
+control calls before timeout delivery. `Cancel`, `ResetConversation` and
+`Shutdown` retire only this child, never the ordinary Assistant or external adb.
+Notification policy fails closed on forbidden items or unexpected MCP startup.
+No history/resume operation or account-management API is exposed by this client.
+`SubmitTurn` returns false without a terminal signal when it owns no admitted
+turn. Its optional completed-text bridge accepts only bounded user/assistant
+strings, never backend IDs, images, tool results or permission objects. Quoted
+bridge data remains ordinary input. Retired identities are scoped to their
+thread and reset only for a new child. Synchronous UI callbacks are fenced by
+session/generation epochs before preflight, turn start or buffered dispatch;
+a replacement request cannot be started twice by the superseded callback.
+
+`AssistiveRuntime::BeginControlAnswer`, `ControlAnswerStarted`,
+`ControlAnswerDelta` and `CompleteControlAnswer` share busy state, accessible
+answer display, manual speech and local lecture-note exchange storage with the
+existing Assistant. They confer no grants. Completion is single-use and clears
+the stop callback before emitting; periodic-mode changes cannot cancel it.
+`StopAssistant` dispatches only the active answer's exact cancellation callback.
+
+`OkuFlowApp::InitializeAgentControl` wires the permission panel and separate IPC
+endpoint to the shared service; `RefreshAgentControlSettings` retires the
+app-created recording owner on provider/master changes. `TestAgentCapability`
+requires explicit UI activation. `StartAgentConversation` preserves the draft
+and never submits it; `SubmitAgentPrompt` obtains the app-owned context and uses
+only a current authorized viewport observation for an initial image.
+`CancelAgentTurn` cancels provider work and exact context; its optional undo
+path preserves later native user edits. Both editors refuse incompatible
+conversation routing before clearing a prompt or capturing pixels. History
+kinds remain immutable; agent ids never enter the ordinary history loader.
+
+`codex_agent_client_contract` uses a separate fake process, pinned preflight
+facts, real JSONL framing and a private core target. It exercises pre-ack calls,
+stale-first and retired-first calls, forbidden tools/items and unavailable
+admission. It starts no account, inference provider, camera or native windows;
+live dynamic-tool compatibility remains a separate acceptance gate.
+
+## First-party local MCP implementation (0.3.1 development)
+
+`mcp::Json` parses bounded strict UTF-8 JSON with depth/node limits;
+`MatchesSchema` validates the shared finite registry schema subset.
+`Protocol` owns pinned MCP lifecycle, ids, tool descriptors/results, cancellation
+and framing strikes. `AppChannel` abstracts app forwarding; `PipeChannel`
+verifies the owned app peer, pairs/reconnects and forwards bounded requests.
+`Handle`, `PeerIdentity` and `InstanceDescriptor` retain exact native process,
+file, token/session and pipe identities; persistent descriptors contain no
+secret or grant. `AppIpcEndpoint` stays inactive until the owner's external
+master switch. `PendingPeerId`/`PendingClientName` expose the verified pending
+row, `ApprovePending(expectedPeerId, grants)` issues a GUI-owned lease only
+when the displayed peer still matches, and `Revoke` retires exact authority.
+`SetPendingChanged` never opens a window; `SetEnabled(false)` cancels the owned
+connection before bounded worker cleanup. The final image fence rechecks
+native identity, lease, cancellation, source/processing/view stamp and grant.
+Codec/base64 work is performed by the writer, not the GUI thread.
+
+`Get-PublicationUtcTimestamp` in `scripts/windows-installer/publication_time.ps1`
+preserves explicit UTC/offset semantics for strings and PowerShell's typed
+JSON dates. The publisher uses it for fresh validated manifests; ambiguous
+local timestamps are refused. Its private regression accepts six explicit
+representations and rejects five ambiguous ones without builds or desktop use.
+
+See [MCP integration and limitations](mcp_control.md). The deployed-image
+CMake policy only selects the finite expected executable identity; it neither
+grants control nor promotes a development catalog or bypasses release gates.
+
+## Shared visible chat (plan 52 Draft 6, development)
+
+`VisibleChatSession` owns one pixel-free logical transcript, shared draft,
+turn attachment and busy state for Advanced Assistant and floating Explain.
+`ChatTurnTicket{conversationId,epoch,requestGeneration}` fences admission,
+streaming and terminal replacement. `Admit` creates one question and one
+assistant placeholder; `Complete` replaces the authoritative answer once.
+`New`, `Restore` and `RetireBackends` invalidate old ownership.
+`ChatBackendKind` is immutable for the visible conversation; private Explain,
+Agent, Assistant and Coding backend bindings stay outside presentation DTOs.
+`TextContext` and `BridgeContext` expose at most four completed exchanges /
+32 KiB of role/content strings, with no images, IDs, grants or action records.
+`ActiveTicket` exposes app-owned presentation ownership. `AppendActionReceipt`
+stores bounded first-party presentation text separately; its ticket overload
+admits a late receipt only into the original row in the same conversation/epoch.
+
+`AssistiveRuntime::PrepareChatTurn`, `SubmitExplainFollowup`,
+`ResetVisibleChat`, `FailPreparedChat` and `HasChatTurn` integrate that store
+with provider/notes ownership. Explain followups retain a restricted Explain
+thread; Read remains an isolated request and never mutates chat.
+`CancelPeriodicForUserTurn`, `ReserveForegroundCapture` and
+`IsForegroundBusy` separate explicit user work from periodic analysis.
+`PublishChatFinished` preserves compatibility terminal signals without double
+rendering. Notes are still written once by the runtime after accepted success.
+
+Ordinary `CodexAppServerClient::RequestVisionTurn` adds a trusted
+`permitCoding` argument. Pending turns freeze coding/internet/workspace
+permissions at admission; saved Assistant histories force read-only while
+Coding histories require the current explicit workspace grant. Explain never
+borrows persistent/coding authority. `HttpAgentTurn::textHistory` accepts only
+bounded completed user/assistant role pairs and never carries historical images.
+Tool-free HTTP followups use the runtime path independently of agent probes.
+
+`OkuFlowApp::LoadAssistantConversationById` preserves immutable saved kinds.
+Agent histories restore presentation only and never enter the ordinary loader.
+One control event sink and trusted panel binding feed both native control panels.
+New/history transitions stop manual speech and retire the old control owner.
+`NewConversationKind` applies the trusted native New policy: Codex with control
+off starts Coding only with the explicit coding setting, otherwise Assistant;
+HTTP or embedded-control New starts Explain. `StartNewAssistantConversationAs`
+keeps the Qt New slot unchanged while Explain explicitly resets to Explain.
+`ResetVisibleChat(kind)` accepts that immutable initial kind. Explain itself
+always uses the restricted retained backend even after a Coding New.
+## MCP release contract helpers (0.3.1 development)
+
+`mcp::main --build-info` emits a single bounded fact object before opening
+stdio/IPC. `Assert-McpReleaseBuildInfo` requires exact V1/deployed-policy facts;
+`Assert-McpReleaseCache` refuses all development editions before bundle builds
+and tests. `Get-McpBuildInfo` runs only an owned diagnostic child with a timeout.
+`Assert-McpNativeImports` uses VS2022's read-only `dumpbin` and permits only the
+five reviewed Windows system libraries, excluding Qt and dynamic VC runtime.
+`Get-McpReleaseBuild` combines cache, actual executable and native import checks.
+`Assert-McpBundleInventory` verifies declared path/hash parity in legacy or
+nested snapshots, while retaining compatibility with published non-MCP bundles.
+The release script signs/copies/compares the bridge; metadata records it and MSI
+0.3.1+ requires it. These checks do not themselves establish owner/provider or
+camera acceptance, and no V1 release has been produced.
+
+ObservationService accepts an optional monotonic clock for deterministic fixtures, retains the actual processed-frame timestamp, and recomputes frameAgeMs on completion and every Metrics read. Missing/future timestamps, held output and frames older than MaximumFreshFrameAgeMs (1000 ms) are stale. AppControlTarget AutoAdjust requires known false held/converging flags; unknown GPU state reports unavailable. Resolve continues to use the immutable observation transform across view/processing changes, rejecting source or geometry changes.
+
+CameraSelect now prepares exact opaque camera identity with recording/photo/start-retirement guards, records trusted OwnedSourceRequested revision ownership, and dispatches background StartCameraCapture with AgentTemporary origin and an explicit default-format override. A bounded 50 ms GUI metadata poll advances stopping/starting/first_frame durable status, with a 30-second first-frame deadline. CameraTransitionFailed records capture_failed and requests previous-actual/saved restoration without changing saved intent. CancelCameraTransition accepts failedFallback to mark actual restored identity as fallback; cancellation or a native camera/format choice retires the request generation. OperationTracker exposes only boolean camera fallbackActive/fallbackRequested metadata. No driver/media work runs in the poll.
+
+The shared ChatAttachmentChanged bootstrap binding immediately revokes an active embedded frame grant and fans that state to both native panels when unchecked. Checking during a foreground turn only refreshes the authoritative model; it cannot widen that turn's grant.
+
+RevokeFrameGrant(owner) is trusted GUI-only revocation of both an exact owner's embedded image permission and its queued source-bound next-turn grant. ContextStatus.nextTurnFrames exposes pending native consent separately from an ended context's inactive frames grant. Unchecking chat attachment calls this even after the provider turn ended; another owner cannot revoke the queued grant.
+## Finite grouped-control input validation
+
+`MatchesControlSchema` is the first-party inline GUI-side draft-07 subset used
+by `AppControlService::Normalize` through its local matcher. It rejects unknown
+types without coercion, enforces finite object properties and property-count
+bounds, bounded arrays and unique/items constraints, exact nullable/oneOf/not
+semantics, number bounds and Unicode-codepoint string lengths. Recursion stops
+after 32 levels. Fixed registry schemas are trusted code; caller values are not.
+`control_schema_contract` covers wrong shapes, types, empty/broad objects,
+out-of-range values, duplicated arrays, nullable branches and excessive nesting
+without any desktop, account or device. The expanded native parameter inventory
+and its current integration limits are in [control_inventory.md](control_inventory.md).
+
+FrameProcessed only refreshes the observation input-age timestamp on a new captured sequence or source epoch, so changing effects on a cached input cannot make an old camera frame fresh. The bounded 120-entry/two-second timestamp window reports processed unique-frame rate (fpsBasis processed_unique_frames), rather than negotiated camera FPS; stalled output reports zero. Image State adds requested/effective/inactiveReason for reading-color stages, and raw-passthrough preparation rejects actual image-effect changes.
+## Expanded parameter catalog (0.3.1 development)
+
+`ParameterRegistry`/`FindParameter` provide 94 immutable adjustable descriptors;
+`ProtectedControlRegistry` reports 17 protected metadata entries without values,
+and `ControlActionRegistry` distinguishes 34 workflows from settings. The new
+`DevFull` edition adds 17 typed discovery/get/set tools, while the earlier
+14/17/19-tool development editions remain unchanged. V1 remains unpublished.
+
+`ParameterGroupForTool` maps finite ToolIds to the eight groups.
+`ParameterGetSchema`/`ParameterSetSchema` produce closed, bounded input schemas;
+setters reject empty/unknown fields and never accept raw settings paths or
+permission keys. `ParameterMetadataPage` uses stable after-field pagination,
+at most 16 entries and 32 KiB per page. Runtime targets must separately supply
+honest availability and current/effective values: metadata/schema presence
+does not claim that a native setter is integrated or active on this hardware.
+Output destinations are opaque owner-approved directory handles, never model
+filesystem paths. See [the inventory](control_inventory.md) for exact native
+handlers, side effects, persistence and outstanding integration gates.
+
+### Durable logical chat history
+
+`StoredVisibleChat` contains an opaque logical id, title/draft, timestamps and
+bounded terminal text rows. `VisibleChatSessionStore` loads only owned
+opaque-id JSON children, strictly validates its versioned schema, rejects
+symlinks/traversal and known credential echoes, and writes with `QSaveFile`
+atomic replacement with direct-write fallback disabled. `List`, `Load`,
+`Save`, `Rename`, `Delete`, `Revision` and `ErrorCode` expose text storage
+only, never backend references or authority. Limits are 128 rows, 1 MiB per
+record, 64 conversations and 32 MiB retained total, evicting oldest owned
+records. Reload work has finite file/byte budgets.
+
+`VisibleChatSession::RestoreLogical` restores full mixed text as Explain,
+clearing backend bindings/attachments; `IsLocalLogical` distinguishes these
+records from legacy provider history even when a provider id resembles a UUID.
+`OwnsTicket` admits a late first-party receipt/grant presentation only in its
+original visible epoch. Explain-button user and assistant rows retain the
+finite `origin:"explain"` presentation tag; other origins omit it.
+
+`OkuFlowApp::PersistVisibleChat` debounces local history writes and flushes
+before New/history transitions and shutdown. `RenameStoredConversation` and
+`DeleteStoredConversation` operate on the selected owned logical record.
+New mixed chats expose one logical drawer row; backend conversation-created
+events do not create duplicate legacy entries. Legacy Assistant/Coding/Explain
+entries retain their existing kind-safe provider loader and native dialogs.
+Restoration writes no notes and starts fresh restricted backend segments.
+
+Shared logical chat persistence is constructed under AppLocalDataLocation/visible-chat and debounced for 350 ms on SnapshotChanged, then flushed after turn cancellation during normal app teardown. New local logical UUIDs do not restore persisted private Explain anchors or create duplicate backend index entries; explicit legacy history selection still restores its immutable kind. Native logical rename/delete retain the shared dialogs and route to the bounded local store. Export reads the exact selected logical record and formats only validated role/text/action strings and fixed failure/interruption status, without changing the displayed chat or calling a provider.
+
+ControlPlan.observedFields names only returned typed getter values; the service refreshes those revision baselines and emits fieldRevisions without widening other fields. requiresApproval forces exact native consent for sensitive preference changes. AppControlTarget exposes IsApplyingControlledTransition for persistence batching: native SavePersistentSettings still captures live UI/annotation/source settings during a controlled field delta but skips disk commit; target Save collects final live state and performs one settings commit. Driver safety-marker transactions remain separate from this ordinary UI batching.
+
+`common/control_diagnostics.hpp` defines Qt-free `ControlFrameIdentity` and
+`ControlDiagnosticSnapshot`. Identity retains the exact camera sequence,
+source/processing/view/geometry epochs and monotonic submission time.
+`DecodeControlDiagnosticValues` maps completed similarity-model, tripod state,
+bump mode and readiness values to optional held/converging values; unready,
+nonfinite and unknown tags never become settled/live assertions. Recovery blends
+remain held. Decoder calls preserve provenance and the separately captured
+keystone validity.
+
+`ProcessingSettings::controlFrame` carries this caller-issued identity into
+CUDA. `CudaInteropSurface::ControlDiagnostics` polls the existing asynchronous
+stabilizer timing event without waiting or adding GPU copies. It publishes only
+completed samples labeled after a successful frame submission, retains their
+original time, and prevents an older pending sample replacing a newer output.
+Keystone reference validity derives from successful quad detection, reset,
+validated correction history and staleness, not history length alone. These
+sampled diagnostics are not assertions about a newer presented frame; consumers
+must verify identity and age. CPU-only surfaces return an unknown snapshot.
+
+`SettingsController::LastCommittedSettings` returns an optional immutable
+snapshot of the last successfully loaded or committed persistent configuration.
+Defaults without a settings file remain unknown; live `MutableSettings` edits
+do not change it. `RememberCommittedSettings` omits runtime plaintext API keys
+and mirrors the serializer's canonical language token. Each successful storage
+commit advances the snapshot, including migration/recovery and the first phase
+of credential deletion. A later credential-cleanup failure may therefore return
+false from `Save` while the snapshot accurately reflects the settings bytes
+already committed. Failed writes retain the preceding snapshot. A recovered
+valid backup remains last known persisted state even if primary writeback fails;
+the snapshot does not assert that a primary file exists or that credentials were
+successfully deleted. MCP getters must project only allowlisted knob fields from
+this object and never return the full persistent settings object.
+
+### Scoped scene analysis and finite assistant preferences (Plan 52)
+
+`PrepareAssistantPreferencePatch` (`app/agent/assistant_parameter_policy.hpp`) is
+pure whole-patch admission for the ten assistant preference descriptors and
+`notes_output.lectureNotes`. It rejects unknown/protected/cross-group fields,
+secret echoes, invalid bounds, unavailable model/effort combinations and voice
+handles outside the supplied installed inventory. A model change may add its
+coupled reasoning write. Sensitive provider/model/instruction/prompt writes
+carry the explicit `ApprovalDomain::Configuration`; this grants no frame or
+external-lease authority.
+
+`AppControlTarget::{Prepare,Query,Apply}AssistantParameters`,
+`AssistantParameterFields`, `AssistantParameterField` and
+`FinalizeAssistantParameters` connect those finite descriptors to native
+settings. Getters return bounded requested/effective/saved values, availability,
+persistence and only the fields actually returned for revision baselines. Voice
+inventory is lazy, never speaks, and exposes opaque handles rather than native
+voice identities. Protected or oversized preferences have null public values.
+Settings application is deferred until the core's mutation/save loop finishes.
+
+`OkuFlowApp::{SetAgentSceneEnabled,AgentSceneState,CancelAgentScene,TickAgentScene}`
+own a context-only scene intent. `sceneExplain` reports that intent separately
+from `nativeRequested`; it never changes the saved native periodic checkbox.
+Every image comes from an ordinary `view_observe` reservation and its existing
+frame/byte budget. Exact context, source epoch and full frame stamp are checked
+before delivery. Scope cancellation affects only its independent request lane.
+
+`AssistiveRuntime::{SubmitScopedScene,CancelScopedScene,FinishScopedScene}` run
+independent tool-free HTTP or temporary restricted Codex requests. They add no
+chat rows or automatic speech, and write each accepted answer to runtime-owned
+notes once. Permission/configuration retirement suppresses late presentation
+and notes. `CodexAppServerClient::RequestVisionTurn` accepts an optional
+app-issued `frameAuthorization` callback, checked at actual `turn/start` after
+asynchronous initialization; ordinary Read/Explain callers retain their API.
+
+Assistant preference reads accept assistant-only finite `valueKind` projections: `all` (default), `requested` and `saved`. `BoundAssistantPreferenceRead` packs actual serialized DTOs to 29 KiB, reserving core metadata within the fixed 32 KiB result cap. Over-budget equal strings may use the typed object `{sameAs: requested}` for effective/saved; distinct saved values are never substituted. Rows that still overflow use null values plus `filterRequired:true` and `unsupportedReason:response_budget`; clients select fields and a projection to retrieve the complete finite value without truncation. Saved-only reads do not observe/rebaseline current values. String admission counts Unicode codepoints, independently of the unchanged transport byte budget. Scoped scene notes are text-only under frame authority; saved photos remain the separately authorized capture path.
+
+### Native grouped control admission and atomic batches
+
+`ControlPlan::requiresFrames` independently requires the active context frame grant, including after exact configuration approval. `IAppControlTarget::BeginFieldPlan` validates without applying effects; `CommitFieldPlan` starts native mutation only after the service captures the complete original field snapshot. `EndFieldPlan` completes the batch and refreshes native readouts. The anticipated applied/effective receipt is bounded before any native effect. Approval resolution compares the complete normalized write sequence and its permission/history/recording semantics against the immutable approved plan. Pending approval DTOs expose finite native `approvalDomain` and `sideEffects` values for accessible headings, independently of model arguments.
+
+`AppControlTarget::ImageParameterField`, `ImageProfileFields` and
+`ImageParameterFields` map the finite 49 image and nine view preferences plus
+the internal complete custom-color recipe. `PrepareImageParameters` uses the
+pure `PlanImageParameterDependencies` to finish closed-schema validation,
+native-step normalization and changed-value dependencies before publishing
+writes. `QueryImageParameters` separates requested, effective and allowlisted
+last-committed saved values; session-only values have no saved value.
+`ImageParameterEffectiveIntent` follows master/child and consumed-mask
+dependencies: selective sharpening needs active smart sharpening without
+adaptive binarization; hysteresis and shared mask parameters depend on an
+actually consumed adaptive or selective-sharpening mask.
+`ValidateImageParameterBatch` is read-only and checks changed-field hardware
+availability, every native control's type/range, complete recipe built-in
+selection and component consistency, and pause/hold/override prerequisites.
+`ApplyImageParameterBatch` validates again before staging only changed Text
+Clarity/Super Resolution controls and invoking their native handler once;
+custom recipes apply as one complete object. `ApplyImageParameter` records
+independent component writes without partial recipe or refinement mutations.
+Recipe validation includes its selected built-in ID before any refinement
+handler runs. Commit failure uses the service's original complete snapshot for
+rollback, including effects applied during commit rather than only the later
+per-field loop.
+
+`AppControlTarget` routes finite image/view, Assistant/notes, UI/drawing, and capture-configuration parameters through typed helpers. `PrepareCaptureParameters`, `QueryCaptureParameters`, `CaptureParameterFields`, and `ApplyCaptureParameter` own the five camera controls. Separate `PrepareRecordingParameters`, `QueryRecordingParameters`, `RecordingParameterFields`, `ApplyRecordingParameter`, `ExecuteRecordingParameters` and `RecordingParameterOperationStatus` own recording canvas and installed microphone handles. A live microphone change requires exact recording-session approval and a recording grant; it stops only that session and applies preferences only after terminal completion, with deadline, source/context, field revision and native-value fences. Native combo availability is checked before the irreversible stop. A canceled or superseded operation never applies preferences later or restarts a recording. Output destinations use private `dir-` handles for Documents/current roots and at most eight roots selected through the native owner picker. `RememberOutputRoot` never accepts model paths. `OkuFlowApp::SetUserDataRoot` and `SetRecordingCanvasMode` share the actual native transitions; root runtime finalization is deferred until the immutable mutation receipt is secured. Changed output roots refuse native periodic-scene mode to prevent implicit egress rearming. Grouped camera selection, format and acceleration use asynchronous native transition operations; requested and acknowledged torch state remain distinct. Hardware acceptance is separate from this development routing.
+
+`ProcessingSettings.controlFrame` receives the exact submission identity in the production pipeline. `PresentedFrame` accepts completed GPU temporal diagnostics only when source, processing, view, geometry, sequence, and monotonic freshness match the presented frame. Its bounded diagnostic provenance identifies unavailable or mismatched samples; unknown held/converging/keystone values remain unknown. CPU output reports its own known temporal state.
+
+Failed synchronous field application rolls the normalized field set back before any settings save, restoring the prior revision/baseline/journal accounting. Undo uses the same native batch seam; custom recipes and their independent component revisions form an all-or-skip inverse cluster when newer native edits exist. Ordinary native batches preserve the selected preset identity unless the plan explicitly changes it.
+
+The preference planner normalizes speech rate to the native slider's 0.01 steps
+and classifies complete Unicode codepoints, including supplementary invisible
+format controls. It rejects invisible/bidi format controls in single-line identifiers; multi-line
+instructions preserve LRM/RLM. `AssistantPreferenceValueInContract` identifies
+legacy native values outside finite bounds. `BoundAssistantPreferenceRead`
+marks an oversized legacy value that cannot fit even one projection as
+`valueOutOfContract:true`, `requiresUi:true`, `unsupportedReason:value_out_of_range`
+and `filterRequired:false`, without truncating or modifying stored editor text.
+Aggregate response packing preserves this UI requirement even when other finite
+values must also be omitted for the response budget.
+
+Native periodic scene intent is preserved by conservative whole-patch guards:
+while it is enabled, actor overlay false-to-true and changed runtime preferences
+(including notes destination) are denied. Scoped Scene remains independently
+supported under core frame budgets. Preference finalization uses overlay-only
+presentation refresh, never `SetModes`. These guarded native-scene combinations
+are not claimed to support all settings changes.
+
+Scoped Codex vision opts into `SetRestrictedLaunchMode`: asynchronous pinned
+CLI version/features/MCP-inventory preflight delegates to existing
+`CodexAgentProfile::Validate`. Every inventoried MCP server and reviewed
+apps/plugins/shell/web feature is disabled before the additional child starts.
+Inventory/diagnostic secrets are discarded; initialization remains ordinary
+and non-experimental. Ordinary Read/Explain/Assistant launch is unchanged.
+
+The development control service exposes `PendingApproval.normalizedChanges` using finite registry parameter IDs, including coupled writes and excluding the internal custom-recipe bookkeeping field. Native display labels and the recording-stop side effect remain separate from authorization. Camera source activation validates the pending intent generation and retires earlier frame authority; a native camera selection supersedes pending actor startup and waits for an exact recording stop. Camera format handles belong to their enumerated device, and torch writes bind the actual active phone source rather than a requested fallback identity. These development paths require fresh compilation and separate hardware acceptance before release promotion.
+
+`UserDataPaths::ValidateRoot(..., verifyWritable=false)` checks canonical containment without creating directories or probing writes during agent approval preparation. Native application uses the default writable validation only after authority is established. A private temporary-directory regression checks both the side-effect-free preparation and the accepted writable path.
+
+`FieldWrite::retryUnacknowledged` is a trusted native-plan marker, never a model argument. It permits retrying a phone torch request whose requested value already matches but whose device acknowledgment differs. It participates in exact approval revalidation and bypasses requested-value no-op suppression; the bounded token/deadline and ACK-only effective state remain authoritative. A core regression verifies execution and rejection when the approved retry semantics change.
+
+Grouped mutation receipts and approval summaries convert native upscaler/polarity indices to the registry's finite string tokens; legacy control receipts retain their established representation. Pre-effect result-budget validation uses canonical registry names and values, preventing a short internal field name from underestimating the final grouped response. The core fixture checks wire enum receipts against actual integer native state.
+
+Failed mutation rollback reports `rolledBack=false` if a native inverse cannot be applied. The service then invalidates the affected field revisions/baselines and removes their prior undo authority instead of pretending the old state was restored. No partial settings save occurs; further deliberate mutation requires a fresh current-field read.
+
+### Native UI and annotation control helpers
+
+`AppControlTarget::PlanUiParameterDependencies`, `PrepareUiParameters`,
+`QueryUiParameters`, `UiParameterFields`, `ApplyUiParameter` and `UiParameterField`
+cover nine UI and eight annotation fields through the actual native transitions.
+They validate the complete finite group before effects and retain unrelated
+state. `MainWindow::preferredAdvancedPanelWidth`, `advancedActiveTab` and
+`setAdvancedActiveTab` expose the native inspector state without opening it.
+`AnnotationOverlay::SelectedTool` and public `SetTool` preserve selected tools.
+The optional tool argument on `MainWindow::setAnnotationMode` and `retainInk`
+on `AnnotationOverlay::SetActive` preserve ink for controlled toggles; ordinary
+manual exit retains its existing reset behavior. Capture compositors include
+ink only when annotation mode is active.
+
+`ProcessingSettings::TextStageActivity` and `TextClarityStages` make each text
+refinement depend on both the Text Clarity master and its stored child flag.
+The CUDA dispatcher consumes that result rather than enabling children merely
+because the master is on. A 1,024-combination settings contract covers all flags.
+
+`AgentControlPanel::SetPendingApproval` displays canonical `normalizedChanges`
+and the native `targetDisplay` as plain text, including implicit dependencies,
+while preserving the original service argument binding. Oversized review details
+fail closed. No provider text or chat reply grants authority.
+
+`ControlToolDestructiveHint(ToolId) noexcept` supplies conservative advisory MCP
+metadata: reads, Observe and additive photo/recording starts are non-destructive;
+replacements, resets, recording stops and grouped setters are marked destructive.
+It does not change schemas, grants, dispatch or native authority.
+
+### Native control decision and commit boundaries
+
+`IAppControlTarget::SynchronizeNativeState` polls production fields before dispatch,
+approval resolution, delayed preference commit and Stop/Undo. The native target
+delegates to `NoticeNativeChanges`; a qualified acceleration notification updates
+only its own observed field. Unrelated manual changes remain visible to the next
+decision. `ReadField` resolves device-qualified preferences, and `EffectiveValues`
+uses native group getters rather than equating requested preferences with output.
+
+`BeginFieldPlan` performs validation only; `CommitFieldPlan` stages coupled native
+writes after the service captures the inverse ledger. Failed commit/apply restores
+the prior values without saving a partial plan, or invalidates inverse authority
+when restoration fails. Processing/geometry provenance is retired after rollback
+because restored preferences cannot recover consumed processing history.
+
+`OwnedSourceRequested` advances both source and format revisions and retains their
+owner-bound restoration journal. Stop/Undo reports asynchronous source restoration
+as requested, rather than already presented. Camera operation status preserves
+bounded opaque requested source/format, applied acceleration and actual first-frame
+effective state. Immediate start refusal rolls back synchronous preferences while
+the context/revisions still match; an accepted later hardware failure retains the
+reported preference writes and undo journal. Saved startup source remains separate.
+
+`NativeControlFixture` is an opt-in actual-app CPU/dev-full seam. It constructs real
+native controls and settings in a temporary directory without platform/device or
+provider bootstrap, and uses Qt offscreen. Its separate SDK evidence validates only
+the executed CPU-native subset; unavailable CUDA/image writes and physical source
+acceptance remain distinct. `native_control.cmake` clones the production target
+sources under `OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE`, disabled by default.
+`FailingNativeCommit` forwards the fixture's reads and effects to the real target
+but injects a failed commit after an actual native CPU zoom write. The production
+service must restore the real fields and leave saved values and undo authority
+unchanged; it does not replace native controls with a synthetic state map.

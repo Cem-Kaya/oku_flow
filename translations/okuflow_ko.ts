@@ -2937,5 +2937,313 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow가 USB 연결을 확인하고 자동으로 다시 연결합니다.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>거부(&amp;D)</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>화면 조정(필수)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>이번 응답 동안 카메라 화면 전송 허용</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>이 세션 동안 사진 전송 허용</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>Assistant가 시작한 녹화를 Assistant가 시작하고 중지하도록 허용</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>임시 접근 권한 승인</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>강의나 다른 사람을 녹화하기 전에 허락을 받으세요.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>Assistant 작업 기록</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>Assistant 제어</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>Assistant 제어 꺼짐</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>Assistant 제어 상태</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>카메라 화면은 선택한 제공업체로 전송됩니다. 이 권한은 응답이 끝나거나 카메라 소스가 바뀌면 종료됩니다.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>연결된 클라이언트: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>제어 대화에서는 인터넷에 접속하거나 코딩 명령을 실행하거나 파일을 변경할 수 없습니다. 읽기와 설명 기능은 그대로 사용할 수 있습니다.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>제어는 기본적으로 꺼져 있습니다. 켜면 Assistant가 화면을 조정할 수 있습니다. 카메라 이미지와 촬영 사진에는 별도의 권한이 필요합니다. Ctrl+Shift+U를 눌러 중지하고 실행을 취소하세요.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>OkuFlow를 제어하려면 별도의 대화가 필요합니다.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>정확한 작업 인수</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>외부 제어는 최대 5분 동안 지속되며 60초 동안 활동이 없으면 종료됩니다. 중지하려면 MCP 클라이언트를 연결 해제하거나 ‘임시 접근 권한 취소’를 선택하세요.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>외부 제어 권한</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>외부 제어: 남은 시간 %1초, 유휴 제한까지 %2초. 화면 변경: %3, 카메라 화면: %4, 사진: %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>외부 MCP 제어</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>임시 접근 권한</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>활성 임시 접근 권한 없음</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>연결된 외부 클라이언트 없음</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>방향 및 카메라 소스(녹화 중에는 변경할 수 없음)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>임시 접근 권한 검토</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>임시 접근 권한 취소</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>카메라 화면 전송(권한당 최대 6개)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>제어 없이 전송</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>Assistant가 시작한 녹화 시작 및 중지(시작 시 남은 시간 30초 이상 필요)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>제어 대화 시작</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>중지 및 실행 취소(Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>사진 촬영(임시 접근 권한의 작업 한도 내)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>지금 엔드포인트 도구 지원 테스트</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>이 명시적 테스트는 설정된 엔드포인트로 합성 도구 요청을 보냅니다. 카메라 이미지는 전송하지 않으며 설정도 변경하지 않습니다.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>화면 변경: 권한당 최대 60회. 권한이 활성화된 동안 허용 범위를 넓힐 수 없습니다. 권한을 취소한 뒤 새 권한을 발급하세요.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>엔드포인트 도구 지원 사용 가능</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>엔드포인트 도구 지원 사용 불가</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>엔드포인트 도구 지원 확인 중…</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>새 대화</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>기록</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>어시스턴트 설정</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>어시스턴트 연결</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>어시스턴트 대화</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>어시스턴트에게 질문</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>어시스턴트 기록</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>세부정보</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>이번만 허용(&amp;A)</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>활동 기록</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>제어 정보</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>선택한 제공업체로 이 카메라 화면을 전송할까요?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>이 화면을 사진으로 찍을까요?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>이 화면 녹화를 시작할까요?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>이 녹화를 중지할까요?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>%1에 시작한 녹화를 중지할까요?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>카메라 화면의 표시 방향을 시계 방향 %1°로 설정할까요?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>카메라 소스를 전환할까요?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>이 작업을 검토할까요?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>권한 요청 %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>%1초 후 만료</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>요청을 완료하지 못했습니다.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>요청이 중지되었습니다</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>화면 업데이트: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>복원됨: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>사용자 변경을 덮어쓰지 않고 유지: %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>설정을 저장하지 못했습니다.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>작업이 완료되었습니다.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>작업을 완료하지 못했습니다.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>작업이 거부되었습니다.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>켜짐</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>대화 기록을 업데이트하지 못했습니다.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>카메라 설정을 변경할까요?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>녹화 설정을 변경할까요?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>어시스턴트 제공업체, 모델 또는 지침을 변경할까요?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>노트 및 출력 설정을 변경할까요?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>그리기 설정을 변경할까요?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>그리기 설정을 변경하고 사진을 저장할까요?</translation>
+        </message>
     </context>
 </TS>

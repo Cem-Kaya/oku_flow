@@ -40,7 +40,7 @@ public:
     static QString DefaultRoot();
     static UserDataValidationResult ValidateRoot(
         const QString& requestedRoot,
-        const QString& installDirectory = {});
+        const QString& installDirectory = {}, bool verifyWritable = true);
 
     bool SetConfiguredRoot(const QString& configuredRoot, QString* error = nullptr);
     QString ConfiguredRoot() const;

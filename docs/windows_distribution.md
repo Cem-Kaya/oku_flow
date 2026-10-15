@@ -2,6 +2,28 @@
 
 ## Published channels (2026-10-14)
 
+[GitHub v0.2.5](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.5)
+contains the immutable unsigned-preview MSI and portable ZIP from clean source
+`142587eced22e5693a00c764b8772748a8b22e75`. Uploaded assets were downloaded
+and rehashed before the draft became public.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `OkuFlow-0.2.5-x64.msi` | `1029acabdd8eaa3e4b90f8bc388ab8ba912f6d7efcdcf901bce22fe2a3b4798f` |
+| `OkuFlow-0.2.5-windows-x64.zip` | `e968b8d0685c6c8b2ef6a6179d434122d4ab4b6b70f794a6cdf6579c4fa968bf` |
+
+Shipping compilation, 83 CPU tests, 89 CUDA tests and 89 shipping-bundle
+checks passed without a bypass. Native GUI fixtures ran serially on the
+owner-authorized free desktop. The separate GitHub VM also passed standard
+CPU/GUI checks and the panel-movement diagnostic at 125%, 150% and 200%.
+MSI extraction verified 152 payload files; the disposable Windows guest
+passed all 167 install/upgrade/downgrade/shortcut/uninstall/user-data checks.
+The website and public README point to 0.2.5. No new winget PR or Store
+submission was made. The MCP/agent-control API is under development and is
+not part of this release.
+
+### Earlier 0.2.4 preview
+
 [GitHub v0.2.4](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.4)
 contains the immutable unsigned-preview MSI and portable ZIP from clean source
 `c8c4cf1255084cbb2bb2fa969a3a59f7396bedb0`. Both public downloads were

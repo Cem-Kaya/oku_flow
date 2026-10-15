@@ -328,3 +328,23 @@ code persists and applies orientation at the top level of
   persistence, changed counts, and equivalence checks.
 
 Text Clarity is the master for automatic enhancement and its stored refinements. The indented Fine-tune text group remains inspectable while off, but its controls are disabled; switching off retains their values.
+
+## Assistant chat and control consent
+
+Assistant owns chat only within the unchanged Image / Assistant / Settings
+contract. One compact header contains connection, New, History and a settings
+gear; the transcript fills the body above a fixed composer. History and settings
+are overlays, never additional tabs. AI Settings alone owns the default-off
+persisted embedded/external masters. The gear contains unsaved session grants,
+external lease review/status/revoke, capability testing, About control and Activity.
+
+Advanced and floating Explain are views of one `VisibleChatSession`, including
+shared draft/attachment/busy state and immutable saved kinds. Scroll/selection
+stay local to each view. Snapshots never raise/focus/reopen the floating view.
+Read has a separate result presentation and cannot replace Explain chat.
+Human-readable permission cards expose native Allow once/Deny controls; exact
+canonical arguments stay in collapsed Details. Chat sentences confer no consent.
+Ctrl+Shift+A explicitly reveals/focuses Deny, and Ctrl+Shift+U stops and undoes.
+MainWindow owns the persistent live region outside hideable chrome. Refused
+routing preserves the shared draft. See [the UI contract](agent_control_ui.md)
+for the approved concept, review coverage and validation limits.

@@ -2,6 +2,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'bundle_layout.ps1')
+. (Join-Path $PSScriptRoot 'mcp_bundle.ps1')
 
 function Get-InstallerStableId([string]$Value) {
     $hash = [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Value.ToLowerInvariant()))
@@ -50,6 +51,7 @@ function New-VerifiedBundleSnapshot([string]$BundlePath, [string]$Destination) {
             ($layout.Prefix + 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'))) {
         if (-not $paths.Contains($required)) { throw "Incomplete bundle: $required" }
     }
+    Assert-McpBundleInventory $manifest $layout $paths
     [pscustomobject]@{manifest=$manifest;records=$records;path=$Destination;layout=$layout}
 }
 

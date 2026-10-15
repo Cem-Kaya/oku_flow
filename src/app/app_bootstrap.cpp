@@ -1,11 +1,20 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include "okuflow/app/agent/app_control_target.hpp"
+#include "okuflow/common/codex_agent_client.hpp"
+#include "okuflow/common/http_agent_client.hpp"
+#include "okuflow/common/visible_chat_session.hpp"
+#include "okuflow/common/visible_chat_session_store.hpp"
+#include "okuflow/ui/assistant_chat_view.hpp"
+#include "okuflow/ui/agent_control_panel.hpp"
+#include "okuflow/mcp/app_ipc_endpoint.hpp"
 #include <QLocale>
 #include "debug_log.hpp"
 #include "okuflow/capture/phone_camera.hpp"
 
 #include <QSaveFile>
+#include <QStandardPaths>
 #include <QScrollBar>
 #include <QThreadPool>
 
@@ -56,6 +65,8 @@ bool OkuFlowApp::Initialize()
     languageManager_ =
         std::make_unique<LanguageManager>(*qtApp_, this);
     auto& persistentSettings = settingsController_->MutableSettings();
+    cameraIntent_.LoadSaved({persistentSettings.cameraSymbolicLink,persistentSettings.cameraFormatStableId,
+        persistentSettings.cameraIndex,persistentSettings.cameraSelectionExplicit});
     // An explicit saved language wins; "system" (also a missing or unknown
     // value) resolves the Windows display-language list on every start.
     persistentSettings.language =
@@ -211,6 +222,78 @@ bool OkuFlowApp::Initialize()
     mainWindow_->annotationOverlay()->SetExcludedWidget(&assistiveManager_->Overlay());
     assistiveManager_->Runtime().SetResponseLanguage(
         languageManager_->languageCode());
+    auto* mainChat = mainWindow_->assistantChatView();
+    auto* floatingChat = assistiveManager_->Overlay().chatView();
+    visibleChatStore_ = std::make_unique<VisibleChatSessionStore>(
+        QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)).filePath(QStringLiteral("visible-chat")));
+    visibleChatStore_->SetSecretFilters({settingsController_->MutableSettings().assistive.vlmApiKey.trimmed(),
+        qEnvironmentVariable("OKUFLOW_VLM_API_KEY").trimmed()});
+    visibleChatSaveTimer_ = new QTimer(this); visibleChatSaveTimer_->setSingleShot(true);
+    visibleChatSaveTimer_->setInterval(350);
+    connect(visibleChatSaveTimer_,&QTimer::timeout,this,&OkuFlowApp::PersistVisibleChat);
+    connect(&assistiveManager_->Runtime().ChatSession(),&VisibleChatSession::SnapshotChanged,this,[this](const QJsonObject&) {
+        visibleChatSaveTimer_->start();
+    });
+    auto renderChat = [this](const QJsonObject& snapshot) {
+        auto presentation = snapshot;
+        const bool busy = snapshot.value(QStringLiteral("busy")).toBool() || assistiveManager_->Runtime().IsForegroundBusy();
+        presentation[QStringLiteral("busy")] = busy;
+        mainWindow_->assistantChatView()->SetChatSnapshot(presentation);
+        assistiveManager_->Overlay().SetChatSnapshot(presentation);
+        SetAssistantBusy(busy);
+        const auto messages = snapshot.value(QStringLiteral("messages")).toArray();
+        bool explainBusy = false;
+        if (snapshot.value(QStringLiteral("busy")).toBool())
+            for (auto row = messages.size()-1; row >= 0; --row) {
+                const auto message = messages[row].toObject();
+                if (message.value(QStringLiteral("role")) == QStringLiteral("user")) {
+                    explainBusy = message.value(QStringLiteral("origin")) == QStringLiteral("explain"); break;
+                }
+            }
+        mainWindow_->setExplainBusy(pendingOnDemandAnalysis_ || explainBusy);
+        if (!snapshot.value(QStringLiteral("busy")).toBool()) assistantResponseOpen_ = false;
+    };
+    connect(&assistiveManager_->Runtime().ChatSession(),&VisibleChatSession::SnapshotChanged,this,renderChat);
+    renderChat(assistiveManager_->Runtime().ChatSession().Snapshot());
+    for (auto* chat : {mainChat,floatingChat}) {
+        connect(chat,&AssistantChatView::ChatDraftEdited,this,[this](const QString& draft) {
+            assistiveManager_->Runtime().ChatSession().SetDraft(draft);
+        });
+        connect(chat,&AssistantChatView::ChatAttachmentChanged,this,[this](bool attached) {
+            auto& runtime = assistiveManager_->Runtime();
+            if (attached && runtime.IsForegroundBusy()) {
+                runtime.ChatSession().Refresh(); return; // A running turn cannot acquire a broader grant.
+            }
+            if (!attached) {
+                agentFrames_ = false;
+                if (controlService_) controlService_->RevokeFrameGrant(agentOwner_);
+                if (controlService_ && !agentContext_.isEmpty())
+                    controlService_->SetGrants(agentContext_,{false,agentPhotos_,agentRecording_,false});
+                for (auto* panel : {mainWindow_->agentControlPanel(),assistiveManager_->Overlay().agentControlPanel()})
+                    if (panel) panel->SetSessionGrants(false,agentPhotos_,agentRecording_);
+            }
+            runtime.ChatSession().SetAttachCurrentView(attached);
+        });
+        connect(chat,&AssistantChatView::ChatSelected,this,&OkuFlowApp::LoadAssistantConversationById);
+        connect(chat,&AssistantChatView::ChatReadAloudRequested,this,[this](const QString& messageId,const QString&) {
+            const auto messages = assistiveManager_->Runtime().ChatSession().Snapshot().value(QStringLiteral("messages")).toArray();
+            for (const auto& value : messages) {
+                const auto message = value.toObject();
+                if (message.value(QStringLiteral("id")).toString() == messageId &&
+                    message.value(QStringLiteral("role")) == QStringLiteral("assistant") &&
+                    message.value(QStringLiteral("complete")).toBool()) {
+                    assistiveManager_->Runtime().ReadAloud(message.value(QStringLiteral("text")).toString());
+                    break;
+                }
+            }
+        });
+        connect(chat,&AssistantChatView::StopRequested,this,&OkuFlowApp::StopAssistantRequest);
+    }
+    connect(mainChat,&AssistantChatView::ChatSubmitted,this,[this](const QString& prompt) {
+        SubmitAssistantPromptText(prompt,true,false);
+    });
+    connect(mainChat,&AssistantChatView::ChatNewRequested,this,&OkuFlowApp::StartNewAssistantConversation);
+    connect(floatingChat,&AssistantChatView::AISettingsRequested,this,&OkuFlowApp::OpenAiSettingsDialog);
     connect(&assistiveManager_->Runtime(),
             &AssistiveRuntime::StatusNotice,
             this,
@@ -281,7 +364,8 @@ bool OkuFlowApp::Initialize()
             }
         },
         *userDataPaths_,
-        [this](const RecordingSessionInfo&) {
+        [this](const RecordingSessionInfo& session) {
+            if (controlTarget_) controlTarget_->RecordingEnded(session);
             // Session-ended callbacks are queued from the recording worker
             // after the terminal state is published. If a new recording has
             // already started by the time this lands, releasing the
@@ -371,7 +455,7 @@ bool OkuFlowApp::Initialize()
             this, &OkuFlowApp::OnCameraSelectionChanged);
     connect(uiState_->phoneLightButton_, &QPushButton::clicked, this, [this]() {
         if (cameraActive_ && mediaCapture_.PhoneTorchAvailable())
-            mediaCapture_.SetPhoneTorch(!mediaCapture_.PhoneTorchEnabled());
+            SetPhoneTorch(!mediaCapture_.PhoneTorchEnabled());
     });
     connect(uiState_->microphoneCombo_, &QComboBox::currentIndexChanged,
             this, &OkuFlowApp::OnMicrophoneSelectionChanged);
@@ -401,8 +485,7 @@ bool OkuFlowApp::Initialize()
     }
     if (uiState_->capturePhotoButton_) {
         connect(uiState_->capturePhotoButton_, &QPushButton::clicked, this, [this]() {
-            photoCapturePending_ = true;
-            ShowStatusMessage(QStringLiteral("Capturing original and processed photos..."), 2500);
+            RequestPhotoCapture();
         });
     }
     connect(mainWindow_.get(), &MainWindow::annotationSnapshotRequested,
@@ -429,7 +512,7 @@ bool OkuFlowApp::Initialize()
         connect(uiState_->recordButton_, &QPushButton::toggled, this, [this](bool checked) {
             if (recordingManager_) {
                 if (checked) {
-                    StartSelectedMicrophone();
+                    RequestRecording(RecordingAudioRequest::SavedMicrophone,RecordingOwnerKind::Manual,{});
                 } else {
                     // Stop producing PCM first. RecordingManager::Stop
                     // deliberately clears its queued audio rather than
@@ -437,9 +520,9 @@ bool OkuFlowApp::Initialize()
                     // already owns is what keeps Stop fast — so retaining
                     // blocks here only avoids tearing down the device while
                     // the recorder may still reference the current buffer.
-                    StopMicrophoneCapture(true);
+                    const auto session = recordingManager_->CurrentSessionInfo();
+                    if (session) StopRecording(session->id);
                 }
-                recordingManager_->SetRequested(checked);
                 if (checked && !recordingManager_->IsActive()) {
                     // Recording preflight can reject the session after the
                     // microphone has opened (for example, on low disk space).
@@ -487,11 +570,7 @@ bool OkuFlowApp::Initialize()
                 const auto mode =
                     index == 1 ? settings::ViewportFitModeSetting::Fit
                                : settings::ViewportFitModeSetting::Fill;
-                settingsController_->MutableSettings().viewportFitMode =
-                    mode;
-                pipelineOrchestrator_->SetViewportFitMode(mode);
-                UpdateSectionChangedCounts();
-                SavePersistentSettings();
+                SetViewportFitMode(mode);
             });
     connect(uiState_->recordingCanvasCombo_, &QComboBox::currentIndexChanged,
             this, [this](int index) {
@@ -503,13 +582,7 @@ bool OkuFlowApp::Initialize()
                     static_cast<int>(RecordingCanvasMode::Nhd360));
                 const auto mode =
                     static_cast<RecordingCanvasMode>(bounded);
-                settingsController_->MutableSettings().recordingCanvasMode =
-                    mode;
-                if (recordingManager_) {
-                    recordingManager_->SetCanvasMode(mode);
-                }
-                UpdateSectionChangedCounts();
-                SavePersistentSettings();
+                SetRecordingCanvasMode(mode);
             });
     if (uiState_->zoomCenterXSlider_) {
         connect(uiState_->zoomCenterXSlider_, &QSlider::valueChanged,
@@ -784,31 +857,16 @@ bool OkuFlowApp::Initialize()
         connect(uiState_->assistantConnectButton_, &QPushButton::clicked,
                 this, [this]() { assistiveManager_->Runtime().StartCodexLogin(); });
     }
-    if (uiState_->assistantSendButton_) {
-        connect(uiState_->assistantSendButton_, &QPushButton::clicked,
-                this, [this]() { SubmitAssistantPrompt(); });
-    }
-    if (uiState_->assistantStopButton_) {
-        connect(uiState_->assistantStopButton_, &QPushButton::clicked,
-                this, [this]() { StopAssistantRequest(); });
-    }
-    if (uiState_->assistantNewButton_) {
-        connect(uiState_->assistantNewButton_, &QPushButton::clicked, this, [this]() {
-            StartNewAssistantConversation();
-            if (!assistiveManager_->Runtime().IsCodexTurnActive() &&
-                !pendingAssistantFramePrompt_ && uiState_->assistantPromptEdit_) {
-                uiState_->assistantPromptEdit_->setFocus();
+    const auto syncFloatingHistory = [this,floatingChat] {
+        const auto* selected = floatingChat->historyList()->currentItem();
+        if (!selected || !uiState_->assistantHistoryList_) return;
+        const auto id = selected->data(Qt::UserRole).toString();
+        for (int row = 0; row < uiState_->assistantHistoryList_->count(); ++row)
+            if (uiState_->assistantHistoryList_->item(row)->data(Qt::UserRole).toString() == id) {
+                uiState_->assistantHistoryList_->setCurrentRow(row); break;
             }
-        });
-    }
-    if (uiState_->assistantHistoryList_) {
-        connect(uiState_->assistantHistoryList_, &QListWidget::itemDoubleClicked,
-                this, [this](QListWidgetItem*) { LoadSelectedAssistantConversation(); });
-        connect(uiState_->assistantHistoryList_, &QListWidget::itemActivated,
-                this, [this](QListWidgetItem*) { LoadSelectedAssistantConversation(); });
-    }
-    if (uiState_->assistantRenameButton_) {
-        connect(uiState_->assistantRenameButton_, &QPushButton::clicked, this, [this]() {
+    };
+    const auto renameConversation = [this]() {
             QListWidgetItem* item = uiState_->assistantHistoryList_->currentItem();
             if (!item) {
                 return;
@@ -823,13 +881,47 @@ bool OkuFlowApp::Initialize()
                                                        oldName,
                                                        &accepted).trimmed();
             if (accepted && !name.isEmpty()) {
-                assistiveManager_->Runtime().RenameAssistantConversation(threadId, name);
+                if (threadId.startsWith(QStringLiteral("logical-chat-"))) {
+                    RenameStoredConversation(threadId,name); return;
+                }
+                auto& conversations = settingsController_->MutableSettings().codexConversations;
+                const auto saved = std::find_if(conversations.begin(),conversations.end(),[&threadId](const auto& item) {
+                    return item.threadId == threadId;
+                });
+                if (saved != conversations.end() && settings::EffectiveConversationKind(*saved) == QStringLiteral("agent")) {
+                    saved->title = name; saved->updatedAt = QDateTime::currentSecsSinceEpoch();
+                    PopulateAssistantHistory(); SavePersistentSettings();
+                } else assistiveManager_->Runtime().RenameAssistantConversation(threadId, name);
             }
+        };
+    for (auto* button : {uiState_->assistantRenameButton_,floatingChat->renameButton()})
+        if (button) connect(button,&QPushButton::clicked,this,[button,floatingChat,syncFloatingHistory,renameConversation] {
+            if (button == floatingChat->renameButton()) syncFloatingHistory();
+            renameConversation();
         });
-    }
-    if (uiState_->assistantExportButton_) {
-        connect(uiState_->assistantExportButton_, &QPushButton::clicked, this, [this]() {
-            if (!uiState_->assistantTranscript_ || uiState_->assistantTranscript_->toPlainText().trimmed().isEmpty()) {
+    const auto exportConversation = [this]() {
+            QString transcript = uiState_->assistantTranscript_ ? uiState_->assistantTranscript_->toPlainText() : QString();
+            const auto* selected = uiState_->assistantHistoryList_ ? uiState_->assistantHistoryList_->currentItem() : nullptr;
+            const auto selectedId = selected ? selected->data(Qt::UserRole).toString() : QString();
+            if (selectedId.startsWith(QStringLiteral("logical-chat-"))) {
+                PersistVisibleChat();
+                const auto stored = visibleChatStore_ ? visibleChatStore_->Load(selectedId.mid(13)) : std::nullopt;
+                if (!stored) return;
+                transcript.clear();
+                for (const auto& value : stored->messages) {
+                    const auto message = value.toObject();
+                    const auto role = message.value(QStringLiteral("role")).toString();
+                    if (role != QStringLiteral("user") && role != QStringLiteral("assistant")) continue;
+                    transcript += role + QStringLiteral(": ") + message.value(QStringLiteral("text")).toString();
+                    for (const auto& action : message.value(QStringLiteral("actions")).toArray())
+                        if (action.isString()) transcript += QStringLiteral("\n") + action.toString();
+                    const auto status = message.value(QStringLiteral("status")).toString();
+                    if (status == QStringLiteral("failed") || status == QStringLiteral("interrupted"))
+                        transcript += QStringLiteral("\n[") + status + QStringLiteral("]");
+                    transcript += QStringLiteral("\n\n");
+                }
+            }
+            if (transcript.trimmed().isEmpty()) {
                 return;
             }
             QString analysisError;
@@ -858,7 +950,7 @@ bool OkuFlowApp::Initialize()
             }
             QSaveFile file(path);
             const QByteArray payload =
-                uiState_->assistantTranscript_->toPlainText().toUtf8();
+                transcript.toUtf8();
             if (!file.open(QIODevice::WriteOnly | QIODevice::Text) ||
                 file.write(payload) != payload.size() ||
                 !file.commit()) {
@@ -874,10 +966,13 @@ bool OkuFlowApp::Initialize()
                 QStringLiteral("Conversation exported to %1.")
                     .arg(QDir::toNativeSeparators(path)),
                 7000);
+        };
+    for (auto* button : {uiState_->assistantExportButton_,floatingChat->exportButton()})
+        if (button) connect(button,&QPushButton::clicked,this,[button,floatingChat,syncFloatingHistory,exportConversation] {
+            if (button == floatingChat->exportButton()) syncFloatingHistory();
+            exportConversation();
         });
-    }
-    if (uiState_->assistantDeleteButton_) {
-        connect(uiState_->assistantDeleteButton_, &QPushButton::clicked, this, [this]() {
+    const auto deleteConversation = [this]() {
             QListWidgetItem* item = uiState_->assistantHistoryList_->currentItem();
             if (!item) {
                 return;
@@ -887,13 +982,30 @@ bool OkuFlowApp::Initialize()
                                       QStringLiteral("Delete Conversation"),
                                       QStringLiteral("Permanently delete this OkuFlow assistant conversation?"))
                 == QMessageBox::Yes) {
+                if (threadId.startsWith(QStringLiteral("logical-chat-"))) {
+                    DeleteStoredConversation(threadId); return;
+                }
                 if (currentAssistantThreadId_ == threadId) {
                     CancelAssistantHistoryLoad();
                 }
-                assistiveManager_->Runtime().DeleteAssistantConversation(threadId);
+                auto& conversations = settingsController_->MutableSettings().codexConversations;
+                const auto saved = std::find_if(conversations.begin(),conversations.end(),[&threadId](const auto& item) {
+                    return item.threadId == threadId;
+                });
+                if (saved != conversations.end() && settings::EffectiveConversationKind(*saved) == QStringLiteral("agent")) {
+                    conversations.erase(saved); agentTranscripts_.remove(threadId);
+                    if (agentConversationId_ == threadId || currentAssistantThreadId_ == threadId) {
+                        assistiveManager_->Runtime().ResetVisibleChat(); currentAssistantThreadId_.clear(); agentConversationId_.clear();
+                    }
+                    PopulateAssistantHistory(); SavePersistentSettings();
+                } else assistiveManager_->Runtime().DeleteAssistantConversation(threadId);
             }
+        };
+    for (auto* button : {uiState_->assistantDeleteButton_,floatingChat->deleteButton()})
+        if (button) connect(button,&QPushButton::clicked,this,[button,floatingChat,syncFloatingHistory,deleteConversation] {
+            if (button == floatingChat->deleteButton()) syncFloatingHistory();
+            deleteConversation();
         });
-    }
 
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexServerStateChanged,
             this, [this](bool ready, const QString& status) {
@@ -901,7 +1013,7 @@ bool OkuFlowApp::Initialize()
                 SetLiveText(uiState_->assistantConnectionLabel_, status,
                             LivePoliteness::kPolite,
                             QStringLiteral("Codex connection status"));
-                SetAssistantBusy(assistiveManager_->Runtime().IsCodexTurnActive());
+                SetAssistantBusy(assistiveManager_->Runtime().ChatSession().Busy() || assistiveManager_->Runtime().IsForegroundBusy());
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexAccountChanged,
             this, [this](bool signedIn, const QString& label, const QString& planType) {
@@ -920,7 +1032,7 @@ bool OkuFlowApp::Initialize()
                              : QStringLiteral("Connect ChatGPT"),
                     LivePoliteness::kSilent,
                     QStringLiteral("ChatGPT connection"));
-                SetAssistantBusy(assistiveManager_->Runtime().IsCodexTurnActive());
+                SetAssistantBusy(assistiveManager_->Runtime().ChatSession().Busy() || assistiveManager_->Runtime().IsForegroundBusy());
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::CodexModelsChanged,
             this, [this](const QStringList&, const QString& selectedModel) {
@@ -948,8 +1060,13 @@ bool OkuFlowApp::Initialize()
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantConversationCreated,
             this, [this](const QJsonObject& thread) {
+                if (assistiveManager_->Runtime().HasChatTurn() && assistiveManager_->Runtime().ChatSession().IsLocalLogical()) return;
                 settings::CodexConversation conversation;
                 conversation.threadId = thread.value(QStringLiteral("id")).toString();
+                conversation.kind = thread.value(QStringLiteral("kind")).toString(
+                    settingsController_->MutableSettings().assistive.codexCodingEnabled
+                        ? QStringLiteral("coding") : QStringLiteral("assistant"));
+                conversation.toolsetVersion = thread.value(QStringLiteral("toolsetVersion")).toString();
                 conversation.preview = pendingAssistantPrompt_.left(160);
                 conversation.title = pendingAssistantPrompt_.simplified().left(60);
                 if (conversation.title.isEmpty()) {
@@ -971,16 +1088,17 @@ bool OkuFlowApp::Initialize()
                 PopulateAssistantHistory();
                 SavePersistentSettings();
             });
-    // Explain continues one Codex conversation across launches. It is listed
-    // with the Assistant conversations so it can be reviewed or deleted;
-    // creating it never changes the selected chat.
-    assistiveManager_->Runtime().SetExplainConversationId(
-        settingsController_->MutableSettings().explainThreadId);
+    // Legacy Explain anchors are restored only by an explicit history choice;
+    // a new logical chat must not inherit a previous private provider thread.
+    if (!assistiveManager_->Runtime().ChatSession().IsLocalLogical())
+        assistiveManager_->Runtime().SetExplainConversationId(settingsController_->MutableSettings().explainThreadId);
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::ExplainConversationCreated,
             this, [this](const QJsonObject& thread) {
+                if (assistiveManager_->Runtime().HasChatTurn() && assistiveManager_->Runtime().ChatSession().IsLocalLogical()) return;
                 settings::CodexConversation conversation;
                 conversation.threadId = thread.value(QStringLiteral("id")).toString();
                 conversation.explain = true;
+                conversation.kind = QStringLiteral("explain");
                 conversation.createdAt = thread.value(QStringLiteral("createdAt")).toInteger(
                     QDateTime::currentSecsSinceEpoch());
                 conversation.updatedAt = conversation.createdAt;
@@ -996,33 +1114,34 @@ bool OkuFlowApp::Initialize()
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::ExplainConversationChanged,
             this, [this](const QString& threadId) {
+                if (assistiveManager_->Runtime().ChatSession().IsLocalLogical()) return;
                 settingsController_->MutableSettings().explainThreadId = threadId;
                 SavePersistentSettings();
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTranscriptLoaded,
             this, [this](const QString& threadId, const QJsonArray& messages) {
-                if (threadId != currentAssistantThreadId_ ||
-                    threadId != pendingAssistantHistoryThreadId_ || assistantResponseOpen_ ||
+                if (threadId != pendingAssistantHistoryThreadId_ || assistantResponseOpen_ ||
                     pendingAssistantFramePrompt_ || assistiveManager_->Runtime().IsCodexTurnActive()) {
                     return;
                 }
                 pendingAssistantHistoryThreadId_.clear();
-                uiState_->assistantTranscript_->clear();
-                for (const QJsonValue& value : messages) {
-                    const QJsonObject message = value.toObject();
-                    const QString speaker = message.value(QStringLiteral("role")).toString()
-                                                    == QStringLiteral("user")
-                                                ? QStringLiteral("You")
-                                                : QStringLiteral("OkuFlow Assistant");
-                    AppendAssistantMessage(speaker, message.value(QStringLiteral("text")).toString());
-                }
+                currentAssistantThreadId_ = threadId;
+                auto kind = ChatBackendKind::Assistant;
+                for (const auto& conversation : settingsController_->MutableSettings().codexConversations)
+                    if (conversation.threadId == threadId) {
+                        const auto token = settings::EffectiveConversationKind(conversation);
+                        if (token == QStringLiteral("explain")) kind = ChatBackendKind::Explain;
+                        else if (token == QStringLiteral("coding")) kind = ChatBackendKind::Coding;
+                        break;
+                    }
+                if (kind == ChatBackendKind::Explain) assistiveManager_->Runtime().SetExplainConversationId(threadId);
+                assistiveManager_->Runtime().ChatSession().Restore(threadId,kind,messages);
                 assistantResponseOpen_ = false;
                 assistantResponseReceivedText_ = false;
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTranscriptLoadFailed,
             this, [this](const QString& threadId, const QString& error) {
-                if (threadId != currentAssistantThreadId_ ||
-                    threadId != pendingAssistantHistoryThreadId_ || assistantResponseOpen_ ||
+                if (threadId != pendingAssistantHistoryThreadId_ || assistantResponseOpen_ ||
                     pendingAssistantFramePrompt_ || assistiveManager_->Runtime().IsCodexTurnActive()) {
                     return;
                 }
@@ -1032,7 +1151,7 @@ bool OkuFlowApp::Initialize()
                 if (!error.trimmed().isEmpty() && error.trimmed() != failure) {
                     text += QStringLiteral("\n") + TranslateUi(error.trimmed());
                 }
-                uiState_->assistantTranscript_->setPlainText(text);
+                ShowStatusMessage(text,7000);
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantConversationRenamed,
             this, [this](const QString& threadId, const QString& name) {
@@ -1052,21 +1171,25 @@ bool OkuFlowApp::Initialize()
                               [&threadId](const settings::CodexConversation& conversation) {
                                   return conversation.threadId == threadId;
                               });
-                if (currentAssistantThreadId_ == threadId) {
+                const auto& chat = assistiveManager_->Runtime().ChatSession();
+                if (currentAssistantThreadId_ == threadId || chat.BackendThread(ChatBackendKind::Explain) == threadId
+                    || chat.BackendThread(ChatBackendKind::Assistant) == threadId || chat.BackendThread(ChatBackendKind::Coding) == threadId) {
                     CancelAssistantHistoryLoad();
                     currentAssistantThreadId_.clear();
-                    uiState_->assistantTranscript_->clear();
+                    assistiveManager_->Runtime().ResetVisibleChat();
                 }
                 PopulateAssistantHistory();
                 SavePersistentSettings();
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTurnStarted,
             this, [this, syncExplainBusy](const QString&, const QString&, bool) {
+                if (assistiveManager_->Runtime().HasChatTurn()) return;
                 SetAssistantBusy(true);
                 syncExplainBusy();
             });
     connect(&assistiveManager_->Runtime(), &AssistiveRuntime::AssistantTextDelta,
             this, [this](const QString& threadId, const QString&, const QString& delta) {
+                if (assistiveManager_->Runtime().HasChatTurn()) return;
                 if (!assistantResponseOpen_ ||
                     (!currentAssistantThreadId_.isEmpty() && threadId != currentAssistantThreadId_)) {
                     return;
@@ -1089,6 +1212,16 @@ bool OkuFlowApp::Initialize()
                    const QString& error,
                    bool interrupted,
                    bool persistent) {
+                if (assistiveManager_->Runtime().HasChatTurn()) {
+                    if (error.trimmed().isEmpty() && !interrupted && !threadId.isEmpty())
+                        for (auto& conversation : settingsController_->MutableSettings().codexConversations)
+                            if (conversation.threadId == threadId) {
+                                conversation.updatedAt = QDateTime::currentSecsSinceEpoch();
+                                conversation.preview = text.simplified().left(160);
+                                PopulateAssistantHistory(); SavePersistentSettings(); break;
+                            }
+                    return;
+                }
                 SetAssistantBusy(false);
                 // The runtime has already cleared its turn state; resync so a
                 // finished temporary turn releases Stop while an unrelated
@@ -1213,6 +1346,9 @@ bool OkuFlowApp::Initialize()
         StartCameraCapture(static_cast<size_t>(initialCameraIndex));
     }
     initialized_ = true;
+    controlTarget_ = std::make_unique<agent::AppControlTarget>(*this);
+    controlService_ = std::make_unique<agent::AppControlService>(*controlTarget_,agent::BuiltControlCatalogEdition());
+    InitializeAgentControl();
     auto* phoneDiscoveryPulse = new QTimer(this);
     phoneDiscoveryPulse->setInterval(100);
     connect(phoneDiscoveryPulse, &QTimer::timeout, this, &OkuFlowApp::PollPhoneCameraDiscovery);
@@ -1221,6 +1357,14 @@ bool OkuFlowApp::Initialize()
 }
 
 OkuFlowApp::~OkuFlowApp() {
+    CancelAgentTurn();
+    if (visibleChatSaveTimer_) visibleChatSaveTimer_->stop();
+    PersistVisibleChat();
+    agentIpc_.reset();
+    agentHttp_.reset();
+    agentCodex_.reset();
+    controlService_.reset();
+    controlTarget_.reset();
     phoneDiscoveryCanceled_.store(true);
     if (phoneDiscovery_.valid()) phoneDiscovery_.wait();
     WriteStartupProfile();

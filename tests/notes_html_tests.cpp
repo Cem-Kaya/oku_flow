@@ -220,6 +220,7 @@ private slots:
         QSignalSpy finished(&runtime, &AssistiveRuntime::AssistantTurnFinished);
         QSignalSpy status(&runtime, &AssistiveRuntime::StatusNotice);
         QSignalSpy overlay(&runtime, &AssistiveRuntime::OverlayUpdated);
+        const auto chatBefore = runtime.ChatSession().Snapshot();
         QImage frame(128, 96, QImage::Format_ARGB32);
         frame.fill(Qt::white);
         runtime.SubmitFrameForced(frame.constBits(), frame.width(), frame.height(), readText);
@@ -231,16 +232,25 @@ private slots:
         QVERIFY(!finished.first().at(4).toBool());
         QVERIFY(!finished.first().at(5).toBool());
         QVERIFY(!runtime.IsBusy());
-        QVERIFY(!overlay.isEmpty());
-        const QString body = overlay.last().at(1).toString();
-        QVERIFY(body.startsWith(readText ? QStringLiteral("Read Text\n") : QStringLiteral("Scene Explain\n")));
         const QString fullText = QStringLiteral("Visible line 123. ").repeated(80).trimmed();
-        if (readText) QVERIFY(body.endsWith(fullText));
-        else QVERIFY(body.size() < fullText.size());
+        if (readText) {
+            QVERIFY(!overlay.isEmpty());
+            const QString body = overlay.last().at(1).toString();
+            QVERIFY(body.startsWith(QStringLiteral("Read Text\n"))); QVERIFY(body.endsWith(fullText));
+            QCOMPARE(runtime.ChatSession().Snapshot(),chatBefore);
+        } else {
+            // Explain owns the shared full-answer chat, never the Read channel.
+            QVERIFY(overlay.isEmpty());
+            const auto rows = runtime.ChatSession().Snapshot().value("messages").toArray();
+            QCOMPARE(rows.size(),2); QCOMPARE(rows[0].toObject().value("origin").toString(),"explain");
+            QCOMPARE(rows[1].toObject().value("text").toString(),fullText);
+            QVERIFY(rows[1].toObject().value("complete").toBool());
+        }
         QTRY_VERIFY_WITH_TIMEOUT(!runtime.HasPendingNotesWrites(), 5000);
         const QString notes = ReadAll(runtime.notesFilePath());
         QVERIFY(notes.contains(fullText));
         QVERIFY(notes.contains(readText ? QStringLiteral("Text on screen") : QStringLiteral("Scene explanation")));
+        QCOMPARE(notes.count(QStringLiteral("<div class=\"note-body\">")),1);
     }
 
     void initTestCase()

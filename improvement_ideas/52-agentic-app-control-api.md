@@ -1,10 +1,13 @@
 # Plan 52 — Agentic app control and MCP API (OkuFlow Control API)
 
-Status: **PLAN — DRAFT 4, reconciled after Draft 3 review; not implemented.**
+Status: **DESIGN — DRAFT 7; expanded implementation in progress, not shipped.**
 Written 2026-10-14 against commit `34f0cb9`. Draft 3 received two fresh
 independent read-only reviews (GPT-6-Astra: A3-01…A3-08; Muse Wonder Full:
 D3-B01…B04, D3-M01…M13, D3-m01…m06), both *revise before implementation*.
-Draft 4 reconciles all 31 findings; the per-finding disposition table is in
+Draft 4 reconciled the initial findings; final Astra verification found five
+major contract gaps and two consistency issues, corrected in Draft 5 (§21).
+The user's 2026-10-14 instruction authorizes implementation with GPT-6.1;
+no live API or public capability is established by this design. The disposition table is in
 [§21](#draft-3-review-disposition-draft-4). No application,
 build-script or website change is part of this document. Review records and
 defaults are in [§21](#21-review-record) and
@@ -283,13 +286,21 @@ nothing below assumes it.
    most one outstanding `turn/start`, recorded as
    `{generation, state: startSent|bound, turnId?}`. A call arriving before
    the `turn/start` reply is accepted only in state `startSent` with no
-   recorded turn id yet: the **first** recorded turn id wins and binds the
-   generation. A call carrying a different turn id (for example a late call
+   recorded turn id yet: reject retired turn ids immediately, and **buffer**
+   at most eight pre-acknowledgment calls without executing any side effect.
+   Only the correlated successful `turn/start` reply binds its authoritative
+   turn id to that generation. Drain only buffered calls matching that id;
+   never let the first incoming tool call choose the generation's identity.
+   A call carrying a different turn id (for example a late call
    from an interrupted turn) is replied `canceled`, never bound, and counted
    as a protocol anomaly; a second anomaly in the session disables agent
-   control. If the `turn/start` reply then reports a different turn id than
-   the bound one, the turn is interrupted and agent control is unavailable
-   until a new agent thread starts. A new `turn/start` is refused while one
+   control. If a start is canceled before its id is known, retire that thread
+   for future agent starts, cancel buffered requests and wait for the late
+   start result only to retire/interrupt its id; create a new agent thread
+   instead of reusing a thread with an unbound old start. Reply failure or
+   timeout cancels all buffered calls. If a server cannot reply to start
+   before waiting for tools, the compatibility probe fails; do not resolve
+   that deadlock by executing an unauthenticated turn. A new `turn/start` is refused while one
    is outstanding for the thread. Validation errors on a
    declared tool return `success:false` with an error code the model can act
    on. Non-recoverable authorization failures (wrong thread, undeclared tool,
@@ -398,7 +409,7 @@ client smoke test; silently mixing revisions is forbidden.
 
   | Case | Behavior |
   |---|---|
-  | `tools/list` pagination | Single page, no `nextCursor`. Any non-empty `cursor` ⇒ `-32602`. |
+  | `tools/list` pagination | Single page, no `nextCursor`. Presence of `cursor` (including empty/null) ⇒ `-32602`. |
   | `params._meta` (incl. `progressToken`) | Accepted and stripped before argument validation; v1 sends no progress notifications. Never a validation failure. |
   | Task-augmented `tools/call` (`params.task`) | `-32602`; tasks are not advertised. Pending work uses operation ids + `app.operation.get` (§8.5). |
   | Batch (JSON array) | One `-32600` error object (not an array); batches are not part of the pinned revision. |
@@ -456,14 +467,16 @@ leases; the sole carve-out is read-only `app.operation.get` status under a
 later lease in the same `appEpoch` (unguessable operation id, status + safe
 summary only, retained 15 minutes after terminal state, §8.5).
 
-**Catalog editions and ship gate (D3-B01).** `catalogEdition: "dev"` exposes
-Tier 0–2 only (no photo/recording, no camera selection) and is for internal
-and fixture use; it must not be described as a shipped API and the bridge is
-not added to release-bundle/MSI inventory in this edition.
+**Catalog editions and ship gate (D3-B01, F4-03).** Immutable development
+editions permit incremental integration: `dev-core` has Tier 0–2 except
+camera selection; `dev-capture` adds tested photo/recording tools in Phase 5;
+`dev-camera` adds source enumeration/selection in Phase 6 and exercises the
+full Phase 7 completion gate. Every development edition remains outside
+release-bundle/MSI inventory and is not described as a shipped API.
 `catalogEdition: "v1"` is the first shipped edition and requires the full
 Phase 7 gate (§16): Tier 3 capture and camera selection working through
 *both* the MCP bridge and the embedded adapters. `tools/list` advertises
-only the active edition; a `dev` build never lists ungrantable tools.
+only the active edition; development builds never list unimplemented tools.
 
 #### Bridge, instance selection and authorization
 
@@ -624,11 +637,9 @@ individual slots request until the call's transitions finish, then saves
 once. The single exception is synchronous safety markers (the per-camera
 acceleration attempt/fallback state, §13), which save immediately even
 inside a batch; that save is then the call's one save unless fields changed
-after it. Crash semantics are stated plainly: applied in-memory values are
-the truth and are **not** rolled back on restart; the in-memory undo
-journal does not survive a crash, and whether the file holds pre- or
-post-call values depends only on whether that one save completed. A disk
-failure keeps the change applied and emits `settings_not_saved` (§10).
+after it. A save failure keeps values applied in the running process and
+emits `settings_not_saved` (§10). Restart loads the last successfully committed
+settings; unsaved changes and the in-memory undo journal do not survive a crash.
 
 ### 6.4 UI synchronization and focus
 
@@ -923,7 +934,9 @@ letterboxing). Observations from an older `sourceEpoch`/`geometryEpoch` are
 
 ## 12. Tool catalog (first version — deliberately small)
 
-Editions (D3-B01): `dev` = Tier 0–2 rows only; `v1` (first shipped) = all
+Editions (D3-B01, F4-03): `dev-core` = core Tier 0–2 rows,
+`dev-capture` adds capture rows, `dev-camera` adds required camera selection,
+and `v1` (first shipped) = all
 rows below **plus** camera selection (§13). A build lists only its edition.
 
 ### 12.1 First catalog
@@ -973,7 +986,9 @@ against current state. A preset is **not agent-applicable** — returns
   the running assistant, next paragraph);
 - change `assistiveOverlayEnabled` (panel visibility is the user's, not a
   preset side effect the agent may cause);
-- enable debug view or SuperRes (`mlSuperResEnabled` or its mode flags).
+- change **any** debug or SuperRes field in either direction (enabled flag,
+  strength and mode flags), because their transitions are excluded from the
+  agent registry. No disabling difference is silently omitted.
 
 Fields are never silently stripped while claiming the preset was applied.
 
@@ -1007,8 +1022,8 @@ application replays only the *Agent rule = transition* fields through
 | `stabilizationEnabled`, `keystoneEnabled` | yes (resets histories) | profile | transition; undo states resets are not restorable (§9.5) |
 | `displayColorMode`, `colorScheme`, `contrast`, `brightness` | yes | profile | transition |
 | `autoContrast*`, `autoTextClarityEnabled` and the Text Clarity family (`backgroundFlatten*`, `adaptiveBinarizationEnabled`, `sauvolaStrength`, `binarizationSoftness`, `textPolarityMode`, `strokeWeight`, `smartSharpen*`, `clahe*`, `twoColorTextEnabled`, `textHysteresis*`, `selectiveSharpenEnabled`, `focusDetectionEnabled`, `focusThreshold`, `glareSuppression*`) | yes | profile | transition |
-| `mlSuperResEnabled`, `mlSuperResStrength`, `mlSuperResPrefer2x`, `mlSuperResUltra1440p` | yes | profile | reject preset if it would enable/change mode; strength-only change while already on is also rejected in v1 (Tier X for the agent) |
-| `debugView` | yes | profile | reject preset if it would enable |
+| `mlSuperResEnabled`, `mlSuperResStrength`, `mlSuperResPrefer2x`, `mlSuperResUltra1440p` | yes | profile | reject preset on any difference (Tier X), including disabling or inactive-strength differences |
+| `debugView` | yes | profile | reject preset on any difference |
 | `vlmAssistEnabled`, `assistiveOverlayEnabled` | yes (via `SetModes`) | assistant-owned, not image profile | reject preset on any change (above) |
 | `rotationQuarterTurns` | **no** — read from old profile JSON for migration only; `ApplyConfigToUI` never applies it and profile comparison ignores it | **global** (`PersistentSettings.rotationQuarterTurns`) | never part of a preset; only `camera.orientation.set` (Tier 2). The transitions refactor must not start applying the profile copy. |
 
@@ -1036,8 +1051,8 @@ when binarization is inactive (verified in `cuda_interop.cpp` and
 |---|---|---|---|---|---|---|
 | `photographic_color` | off | off | off | unchanged | off | `normal` |
 | `grayscale` | off | off | off | unchanged | off | `grayscale` (gray levels preserved; any binarization would destroy them, hence master off) |
-| `high_contrast_dark_on_light` | on | on | on | 1 dark-on-light | off | `black-white` (fg = black stop, bg = white stop) |
-| `high_contrast_light_on_dark` | on | on | on | 2 light-on-dark | off | `white-black` (fg = white stop, bg = black stop) |
+| `high_contrast_dark_on_light` | on | on | on | 0 auto (source ink detection) | off | `black-white` (fg = black stop, bg = white stop) |
+| `high_contrast_light_on_dark` | on | on | on | 0 auto (source ink detection) | off | `white-black` (fg = white stop, bg = black stop) |
 | `scheme` | unchanged | unchanged | unchanged | unchanged | unchanged | explicit `schemeId` from `mode.list`; result reports the upstream binarization/two-color state and `effective`/`inactiveReason` instead of promising a polarity |
 
 Fields not in the recipe (contrast, brightness, background flatten,
@@ -1046,7 +1061,9 @@ Text Clarity master off/on is reported in the delta like every other field
 — never a silent side effect. Tests run every intent from Text-Clarity-on
 and -off starting states and assert the composed CUDA-settings snapshot
 (which stages are active and which foreground/background pair results),
-not only member values.
+not only member values. Input ink detection is independent of requested output
+colors: both output intents must be checked with dark ink on light paper and
+light ink on a dark board. Output polarity never forces the wrong input detector.
 
 Descriptions tell the model: for "black and white" in a reading context,
 choose the high-contrast intent matching `view.metrics` scene class; use
@@ -1218,8 +1235,11 @@ checked at dispatch:
   **Ctrl+Shift+U** remains Stop-and-undo (§15).
 - **Allow is single-use and exact (A3-01).** On the GUI thread, atomically:
   verify the record is still `pending` and unexpired; verify the context
-  epoch is still valid (or within the post-turn grace for `action`
-  approvals); verify the target still matches (the recording session id is
+  epoch is still valid. For `action`, normal-completion grace is 30 seconds;
+  for `frame-grant`, explicitly allow post-turn activation while its approval
+  remains unexpired (up to five minutes), bound to the same camera/source epoch
+  and the next eligible embedded turn. Neither branch permits a revoked,
+  canceled, superseded or new-prompt context to revive; verify the target still matches (the recording session id is
   still the current session — a session that ended and was replaced voids
   the approval; the camera handle still resolves in the same
   `sourceEpoch`); verify no user edit touched the recorded field revisions;
@@ -1452,7 +1472,7 @@ assertion; metrics with `held/converging/stale`; coordinate conversion with
 letterboxing. Tests: crop/transform math, size caps, stale observation,
 ring contention with photo/assistant co-tenants, Fit/debug/cache remap.
 
-### Phase 3A — Standards-based MCP bridge (catalog edition `dev`)
+### Phase 3A — Standards-based MCP bridge (catalog edition `dev-core`)
 
 Implement §5.3 over the Phase 1A core (safeguards, approvals, lease UI and
 panic/undo already exist there) and Phase 2 observations. External control
@@ -1461,18 +1481,19 @@ precede all live dispatch. Add bridge stdout/IPC fake-target, envelope,
 validating-client and conformance tests. Deliver an example stdio client
 configuration and test with one independent standard MCP client against
 fixtures. The bridge ships in **no** release bundle in this phase and the
-`dev` edition (Tier 0–2) must not be described as a shipped API (D3-B01).
+`dev-core` edition (Tier 0–2) must not be described as a shipped API (D3-B01).
 No provider API charge or owner desktop is needed for this slice.
 
-### Phase 3B — Codex adapter and panel routing (catalog edition `dev`)
+### Phase 3B — Codex adapter and panel routing (catalog edition `dev-core`)
 
 Codex-specific work only (shared safeguards are Phase 1A): restricted
 child; conversation `kind`/`toolsetVersion` with kind-filtered history;
 `dynamicTools` declaration; `item/tool/call` routing with exactly-once
 replies and the §5.1.6 pending-start state machine; item policy; the
 §14.5 panel routing table and its end-to-end fixture. Fake app-server
-tests: unknown tool, wrong thread, call before turn id (first-id-wins, and
-a stale-turn late call), duplicate call id with same and different
+tests: unknown tool, wrong thread, buffered calls before authoritative start
+reply, stale call arriving first, canceled start with unknown id,
+duplicate call id with same and different
 arguments, late reply after cancel, child exit with pending calls,
 aggregate oversized payload, `imageView` item, MCP lifecycle event.
 
@@ -1485,14 +1506,14 @@ missing/duplicate ids, malformed JSON, no-tools endpoints and size limits.
 
 ### Phase 5 — Capture tier
 
-Photo and recording tools wired to the Phase 1A session toggles, exact
+Promote the internal catalog to `dev-capture`. Photo and recording tools wired to the Phase 1A session toggles, exact
 approvals and operation receipts, for **both** the MCP bridge (lease
 bundle toggles) and the embedded adapters; exact-session recording
 lifecycle (§9.1) fixtures; translations and review.
 
 ### Phase 6 — Required camera control
 
-Camera source enumeration/selection from §12.2 is required to finish the
+Promote the internal catalog to `dev-camera`. Camera source enumeration/selection from §12.2 is required to finish the
 owner's requested scope, not an optional future idea. It requires Phase 1B
 asynchronous transitions and the §13 temporary-source model, plus
 hardware acceptance. Then add other §12.2 tools after measured selection
@@ -1742,7 +1763,7 @@ runtime camera/recording grants in the finished app.
 | Master switches | Embedded Assistant control and external MCP control off until their separate first opt-ins. |
 | Grants and approvals | Standing grants are UI toggles only (master switches, per-turn frame grant, session capture toggles, lease bundle); everything else Tier 2/3 uses exact single-use approvals that create no grant (§14.2). External lease: 300 s absolute / 60 s idle, bundle-scoped, no tool renewal or mid-lease widening (§14.3). |
 | Stopping manual recordings | Exact approval bound to that session id only; no model-derived consent. Native Stop remains unrestricted. |
-| Catalog editions | `dev` (Tier 0–2, internal, bridge unshipped) until the Phase 7 gate; `v1` only when camera/photo/video work through both MCP and embedded adapters (§16). |
+| Catalog editions | Internal `dev-core` → `dev-capture` → `dev-camera`; all unshipped. `v1` only after the complete Phase 7 both-adapter camera/photo/video gate (§16). |
 | Agent history | No restart-resume of agent conversations in v1; kind-filtered index (§5.1.4). |
 | Budgets | §9.4 pinned numbers for every MCP/IPC/queue/result limit. |
 | Speech | Screen-reader announcements and existing manual Read Aloud; no automatic TTS. |
@@ -1757,3 +1778,94 @@ tool acceptance/resume/echo sizes/timeouts; independent MCP client conformance
 at the pinned protocol revision; real asynchronous camera cancellation and
 recording rotation behavior; NVDA/Narrator and translated/RTL rendering. Mark
 unverified until the corresponding fixture or scheduled acceptance proves it.
+
+### Final Draft 4 verification and Draft 5 corrections
+
+Astra's read-only task `okuflow-plan52-astra-final-draft4-20261014-r3`
+verified 23 of the 31 prior findings as resolved and eight as partial:
+five major contract gaps and two small consistency fixes. This verdict is
+not an implementation/runtime approval. GPT-6.1 corrected them in Draft 5:
+
+| Finding | Correction |
+|---|---|
+| F4-01 / D3-M11 | Buffer pre-ack calls without effects; only correlated authoritative start reply binds a turn; reject retired IDs and retire canceled unknown-start threads (§5.1.6). |
+| F4-02 / A3-05 | Automatic source ink detection for both requested output polarity schemes, with paper/board cross-input checks (§12.4). |
+| F4-03 / A3-08 / D3-B01 | Immutable dev-core, dev-capture and dev-camera stages can exercise the complete gate while all remain outside releases (§5.3, §12, §16). |
+| F4-04 / D3-M07 | Separate explicit post-turn frame-approval lifetime and next-eligible-turn activation; no image into an ended turn (§14.2). |
+| F4-05 / D3-M10 | Reject every unsupported preset-field difference, including debug/SuperRes disabling and inactive values (§12.3). |
+| D3-M02 consistency | A present tools/list cursor, even empty/null, is invalid (§5.3). |
+| D3-M09 consistency | Save failure leaves running values applied; restart loads the last committed file and loses the in-memory journal (§6.3). |
+
+The earlier Draft 4 disposition table records incorporation at that revision;
+its first-id-wins and dev-only wording is superseded by this correction record.
+Implementation was authorized on 2026-10-14 using GPT-6.1 and starts on the
+isolated feature/agentic-control-mcp branch. Completion requires the actual
+code, fixtures and Phase 7 gates, not another 'accepted' table.
+
+## 24. Draft 6 owner correction: one shared chat
+
+The owner requested Advanced Assistant to contain only chat with one compact
+New/History/settings header, and floating Explain to share that conversation.
+One generated concept was shown before implementation. Read is separate and
+must never add, select, clear or overwrite chat. Explain is an explicit
+current-viewport, tool-free turn; followups preserve its context. Enabling
+restricted control may choose an Agent backend segment for the next typed
+turn, but cannot widen Explain, enable coding, convert saved kinds or send
+agent thread IDs through the ordinary loader.
+
+A pixel-free visible session uses conversation/epoch/request tickets, one user
+row and one assistant placeholder, shared drafts/busy state and authoritative
+terminal replacement. Backend IDs remain private; cross-segment bridges contain
+bounded completed text only, no images or grants. Read/periodic/focus results
+retain separate presentation and runtime-owned notes. Explicit attachments are
+turn/source scoped. New/history stop manual TTS and retire the previous owner.
+Existing Assistant/Coding history continuation, rename/export/delete and native
+dialogs remain supported under immutable-kind permission masks.
+Native New preserves ordinary creation: with control off, Codex selects Coding
+only from the explicit coding setting, otherwise Assistant. HTTP or control-on
+New starts Explain. Pressing Explain explicitly chooses a fresh Explain chat
+when another immutable kind is visible, and continues an existing Explain chat;
+this policy adds no mode, subtab or header control.
+
+This correction changes the presentation and conversation contract; it does
+not promote the provisional tool catalog, establish live provider compatibility
+or waive the full MCP/release acceptance gates.
+
+Draft 6 also requires durable mixed logical history. New Explain/Agent chats
+store one bounded first-party logical entry, preserving both backend segments'
+visible text across restart without persisting their IDs or authority. History
+restores the full transcript as tool-free Explain; an enabled restricted Agent
+followup starts a fresh child/thread with bounded completed text only. Legacy
+ordinary Assistant/Coding entries continue through their original kind-safe
+loader; local rename/export/delete target the owned logical record and retain
+the existing native dialogs. Store/restore never rewrite notes or replay tools.
+## 25. Draft 7 owner expansion: every adjustable app option
+
+The owner explicitly expanded the scope beyond the initial 19 semantic tools
+on 2026-10-14: expose all current application options and knobs through MCP.
+[The reconciled inventory](../docs/control_inventory.md) and its tracked JSON
+identify 94 adjustable values across image, view, camera, recording, Assistant,
+notes/output, UI and annotation. Protected account/secret/authority controls and
+workflow actions are classified separately rather than silently turned into
+arbitrary settings, filesystem, shell or desktop automation.
+
+Add finite typed get/set groups and compact paged discovery. Preserve the
+14/17/19-tool development editions unchanged; `dev-full` is index 4 and currently
+contains 36 tool endpoints. Endpoint count is distinct from parameter count.
+Its schemas and metadata alone do not establish native integration: every
+adjustable field needs actual normalized/effective state, native behavior,
+permissions, persistence, coupled revision/undo and validation coverage.
+
+This expansion permits explicitly supported debug, custom-color and SuperRes
+knobs formerly excluded from the narrow catalog. It does not weaken hardware
+availability, private peer/child identity, source/capture consent, recording
+ownership or egress budgets. Periodic Explain and capture-on-exit need their
+actual egress/capture side effects authorized and scoped, including cancellation
+and expiry. Output destinations use native-owner-approved opaque directory
+handles; MCP receives no arbitrary path or credential authority.
+
+The new scope joins Phase 7's V1 gate. Neither a 36-tool declaration nor passing
+the earlier synthetic 19-tool fixtures permits claiming all 94 native controls
+work or publishing 0.3.1. Keep actual source, provider, UI/accessibility, CUDA,
+media and packaging acceptance distinct. The requested final Muse implementation
+audit and scope proposal follow complete implementation of this expanded scope.

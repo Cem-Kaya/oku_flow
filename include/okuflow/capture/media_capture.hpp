@@ -120,6 +120,10 @@ enum class GpuFramePreparationResult {
 };
 enum class GpuFrameReadbackResult { Ready, Pending, Failed };
 
+enum class CaptureStopStatus {
+    WaitingForQuiescence, ReadyToRelease, WaitingForRelease, Completed, Failed
+};
+
 class MediaCaptureSession;
 
 // UI-owned facade. Every capture/stop worker owns a separate shared session,
@@ -149,6 +153,13 @@ public:
     // false requires abandoning imports without waiting on a wedged driver.
     // Already-entered frame/error callbacks must independently own their target.
     bool StopCapture(const std::function<void(bool quiesced)>& beforeAccelerationRelease = {});
+    // GUI-safe split stop. Begin revokes delivery and starts one session-owned
+    // worker. Poll never waits for a driver or GPU. ReadyToRelease preserves
+    // producer backing until the caller acknowledges exact consumer cleanup.
+    // All phases share 1500 ms from Begin; failure is sticky and prevents reuse.
+    void BeginStopCapture();
+    CaptureStopStatus PollStopCapture();
+    void ReleaseStoppedCapture(bool consumerSafe);
     bool WasAbandoned() const { return abandonedForExit_; }
     const std::string& LastError() const { return lastError_; }
     const std::string& FormatNotice() const { return formatNotice_; }
@@ -177,10 +188,16 @@ public:
     void SetPhoneZoom(float ratio);
     void SetPhoneCamera(const std::string& id);
     void SetPhoneTorch(bool enabled);
+    // Actor admission is scoped to this live phone session. The positive
+    // deadline is steady_clock milliseconds since its epoch; cancellation or
+    // expiry before the control write suppresses the request, not an ACK state.
+    bool SetPhoneTorch(bool enabled, std::shared_ptr<std::atomic<bool>> canceled,
+                       std::int64_t deadlineSteadyMs);
     bool PhoneTorchAvailable() const;
     bool PhoneTorchEnabled() const;
     std::string PhoneProblemCode() const;
 private:
+    friend struct CaptureReadbackTestAccess;
     std::shared_ptr<MediaCaptureSession> session_;
     bool abandonedForExit_{false};
     bool lastStopCompleted_{true};

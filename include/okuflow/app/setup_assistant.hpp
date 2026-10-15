@@ -43,6 +43,7 @@ public:
     // The optional NVIDIA runtime is offered from its Super Resolution control.
     static bool NeedsSetup(const QString& configuredCodexPath);
     static QString FindCodexExecutable(const QString& configuredPath = {});
+    void SetDeclinedPreference(bool declined);
 
     struct DependencyRow {
         QWidget* container{};

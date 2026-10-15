@@ -1,0 +1,197 @@
+[
+  {
+    "key": "agent_ui_02",
+    "source": "&Deny",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_03",
+    "source": "Adjust view (required)",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_04",
+    "source": "Allow camera views for this turn",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_05",
+    "source": "Allow photos this session",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_06",
+    "source": "Allow the Assistant to start and stop recordings it started",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_07",
+    "source": "Approve lease",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_08",
+    "source": "Ask permission before recording a lecture or other people.",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_09",
+    "source": "Assistant action transcript",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_10",
+    "source": "Assistant control",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_11",
+    "source": "Assistant control is off",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_12",
+    "source": "Assistant control status",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_13",
+    "source": "Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_14",
+    "source": "Connected client: %1",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_16",
+    "source": "Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_17",
+    "source": "Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_18",
+    "source": "Controlling OkuFlow needs its own conversation.",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_19",
+    "source": "Exact action arguments",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_20",
+    "source": "External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_21",
+    "source": "External control permissions",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_22",
+    "source": "External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_23",
+    "source": "External MCP control",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_24",
+    "source": "Lease permissions",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_25",
+    "source": "No active lease",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_26",
+    "source": "No external client connected",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_27",
+    "source": "Orientation and camera source (never during recording)",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_31",
+    "source": "Review lease permissions",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_32",
+    "source": "Revoke lease",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_33",
+    "source": "Send camera views (up to 6 per lease)",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_34",
+    "source": "Send without control",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_35",
+    "source": "Start and stop recordings it started (at least 30 seconds remaining to start)",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_36",
+    "source": "Start control conversation",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_37",
+    "source": "Stop and undo (Ctrl+Shift+U)",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_38",
+    "source": "Take photos (within the lease action budget)",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_39",
+    "source": "Test endpoint tool support now",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_40",
+    "source": "This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_41",
+    "source": "View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.",
+    "context": "Windows AgentControlPanel, AI Settings and persistent MainWindow accessibility status. Control=permission for AI to change magnifier view; lease=temporary external MCP client authority, never a paid rental. Preserve placeholders, Ctrl+Shift shortcuts, & button mnemonic and exact no-upload claims."
+  },
+  {
+    "key": "agent_ui_42",
+    "source": "Tool support ready",
+    "context": "Windows explicit synthetic endpoint tool-support check succeeded. Status does not grant agent permission or imply camera/capture capability accepted."
+  },
+  {
+    "key": "agent_ui_43",
+    "source": "Tool support unavailable",
+    "context": "Windows explicit synthetic endpoint tool-support check failed, unsupported or unknown. Status alone grants no permission."
+  },
+  {
+    "key": "agent_ui_44",
+    "source": "Checking tool support...",
+    "context": "Windows explicit user-triggered synthetic endpoint tool-support request is running. No camera image sent and no app setting changed."
+  }
+]

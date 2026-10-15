@@ -1557,79 +1557,53 @@ MainWindow::MainWindow()
     assistantLayout->setContentsMargins(10, 8, 10, 10);
     assistantLayout->setSpacing(8);
 
-    auto* assistantAiSettingsButton = new QPushButton(QStringLiteral("AI Settings"));
-    assistantAiSettingsButton->setObjectName(QStringLiteral("advancedNavButton"));
-    SetThemedIcon(assistantAiSettingsButton, QStringLiteral(":/okuflow/icons/open-settings.svg"));
-    assistantAiSettingsButton->setIconSize(QSize(26, 26));
-    assistantAiSettingsButton->setToolTip(QStringLiteral("Open AI Settings dialog"));
-    assistantAiSettingsButton->setAccessibleName(QStringLiteral("AI Settings"));
-    assistantAiSettingsButton->setAccessibleDescription(
-        QStringLiteral("Configure the vision assistant and speech output"));
-    assistantAiSettingsButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    connect(assistantAiSettingsButton, &QPushButton::clicked,
-            aiSettingsButton_, &QPushButton::click);
-    assistantLayout->addWidget(assistantAiSettingsButton);
+    assistantLayout->setContentsMargins(0,0,0,0);
+    assistantLayout->setSpacing(0);
+    assistantChatView_ = new AssistantChatView;
+    agentControlPanel_ = new AgentControlPanel;
+    assistantChatView_->SetSettingsWidget(agentControlPanel_);
+    assistantChatView_->SetApprovalWidget(agentControlPanel_->approvalWidget());
+    assistantChatView_->SetRoutingWidget(agentControlPanel_->routingNoticeWidget());
+    assistantConnectionLabel_ = assistantChatView_->connectionLabel();
+    assistantUsageLabel_ = assistantChatView_->usageLabel();
+    assistantConnectButton_ = assistantChatView_->connectButton();
+    assistantTranscript_ = assistantChatView_->transcript();
+    assistantPromptEdit_ = assistantChatView_->composer();
+    assistantAttachFrameCheckbox_ = assistantChatView_->attachmentCheckbox();
+    assistantNewButton_ = assistantChatView_->newButton();
+    assistantSendButton_ = assistantChatView_->sendButton();
+    assistantStopButton_ = assistantChatView_->stopButton();
+    assistantHistoryList_ = assistantChatView_->historyList();
+    assistantRenameButton_ = assistantChatView_->renameButton();
+    assistantExportButton_ = assistantChatView_->exportButton();
+    assistantDeleteButton_ = assistantChatView_->deleteButton();
+    connect(assistantChatView_, &AssistantChatView::AISettingsRequested, aiSettingsButton_, &QPushButton::click);
+    connect(assistantChatView_, &AssistantChatView::StopAndUndoRequested,agentControlPanel_,&AgentControlPanel::RequestStopAndUndo);
+    connect(assistantChatView_,&AssistantChatView::EscapeRequested,this,[this]{renderWidget_->setFocus(Qt::ShortcutFocusReason);});
+    assistantLayout->addWidget(assistantChatView_,1);
 
-    assistantConnectionLabel_ = new QLabel("Starting Codex...");
-    assistantConnectionLabel_->setWordWrap(true);
-    assistantUsageLabel_ = new QLabel();
-    assistantUsageLabel_->setWordWrap(true);
-    assistantConnectButton_ = new QPushButton("Connect ChatGPT");
-    assistantConnectButton_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    assistantLayout->addWidget(assistantConnectionLabel_);
-    assistantLayout->addWidget(assistantUsageLabel_);
-    assistantLayout->addWidget(assistantConnectButton_);
-
-    auto* assistantTabs = new QTabWidget();
-    auto* chatPage = new QWidget();
-    auto* chatLayout = new QVBoxLayout(chatPage);
-    chatLayout->setContentsMargins(0, 6, 0, 0);
-    chatLayout->setSpacing(8);
-    assistantTranscript_ = new QTextBrowser();
-    assistantTranscript_->setOpenExternalLinks(false);
-    assistantTranscript_->setPlaceholderText("Ask about the current camera view.");
-    assistantTranscript_->setMinimumHeight(220);
-    assistantPromptEdit_ = new QPlainTextEdit();
-    assistantPromptEdit_->setPlaceholderText("Ask about what is visible...");
-    assistantPromptEdit_->setMaximumHeight(105);
-    assistantAttachFrameCheckbox_ = new QCheckBox("Attach current view");
-    assistantAttachFrameCheckbox_->setChecked(true);
-    assistantNewButton_ = new QPushButton("New Conversation");
-    assistantSendButton_ = new QPushButton("Send");
-    assistantStopButton_ = new QPushButton("Stop");
-    assistantStopButton_->setEnabled(false);
-    auto* chatActions = new QHBoxLayout();
-    chatActions->setSpacing(6);
-    chatActions->addWidget(assistantNewButton_);
-    chatActions->addStretch(1);
-    chatActions->addWidget(assistantStopButton_);
-    chatActions->addWidget(assistantSendButton_);
-    chatLayout->addWidget(assistantTranscript_, 1);
-    chatLayout->addWidget(assistantPromptEdit_);
-    chatLayout->addWidget(assistantAttachFrameCheckbox_);
-    chatLayout->addLayout(chatActions);
-
-    auto* historyPage = new QWidget();
-    auto* historyLayout = new QVBoxLayout(historyPage);
-    historyLayout->setContentsMargins(0, 6, 0, 0);
-    historyLayout->setSpacing(8);
-    assistantHistoryList_ = new QListWidget();
-    assistantHistoryList_->setSelectionMode(QAbstractItemView::SingleSelection);
-    assistantHistoryList_->setWordWrap(true);
-    assistantRenameButton_ = new QPushButton("Rename");
-    assistantExportButton_ = new QPushButton("Export");
-    assistantDeleteButton_ = new QPushButton("Delete");
-    auto* historyActions = new QHBoxLayout();
-    historyActions->setSpacing(6);
-    historyActions->addWidget(assistantRenameButton_);
-    historyActions->addWidget(assistantExportButton_);
-    historyActions->addWidget(assistantDeleteButton_);
-    historyLayout->addWidget(assistantHistoryList_, 1);
-    historyLayout->addLayout(historyActions);
-
-    assistantTabs->addTab(chatPage, "Chat");
-    assistantTabs->addTab(historyPage, "History");
-    assistantLayout->addWidget(assistantTabs, 1);
+    // Own this outside the hideable inspector/chrome. Its small visible
+    // footprint leaves it in the accessibility tree even with the UI hidden.
+    agentLiveRegionLabel_ = new QLabel(this);
+    agentLiveRegionLabel_->setObjectName(QStringLiteral("agentLiveRegionLabel"));
+    agentLiveRegionLabel_->setTextFormat(Qt::PlainText);
+    agentLiveRegionLabel_->setAccessibleName(QStringLiteral("Assistant control status"));
+    agentLiveRegionLabel_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    agentLiveRegionLabel_->setGeometry(0, 0, 1, 1);
+    agentLiveRegionLabel_->show();
+    connect(agentControlPanel_, &AgentControlPanel::statusAnnouncementRequested, this,
+            [this](const QString& text, bool assertive, bool coalesce) {
+        const auto politeness = assertive ? LivePoliteness::kAssertive : LivePoliteness::kPolite;
+        const QString role = TranslateUi(QStringLiteral("Assistant control status"));
+        if (coalesce) SetLiveTextCoalesced(agentLiveRegionLabel_, text, politeness, role);
+        else SetLiveText(agentLiveRegionLabel_, text, politeness, role);
+    });
+    auto* stopAgentShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+U")), this);
+    stopAgentShortcut->setContext(Qt::ApplicationShortcut);
+    connect(stopAgentShortcut, &QShortcut::activated, agentControlPanel_, &AgentControlPanel::RequestStopAndUndo);
+    auto* approvalShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+A")), this);
+    approvalShortcut->setContext(Qt::ApplicationShortcut);
+    connect(approvalShortcut, &QShortcut::activated, this, &MainWindow::focusAgentApproval);
 
     assistantPage->setObjectName(QStringLiteral("assistantTabPage"));
     auto* advancedTabs = new QTabWidget();
@@ -2753,7 +2727,7 @@ void MainWindow::refreshTextClarityUi()
 
 void MainWindow::refreshSliderReadouts()
 {
-    for (const auto& refresh : sliderReadoutRefreshers_) refresh();
+    RefreshControlReadouts();
 }
 
 void MainWindow::setExplainBusy(bool busy)
@@ -2941,6 +2915,15 @@ QSlider* MainWindow::temporalSmoothSlider() const { return temporalSmoothSlider_
 QLabel* MainWindow::temporalSmoothValueLabel() const { return temporalSmoothValueLabel_; }
 QCheckBox* MainWindow::vlmAssistCheckbox() const { return vlmAssistCheckbox_; }
 QCheckBox* MainWindow::assistiveOverlayCheckbox() const { return assistiveOverlayCheckbox_; }
+void MainWindow::focusAgentApproval()
+{
+    if (!agentControlPanel_ || !agentControlPanel_->hasPendingApproval()) return;
+    setUiHidden(false);
+    advancedModeButton_->setChecked(true);
+    advancedTabs_->setCurrentIndex(1);
+    assistantChatView_->CloseDrawer();
+    agentControlPanel_->FocusPendingApproval();
+}
 QCheckBox* MainWindow::spatialSharpenCheckbox() const { return spatialSharpenCheckbox_; }
 QComboBox* MainWindow::spatialBackendCombo() const { return spatialBackendCombo_; }
 QSlider* MainWindow::spatialSharpnessSlider() const { return spatialSharpnessSlider_; }
@@ -2987,7 +2970,7 @@ void MainWindow::setAnnotationViewTransform(const ViewTransform& transform)
     }
 }
 
-void MainWindow::setAnnotationMode(bool enabled)
+void MainWindow::setAnnotationMode(bool enabled, std::optional<AnnotationTool> initialTool, bool preserveFocus)
 {
     if (!annotationOverlay_ || !annotationButton_) {
         return;
@@ -2998,7 +2981,7 @@ void MainWindow::setAnnotationMode(bool enabled)
     changingAnnotationMode_ = true;
     annotationButton_->setChecked(enabled);
     changingAnnotationMode_ = false;
-    annotationOverlay_->SetActive(enabled);
+    annotationOverlay_->SetActive(enabled, initialTool, initialTool.has_value(), preserveFocus);
     if (uiHidden_) {
         annotationOverlay_->hide();
         return;
@@ -3016,7 +2999,7 @@ void MainWindow::setAnnotationMode(bool enabled)
         RaiseChromeAboveCanvas();
     } else {
         chromePinned_ = false;
-        annotationButton_->setFocus(Qt::OtherFocusReason);
+        if (!preserveFocus) annotationButton_->setFocus(Qt::OtherFocusReason);
         if (isSimpleMode()) {
             simpleChromeIdleTimer_->start();
         }
@@ -3221,6 +3204,11 @@ QPlainTextEdit* MainWindow::assistantPromptEdit() const { return assistantPrompt
 QCheckBox* MainWindow::assistantAttachFrameCheckbox() const { return assistantAttachFrameCheckbox_; }
 QPushButton* MainWindow::assistantSendButton() const { return assistantSendButton_; }
 QPushButton* MainWindow::assistantStopButton() const { return assistantStopButton_; }
+void MainWindow::RefreshControlReadouts()
+{
+    for(const auto& refresh:sliderReadoutRefreshers_)refresh();
+}
+
 QPushButton* MainWindow::assistantNewButton() const { return assistantNewButton_; }
 QListWidget* MainWindow::assistantHistoryList() const { return assistantHistoryList_; }
 QPushButton* MainWindow::assistantRenameButton() const { return assistantRenameButton_; }
@@ -4097,6 +4085,18 @@ int MainWindow::advancedPanelWidth() const
     return advancedPanelPreferredWidth_;
 }
 
+int MainWindow::advancedActiveTab() const
+{
+    return advancedTabs_ ? advancedTabs_->currentIndex() : -1;
+}
+
+bool MainWindow::setAdvancedActiveTab(int index)
+{
+    if (!advancedTabs_ || index < 0 || index >= advancedTabs_->count()) return false;
+    advancedTabs_->setCurrentIndex(index);
+    return advancedTabs_->currentIndex() == index;
+}
+
 void MainWindow::setAdvancedPanelWidth(int width)
 {
     advancedPanelPreferredWidth_ = std::clamp(width, kAdvancedPanelMinimumWidth, 1200);
@@ -4390,6 +4390,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         }
         if ((key->key() == Qt::Key_Tab || key->key() == Qt::Key_Backtab) &&
             !(key->modifiers() & (Qt::ControlModifier | Qt::AltModifier)) &&
+            !(assistantChatView_ && assistantChatView_->DrawerContainsFocus()) &&
             !modeGridPopup_->isVisible()) {
             std::vector<QWidget*> focusOrder{
                 simpleModeButton_, advancedModeButton_, simpleTextClarityCheckbox_, modeGridButton_,

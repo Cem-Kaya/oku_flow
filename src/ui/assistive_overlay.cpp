@@ -19,6 +19,7 @@
 #include <QKeyEvent>
 #include <QMainWindow>
 #include <QPushButton>
+#include <QPlainTextEdit>
 #include <QPainter>
 #include <QShortcut>
 #include <QShowEvent>
@@ -161,7 +162,8 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
             selection-color: #ffffff;
         }
         QPushButton#assistiveReadButton, QPushButton#assistiveAskButton,
-        QPushButton#assistiveNewChatButton {
+        QPushButton#assistiveNewChatButton,
+        QPushButton#assistiveStartControl, QPushButton#assistiveSendWithoutControl {
             color: #ffffff;
             background: #3d3d3d;
             border: 2px solid #8c8c8c;
@@ -170,9 +172,11 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
             padding: 2px 14px;
         }
         QPushButton#assistiveAskButton:hover,
-        QPushButton#assistiveNewChatButton:hover { background: #4d4d4d; }
+        QPushButton#assistiveNewChatButton:hover,
+        QPushButton#assistiveStartControl:hover, QPushButton#assistiveSendWithoutControl:hover { background: #4d4d4d; }
         QPushButton#assistiveAskButton:focus,
-        QPushButton#assistiveNewChatButton:focus { border: 3px solid #d27be6; }
+        QPushButton#assistiveNewChatButton:focus,
+        QPushButton#assistiveStartControl:focus, QPushButton#assistiveSendWithoutControl:focus { border: 3px solid #d27be6; }
         QPushButton#assistiveAskButton {
             font-size: 14pt;
             font-weight: 600;
@@ -323,6 +327,29 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
                        "begins a new conversation section in the lecture notes."));
     layout->addWidget(new AnswerActionRow(readAloudButton_, newChatButton_));
 
+    controlRoutingRow_ = new QWidget;
+    controlRoutingRow_->setObjectName(QStringLiteral("assistiveControlRoutingNotice"));
+    auto* routing = new QVBoxLayout(controlRoutingRow_);
+    routing->setContentsMargins(0,0,0,0);
+    auto* routingMessage = new QLabel(QStringLiteral("Controlling OkuFlow needs its own conversation."));
+    routingMessage->setTextFormat(Qt::PlainText);
+    routingMessage->setWordWrap(true);
+    routingMessage->setStyleSheet(QStringLiteral("color: #ffffff; font-size: 13pt;"));
+    routing->addWidget(routingMessage);
+    startControlButton_ = new QPushButton(QStringLiteral("Start control conversation"));
+    startControlButton_->setObjectName(QStringLiteral("assistiveStartControl"));
+    sendWithoutControlButton_ = new QPushButton(QStringLiteral("Send without control"));
+    sendWithoutControlButton_->setObjectName(QStringLiteral("assistiveSendWithoutControl"));
+    for (auto* button : {startControlButton_,sendWithoutControlButton_}) {
+        button->setAutoDefault(false);
+        button->setDefault(false);
+        routing->addWidget(button);
+    }
+    connect(startControlButton_, &QPushButton::clicked, this, &AssistiveOverlay::StartControlConversationRequested);
+    connect(sendWithoutControlButton_, &QPushButton::clicked, this, &AssistiveOverlay::SendWithoutControlRequested);
+    layout->addWidget(controlRoutingRow_);
+    controlRoutingRow_->hide();
+
     auto* questionRow = new QHBoxLayout();
     questionRow->setSpacing(8);
     questionEdit_ = new QLineEdit();
@@ -379,6 +406,7 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
         emit Dismissed();
     });
     connect(newChatButton_, &QPushButton::clicked, this, [this]() {
+        SetControlRoutingNotice(false);
         questionEdit_->clear();
         questionEdit_->setFocus();
         emit NewChatRequested();
@@ -426,6 +454,51 @@ AssistiveOverlay::AssistiveOverlay(QWidget* parent)
     dockPreview_->hide();
 
     setVisible(false);
+    // The shared Explain conversation is a pure chat view. Read owns a separate
+    // result window so a Read completion cannot replace or hide that conversation.
+    chatView_=new AssistantChatView(content);
+    agentControlPanel_=new AgentControlPanel;
+    chatView_->SetSettingsWidget(agentControlPanel_);
+    chatView_->SetApprovalWidget(agentControlPanel_->approvalWidget());
+    chatView_->SetRoutingWidget(agentControlPanel_->routingNoticeWidget());
+    if(readAloudButton_->parentWidget())readAloudButton_->parentWidget()->hide();
+    bodyView_->hide();newChatButton_->hide();questionEdit_->hide();askButton_->hide();controlRoutingRow_->hide();
+    layout->setContentsMargins(0,0,0,0);layout->setSpacing(0);layout->addWidget(chatView_,1);
+    QWidget* oldHeader=headerWidget_;
+    headerWidget_=chatView_->headerWidget();
+    qobject_cast<QVBoxLayout*>(chatView_->layout())->removeWidget(headerWidget_);
+    oldHeader->hide();
+    auto* chatHeader=qobject_cast<QHBoxLayout*>(headerWidget_->layout());
+    chatHeader->addWidget(dockPositionButton_);chatHeader->addWidget(closeButton_);
+    setTitleBarWidget(headerWidget_);
+    headerWidget_->setCursor(Qt::SizeAllCursor);
+    headerWidget_->setStyleSheet(QStringLiteral("QWidget#chatHeader { background: palette(base); }"));
+    headerWidget_->installEventFilter(this);headerWidget_->setMouseTracking(true);
+    setMinimumSize(480,380);
+    readResultPane_=new QWidget(parent?parent->window():nullptr,Qt::Tool);
+    readResultPane_->setObjectName(QStringLiteral("readResultPane"));
+    readResultPane_->setAttribute(Qt::WA_ShowWithoutActivating);
+    readResultPane_->setStyleSheet(QStringLiteral("QWidget#readResultPane { background: #111111; color: #f5f5f5; }"));
+    auto* readLayout=new QVBoxLayout(readResultPane_);
+    readTitle_=new QLabel;readTitle_->setTextFormat(Qt::PlainText);readTitle_->setWordWrap(true);readLayout->addWidget(readTitle_);
+    readTitle_->setStyleSheet(QStringLiteral("color: #fff7d6; font-size: 16pt;"));
+    readLayout->addWidget(bodyView_,1);readLayout->addWidget(readAloudButton_);
+    bodyView_->show();readAloudButton_->show();
+    auto* closeRead=new QPushButton(QStringLiteral("Close"));closeRead->setMinimumHeight(44);readLayout->addWidget(closeRead);
+    connect(closeRead,&QPushButton::clicked,readResultPane_,&QWidget::hide);
+    readResultPane_->resize(640,640);readResultPane_->hide();
+    connect(chatView_,&AssistantChatView::ChatSubmitted,this,&AssistiveOverlay::QuestionSubmitted);
+    connect(chatView_,&AssistantChatView::ChatNewRequested,this,&AssistiveOverlay::NewChatRequested);
+    connect(chatView_, &AssistantChatView::EscapeRequested, this, [this] {
+        if (!renderTarget_) return;
+        // An explicit Escape returns from the floating native window to its
+        // camera owner. Snapshot updates never activate either window.
+        renderTarget_->window()->activateWindow();
+        renderTarget_->setFocus(Qt::ShortcutFocusReason);
+    });
+    connect(chatView_,&AssistantChatView::StopAndUndoRequested,agentControlPanel_,&AgentControlPanel::RequestStopAndUndo);
+    connect(agentControlPanel_,&AgentControlPanel::startControlConversationRequested,this,&AssistiveOverlay::StartControlConversationRequested);
+    connect(agentControlPanel_,&AgentControlPanel::sendWithoutControlRequested,this,&AssistiveOverlay::SendWithoutControlRequested);
     for (QWidget* widget = parent; widget; widget = widget->parentWidget()) {
         widget->installEventFilter(this);
     }
@@ -531,11 +604,18 @@ void AssistiveOverlay::UpdateDockPositionControl()
     }
 }
 
+AssistiveOverlay::~AssistiveOverlay() { delete readResultPane_.data(); }
+
 void AssistiveOverlay::SetContent(const QString& title, const QString& body, bool visible)
+{
+    SetReadContent(title,body,visible);
+}
+void AssistiveOverlay::SetReadContent(const QString& title,const QString& body,bool visible)
 {
     if (title_ != title) {
         title_ = title;
-        SetLiveText(titleLabel_, title_, LivePoliteness::kSilent,
+        readResultPane_->setWindowTitle(TranslateUi(title));
+        SetLiveText(readTitle_, title_, LivePoliteness::kSilent,
                     QStringLiteral("Assistive result"));
     }
     if (body_ != body) {
@@ -561,16 +641,11 @@ void AssistiveOverlay::SetContent(const QString& title, const QString& body, boo
         formatCursor.mergeBlockFormat(format);
         scroll->setValue(followTail ? scroll->maximum() : scrollPosition);
     }
-    desiredVisible_ = visible && (!title_.isEmpty() || !body_.isEmpty());
-    const bool shouldShow = desiredVisible_ && !uiSuppressed_;
-    const bool wasVisible = isVisible();
-    if (shouldShow != wasVisible) {
-        setVisible(shouldShow);
-    }
-    if (shouldShow && !wasVisible) {
-        raise();
-    }
+    readDesiredVisible_=visible&&(!title_.isEmpty()||!body_.isEmpty());
+    readResultPane_->setVisible(readDesiredVisible_&&!uiSuppressed_);
 }
+void AssistiveOverlay::SetChatSnapshot(const QJsonObject& snapshot){chatView_->SetChatSnapshot(snapshot);}
+void AssistiveOverlay::ShowChat(bool visible){desiredVisible_=visible;setVisible(visible&&!uiSuppressed_);}
 
 void AssistiveOverlay::SetUiSuppressed(bool suppressed)
 {
@@ -578,6 +653,7 @@ void AssistiveOverlay::SetUiSuppressed(bool suppressed)
         return;
     }
     uiSuppressed_ = suppressed;
+    readResultPane_->setVisible(readDesiredVisible_&&!suppressed);
     if (suppressed) {
         if (!isFloating() && isVisible()) {
             suppressedDockWidth_ = width();
@@ -1155,14 +1231,31 @@ void AssistiveOverlay::SubmitQuestion()
         questionEdit_->setFocus();
         return;
     }
-    questionEdit_->clear();
     emit QuestionSubmitted(question);
+    // The UI-thread routing receiver can refuse synchronously and show the
+    // notice. Clear only accepted ordinary/control sends, preserving old flow.
+    if (!controlRoutingRequired_) questionEdit_->clear();
 }
+
+void AssistiveOverlay::SetControlRoutingNotice(bool visible, bool canStartControl)
+{
+    controlRoutingRequired_ = visible;
+    if(chatView_){agentControlPanel_->SetRoutingNotice(visible,canStartControl);return;}
+    startControlButton_->setVisible(canStartControl);
+    controlRoutingRow_->setVisible(visible);
+    if (visible) {
+        QWidget::setTabOrder(questionEdit_, canStartControl ? startControlButton_ : sendWithoutControlButton_);
+        if (canStartControl) QWidget::setTabOrder(startControlButton_,sendWithoutControlButton_);
+        QWidget::setTabOrder(sendWithoutControlButton_,askButton_);
+    } else QWidget::setTabOrder(questionEdit_,askButton_);
+}
+void AssistiveOverlay::ClearQuestionDraft() { if(chatView_)chatView_->composer()->clear();else questionEdit_->clear(); }
+QString AssistiveOverlay::QuestionDraft() const { return chatView_?chatView_->composer()->toPlainText():questionEdit_->text(); }
 
 std::array<QWidget*, 7> AssistiveOverlay::FocusTargets() const
 {
-    return {bodyView_, readAloudButton_, newChatButton_, questionEdit_,
-            askButton_, dockPositionButton_, closeButton_};
+    if(chatView_)return {chatView_->transcript(),chatView_->readAloudButton(),chatView_->newButton(),chatView_->composer(),chatView_->sendButton(),dockPositionButton_,closeButton_};
+    return {bodyView_, readAloudButton_, newChatButton_, questionEdit_,askButton_,dockPositionButton_,closeButton_};
 }
 
 

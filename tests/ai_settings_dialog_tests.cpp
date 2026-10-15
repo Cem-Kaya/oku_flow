@@ -254,6 +254,13 @@ void AiSettingsDialogTests::serverProviderPreservesHiddenCodexPreferences()
     QCOMPARE(result.codexExecutablePath, initial.codexExecutablePath);
     QCOMPARE(result.codexModel, initial.codexModel);
     QCOMPARE(result.codexReasoningEffort, initial.codexReasoningEffort);
+    auto* control=dialog.findChild<QCheckBox*>(QStringLiteral("agentControlEnabled"));
+    QVERIFY(control);control->setChecked(true);
+    QVERIFY(!coding->isEnabled());
+    QVERIFY(!dialog.result().codexCodingEnabled);
+    QVERIFY(!dialog.result().codexInternetEnabled);
+    QVERIFY(dialog.result().agentControlEnabled);
+
 }
 
 void AiSettingsDialogTests::codingWorkspaceRejectsInvalidPathThenAcceptsCorrection_data()

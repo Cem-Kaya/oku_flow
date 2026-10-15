@@ -28,6 +28,8 @@ public:
     const color_schemes::ColorScheme& customScheme() const { return customScheme_; }
     void setCurrentScheme(const color_schemes::ColorScheme& scheme);
     void setCustomScheme(const color_schemes::ColorScheme& scheme);
+    // Internal undo restores the original absence of an applied custom recipe.
+    void clearCustomScheme();
     bool hasCustomScheme() const { return customScheme_.stops.size() >= 2; }
 
 signals:

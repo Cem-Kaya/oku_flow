@@ -618,3 +618,7 @@ The release uses a native /MT `oku_flow.exe` preflight launcher and a deployed
 `OkuFlowApp.exe` Qt application. Missing Microsoft runtime installation uses
 the included signed installer with explicit vendor/UAC approval; Setup
 Assistant displays its status too. See [Windows runtime setup](windows_runtime_setup.md).
+
+[Assistant chat and consent UI](agent_control_ui.md) records the local 0.3.1
+chat-only layout, shared Explain presentation, sole persisted-master owner,
+contextual approvals, drawers, status/shortcuts and complete wording review.

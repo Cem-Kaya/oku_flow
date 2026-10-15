@@ -1,5 +1,9 @@
 <RCC>
     <qresource prefix="/okuflow/icons">
+        <file alias="chat-new.svg">icons/chat-new.svg</file>
+        <file alias="chat-history.svg">icons/chat-history.svg</file>
+        <file alias="chat-settings.svg">icons/chat-settings.svg</file>
+        <file alias="chat-send.svg">icons/chat-send.svg</file>
         <file alias="app.png">okuflow-icon.png</file>
         <file alias="camera.svg">icons/lucide/camera.svg</file>
         <file alias="record.svg">icons/lucide/circle.svg</file>

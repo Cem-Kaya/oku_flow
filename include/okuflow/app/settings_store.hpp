@@ -103,6 +103,8 @@ struct AdvancedConfig {
 // AI / assistive configuration. Values here take precedence; the matching
 // OKUFLOW_* environment variables act as fallbacks when a field is empty.
 struct AssistiveSettings {
+    bool agentControlEnabled{false};
+    bool externalMcpEnabled{false};
     QString aiProvider{QStringLiteral("codex")};
     QString codexExecutablePath;
     QString codexModel{QStringLiteral("gpt-6-luna")};
@@ -139,7 +141,13 @@ struct CodexConversation {
     // Opened by Explain rather than the Assistant chat. An empty title is
     // shown as the translated "Explain conversation".
     bool explain{false};
+    // Empty is an unassigned/legacy entry: infer only from explain. Unknown
+    // tokens are always tool-free assistant, never upgraded to agent.
+    QString kind;
+    QString toolsetVersion;
 };
+
+QString EffectiveConversationKind(const CodexConversation& conversation);
 
 struct PresetDefinition {
     QString id;

@@ -570,3 +570,89 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   Neither a phone model nor serial is part of these pins.
 - See [runtime setup](windows_runtime_setup.md) for user approval, temporary
   copy ownership and clean-VM acceptance limits.
+
+## Agent-control development limits
+
+Development catalogs dev-core, dev-capture and dev-camera remain outside
+release/MSI inventories; v1 requires the complete plan-52 gate. Clocks are
+monotonic and test-injectable; OS wall time never renews consent. Masters default
+off. Bounds: 16 KiB arguments; 32 KiB structured results; eight queued calls;
+one async mutation/four reads per context; 128 idempotency reservations;
+256 events and 256 operation records; terminal operation retention 900 s.
+Embedded mutation budget 20, lease 60; token bucket two per second/burst four;
+composites one per two seconds; color/contrast/brightness interval 250 ms.
+Three approvals per context/one pending, five-minute maximum lifetime and
+thirty-second post-turn grace. Leases expire after 300 s absolute or 60 s idle;
+tools cannot widen them. Recording start needs 30 s absolute lease remaining.
+Observation limits: three images/turn or six/lease, 256 KiB base64/image,
+768 KiB/turn or 1536 KiB/lease. Observation deadline 3 s; other async delivery
+5 s (wait uses its 0-5000 ms timeout plus a 250 ms delivery margin).
+
+## HTTP agent loop bounds
+
+The new HTTP agent adapter has no provider URL/model/key default. Caller-owned
+configuration supplies the exact completion endpoint; Off is the tool-mode default.
+Capability verdicts are session-only per endpoint/model/wire mode and a credential
+change clears them. Explicit Test sends one frame-free request (128 response tokens,
+15-second deadline); optional parallel-flag acceptance is tested only when requested.
+Agent turns use non-streaming 2048-token rounds, at most 8 rounds and 32 calls,
+a 180-second wall deadline and 60-second per-request transfer timeout. Each response
+is capped at 1 MiB; each serialized outbound request at 2 MiB; arguments at 16 KiB
+and result JSON at 32 KiB. At most 3 observation images, 256 KiB base64 each and
+768 KiB aggregate are admitted, independently of the authorized initial viewport.
+Initial images also obey the 256 KiB per-image cap. Earlier images are stripped.
+Context ownership is rechecked between calls/requests and every 100 ms while active.
+Origin keys are app-issued, at most 100 characters; model IDs at most 256 characters;
+prompt strings at most 65536 characters each and header credentials at most 8192
+bytes, accepting visible ASCII only and rejecting whitespace/control bytes. HTTP
+redirects are never followed. These are transport
+bounds, not live-provider acceptance or public-release evidence.
+
+## Agent-control offscreen evidence defaults
+
+The opt-in `agent_control_capture` fixture writes only to an explicitly named
+absolute LocalAppData folder. It registers the installed OS font
+`C:/Windows/Fonts/segoeui.ttf` because Windows Qt's offscreen platform does not
+enumerate native system fonts. No font is bundled and no stored app settings are
+read. The MainWindow fixture uses 1672x941 (the approved concept viewport), the AI Settings dialog uses 820x900,
+and a 300-second synthetic approval is confined to the disconnected widget.
+An additional 360px Arabic RTL view and floating Explain use the same native
+classes. `QT_SCALE_FACTOR=2` writes physical 2× captures to a separate folder;
+`OKUFLOW_UI_CAPTURE_DARK=1` applies only a fixture palette.
+## MCP development and future packaging contract (0.3.1)
+
+The local endpoint descriptor is `%LOCALAPPDATA%/OkuFlow/mcp-instances/<selector>.json`
+(128-bit hex selector, exactly three fields, at most 1024 bytes), with pipe
+`\\.\pipe\OkuFlow.Mcp.<selector>`. These files contain neither secrets nor
+permissions. The finite build catalogs are `dev-core`, `dev-capture`,
+`dev-camera` (current default), `v1` and `dev-full`, indices 0–4. App, bridge and fixtures
+use `BuiltControlCatalogEdition()`; a mismatch is rejected.
+
+Development peers verify sibling `oku_flow.exe`; deployed-policy builds verify
+`OkuFlowApp.exe`. Packaging requires V1 plus the deployed policy explicitly,
+then checks the built bridge's `--build-info` and native imports. Diagnostics
+open no endpoint. Accepted packages place `okuflow_mcp.exe` in `app/`, sign and
+hash it alongside the launcher/application, and declare its exact bytes and
+policy in the manifest/SBOM/MSI inventory. Earlier non-MCP layouts remain
+readable. This development work has not promoted or published V1.
+
+Protocol limits and native timeout/quarantine constants are documented in
+[MCP control](mcp_control.md): 1 MiB stdio lines, 512 KiB IPC, depth 32,
+65536 nodes, 256-byte IDs, eight pending requests, ten outbound messages and
+eight retained native-I/O slots of at most 512 KiB. The final image fence is
+one second with 20 ms stop checks; reply/frame/heartbeat and native-write
+deadlines remain bounded and separate.
+
+Agent observation metrics have a 1000 ms monotonic freshness bound (ObservationService::MaximumFreshFrameAgeMs), independent of image request/transport deadlines.
+
+Development agent camera operation metadata polling uses 50 ms intervals and a 30-second first-frame deadline. These do not replace the facade's 1500 ms total stop/consumer-cleanup deadline.
+
+Processed unique-frame rate uses at most 120 timestamps within two seconds; one second without a unique frame reports zero. This is an application processing rate, not negotiated camera FPS or sensor-to-photon latency.
+
+Shared logical chat text is stored below Qt's owned
+`QStandardPaths::AppLocalDataLocation/visible-chat` directory (normally
+LocalAppData for OkuFlow on Windows), using only lowercase opaque UUID filenames.
+It is outside Drive and release bundles; it contains no images, credentials,
+backend references or control grants. Retention is at most 64 conversations /
+32 MiB, with each record capped at 1 MiB. This is text history, not notes or
+capture media; legacy Codex index/storage paths remain unchanged.

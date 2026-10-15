@@ -31,8 +31,13 @@ function Write-FixtureManifest([string]$Root) {
         [ordered]@{path=[IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/');
             bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant()}
     })
-    [ordered]@{schemaVersion=2;sourceTreeDirty=$false;sourceCommit=('0'*40);files=$records} |
-        ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Root 'release-manifest.json')
+    $manifest = [ordered]@{schemaVersion=2;sourceTreeDirty=$false;sourceCommit=('0'*40);files=$records}
+    $mcp = @($records | Where-Object {$_.path -match '(^|/)okuflow_mcp\.exe$'})
+    if ($mcp.Count -eq 1) {
+        $manifest.agentControl = [ordered]@{path=$mcp[0].path;sha256=$mcp[0].sha256;buildInfo=[ordered]@{
+            schema=1;product='OkuFlow MCP';protocol='2025-11-25';catalogEdition='v1';deployedImagePolicy=$true}}
+    }
+    $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $Root 'release-manifest.json')
     foreach ($name in @('SHA256SUMS.txt','SBOM.spdx.json')) {
         [IO.File]::WriteAllText((Join-Path $Root $name), 'synthetic metadata')
     }
@@ -61,6 +66,18 @@ $snapshot = New-VerifiedBundleSnapshot $nested (Join-Path $work 'nested-snapshot
 Assert-Layout ($snapshot.layout.Prefix -eq 'app/') 'Nested snapshot lost its payload prefix.'
 [IO.File]::AppendAllText((Join-Path $nested 'app/Qt6Core.dll'), 'tampered')
 Assert-Refused { New-VerifiedBundleSnapshot $nested (Join-Path $work 'tampered-snapshot') } 'Tampered runtime accepted.'
+
+$mcpBundle = New-Fixture 'mcp-nested'
+[IO.File]::WriteAllText((Join-Path $mcpBundle 'okuflow_mcp.exe'), 'synthetic first-party MCP bytes, not a real executable')
+$mcpHash = (Get-FileHash -LiteralPath (Join-Path $mcpBundle 'okuflow_mcp.exe')).Hash
+& (Join-Path $PSScriptRoot 'organize_release_bundle.ps1') -BundlePath $mcpBundle
+Assert-Layout ((Get-FileHash -LiteralPath (Join-Path $mcpBundle 'app/okuflow_mcp.exe')).Hash -eq $mcpHash) 'MCP bytes changed on organization.'
+Assert-Layout (@(Get-ChildItem -LiteralPath $mcpBundle -File -Filter '*.exe').Count -eq 1) 'MCP leaked into public launcher directory.'
+Write-FixtureManifest $mcpBundle
+$mcpSnapshot = New-VerifiedBundleSnapshot $mcpBundle (Join-Path $work 'mcp-snapshot')
+Assert-Layout ($mcpSnapshot.manifest.agentControl.path -eq 'app/okuflow_mcp.exe') 'MCP contract lost nested path.'
+Remove-Item -LiteralPath (Join-Path $mcpBundle 'app/okuflow_mcp.exe')
+Assert-Refused { New-VerifiedBundleSnapshot $mcpBundle (Join-Path $work 'missing-mcp-snapshot') } 'Missing declared MCP payload accepted.'
 
 foreach ($reserved in @('output','captures','app','release-manifest.json')) {
     $root = New-Fixture ('reserved-' + $reserved.Replace('.','-'))

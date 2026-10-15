@@ -2937,5 +2937,313 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow проверяет USB-подключение и автоматически восстановит соединение.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>&amp;Запретить</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>Настроить изображение (обязательно)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>Разрешить изображения с камеры для этого хода</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>Разрешить фотографии на этот сеанс</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>Разрешить Ассистенту запускать и останавливать начатые им записи</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>Одобрить временный доступ</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>Запрашивать разрешение перед записью лекции или других людей.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>Журнал действий Ассистента</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>Управление Ассистентом</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>Управление Ассистентом выключено</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>Состояние управления Ассистентом</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>Изображения с камеры отправляются выбранному провайдеру. Разрешение действует до конца хода или смены источника камеры.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>Подключённый клиент: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>Разговоры с управлением не могут использовать интернет, команды для работы с кодом или изменять файлы. «Читать» и «Объясни» остаются без изменений.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Управление по умолчанию выключено. При включении Ассистент сможет менять изображение. Для изображений с камеры и снимков экрана нужны отдельные разрешения. Остановите управление и отмените изменения сочетанием Ctrl+Shift+U.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>Для управления OkuFlow нужен отдельный разговор.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>Точные аргументы действия</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>Внешнее управление длится не более 5 минут и завершается после 60 секунд бездействия. Отключите клиент MCP или выберите «Отозвать временный доступ», чтобы остановить его.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>Разрешения внешнего управления</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>Внешнее управление: осталось %1 с.; тайм-аут бездействия — %2 с. Изменения изображения: %3; изображения с камеры: %4; фотографии: %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>Внешнее управление MCP</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>Разрешения временного доступа</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>Нет активного временного доступа</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>Нет подключённого внешнего клиента</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>Ориентация и источник камеры (не меняйте во время записи)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>Просмотреть разрешения временного доступа</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>Отозвать временный доступ</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>Отправлять изображения с камеры (до 6 за период доступа)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>Отправить без управления</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>Запускать и останавливать начатые им записи (для запуска должно оставаться не менее 30 секунд)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>Начать разговор с управлением</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>Остановить и отменить (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>Делать фотографии (в пределах лимита действий временного доступа)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>Проверить поддержку инструментов конечной точкой</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>Эта явная проверка отправляет синтетический запрос инструмента настроенной конечной точке. Изображения с камеры не отправляются, настройки не меняются.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>Изменения изображения: до 60 за период доступа. Разрешения нельзя расширить во время доступа; отзовите его и выдайте заново.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>Поддержка инструментов доступна</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>Поддержка инструментов недоступна</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>Проверка поддержки инструментов...</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>Новый разговор</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>История</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>Настройки Ассистента</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>Подключение Ассистента</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>Разговор с Ассистентом</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>Вопрос Ассистенту</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>История Ассистента</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>Подробнее</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>&amp;Разрешить один раз</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>Журнал действий</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>Об управлении</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>Отправить изображение с камеры выбранному провайдеру?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>Сделать снимок текущего вида?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>Начать видеозапись текущего вида?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>Остановить эту запись?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>Остановить запись, начатую в %1?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>Установить абсолютный угол поворота изображения с камеры на %1°?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>Переключить источник камеры?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>Проверить это действие?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>Запрос разрешения %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>Истекает через %1 с</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>Не удалось завершить запрос.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>Запрос остановлен</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>Вид обновлён: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>Восстановлено: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>Не перезаписано: %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>Не удалось сохранить настройки.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>Действие выполнено.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>Не удалось выполнить действие.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>В разрешении отказано.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>Вкл.</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>Не удалось обновить историю беседы.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>Изменить настройки камеры?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>Изменить параметры записи?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>Изменить провайдера, модель или инструкции Ассистента?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>Изменить настройки заметок и сохранения?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>Изменить настройки рисования?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>Изменить настройки рисования и сохранить фотографию?</translation>
+        </message>
     </context>
 </TS>

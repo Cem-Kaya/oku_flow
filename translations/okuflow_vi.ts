@@ -2937,5 +2937,313 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow đang kiểm tra kết nối USB và sẽ tự động kết nối lại.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>Từ chối (&amp;D)</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>Điều chỉnh khung nhìn (bắt buộc)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>Cho phép gửi hình ảnh camera trong lượt này</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>Cho phép gửi ảnh trong phiên này</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>Cho phép Trợ lý bắt đầu và dừng các bản ghi do Trợ lý khởi chạy</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>Phê duyệt quyền truy cập tạm thời</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>Hãy xin phép trước khi ghi hình bài giảng hoặc người khác.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>Bản ghi thao tác của Trợ lý</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>Điều khiển bằng Trợ lý</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>Điều khiển bằng Trợ lý đang tắt</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>Trạng thái điều khiển bằng Trợ lý</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>Hình ảnh camera được gửi đến nhà cung cấp đã chọn. Quyền này kết thúc khi lượt trò chuyện kết thúc hoặc khi đổi nguồn camera.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>Máy khách đã kết nối: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>Các cuộc trò chuyện điều khiển không thể truy cập Internet, chạy lệnh lập trình hoặc sửa tệp. Tính năng Đọc và Giải thích vẫn giữ nguyên.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Điều khiển mặc định đang tắt. Khi bật, Trợ lý có thể điều chỉnh khung nhìn. Hình ảnh camera và ảnh chụp cần quyền riêng. Nhấn Ctrl+Shift+U để dừng và hoàn tác.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>Muốn điều khiển OkuFlow, cần có một cuộc trò chuyện riêng.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>Tham số thao tác chính xác</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>Quyền điều khiển bên ngoài kéo dài tối đa 5 phút và kết thúc sau 60 giây không hoạt động. Ngắt kết nối máy khách MCP hoặc chọn Thu hồi quyền truy cập tạm thời để dừng.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>Quyền điều khiển bên ngoài</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>Điều khiển bên ngoài: còn %1 giây; còn %2 giây đến khi hết thời gian chờ do không hoạt động. Thay đổi khung nhìn: %3; hình ảnh camera: %4; ảnh chụp: %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>Điều khiển MCP bên ngoài</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>Quyền truy cập tạm thời</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>Không có quyền truy cập tạm thời đang hoạt động</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>Không có máy khách bên ngoài nào được kết nối</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>Hướng và nguồn camera (không bao giờ thay đổi khi đang ghi hình)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>Xem lại quyền truy cập tạm thời</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>Thu hồi quyền truy cập tạm thời</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>Gửi hình ảnh camera (tối đa 6 hình cho mỗi quyền)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>Gửi mà không bật điều khiển</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>Bắt đầu và dừng các bản ghi do Trợ lý khởi chạy (cần còn ít nhất 30 giây để bắt đầu)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>Bắt đầu cuộc trò chuyện điều khiển</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>Dừng và hoàn tác (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>Chụp ảnh (trong giới hạn thao tác của quyền truy cập tạm thời)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>Kiểm tra ngay khả năng hỗ trợ công cụ của điểm cuối</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>Bài kiểm tra chủ động này gửi một yêu cầu công cụ giả lập đến điểm cuối đã cấu hình. Bài kiểm tra không gửi hình ảnh camera và không thay đổi cài đặt.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>Thay đổi khung nhìn: tối đa 60 lần cho mỗi quyền. Không thể mở rộng quyền khi quyền đang có hiệu lực; hãy thu hồi rồi cấp quyền mới.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>Hỗ trợ công cụ của điểm cuối sẵn sàng</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>Hỗ trợ công cụ của điểm cuối không khả dụng</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>Đang kiểm tra hỗ trợ công cụ của điểm cuối…</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>Cuộc trò chuyện mới</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>Lịch sử</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>Cài đặt Trợ lý</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>Kết nối Trợ lý</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>Cuộc trò chuyện với Trợ lý</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>Câu hỏi cho Trợ lý</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>Lịch sử Trợ lý</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>Chi tiết</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>Chỉ cho phép lần này (&amp;A)</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>Nhật ký hoạt động</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>Thông tin về điều khiển</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>Gửi hình ảnh camera này đến nhà cung cấp đã chọn?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>Chụp ảnh khung nhìn này?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>Bắt đầu ghi hình khung nhìn này?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>Dừng bản ghi này?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>Dừng bản ghi bắt đầu lúc %1?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>Đặt hướng hiển thị hình ảnh camera thành góc %1° theo chiều kim đồng hồ?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>Chuyển nguồn camera?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>Xem lại thao tác này?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>Yêu cầu cấp quyền %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>Hết hạn sau %1 giây</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>Không thể hoàn tất yêu cầu.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>Yêu cầu đã bị dừng</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>Đã cập nhật khung nhìn: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>Đã khôi phục: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>Đã bỏ qua (giữ nguyên thay đổi của người dùng): %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>Không thể lưu cài đặt.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>Thao tác đã hoàn tất.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>Không thể hoàn tất thao tác.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>Thao tác không được cho phép.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>Bật</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>Không thể cập nhật lịch sử cuộc trò chuyện.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>Thay đổi cài đặt camera?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>Thay đổi tùy chọn ghi hình?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>Thay đổi nhà cung cấp, mô hình hoặc chỉ dẫn của Trợ lý?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>Thay đổi cài đặt ghi chú và đầu ra?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>Thay đổi cài đặt vẽ?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>Thay đổi cài đặt vẽ và lưu ảnh?</translation>
+        </message>
     </context>
 </TS>

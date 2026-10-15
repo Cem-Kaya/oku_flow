@@ -348,8 +348,29 @@ AiSettingsDialog::AiSettingsDialog(const settings::AssistiveSettings& initial, Q
                             pathRow(codexWorkspaceEdit_, codexWorkspaceBrowseButton_));
     contentLayout->addWidget(permissionsGroup_);
 
+    auto* controlGroup = new QGroupBox(QStringLiteral("Assistant control"));
+    auto* controlForm = addForm(controlGroup);
+    agentControlCheckbox_ = new QCheckBox(QStringLiteral("Assistant control"));
+    agentControlCheckbox_->setObjectName(QStringLiteral("agentControlEnabled"));
+    agentControlCheckbox_->setChecked(initial.agentControlEnabled);
+    externalMcpCheckbox_ = new QCheckBox(QStringLiteral("External MCP control"));
+    externalMcpCheckbox_->setObjectName(QStringLiteral("externalMcpEnabled"));
+    externalMcpCheckbox_->setChecked(initial.externalMcpEnabled);
+    controlForm->addRow(agentControlCheckbox_);
+    controlForm->addRow(externalMcpCheckbox_);
+    auto* controlNotice = new QLabel(QStringLiteral("Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U."));
+    controlNotice->setTextFormat(Qt::PlainText);
+    controlNotice->setWordWrap(true);
+    controlForm->addRow(controlNotice);
+    auto* restrictedNotice = new QLabel(QStringLiteral("Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged."));
+    restrictedNotice->setTextFormat(Qt::PlainText);
+    restrictedNotice->setWordWrap(true);
+    controlForm->addRow(restrictedNotice);
+    contentLayout->addWidget(controlGroup);
+
     connect(providerCombo_, qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this]() { UpdateProviderFields(); });
+    connect(agentControlCheckbox_, &QCheckBox::toggled,this,[this]{UpdateProviderFields();});
     connect(codexCodingCheckbox_, &QCheckBox::toggled,
             this, [this]() { UpdateProviderFields(); });
     connect(codexModelCombo_, qOverload<int>(&QComboBox::currentIndexChanged),
@@ -620,6 +641,9 @@ settings::AssistiveSettings AiSettingsDialog::result() const
     out.codexReasoningEffort = codexReasoningCombo_->currentData().toString();
     out.codexInternetEnabled = codexInternetCheckbox_->isChecked();
     out.codexCodingEnabled = codexCodingCheckbox_->isChecked();
+    out.agentControlEnabled = agentControlCheckbox_->isChecked();
+    if(out.agentControlEnabled){out.codexInternetEnabled=false;out.codexCodingEnabled=false;}
+    out.externalMcpEnabled = externalMcpCheckbox_->isChecked();
     out.codexWorkspaceDirectory = QDir::toNativeSeparators(
         QDir::cleanPath(codexWorkspaceEdit_->text().trimmed()));
     if (codexWorkspaceEdit_->text().trimmed().isEmpty()) {
@@ -797,7 +821,13 @@ void AiSettingsDialog::UpdateProviderFields()
     codexGroup_->setVisible(codex);
     permissionsGroup_->setVisible(codex);
     serverGroup_->setVisible(!codex);
-    const bool coding = codex && codexCodingCheckbox_->isChecked();
+    const bool control=agentControlCheckbox_->isChecked();
+    if(control) {
+        const QSignalBlocker codingBlock(codexCodingCheckbox_),internetBlock(codexInternetCheckbox_);
+        codexCodingCheckbox_->setChecked(false);codexInternetCheckbox_->setChecked(false);
+    }
+    codexCodingCheckbox_->setEnabled(!control);codexInternetCheckbox_->setEnabled(!control);
+    const bool coding = codex && !control && codexCodingCheckbox_->isChecked();
     codexWorkspaceEdit_->setEnabled(coding);
     codexWorkspaceBrowseButton_->setEnabled(coding);
     SetLiveText(providerHintLabel_,

@@ -279,7 +279,9 @@ bool RecordingManager::IsActive() const
 
 std::optional<RecordingSessionInfo> RecordingManager::CurrentSessionInfo() const
 {
-    if (!IsActive()) {
+    const auto state = state_.load();
+    if (state != RecordingState::Starting && state != RecordingState::Recording
+        && state != RecordingState::Stopping && state != RecordingState::Finalizing) {
         return std::nullopt;
     }
     std::lock_guard lock(queueMutex_);
@@ -351,7 +353,7 @@ void RecordingManager::AddAudioFrame(AudioFrame frame)
     queueCv_.notify_all();
 }
 
-void RecordingManager::SetRequested(bool requested)
+void RecordingManager::SetRequested(bool requested, std::optional<RecordingSessionInfo> reserved)
 {
     if (!requested) {
         Stop();
@@ -411,6 +413,10 @@ void RecordingManager::SetRequested(bool requested)
         sessionInfo_ = RecordingSessionInfo{
             QUuid::createUuid().toString(QUuid::WithoutBraces),
             sessionTimestamp_};
+        if (reserved) {
+            sessionInfo_ = std::move(*reserved);
+            sessionInfo_.timestampToken = sessionTimestamp_;
+        }
         sessionDirectory_ = outputDirectory;
         // Resolution selection during recording applies to the next session.
         activeCanvasMode_.store(canvasMode_.load());
@@ -464,6 +470,24 @@ void RecordingManager::SetRequested(bool requested)
     }
     UpdateButton();
     ShowStatus(QStringLiteral("Recording is starting..."), 2500);
+}
+
+bool RecordingManager::StopSession(const QString& expectedSessionId)
+{
+    {
+        std::lock_guard lock(queueMutex_);
+        if (expectedSessionId.isEmpty() || sessionInfo_.id != expectedSessionId) return false;
+    }
+    // Request admission and exact-session stop are GUI-thread operations;
+    // workers may finish this session but cannot admit a replacement here.
+    Stop();
+    return true;
+}
+
+void RecordingManager::SetSessionAudioResult(const QString& expectedSessionId, bool actualAudio)
+{
+    std::lock_guard lock(queueMutex_);
+    if (sessionInfo_.id == expectedSessionId) sessionInfo_.actualAudio = actualAudio;
 }
 
 void RecordingManager::Stop(const QString& message)
@@ -570,6 +594,7 @@ void RecordingManager::AbandonWedgedWorker(const QString& trigger)
     {
         std::lock_guard lock(queueMutex_);
         endedSession = sessionInfo_;
+        endedSession.completion = RecordingSessionCompletion::Abandoned;
         frameQueue_.clear();
         audioQueue_.clear();
     }
@@ -1541,6 +1566,7 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
     {
         std::lock_guard lock(queueMutex_);
         endedSession = sessionInfo_;
+        endedSession.completion = saved ? RecordingSessionCompletion::Completed : RecordingSessionCompletion::Failed;
         frameQueue_.clear();
         audioQueue_.clear();
         stopRequested_ = false;

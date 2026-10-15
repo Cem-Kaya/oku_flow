@@ -2,6 +2,62 @@
 
 ## [Unreleased]
 
+- Refuse an external MCP lease's camera-view, camera-source, photo and
+  recording calls with `denied_by_policy` when its grant bundle lacks that
+  toggle, before any availability check, so an ungranted client cannot learn
+  camera, frame or recording availability (plan 52 §14.3).
+- Fix a use-after-free in the native control fixture: a `QJsonValueRef` into a
+  temporary state object caused intermittent crashes and false failures. The
+  fixture now passes 20 consecutive runs, and the independent MCP SDK client
+  passes all 9 actual-target scenarios.
+
+- Preserve manual control changes at agent decision and approval boundaries,
+  validate coupled native batches before effects, and restore failed preference
+  batches without saving partial values. Camera operations retain qualified
+  source/format and preference outcomes instead of claiming completed restoration.
+
+- Add development Assistant preference controls with finite values, exact
+  configuration approval and truthful saved-state reads. Scoped Scene Explain
+  uses existing frame permissions and budgets, restricted Codex preflight or
+  tool-free HTTP, and text-only notes. Agent changes cannot resume hidden native
+  periodic analysis; native-scene configuration combinations remain restricted.
+
+- Honor unchecked Text Clarity refinements in CUDA processing while the master
+  switch is enabled, including adaptive binarization and selective sharpening.
+  Turning Text Clarity off retains its saved refinement choices.
+
+- Recompute agent observation age from the original monotonic frame timestamp
+  and refuse automatic adjustment for stale, held, converging or unknown output.
+- Wire consent-bound temporary camera selection to asynchronous production
+  capture transitions, preserving saved startup source and format and retiring
+  canceled or superseded requests. Hardware acceptance remains pending.
+- Unchecking the shared chat attachment immediately revokes embedded image
+  access; an active turn cannot acquire broader permission by checking it.
+
+- Prepare the 0.3.1 MCP packaging contract: require accepted V1/deployed-image
+  builds, keep the bridge inside `app/`, verify system-only native imports,
+  and include its signing/hash facts in bundle, SBOM and MSI inventories.
+  Development catalogs remain blocked from packaging.
+
+- Share one chat between Advanced Assistant and floating Explain, with shared
+  drafts, streamed replies, explicit attachments and compact history/settings.
+  Keep mixed Explain/control history as atomic local text records and restore
+  it without provider thread IDs, images or tool authority.
+  Keep Read separate, preserve ordinary history kinds and notes ownership, and
+  fence late replies and permission receipts to their original conversation.
+  This remains development work pending native accessibility and provider gates.
+
+- Retire camera sources asynchronously in development, retaining failed exact
+  sessions/imports and preserving saved startup camera intent during unrelated
+  settings saves. Hardware/source-switch acceptance remains pending.
+
+- Begin the typed Assistant/MCP control core in development, with default-off
+  settings, strict field plans, user-wins checks, conflict-aware undo, exact
+  approvals and durable capture operations. Recording reserves its session
+  before microphone acquisition; stale Stop cannot stop a replacement.
+  Provider, camera, accessibility and complete MCP acceptance remain pending;
+  development catalogs are not release APIs.
+
 - Automate the full Windows build, CPU/CUDA/bundle gates, MSI/ZIP packaging,
   disposable installer acceptance and verified GitHub draft-to-publication
   process with one command. Existing versioned downloads remain immutable.
@@ -1693,3 +1749,5 @@
 - Consolidated licensing into a single `LICENSE` file (GPL-3.0 + commercial notice).
 
 > Upload `dist/OkuFlow/OkuFlow.zip` to GitHub Releases when publishing v0.1.
+
+- Development agent controls show canonical normalized approval changes and retain exact recording-stop disclosure. Native source selection supersedes pending agent transitions; actual source activation retires earlier frame permission. Device-bound format and torch requests reject mismatched camera identities (unreleased; hardware acceptance pending).

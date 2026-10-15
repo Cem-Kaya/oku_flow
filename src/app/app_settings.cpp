@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include "okuflow/app/agent/app_control_target.hpp"
 
 namespace okuflow {
 
@@ -96,6 +97,7 @@ void OkuFlowApp::UpdatePresetDescription()
 
 void OkuFlowApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
 {
+    if (controlTarget_) controlTarget_->NoticeNativeChanges();
     if (configTrackingSuspended_) {
         return;
     }
@@ -286,14 +288,18 @@ void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings sett
 }
 
 void OkuFlowApp::SavePersistentSettings() {
-    // Startup applies several controls that can request a settings save before
-    // the persisted camera has been selected. Preserve the loaded index until
-    // initialization completes instead of silently replacing it with the
-    // enumeration default.
-    if (initialized_) {
-        settingsController_->MutableSettings().cameraIndex =
-            selectedCameraIndex_;
-    }
+    // Only an explicit native source selection changes saved startup intent.
+    // Runtime fallback, temporary agent selection, and safety-marker saves
+    // must preserve the last saved camera identity.
+    QStringList enumeration;
+    for (const auto& camera : cameras_) enumeration.append(QString::fromStdWString(camera.symbolicLink));
+    cameraIntent_.ReindexSaved(enumeration);
+    const auto& cameraSaved = cameraIntent_.Saved();
+    auto& persistent = settingsController_->MutableSettings();
+    persistent.cameraIndex = cameraSaved.legacyIndex;
+    persistent.cameraSymbolicLink = cameraSaved.symbolicLink;
+    persistent.cameraSelectionExplicit = cameraSaved.explicitSelection;
+    persistent.cameraFormatStableId = cameraSaved.formatStableId;
     if (uiState_->microphoneCombo_) {
         settingsController_->MutableSettings().microphoneEndpointId =
             uiState_->microphoneCombo_->currentData().toString();
@@ -320,7 +326,7 @@ void OkuFlowApp::SavePersistentSettings() {
                 static_cast<int>(RecordingCanvasMode::Nhd360)));
     }
     if (mainWindow_) {
-        settingsController_->MutableSettings().advancedPanelWidth = mainWindow_->advancedPanelWidth();
+        settingsController_->MutableSettings().advancedPanelWidth = mainWindow_->preferredAdvancedPanelWidth();
         settingsController_->MutableSettings().uiSectionStates =
             mainWindow_->sectionStates();
         if (AnnotationOverlay* overlay = mainWindow_->annotationOverlay()) {
@@ -345,6 +351,7 @@ void OkuFlowApp::SavePersistentSettings() {
     if (uiState_->displayColorPicker_ && uiState_->displayColorPicker_->hasCustomScheme()) {
         settingsController_->MutableSettings().customColorScheme = uiState_->displayColorPicker_->customScheme();
     }
+    if (controlTarget_ && controlTarget_->IsApplyingControlledTransition()) return;
     if (!settingsController_->Save(CaptureCurrentAdvancedConfig())) {
         const QString error = settingsController_->LastError().isEmpty()
                                   ? QStringLiteral("OkuFlow could not save settings.")

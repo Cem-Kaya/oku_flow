@@ -14,7 +14,8 @@ namespace {
 // to these objects during process teardown. WasAbandoned also prevents MFShutdown.
 void RetainAbandonedSession(const std::shared_ptr<MediaCaptureSession>& session)
 {
-    (void)new std::shared_ptr<MediaCaptureSession>(session);
+    if (!session->retainedForExit_.exchange(true))
+        (void)new std::shared_ptr<MediaCaptureSession>(session);
 }
 } // namespace
 
@@ -164,6 +165,11 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
                                 const std::wstring& requestedStableId,
                                 const std::atomic<bool>* startupCanceled)
 {
+    if (session_ && session_->shutdownStarted_ &&
+        PollStopCapture() != CaptureStopStatus::Completed) {
+        lastError_ = "The previous camera is still stopping or requires an application restart.";
+        return false;
+    }
     if (!StopCapture() || abandonedForExit_) {
         lastError_ = "The camera driver did not stop safely. Restart OkuFlow before opening another camera.";
         if (session_) session_->lastFailureKind_.store(CameraFailureKind::Other);
@@ -189,73 +195,98 @@ bool MediaCapture::StartCapture(const CameraDescriptor& descriptor,
     return started;
 }
 
+void MediaCapture::BeginStopCapture()
+{
+    if (!session_ || session_->shutdownStarted_) return;
+    const auto session = session_;
+    session->stopDeadline_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
+    session->shutdownStarted_ = true;
+    // Deny facade GPU/phone access before the worker can touch those objects.
+    session->releaseNotified_ = true;
+    lastStopCompleted_ = false;
+    session->Cancel();
+    try {
+        std::thread([session] {
+            const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            try {
+                session->Quiesce();
+                session->shutdown_->MarkQuiescent();
+                if (session->shutdown_->WaitReleasePermission()) session->ReleaseResources();
+            } catch (...) {
+                session->shutdown_->Abandon();
+                RetainAbandonedSession(session);
+            }
+            if (SUCCEEDED(apartment)) CoUninitialize();
+            session->shutdown_->MarkFinished();
+        }).detach();
+    } catch (...) {
+        session->shutdown_->Abandon();
+        // Thread creation failure cannot destroy a joinable capture thread or
+        // release driver objects on the facade thread.
+        RetainAbandonedSession(session);
+    }
+}
+
+CaptureStopStatus MediaCapture::PollStopCapture()
+{
+    if (!session_) return CaptureStopStatus::Completed;
+    if (!session_->shutdownStarted_) return CaptureStopStatus::WaitingForQuiescence;
+    const auto snapshot = session_->shutdown_->Poll();
+    if (lastStopCompleted_) return CaptureStopStatus::Completed;
+    if (!snapshot.abandoned && snapshot.finished && snapshot.quiescent &&
+        session_->consumerReleaseAcknowledged_ && snapshot.finishedAt <= session_->stopDeadline_) {
+        lastStopCompleted_ = true;
+        return CaptureStopStatus::Completed;
+    }
+    if (snapshot.abandoned || std::chrono::steady_clock::now() >= session_->stopDeadline_) {
+        session_->shutdown_->Abandon();
+        RetainAbandonedSession(session_);
+        if (!abandonedForExit_) qWarning() << "Camera asynchronous stop failed; exact session retained safely";
+        abandonedForExit_ = true;
+        return CaptureStopStatus::Failed;
+    }
+    if (!snapshot.quiescent) return CaptureStopStatus::WaitingForQuiescence;
+    return session_->consumerReleaseAcknowledged_ ? CaptureStopStatus::WaitingForRelease
+                                                 : CaptureStopStatus::ReadyToRelease;
+}
+
+void MediaCapture::ReleaseStoppedCapture(bool consumerSafe)
+{
+    if (!session_ || !session_->shutdownStarted_ || session_->consumerReleaseAcknowledged_) return;
+    const auto status = PollStopCapture();
+    // An early/unsafe acknowledgment must never release producer backing.
+    session_->consumerReleaseAcknowledged_ = true;
+    if (consumerSafe && status == CaptureStopStatus::ReadyToRelease) session_->shutdown_->AllowRelease();
+    else {
+        session_->shutdown_->Abandon();
+        (void)PollStopCapture();
+    }
+}
+
 bool MediaCapture::StopCapture(const std::function<void(bool)>& beforeAccelerationRelease)
 {
     if (!session_) return true;
+    const bool alreadyStarted = session_->shutdownStarted_;
+    BeginStopCapture();
+    auto status = PollStopCapture();
+    if (status == CaptureStopStatus::Completed) return true;
     const auto session = session_;
-    if (session->releaseNotified_) return lastStopCompleted_;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
-    session->Cancel();
-    if (!session->shutdownStarted_) {
-        session->shutdownStarted_ = true;
-        try {
-            std::thread([session] {
-                const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-                try {
-                    session->Quiesce();
-                    session->shutdown_->MarkQuiescent();
-                    if (session->shutdown_->WaitReleasePermission()) {
-                        session->ReleaseResources();
-                    }
-                } catch (...) {
-                    session->shutdown_->Abandon();
-                    RetainAbandonedSession(session);
-                }
-                if (SUCCEEDED(apartment)) CoUninitialize();
-                session->shutdown_->MarkFinished();
-            }).detach();
-        } catch (...) {
-            session->shutdown_->Abandon();
-            // In particular, thread creation failure cannot destroy a still
-            // joinable capture thread or its driver objects on the caller.
-            RetainAbandonedSession(session);
+    // A split stop already in progress owns its consumer cleanup. An implicit
+    // destructor/Shutdown must not invent successful cleanup for that caller.
+    if (!session->consumerReleaseAcknowledged_ && (!alreadyStarted || beforeAccelerationRelease)) {
+        const bool quiesced = session->shutdown_->WaitQuiescent(session->stopDeadline_);
+        bool callbackSucceeded = true;
+        if (beforeAccelerationRelease) {
+            try { beforeAccelerationRelease(quiesced); }
+            catch (...) {
+                callbackSucceeded = false;
+                qWarning() << "Capture consumer interop release failed; preserving producer backing";
+            }
         }
+        ReleaseStoppedCapture(quiesced && callbackSucceeded);
     }
-    // Stage timings only diagnose which stage consumed the shared 1500 ms
-    // budget; the bounded total contract itself is unchanged.
-    const auto stopStarted = deadline - std::chrono::milliseconds(1500);
-    const bool quiesced = session->shutdown_->WaitQuiescent(deadline);
-    const auto quiescedAt = std::chrono::steady_clock::now();
-    bool callbackSucceeded = true;
-    session->releaseNotified_ = true;
-    if (beforeAccelerationRelease) {
-        try {
-            beforeAccelerationRelease(quiesced);
-        } catch (...) {
-            callbackSucceeded = false;
-            qWarning() << "Capture consumer interop release failed; preserving producer backing";
-        }
-    }
-    const auto callbackAt = std::chrono::steady_clock::now();
-    if (quiesced && callbackSucceeded) session->shutdown_->AllowRelease();
-    else session->shutdown_->Abandon();
-    const bool finished = session->shutdown_->WaitFinished(deadline);
-    const auto finishedAt = std::chrono::steady_clock::now();
-    lastStopCompleted_ = quiesced && callbackSucceeded && finished && !session->shutdown_->IsAbandoned();
-    if (!lastStopCompleted_) {
-        session->shutdown_->Abandon();
-        RetainAbandonedSession(session);
-        abandonedForExit_ = true;
-        const auto stageMs = [](auto from, auto to) {
-            return std::chrono::duration_cast<std::chrono::milliseconds>(to - from).count();
-        };
-        qWarning() << "Camera stop exceeded its deadline; canceled session retained safely"
-                   << "quiesceStageMs=" << stageMs(stopStarted, quiescedAt) << "quiesced=" << quiesced
-                   << "consumerReleaseStageMs=" << stageMs(quiescedAt, callbackAt)
-                   << "consumerReleaseOk=" << callbackSucceeded
-                   << "finalReleaseStageMs=" << stageMs(callbackAt, finishedAt) << "finished=" << finished;
-    }
-    return lastStopCompleted_;
+    if (!session->shutdown_->IsAbandoned()) session->shutdown_->WaitFinished(session->stopDeadline_);
+    return PollStopCapture() == CaptureStopStatus::Completed;
 }
 
 CameraFailureKind MediaCapture::LastFailureKind() const
@@ -291,11 +322,18 @@ void MediaCapture::SetPhoneCamera(const std::string& id)
 { if (session_ && !session_->releaseNotified_ && session_->phoneTransport_) session_->phoneTransport_->SetCamera(id); }
 void MediaCapture::SetPhoneTorch(bool enabled)
 { if (session_ && !session_->releaseNotified_ && session_->phoneTransport_) session_->phoneTransport_->SetTorch(enabled); }
+bool MediaCapture::SetPhoneTorch(bool enabled, std::shared_ptr<std::atomic<bool>> canceled,
+                                std::int64_t deadlineSteadyMs)
+{
+    const auto session = session_;
+    return session && !session->releaseNotified_ && session->running_.load() && session->phoneTransport_ &&
+        session->phoneTransport_->SetTorch(enabled, std::move(canceled), deadlineSteadyMs);
+}
 bool MediaCapture::PhoneTorchAvailable() const
 { return session_ && !session_->releaseNotified_ && session_->phoneTransport_ && session_->phoneTransport_->TorchAvailable(); }
 bool MediaCapture::PhoneTorchEnabled() const
 { return session_ && !session_->releaseNotified_ && session_->phoneTransport_ && session_->phoneTransport_->TorchEnabled(); }
 std::string MediaCapture::PhoneProblemCode() const
-{ return session_ && session_->phoneTransport_ ? session_->phoneTransport_->ProblemCode() : std::string(); }
+{ return session_ && !session_->releaseNotified_ && session_->phoneTransport_ ? session_->phoneTransport_->ProblemCode() : std::string(); }
 } // namespace okuflow
 #endif

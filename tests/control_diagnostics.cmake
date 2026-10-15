@@ -1,0 +1,5 @@
+add_executable(control_diagnostics_tests control_diagnostics_tests.cpp)
+target_include_directories(control_diagnostics_tests PRIVATE "${PROJECT_SOURCE_DIR}/include")
+target_compile_features(control_diagnostics_tests PRIVATE cxx_std_20)
+add_test(NAME control_diagnostics_contract COMMAND control_diagnostics_tests)
+set_tests_properties(control_diagnostics_contract PROPERTIES TIMEOUT 15)

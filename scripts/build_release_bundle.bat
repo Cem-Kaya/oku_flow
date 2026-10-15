@@ -49,6 +49,8 @@ cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -G "%GENERATOR%" %CMAKE_ARCH_ARGS% ^
     -DOKUFLOW_ENABLE_TESTS=ON ^
     %CMAKE_EXTRA_ARGS%
 if errorlevel 1 goto :fail
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\validate_mcp_release_build.ps1" -BuildDirectory "%BUILD_DIR%" -CacheOnly
+if errorlevel 1 goto :fail
 
 echo ===== BUILD APPLICATION AND TESTS =====
 if /I "%GENERATOR%"=="Visual Studio 17 2022" (
@@ -72,11 +74,15 @@ if "%OKUFLOW_SKIP_BUNDLE_TESTS%"=="1" (
 
 call :find_built_executable
 if errorlevel 1 goto :fail
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\validate_mcp_release_build.ps1" -BuildDirectory "%BUILD_DIR%" -Executable "%MCP_EXE_PATH%"
+if errorlevel 1 goto :fail
 call :sign_release_binary "%EXE_PATH%"
 if errorlevel 1 goto :fail
 call :sign_release_binary "%APP_EXE_PATH%"
 if errorlevel 1 goto :fail
 call :sign_release_binary "%PROBE_PATH%"
+if errorlevel 1 goto :fail
+call :sign_release_binary "%MCP_EXE_PATH%"
 if errorlevel 1 goto :fail
 
 echo ===== ASSEMBLE STAGING BUNDLE =====
@@ -91,6 +97,8 @@ if errorlevel 1 goto :fail
 copy /y "%EXE_PATH%" "%STAGING_DIR%\oku_flow.exe" >nul
 if errorlevel 1 goto :fail
 copy /y "%APP_EXE_PATH%" "%STAGING_DIR%\OkuFlowApp.exe" >nul
+if errorlevel 1 goto :fail
+copy /y "%MCP_EXE_PATH%" "%STAGING_DIR%\okuflow_mcp.exe" >nul
 if errorlevel 1 goto :fail
 copy /y "%PROBE_PATH%" "%STAGING_DIR%\mf_dxva_minimal.exe" >nul
 if errorlevel 1 goto :fail
@@ -168,7 +176,7 @@ if errorlevel 1 goto :fail
 echo ===== GENERATE RELEASE INTEGRITY METADATA =====
 pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\generate_release_metadata.ps1" ^
     -BundlePath "%STAGING_DIR%" -RepositoryPath "%ROOT_DIR%" -QtVersion "%QT_RUNTIME_VERSION%" ^
-    -CudaEnabled "%OKUFLOW_ENABLE_CUDA%"
+    -CudaEnabled "%OKUFLOW_ENABLE_CUDA%" -BuildDirectory "%BUILD_DIR%"
 if errorlevel 1 (
     echo ERROR: Release checksums, manifest, or SBOM could not be generated.
     goto :fail
@@ -292,6 +300,11 @@ if not exist "%EXE_PATH%" (
     exit /b 1
 )
 set "APP_EXE_PATH=%EXE_PATH%"
+for %%I in ("%APP_EXE_PATH%") do set "MCP_EXE_PATH=%%~dpIokuflow_mcp.exe"
+if not exist "%MCP_EXE_PATH%" (
+    echo ERROR: The first-party MCP bridge was not built.
+    exit /b 1
+)
 for %%I in ("%APP_EXE_PATH%") do set "EXE_PATH=%%~dpIokuflow_launcher.exe"
 if not exist "%EXE_PATH%" (
     echo ERROR: Runtime preflight launcher was not built: "%EXE_PATH%".
@@ -328,6 +341,7 @@ exit /b 0
 :validate_staging_bundle
 if not exist "%STAGING_DIR%\oku_flow.exe" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\OkuFlowApp.exe" goto :deploy_incomplete
+if not exist "%STAGING_DIR%\app\okuflow_mcp.exe" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\START_HERE.txt" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\vc_redist.x64.exe" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\licenses\MICROSOFT_VC_RUNTIME_LICENSE.rtf" goto :deploy_incomplete
@@ -364,6 +378,11 @@ if errorlevel 1 (
 fc /b "%APP_EXE_PATH%" "%STAGING_DIR%\app\OkuFlowApp.exe" >nul
 if errorlevel 1 (
     echo ERROR: Staged Qt application does not match the tested build.
+    exit /b 1
+)
+fc /b "%MCP_EXE_PATH%" "%STAGING_DIR%\app\okuflow_mcp.exe" >nul
+if errorlevel 1 (
+    echo ERROR: Staged MCP bridge does not match the tested build.
     exit /b 1
 )
 exit /b 0
@@ -428,6 +447,15 @@ if /I not "%EXPECTED_APP_SHA256%"=="%PUBLISHED_APP_SHA256%" (
     exit /b 1
 )
 echo Verified OkuFlowApp.exe SHA-256: %PUBLISHED_APP_SHA256%
+call :compute_sha256 "%MCP_EXE_PATH%" EXPECTED_MCP_SHA256
+if errorlevel 1 exit /b 1
+call :compute_sha256 "%PUBLISHED_BUNDLE%\app\okuflow_mcp.exe" PUBLISHED_MCP_SHA256
+if errorlevel 1 exit /b 1
+if /I not "%EXPECTED_MCP_SHA256%"=="%PUBLISHED_MCP_SHA256%" (
+    echo ERROR: Published MCP bridge does not match the built executable.
+    exit /b 1
+)
+echo Verified okuflow_mcp.exe SHA-256: %PUBLISHED_MCP_SHA256%
 exit /b 0
 
 :compute_sha256_impl

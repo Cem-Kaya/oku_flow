@@ -2937,5 +2937,313 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow controleert de USB-verbinding en maakt automatisch opnieuw verbinding.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>&amp;Weigeren</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>Beeldweergave aanpassen (vereist)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>Camerabeelden toestaan voor deze beurt</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>Foto’s toestaan voor deze sessie</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>De Assistent toestaan opnamen te starten en te stoppen die deze zelf is begonnen</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>Tijdelijke toegang goedkeuren</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>Vraag toestemming voordat je een college of andere mensen opneemt.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>Actielogboek van de Assistent</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>Assistentbediening</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>Assistentbediening staat uit</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>Status van Assistentbediening</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>Camerabeelden worden naar de geselecteerde provider gestuurd. Deze toestemming vervalt aan het einde van de beurt of wanneer de camerabron verandert.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>Verbonden client: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>Gesprekken met bediening kunnen geen internettoegang, codeeropdrachten of bestandswijzigingen gebruiken. De functies Lees en Leg uit blijven ongewijzigd.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Bediening staat standaard uit. Als je dit inschakelt, kan de Assistent de beeldweergave aanpassen. Voor camerabeelden en schermafbeeldingen is aparte toestemming nodig. Stop de bediening en maak wijzigingen ongedaan met Ctrl+Shift+U.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>Voor bediening van OkuFlow is een apart gesprek nodig.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>Exacte actieargumenten</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>Externe bediening duurt maximaal 5 minuten en stopt na 60 seconden zonder activiteit. Verbreek de verbinding met de MCP-client of kies Tijdelijke toegang intrekken om te stoppen.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>Machtigingen voor externe bediening</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>Externe bediening: nog %1 seconden; time-out bij inactiviteit: %2 seconden. Beeldwijzigingen: %3; camerabeelden: %4; foto’s: %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>Externe MCP-bediening</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>Machtigingen voor tijdelijke toegang</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>Geen actieve tijdelijke toegang</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>Geen externe client verbonden</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>Oriëntatie en camerabron (nooit tijdens een opname)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>Machtigingen voor tijdelijke toegang bekijken</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>Tijdelijke toegang intrekken</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>Camerabeelden verzenden (maximaal 6 per toegangsperiode)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>Verzenden zonder bediening</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>Opnamen starten en stoppen die de Assistent zelf heeft gestart (er moet minstens 30 seconden over zijn om te starten)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>Bedieningsgesprek starten</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>Stoppen en ongedaan maken (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>Foto’s maken (binnen het actiebudget van de tijdelijke toegang)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>Ondersteuning voor tools op het eindpunt nu testen</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>Deze expliciete test stuurt een synthetisch toolverzoek naar het ingestelde eindpunt. Er wordt geen camerabeeld verzonden en er worden geen instellingen gewijzigd.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>Beeldwijzigingen: maximaal 60 per toegangsperiode. Machtigingen kunnen tijdens een toegangsperiode niet worden uitgebreid; trek de toegang in en geef die opnieuw.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>Toolondersteuning beschikbaar</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>Toolondersteuning niet beschikbaar</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>Ondersteuning voor tools controleren...</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>Nieuw gesprek</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>Geschiedenis</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>Assistentinstellingen</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>Verbinding met de Assistent</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>Gesprek met de Assistent</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>Vraag aan de Assistent</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>Geschiedenis van de Assistent</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>Details</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>&amp;Eenmalig toestaan</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>Activiteitenlogboek</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>Over bediening</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>Deze camerabeelden naar de geselecteerde provider sturen?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>Een foto van deze weergave maken?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>Een opname van deze weergave starten?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>Deze opname stoppen?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>De opname stoppen die om %1 is gestart?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>De weergave van het camerabeeld instellen op een absolute draaihoek van %1°?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>Van camerabron wisselen?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>Deze actie bekijken?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>Toestemmingsverzoek %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>Verloopt over %1 seconden</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>Het verzoek kon niet worden afgerond.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>Verzoek gestopt</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>Weergave bijgewerkt: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>Hersteld: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>Niet overschreven: %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>Instellingen konden niet worden opgeslagen.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>Actie voltooid.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>Actie kon niet worden voltooid.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>Toestemming geweigerd.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>Aan</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>De gespreksgeschiedenis kon niet worden bijgewerkt.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>Camera-instellingen wijzigen?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>Opnamevoorkeuren wijzigen?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>De provider, het model of de instructies van de Assistent wijzigen?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>Instellingen voor notities en opslag wijzigen?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>Tekeninstellingen wijzigen?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>Tekeninstellingen wijzigen en een foto opslaan?</translation>
+        </message>
     </context>
 </TS>

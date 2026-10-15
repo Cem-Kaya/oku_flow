@@ -74,6 +74,7 @@ class ViewTransformTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    void zoomAnchorPreservesActualViewportAtClampedEdges();
     void fillPreservesUniformScaleAcrossAspectRatios();
     void checkerboardCirclePatternStaysRound();
     void rotationAdjustedDimensionsPreserveUniformScale();
@@ -88,6 +89,28 @@ private slots:
     void sharedTimelineAdoptsPresenterSlotSignals();
     void sharedTimelineIgnoresMissedAdmission();
 };
+
+void ViewTransformTests::zoomAnchorPreservesActualViewportAtClampedEdges() {
+    for (const auto [sourceWidth,sourceHeight] : {std::pair{1600u,900u},std::pair{900u,1600u},std::pair{1000u,1000u}})
+        for (const auto [viewWidth,viewHeight] : {std::pair{1000u,1000u},std::pair{1280u,720u},std::pair{720u,1280u}}) {
+            const auto before = ComputeViewTransform(sourceWidth,sourceHeight,viewWidth,viewHeight,2,0.05f,0.05f,ViewportFitMode::kFill);
+            const float anchorX = before.sourceX+before.sourceWidth*0.7f;
+            const float anchorY = before.sourceY+before.sourceHeight*0.45f;
+            const auto candidate = ComputeViewTransform(sourceWidth,sourceHeight,viewWidth,viewHeight,4,0.05f,0.05f,ViewportFitMode::kFill);
+            float x = 0, y = 0;
+            QVERIFY(ComputeZoomAnchorCenter(before,candidate,anchorX,anchorY,x,y));
+            const auto after = ComputeViewTransform(sourceWidth,sourceHeight,viewWidth,viewHeight,4,x,y,ViewportFitMode::kFill);
+            QVERIFY(std::abs((anchorX-after.sourceX)/after.sourceWidth-0.7f)<0.0001f);
+            QVERIFY(std::abs((anchorY-after.sourceY)/after.sourceHeight-0.45f)<0.0001f);
+        }
+    const auto valid = ComputeViewTransform(1000,1000,1000,1000,2,0.5,0.5,ViewportFitMode::kFill);
+    float x = 0.4f, y = 0.6f;
+    QVERIFY(!ComputeZoomAnchorCenter(valid,valid,std::numeric_limits<float>::quiet_NaN(),0.5,x,y));
+    QCOMPARE(x,0.4f); QCOMPARE(y,0.6f);
+    QVERIFY(!ComputeZoomAnchorCenter(valid,valid,0,0,x,y)); // outside visible crop
+    auto invalid = valid; invalid.destinationWidth = 0;
+    QVERIFY(!ComputeZoomAnchorCenter(valid,invalid,0.5,0.5,x,y));
+}
 
 void ViewTransformTests::fillPreservesUniformScaleAcrossAspectRatios() {
     for (const auto [width, height] :

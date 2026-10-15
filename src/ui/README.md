@@ -1,5 +1,14 @@
 # ui module
 
+`AssistantChatView` renders the shared app-owned chat session in Advanced and
+floating Explain, with one compact header, a fixed composer and settings/history
+drawers. `AgentControlPanel` supplies session grants, contextual native approvals,
+external lease controls and bounded activity; AI Settings alone owns persisted
+masters. MainWindow owns persistent accessible status and application shortcuts.
+Read uses separate output and never changes chat. See
+[`docs/agent_control_ui.md`](../../docs/agent_control_ui.md) for authority,
+translation review and offscreen/native validation boundaries.
+
 This module owns the Qt widget layer.
 
 Floating chrome remains in native tool windows above both CPU and D3D12 render

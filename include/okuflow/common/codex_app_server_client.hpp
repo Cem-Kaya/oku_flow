@@ -8,6 +8,7 @@
 #include <QString>
 #include <QStringList>
 #include <QUrl>
+#include <QProcess>
 
 #include <functional>
 #include <memory>
@@ -41,6 +42,9 @@ public:
     // Per-request JSON-RPC reply deadline (default 60 s). Tests shorten it to
     // exercise initialization timeouts without waiting for the default.
     void SetRequestTimeoutMs(int timeoutMs);
+    // Scoped vision only: async pinned offline profile validation before the
+    // child starts. Ordinary Read/Explain/Assistant keep their launch behavior.
+    void SetRestrictedLaunchMode(bool restricted);
 
     bool IsReady() const;
     bool IsTurnActive() const;
@@ -62,7 +66,9 @@ public:
                            const QString& imagePath,
                            const QString& threadId,
                            bool persistent,
-                           bool retainThread = false);
+                           bool retainThread = false,
+                           bool permitCoding = true,
+                           std::function<bool()> frameAuthorization = {});
     void InterruptTurn();
     void LoadConversation(const QString& threadId);
     void CancelConversationLoad();
@@ -110,6 +116,9 @@ private:
         bool retainThread{false};
         bool valid{false};
         bool opening{false}; // thread/start or thread/resume already sent
+        bool allowCoding{}, allowInternet{};
+        QString workspace;
+        std::function<bool()> frameAuthorization;
     };
 
     QString ResolveExecutable() const;
@@ -137,6 +146,8 @@ private:
                           const QString& error,
                           bool interrupted);
     void RejectForbiddenAgentItem(const QJsonObject& item);
+    void StartRestrictedPreflight(int stage);
+    void FailRestrictedPreflight(const QString& code);
     void TouchTurnWatchdog();
     void CheckTurnWatchdog();
     void RequestInterrupt(const QString& reason);
@@ -155,6 +166,12 @@ private:
 
     std::unique_ptr<CodexJsonRpcProcess> rpc_;
     QTimer* turnWatchdogTimer_{nullptr};
+    QProcess restrictedPreflight_;
+    QTimer* restrictedPreflightDeadline_{};
+    QByteArray restrictedPreflightBytes_;
+    QString restrictedVersion_, restrictedFeatures_;
+    quint64 restrictedPreflightEpoch_{};
+    bool restrictedLaunch_{}, restrictedPreflightActive_{};
 
     QString configuredExecutable_;
     QString preferredModel_;

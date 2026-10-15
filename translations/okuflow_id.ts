@@ -2937,5 +2937,313 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow sedang memeriksa koneksi USB dan akan terhubung kembali secara otomatis.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>Tolak (&amp;D)</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>Sesuaikan tampilan (wajib)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>Izinkan tampilan kamera dikirim untuk giliran ini</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>Izinkan foto dikirim selama sesi ini</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>Izinkan Asisten memulai dan menghentikan rekaman yang dimulainya</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>Setujui izin akses sementara</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>Minta izin sebelum merekam kuliah atau orang lain.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>Catatan tindakan Asisten</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>Kontrol Asisten</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>Kontrol Asisten nonaktif</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>Status kontrol Asisten</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>Tampilan kamera dikirim ke penyedia yang dipilih. Izin ini berakhir saat giliran selesai atau sumber kamera berubah.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>Klien terhubung: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>Percakapan kontrol tidak dapat mengakses internet, menjalankan perintah coding, atau mengubah file. Fitur Baca dan Jelaskan tetap seperti semula.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Kontrol nonaktif secara default. Saat diaktifkan, Asisten dapat menyesuaikan tampilan. Gambar kamera dan foto memerlukan izin terpisah. Tekan Ctrl+Shift+U untuk menghentikan dan membatalkan tindakan.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>Untuk mengontrol OkuFlow, diperlukan percakapan tersendiri.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>Argumen tindakan persis</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>Kontrol eksternal berlangsung paling lama 5 menit dan berakhir setelah 60 detik tanpa aktivitas. Putuskan klien MCP atau pilih Cabut izin akses sementara untuk menghentikannya.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>Izin kontrol eksternal</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>Kontrol eksternal: tersisa %1 detik; batas waktu tanpa aktivitas %2 detik lagi. Perubahan tampilan: %3; tampilan kamera: %4; foto: %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>Kontrol MCP eksternal</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>Izin akses sementara</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>Tidak ada izin akses sementara yang aktif</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>Tidak ada klien eksternal yang terhubung</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>Orientasi dan sumber kamera (tidak dapat diubah selama perekaman)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>Tinjau izin akses sementara</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>Cabut izin akses sementara</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>Kirim tampilan kamera (maksimal 6 per izin)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>Kirim tanpa kontrol</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>Mulai dan hentikan rekaman yang dimulai Asisten (sisa waktu minimal 30 detik untuk memulai)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>Mulai percakapan kontrol</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>Hentikan dan batalkan (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>Ambil foto (sesuai batas tindakan izin akses sementara)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>Uji dukungan alat endpoint sekarang</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>Tes eksplisit ini mengirim permintaan alat sintetis ke endpoint yang dikonfigurasi. Tes ini tidak mengirim gambar kamera atau mengubah pengaturan.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>Perubahan tampilan: maksimal 60 per izin. Izin tidak dapat diperluas saat masih aktif; cabut izin lalu terbitkan izin baru.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>Dukungan alat endpoint tersedia</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>Dukungan alat endpoint tidak tersedia</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>Memeriksa dukungan alat endpoint…</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>Percakapan baru</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>Riwayat</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>Pengaturan Asisten</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>Koneksi Asisten</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>Percakapan Asisten</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>Pertanyaan untuk Asisten</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>Riwayat Asisten</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>Detail</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>Izinkan sekali (&amp;A)</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>Log aktivitas</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>Tentang kontrol</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>Kirim tampilan kamera ini ke penyedia yang dipilih?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>Ambil foto dari tampilan ini?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>Mulai merekam tampilan ini?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>Hentikan rekaman ini?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>Hentikan rekaman yang dimulai pada %1?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>Atur arah tampilan kamera ke sudut searah jarum jam %1°?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>Ganti sumber kamera?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>Tinjau tindakan ini?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>Permintaan izin %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>Kedaluwarsa dalam %1 detik</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>Permintaan tidak dapat diselesaikan.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>Permintaan dihentikan</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>Tampilan diperbarui: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>Dipulihkan: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>Dilewati (perubahan pengguna tetap dipertahankan): %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>Pengaturan tidak dapat disimpan.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>Tindakan selesai.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>Tindakan tidak dapat diselesaikan.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>Tindakan tidak diizinkan.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>Aktif</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>Riwayat percakapan tidak dapat diperbarui.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>Ingin mengubah pengaturan kamera?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>Ingin mengubah preferensi perekaman?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>Ingin mengubah penyedia, model, atau instruksi Asisten?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>Ingin mengubah pengaturan catatan dan output?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>Ingin mengubah pengaturan gambar?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>Ingin mengubah pengaturan gambar dan menyimpan foto?</translation>
+        </message>
     </context>
 </TS>

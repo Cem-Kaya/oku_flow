@@ -9,6 +9,7 @@ param(
     [switch]$Publish
 )
 . (Join-Path $PSScriptRoot 'windows-installer/common.ps1')
+. (Join-Path $PSScriptRoot 'windows-installer/publication_time.ps1')
 $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $notes = (Resolve-Path -LiteralPath $NotesFile).Path
 $tag = "v$Version"
@@ -41,7 +42,12 @@ if ($Publish) {
 }
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
 $vsDevCmd = & $vswhere -latest -version '[17.0,18.0)' -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find '**/VsDevCmd.bat'
-if ($LASTEXITCODE -ne 0 -or -not $vsDevCmd) { throw 'Visual Studio 2022 C++ tools are required.' }
+# Same fallback as agent_build.bat: an interrupted Visual Studio update can
+# mark the 2022 instance incomplete, hiding it from vswhere while its C++
+# tools remain usable. The matrix below still proves the toolchain works.
+$defaultVsDevCmd = Join-Path $env:ProgramFiles 'Microsoft Visual Studio/2022/Community/Common7/Tools/VsDevCmd.bat'
+if (-not $vsDevCmd -and (Test-Path -LiteralPath $defaultVsDevCmd)) { $vsDevCmd = $defaultVsDevCmd }
+if (-not $vsDevCmd) { throw 'Visual Studio 2022 C++ tools are required.' }
 $vsDevCmd = @($vsDevCmd)[0]
 $work = Join-Path $env:LOCALAPPDATA "OkuFlow/release-runs/$Version-$([Guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $work -Force | Out-Null
@@ -64,7 +70,7 @@ try {
         if (Test-Path -LiteralPath $manifestPath) {
             $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
             if ($manifest.sourceCommit -eq $sourceCommit -and -not $manifest.sourceTreeDirty -and
-                [DateTime]::Parse($manifest.generatedUtc).ToUniversalTime() -ge $started) { $path }
+                (Get-PublicationUtcTimestamp $manifest.generatedUtc) -ge $started) { $path }
         }
     } | Select-Object -Last 1
     if (-not $bundle) { throw 'No freshly tested, clean bundle matches this source commit.' }

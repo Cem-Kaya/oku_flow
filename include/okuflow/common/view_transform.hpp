@@ -24,6 +24,11 @@ struct ViewTransform {
     bool valid{};
 };
 
+// Inverts the actual cropped/letterboxed transforms to preserve the viewport
+// location of a visible scene anchor when magnification changes.
+bool ComputeZoomAnchorCenter(const ViewTransform& before, const ViewTransform& after,
+                             float anchorX, float anchorY, float& centerX, float& centerY);
+
 struct NormalizedSourceRect {
     float x{};
     float y{};

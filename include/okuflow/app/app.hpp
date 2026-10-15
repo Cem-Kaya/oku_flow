@@ -10,11 +10,13 @@
 #include <QString>
 #include <QElapsedTimer>
 #include <QJsonArray>
+#include <QHash>
 
 #include "okuflow/app/assistive_feature_manager.hpp"
 #include "okuflow/app/cuda_surface_retry.hpp"
 #include "okuflow/app/capture_handoff_policy.hpp"
 #include "okuflow/app/settings_store.hpp"
+#include "okuflow/app/agent/camera_source_intent.hpp"
 #include "okuflow/app/recording_manager.hpp"
 #include "okuflow/app/pipeline_orchestrator.hpp"
 #include "okuflow/app/settings_controller.hpp"
@@ -71,6 +73,7 @@ QT_END_NAMESPACE
 struct ID3D12Resource;
 
 namespace okuflow {
+namespace agent { class AppControlTarget; class AppControlService; class NativeControlFixture; }
 enum class PhoneDiscoveryStatus;
 
 class RenderWidget;
@@ -81,6 +84,10 @@ class InteractionController;
 class UIStateManager;
 class AssistiveFeatureManager;
 class PipelineOrchestrator;
+class CodexAgentClient;
+class HttpAgentClient;
+class VisibleChatSessionStore;
+namespace mcp { class AppIpcEndpoint; }
 class SetupAssistantDialog;
 class ColorSchemePicker;
 struct MicrophoneCallbackTarget;
@@ -95,18 +102,23 @@ class OkuFlowApp : public QObject {
     friend class MainWindow;
     friend class InteractionController;
     friend class UIStateManager;
+    friend class agent::AppControlTarget;
+    friend class agent::NativeControlFixture;
 public:
     OkuFlowApp(int& argc, char** argv);
     ~OkuFlowApp() override;
 
     bool Initialize();
     int Run();
+    agent::AppControlService* ControlService() const { return controlService_.get(); }
 
 private slots:
     void OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetItem* previous);
     void OnCameraSelectionChanged(int index);
     void OnCameraFormatChanged(int index);
     void OnMicrophoneSelectionChanged(int index);
+    void SetRecordingCanvasMode(RecordingCanvasMode mode);
+    bool SetPhoneTorch(bool enabled, std::shared_ptr<std::atomic<bool>> canceled = {}, qint64 deadlineSteadyMs = 0);
     void OnBlackWhiteToggled(bool checked);
     void OnBlackWhiteThresholdChanged(int value);
     void OnZoomToggled(bool checked);
@@ -143,6 +155,42 @@ private slots:
     void SetSuperResPerformanceOverride(bool enabled);
 
 private:
+    std::unique_ptr<agent::AppControlTarget> controlTarget_;
+    std::unique_ptr<agent::AppControlService> controlService_;
+    std::unique_ptr<CodexAgentClient> agentCodex_;
+    std::unique_ptr<HttpAgentClient> agentHttp_;
+    std::unique_ptr<mcp::AppIpcEndpoint> agentIpc_;
+    QString agentOwner_, agentContext_;
+    QString agentReceiptContext_;
+    QString agentSceneContext_;
+    quint64 agentSceneGeneration_{}, agentSceneSourceEpoch_{};
+    QTimer* agentSceneTimer_{};
+    bool agentSceneRequested_{}, agentSceneEffective_{}, agentSceneCapturePending_{};
+    std::optional<ChatTurnTicket> agentReceiptTicket_;
+    QHash<QString,QString> agentTranscripts_;
+    std::unique_ptr<VisibleChatSessionStore> visibleChatStore_;
+    QTimer* visibleChatSaveTimer_{};
+    QString agentConversationId_;
+    QByteArray agentConfigDigest_;
+    quint64 agentGeneration_{};
+    bool agentConversationSelected_{}, sendWithoutControlOnce_{};
+    bool agentFrames_{}, agentPhotos_{}, agentRecording_{};
+    void InitializeAgentControl();
+    void RefreshAgentControlSettings();
+    void TestAgentCapability();
+    void StartAgentConversation();
+    void SubmitAgentPrompt(const QString& prompt);
+    void CancelAgentTurn(bool undo = false);
+    bool SetAgentSceneEnabled(bool enabled);
+    QJsonObject AgentSceneState() const;
+    void CancelAgentScene();
+    void TickAgentScene();
+    bool AgentReady() const;
+    QString photoOperationId_;
+    QString RequestPhotoCapture(const QString& owner = QStringLiteral("manual"));
+    std::optional<RecordingSessionInfo> RequestRecording(RecordingAudioRequest audio,
+        RecordingOwnerKind ownerKind, const QString& ownerId);
+    bool StopRecording(const QString& expectedSessionId);
     settings::AdvancedConfig CaptureCurrentAdvancedConfig() const;
     // preservePresetSelection keeps the caller-selected preset id authoritative
     // instead of re-deriving it from the (possibly apply-mutated) live config.
@@ -158,6 +206,7 @@ private:
     void OpenSetupAssistant();
     void OpenUserDataFolder();
     void ChangeUserDataFolder();
+    bool SetUserDataRoot(const QString& path, QString* error = nullptr);
     void OpenNotesFile();
     void SubmitOnDemandAnalysis(bool readText);
     void SubmitAssistantPrompt();
@@ -178,8 +227,13 @@ private:
     // overlay's New chat button); the next answer opens a new conversation
     // section in the lecture notes.
     void StartNewAssistantConversation();
+    void StartNewAssistantConversationAs(ChatBackendKind kind);
     void PopulateAssistantHistory();
     void LoadSelectedAssistantConversation();
+    void LoadAssistantConversationById(const QString& id);
+    void PersistVisibleChat();
+    void RenameStoredConversation(const QString& id, const QString& name);
+    void DeleteStoredConversation(const QString& id);
     void CancelAssistantHistoryLoad();
     void SetAssistantBusy(bool busy);
     void AppendAssistantMessage(const QString& speaker, const QString& text);
@@ -197,7 +251,9 @@ private:
     bool StartCameraCapture(size_t index,
                             bool interactive = true,
                             bool forceCompatibility = false,
-                            bool backgroundStartup = false);
+                            bool backgroundStartup = false,
+                            agent::CameraSourceOrigin origin = agent::CameraSourceOrigin::Startup,
+                            std::optional<QString> formatOverride = {}, const QString& operationId = {});
     bool CompleteCameraCaptureStart(bool started, bool interactive, const QString& startupError = {});
     void QueueInitialCameraStart(const CameraDescriptor& descriptor,
                                  const QString& requestedStableId,
@@ -207,6 +263,14 @@ private:
     void ConfigureStartupProfiling();
     void WriteStartupProfile();
     void StopCameraCapture(bool atProcessExit = false);
+    void StopCameraCaptureAtExit();
+    void DriveCameraRetirement();
+    void ResumePendingCameraStart();
+    void CancelCameraTransition(const QString& owner, bool failedFallback = false);
+    void SetZoom(float amount, std::optional<QPointF> sceneAnchor = {}, bool enable = true, bool recenterAnchor = false);
+    void SetRotationQuarterTurns(int quarters);
+    bool SetDisplayColorSchemeById(const QString& id);
+    void SetViewportFitMode(settings::ViewportFitModeSetting mode, bool save = true);
     void UpdateCameraAccelerationUi();
     void OnCameraAccelerationModeChanged(int index);
     void OnTestCameraAcceleration();
@@ -330,6 +394,23 @@ private:
     // later recording session after cancellation.
     std::shared_ptr<MicrophoneCallbackTarget> microphoneCallbackTarget_;
     std::shared_ptr<CameraIngress> cameraIngress_;
+    struct PendingCameraStart {
+        size_t index;
+        bool interactive, forceCompatibility, backgroundStartup;
+        std::wstring symbolicLink;
+        agent::CameraSourceOrigin origin;
+        std::optional<QString> formatOverride;
+        QString operationId;
+        quint64 generation;
+    };
+    std::optional<PendingCameraStart> pendingCameraStart_;
+    std::shared_ptr<CameraIngress> retiredCameraIngress_;
+    std::shared_ptr<std::deque<MediaFrame>> retiredCameraFrames_;
+    std::shared_ptr<AsyncCleanup> cameraConsumerCleanup_;
+    QElapsedTimer cameraStopTimer_;
+    agent::CameraSourceIntent cameraIntent_;
+    quint64 startingCameraIntentGeneration_{};
+    bool cameraStopPending_{}, cameraStopFailed_{}, cameraStopReleaseSent_{}, cameraStopStartupWasPending_{};
     // Preview is latest-wins, while an active recording retains a short burst
     // so scheduler jitter does not discard a camera frame before processing.
     static constexpr std::size_t kMaxRecordingCameraFrames = 6;
@@ -440,6 +521,7 @@ private:
     UINT cpuSceneHeight_{};
     bool cpuSceneReady_{false};
     std::int64_t currentCameraCaptureClock100ns_{-1};
+    std::uint64_t currentCameraFrameSequence_{};
     // Replaced with each processed camera generation, consumed only by its
     // first successful presentation (including a later viewport retry).
     std::optional<std::int64_t> pendingSceneCaptureClock100ns_;

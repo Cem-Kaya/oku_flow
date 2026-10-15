@@ -2937,5 +2937,313 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow USB bağlantısını kontrol ediyor ve otomatik olarak yeniden bağlanacak.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>&amp;Reddet</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>Görünümü ayarla (gerekli)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>Bu tur için kamera görüntülerine izin ver</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>Bu oturumda fotoğraf çekmeye izin ver</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>Asistanın başlattığı kayıtları başlatıp durdurmasına izin ver</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>Yetkiyi onayla</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>Ders kaydederken veya başka kişileri kayda alırken önce izin isteyin.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>Asistan eylem kaydı</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>Asistan denetimi</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>Asistan denetimi kapalı</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>Asistan denetimi durumu</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>Kamera görüntüleri seçilen sağlayıcıya gönderilir. Bu izin, tur sona erdiğinde veya kamera kaynağı değiştiğinde biter.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>Bağlı istemci: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>Denetim konuşmaları internet erişimini, kod çalıştırma komutlarını veya dosya değişikliklerini kullanamaz. Oku ve Açıkla değişmeden kalır.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Denetim varsayılan olarak kapalıdır. Açıldığında Asistan görünümü ayarlayabilir. Kamera görüntüleri ve fotoğraflar için ayrıca izin gerekir. Ctrl+Shift+U ile durdurup geri alın.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>OkuFlow&#x27;u denetlemek için ayrı bir konuşma gerekir.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>Tam eylem parametreleri</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>Harici denetim en fazla 5 dakika sürer ve 60 saniye etkinlik olmadığında sona erer. Durdurmak için MCP istemcisinin bağlantısını kesin veya “Yetkiyi iptal et” seçeneğini belirleyin.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>Harici denetim izinleri</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>Harici denetim: %1 saniye kaldı; boşta kalma zaman aşımına %2 saniye kaldı. Görünüm değişikliği: %3; kamera görüntüsü: %4; fotoğraf: %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>Harici MCP denetimi</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>Geçici yetkilendirme izinleri</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>Etkin yetki yok</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>Bağlı harici istemci yok</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>Yön ve kamera kaynağı (kayıt sırasında asla değiştirilemez)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>Geçici yetkilendirme izinlerini incele</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>Yetkiyi iptal et</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>Kamera görüntülerini gönder (her yetkilendirme için en fazla 6)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>Denetim olmadan gönder</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>Başlattığı kayıtları başlatıp durdur (başlatmak için en az 30 saniye kalmış olmalı)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>Denetim konuşması başlat</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>Durdur ve geri al (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>Fotoğraf çek (yetkilendirme için belirlenen işlem sınırı içinde)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>Uç noktanın araç desteğini şimdi sınayın</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>Bu açık test, yapılandırılmış uç noktaya sentetik bir araç isteği gönderir. Kamera görüntüsü göndermez ve hiçbir ayarı değiştirmez.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>Görünüm değişikliği: her yetkilendirme için en fazla 60. Yetkilendirme süresince izinler genişletilemez; mevcut yetkilendirmeyi iptal edip yenisini verin.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>Araç desteği hazır</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>Araç desteği kullanılamıyor</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>Araç desteği kontrol ediliyor...</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>Yeni</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>Geçmiş</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>Asistan ayarları</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>Asistan bağlantısı</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>Asistanla konuşma</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>Asistana soru</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>Asistan geçmişi</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>Ayrıntılar</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>&amp;Bir kez izin ver</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>Etkinlik günlüğü</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>Denetim hakkında</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>Bu kamera görünümü seçilen sağlayıcıya gönderilsin mi?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>Bu görünümün fotoğrafı çekilsin mi?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>Bu görüntünün kaydı başlatılsın mı?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>Bu kayıt durdurulsun mu?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>%1'de başlatılan kayıt durdurulsun mu?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>Kamera görüntüsünü saat yönünde mutlak %1° açısına döndürmek ister misiniz?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>Kamera kaynağı değiştirilsin mi?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>Bu işlem incelensin mi?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>İzin isteği %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>%1 saniye içinde sona eriyor</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>İstek tamamlanamadı.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>İstek durduruldu</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>Görünüm güncellendi: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>Geri yüklenenler: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>Kullanıcı değişiklikleri korundu: %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>Ayarlar kaydedilemedi.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>İşlem tamamlandı.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>İşlem tamamlanamadı.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>İzin reddedildi.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>Açık</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>Konuşma geçmişi güncellenemedi.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>Kamera ayarlarında değişiklik yapılsın mı?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>Kayıt tercihleri değiştirilsin mi?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>Asistan sağlayıcısı, modeli veya yönergeleri değiştirilsin mi?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>Not ve çıktı ayarları değiştirilsin mi?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>Çizim ayarları değiştirilsin mi?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>Çizim ayarları değiştirilsin ve bir fotoğraf kaydedilsin mi?</translation>
+        </message>
     </context>
 </TS>

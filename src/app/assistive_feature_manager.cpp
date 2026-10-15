@@ -79,10 +79,19 @@ const AssistiveOverlay& AssistiveFeatureManager::Overlay() const {
 
 void AssistiveFeatureManager::SetModes(bool vlmEnabled,
                                        bool overlayEnabled) {
-    overlayEnabled_ = overlayEnabled;
-    runtime_->SetModes(vlmEnabled && overlayEnabled_);
+    SetOverlayEnabled(overlayEnabled);
+    SetPeriodicAnalysisEnabled(vlmEnabled);
     // Runtime emits OverlayUpdated synchronously; SetContent applies Hide UI
     // suppression and remains the single authority for visibility.
+}
+void AssistiveFeatureManager::SetPeriodicAnalysisEnabled(bool enabled) {
+    periodicEnabled_ = enabled;
+    runtime_->SetPeriodicAnalysisEnabled(enabled);
+}
+void AssistiveFeatureManager::SetOverlayEnabled(bool enabled) {
+    overlayEnabled_ = enabled;
+    // Re-emit visibility without aborting any periodic or explicit request.
+    runtime_->SetPeriodicAnalysisEnabled(periodicEnabled_);
 }
 
 void AssistiveFeatureManager::ApplySettings(const settings::AssistiveSettings& settings) {

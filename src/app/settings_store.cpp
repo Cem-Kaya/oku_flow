@@ -28,7 +28,7 @@ namespace okuflow::settings {
 
 namespace {
 
-constexpr int kCurrentSettingsVersion = 16;
+constexpr int kCurrentSettingsVersion = 17;
 
 int SnapRotation(int turns)
 {
@@ -449,6 +449,8 @@ AdvancedConfig ConfigFromJson(const QJsonObject& object, const AdvancedConfig& d
 QJsonObject AssistiveToJson(const AssistiveSettings& assistive)
 {
     QJsonObject object;
+    object.insert(QStringLiteral("agentControlEnabled"), assistive.agentControlEnabled);
+    object.insert(QStringLiteral("externalMcpEnabled"), assistive.externalMcpEnabled);
     object.insert(QStringLiteral("aiProvider"), assistive.aiProvider);
     object.insert(QStringLiteral("codexExecutablePath"), assistive.codexExecutablePath);
     object.insert(QStringLiteral("codexModel"), assistive.codexModel);
@@ -482,6 +484,8 @@ QJsonObject AssistiveToJson(const AssistiveSettings& assistive)
 AssistiveSettings AssistiveFromJson(const QJsonObject& object)
 {
     AssistiveSettings assistive;
+    assistive.agentControlEnabled = object.value(QStringLiteral("agentControlEnabled")).toBool(false);
+    assistive.externalMcpEnabled = object.value(QStringLiteral("externalMcpEnabled")).toBool(false);
     assistive.aiProvider = object.value(QStringLiteral("aiProvider")).toString(assistive.aiProvider);
     assistive.codexExecutablePath = object.value(QStringLiteral("codexExecutablePath")).toString();
     assistive.codexModel =
@@ -534,6 +538,8 @@ QJsonObject CodexConversationToJson(const CodexConversation& conversation)
     if (conversation.explain) {
         object.insert(QStringLiteral("explain"), true);
     }
+    object.insert(QStringLiteral("kind"), EffectiveConversationKind(conversation));
+    object.insert(QStringLiteral("toolsetVersion"), conversation.toolsetVersion.left(64));
     return object;
 }
 
@@ -546,6 +552,12 @@ CodexConversation CodexConversationFromJson(const QJsonObject& object)
     conversation.createdAt = object.value(QStringLiteral("createdAt")).toInteger();
     conversation.updatedAt = object.value(QStringLiteral("updatedAt")).toInteger();
     conversation.explain = object.value(QStringLiteral("explain")).toBool();
+    if (object.contains(QStringLiteral("kind"))) {
+        conversation.kind = object.value(QStringLiteral("kind")).toString(QStringLiteral("assistant"));
+        if (conversation.kind.isEmpty()) conversation.kind = QStringLiteral("assistant");
+    }
+    conversation.kind = EffectiveConversationKind(conversation);
+    conversation.toolsetVersion = object.value(QStringLiteral("toolsetVersion")).toString().left(64);
     return conversation;
 }
 
@@ -610,6 +622,15 @@ AdvancedConfig LegacyConfigFromRoot(const QJsonObject& root)
 }
 
 } // namespace
+
+QString EffectiveConversationKind(const CodexConversation& conversation)
+{
+    if (conversation.kind.isEmpty()) return conversation.explain
+        ? QStringLiteral("explain") : QStringLiteral("assistant");
+    for (const auto* token : {"assistant", "explain", "agent", "coding"})
+        if (conversation.kind == QLatin1String(token)) return conversation.kind;
+    return QStringLiteral("assistant");
+}
 
 QString ResolveSettingsPath()
 {
@@ -779,6 +800,10 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
         72);
 
     settings.assistive = AssistiveFromJson(root.value(QStringLiteral("assistive")).toObject());
+    if (version < 17) {
+        settings.assistive.agentControlEnabled = false;
+        settings.assistive.externalMcpEnabled = false;
+    }
 
     const QJsonArray conversationArray = root.value(QStringLiteral("codexConversations")).toArray();
     settings.codexConversations.reserve(static_cast<std::size_t>(conversationArray.size()));

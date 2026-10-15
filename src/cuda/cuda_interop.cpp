@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
+#include <chrono>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
@@ -508,6 +509,49 @@ CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
 // the queued work references (surface object, external memory, device buffers).
 bool CudaInteropSurface::WaitForIdle() noexcept {
     return SynchronizeStream();
+}
+
+bool CudaInteropSurface::PollIdle() noexcept {
+    if (streamFaulted_) return false;
+    if (stream_ == nullptr) return true;
+    if (cudaDeviceId_ >= 0 && cudaSetDevice(cudaDeviceId_) != cudaSuccess) {
+        streamFaulted_ = true; valid_ = false; return false;
+    }
+    const auto status = cudaStreamQuery(stream_);
+    if (status == cudaSuccess) return true;
+    if (status != cudaErrorNotReady) { streamFaulted_ = true; valid_ = false; }
+    return false;
+}
+
+std::shared_ptr<AsyncCleanup> CudaInteropSurface::BeginCaptureInteropCleanup(std::shared_ptr<void> producerKeepAlive, bool atProcessExit) {
+    // Admission and detachment happen on the GUI thread only after both the
+    // producer and full consumer stream are quiescent. The worker holds no
+    // surface, presenter, app or facade pointer.
+    if (!PollIdle() || !PollCaptureCopy()) return {};
+    auto imports = std::shared_ptr<D3D11InteropState>(std::move(d3d11Interop_));
+    const auto device = cudaDeviceId_;
+    return AsyncCleanup::Start([imports,device,atProcessExit,producerKeepAlive = std::move(producerKeepAlive)] {
+        if (!imports) return true;
+        if (atProcessExit && imports->resource) return false;
+        if (device >= 0 && cudaSetDevice(device) != cudaSuccess) return false;
+        if (imports->resource) {
+            if (cudaGraphicsUnregisterResource(imports->resource) != cudaSuccess) return false;
+            imports->resource = nullptr;
+        }
+        if (imports->mipArray) {
+            if (cudaFreeMipmappedArray(imports->mipArray) != cudaSuccess) return false;
+            imports->mipArray = nullptr; imports->level0Array = nullptr;
+        }
+        if (imports->externalMemory) {
+            if (cudaDestroyExternalMemory(imports->externalMemory) != cudaSuccess) return false;
+            imports->externalMemory = nullptr;
+        }
+        if (imports->copyComplete) {
+            if (cudaEventDestroy(imports->copyComplete) != cudaSuccess) return false;
+            imports->copyComplete = nullptr;
+        }
+        return true;
+    });
 }
 
 bool CudaInteropSurface::SynchronizeStream() noexcept {
@@ -1301,6 +1345,7 @@ bool CudaInteropSurface::EnsureStabilizationBuffers(unsigned int width,
 }
 
 void CudaInteropSurface::ReleaseStabilization() {
+    controlDiagnostics_ = {}; pendingControlDiagnostics_ = {};
     if (deviceStabLuma_ || deviceStabLumaPrevious_ || deviceStabLumaReference_ ||
         deviceTripodCurrentPyramid1_ || deviceTripodCurrentPyramid2_ ||
         deviceTripodReferencePyramid1_ || deviceTripodReferencePyramid2_ ||
@@ -1488,6 +1533,7 @@ void CudaInteropSurface::ReleaseStabilization() {
 // motion state and re-seeds the previous projections on the next frame, so no
 // device work (and no stream sync) is needed here.
 void CudaInteropSurface::ResetStabilization() {
+    controlDiagnostics_ = {}; pendingControlDiagnostics_ = {};
     stabPrevValid_ = false;
     tripodReferenceValid_ = false;
     tripodRelockPending_ = false;
@@ -2223,6 +2269,16 @@ void CudaInteropSurface::ConsumeStabilizerTiming() {
     const float4 frameMotion = hostStabDiagnostics_[2];
     const float4 tripodDiagnostics = hostStabDiagnostics_[3];
     const float4 bumpHoldDiagnostics = hostStabDiagnostics_[4];
+    if (pendingControlDiagnostics_.frame.sourceEpoch &&
+        pendingControlDiagnostics_.frame.submittedAtMs >= controlDiagnostics_.frame.submittedAtMs) {
+        auto snapshot = pendingControlDiagnostics_;
+        snapshot.readyAtMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        DecodeControlDiagnosticValues(snapshot,diagnostics.y,tripodDiagnostics.z,
+            pendingDiagnosticBumpHold_,bumpHoldDiagnostics.x,bumpHoldDiagnostics.w);
+        controlDiagnostics_ = std::move(snapshot);
+    }
+    pendingControlDiagnostics_ = {};
     const int estimatorTag = static_cast<int>(std::lround(diagnostics.w));
     activeStabilizerEngine_ =
         estimatorTag >= 1 && estimatorTag <= 4 ? estimatorTag - 1 : -1;
@@ -2327,7 +2383,15 @@ void CudaInteropSurface::ConsumeStabilizerTiming() {
     qInfo().noquote() << diagnosticLine;
 }
 
+ControlDiagnosticSnapshot CudaInteropSurface::ControlDiagnostics() {
+    if (!valid_ || streamFaulted_) return {};
+    ConsumeStabilizerTiming();
+    return controlDiagnostics_;
+}
+
 void CudaInteropSurface::ReleaseKeystone() {
+    controlDiagnostics_ = {}; pendingControlDiagnostics_ = {};
+    keystoneReferenceValid_ = false; keystoneLastCornerDelta_ = 0;
     if (deviceKeystoneLuma_ || hostKeystoneLuma_ || keystoneCopyEvent_ != nullptr) {
         // Drains the in-flight snapshot copy (if any) before its buffers vanish.
         if (!SynchronizeStream()) return;
@@ -2377,6 +2441,8 @@ void CudaInteropSurface::ResetKeystoneCornersToIdentity() {
 // left to finish harmlessly (its pinned buffer stays allocated), so no stream
 // sync is needed here.
 void CudaInteropSurface::ResetKeystone() {
+    controlDiagnostics_ = {}; pendingControlDiagnostics_ = {};
+    keystoneReferenceValid_ = false; keystoneLastCornerDelta_ = 0;
     keystoneCopyPending_ = false;
     keystoneFrameCounter_ = 0;
     keystoneFramesSinceDetection_ = 0;
@@ -2435,6 +2501,8 @@ void CudaInteropSurface::RestoreKeystoneCorrection() {
         keystoneCorners_[i] = correction[static_cast<size_t>(i)];
     }
     keystoneFramesSinceDetection_ = 0;
+    keystoneReferenceValid_ = keystoneHistoryIndex_ > 0;
+    keystoneLastCornerDelta_ = 0;
 }
 
 void CudaInteropSurface::SetKeystoneTrackingPaused(bool paused) {
@@ -2639,13 +2707,17 @@ void CudaInteropSurface::ConsumeKeystoneDetection() {
         return;
     }
 
+    keystoneLastCornerDelta_ = 0;
     for (int i = 0; i < 4; ++i) {
         // Small-image cell centers -> full-resolution pixels.
         const float2 full = make_float2(
             (detection.corners[i].x + 0.5f) * static_cast<float>(keystoneFactorX_),
             (detection.corners[i].y + 0.5f) * static_cast<float>(keystoneFactorY_));
-        keystoneCorners_[i] = LerpPoint(keystoneCorners_[i], full, kKeystoneCornerLerp);
+        const auto corrected = LerpPoint(keystoneCorners_[i], full, kKeystoneCornerLerp);
+        keystoneLastCornerDelta_ = std::max(keystoneLastCornerDelta_, PointDistance(keystoneCorners_[i], corrected));
+        keystoneCorners_[i] = corrected;
     }
+    keystoneReferenceValid_ = true;
     keystoneFramesSinceDetection_ = 0;
     RememberKeystoneCorrection();
 }
@@ -2702,6 +2774,7 @@ void CudaInteropSurface::RunKeystoneStage(uchar4*& current, uchar4*& alternate,
         ++keystoneFramesSinceDetection_;
     }
     if (!keystoneTrackingPaused_ && keystoneFramesSinceDetection_ > kKeystoneStaleFrames) {
+        keystoneReferenceValid_ = false;
         // Detection has been failing (scene changed, lights on, ...): ease the
         // warp back to identity instead of holding a stale perspective.
         const float w = static_cast<float>(keystoneFullWidth_);
@@ -3379,6 +3452,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         // Stabilization runs first so every later stage sees one fixed-reference
         // CUDA geometry. Tracking, recovery, path state, and the affine warp
         // remain device-resident.
+        bool sampledControlDiagnostics = false;
         if (settings.enableStabilization) {
             if (!EnsureStabilizationBuffers(procWidth, procHeight)) {
                 return false;
@@ -3865,6 +3939,9 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                     cudaEventRecord(stabilizerTimingStopEvent_, stream_),
                     "cudaEventRecord stabilizer timing stop failed");
                 stabilizerTimingPending_ = true;
+                pendingControlDiagnostics_ = {};
+                pendingDiagnosticBumpHold_ = bumpHoldActive_;
+                sampledControlDiagnostics = true;
             }
             if (activeStabilizerEngine_ < 0) {
                 stabilizerStatus_ = "CUDA fixed-reference stabilizer preparing";
@@ -3896,16 +3973,14 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 "cudaEventRecord geometry timing boundary failed");
         }
 
-        const bool textMaster = settings.enableAutoTextClarity;
-        const bool backgroundActive = settings.enableBackgroundFlatten || textMaster;
-        const bool binarizationActive = settings.enableAdaptiveBinarization || textMaster;
-        const bool smartSharpenActive = settings.enableSmartSharpen || textMaster;
-        const bool hysteresisActive = settings.enableTextHysteresis || textMaster;
-        const bool focusActive = settings.enableFocusDetection || textMaster;
-        const bool glareActive = settings.enableGlareSuppression || textMaster;
-        const bool textPipelineActive = backgroundActive || binarizationActive ||
-                                        smartSharpenActive || settings.enableClahe ||
-                                        focusActive || glareActive;
+        const auto textStages = settings.TextClarityStages();
+        const bool backgroundActive = textStages.background;
+        const bool binarizationActive = textStages.adaptive;
+        const bool smartSharpenActive = textStages.smartSharpen;
+        const bool hysteresisActive = textStages.hysteresis;
+        const bool focusActive = textStages.focus;
+        const bool glareActive = textStages.glare;
+        const bool textPipelineActive = textStages.pipeline;
         const unsigned char* activeTextMask = nullptr;
 
         if (textPipelineActive) {
@@ -4043,7 +4118,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                                          activeTextMask, deviceTextMaskPitch_,
                                          static_cast<int>(procWidth), static_cast<int>(procHeight),
                                          std::clamp(settings.smartSharpenStrength, 0.0f, 1.0f),
-                                         settings.enableSelectiveSharpen || textMaster,
+                                         textStages.selectiveSharpen,
                                          stream_,
                                          compositeFollows ? deviceTextAnalysis_ : nullptr);
                 swapBuffers();
@@ -4237,10 +4312,27 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             if (!SynchronizeStream()) return false;
         }
         lastError_.clear();
+        if (settings.controlFrame.sourceEpoch) {
+            ControlDiagnosticSnapshot snapshot;
+            snapshot.frame = settings.controlFrame;
+            const bool keystoneConverging = settings.enableKeystone &&
+                (!keystoneReferenceValid_ || keystoneCopyPending_ || keystoneSingleStepRequested_ ||
+                 keystoneSingleStepInFlight_ || keystoneLastCornerDelta_ >= kKeystoneIdentityEpsilonPx);
+            snapshot.converging = keystoneConverging;
+            snapshot.keystoneQuadValid = settings.enableKeystone && keystoneReferenceValid_;
+            if (sampledControlDiagnostics) pendingControlDiagnostics_ = snapshot;
+            else if (!settings.enableStabilization) {
+                snapshot.held = false;
+                snapshot.readyAtMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count();
+                controlDiagnostics_ = snapshot;
+            }
+        }
         return true;
     } catch (const std::exception& e) {
         lastError_ = e.what();
         qWarning() << "ProcessFrame exception:" << e.what();
+        controlDiagnostics_ = {}; pendingControlDiagnostics_ = {};
         temporalHistoryValid_ = false;
         stabPrevValid_ = false;
         keystoneCopyPending_ = false;
@@ -4248,6 +4340,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         return false;
     } catch (...) {
         lastError_ = "Unknown CUDA exception during ProcessFrame";
+        controlDiagnostics_ = {}; pendingControlDiagnostics_ = {};
         qWarning() << "ProcessFrame encountered unknown exception";
         temporalHistoryValid_ = false;
         stabPrevValid_ = false;

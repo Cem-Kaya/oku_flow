@@ -255,3 +255,20 @@ stale after the expanded catalogs were generated.
 The debug AAB's actual BundleConfig metadata also disables LANGUAGE splitting,
 so manual language choices remain installed offline. This is debug-bundle
 evidence, not a Google Play rollout or native-speaker acceptance.
+
+## Assistant/control wording (local 0.3.1 implementation)
+
+The active manifests retain 39 reviewed control sources and add 32 chat-first
+sources across24 non-English catalogs. The new 768 entries have unique independent
+Luna verdicts, no unread entries and73 vetted replacements. Rechecks clarified
+that composer questions are addressed to Assistant, rotation is an absolute
+clockwise displayed-content angle, skipped undo preserves later user edits and
+save failures do not imply rollback. Five obsolete nested-tab/approval sources
+were removed. Historical initial 44-key review remains in local evidence.
+
+Evidence lives under `%LOCALAPPDATA%/OkuFlow/agentic-control/`, including
+`ui-chat-redesign-reconciliation.json`. Parity/lrelease passes24 catalogs with 799
+finished sources. German/Dutch Details are reviewed cognates with narrow
+validator exceptions. This establishes model review and structural parity,
+not native-speaker, rendered RTL, font or screen-reader acceptance. Published
+release claims remain unchanged.

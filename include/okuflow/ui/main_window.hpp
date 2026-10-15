@@ -18,6 +18,8 @@
 
 #include "okuflow/ui/render_widget.hpp"
 #include "okuflow/ui/assistive_overlay.hpp"
+#include "okuflow/ui/agent_control_panel.hpp"
+#include "okuflow/ui/assistant_chat_view.hpp"
 #include "okuflow/ui/annotation_overlay.hpp"
 #include "okuflow/ui/joystick_overlay.hpp"
 
@@ -118,13 +120,18 @@ public:
     // Updates the "System default (<language>)" picker entry for the current
     // UI language and Windows display-language preference.
     void refreshSystemLanguageItem();
+    // Repaint numeric labels after a signal-blocked typed control batch.
+    void RefreshControlReadouts();
 
     // Two-speed UI: Simple overlays compact corner controls on the full render
     // surface; Advanced adds a right-side inspector.
     void setSimpleMode(bool simple);
     bool isSimpleMode() const;
     int advancedPanelWidth() const;
+    int preferredAdvancedPanelWidth() const { return advancedPanelPreferredWidth_; }
     void setAdvancedPanelWidth(int width);
+    int advancedActiveTab() const;
+    bool setAdvancedActiveTab(int index);
     QAbstractButton* simpleModeButton() const;
     QAbstractButton* advancedModeButton() const;
     QPushButton* explainNowButton() const;
@@ -204,7 +211,7 @@ public:
                                   const QString& shapeKind,
                                   int textSizePixels);
     void setAnnotationViewTransform(const ViewTransform& transform);
-    void setAnnotationMode(bool enabled);
+    void setAnnotationMode(bool enabled, std::optional<AnnotationTool> initialTool = {}, bool preserveFocus = false);
     // Centered camera-state message shown over the view while no camera
     // picture is presented (starting, offline, reconnecting). An empty title
     // hides it. Visual only: the pipeline status label owns announcements.
@@ -213,7 +220,12 @@ public:
     void refreshSliderReadouts();
     void refreshTextClarityUi();
     void setUiHidden(bool hidden);
+    AgentControlPanel* agentControlPanel() const { return agentControlPanel_; }
+    AssistantChatView* assistantChatView() const { return assistantChatView_; }
+    QLabel* agentLiveRegionLabel() const { return agentLiveRegionLabel_; }
+    void focusAgentApproval();
     bool isUiHidden() const { return uiHidden_; }
+    bool isModeGridOpen() const { return modeGridPopup_ && modeGridPopup_->isVisible(); }
     QToolButton* uiVisibilityButton() const { return uiVisibilityButton_; }
 
 signals:
@@ -337,6 +349,9 @@ private:
     QLabel* temporalSmoothValueLabel_{};
     QCheckBox* vlmAssistCheckbox_{};
     QCheckBox* assistiveOverlayCheckbox_{};
+    AgentControlPanel* agentControlPanel_{};
+    QLabel* agentLiveRegionLabel_{};
+    AssistantChatView* assistantChatView_{};
     QCheckBox* annotationCaptureOnExitCheckbox_{};
     QCheckBox* spatialSharpenCheckbox_{};
     QComboBox* spatialBackendCombo_{};
