@@ -1,13 +1,17 @@
 #include "gui_test_support.hpp"
 #include "okuflow/common/view_transform.hpp"
+#include "okuflow/common/visible_chat_session.hpp"
 #include "okuflow/app/assistive_feature_manager.hpp"
 #include "okuflow/ui/annotation_overlay.hpp"
 #include "okuflow/ui/assistive_overlay.hpp"
 
 #include <QAction>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QMenu>
 #include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QJsonArray>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMouseEvent>
@@ -31,9 +35,25 @@
 #include <windowsx.h>
 
 #include <cmath>
+#include <algorithm>
 
 namespace okuflow {
 namespace {
+
+// Explicit user admission shows chat; later snapshots only update its view.
+void ShowFixtureChat(AssistiveOverlay& chat,const QString& title,const QString& body,bool visible)
+{
+    chat.SetChatSnapshot({{"conversationId","native-fixture"},{"kind","explain"},{"title",title},{"draft",chat.QuestionDraft()},
+        {"messages",QJsonArray{QJsonObject{{"id","answer"},{"role","assistant"},{"text",body},{"status","completed"},{"complete",true}}}}});
+    chat.ShowChat(visible);
+}
+
+// The compact header contains actionable buttons. Drag its bare layout margin,
+// matching a native pointer press outside those controls.
+QPoint HeaderDragPoint(QWidget* header)
+{
+    return QPoint(6, header->height() / 2);
+}
 
 class PlacementTestTranslator final : public QTranslator {
 public:
@@ -188,6 +208,7 @@ class AnnotationOverlayTests final : public QObject {
 private slots:
     void middleDragCrossesTheToolWindowBoundary();
     void shortViewportKeepsDrawRailsReachable();
+    void controlledToggleRetainsInkAndSelectedTool();
     void textPlacementIsClickThenType();
     void moveToolMarqueeSelectsAndMovesMultipleAnnotations();
     void persistentActionPanelUsesNativeScreenCoordinates_data();
@@ -215,6 +236,46 @@ private slots:
     void releasingOrCancelingThePullKeepsTheDockLatched_data();
     void releasingOrCancelingThePullKeepsTheDockLatched();
 };
+
+void AnnotationOverlayTests::controlledToggleRetainsInkAndSelectedTool()
+{
+    QMainWindow owner;
+    auto* render=new MouseSink;
+    owner.setCentralWidget(render);
+    owner.resize(1000,700);owner.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&owner));
+    AnnotationOverlay overlay(render,&owner);
+    const auto transform=ComputeViewTransform(1000,700,1000,700,1.0f,0.5f,0.5f,ViewportFitMode::kFill);
+    overlay.SetViewTransform(transform);overlay.SetActive(true);
+    QCoreApplication::processEvents();
+    SendMouse(overlay,QEvent::MouseButtonPress,QPointF(400,300),Qt::LeftButton,Qt::LeftButton);
+    SendMouse(overlay,QEvent::MouseMove,QPointF(500,400),Qt::NoButton,Qt::LeftButton);
+    SendMouse(overlay,QEvent::MouseButtonRelease,QPointF(500,400),Qt::LeftButton,Qt::NoButton);
+    QVERIFY(overlay.HasInk());const auto count=overlay.Strokes().size();
+    render->setFocusPolicy(Qt::StrongFocus);
+    QVERIFY2(test::ActivateFixtureWindow(&owner), test::ActivationFailureMessage());
+    render->setFocus();QTRY_VERIFY(render->hasFocus());
+    auto* focus = QApplication::focusWidget();
+    overlay.SetTool(AnnotationTool::kPointer, true);
+    QCOMPARE(QApplication::focusWidget(), focus);
+    overlay.SetActive(false,overlay.SelectedTool(),true,true);
+    QCOMPARE(QApplication::focusWidget(), focus);
+    QVERIFY(!overlay.IsActive());QCOMPARE(overlay.Strokes().size(),count);
+    overlay.SetActive(true,overlay.SelectedTool(),true,true);
+    QCoreApplication::processEvents();
+    QCOMPARE(QApplication::focusWidget(), focus);
+    overlay.SetTool(AnnotationTool::kEraser, true);
+    QCOMPARE(QApplication::focusWidget(), focus);
+    overlay.SetTool(AnnotationTool::kPen, true);
+    QCOMPARE(QApplication::focusWidget(), focus);
+    overlay.SetTool(AnnotationTool::kPointer, true);
+    QCOMPARE(QApplication::focusWidget(), focus);
+    QCOMPARE(overlay.SelectedTool(),AnnotationTool::kPointer);QCOMPARE(overlay.Strokes().size(),count);
+    QVERIFY(overlay.Undo());QVERIFY(!overlay.HasInk());
+    QVERIFY(overlay.Redo());QCOMPARE(overlay.Strokes().size(),count);
+    overlay.SetActive(false); // Ordinary manual exit keeps its original clearing contract.
+    QVERIFY(!overlay.HasInk());
+}
 
 void AnnotationOverlayTests::shortViewportKeepsDrawRailsReachable()
 {
@@ -251,23 +312,23 @@ void AnnotationOverlayTests::floatingChatDefaultsTallAndKeepsRestoredSize()
     owner.setCentralWidget(render);
     owner.show();
     AssistiveOverlay chat(render);
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("A long answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("A long answer"), true);
     QTRY_VERIFY(chat.isVisible());
     QVERIFY(chat.isFloating());
     QVERIFY(chat.height() >= render->height() * 7 / 10);
     QVERIFY(chat.height() <= render->height() * 8 / 10);
 
-    const QRect custom(180, 140, 520, 370);
+    const QRect custom(180, 140, std::max(520,chat.minimumSizeHint().width()), std::max(380,chat.minimumSizeHint().height()));
     chat.RestoreRelativeGeometry(custom);
     QCoreApplication::processEvents();
     QCOMPARE(chat.RelativeGeometry().size(), custom.size());
     chat.SetUiSuppressed(true);
     QVERIFY(!chat.isVisible());
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("A longer streamed answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("A longer streamed answer"), true);
     QVERIFY(!chat.isVisible());
-    auto* body = chat.findChild<QTextBrowser*>(QStringLiteral("assistiveBody"));
+    auto* body = chat.chatView()->transcript();
     QVERIFY(body);
-    QCOMPARE(body->toPlainText(), QStringLiteral("A longer streamed answer"));
+    QVERIFY(body->toPlainText().contains(QStringLiteral("A longer streamed answer")));
     chat.SetUiSuppressed(false);
     QTRY_VERIFY(chat.isVisible());
     QCOMPARE(chat.RelativeGeometry().size(), custom.size());
@@ -282,7 +343,7 @@ void AnnotationOverlayTests::suppressedChatRetainsStreamingContentAndDock()
     owner.setCentralWidget(render);
     owner.show();
     AssistiveOverlay chat(render);
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("First part"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("First part"), true);
     chat.SetDockPosition(QStringLiteral("right"));
     QTRY_VERIFY(chat.isVisible());
     QCOMPARE(chat.DockPosition(), QStringLiteral("right"));
@@ -291,18 +352,18 @@ void AnnotationOverlayTests::suppressedChatRetainsStreamingContentAndDock()
     chat.SetUiSuppressed(true);
     QTRY_VERIFY(!chat.isVisible());
     QTRY_VERIFY(render->width() > dockedRenderWidth);
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("First part, completed"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("First part, completed"), true);
     QVERIFY(!chat.isVisible());
     chat.SetUiSuppressed(false);
     QTRY_VERIFY(chat.isVisible());
     QCOMPARE(chat.DockPosition(), QStringLiteral("right"));
     QTRY_COMPARE(chat.width(), dockWidth);
-    auto* body = chat.findChild<QTextBrowser*>(QStringLiteral("assistiveBody"));
+    auto* body = chat.chatView()->transcript();
     QVERIFY(body);
-    QCOMPARE(body->toPlainText(), QStringLiteral("First part, completed"));
+    QVERIFY(body->toPlainText().contains(QStringLiteral("First part, completed")));
 
     chat.SetUiSuppressed(true);
-    chat.SetContent(QString(), QString(), false);
+    ShowFixtureChat(chat,QString(), QString(), false);
     chat.SetUiSuppressed(false);
     QVERIFY(!chat.isVisible());
 }
@@ -316,34 +377,39 @@ void AnnotationOverlayTests::assistantReadingActionsAndSafeDefault()
     owner.setCentralWidget(render);
     owner.show();
     AssistiveOverlay chat(render);
-    const QRect safe(16, 120, render->width() - 32, render->height() - 220);
+    const QRect safe(16, 64, render->width() - 32, render->height() - 96);
     chat.SetSafeArea(safe);
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("Scene Explain\nA readable answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("Scene Explain\nA readable answer"), true);
     QTRY_VERIFY(chat.isVisible());
     QVERIFY(safe.contains(chat.RelativeGeometry()));
-    auto* body = chat.findChild<QTextBrowser*>(QStringLiteral("assistiveBody"));
-    auto* read = chat.findChild<QPushButton*>(QStringLiteral("assistiveReadButton"));
+    auto* body = chat.chatView()->transcript();
+    auto* read = chat.chatView()->readAloudButton();
     auto* placement = chat.findChild<QToolButton*>(QStringLiteral("assistiveDockPosition"));
-    auto* question = chat.findChild<QLineEdit*>(QStringLiteral("assistiveQuestion"));
+    auto* question = chat.chatView()->composer();
     QVERIFY(body && read && placement && question);
-    QVERIFY(body->font().pointSizeF() >= 18);
-    QVERIFY(read->height() >= 48);
-    QCOMPARE(chat.FocusTargets()[0], body);
-    QCOMPARE(chat.FocusTargets()[1], read);
+    QVERIFY(body->font().pixelSize() >= 18);
+    QVERIFY(read->height() >= 44);
+    const auto targets=chat.FocusTargets();
+    QCOMPARE(targets.front(), body);
+    const auto composer=std::find(targets.begin(),targets.end(),question);
+    QVERIFY(composer!=targets.end());
+    QVERIFY(std::distance(composer,targets.end())>=4);
+    QCOMPARE(*(composer+1),read);
+    QCOMPARE(*(composer+2),chat.chatView()->attachmentCheckbox());
+    QCOMPARE(*(composer+3),chat.chatView()->sendButton());
     QVERIFY(chat.findChildren<QComboBox*>().isEmpty());
     QCOMPARE(placement->menu()->actions().size(), 3);
-    QSignalSpy speech(&chat, &AssistiveOverlay::ReadAloudRequested);
+    QSignalSpy speech(chat.chatView(), &AssistantChatView::ChatReadAloudRequested);
     read->click();
     QCOMPARE(speech.size(), 1);
-    QCOMPARE(speech.first().first().toString(), QStringLiteral("A readable answer"));
+    QCOMPARE(speech.first().at(1).toString(), QStringLiteral("Scene Explain\nA readable answer"));
     QSignalSpy dismissed(&chat, &AssistiveOverlay::Dismissed);
-    chat.activateWindow();
-    QTRY_VERIFY(chat.isActiveWindow());
+    QVERIFY2(test::ActivateFixtureWindow(&chat), test::ActivationFailureMessage());
     question->setFocus();
     QTRY_VERIFY(question->hasFocus());
-    question->setText(QStringLiteral("Draft"));
+    question->setPlainText(QStringLiteral("Draft"));
     QTest::keyClick(question, Qt::Key_Escape);
-    QTRY_VERIFY(question->text().isEmpty());
+    QTRY_VERIFY(question->toPlainText().isEmpty());
     QVERIFY(chat.isVisible());
     QVERIFY(dismissed.isEmpty());
     QTest::keyClick(question, Qt::Key_Escape);
@@ -352,7 +418,7 @@ void AnnotationOverlayTests::assistantReadingActionsAndSafeDefault()
     QVERIFY(dismissed.isEmpty());
     // A saved size must accommodate the platform font's layout minimum;
     // offscreen fallback fonts differ from native Windows font metrics.
-    const QRect saved(120, 20, std::max(520, chat.minimumSizeHint().width()), 330);
+    const QRect saved(120, 20, std::max(520, chat.minimumSizeHint().width()), std::max(380,chat.minimumSizeHint().height()));
     chat.RestoreRelativeGeometry(saved);
     chat.SetSafeArea(QRect(30, 150, 700, 300));
     QCOMPARE(chat.RelativeGeometry(), saved);
@@ -360,7 +426,7 @@ void AnnotationOverlayTests::assistantReadingActionsAndSafeDefault()
     AssistiveOverlay rtl(render);
     rtl.setLayoutDirection(Qt::RightToLeft);
     rtl.SetSafeArea(safe);
-    rtl.SetContent(QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
+    ShowFixtureChat(rtl,QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
     QTRY_VERIFY(rtl.isVisible());
     QCOMPARE(rtl.RelativeGeometry().right(), safe.right());
     QVERIFY(safe.contains(rtl.RelativeGeometry()));
@@ -381,7 +447,7 @@ void AnnotationOverlayTests::clearingFocusWarningPreservesAssistantResults()
     owner.setCentralWidget(render);
     const UserDataPaths paths(temporary.path());
     AssistiveFeatureManager manager(*render, owner, {}, {}, paths);
-    auto* body = manager.Overlay().findChild<QTextBrowser*>(QStringLiteral("assistiveBody"));
+    auto* body = manager.Overlay().ReadBody();
     QVERIFY(body);
     manager.SetModes(false, false); // No periodic analysis can replace a lingering warning.
     manager.ShowFocusWarning();
@@ -410,23 +476,39 @@ void AnnotationOverlayTests::assistiveModesCannotBypassUiSuppression()
     auto& chat = manager.Overlay();
     QSignalSpy dismissed(&chat, &AssistiveOverlay::Dismissed);
     chat.SetUiSuppressed(true);
-    // Mode initialization emits ready-state content, without submitting a
-    // frame or starting a Codex process or network request.
+    auto& session = manager.Runtime().ChatSession();
+    connect(&session, &VisibleChatSession::SnapshotChanged, &chat, &AssistiveOverlay::SetChatSnapshot);
+    const QString answer = QStringLiteral("Retained completed Explain answer");
+    session.Restore(QStringLiteral("suppressed-explain"), ChatBackendKind::Explain,
+                    QJsonArray{QJsonObject{{"role", "assistant"}, {"text", answer}}});
+    chat.ShowChat(true); // Explicit user admission, still suppressed.
     manager.SetModes(true, true);
+    // A synthetic periodic/Read presentation exercises visibility without
+    // asking a provider or capturing a frame. Idle modes need not invent text.
+    manager.Runtime().OverlayUpdated(QStringLiteral("Read"), QStringLiteral("Retained reading result"), true);
     QVERIFY(!chat.isVisible());
-    auto* body = chat.findChild<QTextBrowser*>(QStringLiteral("assistiveBody"));
+    QVERIFY(!chat.ReadResultPane()->isVisible());
+    auto* body = chat.ReadBody();
     QVERIFY(body);
     QVERIFY(!body->toPlainText().isEmpty());
+    const QString chatText = chat.chatView()->transcript()->toPlainText();
+    QVERIFY(chatText.contains(answer));
     chat.SetUiSuppressed(false);
+    QTRY_VERIFY(chat.ReadResultPane()->isVisible());
     QTRY_VERIFY(chat.isVisible());
     chat.SetUiSuppressed(true);
+    chat.ShowChat(false); // A closed chat must not be reopened by mode changes.
     manager.SetModes(false, true);
     chat.SetUiSuppressed(false);
     QVERIFY(!chat.isVisible());
+    QVERIFY(!chat.ReadResultPane()->isVisible());
+    QCOMPARE(chat.chatView()->transcript()->toPlainText(), chatText);
     chat.SetUiSuppressed(true);
     manager.SetModes(true, false);
     chat.SetUiSuppressed(false);
     QVERIFY(!chat.isVisible());
+    QVERIFY(!chat.ReadResultPane()->isVisible());
+    QCOMPARE(chat.chatView()->transcript()->toPlainText(), chatText);
     QVERIFY(dismissed.isEmpty());
 }
 
@@ -477,16 +559,17 @@ void AnnotationOverlayTests::edgeJitterKeepsOnePreviewAndOneDrop()
     owner.show();
     SimulatedNativeMoveChat chat(render);
     chat.RestoreRelativeGeometry(QRect(180, 140, 520, 360));
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
     QCoreApplication::processEvents();
-    auto* header = chat.findChild<QWidget*>(QStringLiteral("assistiveHeader"));
+    auto* header = chat.chatView()->headerWidget();
     auto* preview = chat.findChild<QLabel*>(QStringLiteral("assistiveDockPreview"));
-    QVERIFY(header);
+    QVERIFY(header && header->isVisible());
+    QVERIFY(!header->childAt(HeaderDragPoint(header)));
     QVERIFY(preview);
     VisibilityCounter visibility;
     preview->installEventFilter(&visibility);
     QSignalSpy floatingChanges(&chat, &QDockWidget::topLevelChanged);
-    SendMouse(*header, QEvent::MouseButtonPress, header->rect().center(),
+    SendMouse(*header, QEvent::MouseButtonPress, HeaderDragPoint(header),
               Qt::LeftButton, Qt::LeftButton);
     QTRY_COMPARE(chat.moveStarts, 1);
     const auto moveFromEdge = [&](int distance) {
@@ -552,14 +635,15 @@ void AnnotationOverlayTests::briefEdgeEntryDoesNotLatchOrDrop()
     owner.show();
     SimulatedNativeMoveChat chat(render);
     chat.RestoreRelativeGeometry(QRect(180, 140, 520, 360));
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
     QCoreApplication::processEvents();
-    auto* header = chat.findChild<QWidget*>(QStringLiteral("assistiveHeader"));
+    auto* header = chat.chatView()->headerWidget();
     auto* preview = chat.findChild<QLabel*>(QStringLiteral("assistiveDockPreview"));
-    QVERIFY(header);
+    QVERIFY(header && header->isVisible());
+    QVERIFY(!header->childAt(HeaderDragPoint(header)));
     QVERIFY(preview);
     QSignalSpy floatingChanges(&chat, &QDockWidget::topLevelChanged);
-    SendMouse(*header, QEvent::MouseButtonPress, header->rect().center(),
+    SendMouse(*header, QEvent::MouseButtonPress, HeaderDragPoint(header),
               Qt::LeftButton, Qt::LeftButton);
     QTRY_COMPARE(chat.moveStarts, 1);
     chat.move(owner.mapToGlobal(QPoint(0, 140)));
@@ -597,21 +681,22 @@ void AnnotationOverlayTests::dockedHeaderRequiresHeldPullAndDoesNotImmediatelyRe
     owner.show();
     SimulatedNativeMoveChat chat(render);
     chat.RestoreRelativeGeometry(QRect(180, 140, 520, 360));
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
     chat.SetDockPosition(side);
     QCoreApplication::processEvents();
     // Docking closes the floating native window and asynchronously activates
     // its owner. Settle that transition before the synthetic held press;
     // a real WindowDeactivate must still cancel an in-progress pull.
     QVERIFY2(test::ActivateFixtureWindow(&owner), test::ActivationFailureMessage());
-    auto* header = chat.findChild<QWidget*>(QStringLiteral("assistiveHeader"));
+    auto* header = chat.chatView()->headerWidget();
     auto* preview = chat.findChild<QLabel*>(QStringLiteral("assistiveDockPreview"));
-    QVERIFY(header);
+    QVERIFY(header && header->isVisible());
+    QVERIFY(!header->childAt(HeaderDragPoint(header)));
     QVERIFY(preview);
-    const QPoint press = header->mapToGlobal(header->rect().center());
+    const QPoint press = header->mapToGlobal(HeaderDragPoint(header));
     const QPoint pull = press + QPoint(side == QStringLiteral("left") ? 48 : -48, 0);
     QSignalSpy floatingChanges(&chat, &QDockWidget::topLevelChanged);
-    SendMouse(*header, QEvent::MouseButtonPress, header->rect().center(),
+    SendMouse(*header, QEvent::MouseButtonPress, HeaderDragPoint(header),
               Qt::LeftButton, Qt::LeftButton);
     SendMouse(chat, QEvent::MouseMove, chat.mapFromGlobal(pull), Qt::NoButton, Qt::LeftButton);
     QTest::qWait(80);
@@ -649,14 +734,15 @@ void AnnotationOverlayTests::releasingOrCancelingThePullKeepsTheDockLatched()
     owner.setCentralWidget(render);
     owner.show();
     SimulatedNativeMoveChat chat(render);
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
     chat.SetDockPosition(QStringLiteral("left"));
     QCoreApplication::processEvents();
     QVERIFY2(test::ActivateFixtureWindow(&owner), test::ActivationFailureMessage());
-    auto* header = chat.findChild<QWidget*>(QStringLiteral("assistiveHeader"));
-    QVERIFY(header);
-    const QPoint press = header->mapToGlobal(header->rect().center());
-    SendMouse(*header, QEvent::MouseButtonPress, header->rect().center(),
+    auto* header = chat.chatView()->headerWidget();
+    QVERIFY(header && header->isVisible());
+    QVERIFY(!header->childAt(HeaderDragPoint(header)));
+    const QPoint press = header->mapToGlobal(HeaderDragPoint(header));
+    SendMouse(*header, QEvent::MouseButtonPress, HeaderDragPoint(header),
               Qt::LeftButton, Qt::LeftButton);
     SendMouse(chat, QEvent::MouseMove, chat.mapFromGlobal(press + QPoint(48, 0)),
               Qt::NoButton, Qt::LeftButton);
@@ -699,24 +785,25 @@ void AnnotationOverlayTests::floatingDragPreviewsAndDocksOnRelease()
     owner.show();
     SimulatedNativeMoveChat chat(render);
     chat.RestoreRelativeGeometry(QRect(180, 140, 520, 360));
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
     AnnotationOverlay overlay(render, &owner);
     overlay.SetExcludedWidget(&chat);
     overlay.SetActive(true);
     QCoreApplication::processEvents();
     const int fullWidth = render->width();
-    auto* header = chat.findChild<QWidget*>(QStringLiteral("assistiveHeader"));
+    auto* header = chat.chatView()->headerWidget();
     auto* preview = chat.findChild<QLabel*>(QStringLiteral("assistiveDockPreview"));
-    QVERIFY(header);
+    QVERIFY(header && header->isVisible());
+    QVERIFY(!header->childAt(HeaderDragPoint(header)));
     QVERIFY(preview);
     QVERIFY(!preview->isVisible());
-    SendMouse(*header, QEvent::MouseButtonPress, header->rect().center(),
+    SendMouse(*header, QEvent::MouseButtonPress, HeaderDragPoint(header),
               Qt::LeftButton, Qt::LeftButton);
     QTRY_COMPARE(chat.moveStarts, 1);
     QVERIFY(!preview->isVisible()); // A header click alone never snaps.
     int targetX = side == QStringLiteral("left") ? 0 : owner.width() - chat.width();
     if (grabAtEdge) {
-        const int grabOffset = header->mapToGlobal(header->rect().center()).x() - chat.x();
+        const int grabOffset = header->mapToGlobal(HeaderDragPoint(header)).x() - chat.x();
         targetX = (side == QStringLiteral("left") ? 0 : owner.width() - 1) - grabOffset;
     }
     chat.move(owner.mapToGlobal(QPoint(targetX, 140)));
@@ -767,17 +854,18 @@ void AnnotationOverlayTests::leavingOrCancelingDockPreviewKeepsChatFloating()
     owner.show();
     SimulatedNativeMoveChat chat(render);
     chat.RestoreRelativeGeometry(QRect(180, 140, 520, 360));
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("Answer"), true);
     QCoreApplication::processEvents();
-    auto* header = chat.findChild<QWidget*>(QStringLiteral("assistiveHeader"));
+    auto* header = chat.chatView()->headerWidget();
     auto* preview = chat.findChild<QLabel*>(QStringLiteral("assistiveDockPreview"));
-    QVERIFY(header);
+    QVERIFY(header && header->isVisible());
+    QVERIFY(!header->childAt(HeaderDragPoint(header)));
     QVERIFY(preview);
     // Ordinary placement changes must not offer or trigger docking.
     chat.move(owner.mapToGlobal(QPoint(0, 140)));
     QVERIFY(!preview->isVisible());
     const QRect startGeometry = chat.geometry();
-    SendMouse(*header, QEvent::MouseButtonPress, header->rect().center(),
+    SendMouse(*header, QEvent::MouseButtonPress, HeaderDragPoint(header),
               Qt::LeftButton, Qt::LeftButton);
     QTRY_COMPARE(chat.moveStarts, 1);
     const HWND chatWindow = reinterpret_cast<HWND>(chat.winId());
@@ -816,7 +904,7 @@ void AnnotationOverlayTests::floatingChatRemainsInteractiveAndExcludesInkAfterMo
     owner.show();
     AssistiveOverlay chat(render);
     chat.RestoreRelativeGeometry(QRect(20, 140, 520, 360));
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("An answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("An answer"), true);
     AnnotationOverlay overlay(render, &owner);
     overlay.SetExcludedWidget(&chat);
     overlay.SetViewTransform(ComputeViewTransform(1400, 900, 1400, 900,
@@ -863,7 +951,7 @@ void AnnotationOverlayTests::floatingChatRemainsInteractiveAndExcludesInkAfterMo
     QVERIFY(regionType != ERROR);
     QVERIFY(!chatIsCovered);
 
-    auto* question = chat.findChild<QLineEdit*>(QStringLiteral("assistiveQuestion"));
+    auto* question = chat.chatView()->composer();
     QVERIFY(question);
     QSignalSpy submitted(&chat, &AssistiveOverlay::QuestionSubmitted);
     QTest::mouseClick(question, Qt::LeftButton);
@@ -879,7 +967,7 @@ void AnnotationOverlayTests::floatingChatRemainsInteractiveAndExcludesInkAfterMo
     QVERIFY(overlay.mask().contains(originalCenter));
     QVERIFY(!overlay.mask().contains(centerInCanvas()));
     const QRect movedGeometry = chat.geometry();
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("An answer with more text"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("An answer with more text"), true);
     QCOMPARE(chat.geometry(), movedGeometry);
 
     SendMouse(overlay, QEvent::MouseButtonPress, originalCenter,
@@ -910,7 +998,7 @@ void AnnotationOverlayTests::dockingChatResizesViewportAndRestoresFloatingPlacem
     owner.show();
     AssistiveOverlay chat(render);
     chat.RestoreRelativeGeometry(QRect(180, 140, 520, 360));
-    chat.SetContent(QStringLiteral("Assistant"), QStringLiteral("An answer"), true);
+    ShowFixtureChat(chat,QStringLiteral("Assistant"), QStringLiteral("An answer"), true);
     AnnotationOverlay overlay(render, &owner);
     overlay.SetExcludedWidget(&chat);
     overlay.SetActive(true);

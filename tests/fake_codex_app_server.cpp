@@ -30,6 +30,8 @@ QString gHistoryThread;
 int gNextThread = 0;
 int gTurnCount = 0;
 QStringList gKeptThreads;
+bool gCodingMask{};
+QString gCodingCwd;
 
 void WriteObject(const QJsonObject& object)
 {
@@ -130,8 +132,9 @@ bool HandleExplainThreads(const QJsonValue& id, const QString& method, const QJs
         const QString prompt = input.isEmpty() ? QString() : input.first().toObject().value(QStringLiteral("text")).toString();
         const QJsonObject sandbox = params.value(QStringLiteral("sandboxPolicy")).toObject();
         if (sandbox.value(QStringLiteral("type")).toString() != QStringLiteral("readOnly") ||
-            sandbox.value(QStringLiteral("networkAccess")).toBool() || input.size() < 2 ||
-            input.at(1).toObject().value(QStringLiteral("type")).toString() != QStringLiteral("localImage")) {
+            sandbox.value(QStringLiteral("networkAccess")).toBool() || input.isEmpty() ||
+            (input.size() == 1 && !prompt.contains(QStringLiteral("Text-only follow-up"))) ||
+            (input.size() > 1 && input.at(1).toObject().value(QStringLiteral("type")).toString() != QStringLiteral("localImage"))) {
             WriteError(id, -32602, QStringLiteral("camera turn lost its image or restricted permissions"));
             return true;
         }
@@ -157,6 +160,35 @@ bool HandleExplainThreads(const QJsonValue& id, const QString& method, const QJs
     }
     return false;
 }
+bool HandlePermissionMask(const QJsonValue& id,const QString& method,const QJsonObject& params)
+{
+    if (method == "thread/start") {
+        gCodingMask = params.value("sandbox").toString() == "workspace-write";
+        gCodingCwd = params.value("cwd").toString();
+        const auto instructions = params.value("developerInstructions").toString();
+        if (params.value("approvalPolicy").toString() != "never" || params.value("ephemeral").toBool() ||
+            (gCodingMask ? !instructions.contains(gCodingCwd) || !QFileInfo(gCodingCwd).isDir()
+                : params.value("sandbox").toString() != "read-only" || !instructions.contains("Never execute commands or edit files."))) {
+            WriteError(id,-32602,"incorrect admitted permission mask"); return true;
+        }
+        gThreadId = QStringLiteral("%1_%2").arg(gCodingMask?"coding":"assistant").arg(++gNextThread);
+        WriteResult(id,{{"thread",QJsonObject{{"id",gThreadId}}}}); return true;
+    }
+    if (method == "turn/start") {
+        const auto policy = params.value("sandboxPolicy").toObject();
+        const auto roots = policy.value("writableRoots").toArray();
+        if (policy.value("networkAccess").toBool() || params.value("cwd").toString() != gCodingCwd ||
+            policy.value("type").toString() != (gCodingMask?"workspaceWrite":"readOnly") ||
+            (gCodingMask && (roots.size()!=1 || roots[0].toString()!=gCodingCwd))) {
+            WriteError(id,-32602,"turn widened or lost its permission mask"); return true;
+        }
+        const auto turn = QStringLiteral("mask_%1").arg(++gTurnCount);
+        WriteResult(id,{{"turn",QJsonObject{{"id",turn}}}});
+        WriteNotification("item/agentMessage/delta",{{"turnId",turn},{"delta","Fixture permission mask accepted"}});
+        WriteNotification("turn/completed",{{"turn",QJsonObject{{"id",turn},{"status","completed"}}}}); return true;
+    }
+    return false;
+}
 
 void HandleMessage(const QJsonObject& message)
 {
@@ -164,6 +196,7 @@ void HandleMessage(const QJsonObject& message)
     const QString method = message.value(QStringLiteral("method")).toString();
     const QJsonObject params = message.value(QStringLiteral("params")).toObject();
 
+    if (gScenario == QStringLiteral("permission-mask") && HandlePermissionMask(id,method,params)) return;
     if (gScenario == QStringLiteral("explain-threads") &&
         HandleExplainThreads(id, method, params)) {
         return;

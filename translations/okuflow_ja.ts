@@ -2937,5 +2937,313 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlowがUSB接続を確認しています。自動的に再接続します。</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>拒否(&amp;D)</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>表示の調整（必須）</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>今回の応答中はカメラ映像の送信を許可</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>このセッション中は写真の送信を許可</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>アシスタントによる、自身が開始した録画の開始・停止を許可</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>一時アクセス権を承認</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>講義や他の人を録画する前に許可を求めてください。</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>アシスタント操作の記録</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>アシスタントによる操作</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>アシスタント操作はオフです</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>アシスタント操作の状態</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>カメラ映像は選択したプロバイダーに送信されます。この許可は応答の終了時またはカメラソースの変更時に終了します。</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>接続中のクライアント：%1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>操作の会話では、インターネットアクセス、コード作成用のコマンド、ファイル変更は利用できません。「読む」と「説明する」はこれまでどおり利用できます。</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>操作は初期状態でオフです。有効にすると、アシスタントが表示を調整できます。カメラ画像と撮影画像には別途許可が必要です。Ctrl+Shift+U で停止して元に戻します。</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>OkuFlowを操作するには、専用の会話が必要です。</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>正確な操作引数</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>外部操作は最長5分間有効で、60秒間操作がないと終了します。停止するには、MCPクライアントを切断するか「一時アクセス権を取り消す」を選択してください。</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>外部操作の許可</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>外部操作：残り%1秒；無操作タイムアウトまで%2秒。表示変更：%3；カメラ映像：%4；写真：%5。</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>外部MCP操作</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>一時アクセス権の許可</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>有効な一時アクセス権はありません</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>外部クライアントは接続されていません</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>向きとカメラソース（録画中は変更できません）</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>一時アクセス権の許可を確認</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>一時アクセス権を取り消す</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>カメラ映像を送信（一時アクセス権ごとに最大6件）</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>操作なしで送信</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>自身が開始した録画の開始・停止（開始時に残り30秒以上必要）</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>操作会話を開始</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>停止して元に戻す（Ctrl+Shift+U）</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>写真を撮影（一時アクセス権の操作回数内）</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>エンドポイントのツール対応を今すぐテスト</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>この明示的なテストでは、設定済みエンドポイントに合成ツールリクエストを送信します。カメラ画像は送信せず、設定も変更しません。</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>表示変更：一時アクセス権ごとに最大60回。一時アクセス権の有効中は許可範囲を広げられません。取り消して新しく発行してください。</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>エンドポイントのツール対応：利用可能</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>エンドポイントのツール対応：利用不可</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>エンドポイントのツール対応を確認中…</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>新しい会話</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>履歴</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>アシスタント設定</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>アシスタント接続</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>アシスタント会話</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>アシスタントへの質問</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>アシスタント履歴</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>詳細</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>一度だけ許可(&amp;A)</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>アクティビティログ</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>操作について</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>選択したプロバイダーにこのカメラ映像を送信しますか？</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>この表示の写真を撮影しますか？</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>この表示の録画を開始しますか？</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>この録画を停止しますか？</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>%1に開始した録画を停止しますか？</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>カメラ映像の表示方向を、時計回りで%1°に設定しますか？</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>カメラソースを切り替えますか？</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>この操作の内容を確認しますか？</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>権限リクエスト%1：%2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>%1秒後に期限切れ</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>リクエストを完了できませんでした。</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>リクエストは停止されました</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>表示を更新：%1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>復元：%1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>上書きせず変更を保持：%1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>設定を保存できませんでした。</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>操作が完了しました。</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>操作を完了できませんでした。</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>操作は許可されませんでした。</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>オン</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>会話履歴を更新できませんでした。</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>カメラ設定を変更しますか？</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>録画設定を変更しますか？</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>アシスタントのプロバイダー、モデル、または指示を変更しますか？</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>ノートと出力の設定を変更しますか？</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>描画設定を変更しますか？</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>描画設定を変更して写真を保存しますか？</translation>
+        </message>
     </context>
 </TS>

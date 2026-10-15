@@ -1,5 +1,30 @@
 # OkuFlow Tests
 
+The 2026-10-15 scoped chat regression repair preserves native foreground,
+Escape focus, drag latching/cancellation, streaming selection/scroll, and Hide UI
+assertions. Fixtures use the visible chat header and `VisibleChatSession` shared
+by both panes; Read uses its independent result accessor. Mode-suppression setup
+seeds synthetic results without a camera or provider. The interrupted failed gate
+is retained and is not acceptance evidence. Native screenshots from that gate
+contain foreign magnifier/toolbar content and are unsuitable visual evidence;
+the inspected offscreen r5 captures remain separate layout evidence.
+The follow-up repairs inspect the owned color-editor popup while hidden to
+verify absent-recipe reset, and seed a selected history row before asserting
+Tab/Escape focus restoration. `controlledToggleRetainsInkAndSelectedTool`
+also checks owner focus through controlled toggles and pointer/eraser/pen
+changes while retaining its ink, undo/redo and manual-exit assertions.
+
+`control_diagnostics_contract` is desktop-free and exercises the completed
+device-diagnostic interpretation: locked versus invalid models, held/recovery
+pixels, unready buffers, pending or unknown keystone geometry, corrupt/fractional
+state tags, and immutable frame provenance. It does not validate actual CUDA
+copies, detection quality, frame synchronization or a physical camera.
+
+Settings-controller snapshot regressions distinguish unsaved live edits from
+last committed values, missing first-run files, failed writes, recovered backup
+state and partial credential-cleanup commits. Credential operations in these
+fixtures use private fake storage; no owner's credentials are read or deleted.
+
 The remote Windows workflow retains its complete standard-scale gate, then runs
 the immediate native panel movement fixture at Qt scale 1.25, 1.5 and 2. Each
 scaled diagnostic keeps its own JUnit/log and leaves the standard CTest evidence
@@ -227,7 +252,17 @@ labels and Arabic direction at 200% text. The carousel check requires one
 navigation dot per actual slide rather than a stale fixed scene count.
 Run it serially with the Windows GUI matrix. Evidence is not release media.
 
-`phone_camera_contract` checks USB connection-type protobuf parsing without
+The torch rows in `phone_camera_contract` use private loopback socket pairs
+and the production queued-command/guarded-write/status-ACK seams: canceled queue,
+expired dequeued record, newer native command, rejected unbounded/canceled/expired
+actor admission, retry retirement, and actual state changing only after ACK
+(including an ACK after owner cancellation). They never call transport startup,
+probe adb or open a real device. `capture_shutdown` additionally checks that a
+synthetic phone session admits the bounded command before split stop, retires
+its token at Begin and rejects later admission. These rows establish command
+ownership/protocol behavior, not real-phone light or camera acceptance.
+
+The remaining `phone_camera_contract` rows check USB connection-type protobuf parsing without
 a Windows bus path, malformed lengths/varints, saved webcam/phone/lens-fallback
 selection and actual NV12 output from Windows H.264 and optional HEVC decoders.
 First-run selection prefers only a companion that answered its handshake;
@@ -542,11 +577,22 @@ ctest --preset msvc-cuda-tests
 
 `cuda_architecture_coverage` needs no GPU: it runs `cuobjdump --list-elf`
 on the built application and fails unless a native cubin exists for every
-architecture in `CUDA_ARCHITECTURES` (`sm_75` through `sm_121`). A missing
-architecture (for example Blackwell `sm_120`) otherwise surfaces only as
-kernel-launch failures on that hardware; the shipped fatbin has no PTX
-fallback. The expected list lives in `tests/CMakeLists.txt` beside the
-CUDA test targets and must stay in sync with `cmake/CMakeLists.txt`.
+architecture in the selected inventory (`sm_61` is included with CUDA 12.9).
+A missing native image (for example Pascal `sm_61` or Blackwell `sm_120`)
+can otherwise leave kernel launches dependent on driver/PTX compatibility.
+The gate requires native cubins regardless of embedded PTX.
+`cmake/CudaTargets.cmake` supplies the expected inventory and every
+CUDA target. `cuda_target_policy` checks both toolkit branches without a GPU.
+CUDA 12.9 includes `sm_61`; CUDA 13 deliberately excludes it.
+
+`cuda_toolchain_benchmark` is an explicit `EXCLUDE_FROM_ALL` target, never a
+CTest case or CI/release gate. It measures 20 production linear-kernel stages
+at 1080p and 4K using CUDA events (20 warmups, 31 batches of 10), reports median
+and p95 GPU time, host submission median and output checksums. Inputs are
+deterministic; allocations/transfers/readback are outside timing. It uses no
+camera, phone, provider, Maxine or native window. The one-time toolchain report
+in `docs/cuda_toolchain_comparison.md` records compiler flags, hardware,
+correctness checks and limitations; no automatic recurring benchmark is added.
 
 `text_clarity_sauvola_cuda` launches the production Sauvola mask kernel on
 pitched, generated luma and independent local-statistics fixtures. It checks
@@ -668,3 +714,192 @@ use fixture pixels and no camera or adb server. These checks do not establish
 real-phone + Maxine + Extra Stable acceptance. The NVIDIA runtime may be absent
 on a validation machine; report that limitation rather than treating the worker
 fixture as a hardware inference test.
+
+`capture_shutdown` also covers the split `BeginStopCapture` / `PollStopCapture` /
+`ReleaseStoppedCapture` facade with scripted blocked workers and consumer leases.
+It verifies immediate callback/GPU-access revocation, exact backing retention,
+the shared deadline, fail-closed early acknowledgments, pending-session transfer,
+worker-timestamp completion and legacy callback exception handling. These rows
+open no camera, phone, adb connection or native window. They complement the
+existing WARP texture cases and do not establish physical-device acceptance.
+
+`codex_agent_client_contract` keeps its pre-ack, stale/retired-turn, restricted
+profile and reentrant callback cases and adds 27 scope rows through the private
+fake dedicated Codex peer and real `AppControlService`. They cover scene center,
+reset, mode listing/activation, five reading-color intents, snapped contrast,
+automatic-adjustment admission, exact orientation approval/denial, denied-action
+suppression, observation consent and next-turn grants, photo pending/committed
+status, owned recording start/stop/retirement, manual/stale stop safeguards,
+temporary-source consent and saved intent, native-user revisions, and late
+observation/accepted-photo cancellation. The synthetic target uses the actual
+`OperationTracker` and `CameraSourceIntent`; fake provider replies expose the
+result/error/image counts for assertions rather than treating process exit as
+success. Original callback and turn-identity coverage remains intact.
+
+This is synthetic adapter/core coverage only. No production widget transition,
+microphone, photo writer, GPU readback, source-reader shutdown, camera/phone/adb
+access, account or network request runs here. Observation bytes are an explicit
+synthetic transport marker, not a rendered JPEG acceptance test. Camera first
+frame and photo/recording completion are fixture-driven tracker transitions;
+they do not establish actual production switching or media output. Rendered
+accessibility, real provider compatibility, all goal/preset recipes, hardware
+quality/cancellation/soak and both-adapter production acceptance remain separate
+gates. These rows do not promote a development catalog to `v1`.
+
+`codex_agent_profile_contract` uses a first-party offline CLI feature/schema
+fact fixture; no Codex child or live service is contacted. It rejects version/
+feature drift, duplicate/malformed inventory and unsafe MCP names, and checks
+explicit experimental initialization. `assistive_preparation` separately proves
+periodic-mode disable preserves explicit user preparation but cancels periodic
+work, retaining the existing explicit Stop regression.
+
+## Agent-control core fixtures (development)
+
+`image_parameter_planner_contract` compiles the production image/view planner
+without native app wiring. Its 92 behavior rows cover all 58 independent
+registry mappings, whole-invalid-batch rejection, complete custom recipes,
+blur normalization, Super Resolution quality/minimum-zoom dependencies and
+no-op resets, explicit contradictory zoom rejection, getter baselines and
+Text Clarity/consumed-mask truth tables. An invalid built-in recipe selection
+rejects an otherwise valid refinement patch with zero published writes.
+These pure checks complement the service Begin/Commit/rollback contracts;
+they do not execute native image handlers or establish rendering, device or
+GUI acceptance.
+
+`agent_control_contract` uses QCoreApplication with a private target/optional
+monotonic fake clock. It checks strict schemas, no-ops, duplicate call identities,
+user-wins/conflict-aware undo, modal reads, exact approval replacement/replay,
+denial without nagging, canceled/late delivery, settings-save failure, post-turn
+frame approval without capture, legal operation progress and safe outcomes.
+`settings_store_round_trip` covers schema-17 switches/conversation kinds,
+legacy Explain inference and unknown-kind tool-free fallback. The added
+recording-manager fixture uses a reserved id and proves stale Stop cannot stop
+a replacement, with a null button and no window, microphone, camera or codec.
+These desktop-free checks do not replace native accessible controls, observation
+rendering, real capture/provider acceptance, MCP interoperability or full gates.
+
+`http_agent_client_contract` runs the real Qt Network adapter against private
+127.0.0.1 ephemeral-port HTTP fixtures and a fake app target. It covers explicit
+capability/profile isolation, header-only fixture credentials, whole-round rejection
+before any mutation, modern/legacy transcript preservation, sequential results,
+observation placement and image removal, cancellation/late callbacks, endpoint
+reconfiguration, refused redirects, fixed HTTP errors, repeated call IDs, round
+limits, oversized bodies and incomplete tool responses. Its test process disables
+network proxies so the private HTTP traffic cannot be diverted. It is desktop-free and
+uses no real credentials, provider, camera, phone, adb server or browser. Passing
+fixtures do not establish compatibility with a live endpoint or rendered UI.
+
+### Chat/control offscreen fixture and opt-in captures
+
+`agent_control_panel_headless` always uses Qt offscreen. Its focused cases cover
+sole master ownership, user-only grants, exact/expired approvals, canonical 90°
+orientation, unchanged approval Details selection/caret/scroll across refreshes,
+bounded activity, explicit testing, lease defaults/no widening,
+refused drafts, shared draft/attachment/keyboard submission, escaped messages,
+selection, completed-only manual TTS and independent Read presentation.
+It also compares accessible character rectangles with painted cursor lines at
+multiple widths/scroll positions and verifies actual JPEG resources in both chat
+views, aspect ratio and cleanup on New. The compact footer fixture checks
+non-overlapping 360px layouts in both directions/themes, native checkable
+accessibility/Space/full-target activation and composer-to-footer Tab order.
+The shared-chat test also checks the floating window's outer Tab bridge inventory.
+`main_window_interactions.floatingAssistantTabTraversal` separately exercises
+real foreground Tab/Shift+Tab through the floating routing choices and drawer
+actions, with the production MainWindow application-wide filter installed.
+The annotation fixture checks the current composer-to-footer order rather
+than an obsolete absolute index for Read Aloud.
+The fixture embeds the production icon resources for meaningful captures.
+This offscreen bridge-level check does
+not replace manual Windows Magnifier/Narrator acceptance. It starts
+no camera/provider/bridge/browser and claims no native focus or screen-reader
+acceptance. Serial disposable Windows native cases remain separate.
+
+Explicitly build `agent_control_capture` and run `--output` with an absolute
+LocalAppData folder. The real production MainWindow is rendered at 1672×941 to
+match the approved chat-first concept, with synthetic chat and pending photo
+approval, a settings drawer and default-off AI Settings. It loads no settings
+store or service. Actual peer-widget grabs are composed; installed Segoe UI is
+registered for Windows offscreen. Keep originals, retain failed captures and
+rerender instead of repairing pixels. See `docs/agent_control_ui.md`.
+
+`codex_agent_client_contract` launches only the private fake JSONL peer. The
+preflight produces the committed feature facts and no MCP inventory. Its
+scenarios put a valid tool call before the start reply, an orphan/retired call
+first, or a forbidden command/tool in the stream; assertions check actual
+private-target effects, not wording. The runtime preparation fixture also
+checks dedicated control-answer single ownership, exact Stop and one terminal
+completion while periodic mode is toggled off. These checks do not establish
+live account/model acceptance or native focus/screen-reader behavior.
+### Dedicated provider reentrant callbacks
+
+The core's Undo regressions use scripted source ownership and temporary batch/
+camera-apply refusals. They verify restore intent before cleanup, no false manual
+edit events on empty polls, retained inverses after temporary unavailability,
+and revision-based protection of intervening user edits. The coverage fixture
+also checks a partially failed custom-recipe inverse remains one cluster across
+retry and is discarded together when a component is manually edited. Label coverage
+checks canonical/legacy identities against existing catalog keys; it does not
+judge a rendered UI by English wording. The opt-in actual-app fixture separately
+exercises the trusted CancelAgentTurn path with no real device or provider.
+
+The private `codex_agent_client_contract` also exercises configuration changes
+from capability/turn notifications and replacement of a turn from conversation
+creation. The fake peer refuses mismatched thread starts. Admission failures
+emit no terminal event; bounded text bridges reject images, tool roles, backend
+IDs and excessive content. These fixtures use a synthetic child process and
+prove no live account or provider compatibility.
+
+### Shared visible chat headless contracts
+
+`visible_chat_session_contract` checks shared drafts/busy state, one admitted
+question and placeholder, authoritative terminal replacement, isolated backend
+IDs, immutable kinds, retirement fences, safe history restoration and bounded
+completed text context, bounded memory-only frame previews and stale-preview
+rejection. The store fixture verifies that thumbnail bytes never reach disk.
+`assistive_preparation` also prepares authorized control thumbnails on the real
+worker pool, checks dimensions/aspect and pixel-free context, then retires a
+ticket before queued completion to reject both late preview and continuation.
+An invalid optional JPEG must not prevent continuation of an admitted turn.
+`assistive_preparation` verifies real thumbnail publication in fake Codex and
+loopback HTTP image turns, Read isolation and text-only follow-ups, and adds private loopback
+HTTP Explain/followup/Read/notes ownership, held-answer reset, retained tool-free
+Codex followup, saved Assistant read-only permissions, frozen opening masks,
+distinct Coding/Assistant conversation kinds, explicit Explain after Coding New,
+restricted control New and prepared-capture retirement. `notes_html` retains
+the Read/Explain language, model, permission, busy and exact notes checks while
+asserting full Explain output in shared chat and unchanged chat for Read.
+`http_agent_client_contract` validates role-pair context bounds and rejection
+of historical pixel/foreign fields before any request. These fixtures use no
+provider credentials, camera or native windows. Native layout and keyboard
+acceptance remain separate GUI gates.
+
+Agent-control freshness fixtures inject a monotonic clock and verify elapsed age, cached-frame re-presentation, held/future timestamps, and exact-owner revocation of post-turn queued frame consent before the next turn. They use no OS clock changes, media or hardware.
+
+`visible_chat_session_store_contract` uses a private temporary directory and
+checks mixed Explain/Agent restart restoration, drafts/plain receipts, strict
+invalid-file rejection, traversal/nonopaque ids, known-secret filtering,
+pending/tool/image/grant field exclusion, owned retention bounds, kind-locality
+and rename/delete. On Windows it locks only its exact fixture record to prove
+a failed atomic replacement leaves the previous bytes unchanged. Restored
+rows expose no camera grant or backend binding and produce no notes callback.
+
+`assistant_parameter_policy_contract` is a desktop-free QtCore fixture for
+whole-group rejection, protected settings, exact Configuration classification,
+coupled model/reasoning changes, secret/bounds handling and installed opaque
+voice handles. Assistive preparation adds private loopback scoped-scene tests
+for independent chat/notes ownership, frame revocation before a held response,
+configuration/cancel retirement, native periodic preservation, and a fake Codex
+opening held until the submission guard is revoked. These checks never use a
+live provider, credential, camera, audio voice or native window.
+
+Scoped vision additionally uses `fake_scoped_codex_vision` (the existing
+ordinary fake protocol plus private profile output/argv proof). Runtime
+contracts cover pinned isolation, malformed version/features/inventory fail
+closed, unchanged ordinary launch and delayed frame permission checks. Pure
+preference cases cover Unicode codepoint boundaries, complete 4096-symbol
+projections, explicit unreadable legacy-value metadata preserved during mixed
+response packing, BMP and supplementary format controls,
+hundredth-step speech rate, and native-scene guards. These are synthetic
+headless boundaries, not native voice/camera/provider or GUI acceptance.
+
+The opt-in actual-app control fixture requires a private CPU dev-full configure with -DOKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE=ON. Build native_app_control_fixture explicitly and run only native_app_control_offscreen. It uses actual production Qt controls and private settings under Qt offscreen, bypassing platform/device/provider startup. The separate scripts/test_mcp_native_sdk.mjs validates authenticated stdio/IPC against that real target. These checks establish the executed CPU-native subset, not CUDA effects, physical camera/phone or complete 94-field hardware acceptance.

@@ -6,6 +6,26 @@
 
 namespace okuflow {
 
+bool ComputeZoomAnchorCenter(const ViewTransform& before, const ViewTransform& after,
+                             float anchorX, float anchorY, float& centerX, float& centerY) {
+    if (!before.valid || !after.valid || !std::isfinite(anchorX) || !std::isfinite(anchorY) ||
+        before.sourceWidth <= 0 || before.sourceHeight <= 0 || after.sourceWidth <= 0 || after.sourceHeight <= 0 ||
+        before.destinationWidth <= 0 || before.destinationHeight <= 0 || after.destinationWidth <= 0 || after.destinationHeight <= 0)
+        return false;
+    const float oldU = (anchorX-before.sourceX)/before.sourceWidth;
+    const float oldV = (anchorY-before.sourceY)/before.sourceHeight;
+    if (oldU < 0 || oldU > 1 || oldV < 0 || oldV > 1) return false;
+    const float viewportX = before.destinationX+oldU*before.destinationWidth;
+    const float viewportY = before.destinationY+oldV*before.destinationHeight;
+    const float newU = (viewportX-after.destinationX)/after.destinationWidth;
+    const float newV = (viewportY-after.destinationY)/after.destinationHeight;
+    const float x = anchorX-(newU-0.5f)*after.sourceWidth;
+    const float y = anchorY-(newV-0.5f)*after.sourceHeight;
+    if (!std::isfinite(x) || !std::isfinite(y)) return false;
+    centerX = std::clamp(x,0.0f,1.0f); centerY = std::clamp(y,0.0f,1.0f);
+    return true;
+}
+
 ViewTransform CanonicalizeSuperResViewTransform(const ViewTransform& requested,
                                                std::uint32_t sceneWidth,
                                                std::uint32_t sceneHeight,

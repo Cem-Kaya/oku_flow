@@ -2937,5 +2937,313 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow 正在检查 USB 连接，将自动重新连接。</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>拒绝(&amp;D)</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>调整视图（必需）</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>允许在本轮对话中发送摄像头画面</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>允许在本次会话中发送照片</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>允许助手开始和停止由其启动的录制</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>批准临时访问授权</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>录制讲座或其他人之前，请先征得许可。</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>助手操作记录</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>助手控制</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>助手控制已关闭</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>助手控制状态</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>摄像头画面会发送给所选服务提供方。此权限会在本轮对话结束或摄像头源更改时终止。</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>已连接的客户端：%1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>控制对话无法访问互联网、运行编码命令或更改文件。朗读和讲解功能保持不变。</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>控制默认关闭。启用后，助手可以调整视图。摄像头图像和拍摄的照片需要单独授权。按 Ctrl+Shift+U 可停止并撤销操作。</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>控制 OkuFlow 需要单独开启一个对话。</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>精确的操作参数</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>外部控制最长持续 5 分钟；60 秒无活动后结束。断开 MCP 客户端或选择“撤销临时访问授权”即可停止。</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>外部控制权限</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>外部控制：剩余 %1 秒；空闲超时还剩 %2 秒。视图更改：%3；摄像头画面：%4；照片：%5。</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>外部 MCP 控制</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>临时访问权限</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>当前没有有效的临时访问授权</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>没有连接外部客户端</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>方向和摄像头源（录制期间不可更改）</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>查看临时访问权限</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>撤销临时访问授权</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>发送摄像头画面（每项授权最多 6 张）</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>不启用控制，仅发送</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>开始和停止由助手启动的录制（开始时至少剩余 30 秒）</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>开始控制对话</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>停止并撤销（Ctrl+Shift+U）</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>拍摄照片（在临时访问授权的操作次数限额内）</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>立即测试端点的工具支持</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>此明确测试会向已配置的端点发送合成工具请求。不会发送摄像头图像，也不会更改任何设置。</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>视图更改：每项授权最多 60 次。授权有效期间不能扩大权限；请先撤销，再重新授权。</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>端点工具支持：可用</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>端点工具支持：不可用</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>正在检查端点工具支持…</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>新建对话</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>历史记录</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>助理设置</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>助理连接</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>助理对话</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>向助理提问</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>助理历史记录</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>详细信息</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>仅允许一次(&amp;A)</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>活动记录</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>关于控制</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>要将此摄像头画面发送给所选服务提供方吗？</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>要拍摄此视图的照片吗？</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>要开始录制此视图吗？</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>要停止此录制吗？</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>要停止在 %1 开始的录制吗？</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>要将摄像头画面的显示方向设为顺时针 %1°吗？</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>要切换摄像头源吗？</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>要审阅此操作吗？</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>权限请求 %1：%2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>将在 %1 秒后过期</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>请求未能完成。</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>请求已停止</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>视图已更新：%1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>已恢复：%1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>已跳过（保留用户所做的更改）：%1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>无法保存设置。</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>操作已完成。</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>操作未能完成。</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>操作未获授权。</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>已开启</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>无法更新对话历史记录。</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>要更改摄像头设置吗？</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>要更改录制设置吗？</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>要更改助理的服务提供方、模型或指令吗？</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>要更改笔记和输出设置吗？</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>要更改绘图设置吗？</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>要更改绘图设置并保存照片吗？</translation>
+        </message>
     </context>
 </TS>

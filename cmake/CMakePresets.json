@@ -24,8 +24,7 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "OKUFLOW_ENABLE_CUDA": "ON",
         "OKUFLOW_ENABLE_TEXT_SR": "ON",
-        "OKUFLOW_ENABLE_TESTS": "OFF",
-        "CMAKE_CUDA_ARCHITECTURES": "75;80;86;89;90;100;103;120;121"
+        "OKUFLOW_ENABLE_TESTS": "OFF"
       }
     },
     {
@@ -37,8 +36,7 @@
         "CMAKE_BUILD_TYPE": "Release",
         "OKUFLOW_ENABLE_CUDA": "ON",
         "OKUFLOW_ENABLE_TEXT_SR": "ON",
-        "OKUFLOW_ENABLE_TESTS": "OFF",
-        "CMAKE_CUDA_ARCHITECTURES": "75;80;86;89;90;100;103;120;121"
+        "OKUFLOW_ENABLE_TESTS": "OFF"
       }
     },
     {
@@ -62,8 +60,7 @@
         "CMAKE_BUILD_TYPE": "Release",
         "OKUFLOW_ENABLE_CUDA": "ON",
         "OKUFLOW_ENABLE_TEXT_SR": "OFF",
-        "OKUFLOW_ENABLE_TESTS": "ON",
-        "CMAKE_CUDA_ARCHITECTURES": "75;80;86;89;90;100;103;120;121"
+        "OKUFLOW_ENABLE_TESTS": "ON"
       }
     }
   ],

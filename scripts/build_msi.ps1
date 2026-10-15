@@ -26,8 +26,13 @@ if ($LASTEXITCODE -ne 0 -or $actualVersion -notlike "$($pins.wix.version)+*") { 
 $work = Join-Path $env:LOCALAPPDATA "OkuFlow\installer-build\$Version-$([Guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 $snapshot = New-VerifiedBundleSnapshot $BundlePath (Join-Path $work 'payload')
+if ($parsedVersion -ge [version]'0.3.1' -and -not $snapshot.manifest.PSObject.Properties['agentControl']) {
+    throw 'OkuFlow 0.3.1 and later require the accepted MCP executable and release inventory.'
+}
 if (-not $AllowUnsignedPreview) {
-    foreach ($name in @('oku_flow.exe', $snapshot.layout.ApplicationRelativePath)) {
+    $ownedExecutables = @('oku_flow.exe', $snapshot.layout.ApplicationRelativePath)
+    if ($snapshot.manifest.PSObject.Properties['agentControl']) { $ownedExecutables += $snapshot.layout.Prefix + 'okuflow_mcp.exe' }
+    foreach ($name in $ownedExecutables) {
         if ((Get-AuthenticodeSignature -LiteralPath (Join-Path $snapshot.path $name)).Status -ne 'Valid') { throw "Unsigned application: $name" }
     }
 }

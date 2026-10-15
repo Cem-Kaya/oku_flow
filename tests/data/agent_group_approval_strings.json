@@ -1,0 +1,32 @@
+[
+  {
+    "key": "agent_group_01",
+    "source": "Change camera settings?",
+    "context": "Compact native chat approval for an immutable app-owned grouped setting plan. Only Allow once/Deny authorizes; chat text and this heading confer no grant. Camera settings means preferences, not permission to change source/send a frame. Recording preferences does not start/stop recording. Assistant provider/model/instructions are sensitive configuration, not coding/internet permissions. Notes/output refers to local saved notes/output preferences. Drawing photo wording is used ONLY when native planning proves an actual photo save side effect, never because saving preferences is generally possible. Exact normalized changes remain in collapsed Details. Questions must stay natural and precise; preserve question semantics."
+  },
+  {
+    "key": "agent_group_02",
+    "source": "Change recording preferences?",
+    "context": "Compact native chat approval for an immutable app-owned grouped setting plan. Only Allow once/Deny authorizes; chat text and this heading confer no grant. Camera settings means preferences, not permission to change source/send a frame. Recording preferences does not start/stop recording. Assistant provider/model/instructions are sensitive configuration, not coding/internet permissions. Notes/output refers to local saved notes/output preferences. Drawing photo wording is used ONLY when native planning proves an actual photo save side effect, never because saving preferences is generally possible. Exact normalized changes remain in collapsed Details. Questions must stay natural and precise; preserve question semantics."
+  },
+  {
+    "key": "agent_group_03",
+    "source": "Change Assistant provider, model or instructions?",
+    "context": "Compact native chat approval for an immutable app-owned grouped setting plan. Only Allow once/Deny authorizes; chat text and this heading confer no grant. Camera settings means preferences, not permission to change source/send a frame. Recording preferences does not start/stop recording. Assistant provider/model/instructions are sensitive configuration, not coding/internet permissions. Notes/output refers to local saved notes/output preferences. Drawing photo wording is used ONLY when native planning proves an actual photo save side effect, never because saving preferences is generally possible. Exact normalized changes remain in collapsed Details. Questions must stay natural and precise; preserve question semantics."
+  },
+  {
+    "key": "agent_group_04",
+    "source": "Change notes and output settings?",
+    "context": "Compact native chat approval for an immutable app-owned grouped setting plan. Only Allow once/Deny authorizes; chat text and this heading confer no grant. Camera settings means preferences, not permission to change source/send a frame. Recording preferences does not start/stop recording. Assistant provider/model/instructions are sensitive configuration, not coding/internet permissions. Notes/output refers to local saved notes/output preferences. Drawing photo wording is used ONLY when native planning proves an actual photo save side effect, never because saving preferences is generally possible. Exact normalized changes remain in collapsed Details. Questions must stay natural and precise; preserve question semantics."
+  },
+  {
+    "key": "agent_group_05",
+    "source": "Change drawing settings?",
+    "context": "Compact native chat approval for an immutable app-owned grouped setting plan. Only Allow once/Deny authorizes; chat text and this heading confer no grant. Camera settings means preferences, not permission to change source/send a frame. Recording preferences does not start/stop recording. Assistant provider/model/instructions are sensitive configuration, not coding/internet permissions. Notes/output refers to local saved notes/output preferences. Drawing photo wording is used ONLY when native planning proves an actual photo save side effect, never because saving preferences is generally possible. Exact normalized changes remain in collapsed Details. Questions must stay natural and precise; preserve question semantics."
+  },
+  {
+    "key": "agent_group_06",
+    "source": "Change drawing settings and save a photo?",
+    "context": "Compact native chat approval for an immutable app-owned grouped setting plan. Only Allow once/Deny authorizes; chat text and this heading confer no grant. Camera settings means preferences, not permission to change source/send a frame. Recording preferences does not start/stop recording. Assistant provider/model/instructions are sensitive configuration, not coding/internet permissions. Notes/output refers to local saved notes/output preferences. Drawing photo wording is used ONLY when native planning proves an actual photo save side effect, never because saving preferences is generally possible. Exact normalized changes remain in collapsed Details. Questions must stay natural and precise; preserve question semantics."
+  }
+]

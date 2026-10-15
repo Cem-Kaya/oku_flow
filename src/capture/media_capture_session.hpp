@@ -30,6 +30,9 @@ public:
     std::shared_ptr<CaptureShutdown> shutdown_{std::make_shared<CaptureShutdown>()};
     bool shutdownStarted_{false};
     bool releaseNotified_{false};
+    bool consumerReleaseAcknowledged_{false};
+    std::chrono::steady_clock::time_point stopDeadline_{};
+    std::atomic<bool> retainedForExit_{false};
 
     const std::string& LastError() const { return gpuReadbackError_.empty() ? lastError_ : gpuReadbackError_; }
     const std::string& FormatNotice() const { return formatNotice_; }

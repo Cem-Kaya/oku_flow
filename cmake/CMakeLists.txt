@@ -12,7 +12,33 @@ include(ProjectOptions.cmake)
 
 # Enable CUDA if requested
 if (OKUFLOW_ENABLE_CUDA)
+    set(OKUFLOW_CUDA_TOOLKIT_ROOT "$ENV{OKUFLOW_CUDA_TOOLKIT_ROOT}" CACHE PATH
+        "Explicit OkuFlow CUDA toolkit; use a fresh build directory when changing it")
+    if(OKUFLOW_CUDA_TOOLKIT_ROOT)
+        file(TO_CMAKE_PATH "${OKUFLOW_CUDA_TOOLKIT_ROOT}" OKUFLOW_CUDA_TOOLKIT_ROOT)
+        set(selected_nvcc "${OKUFLOW_CUDA_TOOLKIT_ROOT}/bin/nvcc.exe")
+        if(NOT EXISTS "${selected_nvcc}")
+            message(FATAL_ERROR "CUDA compiler not found: ${selected_nvcc}")
+        endif()
+        if(CMAKE_CUDA_COMPILER)
+            file(TO_CMAKE_PATH "${CMAKE_CUDA_COMPILER}" cached_nvcc)
+            if(NOT cached_nvcc STREQUAL selected_nvcc)
+                message(FATAL_ERROR "CUDA toolkit changed: configure a fresh build directory")
+            endif()
+        endif()
+        set(CMAKE_CUDA_COMPILER "${selected_nvcc}" CACHE FILEPATH "CUDA compiler" FORCE)
+        set(CUDAToolkit_ROOT "${OKUFLOW_CUDA_TOOLKIT_ROOT}")
+    endif()
     enable_language(CUDA)
+    if(NOT OKUFLOW_CUDA_TOOLKIT_ROOT AND NOT CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+        message(FATAL_ERROR
+            "Default OkuFlow builds require CUDA 12.9. Select it with OKUFLOW_CUDA_TOOLKIT_ROOT "
+            "and a fresh build directory. CUDA 13 comparisons require an explicit toolkit root.")
+    endif()
+    include(CudaTargets.cmake)
+    okuflow_select_cuda_architectures("${CMAKE_CUDA_COMPILER_VERSION}" OKUFLOW_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}")
+    message(STATUS "OkuFlow CUDA ${CMAKE_CUDA_COMPILER_VERSION} architectures: ${OKUFLOW_CUDA_ARCHITECTURES}")
     set(CMAKE_CUDA_STANDARD 17)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 else()
@@ -21,6 +47,7 @@ endif()
 
 file(GLOB_RECURSE OKUFLOW_CPP_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/*.cpp)
 list(FILTER OKUFLOW_CPP_SOURCES EXCLUDE REGEX "/src/launcher/")
+list(FILTER OKUFLOW_CPP_SOURCES EXCLUDE REGEX "/src/mcp/")
 if (OKUFLOW_ENABLE_CUDA)
     file(GLOB_RECURSE OKUFLOW_CUDA_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/*.cu)
 endif()
@@ -32,8 +59,17 @@ if (OKUFLOW_ENABLE_CUDA)
     set_target_properties(oku_flow PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RUNTIME_LIBRARY Static
-        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
+        CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}"
     )
+    add_executable(cuda_toolchain_benchmark EXCLUDE_FROM_ALL
+        ${PROJECT_SOURCE_DIR}/tests/cuda_toolchain_benchmark.cu
+        ${PROJECT_SOURCE_DIR}/src/cuda/cuda_kernels.cu
+        ${PROJECT_SOURCE_DIR}/src/cuda/spatial_upscalers.cu)
+    target_include_directories(cuda_toolchain_benchmark PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(cuda_toolchain_benchmark PRIVATE CUDA::cudart_static)
+    set_target_properties(cuda_toolchain_benchmark PROPERTIES
+        AUTOMOC OFF AUTOUIC OFF AUTORCC OFF CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON
+        CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}")
 endif()
 
 target_sources(oku_flow PRIVATE
@@ -67,9 +103,14 @@ target_sources(oku_flow PRIVATE
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/view_transform.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/assistive_runtime.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_app_server_client.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_agent_client.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/common/http_agent_client.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/common/visible_chat_session.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/d3d12/presenter.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/main_window.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/agent_control_panel.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistant_chat_view.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistive_overlay.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/annotation_overlay.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/joystick_overlay.hpp
@@ -234,6 +275,10 @@ if (WIN32)
     endif()
 else()
     message(WARNING "OkuFlow is intended to be built on Windows with CUDA, Qt6, and Direct3D12 support.")
+endif()
+
+if (WIN32)
+    include(Mcp.cmake)
 endif()
 
 if (OKUFLOW_ENABLE_TESTS)

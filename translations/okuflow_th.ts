@@ -2937,5 +2937,313 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow กำลังตรวจสอบการเชื่อมต่อ USB และจะเชื่อมต่อใหม่โดยอัตโนมัติ</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>ปฏิเสธ (&amp;D)</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>ปรับมุมมอง (จำเป็น)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>อนุญาตให้ส่งภาพจากกล้องในรอบนี้</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>อนุญาตให้ส่งรูปภาพในเซสชันนี้</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>อนุญาตให้ Assistant เริ่มและหยุดการบันทึกที่ Assistant เป็นผู้เริ่ม</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>อนุมัติสิทธิ์เข้าถึงชั่วคราว</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>โปรดขออนุญาตก่อนบันทึกการบรรยายหรือบุคคลอื่น</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>บันทึกการดำเนินการของ Assistant</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>การควบคุมโดย Assistant</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>ปิดการควบคุมโดย Assistant แล้ว</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>สถานะการควบคุมโดย Assistant</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>ภาพจากกล้องจะส่งไปยังผู้ให้บริการที่เลือก สิทธิ์นี้จะสิ้นสุดเมื่อจบรอบสนทนาหรือเปลี่ยนแหล่งที่มาของกล้อง</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>ไคลเอนต์ที่เชื่อมต่อ: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>การสนทนาเพื่อควบคุมไม่สามารถใช้อินเทอร์เน็ต เรียกใช้คำสั่งเขียนโค้ด หรือแก้ไขไฟล์ได้ ส่วนอ่านและอธิบายยังทำงานเหมือนเดิม</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>ปิดการควบคุมไว้เป็นค่าเริ่มต้น เมื่อเปิดใช้ Assistant จะปรับมุมมองได้ ภาพจากกล้องและรูปที่ถ่ายต้องได้รับอนุญาตแยกต่างหาก กด Ctrl+Shift+U เพื่อหยุดและเลิกทำ</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>การควบคุม OkuFlow ต้องใช้การสนทนาแยกต่างหาก</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>อาร์กิวเมนต์การดำเนินการที่แน่นอน</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>การควบคุมภายนอกมีอายุสูงสุด 5 นาที และสิ้นสุดหลังไม่มีการใช้งาน 60 วินาที ยกเลิกการเชื่อมต่อไคลเอนต์ MCP หรือเลือกเพิกถอนสิทธิ์เข้าถึงชั่วคราวเพื่อหยุด</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>สิทธิ์การควบคุมภายนอก</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>การควบคุมภายนอก: เหลือ %1 วินาที; อีก %2 วินาทีก่อนหมดเวลาขณะไม่มีการใช้งาน การเปลี่ยนมุมมอง: %3; ภาพจากกล้อง: %4; รูปภาพ: %5</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>การควบคุม MCP ภายนอก</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>สิทธิ์เข้าถึงชั่วคราว</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>ไม่มีสิทธิ์เข้าถึงชั่วคราวที่ใช้งานอยู่</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>ไม่มีไคลเอนต์ภายนอกเชื่อมต่ออยู่</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>การวางแนวและแหล่งที่มาของกล้อง (ห้ามเปลี่ยนระหว่างบันทึก)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>ตรวจสอบสิทธิ์เข้าถึงชั่วคราว</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>เพิกถอนสิทธิ์เข้าถึงชั่วคราว</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>ส่งภาพจากกล้อง (สูงสุด 6 ภาพต่อสิทธิ์หนึ่งรายการ)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>ส่งโดยไม่เปิดการควบคุม</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>เริ่มและหยุดการบันทึกที่ Assistant เป็นผู้เริ่ม (ต้องมีเวลาเหลืออย่างน้อย 30 วินาทีจึงจะเริ่มได้)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>เริ่มการสนทนาเพื่อควบคุม</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>หยุดและเลิกทำ (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>ถ่ายรูป (ภายในจำนวนการดำเนินการที่กำหนดของสิทธิ์เข้าถึงชั่วคราว)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>ทดสอบการรองรับเครื่องมือของปลายทางตอนนี้</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>การทดสอบที่ระบุชัดเจนนี้จะส่งคำขอเครื่องมือจำลองไปยังปลายทางที่กำหนดค่าไว้ โดยจะไม่ส่งภาพจากกล้องหรือเปลี่ยนการตั้งค่า</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>การเปลี่ยนมุมมอง: สูงสุด 60 ครั้งต่อสิทธิ์หนึ่งรายการ ไม่สามารถเพิ่มขอบเขตสิทธิ์ขณะยังมีผลอยู่ ให้เพิกถอนแล้วออกสิทธิ์ใหม่</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>รองรับเครื่องมือที่ปลายทาง: พร้อมใช้งาน</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>รองรับเครื่องมือที่ปลายทาง: ไม่พร้อมใช้งาน</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>กำลังตรวจสอบการรองรับเครื่องมือที่ปลายทาง…</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>การสนทนาใหม่</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>ประวัติ</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>การตั้งค่าผู้ช่วย</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>การเชื่อมต่อผู้ช่วย</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>การสนทนากับผู้ช่วย</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>คำถามถึงผู้ช่วย</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>ประวัติผู้ช่วย</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>รายละเอียด</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>อนุญาตครั้งเดียว (&amp;A)</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>บันทึกกิจกรรม</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>เกี่ยวกับการควบคุม</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>ส่งภาพจากกล้องนี้ไปยังผู้ให้บริการที่เลือกหรือไม่?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>ถ่ายภาพมุมมองนี้หรือไม่?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>เริ่มบันทึกมุมมองนี้หรือไม่?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>หยุดการบันทึกนี้หรือไม่?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>หยุดการบันทึกที่เริ่มเมื่อ %1 หรือไม่?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>ตั้งทิศทางการแสดงภาพจากกล้องเป็นมุม %1° ตามเข็มนาฬิกาหรือไม่?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>เปลี่ยนแหล่งที่มาของกล้องหรือไม่?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>ตรวจสอบการดำเนินการนี้หรือไม่?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>คำขออนุญาต %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>หมดอายุใน %1 วินาที</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>ไม่สามารถดำเนินการตามคำขอให้เสร็จสิ้นได้</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>หยุดคำขอแล้ว</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>อัปเดตมุมมองแล้ว: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>คืนค่าแล้ว: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>ข้ามแล้ว (คงการเปลี่ยนแปลงของผู้ใช้ไว้): %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>บันทึกการตั้งค่าไม่สำเร็จ</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>ดำเนินการเสร็จสิ้นแล้ว</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>ไม่สามารถดำเนินการให้เสร็จสิ้นได้</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>ไม่ได้รับอนุญาตให้ดำเนินการ</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>เปิดใช้งาน</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>อัปเดตประวัติการสนทนาไม่สำเร็จ</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>เปลี่ยนการตั้งค่ากล้องหรือไม่?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>เปลี่ยนการตั้งค่าการบันทึกหรือไม่?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>เปลี่ยนผู้ให้บริการ โมเดล หรือคำสั่งของผู้ช่วยหรือไม่?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>เปลี่ยนการตั้งค่าบันทึกย่อและเอาต์พุตหรือไม่?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>เปลี่ยนการตั้งค่าการวาดหรือไม่?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>เปลี่ยนการตั้งค่าการวาดและบันทึกรูปภาพหรือไม่?</translation>
+        </message>
     </context>
 </TS>

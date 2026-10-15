@@ -14,6 +14,16 @@ class UserDataPathsTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void approvalValidationDoesNotCreateDirectories() {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const auto root=temporary.filePath(QStringLiteral("not-created/captures"));
+        const auto result=UserDataPaths::ValidateRoot(root,temporary.filePath(QStringLiteral("install")),false);
+        QVERIFY(result.ok);
+        QVERIFY(!QFileInfo::exists(temporary.filePath(QStringLiteral("not-created"))));
+        QVERIFY(UserDataPaths::ValidateRoot(root,temporary.filePath(QStringLiteral("install"))).ok);
+        QVERIFY(QFileInfo(root).isDir());
+    }
     void createsStableCategoryAndDateFolders();
     void rejectsApplicationDirectory();
     void rejectsNestedBundleRoot();

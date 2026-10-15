@@ -1,5 +1,6 @@
 // Deterministic preparation completions; no provider, camera, or credentials.
 #include <QFile>
+#include <QBuffer>
 #include <QJsonDocument>
 #include <QNetworkProxy>
 #include <QPointer>
@@ -11,6 +12,7 @@
 #include "okuflow/common/assistive_runtime.hpp"
 #include "okuflow/common/codex_app_server_client.hpp"
 #include <QScopeGuard>
+#include <QThreadPool>
 
 namespace {
 
@@ -112,6 +114,9 @@ private:
         QByteArray oldTemp{qgetenv("TEMP")};
         QByteArray oldTmp{qgetenv("TMP")};
         QByteArray oldScenario{qgetenv("OKUFLOW_FAKE_CODEX_SCENARIO")};
+        QByteArray oldScopedExpectation{qgetenv("OKUFLOW_FAKE_SCENE_EXPECT_RESTRICTED")};
+        QByteArray oldScopedMode{qgetenv("OKUFLOW_FAKE_SCENE_PROFILE_MODE")};
+        QByteArray oldScopedArgs{qgetenv("OKUFLOW_FAKE_SCENE_ARGS_FILE")};
         explicit CodexFixture(const QByteArray& scenario)
         {
             qputenv("TEMP", directory.path().toLocal8Bit());
@@ -124,6 +129,9 @@ private:
             if (oldTmp.isNull()) qunsetenv("TMP"); else qputenv("TMP", oldTmp);
             if (oldScenario.isNull()) qunsetenv("OKUFLOW_FAKE_CODEX_SCENARIO");
             else qputenv("OKUFLOW_FAKE_CODEX_SCENARIO", oldScenario);
+            if(oldScopedExpectation.isNull())qunsetenv("OKUFLOW_FAKE_SCENE_EXPECT_RESTRICTED");else qputenv("OKUFLOW_FAKE_SCENE_EXPECT_RESTRICTED",oldScopedExpectation);
+            if(oldScopedMode.isNull())qunsetenv("OKUFLOW_FAKE_SCENE_PROFILE_MODE");else qputenv("OKUFLOW_FAKE_SCENE_PROFILE_MODE",oldScopedMode);
+            if(oldScopedArgs.isNull())qunsetenv("OKUFLOW_FAKE_SCENE_ARGS_FILE");else qputenv("OKUFLOW_FAKE_SCENE_ARGS_FILE",oldScopedArgs);
         }
         okuflow::AssistiveRuntimeConfig Config() const
         {
@@ -135,6 +143,12 @@ private:
             config.codexInternetEnabled = true;
             config.codexCodingEnabled = true;
             config.codexWorkspaceDirectory = directory.path();
+            return config;
+        }
+        okuflow::AssistiveRuntimeConfig ScopedConfig(const QByteArray& mode={}) const {
+            qputenv("OKUFLOW_FAKE_SCENE_EXPECT_RESTRICTED","1");qputenv("OKUFLOW_FAKE_SCENE_PROFILE_MODE",mode);
+            qputenv("OKUFLOW_FAKE_SCENE_ARGS_FILE",(directory.path()+"/launch.json").toLocal8Bit());
+            auto config=Config();config.codexExecutablePath=QCoreApplication::applicationDirPath()+"/fake_scoped_codex_vision.exe";
             return config;
         }
     };
@@ -177,6 +191,406 @@ private:
         runtime.pendingAssistantNoteImagePath_ = runtime.SaveAnalyzedImageForNotes(image);
     }
 private slots:
+    void scopedSceneHttpIsIndependentAndRevocationDropsLateResult()
+    {
+        QNetworkProxy::setApplicationProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+        QTemporaryDir directory; QVERIFY(directory.isValid());FakeChatEndpoint endpoint;
+        okuflow::AssistiveRuntime runtime;okuflow::AssistiveRuntimeConfig cfg;
+        cfg.aiProvider="openai";cfg.vlmApiUrl=endpoint.Url();cfg.vlmModel="fixture";cfg.notesDirectory=directory.path();runtime.SetConfig(cfg);
+        runtime.ChatSession().SetDraft("shared draft");runtime.SetModes(true);
+        const auto before=runtime.ChatSession().Snapshot();
+        QSignalSpy overlay(&runtime,&okuflow::AssistiveRuntime::OverlayUpdated);
+        QSignalSpy turns(&runtime,&okuflow::AssistiveRuntime::AssistantTurnFinished);
+        bool allowed=true,done=false,success=false;
+        QImage frame(64,64,QImage::Format_ARGB32);frame.fill(Qt::white);
+        QByteArray jpeg;QBuffer buffer(&jpeg);QVERIFY(buffer.open(QIODevice::WriteOnly));QVERIFY(frame.save(&buffer,"JPEG"));buffer.close();
+        endpoint.holdNextResponse=true;
+        QVERIFY(runtime.SubmitScopedScene(jpeg,[&]{return allowed;},[&](bool ok){done=true;success=ok;}));
+        QTRY_COMPARE_WITH_TIMEOUT(endpoint.requests.size(),1,5000);
+        allowed=false;endpoint.ReleaseResponse();
+        QTRY_VERIFY_WITH_TIMEOUT(done,5000);QVERIFY(!success);
+        QCOMPARE(runtime.ChatSession().Snapshot(),before);QCOMPARE(overlay.size(),0);QCOMPARE(turns.size(),0);
+        QVERIFY(runtime.notesFilePath().isEmpty());QVERIFY(runtime.WantsAnalysis());
+        allowed=true;done=false;
+        QVERIFY(runtime.SubmitScopedScene(jpeg,[&]{return allowed;},[&](bool ok){done=true;success=ok;}));
+        QTRY_VERIFY_WITH_TIMEOUT(done,5000);QVERIFY(success);QCOMPARE(overlay.size(),1);QCOMPARE(turns.size(),0);
+        QCOMPARE(runtime.ChatSession().Snapshot(),before);QVERIFY(runtime.WantsAnalysis());
+        const auto request=endpoint.requests.last();QVERIFY(!request.contains("tools"));QVERIFY(!request.contains("functions"));
+        QCOMPARE(FakeChatEndpoint::History(request).size(),0);
+        QTRY_VERIFY_WITH_TIMEOUT(!runtime.HasPendingNotesWrites(),5000);
+        QFile notes(runtime.notesFilePath());QVERIFY(notes.open(QIODevice::ReadOnly));const auto bytes=notes.readAll();
+        QCOMPARE(bytes.count("answer 2"),2); // Single body and collapsed preview in one section.
+        QVERIFY(!QDir(directory.path()+"/images").exists()); // Frame-only grant never authorizes persistent photos.
+        QCOMPARE(QDir(directory.path()).entryList({"*.jpg","*.png"},QDir::Files).size(),0);
+        notes.close();runtime.CancelScopedScene();QVERIFY(runtime.WantsAnalysis());
+        QCOMPARE(runtime.ChatSession().Snapshot(),before);
+        done=false;allowed=false;
+        QVERIFY(!runtime.SubmitScopedScene("fixture-jpeg",[&]{return allowed;},[&](bool){done=true;}));
+        QVERIFY(!done);QCOMPARE(endpoint.requests.size(),2);
+    }
+
+    void scopedSceneCancelAndConfigurationRetireOnlyOwnedLane()
+    {
+        QNetworkProxy::setApplicationProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+        FakeChatEndpoint endpoint;okuflow::AssistiveRuntime runtime;okuflow::AssistiveRuntimeConfig cfg;
+        cfg.aiProvider="openai";cfg.vlmApiUrl=endpoint.Url();cfg.vlmModel="fixture";runtime.SetConfig(cfg);
+        const auto before=runtime.ChatSession().Snapshot();
+        QSignalSpy overlay(&runtime,&okuflow::AssistiveRuntime::OverlayUpdated);
+        int completions=0;bool success=true;
+        endpoint.holdNextResponse=true;
+        QVERIFY(runtime.SubmitScopedScene("jpeg",[]{return true;},[&](bool ok){++completions;success=ok;}));
+        QTRY_COMPARE_WITH_TIMEOUT(endpoint.requests.size(),1,5000);
+        runtime.CancelScopedScene();QCOMPARE(completions,1);QVERIFY(!success);endpoint.ReleaseResponse();
+        QTest::qWait(30);QCOMPARE(completions,1);QCOMPARE(overlay.size(),0);
+        endpoint.holdNextResponse=true;
+        QVERIFY(runtime.SubmitScopedScene("jpeg",[]{return true;},[&](bool ok){++completions;success=ok;}));
+        QTRY_COMPARE_WITH_TIMEOUT(endpoint.requests.size(),2,5000);
+        cfg.vlmModel="replacement";runtime.SetConfig(cfg);endpoint.ReleaseResponse();
+        QTest::qWait(30);QCOMPARE(completions,2);QVERIFY(!success);QCOMPARE(overlay.size(),0);
+        QCOMPARE(runtime.ChatSession().Snapshot(),before);
+        QVERIFY(!runtime.SubmitScopedScene(QByteArray(256*1024+1,'x'),[]{return true;},{}));
+    }
+
+    void scopedCodexGuardIsCheckedAfterInitialization()
+    {
+        CodexFixture fixture("vision-lifecycle-hold-start");
+        okuflow::AssistiveRuntime runtime;runtime.SetConfig(fixture.ScopedConfig());
+        const auto before=runtime.ChatSession().Snapshot();
+        bool allowed=true,done=false,success=true;
+        QVERIFY(runtime.SubmitScopedScene("fixture-jpeg",[&]{return allowed;},[&](bool ok){done=true;success=ok;}));
+        QSignalSpy state(runtime.scopedSceneCodex_.get(),&okuflow::CodexAppServerClient::ServerStateChanged);
+        auto held=[&]{for(const auto& row:state)if(row.at(1).toString()=="held opening")return true;return false;};
+        QTRY_VERIFY_WITH_TIMEOUT(held(),5000);
+        allowed=false;
+        runtime.scopedSceneCodex_->RefreshAccount();
+        QTRY_VERIFY_WITH_TIMEOUT(done,5000);QVERIFY(!success);
+        QCOMPARE(runtime.ChatSession().Snapshot(),before);QVERIFY(runtime.notesFilePath().isEmpty());
+    }
+
+    void scopedCodexUsesTemporaryRestrictedThreadDespiteOrdinaryOptins()
+    {
+        CodexFixture fixture("explain-threads");
+        okuflow::AssistiveRuntime runtime;runtime.SetConfig(fixture.ScopedConfig());
+        const auto before=runtime.ChatSession().Snapshot();
+        QSignalSpy overlay(&runtime,&okuflow::AssistiveRuntime::OverlayUpdated);
+        QSignalSpy turns(&runtime,&okuflow::AssistiveRuntime::AssistantTurnFinished);
+        bool done=false,success=false;
+        QVERIFY(runtime.SubmitScopedScene("fixture-jpeg",[]{return true;},[&](bool ok){done=true;success=ok;}));
+        QTRY_VERIFY_WITH_TIMEOUT(done,5000);QVERIFY(success);QCOMPARE(overlay.size(),1);
+        QCOMPARE(overlay.last().at(1).toString(),QString("tmp_1 explain first"));
+        QCOMPARE(turns.size(),0);QCOMPARE(runtime.ChatSession().Snapshot(),before);QVERIFY(runtime.ExplainConversationId().isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(!runtime.HasPendingNotesWrites(),5000);
+        QFile notes(runtime.notesFilePath());QVERIFY(notes.open(QIODevice::ReadOnly));QCOMPARE(notes.readAll().count("<div class=\"note-body\">"),1);
+        QFile proof(fixture.directory.path()+"/launch.json");QVERIFY(proof.open(QIODevice::ReadOnly));const auto args=proof.readAll();
+        QVERIFY(args.contains("mcp_servers.fixture-private.enabled=false"));QVERIFY(args.contains("shell_tool"));QVERIFY(!args.contains("fixture-secret"));
+    }
+
+    void scopedCodexPreflightFailsClosed_data() {
+        QTest::addColumn<QByteArray>("mode");
+        QTest::newRow("version")<<QByteArray("bad-version");QTest::newRow("features")<<QByteArray("bad-features");QTest::newRow("inventory")<<QByteArray("bad-mcp");
+    }
+    void scopedCodexPreflightFailsClosed() {
+        QFETCH(QByteArray,mode);CodexFixture fixture("explain-threads");
+        okuflow::AssistiveRuntime runtime;runtime.SetConfig(fixture.ScopedConfig(mode));
+        bool done=false,success=true;QSignalSpy overlay(&runtime,&okuflow::AssistiveRuntime::OverlayUpdated);
+        const auto before=runtime.ChatSession().Snapshot();
+        QVERIFY(runtime.SubmitScopedScene("jpeg",[]{return true;},[&](bool ok){done=true;success=ok;}));
+        QTRY_VERIFY_WITH_TIMEOUT(done,5000);QVERIFY(!success);QCOMPARE(overlay.size(),0);
+        QVERIFY(!QFileInfo::exists(fixture.directory.path()+"/launch.json"));
+        QCOMPARE(runtime.ChatSession().Snapshot(),before);QVERIFY(runtime.notesFilePath().isEmpty());
+    }
+    void ordinaryCodexLaunchDoesNotAcquireScopedProfile() {
+        CodexFixture fixture("explain-threads");auto cfg=fixture.ScopedConfig();
+        qputenv("OKUFLOW_FAKE_SCENE_EXPECT_RESTRICTED","0");
+        okuflow::CodexAppServerClient client;
+        client.Configure(cfg.codexExecutablePath,cfg.codexModel,cfg.codexReasoningEffort,{},false,false,{});
+        QTemporaryFile image;QVERIFY(image.open());image.setAutoRemove(false);const auto path=image.fileName();image.close();
+        QSignalSpy finished(&client,&okuflow::CodexAppServerClient::TurnFinished);
+        client.RequestVisionTurn("Describe",path,{},false);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(),1,5000);QVERIFY(finished.first().at(3).toString().isEmpty());
+        QFile proof(fixture.directory.path()+"/launch.json");QVERIFY(proof.open(QIODevice::ReadOnly));
+        QCOMPARE(QJsonDocument::fromJson(proof.readAll()).array(),QJsonArray({"app-server","--listen","stdio://"}));
+    }
+
+    void sharedExplainHttpFollowupReadAndNotesOwnership()
+    {
+        QNetworkProxy::setApplicationProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+        QTemporaryDir directory; QVERIFY(directory.isValid()); FakeChatEndpoint endpoint;
+        okuflow::AssistiveRuntime runtime; okuflow::AssistiveRuntimeConfig config;
+        config.aiProvider="openai"; config.vlmApiUrl=endpoint.Url(); config.vlmModel="fixture"; config.notesDirectory=directory.path();
+        runtime.SetConfig(config);
+        QVERIFY(RunEndpointRequest(runtime,endpoint,false));
+        const auto beforeRead=runtime.ChatSession().Snapshot();
+        QCOMPARE(beforeRead["messages"].toArray().size(),2);
+        const auto previewBytes=QByteArray::fromBase64(beforeRead["messages"].toArray()[0].toObject()["imagePreviewJpeg"].toString().toLatin1());
+        const auto preview=QImage::fromData(previewBytes,"JPG");
+        QVERIFY(!preview.isNull());QVERIFY(preview.width()<=320 && preview.height()<=320);
+        QCOMPARE(preview.width()*3,preview.height()*4);
+        QVERIFY(RunEndpointRequest(runtime,endpoint,true));
+        QCOMPARE(runtime.ChatSession().Snapshot(),beforeRead);
+        QVERIFY(runtime.PrepareChatTurn("Why is it dark?",okuflow::ChatBackendKind::Explain));
+        runtime.SubmitExplainFollowup("Why is it dark?");
+        QTRY_VERIFY_WITH_TIMEOUT(!runtime.IsBusy() && !runtime.ChatSession().Busy(),5000);
+        QCOMPARE(endpoint.requests.size(),3);
+        const auto request=endpoint.requests.last(); QVERIFY(!request.contains("tools")); QVERIFY(!request.contains("functions"));
+        QCOMPARE(FakeChatEndpoint::History(request),QStringList{"answer 1"});
+        for(const auto value:request["messages"].toArray()) for(const auto part:value.toObject()["content"].toArray())
+            QVERIFY(part.toObject()["type"].toString()!="image_url");
+        const auto rows=runtime.ChatSession().Snapshot()["messages"].toArray(); QCOMPARE(rows.size(),4);
+        QVERIFY(!rows[2].toObject().contains("imagePreviewJpeg"));
+        QCOMPARE(rows[2].toObject()["text"].toString(),"Why is it dark?"); QCOMPARE(rows[3].toObject()["text"].toString(),"answer 3");
+        QSignalSpy overlay(&runtime,&okuflow::AssistiveRuntime::OverlayUpdated);
+        runtime.RefreshOverlay(); QVERIFY(!overlay.isEmpty());
+        QVERIFY(!overlay.last()[1].toString().contains("answer 3"));
+        QTRY_VERIFY_WITH_TIMEOUT(!runtime.HasPendingNotesWrites(),5000);
+        QFile notes(runtime.notesFilePath()); QVERIFY(notes.open(QIODevice::ReadOnly)); const auto html=notes.readAll();
+        QCOMPARE(html.count("<div class=\"note-body\">"),3);
+        QVERIFY(html.contains("answer 1")); QVERIFY(html.contains("answer 2")); QVERIFY(html.contains("answer 3"));
+    }
+    void controlFramePreviewIsBoundedAndRejectsRetiredTickets()
+    {
+        okuflow::AssistiveRuntime runtime;
+        QImage frame(800,600,QImage::Format_RGB32);frame.fill(Qt::green);
+        QByteArray jpeg;QBuffer buffer(&jpeg);QVERIFY(buffer.open(QIODevice::WriteOnly));
+        QVERIFY(frame.save(&buffer,"JPG"));
+        QVERIFY(runtime.PrepareChatTurn("Describe",okuflow::ChatBackendKind::Agent));
+        QVERIFY(runtime.BeginControlAnswer("Describe",{}));
+        int continuations=0;
+        runtime.PrepareControlImagePreview(jpeg,[&] {++continuations;});
+        QTRY_COMPARE(continuations,1);
+        const auto user=runtime.ChatSession().Snapshot()["messages"].toArray()[0].toObject();
+        const auto bytes=QByteArray::fromBase64(user["imagePreviewJpeg"].toString().toLatin1());
+        QVERIFY(bytes.size()<=64*1024);
+        const auto preview=QImage::fromData(bytes,"JPG");QVERIFY(!preview.isNull());
+        QCOMPARE(preview.size(),QSize(320,240));
+        QVERIFY(!QJsonDocument(runtime.ChatSession().TextContext()).toJson().contains("imagePreviewJpeg"));
+        runtime.CompleteControlAnswer({}, {},"Done",{},false);
+        QVERIFY(runtime.PrepareChatTurn("Old turn",okuflow::ChatBackendKind::Agent));
+        QVERIFY(runtime.BeginControlAnswer("Old turn",{}));
+        runtime.PrepareControlImagePreview(jpeg,[&] {++continuations;});
+        // Retire the ticket before delivering the queued result. It cannot
+        // update or start a different turn even if its worker already finished.
+        runtime.imagePreparationPool_->waitForDone();
+        runtime.CompleteControlAnswer({}, {},{},"canceled",true);
+        runtime.ResetVisibleChat();
+        QVERIFY(runtime.PrepareChatTurn("New turn",okuflow::ChatBackendKind::Agent));
+        QVERIFY(runtime.BeginControlAnswer("New turn",{}));
+        QCoreApplication::processEvents();
+        QCOMPARE(continuations,1);
+        QVERIFY(!runtime.ChatSession().Snapshot()["messages"].toArray()[0].toObject().contains("imagePreviewJpeg"));
+        runtime.PrepareControlImagePreview("invalid JPEG",[&] {++continuations;});
+        QTRY_COMPARE(continuations,2);
+        QVERIFY(!runtime.ChatSession().Snapshot()["messages"].toArray()[0].toObject().contains("imagePreviewJpeg"));
+        runtime.CompleteControlAnswer({}, {},"Done",{},false);
+    }
+    void sharedChatControlStreamingHasOneAuthoritativeAnswer()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        okuflow::AssistiveRuntime runtime; auto config=okuflow::AssistiveRuntimeConfig{};
+        config.aiProvider="openai"; config.notesDirectory=directory.path(); runtime.SetConfig(config);
+        QVERIFY(runtime.PrepareChatTurn("Increase contrast",okuflow::ChatBackendKind::Agent));
+        QVERIFY(runtime.BeginControlAnswer("Increase contrast",{}));
+        runtime.ControlAnswerStarted("private-agent-id","turn-1"); runtime.ControlAnswerDelta("private-agent-id","turn-1","partial");
+        runtime.CompleteControlAnswer("private-agent-id","turn-1","Contrast increased",{},false);
+        runtime.CompleteControlAnswer("private-agent-id","turn-1","duplicate",{},false);
+        const auto rows=runtime.ChatSession().Snapshot()["messages"].toArray(); QCOMPARE(rows.size(),2);
+        QCOMPARE(rows[1].toObject()["text"].toString(),"Contrast increased");
+        QVERIFY(!QJsonDocument(runtime.ChatSession().TextContext()).toJson().contains("private-agent-id"));
+        QTRY_VERIFY_WITH_TIMEOUT(!runtime.HasPendingNotesWrites(),5000);
+        QFile notes(runtime.notesFilePath()); QVERIFY(notes.open(QIODevice::ReadOnly)); const auto html=notes.readAll();
+        QCOMPARE(html.count("<div class=\"note-body\">"),1);
+        QVERIFY(html.contains("Contrast increased"));
+        QVERIFY(!html.contains("duplicate"));
+    }
+    void sharedChatResetRejectsHeldEndpointAnswer()
+    {
+        QNetworkProxy::setApplicationProxy(QNetworkProxy(QNetworkProxy::NoProxy));
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        FakeChatEndpoint endpoint; endpoint.holdNextResponse=true;
+        okuflow::AssistiveRuntime runtime; okuflow::AssistiveRuntimeConfig config;
+        config.aiProvider="openai";config.vlmApiUrl=endpoint.Url();config.vlmModel="fixture";config.notesDirectory=directory.path();runtime.SetConfig(config);
+        QVERIFY(runtime.PrepareChatTurn("old question",okuflow::ChatBackendKind::Explain)); runtime.SubmitExplainFollowup("old question");
+        QTRY_COMPARE_WITH_TIMEOUT(endpoint.requests.size(),1,5000);
+        runtime.ResetVisibleChat(); endpoint.ReleaseResponse();
+        QTRY_VERIFY_WITH_TIMEOUT(!runtime.IsBusy(),5000);
+        QVERIFY(runtime.ChatSession().Snapshot()["messages"].toArray().isEmpty()); QVERIFY(runtime.ChatSession().TextContext().isEmpty());
+    }
+    void settingsRetirePreparedCaptureAndPermitNextAdmission()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        FakeChatEndpoint endpoint; okuflow::AssistiveRuntime runtime; okuflow::AssistiveRuntimeConfig config;
+        config.aiProvider="openai";config.vlmApiUrl=endpoint.Url();config.vlmModel="old";config.notesDirectory=directory.path();runtime.SetConfig(config);
+        QVERIFY(runtime.PrepareChatTurn("Explain",okuflow::ChatBackendKind::Explain,okuflow::ChatRequestOrigin::ExplainButton));
+        config.vlmModel="new";runtime.SetConfig(config);
+        QVERIFY(!runtime.HasChatTurn()); QVERIFY(!runtime.ChatSession().Busy());
+        QVERIFY(runtime.PrepareChatTurn("new question",okuflow::ChatBackendKind::Explain));
+        runtime.SubmitExplainFollowup("new question");
+        QTRY_VERIFY_WITH_TIMEOUT(!runtime.IsBusy()&&!runtime.ChatSession().Busy(),5000);
+        QCOMPARE(endpoint.requests.size(),1); QVERIFY(FakeChatEndpoint::History(endpoint.requests.first()).isEmpty());
+        QCOMPARE(endpoint.requests.first()["model"].toString(),"new");
+    }
+    void logicalHistoryRestoreNeverReplaysProviderNotesOrAttachment()
+    {
+        QTemporaryDir directory;QVERIFY(directory.isValid());FakeChatEndpoint endpoint;
+        okuflow::AssistiveRuntime runtime;okuflow::AssistiveRuntimeConfig config;
+        config.aiProvider="openai";config.vlmApiUrl=endpoint.Url();config.vlmModel="fixture";config.notesDirectory=directory.path();runtime.SetConfig(config);
+        QVERIFY(RunEndpointRequest(runtime,endpoint,false));
+        QTRY_VERIFY_WITH_TIMEOUT(!runtime.HasPendingNotesWrites(),5000);
+        QFile before(runtime.notesFilePath());QVERIFY(before.open(QIODevice::ReadOnly));const auto oldBytes=before.readAll();before.close();
+        auto rows=runtime.ChatSession().Snapshot()["messages"].toArray();runtime.ChatSession().SetAttachCurrentView(true);
+        QSignalSpy writes(&runtime,&okuflow::AssistiveRuntime::NotesWriteFinished);
+        runtime.ResetVisibleChat();runtime.ChatSession().RestoreLogical(QString(32,'b'),rows,"saved draft");
+        QCoreApplication::processEvents();QVERIFY(!runtime.HasPendingNotesWrites());QCOMPARE(writes.size(),0);
+        QFile after(runtime.notesFilePath());QVERIFY(after.open(QIODevice::ReadOnly));QCOMPARE(after.readAll(),oldBytes);
+        QCOMPARE(endpoint.requests.size(),1);QVERIFY(!runtime.ChatSession().AttachCurrentView());
+        QVERIFY(runtime.ChatSession().BackendThread(okuflow::ChatBackendKind::Agent).isEmpty());
+        QVERIFY(runtime.ChatSession().BackendThread(okuflow::ChatBackendKind::Explain).isEmpty());
+    }
+    void explainTextFollowupRetainsThreadWithoutCodingPermissions()
+    {
+        CodexFixture fixture("explain-threads"); QVERIFY(fixture.directory.isValid());
+        okuflow::AssistiveRuntime runtime; runtime.SetConfig(fixture.Config());
+        const auto first=RunCameraTurn(runtime,false); QVERIFY(!first.isEmpty()); const auto thread=runtime.ExplainConversationId();
+        QVERIFY(runtime.PrepareChatTurn("Text-only follow-up",okuflow::ChatBackendKind::Explain));
+        QSignalSpy finished(&runtime,&okuflow::AssistiveRuntime::AssistantTurnFinished);
+        runtime.SubmitExplainFollowup("Text-only follow-up");
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(),1,5000); QCOMPARE(finished.first()[3].toString(),QString());
+        QCOMPARE(finished.first()[0].toString(),thread); QVERIFY(!finished.first()[5].toBool());
+        QCOMPARE(runtime.ChatSession().Snapshot()["messages"].toArray().size(),4);
+    }
+    void savedAssistantForcesReadOnlyWhenGlobalCodingIsOn()
+    {
+        CodexFixture fixture("explain-threads"); QVERIFY(fixture.directory.isValid());
+        auto config=fixture.Config(); config.codexInternetEnabled=false;
+        okuflow::AssistiveRuntime runtime; runtime.SetConfig(config);
+        QImage frame(128,96,QImage::Format_ARGB32); frame.fill(Qt::white);
+        QVERIFY(runtime.PrepareChatTurn("Existing assistant",okuflow::ChatBackendKind::Assistant));
+        QSignalSpy created(&runtime,&okuflow::AssistiveRuntime::AssistantConversationCreated);
+        QSignalSpy finished(&runtime,&okuflow::AssistiveRuntime::AssistantTurnFinished);
+        runtime.SubmitAssistantPrompt("Existing assistant",{},frame.constBits(),frame.width(),frame.height(),true,false);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(),1,5000); QCOMPARE(finished.first()[3].toString(),QString());
+        QCOMPARE(created.size(),1); QCOMPARE(created.first()[0].toJsonObject()["kind"].toString(),"assistant");
+    }
+    void explainExplicitlyResetsCodingNewAndStillUsesRestrictedBackend()
+    {
+        CodexFixture fixture("explain-threads"); QVERIFY(fixture.directory.isValid());
+        auto config=fixture.Config(); okuflow::AssistiveRuntime runtime; runtime.SetConfig(config);
+        runtime.ResetVisibleChat(okuflow::VisibleChatSession::NewConversationKind(true,false,config.codexCodingEnabled));
+        QCOMPARE(runtime.ChatSession().Snapshot()["kind"].toString(),"coding");
+        const auto turn=RunCameraTurn(runtime,false); QVERIFY(!turn.isEmpty());
+        QCOMPARE(turn[3].toString(),QString()); QVERIFY(!turn[5].toBool());
+        QCOMPARE(runtime.ChatSession().Snapshot()["kind"].toString(),"explain");
+        QCOMPARE(runtime.ChatSession().Snapshot()["messages"].toArray().size(),2);
+        runtime.ResetVisibleChat(okuflow::VisibleChatSession::NewConversationKind(true,true,true));
+        QCOMPARE(runtime.ChatSession().Snapshot()["kind"].toString(),"explain");
+        QVERIFY(runtime.PrepareChatTurn("Control request",okuflow::ChatBackendKind::Agent));
+        QCOMPARE(runtime.ChatSession().Snapshot()["kind"].toString(),"explain");
+        runtime.FailPreparedChat("fixture canceled");
+    }
+    void ordinaryPermissionMaskCannotWidenWhileOpening()
+    {
+        CodexFixture fixture("explain-threads"); QVERIFY(fixture.directory.isValid());
+        const auto config=fixture.Config(); okuflow::CodexAppServerClient client;
+        client.Configure(config.codexExecutablePath,{},{},{},false,false,fixture.directory.path());
+        QSignalSpy finished(&client,&okuflow::CodexAppServerClient::TurnFinished);
+        QSignalSpy created(&client,&okuflow::CodexAppServerClient::ConversationCreated);
+        client.RequestVisionTurn("Text-only follow-up",{}, {},true,false,true);
+        // No event dispatch has occurred: the admitted request is still opening.
+        client.Configure(config.codexExecutablePath,{},{},{},true,true,fixture.directory.path());
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(),1,5000);
+        QCOMPARE(finished.first()[3].toString(),QString());
+        QCOMPARE(created.size(),1); QCOMPARE(created.first()[0].toJsonObject()["kind"].toString(),"assistant");
+    }
+    void codingAndAssistantMasksStartDistinctConversationKinds()
+    {
+        CodexFixture fixture("permission-mask"); QVERIFY(fixture.directory.isValid());
+        const auto config=fixture.Config(); okuflow::CodexAppServerClient client;
+        client.Configure(config.codexExecutablePath,{},{},{},false,true,fixture.directory.path());
+        QSignalSpy finished(&client,&okuflow::CodexAppServerClient::TurnFinished);
+        QSignalSpy created(&client,&okuflow::CodexAppServerClient::ConversationCreated);
+        client.RequestVisionTurn("Coding turn",{}, {},true,false,true);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(),1,5000); QCOMPARE(finished.first()[3].toString(),QString());
+        QCOMPARE(created.size(),1); QCOMPARE(created.first()[0].toJsonObject()["kind"].toString(),"coding");
+        const auto codingId=created.first()[0].toJsonObject()["id"].toString();
+        client.Configure(config.codexExecutablePath,{},{},{},false,false,fixture.directory.path());
+        client.RequestVisionTurn("New assistant turn",{}, {},true,false,true);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(),2,5000); QCOMPARE(finished.last()[3].toString(),QString());
+        QCOMPARE(created.size(),2); QCOMPARE(created.last()[0].toJsonObject()["kind"].toString(),"assistant");
+        QVERIFY(created.last()[0].toJsonObject()["id"].toString()!=codingId);
+    }
+
+    void periodicDisableKeepsExplicitUserPreparation()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        okuflow::AssistiveRuntime runtime;
+        runtime.config_.notesDirectory = directory.path();
+        runtime.vlmEnabled_ = true;
+        runtime.vlmForcedVisible_ = true;
+        runtime.vlmText_ = QStringLiteral("retained user answer");
+        Begin(runtime, QStringLiteral("explicit user request"));
+        const auto generation = runtime.vlmPreparationGeneration_;
+        const auto image = runtime.pendingAssistantNoteImagePath_;
+        QSignalSpy finished(&runtime, &okuflow::AssistiveRuntime::AssistantTurnFinished);
+        runtime.SetPeriodicAnalysisEnabled(false);
+        QVERIFY(!runtime.WantsAnalysis());
+        QVERIFY(runtime.vlmPreparationPending_);
+        QCOMPARE(runtime.vlmPreparationGeneration_, generation);
+        QCOMPARE(runtime.pendingAssistantNoteImagePath_, image);
+        QVERIFY(runtime.noteImages_.contains(image));
+        QCOMPARE(runtime.vlmText_, QStringLiteral("retained user answer"));
+        QVERIFY(runtime.vlmForcedVisible_);
+        QCOMPARE(finished.count(), 0);
+        runtime.StopAssistant();
+        QCOMPARE(finished.count(), 1);
+    }
+
+    void controlAnswerHasOneOwnerAndOneTerminal()
+    {
+        okuflow::AssistiveRuntime runtime;
+        QSignalSpy finished(&runtime, &okuflow::AssistiveRuntime::AssistantTurnFinished);
+        int stops = 0;
+        QVERIFY(runtime.BeginControlAnswer(QStringLiteral("zoom in"), [&] {
+            ++stops;
+            runtime.CompleteControlAnswer("agent-thread", "agent-turn", {}, "canceled", true);
+        }));
+        QVERIFY(runtime.IsBusy());
+        QVERIFY(!runtime.BeginControlAnswer(QStringLiteral("replacement"), {}));
+        runtime.SetPeriodicAnalysisEnabled(false);
+        QVERIFY(runtime.IsBusy());
+        QCOMPARE(stops, 0);
+        runtime.ControlAnswerDelta("agent-thread", "agent-turn", "working");
+        QCOMPARE(runtime.vlmText_, "working");
+        runtime.StopAssistant();
+        QCOMPARE(stops, 1);
+        QCOMPARE(finished.size(), 1);
+        QVERIFY(!runtime.IsBusy());
+        runtime.CompleteControlAnswer("agent-thread", "agent-turn", "late", {}, false);
+        runtime.ControlAnswerDelta("agent-thread", "agent-turn", "late");
+        QCOMPARE(finished.size(), 1);
+        QVERIFY(runtime.vlmText_.isEmpty());
+    }
+    void periodicDisableCancelsOnlyPeriodicPreparation()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        okuflow::AssistiveRuntime runtime;
+        runtime.config_.notesDirectory = directory.path();
+        runtime.vlmEnabled_ = true;
+        runtime.visionRequestPeriodic_ = true;
+        runtime.vlmPreparationPending_ = true;
+        QImage frame(8, 8, QImage::Format_ARGB32);
+        frame.fill(Qt::white);
+        const auto image = runtime.SaveAnalyzedImageForNotes(frame);
+        runtime.pendingVlmNoteImagePath_ = image;
+        const auto generation = runtime.vlmPreparationGeneration_;
+        QSignalSpy finished(&runtime, &okuflow::AssistiveRuntime::AssistantTurnFinished);
+        runtime.SetPeriodicAnalysisEnabled(false);
+        QVERIFY(!runtime.vlmPreparationPending_);
+        QCOMPARE(runtime.vlmPreparationGeneration_, generation + 1);
+        QVERIFY(!runtime.noteImages_.contains(image));
+        QCOMPARE(finished.count(), 0); // No fabricated persistent user completion.
+    }
     void staleHistory_data()
     {
         QTest::addColumn<bool>("newTurn");
@@ -417,6 +831,8 @@ private slots:
 
         const QList<QVariant> explainA = RunCameraTurn(runtime, false);
         QVERIFY(!explainA.isEmpty());
+        const auto previewBytes=QByteArray::fromBase64(runtime.ChatSession().Snapshot()["messages"].toArray()[0].toObject()["imagePreviewJpeg"].toString().toLatin1());
+        QVERIFY(!QImage::fromData(previewBytes,"JPG").isNull());
         QCOMPARE(explainA.at(3).toString(), QString());
         QVERIFY(!explainA.at(5).toBool()); // Not an Assistant chat turn.
         const QString explainThread = explainA.at(0).toString();

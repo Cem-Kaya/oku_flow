@@ -3,6 +3,8 @@
 #ifdef _WIN32
 
 #include "okuflow/common/yuv_color.hpp"
+#include "okuflow/common/async_cleanup.hpp"
+#include "okuflow/common/control_diagnostics.hpp"
 
 #include <wrl/client.h>
 #include <array>
@@ -104,6 +106,12 @@ enum class DisplayColorTransform : int {
 };
 
 struct ProcessingSettings {
+    struct TextStageActivity {
+        bool background{}, adaptive{}, smartSharpen{}, clahe{}, twoColor{};
+        bool hysteresis{}, selectiveSharpen{}, focus{}, glare{};
+        bool pipeline{};
+    };
+    ControlFrameIdentity controlFrame;
     bool enableBlackWhite{false};
     float blackWhiteThreshold{0.5f};
     bool enableZoom{false};             // Apply legacy image zoom in CUDA.
@@ -174,6 +182,24 @@ struct ProcessingSettings {
         enableSelectiveSharpen = false;
         enableFocusDetection = false;
         enableGlareSuppression = false;
+    }
+
+    // A master switch permits its selected refinements; it never forces an
+    // unchecked refinement on. Use this same selection at CUDA dispatch.
+    TextStageActivity TextClarityStages() const {
+        TextStageActivity stages{
+            enableAutoTextClarity && enableBackgroundFlatten,
+            enableAutoTextClarity && enableAdaptiveBinarization,
+            enableAutoTextClarity && enableSmartSharpen,
+            enableAutoTextClarity && enableClahe,
+            enableAutoTextClarity && enableTwoColorText,
+            enableAutoTextClarity && enableTextHysteresis,
+            enableAutoTextClarity && enableSelectiveSharpen,
+            enableAutoTextClarity && enableFocusDetection,
+            enableAutoTextClarity && enableGlareSuppression};
+        stages.pipeline = stages.background || stages.adaptive || stages.smartSharpen ||
+                          stages.clahe || stages.focus || stages.glare;
+        return stages;
     }
 
     float EffectiveViewingMagnification() const {
@@ -279,6 +305,8 @@ public:
     bool PollCaptureCopy();
     // Bounded full-stream drain. False forbids destroying/reusing this surface.
     bool WaitForIdle() noexcept;
+    bool PollIdle() noexcept;
+    std::shared_ptr<AsyncCleanup> BeginCaptureInteropCleanup(std::shared_ptr<void> producerKeepAlive = {}, bool atProcessExit = false);
     const std::string& StabilizerStatus() const { return stabilizerStatus_; }
     float LastStabilizerMs() const { return lastStabilizerMs_; }
 
@@ -289,6 +317,9 @@ public:
     GpuStageTimings LastGpuStageTimings() const {
         return lastGpuStageTimings_;
     }
+    // Nonblocking event query; returns the last completed sample and its exact
+    // provenance. A caller must reject old/mismatched samples for frame decisions.
+    ControlDiagnosticSnapshot ControlDiagnostics();
 
     CudaInteropSurface(const CudaInteropSurface&) = delete;
     CudaInteropSurface& operator=(const CudaInteropSurface&) = delete;
@@ -463,6 +494,8 @@ private:
     float lastStabilizerMs_{-1.0f};
     std::string stabilizerStatus_{"Stabilizer off"};
     int activeStabilizerEngine_{-1};
+    ControlDiagnosticSnapshot controlDiagnostics_, pendingControlDiagnostics_;
+    bool pendingDiagnosticBumpHold_{};
 
     // Raw camera input (NV12/YUY2) + GPU rotation staging.
     unsigned char* deviceRawPlane1_{};
@@ -518,6 +551,8 @@ private:
     bool keystoneTrackingPaused_{};
     bool keystoneSingleStepRequested_{};
     bool keystoneSingleStepInFlight_{};
+    bool keystoneReferenceValid_{};
+    float keystoneLastCornerDelta_{};
 
     // Auto contrast: 256-bin histogram + smoothed lo/hi levels, all device-resident.
     unsigned int* deviceHistogram_{};
@@ -653,10 +688,15 @@ public:
     void AbandonCaptureInterop() noexcept {}
     bool PollCaptureCopy() { return true; }
     bool WaitForIdle() noexcept { return true; }
+    bool PollIdle() noexcept { return true; }
+    std::shared_ptr<AsyncCleanup> BeginCaptureInteropCleanup(std::shared_ptr<void> producerKeepAlive = {}, bool = false) {
+        return AsyncCleanup::Start([producerKeepAlive = std::move(producerKeepAlive)] { return true; });
+    }
     const std::string& StabilizerStatus() const { static std::string dummy; return dummy; }
     float LastStabilizerMs() const { return -1.0f; }
     float LastGpuFrameMs() const { return -1.0f; }
     GpuStageTimings LastGpuStageTimings() const { return {}; }
+    ControlDiagnosticSnapshot ControlDiagnostics() { return {}; }
 
     CudaInteropSurface(const CudaInteropSurface&) = delete;
     CudaInteropSurface& operator=(const CudaInteropSurface&) = delete;

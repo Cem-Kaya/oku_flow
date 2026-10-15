@@ -38,7 +38,8 @@ class AnnotationOverlay final : public QWidget {
 public:
     AnnotationOverlay(QWidget* renderTarget, QWidget* owner);
 
-    void SetActive(bool active);
+    void SetActive(bool active, std::optional<AnnotationTool> initialTool = {}, bool retainInk = false,
+                   bool preserveFocus = false);
     bool IsActive() const noexcept;
     bool HasInk() const noexcept;
     const QVector<AnnotationStroke>& Strokes() const noexcept;
@@ -56,6 +57,8 @@ public:
     bool Dashed() const noexcept;
     QString ShapeKind() const;
     int TextSizePixels() const noexcept;
+    AnnotationTool SelectedTool() const noexcept { return tool_; }
+    void SetTool(AnnotationTool tool, bool preserveFocus = false);
     QVector<QWidget*> FocusTargets() const;
     void SetExcludedWidget(QWidget* widget);
 
@@ -102,8 +105,7 @@ private:
     void UpdateInputRegion();
     bool IsExcluded(const QPoint& position) const;
     void PositionToolbar();
-    void SetTool(AnnotationTool tool);
-    void ShowToolOptions(bool visible);
+    void ShowToolOptions(bool visible, bool preserveFocus = false);
     bool IsOverChrome(const QPoint& position) const;
     QRectF SelectedBoundsInView() const;
     int ScaleHandleAt(const QPointF& viewPoint) const;

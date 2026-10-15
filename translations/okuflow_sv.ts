@@ -2937,5 +2937,313 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow kontrollerar USB-anslutningen och ansluter igen automatiskt.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>&amp;Neka</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>Justera vyn (krävs)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>Tillåt kamerabilder för den här omgången</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>Tillåt foton under den här sessionen</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>Tillåt Assistenten att starta och stoppa inspelningar som den själv har startat</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>Godkänn tillfällig åtkomst</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>Be om tillstånd innan du spelar in en föreläsning eller andra personer.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>Assistentens åtgärdslogg</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>Assistentstyrning</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>Assistentstyrning är av</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>Status för Assistentstyrning</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>Kamerabilder skickas till den valda leverantören. Tillståndet upphör när omgången avslutas eller när kamerakällan ändras.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>Ansluten klient: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>Samtal med styrning kan inte använda internet, kodkommandon eller filändringar. Läs och Förklara fungerar som vanligt.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>Styrning är av som standard. När den aktiveras kan Assistenten justera vyn. Kamerabilder och skärmbilder kräver separata tillstånd. Stoppa styrningen och ångra ändringar med Ctrl+Shift+U.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>Styrning av OkuFlow kräver ett eget samtal.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>Exakta åtgärdsargument</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>Extern styrning varar högst 5 minuter och avslutas efter 60 sekunders inaktivitet. Koppla från MCP-klienten eller välj Återkalla tillfällig åtkomst för att stoppa den.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>Behörigheter för extern styrning</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>Extern styrning: %1 sekunder kvar; tidsgräns för inaktivitet %2 sekunder. Vyändringar: %3; kamerabilder: %4; foton: %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>Extern MCP-styrning</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>Behörigheter för tillfällig åtkomst</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>Ingen aktiv tillfällig åtkomst</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>Ingen extern klient är ansluten</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>Orientering och kamerakälla (aldrig under inspelning)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>Granska behörigheter för tillfällig åtkomst</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>Återkalla tillfällig åtkomst</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>Skicka kamerabilder (högst 6 per åtkomstperiod)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>Skicka utan styrning</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>Starta och stoppa inspelningar som den själv har startat (minst 30 sekunder måste återstå för att starta)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>Starta styrningssamtal</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>Stoppa och ångra (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>Ta foton (inom den tillfälliga åtkomstens åtgärdsgräns)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>Testa slutpunktens verktygsstöd nu</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>Det här uttryckliga testet skickar en syntetisk verktygsbegäran till den konfigurerade slutpunkten. Det skickar inga kamerabilder och ändrar inga inställningar.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>Vyändringar: högst 60 per åtkomstperiod. Behörigheterna kan inte utökas under en åtkomstperiod; återkalla åtkomsten och utfärda en ny.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>Verktygsstöd tillgängligt</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>Verktygsstöd är inte tillgängligt</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>Kontrollerar verktygsstöd...</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>Ny konversation</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>Historik</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>Assistentinställningar</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>Anslutning till Assistenten</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>Samtal med Assistenten</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>Fråga till Assistenten</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>Assistentens historik</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>Detaljer</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>&amp;Tillåt en gång</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>Aktivitetslogg</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>Om styrning</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>Skicka den här kameravyn till den valda leverantören?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>Ta ett foto av den här vyn?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>Starta inspelning av den här vyn?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>Stoppa den här inspelningen?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>Stoppa inspelningen som startade kl. %1?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>Ställa in kamerabildens absoluta rotationsvinkel till %1°?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>Byta kamerakälla?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>Granska den här åtgärden?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>Tillståndsbegäran %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>Går ut om %1 sekunder</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>Begäran kunde inte slutföras.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>Begäran stoppades</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>Vyn har uppdaterats: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>Återställt: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>Lämnades oförändrade: %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>Inställningarna kunde inte sparas.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>Åtgärden slutförd.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>Åtgärden kunde inte slutföras.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>Tillstånd nekades.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>På</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>Det gick inte att uppdatera konversationshistoriken.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>Ändra kamerainställningar?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>Ändra inspelningsalternativ?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>Ändra Assistentens leverantör, modell eller instruktioner?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>Ändra inställningar för anteckningar och lagring?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>Ändra ritinställningar?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>Ändra ritinställningar och spara ett foto?</translation>
+        </message>
     </context>
 </TS>

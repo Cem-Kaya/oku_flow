@@ -45,6 +45,8 @@ public:
     const AssistiveOverlay& Overlay() const;
 
     void SetModes(bool vlmEnabled, bool overlayEnabled);
+    void SetPeriodicAnalysisEnabled(bool enabled);
+    void SetOverlayEnabled(bool enabled);
     void ApplySettings(const settings::AssistiveSettings& settings);
 
     bool WantsPeriodicReadback(bool debugViewEnabled) const;
@@ -70,6 +72,7 @@ private:
     QElapsedTimer analysisTimer_;
     const UserDataPaths* userDataPaths_{};
     bool overlayEnabled_{true};
+    bool periodicEnabled_{};
     bool focusWarningShown_{false};
 };
 

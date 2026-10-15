@@ -172,7 +172,7 @@ QString UserDataPaths::DefaultRoot()
 
 UserDataValidationResult UserDataPaths::ValidateRoot(
     const QString& requestedRoot,
-    const QString& installDirectory)
+    const QString& installDirectory, bool verifyWritable)
 {
     UserDataValidationResult result;
     result.normalizedRoot = requestedRoot.trimmed().isEmpty()
@@ -194,6 +194,7 @@ UserDataValidationResult UserDataPaths::ValidateRoot(
             QStringLiteral("The selected location is a file, not a folder.");
         return result;
     }
+    if(!verifyWritable) {result.ok=true;return result;}
     if (!QDir().mkpath(result.normalizedRoot)) {
         result.error =
             QStringLiteral("OkuFlow could not create the selected folder.");

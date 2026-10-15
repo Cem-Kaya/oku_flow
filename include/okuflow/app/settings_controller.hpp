@@ -22,6 +22,9 @@ public:
 
     const settings::PersistentSettings& Settings() const noexcept;
     settings::PersistentSettings& MutableSettings() noexcept;
+    // Last known valid persisted state, separate from live staging. Missing on
+    // first run until a commit succeeds. Runtime plaintext secrets are omitted.
+    const std::optional<settings::PersistentSettings>& LastCommittedSettings() const noexcept;
 
     // Successful automatic starts initialize index-only legacy profiles once.
     // An existing preferred device survives a temporary fallback.
@@ -45,11 +48,13 @@ private:
     void InitializeDefaults();
     void LoadProtectedSecrets();
     bool PrepareProtectedSecrets();
+    void RememberCommittedSettings(const settings::PersistentSettings& value);
 
     StorageOperations storage_;
     QStringList pendingCredentialRemovals_;
     QString settingsPath_;
     settings::PersistentSettings settings_;
+    std::optional<settings::PersistentSettings> lastCommittedSettings_;
     QString startupNotice_;
     QString lastError_;
     bool protectedSecretReadFailed_{false};

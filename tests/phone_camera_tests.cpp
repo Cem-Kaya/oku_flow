@@ -9,6 +9,8 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QHostAddress>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QScopeGuard>
 #include <QtEndian>
 #include <future>
@@ -17,7 +19,62 @@
 #include <cstring>
 #include <mutex>
 
+namespace okuflow {
+// Capture-only seam: use the real queued record and guarded socket write, with
+// private loopback sockets. No transport Start, device, decoder or adb probe.
+struct PhoneTorchTestAccess {
+    static bool Send(PhoneCameraTransport& transport, QTcpSocket& socket) { return transport.SendPendingTorch(socket); }
+    static auto Take(PhoneCameraTransport& transport) {
+        std::lock_guard lock(transport.mutex_);
+        auto command=transport.pendingTorch_;transport.pendingTorch_.reset();return command;
+    }
+    template<typename Command>
+    static bool SendTaken(PhoneCameraTransport& transport, QTcpSocket& socket, const Command& command) {
+        return command && transport.SendTorchCommand(socket,*command);
+    }
+    static void Acknowledge(PhoneCameraTransport& transport,const QJsonObject& status) { transport.ApplyTorchAcknowledgment(status); }
+    static void Reconnect(PhoneCameraTransport& transport) { transport.RetirePendingTorch(); }
+};
+}
+
 namespace {
+std::int64_t TorchDeadline(int offsetMs=1000) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()+offsetMs;
+}
+struct PrivateTorchSocket {
+    QTcpServer listener;
+    QTcpSocket client;
+    std::unique_ptr<QTcpSocket> peer;
+    bool Open() {
+        if(!listener.listen(QHostAddress::LocalHost,0))return false;
+        client.connectToHost(QHostAddress::LocalHost,listener.serverPort());
+        if(!client.waitForConnected(1000) || !listener.waitForNewConnection(1000))return false;
+        peer.reset(listener.nextPendingConnection());return bool(peer);
+    }
+    static QByteArray Read(QTcpSocket& socket,int size) {
+        QByteArray bytes;
+        while(bytes.size()<size) {
+            bytes+=socket.read(size-bytes.size());
+            if(bytes.size()==size)return bytes;
+            if(!socket.waitForReadyRead(1000))return {};
+        }
+        return bytes;
+    }
+    QJsonObject Request() {
+        const auto header=Read(*peer,8);if(header.size()!=8 || qFromLittleEndian<quint16>(header.constData())!=2)return {};
+        const auto size=qFromLittleEndian<quint32>(header.constData()+4);if(size>65536)return {};
+        return QJsonDocument::fromJson(Read(*peer,int(size))).object();
+    }
+    bool Ack(okuflow::PhoneCameraTransport& transport,bool enabled) {
+        const auto body=QJsonDocument(QJsonObject{{"torchAvailable",true},{"torchEnabled",enabled}}).toJson(QJsonDocument::Compact);
+        QByteArray header(8,0);qToLittleEndian<quint16>(4,header.data());qToLittleEndian<quint32>(quint32(body.size()),header.data()+4);
+        if(peer->write(header+body)!=header.size()+body.size() || (peer->bytesToWrite() && !peer->waitForBytesWritten(1000)))return false;
+        const auto received=Read(client,8);if(received.size()!=8 || qFromLittleEndian<quint16>(received.constData())!=4)return false;
+        const auto status=QJsonDocument::fromJson(Read(client,int(qFromLittleEndian<quint32>(received.constData()+4)))).object();
+        if(status.isEmpty())return false;
+        okuflow::PhoneTorchTestAccess::Acknowledge(transport,status);return true;
+    }
+};
 // Private random port, no bootstrap: these fixtures can never reach a real adb or phone.
 class FakePhoneAdb {
 public:
@@ -284,6 +341,55 @@ struct ScopedOwnedAdbHooks {
 class PhoneCameraTests : public QObject {
     Q_OBJECT
 private slots:
+    void canceledQueuedTorchNeverWrites() {
+        PrivateTorchSocket socket;QVERIFY(socket.Open());okuflow::PhoneCameraTransport transport;
+        const auto token=std::make_shared<std::atomic<bool>>(false);
+        QVERIFY(transport.SetTorch(true,token,TorchDeadline()));token->store(true);
+        QVERIFY(!okuflow::PhoneTorchTestAccess::Send(transport,socket.client));
+        QVERIFY(!socket.peer->waitForReadyRead(25));QCOMPARE(socket.peer->bytesAvailable(),qint64(0));QVERIFY(!transport.TorchEnabled());
+    }
+    void expiredDequeuedTorchNeverWrites() {
+        PrivateTorchSocket socket;QVERIFY(socket.Open());okuflow::PhoneCameraTransport transport;
+        const auto token=std::make_shared<std::atomic<bool>>(false);
+        QVERIFY(transport.SetTorch(true,token,TorchDeadline(40)));
+        const auto command=okuflow::PhoneTorchTestAccess::Take(transport);
+        QTest::qWait(60);
+        QVERIFY(!okuflow::PhoneTorchTestAccess::SendTaken(transport,socket.client,command));
+        QVERIFY(!socket.peer->waitForReadyRead(25));QCOMPARE(socket.peer->bytesAvailable(),qint64(0));QVERIFY(!transport.TorchEnabled());
+    }
+    void nativeTorchSupersedesEvenDequeuedActorCommand() {
+        PrivateTorchSocket socket;QVERIFY(socket.Open());okuflow::PhoneCameraTransport transport;
+        const auto token=std::make_shared<std::atomic<bool>>(false);
+        QVERIFY(transport.SetTorch(true,token,TorchDeadline()));const auto command=okuflow::PhoneTorchTestAccess::Take(transport);
+        transport.SetTorch(false);QVERIFY(token->load());
+        QVERIFY(!okuflow::PhoneTorchTestAccess::SendTaken(transport,socket.client,command));
+        QVERIFY(okuflow::PhoneTorchTestAccess::Send(transport,socket.client));
+        const auto request=socket.Request();QCOMPARE(request["op"].toString(),QString("torch"));QVERIFY(!request["enabled"].toBool());
+        QVERIFY(!socket.peer->waitForReadyRead(25));QCOMPARE(socket.peer->bytesAvailable(),qint64(0));
+    }
+    void torchStateChangesOnlyWhenAcknowledged() {
+        PrivateTorchSocket socket;QVERIFY(socket.Open());okuflow::PhoneCameraTransport transport;
+        const auto token=std::make_shared<std::atomic<bool>>(false);
+        QVERIFY(transport.SetTorch(true,token,TorchDeadline()));QVERIFY(!transport.TorchEnabled());
+        QVERIFY(okuflow::PhoneTorchTestAccess::Send(transport,socket.client));QVERIFY(!transport.TorchEnabled());
+        QVERIFY(socket.Request()["enabled"].toBool());token->store(true);
+        QVERIFY(socket.Ack(transport,true));QVERIFY(transport.TorchAvailable());QVERIFY(transport.TorchEnabled());
+        transport.SetTorch(false);QVERIFY(transport.TorchEnabled());QVERIFY(okuflow::PhoneTorchTestAccess::Send(transport,socket.client));
+        QVERIFY(!socket.Request()["enabled"].toBool());QVERIFY(transport.TorchEnabled());
+        QVERIFY(socket.Ack(transport,false));QVERIFY(!transport.TorchEnabled());
+    }
+    void torchQueueRejectsExpiredCanceledOrUnboundedActorAndRetiresOnRetry() {
+        PrivateTorchSocket socket;QVERIFY(socket.Open());okuflow::PhoneCameraTransport transport;
+        const auto token=std::make_shared<std::atomic<bool>>(false);
+        QVERIFY(!transport.SetTorch(true,token,TorchDeadline(-1)));QVERIFY(!transport.SetTorch(true,token,0));
+        QVERIFY(!transport.SetTorch(true,{},TorchDeadline()));token->store(true);
+        QVERIFY(!transport.SetTorch(true,token,TorchDeadline()));token->store(false);
+        QVERIFY(transport.SetTorch(true,token,TorchDeadline()));const auto command=okuflow::PhoneTorchTestAccess::Take(transport);
+        okuflow::PhoneTorchTestAccess::Reconnect(transport);QVERIFY(token->load());
+        QVERIFY(!okuflow::PhoneTorchTestAccess::SendTaken(transport,socket.client,command));
+        QVERIFY(!socket.peer->waitForReadyRead(25));QCOMPARE(socket.peer->bytesAvailable(),qint64(0));
+        transport.Cancel();QVERIFY(!transport.SetTorch(true,std::make_shared<std::atomic<bool>>(false),TorchDeadline()));
+    }
     void ownedChildStopsExactlyOnStopAndScopeExit() {
         const QString fixture = OwnedChildFixturePath();
         QVERIFY2(!fixture.isEmpty() && QFile::exists(fixture), "Owned child fixture must be built");

@@ -1,5 +1,6 @@
 #include "okuflow/app/settings_controller.hpp"
 #include "okuflow/app/protected_secret_store.hpp"
+#include "okuflow/app/app_language.hpp"
 
 #include <QDateTime>
 #include <QFile>
@@ -56,6 +57,7 @@ SettingsController::SettingsController(QString settingsPath, StorageOperations s
     const settings::LoadResult primary = settings::LoadDetailed(settingsPath_);
     if (primary.status == settings::LoadStatus::Loaded && primary.settings) {
         settings_ = *primary.settings;
+        RememberCommittedSettings(settings_);
         rewriteMigratedSettings = primary.migrationApplied;
     } else if (primary.status == settings::LoadStatus::Missing) {
         // First run has no backup. A backup without its primary means an
@@ -64,6 +66,7 @@ SettingsController::SettingsController(QString settingsPath, StorageOperations s
         const settings::LoadResult backup = settings::LoadDetailed(backupPath);
         if (backup.status == settings::LoadStatus::Loaded && backup.settings) {
             settings_ = *backup.settings;
+            RememberCommittedSettings(settings_);
             restoreBackupAfterSecretLoad = true;
             rewriteMigratedSettings = backup.migrationApplied;
             startupNotice_ = QStringLiteral(
@@ -89,6 +92,7 @@ SettingsController::SettingsController(QString settingsPath, StorageOperations s
         const settings::LoadResult backup = settings::LoadDetailed(backupPath);
         if (backup.status == settings::LoadStatus::Loaded && backup.settings) {
             settings_ = *backup.settings;
+            RememberCommittedSettings(settings_);
             restoreBackupAfterSecretLoad = true;
             rewriteMigratedSettings = backup.migrationApplied;
             startupNotice_ =
@@ -110,13 +114,16 @@ SettingsController::SettingsController(QString settingsPath, StorageOperations s
 
     pendingCredentialRemovals_ = settings_.assistive.pendingCredentialRemovals;
     LoadProtectedSecrets();
-    if ((restoreBackupAfterSecretLoad || rewriteMigratedSettings) &&
-        !storage_.saveSettings(settingsPath_, settings_)) {
-        startupNotice_ +=
-            (startupNotice_.isEmpty() ? QString() : QStringLiteral(" ")) +
-            QStringLiteral("The recovered or migrated settings could not be written back to disk.");
-        if (ExceedsSettingsLimit(settings_)) {
-            startupNotice_ += QStringLiteral(" ") + SettingsLimitMessage();
+    if (restoreBackupAfterSecretLoad || rewriteMigratedSettings) {
+        if (storage_.saveSettings(settingsPath_, settings_)) {
+            RememberCommittedSettings(settings_);
+        } else {
+            startupNotice_ +=
+                (startupNotice_.isEmpty() ? QString() : QStringLiteral(" ")) +
+                QStringLiteral("The recovered or migrated settings could not be written back to disk.");
+            if (ExceedsSettingsLimit(settings_)) {
+                startupNotice_ += QStringLiteral(" ") + SettingsLimitMessage();
+            }
         }
     }
 }
@@ -176,6 +183,21 @@ const settings::PersistentSettings& SettingsController::Settings() const noexcep
 settings::PersistentSettings& SettingsController::MutableSettings() noexcept
 {
     return settings_;
+}
+
+const std::optional<settings::PersistentSettings>& SettingsController::LastCommittedSettings() const noexcept
+{
+    return lastCommittedSettings_;
+}
+
+void SettingsController::RememberCommittedSettings(const settings::PersistentSettings& value)
+{
+    lastCommittedSettings_ = value;
+    lastCommittedSettings_->assistive.vlmApiKey.clear();
+    // Mirror the serializer's canonical language token, including its fallback.
+    const auto language = NormalizeLanguagePreference(value.language);
+    lastCommittedSettings_->language = language.isEmpty()
+        ? QString::fromLatin1(kSystemLanguagePreference) : language;
 }
 
 settings::AdvancedConfig SettingsController::DecorateLiveConfig(
@@ -299,6 +321,7 @@ bool SettingsController::Save(const settings::AdvancedConfig& current)
         }
         return false;
     }
+    RememberCommittedSettings(persisted);
     settings_.assistive.vlmCredentialId = persisted.assistive.vlmCredentialId;
     settings_.assistive.pendingCredentialRemovals = pendingCredentialRemovals_;
     for (const QString& credentialToRemove : pendingCredentialRemovals_) {
@@ -315,6 +338,7 @@ bool SettingsController::Save(const settings::AdvancedConfig& current)
             lastError_ = QStringLiteral("Credential deletion completed, but its settings cleanup could not be saved. It will be retried.");
             return false;
         }
+        RememberCommittedSettings(persisted);
         pendingCredentialRemovals_.clear();
         settings_.assistive.pendingCredentialRemovals.clear();
     }

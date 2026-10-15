@@ -100,7 +100,9 @@ public:
     // blocked driver call ever returns before process exit.
     bool ShutdownForProcessExit();
 
-    void SetRequested(bool requested);
+    void SetRequested(bool requested, std::optional<RecordingSessionInfo> reserved = std::nullopt);
+    bool StopSession(const QString& expectedSessionId);
+    void SetSessionAudioResult(const QString& expectedSessionId, bool actualAudio);
     void Stop(const QString& message = {});
     void SetCanvasMode(RecordingCanvasMode mode);
     RecordingCanvasSize ResolveCanvas(UINT sourceWidth,

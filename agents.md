@@ -494,3 +494,57 @@ aligned with the project goals.
 - The remote workflow additionally exercises immediate native panel movement
   at 125%, 150% and 200% Qt scale after its serial GUI group. These are separate
   environment inventories; they do not replace actual mixed-monitor acceptance.
+
+## Agent-control offscreen screenshots (2026-10-14)
+- Use the explicit `agent_control_capture` target for requested development UI
+  screenshots when the owner desktop is unavailable. It forces Qt offscreen,
+  uses fixture settings only and writes to LocalAppData; never treat these grabs
+  as native focus, screen-reader, real-camera or release acceptance.
+- Register the installed Segoe UI font before rendering with the Windows
+  offscreen backend. Preserve unsuitable missing-font captures and rerender the
+  actual widgets; do not repair pixels. See `docs/agent_control_ui.md`.
+
+## MCP private validation and live compatibility (2026-10-14)
+- `mcp_bridge_contract` and the independent SDK fixture use a private QCore
+  application and synthetic 16×16 JPEG only. They must not target an owner's
+  running app, camera, adb endpoint or live AI account.
+- The opt-in `scripts/test_mcp_sdk.mjs` requires the sibling private
+  `mcp-fixture` executables. Install the pinned SDK/lock from `tests/mcp-sdk`
+  under LocalAppData with lifecycle scripts disabled, never under Drive.
+- Development catalogs remain outside release bundles/MSI. Selecting
+  `OKUFLOW_MCP_DEPLOYED_IMAGE_POLICY` only changes the exact sibling image
+  check; it is not publication, consent, a runtime listener or `v1` acceptance.
+- Live provider tool-capability tests require an explicit application UI action
+  and disclose their tiny no-camera request. Configuration edits must not
+  trigger inference. Private protocol passes do not establish live acceptance.
+## MCP packaging validation (0.3.1 development)
+
+- Do not promote development catalogs as releases. The bundle's early cache
+  gate requires accepted `v1` plus `OKUFLOW_MCP_DEPLOYED_IMAGE_POLICY=ON`;
+  setting those values does not replace Plan52's both-adapter/native/hardware
+  acceptance. Current development stays `dev-camera`.
+- Keep `app/okuflow_mcp.exe` in signing, build/stage/publication byte checks,
+  manifest/SBOM and MSI inventory. `--build-info` is bounded offline diagnostics,
+  not consent or an endpoint. Verify only reviewed Windows imports with VS2022
+  dumpbin. Run `scripts/test_mcp_bundle.ps1` and `test_bundle_layout.ps1` after
+  contract changes; synthetic passes do not establish release or guest acceptance.
+
+## CUDA 12 compatibility and one-time compiler comparison
+- CUDA 12.9 builds add Pascal `sm_61` for GTX 10-series testing. Keep the
+  application, fixtures and cubin inventory on `cmake/CudaTargets.cmake`;
+  CUDA 13 must never request a removed Pascal target.
+- Use an explicit `OKUFLOW_CUDA_TOOLKIT_ROOT` and fresh cache for side-by-side
+  toolkit builds. Do not replace the owner's NVIDIA driver to install a toolkit.
+  CUDA 12.9 is the default; CUDA 13 requires an explicitly selected comparison
+  root and must never be silently selected by normal discovery.
+- The CUDA toolchain benchmark is opt-in, excluded from default builds and
+  CTest. Its one-time comparison is not a recurring validation requirement.
+  Compiler/cubin coverage on RTX hardware is not physical GTX 1070 acceptance.
+
+## CI toolchain setup and runner images
+- Initialize hosted MSVC with `scripts/initialize_windows_ci_toolchain.ps1` and
+  Microsoft's installed VS 2022 developer shell. Keep discovery restricted to
+  17.x and export its x64 environment to later steps; do not restore a deprecated
+  Node-based MSVC setup action or suppress its runtime warning.
+- Android host protocol checks pin Ubuntu 24.04. Review runner-image migrations
+  explicitly rather than inheriting the moving `ubuntu-latest` alias.

@@ -2937,5 +2937,313 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>OkuFlow USB সংযোগ পরীক্ষা করছে এবং স্বয়ংক্রিয়ভাবে আবার সংযুক্ত হবে।</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>&amp;প্রত্যাখ্যান করুন</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>দৃশ্য সমন্বয় করুন (আবশ্যক)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>এই পালার জন্য ক্যামেরার দৃশ্য পাঠানোর অনুমতি দিন</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>এই সেশনে ছবি তোলার অনুমতি দিন</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>Assistant-কে তার শুরু করা রেকর্ডিং শুরু ও বন্ধ করার অনুমতি দিন</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>অস্থায়ী অনুমতি অনুমোদন করুন</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>লেকচার বা অন্য ব্যক্তিদের রেকর্ড করার আগে অনুমতি নিন।</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>Assistant-এর কার্যকলাপের লগ</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>Assistant নিয়ন্ত্রণ</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>Assistant নিয়ন্ত্রণ বন্ধ</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>Assistant নিয়ন্ত্রণের অবস্থা</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>ক্যামেরার দৃশ্য নির্বাচিত প্রদানকারীর কাছে পাঠানো হয়। পালা শেষ হলে বা ক্যামেরার উৎস বদলালে এই অনুমতি শেষ হয়।</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>সংযুক্ত ক্লায়েন্ট: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>“পড়ুন” ও “ব্যাখ্যা কর” আগের মতোই থাকবে।</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>নিয়ন্ত্রণ ডিফল্টভাবে বন্ধ থাকে। চালু থাকলে Assistant দৃশ্য সমন্বয় করতে পারে। ক্যামেরার ছবি ও ক্যাপচার পাঠাতে আলাদা অনুমতি লাগে। থামাতে ও পরিবর্তন বাতিল করতে Ctrl+Shift+U চাপুন।</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>OkuFlow নিয়ন্ত্রণ করতে আলাদা কথোপকথন দরকার।</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>কাজের সুনির্দিষ্ট আর্গুমেন্ট</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>বাহ্যিক নিয়ন্ত্রণ সর্বোচ্চ ৫ মিনিট চলে এবং ৬০ সেকেন্ড কোনো কাজ না হলে শেষ হয়। থামাতে MCP ক্লায়েন্ট সংযোগ বিচ্ছিন্ন করুন অথবা অস্থায়ী অনুমতি বাতিল করুন বেছে নিন।</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>বাহ্যিক নিয়ন্ত্রণের অনুমতি</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>বাহ্যিক নিয়ন্ত্রণ: %1 সেকেন্ড বাকি; নিষ্ক্রিয়তার সময়সীমা শেষ হতে %2 সেকেন্ড বাকি। দৃশ্য পরিবর্তন: %3; ক্যামেরার দৃশ্য: %4; ছবি: %5।</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>বাহ্যিক MCP নিয়ন্ত্রণ</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>অস্থায়ী অনুমতির অধীনে দেওয়া ক্ষমতাসমূহ</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>কোনো সক্রিয় অস্থায়ী অনুমতি নেই</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>কোনো বাহ্যিক ক্লায়েন্ট সংযুক্ত নেই</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>দিকনির্দেশ ও ক্যামেরার উৎস (রেকর্ডিং চলাকালে কখনো নয়)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>অস্থায়ী অনুমতির অধিকার পর্যালোচনা করুন</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>অস্থায়ী অনুমতি বাতিল করুন</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>ক্যামেরার দৃশ্য পাঠান (প্রতি অস্থায়ী অনুমতিতে সর্বোচ্চ ৬টি)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>নিয়ন্ত্রণ ছাড়া পাঠান</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>তার শুরু করা রেকর্ডিং শুরু ও বন্ধ করুন (শুরু করতে অন্তত ৩০ সেকেন্ড বাকি থাকতে হবে)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>নিয়ন্ত্রণের কথোপকথন শুরু করুন</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>থামান ও আগের অবস্থায় ফেরান (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>ছবি তুলুন (অস্থায়ী অনুমতির কাজের সীমার মধ্যে)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>এখন এন্ডপয়েন্টের টুল-সমর্থন পরীক্ষা করুন</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>এই স্পষ্ট পরীক্ষায় কনফিগার করা এন্ডপয়েন্টে একটি কৃত্রিম টুল অনুরোধ পাঠানো হয়। এতে ক্যামেরার কোনো ছবি পাঠানো হয় না এবং কোনো সেটিংস বদলায় না।</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>দৃশ্য পরিবর্তন: প্রতি অস্থায়ী অনুমতিতে সর্বোচ্চ ৬০টি। অনুমতির মেয়াদে অধিকার বাড়ানো যায় না; এটি বাতিল করে নতুন অনুমতি দিন.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>টুল ব্যবহারের সুবিধা উপলভ্য</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>টুল ব্যবহারের সুবিধা উপলভ্য নয়</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>টুল ব্যবহারের সুবিধা যাচাই করা হচ্ছে...</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>নতুন কথোপকথন</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>কথোপকথনের ইতিহাস</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>সহকারীর সেটিংস</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>সহকারীর সংযোগ</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>সহকারীর কথোপকথন</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>সহকারীর জন্য প্রশ্ন</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>সহকারীর কথোপকথনের ইতিহাস</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>বিস্তারিত</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>&amp;একবার অনুমতি দিন</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>কার্যকলাপের লগ</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>নিয়ন্ত্রণ সম্পর্কে</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>ক্যামেরার এই দৃশ্য নির্বাচিত প্রদানকারীর কাছে পাঠানোর অনুমতি দেবেন?</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>এই দৃশ্যের ছবি তোলার অনুমতি দেবেন?</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>এই দৃশ্যের রেকর্ডিং শুরু করার অনুমতি দেবেন?</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>এই রেকর্ডিং থামাবেন?</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>%1-এ শুরু হওয়া রেকর্ডিং থামাবেন?</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>ক্যামেরার প্রদর্শিত দৃশ্যকে ঘড়ির কাঁটার দিকে নির্দিষ্ট পরম কোণ %1°-এ ঘোরাতে চান?</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>ক্যামেরার উৎস বদলাবেন?</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>এই কাজটি পর্যালোচনা করবেন?</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>অনুমতির অনুরোধ %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>%1 সেকেন্ডের মধ্যে মেয়াদ শেষ হবে</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>অনুরোধটি সম্পন্ন করা যায়নি।</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>অনুরোধ থামানো হয়েছে</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>দৃশ্য আপডেট হয়েছে: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>পুনরুদ্ধার করা হয়েছে: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>এড়িয়ে যাওয়া হয়েছে: %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>সেটিংস সংরক্ষণ করা যায়নি।</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>কাজ সম্পন্ন হয়েছে।</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>কাজটি সম্পন্ন করা যায়নি।</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>কাজটির অনুমতি দেওয়া হয়নি।</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>চালু</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>কথোপকথনের ইতিহাস আপডেট করা যায়নি।</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>ক্যামেরার সেটিংস বদলাবেন?</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>রেকর্ডিংয়ের পছন্দ বদলাবেন?</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>সহকারীর প্রদানকারী, মডেল বা নির্দেশনা বদলাবেন?</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>নোট ও আউটপুটের সেটিংস বদলাবেন?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>আঁকার সেটিংস বদলাবেন?</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>আঁকার সেটিংস বদলে একটি ছবি সংরক্ষণ করবেন?</translation>
+        </message>
     </context>
 </TS>

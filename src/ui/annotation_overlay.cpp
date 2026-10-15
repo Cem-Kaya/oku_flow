@@ -540,13 +540,14 @@ void AnnotationOverlay::BuildToolbar()
     UpdateUndoButtons();
 }
 
-void AnnotationOverlay::SetActive(bool active)
+void AnnotationOverlay::SetActive(bool active, std::optional<AnnotationTool> initialTool, bool retainInk, bool preserveFocus)
 {
     if (active_ == active) {
         return;
     }
     active_ = active;
     if (active_) {
+        setAttribute(Qt::WA_ShowWithoutActivating, preserveFocus);
         SyncGeometryToRenderTarget();
         show();
         raise();
@@ -554,9 +555,9 @@ void AnnotationOverlay::SetActive(bool active)
         actionToolbar_->show();
         toolbar_->raise();
         actionToolbar_->raise();
-        SetTool(AnnotationTool::kPen);
-        setFocus(Qt::OtherFocusReason);
-        Announce(QStringLiteral("Annotation mode on. Pen tool."));
+        SetTool(initialTool.value_or(AnnotationTool::kPen), preserveFocus);
+        if (!preserveFocus) setFocus(Qt::OtherFocusReason);
+        if (!initialTool) Announce(QStringLiteral("Annotation mode on. Pen tool."));
     } else {
         ReleaseForwardedPanKeys();
         CancelPendingText();
@@ -568,8 +569,8 @@ void AnnotationOverlay::SetActive(bool active)
         model_.EndStroke();
         model_.EndMoveSelection();
         model_.EndScaleSelection();
-        model_.ResetSession();
-        ShowToolOptions(false);
+        if (!retainInk) model_.ResetSession();
+        ShowToolOptions(false, preserveFocus);
         UpdateUndoButtons();
         hide();
         Announce(QStringLiteral("Draw mode off."));
@@ -1741,7 +1742,7 @@ void AnnotationOverlay::keyReleaseEvent(QKeyEvent* event)
     QWidget::keyReleaseEvent(event);
 }
 
-void AnnotationOverlay::SetTool(AnnotationTool tool)
+void AnnotationOverlay::SetTool(AnnotationTool tool, bool preserveFocus)
 {
     if (tool_ == AnnotationTool::kText &&
         tool != AnnotationTool::kText &&
@@ -1757,9 +1758,9 @@ void AnnotationOverlay::SetTool(AnnotationTool tool)
     eraserButton_->setChecked(tool == AnnotationTool::kEraser);
     if (tool == AnnotationTool::kPointer ||
         tool == AnnotationTool::kEraser) {
-        ShowToolOptions(false);
+        ShowToolOptions(false, preserveFocus);
     } else {
-        ShowToolOptions(true);
+        ShowToolOptions(true, preserveFocus);
     }
     UpdateToolOptions();
     const QString name = ToolName(tool);
@@ -1767,7 +1768,7 @@ void AnnotationOverlay::SetTool(AnnotationTool tool)
     Announce(name);
 }
 
-void AnnotationOverlay::ShowToolOptions(bool visible)
+void AnnotationOverlay::ShowToolOptions(bool visible, bool preserveFocus)
 {
     const bool supportsOptions =
         tool_ == AnnotationTool::kPen ||
@@ -1785,7 +1786,7 @@ void AnnotationOverlay::ShowToolOptions(bool visible)
         if (tool_ == AnnotationTool::kText) activeButton = textButton_;
         if (tool_ == AnnotationTool::kPointer) activeButton = pointerButton_;
         if (tool_ == AnnotationTool::kEraser) activeButton = eraserButton_;
-        if (active_ && activeButton) {
+        if (active_ && activeButton && !preserveFocus) {
             activeButton->setFocus(Qt::OtherFocusReason);
         }
     }

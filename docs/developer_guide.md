@@ -110,7 +110,15 @@ CUDA is the processing path; the CPU effects pipeline is deprecated. When the D3
 - Visual Studio 2022 with the Desktop C++ workload and Windows SDK.
 - Qt 6.12.0 for `msvc2022_64`, or matching overrides via `QT_PREFIX` / `Qt6_DIR`.
 - CMake 3.23 or newer.
-- NVIDIA GPU plus CUDA Toolkit 13.x if you want the CUDA path.
+- NVIDIA GPU plus CUDA Toolkit 12.9 if you want the default CUDA path.
+  CUDA 12.9 is the compatibility build for Pascal GTX 10-series (`sm_61`)
+  through RTX 50-series. CUDA 13 comparison builds require an explicit toolkit
+  root and retain Turing and newer targets; normal discovery cannot silently
+  select CUDA 13.
+  Physical GTX 1070 acceptance remains separate from compilation coverage.
+  `OKUFLOW_CUDA_TOOLKIT_ROOT` optionally selects a side-by-side toolkit in a
+  fresh build directory. See the [one-time toolchain comparison](cuda_toolchain_comparison.md)
+  for measured kernel results and the portable local installation.
 - Optional: NVIDIA Video Effects runtime for Maxine SuperRes and Codex CLI
   for subscription-backed Read, Explain, and Assistant features. OkuFlow
   offers verified vendor downloads through `Setup & Downloads`.
@@ -139,6 +147,10 @@ If Windows reports missing `Qt6*.dll` files, add the Qt `bin` directory to `PATH
 
 Routine checks now run in [GitHub Actions](https://github.com/Cem-Kaya/oku_flow/actions/workflows/windows-checks.yml)
 on a disposable Windows VM, including a CPU build and serial native GUI tests.
+MSVC setup uses Microsoft's installed Visual Studio 2022 developer shell through
+`scripts/initialize_windows_ci_toolchain.ps1`, exporting its x64 environment to
+later Actions steps without a JavaScript setup-action dependency. Android host
+protocol checks use the explicit `ubuntu-24.04` image rather than a moving alias.
 The Actions page also permits individual GUI groups/two-case diagnostics and
 stores logs, JUnit and screenshots as artifacts. This does not use the owner's
 desktop or establish CUDA/physical-device acceptance; see
@@ -943,6 +955,101 @@ A GPU fault retains unfinished resources and displays a persistent restart
 message. A readback failure instead enters the existing camera reconnect path.
 Phone packet and decoded-output progress are independent, so arriving compressed
 packets cannot indefinitely hide a decoder that stopped producing pictures.
+
+Plan 52 implementation is staged on the agentic-control feature branch. The
+headless `agent_control_contract` and `codex_agent_profile_contract` fixtures
+exercise typed policy and offline compatibility boundaries; they do not establish
+working MCP interoperability, live provider acceptance or complete UI/hardware
+acceptance. Keep the dedicated agent child independent of Read/Explain history.
+
+### Agent-control development
+
+Plan 52 is being implemented in an isolated feature worktree. The typed core
+and shared production capture entry points have desktop-free fixtures; this is
+not a published MCP API or completed Assistant-control feature. Master switches
+default off. Settings schema 17 records only switches and conversation kind/
+toolset; session grants, approvals, leases, operations and undo never persist.
+Unknown conversation kinds are tool-free. Unsaved changes remain live until
+exit; restart loads the last successfully committed settings file.
+
+`agent_control_contract` uses QCoreApplication and no camera/provider. The
+exact-session recording-manager fixture uses a null button and no encoder/input
+frames. Run these through the tracked matrix; set OKUFLOW_AGENT_EXCLUDE_GUI=1
+while the desktop is reserved and report partial validation. Native controls,
+screen readers, camera transitions, observation freshness, MCP interoperability
+and provider acceptance remain separate gates. See src/app/agent/README.md and
+code_reference.md for interfaces and current implementation limits.
+
+### Opt-in offscreen Assistant screenshots
+
+Build `agent_control_capture` explicitly and run `--output` with an absolute
+LocalAppData evidence folder. It constructs production Qt widgets with fixture
+settings, forces offscreen and registers installed Segoe UI. The 1672×941 state
+matches the approved chat-first concept: chat, contextual photo approval, settings
+drawer and separate default-off AI Settings masters. It creates no app service,
+provider, camera or owner foreground window. Actual native widget peers are
+composed without repairing pixels. Preserve raw originals and compare the same
+viewport/state before recording visual findings. This does not replace native
+GUI or hardware acceptance; see [the UI contract](agent_control_ui.md).
+
+### Shared Explain and Assistant chat (development)
+
+Advanced Assistant and floating Explain render the same pixel-free
+`VisibleChatSession` snapshot. Draft/attachment/busy state is shared; each view
+owns its scrolling and selection. Explain always sends the current viewport
+through the tool-free Explain path. A typed followup can use the restricted
+agent adapter when the owner has enabled it, within the same visible chat and
+with isolated backend IDs. Read and periodic analysis never add, select or
+clear conversation rows. Historical Assistant/Coding continuation and existing
+rename/export/delete remain kind-safe; agent history is a presentation restart.
+
+Provider/configuration transitions retire backend bindings and old request
+tickets. New/history also stop manual TTS and retire owned control resources.
+The notes writer remains the sole completion recorder. Headless local fixtures
+exercise this contract; no live provider, camera or native desktop acceptance
+is implied by a fixture pass.
+## Agent-control packaging under development (0.3.1)
+
+The Plan52 worktree intentionally remains on the `dev-camera` catalog. Its
+new packaging guard refuses development catalogs before running bundle tests.
+After both-adapter/native/hardware acceptance, the release configuration must
+explicitly select `OKUFLOW_CONTROL_CATALOG_EDITION=v1` and
+`OKUFLOW_MCP_DEPLOYED_IMAGE_POLICY=ON`. This does not bypass the existing full
+matrix, bundle or disposable installer gates.
+
+The accepted bridge is deployed inside `app/` beside `OkuFlowApp.exe`, leaving
+one public root launcher. Signing, native dependency checks, staged/published
+byte comparisons and manifest/SBOM/MSI inventory include it. Metadata requires
+the matching build directory whenever the bridge is present. MSI 0.3.1 and
+later refuse a bundle without that contract. `scripts/test_mcp_bundle.ps1`
+validates declaration/cache/inventory rejection without creating a release;
+`test_bundle_layout.ps1` preserves earlier layouts. Current published downloads
+remain separate from this feature work.
+
+Logical Explain/Agent chats are now durable first-party text history under the
+owned application-data `visible-chat` folder. Saved records contain completed,
+failed or interrupted text, draft/title/timestamps and bounded plain receipts;
+they contain no images, tool request payloads, secrets, grants or provider thread
+references. Restore is a tool-free Explain logical chat, and the next restricted
+Agent turn opens a fresh child/thread using completed text context only.
+Legacy Codex histories remain separately kind-safe. Atomic writes retain the
+previous record on replacement failure; oldest owned records enforce the
+64-record/32 MiB quota. Store/restore never replay tools or append notes.
+
+Agent-owned Scene Explain is context-scoped rather than a saved periodic-mode
+preference. Each analysis consumes the existing Observe frame/byte budget and
+rechecks core authority at actual provider submission and completion. Ending or
+revoking that scope does not alter the native-owned scene checkbox. Assistant
+provider/model/prompt configuration remains an exact native Configuration
+approval domain and cannot widen external source/capture/frame grants.
+
+Expanded assistant settings conservatively deny actor overlay enabling and
+changed runtime/output preferences while native periodic Scene Explain intent
+is enabled; configuration cannot silently resume unbounded legacy egress.
+Turn that native intent off through its native control before changing those
+preferences. The separate scoped scene tool remains context/frame-budget
+bound. Native editor strings above finite wire limits remain unchanged;
+values too large for a projection explicitly require native UI inspection.
 
 Release manifest freshness preserves the typed UTC timestamp returned by
 PowerShell JSON parsing. Run `pwsh -NoProfile -File scripts/test_publication_time.ps1`

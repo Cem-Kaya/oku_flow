@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include "okuflow/app/agent/app_control_target.hpp"
 #include "okuflow/capture/capture_buffer.hpp"
 #include "okuflow/capture/phone_camera.hpp"
 
@@ -207,8 +208,9 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                 }
                 const bool streamingPhone = cameraActive_ && selectedCameraIndex_ >= 0 &&
                     !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty();
-                const int target = ResolveAutomaticPhoneIndex(cameras_, preferredPhoneCamera_.toStdWString(),
-                    automaticPhoneSelectionAllowed_, cameraActive_);
+                const int target = cameraIntent_.TemporaryOwner().isEmpty()
+                    ? ResolveAutomaticPhoneIndex(cameras_, preferredPhoneCamera_.toStdWString(),
+                        automaticPhoneSelectionAllowed_, cameraActive_) : -1;
                 const bool recording = recordingManager_ && recordingManager_->IsActive();
                 const bool sameRecordedSource = target >= 0 &&
                     cameras_[static_cast<size_t>(target)].symbolicLink == mediaCapture_.LastSymbolicLink();
@@ -221,7 +223,8 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                         auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
                         uiState_->cameraCombo_->setCurrentIndex(target);
                     }
-                    if (preferredPhoneCamera_.isEmpty()) {
+                    if (preferredPhoneCamera_.isEmpty() && cameraIntent_.FillStartupIdentity(
+                            QString::fromStdWString(cameras_[static_cast<size_t>(target)].symbolicLink),target)) {
                         auto& saved = settingsController_->MutableSettings();
                         saved.cameraSymbolicLink = QString::fromStdWString(
                             cameras_[static_cast<size_t>(target)].symbolicLink);
@@ -247,13 +250,16 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
         connectedSerial = cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial;
     std::string recoverySerial;
     const QString phonePrefix = QStringLiteral("okuflow-phone:");
-    if (automaticPhoneSelectionAllowed_ && connectedSerial.empty() &&
-        preferredPhoneCamera_.startsWith(phonePrefix))
-        recoverySerial = preferredPhoneCamera_.mid(phonePrefix.size()).section('/', 0, 0).toStdString();
+    const auto temporaryPhone = cameraIntent_.TemporaryPhoneIntent();
+    const bool temporarySource = !cameraIntent_.TemporaryOwner().isEmpty();
+    const auto phoneIntent = temporarySource ? temporaryPhone : preferredPhoneCamera_;
+    const bool permitPhone = temporarySource ? !temporaryPhone.isEmpty() : automaticPhoneSelectionAllowed_;
+    if (permitPhone && connectedSerial.empty() && phoneIntent.startsWith(phonePrefix))
+        recoverySerial = phoneIntent.mid(phonePrefix.size()).section('/', 0, 0).toStdString();
     phoneDiscoveryTimer_.start();
     try {
         phoneDiscovery_ = std::async(std::launch::async, [connectedSerial, recoverySerial,
-            serverIntent = automaticPhoneSelectionAllowed_ ? PhoneServerIntent::PhoneUse
+            serverIntent = permitPhone ? PhoneServerIntent::PhoneUse
                                                           : PhoneServerIntent::ReleaseForWebcam,
             canceled = &phoneDiscoveryCanceled_]() {
             PhoneDiscoveryStatus status{};
@@ -268,7 +274,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
 
 void OkuFlowApp::StartFallbackCamera()
 {
-    if (!automaticPhoneSelectionAllowed_ || cameraActive_ || cameraStartupPending_ ||
+    if (!cameraIntent_.TemporaryOwner().isEmpty() || !automaticPhoneSelectionAllowed_ || cameraActive_ || cameraStartupPending_ ||
         mediaCapture_.WasAbandoned() || (startupWorkers_ && startupWorkers_->active.load() != 0) ||
         (recordingManager_ && recordingManager_->IsActive())) return;
     // A fallback is temporary; only an explicit camera pick changes the saved intent.
@@ -278,7 +284,7 @@ void OkuFlowApp::StartFallbackCamera()
             auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
             uiState_->cameraCombo_->setCurrentIndex(static_cast<int>(i));
         }
-        StartCameraCapture(i, false, false, true);
+        StartCameraCapture(i, false, false, true,agent::CameraSourceOrigin::Fallback);
         return;
     }
 }
@@ -913,6 +919,12 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     }
 
     ProcessingSettings settings{};
+    if (controlService_) {
+        const auto stamp = controlService_->Stamp();
+        settings.controlFrame = {stamp.sourceEpoch,stamp.processingVersion,stamp.viewVersion,
+            stamp.geometryEpoch,currentCameraFrameSequence_,
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()};
+    }
     settings.enableBlackWhite = blackWhiteEnabled_;
     settings.blackWhiteThreshold = blackWhiteThreshold_;
     // Viewport zoom is a presentation transform. Stateful CUDA stages process
@@ -1072,6 +1084,7 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     Q_UNUSED(presentHeight);
     usingCudaLastFrame_ = true;
     cudaSceneReady_ = true;
+    if (controlTarget_) controlTarget_->FrameProcessed();
     // CPU pixels belong to the last CPU presentation, not this GPU scene.
     presentationBuffer_.clear();
     presentationWidth_ = 0;
@@ -1212,6 +1225,9 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     const bool assistantFrameWanted =
         pendingAssistantFrameReadbackId_ == 0 &&
         pendingAssistantFramePrompt_.has_value();
+    const auto observationFrame = controlTarget_ ? controlTarget_->PresentedFrame(annotationTransform,
+        QSize(processedFrameWidth_,processedFrameHeight_),QSize(viewportWidth,viewportHeight)) : agent::ObservationFrame{};
+    const bool observationWanted = controlTarget_ && controlTarget_->WantsObservationReadback(observationFrame);
 
     FenceSyncParams presentSync{};
     if (pipelineOrchestrator_->FenceInteropEnabled()) {
@@ -1225,7 +1241,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     presentationOptions.focusY = presentationFocusY;
     presentationOptions.requestReadback =
         assistiveWanted || photoWanted || annotationWanted ||
-        onDemandAssistiveWanted || assistantFrameWanted;
+        onDemandAssistiveWanted || assistantFrameWanted || observationWanted;
     UINT64 readbackRequestId = 0;
     QElapsedTimer presentationTimer;
     presentationTimer.start();
@@ -1248,6 +1264,8 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         }
     }
     if (presented) {
+        cameraIntent_.MarkFirstFrame(startingCameraIntentGeneration_);
+        if (controlTarget_) controlTarget_->FramePresented(observationFrame);
         cameraFramePresented_ = true;
         RecordStartupFirstPresent();
         if (pendingSceneCaptureClock100ns_) {
@@ -1257,7 +1275,9 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         }
     }
     if (readbackRequestId != 0) {
+        if (observationWanted) controlTarget_->ObservationReadbackSubmitted(readbackRequestId,observationFrame);
         if (photoWanted) {
+            if (controlTarget_) controlTarget_->PhotoState(photoOperationId_,agent::OperationState::Readback);
             pendingPhotoReadbackId_ = readbackRequestId;
             pendingPhotoOriginal_ = *originalFrame;
             pendingPhotoReadbackTimer_.restart();
@@ -1300,7 +1320,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         QImage annotationLayer;
         const AnnotationOverlay* annotationOverlay =
             mainWindow_->annotationOverlay();
-        if (annotationOverlay && annotationOverlay->HasInk()) {
+        if (annotationOverlay && annotationOverlay->IsActive() && annotationOverlay->HasInk()) {
             annotationLayer = QImage(
                 static_cast<int>(canvas.width),
                 static_cast<int>(canvas.height),
@@ -1403,6 +1423,8 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                                                readbackWidth,
                                                readbackHeight,
                                                &requestId)) {
+        if (controlTarget_) controlTarget_->ConsumeObservationReadback(requestId,QImage(asyncReadbackBuffer_.data(),
+            readbackWidth,readbackHeight,readbackWidth*4,QImage::Format_ARGB32));
         if (requestId == pendingPhotoReadbackId_ &&
             pendingPhotoOriginal_.HasCpuPixels()) {
             SaveCapturedPhotoPair(asyncReadbackBuffer_.data(),
@@ -1479,14 +1501,33 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
 bool OkuFlowApp::StartCameraCapture(size_t index,
                                      bool interactive,
                                      bool forceCompatibility,
-                                     bool backgroundStartup) {
-    if (index >= cameras_.size() || cameraStartupPending_ ||
-        (!cameraActive_ && startupWorkers_ && startupWorkers_->active.load() != 0)) {
+                                     bool backgroundStartup, agent::CameraSourceOrigin origin,
+                                     std::optional<QString> formatOverride, const QString& operationId) {
+    if (index >= cameras_.size() || cameraStopFailed_) {
         return false;
     }
+    const auto link = QString::fromStdWString(cameras_[index].symbolicLink);
+    const auto format = formatOverride.value_or(settingsController_->MutableSettings().cameraFormatStableId);
+    if (cameraIntent_.Requested().identity.symbolicLink != link || cameraIntent_.Requested().identity.formatStableId != format || cameraIntent_.Requested().operationId != operationId
+        || cameraIntent_.Requested().origin != origin)
+        cameraIntent_.Request({link,format,false},origin,operationId);
+
+    if (recordingManager_ && recordingManager_->CurrentSessionInfo()) {
+        if (origin != agent::CameraSourceOrigin::Manual) return false;
+        pendingCameraStart_ = PendingCameraStart{index,interactive,forceCompatibility,backgroundStartup,cameras_[index].symbolicLink,origin,formatOverride,operationId,cameraIntent_.Requested().generation};
+        QTimer::singleShot(25,this,&OkuFlowApp::ResumePendingCameraStart);
+        return true;
+    }
+
+    if (cameraActive_ || cameraStartupPending_ || cameraStopPending_) {
+        pendingCameraStart_ = PendingCameraStart{index,interactive,forceCompatibility,backgroundStartup,cameras_[index].symbolicLink,origin,formatOverride,operationId,cameraIntent_.Requested().generation};
+        StopCameraCapture();
+        return !cameraStopFailed_;
+    }
+    if (startupWorkers_ && startupWorkers_->active.load() != 0) return false;
 
     selectedCameraIndex_ = static_cast<int>(index);
-    StopCameraCapture();
+    startingCameraIntentGeneration_ = cameraIntent_.Requested().generation;
     if (mediaCapture_.WasAbandoned()) {
         ShowStatusMessage(QStringLiteral(
             "Camera did not stop in time. Restart OkuFlow before changing cameras."), 15000);
@@ -1544,8 +1585,7 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
     const bool requestAcceleration =
         !forceCompatibility &&
         !explicitlyCompatible && !automaticFallback;
-    const QString requestedStableId =
-        settingsController_->MutableSettings().cameraFormatStableId;
+    const QString requestedStableId = format;
     cameraIngress_ = std::make_shared<CameraIngress>();
     cameraIngress_->receiver = this;
     cameraIngress_->accepting = true;
@@ -1678,6 +1718,9 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
 
 bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, const QString& startupError) {
     if (!started) {
+        if (!cameraIntent_.TemporaryOwner().isEmpty() && controlTarget_) {
+            controlTarget_->CameraTransitionFailed(); return false;
+        }
         const std::string detail = startupError.isEmpty()
                                       ? mediaCapture_.LastError()
                                       : startupError.toStdString();
@@ -1743,13 +1786,20 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
     cpuSceneHeight_ = 0;
     cpuSceneReady_ = false;
     cameraActive_ = true;
+    if (!cameraIntent_.Activate(startingCameraIntentGeneration_,
+        {currentCameraAccelerationKey_,QString::fromStdWString(mediaCapture_.NegotiatedFormat().stableId),false},
+        cameraIntent_.Requested().origin == agent::CameraSourceOrigin::Fallback)) {
+        StopCameraCapture();
+        return false;
+    }
+    if (controlService_) controlService_->SourceChanged();
     if (selectedCameraIndex_ >= 0 && static_cast<size_t>(selectedCameraIndex_) < cameras_.size() &&
         !cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial.empty()) {
         phoneRetries_[cameras_[static_cast<size_t>(selectedCameraIndex_)].phoneSerial].Succeeded();
         pipelineOrchestrator_->CancelCameraReconnect();
     }
-    settingsController_->InitializeLegacyCameraIdentity(
-        selectedCameraIndex_, currentCameraAccelerationKey_);
+    if (cameraIntent_.FillStartupIdentity(currentCameraAccelerationKey_,selectedCameraIndex_))
+        settingsController_->InitializeLegacyCameraIdentity(selectedCameraIndex_,currentCameraAccelerationKey_);
     cameraFramePresented_ = false;
     pendingSceneCaptureClock100ns_.reset();
     currentCameraCaptureClock100ns_ = -1;
@@ -1801,7 +1851,11 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
     return true;
 }
 
-void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
+void OkuFlowApp::StopCameraCaptureAtExit() {
+    const bool atProcessExit = true;
+    if (controlTarget_) controlTarget_->CancelObservations();
+    if (controlTarget_) controlTarget_->CancelPhotoReadback();
+    if (controlService_) controlService_->SourceChanged();
     CancelPendingAssistantCaptures();
     pendingSceneCaptureClock100ns_.reset();
     currentCameraCaptureClock100ns_ = -1;
@@ -2017,7 +2071,7 @@ void OkuFlowApp::DriveCameraReconnect() {
         }
     }
 
-    if (matchIndex >= 0 && StartCameraCapture(static_cast<size_t>(matchIndex), false)) {
+    if (matchIndex >= 0 && StartCameraCapture(static_cast<size_t>(matchIndex), false,false,false,agent::CameraSourceOrigin::Reconnect)) {
         const int attempts =
             pipelineOrchestrator_->CameraReconnectAttempt() + 1;
         pipelineOrchestrator_->CancelCameraReconnect();
@@ -2152,6 +2206,7 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
     }
 
     currentCameraCaptureClock100ns_ = frame.captureClock100ns;
+    currentCameraFrameSequence_ = frame.sequenceNumber;
     CapturedFrame originalFrame;
     bool recordingActive = recordingManager_ && recordingManager_->IsActive();
     bool cpuOriginalRequired = photoCapturePending_;
@@ -2162,6 +2217,7 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
             return false;
         }
         if (result == GpuFrameReadbackResult::Failed && photoCapturePending_) {
+            if (controlTarget_) controlTarget_->PhotoState(photoOperationId_,agent::OperationState::Failed);
             ShowStatusMessage(
                 QStringLiteral(
                     "Photo not saved: the original camera frame could not be read back."),
@@ -2328,6 +2384,7 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
         cpuSceneWidth_ = width;
         cpuSceneHeight_ = height;
         cpuSceneReady_ = true;
+        if (controlTarget_) controlTarget_->FrameProcessed();
         pendingSceneCaptureClock100ns_ = currentCameraCaptureClock100ns_;
         ++startupProcessedScenes_;
         PresentFitted(
@@ -2373,6 +2430,7 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
     cpuSceneWidth_ = output.width;
     cpuSceneHeight_ = output.height;
     cpuSceneReady_ = true;
+    if (controlTarget_) controlTarget_->FrameProcessed();
     pendingSceneCaptureClock100ns_ = currentCameraCaptureClock100ns_;
     ++startupProcessedScenes_;
 
@@ -2532,7 +2590,7 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
                 srcHeight,
                 ToRecordingTransform(transform),
                 std::move(*originalFrame),
-                mainWindow_ && mainWindow_->annotationOverlay()
+                mainWindow_ && mainWindow_->annotationOverlay() && mainWindow_->annotationOverlay()->IsActive()
                     ? mainWindow_->annotationOverlay()->Strokes()
                     : QVector<AnnotationStroke>{});
         }
@@ -2544,6 +2602,7 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         return;
     }
     cameraFramePresented_ = true;
+    cameraIntent_.MarkFirstFrame(startingCameraIntentGeneration_);
     RecordStartupFirstPresent();
     if (pendingSceneCaptureClock100ns_) {
         pipelineOrchestrator_->RecordCaptureToPresentSample(
@@ -2551,6 +2610,10 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         pendingSceneCaptureClock100ns_.reset();
     }
     pipelineOrchestrator_->MarkViewportPresented();
+    if (controlTarget_) {
+        const auto frame = controlTarget_->PresentedFrame(transform,QSize(srcWidth,srcHeight),QSize(mapping.targetWidth,mapping.targetHeight));
+        controlTarget_->CpuObservationPresented(QImage(presentationBuffer_.data(),mapping.targetWidth,mapping.targetHeight,mapping.targetWidth*4,QImage::Format_ARGB32),frame);
+    }
     if (originalFrame) {
         UpdateProcessingStatusLabel();
     }
@@ -2625,6 +2688,7 @@ void OkuFlowApp::CapturePendingPhoto(const CapturedFrame& originalFrame)
     }
     photoCapturePending_ = false;
     if (!originalFrame.HasCpuPixels()) {
+        if (controlTarget_) controlTarget_->PhotoState(photoOperationId_,agent::OperationState::Failed);
         ShowStatusMessage(QStringLiteral(
             "Photo not saved: the original camera frame could not be converted."));
         return;
@@ -2638,6 +2702,7 @@ void OkuFlowApp::CapturePendingPhoto(const CapturedFrame& originalFrame)
     }
     if (presentationBuffer_.empty() ||
         presentationWidth_ == 0 || presentationHeight_ == 0) {
+        if (controlTarget_) controlTarget_->PhotoState(photoOperationId_,agent::OperationState::Failed);
         ShowStatusMessage(QStringLiteral("Photo not saved: no processed frame was available."));
         return;
     }
@@ -2652,8 +2717,10 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
                                         UINT processedHeight,
                                         const CapturedFrame& originalFrame)
 {
+    const QString operationId = photoOperationId_;
     if (!processedData || processedWidth == 0 || processedHeight == 0 ||
         !originalFrame.HasCpuPixels()) {
+        if (controlTarget_) controlTarget_->PhotoState(operationId,agent::OperationState::Failed);
         ShowStatusMessage(QStringLiteral(
             "Photo not saved: the processed or original frame was unavailable."));
         return;
@@ -2664,6 +2731,7 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
             ? userDataPaths_->PhotosForDate(QDate::currentDate(), &outputError)
             : QString();
     if (dirPath.isEmpty()) {
+        if (controlTarget_) controlTarget_->PhotoState(operationId,agent::OperationState::Failed);
         ShowStatusMessage(
             outputError.isEmpty()
                 ? QStringLiteral(
@@ -2688,6 +2756,7 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
     processedImage = processedImage.copy();
     originalImage = originalImage.copy();
     if (processedImage.isNull() || originalImage.isNull()) {
+        if (controlTarget_) controlTarget_->PhotoState(operationId,agent::OperationState::Failed);
         ShowStatusMessage(
             QStringLiteral("Photo not saved: the image could not be queued."));
         return;
@@ -2696,8 +2765,10 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
     ShowStatusMessage(QStringLiteral("Saving original and processed photos..."),
                       2500);
     QPointer<OkuFlowApp> owner(this);
+    if (controlTarget_) controlTarget_->PhotoState(operationId,agent::OperationState::Writing);
     const bool queued = imageIoPool_ && imageIoPool_->tryStart(
         [owner,
+         operationId,
          processedImage = std::move(processedImage),
          originalImage = std::move(originalImage),
          dirPath,
@@ -2723,6 +2794,7 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
             QMetaObject::invokeMethod(
                 owner,
                 [owner,
+                 operationId,
                  committed,
                  leftoverPaths,
                  processedPath,
@@ -2730,6 +2802,9 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
                     if (!owner) {
                         return;
                     }
+                    if (owner->controlTarget_) owner->controlTarget_->PhotoState(operationId,
+                        committed ? agent::OperationState::Committed : agent::OperationState::Failed,
+                        committed ? QJsonObject{{"originalName",QFileInfo(originalPath).fileName()},{"processedName",QFileInfo(processedPath).fileName()}} : QJsonObject{});
                     if (committed) {
                         qInfo() << "Saved paired snapshots to"
                                 << originalPath << "and" << processedPath;
@@ -2759,6 +2834,7 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
                 Qt::QueuedConnection);
         });
     if (!queued) {
+        if (controlTarget_) controlTarget_->PhotoState(operationId,agent::OperationState::Failed);
         ShowStatusMessage(
             QStringLiteral(
                 "Photo not saved: the image writer is busy. Try again."));
@@ -2767,7 +2843,7 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
 
 void OkuFlowApp::QueueAnnotationSnapshot(int reason)
 {
-    if (!mainWindow_ || !mainWindow_->annotationOverlay() ||
+    if (!mainWindow_ || !mainWindow_->annotationOverlay() || !mainWindow_->annotationOverlay()->IsActive() ||
         !mainWindow_->annotationOverlay()->HasInk()) {
         return;
     }

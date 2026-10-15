@@ -675,6 +675,18 @@ void ColorSchemePicker::setCustomScheme(const color_schemes::ColorScheme& scheme
     RefreshCustomEditor();
 }
 
+void ColorSchemePicker::clearCustomScheme()
+{
+    customScheme_={};
+    editorStops_={QColor("#000000"),QColor("#ffffff")};
+    if(customModeCombo_&&stopCountSpin_&&steppedCheck_) {
+        const QSignalBlocker modeBlock(customModeCombo_),countBlock(stopCountSpin_),steppedBlock(steppedCheck_);
+        customModeCombo_->setCurrentIndex(customModeCombo_->findData(static_cast<int>(color_schemes::SchemeMode::Duotone)));
+        stopCountSpin_->setValue(2);steppedCheck_->setChecked(false);
+    }
+    RefreshCustomEditor();RefreshCustomTile();RefreshSelection();
+}
+
 void ColorSchemePicker::RefreshSelection()
 {
     for (size_t index = 0; index < quickChoices_.size(); ++index) {

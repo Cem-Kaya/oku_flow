@@ -28,6 +28,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScreen>
+#include <QSignalBlocker>
 #include <QScrollArea>
 #include <QStandardPaths>
 #include <QTimer>
@@ -351,6 +352,12 @@ SetupAssistantDialog::DependencyRow& SetupAssistantDialog::RowForDependency(
         return nvidiaRow_;
     }
     return nvidiaRow_;
+}
+
+void SetupAssistantDialog::SetDeclinedPreference(bool declined) {
+    if (!declineCheckbox_) return;
+    const QSignalBlocker blocker(declineCheckbox_);
+    declineCheckbox_->setChecked(declined);
 }
 
 SetupAssistantDialog::~SetupAssistantDialog() {

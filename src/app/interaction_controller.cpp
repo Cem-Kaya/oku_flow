@@ -131,53 +131,9 @@ void InteractionController::ApplyZoom(float target, const QPointF* localPos) {
         hasFocus = false;
     }
 
-    if (!app_.zoomEnabled_) {
-        if (app_.uiState_->zoomCheckbox_) {
-            auto blocker = app_.uiState_->BlockSignals(app_.uiState_->zoomCheckbox_);
-            app_.uiState_->zoomCheckbox_->setChecked(true);
-        }
-        app_.zoomEnabled_ = true;
-        app_.uiState_->zoomSlider_->setEnabled(true);
-    }
-
-    const float prevZoom = app_.zoomAmount_;
-    const float minimumZoom =
-        static_cast<float>(app_.uiState_->zoomSlider_->minimum()) /
-        static_cast<float>(app_constants::kZoomSliderScale);
-    const float maximumZoom =
-        static_cast<float>(app_.uiState_->zoomSlider_->maximum()) /
-        static_cast<float>(app_constants::kZoomSliderScale);
-    target = std::clamp(target, minimumZoom, maximumZoom);
-    const int newValue = std::clamp(
-        static_cast<int>(std::lround(
-            target * static_cast<float>(app_constants::kZoomSliderScale))),
-        app_.uiState_->zoomSlider_->minimum(),
-        app_.uiState_->zoomSlider_->maximum());
-
-    if (newValue == app_.uiState_->zoomSlider_->value()) {
-        return;
-    }
-
-    auto blockSlider = app_.uiState_->BlockSignals(app_.uiState_->zoomSlider_);
-    app_.uiState_->zoomSlider_->setValue(newValue);
-    blockSlider.unblock();
-    app_.zoomAmount_ = std::max(
-        1.0f,
-        static_cast<float>(newValue) / static_cast<float>(app_constants::kZoomSliderScale));
-    app_.UpdateProcessingStatusLabel();
-    const float newZoom = app_.zoomAmount_;
-
-    if (hasFocus) {
-        const float factor = (prevZoom <= 0.0f || newZoom <= 0.0f) ? 1.0f : (prevZoom / newZoom);
-        const float newCenterX = focusU - (focusU - app_.zoomCenterX_) * factor;
-        const float newCenterY = focusV - (focusV - app_.zoomCenterY_) * factor;
-        app_.SetZoomCenter(newCenterX, newCenterY, true, true);
-    } else {
-        app_.SyncCurrentConfigToPersistence(true);
-    }
-    // Slider signals are blocked above, so keyboard zoom must invalidate the
-    // cached scene explicitly even when no pointer focus is available.
-    app_.pipelineOrchestrator_->MarkViewportDirty();
+    const auto before = app_.zoomAmount_;
+    app_.SetZoom(target,hasFocus ? std::optional<QPointF>(QPointF(focusU,focusV)) : std::nullopt);
+    if (before == app_.zoomAmount_) return;
     ScheduleZoomAnnouncement();
 }
 

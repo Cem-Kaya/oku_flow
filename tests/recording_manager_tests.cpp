@@ -29,6 +29,27 @@ struct FakeSinkWriterStatistics {
 class RecordingManagerTests : public QObject {
     Q_OBJECT
 private slots:
+    void exactSessionStopCannotTouchReplacement()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        okuflow::UserDataPaths paths(directory.path(),QStringLiteral("C:/fixture-install"));
+        okuflow::RecordingManager manager(nullptr,[](const QString&,int) {},[](const auto&) {},paths);
+        okuflow::RecordingSessionInfo first; first.id = QStringLiteral("reserved-session-a");
+        first.ownerKind = okuflow::RecordingOwnerKind::AgentSession; first.ownerId = QStringLiteral("owner-a");
+        first.requestedAudio = okuflow::RecordingAudioRequest::None;
+        manager.SetRequested(true,first);
+        QVERIFY(manager.CurrentSessionInfo()); QCOMPARE(manager.CurrentSessionInfo()->id,first.id);
+        QCOMPARE(manager.CurrentSessionInfo()->ownerId,first.ownerId);
+        QVERIFY(!manager.StopSession(QStringLiteral("foreign-session"))); QVERIFY(manager.IsActive());
+        manager.SetSessionAudioResult(QStringLiteral("foreign-session"),true);
+        QVERIFY(!manager.CurrentSessionInfo()->actualAudio);
+        QVERIFY(manager.StopSession(first.id));
+        QTRY_VERIFY_WITH_TIMEOUT(!manager.CurrentSessionInfo().has_value(),3000);
+        okuflow::RecordingSessionInfo second; second.id = QStringLiteral("reserved-session-b");
+        manager.SetRequested(true,second); QVERIFY(manager.CurrentSessionInfo());
+        QVERIFY(!manager.StopSession(first.id)); QCOMPARE(manager.CurrentSessionInfo()->id,second.id);
+        QVERIFY(manager.StopSession(second.id)); QVERIFY(manager.ShutdownForProcessExit());
+    }
     void startupBudgetRequiresPendingAndNextFrameToFit()
     {
         constexpr std::uint64_t oneFrameLimit =

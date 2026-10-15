@@ -1,5 +1,7 @@
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test)
 include(gui_cases.cmake)
+add_test(NAME cuda_target_policy
+    COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/cuda_target_policy.cmake")
 
 add_executable(deadline_worker_tests deadline_worker_tests.cpp)
 target_include_directories(deadline_worker_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
@@ -29,6 +31,20 @@ target_link_libraries(settings_store_tests PRIVATE
 add_test(NAME settings_store_round_trip COMMAND settings_store_tests)
 get_target_property(QT_QMAKE_EXECUTABLE Qt6::qmake IMPORTED_LOCATION)
 get_filename_component(QT_BIN_DIRECTORY "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
+include(codex_agent_profile.cmake)
+include(codex_agent_client.cmake)
+include(agent_control.cmake)
+include(control_schema.cmake)
+include(control_diagnostics.cmake)
+include(assistant_parameter_policy.cmake)
+include(agent_control_coverage.cmake)
+include(image_parameter_planner.cmake)
+include(agent_control_panel.cmake)
+include(http_agent.cmake)
+include(visible_chat.cmake)
+include(visible_chat_store.cmake)
+include(mcp.cmake)
+include(native_control.cmake)
 set_tests_properties(deadline_worker PROPERTIES TIMEOUT 15
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 add_executable(launcher_fixture launcher_fixture.cpp)
@@ -536,6 +552,10 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/src/common/response_language.cpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistive_overlay.hpp
         ${PROJECT_SOURCE_DIR}/src/ui/assistive_overlay.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistant_chat_view.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/agent_control_panel.hpp
+        ${PROJECT_SOURCE_DIR}/src/ui/assistant_chat_view.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/agent_control_panel.cpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/annotation_overlay.hpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/live_status_text.hpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ui_translation.hpp
@@ -629,7 +649,11 @@ if (WIN32)
     # resources come from the same lrelease output as the shipping application.
     add_executable(main_window_tests
         main_window_tests.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/common/visible_chat_session.hpp
+        ${PROJECT_SOURCE_DIR}/src/common/visible_chat_session.cpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/main_window.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/agent_control_panel.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistant_chat_view.hpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/render_widget.hpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistive_overlay.hpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/annotation_overlay.hpp
@@ -639,6 +663,8 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/include/okuflow/ui/responsive_slider_row.hpp
         ${PROJECT_SOURCE_DIR}/include/okuflow/app/language_manager.hpp
         ${PROJECT_SOURCE_DIR}/src/ui/main_window.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/agent_control_panel.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/assistant_chat_view.cpp
         ${PROJECT_SOURCE_DIR}/src/app/app_language.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/render_widget.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/assistive_overlay.cpp
@@ -741,7 +767,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     target_include_directories(yuv_color_cuda_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(yuv_color_cuda_tests PRIVATE CUDA::cudart_static)
     set_target_properties(yuv_color_cuda_tests PROPERTIES
-        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121")
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}")
     add_test(NAME yuv_color_conversion_cuda COMMAND yuv_color_cuda_tests)
     set_tests_properties(yuv_color_conversion_cuda PROPERTIES
         TIMEOUT 30 SKIP_RETURN_CODE 77 LABELS "gpu")
@@ -753,7 +779,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     target_include_directories(text_clarity_cuda_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(text_clarity_cuda_tests PRIVATE CUDA::cudart_static)
     set_target_properties(text_clarity_cuda_tests PROPERTIES
-        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121")
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}")
     add_test(NAME text_clarity_sauvola_cuda COMMAND text_clarity_cuda_tests)
     set_tests_properties(text_clarity_sauvola_cuda PROPERTIES
         TIMEOUT 30 SKIP_RETURN_CODE 77 LABELS "gpu")
@@ -769,7 +795,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     set_target_properties(stabilization_cuda_tests PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
+        CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}"
     )
     add_test(NAME stabilization_similarity_cuda
              COMMAND stabilization_cuda_tests)
@@ -790,7 +816,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     set_target_properties(spatial_upscaler_cuda_tests PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
+        CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}"
     )
     add_test(NAME spatial_upscaler_reference_cuda
              COMMAND spatial_upscaler_cuda_tests)
@@ -811,7 +837,7 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
     set_target_properties(stabilization_replay_cuda PROPERTIES
         CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "75;80;86;89;90;100;103;120;121"
+        CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}"
     )
 
     add_test(NAME stabilization_replay_regression
@@ -827,25 +853,44 @@ if (WIN32 AND OKUFLOW_ENABLE_CUDA)
         LABELS "gpu"
     )
 
-    # The fatbin must carry native SASS for every supported architecture;
-    # a missing one only fails at kernel launch on that hardware. Keep this
-    # list in sync with CUDA_ARCHITECTURES in cmake/CMakeLists.txt.
+    # Require native SASS independently of driver/PTX compatibility.
+    # The inventory is selected once by cmake/CudaTargets.cmake.
     find_program(OKUFLOW_CUOBJDUMP NAMES cuobjdump
         HINTS ${CUDAToolkit_BIN_DIR} "$ENV{CUDA_PATH}/bin")
     if(OKUFLOW_CUOBJDUMP)
+        string(JOIN "," expected_cuda_architectures ${OKUFLOW_CUDA_ARCHITECTURES})
         add_test(NAME cuda_architecture_coverage
             COMMAND ${CMAKE_COMMAND}
                 "-DOKUFLOW_CUOBJDUMP=${OKUFLOW_CUOBJDUMP}"
                 "-DOKUFLOW_EXECUTABLE=$<TARGET_FILE:oku_flow>"
-                "-DOKUFLOW_EXPECTED_ARCHS=75,80,86,89,90,100,103,120,121"
+                "-DOKUFLOW_EXPECTED_ARCHS=${expected_cuda_architectures}"
                 -P "${PROJECT_SOURCE_DIR}/tests/check_cuda_architectures.cmake")
         set_tests_properties(cuda_architecture_coverage PROPERTIES TIMEOUT 60)
     endif()
 endif()
 
+include(agent_control_capture.cmake)
 # Also serialize the small GUI suites that still run in one process. RUN_SERIAL
 # prevents overlap with non-GUI tests inside one CTest; the fixture lease also
 # prevents two separate CTest processes from opening competing GUI windows.
+foreach(runtime_fixture IN ITEMS annotation_overlay_tests notes_html_tests assistive_preparation_tests)
+    if(TARGET ${runtime_fixture})
+        target_sources(${runtime_fixture} PRIVATE
+            ${PROJECT_SOURCE_DIR}/include/okuflow/common/visible_chat_session.hpp
+            ${PROJECT_SOURCE_DIR}/src/common/visible_chat_session.cpp
+            ${PROJECT_SOURCE_DIR}/src/common/codex_agent_profile.cpp)
+    endif()
+endforeach()
+if(TARGET assistive_preparation_tests)
+    include(scoped_codex_vision.cmake)
+endif()
+if(TARGET annotation_overlay_tests)
+    target_sources(annotation_overlay_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistant_chat_view.hpp
+        ${PROJECT_SOURCE_DIR}/src/ui/assistant_chat_view.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/agent_control_panel.hpp
+        ${PROJECT_SOURCE_DIR}/src/ui/agent_control_panel.cpp)
+endif()
 get_property(okuflow_tests DIRECTORY PROPERTY TESTS)
 foreach(test IN LISTS okuflow_tests)
     get_property(labels TEST "${test}" PROPERTY LABELS)

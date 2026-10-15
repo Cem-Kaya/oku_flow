@@ -1,7 +1,9 @@
 #include "gui_test_support.hpp"
 #include "okuflow/app/app.hpp"
 #include "okuflow/app/language_manager.hpp"
+#include "okuflow/common/visible_chat_session.hpp"
 #include "okuflow/ui/assistive_overlay.hpp"
+#include "okuflow/ui/agent_control_panel.hpp"
 #include "okuflow/ui/collapsible_section.hpp"
 #include "okuflow/ui/main_window.hpp"
 #include "okuflow/ui/theme_contrast.hpp"
@@ -25,6 +27,7 @@
 #include <QAction>
 #include <QPalette>
 #include <QPushButton>
+#include <QPlainTextEdit>
 #include <QRegularExpression>
 #include <QScreen>
 #include <QScrollArea>
@@ -43,6 +46,7 @@
 #include <QtTest>
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cmath>
 #include <Windows.h>
@@ -301,6 +305,7 @@ private slots:
     void busyActionSurvivesGermanResize();
     void keyboardRegionsAndFindShortcut();
     void assistantInspectorTabTraversal();
+    void floatingAssistantTabTraversal();
     void chromeFollowsNativeOwnerMove_data();
     void chromeFollowsNativeOwnerMove();
     void minimumViewportChromeFits_data();
@@ -322,25 +327,66 @@ void MainWindowTests::streamingPreservesReadingState()
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.advancedModeButton()->click();
+    auto* tabs = Named<QTabWidget>(window, "advancedPage");
+    auto* assistantPage = Named<QWidget>(window, "assistantTabPage");
+    QVERIFY(tabs && assistantPage);
+    tabs->setCurrentWidget(assistantPage);
     AssistiveOverlay overlay(window.renderWidget());
+    VisibleChatSession session;
+    connect(&session, &VisibleChatSession::SnapshotChanged, window.assistantChatView(), &AssistantChatView::SetChatSnapshot);
+    connect(&session, &VisibleChatSession::SnapshotChanged, &overlay, &AssistiveOverlay::SetChatSnapshot);
+    const auto ticket = session.Admit(QStringLiteral("Explain this view"), ChatBackendKind::Explain);
+    QVERIFY(ticket);
+    overlay.ShowChat(true);
     const QString answer = QStringLiteral("A long answer line for reading.\n").repeated(100);
-    overlay.SetContent(QStringLiteral("Answer"), answer, true);
-    auto* body = overlay.findChild<QTextBrowser*>(QStringLiteral("assistiveBody"));
-    QVERIFY(body);
+    QVERIFY(session.AppendDelta(*ticket, answer));
+    const std::array<QTextBrowser*, 2> bodies{
+        window.assistantChatView()->transcript(), overlay.chatView()->transcript()};
     QCoreApplication::processEvents();
-    QTextCursor reading(body->document());
-    reading.setPosition(3);
-    reading.setPosition(18, QTextCursor::KeepAnchor);
-    body->setTextCursor(reading);
-    body->verticalScrollBar()->setValue(0);
-    overlay.SetContent(QStringLiteral("Answer"), answer + QStringLiteral("New streamed text"), true);
-    QCOMPARE(body->textCursor().selectedText(), reading.selectedText());
-    QCOMPARE(body->verticalScrollBar()->value(), 0);
-    reading.clearSelection();
-    body->setTextCursor(reading);
-    body->verticalScrollBar()->setValue(body->verticalScrollBar()->maximum());
-    overlay.SetContent(QStringLiteral("Answer"), answer + QStringLiteral("New streamed text\nMore text"), true);
-    QCOMPARE(body->verticalScrollBar()->value(), body->verticalScrollBar()->maximum());
+    std::array<QString, 2> selections;
+    for (size_t index = 0; index < bodies.size(); ++index) {
+        auto* body = bodies[index];
+        QVERIFY(body && body->isVisible());
+        QTextCursor reading(body->document());
+        const int start = body->toPlainText().indexOf(answer.left(20));
+        QVERIFY(start >= 0);
+        reading.setPosition(start + 3);
+        reading.setPosition(start + 18, QTextCursor::KeepAnchor);
+        body->setTextCursor(reading);
+        selections[index] = reading.selectedText();
+        body->verticalScrollBar()->setValue(0);
+    }
+    QVERIFY(session.AppendDelta(*ticket, QStringLiteral("New streamed text")));
+    for (size_t index = 0; index < bodies.size(); ++index) {
+        auto* body = bodies[index];
+        QCOMPARE(body->textCursor().selectedText(), selections[index]);
+        QCOMPARE(body->verticalScrollBar()->value(), 0);
+        auto reading = body->textCursor();
+        reading.clearSelection();
+        body->setTextCursor(reading);
+        body->verticalScrollBar()->setValue(body->verticalScrollBar()->maximum());
+    }
+    QVERIFY(session.AppendDelta(*ticket, QStringLiteral("\nMore text")));
+    for (auto* body : bodies)
+        QCOMPARE(body->verticalScrollBar()->value(), body->verticalScrollBar()->maximum());
+
+    // Read has an independent result pane. Its stream preserves selection and
+    // scrolling without replacing or hiding either shared Explain view.
+    const QString chatText = bodies[1]->toPlainText();
+    overlay.SetReadContent(QStringLiteral("Read"), answer, true);
+    auto* readBody = overlay.ReadBody();
+    QVERIFY(readBody);
+    QTextCursor reading(readBody->document());
+    reading.setPosition(3); reading.setPosition(18, QTextCursor::KeepAnchor);
+    readBody->setTextCursor(reading);
+    const QString readSelection = reading.selectedText();
+    readBody->verticalScrollBar()->setValue(0);
+    overlay.SetReadContent(QStringLiteral("Read"), answer + QStringLiteral("More reading"), true);
+    QCOMPARE(readBody->textCursor().selectedText(), readSelection);
+    QCOMPARE(readBody->verticalScrollBar()->value(), 0);
+    QCOMPARE(bodies[1]->toPlainText(), chatText);
+    QVERIFY(overlay.isVisible());
 }
 
 void MainWindowTests::desktopZoomSliderReachesSixteenX()
@@ -1055,26 +1101,71 @@ void MainWindowTests::assistantInspectorTabTraversal()
     auto* assistantPage = Named<QWidget>(window, "assistantTabPage");
     QVERIFY(advanced && assistantPage);
     advanced->setCurrentWidget(assistantPage);
-    auto* assistantTabs = assistantPage->findChild<QTabWidget*>();
-    QVERIFY(assistantTabs);
-    assistantTabs->setCurrentIndex(0);
-    auto* attach = window.assistantAttachFrameCheckbox();
-    auto* newConversation = window.assistantNewButton();
-    QVERIFY(attach && newConversation && attach->isVisible() && newConversation->isVisible());
+    QVERIFY(!assistantPage->findChild<QTabWidget*>());
+    auto* view=window.assistantChatView();
+    auto* newConversation=view->newButton();
+    auto* historyButton=view->findChild<QToolButton*>(QStringLiteral("chatHistory"));
+    auto* settingsButton=view->findChild<QToolButton*>(QStringLiteral("chatSettings"));
+    QVERIFY(newConversation && historyButton && settingsButton);
     QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
-    attach->setFocus();
-    QTRY_VERIFY(attach->hasFocus());
-    QTest::keyClick(attach, Qt::Key_Tab);
-    QTRY_VERIFY(newConversation->hasFocus());
+    newConversation->setFocus();QTRY_VERIFY(newConversation->hasFocus());
+    QTest::keyClick(newConversation,Qt::Key_Tab);QTRY_VERIFY(historyButton->hasFocus());
+    QTest::keyClick(historyButton,Qt::Key_Tab);QTRY_VERIFY(settingsButton->hasFocus());
+    view->composer()->setFocus();QTRY_VERIFY(view->composer()->hasFocus());
+    QTest::keyClick(view->composer(),Qt::Key_Tab);QTRY_VERIFY(view->attachmentCheckbox()->hasFocus());
+    view->ShowHistory();
+    auto* history=view->historyList();auto* rename=view->renameButton();
+    QVERIFY(history->isVisible() && rename->isVisible());
+    QVERIFY(history->count() == 0);
+    // History population and action availability are app-owned. Mirror the
+    // empty and selected-history states without constructing provider services.
+    for (auto* action : {rename, view->exportButton(), view->deleteButton()}) action->setEnabled(false);
+    QVERIFY(!rename->isEnabled());
+    auto* row = new QListWidgetItem(QStringLiteral("Saved Explain conversation"), history);
+    row->setData(Qt::UserRole, QStringLiteral("fixture-logical-chat"));
+    history->setCurrentItem(row);
+    for (auto* action : {rename, view->exportButton(), view->deleteButton()}) action->setEnabled(true);
+    QCOMPARE(history->currentItem()->data(Qt::UserRole).toString(), QStringLiteral("fixture-logical-chat"));
+    history->setFocus();QTRY_VERIFY(history->hasFocus());
+    QTest::keyClick(history,Qt::Key_Tab);QTRY_VERIFY(rename->hasFocus());
+    QTest::keyClick(rename,Qt::Key_Escape);QTRY_VERIFY(!history->isVisible());
+    QTRY_VERIFY(view->attachmentCheckbox()->hasFocus());
 
-    assistantTabs->setCurrentIndex(1);
-    auto* history = window.assistantHistoryList();
-    auto* rename = window.assistantRenameButton();
-    QVERIFY(history && rename && history->isVisible() && rename->isVisible());
-    history->setFocus();
-    QTRY_VERIFY(history->hasFocus());
-    QTest::keyClick(history, Qt::Key_Tab);
-    QTRY_VERIFY(rename->hasFocus());
+}
+
+void MainWindowTests::floatingAssistantTabTraversal()
+{
+    MainWindow window;window.resize(1280,900);window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    AssistiveOverlay overlay(window.renderWidget());
+    auto* view=overlay.chatView();
+    overlay.SetChatSnapshot({{"conversationId","keyboard-fixture"},{"draft","keep this question"}});
+    overlay.ShowChat(true);overlay.SetControlRoutingNotice(true,true);
+    QTRY_VERIFY(overlay.isVisible());
+    QVERIFY2(ActivateFixtureWindow(&overlay),test::ActivationFailureMessage());
+    auto* start=overlay.findChild<QPushButton*>(QStringLiteral("agentStartConversation"));
+    auto* without=overlay.findChild<QPushButton*>(QStringLiteral("agentSendWithoutControl"));
+    QVERIFY(start && without && start->isVisible() && without->isVisible());
+    view->composer()->setFocus();QTRY_VERIFY(view->composer()->hasFocus());
+    QTest::keyClick(view->composer(),Qt::Key_Backtab);QTRY_VERIFY(without->hasFocus());
+    QTest::keyClick(without,Qt::Key_Backtab);QTRY_VERIFY(start->hasFocus());
+    overlay.agentControlPanel()->RefreshRoutingNotice(false);
+    auto* probe=overlay.findChild<QPushButton*>(QStringLiteral("agentRoutingCapabilityTest"));
+    QVERIFY(probe);QTRY_VERIFY(probe->hasFocus());
+    overlay.agentControlPanel()->RefreshRoutingNotice(true);QTRY_VERIFY(start->hasFocus());
+    QTest::keyClick(start,Qt::Key_Tab);QTRY_VERIFY(without->hasFocus());
+    QTest::keyClick(without,Qt::Key_Tab);QTRY_VERIFY(view->composer()->hasFocus());
+    view->ShowHistory();
+    view->historyList()->addItem(QStringLiteral("Fixture history"));
+    view->renameButton()->setEnabled(true);
+    view->historyList()->setFocus();QTRY_VERIFY(view->historyList()->hasFocus());
+    QTest::keyClick(view->historyList(),Qt::Key_Tab);QTRY_VERIFY(view->renameButton()->hasFocus());
+    view->CloseDrawer();view->ShowSettings();
+    auto* ai=view->findChild<QPushButton*>(QStringLiteral("chatAISettings"));
+    QVERIFY(ai && ai->isVisible());
+    ai->setFocus();QTRY_VERIFY(ai->hasFocus());
+    QTest::keyClick(ai,Qt::Key_Tab);QTRY_VERIFY(view->connectButton()->hasFocus());
+    SaveScreenshot(window,QStringLiteral("floating-assistant-keyboard"));
 }
 
 void MainWindowTests::chromeFollowsNativeOwnerMove_data()
@@ -1481,7 +1572,13 @@ void MainWindowTests::hideUiPreservesPriorModeAndStreaming()
         QTRY_VERIFY(window.advancedPanelWidth() >= 420);
     }
     AssistiveOverlay assistant(window.renderWidget());
-    assistant.SetContent(QStringLiteral("Assistant"), QStringLiteral("First part"), true);
+    VisibleChatSession session;
+    connect(&session, &VisibleChatSession::SnapshotChanged, window.assistantChatView(), &AssistantChatView::SetChatSnapshot);
+    connect(&session, &VisibleChatSession::SnapshotChanged, &assistant, &AssistiveOverlay::SetChatSnapshot);
+    const auto ticket = session.Admit(QStringLiteral("Explain this view"), ChatBackendKind::Explain);
+    QVERIFY(ticket);
+    QVERIFY(session.AppendDelta(*ticket, QStringLiteral("First part")));
+    assistant.ShowChat(true);
     QTRY_VERIFY(assistant.isVisible());
     QTRY_VERIFY(toggle->isVisible());
     const QString screenshotPrefix = advancedMode ? QStringLiteral("advanced")
@@ -1495,8 +1592,8 @@ void MainWindowTests::hideUiPreservesPriorModeAndStreaming()
                 !assistant.isVisible());
     QVERIFY(visibilityPanel->isVisible());
     QVERIFY(toggle->isVisible());
-    assistant.SetContent(QStringLiteral("Assistant"),
-                         QStringLiteral("First part, completed"), true);
+    const QString completed = QStringLiteral("First part, completed");
+    QVERIFY(session.Complete(*ticket, completed));
     QVERIFY(!assistant.isVisible());
     const QPointF local(20, 20);
     const QPointF global = window.renderWidget()->mapToGlobal(local.toPoint());
@@ -1512,9 +1609,10 @@ void MainWindowTests::hideUiPreservesPriorModeAndStreaming()
     QCOMPARE(window.isSimpleMode(), !advancedMode);
     QTRY_VERIFY(top->isVisible() && bottomLeft->isVisible() &&
                 bottomRight->isVisible() && assistant.isVisible());
-    auto* body = assistant.findChild<QTextBrowser*>(QStringLiteral("assistiveBody"));
+    auto* body = assistant.chatView()->transcript();
     QVERIFY(body);
-    QCOMPARE(body->toPlainText(), QStringLiteral("First part, completed"));
+    QVERIFY(body->toPlainText().contains(completed));
+    QCOMPARE(body->toPlainText(), window.assistantChatView()->transcript()->toPlainText());
     SaveScreenshot(window, screenshotPrefix + QStringLiteral("-ui-restored"));
     if (advancedMode) {
         QCOMPARE(tabs->currentWidget(), settings);

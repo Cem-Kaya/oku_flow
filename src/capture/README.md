@@ -29,7 +29,16 @@ output can share the capture DXGI manager and pins its samples; CPU NV12 uses
 the normal buffer normalization path. Phone stop follows the same bounded
 shutdown coordinator. `SetPhoneZoom` / `SetPhoneCamera` coalesce commands and
 are no-ops for webcams; automatic viewport-to-phone zoom is later work.
-`SetPhoneTorch` also coalesces requests. Every stream connection explicitly
+`SetPhoneTorch` also coalesces requests. Its bounded actor overload returns
+admission only for this live phone session, before split stop begins, with a
+nonnull shared cancellation token and positive steady-clock millisecond deadline.
+The transport stores the desired state, token, deadline and generation together;
+new native/actor commands retire previous queued or dequeued actor requests.
+Cancellation/expiry/generation are checked immediately before the control socket
+write. Cancel, terminal failure and HEVC retry retire pending requests rather
+than replaying them. Already emitted bytes may still be acknowledged after
+cancellation, so queue admission never changes the reported light state; only
+the phone's status acknowledgment does. Every stream connection explicitly
 requests the light off; capture metadata reports actual availability and state.
 The Camera settings button is enabled only when that live phone supports a light.
 See [`android/PROTOCOL.md`](../../android/PROTOCOL.md) for limits and hardware gates.
@@ -106,10 +115,21 @@ Startup may use a separate worker-owned facade, then `Swap` it into the UI only
 after startup finishes and neither facade has concurrent callers. Swapping
 transfers the complete session, startup snapshots, and shutdown/abandon state;
 it does not stop the camera or release producer backing.
-Stop revokes callbacks and uses one 1500 ms worker deadline plus the consumer's
-bounded CUDA drain. A stalled driver keeps its session/backing alive until
-process exit and requires restart. A producer lease prevents reuse or release
-of the converted texture until CUDA observes its asynchronous copy completion.
+`BeginStopCapture` revokes callbacks and denies further facade GPU/phone access
+before starting one independently owned stop worker. `PollStopCapture` returns
+without waiting for a driver: WaitingForQuiescence, ReadyToRelease,
+WaitingForRelease, Completed or Failed. ReadyToRelease retains producer backing
+until `ReleaseStoppedCapture(true)` acknowledges cleanup of the exact consumer
+imports. A premature or unsafe acknowledgment fails closed. All phases share
+1500 ms from Begin; worker completion timestamps prevent a delayed GUI poll
+from turning an already successful stop into a timeout. The synchronous
+`StopCapture` wrapper remains for legacy startup and exit paths, with its caller's
+bounded CUDA drain. It cannot silently acknowledge an already pending split stop.
+A stalled driver keeps its exact session/backing alive once until process exit,
+requires restart, and prevents another source from starting on that facade.
+A producer lease prevents reuse or release of the converted texture until CUDA
+observes its asynchronous copy completion. Split-stop fixtures use scripted
+workers and leases; they establish neither physical-camera nor phone acceptance.
 
 Phone discovery runs on a separate app worker every five seconds. Startup and
 webcam reconnect list only Media Foundation devices and use the cached phone

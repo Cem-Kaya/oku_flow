@@ -11,7 +11,8 @@ param(
 
     # Mirrors OKUFLOW_ENABLE_CUDA from the validated build so the SBOM does
     # not claim a static CUDA runtime in a CPU-only emergency bundle.
-    [string]$CudaEnabled = 'ON'
+    [string]$CudaEnabled = 'ON',
+    [string]$BuildDirectory = ''
 )
 
 $qtRuntimeVersion =
@@ -27,8 +28,15 @@ $cudaToolkitVersion =
 $ErrorActionPreference = 'Stop'
 $bundle = (Resolve-Path -LiteralPath $BundlePath).Path
 . (Join-Path $PSScriptRoot 'windows-installer/bundle_layout.ps1')
+. (Join-Path $PSScriptRoot 'windows-installer/mcp_bundle.ps1')
 $layout = Get-OkuFlowBundleLayout $bundle
 $payload = $layout.PayloadRoot
+$mcpExecutable = Join-Path $payload 'okuflow_mcp.exe'
+$mcpInfo = $null
+if (Test-Path -LiteralPath $mcpExecutable -PathType Leaf) {
+    if (-not $BuildDirectory) { throw 'MCP metadata requires the matching validated build directory.' }
+    $mcpInfo = Get-McpReleaseBuild $BuildDirectory $mcpExecutable
+}
 $repository = (Resolve-Path -LiteralPath $RepositoryPath).Path
 $runtimePin = Get-Content (Join-Path $repository 'scripts/vc-runtime/pins.json') -Raw | ConvertFrom-Json
 $runtimeInstaller = Join-Path $payload $runtimePin.installer.name
@@ -114,7 +122,9 @@ $dirty = $LASTEXITCODE -ne 0 -or $statusLines.Count -gt 0
 
 $executable = Join-Path $bundle 'oku_flow.exe'
 $signature = Get-AuthenticodeSignature -LiteralPath $executable
-$executableSignatures = foreach ($name in @('oku_flow.exe', $layout.ApplicationRelativePath)) {
+$ownedExecutables = @('oku_flow.exe', $layout.ApplicationRelativePath)
+if ($mcpInfo) { $ownedExecutables += $layout.Prefix + 'okuflow_mcp.exe' }
+$executableSignatures = foreach ($name in $ownedExecutables) {
     $path = Join-Path $bundle $name
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required release executable missing: $name" }
     $signed = Get-AuthenticodeSignature -LiteralPath $path
@@ -155,6 +165,10 @@ $manifest = [ordered]@{
         license = $layout.Prefix + 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'
     }
     files = @($fileRecords)
+}
+if ($mcpInfo) {
+    $manifest.agentControl = [ordered]@{path=($layout.Prefix + 'okuflow_mcp.exe');
+        sha256=(Get-FileHash -LiteralPath $mcpExecutable).Hash.ToLowerInvariant();buildInfo=$mcpInfo}
 }
 $manifest | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath (Join-Path $bundle 'release-manifest.json') -Encoding utf8NoBOM
@@ -354,8 +368,26 @@ if ($null -eq $d3dCompilerVersion) {
         })
 }
 
+if ($mcpInfo) {
+    $packages += [ordered]@{
+        SPDXID = 'SPDXRef-Package-OkuFlow-MCP'
+        name = 'OkuFlow first-party MCP bridge'
+        versionInfo = $namespaceId
+        downloadLocation = 'NOASSERTION'
+        filesAnalyzed = $false
+        licenseConcluded = 'GPL-3.0-only OR LicenseRef-OkuFlow-Commercial'
+        licenseDeclared = 'GPL-3.0-only OR LicenseRef-OkuFlow-Commercial'
+        copyrightText = 'NOASSERTION'
+        checksums = @([ordered]@{algorithm='SHA256';checksumValue=$manifest.agentControl.sha256})
+        comment = 'Qt-free static-CRT first-party executable; no MCP SDK runtime is bundled. Exact path and V1/deployed-policy facts are in release-manifest.json.'
+    }
+}
 $packageIds = @($packages | ForEach-Object { $_.SPDXID })
 $relationships = @()
+if ($mcpInfo) {
+    $relationships += [ordered]@{spdxElementId='SPDXRef-Package-OkuFlow';
+        relationshipType='CONTAINS';relatedSpdxElement='SPDXRef-Package-OkuFlow-MCP'}
+}
 foreach ($dependency in @(
     'SPDXRef-Package-Microsoft-VC-Runtime',
     'SPDXRef-Package-Qt',

@@ -71,6 +71,8 @@ private:
     QComboBox* codexReasoningCombo_{};
     QCheckBox* codexInternetCheckbox_{};
     QCheckBox* codexCodingCheckbox_{};
+    QCheckBox* agentControlCheckbox_{};
+    QCheckBox* externalMcpCheckbox_{};
     QLineEdit* codexWorkspaceEdit_{};
     QPushButton* codexWorkspaceBrowseButton_{};
     QPlainTextEdit* assistantInstructionsEdit_{};

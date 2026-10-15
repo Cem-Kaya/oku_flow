@@ -11,6 +11,9 @@
 #include <functional>
 #include <string_view>
 
+class QTcpSocket;
+class QJsonObject;
+
 namespace okuflow {
 // Public adb devices.proto fields only; unknown/non-USB/unauthorized transports are excluded.
 std::vector<CameraDescriptor> ParseAdbUsbDevices(std::span<const std::uint8_t> protobuf);
@@ -117,6 +120,11 @@ public:
     void SetZoom(float ratio);
     void SetCamera(const std::string& id);
     void SetTorch(bool enabled);
+    // A positive steady-clock deadline and nonnull token bound actor requests.
+    // Newer native/actor requests retire the previous token, including a dequeued
+    // request that has not yet reached its guarded control-socket write.
+    bool SetTorch(bool enabled, std::shared_ptr<std::atomic<bool>> canceled,
+                  std::int64_t deadlineSteadyMs);
     bool TorchAvailable() const noexcept { return torchAvailable_.load(); }
     bool TorchEnabled() const noexcept { return torchEnabled_.load(); }
     VideoFormat Format() const;
@@ -124,6 +132,19 @@ public:
     // Last phone ERROR/probe code (busy, blocked, noMode, failed, hot, sessionBusy) or empty.
     std::string ProblemCode() const;
 private:
+    friend struct PhoneTorchTestAccess;
+    struct PendingTorchCommand {
+        bool enabled{};
+        std::shared_ptr<std::atomic<bool>> canceled;
+        std::int64_t deadlineSteadyMs{};
+        std::uint64_t generation{};
+    };
+    bool QueueTorch(bool enabled, std::shared_ptr<std::atomic<bool>> canceled,
+                    std::int64_t deadlineSteadyMs);
+    bool SendPendingTorch(QTcpSocket& socket);
+    bool SendTorchCommand(QTcpSocket& socket, const PendingTorchCommand& command);
+    void ApplyTorchAcknowledgment(const QJsonObject& status);
+    void RetirePendingTorch();
     void Run(CameraDescriptor descriptor, Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> manager,
              FrameCallback callback, CaptureErrorCallback errorCallback);
     std::atomic<bool> canceled_{false};
@@ -137,7 +158,9 @@ private:
     std::string problemCode_;
     float pendingZoom_{-1.0f};
     std::string pendingCamera_;
-    std::optional<bool> pendingTorch_;
+    std::optional<PendingTorchCommand> pendingTorch_;
+    std::shared_ptr<std::atomic<bool>> torchCancellation_;
+    std::atomic<std::uint64_t> torchGeneration_{0};
     std::atomic<bool> torchAvailable_{false};
     std::atomic<bool> torchEnabled_{false};
 };

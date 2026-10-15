@@ -2937,5 +2937,313 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>OkuFlow is checking the USB connection and will reconnect automatically.</source>
             <translation>يتحقق OkuFlow من اتصال USB وسيعيد الاتصال تلقائيًا.</translation>
         </message>
+        <message>
+            <source>&amp;Deny</source>
+            <translation>&amp;ارفض</translation>
+        </message>
+        <message>
+            <source>Adjust view (required)</source>
+            <translation>ضبط مجال العرض (مطلوب)</translation>
+        </message>
+        <message>
+            <source>Allow camera views for this turn</source>
+            <translation>السماح بإرسال مشاهد الكاميرا في هذه الجولة</translation>
+        </message>
+        <message>
+            <source>Allow photos this session</source>
+            <translation>السماح بالصور خلال هذه الجلسة</translation>
+        </message>
+        <message>
+            <source>Allow the Assistant to start and stop recordings it started</source>
+            <translation>السماح للمساعد ببدء التسجيلات التي بدأها وإيقافها</translation>
+        </message>
+        <message>
+            <source>Approve lease</source>
+            <translation>الموافقة على التفويض المؤقت</translation>
+        </message>
+        <message>
+            <source>Ask permission before recording a lecture or other people.</source>
+            <translation>اطلب الإذن قبل تسجيل محاضرة أو أشخاص آخرين.</translation>
+        </message>
+        <message>
+            <source>Assistant action transcript</source>
+            <translation>سجل إجراءات المساعد</translation>
+        </message>
+        <message>
+            <source>Assistant control</source>
+            <translation>التحكم بالمساعد</translation>
+        </message>
+        <message>
+            <source>Assistant control is off</source>
+            <translation>التحكم بالمساعد متوقف</translation>
+        </message>
+        <message>
+            <source>Assistant control status</source>
+            <translation>حالة التحكم بالمساعد</translation>
+        </message>
+        <message>
+            <source>Camera views are sent to the selected provider. This permission ends with the turn or a camera source change.</source>
+            <translation>تُرسل مشاهد الكاميرا إلى المزوّد المحدد. ينتهي هذا الإذن بانتهاء الجولة أو عند تغيير مصدر الكاميرا.</translation>
+        </message>
+        <message>
+            <source>Connected client: %1</source>
+            <translation>العميل المتصل: %1</translation>
+        </message>
+        <message>
+            <source>Control conversations cannot use internet access, coding commands or file changes. Read and Explain stay unchanged.</source>
+            <translation>تظل ميزتا «اقرأ» و«اشرح» دون تغيير.</translation>
+        </message>
+        <message>
+            <source>Control is off by default. When enabled, the Assistant can adjust the view. Camera images and captures need separate permission. Stop and undo with Ctrl+Shift+U.</source>
+            <translation>التحكم متوقف افتراضيًا. عند تفعيله، يمكن للمساعد ضبط مجال العرض. تتطلب صور الكاميرا واللقطات إذنًا منفصلًا. أوقف التغيير وتراجع عنه باستخدام Ctrl+Shift+U.</translation>
+        </message>
+        <message>
+            <source>Controlling OkuFlow needs its own conversation.</source>
+            <translation>يتطلب التحكم في OkuFlow محادثة مستقلة.</translation>
+        </message>
+        <message>
+            <source>Exact action arguments</source>
+            <translation>وسيطات الإجراء الدقيقة</translation>
+        </message>
+        <message>
+            <source>External control lasts at most 5 minutes and ends after 60 seconds without activity. Disconnect the MCP client or choose Revoke lease to stop it.</source>
+            <translation>يستمر التحكم الخارجي 5 دقائق كحد أقصى، وينتهي بعد 60 ثانية من عدم النشاط. افصل عميل MCP أو اختر إلغاء التفويض المؤقت لإيقافه.</translation>
+        </message>
+        <message>
+            <source>External control permissions</source>
+            <translation>أذونات التحكم الخارجي</translation>
+        </message>
+        <message>
+            <source>External control: %1 seconds remaining; idle timeout %2 seconds. View changes: %3; camera views: %4; photos: %5.</source>
+            <translation>التحكم الخارجي: تبقّى %1 ثانية؛ الوقت المتبقي قبل انتهاء مهلة الخمول %2 ثانية. تغييرات العرض: %3؛ مشاهد الكاميرا: %4؛ الصور: %5.</translation>
+        </message>
+        <message>
+            <source>External MCP control</source>
+            <translation>تحكم MCP خارجي</translation>
+        </message>
+        <message>
+            <source>Lease permissions</source>
+            <translation>أذونات التفويض المؤقت</translation>
+        </message>
+        <message>
+            <source>No active lease</source>
+            <translation>لا يوجد تفويض مؤقت نشط</translation>
+        </message>
+        <message>
+            <source>No external client connected</source>
+            <translation>لا يوجد عميل خارجي متصل</translation>
+        </message>
+        <message>
+            <source>Orientation and camera source (never during recording)</source>
+            <translation>الاتجاه ومصدر الكاميرا (لا يحدث ذلك أثناء التسجيل)</translation>
+        </message>
+        <message>
+            <source>Review lease permissions</source>
+            <translation>مراجعة أذونات التفويض المؤقت</translation>
+        </message>
+        <message>
+            <source>Revoke lease</source>
+            <translation>إلغاء التفويض المؤقت</translation>
+        </message>
+        <message>
+            <source>Send camera views (up to 6 per lease)</source>
+            <translation>إرسال عروض الكاميرا (حتى 6 لكل تفويض مؤقت)</translation>
+        </message>
+        <message>
+            <source>Send without control</source>
+            <translation>الإرسال دون تحكم</translation>
+        </message>
+        <message>
+            <source>Start and stop recordings it started (at least 30 seconds remaining to start)</source>
+            <translation>بدء التسجيلات التي بدأها وإيقافها (يلزم بقاء 30 ثانية على الأقل للبدء)</translation>
+        </message>
+        <message>
+            <source>Start control conversation</source>
+            <translation>بدء محادثة تحكم</translation>
+        </message>
+        <message>
+            <source>Stop and undo (Ctrl+Shift+U)</source>
+            <translation>إيقاف وتراجع (Ctrl+Shift+U)</translation>
+        </message>
+        <message>
+            <source>Take photos (within the lease action budget)</source>
+            <translation>التقاط صور (ضمن حد إجراءات التفويض المؤقت)</translation>
+        </message>
+        <message>
+            <source>Test endpoint tool support now</source>
+            <translation>اختبر الآن دعم الأدوات لدى نقطة النهاية</translation>
+        </message>
+        <message>
+            <source>This explicit test sends a synthetic tool request to the configured endpoint. It sends no camera image and changes no settings.</source>
+            <translation>يرسل هذا الاختبار الصريح طلب أداة اصطناعيًا إلى نقطة النهاية المُعدّة. لا يرسل أي صورة من الكاميرا ولا يغيّر أي إعدادات.</translation>
+        </message>
+        <message>
+            <source>View changes: up to 60 per lease. Permissions cannot be widened during a lease; revoke it and issue a new one.</source>
+            <translation>تغييرات العرض: حتى 60 لكل تفويض مؤقت. لا يمكن توسيع الأذونات أثناء سريانه؛ ألغِه وأصدر تفويضًا جديدًا.</translation>
+        </message>
+        <message>
+            <source>Tool support ready</source>
+            <translation>دعم الأدوات جاهز</translation>
+        </message>
+        <message>
+            <source>Tool support unavailable</source>
+            <translation>دعم الأدوات غير متاح</translation>
+        </message>
+        <message>
+            <source>Checking tool support...</source>
+            <translation>جارٍ التحقق من دعم الأدوات...</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>محادثة جديدة</translation>
+        </message>
+        <message>
+            <source>History</source>
+            <translation>سجل المحادثات</translation>
+        </message>
+        <message>
+            <source>Assistant settings</source>
+            <translation>إعدادات المساعد</translation>
+        </message>
+        <message>
+            <source>Assistant Connection</source>
+            <translation>اتصال المساعد</translation>
+        </message>
+        <message>
+            <source>Assistant Conversation</source>
+            <translation>محادثة المساعد</translation>
+        </message>
+        <message>
+            <source>Assistant Question</source>
+            <translation>سؤال للمساعد</translation>
+        </message>
+        <message>
+            <source>Assistant History</source>
+            <translation>سجل محادثات المساعد</translation>
+        </message>
+        <message>
+            <source>Details</source>
+            <translation>التفاصيل</translation>
+        </message>
+        <message>
+            <source>&amp;Allow once</source>
+            <translation>&amp;اسمح مرة واحدة</translation>
+        </message>
+        <message>
+            <source>Activity log</source>
+            <translation>سجل النشاط</translation>
+        </message>
+        <message>
+            <source>About control</source>
+            <translation>حول التحكم</translation>
+        </message>
+        <message>
+            <source>Send this camera view to the selected provider?</source>
+            <translation>هل تسمح بإرسال مشهد الكاميرا هذا إلى المزوّد المحدد؟</translation>
+        </message>
+        <message>
+            <source>Take a photo of this view?</source>
+            <translation>هل تسمح بالتقاط صورة لهذا المشهد؟</translation>
+        </message>
+        <message>
+            <source>Start recording this view?</source>
+            <translation>هل تسمح ببدء تسجيل هذا المشهد؟</translation>
+        </message>
+        <message>
+            <source>Stop this recording?</source>
+            <translation>هل تريد إيقاف هذا التسجيل؟</translation>
+        </message>
+        <message>
+            <source>Stop the recording started at %1?</source>
+            <translation>هل تريد إيقاف التسجيل الذي بدأ في %1؟</translation>
+        </message>
+        <message>
+            <source>Rotate the camera view to %1°?</source>
+            <translation>هل تريد تدوير عرض الكاميرا إلى الزاوية المطلقة %1° باتجاه عقارب الساعة؟</translation>
+        </message>
+        <message>
+            <source>Switch camera source?</source>
+            <translation>هل تريد تغيير مصدر الكاميرا؟</translation>
+        </message>
+        <message>
+            <source>Review this action?</source>
+            <translation>هل تريد مراجعة هذا الإجراء؟</translation>
+        </message>
+        <message>
+            <source>Permission request %1: %2</source>
+            <translation>طلب إذن %1: %2</translation>
+        </message>
+        <message>
+            <source>Expires in %1 seconds</source>
+            <translation>تنتهي الصلاحية خلال %1 ثانية</translation>
+        </message>
+        <message>
+            <source>The request could not finish.</source>
+            <translation>تعذّر إكمال الطلب.</translation>
+        </message>
+        <message>
+            <source>Request stopped</source>
+            <translation>تم إيقاف الطلب</translation>
+        </message>
+        <message>
+            <source>View updated: %1</source>
+            <translation>تم تحديث العرض: %1</translation>
+        </message>
+        <message>
+            <source>Restored: %1</source>
+            <translation>تمت الاستعادة: %1</translation>
+        </message>
+        <message>
+            <source>Skipped: %1</source>
+            <translation>تم تخطي: %1</translation>
+        </message>
+        <message>
+            <source>Settings could not be saved.</source>
+            <translation>تعذّر حفظ الإعدادات.</translation>
+        </message>
+        <message>
+            <source>Action completed.</source>
+            <translation>اكتمل الإجراء.</translation>
+        </message>
+        <message>
+            <source>Action could not be completed.</source>
+            <translation>تعذّر إكمال الإجراء.</translation>
+        </message>
+        <message>
+            <source>Permission denied.</source>
+            <translation>لم يُسمح بالإجراء.</translation>
+        </message>
+        <message>
+            <source>On</source>
+            <translation>مفعّل</translation>
+        </message>
+        <message>
+            <source>Conversation history could not be updated.</source>
+            <translation>تعذّر تحديث سجل المحادثات.</translation>
+        </message>
+        <message>
+            <source>Change camera settings?</source>
+            <translation>هل تريد تغيير إعدادات الكاميرا؟</translation>
+        </message>
+        <message>
+            <source>Change recording preferences?</source>
+            <translation>هل تريد تغيير تفضيلات التسجيل؟</translation>
+        </message>
+        <message>
+            <source>Change Assistant provider, model or instructions?</source>
+            <translation>هل تريد تغيير مزوّد المساعد أو النموذج أو التعليمات؟</translation>
+        </message>
+        <message>
+            <source>Change notes and output settings?</source>
+            <translation>هل تريد تغيير إعدادات الملاحظات والمخرجات؟</translation>
+        </message>
+        <message>
+            <source>Change drawing settings?</source>
+            <translation>هل تريد تغيير إعدادات الرسم؟</translation>
+        </message>
+        <message>
+            <source>Change drawing settings and save a photo?</source>
+            <translation>هل تريد تغيير إعدادات الرسم وحفظ صورة؟</translation>
+        </message>
     </context>
 </TS>

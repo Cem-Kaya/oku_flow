@@ -1,12 +1,14 @@
 #ifdef _WIN32
 
 #include "okuflow/common/codex_app_server_client.hpp"
+#include "okuflow/common/codex_agent_profile.hpp"
 
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QProcessEnvironment>
 #include <QSignalBlocker>
 #include <QStandardPaths>
@@ -50,6 +52,18 @@ CodexAppServerClient::CodexAppServerClient(QObject* parent)
     turnWatchdogTimer_->setInterval(1000);
     connect(turnWatchdogTimer_, &QTimer::timeout,
             this, &CodexAppServerClient::CheckTurnWatchdog);
+    restrictedPreflightDeadline_=new QTimer(this);restrictedPreflightDeadline_->setSingleShot(true);
+    connect(restrictedPreflightDeadline_,&QTimer::timeout,this,[this]{FailRestrictedPreflight("preflight_timeout");});
+    connect(&restrictedPreflight_,&QProcess::readyReadStandardError,this,[this]{restrictedPreflight_.readAllStandardError();});
+    connect(&restrictedPreflight_,&QProcess::readyReadStandardOutput,this,[this] {
+        const auto bytes=restrictedPreflight_.readAllStandardOutput();
+        if(!restrictedPreflightActive_)return;
+        if(restrictedPreflightBytes_.size()+bytes.size()>512*1024) {FailRestrictedPreflight("preflight_too_large");return;}
+        restrictedPreflightBytes_+=bytes;
+    });
+    connect(&restrictedPreflight_,&QProcess::errorOccurred,this,[this](QProcess::ProcessError error) {
+        if(error==QProcess::FailedToStart && restrictedPreflightActive_)FailRestrictedPreflight("codex_unavailable");
+    });
 
     rpc_->SetServerRequestHandler(
         [this](const QJsonValue& id, const QString& method, const QJsonObject& params) {
@@ -71,8 +85,8 @@ CodexAppServerClient::CodexAppServerClient(QObject* parent)
     });
     connect(rpc_.get(), &CodexJsonRpcProcess::NotificationReceived,
             this, &CodexAppServerClient::HandleNotification);
-    connect(rpc_.get(), &CodexJsonRpcProcess::StderrText, this, [](const QString& diagnostic) {
-        qWarning().noquote() << "codex app-server:" << diagnostic;
+    connect(rpc_.get(), &CodexJsonRpcProcess::StderrText, this, [this](const QString& diagnostic) {
+        if(!restrictedLaunch_)qWarning().noquote() << "codex app-server:" << diagnostic;
     });
     connect(rpc_.get(), &CodexJsonRpcProcess::ProtocolFailed, this, [this](const QString& reason) {
         emit ServerStateChanged(false, reason);
@@ -157,20 +171,21 @@ void CodexAppServerClient::Configure(const QString& executablePath,
     if (!preferredModel_.isEmpty()) {
         selectedModel_ = preferredModel_;
     }
-    if (executableChanged && rpc_->IsRunning()) {
+    if (executableChanged && (rpc_->IsRunning() || restrictedPreflightActive_)) {
         Shutdown();
     }
 }
 
 void CodexAppServerClient::Start()
 {
-    if (rpc_->IsRunning()) {
+    if (rpc_->IsRunning() || restrictedPreflightActive_ || restrictedPreflight_.state()!=QProcess::NotRunning) {
         return;
     }
 
     initialized_ = false;
     accountReadInFlight_ = false;
     retiredTurnIds_.clear();
+    if(restrictedLaunch_) {StartRestrictedPreflight(0);return;}
     rpc_->SetProgram(ResolveExecutable(),
                      {QStringLiteral("app-server"),
                       QStringLiteral("--listen"),
@@ -182,6 +197,11 @@ void CodexAppServerClient::Start()
 
 void CodexAppServerClient::Shutdown()
 {
+    const bool hadPreflight=restrictedPreflightActive_;
+    ++restrictedPreflightEpoch_;restrictedPreflightActive_=false;
+    restrictedPreflightDeadline_->stop();restrictedPreflightBytes_.clear();restrictedVersion_.clear();restrictedFeatures_.clear();
+    if(restrictedPreflight_.state()!=QProcess::NotRunning)restrictedPreflight_.kill();
+    if(hadPreflight && IsTurnActive())FinishActiveTurn({},QStringLiteral("canceled"),true);
     if (!rpc_->IsRunning()) {
         return;
     }
@@ -189,6 +209,56 @@ void CodexAppServerClient::Shutdown()
         InterruptTurn();
     }
     rpc_->Shutdown();
+}
+
+void CodexAppServerClient::SetRestrictedLaunchMode(bool restricted)
+{
+    if(restricted==restrictedLaunch_)return;
+    Shutdown();restrictedLaunch_=restricted;
+}
+
+void CodexAppServerClient::FailRestrictedPreflight(const QString& code)
+{
+    if(!restrictedPreflightActive_)return;
+    const auto owner=pendingTurn_.valid?pendingTurn_.generation:activeGeneration_;
+    ++restrictedPreflightEpoch_;restrictedPreflightActive_=false;restrictedPreflightDeadline_->stop();
+    restrictedPreflightBytes_.clear();restrictedVersion_.clear();restrictedFeatures_.clear();
+    if(restrictedPreflight_.state()!=QProcess::NotRunning)restrictedPreflight_.kill();
+    emit ServerStateChanged(false,code);
+    const auto current=pendingTurn_.valid?pendingTurn_.generation:activeGeneration_;
+    if(owner && current==owner && IsTurnActive())FinishActiveTurn({},code,false);
+}
+
+void CodexAppServerClient::StartRestrictedPreflight(int stage)
+{
+    restrictedPreflightActive_=true;
+    const auto epoch=++restrictedPreflightEpoch_;
+    disconnect(&restrictedPreflight_,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,nullptr);
+    restrictedPreflightBytes_.clear();
+    connect(&restrictedPreflight_,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,
+        [this,stage,epoch](int exit,QProcess::ExitStatus status) {
+            if(epoch!=restrictedPreflightEpoch_ || !restrictedPreflightActive_)return;
+            restrictedPreflightDeadline_->stop();
+            restrictedPreflightBytes_+=restrictedPreflight_.readAllStandardOutput();
+            if(exit!=0 || status!=QProcess::NormalExit || restrictedPreflightBytes_.size()>512*1024) {FailRestrictedPreflight("preflight_failed");return;}
+            if(stage==0) {restrictedVersion_=QString::fromUtf8(restrictedPreflightBytes_);StartRestrictedPreflight(1);return;}
+            if(stage==1) {restrictedFeatures_=QString::fromUtf8(restrictedPreflightBytes_);StartRestrictedPreflight(2);return;}
+            QJsonParseError error;const auto inventory=QJsonDocument::fromJson(restrictedPreflightBytes_,&error);
+            if(error.error!=QJsonParseError::NoError || !inventory.isArray()) {FailRestrictedPreflight("invalid_mcp_inventory");return;}
+            const auto profile=CodexAgentProfile::Validate(restrictedVersion_,restrictedFeatures_,inventory.array());
+            restrictedPreflightBytes_.clear();restrictedVersion_.clear();restrictedFeatures_.clear();
+            if(!profile.available) {FailRestrictedPreflight(profile.errorCode);return;}
+            restrictedPreflightActive_=false;
+            rpc_->SetProgram(ResolveExecutable(),profile.arguments);
+            auto environment=QProcessEnvironment::systemEnvironment();
+            environment.remove("OKUFLOW_VLM_API_KEY");rpc_->SetProcessEnvironment(environment);
+            rpc_->Start();
+        });
+    QStringList args;
+    if(stage==0)args={"--version"};else if(stage==1)args={"features","list"};else args={"mcp","list","--json"};
+    auto environment=QProcessEnvironment::systemEnvironment();environment.remove("OKUFLOW_VLM_API_KEY");
+    restrictedPreflight_.setProcessEnvironment(environment);
+    restrictedPreflightDeadline_->start(5000);restrictedPreflight_.start(ResolveExecutable(),args);
 }
 
 void CodexAppServerClient::SetRequestTimeoutMs(int timeoutMs)
@@ -293,7 +363,9 @@ void CodexAppServerClient::RequestVisionTurn(const QString& prompt,
                                              const QString& imagePath,
                                              const QString& threadId,
                                              bool persistent,
-                                             bool retainThread)
+                                             bool retainThread,
+                                             bool permitCoding,
+                                             std::function<bool()> frameAuthorization)
 {
     if (IsTurnActive()) {
         if (!imagePath.trimmed().isEmpty()) {
@@ -304,7 +376,7 @@ void CodexAppServerClient::RequestVisionTurn(const QString& prompt,
                           false, persistent);
         return;
     }
-    if (persistent && codingEnabled_) {
+    if (persistent && permitCoding && codingEnabled_) {
         const QFileInfo workspace(workspaceDirectory_);
         if (!workspace.exists() || !workspace.isDir()) {
             if (!imagePath.trimmed().isEmpty()) {
@@ -324,9 +396,13 @@ void CodexAppServerClient::RequestVisionTurn(const QString& prompt,
     turnWatchdogTimer_->start();
     pendingTurn_.prompt = prompt.trimmed();
     pendingTurn_.imagePath = imagePath;
+    pendingTurn_.frameAuthorization = std::move(frameAuthorization);
     // Read is isolated even if a caller supplies a remembered conversation.
     pendingTurn_.threadId = persistent || retainThread ? threadId.trimmed() : QString();
     pendingTurn_.persistent = persistent;
+    pendingTurn_.allowCoding = persistent && permitCoding && codingEnabled_;
+    pendingTurn_.allowInternet = persistent && internetEnabled_;
+    pendingTurn_.workspace = workspaceDirectory_;
     pendingTurn_.retainThread = !persistent && retainThread;
     pendingTurn_.valid = true;
     if (pendingTurn_.prompt.isEmpty()) {
@@ -479,8 +555,8 @@ QString CodexAppServerClient::ResolveExecutablePath(const QString& configuredExe
 
 QString CodexAppServerClient::AssistantWorkingDirectory(bool persistent) const
 {
-    if (persistent && codingEnabled_ && QFileInfo(workspaceDirectory_).isDir()) {
-        return workspaceDirectory_;
+    if (persistent && pendingTurn_.allowCoding && QFileInfo(pendingTurn_.workspace).isDir()) {
+        return pendingTurn_.workspace;
     }
     QString temp = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
     if (temp.isEmpty()) {
@@ -493,8 +569,8 @@ QString CodexAppServerClient::AssistantWorkingDirectory(bool persistent) const
 
 QString CodexAppServerClient::DeveloperInstructions(bool persistent) const
 {
-    const bool allowInternet = persistent && internetEnabled_;
-    const bool allowCoding = persistent && codingEnabled_;
+    const bool allowInternet = persistent && (pendingTurn_.valid ? pendingTurn_.allowInternet : activeInternetEnabled_);
+    const bool allowCoding = persistent && (pendingTurn_.valid ? pendingTurn_.allowCoding : activeCodingEnabled_);
     QString instructions = QString::fromLatin1(kAssistantIdentity);
     if (!assistantInstructions_.isEmpty()) {
         instructions += QStringLiteral(
@@ -509,7 +585,7 @@ QString CodexAppServerClient::DeveloperInstructions(bool persistent) const
         instructions += QStringLiteral(
             "You may inspect files, edit files, and run commands only for the user's request and only "
             "within this configured coding workspace: %1. ")
-                            .arg(workspaceDirectory_);
+                            .arg(pendingTurn_.workspace);
     } else {
         instructions += QStringLiteral(
             "Analyze only the image and text explicitly attached to the conversation. Never inspect the "
@@ -526,13 +602,13 @@ QString CodexAppServerClient::DeveloperInstructions(bool persistent) const
 
 QJsonObject CodexAppServerClient::SandboxPolicy(bool persistent) const
 {
-    const bool allowInternet = persistent && internetEnabled_;
-    if (persistent && codingEnabled_) {
+    const bool allowInternet = persistent && (pendingTurn_.valid ? pendingTurn_.allowInternet : activeInternetEnabled_);
+    if (persistent && (pendingTurn_.valid ? pendingTurn_.allowCoding : activeCodingEnabled_)) {
         return QJsonObject{
             {QStringLiteral("type"), QStringLiteral("workspaceWrite")},
             {QStringLiteral("networkAccess"), allowInternet},
             {QStringLiteral("writableRoots"),
-             QJsonArray{QDir::toNativeSeparators(workspaceDirectory_)}}};
+             QJsonArray{QDir::toNativeSeparators(pendingTurn_.workspace)}}};
     }
     return QJsonObject{{QStringLiteral("type"), QStringLiteral("readOnly")},
                        {QStringLiteral("networkAccess"), allowInternet}};
@@ -795,7 +871,7 @@ void CodexAppServerClient::StartNewThreadForPendingTurn()
     pendingTurn_.opening = true;
     const quint64 generation = pendingTurn_.generation;
     const bool persistent = pendingTurn_.persistent;
-    const bool allowCoding = persistent && codingEnabled_;
+    const bool allowCoding = persistent && (pendingTurn_.valid ? pendingTurn_.allowCoding : activeCodingEnabled_);
     QJsonObject params{
         {QStringLiteral("cwd"), AssistantWorkingDirectory(persistent)},
         {QStringLiteral("approvalPolicy"), QStringLiteral("never")},
@@ -814,13 +890,14 @@ void CodexAppServerClient::StartNewThreadForPendingTurn()
                         FinishActiveTurn({}, ErrorMessage(error, QStringLiteral("Could not start assistant conversation.")), false);
                         return;
                     }
-                    const QJsonObject thread = result.value(QStringLiteral("thread")).toObject();
+                    QJsonObject thread = result.value(QStringLiteral("thread")).toObject();
                     const QString threadId = thread.value(QStringLiteral("id")).toString();
                     if (threadId.isEmpty()) {
                         FinishActiveTurn({}, QStringLiteral("Codex returned no conversation identifier."), false);
                         return;
                     }
                     pendingTurn_.threadId = threadId;
+                    thread.insert(QStringLiteral("kind"),pendingTurn_.allowCoding ? QStringLiteral("coding") : QStringLiteral("assistant"));
                     if (pendingTurn_.persistent) {
                         emit ConversationCreated(thread);
                     } else if (pendingTurn_.retainThread) {
@@ -835,7 +912,7 @@ void CodexAppServerClient::ResumeThreadForPendingTurn()
     pendingTurn_.opening = true;
     const quint64 generation = pendingTurn_.generation;
     const bool persistent = pendingTurn_.persistent;
-    const bool allowCoding = persistent && codingEnabled_;
+    const bool allowCoding = persistent && (pendingTurn_.valid ? pendingTurn_.allowCoding : activeCodingEnabled_);
     QJsonObject params{
         {QStringLiteral("threadId"), pendingTurn_.threadId},
         {QStringLiteral("cwd"), AssistantWorkingDirectory(persistent)},
@@ -871,6 +948,10 @@ void CodexAppServerClient::ResumeThreadForPendingTurn()
 void CodexAppServerClient::StartTurnOnThread(QString threadId)
 {
     if (!pendingTurn_.valid || pendingTurn_.threadId != threadId) return;
+    if (pendingTurn_.frameAuthorization && !pendingTurn_.frameAuthorization()) {
+        FinishActiveTurn({},QStringLiteral("Frame permission expired."),true);
+        return;
+    }
     const quint64 generation = pendingTurn_.generation;
     activeGeneration_ = generation;
     activeTurnStartPending_ = true;
@@ -887,8 +968,8 @@ void CodexAppServerClient::StartTurnOnThread(QString threadId)
 
     activeThreadId_ = threadId;
     activePersistent_ = persistent;
-    activeInternetEnabled_ = persistent && internetEnabled_;
-    activeCodingEnabled_ = persistent && codingEnabled_;
+    activeInternetEnabled_ = persistent && (pendingTurn_.valid ? pendingTurn_.allowInternet : activeInternetEnabled_);
+    activeCodingEnabled_ = persistent && (pendingTurn_.valid ? pendingTurn_.allowCoding : activeCodingEnabled_);
     activeImagePath_ = pendingTurn_.imagePath;
     activeText_.clear();
     activeTextTruncated_ = false;

@@ -12,6 +12,18 @@ namespace okuflow {
 // entries immediately; an already-entered callback must own its target state.
 class CaptureShutdown {
 public:
+    struct Snapshot {
+        bool quiescent{};
+        bool finished{};
+        bool abandoned{};
+        std::chrono::steady_clock::time_point finishedAt{};
+    };
+    // A control-plane snapshot only: no condition-variable wait or driver call.
+    Snapshot Poll()
+    {
+        std::lock_guard lock(mutex_);
+        return {quiescent_ && deliveries_ == 0, finished_, abandoned_, finishedAt_};
+    }
     class Delivery {
     public:
         Delivery() = default;
@@ -48,7 +60,8 @@ public:
     bool WaitQuiescent(std::chrono::steady_clock::time_point deadline)
     {
         std::unique_lock lock(mutex_);
-        return changed_.wait_until(lock, deadline, [this] { return quiescent_ && deliveries_ == 0; });
+        changed_.wait_until(lock, deadline, [this] { return abandoned_ || (quiescent_ && deliveries_ == 0); });
+        return !abandoned_ && quiescent_ && deliveries_ == 0;
     }
     void MarkQuiescent()
     {
@@ -84,6 +97,7 @@ public:
     void MarkFinished()
     {
         std::lock_guard lock(mutex_);
+        finishedAt_ = std::chrono::steady_clock::now();
         finished_ = true;
         changed_.notify_all();
     }
@@ -101,6 +115,7 @@ private:
     bool releaseAllowed_{};
     bool abandoned_{};
     bool finished_{};
+    std::chrono::steady_clock::time_point finishedAt_{};
 };
 // Outcome of PollWithDeadline below.
 enum class BoundedPollOutcome { Completed, TimedOut, Abandoned };

@@ -190,8 +190,14 @@ QByteArray Read(QTcpSocket& socket, int size, int timeout, const std::atomic<boo
     }
     return result;
 }
-void Write(QTcpSocket& socket, const QByteArray& bytes, const std::atomic<bool>* canceled = nullptr)
+bool Write(QTcpSocket& socket, const QByteArray& bytes, const std::atomic<bool>* canceled = nullptr,
+           const std::function<bool()>& allowed = {})
 {
+    CheckCanceled(canceled);
+    // Admission is checked at the actual emission boundary, after serialization.
+    // Once queued in QTcpSocket, a command may be acknowledged even if its owner
+    // cancels later; cancellation does not invent a compensating device state.
+    if (allowed && !allowed()) return false;
     if (socket.write(bytes) != bytes.size()) throw std::runtime_error("Phone USB write failed");
     const auto deadline = Clock::now() + std::chrono::seconds(3);
     while (socket.bytesToWrite()) {
@@ -200,6 +206,7 @@ void Write(QTcpSocket& socket, const QByteArray& bytes, const std::atomic<bool>*
             throw std::runtime_error("Phone USB write timed out");
         socket.waitForBytesWritten(20);
     }
+    return true;
 }
 void Connect(QTcpSocket& socket, int timeout)
 {
@@ -545,14 +552,15 @@ void Hello(QTcpSocket& socket, quint16 role, const QJsonObject& json,
     qToLittleEndian<quint32>(static_cast<quint32>(body.size()), header.data() + 8);
     Write(socket, header + body, canceled);
 }
-void Command(QTcpSocket& socket, QJsonObject json, const std::atomic<bool>* canceled = nullptr)
+bool Command(QTcpSocket& socket, QJsonObject json, const std::atomic<bool>* canceled = nullptr,
+             const std::function<bool()>& allowed = {})
 {
     const auto body = QJsonDocument(json).toJson(QJsonDocument::Compact);
     if (body.size() > kControlLimit) throw std::runtime_error("Oversized phone command");
     QByteArray header(8, 0);
     qToLittleEndian<quint16>(2, header.data());
     qToLittleEndian<quint32>(static_cast<quint32>(body.size()), header.data() + 4);
-    Write(socket, header + body, canceled);
+    return Write(socket, header + body, canceled, allowed);
 }
 QJsonObject ControlHello(QTcpSocket& socket, int timeout = 3000, bool hevcSupported = false,
                          const std::atomic<bool>* canceled = nullptr, bool probe = false)
@@ -1214,7 +1222,7 @@ bool PhoneCameraTransport::Start(const CameraDescriptor& descriptor, IMFDXGIDevi
     }
     return opened_ && !failed_ && !canceled_.load();
 }
-void PhoneCameraTransport::Cancel() { canceled_.store(true); ready_.notify_all(); }
+void PhoneCameraTransport::Cancel() { canceled_.store(true); RetirePendingTorch(); ready_.notify_all(); }
 void PhoneCameraTransport::Stop() { Cancel(); if (worker_.joinable()) worker_.join(); }
 void PhoneCameraTransport::SetZoom(float ratio)
 {
@@ -1224,7 +1232,51 @@ void PhoneCameraTransport::SetZoom(float ratio)
 void PhoneCameraTransport::SetCamera(const std::string& id)
 { if (id.size() <= 128) { std::lock_guard lock(mutex_); pendingCamera_ = id; } }
 void PhoneCameraTransport::SetTorch(bool enabled)
-{ std::lock_guard lock(mutex_); pendingTorch_ = enabled; }
+{ (void)QueueTorch(enabled, {}, 0); }
+bool PhoneCameraTransport::SetTorch(bool enabled, std::shared_ptr<std::atomic<bool>> canceled,
+                                   std::int64_t deadlineSteadyMs)
+{
+    if (!canceled || deadlineSteadyMs <= 0) return false;
+    return QueueTorch(enabled, std::move(canceled), deadlineSteadyMs);
+}
+bool PhoneCameraTransport::QueueTorch(bool enabled, std::shared_ptr<std::atomic<bool>> canceled,
+                                     std::int64_t deadlineSteadyMs)
+{
+    std::lock_guard lock(mutex_);
+    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count();
+    if (canceled_.load() || failed_ || (canceled && canceled->load()) || (deadlineSteadyMs && now >= deadlineSteadyMs)) return false;
+    if (torchCancellation_ && torchCancellation_ != canceled) torchCancellation_->store(true);
+    torchCancellation_ = canceled;
+    const auto generation = ++torchGeneration_;
+    pendingTorch_ = PendingTorchCommand{enabled, std::move(canceled), deadlineSteadyMs, generation};
+    return true;
+}
+void PhoneCameraTransport::RetirePendingTorch()
+{
+    std::lock_guard lock(mutex_);
+    if (torchCancellation_) torchCancellation_->store(true);
+    torchCancellation_.reset(); pendingTorch_.reset(); ++torchGeneration_;
+}
+bool PhoneCameraTransport::SendTorchCommand(QTcpSocket& socket, const PendingTorchCommand& command)
+{
+    return Command(socket, {{"op", "torch"}, {"enabled", command.enabled}}, &canceled_, [&] {
+        const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count();
+        return !canceled_.load() && torchGeneration_.load() == command.generation &&
+            (!command.canceled || !command.canceled->load()) &&
+            (!command.deadlineSteadyMs || now < command.deadlineSteadyMs);
+    });
+}
+bool PhoneCameraTransport::SendPendingTorch(QTcpSocket& socket)
+{
+    std::optional<PendingTorchCommand> command;
+    { std::lock_guard lock(mutex_); command.swap(pendingTorch_); }
+    return command && SendTorchCommand(socket, *command);
+}
+void PhoneCameraTransport::ApplyTorchAcknowledgment(const QJsonObject& status)
+{
+    torchAvailable_.store(status["torchAvailable"].toBool(false));
+    torchEnabled_.store(status["torchEnabled"].toBool(false));
+}
 VideoFormat PhoneCameraTransport::Format() const { std::lock_guard lock(mutex_); return format_; }
 std::string PhoneCameraTransport::Error() const { std::lock_guard lock(mutex_); return error_; }
 std::string PhoneCameraTransport::ProblemCode() const { std::lock_guard lock(mutex_); return problemCode_; }
@@ -1245,7 +1297,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
         std::uint64_t outputSequence = 0;
         const auto stream = [&](bool hevcSupported) {
             // New/retried connections never replay an earlier light-on request.
-            { std::lock_guard lock(mutex_); pendingTorch_.reset(); }
+            RetirePendingTorch();
             torchAvailable_.store(false);
             torchEnabled_.store(false);
             // Revalidate positive USB evidence immediately before selecting a
@@ -1337,8 +1389,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                     const auto json = Json(packet);
                     if (packet.type == 5) throw PhoneProtocolError(json["code"].toString().toStdString(), json["error"].toString().toStdString());
                     if (packet.type == 4) {
-                        torchAvailable_.store(json["torchAvailable"].toBool(false));
-                        torchEnabled_.store(json["torchEnabled"].toBool(false));
+                        ApplyTorchAcknowledgment(json);
                     }
                     if (packet.type == 3 && json["event"].toString() == "configured") {
                         const UINT width = json["width"].toInt(), height = json["height"].toInt();
@@ -1363,11 +1414,10 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                 }
                 float zoom = -1;
                 std::string camera;
-                std::optional<bool> torch;
-                { std::lock_guard lock(mutex_); std::swap(zoom, pendingZoom_); camera.swap(pendingCamera_); torch.swap(pendingTorch_); }
+                { std::lock_guard lock(mutex_); std::swap(zoom, pendingZoom_); camera.swap(pendingCamera_); }
                 if (zoom > 0) Command(control, {{"op", "zoom"}, {"ratio", zoom}}, &canceled_);
                 if (!camera.empty()) Command(control, {{"op", "camera"}, {"cameraId", QString::fromStdString(camera)}}, &canceled_);
-                if (torch.has_value()) Command(control, {{"op", "torch"}, {"enabled", *torch}}, &canceled_);
+                SendPendingTorch(control);
                 if (control.state() != QAbstractSocket::ConnectedState || video.state() != QAbstractSocket::ConnectedState)
                     throw std::runtime_error("Phone USB connection lost");
                 if (!pending && !video.bytesAvailable() && !video.waitForReadyRead(10)) {
@@ -1453,6 +1503,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
         ready_.notify_all();
         if (!canceled_.load() && errorCallback) { try { errorCallback(exception.what()); } catch (...) {} }
     }
+    RetirePendingTorch();
     if (SUCCEEDED(apartment)) CoUninitialize();
 }
 } // namespace okuflow
