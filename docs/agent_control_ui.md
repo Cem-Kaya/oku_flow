@@ -121,6 +121,10 @@ Approval Details display the complete canonical normalized change set, including
 implicit dependent changes, and the native target display name as plain text.
 Requests exceeding the bounded review payload fail closed; raw arguments remain
 bound to the service approval independently of this presentation.
+Countdown and service-event refreshes retain the existing Details document when
+its exact contents have not changed. This preserves the user's selection,
+caret and scroll position; changed contents still replace the document, and a
+different approval identity collapses Details for a fresh review.
 
 Known app-normalized image changes also show existing translated native field
 labels with localized boolean/numeric values in the card (including Super

@@ -18,6 +18,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QScopeGuard>
 #include <QSlider>
 #include <QTemporaryDir>
 #include <QUuid>
@@ -79,6 +80,20 @@ public:
         app.SavePersistentSettings(); // Same trusted native settings commit; no service notice.
     }
     static void NativeZoom(OkuFlowApp& app) {app.SetZoom(1.75,{},false);app.SavePersistentSettings();}
+    // Mirrors the ownership bookkeeping of camera_select without enumerating,
+    // opening or starting any device. The empty plan is the target's own
+    // controlled-transition window, so the request is not a user edit.
+    static bool RequestTemporarySource(OkuFlowApp& app,const QString& owner) {
+        auto& target=*app.controlTarget_;
+        const auto before=target.Fields();
+        if(!target.BeginFieldPlan({}))return false;
+        const bool requested=app.cameraIntent_.RequestTemporary(owner,{"fixture-temporary-source","",false},"fixture-operation");
+        if(requested)app.controlService_->OwnedSourceRequested(owner,before);
+        target.EndFieldPlan();
+        return requested;
+    }
+    static void CancelAgentTurn(OkuFlowApp& app,const QString& context,bool undo) {app.agentContext_=context;app.CancelAgentTurn(undo);}
+    static QString AgentContext(OkuFlowApp& app) {return app.agentContext_;}
     static int Exec(OkuFlowApp& app) {return app.qtApp_->exec();}
 };
 }
@@ -218,6 +233,36 @@ private slots:
             QVERIFY(NativeControlFixture::Target(app_).Fields()==before);++denied;
         }
         QVERIFY(denied>=48);service.End(context);
+    }
+    void stopAndUndoRestoresOwnedSourceBeforeProviderCleanup() {
+        auto& service=NativeControlFixture::Service(app_);
+        auto& target=NativeControlFixture::Target(app_);
+        const auto owner=QStringLiteral("native-cancel-owner");
+        const auto context=service.Begin({ContextKind::EmbeddedTurn,owner,4,{}});
+        QVERIFY(!context.isEmpty());
+        const auto zoomBefore=target.Fields().at(Field::ZoomAmount);
+        QVERIFY(Call(context,"cancel-zoom","view_settings_set",{{"view.zoom.amount",2.5}}).content["ok"].toBool());
+        QVERIFY(NativeControlFixture::RequestTemporarySource(app_,owner));
+        QVERIFY(target.HasOwnedSource(owner));
+        QJsonObject undo;int userChanges=0;
+        const auto resetSink=qScopeGuard([&service] {service.SetEventSink({});});
+        service.SetEventSink([&](const QJsonObject& event) {
+            if(event["type"]=="undo")undo=event;
+            if(event["type"]=="user_changed")++userChanges;
+        });
+        // The production Stop and undo path with no provider, lease or device.
+        NativeControlFixture::CancelAgentTurn(app_,context,true);
+        QVERIFY(NativeControlFixture::AgentContext(app_).isEmpty());
+        QVERIFY(!target.HasOwnedSource(owner));QVERIFY(!service.IsContextActive(context));
+        QTRY_VERIFY(!undo.isEmpty());
+        QCOMPARE(undo["sourceRestoreFields"].toArray(),(QJsonArray{"camera.selection","camera.format"}));
+        QVERIFY(!undo["skipped"].toArray().contains("camera.selection"));
+        QVERIFY(undo["restored"].toArray().contains("zoomAmount"));
+        QCOMPARE(target.Fields().at(Field::ZoomAmount),zoomBefore);
+        // The owned restore is not attributed to the user by the next native poll.
+        const auto revision=service.FieldRevision(Field::Camera);
+        target.NoticeNativeChanges();QCoreApplication::processEvents();
+        QCOMPARE(service.FieldRevision(Field::Camera),revision);QCOMPARE(userChanges,0);
     }
 };
 }

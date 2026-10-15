@@ -121,6 +121,8 @@ QString AppControlService::Begin(const ContextSpec& spec) {
     Q_ASSERT(QThread::currentThread() == thread());
     if (spec.owner.isEmpty() || !spec.epoch || (context_ && context_->active)
         || (spec.kind == ContextKind::EmbeddedTurn ? !embeddedEnabled_ : !externalEnabled_)) return {};
+    // Native edits made before the turn belong to its starting baseline.
+    target_.SynchronizeNativeState();
     approval_.reset();
     Context context;
     context.id = Id(); context.spec = spec;
@@ -156,7 +158,11 @@ void AppControlService::End(const QString& id, bool normal) {
     context_->canceledKeys.clear();
     context_->readsInFlight = context_->mutationsInFlight = 0;
     if (!normal || context_->spec.kind == ContextKind::ExternalLease) {
+        const bool ownedSource = target_.HasOwnedSource(context_->spec.owner);
         target_.StopOwnedRecording(context_->spec.owner); target_.CancelOwnedSource(context_->spec.owner);
+        // Restoration of the exact owner's temporary source was requested here; a later undo
+        // must not report it as skipped.
+        if (ownedSource) context_->sourceJournal.clear();
     }
     Event(*context_, normal ? "context_completed" : "context_canceled");
 }
@@ -170,7 +176,11 @@ void AppControlService::RetireOwner(const QString& owner) {
         if (context_->active) { End(context_->id); stopped = true; }
         context_->spec.grants = {};
     }
-    if (!stopped) { target_.StopOwnedRecording(owner); target_.CancelOwnedSource(owner); }
+    if (!stopped) {
+        const bool ownedSource = target_.HasOwnedSource(owner);
+        target_.StopOwnedRecording(owner); target_.CancelOwnedSource(owner);
+        if (ownedSource && context_ && context_->spec.owner == owner) context_->sourceJournal.clear();
+    }
 }
 void AppControlService::SetGrants(const QString& id, const ControlGrants& grants) {
     if (!context_ || context_->id != id || !context_->active) return;
@@ -218,6 +228,7 @@ void AppControlService::InvalidateGeometry(bool processing) {
     if (context_) Event(*context_,"geometry_changed");
 }
 void AppControlService::NativeFieldsChanged(const std::vector<Field>& fields) {
+    if (fields.empty()) return; // An unchanged native poll is not a user edit.
     bool view = false, processing = false;
     for (const auto field : fields) {
         auto& revision = revisions_[field]; ++revision.value; revision.user = true;
@@ -230,7 +241,7 @@ void AppControlService::NativeFieldsChanged(const std::vector<Field>& fields) {
         view |= IsView(field); processing |= !IsView(field);
         if (field == Field::Rotation) { view = true; ++geometryEpoch_; }
     }
-    if (!fields.empty()) ++stateVersion_;
+    ++stateVersion_;
     if (view) ++viewVersion_;
     if (processing) ++processingVersion_;
     if (context_) Event(*context_, "user_changed");
@@ -417,6 +428,8 @@ void AppControlService::Dispatch(const ControlRequest& request, ControlCompletio
     Continue(normalized,tool);
 }
 void AppControlService::Continue(const ControlRequest& request, ToolId tool) {
+    // A delayed continuation (auto-adjust metrics) must see edits made meanwhile.
+    target_.SynchronizeNativeState();
     if (!context_ || context_->id != request.contextId || !ValidContext(*context_)) {
         Finish(request.contextId,request.callKey,ControlResult::Failure("context_expired")); return;
     }
@@ -903,10 +916,9 @@ void AppControlService::Expire() {
 ControlResult AppControlService::StopAndUndo() {
     target_.SynchronizeNativeState();
     if (!context_) return {{{"ok",true},{"changed",false}},{}};
+    // Read the exact source ownership and its journal before ending: ending
+    // performs the restore and consumes that journal.
     const bool sourceRestoreRequested=target_.HasOwnedSource(context_->spec.owner);
-    if (context_->active) End(context_->id);
-    else { target_.StopOwnedRecording(context_->spec.owner); target_.CancelOwnedSource(context_->spec.owner); }
-    approval_.reset();
     QJsonArray restored, skipped;
     QJsonArray sourceRestoreFields;
     for(const auto& [field,inverse]:context_->sourceJournal) {
@@ -914,6 +926,9 @@ ControlResult AppControlService::StopAndUndo() {
         else skipped.append(ResultFieldName(ToolId::ControlsList,field));
     }
     context_->sourceJournal.clear();
+    if (context_->active) End(context_->id);
+    else { target_.StopOwnedRecording(context_->spec.owner); target_.CancelOwnedSource(context_->spec.owner); }
+    approval_.reset();
     std::vector<Field> order;
     for (const auto field : {Field::Rotation,Field::SuperResEnabled,Field::SuperResPrefer2x,Field::SuperResUltra1440p,
                             Field::SuperResStrength,Field::Stabilization,Field::CustomColorRecipe})
@@ -960,33 +975,47 @@ ControlResult AppControlService::StopAndUndo() {
         auto result=ControlResult::Failure("internal");result.content["rolledBack"]=restoredRollback;
         return result;
     }
+    // Eligible inverses that did not take effect stay journaled for a later
+    // Undo. A rejected batch (for example while GPU processing is briefly
+    // unavailable) applied nothing, so it is kept whole; the retry re-checks
+    // revisions, so intervening user edits still win.
+    std::set<Field> kept;
     for (const auto& write : inversePlan.writes) {
         const auto field = write.field;
-        const auto inverse = context_->journal.at(field);
-        if (!committed) { skipped.append(FieldName(field)); continue; }
-        if (!target_.Apply({field,inverse.previous,inverse.targetIdentity})) { skipped.append(FieldName(field)); continue; }
+        if (!batch || !target_.Apply(write)) { skipped.append(FieldName(field)); kept.insert(field); continue; }
         auto& revision = revisions_[field]; ++revision.value; revision.user = false;
         context_->baseline[field] = revision.value; restored.append(FieldName(field));
     }
     if (batch) target_.EndFieldPlan();
-    for(const auto& [identity,inverse]:context_->cameraJournal) {
-        if(cameraRevisions_[identity].value!=inverse.lastWrite || !target_.Apply({Field::CameraAcceleration,inverse.previous,identity})) {
-            skipped.append("camera.acceleration");continue;
+    // A custom recipe is retried as one coupled cluster, never piecemeal.
+    if (context_->journal.contains(Field::CustomColorRecipe) && std::any_of(kept.begin(),kept.end(),custom))
+        for (const auto& write : inversePlan.writes)
+            if (custom(write.field) && kept.insert(write.field).second)
+                context_->journal.at(write.field).lastWrite = revisions_[write.field].value;
+    for (auto entry = context_->journal.begin(); entry != context_->journal.end();)
+        entry = kept.contains(entry->first) ? std::next(entry) : context_->journal.erase(entry);
+    QJsonArray retained;
+    for (const auto field : kept) retained.append(FieldName(field));
+    for(auto entry=context_->cameraJournal.begin();entry!=context_->cameraJournal.end();) {
+        const auto& [identity,inverse]=*entry;
+        if(cameraRevisions_[identity].value!=inverse.lastWrite) {
+            skipped.append("camera.acceleration");entry=context_->cameraJournal.erase(entry);continue;
+        }
+        if(!target_.Apply({Field::CameraAcceleration,inverse.previous,identity})) {
+            skipped.append("camera.acceleration");retained.append("camera.acceleration");++entry;continue;
         }
         auto& revision=cameraRevisions_[identity];++revision.value;revision.user=false;
         context_->cameraBaseline[identity]=revision.value;
         ++revisions_[Field::CameraAcceleration].value;revisions_[Field::CameraAcceleration].user=false;
-        restored.append("camera.acceleration");
+        restored.append("camera.acceleration");entry=context_->cameraJournal.erase(entry);
     }
-    context_->cameraJournal.clear();
-    context_->journal.clear();
     if (!restored.isEmpty()) {
         ++stateVersion_; ++viewVersion_; ++processingVersion_;
         if (!target_.Save()) Event(*context_,"settings_not_saved");
     }
-    Event(*context_,"undo",{{"restored",restored},{"skipped",skipped}});
+    Event(*context_,"undo",{{"restored",restored},{"skipped",skipped},{"retained",retained},{"sourceRestoreFields",sourceRestoreFields}});
     target_.FinalizeMutationReceipt();
     return {{{"ok",true},{"changed",!restored.isEmpty() || sourceRestoreRequested},{"restored",restored},{"skipped",skipped},
-        {"sourceRestoreRequested",sourceRestoreRequested},{"sourceRestoreFields",sourceRestoreFields}},{}};
+        {"retained",retained},{"sourceRestoreRequested",sourceRestoreRequested},{"sourceRestoreFields",sourceRestoreFields}},{}};
 }
 } // namespace okuflow::agent

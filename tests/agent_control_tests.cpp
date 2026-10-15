@@ -3,11 +3,15 @@
 #include "okuflow/app/agent/observation_service.hpp"
 #include "okuflow/common/async_cleanup.hpp"
 #include "okuflow/app/agent/camera_source_intent.hpp"
+#include "okuflow/app/agent/parameter_registry.hpp"
+#include "okuflow/app/agent/receipt_labels.hpp"
 #include <QDateTime>
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QSet>
 #include <QtTest>
 #include <set>
 #include <algorithm>
@@ -22,13 +26,16 @@ public:
     int saves{}, effects{}, captures{}, ownedStops{}, cleanupCalls{}, sourceCleanupCalls{};
     bool modal{}, interacting{}, recording{}, saveFails{}, exactApproval{}, configurationApproval{};
     bool failBrightness{}, failContrastRollback{}, coupledContrast{}, retryUnacknowledged{};
-    bool failCommit{};
+    bool failCommit{}, failCameraApply{};
+    int sourceRestores{};
     std::function<void()> synchronize;
-    QString session{"session-a"}, owner{"manual"};
+    std::function<bool(const ControlPlan&)> rejectBegin; // validation-only refusal, no effect
+    QString session{"session-a"}, owner{"manual"}, ownedSource;
     ControlCompletion delayed;
     QJsonObject State() const override { return {{"zoom",fields.at(Field::ZoomAmount)}}; }
     std::map<Field,QJsonValue> Fields() const override { return fields; }
     void SynchronizeNativeState() override { if(synchronize)synchronize(); }
+    bool BeginFieldPlan(const ControlPlan& plan) override { return !(rejectBegin && rejectBegin(plan)); }
     bool CommitFieldPlan(const ControlPlan& plan) override {
         if(failCommit && std::any_of(plan.writes.begin(),plan.writes.end(),[](const FieldWrite& write) {
             return write.field==Field::Contrast && write.value==2.0;
@@ -42,6 +49,7 @@ public:
         if (tool == ToolId::Zoom) plan.writes = {{Field::ZoomAmount,args["magnification"]}};
         if (tool == ToolId::Orientation) plan.writes = {{Field::Rotation,args["degreesClockwise"]}};
         if (tool == ToolId::Contrast) plan.writes = {{Field::Contrast,args["contrast"]},{Field::Brightness,args["brightness"]}};
+        if (tool == ToolId::AutoAdjust) plan.writes = {{Field::Contrast,1.5}};
         if (tool == ToolId::RecordingStop) plan.targetIdentity = session;
         if (tool == ToolId::AssistantPreferencesSet) plan.writes = {{Field::Contrast,args["assistant_preferences.httpModel"]}};
         if (tool == ToolId::ImageSettingsGet) {
@@ -56,9 +64,12 @@ public:
             if (args.contains("image.spatial.backend")) plan.writes.push_back({Field::Upscaler,args["image.spatial.backend"]=="nis"?1:0});
             if (args.contains("image.textClarity.polarity")) plan.writes.push_back({Field::Polarity,QStringList{"auto","dark-on-light","light-on-dark"}.indexOf(args["image.textClarity.polarity"].toString())});
         }
+        if (tool == ToolId::CameraSettingsSet && args.contains("camera.acceleration"))
+            plan.writes.push_back({Field::CameraAcceleration,args["camera.acceleration"],"cam-fixture"});
         return plan;
     }
     bool Apply(const FieldWrite& write) override {
+        if(failCameraApply && write.field==Field::CameraAcceleration)return false;
         if(failContrastRollback && write.field==Field::Contrast && write.value==1.0)return false;
         if(failBrightness && write.field==Field::Brightness && write.value!=0.0)return false;
         ++effects; fields[write.field]=write.value;
@@ -75,7 +86,7 @@ public:
         return values.isEmpty() ? QJsonObject{} : QJsonObject{{"parameters",values}};
     }
     void Execute(ToolId tool,const QJsonObject&,const QString&,ContextKind,ControlCompletion completion) override {
-        if (tool == ToolId::Observe) delayed = std::move(completion);
+        if (tool == ToolId::Observe || tool == ToolId::Metrics) delayed = std::move(completion);
         else { ++captures; completion({{{"ok",true},{"pending",true},{"operationId","operation-a"},{"state","queued"}},{}}); }
     }
     bool ModalActive() const override { return modal; }
@@ -87,7 +98,12 @@ public:
         ++cleanupCalls;
         if (recording && owner == requestedOwner) { ++ownedStops; recording = false; }
     }
-    void CancelOwnedSource(const QString&) override { ++sourceCleanupCalls; }
+    // Exact temporary-source ownership: only the holding owner restores, once.
+    void CancelOwnedSource(const QString& requested) override {
+        ++sourceCleanupCalls;
+        if (HasOwnedSource(requested)) { ownedSource.clear(); ++sourceRestores; }
+    }
+    bool HasOwnedSource(const QString& requested) const override { return !requested.isEmpty() && ownedSource == requested; }
 };
 class AgentControlTests : public QObject {
     Q_OBJECT
@@ -628,6 +644,186 @@ private slots:
         const auto state = Call(service,context,"read","app_state_get",{{"sinceEvent",0}});
         const auto events = state.content["eventsAfter"].toArray();
         QVERIFY(std::any_of(events.begin(),events.end(),[](const auto& e) { return e.toObject()["type"] == "settings_not_saved"; }));
+    }
+    void stopAndUndoRequestsExactSourceRestoreBeforeProviderCleanup() {
+        Target target; target.ownedSource = "trusted-session";
+        AppControlService service(target); const auto context = Begin(service);
+        service.OwnedSourceRequested("trusted-session",{{Field::Camera,"cam-"+QString(32,'a')},{Field::CameraFormat,"automatic"}});
+        QVERIFY(Call(service,context,"zoom","view_zoom_set",{{"magnification",2.0}}).content["ok"].toBool());
+        QJsonObject event;
+        service.SetEventSink([&](const QJsonObject& value) { if (value["type"] == "undo") event = value; });
+        // Stop and undo runs first, while the exact owner still holds the source.
+        const auto undo = service.StopAndUndo().content;
+        QVERIFY(undo["sourceRestoreRequested"].toBool()); QVERIFY(undo["changed"].toBool());
+        QCOMPARE(undo["sourceRestoreFields"].toArray(),(QJsonArray{"camera.selection","camera.format"}));
+        QVERIFY(!undo["skipped"].toArray().contains("camera.selection"));
+        QVERIFY(!undo["skipped"].toArray().contains("camera.format"));
+        QVERIFY(undo["restored"].toArray().contains("zoomAmount"));
+        QCOMPARE(target.sourceRestores,1); QVERIFY(target.ownedSource.isEmpty());
+        QTRY_VERIFY(!event.isEmpty());
+        QCOMPARE(event["sourceRestoreFields"].toArray(),undo["sourceRestoreFields"].toArray());
+        // The provider and lease cleanup that follows cannot re-end or revive the turn.
+        const auto cleanup = target.sourceCleanupCalls;
+        service.End(context); service.End(context,true);
+        QCOMPARE(target.sourceCleanupCalls,cleanup); QVERIFY(!service.IsContextActive(context));
+        QCOMPARE(Error(Call(service,context,"late","view_zoom_set",{{"magnification",3.0}})),"context_expired");
+        QCOMPARE(target.fields.at(Field::ZoomAmount),QJsonValue(1.0));
+        const auto again = service.StopAndUndo().content;
+        QVERIFY(!again["changed"].toBool()); QVERIFY(again["sourceRestoreFields"].toArray().isEmpty());
+        QVERIFY(again["skipped"].toArray().isEmpty()); QCOMPARE(target.sourceRestores,1);
+    }
+    void endedOwnerSourceRestoreIsNotLaterReportedAsSkipped() {
+        Target target; target.ownedSource = "trusted-session";
+        AppControlService service(target); const auto context = Begin(service);
+        service.OwnedSourceRequested("trusted-session",{{Field::Camera,"cam-"+QString(32,'a')},{Field::CameraFormat,"automatic"}});
+        service.End(context); // A provider cancel/failure callback ended the turn first.
+        QCOMPARE(target.sourceRestores,1);
+        const auto undo = service.StopAndUndo().content;
+        QVERIFY(!undo["sourceRestoreRequested"].toBool());
+        QVERIFY(!undo["skipped"].toArray().contains("camera.selection"));
+        QVERIFY(!undo["skipped"].toArray().contains("camera.format"));
+        // A source the user already replaced is still reported as skipped.
+        Begin(service); target.ownedSource = "trusted-session";
+        service.OwnedSourceRequested("trusted-session",{{Field::Camera,"cam-"+QString(32,'b')},{Field::CameraFormat,"automatic"}});
+        target.ownedSource.clear(); service.NativeFieldsChanged({Field::Camera});
+        const auto userWon = service.StopAndUndo().content;
+        QVERIFY(!userWon["sourceRestoreRequested"].toBool());
+        QVERIFY(userWon["skipped"].toArray().contains("camera.selection"));
+        QCOMPARE(target.sourceRestores,1);
+    }
+    void emptyNativePollIsNotAUserChange() {
+        Target target; AppControlService service(target); const auto context = Begin(service);
+        const auto state = [&](const QString& key) { return Call(service,context,key,"app_state_get",{{"sinceEvent",0}}).content; };
+        const auto userChanges = [](const QJsonObject& value) {
+            const auto events = value["eventsAfter"].toArray();
+            return static_cast<int>(std::count_if(events.begin(),events.end(),[](const auto& e) { return e.toObject()["type"] == "user_changed"; }));
+        };
+        const auto before = state("before");
+        for (int poll = 0; poll < 3; ++poll) service.NativeFieldsChanged({});
+        const auto after = state("after");
+        QCOMPARE(after["versions"],before["versions"]); QCOMPARE(userChanges(after),0);
+        QVERIFY(Call(service,context,"write","image_contrast_set",{{"contrast",2},{"brightness",0.2}}).content["ok"].toBool());
+        // A nonempty native change keeps its user-wins behavior.
+        target.fields[Field::Contrast] = 3.0; service.NativeFieldsChanged({Field::Contrast});
+        QCOMPARE(Error(Call(service,context,"stale","image_contrast_set",{{"contrast",1},{"brightness",0.5}})),"stale_state");
+        const auto changed = state("changed"); // This read acknowledges the edit.
+        QCOMPARE(userChanges(changed),1);
+        QCOMPARE(changed["versions"].toObject()["state"].toInteger(),after["versions"].toObject()["state"].toInteger()+2);
+    }
+    void rejectedUndoBatchIsRetainedForRetryAndUserEditsStillWin() {
+        Target target; AppControlService service(target); const auto context = Begin(service);
+        QVERIFY(Call(service,context,"contrast","image_contrast_set",{{"contrast",2},{"brightness",0.2}}).content["ok"].toBool());
+        QVERIFY(Call(service,context,"zoom","view_zoom_set",{{"magnification",2}}).content["ok"].toBool());
+        const auto saves = target.saves;
+        // GPU processing is briefly unavailable: validation refuses the inverse batch before any effect.
+        target.rejectBegin = [](const ControlPlan& plan) {
+            return std::any_of(plan.writes.begin(),plan.writes.end(),[](const FieldWrite& write) {
+                return write.field == Field::Contrast && write.value == 1.0; });
+        };
+        const auto rejected = service.StopAndUndo().content;
+        QVERIFY(rejected["restored"].toArray().isEmpty()); QVERIFY(!rejected["changed"].toBool());
+        for (const auto* field : {"contrast","brightness","zoomAmount"}) QVERIFY2(rejected["retained"].toArray().contains(field),field);
+        QCOMPARE(target.fields.at(Field::Contrast),QJsonValue(2.0)); QCOMPARE(target.fields.at(Field::ZoomAmount),QJsonValue(2.0));
+        QCOMPARE(target.saves,saves);
+        // The user edits one retained field before processing returns.
+        target.fields[Field::ZoomAmount] = 1.5; service.NativeFieldsChanged({Field::ZoomAmount});
+        target.rejectBegin = {};
+        const auto retried = service.StopAndUndo().content;
+        QVERIFY(retried["restored"].toArray().contains("contrast")); QVERIFY(retried["restored"].toArray().contains("brightness"));
+        QVERIFY(retried["skipped"].toArray().contains("zoomAmount")); QVERIFY(retried["retained"].toArray().isEmpty());
+        QCOMPARE(target.fields.at(Field::Contrast),QJsonValue(1.0)); QCOMPARE(target.fields.at(Field::Brightness),QJsonValue(0.0));
+        QCOMPARE(target.fields.at(Field::ZoomAmount),QJsonValue(1.5));
+        const auto exhausted = service.StopAndUndo().content;
+        QVERIFY(exhausted["restored"].toArray().isEmpty()); QVERIFY(exhausted["skipped"].toArray().isEmpty());
+    }
+    void failedCameraUndoIsRetainedUntilUserWins() {
+        for (const bool userEdit : {false,true}) {
+            Target target; target.fields[Field::CameraAcceleration] = "automatic";
+            AppControlService service(target,CatalogEdition::DevFull); service.SetEnabled(true,true);
+            const auto lease = service.Begin({ContextKind::ExternalLease,"trusted-lease",1,{false,false,false,true}});
+            QVERIFY(Call(service,lease,"acceleration","camera_settings_set",{{"camera.acceleration","compatibility"}}).content["ok"].toBool());
+            target.failCameraApply = true;
+            const auto failed = service.StopAndUndo().content;
+            QVERIFY(failed["retained"].toArray().contains("camera.acceleration")); QVERIFY(failed["restored"].toArray().isEmpty());
+            QCOMPARE(target.fields.at(Field::CameraAcceleration),QJsonValue("compatibility"));
+            target.failCameraApply = false;
+            if (userEdit) { target.fields[Field::CameraAcceleration] = "accelerated"; service.NativeCameraAccelerationChanged("cam-fixture"); }
+            const auto retried = service.StopAndUndo().content;
+            QCOMPARE(retried["restored"].toArray().contains("camera.acceleration"),!userEdit);
+            QCOMPARE(retried["skipped"].toArray().contains("camera.acceleration"),userEdit);
+            QCOMPARE(target.fields.at(Field::CameraAcceleration),QJsonValue(userEdit ? "accelerated" : "automatic"));
+            const auto exhausted = service.StopAndUndo().content;
+            QVERIFY(exhausted["restored"].toArray().isEmpty()); QVERIFY(exhausted["skipped"].toArray().isEmpty());
+        }
+    }
+    void beginAttributesUnpolledNativeEditsToTheStartingBaseline() {
+        Target target; AppControlService service(target); auto observed = target.fields;
+        target.synchronize = [&] {
+            std::vector<Field> changed;
+            for (const auto& [field,value] : target.fields) if (observed.at(field) != value) changed.push_back(field);
+            service.NativeFieldsChanged(changed); observed = target.fields;
+        };
+        target.fields[Field::ZoomAmount] = 1.5; // Edited before the turn; not yet polled.
+        const auto context = Begin(service);
+        QVERIFY(Call(service,context,"zoom","view_zoom_set",{{"magnification",2.0}}).content["ok"].toBool());
+        QCOMPARE(target.fields.at(Field::ZoomAmount),QJsonValue(2.0));
+    }
+    void delayedAutoAdjustRechecksNativeEditsBeforeApplying() {
+        Target target; AppControlService service(target); auto observed = target.fields;
+        target.synchronize = [&] {
+            std::vector<Field> changed;
+            for (const auto& [field,value] : target.fields) if (observed.at(field) != value) changed.push_back(field);
+            service.NativeFieldsChanged(changed); observed = target.fields;
+        };
+        const auto context = Begin(service);
+        std::optional<ControlResult> result;
+        service.Submit({context,"auto","image_auto_adjust",{{"goal","read_text"},{"allowModeChange",false}}},
+                       [&](ControlResult value) { result = std::move(value); });
+        QCoreApplication::processEvents(); QVERIFY(bool(target.delayed)); // Metrics are pending.
+        target.fields[Field::Contrast] = 3.0; // The user edits while metrics are pending.
+        target.delayed({{{"ok",true}},{}});
+        QTRY_VERIFY(result.has_value());
+        QCOMPARE(Error(*result),"stale_state");
+        QCOMPARE(target.fields.at(Field::Contrast),QJsonValue(3.0)); QCOMPARE(target.captures,0);
+    }
+    void receiptLabelsUseExistingCatalogCaptions() {
+        const auto path = QFINDTESTDATA("../src/ui/translation_catalog.cpp");
+        QFile file(path); QVERIFY2(file.open(QIODevice::ReadOnly),qPrintable(path));
+        const auto catalog = QString::fromUtf8(file.readAll());
+        const auto cataloged = [&](const QString& source) {
+            return catalog.contains(QStringLiteral("QT_TRANSLATE_NOOP(\"OkuFlow\", \"%1\")").arg(source));
+        };
+        const auto label = [](const QString& key) {
+            const auto bytes = key.toUtf8();
+            const auto source = ReceiptLabelSource(std::string_view(bytes.constData(),static_cast<size_t>(bytes.size())));
+            return QString::fromUtf8(source.data(),static_cast<qsizetype>(source.size()));
+        };
+        const auto fallback = QString::fromUtf8(kReceiptFallbackLabel.data(),static_cast<qsizetype>(kReceiptFallbackLabel.size()));
+        QVERIFY(cataloged(fallback));
+        // Layout-only preferences without their own caption keep the neutral label.
+        const QSet<QString> neutral{"ui.mode","ui.activeTab","ui.sectionExpanded"};
+        QCOMPARE(ParameterRegistry().size(),size_t(94));
+        for (const auto& descriptor : ParameterRegistry()) {
+            const auto id = QString::fromUtf8(descriptor.id.data(),static_cast<qsizetype>(descriptor.id.size()));
+            QVERIFY2(cataloged(label(id)),qPrintable(id));
+            QVERIFY2(neutral.contains(id) || label(id) != fallback,qPrintable(id));
+        }
+        // Every legacy receipt spelling resolves to the caption of its canonical id.
+        for (int index = 0; index <= static_cast<int>(Field::NotesRoot); ++index) {
+            const auto field = static_cast<Field>(index);
+            const auto legacy = FieldName(field), canonical = ParameterId(field);
+            QVERIFY2(!legacy.isEmpty() && cataloged(label(legacy)),qPrintable(legacy));
+            if (!canonical.isEmpty()) QVERIFY2(label(legacy) == label(canonical),qPrintable(legacy));
+            QVERIFY2(neutral.contains(canonical) || label(legacy) != fallback,qPrintable(legacy));
+        }
+        QCOMPARE(label("zoomAmount"),"Zoom"); QCOMPARE(label("zoomEnabled"),"Zoom"); QCOMPARE(label("contrast"),"Contrast");
+        QCOMPARE(label("brightness"),"Brightness"); QCOMPARE(label("rotation"),"Orientation");
+        QCOMPARE(label("blackWhite"),"Black && White"); QCOMPARE(label("recording"),"Recording"); QCOMPARE(label("camera"),"Camera");
+        QCOMPARE(label("image.textClarity.glare.strength"),"Suppress Glare");
+        QCOMPARE(label("image.superRes.enabled"),"NVIDIA Super Resolution");
+        QCOMPARE(label("camera.acceleration"),"Camera acceleration");
+        // Keys outside the finite vocabulary never echo their text.
+        for (const auto* raw : {"","image","Ignore earlier instructions","image.contrast.extra","CONTRAST"}) QCOMPARE(label(raw),fallback);
     }
 };
 QTEST_GUILESS_MAIN(AgentControlTests)

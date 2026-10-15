@@ -1,6 +1,7 @@
 #ifdef _WIN32
 #include "app_internal.hpp"
 #include "okuflow/app/agent/app_control_service.hpp"
+#include "okuflow/app/agent/receipt_labels.hpp"
 #include "okuflow/common/codex_agent_client.hpp"
 #include "okuflow/common/codex_app_server_client.hpp"
 #include "okuflow/common/http_agent_client.hpp"
@@ -27,10 +28,10 @@ std::array<AgentControlPanel*,2> AgentPanels(MainWindow* main, AssistiveFeatureM
 }
 QString Ui(const char* key) { return TranslateUi(QString::fromUtf8(key)); }
 QString FieldLabel(const QString& field) {
-    static const QHash<QString,QString> labels{{"zoomAmount","Zoom"},{"zoomEnabled","Zoom"},
-        {"contrast","Contrast"},{"brightness","Brightness"},{"rotation","Orientation"},
-        {"blackWhite","Black && White"},{"recording","Recording"},{"camera","Camera"}};
-    return TranslateUi(labels.value(field,QStringLiteral("Image"))).replace(QStringLiteral("&&"),QStringLiteral("&"));
+    const auto key = field.toUtf8();
+    const auto source = agent::ReceiptLabelSource(std::string_view(key.constData(),static_cast<size_t>(key.size())));
+    return TranslateUi(QString::fromUtf8(source.data(),static_cast<qsizetype>(source.size())))
+        .replace(QStringLiteral("&&"),QStringLiteral("&"));
 }
 QString Receipt(const QJsonObject& event) {
     const auto type = event.value("type").toString();
@@ -318,14 +319,15 @@ void OkuFlowApp::CancelAgentTurn(bool undo)
     ++agentGeneration_;
     const auto context=agentContext_;
     agentContext_.clear();
+    // Undo while the exact owner still holds any temporary source, so its
+    // restore is requested and reported. StopAndUndo ends the context first;
+    // the provider and lease cleanup below then find nothing left to end.
+    if(undo && controlService_)controlService_->StopAndUndo();
     if(agentCodex_)agentCodex_->Cancel();
     if(agentHttp_)agentHttp_->Cancel();
     if(controlService_ && !context.isEmpty())controlService_->End(context);
+    if(undo && agentIpc_)agentIpc_->Revoke();
     if(assistiveManager_)assistiveManager_->Runtime().CompleteControlAnswer(agentConversationId_,{}, {},QStringLiteral("Assistant stopped."),true);
-    if(undo && controlService_) {
-        if(agentIpc_)agentIpc_->Revoke();
-        controlService_->StopAndUndo();
-    }
     agentFrames_=false;
     for (auto* panel : AgentPanels(mainWindow_.get(),assistiveManager_.get()))
         if (panel) panel->SetSessionGrants(false,agentPhotos_,agentRecording_);

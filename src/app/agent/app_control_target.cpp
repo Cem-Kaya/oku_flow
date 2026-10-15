@@ -739,7 +739,12 @@ void AppControlTarget::StopOwnedRecording(const QString& owner) {
 }
 void AppControlTarget::CancelOwnedSource(const QString& owner) {
     if(torchOwner_==owner && torchCanceled_)torchCanceled_->store(true);
+    if(!HasOwnedSource(owner))return;
+    // Record genuine native edits first; the owned restore itself is not one.
+    NoticeNativeChanges();
+    const auto savedApplying=applying_;applying_=true;
     app_.CancelCameraTransition(owner);
+    applying_=savedApplying;observed_=Fields();
 }
 bool AppControlTarget::HasOwnedSource(const QString& owner) const {return !owner.isEmpty() && app_.cameraIntent_.TemporaryOwner()==owner;}
 QString AppControlTarget::CreatePhoto(const QString& owner) { return operations_.Create(OperationKind::Photo,owner); }

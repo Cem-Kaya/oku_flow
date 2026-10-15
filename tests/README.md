@@ -782,7 +782,8 @@ fixtures do not establish compatibility with a live endpoint or rendered UI.
 
 `agent_control_panel_headless` always uses Qt offscreen. Its focused cases cover
 sole master ownership, user-only grants, exact/expired approvals, canonical 90°
-orientation, bounded activity, explicit testing, lease defaults/no widening,
+orientation, unchanged approval Details selection/caret/scroll across refreshes,
+bounded activity, explicit testing, lease defaults/no widening,
 refused drafts, shared draft/attachment/keyboard submission, escaped messages,
 selection, completed-only manual TTS and independent Read presentation. It starts
 no camera/provider/bridge/browser and claims no native focus or screen-reader
@@ -805,6 +806,16 @@ checks dedicated control-answer single ownership, exact Stop and one terminal
 completion while periodic mode is toggled off. These checks do not establish
 live account/model acceptance or native focus/screen-reader behavior.
 ### Dedicated provider reentrant callbacks
+
+The core's Undo regressions use scripted source ownership and temporary batch/
+camera-apply refusals. They verify restore intent before cleanup, no false manual
+edit events on empty polls, retained inverses after temporary unavailability,
+and revision-based protection of intervening user edits. The coverage fixture
+also checks a partially failed custom-recipe inverse remains one cluster across
+retry and is discarded together when a component is manually edited. Label coverage
+checks canonical/legacy identities against existing catalog keys; it does not
+judge a rendered UI by English wording. The opt-in actual-app fixture separately
+exercises the trusted CancelAgentTurn path with no real device or provider.
 
 The private `codex_agent_client_contract` also exercises configuration changes
 from capability/turn notifications and replacement of a turn from conversation

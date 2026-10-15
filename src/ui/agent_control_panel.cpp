@@ -289,7 +289,10 @@ void AgentControlPanel::SetPendingApproval(const QJsonObject& record)
     approvalRecord_ = record;
     approvalRemainingMs_ = std::clamp<qint64>(record.value("expiresInMs").toInteger(300000), 0, 300000);
     approvalClock_.restart();
-    approvalArguments_->setPlainText(record.value("tool").toString()+QStringLiteral("\n")+record.value("targetDisplay").toString().left(256)+QStringLiteral("\n")+record.value("targetIdentity").toString()+QStringLiteral("\n")+QString::fromUtf8(reviewed));
+    const auto reviewText = record.value("tool").toString()+QStringLiteral("\n")+record.value("targetDisplay").toString().left(256)+QStringLiteral("\n")+record.value("targetIdentity").toString()+QStringLiteral("\n")+QString::fromUtf8(reviewed);
+    // Lease/countdown refreshes must not replace the document a user is reading.
+    if (distinct || approvalArguments_->toPlainText() != reviewText)
+        approvalArguments_->setPlainText(reviewText);
     if(distinct){approvalDetails_->hide();approvalRow_->findChild<QPushButton*>(QStringLiteral("agentApprovalDetails"))->setChecked(false);}
     approvalRow_->show(); // Never raise, activate, focus, or open a dialog.
     UpdateCountdowns();

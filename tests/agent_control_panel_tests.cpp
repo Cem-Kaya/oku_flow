@@ -31,6 +31,7 @@ private slots:
     void exactApprovalPlainTextAndSingleUse();
     void expiredApprovalCannotAllow();
     void approvalShowsNormalizedDependenciesAndTarget();
+    void approvalRefreshPreservesDetailsReadingState();
     void leaseBundleDefaultsAndCannotWiden();
     void boundedTranscriptAndExplicitEndpointTest();
     void floatingRoutingRefusalPreservesQuestion();
@@ -124,6 +125,48 @@ void AgentControlPanelTests::approvalShowsNormalizedDependenciesAndTarget()
     record["normalizedChanges"] = QJsonObject{{"text", QString(31000, QLatin1Char('x'))}};
     panel.SetPendingApproval(record);
     QVERIFY(!panel.hasPendingApproval());
+}
+void AgentControlPanelTests::approvalRefreshPreservesDetailsReadingState()
+{
+    AgentControlPanel panel;
+    panel.resize(430, 700);
+    panel.show();
+    auto record = Approval("reading-state");
+    QJsonObject changes;
+    for (int i = 0; i < 40; ++i)
+        changes.insert(QStringLiteral("field-%1").arg(i, 2, 10, QLatin1Char('0')),
+            QString(100, QLatin1Char('x')));
+    record["normalizedChanges"] = changes;
+    panel.SetPendingApproval(record);
+    Find<QPushButton>(panel,"agentApprovalDetails")->click();
+    auto* details = Find<QPlainTextEdit>(panel,"agentApprovalArguments");
+    QTRY_VERIFY(details->verticalScrollBar()->maximum() > 0);
+    auto cursor = details->textCursor();
+    cursor.setPosition(25);
+    cursor.setPosition(55, QTextCursor::KeepAnchor);
+    details->setTextCursor(cursor);
+    details->verticalScrollBar()->setValue(details->verticalScrollBar()->maximum() / 2);
+    const int scroll = details->verticalScrollBar()->value();
+    const int revision = details->document()->revision();
+    QSignalSpy textChanges(details, &QPlainTextEdit::textChanged);
+    for (int refresh = 0; refresh < 4; ++refresh) {
+        record["expiresInMs"] = 299000 - refresh * 250;
+        panel.SetPendingApproval(record);
+    }
+    QCOMPARE(textChanges.size(), 0);
+    QCOMPARE(details->document()->revision(), revision);
+    QCOMPARE(details->textCursor().anchor(), cursor.anchor());
+    QCOMPARE(details->textCursor().position(), cursor.position());
+    QCOMPARE(details->verticalScrollBar()->value(), scroll);
+    QVERIFY(details->isVisible());
+    // A changed exact payload must still replace the review text.
+    record["targetDisplay"] = "Changed native target";
+    panel.SetPendingApproval(record);
+    QCOMPARE(textChanges.size(), 1);
+    QVERIFY(details->toPlainText().contains("Changed native target"));
+    record["approvalId"] = "different-request";
+    panel.SetPendingApproval(record);
+    QVERIFY(!details->isVisible());
 }
 void AgentControlPanelTests::expiredApprovalCannotAllow()
 {

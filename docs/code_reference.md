@@ -3252,9 +3252,26 @@ remains available; manager profile transitions use the scoped method.
   `Continue` refuses an external lease's observe, camera-source, photo and
   recording tools with `denied_by_policy` when the lease bundle lacks that
   toggle, before `Prepare` can report availability.
+  `NativeFieldsChanged` ignores empty polls without changing versions or
+  emitting a user-edit event. `StopAndUndo` retains eligible failed inverses
+  for a later revision-checked retry within the retained context; its `retained`
+  list is separate from
+  restored/skipped results. `sourceRestoreFields` identifies requested temporary
+  source restoration, not completed hardware reconnection.
+  `Begin` synchronizes native state before capturing the new baseline; `Continue`
+  rechecks it after deferred metrics. `End`/`RetireOwner` consume source-journal
+  entries when requesting the exact owner's restoration, so a later Undo does
+  not label an already-requested restore as skipped. Undo events carry both
+  `retained` and `sourceRestoreFields` alongside restored/skipped fields.
+- `receipt_labels.hpp`: pure `ReceiptLabelSource(std::string_view)` maps the
+  finite canonical/legacy receipt vocabulary to existing translated control
+  captions. Unknown keys use `kReceiptFallbackLabel` (`Settings`) and are never
+  echoed as UI labels. `FieldLabel` translates the returned source caption.
 - `app_control_target.hpp/.cpp`: `AppControlTarget` implements state/fields,
   `Prepare`, `Apply`, `Save`, `Query`, `Execute`, modal/user/recording predicates,
   `StopOwnedRecording` and `NoticeNativeChanges` against `OkuFlowApp`.
+  `CancelOwnedSource` observes genuine preceding edits and then refreshes its
+  baseline after its own source restoration without attributing it to the user.
   `ProfileFields` is the finite profile inventory; `CreatePhoto`, `PhotoState`,
   `CancelPhotoReadback` and `RecordingEnded` retain durable operation identity.
 - `operation_tracker.hpp/.cpp`: `OperationKind`, `OperationState`,
@@ -3426,7 +3443,9 @@ requires explicit UI activation. `StartAgentConversation` preserves the draft
 and never submits it; `SubmitAgentPrompt` obtains the app-owned context and uses
 only a current authorized viewport observation for an initial image.
 `CancelAgentTurn` cancels provider work and exact context; its optional undo
-path preserves later native user edits. Both editors refuse incompatible
+path calls `StopAndUndo` before provider cancellation and lease revocation, so
+temporary camera ownership is still available when requesting restoration.
+It preserves later native user edits. Both editors refuse incompatible
 conversation routing before clearing a prompt or capturing pixels. History
 kinds remain immutable; agent ids never enter the ordinary history loader.
 
@@ -3750,7 +3769,10 @@ refinement depend on both the Text Clarity master and its stored child flag.
 The CUDA dispatcher consumes that result rather than enabling children merely
 because the master is on. A 1,024-combination settings contract covers all flags.
 
-`AgentControlPanel::SetPendingApproval` displays canonical `normalizedChanges`
+`AgentControlPanel::SetPendingApproval` retains the Details document, caret,
+selection and scroll position across countdown/event refreshes when the exact
+review text is unchanged. Changed contents replace the document; a new approval
+identity also resets and collapses the review. It displays canonical `normalizedChanges`
 and the native `targetDisplay` as plain text, including implicit dependencies,
 while preserving the original service argument binding. Oversized review details
 fail closed. No provider text or chat reply grants authority.
@@ -3793,3 +3815,8 @@ sources under `OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE`, disabled by default.
 but injects a failed commit after an actual native CPU zoom write. The production
 service must restore the real fields and leave saved values and undo authority
 unchanged; it does not replace native controls with a synthetic state map.
+`NativeControlFixture::RequestTemporarySource` installs only private temporary
+ownership bookkeeping, with no device enumeration/open/start. Its
+`CancelAgentTurn`/`AgentContext` helpers exercise and inspect the production
+trusted cancellation path. The regression checks source-restore intent, native
+zoom restoration and the absence of a spurious user-edit event after cleanup.

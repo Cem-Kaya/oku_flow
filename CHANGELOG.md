@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Preserve selection and scrolling in approval Details during countdown and
+  service-event refreshes, while still replacing changed review contents.
+- Request temporary camera restoration before canceling the owning agent/lease,
+  distinguish owned restoration from manual edits, and retain eligible Undo
+  changes when a control is temporarily unavailable. Later manual edits still win.
+- Use existing translated control labels for expanded agent receipts and suppress
+  false user-change events from unchanged native-state polls.
+
 - Refuse an external MCP lease's camera-view, camera-source, photo and
   recording calls with `denied_by_policy` when its grant bundle lacks that
   toggle, before any availability check, so an ungranted client cannot learn

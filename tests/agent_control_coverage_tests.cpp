@@ -760,6 +760,43 @@ private slots:
 
     // [planner] Custom colors are one validated recipe: all four components,
     // matching count, duotone exactly two stops, posterize stepped, lowercase.
+    void customRecipeUndoRetainsItsCoupledClusterAfterAnApplyFailure() {
+        for (const bool userEdit : {false, true}) {
+            FakeTarget target;
+            target.fields = ImageDefaults();
+            const auto before = target.fields;
+            target.prepare = [&](ToolId tool, const QJsonObject& args) { return PlanImage(target.fields, tool, args); };
+            bool refuseInverse = false;
+            target.apply = [&](const FieldWrite& write) {
+                if (refuseInverse && write.field == Field::CustomColorStopCount && write.value == 2) return false;
+                target.fields[write.field] = write.value;
+                return true;
+            };
+            AppControlService service(target, CatalogEdition::DevFull);
+            const auto context = Embedded(service);
+            const QJsonObject recipe{{"image.colors.custom.mode", "posterize"}, {"image.colors.custom.stopCount", 3},
+                {"image.colors.custom.stops", QJsonArray{"#ff0000", "#00ff00", "#0000ff"}}, {"image.colors.custom.stepped", true}};
+            QVERIFY(Call(service, context, "recipe", "image_settings_set", recipe).content["ok"].toBool());
+            refuseInverse = true;
+            const auto failed = service.StopAndUndo().content;
+            QVERIFY(failed["retained"].toArray().contains(FieldName(Field::CustomColorRecipe)));
+            QVERIFY(failed["retained"].toArray().contains(FieldName(Field::CustomColorStopCount)));
+            refuseInverse = false;
+            const QJsonArray manualStops{"#112233", "#445566"};
+            if (userEdit) {
+                target.fields[Field::CustomColorStops] = manualStops;
+                service.NativeFieldsChanged({Field::CustomColorStops});
+            }
+            const auto retried = service.StopAndUndo().content;
+            QVERIFY(retried["retained"].toArray().isEmpty());
+            if (userEdit) {
+                QVERIFY(retried["restored"].toArray().isEmpty());
+                QCOMPARE(target.fields.at(Field::CustomColorStops), QJsonValue(manualStops));
+            } else {
+                QVERIFY(target.fields == before);
+            }
+        }
+    }
     void customRecipeIsOneAtomicValidatedCluster() {
         const auto defaults = ImageDefaults();
         const QJsonObject recipe{{"image.colors.custom.mode", "gradient"}, {"image.colors.custom.stopCount", 3},
