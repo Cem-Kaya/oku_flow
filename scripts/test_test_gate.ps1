@@ -1,10 +1,11 @@
 #Requires -Version 7.0
-# Private command-line CTest fixtures only; never creates a Qt/Windows window.
+# Private command-line CTest fixtures only; never executes a gui-labeled test.
 param([Parameter(Mandatory)][string]$CMake)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $originalLocal = $env:LOCALAPPDATA
 $originalScale = $env:QT_SCALE_FACTOR
+$originalSecret = $env:OKUFLOW_GATE_CONTRACT_SECRET
 $root = Join-Path $originalLocal ('OkuFlow/test-gate-contract/' + [Guid]::NewGuid().ToString('N'))
 $runner = Join-Path $PSScriptRoot 'run_test_gate.ps1'
 $clock = [Diagnostics.Stopwatch]::StartNew()
@@ -18,15 +19,24 @@ function Assert-Contract([bool]$Condition, [string]$Message) {
 function Invoke-Gate([string[]]$Options, [int]$Expected, [string]$Contains) {
     $output = & pwsh -NoProfile -File $runner -BuildDirectory (Join-Path $root 'build') @Options 2>&1
     $actual = $LASTEXITCODE
-    if ($actual -ne $Expected) { throw "Gate exit $actual, expected $Expected`n$($output -join "`n")" }
-    if ($Contains -and ($output -join "`n") -notlike "*$Contains*") { throw "Missing gate diagnostic: $Contains`n$($output -join "`n")" }
+    $text = $output -join "`n"
+    $script:lastOutput = $text
+    if ($actual -ne $Expected) { throw "Gate exit $actual, expected $Expected`n$text" }
+    if ($Contains -and $text -notlike "*$Contains*") { throw "Missing gate diagnostic: $Contains`n$text" }
     $script:checks++
+    $text -split "`n" | Where-Object { $_ -match '^(SCOPED |Gate:|CTest partition:|Inputs changed)' } | ForEach-Object { Write-Host $_ }
 }
 
 function Read-Ledger {
-    $records = @(Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'OkuFlow/test-evidence') -Recurse -Filter '*.json')
-    Assert-Contract ($records.Count -eq 1) 'Expected one inventory ledger.'
+    $records = @(Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'OkuFlow/test-evidence') -Recurse -Filter 'ledger-v2.json')
+    Assert-Contract ($records.Count -eq 1) 'Expected one build ledger.'
     Get-Content -LiteralPath $records[0].FullName -Raw | ConvertFrom-Json -AsHashtable
+}
+
+function Configure-Fixture([string]$Text) {
+    Set-Content -LiteralPath (Join-Path $root 'CMakeLists.txt') -Value $Text
+    & $CMake -S $root -B (Join-Path $root 'build') "-DQt6_DIR:PATH=$root/qt/lib/cmake/Qt6" *> (Join-Path $root 'configure.log')
+    if ($LASTEXITCODE) { throw 'Fixture CMake configuration failed.' }
 }
 
 try {
@@ -36,18 +46,39 @@ try {
     foreach ($dir in 'qt/bin', 'qt/plugins', 'qt/lib/cmake/Qt6') {
         [void][IO.Directory]::CreateDirectory((Join-Path $root $dir))
     }
+    $env:OKUFLOW_GATE_CONTRACT_SECRET = 'fixture-secret-must-never-be-saved'
     $fixture = @'
 param([string]$Case, [Parameter(ValueFromRemainingArguments)][string[]]$Remaining)
 $countFile = Join-Path $PSScriptRoot "$Case.count"
 $count = if (Test-Path $countFile) { [int](Get-Content $countFile) + 1 } else { 1 }
 Set-Content $countFile $count
 if ($Case -eq 'mutate') {
+    Set-Content (Join-Path $PSScriptRoot 'data.json') 'changed during execution'
+}
+if ($Case -eq 'runtime_mutate') {
     Set-Content (Join-Path $PSScriptRoot 'qt/bin/runtime.dll') 'changed during execution'
+}
+if ($Case -eq 'inventory_mutate') {
+    Add-Content (Join-Path $PSScriptRoot 'build/CTestTestfile.cmake') 'add_test(fixture_late "cmd.exe" "/c" "exit 0")'
 }
 if ($Case -eq 'generated') {
     for ($i = 1; $i -lt $Remaining.Count; $i += 2) {
         Set-Content -LiteralPath $Remaining[$i] -Value ([Guid]::NewGuid().ToString())
     }
+}
+if ($Case -in 'parallel_a', 'parallel_b', 'gpu', 'codec') {
+    $start = [DateTime]::UtcNow.Ticks
+    if ($Case -like 'parallel_*') {
+        Set-Content (Join-Path $PSScriptRoot "$Case.ready") 'ready'
+        $other = if ($Case -eq 'parallel_a') { 'parallel_b' } else { 'parallel_a' }
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
+        while (!(Test-Path (Join-Path $PSScriptRoot "$other.ready"))) {
+            if ([DateTime]::UtcNow -gt $deadline) { throw 'Background tests did not overlap.' }
+            Start-Sleep -Milliseconds 50
+        }
+    }
+    Start-Sleep -Milliseconds 300
+    @{ start = $start; end = [DateTime]::UtcNow.Ticks } | ConvertTo-Json | Set-Content (Join-Path $PSScriptRoot "$Case.timing.json")
 }
 if ($Case -eq 'assertion') {
     Write-Output 'FAIL!  : Fixture::assertion() application assertion failed'
@@ -69,37 +100,48 @@ if ($Case -eq 'optional') {
     Write-Output 'SKIP   : Fixture::optional() unavailable optional fixture'
     exit 0
 }
+if ($Case -eq 'skipped') { exit 77 }
 Write-Output 'PASS   : Fixture::pass()'
 Write-Output 'Totals: 1 passed, 0 failed, 0 skipped, 0 blacklisted'
 '@
     Set-Content -LiteralPath (Join-Path $root 'fixture.ps1') -Value $fixture
-    $cmakeText = @'
+    Set-Content -LiteralPath (Join-Path $root 'data.json') -Value 'original input'
+    $header = @'
 cmake_minimum_required(VERSION 3.23)
 project(GateContract NONE)
 enable_testing()
 find_program(PWSH pwsh REQUIRED)
-foreach(case pass interrupted assertion mixed optional)
+# Absent GUI executable is inventory only, and can never execute in this suite.
+add_test(NAME fixture_gui COMMAND "${CMAKE_SOURCE_DIR}/never-run-gui.exe")
+set_tests_properties(fixture_gui PROPERTIES LABELS "gui")
+'@
+    $cmakeText = $header + @'
+
+foreach(case pass interrupted assertion mixed optional skipped)
     add_test(NAME fixture_${case} COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case ${case})
-    if(NOT case STREQUAL "pass")
-        set_tests_properties(fixture_${case} PROPERTIES LABELS "gui")
-    endif()
+    set_tests_properties(fixture_${case} PROPERTIES LABELS "contract" SKIP_RETURN_CODE 77)
 endforeach()
 '@
-    Set-Content -LiteralPath (Join-Path $root 'CMakeLists.txt') -Value $cmakeText
-    & $CMake -S $root -B (Join-Path $root 'build') "-DQt6_DIR:PATH=$root/qt/lib/cmake/Qt6" *> (Join-Path $root 'configure.log')
-    if ($LASTEXITCODE) { throw 'Fixture CMake configuration failed.' }
-    Invoke-Gate -Options @('-ExcludeGui') -Expected 0
+    Configure-Fixture ($cmakeText + @'
+
+add_test(NAME fixture_absent COMMAND "${CMAKE_SOURCE_DIR}/absent.exe")
+'@)
+    Invoke-Gate -Options @('-Test', 'fixture_pass') -Expected 0 -Contains 'SCOPED PASS: 1 of 8 tests (fixture_pass)'
+    Invoke-Gate -Options @('-Label', 'unknown') -Expected 1 -Contains 'Unknown CTest label'
+    Invoke-Gate -Options @('-Test', 'Fixture_pass') -Expected 1 -Contains 'Unknown exact test name'
+    Invoke-Gate -Options @('-Select', 'not-a-selection') -Expected 1 -Contains 'Unknown test or label'
+    Configure-Fixture $cmakeText
+    Invoke-Gate -Options @('-Resume', '-Label', 'contract', '-Parallel', '2') -Expected 1
     $ledger = Read-Ledger
-    Assert-Contract ($ledger.results.Count -eq 1 -and $ledger.results.fixture_pass.status -eq 'Passed') 'Partial gate credited GUI tests.'
-    Invoke-Gate -Options @('-Resume') -Expected 1
-    $ledger = Read-Ledger
+    Assert-Contract (!$ledger.results.ContainsKey('fixture_gui')) 'GUI test received credit.'
     Assert-Contract ($ledger.results.fixture_interrupted.status -eq 'Interrupted') 'Interruption not recognized.'
     Assert-Contract ($ledger.results.fixture_assertion.status -eq 'Failed') 'Assertion was not a failure.'
     Assert-Contract ($ledger.results.fixture_mixed.status -eq 'Failed') 'Mixed failures were retryable.'
     Assert-Contract ($ledger.results.fixture_optional.status -eq 'PassedWithSkips') 'Optional Qt skip was hidden.'
-    Invoke-Gate -Options @('-Resume', '-RetryInterrupted', 'fixture_assertion') -Expected 1 -Contains 'Only a recorded desktop interruption'
-    Invoke-Gate -Options @('-Resume', '-RetryInterrupted', 'fixture_mixed') -Expected 1 -Contains 'Only a recorded desktop interruption'
-    Invoke-Gate -Options @('-Resume', '-RetryInterrupted', 'fixture_interrupted') -Expected 1
+    Assert-Contract ($ledger.results.fixture_skipped.status -eq 'Skipped') 'CTest skip was hidden.'
+    Invoke-Gate -Options @('-ExcludeGui', '-Resume', '-RetryInterrupted', 'fixture_assertion') -Expected 1 -Contains 'Only a recorded desktop interruption'
+    Invoke-Gate -Options @('-ExcludeGui', '-Resume', '-RetryInterrupted', 'fixture_mixed') -Expected 1 -Contains 'Only a recorded desktop interruption'
+    Invoke-Gate -Options @('-ExcludeGui', '-Resume', '-RetryInterrupted', 'fixture_interrupted') -Expected 1
     $ledger = Read-Ledger
     Assert-Contract ($ledger.results.fixture_interrupted.status -eq 'Passed') 'Explicit interruption retry failed.'
     Assert-Contract ((Get-Content (Join-Path $root 'pass.count')) -eq '1') 'A previous pass was rerun.'
@@ -108,43 +150,146 @@ endforeach()
     foreach ($attempt in $ledger.attempts) {
         Assert-Contract ((Test-Path $attempt.log) -and (Test-Path $attempt.junit)) 'Original evidence missing.'
     }
-    Invoke-Gate -Options @('-Resume') -Expected 1
+    Invoke-Gate -Options @('-ExcludeGui', '-Resume') -Expected 1
     Assert-Contract ((Get-Content (Join-Path $root 'assertion.count')) -eq '1') 'Resume retried a blocked failure.'
-    Assert-Contract ((Get-Content (Join-Path $root 'optional.count')) -eq '2') 'Optional hardware skip was reused as a pass.'
-    Invoke-Gate -Options @('-Resume', '-Configuration', 'Debug') -Expected 1 -Contains 'No evidence matches these inputs'
+    Assert-Contract ((Get-Content (Join-Path $root 'optional.count')) -eq '2') 'Optional Qt skip was reused as a pass.'
+    Assert-Contract ((Get-Content (Join-Path $root 'skipped.count')) -eq '2') 'CTest skip was reused as a pass.'
+    Invoke-Gate -Options @('-Test', 'fixture_pass', '-Resume', '-Configuration', 'Debug') -Expected 1 -Contains 'No evidence matches these inputs'
     $env:QT_SCALE_FACTOR = '1.731'
-    Invoke-Gate -Options @('-Resume') -Expected 1 -Contains 'No evidence matches these inputs'
+    Invoke-Gate -Options @('-Test', 'fixture_pass', '-Resume') -Expected 0
+    Assert-Contract ((Get-Content (Join-Path $root 'pass.count')) -eq '2') 'Environment change reused stale evidence.'
     $env:QT_SCALE_FACTOR = $originalScale
-    Add-Content -LiteralPath (Join-Path $root 'fixture.ps1') -Value '# changed input'
-    Invoke-Gate -Options @('-Resume') -Expected 1 -Contains 'No evidence matches these inputs'
-    Set-Content -LiteralPath (Join-Path $root 'fixture.ps1') -Value $fixture
-    Set-Content -LiteralPath (Join-Path $root 'qt/bin/runtime.dll') -Value 'changed runtime inventory'
-    Invoke-Gate -Options @('-Resume') -Expected 1 -Contains 'No evidence matches these inputs'
-    # A real fixture repair changes the input inventory. Fresh validation can
-    # now pass, and a subsequent resume must reuse those exact successful runs.
     $repaired = $fixture.Replace("if (`$Case -eq 'assertion')", 'if ($false)').Replace("if (`$Case -eq 'mixed')", 'if ($false)')
     Set-Content -LiteralPath (Join-Path $root 'fixture.ps1') -Value $repaired
-    Invoke-Gate -Options @() -Expected 0 -Contains '0 unresolved'
-    Invoke-Gate -Options @('-Resume') -Expected 0 -Contains '0 unresolved'
-    Assert-Contract ((Get-Content (Join-Path $root 'pass.count')) -eq '2') 'Successful full resume repeated a pass.'
-    Set-Content -LiteralPath (Join-Path $root 'build/new-helper.exe') -Value 'changed executable inventory'
-    Invoke-Gate -Options @('-Resume') -Expected 1 -Contains 'No evidence matches these inputs'
-    # Mutations during a run must be rejected with the exact input name.
-    $mutating = $cmakeText.Replace('pass interrupted assertion mixed optional', 'mutate')
-    Set-Content -LiteralPath (Join-Path $root 'CMakeLists.txt') -Value $mutating
-    & $CMake -S $root -B (Join-Path $root 'build') "-DQt6_DIR:PATH=$root/qt/lib/cmake/Qt6" *> (Join-Path $root 'configure.log')
-    if ($LASTEXITCODE) { throw 'Mutation fixture configuration failed.' }
-    Invoke-Gate -Options @() -Expected 1 -Contains 'Inputs changed during testing*Changed:*runtime.dll'
-    $generating = $cmakeText.Replace('pass interrupted assertion mixed optional', 'generated').Replace(
-        '-Case ${case})', '-Case ${case} --output "${CMAKE_BINARY_DIR}/result.bgra" --trace "${CMAKE_BINARY_DIR}/trace.csv")')
-    Set-Content -LiteralPath (Join-Path $root 'CMakeLists.txt') -Value $generating
-    & $CMake -S $root -B (Join-Path $root 'build') "-DQt6_DIR:PATH=$root/qt/lib/cmake/Qt6" *> (Join-Path $root 'configure.log')
-    if ($LASTEXITCODE) { throw 'Generated-output fixture configuration failed.' }
-    Invoke-Gate -Options @() -Expected 0 -Contains '0 unresolved'
-    Invoke-Gate -Options @() -Expected 0 -Contains '0 unresolved'
+    Invoke-Gate -Options @('-ExcludeGui') -Expected 0 -Contains '0 unresolved'
+    Invoke-Gate -Options @('-ExcludeGui', '-Resume') -Expected 0 -Contains '0 unresolved'
+    Assert-Contract ((Get-Content (Join-Path $root 'pass.count')) -eq '3') 'Successful resume repeated a pass.'
+    $raw = Get-Content -LiteralPath (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'OkuFlow/test-evidence') -Recurse -Filter 'ledger-v2.json')[0].FullName -Raw
+    Assert-Contract (!$raw.Contains($env:OKUFLOW_GATE_CONTRACT_SECRET)) 'Secret environment value was persisted.'
+    # Independent executable fingerprints: changing B cannot rerun A.
+    foreach ($name in 'a', 'b') { Copy-Item -LiteralPath $CMake -Destination (Join-Path $root "$name.exe") }
+    Configure-Fixture ($header + @'
+
+foreach(case a b)
+    add_test(NAME fixture_${case} COMMAND "${CMAKE_SOURCE_DIR}/${case}.exe" -E echo ${case})
+    set_tests_properties(fixture_${case} PROPERTIES LABELS "independent")
+endforeach()
+'@)
+    Invoke-Gate -Options @('-Label', 'independent') -Expected 0 -Contains 'SCOPED PASS: 2 of 3 tests'
+    $ledger = Read-Ledger
+    $aAttempt = $ledger.results.fixture_a.attempt
+    $bAttempt = $ledger.results.fixture_b.attempt
+    $stream = [IO.File]::Open((Join-Path $root 'b.exe'), 'Append')
+    try { $stream.WriteByte(0) } finally { $stream.Dispose() }
+    Invoke-Gate -Options @('-Label', 'independent', '-Resume') -Expected 0
+    $ledger = Read-Ledger
+    Assert-Contract ($ledger.results.fixture_a.attempt -eq $aAttempt) 'Unrelated executable invalidated A.'
+    Assert-Contract ($ledger.results.fixture_b.attempt -ne $bAttempt) 'Changed executable reused B.'
+    $aAttempt = $ledger.results.fixture_a.attempt
+    Set-Content -LiteralPath (Join-Path $root 'neighbor.qm') -Value 'new translation runtime'
+    Invoke-Gate -Options @('-Label', 'independent', '-Resume') -Expected 0
+    $ledger = Read-Ledger
+    Assert-Contract ($ledger.results.fixture_a.attempt -ne $aAttempt) 'Adjacent QM addition did not invalidate evidence.'
+    $aAttempt = $ledger.results.fixture_a.attempt
+    Add-Content -LiteralPath (Join-Path $root 'build/CTestTestfile.cmake') -Value 'set_tests_properties(fixture_a PROPERTIES ENVIRONMENT "FIXTURE_INPUT=changed")'
+    Invoke-Gate -Options @('-Label', 'independent', '-Resume') -Expected 0
+    $ledger = Read-Ledger
+    Assert-Contract ($ledger.results.fixture_a.attempt -ne $aAttempt) 'Changed CTest properties reused evidence.'
+    # REQUIRED_FILES catches non-command runtime data; unaffected tests retain credit.
+    Configure-Fixture ($header + @'
+
+foreach(case mutate pass)
+    add_test(NAME fixture_${case} COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case ${case})
+endforeach()
+set_tests_properties(fixture_mutate PROPERTIES REQUIRED_FILES "${CMAKE_SOURCE_DIR}/data.json")
+'@)
+    Invoke-Gate -Options @('-ExcludeGui', '-Parallel', '2') -Expected 1 -Contains 'Inputs changed during testing*Changed:*data.json'
+    $ledger = Read-Ledger
+    Assert-Contract ($ledger.results.fixture_mutate.status -eq 'Unfinished') 'Changed data was credited.'
+    Assert-Contract ($ledger.results.fixture_pass.status -eq 'Passed') 'Unrelated input mutation invalidated a pass.'
+    $mutateAttempt = $ledger.results.fixture_mutate.attempt
+    Set-Content -LiteralPath (Join-Path $root 'data.json') -Value 'original input'
+    Invoke-Gate -Options @('-ExcludeGui', '-Resume') -Expected 1 -Contains 'Unfinished: fixture_mutate'
+    Assert-Contract ((Read-Ledger).results.fixture_mutate.attempt -eq $mutateAttempt) 'Unfinished run was retried.'
+    Configure-Fixture ($header + @'
+
+add_test(NAME fixture_runtime_mutate COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case runtime_mutate)
+'@)
+    Invoke-Gate -Options @('-ExcludeGui') -Expected 1 -Contains 'Inputs changed during testing*Changed:*runtime.dll'
+    Configure-Fixture ($header + @'
+
+add_test(NAME fixture_generated COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case generated --output "${CMAKE_BINARY_DIR}/result.bgra" --trace "${CMAKE_BINARY_DIR}/trace.csv")
+'@)
+    Invoke-Gate -Options @('-ExcludeGui') -Expected 0 -Contains '0 unresolved'
+    Invoke-Gate -Options @('-ExcludeGui') -Expected 0 -Contains '0 unresolved'
+    Configure-Fixture ($header + @'
+
+foreach(case parallel_a parallel_b gpu codec)
+    add_test(NAME fixture_${case} COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case ${case})
+    set_tests_properties(fixture_${case} PROPERTIES LABELS "partition" TIMEOUT 25)
+endforeach()
+set_property(TEST fixture_gpu APPEND PROPERTY LABELS gpu)
+set_property(TEST fixture_codec APPEND PROPERTY LABELS codec)
+'@)
+    Invoke-Gate -Options @('-ExcludeGui', '-Parallel', '2') -Expected 0
+    $ledger = Read-Ledger
+    $latest = @($ledger.attempts | Select-Object -Last 2)
+    Assert-Contract ($latest[0].partition -eq 'background' -and $latest[0].parallel -eq 2 -and $latest[0].tests.Count -eq 2) 'Background partition is not parallel.'
+    Assert-Contract ($latest[1].partition -eq 'gpu-codec' -and $latest[1].parallel -eq 1 -and $latest[1].tests.Count -eq 2) 'GPU/codec partition is not serial.'
+    $times = @{}
+    foreach ($name in 'parallel_a', 'parallel_b', 'gpu', 'codec') {
+        $times[$name] = Get-Content -LiteralPath (Join-Path $root "$name.timing.json") -Raw | ConvertFrom-Json
+        Assert-Contract ($ledger.results["fixture_$name"].status -eq 'Passed') 'Partition JUnit result was not merged.'
+    }
+    Assert-Contract ($times.parallel_a.start -lt $times.parallel_b.end -and $times.parallel_b.start -lt $times.parallel_a.end) 'Background fixtures did not actually overlap.'
+    Assert-Contract ($times.gpu.end -le $times.codec.start -or $times.codec.end -le $times.gpu.start) 'GPU and codec fixtures overlapped.'
+    Assert-Contract ([math]::Max($times.parallel_a.end, $times.parallel_b.end) -le [math]::Min($times.gpu.start, $times.codec.start)) 'Background and serial partitions overlapped.'
+    # GUI partition inspection only: this contract forbids GUI-labeled runs.
+    $runnerText = Get-Content -LiteralPath $runner -Raw
+    Assert-Contract ($runnerText.Contains("name = 'gui'; parallel = 1; cases = @(")) 'Dedicated serial GUI partition is missing.'
+    Invoke-Gate -Options @('-List', '-Select', 'gpu,fixture_parallel_a') -Expected 0 -Contains 'fixture_parallel_a'
+    Assert-Contract ($lastOutput -match 'fixture_gpu' -and $lastOutput -notmatch 'fixture_gui|fixture_codec|fixture_parallel_b') 'Mixed selection was not any-match.'
+    # Native PowerShell array binding provides exact any-match label selection.
+    $labelOutput = & $runner -BuildDirectory (Join-Path $root 'build') -Label @('gpu', 'codec') -List 2>&1
+    Assert-Contract ($LASTEXITCODE -eq 0 -and ($labelOutput -join ',') -eq 'fixture_gpu,fixture_codec') 'Label array was not any-match.'
+    # Test the CUDA delta selector against a private comparison inventory and
+    # private preset file, without configuring or touching real project builds.
+    foreach ($directory in 'scripts', 'cmake', 'covered') {
+        [void][IO.Directory]::CreateDirectory((Join-Path $root $directory))
+    }
+    Copy-Item -LiteralPath $runner -Destination (Join-Path $root 'scripts/run_test_gate.ps1')
+    Set-Content -LiteralPath (Join-Path $root 'cmake/CMakePresets.json') -Value @'
+{"configurePresets":[{"name":"msvc-cpu","binaryDir":"${sourceDir}/covered"}],"testPresets":[{"name":"msvc-cpu-tests","configurePreset":"msvc-cpu"}]}
+'@
+    Set-Content -LiteralPath (Join-Path $root 'covered/CTestTestfile.cmake') -Value @'
+add_test(fixture_parallel_a "cmd.exe" "/c" "exit 0")
+add_test(fixture_gpu "cmd.exe" "/c" "exit 0")
+'@
+    $originalRunner = $runner
+    $runner = Join-Path $root 'scripts/run_test_gate.ps1'
+    Invoke-Gate -Options @('-List', '-ExcludeGui', '-UncoveredByPreset', 'msvc-cpu-tests') -Expected 0
+    Assert-Contract ($lastOutput -match 'fixture_parallel_b' -and $lastOutput -match 'fixture_gpu' -and $lastOutput -match 'fixture_codec' -and $lastOutput -notmatch 'fixture_parallel_a|fixture_gui') 'CUDA delta omitted GPU/unique tests or included a CPU-covered test.'
+    $runner = $originalRunner
+    # A full gate must notice newly registered tests even though it no longer
+    # fingerprints the entire generated CTest file as a common input.
+    Configure-Fixture ($header + @'
+
+add_test(NAME fixture_inventory_mutate COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case inventory_mutate)
+'@)
+    Invoke-Gate -Options @('-ExcludeGui') -Expected 1 -Contains 'Test inventory changed during testing; new required tests: fixture_late'
+    # Also exercise the unchanged full-gate verdict with no GUI in inventory.
+    Configure-Fixture @'
+cmake_minimum_required(VERSION 3.23)
+project(GateContract NONE)
+enable_testing()
+add_test(NAME fixture_full COMMAND "${CMAKE_COMMAND}" -E echo full)
+'@
+    Invoke-Gate -Options @() -Expected 0 -Contains 'Gate: 1 passed (0 with skipped Qt rows), 0 skipped, 0 unresolved.'
+    Assert-Contract ($lastOutput -notmatch 'SCOPED |PARTIAL VALIDATION') 'Full gate was mislabeled scoped or partial.'
     Write-Host "PASS: $checks gate contract checks in $([math]::Round($clock.Elapsed.TotalSeconds, 2)) seconds; no GUI executed."
     Write-Host "Private fixture evidence: $root"
 } finally {
     $env:LOCALAPPDATA = $originalLocal
     $env:QT_SCALE_FACTOR = $originalScale
+    $env:OKUFLOW_GATE_CONTRACT_SECRET = $originalSecret
 }
