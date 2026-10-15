@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QByteArray>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
@@ -14,8 +15,9 @@ struct ChatTurnTicket {
     quint64 epoch{}, requestGeneration{};
     bool operator==(const ChatTurnTicket&) const = default;
 };
-// Runtime-thread presentation store. It owns no image, credential, control
-// grant, file path or widget. Backend kind never changes when control toggles.
+// Runtime-thread presentation store. Small frame previews are memory-only;
+// it owns no credential, control grant, file path or widget.
+// Backend kind never changes when control toggles.
 class VisibleChatSession final : public QObject {
     Q_OBJECT
 public:
@@ -38,6 +40,8 @@ public:
     bool OwnsTicket(const ChatTurnTicket& ticket) const;
     std::optional<ChatTurnTicket> ActiveTicket() const;
     bool Bind(const ChatTurnTicket& ticket, const QString& threadId, const QString& turnId);
+    // At most eight 64 KiB JPEG thumbnails; never restored or sent as context.
+    bool SetImagePreview(const ChatTurnTicket& ticket, const QByteArray& jpeg);
     bool AppendDelta(const ChatTurnTicket& ticket, const QString& delta);
     // First-party presentation receipts only; never included in model context.
     bool AppendActionReceipt(const QString& text);

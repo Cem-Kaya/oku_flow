@@ -113,6 +113,22 @@ bool VisibleChatSession::Bind(const ChatTurnTicket& ticket,const QString& thread
     if (!active_->turnId.isEmpty() && active_->turnId != turn) return false;
     active_->turnId = turn; threads_[active_->backend] = thread; return true;
 }
+bool VisibleChatSession::SetImagePreview(const ChatTurnTicket& ticket,const QByteArray& jpeg) {
+    if (!Current(ticket) || jpeg.size()<4 || jpeg.size()>64*1024 ||
+        !jpeg.startsWith(QByteArray::fromHex("ffd8")) || !jpeg.endsWith(QByteArray::fromHex("ffd9"))) return false;
+    const int userIndex=active_->assistantRow-1;
+    if (userIndex<0) return false;
+    auto user=messages_[userIndex].toObject();
+    user["imagePreviewJpeg"]=QString::fromLatin1(jpeg.toBase64());messages_[userIndex]=user;
+    int retained=0;
+    for (int index=messages_.size()-1;index>=0;--index) {
+        auto row=messages_[index].toObject();
+        if (row.contains("imagePreviewJpeg") && ++retained>8) {
+            row.remove("imagePreviewJpeg");messages_[index]=row;
+        }
+    }
+    Changed();return true;
+}
 bool VisibleChatSession::AppendDelta(const ChatTurnTicket& ticket,const QString& delta) {
     if (!Current(ticket)) return false;
     auto row = messages_[active_->assistantRow].toObject();

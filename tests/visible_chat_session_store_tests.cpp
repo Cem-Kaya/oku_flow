@@ -21,6 +21,14 @@ QJsonObject Mixed(VisibleChatSession& chat) {
 class VisibleChatSessionStoreTests final : public QObject {
     Q_OBJECT
 private slots:
+    void framePreviewBytesNeverPersist() {
+        QTemporaryDir directory;QVERIFY(directory.isValid());VisibleChatSession chat;
+        auto turn=chat.Admit("Explain",ChatBackendKind::Explain);QVERIFY(turn);
+        QVERIFY(chat.SetImagePreview(*turn,QByteArray::fromHex("ffd800010203ffd9")));QVERIFY(chat.Complete(*turn,"answer"));
+        VisibleChatSessionStore store(directory.path());QVERIFY(store.Save(chat.Snapshot()));
+        const auto bytes=Bytes(directory.filePath(chat.ConversationId()+".json"));
+        QVERIFY(!bytes.contains("imagePreviewJpeg"));QVERIFY(!bytes.contains("/9gAAQID/9k="));
+    }
     void restartRestoresMixedTextWithoutAuthorityOrBackendIds() {
         QTemporaryDir directory;QVERIFY(directory.isValid());VisibleChatSession chat;const auto snapshot=Mixed(chat);
         VisibleChatSessionStore first(directory.path());QVERIFY(first.Save(snapshot,"Lecture"));

@@ -11,6 +11,14 @@
 #include <QScrollBar>
 #include <QTabWidget>
 #include <QApplication>
+#include <QAccessible>
+#include <QBuffer>
+#include <QImage>
+#include <QDir>
+#include <QFontDatabase>
+#include <QTextBlock>
+#include <QTextFragment>
+#include <QTextImageFormat>
 #include <QCheckBox>
 #include <QGroupBox>
 #include <QJsonDocument>
@@ -37,6 +45,8 @@ private slots:
     void floatingRoutingRefusalPreservesQuestion();
     void sharedChatDraftAndKeyboard();
     void escapedMessagesSelectionAndReadIsolation();
+    void chatAccessibleCharacterGeometry();
+    void chatFramePreviewsRenderInBothViews();
     void orientationUsesCanonicalDegrees();
     void customRecipeAbsenceRestoresSilently();
 };
@@ -310,6 +320,87 @@ void AgentControlPanelTests::escapedMessagesSelectionAndReadIsolation()
     view->setLayoutDirection(Qt::RightToLeft);view->resize(360,720);
     overlay.SetChatSnapshot(snapshot);
     QVERIFY(view->transcript()->toPlainText().contains("Yes, go ahead"));
+}
+void AgentControlPanelTests::chatAccessibleCharacterGeometry()
+{
+    QVERIFY(QFontDatabase::addApplicationFont(QDir(qEnvironmentVariable("WINDIR")).filePath("Fonts/segoeui.ttf"))>=0);
+    okuflow::AssistantChatView view;
+    view.move(137, 83);
+    view.resize(520, 700);
+    QImage frame(160,80,QImage::Format_RGB32);frame.fill(Qt::green);
+    QByteArray jpeg;QBuffer buffer(&jpeg);QVERIFY(buffer.open(QIODevice::WriteOnly));QVERIFY(frame.save(&buffer,"JPG"));
+    view.SetChatSnapshot({{"conversationId","geometry"},{"messages",QJsonArray{
+        QJsonObject{{"id","u"},{"role","user"},{"text","Explain"},{"origin","explain"},{"imagePreviewJpeg",QString::fromLatin1(jpeg.toBase64())}},
+        QJsonObject{{"id","a"},{"role","assistant"},{"text",QStringLiteral("A tilted indoor view shows a wooden door across the lower left. ").repeated(12)},{"status","completed"},{"complete",true}}
+    }}});
+    view.show();
+    QApplication::processEvents();
+    auto* text=view.transcript();
+    auto* accessible=QAccessible::queryAccessibleInterface(text);
+    QVERIFY(accessible);
+    auto* iface=accessible->textInterface();
+    QVERIFY(iface);
+    for (const int width : {520, 360, 780}) {
+        view.resize(width, 700);
+        QApplication::processEvents();
+        QTRY_COMPARE(text->horizontalScrollBar()->maximum(),0);
+        for (const int scroll : {0, text->verticalScrollBar()->maximum()/2}) {
+            text->verticalScrollBar()->setValue(scroll);
+            QApplication::processEvents();
+            const auto plain=text->toPlainText();
+            for (int offset=0;offset<plain.size();++offset) {
+                if (plain[offset].isSpace() || plain[offset]==QChar::ObjectReplacementCharacter) continue;
+                QTextCursor cursor(text->document());cursor.setPosition(offset);
+                const auto painted=text->cursorRect(cursor);
+                if (!text->viewport()->rect().contains(painted.center())) continue;
+                const auto expected=text->viewport()->mapToGlobal(painted.topLeft());
+                const auto actual=iface->characterRect(offset);
+                QVERIFY2(qAbs(actual.x()-expected.x())<=2 && actual.top()>=expected.y()-2 && actual.bottom()<=expected.y()+painted.height()+2,
+                    qPrintable(QStringLiteral("Character %1: UIA %2,%3 vs painted %4,%5 at width %6 scroll %7")
+                        .arg(offset).arg(actual.x()).arg(actual.y()).arg(expected.x()).arg(expected.y()).arg(width).arg(scroll)));
+            }
+        }
+    }
+}
+void AgentControlPanelTests::chatFramePreviewsRenderInBothViews()
+{
+    QVERIFY(QFontDatabase::addApplicationFont(QDir(qEnvironmentVariable("WINDIR")).filePath("Fonts/segoeui.ttf"))>=0);
+    okuflow::VisibleChatSession model;
+    okuflow::AssistantChatView main,floating;
+    for(auto* view:{&main,&floating}) {
+        view->resize(520,700);
+        connect(&model,&okuflow::VisibleChatSession::SnapshotChanged,view,&okuflow::AssistantChatView::SetChatSnapshot);
+    }
+    QImage source(240,120,QImage::Format_RGB32);source.fill(Qt::green);
+    QByteArray jpeg;QBuffer buffer(&jpeg);QVERIFY(buffer.open(QIODevice::WriteOnly));QVERIFY(source.save(&buffer,"JPG"));
+    auto ticket=model.Admit("Explain",okuflow::ChatBackendKind::Explain,okuflow::ChatRequestOrigin::ExplainButton);QVERIFY(ticket);
+    QVERIFY(model.SetImagePreview(*ticket,jpeg));QVERIFY(model.Complete(*ticket,"A green camera frame."));
+    for(auto* view:{&main,&floating}) {
+        view->show();QApplication::processEvents();
+        QTRY_COMPARE(view->transcript()->horizontalScrollBar()->maximum(),0);
+        auto* document=view->transcript()->document();
+        int images=0;
+        for(auto block=document->begin();block.isValid();block=block.next())for(auto fragment=block.begin();!fragment.atEnd();++fragment) {
+            const auto format=fragment.fragment().charFormat();
+            if(!format.isImageFormat())continue;
+            const auto imageFormat=format.toImageFormat();
+            if(!imageFormat.name().startsWith("okuflow-chat-preview-"))continue;
+            ++images;
+            const auto image=qvariant_cast<QImage>(document->resource(QTextDocument::ImageResource,QUrl(imageFormat.name())));
+            QVERIFY(!image.isNull());QCOMPARE(image.size(),source.size());
+            QVERIFY(qAbs(imageFormat.width()/imageFormat.height()-2.0)<0.01);
+            QVERIFY(image.pixelColor(100,60).green()>200);
+        }
+        QCOMPARE(images,1);
+        const auto evidence=qEnvironmentVariable("OKUFLOW_UI_TEST_SCREENSHOTS");
+        if(!evidence.isEmpty()) {
+            QVERIFY(QDir().mkpath(evidence));
+            QVERIFY(view->grab().save(QDir(evidence).filePath(view==&main?"chat-preview-main.png":"chat-preview-floating.png")));
+        }
+    }
+    model.New();
+    QVERIFY(!main.transcript()->toHtml().contains("okuflow-chat-preview-"));
+    QVERIFY(!floating.transcript()->toHtml().contains("okuflow-chat-preview-"));
 }
 void AgentControlPanelTests::orientationUsesCanonicalDegrees()
 {

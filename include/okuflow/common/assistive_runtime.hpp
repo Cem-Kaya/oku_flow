@@ -219,7 +219,7 @@ private:
     bool CancelVlmPreparation();
     void CompleteAssistantPreparation(std::uint64_t generation, bool saved,
                                       const QString& imagePath, const QString& prompt,
-                                      const QString& threadId);
+                                      const QString& threadId, const QByteArray& preview = {});
     bool VlmConfigured() const;
     bool UsesCodexProvider() const;
     bool ValidateFrame(const uint8_t* bgraData, int width, int height);

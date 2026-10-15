@@ -342,6 +342,12 @@ Advanced and floating Explain are views of one `VisibleChatSession`, including
 shared draft/attachment/busy state and immutable saved kinds. Scroll/selection
 stay local to each view. Snapshots never raise/focus/reopen the floating view.
 Read has a separate result presentation and cannot replace Explain chat.
+Both chat surfaces use root-level document paragraphs so accessible text bounds
+follow the painted words, including after wrapping and scrolling. Image-bearing
+Explain and follow-up requests show an aspect-preserving thumbnail of the frame
+prepared for that request. The last eight thumbnails are memory-only; restarting
+or restoring history does not reload camera images. Later model context remains
+text-only.
 Human-readable permission cards expose native Allow once/Deny controls; exact
 canonical arguments stay in collapsed Details. Chat sentences confer no consent.
 Ctrl+Shift+A explicitly reveals/focuses Deny, and Ctrl+Shift+U stops and undoes.

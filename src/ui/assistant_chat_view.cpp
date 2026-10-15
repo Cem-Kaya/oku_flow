@@ -3,6 +3,8 @@
 #include "okuflow/ui/ui_translation.hpp"
 #include "okuflow/ui/theme_contrast.hpp"
 #include <QApplication>
+#include <QBuffer>
+#include <QImageReader>
 #include <QCheckBox>
 #include <QDateTime>
 #include <QEvent>
@@ -26,6 +28,7 @@
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QToolButton>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -95,6 +98,7 @@ AssistantChatView::AssistantChatView(QWidget* parent):QWidget(parent)
     transcript_->setObjectName(QStringLiteral("chatMessages"));
     transcript_->setOpenLinks(false); transcript_->setOpenExternalLinks(false);
     transcript_->setAccessibleName(QStringLiteral("Assistant Conversation"));
+    transcript_->viewport()->installEventFilter(this);
     QFont font=transcript_->font();font.setPixelSize(20);transcript_->setFont(font);
     messages->addWidget(transcript_,1);bodyLayout->addWidget(bodyContent_);
     root->addWidget(body_,1);
@@ -193,6 +197,8 @@ void AssistantChatView::RenderMessages()
     const QString assistantColor=dark?QStringLiteral("#303030"):QStringLiteral("#f0f1f3");
     const bool rtl=layoutDirection()==Qt::RightToLeft;
     QString html=QStringLiteral("<html><head><style>p { margin:0px; } table { margin:0px; }</style></head><body dir='%1' style='font-size:20px;color:%2'>").arg(rtl?QStringLiteral("rtl"):QStringLiteral("ltr"),textColor);
+    QList<QPair<QUrl,QImage>> previews;
+    int messageIndex=0;
     for(const auto value:snapshot_.value("messages").toArray()) {
         const auto message=value.toObject();const bool user=message.value("role").toString()=="user";
         const QString role=TranslateUi(user?QStringLiteral("You"):QStringLiteral("Assistant"));
@@ -212,21 +218,50 @@ void AssistantChatView::RenderMessages()
         const QString origin=message.value("origin").toString()==QStringLiteral("explain")
             ?QStringLiteral(" <img src='okuflow-chat-origin' width='16' height='16'> <span style='font-size:13px'>%1</span>").arg(Escape(TranslateUi(QStringLiteral("Explain")))):QString{};
         const QString heading=QStringLiteral("<b>%1</b> <span style='font-size:13px'>%2</span><br>").arg(Escape(role),Escape(timestamp)).replace(QStringLiteral("<br>"),QString{})+origin;
-        QFont bodyFont=transcript_->font();bodyFont.setPixelSize(20);const QFontMetrics metrics(bodyFont);int measured=80;
+        QFont bodyFont=transcript_->font();bodyFont.setPixelSize(20);const QFontMetrics metrics(bodyFont);
+        int measured=std::max(160,metrics.horizontalAdvance(role+QStringLiteral(" ")+timestamp+QStringLiteral(" ")+TranslateUi(QStringLiteral("Explain")))+24);
         for(const auto& line:message.value("text").toString().split(QLatin1Char('\n')))measured=std::max(measured,metrics.horizontalAdvance(line)+24);
         for(const auto& receipt:message.value("actions").toArray())measured=std::max(measured,metrics.horizontalAdvance(receipt.toString())+24);
         const int available=std::max(1,transcript_->viewport()->width()-24);
-        const int bubble=std::clamp(100*measured/available,20,85);
-        const int leading=(user!=rtl)?100-bubble:0,trailing=(user!=rtl)?0:100-bubble;
-        html+=QStringLiteral("<table width='100%' cellspacing='0' cellpadding='6'><tr><td width='%1%'></td><td width='%2%'>%3</td><td width='%4%'></td></tr><tr><td></td><td bgcolor='%5'>%6</td><td></td></tr></table><p style='font-size:4px;margin:0px'>&nbsp;</p>")
-            .arg(leading).arg(bubble).arg(heading).arg(trailing).arg(user?userColor:assistantColor,body);
+        const int maximum=std::max(1,available*85/100);
+        int bubble=std::clamp(measured,std::min(160,maximum),maximum);
+        QString preview;
+        const auto encoded=message.value("imagePreviewJpeg").toString().toLatin1();
+        if(user && !encoded.isEmpty() && encoded.size()<=88*1024) {
+            QByteArray bytes=QByteArray::fromBase64(encoded,QByteArray::AbortOnBase64DecodingErrors);
+            QBuffer buffer(&bytes);buffer.open(QIODevice::ReadOnly);
+            QImageReader reader(&buffer,"JPEG");
+            const auto size=reader.size();
+            if(bytes.size()<=64*1024 && size.isValid() && size.width()<=320 && size.height()<=320) {
+                const auto image=reader.read();
+                if(!image.isNull()) {
+                    bubble=std::min(maximum,std::max(bubble,image.width()));
+                    const auto shown=image.size().scaled(QSize(std::min({280,bubble,image.width()}),320),Qt::KeepAspectRatio);
+                    const QUrl url(QStringLiteral("okuflow-chat-preview-%1").arg(messageIndex));
+                    previews.append({url,image});
+                    preview=QStringLiteral("<img src='%1' width='%2' height='%3' alt='%4'><br>")
+                        .arg(url.toString()).arg(shown.width()).arg(shown.height()).arg(Escape(TranslateUi(QStringLiteral("Image"))));
+                    // A changed image must refresh even if its dimensions match.
+                    preview+=QStringLiteral("<!--%1-->").arg(qHash(bytes));
+                }
+            }
+        }
+        const int leading=(user!=rtl)?available-bubble:0,trailing=(user!=rtl)?0:available-bubble;
+        // Root-level paragraphs keep QTextLayout positions in document coordinates.
+        // QTextEdit accessibility omits containing table/frame offsets.
+        const QString margins=QStringLiteral("margin-left:%1px;margin-right:%2px;").arg(leading).arg(trailing);
+        html+=QStringLiteral("<p style='%1margin-top:6px;margin-bottom:4px'>%2</p><p style='%1background-color:%3;margin-top:0px;margin-bottom:16px'>%4%5</p>")
+            .arg(margins,heading,user?userColor:assistantColor,preview,body);
+        ++messageIndex;
 
     }
     html+=QStringLiteral("</body></html>");
     if(renderedHtml_==html)return;
     const auto originIcon=theme_contrast::ThemedIcon(QStringLiteral(":/okuflow/icons/camera.svg"),palette().color(QPalette::Text),palette().color(QPalette::Disabled,QPalette::Text)).pixmap(16,16);
     transcript_->document()->addResource(QTextDocument::ImageResource,QUrl(QStringLiteral("okuflow-chat-origin")),originIcon);
+    for(const auto& preview:previews)transcript_->document()->addResource(QTextDocument::ImageResource,preview.first,preview.second);
     renderedHtml_=html;transcript_->setHtml(html);
+    for(const auto& preview:previews)transcript_->document()->addResource(QTextDocument::ImageResource,preview.first,preview.second);
     transcript_->document()->addResource(QTextDocument::ImageResource,QUrl(QStringLiteral("okuflow-chat-origin")),originIcon);
     if(hadSelection) {
         QTextCursor restored(transcript_->document());
@@ -293,6 +328,10 @@ void AssistantChatView::changeEvent(QEvent* event)
 }
 bool AssistantChatView::eventFilter(QObject* watched,QEvent* event)
 {
+    if(transcript_ && watched==transcript_->viewport() && event->type()==QEvent::Resize && !renderQueued_) {
+        renderQueued_=true;
+        QTimer::singleShot(0,this,[this] {renderQueued_=false;RenderMessages();});
+    }
     if(watched==composer_&&(event->type()==QEvent::ShortcutOverride||event->type()==QEvent::KeyPress)) {
         auto* key=static_cast<QKeyEvent*>(event);
         if((key->key()==Qt::Key_Return||key->key()==Qt::Key_Enter)&&key->modifiers()==Qt::NoModifier) {

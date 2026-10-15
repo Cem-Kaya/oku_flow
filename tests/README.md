@@ -796,7 +796,11 @@ sole master ownership, user-only grants, exact/expired approvals, canonical 90°
 orientation, unchanged approval Details selection/caret/scroll across refreshes,
 bounded activity, explicit testing, lease defaults/no widening,
 refused drafts, shared draft/attachment/keyboard submission, escaped messages,
-selection, completed-only manual TTS and independent Read presentation. It starts
+selection, completed-only manual TTS and independent Read presentation.
+It also compares accessible character rectangles with painted cursor lines at
+multiple widths/scroll positions and verifies actual JPEG resources in both chat
+views, aspect ratio and cleanup on New. This offscreen bridge-level check does
+not replace manual Windows Magnifier/Narrator acceptance. It starts
 no camera/provider/bridge/browser and claims no native focus or screen-reader
 acceptance. Serial disposable Windows native cases remain separate.
 
@@ -840,7 +844,10 @@ prove no live account or provider compatibility.
 `visible_chat_session_contract` checks shared drafts/busy state, one admitted
 question and placeholder, authoritative terminal replacement, isolated backend
 IDs, immutable kinds, retirement fences, safe history restoration and bounded
-completed text context. `assistive_preparation` adds private loopback
+completed text context, bounded memory-only frame previews and stale-preview
+rejection. The store fixture verifies that thumbnail bytes never reach disk.
+`assistive_preparation` verifies real thumbnail publication in fake Codex and
+loopback HTTP image turns, Read isolation and text-only follow-ups, and adds private loopback
 HTTP Explain/followup/Read/notes ownership, held-answer reset, retained tool-free
 Codex followup, saved Assistant read-only permissions, frozen opening masks,
 distinct Coding/Assistant conversation kinds, explicit Explain after Coding New,

@@ -3354,7 +3354,13 @@ clears image-bearing memory and emits one completion. Private `IsCurrent`,
 ## Assistant chat and consent widgets
 
 - `AssistantChatView` (`ui/assistant_chat_view.hpp/.cpp`) renders trusted
-  `SetChatSnapshot` DTOs into escaped native chat bubbles. Draft/attachment/busy
+  `SetChatSnapshot` DTOs into escaped native chat bubbles. `RenderMessages` uses
+  root-level text paragraphs rather than table frames so Qt's accessible character
+  rectangles match the painted viewport after movement, wrapping and scrolling.
+  Its viewport resize filter coalesces a render after child layout settles,
+  keeping paragraph margins and thumbnails within the actual available width.
+  Bounded JPEG previews are decoded only as in-memory document resources with
+  preserved aspect ratio; provider text cannot introduce image URLs. Draft/attachment/busy
   belong to the app model; selection/scroll remain per view. `SetSettingsWidget`,
   `SetApprovalWidget` and `SetRoutingWidget` place native consent content.
   `ShowSettings`, `ShowHistory` and `CloseDrawer` provide overlays with Escape
@@ -3507,7 +3513,7 @@ grants control nor promotes a development catalog or bypasses release gates.
 
 ## Shared visible chat (plan 52 Draft 6, development)
 
-`VisibleChatSession` owns one pixel-free logical transcript, shared draft,
+`VisibleChatSession` owns one logical transcript, bounded memory-only frame previews, shared draft,
 turn attachment and busy state for Advanced Assistant and floating Explain.
 `ChatTurnTicket{conversationId,epoch,requestGeneration}` fences admission,
 streaming and terminal replacement. `Admit` creates one question and one
@@ -3621,6 +3627,14 @@ records from legacy provider history even when a provider id resembles a UUID.
 `OwnsTicket` admits a late first-party receipt/grant presentation only in its
 original visible epoch. Explain-button user and assistant rows retain the
 finite `origin:"explain"` presentation tag; other origins omit it.
+`SetImagePreview` accepts only the active turn's bounded JPEG payload and keeps
+at most eight thumbnails of 64 KiB each in memory. Restore, text/bridge context
+and the history store's explicit serialization omit `imagePreviewJpeg`.
+`ChatImagePreview` derives a maximum-320-pixel JPEG from the exact preparation
+worker frame; both HTTP and Codex publish it only after existing generation
+checks and successful image preparation. `CompleteAssistantPreparation` accepts
+an optional prepared preview, publishing it only after its existing saved-image
+and generation guards.
 
 `OkuFlowApp::PersistVisibleChat` debounces local history writes and flushes
 before New/history transitions and shutdown. `RenameStoredConversation` and

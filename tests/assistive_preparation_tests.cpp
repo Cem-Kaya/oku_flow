@@ -321,6 +321,10 @@ private slots:
         QVERIFY(RunEndpointRequest(runtime,endpoint,false));
         const auto beforeRead=runtime.ChatSession().Snapshot();
         QCOMPARE(beforeRead["messages"].toArray().size(),2);
+        const auto previewBytes=QByteArray::fromBase64(beforeRead["messages"].toArray()[0].toObject()["imagePreviewJpeg"].toString().toLatin1());
+        const auto preview=QImage::fromData(previewBytes,"JPG");
+        QVERIFY(!preview.isNull());QVERIFY(preview.width()<=320 && preview.height()<=320);
+        QCOMPARE(preview.width()*3,preview.height()*4);
         QVERIFY(RunEndpointRequest(runtime,endpoint,true));
         QCOMPARE(runtime.ChatSession().Snapshot(),beforeRead);
         QVERIFY(runtime.PrepareChatTurn("Why is it dark?",okuflow::ChatBackendKind::Explain));
@@ -332,6 +336,7 @@ private slots:
         for(const auto value:request["messages"].toArray()) for(const auto part:value.toObject()["content"].toArray())
             QVERIFY(part.toObject()["type"].toString()!="image_url");
         const auto rows=runtime.ChatSession().Snapshot()["messages"].toArray(); QCOMPARE(rows.size(),4);
+        QVERIFY(!rows[2].toObject().contains("imagePreviewJpeg"));
         QCOMPARE(rows[2].toObject()["text"].toString(),"Why is it dark?"); QCOMPARE(rows[3].toObject()["text"].toString(),"answer 3");
         QSignalSpy overlay(&runtime,&okuflow::AssistiveRuntime::OverlayUpdated);
         runtime.RefreshOverlay(); QVERIFY(!overlay.isEmpty());
@@ -789,6 +794,8 @@ private slots:
 
         const QList<QVariant> explainA = RunCameraTurn(runtime, false);
         QVERIFY(!explainA.isEmpty());
+        const auto previewBytes=QByteArray::fromBase64(runtime.ChatSession().Snapshot()["messages"].toArray()[0].toObject()["imagePreviewJpeg"].toString().toLatin1());
+        QVERIFY(!QImage::fromData(previewBytes,"JPG").isNull());
         QCOMPARE(explainA.at(3).toString(), QString());
         QVERIFY(!explainA.at(5).toBool()); // Not an Assistant chat turn.
         const QString explainThread = explainA.at(0).toString();

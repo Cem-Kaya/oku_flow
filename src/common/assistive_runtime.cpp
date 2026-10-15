@@ -79,6 +79,16 @@ constexpr qsizetype kMaximumDisplayedAssistantCharacters = 256 * 1024;
 constexpr qsizetype kMaximumExplainHistoryAnswers = 4;
 constexpr qsizetype kMaximumExplainHistoryAnswerCharacters = 1200;
 
+QByteArray ChatImagePreview(const QImage& image)
+{
+    if (image.isNull()) return {};
+    const auto thumbnail=image.width()>320 || image.height()>320
+        ? image.scaled(320,320,Qt::KeepAspectRatio,Qt::SmoothTransformation) : image;
+    QByteArray bytes;QBuffer buffer(&bytes);buffer.open(QIODevice::WriteOnly);
+    if (!thumbnail.save(&buffer,"JPG",75) || bytes.size()>64*1024) return {};
+    return bytes;
+}
+
 QString ExplainContinuationPrompt(const QString& prompt)
 {
     return prompt + QStringLiteral(
@@ -1066,6 +1076,7 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
                                    Qt::SmoothTransformation);
             }
             const bool saved = copy.save(imagePath, "JPG", 85);
+            const auto preview=saved ? ChatImagePreview(copy) : QByteArray{};
             if (!saved) {
                 QFile::remove(imagePath);
             }
@@ -1079,6 +1090,7 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
                 owner,
                 [owner,
                  saved,
+                 preview,
                  imagePath,
                  prompt,
                  threadId,
@@ -1088,7 +1100,7 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
                         return;
                     }
                     owner->CompleteAssistantPreparation(
-                        generation, saved, imagePath, prompt, threadId);
+                        generation, saved, imagePath, prompt, threadId, preview);
                 },
                 Qt::QueuedConnection);
         });
@@ -1108,7 +1120,7 @@ void AssistiveRuntime::SubmitAssistantPrompt(const QString& prompt,
 
 void AssistiveRuntime::CompleteAssistantPreparation(
     std::uint64_t generation, bool saved, const QString& imagePath,
-    const QString& prompt, const QString& threadId)
+    const QString& prompt, const QString& threadId, const QByteArray& preview)
 {
     if (generation != vlmPreparationGeneration_ || !vlmPreparationPending_) {
         // Cancellation already released this request's notes payload. A late
@@ -1130,6 +1142,7 @@ void AssistiveRuntime::CompleteAssistantPreparation(
     }
     vlmStatus_ = QStringLiteral("Thinking...");
     RefreshOverlay();
+    if (chatTicket_) chatSession_->SetImagePreview(*chatTicket_,preview);
     codexClient_->RequestVisionTurn(prompt, imagePath, threadId, true,false,assistantPermitCoding_);
 }
 
@@ -1377,6 +1390,7 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height,
             QBuffer buffer(&jpegBytes);
             buffer.open(QIODevice::WriteOnly);
             const bool encoded = copy.save(&buffer, "JPG", 82);
+            const auto preview=encoded ? ChatImagePreview(copy) : QByteArray{};
             QByteArray requestBody;
             if (encoded) {
                 requestBody =
@@ -1395,6 +1409,7 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height,
                 owner,
                 [owner,
                  encoded,
+                 preview,
                  requestBody = std::move(requestBody),
                  apiUrl,
                  apiKey,
@@ -1411,6 +1426,7 @@ void AssistiveRuntime::StartVlm(const uint8_t* bgraData, int width, int height,
                                 "Failed to encode frame for VLM request."));
                         return;
                     }
+                    if (owner->chatTicket_) owner->chatSession_->SetImagePreview(*owner->chatTicket_,preview);
                     owner->PostVlmRequest(requestBody, apiUrl, apiKey);
                 },
                 Qt::QueuedConnection);
@@ -1635,6 +1651,7 @@ void AssistiveRuntime::StartCodexVlm(const uint8_t* bgraData,
                                    Qt::SmoothTransformation);
             }
             const bool saved = copy.save(imagePath, "JPG", 85);
+            const auto preview=saved ? ChatImagePreview(copy) : QByteArray{};
             if (!saved) {
                 QFile::remove(imagePath);
             }
@@ -1648,6 +1665,7 @@ void AssistiveRuntime::StartCodexVlm(const uint8_t* bgraData,
                 owner,
                 [owner,
                  saved,
+                 preview,
                  imagePath,
                  prompt,
                  threadId,
@@ -1671,6 +1689,7 @@ void AssistiveRuntime::StartCodexVlm(const uint8_t* bgraData,
                     }
                     owner->vlmStatus_ = QStringLiteral("Thinking...");
                     owner->RefreshOverlay();
+                    if (owner->chatTicket_) owner->chatSession_->SetImagePreview(*owner->chatTicket_,preview);
                     owner->codexClient_->RequestVisionTurn(
                         prompt, imagePath, threadId, persistent, retainThread);
                 },

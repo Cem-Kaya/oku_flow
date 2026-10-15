@@ -6,6 +6,25 @@ using namespace okuflow;
 class VisibleChatSessionTests : public QObject {
     Q_OBJECT
 private slots:
+    void framePreviewsAreBoundedEphemeralAndTicketScoped() {
+        VisibleChatSession chat;
+        const auto jpeg=QByteArray::fromHex("ffd800010203ffd9");
+        const auto first=chat.Admit("Explain",ChatBackendKind::Explain);QVERIFY(first);
+        QVERIFY(chat.SetImagePreview(*first,jpeg));
+        QCOMPARE(QByteArray::fromBase64(chat.Snapshot()["messages"].toArray()[0].toObject()["imagePreviewJpeg"].toString().toLatin1()),jpeg);
+        QVERIFY(!chat.SetImagePreview(*first,QByteArray(65537,'x')));
+        QVERIFY(!chat.SetImagePreview(*first,"not a JPEG"));
+        QVERIFY(chat.Complete(*first,"answer"));
+        QVERIFY(!chat.SetImagePreview(*first,jpeg));
+        QVERIFY(!QJsonDocument(chat.TextContext()).toJson().contains("imagePreviewJpeg"));
+        QVERIFY(!QJsonDocument(chat.BridgeContext(ChatBackendKind::Explain)).toJson().contains("imagePreviewJpeg"));
+        for (int i=0;i<10;++i) {auto turn=chat.Admit("question",ChatBackendKind::Explain);QVERIFY(turn);QVERIFY(chat.SetImagePreview(*turn,jpeg));QVERIFY(chat.Complete(*turn,"answer"));}
+        int previews=0;for(const auto value:chat.Snapshot()["messages"].toArray())previews+=value.toObject().contains("imagePreviewJpeg");
+        QCOMPARE(previews,8);
+        VisibleChatSession restored;restored.RestoreLogical(chat.ConversationId(),chat.Snapshot()["messages"].toArray(),{});
+        QVERIFY(!QJsonDocument(restored.Snapshot()).toJson().contains("imagePreviewJpeg"));
+        chat.New();QVERIFY(!chat.SetImagePreview(*first,jpeg));
+    }
     void nativeNewPolicyKeepsControlRestrictedAndOrdinaryKindsImmutable() {
         VisibleChatSession chat;
         chat.New(VisibleChatSession::NewConversationKind(true,false,true));

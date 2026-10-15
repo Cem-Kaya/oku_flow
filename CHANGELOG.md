@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Correct Assistant chat text geometry exposed to screen readers by removing
+  table-based message layout in both the floating Explain and Advanced views.
+  Image-bearing Explain/follow-up turns now show an aspect-preserving frame
+  thumbnail; previews stay in memory and are omitted from stored chat/context.
+
 - Remove the deprecated Node 20 MSVC setup action from Windows CI by using
   Microsoft's installed Visual Studio 2022 developer shell directly. Pin Android
   host checks to Ubuntu 24.04 instead of the moving latest-image alias.

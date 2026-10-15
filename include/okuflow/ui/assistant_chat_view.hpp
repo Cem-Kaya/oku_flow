@@ -85,6 +85,7 @@ private:
     QString renderedHtml_;
     QWidget *approval_{}, *routing_{};
     bool undoAvailable_{};
+    bool renderQueued_{};
 };
 } // namespace okuflow
 #endif

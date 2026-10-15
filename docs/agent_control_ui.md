@@ -24,6 +24,11 @@ its draft until the model accepts it. Chat text, including affirmative phrases,
 never authorizes an action. Read Aloud is manual and resolves completed assistant
 messages only. Explicit Explain-origin rows carry a small translated Explain
 camera tag from finite app-owned metadata, never a backend identity.
+The body uses root-level paragraphs instead of HTML table cells: Qt accessibility
+must report the actual word positions in both docked and floating views.
+Image-bearing ordinary Explain/follow-up turns display the prepared camera frame
+as a bounded thumbnail. Up to eight previews remain in memory only; local chat
+history, exported history and subsequent text context exclude their bytes.
 
 Attach current view is the current-turn/current-source camera grant beside the
 composer. Photos and control-owned recordings have separate session grants in
