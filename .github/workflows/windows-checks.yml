@@ -104,9 +104,11 @@ jobs:
           version: v0.18.0
       # Restore objects with .ninja_deps; a deps log without its objects is stale.
       # Test verdicts and the external evidence ledger are never restored.
+      # Only pushes to main save this cache, so PR runs cannot evict it.
       - name: Restore Ninja dependency inventory and incremental build
+        id: build-cache
         if: ${{ steps.plan.outputs.build == 'true' }}
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             build/msvc-cpu
@@ -143,6 +145,14 @@ jobs:
             cmake --build --preset msvc-cpu-build --parallel 4 --target @($selection.targets)
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           }
+      - name: Save incremental build for later runs
+        if: ${{ github.event_name == 'push' && steps.build.outcome == 'success' }}
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            build/msvc-cpu
+            !build/msvc-cpu/Testing
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}
       - name: Validate translations
         if: ${{ steps.build.outcome == 'success' }}
         run: |
