@@ -1,0 +1,37 @@
+# Inline Qt slots use one four-space-indented definition inside private slots.
+# Reconfigure on edits so added slots enter the gate automatically. Keep each
+# _data method with its slot: selecting a slot executes every Qt data row.
+function(okuflow_add_headless_cases prefix target fixture)
+    set(source "${CMAKE_CURRENT_SOURCE_DIR}/${target}.cpp")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
+    file(READ "${source}" contents)
+    string(FIND "${contents}" "class ${fixture} : public QObject" class_start)
+    if(class_start LESS 0)
+        message(FATAL_ERROR "No ${fixture} class found in ${source}")
+    endif()
+    string(SUBSTRING "${contents}" ${class_start} -1 contents)
+    string(FIND "${contents}" "private slots:" slots_start)
+    if(slots_start LESS 0)
+        message(FATAL_ERROR "No private Qt slots found in ${source}")
+    endif()
+    string(SUBSTRING "${contents}" ${slots_start} -1 contents)
+    string(REGEX MATCHALL "\n    void [A-Za-z0-9_]+\\(\\)" definitions "${contents}")
+    set(cases "")
+    foreach(definition IN LISTS definitions)
+        string(REGEX REPLACE "\n    void ([A-Za-z0-9_]+)\\(\\)" "\\1" slot "${definition}")
+        if(slot MATCHES "_data$|^(init|cleanup|initTestCase|cleanupTestCase)$")
+            continue()
+        endif()
+        set(name "${prefix}.${slot}")
+        add_test(NAME "${name}" COMMAND ${target} "${slot}" -v1)
+        set_tests_properties("${name}" PROPERTIES TIMEOUT 30
+            LABELS "headless;${prefix}"
+            ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+        list(APPEND cases "${name}")
+    endforeach()
+    if(NOT cases)
+        message(FATAL_ERROR "No inline Qt test slots found in ${source}")
+    endif()
+    set("${prefix}_cases" "${cases}" PARENT_SCOPE)
+endfunction()

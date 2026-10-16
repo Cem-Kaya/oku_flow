@@ -376,6 +376,12 @@ so metadata generation cannot silently accept an incomplete copy.
   `ActivationFailureMessage` marks an interruption only when a known foreign
   process owns native foreground; Qt/own-process or unknown activation failures
   remain ordinary failures, ineligible for retry credit.
+- `okuflow_add_headless_cases` in `tests/headless_cases.cmake` registers the
+  Assistant preparation fixture's inline private Qt slots individually, keeps
+  all `_data` rows attached, applies a 30-second per-slot deadline and captured
+  Windows logging, and exports the case list for runtime-input declarations.
+  Source edits trigger reconfiguration; the fixture family remains selectable
+  by its `assistive_preparation` label.
 - `okuflow_add_gui_cases` in `tests/gui_cases.cmake` registers each main-window,
   annotation-overlay and AI-settings out-of-class Qt slot as a CTest selector,
   excluding lifecycle and `_data` helpers while retaining all data rows. It

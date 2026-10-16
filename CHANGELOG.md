@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Give each Assistant preparation test slot its own bounded CTest invocation,
+  preserving all data rows instead of timing out the growing aggregate suite.
+  Capture phone/adb Qt test output in CI rather than losing diagnostics to the
+  Windows debugger.
+
 - Include the shared-source equivalence guard in affected-source/header checks,
   retain historical failure blockers across later builds, and archive detailed
   CTest logs per attempt for diagnosing parallel-only failures.

@@ -571,3 +571,14 @@ aligned with the project goals.
   Node-based MSVC setup action or suppress its runtime warning.
 - Android host protocol checks pin Ubuntu 24.04. Review runner-image migrations
   explicitly rather than inheriting the moving `ubuntu-latest` alias.
+
+## Bounded headless fixture registration (2026-10-16)
+- Keep growing Assistant preparation slots independently selectable through
+  `tests/headless_cases.cmake`; retain every Qt data row, runtime fixture input
+  and the 30-second per-slot deadline. Compare registration with the built
+  executable's `-functions` inventory after changing the registration helper.
+- Windows Qt fixtures must capture their plain-text output with
+  `QT_FORCE_STDERR_LOGGING=1`. Preserve the original failed evidence and name
+  unknown causes explicitly; an empty-output CI failure followed by a local
+  pass does not establish a production fix. Do not increase deadlines or add
+  retries merely to make a red run green.

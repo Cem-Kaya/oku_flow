@@ -1,5 +1,6 @@
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test)
 include(gui_cases.cmake)
+include(headless_cases.cmake)
 add_test(NAME cuda_target_policy
     COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/cuda_target_policy.cmake")
 
@@ -125,8 +126,9 @@ if (WIN32)
         NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE
         OKUFLOW_ADB_LEGACY_FIXTURE="$<TARGET_FILE:adb_legacy_fixture>")
     add_dependencies(adb_legacy_recovery_tests adb_legacy_fixture)
-    add_test(NAME adb_legacy_recovery COMMAND adb_legacy_recovery_tests)
+    add_test(NAME adb_legacy_recovery COMMAND adb_legacy_recovery_tests -v1)
     set_tests_properties(adb_legacy_recovery PROPERTIES TIMEOUT 60
+        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
     add_executable(adb_owned_child_fixture
         adb_owned_child_fixture.cpp
@@ -151,8 +153,9 @@ if (WIN32)
     target_compile_definitions(phone_camera_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE
         OKUFLOW_ADB_OWNED_CHILD_FIXTURE="$<TARGET_FILE:adb_owned_child_fixture>")
     add_dependencies(phone_camera_tests adb_owned_child_fixture)
-    add_test(NAME phone_camera_contract COMMAND phone_camera_tests)
+    add_test(NAME phone_camera_contract COMMAND phone_camera_tests -v1)
     set_tests_properties(phone_camera_contract PROPERTIES TIMEOUT 180
+        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
     add_executable(capture_shutdown_tests
@@ -752,10 +755,7 @@ if (WIN32)
     target_compile_definitions(assistive_preparation_tests PRIVATE
         NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE OKUFLOW_HAS_TTS=0)
     add_dependencies(assistive_preparation_tests fake_codex_app_server)
-    add_test(NAME assistive_preparation COMMAND assistive_preparation_tests)
-    set_tests_properties(assistive_preparation PROPERTIES TIMEOUT 30
-        ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
-        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+    okuflow_add_headless_cases(assistive_preparation assistive_preparation_tests AssistivePreparationTests)
 
 endif()
 

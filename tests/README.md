@@ -158,6 +158,21 @@ Background tests run in parallel across logical processors (`-Parallel`
 overrides). Tests labelled `gpu` or `codec` run serially in a second CTest
 invocation, followed by serial `gui` tests.
 
+Assistant preparation slots register as `assistive_preparation.<slot>`, each
+with the existing 30-second CTest deadline and every associated Qt data row.
+Select the `assistive_preparation` label to run that whole fixture family;
+there is no additional aggregate invocation. Registration follows inline private
+slots in the fixture source and reconfigures when that source changes. A new or
+reformatted slot must remain discoverable; compare CTest names with the built
+fixture's `-functions` list after changing registration. All cases retain the
+fake-provider binaries and compatibility profile in `REQUIRED_FILES`.
+
+The phone-camera and legacy-adb fixtures set `QT_FORCE_STDERR_LOGGING=1` and
+use `-v1` to retain row entry and failure output through CTest on Windows.
+Without that environment, Qt may send its plain-text output to the system
+debugger instead. Keep original empty-output failures archived: a later local
+pass is diagnostic evidence, not proof of the original failure's cause.
+
 First run the normal `scripts\agent_build.bat`. It now continues to CUDA after
 a CPU test failure, preserving independent configuration results. If the only
 problem is a recorded desktop interruption, stop competing input, then run:
