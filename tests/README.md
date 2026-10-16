@@ -173,6 +173,13 @@ Without that environment, Qt may send its plain-text output to the system
 debugger instead. Keep original empty-output failures archived: a later local
 pass is diagnostic evidence, not proof of the original failure's cause.
 
+`PhoneCameraTests::alreadyBufferedFakeAdbRequestIsNotDiscarded` deliberately
+buffers a complete private host-version request before the fake adb handler
+starts. `FakePhoneAdb::Serve` must consume those bytes immediately instead of
+waiting for another readiness event; the regression fails against the former
+unconditional wait. It creates no runtime hooks, adb process or real-device
+connection. Borrowing and enumeration-after-shutdown assertions remain intact.
+
 First run the normal `scripts\agent_build.bat`. It now continues to CUDA after
 a CPU test failure, preserving independent configuration results. If the only
 problem is a recorded desktop interruption, stop competing input, then run:

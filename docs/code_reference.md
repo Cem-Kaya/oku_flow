@@ -489,6 +489,10 @@ so metadata generation cannot silently accept an incomplete copy.
   endpoint overrides, old/new probes, busy probes and cancellation against
   isolated sockets. `LinkPolicyTest` adds peer, bind deadline and wire-code
   and transient retry checks; Android now has 54 JVM tests.
+  `FakePhoneAdb` optionally prebuffers a request before `Serve` for the
+  `alreadyBufferedFakeAdbRequestIsNotDiscarded` regression; the handler checks
+  `bytesAvailable()` before its bounded readiness wait, so queued request data
+  does not require a second network event. This is a test-server repair only.
 
 ## GUI launch and explicit capture controls
 

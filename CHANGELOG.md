@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Handle already-buffered fake adb requests without waiting for a second socket
+  readiness event. Add a deterministic prebuffered-request regression while
+  preserving borrowed-server shutdown and discovery assertions.
+
 - Give each Assistant preparation test slot its own bounded CTest invocation,
   preserving all data rows instead of timing out the growing aggregate suite.
   Capture phone/adb Qt test output in CI rather than losing diagnostics to the
