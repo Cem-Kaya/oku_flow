@@ -244,6 +244,8 @@ if (WIN32)
     qt_add_lupdate(
         LUPDATE_TARGET update_okuflow_translations
         SOURCE_TARGETS oku_flow
+        # Preserve lupdate input when CPU tests move app sources into objects.
+        SOURCES ${OKUFLOW_CPP_SOURCES}
         TS_FILES
             ${OKUFLOW_TS_FILES}
         OPTIONS -locations none
