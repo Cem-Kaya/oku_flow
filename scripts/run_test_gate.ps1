@@ -43,13 +43,53 @@ function Get-TestInventory([string]$Build, [string]$CTest) {
     $cases
 }
 
-function Add-FileDigest($Parts, [string]$Path) {
-    if (!$script:fileHashes.ContainsKey($Path)) {
-        $script:fileHashes[$Path] = if (Test-Path -LiteralPath $Path -PathType Leaf) {
-            (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
-        } else { 'MISSING' }
+function Initialize-HashCache([string]$Path) {
+    $script:hashCachePath = $Path
+    $script:hashCache = @{}
+    $script:hashCacheDirty = $false
+    if (Test-Path -LiteralPath $Path) {
+        try {
+            $stored = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable
+            if ($stored.schema -eq 1 -and $stored.files -is [System.Collections.IDictionary]) {
+                $script:hashCache = $stored.files
+            }
+        } catch { Write-Warning 'Unreadable file hash cache; rebuilding it.' }
     }
-    $Parts["file:$Path"] = $script:fileHashes[$Path]
+}
+
+function Save-HashCache {
+    if (!$script:hashCacheDirty) { return }
+    $temporary = "$script:hashCachePath.tmp"
+    @{ schema = 1; files = $script:hashCache } | ConvertTo-Json -Depth 10 -Compress |
+        Set-Content -LiteralPath $temporary -Encoding utf8
+    [IO.File]::Move($temporary, $script:hashCachePath, $true)
+    $script:hashCacheDirty = $false
+}
+
+function Add-FileDigest($Parts, [string]$Path) {
+    $Path = [IO.Path]::GetFullPath($Path)
+    $file = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
+    if (!$file -or $file.PSIsContainer) {
+        $Parts["file:$Path"] = 'MISSING'
+        if ($script:hashCache.ContainsKey($Path)) {
+            $script:hashCache.Remove($Path)
+            $script:hashCacheDirty = $true
+        }
+        return
+    }
+    $cached = $script:hashCache[$Path]
+    if (!$cached -or $cached.length -ne $file.Length -or $cached.ticks -ne $file.LastWriteTimeUtc.Ticks -or
+        $cached.sha256 -notmatch '^[0-9A-Fa-f]{64}$') {
+        $hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+        $after = Get-Item -LiteralPath $Path
+        if ($file.Length -ne $after.Length -or $file.LastWriteTimeUtc.Ticks -ne $after.LastWriteTimeUtc.Ticks) {
+            throw "File changed while hashing: $Path"
+        }
+        $cached = @{ length = $file.Length; ticks = $file.LastWriteTimeUtc.Ticks; sha256 = $hash }
+        $script:hashCache[$Path] = $cached
+        $script:hashCacheDirty = $true
+    }
+    $Parts["file:$Path"] = $cached.sha256
 }
 
 function Get-RuntimeInputs([string]$Cache, [string]$CTest, [bool]$Gui) {
@@ -94,7 +134,7 @@ function Get-RuntimeInputs([string]$Cache, [string]$CTest, [bool]$Gui) {
             }
         }
     }
-    @{ shared = $parts; desktop = $desktop }
+    @{ shared = $parts; sharedDigest = (Get-Digest ($parts | ConvertTo-Json -Depth 10 -Compress)); desktop = $desktop }
 }
 
 function Get-TestFingerprint($Case, $Runtime) {
@@ -102,7 +142,6 @@ function Get-TestFingerprint($Case, $Runtime) {
         throw "Build the selected test first: $($Case.name) executable is absent."
     }
     $parts = [ordered]@{}
-    foreach ($key in $Runtime.shared.Keys) { $parts[$key] = $Runtime.shared[$key] }
     if ('gui' -in (Get-Labels $Case)) {
         foreach ($key in $Runtime.desktop.Keys) { $parts["desktop:$key"] = $Runtime.desktop[$key] }
     }
@@ -125,7 +164,12 @@ function Get-TestFingerprint($Case, $Runtime) {
         $resolved = if ([IO.Path]::IsPathRooted($inputFile)) { $inputFile } else { Join-Path $base $inputFile }
         Add-FileDigest $parts ([IO.Path]::GetFullPath($resolved))
     }
-    @{ digest = (Get-Digest ($parts | ConvertTo-Json -Depth 10 -Compress)); inputs = $parts }
+    # Preserve the v2 fingerprint algorithm so matching historical blockers
+    # survive migration. Only the persisted representation is deduplicated.
+    $combined = [ordered]@{}
+    foreach ($key in $Runtime.shared.Keys) { $combined[$key] = $Runtime.shared[$key] }
+    foreach ($key in $parts.Keys) { $combined[$key] = $parts[$key] }
+    @{ digest = (Get-Digest ($combined | ConvertTo-Json -Depth 10 -Compress)); inputs = $parts; shared = $Runtime.sharedDigest }
 }
 
 function Get-CaseResult($Case) {
@@ -147,7 +191,53 @@ function Get-CaseResult($Case) {
     return 'Passed'
 }
 
+function Convert-LedgerInputs($Ledger, $Runtime) {
+    if (!$Ledger.ContainsKey('sharedInputs')) { $Ledger.sharedInputs = @{} }
+    # Old v2 entries carry flattened inputs. Split them without changing their
+    # fingerprint or status; even a pre-migration failed attempt must block.
+    $records = @($Ledger.results.Values) + @($Ledger.evidence.Values | ForEach-Object { $_.Values })
+    foreach ($record in $records) {
+        if (!$record -or $record.shared) { continue }
+        $shared = [ordered]@{}
+        foreach ($key in $Runtime.shared.Keys) {
+            if ($record.inputs.Contains($key)) { $shared[$key] = $record.inputs[$key] }
+        }
+        $record.shared = Get-Digest ($shared | ConvertTo-Json -Depth 10 -Compress)
+        $Ledger.sharedInputs[$record.shared] = $shared
+        $specific = [ordered]@{}
+        foreach ($key in $record.inputs.Keys) {
+            if (!$shared.Contains($key)) { $specific[$key] = $record.inputs[$key] }
+        }
+        $record.inputs = $specific
+    }
+    $Ledger.sharedInputs[$Runtime.sharedDigest] = $Runtime.shared
+}
+
+function Limit-LedgerEvidence($Ledger) {
+    $usedShared = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($name in @($Ledger.evidence.Keys)) {
+        $history = $Ledger.evidence[$name]
+        $current = $Ledger.results[$name].fingerprint
+        # Current evidence is always retained, including Failed, Interrupted
+        # and Unfinished. Keep at most three other most-recent fingerprints.
+        $recent = @($history.Keys | Where-Object { $_ -ne $current } |
+            Sort-Object @{ Expression = { $history[$_].attempt }; Descending = $true },
+                        @{ Expression = { $_ }; Descending = $true } | Select-Object -First 3)
+        foreach ($fingerprint in @($history.Keys)) {
+            if ($fingerprint -ne $current -and $fingerprint -notin $recent) { $history.Remove($fingerprint) }
+        }
+        foreach ($record in $history.Values) { if ($record.shared) { [void]$usedShared.Add($record.shared) } }
+    }
+    foreach ($record in $Ledger.results.Values) { if ($record.shared) { [void]$usedShared.Add($record.shared) } }
+    foreach ($key in @($Ledger.sharedInputs.Keys)) {
+        if (!$usedShared.Contains($key)) { $Ledger.sharedInputs.Remove($key) }
+    }
+    # Attempt/log/JUnit references remain an audit trail even after an old
+    # fingerprint is evicted. They contain no duplicated runtime input maps.
+}
+
 function Save-Ledger($Ledger, [string]$Path) {
+    Limit-LedgerEvidence $Ledger
     $temporary = "$Path.tmp"
     $Ledger | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $temporary -Encoding utf8
     [IO.File]::Move($temporary, $Path, $true)
@@ -186,7 +276,7 @@ try {
         $labels = @(Get-Labels $_)
         $matchesSelection = !$scoped -or $_.name -cin $Test -or $_.name -cin $Select -or
             @($labels | Where-Object { $_ -cin $Label -or $_ -cin $Select }).Count -gt 0 -or
-            ($UncoveredByPreset -and ('gpu' -in $labels -or $_.name -cnotin $covered))
+            ($UncoveredByPreset -and ('gpu' -in $labels -or 'cuda-variant' -in $labels -or $_.name -cnotin $covered))
         (!$ExcludeGui -or 'gui' -notin $labels) -and $matchesSelection -and
             (!$RetryInterrupted -or $_.name -cin $RetryInterrupted)
     })
@@ -215,8 +305,9 @@ try {
         @($tests | Where-Object { !$ExcludeGui -or 'gui' -notin (Get-Labels $_) })
     } else { $selected }
     $hasGui = @($fingerprinted | Where-Object { 'gui' -in (Get-Labels $_) }).Count -gt 0
-    $script:fileHashes = @{}
+    Initialize-HashCache (Join-Path $root 'hash-cache.json')
     $runtime = Get-RuntimeInputs $cache $ctest $hasGui
+    Convert-LedgerInputs $ledger $runtime
     $before = @{}
     foreach ($case in $fingerprinted) {
         $name = $case.name
@@ -255,7 +346,8 @@ try {
         $log = Join-Path $directory "$id.log"
         $expression = '^(' + (($cases.name | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')$'
         foreach ($case in $cases) {
-            $result = @{ status = 'Unfinished'; attempt = $id; fingerprint = $before[$case.name].digest; inputs = $before[$case.name].inputs }
+            $result = @{ status = 'Unfinished'; attempt = $id; fingerprint = $before[$case.name].digest;
+                inputs = $before[$case.name].inputs; shared = $before[$case.name].shared }
             $ledger.results[$case.name] = $result
             $ledger.evidence[$case.name][$result.fingerprint] = $result
         }
@@ -292,7 +384,6 @@ try {
         })
         if ($added.Count) { $errors.Add("Test inventory changed during testing; new required tests: $($added.name -join ', ')") }
     }
-    $script:fileHashes = @{}
     $afterRuntime = Get-RuntimeInputs (Get-Content -LiteralPath (Join-Path $BuildDirectory 'CMakeCache.txt') -Raw) $ctest $hasGui
     foreach ($case in $fingerprinted) {
         $afterCase = $afterTests | Where-Object name -CEQ $case.name
@@ -301,8 +392,14 @@ try {
             Get-TestFingerprint $afterCase $afterRuntime
         } catch { @{ digest = ''; inputs = @{} } }
         if ($after.digest -ne $before[$case.name].digest) {
-            $changed = @(@($before[$case.name].inputs.Keys) + @($after.inputs.Keys) | Sort-Object -Unique | Where-Object {
-                $before[$case.name].inputs[$_] -ne $after.inputs[$_]
+            $oldInputs = [ordered]@{}
+            $newInputs = [ordered]@{}
+            foreach ($key in $runtime.shared.Keys) { $oldInputs[$key] = $runtime.shared[$key] }
+            foreach ($key in $before[$case.name].inputs.Keys) { $oldInputs[$key] = $before[$case.name].inputs[$key] }
+            foreach ($key in $afterRuntime.shared.Keys) { $newInputs[$key] = $afterRuntime.shared[$key] }
+            foreach ($key in $after.inputs.Keys) { $newInputs[$key] = $after.inputs[$key] }
+            $changed = @(@($oldInputs.Keys) + @($newInputs.Keys) | Sort-Object -Unique | Where-Object {
+                $oldInputs[$_] -ne $newInputs[$_]
             })
             if ($ledger.results[$case.name]) { $ledger.results[$case.name].status = 'Unfinished' }
             $errors.Add("Inputs changed during testing: $($case.name); this attempt cannot provide passing evidence. Changed: $($changed -join ', ')")
@@ -337,5 +434,7 @@ try {
     Write-Error $_ -ErrorAction Continue
     exit 1
 } finally {
-    if ($runnerLock) { $runnerLock.Dispose() }
+    if ($runnerLock) {
+        try { Save-HashCache } finally { $runnerLock.Dispose() }
+    }
 }

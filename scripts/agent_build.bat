@@ -18,7 +18,7 @@ set "SCOPED_RESULT=FAIL"
 set "SCOPED_MODE="
 if /I "%~1"=="--scoped" set "SCOPED_MODE=1"
 set "SCOPED_PRESET="
-set "CUDA_SCOPE=GPU-labeled and CUDA-only tests"
+set "CUDA_SCOPE=GPU-labeled, CUDA-variant and CUDA-only tests"
 set "CUDA_SELECTION=-UncoveredByPreset msvc-cpu-tests"
 if "%OKUFLOW_FULL_CUDA_SUITE%"=="1" (
     set "CUDA_SELECTION="

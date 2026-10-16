@@ -47,6 +47,95 @@ try {
         [void][IO.Directory]::CreateDirectory((Join-Path $root $dir))
     }
     $env:OKUFLOW_GATE_CONTRACT_SECRET = 'fixture-secret-must-never-be-saved'
+    # Load only function definitions for isolated cache/ledger contracts. No
+    # gate entry point, native desktop probing or CTest execution occurs here.
+    $parseErrors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseFile($runner, [ref]$null, [ref]$parseErrors)
+    Assert-Contract (!$parseErrors.Count) 'Runner has PowerShell parse errors.'
+    foreach ($definition in $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
+        . ([scriptblock]::Create($definition.Extent.Text))
+    }
+    $cachePath = Join-Path $root 'unit-hash-cache.json'
+    $hashFile = Join-Path $root 'hash-input.bin'
+    [IO.File]::WriteAllText($hashFile, 'abcd')
+    $script:hashCalls = 0
+    function Get-FileHash {
+        param([string]$LiteralPath, [string]$Algorithm)
+        $script:hashCalls++
+        Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $LiteralPath -Algorithm $Algorithm
+    }
+    Initialize-HashCache $cachePath
+    $parts = [ordered]@{}
+    Add-FileDigest $parts $hashFile
+    $initialHash = $parts["file:$hashFile"]
+    Save-HashCache
+    Initialize-HashCache $cachePath
+    Add-FileDigest $parts $hashFile
+    Assert-Contract ($script:hashCalls -eq 1 -and $parts["file:$hashFile"] -eq $initialHash) 'Persistent hash cache did not reuse SHA256.'
+    $time = (Get-Item -LiteralPath $hashFile).LastWriteTimeUtc
+    [IO.File]::WriteAllText($hashFile, 'efgh')
+    [IO.File]::SetLastWriteTimeUtc($hashFile, $time.AddSeconds(2))
+    Add-FileDigest $parts $hashFile
+    Assert-Contract ($script:hashCalls -eq 2 -and $parts["file:$hashFile"] -ne $initialHash) 'Same-length mtime change did not invalidate hash cache.'
+    $time = (Get-Item -LiteralPath $hashFile).LastWriteTimeUtc
+    $previousHash = $parts["file:$hashFile"]
+    [IO.File]::WriteAllText($hashFile, 'longer content')
+    [IO.File]::SetLastWriteTimeUtc($hashFile, $time)
+    Add-FileDigest $parts $hashFile
+    Assert-Contract ($script:hashCalls -eq 3 -and $parts["file:$hashFile"] -ne $previousHash) 'Length change with unchanged mtime did not invalidate hash cache.'
+    Remove-Item -LiteralPath $hashFile
+    Add-FileDigest $parts $hashFile
+    Assert-Contract ($parts["file:$hashFile"] -eq 'MISSING' -and !$script:hashCache.ContainsKey($hashFile)) 'Missing file reused cached hash.'
+    Remove-Item Function:\Get-FileHash
+    Write-Host 'PASS: persistent hash cache reused SHA256 and invalidated mtime/length changes.'
+
+    # Representative pre-change layout: 92 tests, 12 distinct fingerprints
+    # each, 500 common DLL/runtime keys. Preserve all compact attempt records.
+    $shared = [ordered]@{}
+    for ($i = 0; $i -lt 500; $i++) {
+        $shared["file:C:\Qt\6.12.0\msvc2022_64\plugins\fixture-$i.dll"] = Get-Digest "runtime-$i"
+    }
+    $runtime = @{ shared = $shared; sharedDigest = (Get-Digest ($shared | ConvertTo-Json -Compress)) }
+    $synthetic = @{ schema = 2; results = @{}; evidence = @{}; attempts = @() }
+    for ($i = 0; $i -lt 92; $i++) {
+        $name = "test-$i"
+        $synthetic.evidence[$name] = @{}
+        for ($j = 0; $j -lt 12; $j++) {
+            $inputs = [ordered]@{}
+            foreach ($key in $shared.Keys) { $inputs[$key] = $shared[$key] }
+            $inputs.test = Get-Digest "$i-$j"
+            $fingerprint = Get-Digest ($inputs | ConvertTo-Json -Compress)
+            $record = @{ fingerprint = $fingerprint; inputs = $inputs; status = 'Passed'; attempt = ('attempt-{0:d2}' -f $j) }
+            $synthetic.evidence[$name][$fingerprint] = $record
+            if ($j -eq 0) {
+                $record.status = @('Failed', 'Interrupted', 'Unfinished')[$i % 3]
+                $synthetic.results[$name] = $record
+            }
+        }
+    }
+    $oldBytes = [Text.Encoding]::UTF8.GetByteCount(($synthetic | ConvertTo-Json -Depth 30))
+    # Mimic a disk roundtrip: results and evidence no longer share references.
+    $synthetic = $synthetic | ConvertTo-Json -Depth 30 -Compress | ConvertFrom-Json -AsHashtable
+    Convert-LedgerInputs $synthetic $runtime
+    $syntheticPath = Join-Path $root 'synthetic-ledger.json'
+    Save-Ledger $synthetic $syntheticPath
+    $newBytes = (Get-Item -LiteralPath $syntheticPath).Length
+    $bounded = Get-Content -LiteralPath $syntheticPath -Raw | ConvertFrom-Json -AsHashtable
+    Assert-Contract ($bounded.sharedInputs.Count -eq 1) 'Shared runtime inputs were duplicated.'
+    foreach ($name in $bounded.evidence.Keys) {
+        $history = $bounded.evidence[$name]
+        $current = $bounded.results[$name]
+        Assert-Contract ($history.Count -eq 4) "Unbounded fingerprint history: $name"
+        Assert-Contract ($history[$current.fingerprint].status -eq $current.status) "Current blocking evidence pruned: $name"
+        Assert-Contract (@($history.Values | Where-Object { $_.inputs.Count -ne 1 -or !$_.shared }).Count -eq 0) "Per-test inputs contain common runtime keys: $name"
+        Assert-Contract (@($history.Values | Where-Object { $_.attempt -in 'attempt-09', 'attempt-10', 'attempt-11' }).Count -eq 3) "Most recent history not retained: $name"
+    }
+    Assert-Contract ($newBytes -lt ($oldBytes / 20)) 'Representative ledger did not shrink sufficiently.'
+    # Unreferenced shared maps are collected when their fingerprints expire.
+    $bounded.sharedInputs.unused = @{ obsolete = 'digest' }
+    Limit-LedgerEvidence $bounded
+    Assert-Contract (!$bounded.sharedInputs.ContainsKey('unused')) 'Unreferenced shared input history was retained.'
+    Write-Host "PASS: representative ledger $oldBytes -> $newBytes bytes (92 tests x 12 histories, 500 shared inputs); current blockers retained."
     $fixture = @'
 param([string]$Case, [Parameter(ValueFromRemainingArguments)][string[]]$Remaining)
 $countFile = Join-Path $PSScriptRoot "$Case.count"
@@ -139,6 +228,32 @@ add_test(NAME fixture_absent COMMAND "${CMAKE_SOURCE_DIR}/absent.exe")
     Assert-Contract ($ledger.results.fixture_mixed.status -eq 'Failed') 'Mixed failures were retryable.'
     Assert-Contract ($ledger.results.fixture_optional.status -eq 'PassedWithSkips') 'Optional Qt skip was hidden.'
     Assert-Contract ($ledger.results.fixture_skipped.status -eq 'Skipped') 'CTest skip was hidden.'
+    Assert-Contract ($ledger.sharedInputs.Count -eq 1) 'Executed tests duplicated their shared runtime map.'
+    Assert-Contract (@($ledger.results.Values | Where-Object { $_ -and ($_.inputs.Contains('platform') -or !$_.shared) }).Count -eq 0) 'Executed result contains common runtime inputs.'
+    # An old matching failure must survive pruning despite newer unrelated
+    # fingerprints, then still suppress execution in a real resumed gate.
+    $failed = $ledger.results.fixture_assertion
+    for ($i = 0; $i -lt 9; $i++) {
+        $fake = Get-Digest "other-inputs-$i"
+        $ledger.evidence.fixture_assertion[$fake] = @{ fingerprint = $fake; inputs = @{ test = $fake };
+            shared = $failed.shared; status = 'Passed'; attempt = "9999-$i" }
+    }
+    # Also emulate the round-1 flattened record, proving migration keeps its
+    # exact matching fingerprint and blocking semantics across a disk reload.
+    $legacyInputs = [ordered]@{}
+    foreach ($key in $ledger.sharedInputs[$failed.shared].Keys) { $legacyInputs[$key] = $ledger.sharedInputs[$failed.shared][$key] }
+    foreach ($key in $failed.inputs.Keys) { $legacyInputs[$key] = $failed.inputs[$key] }
+    $failed.inputs = $legacyInputs
+    $failed.Remove('shared')
+    $ledger.evidence.fixture_assertion[$failed.fingerprint] = $failed
+    $ledgerPath = (Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'OkuFlow/test-evidence') -Recurse -Filter 'ledger-v2.json')[0].FullName
+    Save-Ledger $ledger $ledgerPath
+    Invoke-Gate -Options @('-Test', 'fixture_assertion', '-Resume') -Expected 1 -Contains 'Failed: fixture_assertion'
+    $ledger = Read-Ledger
+    Assert-Contract ($ledger.evidence.fixture_assertion.Count -eq 4) 'Real gate history exceeded retention limit.'
+    Assert-Contract ((Get-Content (Join-Path $root 'assertion.count')) -eq '1') 'Pruning caused a matching failed test to rerun.'
+    Assert-Contract ($ledger.results.fixture_assertion.shared -and !$ledger.results.fixture_assertion.inputs.Contains('platform')) 'Legacy failure inputs were not deduplicated.'
+    Write-Host 'PASS: matching legacy Failed evidence still blocks after pruning and migration.'
     Invoke-Gate -Options @('-ExcludeGui', '-Resume', '-RetryInterrupted', 'fixture_assertion') -Expected 1 -Contains 'Only a recorded desktop interruption'
     Invoke-Gate -Options @('-ExcludeGui', '-Resume', '-RetryInterrupted', 'fixture_mixed') -Expected 1 -Contains 'Only a recorded desktop interruption'
     Invoke-Gate -Options @('-ExcludeGui', '-Resume', '-RetryInterrupted', 'fixture_interrupted') -Expected 1
@@ -211,11 +326,16 @@ set_tests_properties(fixture_mutate PROPERTIES REQUIRED_FILES "${CMAKE_SOURCE_DI
     Set-Content -LiteralPath (Join-Path $root 'data.json') -Value 'original input'
     Invoke-Gate -Options @('-ExcludeGui', '-Resume') -Expected 1 -Contains 'Unfinished: fixture_mutate'
     Assert-Contract ((Read-Ledger).results.fixture_mutate.attempt -eq $mutateAttempt) 'Unfinished run was retried.'
+    Set-Content -LiteralPath (Join-Path $root 'qt/bin/runtime.dll') -Value 'original runtime'
     Configure-Fixture ($header + @'
 
 add_test(NAME fixture_runtime_mutate COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case runtime_mutate)
 '@)
     Invoke-Gate -Options @('-ExcludeGui') -Expected 1 -Contains 'Inputs changed during testing*Changed:*runtime.dll'
+    $ledger = Read-Ledger
+    $runtimeResult = $ledger.results.fixture_runtime_mutate
+    Assert-Contract ($runtimeResult.status -eq 'Unfinished' -and !$runtimeResult.inputs.Contains("file:$(Join-Path $root 'qt/bin/runtime.dll')")) 'Shared mutation was credited or stored per test.'
+    Assert-Contract ($ledger.sharedInputs[$runtimeResult.shared].Contains("file:$(Join-Path $root 'qt/bin/runtime.dll')")) 'Named changed input is absent from shared evidence.'
     Configure-Fixture ($header + @'
 
 add_test(NAME fixture_generated COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case generated --output "${CMAKE_BINARY_DIR}/result.bgra" --trace "${CMAKE_BINARY_DIR}/trace.csv")
@@ -269,6 +389,12 @@ add_test(fixture_gpu "cmd.exe" "/c" "exit 0")
     $runner = Join-Path $root 'scripts/run_test_gate.ps1'
     Invoke-Gate -Options @('-List', '-ExcludeGui', '-UncoveredByPreset', 'msvc-cpu-tests') -Expected 0
     Assert-Contract ($lastOutput -match 'fixture_parallel_b' -and $lastOutput -match 'fixture_gpu' -and $lastOutput -match 'fixture_codec' -and $lastOutput -notmatch 'fixture_parallel_a|fixture_gui') 'CUDA delta omitted GPU/unique tests or included a CPU-covered test.'
+    # No cuda-variant label existed above; it is an optional built-in delta
+    # criterion, never an unknown-label validation failure. Now cover that label.
+    Add-Content -LiteralPath (Join-Path $root 'build/CTestTestfile.cmake') -Value 'set_tests_properties(fixture_parallel_a PROPERTIES LABELS "partition;cuda-variant")'
+    Invoke-Gate -Options @('-List', '-ExcludeGui', '-UncoveredByPreset', 'msvc-cpu-tests') -Expected 0
+    Assert-Contract ($lastOutput -match 'fixture_parallel_a' -and $lastOutput -match 'fixture_gpu' -and $lastOutput -match 'fixture_parallel_b' -and $lastOutput -notmatch 'fixture_gui') 'CUDA delta omitted a CPU-covered cuda-variant test.'
+    Write-Host 'PASS: CUDA delta selects gpu, cuda-variant and unique tests, with or without the optional label.'
     $runner = $originalRunner
     # A full gate must notice newly registered tests even though it no longer
     # fingerprints the entire generated CTest file as a common input.
