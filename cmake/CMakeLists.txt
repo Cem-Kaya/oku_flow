@@ -244,6 +244,8 @@ if (WIN32)
     qt_add_lupdate(
         LUPDATE_TARGET update_okuflow_translations
         SOURCE_TARGETS oku_flow
+        # Preserve lupdate input when CPU tests move app sources into objects.
+        SOURCES ${OKUFLOW_CPP_SOURCES}
         TS_FILES
             ${OKUFLOW_TS_FILES}
         OPTIONS -locations none
@@ -280,6 +282,9 @@ endif()
 if (WIN32)
     include(Mcp.cmake)
 endif()
+
+include(PrecompiledHeaders.cmake)
+okuflow_enable_pch(oku_flow)
 
 if (OKUFLOW_ENABLE_TESTS)
     if (EXISTS "${PROJECT_SOURCE_DIR}/tests/CMakeLists.txt")

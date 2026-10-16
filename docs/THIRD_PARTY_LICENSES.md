@@ -24,6 +24,14 @@ developer shell directly; no third-party MSVC setup action is downloaded.
 Their upstream licenses remain in their action repositories; downloaded Qt
 retains the separate terms and redistribution requirements below.
 
+Incremental-build caching uses the commit-pinned MIT-licensed
+[`actions/cache`](https://github.com/actions/cache/blob/caa296126883cff596d87d8935842f9db880ef25/LICENSE).
+Compiler caching uses Apache-2.0
+[`mozilla-actions/sccache-action`](https://github.com/mozilla-actions/sccache-action/blob/fc920bf0ec8de6ee65d409111f7ec508035751ba/LICENSE)
+and [`sccache` v0.18.0](https://github.com/mozilla/sccache/blob/v0.18.0/LICENSE).
+These are CI-only tools downloaded on disposable GitHub runners; their source,
+binaries and caches are not added to Windows/Android release inventories.
+
 ## Qt 6
 - Upstream: <https://www.qt.io/>
 - License family: LGPL-3.0 / GPL-3.0 / commercial, depending on how Qt is obtained

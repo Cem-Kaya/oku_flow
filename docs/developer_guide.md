@@ -177,9 +177,30 @@ scripts\agent_build.bat
 ```
 
 The tracked helper locates Visual Studio 2022 (17.x) with `vswhere`, compiles the shipping
-CUDA configuration, runs the CPU suite, and then builds and runs the
-CUDA-enabled suite. The two real CTest presets treat an empty test directory as
-an error.
+CUDA configuration, runs the CPU suite, and then builds the CUDA-enabled suite
+and runs the tests the CPU suite cannot cover (`gpu`, `cuda-variant` and
+CUDA-only names; `OKUFLOW_FULL_CUDA_SUITE=1` runs all of them). Background tests
+run in parallel; GPU/codec and GUI tests stay serial. The two real CTest presets
+treat an empty test directory as an error.
+
+For the edit loop, check only what a change affects:
+
+```powershell
+pwsh -NoProfile -File scripts/agent_check.ps1
+```
+
+It selects tests from the changed files through the configured Ninja graph,
+builds only those targets in `msvc-cpu`, runs the selected background tests and
+reports a SCOPED result with any selected GUI cases still pending. Build-system,
+runner and unknown changes require the full helper above. See
+[fast scoped checks](../tests/README.md#fast-scoped-checks-while-editing).
+
+Production sources shared between the CPU application and test fixtures compile
+once per explicit OBJECT group. Share a source only after its consumers'
+preprocessed output and code-generation flags match; the headless
+`shared_source_equivalence` test enforces that after edits to shared sources,
+definitions, includes or toolchain flags. See
+[shared production objects](../tests/README.md#shared-production-objects-and-precompiled-headers).
 
 GUI main-window, annotation and AI-settings slots are independently selectable;
 all native GUI fixtures remain serial, including across separate CTest

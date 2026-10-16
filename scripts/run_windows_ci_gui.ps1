@@ -3,7 +3,8 @@
 param(
     [ValidateSet('all', 'gui-all', 'gui-state', 'gui-layout', 'gui-input', 'gui-idle', 'two-cases')]
     [string]$Scope = 'all',
-    [switch]$PrepareDesktop
+    [switch]$PrepareDesktop,
+    [ValidateNotNullOrEmpty()][string[]]$Test
 )
 
 $ErrorActionPreference = 'Stop'
@@ -95,6 +96,17 @@ if ($PrepareDesktop) { exit 0 }
 $inventory = & ctest --preset msvc-cpu-tests --show-only=json-v1
 if ($LASTEXITCODE) { throw 'CTest inventory discovery failed.' }
 $cases = @(($inventory -join "`n" | ConvertFrom-Json).tests)
+if ($Test.Count) {
+    $missing = @($Test | Where-Object { $_ -notin $cases.name })
+    $nonGui = @($cases | Where-Object {
+        $_.name -in $Test -and 'gui' -notin @($_.properties | Where-Object name -eq LABELS | ForEach-Object value)
+    })
+    if ($missing.Count -or $nonGui.Count) { throw 'Exact GUI selection contains unknown or non-GUI tests.' }
+    $Test | Set-Content -LiteralPath "$env:OKUFLOW_CI_EVIDENCE/gui-selection.txt" -Encoding utf8
+    Write-Host "SCOPED GUI: $($Test.Count) selected cases; not the release gate."
+    & "$PSScriptRoot/run_test_gate.ps1" -Preset msvc-cpu-tests -Test $Test
+    exit $LASTEXITCODE
+}
 $two = @(
     'annotation_overlay_interactions.dockedHeaderRequiresHeldPullAndDoesNotImmediatelyRedock',
     'main_window_interactions.mouseFocusedChromeCanIdleFade'
@@ -110,8 +122,8 @@ if (!$selected.Count -or ($Scope -eq 'two-cases' -and $selected.Count -ne 2)) {
 }
 $selected.name | Set-Content -LiteralPath "$env:OKUFLOW_CI_EVIDENCE/gui-selection.txt" -Encoding utf8
 if ($Scope -eq 'all') {
-    # The earlier background invocation retains results for the identical CPU
-    # inventory. Fill only its GUI entries; require every CPU entry to resolve.
+    # Full CI runs every background case first, then every native GUI case.
+    # Keep both selections serial and retain their independent gate evidence.
     & "$PSScriptRoot/run_test_gate.ps1" -Preset msvc-cpu-tests -Test $selected.name
     exit $LASTEXITCODE
 }

@@ -76,9 +76,11 @@ open while contributing and update it whenever the workflow evolves.
   the project instead, e.g. `/home/<user>/.venvs/<name>/bin/python /mnt/.../x.py`.
 - Run the appropriate build or test command locally before submitting
   automated changes; note the result in your summary.
-- Use `scripts/agent_build.bat` for the tracked Windows release/CPU/CUDA test
-  matrix. Do not use or recreate machine-specific test runners under the
-  gitignored `build/` directory.
+- While editing, use `scripts/agent_check.ps1` for scoped CPU checks of the
+  files you changed; report its SCOPED result as such. Use
+  `scripts/agent_build.bat` for the tracked Windows release/CPU/CUDA test
+  matrix before merging shared behavior and before releases. Do not use or
+  recreate machine-specific test runners under the gitignored `build/` directory.
 - Keep `translations/okuflow_tr.ts`, `translations/okuflow_de.ts`, and
   `src/ui/translation_catalog.cpp` in exact source-key parity. Run
   `scripts/check_translations.ps1`; use its `-UpdateManifest` switch after
@@ -137,8 +139,16 @@ aligned with the project goals.
 
 ## Validation Script Behavior
 - `scripts/agent_build.bat` compiles the shipping release configuration, then
-  runs the CPU and CUDA CTest presets. Its PASS/FAIL summary is the normal
-  pre-submission gate for code changes that touch shared behavior.
+  runs the complete CPU CTest preset and the CUDA delta: tests labelled `gpu`
+  or `cuda-variant` plus names absent from the CPU inventory. Set
+  `OKUFLOW_FULL_CUDA_SUITE=1` for the complete CUDA suite. Its PASS/FAIL summary
+  is the normal pre-merge gate for code changes that touch shared behavior.
+  `--scoped PRESET LABEL-OR-TEST...` builds one preset and runs a SCOPED gate;
+  that result never substitutes for release acceptance.
+- `scripts/agent_check.ps1` selects tests from changed files through the Ninja
+  graph and `tests/test_impact.json`, builds only those targets and leaves GUI
+  cases pending unless `-IncludeGui` is given. Infrastructure changes, unknown
+  inputs and stale dependency data select the full gate.
   Automatic Visual Studio discovery is limited to 17.x (2022), preventing
   newer installed headers from being mixed with the cached 2022 compiler.
 - `scripts/build_release_bundle.bat` runs CTest by default and publishes only
@@ -378,10 +388,23 @@ aligned with the project goals.
   Qt data row and keep GUI cases serial; all native GUI fixtures use
   `tests/gui_test_support.hpp` to refuse concurrent desktop fixture processes.
 - The tracked build/bundle scripts archive CTest through `run_test_gate.ps1`.
-  `OKUFLOW_TEST_RESUME=1` reuses only matching source/build/runtime/environment
-  inventories in LocalAppData. A changed inventory needs a fresh built gate;
-  CPU, CUDA and bundle evidence are separate. Desktop/hardware changes need a
-  fresh gate too. Never substitute mutable `ctest --rerun-failed` state.
+  Evidence is per test: `OKUFLOW_TEST_RESUME=1` reuses only passes whose own
+  executable/runtime/property/environment fingerprint still matches in
+  LocalAppData. Rebuild before validating, since production sources are only
+  covered through rebuilt executables. Declare runtime data and helper binaries
+  with absolute CTest `REQUIRED_FILES`. CPU, CUDA and bundle evidence are
+  separate; desktop/hardware changes invalidate GUI evidence. Background tests
+  run in parallel; keep `gpu`/`codec` and `gui` partitions serial. Never
+  substitute mutable `ctest --rerun-failed` state.
+- Production-source sharing in `tests/shared_sources.cmake` depends on the
+  mandatory headless `shared_source_equivalence` guard. Preserve the CTest
+  inventory, executable-owned MOC/RCC and code-generation flags; split a group
+  rather than filtering the guard when it fails. Validate PCH ON and OFF.
+- Shared source/header bytes must remain declared as runtime inputs of the
+  equivalence guard, so change selection and saved evidence cannot skip it.
+  Keep compact Failed/Interrupted/Unfinished fingerprint blockers even after
+  reusable pass history expires. Archive CTest's detailed per-attempt logs
+  before another selection overwrites Testing/Temporary.
 - Use `scripts/agent_build.bat --retry-interrupted PRESET EXACT_CTEST_NAME`
   only for a recorded desktop interruption. It executes that case once, keeps
   the failed attempt and does not rebuild/publish. Application failures, mixed

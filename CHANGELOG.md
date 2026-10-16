@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+- Include the shared-source equivalence guard in affected-source/header checks,
+  retain historical failure blockers across later builds, and archive detailed
+  CTest logs per attempt for diagnosing parallel-only failures.
+
+- Speed up validation without weakening the release gate. The test gate keeps
+  per-test evidence, so unrelated edits no longer invalidate every pass; it
+  supports SCOPED runs by name or label and runs background tests in parallel
+  while GPU/codec and GUI tests stay serial. The CUDA step runs only tests the
+  CPU suite cannot cover unless `OKUFLOW_FULL_CUDA_SUITE=1`. New
+  `scripts/agent_check.ps1` selects, builds and runs only the tests affected by
+  changed files. Pull-request CI skips docs-only changes, tests only affected
+  targets and caches compilation. Production sources shared by the CPU
+  application and test fixtures compile once per verified group (149 instead of
+  311 production compilations), guarded by a headless preprocessing-equivalence
+  test, and optional precompiled headers are on by default.
+
 - Enable built-in Assistant control by default for new and pre-control settings.
   Preserve saved on/off choices and keep external MCP and camera/capture grants
   separate. Update the control explanation in all 24 translated catalogs.
