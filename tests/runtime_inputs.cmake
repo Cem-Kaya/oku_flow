@@ -6,7 +6,7 @@ set_property(TEST agent_control_coverage_contract mcp_bridge_contract APPEND PRO
     REQUIRED_FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/app_control_inventory.json")
 set_property(TEST agent_control_contract APPEND PROPERTY
     REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp")
-set_property(TEST codex_agent_profile_contract codex_agent_client_contract assistive_preparation
+set_property(TEST codex_agent_profile_contract codex_agent_client_contract ${assistive_preparation_cases}
     APPEND PROPERTY REQUIRED_FILES "${PROJECT_SOURCE_DIR}/assets/codex-agent/0.160.1-profile.json")
 set_property(TEST phone_camera_contract APPEND PROPERTY REQUIRED_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/data/phone-camera.h264"
@@ -16,8 +16,8 @@ set_property(TEST adb_legacy_recovery APPEND PROPERTY REQUIRED_FILES $<TARGET_FI
 set_property(TEST windows_runtime_contract APPEND PROPERTY REQUIRED_FILES
     $<TARGET_FILE:okuflow_launcher> $<TARGET_FILE:launcher_fixture>)
 set_property(TEST codex_agent_client_contract APPEND PROPERTY REQUIRED_FILES $<TARGET_FILE:fake_codex_agent_server>)
-set_property(TEST notes_html assistive_preparation APPEND PROPERTY REQUIRED_FILES $<TARGET_FILE:fake_codex_app_server>)
-set_property(TEST assistive_preparation APPEND PROPERTY REQUIRED_FILES $<TARGET_FILE:fake_scoped_codex_vision>)
+set_property(TEST notes_html ${assistive_preparation_cases} APPEND PROPERTY REQUIRED_FILES $<TARGET_FILE:fake_codex_app_server>)
+set_property(TEST ${assistive_preparation_cases} APPEND PROPERTY REQUIRED_FILES $<TARGET_FILE:fake_scoped_codex_vision>)
 set_property(TEST mcp_bridge_contract APPEND PROPERTY REQUIRED_FILES
     $<TARGET_FILE:mcp_app_fixture> $<TARGET_FILE_DIR:mcp_app_fixture>/okuflow_mcp.exe)
 get_property(tests DIRECTORY PROPERTY TESTS)

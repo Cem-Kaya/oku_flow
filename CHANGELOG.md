@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+- Drain already-accepted fake adb connections before waiting for another
+  arrival, covered by a deterministic two-client backlog regression. Declare
+  the shared process-identity resource between legacy recovery and fixtures
+  that launch temporary OkuFlow-named images; keep production safety checks.
+
+- Handle already-buffered fake adb requests without waiting for a second socket
+  readiness event. Add a deterministic prebuffered-request regression while
+  preserving borrowed-server shutdown and discovery assertions.
+
+- Give each Assistant preparation test slot its own bounded CTest invocation,
+  preserving all data rows instead of timing out the growing aggregate suite.
+  Capture phone/adb Qt test output in CI rather than losing diagnostics to the
+  Windows debugger.
+
 - Include the shared-source equivalence guard in affected-source/header checks,
   retain historical failure blockers across later builds, and archive detailed
   CTest logs per attempt for diagnosing parallel-only failures.

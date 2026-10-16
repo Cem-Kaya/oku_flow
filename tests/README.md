@@ -158,6 +158,43 @@ Background tests run in parallel across logical processors (`-Parallel`
 overrides). Tests labelled `gpu` or `codec` run serially in a second CTest
 invocation, followed by serial `gui` tests.
 
+Assistant preparation slots register as `assistive_preparation.<slot>`, each
+with the existing 30-second CTest deadline and every associated Qt data row.
+Select the `assistive_preparation` label to run that whole fixture family;
+there is no additional aggregate invocation. Registration follows inline private
+slots in the fixture source and reconfigures when that source changes. A new or
+reformatted slot must remain discoverable; compare CTest names with the built
+fixture's `-functions` list after changing registration. All cases retain the
+fake-provider binaries and compatibility profile in `REQUIRED_FILES`.
+
+The phone-camera and legacy-adb fixtures set `QT_FORCE_STDERR_LOGGING=1` and
+use `-v1` to retain row entry and failure output through CTest on Windows.
+Without that environment, Qt may send its plain-text output to the system
+debugger instead. Keep original empty-output failures archived: a later local
+pass is diagnostic evidence, not proof of the original failure's cause.
+
+`PhoneCameraTests::alreadyBufferedFakeAdbRequestIsNotDiscarded` deliberately
+buffers a complete private host-version request before the fake adb handler
+starts. `FakePhoneAdb::Serve` must consume those bytes immediately instead of
+waiting for another readiness event; the regression fails against the former
+unconditional wait. It creates no runtime hooks, adb process or real-device
+connection. Borrowing and enumeration-after-shutdown assertions remain intact.
+
+`alreadyQueuedFakeAdbConnectionsAreHandled` completes two TCP handshakes before
+letting the fake server accept either. Its worker must drain Qt's pending
+connection queue before waiting for a new arrival; the regression fails on the
+former unconditional wait. `FakePhoneAdb::ArrivalMode` selects normal traffic,
+an already-buffered request or this deterministic backlog without real devices.
+
+Legacy recovery scans the native process inventory and deliberately fails closed
+when a candidate image disappears before classification. `adb_legacy_recovery`,
+`windows_runtime_contract`, `mcp_bridge_contract` and the optional
+`native_app_control_offscreen` share `okuflow_process_identity` so that scan does
+not race the other fixtures' short-lived `oku_flow.exe`/`OkuFlowApp.exe` images.
+This declares a host-resource dependency, not a retry or weaker safety check.
+Unexpected successful-recovery status assertions also print the detailed guard
+and diagnostic; the earlier CI Busy assertion did not identify its guard.
+
 First run the normal `scripts\agent_build.bat`. It now continues to CUDA after
 a CPU test failure, preserving independent configuration results. If the only
 problem is a recorded desktop interruption, stop competing input, then run:

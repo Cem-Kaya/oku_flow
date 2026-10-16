@@ -376,6 +376,12 @@ so metadata generation cannot silently accept an incomplete copy.
   `ActivationFailureMessage` marks an interruption only when a known foreign
   process owns native foreground; Qt/own-process or unknown activation failures
   remain ordinary failures, ineligible for retry credit.
+- `okuflow_add_headless_cases` in `tests/headless_cases.cmake` registers the
+  Assistant preparation fixture's inline private Qt slots individually, keeps
+  all `_data` rows attached, applies a 30-second per-slot deadline and captured
+  Windows logging, and exports the case list for runtime-input declarations.
+  Source edits trigger reconfiguration; the fixture family remains selectable
+  by its `assistive_preparation` label.
 - `okuflow_add_gui_cases` in `tests/gui_cases.cmake` registers each main-window,
   annotation-overlay and AI-settings out-of-class Qt slot as a CTest selector,
   excluding lifecycle and `_data` helpers while retaining all data rows. It
@@ -483,6 +489,15 @@ so metadata generation cannot silently accept an incomplete copy.
   endpoint overrides, old/new probes, busy probes and cancellation against
   isolated sockets. `LinkPolicyTest` adds peer, bind deadline and wire-code
   and transient retry checks; Android now has 54 JVM tests.
+  `FakePhoneAdb` optionally prebuffers a request before `Serve` for the
+  `alreadyBufferedFakeAdbRequestIsNotDiscarded` regression; the handler checks
+  `bytesAvailable()` before its bounded readiness wait, so queued request data
+  does not require a second network event. This is a test-server repair only.
+  `FakePhoneAdb::ArrivalMode` also gates a two-client listener backlog for
+  `alreadyQueuedFakeAdbConnectionsAreHandled`; the worker drains Qt's pending
+  queue before blocking for another arrival. Process-scanning recovery and
+  temporary OkuFlow-named launcher/MCP/native fixtures share the CTest
+  `okuflow_process_identity` resource, retaining fail-closed provenance checks.
 
 ## GUI launch and explicit capture controls
 
