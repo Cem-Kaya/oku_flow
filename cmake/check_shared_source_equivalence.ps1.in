@@ -1,0 +1,141 @@
+param([Parameter(Mandatory)][string]$BuildDir)
+$ErrorActionPreference = 'Stop'
+# Retain compiler inputs so CTest works outside the developer shell too.
+$env:INCLUDE = '@EQ_INCLUDE@'
+$env:CL = '@EQ_CL@'
+$env:_CL_ = '@EQ_POST_CL@'
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Text;
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Runtime.InteropServices;
+public static class OkuFlowEquivalence {
+    [DllImport("shell32.dll", SetLastError=true)]
+    static extern IntPtr CommandLineToArgvW([MarshalAs(UnmanagedType.LPWStr)] string text, out int count);
+    [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr value);
+    public static string[] Split(string text) {
+        int count; var ptr = CommandLineToArgvW(text, out count);
+        if (ptr == IntPtr.Zero) throw new Exception("Cannot parse compiler command");
+        try {
+            var result = new string[count];
+            for (int i=0; i<count; ++i) result[i] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(ptr,i*IntPtr.Size));
+            return result;
+        } finally { LocalFree(ptr); }
+    }
+    public static string Preprocess(string compiler, string[] args, string directory, string path) {
+        var info = new ProcessStartInfo(compiler) {
+            WorkingDirectory=directory, UseShellExecute=false, CreateNoWindow=true,
+            RedirectStandardOutput=true, RedirectStandardError=true,
+            StandardOutputEncoding=Encoding.Latin1, StandardErrorEncoding=Encoding.UTF8
+        };
+        foreach(var arg in args) info.ArgumentList.Add(arg);
+        using(var process = Process.Start(info)) {
+            var errors = process.StandardError.ReadToEndAsync();
+            using(var output = new StreamWriter(path, false, Encoding.Latin1)) {
+                output.NewLine="\n";
+                string line;
+                while((line=process.StandardOutput.ReadLine()) != null) {
+                    // Latin1 maps bytes 1:1. Normalize line endings only;
+                    // preserve every blank line and all literal whitespace.
+                    output.WriteLine(line);
+                }
+            }
+            process.WaitForExit();
+            if(process.ExitCode != 0) throw new Exception("cl /EP failed: " + errors.GetAwaiter().GetResult());
+        }
+        using(var input=File.OpenRead(path)) using(var hash=SHA256.Create())
+            return Convert.ToHexString(hash.ComputeHash(input));
+    }
+    public static string Difference(string left, string right) {
+        using(var a=new StreamReader(left, Encoding.Latin1)) using(var b=new StreamReader(right, Encoding.Latin1)) {
+            string x,y; int n=0;
+            do {
+                x=a.ReadLine(); y=b.ReadLine(); ++n;
+                if(x!=y) return "first differing preprocessed line " + n + "\ncanonical: " + x + "\nconsumer:  " + y;
+            } while(x!=null || y!=null);
+        }
+        return "different output hashes";
+    }
+}
+'@
+$witnesses = @{}
+Get-Content -LiteralPath (Join-Path $BuildDir 'tests/shared-source-environments.tsv') | ForEach-Object {
+    $cells = $_ -split "`t"
+    $witnesses[$cells[0]] = $cells[1].Replace('\','/')
+}
+$db = Get-Content -LiteralPath (Join-Path $BuildDir 'compile_commands.json') -Raw | ConvertFrom-Json
+$envs = @{}
+foreach ($entry in $db) {
+    if ($entry.file -notmatch '\.cpp$' -or $entry.file -match '[/\\](cmake_pch|mocs_compilation|qrc_)') { continue }
+    if ($entry.command -notmatch 'CMakeFiles[/\\]([^/\\]+)\.dir') { continue }
+    $target = $Matches[1]
+    if (-not $witnesses.ContainsKey($target) -or $entry.file.Replace('\','/') -ine $witnesses[$target]) { continue }
+    if ($envs.ContainsKey($target)) { throw "Ambiguous compile environment: $target, $($entry.file)" }
+    $args = [OkuFlowEquivalence]::Split($entry.command)
+    $flags = [Collections.Generic.List[string]]::new()
+    $preprocess = [Collections.Generic.List[string]]::new()
+    $definitions = [Collections.Generic.List[string]]::new()
+    foreach ($arg in $args[1..($args.Length-1)]) {
+        if ($arg -eq $entry.file -or $arg -in @('/c','-c','/nologo','-nologo')) { continue }
+        if ($arg -cmatch '^[/\-](Fo|Fd|Fp|Yu|Yc)') { continue }
+        if ($arg -cmatch '^[/\-]FI' -and $arg -match '[/\\]cmake_pch\.hxx$') { continue }
+        # Everything except environment arguments must match exactly, including
+        # optimization, CRT, exceptions, language standard and warnings.
+        if ($arg -cmatch '^[/\-](D|I|external:I)') {
+            $preprocess.Add($arg)
+            if ($arg -cmatch '^[/\-]D') { $definitions.Add($arg) }
+        } else { $flags.Add($arg); $preprocess.Add($arg) }
+    }
+    $envs[$target] = @{ Compiler=$args[0]; Flags=@($flags); Arguments=@($preprocess)
+        Definitions=@($definitions); Directory=$entry.directory }
+}
+$missing = @($witnesses.Keys | Where-Object { -not $envs.ContainsKey($_) })
+if ($missing.Count) { throw "Missing generated compile environments: $($missing -join ', ')" }
+$rows = @(Get-Content -LiteralPath (Join-Path $BuildDir 'tests/shared-source-consumers.tsv') | ForEach-Object {
+    $cells = $_ -split "`t"
+    [pscustomobject]@{ Group=$cells[0]; Source=$cells[1]; Consumer=$cells[2] }
+})
+$work = Join-Path $BuildDir 'tests/shared-source-equivalence'
+[IO.Directory]::CreateDirectory($work) | Out-Null
+$jobs = @()
+foreach ($row in $rows) {
+    if (-not $envs.ContainsKey($row.Consumer)) { throw "Missing original compile environment: $($row.Consumer), $($row.Source)" }
+    $env = $envs[$row.Consumer]
+    $canonical = $envs[$row.Group]
+    if (($env.Flags -join "`n") -cne ($canonical.Flags -join "`n") -or $env.Compiler -cne $canonical.Compiler) {
+        throw "Shared source codegen drift: $($row.Source), consumer $($row.Consumer), canonical $($row.Group)`ncanonical: $($canonical.Flags -join ' ')`nconsumer: $($env.Flags -join ' ')"
+    }
+    $jobs += [pscustomobject]@{ Row=$row; Env=$env; Path=(Join-Path $work "$($jobs.Count).i") }
+}
+# Keep resolved definitions/includes/flags as reviewable evidence each run.
+$jobs | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $work 'environments.json') -Encoding utf8
+$results = @($jobs | ForEach-Object -ThrottleLimit 8 -Parallel {
+    $job = $_
+    try {
+        $arguments = @($job.Env.Arguments) + @('/nologo','/EP',$job.Row.Source)
+        $hash = [OkuFlowEquivalence]::Preprocess($job.Env.Compiler, [string[]]$arguments, $job.Env.Directory, $job.Path)
+        [pscustomobject]@{ Job=$job; Hash=$hash; Error=$null }
+    } catch { [pscustomobject]@{ Job=$job; Hash=$null; Error=$_.ToString() } }
+})
+$failures = 0
+foreach ($group in ($results | Group-Object { $_.Job.Row.Group + '|' + $_.Job.Row.Source })) {
+    $canonical = @($group.Group | Where-Object { $_.Job.Row.Consumer -eq $_.Job.Row.Group })[0]
+    foreach ($result in $group.Group) {
+        $row = $result.Job.Row
+        if ($result.Error -or $canonical.Error) {
+            Write-Output "Preprocessing failed: $($row.Source), consumer $($row.Consumer): $($result.Error) $($canonical.Error)"
+            ++$failures
+        } elseif ($result.Hash -cne $canonical.Hash) {
+            Write-Output "Shared source equivalence FAILED: $($row.Source), consumer $($row.Consumer), canonical $($row.Group)"
+            Write-Output ([OkuFlowEquivalence]::Difference($canonical.Job.Path, $result.Job.Path))
+            Write-Output "canonical definitions: $($canonical.Job.Env.Definitions -join ' ')"
+            Write-Output "consumer definitions: $($result.Job.Env.Definitions -join ' ')"
+            ++$failures
+        }
+    }
+}
+if ($failures) { throw "$failures shared source environment(s) diverged; restore equivalence or split the group. Preprocessed evidence: $work" }
+foreach ($job in $jobs) { [IO.File]::Delete($job.Path) }
+Write-Output "Shared source equivalence passed: $($results.Count) source/environments, $(@($rows.Source | Sort-Object -Unique).Count) sources, $(@($rows.Group | Sort-Object -Unique).Count) object groups."

@@ -2,6 +2,7 @@
 
 option(OKUFLOW_ENABLE_CUDA "Enable CUDA interop path" ON)
 option(OKUFLOW_ENABLE_TESTS "Enable building tests" OFF)
+option(OKUFLOW_USE_PCH "Use precompiled headers for the app, test support and large fixtures" ON)
 option(OKUFLOW_ENABLE_TEXT_SR "Enable the runtime-loaded NVIDIA Video Effects SuperRes adapter" ON)
 
 if (MSVC)
