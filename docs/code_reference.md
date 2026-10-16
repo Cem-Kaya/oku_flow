@@ -416,12 +416,25 @@ so metadata generation cannot silently accept an incomplete copy.
   background, serial `gpu`/`codec` and serial `gui`.
   `Get-CaseResult` keeps assertions/mixed failures distinct from one explicitly
   marked desktop interruption, and reports optional CTest/Qt skips separately.
+  JUnit retains up to 1 MiB per case; truncated passing output is Unfinished
+  so a late Qt row skip cannot silently become reusable full coverage.
   `Save-Ledger` replaces the ledger atomically; attempt logs stay intact.
   Each CTest invocation also archives its detailed LastTest/LastTestsFailed logs
   before another selection can overwrite them.
   Failed/unfinished cases never auto-retry; `-Resume -RetryInterrupted` runs
   only an explicitly named recorded interruption once. Resumes rerun optional
-  skips. A missing/mismatched result cannot complete the gate.
+  skips. If the latest unresolved result has different shared runtime inputs, resume refuses
+  before executing another attempt; an explicitly fresh gate is required after
+  diagnosis. Rebuilt per-test inputs can resume under the same runtime after
+  repair. A missing/mismatched result cannot complete the gate.
+- `cmake/PowerShell.cmake::okuflow_find_powershell` resolves a discovered or
+  cached interpreter through its own process image for generated test commands.
+  Its cache retains the launcher, resolves the current image each configure,
+  and rediscovers stale versioned paths after Store updates.
+  MCP script tests and `SharedSourceEquivalence.cmake` use it so Windows Store
+  launch aliases cannot break executable hashing. Registered Qt fixtures force
+  stderr logging; batch bookkeeping uses `AGENT_CUDA_*` to stay outside runtime
+  environment fingerprints.
 - `scripts/select_tests.ps1` maps changed files (`-Files`, or `-Base` plus
   working-tree and untracked changes) to CTest cases and build targets. It reads
   `ninja -t deps`/`-t query` transitively through objects and OBJECT/static
@@ -479,7 +492,9 @@ so metadata generation cannot silently accept an incomplete copy.
   and saves the exact grabbed light/dark image before checking rendered text.
 - `scripts/test_test_gate.ps1` uses `Assert-Contract`, `Invoke-Gate` and
   `Read-Ledger` with private command-line CTest fixtures to check resume/retry,
-  partial coverage, failure/skip handling and inventory invalidation. It creates
+  partial coverage, failure/skip handling and inventory invalidation. It also
+  checks cached-alias discovery, batch bookkeeping and refusal to retry an
+  unresolved test under changed environment inputs. It creates
   no Qt windows and is run explicitly when the runner changes, not redundantly
   inside every CPU/CUDA suite. `agent_build.bat --retry-interrupted` restores the
   build's VS environment without compiling or publishing; the ordinary matrix
@@ -3167,6 +3182,9 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
 - `tests/phone_camera_tests.cpp` checks USB identity without Windows bus paths,
   malformed protobuf, actual AVC/HEVC system-decoder NV12 and saved source selection.
   The HEVC data row skips explicitly when the optional decoder is unavailable.
+  `OwnedLaunchState::Launch` and owned-child assertions retain the native
+  launch diagnostic, including Application Control errors, rather than
+  reporting only a null fixture child. They do not skip or retry blocked cases.
   `android/tests/test_host_probe.py` supplies eleven fake-server/parser/control
   checks with no live adb changes. Viewport-to-phone zoom handoff remains pending.
   Canonical cold launch, missing-only legacy fallback and blocked-launch cases

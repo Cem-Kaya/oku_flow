@@ -31,7 +31,8 @@ add_dependencies(mcp_tests mcp_app_fixture)
 add_test(NAME mcp_bridge_contract COMMAND mcp_tests)
 set_tests_properties(mcp_bridge_contract PROPERTIES TIMEOUT 60
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
-find_program(OKUFLOW_PWSH_EXECUTABLE NAMES pwsh.exe pwsh REQUIRED)
+include("${PROJECT_SOURCE_DIR}/cmake/PowerShell.cmake")
+okuflow_find_powershell(OKUFLOW_PWSH_EXECUTABLE)
 add_test(NAME mcp_bundle_contract COMMAND ${OKUFLOW_PWSH_EXECUTABLE} -NoProfile -File
     ${PROJECT_SOURCE_DIR}/scripts/test_mcp_bundle.ps1)
 add_test(NAME bundle_layout_contract COMMAND ${OKUFLOW_PWSH_EXECUTABLE} -NoProfile -File

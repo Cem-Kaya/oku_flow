@@ -308,7 +308,9 @@ struct OwnedLaunchState {
         std::vector<std::wstring> arguments;
         if (exitAfter) arguments = {L"exit-after", L"150", ready.toStdWString()};
         else arguments = {L"sleep", ready.toStdWString()};
-        auto child = okuflow::OwnedChildProcess::Launch({fixture.toStdWString(), arguments, {}, {}});
+        std::string error;
+        auto child = okuflow::OwnedChildProcess::Launch({fixture.toStdWString(), arguments, {}, {}}, &error);
+        if (!child) qWarning().noquote() << "Private owned-child fixture launch failed:" << QString::fromStdString(error);
         if (child) {
             std::lock_guard lock(mutex);
             pids.push_back(child->ProcessId());
@@ -440,9 +442,10 @@ private slots:
         const QString ready = directory.filePath(QStringLiteral("ready.txt"));
         unsigned long pid = 0;
         {
+            std::string error;
             auto child = okuflow::OwnedChildProcess::Launch(
-                {fixture.toStdWString(), {L"sleep", ready.toStdWString()}, {}, {}});
-            QVERIFY(child);
+                {fixture.toStdWString(), {L"sleep", ready.toStdWString()}, {}, {}}, &error);
+            QVERIFY2(child, error.c_str());
             QVERIFY(child->IsRunning());
             QVERIFY(WaitForFixtureFile(ready));
             pid = ReadFixturePid(ready);
@@ -455,9 +458,10 @@ private slots:
         const QString ready2 = directory.filePath(QStringLiteral("ready2.txt"));
         unsigned long pid2 = 0;
         {
+            std::string error;
             auto child = okuflow::OwnedChildProcess::Launch(
-                {fixture.toStdWString(), {L"sleep", ready2.toStdWString()}, {}, {}});
-            QVERIFY(child);
+                {fixture.toStdWString(), {L"sleep", ready2.toStdWString()}, {}, {}}, &error);
+            QVERIFY2(child, error.c_str());
             QVERIFY(WaitForFixtureFile(ready2));
             pid2 = ReadFixturePid(ready2);
         } // Destructor alone must stop the exact owned child.
@@ -481,7 +485,7 @@ private slots:
         const auto child = okuflow::OwnedChildProcess::Launch(options, &error);
         QVERIFY(!child);
         QVERIFY(!error.empty());
-        QVERIFY(freshPid.load() != 0);
+        QVERIFY2(freshPid.load() != 0, error.c_str());
         // The suspended fresh child was terminated, never resumed.
         QVERIFY(WaitFixtureProcessExited(freshPid.load()));
         QVERIFY(!QFile::exists(ready));

@@ -587,3 +587,18 @@ aligned with the project goals.
   lived OkuFlow-named processes. Preserve their `okuflow_process_identity`
   CTest lock when adding related fixtures; do not relax fail-closed image
   classification to accommodate concurrent test process exits.
+
+## Windows RC evidence prerequisites (2026-10-16)
+- Resolve cached/discovered PowerShell launch aliases through
+  `cmake/PowerShell.cmake`; evidence must hash the actual interpreter image.
+  Keep the stable launcher cached and resolve its current image on configure.
+  Keep Qt stderr logging on for registered Qt fixtures so row skips and
+  assertions remain visible. Truncated passing output is incomplete evidence.
+- Keep batch bookkeeping outside CUDA/Qt/OKUFLOW runtime variable namespaces.
+  A resume with changed shared runtime inputs for a latest unresolved result must refuse;
+  diagnose it and run an explicitly fresh gate after repair, rather than
+  clearing the failure by changing the environment. Rebuilt per-test inputs
+  may resume under the same shared runtime after a diagnosed repair.
+- Windows Application Control refusal is a prerequisite failure. Retain the
+  native error and original Code Integrity evidence; never disable security,
+  turn it into a skip, or weaken a deadline to obtain passing coverage.

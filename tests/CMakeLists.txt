@@ -893,6 +893,9 @@ if(TARGET annotation_overlay_tests)
 endif()
 get_property(okuflow_tests DIRECTORY PROPERTY TESTS)
 foreach(test IN LISTS okuflow_tests)
+    # Windows Qt otherwise routes some plain-text results to the debugger,
+    # hiding failed assertions and skipped data rows from CTest's evidence.
+    set_property(TEST "${test}" APPEND PROPERTY ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
     get_property(labels TEST "${test}" PROPERTY LABELS)
     if("gui" IN_LIST labels)
         set_tests_properties("${test}" PROPERTIES RUN_SERIAL TRUE RESOURCE_LOCK okuflow_desktop)

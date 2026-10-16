@@ -13,16 +13,16 @@ set "ROOT_DIR=%CD%"
 
 set "RELEASE_RESULT=SKIP"
 set "CPU_RESULT=SKIP"
-set "CUDA_RESULT=SKIP"
+set "AGENT_CUDA_RESULT=SKIP"
 set "SCOPED_RESULT=FAIL"
 set "SCOPED_MODE="
 if /I "%~1"=="--scoped" set "SCOPED_MODE=1"
 set "SCOPED_PRESET="
-set "CUDA_SCOPE=GPU-labeled, CUDA-variant and CUDA-only tests"
-set "CUDA_SELECTION=-UncoveredByPreset msvc-cpu-tests"
+set "AGENT_CUDA_SCOPE=GPU-labeled, CUDA-variant and CUDA-only tests"
+set "AGENT_CUDA_SELECTION=-UncoveredByPreset msvc-cpu-tests"
 if "%OKUFLOW_FULL_CUDA_SUITE%"=="1" (
-    set "CUDA_SELECTION="
-    set "CUDA_SCOPE=full CUDA suite requested by OKUFLOW_FULL_CUDA_SUITE=1"
+    set "AGENT_CUDA_SELECTION="
+    set "AGENT_CUDA_SCOPE=full CUDA suite requested by OKUFLOW_FULL_CUDA_SUITE=1"
 )
 set "TEST_FILTER="
 set "TEST_RESUME="
@@ -120,23 +120,23 @@ if errorlevel 1 (
 
 rem Preserve CUDA evidence even when a CPU desktop fixture was interrupted.
 echo ===== CUDA TEST GATE =====
-echo Scope: %CUDA_SCOPE%
+echo Scope: %AGENT_CUDA_SCOPE%
 cmake --preset msvc-cuda-tests
 if errorlevel 1 (
-    set "CUDA_RESULT=FAIL"
+    set "AGENT_CUDA_RESULT=FAIL"
     goto :summary
 )
 cmake --build --preset msvc-cuda-tests-build
 if errorlevel 1 (
-    set "CUDA_RESULT=FAIL"
+    set "AGENT_CUDA_RESULT=FAIL"
     goto :summary
 )
-pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -Preset msvc-cuda-tests %CUDA_SELECTION% %TEST_FILTER% %TEST_RESUME%
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -Preset msvc-cuda-tests %AGENT_CUDA_SELECTION% %TEST_FILTER% %TEST_RESUME%
 if errorlevel 1 (
-    set "CUDA_RESULT=FAIL"
+    set "AGENT_CUDA_RESULT=FAIL"
     goto :summary
 )
-set "CUDA_RESULT=PASS"
+set "AGENT_CUDA_RESULT=PASS"
 
 :summary
 if defined SCOPED_MODE goto :scoped_summary
@@ -144,13 +144,13 @@ echo.
 echo ===== OKUFLOW BUILD GATE SUMMARY =====
 echo %RELEASE_RESULT%: release compile
 echo %CPU_RESULT%: CPU test suite
-echo %CUDA_RESULT%: CUDA test suite - %CUDA_SCOPE%
+echo %AGENT_CUDA_RESULT%: CUDA test suite - %AGENT_CUDA_SCOPE%
 if defined TEST_FILTER echo PARTIAL VALIDATION: GUI checks remain pending; this is not the full release gate.
 
 set "FINAL_RESULT=0"
 if not "%RELEASE_RESULT%"=="PASS" set "FINAL_RESULT=1"
 if not "%CPU_RESULT%"=="PASS" set "FINAL_RESULT=1"
-if not "%CUDA_RESULT%"=="PASS" set "FINAL_RESULT=1"
+if not "%AGENT_CUDA_RESULT%"=="PASS" set "FINAL_RESULT=1"
 
 popd
 endlocal & exit /b %FINAL_RESULT%

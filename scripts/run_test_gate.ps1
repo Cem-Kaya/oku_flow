@@ -187,6 +187,7 @@ function Get-CaseResult($Case) {
     }
     if ($Case.SelectSingleNode('skipped')) { return 'Skipped' }
     if ($Case.status -ne 'run') { return 'Failed' }
+    if ([string]$Case.'system-out' -match '\[This part of the test output was removed since it exceeds the threshold of') { return 'Unfinished' }
     if ([string]$Case.'system-out' -match '(?m)^SKIP\s*:') { return 'PassedWithSkips' }
     return 'Passed'
 }
@@ -323,6 +324,16 @@ try {
         $fingerprint = $before[$name].digest
         if (!$ledger.evidence.ContainsKey($name)) { $ledger.evidence[$name] = @{} }
         $prior = $ledger.evidence[$name][$fingerprint]
+        $previous = $ledger.results[$name]
+        if ($Resume -and !$prior -and $previous -and
+            $previous.status -in 'Failed', 'Interrupted', 'Unfinished' -and
+            (!$previous.shared -or $previous.shared -ne $runtime.sharedDigest)) {
+            $oldShared = if ($previous.shared) { $ledger.sharedInputs[$previous.shared] } else { $null }
+            $changed = if ($oldShared) {
+                @(@($oldShared.Keys) + @($runtime.shared.Keys) | Sort-Object -Unique | Where-Object { $oldShared[$_] -ne $runtime.shared[$_] })
+            } else { @('prior shared inputs unavailable') }
+            throw "Resume inputs changed for unresolved test: $name. Shared inputs: $($changed -join ', '). Diagnose the failure and run a fresh gate explicitly; resume cannot retry it under a different shared runtime."
+        }
         if ($name -cin $RetryInterrupted -and (!$prior -or $prior.status -ne 'Interrupted')) {
             throw "Only a recorded desktop interruption may be retried with matching inputs: $name"
         }
@@ -362,7 +373,7 @@ try {
         $ledger.attempts += @{ id = $id; tests = @($cases.name); partition = $partition.name; parallel = $partition.parallel; log = $log; junit = $junit }
         Save-Ledger $ledger $path
         Write-Host "CTest partition: $($partition.name), $($cases.Count) tests, --parallel $($partition.parallel)"
-        & $ctest @arguments --parallel $partition.parallel --output-on-failure --no-tests=error -R $expression --output-junit $junit 2>&1 |
+        & $ctest @arguments --parallel $partition.parallel --output-on-failure --no-tests=error -R $expression --output-junit $junit --test-output-size-passed 1048576 --test-output-size-failed 1048576 2>&1 |
             Tee-Object -FilePath $log | ForEach-Object { Write-Host $_ }
         $exitCode = $LASTEXITCODE
         # CTest overwrites these on the next invocation, including a narrow
@@ -385,6 +396,9 @@ try {
             $result = $ledger.results[$case.name]
             $result.status = Get-CaseResult $case
             $result.seconds = [string]$case.time
+            if ($result.status -eq 'Unfinished') {
+                $errors.Add("Incomplete CTest output for $($case.name); inspect $id-LastTest.log before accepting coverage.")
+            }
         }
         if ($exitCode -and !@($cases | Where-Object { $ledger.results[$_.name].status -in 'Failed', 'Interrupted' }).Count) {
             foreach ($case in $cases) { $ledger.results[$case.name].status = 'Unfinished' }

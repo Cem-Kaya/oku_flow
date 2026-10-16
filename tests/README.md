@@ -154,6 +154,20 @@ must still match. CPU, CUDA and bundle evidence never substitute for one
 another. After changing monitors, native DPI, drivers or hardware, GUI evidence
 is invalidated automatically.
 
+PowerShell-backed tests resolve the actual interpreter image through
+`cmake/PowerShell.cmake`, including when an existing cache contains a Windows
+Store execution alias. The alias can launch successfully while refusing file
+hashing; generated test commands use its real process image to avoid a pre-test
+evidence failure. The cache retains the launcher and resolves its current image
+on configure, including rediscovery when a cached versioned path disappears.
+Reconfigure after updating/removing PowerShell before running cached CTest commands.
+Registered Qt fixtures set `QT_FORCE_STDERR_LOGGING=1` so Qt assertions and
+skipped data rows remain visible in JUnit and detailed CTest logs. This does not
+change their platform, assertions or deadlines.
+CTest retains up to 1 MiB of output per passing/failing test in JUnit. A passing
+result with CTest's truncation marker remains `Unfinished`; inspect the archived
+full LastTest log rather than accepting potentially hidden Qt row skips.
+
 Background tests run in parallel across logical processors (`-Parallel`
 overrides). Tests labelled `gpu` or `codec` run serially in a second CTest
 invocation, followed by serial `gui` tests.
@@ -167,8 +181,8 @@ reformatted slot must remain discoverable; compare CTest names with the built
 fixture's `-functions` list after changing registration. All cases retain the
 fake-provider binaries and compatibility profile in `REQUIRED_FILES`.
 
-The phone-camera and legacy-adb fixtures set `QT_FORCE_STDERR_LOGGING=1` and
-use `-v1` to retain row entry and failure output through CTest on Windows.
+The phone-camera and legacy-adb fixtures additionally use `-v1` to retain row
+entry and failure output through CTest on Windows.
 Without that environment, Qt may send its plain-text output to the system
 debugger instead. Keep original empty-output failures archived: a later local
 pass is diagnostic evidence, not proof of the original failure's cause.
@@ -211,8 +225,14 @@ rebuild or publish anything. Keep the original Qt/OKUFLOW environment overrides.
 It retries exactly one recorded interrupted case once, retains its original
 failure/log, and still returns failure if another required case is unresolved.
 The following resume runs normal compile/translation gates and reuses only
-matching CTest evidence. A changed inventory refuses resume: unset the flag,
-build and run a fresh complete gate. Do not use CTest's mutable LastTestsFailed
+matching CTest evidence. If an unresolved test has different shared runtime inputs, resume
+refuses before starting another attempt: diagnose the cause, unset the flag,
+build and deliberately run a fresh gate. A diagnosed per-test repair/rebuild
+can resume under the same shared runtime. Passing tests with changed inputs
+still require new evidence. Batch CUDA result/scope/selection variables use
+`AGENT_CUDA_*` names so bookkeeping cannot masquerade as CUDA runtime input.
+PATH remains a real fingerprint input; use the same developer environment.
+Do not use CTest's mutable LastTestsFailed
 file as evidence for another configuration or use `--repeat until-pass`.
 
 Only a single Qt failure explicitly marked `OKUFLOW_DESKTOP_INTERRUPTED:`
