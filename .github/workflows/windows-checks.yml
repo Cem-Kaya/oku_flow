@@ -38,30 +38,51 @@ jobs:
         shell: pwsh
     env:
       OKUFLOW_CI_SCOPE: ${{ inputs.scope || 'all' }}
+      OKUFLOW_PR_BASE: ${{ github.event.pull_request.base.sha }}
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Initialize private evidence paths
+        id: plan
         run: |
           $evidence = Join-Path $env:RUNNER_TEMP 'okuflow-evidence'
           New-Item -ItemType Directory -Force -Path $evidence | Out-Null
           "OKUFLOW_CI_EVIDENCE=$evidence" >> $env:GITHUB_ENV
           "OKUFLOW_UI_TEST_SCREENSHOTS=$evidence/screenshots" >> $env:GITHUB_ENV
+          $build = $env:OKUFLOW_CI_SCOPE -ne 'desktop'
+          if ($env:OKUFLOW_PR_BASE) {
+            $selection = ./scripts/select_tests.ps1 -Base $env:OKUFLOW_PR_BASE | ConvertFrom-Json
+            $selection | ConvertTo-Json -Depth 8 | Set-Content "$evidence/selection.json"
+            $build = $selection.mode -eq 'full' -or $selection.tests.Count -gt 0 -or $selection.targets.Count -gt 0
+            if (!$build) {
+              "PR selection: $($selection.mode). Windows build/tests skipped. Extra checks: $($selection.extraChecks -join ', ')." >> $env:GITHUB_STEP_SUMMARY
+              $selection.reasons | ForEach-Object { "- $_" >> $env:GITHUB_STEP_SUMMARY }
+            }
+          }
+          "build=$($build.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
       - name: Prepare remote GUI display
         id: desktop
-        if: ${{ inputs.scope != 'background' }}
+        if: ${{ (steps.plan.outputs.build == 'true' && inputs.scope != 'background') || inputs.scope == 'desktop' }}
         continue-on-error: true
         run: ./scripts/run_windows_ci_gui.ps1 -PrepareDesktop
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        if: ${{ inputs.scope != 'desktop' }}
+        if: ${{ steps.plan.outputs.build == 'true' }}
         with:
           python-version: '3.14'
       - name: Initialize Visual Studio 2022 x64
-        if: ${{ inputs.scope != 'desktop' }}
-        run: ./scripts/initialize_windows_ci_toolchain.ps1
+        id: toolchain
+        if: ${{ steps.plan.outputs.build == 'true' }}
+        run: |
+          ./scripts/initialize_windows_ci_toolchain.ps1
+          $compiler = (Get-Command cl.exe).Source
+          $identity = "$compiler|$((Get-FileHash $compiler).Hash)|$env:WindowsSDKVersion|$((Get-Command cmake).Source)|$PWD|$env:RUNNER_TEMP"
+          $key = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($identity)))
+          "key=$key" >> $env:GITHUB_OUTPUT
       - name: Install matching Qt SDK
-        if: ${{ inputs.scope != 'desktop' }}
+        if: ${{ steps.plan.outputs.build == 'true' }}
         uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4
         with:
           version: '6.12.0'
@@ -76,33 +97,98 @@ jobs:
           setup-python: false
           # Released aqt 3.3.0 lacks Qt 6.11+ split Windows repositories.
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
-      - name: Validate translations
-        if: ${{ inputs.scope != 'desktop' }}
-        run: ./scripts/check_translations.ps1 -QtPrefix $env:QT_ROOT_DIR
+      - name: Install compiler cache
+        if: ${{ steps.plan.outputs.build == 'true' }}
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.18.0
+      # Restore objects with .ninja_deps; a deps log without its objects is stale.
+      # Test verdicts and the external evidence ledger are never restored.
+      - name: Restore Ninja dependency inventory and incremental build
+        if: ${{ steps.plan.outputs.build == 'true' }}
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            build/msvc-cpu
+            !build/msvc-cpu/Testing
+          key: windows-ninja-v1-qt612-${{ steps.toolchain.outputs.key }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt', 'tests/*.cmake') }}-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: |
+            windows-ninja-v1-qt612-${{ steps.toolchain.outputs.key }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tests/CMakeLists.txt', 'tests/*.cmake') }}-
       - name: Configure CPU test preset
-        if: ${{ inputs.scope != 'desktop' }}
+        if: ${{ steps.plan.outputs.build == 'true' }}
         run: |
-          cmake --preset msvc-cpu "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR" "-DQt6_DIR=$env:QT_ROOT_DIR/lib/cmake/Qt6"
+          cmake --preset msvc-cpu "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR" "-DQt6_DIR=$env:QT_ROOT_DIR/lib/cmake/Qt6" -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Select PR tests from the configured Ninja graph
+        id: selection
+        if: ${{ steps.plan.outputs.build == 'true' }}
+        run: |
+          if ($env:OKUFLOW_PR_BASE) {
+            $selection = ./scripts/select_tests.ps1 -Preset msvc-cpu-tests -Base $env:OKUFLOW_PR_BASE | ConvertFrom-Json
+          } else {
+            $selection = [ordered]@{ mode = 'full'; reasons = @('Push/manual scope preserves the complete inventory.'); tests = @(); guiTests = @(); targets = @(); extraChecks = @('translations') }
+          }
+          $selection | ConvertTo-Json -Depth 8 | Set-Content "$env:OKUFLOW_CI_EVIDENCE/selection.json"
+          "mode=$($selection.mode)" >> $env:GITHUB_OUTPUT
+          "Selection: $($selection.mode). $($selection.reasons -join '; ')" >> $env:GITHUB_STEP_SUMMARY
       - name: Compile application and fixtures
         id: build
-        if: ${{ inputs.scope != 'desktop' }}
+        if: ${{ steps.plan.outputs.build == 'true' && steps.selection.outputs.mode != 'none' }}
         run: |
-          cmake --build --preset msvc-cpu-build --parallel 4
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $selection = Get-Content "$env:OKUFLOW_CI_EVIDENCE/selection.json" -Raw | ConvertFrom-Json
+          if ($selection.mode -eq 'full') {
+            cmake --build --preset msvc-cpu-build --parallel 4
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          } elseif ($selection.targets.Count) {
+            cmake --build --preset msvc-cpu-build --parallel 4 --target @($selection.targets)
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+      - name: Validate translations
+        if: ${{ steps.build.outcome == 'success' }}
+        run: |
+          $selection = Get-Content "$env:OKUFLOW_CI_EVIDENCE/selection.json" -Raw | ConvertFrom-Json
+          if ($selection.mode -eq 'full' -or 'translations' -in $selection.extraChecks) {
+            ./scripts/check_translations.ps1 -QtPrefix $env:QT_ROOT_DIR
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+      - name: Selection contract fixtures
+        if: ${{ steps.build.outcome == 'success' }}
+        run: ./scripts/test_select_tests.ps1
       - name: Background CPU checks
-        if: ${{ inputs.scope == '' || inputs.scope == 'all' || inputs.scope == 'background' }}
-        run: ./scripts/run_test_gate.ps1 -Preset msvc-cpu-tests -ExcludeGui
+        if: ${{ steps.build.outcome == 'success' && (inputs.scope == '' || inputs.scope == 'all' || inputs.scope == 'background') }}
+        run: |
+          $selection = Get-Content "$env:OKUFLOW_CI_EVIDENCE/selection.json" -Raw | ConvertFrom-Json
+          if ($selection.mode -eq 'full') {
+            ./scripts/run_test_gate.ps1 -Preset msvc-cpu-tests -ExcludeGui
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          } elseif ($selection.mode -eq 'scoped') {
+            $tests = @($selection.tests | Where-Object { $_ -notin $selection.guiTests })
+            if ($tests.Count) {
+              ./scripts/run_test_gate.ps1 -Preset msvc-cpu-tests -Test $tests -ExcludeGui
+              if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            }
+          }
       - name: Native GUI checks on the remote desktop
         if: ${{ !cancelled() && steps.build.outcome == 'success' && inputs.scope != 'background' }}
         run: |
-          if ('${{ steps.desktop.outcome }}' -ne 'success') { throw 'Remote display preparation failed; see desktop evidence.' }
-          ./scripts/run_windows_ci_gui.ps1 -Scope $env:OKUFLOW_CI_SCOPE
+          $selection = Get-Content "$env:OKUFLOW_CI_EVIDENCE/selection.json" -Raw | ConvertFrom-Json
+          if ($selection.mode -eq 'full' -or $selection.guiTests.Count) {
+            if ('${{ steps.desktop.outcome }}' -ne 'success') { throw 'Remote display preparation failed; see desktop evidence.' }
+            if ($selection.mode -eq 'scoped') {
+              ./scripts/run_windows_ci_gui.ps1 -Test @($selection.guiTests)
+            } else {
+              ./scripts/run_windows_ci_gui.ps1 -Scope $env:OKUFLOW_CI_SCOPE
+            }
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
       # Moving native child surfaces can round differently from their logical
       # parent offsets. Validate the same immediate assertions at other scales.
       - name: Scaled native panel movement regression
         if: ${{ !cancelled() && steps.build.outcome == 'success' && (inputs.scope == '' || inputs.scope == 'all' || inputs.scope == 'gui-all' || inputs.scope == 'gui-layout') }}
         run: |
+          $selection = Get-Content "$env:OKUFLOW_CI_EVIDENCE/selection.json" -Raw | ConvertFrom-Json
+          $case = 'main_window_interactions.chromeFollowsNativeOwnerMove'
+          if ($selection.mode -ne 'full' -and $case -notin $selection.guiTests) { exit 0 }
           if ('${{ steps.desktop.outcome }}' -ne 'success') { throw 'Remote display preparation failed.' }
           Copy-Item -LiteralPath build/msvc-cpu/Testing -Destination "$env:OKUFLOW_CI_EVIDENCE/ctest-standard" -Recurse
           foreach ($scale in @('1.25', '1.5', '2')) {
@@ -112,6 +198,9 @@ jobs:
             if ($LASTEXITCODE) { throw "Scaled motion failed at $scale; preserve the failed diagnostic." }
           }
           Remove-Item Env:QT_SCALE_FACTOR
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: sccache --show-stats
       - name: Check display-only result
         if: ${{ inputs.scope == 'desktop' }}
         run: |
@@ -133,9 +222,11 @@ jobs:
           These checks ran on GitHub's Windows VM, away from the owner's desktop.
           Scope: $env:OKUFLOW_CI_SCOPE. Compiled scopes use CPU-only Qt 6.12.0 / MSVC 2022.
           The desktop-only scope checks the display prerequisite without building or testing the application.
+          PRs select changed-file impacts; a missing/stale Ninja inventory falls back to full CPU validation.
+          Docs/site-only PRs skip compilation and tests. Android checks report in their own job.
           Logs, JUnit, gate inventories and captured UI images are in the evidence artifact.
           CUDA, physical-phone/camera and installer acceptance remain separate hardware checks.
-          A selected GUI group is a diagnostic run, not complete release validation.
+          Scoped checks and selected GUI groups are not complete release validation.
           "@ >> $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: ${{ always() }}
@@ -153,7 +244,25 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Select host protocol checks
+        id: selection
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changes=all
+          if [ -n "$PR_BASE" ]; then
+            changes=$(git diff --name-only "$PR_BASE" -- android/ ':!android/**/*.md' ':!android/*.md')
+          fi
+          if [ -n "$changes" ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+            echo 'Android host protocol: no Android changes; skipped.' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        if: ${{ steps.selection.outputs.run == 'true' }}
         with:
           python-version: '3.14'
-      - run: python -B -m unittest discover -s android/tests -v
+      - if: ${{ steps.selection.outputs.run == 'true' }}
+        run: python -B -m unittest discover -s android/tests -v
