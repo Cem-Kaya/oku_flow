@@ -14,6 +14,16 @@ set "ROOT_DIR=%CD%"
 set "RELEASE_RESULT=SKIP"
 set "CPU_RESULT=SKIP"
 set "CUDA_RESULT=SKIP"
+set "SCOPED_RESULT=FAIL"
+set "SCOPED_MODE="
+if /I "%~1"=="--scoped" set "SCOPED_MODE=1"
+set "SCOPED_PRESET="
+set "CUDA_SCOPE=GPU-labeled, CUDA-variant and CUDA-only tests"
+set "CUDA_SELECTION=-UncoveredByPreset msvc-cpu-tests"
+if "%OKUFLOW_FULL_CUDA_SUITE%"=="1" (
+    set "CUDA_SELECTION="
+    set "CUDA_SCOPE=full CUDA suite requested by OKUFLOW_FULL_CUDA_SUITE=1"
+)
 set "TEST_FILTER="
 set "TEST_RESUME="
 if "%OKUFLOW_TEST_RESUME%"=="1" set "TEST_RESUME=-Resume"
@@ -54,14 +64,15 @@ if errorlevel 1 (
 rem Retry only a recorded desktop interruption, in the same VS environment.
 rem No rebuild or release publishing occurs in this mode.
 if /I "%~1"=="--retry-interrupted" (
-    pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -Preset "%~2" -Resume -RetryInterrupted "%~3"
+    pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -Preset "%~2" -Resume -RetryInterrupted "%~3" %TEST_FILTER%
     if errorlevel 1 goto :retry_failed
     popd
     endlocal
     exit /b 0
 )
+if /I "%~1"=="--scoped" goto :scoped
 if not "%~1"=="" (
-    echo FAIL: unknown option. Use --retry-interrupted PRESET EXACT_CTEST_NAME.
+    echo FAIL: use --scoped PRESET LABEL-OR-TEST... or --retry-interrupted PRESET EXACT_CTEST_NAME.
     goto :summary
 )
 
@@ -109,6 +120,7 @@ if errorlevel 1 (
 
 rem Preserve CUDA evidence even when a CPU desktop fixture was interrupted.
 echo ===== CUDA TEST GATE =====
+echo Scope: %CUDA_SCOPE%
 cmake --preset msvc-cuda-tests
 if errorlevel 1 (
     set "CUDA_RESULT=FAIL"
@@ -119,7 +131,7 @@ if errorlevel 1 (
     set "CUDA_RESULT=FAIL"
     goto :summary
 )
-pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -Preset msvc-cuda-tests %TEST_FILTER% %TEST_RESUME%
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -Preset msvc-cuda-tests %CUDA_SELECTION% %TEST_FILTER% %TEST_RESUME%
 if errorlevel 1 (
     set "CUDA_RESULT=FAIL"
     goto :summary
@@ -127,11 +139,12 @@ if errorlevel 1 (
 set "CUDA_RESULT=PASS"
 
 :summary
+if defined SCOPED_MODE goto :scoped_summary
 echo.
 echo ===== OKUFLOW BUILD GATE SUMMARY =====
 echo %RELEASE_RESULT%: release compile
 echo %CPU_RESULT%: CPU test suite
-echo %CUDA_RESULT%: CUDA test suite
+echo %CUDA_RESULT%: CUDA test suite - %CUDA_SCOPE%
 if defined TEST_FILTER echo PARTIAL VALIDATION: GUI checks remain pending; this is not the full release gate.
 
 set "FINAL_RESULT=0"
@@ -139,6 +152,63 @@ if not "%RELEASE_RESULT%"=="PASS" set "FINAL_RESULT=1"
 if not "%CPU_RESULT%"=="PASS" set "FINAL_RESULT=1"
 if not "%CUDA_RESULT%"=="PASS" set "FINAL_RESULT=1"
 
+popd
+endlocal & exit /b %FINAL_RESULT%
+
+:scoped
+set "SCOPED_PRESET=%~2"
+if /I "%SCOPED_PRESET%"=="msvc-cpu-tests" set "SCOPED_PRESET=msvc-cpu"
+if /I "%SCOPED_PRESET%"=="msvc-cpu" (
+    set "SCOPED_TEST_PRESET=msvc-cpu-tests"
+    goto :scoped_arguments
+)
+if /I "%SCOPED_PRESET%"=="msvc-cuda-tests" (
+    set "SCOPED_TEST_PRESET=msvc-cuda-tests"
+    goto :scoped_arguments
+)
+echo FAIL: --scoped requires msvc-cpu or msvc-cuda-tests and at least one label or exact test.
+goto :scoped_summary
+
+:scoped_arguments
+shift
+shift
+set "SCOPED_SELECTION="
+:scoped_next
+if "%~1"=="" goto :scoped_build
+if defined SCOPED_SELECTION (
+    set "SCOPED_SELECTION=%SCOPED_SELECTION%,%~1"
+) else (
+    set "SCOPED_SELECTION=%~1"
+)
+shift
+goto :scoped_next
+
+:scoped_build
+if not defined SCOPED_SELECTION (
+    echo FAIL: --scoped requires at least one label or exact test.
+    goto :scoped_summary
+)
+echo ===== SCOPED BUILD AND TEST GATE =====
+cmake --preset %SCOPED_PRESET%
+if errorlevel 1 goto :scoped_failed
+cmake --build --preset %SCOPED_PRESET%-build
+if errorlevel 1 goto :scoped_failed
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -Preset %SCOPED_TEST_PRESET% %TEST_FILTER% %TEST_RESUME% -Select "%SCOPED_SELECTION%"
+if errorlevel 1 goto :scoped_failed
+set "SCOPED_RESULT=PASS"
+goto :scoped_summary
+
+:scoped_failed
+set "SCOPED_RESULT=FAIL"
+
+:scoped_summary
+echo.
+echo ===== OKUFLOW SCOPED BUILD GATE SUMMARY =====
+echo SCOPED %SCOPED_RESULT%: %SCOPED_PRESET% %SCOPED_SELECTION%
+echo SCOPED VALIDATION: this does not establish the full release gate.
+if defined TEST_FILTER echo PARTIAL VALIDATION: GUI checks remain pending.
+set "FINAL_RESULT=1"
+if "%SCOPED_RESULT%"=="PASS" set "FINAL_RESULT=0"
 popd
 endlocal & exit /b %FINAL_RESULT%
 
