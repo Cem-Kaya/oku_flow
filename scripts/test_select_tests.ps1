@@ -39,6 +39,9 @@ add_test(NAME unrelated_test COMMAND unrelated)
 add_test(NAME data_test COMMAND unrelated "${CMAKE_CURRENT_SOURCE_DIR}/input.txt")
 set_tests_properties(data_test PROPERTIES REQUIRED_FILES "${CMAKE_CURRENT_SOURCE_DIR}/required.txt")
 add_test(NAME helper_test COMMAND unrelated "$<TARGET_FILE:helper>")
+add_test(NAME shared_source_equivalence COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_SOURCE_DIR}/guard.cmake")
+set_tests_properties(shared_source_equivalence PROPERTIES
+    REQUIRED_FILES "${CMAKE_CURRENT_SOURCE_DIR}/core.cpp;${CMAKE_CURRENT_SOURCE_DIR}/core.hpp")
 '@ | Set-Content -LiteralPath "$fixture/CMakeLists.txt" -Encoding utf8
     '#pragma once', 'inline int value() { return 0; }' | Set-Content -LiteralPath "$fixture/core.hpp"
     '#include "core.hpp"', 'int core() { return value(); }' | Set-Content -LiteralPath "$fixture/core.cpp"
@@ -48,6 +51,7 @@ add_test(NAME helper_test COMMAND unrelated "$<TARGET_FILE:helper>")
     'int resourceValue() { return 0; }' | Set-Content -LiteralPath "$fixture/asset.qrc"
     'fixture' | Set-Content -LiteralPath "$fixture/input.txt"
     'fixture' | Set-Content -LiteralPath "$fixture/required.txt"
+    '# Synthetic script-based guard; no executable target owns its runtime inputs.' | Set-Content -LiteralPath "$fixture/guard.cmake"
     & cmake -S $fixture -B $build -G Ninja -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
     if ($LASTEXITCODE) { throw 'Synthetic configure failed. Run in a developer shell.' }
     if ($IsWindows) {
@@ -57,13 +61,13 @@ add_test(NAME helper_test COMMAND unrelated "$<TARGET_FILE:helper>")
     }
     & cmake --build $build
     if ($LASTEXITCODE) { throw 'Synthetic build failed.' }
-    $header = Assert-Selection 'header dependency' @('core.hpp') scoped @('dependent_test', 'dependent_gui')
+    $header = Assert-Selection 'header dependency' @('core.hpp') scoped @('dependent_test', 'dependent_gui', 'shared_source_equivalence')
     if (@($header.guiTests) -join ',' -ne 'dependent_gui') { throw 'GUI classification failed.' }
     if (!$header.targets.Count) { throw 'Selected executable build target is missing.' }
     if (@($header.targets | Where-Object { $_ -match 'unrelated|helper' }).Count) { throw 'Unrelated build targets selected.' }
     & cmake --build $build --target @($header.targets)
     if ($LASTEXITCODE) { throw 'Selected target names are not buildable.' }
-    $null = Assert-Selection 'static library transitive source' @('core.cpp') scoped @('dependent_test', 'dependent_gui')
+    $null = Assert-Selection 'static library transitive source and script guard' @('core.cpp') scoped @('dependent_test', 'dependent_gui', 'shared_source_equivalence')
     $null = Assert-Selection 'generated resource input' @('asset.qrc') scoped @('dependent_test', 'dependent_gui')
     $null = Assert-Selection 'unrelated executable' @('unrelated.cpp') scoped @('unrelated_test', 'data_test', 'helper_test')
     $null = Assert-Selection 'rooted helper executable dependency' @('helper.cpp') scoped @('helper_test')
@@ -83,7 +87,7 @@ add_test(NAME helper_test COMMAND unrelated "$<TARGET_FILE:helper>")
     $null = Assert-Selection 'incomplete dependency inventory' @('core.hpp') full
     & cmake --build $build
     if ($LASTEXITCODE) { throw 'Completing inventory failed.' }
-    $null = Assert-Selection 'completed dependency inventory' @('core.hpp') scoped @('dependent_test', 'dependent_gui')
+    $null = Assert-Selection 'completed dependency inventory' @('core.hpp') scoped @('dependent_test', 'dependent_gui', 'shared_source_equivalence')
     $unused = Assert-Selection 'library without a test consumer' @('unbuilt.cpp') scoped
     if (!$unused.targets.Count) { throw 'An affected library still needs compilation.' }
     $objectFile = Join-Path $build $(if ($IsWindows) { 'CMakeFiles/core.dir/core.cpp.obj' } else { 'CMakeFiles/core.dir/core.cpp.o' })
@@ -92,7 +96,7 @@ add_test(NAME helper_test COMMAND unrelated "$<TARGET_FILE:helper>")
     Move-Item -LiteralPath "$objectFile.saved" -Destination $objectFile
     # Check git base together with staged/unstaged/untracked paths.
     & git -C $fixture init -q
-    & git -C $fixture -c user.name=Fixture -c user.email=fixture@example.invalid add CMakeLists.txt core.cpp core.hpp main.cpp unrelated.cpp helper.cpp asset.qrc unbuilt.cpp input.txt required.txt
+    & git -C $fixture -c user.name=Fixture -c user.email=fixture@example.invalid add CMakeLists.txt core.cpp core.hpp main.cpp unrelated.cpp helper.cpp asset.qrc unbuilt.cpp input.txt required.txt guard.cmake
     & git -C $fixture -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm baseline
     if ($LASTEXITCODE) { throw 'Fixture git initialization failed.' }
     'new data' | Set-Content -LiteralPath "$fixture/required.txt"

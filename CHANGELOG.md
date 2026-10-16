@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Include the shared-source equivalence guard in affected-source/header checks,
+  retain historical failure blockers across later builds, and archive detailed
+  CTest logs per attempt for diagnosing parallel-only failures.
+
 - Speed up validation without weakening the release gate. The test gate keeps
   per-test evidence, so unrelated edits no longer invalidate every pass; it
   supports SCOPED runs by name or label and runs background tests in parallel

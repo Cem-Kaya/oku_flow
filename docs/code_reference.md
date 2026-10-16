@@ -400,7 +400,9 @@ so metadata generation cannot silently accept an incomplete copy.
   `Initialize-HashCache`/`Save-HashCache` reuse SHA-256 values keyed by full
   path, length and LastWriteTimeUtc ticks. `Convert-LedgerInputs` stores each
   shared runtime map once per digest and `Limit-LedgerEvidence` keeps the current
-  fingerprint plus three recent ones without dropping matching blockers. A
+  fingerprint plus three recent reusable results. Older Failed/Interrupted/
+  Unfinished fingerprints retain compact blocker tombstones, including when
+  the inputs are later reverted. A
   mid-run fingerprint change names the changed inputs without logging values.
   `-Test`/`-Label`/`-Select` produce a `SCOPED PASS/FAIL` verdict for exactly the
   selection; `-UncoveredByPreset` selects `gpu`, `cuda-variant` and names absent
@@ -409,6 +411,8 @@ so metadata generation cannot silently accept an incomplete copy.
   `Get-CaseResult` keeps assertions/mixed failures distinct from one explicitly
   marked desktop interruption, and reports optional CTest/Qt skips separately.
   `Save-Ledger` replaces the ledger atomically; attempt logs stay intact.
+  Each CTest invocation also archives its detailed LastTest/LastTestsFailed logs
+  before another selection can overwrite them.
   Failed/unfinished cases never auto-retry; `-Resume -RetryInterrupted` runs
   only an explicitly named recorded interruption once. Resumes rerun optional
   skips. A missing/mismatched result cannot complete the gate.
@@ -429,7 +433,10 @@ so metadata generation cannot silently accept an incomplete copy.
   consumers were verified by preprocessing, keeping executable MOC headers local
   and recording the original consumers. In `cmake/SharedSourceEquivalence.cmake`,
   `okuflow_check_shared_source_overrides` rejects per-source settings and
-  `okuflow_record_shared_source_environments` records checked target witnesses.
+  `okuflow_record_shared_source_environments` records checked target witnesses
+  and declares shared source bytes and project headers as CTest REQUIRED_FILES.
+  Thus impact selection includes the guard and its prior pass cannot survive a
+  changed preprocessing input.
   `cmake/check_shared_source_equivalence.ps1.in` backs the headless
   `shared_source_equivalence` CTest: it replays each resolved MSVC environment,
   compares code-generation flags and preprocessing SHA-256 values, and reports

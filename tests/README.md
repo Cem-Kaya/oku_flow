@@ -144,7 +144,10 @@ Production sources are not hashed directly; a rebuilt executable changes its
 own hash, so build before validating. Declare runtime data and helper binaries
 that are not command arguments with `REQUIRED_FILES` (absolute paths). Shared
 runtime inputs are deduplicated by digest, and each test keeps its current
-fingerprint plus three recent alternatives. `hash-cache.json` in the same
+fingerprint plus three recent reusable alternatives. Older Failed, Interrupted
+and Unfinished fingerprints retain compact blockers: reverting inputs never
+silently retries an old failure. Attempt JUnit, output and detailed CTest logs
+remain archived. `hash-cache.json` in the same
 directory reuses a file's SHA-256 only while its full path, length and
 LastWriteTimeUtc ticks are unchanged. A selected test's post-run fingerprint
 must still match. CPU, CUDA and bundle evidence never substitute for one
@@ -262,7 +265,9 @@ original consumer's environment produces byte-identical preprocessed output and
 the same code-generation flags. The mandatory headless
 `shared_source_equivalence` test re-preprocesses each shared source under each
 recorded consumer environment and names the source, consumer and first differing
-line on failure. It requires PowerShell 7 and the configured MSVC/SDK headers.
+line on failure. Shared source files and project headers are declared as runtime
+inputs, so their edits select the guard and invalidate its cached result. Header
+selection is intentionally conservative. It requires PowerShell 7 and the configured MSVC/SDK headers.
 When it fails, restore equivalence or split the group; never filter out the
 guard. Per-source compile overrides are rejected. QObject headers/AUTOMOC and
 resources stay owned by their executables. The CUDA application keeps its own

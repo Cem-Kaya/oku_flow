@@ -21,9 +21,12 @@ endfunction()
 function(okuflow_record_shared_source_environments)
     file(STRINGS "${OKUFLOW_EQUIVALENCE_MANIFEST}" rows)
     set(targets "")
+    set(source_inputs "")
     foreach(row IN LISTS rows)
         string(REPLACE "\t" ";" fields "${row}")
+        list(GET fields 1 source)
         list(GET fields 2 target)
+        list(APPEND source_inputs "${source}")
         list(APPEND targets "${target}")
     endforeach()
     list(REMOVE_DUPLICATES targets)
@@ -44,6 +47,17 @@ function(okuflow_record_shared_source_environments)
         endif()
         file(APPEND "${OKUFLOW_EQUIVALENCE_ENVIRONMENTS}" "${target}\t${witness}\n")
     endforeach()
+    # This script preprocesses source/header bytes at test time. They are not
+    # dependencies of its interpreter executable, so expose them to both impact
+    # selection and per-test evidence. Headers are conservative: any project
+    # header can change conditional preprocessing under a consumer environment.
+    file(GLOB_RECURSE header_inputs CONFIGURE_DEPENDS
+        "${PROJECT_SOURCE_DIR}/include/*.h" "${PROJECT_SOURCE_DIR}/include/*.hpp"
+        "${PROJECT_SOURCE_DIR}/src/*.h" "${PROJECT_SOURCE_DIR}/src/*.hpp"
+        "${PROJECT_SOURCE_DIR}/third_party/*.h" "${PROJECT_SOURCE_DIR}/third_party/*.hpp")
+    list(REMOVE_DUPLICATES source_inputs)
+    set_property(TEST shared_source_equivalence APPEND PROPERTY REQUIRED_FILES
+        ${source_inputs} ${header_inputs})
 endfunction()
 # Resolve witnesses after all source moves and PCH configuration in tests/.
 cmake_language(DEFER CALL okuflow_record_shared_source_environments)

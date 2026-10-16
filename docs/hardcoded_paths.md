@@ -191,8 +191,11 @@ and never authorize killing or replacing a foreign/shared adb server.
 
 ## Output Directories
 - Test-gate evidence: `%LOCALAPPDATA%\OkuFlow\test-evidence\`, with one hashed
-  directory per canonical build/configuration and one JSON ledger per SHA-256
-  input inventory. Attempt JUnit/log names include a timestamp and random suffix.
+  directory per canonical build/configuration and one `ledger-v2.json` containing
+  per-test fingerprints. `hash-cache.json` caches file hashes by full path,
+  length and UTC modification ticks. Attempt JUnit/output/detailed CTest log
+  names include a timestamp and random suffix. Old failure blockers remain even
+  after reusable pass history expires.
   `runner.lock` excludes concurrent tracked runners; `desktop.lock` is the
   per-user Qt fixture lease, shared even across direct CTest invocations.
   `OKUFLOW_TEST_RESUME=1` requests reuse, never an input mismatch override.

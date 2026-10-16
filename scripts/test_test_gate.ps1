@@ -135,6 +135,27 @@ try {
     $bounded.sharedInputs.unused = @{ obsolete = 'digest' }
     Limit-LedgerEvidence $bounded
     Assert-Contract (!$bounded.sharedInputs.ContainsKey('unused')) 'Unreferenced shared input history was retained.'
+    # The blocking fingerprint can be old rather than current. A later fixed
+    # build must not evict it and permit retry when those exact inputs return.
+    foreach ($status in 'Failed', 'Interrupted', 'Unfinished') {
+        $history = @{}
+        $history.old = @{ fingerprint = 'old'; status = $status; attempt = '0000';
+            inputs = @{ file = 'old bytes' }; shared = $runtime.sharedDigest }
+        for ($i = 1; $i -le 8; $i++) {
+            $history["pass-$i"] = @{ fingerprint = "pass-$i"; status = 'Passed'; attempt = "9999-$i";
+                inputs = @{ file = "$i" }; shared = $runtime.sharedDigest }
+        }
+        $aged = @{ results = @{ test = $history['pass-8'] }; evidence = @{ test = $history };
+            sharedInputs = @{ $runtime.sharedDigest = $shared } }
+        Limit-LedgerEvidence $aged
+        Assert-Contract ($aged.evidence.test.old.status -eq $status) "Historical $status fingerprint was evicted."
+        Assert-Contract ($aged.evidence.test.old.blockerOnly -and !$aged.evidence.test.old.inputs.Count) 'Old blocker was not compacted.'
+        $roundtrip = $aged | ConvertTo-Json -Depth 30 | ConvertFrom-Json -AsHashtable
+        Convert-LedgerInputs $roundtrip $runtime
+        $roundtrip.results.test = $roundtrip.evidence.test.old
+        Limit-LedgerEvidence $roundtrip
+        Assert-Contract ($roundtrip.results.test.status -eq $status) "Reverting to historical $status lost its blocker."
+    }
     Write-Host "PASS: representative ledger $oldBytes -> $newBytes bytes (92 tests x 12 histories, 500 shared inputs); current blockers retained."
     $fixture = @'
 param([string]$Case, [Parameter(ValueFromRemainingArguments)][string[]]$Remaining)

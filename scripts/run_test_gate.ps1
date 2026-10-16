@@ -197,7 +197,7 @@ function Convert-LedgerInputs($Ledger, $Runtime) {
     # fingerprint or status; even a pre-migration failed attempt must block.
     $records = @($Ledger.results.Values) + @($Ledger.evidence.Values | ForEach-Object { $_.Values })
     foreach ($record in $records) {
-        if (!$record -or $record.shared) { continue }
+        if (!$record -or $record.shared -or $record.blockerOnly) { continue }
         $shared = [ordered]@{}
         foreach ($key in $Runtime.shared.Keys) {
             if ($record.inputs.Contains($key)) { $shared[$key] = $record.inputs[$key] }
@@ -218,13 +218,21 @@ function Limit-LedgerEvidence($Ledger) {
     foreach ($name in @($Ledger.evidence.Keys)) {
         $history = $Ledger.evidence[$name]
         $current = $Ledger.results[$name].fingerprint
-        # Current evidence is always retained, including Failed, Interrupted
-        # and Unfinished. Keep at most three other most-recent fingerprints.
-        $recent = @($history.Keys | Where-Object { $_ -ne $current } |
+        # Bound reusable history, but never forget a failed exact fingerprint.
+        # Older blockers become small tombstones; reverting inputs must not
+        # turn an assertion failure into an automatic retry.
+        $recent = @($history.Keys | Where-Object {
+                $_ -ne $current -and $history[$_].status -notin 'Failed', 'Interrupted', 'Unfinished'
+            } |
             Sort-Object @{ Expression = { $history[$_].attempt }; Descending = $true },
                         @{ Expression = { $_ }; Descending = $true } | Select-Object -First 3)
         foreach ($fingerprint in @($history.Keys)) {
-            if ($fingerprint -ne $current -and $fingerprint -notin $recent) { $history.Remove($fingerprint) }
+            if ($fingerprint -eq $current -or $fingerprint -in $recent) { continue }
+            $record = $history[$fingerprint]
+            if ($record.status -in 'Failed', 'Interrupted', 'Unfinished') {
+                $history[$fingerprint] = @{ fingerprint = $fingerprint; status = $record.status;
+                    attempt = $record.attempt; inputs = @{}; blockerOnly = $true }
+            } else { $history.Remove($fingerprint) }
         }
         foreach ($record in $history.Values) { if ($record.shared) { [void]$usedShared.Add($record.shared) } }
     }
@@ -357,6 +365,15 @@ try {
         & $ctest @arguments --parallel $partition.parallel --output-on-failure --no-tests=error -R $expression --output-junit $junit 2>&1 |
             Tee-Object -FilePath $log | ForEach-Object { Write-Host $_ }
         $exitCode = $LASTEXITCODE
+        # CTest overwrites these on the next invocation, including a narrow
+        # settings check. Retain the original process output for each attempt.
+        $details = Join-Path $BuildDirectory 'Testing/Temporary'
+        foreach ($detail in 'LastTest.log', 'LastTestsFailed.log') {
+            $source = Join-Path $details $detail
+            if (Test-Path -LiteralPath $source -PathType Leaf) {
+                Copy-Item -LiteralPath $source -Destination (Join-Path $directory "$id-$detail")
+            }
+        }
         if (!(Test-Path -LiteralPath $junit)) {
             $errors.Add("CTest did not produce results (exit $exitCode).")
             continue

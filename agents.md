@@ -400,6 +400,11 @@ aligned with the project goals.
   mandatory headless `shared_source_equivalence` guard. Preserve the CTest
   inventory, executable-owned MOC/RCC and code-generation flags; split a group
   rather than filtering the guard when it fails. Validate PCH ON and OFF.
+- Shared source/header bytes must remain declared as runtime inputs of the
+  equivalence guard, so change selection and saved evidence cannot skip it.
+  Keep compact Failed/Interrupted/Unfinished fingerprint blockers even after
+  reusable pass history expires. Archive CTest's detailed per-attempt logs
+  before another selection overwrites Testing/Temporary.
 - Use `scripts/agent_build.bat --retry-interrupted PRESET EXACT_CTEST_NAME`
   only for a recorded desktop interruption. It executes that case once, keeps
   the failed attempt and does not rebuild/publish. Application failures, mixed
