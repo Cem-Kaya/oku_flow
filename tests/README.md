@@ -567,8 +567,28 @@ keyboard focus boundaries, dependent controls, and translated Explain/Stop
 state. Run GUI tests serially in an interactive Windows desktop session.
 For layout evidence, set `OKUFLOW_UI_TEST_SCREENSHOTS` to an output directory;
 the fixture saves English, Turkish, and German views including native tool
-windows only while its process owns the foreground. Otherwise it warns and
-skips the image instead of saving another app's desktop. Use distinct
+windows only when the whole capture fits the screen's available work area.
+It verifies native ownership/occlusion before and after the grab and records
+success/refusal, logical bounds, DPI ratio and physical image size in
+`native-captures.jsonl`. Original wide/tall geometry contracts retain their
+sizes and assertions; unsuitable optional images are refused, never clipped.
+`desktopVisualLayouts` adds required desktop-fitting visual examples for all
+three languages. `desktopVisualChat` adds light/dark native Advanced/floating
+chat, thumbnails, wrapped text, attachment states, keyboard focus, owner moves
+and Approval Details selection/scroll before and after a refresh. These cases
+set both Qt's application color-scheme hint and palette, so native style assets
+match the labelled light/dark fixture without changing the Windows theme. The
+chat footer's physical hit targets must belong to its native window after the
+queued splitter layout settles within a bounded wait; the test deadline stays 30 s.
+These cases
+use actual available geometry including frame margins and taskbar space, with
+no OS scale/resolution changes. When screenshots are requested, failure to
+capture any of these new examples fails its test. Without a capture directory
+the same native geometry/behavior assertions still run. Their private HWNDs
+disable opening transitions so captures cannot land in a compositor cross-fade;
+no system animation setting is changed. Each layout row additionally proves
+that an intentionally off-screen capture is refused without writing a PNG.
+Use distinct
 directories when repeating with `QT_SCALE_FACTOR=1.5`
 or `2`, and inspect the images for clipping as well as checking CTest results.
 These tests do not validate live AI responses or screen-reader speech.

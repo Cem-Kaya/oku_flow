@@ -602,3 +602,11 @@ aligned with the project goals.
 - Windows Application Control refusal is a prerequisite failure. Retain the
   native error and original Code Integrity evidence; never disable security,
   turn it into a skip, or weaken a deadline to obtain passing coverage.
+
+## Desktop-sized native visual evidence (2026-10-17)
+- Keep wide/tall geometry regression inputs intact. Use the desktop visual
+  cases for complete native examples on smaller/high-DPI work areas instead
+  of changing OS scaling or accepting clipped screenshots.
+- Preserve the capture manifest and refused-image diagnostics. A requested
+  desktop visual example must fail if its full native bounds cannot be saved;
+  offscreen widget grabs never substitute for native visual evidence.

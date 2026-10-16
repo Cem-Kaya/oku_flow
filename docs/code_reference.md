@@ -392,6 +392,23 @@ so metadata generation cannot silently accept an incomplete copy.
   `minimumViewportChromeFits` use bounded condition waits for focus and layout;
   diagnostics and assertions are retained. Native activation/pointer
   precondition assertions identify desktop interruptions explicitly.
+  `desktopVisualLayouts` and `desktopVisualChat` exercise production widgets
+  at sizes fitted by `FitVisualWindow` to the real logical work area minus
+  native frame margins. Wide/tall geometry tests keep their original inputs.
+  `PrepareVisualWindow` disables only the fixture HWND's DWM transition before
+  showing it, avoiding translucent opening frames without changing OS settings.
+  `CaptureWindows`/`CaptureBounds` include visible native peers;
+  `CaptureUnobstructed` checks foreground ownership and physical native hit
+  samples. `SaveScreenshot` refuses off-screen/obstructed/changing captures,
+  checks raster dimensions and records `native-captures.jsonl`. Desktop visual
+  cases require successful captures when requested and verify native chat
+  footer reachability, owner following and Approval Details reading state.
+  `NativeHitBelongsTo` verifies the primary chat footer's physical hit targets
+  belong to its native window, including against other fixture peer windows,
+  after the queued splitter resize settles within a bounded wait. The chat
+  fixture sets/restores the application color-scheme hint and palette together
+  to select matching native light/dark assets without changing the OS theme.
+  Each layout row also asserts rejection of an intentional off-screen capture.
   `RenderWidgetTests::continuousResizingDoesNotStarvePresenter` waits for ten
   resize changes and a concurrent presenter update within the original 220 ms
   deadline, then verifies final dimensions and drains the presenter.

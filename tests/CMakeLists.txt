@@ -690,7 +690,7 @@ if (WIN32)
     target_compile_definitions(main_window_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
         UNICODE _UNICODE OKUFLOW_HAS_CUDA_EXT_MEMORY=0 OKUFLOW_ENABLE_TEXT_SR=0)
     target_link_libraries(main_window_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets
-        Qt6::Test d3d12 dxgi d3dcompiler)
+        Qt6::Test d3d12 dxgi d3dcompiler dwmapi)
     qt_add_resources(main_window_tests "okuflow_main_window_test_translations"
         PREFIX "/i18n"
         BASE "${CMAKE_CURRENT_BINARY_DIR}/../cmake"
