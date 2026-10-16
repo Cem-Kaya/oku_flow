@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "full": [
+    "(^|/)CMakeLists\\.txt$", "(^|/)CMake(User)?Presets\\.json$",
+    "^cmake/", "^tests/[^/]+\\.cmake$",
+    "^scripts/(run_test_gate\\.ps1|agent_build\\.bat|select_tests\\.ps1|agent_check\\.ps1|test_select_tests\\.ps1|initialize_windows_ci_toolchain\\.ps1|run_windows_ci_gui\\.ps1)$",
+    "^tests/test_impact\\.json$", "^\\.github/workflows/", "(^|/)(toolchain[^/]*|[^/]*toolchain)\\.[^/]+$"
+  ],
+  "none": ["\\.md$", "^docs/", "^improvement_ideas/", "^website/"],
+  "rules": [
+    { "paths": ["^android/"], "tests": [], "extraChecks": ["android-host-protocol"] },
+    {
+      "paths": ["^translations/", "^src/ui/translation_catalog\\.cpp$"],
+      "tests": ["^language_catalog_contract$", "^multilingual_live_switch$", "^main_window_interactions\\..*([Ll]anguage|[Tt]ranslat)", "^ai_settings_dialog_interactions\\."],
+      "extraChecks": ["translations"]
+    }
+  ]
+}
