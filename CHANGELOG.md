@@ -9,7 +9,10 @@
   CPU suite cannot cover unless `OKUFLOW_FULL_CUDA_SUITE=1`. New
   `scripts/agent_check.ps1` selects, builds and runs only the tests affected by
   changed files. Pull-request CI skips docs-only changes, tests only affected
-  targets and caches compilation.
+  targets and caches compilation. Production sources shared by the CPU
+  application and test fixtures compile once per verified group (149 instead of
+  311 production compilations), guarded by a headless preprocessing-equivalence
+  test, and optional precompiled headers are on by default.
 
 - Enable built-in Assistant control by default for new and pre-control settings.
   Preserve saved on/off choices and keep external MCP and camera/capture grants

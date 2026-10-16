@@ -253,6 +253,24 @@ no GUI, camera, browser or adb server.
 Fixture CLI flags `--output` and `--trace` are reserved for generated results.
 Their paths remain part of the command fingerprint; the produced bytes do not.
 
+### Shared production objects and precompiled headers
+
+Production sources reused by the CPU application and test fixtures are declared
+explicitly as OBJECT groups in `tests/shared_sources.cmake`, so each compiles
+once per group instead of once per executable. A group is valid only while every
+original consumer's environment produces byte-identical preprocessed output and
+the same code-generation flags. The mandatory headless
+`shared_source_equivalence` test re-preprocesses each shared source under each
+recorded consumer environment and names the source, consumer and first differing
+line on failure. It requires PowerShell 7 and the configured MSVC/SDK headers.
+When it fails, restore equivalence or split the group; never filter out the
+guard. Per-source compile overrides are rejected. QObject headers/AUTOMOC and
+resources stay owned by their executables. The CUDA application keeps its own
+sources. `OKUFLOW_USE_PCH` (default ON) adds precompiled standard/Qt/Windows
+headers to the application and larger fixtures; shared objects compile without
+PCH. Validate both PCH states and the shipping CUDA build when changing source
+ownership.
+
 Annotation drag/keyboard fixtures use the native foreground helper before
 synthesizing input. Drag cancellation events log grab/activation state to aid
 diagnosis without weakening the production release, deactivation or hold rules.

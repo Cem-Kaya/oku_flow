@@ -195,6 +195,13 @@ reports a SCOPED result with any selected GUI cases still pending. Build-system,
 runner and unknown changes require the full helper above. See
 [fast scoped checks](../tests/README.md#fast-scoped-checks-while-editing).
 
+Production sources shared between the CPU application and test fixtures compile
+once per explicit OBJECT group. Share a source only after its consumers'
+preprocessed output and code-generation flags match; the headless
+`shared_source_equivalence` test enforces that after edits to shared sources,
+definitions, includes or toolchain flags. See
+[shared production objects](../tests/README.md#shared-production-objects-and-precompiled-headers).
+
 GUI main-window, annotation and AI-settings slots are independently selectable;
 all native GUI fixtures remain serial, including across separate CTest
 processes. The tracked helpers archive CTest evidence through

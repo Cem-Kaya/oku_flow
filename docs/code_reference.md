@@ -422,6 +422,19 @@ so metadata generation cannot silently accept an incomplete copy.
   `msvc-cpu` when needed, builds the selected targets and calls the runner with
   `-Test`; GUI cases stay pending unless `-IncludeGui`. `scripts/test_select_tests.ps1`
   uses `Assert-Selection` against a private synthetic CMake/Ninja project.
+- `tests/shared_sources.cmake`: `okuflow_share_test_sources` builds OBJECT
+  libraries for consumers with identical compile contracts
+  (`okuflow_test_compile_contract` checks them at configure time), and
+  `okuflow_share_equivalent_sources` declares explicit canonical groups whose
+  consumers were verified by preprocessing, keeping executable MOC headers local
+  and recording the original consumers. In `cmake/SharedSourceEquivalence.cmake`,
+  `okuflow_check_shared_source_overrides` rejects per-source settings and
+  `okuflow_record_shared_source_environments` records checked target witnesses.
+  `cmake/check_shared_source_equivalence.ps1.in` backs the headless
+  `shared_source_equivalence` CTest: it replays each resolved MSVC environment,
+  compares code-generation flags and preprocessing SHA-256 values, and reports
+  the first mismatch. `tests/precompiled_headers.cmake` applies the optional
+  `OKUFLOW_USE_PCH` header set to C++ only.
 - `.github/workflows/windows-checks.yml` installs the pinned Qt/MSVC toolchain,
   using `scripts/initialize_windows_ci_toolchain.ps1` to discover only VS 2022
   with `vswhere`, invoke Microsoft's installed developer PowerShell for x64,

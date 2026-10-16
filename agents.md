@@ -396,6 +396,10 @@ aligned with the project goals.
   separate; desktop/hardware changes invalidate GUI evidence. Background tests
   run in parallel; keep `gpu`/`codec` and `gui` partitions serial. Never
   substitute mutable `ctest --rerun-failed` state.
+- Production-source sharing in `tests/shared_sources.cmake` depends on the
+  mandatory headless `shared_source_equivalence` guard. Preserve the CTest
+  inventory, executable-owned MOC/RCC and code-generation flags; split a group
+  rather than filtering the guard when it fails. Validate PCH ON and OFF.
 - Use `scripts/agent_build.bat --retry-interrupted PRESET EXACT_CTEST_NAME`
   only for a recorded desktop interruption. It executes that case once, keeps
   the failed attempt and does not rebuild/publish. Application failures, mixed
