@@ -281,6 +281,9 @@ if (WIN32)
     include(Mcp.cmake)
 endif()
 
+include(PrecompiledHeaders.cmake)
+okuflow_enable_pch(oku_flow)
+
 if (OKUFLOW_ENABLE_TESTS)
     if (EXISTS "${PROJECT_SOURCE_DIR}/tests/CMakeLists.txt")
         add_subdirectory(${PROJECT_SOURCE_DIR}/tests ${CMAKE_BINARY_DIR}/tests)
