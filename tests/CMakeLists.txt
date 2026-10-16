@@ -899,6 +899,15 @@ foreach(test IN LISTS okuflow_tests)
     endif()
 endforeach()
 if(WIN32)
+    # The fail-closed legacy sibling scan observes short-lived OkuFlow-named
+    # fixture images, including MCP and launcher tests outside its temp root.
+    # Do not race image lookup with their exit; production safety stays intact.
+    foreach(test IN ITEMS adb_legacy_recovery windows_runtime_contract
+            mcp_bridge_contract native_app_control_offscreen)
+        if(TEST "${test}")
+            set_property(TEST "${test}" APPEND PROPERTY RESOURCE_LOCK okuflow_process_identity)
+        endif()
+    endforeach()
     include(shared_sources.cmake)
     include(precompiled_headers.cmake)
     include(runtime_inputs.cmake)

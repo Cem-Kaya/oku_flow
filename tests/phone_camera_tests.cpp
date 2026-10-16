@@ -82,24 +82,27 @@ public:
     enum class RecoveryMode { Healthy, Stalled, ServerStalled, SelectionStalled, Replugged,
                               Unsupported, LegacyListing, Unauthorized, Wifi,
                               PartialEcho, SlowHealthy, AckWithoutEffect, CompanionBusy };
+    enum class ArrivalMode { Normal, BufferedRequest, QueuedConnections };
     explicit FakePhoneAdb(bool old = false, bool stall = false, bool busy = false,
                          LaunchMode mode = LaunchMode::None, RecoveryMode recovery = RecoveryMode::Healthy,
                          bool installHooks = true, quint16 listenPort = 0,
-                         bool bufferRequestBeforeServe = false)
+                         ArrivalMode arrival = ArrivalMode::Normal)
         : deviceStalled(recovery != RecoveryMode::Healthy && recovery != RecoveryMode::SlowHealthy),
           old(old), stall(stall), busy(busy),
           launchMode(mode), recoveryMode(recovery), installedHooks(installHooks),
           hostUnresponsive(recovery == RecoveryMode::ServerStalled) {
         std::promise<quint16> promise;
         auto future = promise.get_future();
-        worker = std::thread([this, listenPort, bufferRequestBeforeServe, promise = std::move(promise)]() mutable {
+        worker = std::thread([this, listenPort, arrival, promise = std::move(promise)]() mutable {
             QTcpServer server;
             if (!server.listen(QHostAddress::LocalHost, listenPort)) { promise.set_value(0); return; }
             promise.set_value(server.serverPort());
+            while (arrival == ArrivalMode::QueuedConnections && !releaseQueuedConnections.load() && !stopped.load())
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             while (!stopped.load()) {
-                if (!server.waitForNewConnection(20)) continue;
+                if (!server.hasPendingConnections() && !server.waitForNewConnection(20)) continue;
                 std::unique_ptr<QTcpSocket> socket(server.nextPendingConnection());
-                if (bufferRequestBeforeServe) {
+                if (arrival == ArrivalMode::BufferedRequest) {
                     if (!socket->bytesAvailable() && !socket->waitForReadyRead(1000)) continue;
                     ++bufferedRequests;
                 }
@@ -120,6 +123,7 @@ public:
     std::atomic<bool> hello{false};
     std::atomic<int> probes{0};
     std::atomic<int> bufferedRequests{0};
+    std::atomic<bool> releaseQueuedConnections{false};
     std::atomic<int> reconnects{0}, healthProbes{0};
     std::atomic<std::uint64_t> transportId{9};
     std::atomic<bool> deviceStalled{false};
@@ -349,15 +353,35 @@ class PhoneCameraTests : public QObject {
 private slots:
     void alreadyBufferedFakeAdbRequestIsNotDiscarded() {
         FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::None,
-                            FakePhoneAdb::RecoveryMode::Healthy, false, 0, true);
+                            FakePhoneAdb::RecoveryMode::Healthy, false, 0,
+                            FakePhoneAdb::ArrivalMode::BufferedRequest);
         QTcpSocket client;
         client.connectToHost(QHostAddress::LocalHost, server.port);
         QVERIFY(client.waitForConnected(1000));
         QCOMPARE(client.write("000chost:version"), qint64{16});
         QVERIFY(!client.bytesToWrite() || client.waitForBytesWritten(1000));
-        QVERIFY(client.waitForReadyRead(1000));
+        QVERIFY(client.bytesAvailable() || client.waitForReadyRead(1000));
         QCOMPARE(PrivateTorchSocket::Read(client, 12), QByteArray("OKAY00040029"));
         QCOMPARE(server.bufferedRequests.load(), 1);
+    }
+    void alreadyQueuedFakeAdbConnectionsAreHandled() {
+        FakePhoneAdb server(false, false, false, FakePhoneAdb::LaunchMode::None,
+                            FakePhoneAdb::RecoveryMode::Healthy, false, 0,
+                            FakePhoneAdb::ArrivalMode::QueuedConnections);
+        QTcpSocket first, second;
+        for (QTcpSocket* client : {&first, &second}) {
+            client->connectToHost(QHostAddress::LocalHost, server.port);
+            QVERIFY(client->waitForConnected(1000));
+            QCOMPARE(client->write("000chost:version"), qint64{16});
+            QVERIFY(!client->bytesToWrite() || client->waitForBytesWritten(1000));
+        }
+        // Both handshakes complete in the listener backlog before the worker
+        // accepts either. Qt accepts the batch into its pending queue.
+        server.releaseQueuedConnections.store(true);
+        for (QTcpSocket* client : {&first, &second}) {
+            QVERIFY(client->bytesAvailable() || client->waitForReadyRead(1000));
+            QCOMPARE(PrivateTorchSocket::Read(*client, 12), QByteArray("OKAY00040029"));
+        }
     }
     void canceledQueuedTorchNeverWrites() {
         PrivateTorchSocket socket;QVERIFY(socket.Open());okuflow::PhoneCameraTransport transport;

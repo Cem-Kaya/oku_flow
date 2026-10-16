@@ -307,6 +307,9 @@ private slots:
 
         const auto result = TryReclaimLegacyBundledAdbServer(
             MakeRequest(server->ready.port, distribution, temp.path()));
+        if (result.status != LegacyAdbRecoveryStatus::Recovered)
+            qWarning("Recovery refused: status=%d detail=%d diagnostic=%s",
+                     int(result.status), int(result.detail), result.diagnostic.c_str());
         QCOMPARE(result.status, LegacyAdbRecoveryStatus::Recovered);
         QCOMPARE(result.detail, LegacyAdbRecoveryDetail::None);
         QVERIFY(result.stoppedViaHostKill);

@@ -582,3 +582,8 @@ aligned with the project goals.
   unknown causes explicitly; an empty-output CI failure followed by a local
   pass does not establish a production fix. Do not increase deadlines or add
   retries merely to make a red run green.
+- Legacy recovery's native sibling scan shares a process-identity resource
+  with launcher, MCP and optional native-control fixtures that create short-
+  lived OkuFlow-named processes. Preserve their `okuflow_process_identity`
+  CTest lock when adding related fixtures; do not relax fail-closed image
+  classification to accommodate concurrent test process exits.

@@ -180,6 +180,21 @@ waiting for another readiness event; the regression fails against the former
 unconditional wait. It creates no runtime hooks, adb process or real-device
 connection. Borrowing and enumeration-after-shutdown assertions remain intact.
 
+`alreadyQueuedFakeAdbConnectionsAreHandled` completes two TCP handshakes before
+letting the fake server accept either. Its worker must drain Qt's pending
+connection queue before waiting for a new arrival; the regression fails on the
+former unconditional wait. `FakePhoneAdb::ArrivalMode` selects normal traffic,
+an already-buffered request or this deterministic backlog without real devices.
+
+Legacy recovery scans the native process inventory and deliberately fails closed
+when a candidate image disappears before classification. `adb_legacy_recovery`,
+`windows_runtime_contract`, `mcp_bridge_contract` and the optional
+`native_app_control_offscreen` share `okuflow_process_identity` so that scan does
+not race the other fixtures' short-lived `oku_flow.exe`/`OkuFlowApp.exe` images.
+This declares a host-resource dependency, not a retry or weaker safety check.
+Unexpected successful-recovery status assertions also print the detailed guard
+and diagnostic; the earlier CI Busy assertion did not identify its guard.
+
 First run the normal `scripts\agent_build.bat`. It now continues to CUDA after
 a CPU test failure, preserving independent configuration results. If the only
 problem is a recorded desktop interruption, stop competing input, then run:

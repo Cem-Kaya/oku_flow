@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Drain already-accepted fake adb connections before waiting for another
+  arrival, covered by a deterministic two-client backlog regression. Declare
+  the shared process-identity resource between legacy recovery and fixtures
+  that launch temporary OkuFlow-named images; keep production safety checks.
+
 - Handle already-buffered fake adb requests without waiting for a second socket
   readiness event. Add a deterministic prebuffered-request regression while
   preserving borrowed-server shutdown and discovery assertions.
