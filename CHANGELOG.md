@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Speed up validation without weakening the release gate. The test gate keeps
+  per-test evidence, so unrelated edits no longer invalidate every pass; it
+  supports SCOPED runs by name or label and runs background tests in parallel
+  while GPU/codec and GUI tests stay serial. The CUDA step runs only tests the
+  CPU suite cannot cover unless `OKUFLOW_FULL_CUDA_SUITE=1`. New
+  `scripts/agent_check.ps1` selects, builds and runs only the tests affected by
+  changed files. Pull-request CI skips docs-only changes, tests only affected
+  targets and caches compilation.
+
 - Enable built-in Assistant control by default for new and pre-control settings.
   Preserve saved on/off choices and keep external MCP and camera/capture grants
   separate. Update the control explanation in all 24 translated catalogs.

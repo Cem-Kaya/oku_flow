@@ -390,21 +390,38 @@ so metadata generation cannot silently accept an incomplete copy.
   resize changes and a concurrent presenter update within the original 220 ms
   deadline, then verifies final dimensions and drains the presenter.
 - `scripts/run_test_gate.ps1` discovers CTest commands with `--show-only=json-v1`
-  and records serial runs with immutable per-attempt JUnit/console logs.
-  `Get-Digest` and `Get-InventoryDigest` bind the local ledger to build path,
-  configuration, repository/build/Qt/native-runtime/command inputs, driver and
-  display/DPI metadata, boot identity, culture and relevant environment
-  hashes; input changes conservatively invalidate prior passes. The snapshot
-  output contains per-component hashes, so a mid-run invalidation names changed
-  files or metadata without logging environment values or secrets.
-  Fixture `--output`/`--trace` arguments declare generated result paths; their
-  command strings remain hashed but their changing result bytes are excluded.
+  and records runs with immutable per-attempt JUnit/console logs in a schema-2
+  `ledger-v2.json` per build directory and configuration. `Get-RuntimeInputs`
+  hashes shared Qt/system runtime DLLs, CTest, culture and relevant environment
+  values once per run (desktop/DPI/boot only when a `gui` test is involved);
+  `Get-TestFingerprint` adds the test executable, adjacent DLL/QM files, rooted
+  arguments, CTest properties and `REQUIRED_FILES`. Fixture `--output`/`--trace`
+  arguments name generated results and are excluded as inputs.
+  `Initialize-HashCache`/`Save-HashCache` reuse SHA-256 values keyed by full
+  path, length and LastWriteTimeUtc ticks. `Convert-LedgerInputs` stores each
+  shared runtime map once per digest and `Limit-LedgerEvidence` keeps the current
+  fingerprint plus three recent ones without dropping matching blockers. A
+  mid-run fingerprint change names the changed inputs without logging values.
+  `-Test`/`-Label`/`-Select` produce a `SCOPED PASS/FAIL` verdict for exactly the
+  selection; `-UncoveredByPreset` selects `gpu`, `cuda-variant` and names absent
+  from another preset. Pending cases run in three partitions: parallel
+  background, serial `gpu`/`codec` and serial `gui`.
   `Get-CaseResult` keeps assertions/mixed failures distinct from one explicitly
   marked desktop interruption, and reports optional CTest/Qt skips separately.
-  `Save-Ledger` replaces only that inventory's JSON atomically; attempt logs stay
-  intact. Failed/unfinished cases never auto-retry; `-Resume -RetryInterrupted`
-  runs only an explicitly named recorded interruption once. Whole resumes rerun
-  optional skips. A missing/mismatched result cannot complete the gate.
+  `Save-Ledger` replaces the ledger atomically; attempt logs stay intact.
+  Failed/unfinished cases never auto-retry; `-Resume -RetryInterrupted` runs
+  only an explicitly named recorded interruption once. Resumes rerun optional
+  skips. A missing/mismatched result cannot complete the gate.
+- `scripts/select_tests.ps1` maps changed files (`-Files`, or `-Base` plus
+  working-tree and untracked changes) to CTest cases and build targets. It reads
+  `ninja -t deps`/`-t query` transitively through objects and OBJECT/static
+  libraries, adds `REQUIRED_FILES` and rooted-argument consumers, and applies
+  `tests/test_impact.json` for full/none/extra-check rules. `Full` records the
+  reason for a fail-safe full selection, including missing, stale or incomplete
+  dependency data. `scripts/agent_check.ps1` initializes VS 2022, configures
+  `msvc-cpu` when needed, builds the selected targets and calls the runner with
+  `-Test`; GUI cases stay pending unless `-IncludeGui`. `scripts/test_select_tests.ps1`
+  uses `Assert-Selection` against a private synthetic CMake/Ninja project.
 - `.github/workflows/windows-checks.yml` installs the pinned Qt/MSVC toolchain,
   using `scripts/initialize_windows_ci_toolchain.ps1` to discover only VS 2022
   with `vswhere`, invoke Microsoft's installed developer PowerShell for x64,
@@ -413,7 +430,13 @@ so metadata generation cannot silently accept an incomplete copy.
   private desktop-free validation file; no JavaScript action is required for MSVC.
   The Android host job pins `ubuntu-24.04` to avoid moving-image migrations.
   The workflow builds the CPU preset and runs background/native GUI checks on a disposable
-  GitHub Windows VM. `scripts/run_windows_ci_gui.ps1` refuses local execution;
+  GitHub Windows VM. Pull requests run `select_tests.ps1` against the PR base:
+  docs/site-only changes skip compilation, scoped changes build and test only
+  the selected targets and cases, and full selections keep the complete run.
+  Pushes to main and dispatch `all` stay complete. sccache (with embedded `/Z7`
+  debug information) caches compilation; the incremental `build/msvc-cpu` cache
+  is restored by every run but saved only by pushes to main. The Android host job
+  runs only when Android files change. `scripts/run_windows_ci_gui.ps1` refuses local execution;
   `OkuFlowCiDesktop.InputName()` reads the native input desktop with an exact
   scoped handle, refusing session 0, noninteractive/locked desktops and Qt
   offscreen overrides. It discovers registered CTest cases by label/exact name.

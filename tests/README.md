@@ -133,18 +133,27 @@ process. This does not reserve the desktop against a person or browser; arrange
 a free desktop and never run browser automation concurrently.
 
 The tracked build and bundle scripts call `scripts/run_test_gate.ps1`, which
-runs CTest serially and archives each invocation's JUnit and console output
-under `%LOCALAPPDATA%\OkuFlow\test-evidence\`. A small JSON ledger is separate
-for each canonical build directory, configuration and SHA-256 inventory. It
-hashes repository source/test/script/resource inputs (including untracked,
-nonignored inputs), generated CTest/build configuration, build EXEs/DLLs/QMs,
-absolute command-file inputs, Qt/native runtime DLLs, graphics driver/display/DPI
-metadata, Windows boot identity, culture, CTest itself and relevant
-environment values (including PATH and Qt scaling). Only the environment digest
-is saved. The post-run inventory must still match. Any change invalidates all
-passes for that inventory conservatively; CPU, CUDA and bundle evidence never
-substitute for one another. Keep the same desktop/hardware setup; after changing
-monitors, native DPI, drivers or hardware, run a fresh gate rather than resume.
+archives each CTest invocation's JUnit and console output under
+`%LOCALAPPDATA%\OkuFlow\test-evidence\`. Evidence is stored per test, build
+directory and configuration. Each test's fingerprint covers its command
+executable, rooted file arguments, adjacent DLL/QM files, CTest properties,
+`REQUIRED_FILES` contents, Qt/system runtime DLLs, culture and relevant
+environment values (including PATH and Qt scaling). Graphics driver, display/DPI
+and boot identity apply only to `gui`-labelled tests. Only digests are saved.
+Production sources are not hashed directly; a rebuilt executable changes its
+own hash, so build before validating. Declare runtime data and helper binaries
+that are not command arguments with `REQUIRED_FILES` (absolute paths). Shared
+runtime inputs are deduplicated by digest, and each test keeps its current
+fingerprint plus three recent alternatives. `hash-cache.json` in the same
+directory reuses a file's SHA-256 only while its full path, length and
+LastWriteTimeUtc ticks are unchanged. A selected test's post-run fingerprint
+must still match. CPU, CUDA and bundle evidence never substitute for one
+another. After changing monitors, native DPI, drivers or hardware, GUI evidence
+is invalidated automatically.
+
+Background tests run in parallel across logical processors (`-Parallel`
+overrides). Tests labelled `gpu` or `codec` run serially in a second CTest
+invocation, followed by serial `gui` tests.
 
 First run the normal `scripts\agent_build.bat`. It now continues to CUDA after
 a CPU test failure, preserving independent configuration results. If the only
@@ -189,13 +198,52 @@ ctest --preset msvc-cpu-tests -L gui-idle --parallel 1 --output-on-failure
 ./scripts/run_test_gate.ps1 -BuildDirectory $env:OKUFLOW_BUNDLE_BUILD_DIR -Resume -RetryInterrupted 'main_window_interactions.mouseFocusedChromeCanIdleFade'
 ```
 
-`-Test` selects exact CTest names, but the gate still fails until all required
-entries have results. `-ExcludeGui` is explicitly partial; a later matching
-whole-suite resume fills in GUI entries. A complete gate still requires the
-shipping compile, CPU and CUDA suites, and independent bundle CTest before
-publishing. The bundle's existing emergency test bypass remains visibly untested.
+`-Test` selects exact CTest names and `-Label` selects exact labels with
+any-match semantics; combined selectors form a union. Through `pwsh -File`, pass
+a mixed list as one argument: `-Select "headless,deadline_worker"`. A selected
+run reports `SCOPED PASS` or `SCOPED FAIL` for exactly those tests; missing
+executables of unselected tests are allowed and unknown names or labels fail.
+A scoped pass never establishes the release gate. `-ExcludeGui` is explicitly
+partial; a later matching whole-suite resume fills in GUI entries. A complete
+gate still requires the shipping compile, CPU and CUDA suites, and independent
+bundle CTest before publishing. The bundle's existing emergency test bypass
+remains visibly untested.
 
-For runner changes, run `pwsh -NoProfile -File scripts/test_test_gate.ps1 -CMake
+The CUDA step of `scripts/agent_build.bat` runs only what the CPU suite cannot
+cover: tests labelled `gpu` or `cuda-variant`, and names absent from the CPU
+inventory (`-UncoveredByPreset msvc-cpu-tests`). Common test translation units
+compile identically in both configurations. Set `OKUFLOW_FULL_CUDA_SUITE=1` to
+run the complete CUDA suite.
+
+### Fast scoped checks while editing
+
+```powershell
+# Changes since the merge-base with origin/main, plus staged, unstaged and untracked files.
+pwsh -NoProfile -File scripts/agent_check.ps1
+pwsh -NoProfile -File scripts/agent_check.ps1 -Files src/app/settings_store.cpp
+# Selection only, as JSON: mode none|scoped|full, tests, guiTests, targets, extraChecks.
+pwsh -NoProfile -File scripts/select_tests.ps1 -Preset msvc-cpu-tests -Files src/ui/ai_settings_dialog.cpp
+# Explicit scoped build and gate through the tracked helper.
+scripts\agent_build.bat --scoped msvc-cpu headless deadline_worker
+```
+
+`scripts/select_tests.ps1` follows the configured Ninja graph transitively
+(changed source or header, objects, OBJECT/static libraries, executables, CTest
+cases) and adds tests whose `REQUIRED_FILES` or rooted command arguments name a
+changed file. `tests/test_impact.json` covers inputs the graph cannot see:
+build, preset, runner and workflow changes select `full`; Markdown, `docs/`,
+`improvement_ideas/` and `website/` select `none`; Android code adds the host
+protocol unittest; translations add the catalog check and language GUI cases.
+Unknown inputs and a missing, stale or incomplete `.ninja_deps` select `full`.
+`scripts/agent_check.ps1` builds only the selected targets in `msvc-cpu`, runs the
+selected background tests, lists selected GUI cases as pending unless
+`-IncludeGui` is given, and runs the extra checks. A `full` selection refuses
+and points to `scripts/agent_build.bat`; `-AllowFull` instead builds `msvc-cpu`
+and runs every background test. Its SCOPED result never replaces the release gate.
+
+For selector changes, run `pwsh -NoProfile -File scripts/test_select_tests.ps1`
+from a VS 2022 x64 developer shell; it uses a private synthetic CMake/Ninja
+project. For runner changes, run `pwsh -NoProfile -File scripts/test_test_gate.ps1 -CMake
 <cmake.exe>`. Its private command-line CTest fixtures verify partial/resume
 coverage, pass reuse, explicit interruption retry, refusal to retry assertions
 or mixed failures, retained logs, configuration/input/runtime/scale invalidation
