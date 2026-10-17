@@ -283,13 +283,14 @@ void OkuFlowApp::SubmitAgentPrompt(const QString& prompt)
         controlService_->End(agentContext_);agentContext_.clear();runtime.FailPreparedChat("busy");return;
     }
     const auto generation=agentGeneration_;
-    const auto start=[this,generation,prompt](QByteArray jpeg) {
+    const auto start=[this,generation,prompt](QByteArray jpeg,
+        std::optional<agent::AuthorizedObservation> observation) {
         if(generation!=agentGeneration_ || agentContext_.isEmpty())return;
         const QString responsePrompt=AssistiveRuntime::AppendResponseLanguageDirective(prompt,
             languageManager_?languageManager_->languageCode():QStringLiteral("en"));
         if(Codex(settingsController_->MutableSettings().assistive)) {
             if (!agentCodex_->SubmitTurn(agentContext_,responsePrompt,std::move(jpeg),
-                assistiveManager_->Runtime().ChatSession().BridgeContext(ChatBackendKind::Agent))) {
+                assistiveManager_->Runtime().ChatSession().BridgeContext(ChatBackendKind::Agent),observation)) {
                 controlService_->End(agentContext_); agentContext_.clear();
                 assistiveManager_->Runtime().CompleteControlAnswer({}, {}, {},"agent_unavailable",false);
             }
@@ -317,30 +318,29 @@ void OkuFlowApp::SubmitAgentPrompt(const QString& prompt)
                 "Re-read after stale_state and summarize changes. User grants are enforced by the app. ")+
                 settingsController_->MutableSettings().assistive.assistantInstructions;
             if(!agentHttp_->Start({agentContext_,QStringLiteral("http-%1-%2").arg(agentOwner_).arg(generation),
-                policy,responsePrompt,std::move(jpeg),assistiveManager_->Runtime().ChatSession().TextContext()},completed))completed({{},"agent_unavailable",false});
+                policy,responsePrompt,std::move(jpeg),assistiveManager_->Runtime().ChatSession().TextContext(),observation},completed))completed({{},"agent_unavailable",false});
         }
     };
     const bool frames=controlService_->ContextStatus().value("grants").toObject().value("frames").toBool();
-    if(!frames) {start({});return;}
+    if(!frames) {start({},{});return;}
     controlService_->Submit({agentContext_,QStringLiteral("initial-%1").arg(generation),"view_observe",{}},
         [self=QPointer<OkuFlowApp>(this),generation,start](agent::ControlResult result) {
         if(!self || generation!=self->agentGeneration_ || self->agentContext_.isEmpty())return;
-        if(!result.content.value("ok").toBool() || result.jpeg.isEmpty()) {
+        if(!result.content.value("ok").toBool() || result.jpeg.isEmpty() || !result.observation) {
             self->controlService_->End(self->agentContext_);self->agentContext_.clear();
             self->assistiveManager_->Runtime().CompleteControlAnswer({}, {}, {},
                 result.content.value("error").toObject().value("code").toString("no_frame"),false);return;
         }
         const auto jpeg=std::move(result.jpeg);
-        const auto sourceEpoch=self->controlService_->Stamp().sourceEpoch;
+        const auto observation=*result.observation;
         self->assistiveManager_->Runtime().PrepareControlImagePreview(jpeg,
-            [self,generation,sourceEpoch,start,jpeg]() {
+            [self,generation,observation,start,jpeg]() {
                 if (!self || generation!=self->agentGeneration_ || self->agentContext_.isEmpty()) return;
-                if (self->controlService_->Stamp().sourceEpoch!=sourceEpoch ||
-                    !self->controlService_->ContextStatus().value("grants").toObject().value("frames").toBool()) {
+                if (!self->controlService_->AuthorizeFrameDelivery(observation)) {
                     self->controlService_->End(self->agentContext_);self->agentContext_.clear();
                     self->assistiveManager_->Runtime().CompleteControlAnswer({}, {}, {},"consent_required",false);return;
                 }
-                start(jpeg);
+                start(jpeg,observation);
             });
     });
 }
@@ -417,10 +417,11 @@ void OkuFlowApp::TickAgentScene()
     controlService_->Submit({context,QStringLiteral("scene-%1-%2").arg(generation).arg(Id()),"view_observe",{{"maxLongSide",768}}},
         [self,context,stamp,generation](agent::ControlResult result) {
             if(!self || generation!=self->agentSceneGeneration_ || context!=self->agentSceneContext_)return;
-            if(!result.content.value("ok").toBool() || result.jpeg.isEmpty()) {self->CancelAgentScene();return;}
-            auto guard=[self,context,stamp,generation] {
+            if(!result.content.value("ok").toBool() || result.jpeg.isEmpty() || !result.observation) {self->CancelAgentScene();return;}
+            const auto observation=*result.observation;
+            auto guard=[self,context,observation,generation] {
                 return self && self->agentSceneRequested_ && generation==self->agentSceneGeneration_ && context==self->agentSceneContext_
-                    && self->controlService_->AuthorizeFrameDelivery(context,stamp);
+                    && self->controlService_->AuthorizeFrameDelivery(observation);
             };
             if(!guard()) {self->CancelAgentScene();return;}
             self->agentSceneEffective_=true;

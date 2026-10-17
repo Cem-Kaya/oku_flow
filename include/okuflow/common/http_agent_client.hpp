@@ -26,6 +26,7 @@ struct HttpAgentTurn {
     QString userPrompt;
     QByteArray jpeg; // initial app-authorized viewport, optional
     QJsonArray textHistory; // app-owned completed role pairs only; no historical images
+    std::optional<agent::AuthorizedObservation> observation;
 };
 struct HttpAgentOutcome { QString text, errorCode; bool interrupted{}; };
 struct HttpAgentCapability { bool available{}, parallelToolCallsAccepted{}; };
@@ -67,6 +68,7 @@ private:
     QHash<QString,HttpAgentCapability> capabilities_;
     QJsonArray messages_, observations_;
     std::vector<Call> calls_;
+    std::vector<agent::AuthorizedObservation> imageAuthorities_;
     QSet<QString> seenIds_;
     QByteArray response_;
     QTimer deadline_, contextTimer_;

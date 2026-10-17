@@ -186,6 +186,7 @@ void AppControlService::SetGrants(const QString& id, const ControlGrants& grants
     if (!context_ || context_->id != id || !context_->active) return;
     if (context_->spec.kind == ContextKind::ExternalLease) return; // immutable lease bundle
     const bool recordingRevoked = context_->spec.grants.recording && !grants.recording;
+    if (context_->spec.grants.frames != grants.frames) ++context_->frameGrantGeneration;
     context_->spec.grants = grants; context_->spec.grants.source = false;
     if (recordingRevoked) target_.StopOwnedRecording(context_->spec.owner);
     Event(*context_, "grant_changed");
@@ -311,8 +312,13 @@ QJsonObject AppControlService::ContextStatus() const {
 }
 bool AppControlService::AuthorizeFrameDelivery(const QString& contextId, ControlStamp expected) {
     Q_ASSERT(QThread::currentThread() == thread());
+    target_.SynchronizeNativeState();
     return context_ && context_->id == contextId && ValidContext(*context_)
         && context_->spec.grants.frames && !target_.ModalActive() && Stamp() == expected;
+}
+bool AppControlService::AuthorizeFrameDelivery(const AuthorizedObservation& expected) {
+    return AuthorizeFrameDelivery(expected.contextId, expected.stamp)
+        && context_->frameGrantGeneration == expected.grantGeneration;
 }
 bool AppControlService::ValidContext(Context& context) {
     if (!context.active) return false;
@@ -403,6 +409,8 @@ void AppControlService::Dispatch(const ControlRequest& request, ControlCompletio
     }
     if (context.calls.size() >= 128) { completion(ControlResult::Failure("budget_exhausted")); return; }
     context.calls.emplace(request.callKey, Reservation{digest, {}, false, {std::move(completion)}});
+    context.calls.at(request.callKey).imageStamp = Stamp();
+    context.calls.at(request.callKey).imageGrantGeneration = context.frameGrantGeneration;
     context.lastCall = Now();
     const auto tool = descriptor->id;
     auto normalized = request; normalized.arguments = *args;
@@ -854,7 +862,6 @@ void AppControlService::Finish(const QString& id, const QString& key, ControlRes
     }
     if (QJsonDocument(result.content).toJson(QJsonDocument::Compact).size() > 32*1024) result = ControlResult::Failure("internal");
     found->second.result = result; found->second.completed = true;
-    found->second.imageStamp = Stamp();
     if (found->second.counted) {
         if (found->second.mutation) context_->mutationsInFlight = std::max(0,context_->mutationsInFlight-1);
         else context_->readsInFlight = std::max(0,context_->readsInFlight-1);
@@ -878,11 +885,22 @@ ControlResult AppControlService::Delivery(Context& context, const Reservation& r
         return ControlResult::Failure("context_expired");
     if (!context.active || !context.spec.grants.frames || target_.ModalActive()) return ControlResult::Failure("consent_denied");
     if (reservation.imageStamp != Stamp()) return ControlResult::Failure("stale_observation");
+    if (result.observation && result.observation->stamp != reservation.imageStamp)
+        return ControlResult::Failure("stale_observation");
+    if (reservation.imageGrantGeneration != context.frameGrantGeneration)
+        return ControlResult::Failure("consent_denied");
     const auto bytes = result.jpeg.toBase64().size();
     const bool external = context.spec.kind == ContextKind::ExternalLease;
     if (bytes > 256*1024 || context.imageBytes+bytes > (external ? 1536 : 768)*1024
         || context.imagesDelivered >= (external ? 6 : 3)) return ControlResult::Failure("budget_exhausted");
     context.imageBytes += static_cast<int>(bytes); ++context.imagesDelivered;
+    // The native producer supplies frame sequence/time and the stamp of the
+    // encoded pixels. Add authority without replacing that immutable provenance.
+    auto observation = result.observation.value_or(AuthorizedObservation{});
+    observation.contextId = context.id;
+    observation.stamp = reservation.imageStamp;
+    observation.grantGeneration = reservation.imageGrantGeneration;
+    result.observation = std::move(observation);
     return result;
 }
 void AppControlService::Event(Context& context, const QString& type, QJsonObject data) {

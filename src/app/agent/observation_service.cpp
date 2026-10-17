@@ -171,6 +171,7 @@ ControlResult ObservationService::Encode(const QImage& viewport, const Observati
         {"width",frame.transform.sourceWidth},{"height",frame.transform.sourceHeight}};
     result["destinationRect"] = QJsonObject{{"x",frame.transform.destinationX},{"y",frame.transform.destinationY},
         {"width",frame.transform.destinationWidth},{"height",frame.transform.destinationHeight}};
-    return {result,std::move(jpeg)};
+    return {result,std::move(jpeg),AuthorizedObservation{
+        {},frame.stamp,0,frame.sequence,frame.processedAt}};
 }
 } // namespace okuflow::agent

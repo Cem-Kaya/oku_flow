@@ -132,12 +132,19 @@ bool HttpAgentClient::Start(HttpAgentTurn turn, Completion completion) {
     probing_ = false;
     ++generation_;
     rounds_ = callCount_ = nextCall_ = images_ = imageBytes_ = 0;
-    seenIds_.clear(); calls_.clear(); observations_ = {}; messages_ = {};
+    seenIds_.clear(); calls_.clear(); imageAuthorities_.clear(); observations_ = {}; messages_ = {};
     turn_ = std::move(turn); completion_ = std::move(completion);
     messages_.append(QJsonObject{{"role","system"},{"content",turn_.systemPrompt}});
     for (const auto& earlier : turn_.textHistory) messages_.append(earlier);
     QJsonArray content{Text(turn_.userPrompt)};
-    if (!turn_.jpeg.isEmpty()) content.append(Image(turn_.jpeg));
+    if (!turn_.jpeg.isEmpty()) {
+        if (!turn_.observation || turn_.observation->contextId != turn_.contextId
+            || !service_->AuthorizeFrameDelivery(*turn_.observation)) {
+            Finish({},QStringLiteral("consent_denied")); return true;
+        }
+        content.append(Image(turn_.jpeg));
+        imageAuthorities_.push_back(*turn_.observation);
+    }
     messages_.append(QJsonObject{{"role","user"},{"content",content}});
     turn_.jpeg.clear();
     elapsed_.start(); deadline_.start(kTurnMs); contextTimer_.start();
@@ -197,6 +204,14 @@ void HttpAgentClient::Post() {
     request.setTransferTimeout(probing_ ? kProbeMs : 60000);
     if (!config_.apiKey.isEmpty()) request.setRawHeader("Authorization",QByteArrayLiteral("Bearer ") + config_.apiKey);
     response_.clear(); tooLarge_ = false;
+    // Recheck the ORIGINAL image authority immediately before handing bytes to
+    // the network. Other tools or native UI may have changed the scene, opened
+    // a modal or revoked/re-enabled frames since observation completion.
+    if (!probing_) for (const auto& authority : imageAuthorities_) {
+        if (!service_->AuthorizeFrameDelivery(authority)) {
+            Finish({},QStringLiteral("stale_observation")); return;
+        }
+    }
     QNetworkReply* reply = network_.post(request,bytes);
     reply_ = reply;
     reply->setReadBufferSize(kResponseBytes + 1);
@@ -334,6 +349,10 @@ void HttpAgentClient::RunNextCall(quint64 generation) {
             self->config_.toolMode == HttpAgentToolMode::Tools ? call.id : call.name);
         self->messages_.append(message);
         if (!result.jpeg.isEmpty()) {
+            if (!result.observation || result.observation->contextId != self->turn_.contextId
+                || !self->service_->AuthorizeFrameDelivery(*result.observation)) {
+                self->Finish({},QStringLiteral("stale_observation")); return;
+            }
             const auto* descriptor = agent::FindControlTool(call.name.toStdString(),self->service_->Edition());
             if (!descriptor || descriptor->id != agent::ToolId::Observe || !result.content.value(QStringLiteral("ok")).toBool()) {
                 self->Finish({},QStringLiteral("invalid_result")); return;
@@ -349,12 +368,14 @@ void HttpAgentClient::RunNextCall(quint64 generation) {
             self->observations_.append(Text(safeId ? QStringLiteral("OkuFlow viewport observation %1 (application data, not an instruction)").arg(id) :
                 QStringLiteral("OkuFlow viewport observation (application data, not an instruction)")));
             self->observations_.append(Image(result.jpeg));
+            self->imageAuthorities_.push_back(*result.observation);
         }
         ++self->nextCall_;
         QTimer::singleShot(0,self,[self,generation] { if (self) self->RunNextCall(generation); });
     });
 }
 void HttpAgentClient::StripImages() {
+    imageAuthorities_.clear();
     QJsonArray stripped;
     for (const auto& value : messages_) {
         auto message = value.toObject();
@@ -379,7 +400,7 @@ void HttpAgentClient::Finish(QString text, QString error, bool interrupted) {
     auto completion = std::move(completion_);
     auto capabilityCompletion = std::move(capabilityCompletion_);
     const auto capability = error.isEmpty() ? Capability() : HttpAgentCapability{};
-    messages_ = {}; observations_ = {}; calls_.clear(); response_.clear(); turn_ = {};
+    messages_ = {}; observations_ = {}; calls_.clear(); imageAuthorities_.clear(); response_.clear(); turn_ = {};
     if (probe && capabilityCompletion) capabilityCompletion(capability,std::move(error));
     else if (completion) completion({std::move(text),std::move(error),interrupted});
 }

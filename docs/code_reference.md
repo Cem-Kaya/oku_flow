@@ -1,5 +1,20 @@
 # OkuFlow Code Reference
 
+## Observation authority at egress (audit AS-004)
+
+`AuthorizedObservation` is internal control-result provenance: context id,
+source/processing/view/geometry stamp, frame-grant generation and native frame
+sequence/monotonic processing time. `ObservationService::Encode` supplies the
+pixel identity; `AppControlService::Delivery` preserves it and adds the exact
+context/grant authority. Reservations retain admission-time stamps rather than
+sampling new identity at completion. `AuthorizeFrameDelivery` polls native edits
+and checks context, grants, modal state and original stamp; its typed overload
+also rejects a revoked/re-enabled grant generation. HTTP stores authority with
+pending images and rechecks immediately before POST. Codex and the MCP pipe
+fence use the same typed authority. Initial chat preview work and scoped-scene
+requests carry the original record rather than sampling a later stamp. These
+records are never serialized as provider credentials or model-writable grants.
+
 ## Protected credential generations (audit AS-002)
 
 `SettingsController::CredentialBinding` records the runtime id/provider/endpoint/

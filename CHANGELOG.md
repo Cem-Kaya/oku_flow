@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Carry native observation source/view/processing/geometry and frame provenance
+  through Assistant previews and provider/MCP delivery. Final sends recheck the
+  original authority, modal state and frame-grant generation; revoking and
+  re-enabling a grant cannot revive previously captured images.
+
 - Store changed API keys, endpoints and provider bindings under new protected
   credential ids. Failed settings saves and backup recovery retain the prior
   endpoint/key pair; unchanged saves and retries reuse their existing generation.

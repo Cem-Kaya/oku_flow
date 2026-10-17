@@ -7,6 +7,7 @@
 #include <QtTest>
 #include <deque>
 #include <optional>
+#include <utility>
 
 using namespace okuflow;
 using namespace okuflow::agent;
@@ -66,11 +67,13 @@ class Target final : public IAppControlTarget {
 public:
     std::map<Field,QJsonValue> fields{{Field::ZoomAmount,1.0}};
     int effects{}, observations{};
-    bool delay{};
+    bool delay{}, modal{};
+    mutable std::function<void()> beforeState;
     ControlCompletion delayed;
     QJsonObject State() const override { return {{"zoom",fields.at(Field::ZoomAmount)}}; }
     std::map<Field,QJsonValue> Fields() const override { return fields; }
     ControlPlan Prepare(ToolId tool,const QJsonObject& args,const QString&) const override {
+        if (tool == ToolId::State && beforeState) std::exchange(beforeState, {})();
         ControlPlan plan;
         if (tool == ToolId::Zoom) plan.writes = {{Field::ZoomAmount,args["magnification"]}};
         return plan;
@@ -85,7 +88,7 @@ public:
             else completion({{{"ok",true},{"observationId","obs-fixture"}},QByteArray("fixture-jpeg")});
         } else completion({{{"ok",true}}, {}});
     }
-    bool ModalActive() const override { return false; }
+    bool ModalActive() const override { return modal; }
     bool UserInteracting() const override { return false; }
     bool RecordingActive() const override { return false; }
     QString RecordingSession() const override { return {}; }
@@ -97,8 +100,10 @@ HttpAgentConfig Config(const Server& server, HttpAgentToolMode mode = HttpAgentT
 }
 HttpAgentTurn Turn(AppControlService& service, QByteArray jpeg = {}) {
     service.SetEnabled(true,false);
-    return {service.Begin({ContextKind::EmbeddedTurn,"app-issued-owner",5,{true,false,false,false}}),
-        "app-issued-http-epoch-5","Application control fixture.","Make the text readable.",jpeg};
+    const auto context = service.Begin({ContextKind::EmbeddedTurn,"app-issued-owner",5,{true,false,false,false}});
+    // Synthetic pixels and authority are created together, before any mutation.
+    return {context, "app-issued-http-epoch-5","Application control fixture.","Make the text readable.",jpeg,
+        {}, AuthorizedObservation{context, service.Stamp(), 0}};
 }
 bool Test(HttpAgentClient& client) {
     std::optional<bool> result;
@@ -118,6 +123,50 @@ int Images(const QJsonArray& messages) {
 class HttpAgentTests final : public QObject {
     Q_OBJECT
 private slots:
+    void initialImageCannotAcquireNewAuthorityAfterPreparation() {
+        Server server; Target target; AppControlService service(target); HttpAgentClient client;
+        client.Configure(Config(server)); client.SetControlService(&service);
+        server.Push(Probe()); QVERIFY(Test(client));
+        auto turn = Turn(service, "fixture-old-pixels");
+        service.NativeFieldsChanged({Field::ZoomAmount});
+        std::optional<HttpAgentOutcome> outcome;
+        QVERIFY(client.Start(turn, [&](auto value) { outcome = value; }));
+        QTRY_VERIFY(outcome.has_value());
+        QVERIFY(!outcome->errorCode.isEmpty());
+        QCOMPARE(server.requests.size(), std::size_t(1));
+    }
+    void imageEgressRechecksOriginalAuthority_data() {
+        QTest::addColumn<QString>("change");
+        for (const auto* change : {"view", "processing", "source", "grant-cycle", "modal"})
+            QTest::newRow(change) << QString::fromLatin1(change);
+    }
+    void imageEgressRechecksOriginalAuthority() {
+        QFETCH(QString, change);
+        Server server; Target target; AppControlService service(target); HttpAgentClient client;
+        client.Configure(Config(server)); client.SetControlService(&service);
+        server.Push(Probe()); QVERIFY(Test(client));
+        auto turn = Turn(service);
+        target.beforeState = [&] {
+            if (change == "view") service.NativeFieldsChanged({Field::ZoomAmount});
+            else if (change == "processing") service.NativeFieldsChanged({Field::Contrast});
+            else if (change == "source") {
+                service.SourceChanged();
+                service.SetGrants(turn.contextId, {true,false,false,false});
+            } else if (change == "grant-cycle") {
+                service.SetGrants(turn.contextId, {});
+                service.SetGrants(turn.contextId, {true,false,false,false});
+            } else target.modal = true;
+        };
+        server.Push(Tools({Call("observe", "view_observe"), Call("state", "app_state_get")}));
+        server.Push(Final());
+        std::optional<HttpAgentOutcome> outcome;
+        QVERIFY(client.Start(turn, [&](auto value) { outcome = value; }));
+        QTRY_VERIFY_WITH_TIMEOUT(outcome.has_value(), 5000);
+        QVERIFY(!outcome->errorCode.isEmpty());
+        QCOMPARE(target.observations, 1);
+        QCOMPARE(server.requests.size(), std::size_t(2)); // probe + initial text, no image POST
+        QCOMPARE(Images(server.requests.back()["messages"].toArray()), 0);
+    }
     void initTestCase() { QNetworkProxy::setApplicationProxy(QNetworkProxy(QNetworkProxy::NoProxy)); }
     void completedTextContextIsBoundedAndPixelFree() {
         Server server; Target target; AppControlService service(target); HttpAgentClient client;

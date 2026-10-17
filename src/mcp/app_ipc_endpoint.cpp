@@ -288,8 +288,10 @@ struct AppIpcEndpoint::Impl {
                 if (!s->Retire(key))
                     return;
                 std::function<bool()> fence;
+                if (!result.jpeg.isEmpty() && !result.observation)
+                    result = agent::ControlResult::Failure("stale_observation");
                 if (!result.jpeg.isEmpty()) {
-                    const auto expected = guarded->impl_->service.Stamp();
+                    const auto expected = *result.observation;
                     int delay{};
                     std::function<void()> posted;
 #if defined(OKUFLOW_MCP_TEST_HOOKS)
@@ -305,7 +307,7 @@ struct AppIpcEndpoint::Impl {
                             const bool permitted =
                                 guarded && guarded->impl_->session == s && guarded->impl_->context == lease &&
                                 !s->stopped.load() && !s->IsCanceled(key) && s->identity->Alive() &&
-                                guarded->impl_->service.AuthorizeFrameDelivery(lease, expected);
+                                guarded->impl_->service.AuthorizeFrameDelivery(expected);
                             promise->set_value(permitted);
                         };
                         QMetaObject::invokeMethod(

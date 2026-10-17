@@ -370,6 +370,11 @@ private slots:
         QImage image(1000,1000,QImage::Format_ARGB32); image.fill(Qt::white);
         const auto encoded = ObservationService::Encode(image,frame,true,768);
         QVERIFY(encoded.content["ok"].toBool()); QVERIFY(encoded.jpeg.size() <= 192*1024);
+        QVERIFY(encoded.observation);
+        QVERIFY(encoded.observation->stamp == frame.stamp);
+        QCOMPARE(encoded.observation->frameSequence, frame.sequence);
+        QCOMPARE(encoded.observation->processedAt, frame.processedAt);
+        QVERIFY(encoded.observation->contextId.isEmpty()); // the service adds authority later
         QVERIFY(!encoded.content.contains("jpeg")); QCOMPARE(encoded.content["versions"].toObject()["sourceEpoch"].toInt(),7);
         std::optional<ControlResult> completed;
         service.Request(true,768,frame.stamp,[&](ControlResult result) { completed = result; });
