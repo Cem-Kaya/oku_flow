@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Release bundle validation now requires an explicit CPU/CUDA capability profile.
+  Missing cases, CTest skips and skipped Qt rows cannot satisfy required native
+  GUI or CUDA/recording coverage. Development checks keep optional skips visible.
+
 - Android Stop, host replacement and settings restarts now use one main-thread
   lifecycle owner. Commands, camera results and outgoing packets retain their
   original host token; a retired session cannot restart or change its successor.

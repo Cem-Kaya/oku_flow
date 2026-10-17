@@ -1082,3 +1082,32 @@ real built-in Windows OCR engine on synthetic dark-on-light and light-on-dark
 pages and skips when no OCR language is installed; a skip is not a pass.
 Neither opens native windows, cameras or network connections. Native GUI
 layout, screen-reader and real-camera acceptance remain separate.
+
+## Required release capabilities (TB-002)
+
+The default `run_test_gate.ps1 -CapabilityProfile development` preserves optional
+skips and reports capability acceptance as `NotApplicable`. It is useful CPU/CI
+coverage, not evidence that unavailable hardware was exercised.
+`windows-cpu` requires the entire unfiltered CPU inventory, with every native
+`gui` case and the settings/recording/runtime/phone/control/MCP boundary cases
+strictly `Passed`. `windows-cuda` additionally requires all six CUDA kernel/cubin
+cases and `media_writer_gpu_codecs` (GPU-fed H.264). Their missing/skip/Qt-row-skip
+states block acceptance. Optional AV1 is not required on Pascal; its absence
+inside a successfully exercised H.264 fixture is reported separately by that
+fixture. `windows-cuda-kernels` permits the CUDA delta selection but still
+requires each of its six registered cases in that selection to pass.
+
+The bundle script chooses CPU/CUDA profiles from its requested build and the
+runner verifies the configured cache matches. The ledger records a separate
+`capabilityChecks` receipt with `Passed`, `Failed`, `Blocked`, `NotRun` case
+states and exact result fingerprints. Original CTest skip/failure evidence is
+never rewritten. Filtered GUI runs cannot pass a shipping profile. The explicit
+emergency untested-bundle path remains visibly untested. These minimum automated
+profiles do not establish Maxine quality, live provider access, physical phone
+recovery or clean-VM installer acceptance. UCT real OCR runtime coverage remains
+separate until that experimental feature's shipping profile is defined.
+
+Run `scripts/test_test_gate.ps1 -CMake <cmake.exe>` after policy changes. Its
+private command-line fixtures cover required missing/skipped/row-skipped/failed
+capabilities, exact fingerprint binding and CPU/CUDA build mismatches without
+opening GUI windows or using a GPU.

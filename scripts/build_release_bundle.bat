@@ -35,6 +35,8 @@ if not defined OKUFLOW_ENABLE_CUDA set "OKUFLOW_ENABLE_CUDA=ON"
 if not defined OKUFLOW_ENABLE_TEXT_SR set "OKUFLOW_ENABLE_TEXT_SR=ON"
 set "CUDA_LICENSE_PATH="
 set "TEST_RESUME="
+set "CAPABILITY_PROFILE=windows-cpu"
+if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" set "CAPABILITY_PROFILE=windows-cuda"
 if "%OKUFLOW_TEST_RESUME%"=="1" set "TEST_RESUME=-Resume"
 if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" call :resolve_cuda_license
 if errorlevel 1 goto :fail
@@ -68,7 +70,7 @@ if "%OKUFLOW_SKIP_BUNDLE_TESTS%"=="1" (
     echo.
 ) else (
     echo ===== RUN RELEASE TEST GATE =====
-    pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -BuildDirectory "%BUILD_DIR%" -Configuration Release %TEST_RESUME%
+    pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -BuildDirectory "%BUILD_DIR%" -Configuration Release -CapabilityProfile %CAPABILITY_PROFILE% %TEST_RESUME%
     if errorlevel 1 goto :fail
 )
 

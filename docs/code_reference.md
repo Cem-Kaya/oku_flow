@@ -4139,3 +4139,18 @@ zoom restoration and the absence of a spurious user-edit event after cleanup.
 - `StreamSessionOwnerTest` exercises held restart delivery after Stop, successor
   ownership, stale callbacks, immediate transport loss, shutdown and owner-thread
   enforcement. It is JVM lifecycle evidence, not phone/hardware acceptance.
+
+### Required-capability test receipts (TB-002)
+
+`scripts/run_test_gate.ps1` exposes `-CapabilityProfile` with development,
+windows-cpu, windows-cuda and windows-cuda-kernels profiles.
+`Get-CapabilityRequirements` declares the registered mandatory test names,
+required labels and configured CUDA variant. `Get-CapabilityVerdict` evaluates
+only freshly selected/fingerprinted records: only `Passed` satisfies a required
+case; absence is `NotRun`, skip/partial/unresolved is `Blocked`, and assertions
+remain `Failed`. It leaves original CTest results unchanged. Strict shipping
+profiles reject filtered inventories and missing GUI registration. The ledger's
+bounded `capabilityChecks` history records the separate profile verdict, shared
+runtime and per-case fingerprints. `build_release_bundle.bat` selects the strict
+profile before staging. `test_test_gate.ps1` uses pure policy contracts plus
+actual command-line runner fixtures for whole-test and Qt-row skip failures.

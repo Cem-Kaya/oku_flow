@@ -55,6 +55,21 @@ try {
     foreach ($definition in $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
         . ([scriptblock]::Create($definition.Extent.Text))
     }
+    $requirements = @{ tests = @('required'); labels = @('gui') }
+    $inventory = @(@{ name = 'required'; properties = @() },
+        @{ name = 'native'; properties = @(@{ name = 'LABELS'; value = @('gui') }) })
+    foreach ($status in 'Skipped', 'PassedWithSkips', 'Interrupted', 'Unfinished', 'Failed') {
+        $records = @{ required = @{ status = $status }; native = @{ status = 'Passed' } }
+        $verdict = Get-CapabilityVerdict $requirements $inventory $records @('required', 'native')
+        Assert-Contract ($verdict.state -in 'Failed', 'Blocked') "Required capability accepted $status."
+        Assert-Contract ($records.required.status -eq $status) 'Capability verdict rewrote original CTest evidence.'
+    }
+    $records = @{ required = @{ status = 'Passed' }; native = @{ status = 'Passed' } }
+    Assert-Contract ((Get-CapabilityVerdict $requirements $inventory $records @('required', 'native')).state -eq 'Passed') 'Complete required-capability evidence did not pass.'
+    Assert-Contract ((Get-CapabilityVerdict $requirements $inventory $records @('required')).state -eq 'Blocked') 'An unselected GUI pass was reused without fingerprinting.'
+    Assert-Contract ((Get-CapabilityVerdict $requirements @($inventory[0]) $records @('required')).state -eq 'Blocked') 'Absent GUI inventory accepted.'
+    Assert-Contract ((Get-CapabilityVerdict $requirements $inventory @{} @('required', 'native')).state -eq 'Blocked') 'Missing capability evidence accepted.'
+    Assert-Contract ((Get-CapabilityVerdict (Get-CapabilityRequirements 'development') $inventory @{} @()).state -eq 'NotApplicable') 'Development was represented as release acceptance.'
     [xml]$truncated = '<testsuite><testcase status="run"><system-out>PASS : Fixture::early()
 [This part of the test output was removed since it exceeds the threshold of 1048576 bytes.]
 </system-out></testcase></testsuite>'
@@ -522,6 +537,32 @@ add_test(NAME fixture_full COMMAND "${CMAKE_COMMAND}" -E echo full)
 '@
     Invoke-Gate -Options @() -Expected 0 -Contains 'Gate: 1 passed (0 with skipped Qt rows), 0 skipped, 0 unresolved.'
     Assert-Contract ($lastOutput -notmatch 'SCOPED |PARTIAL VALIDATION') 'Full gate was mislabeled scoped or partial.'
+    # Required kernel capability fixtures are private command-line cases, never
+    # native GPU/GUI programs. Exercise actual runner exit and persisted verdict.
+    $kernelRequirements = Get-CapabilityRequirements 'windows-cuda-kernels'
+    foreach ($mode in 'skipped', 'optional', 'pass') {
+        $capabilityFixture = @'
+cmake_minimum_required(VERSION 3.23)
+project(GateContract NONE)
+enable_testing()
+set(OKUFLOW_ENABLE_CUDA ON CACHE BOOL "fixture" FORCE)
+'@
+        $pwshPath = "$PSHOME/pwsh.exe".Replace('\', '/')
+        $fixturePath = "$root/fixture.ps1".Replace('\', '/')
+        foreach ($name in $kernelRequirements.tests) {
+            $case = if ($name -eq 'yuv_color_conversion_cuda') { $mode } else { 'pass' }
+            $capabilityFixture += "`nadd_test(NAME $name COMMAND `"$pwshPath`" -NoProfile -File `"$fixturePath`" -Case $case)`nset_tests_properties($name PROPERTIES LABELS `"gpu`" SKIP_RETURN_CODE 77)`n"
+        }
+        Configure-Fixture $capabilityFixture
+        $expected = if ($mode -eq 'pass') { 0 } else { 1 }
+        $state = if ($mode -eq 'pass') { 'Passed' } else { 'Blocked' }
+        Invoke-Gate -Options @('-CapabilityProfile', 'windows-cuda-kernels') -Expected $expected -Contains "Capabilities (windows-cuda-kernels): $state"
+        $ledger = Read-Ledger
+        Assert-Contract ($ledger.capabilityChecks[-1].state -eq $state) 'Capability verdict missing from ledger.'
+        Assert-Contract ($ledger.capabilityChecks[-1].evidence.yuv_color_conversion_cuda -eq $ledger.results.yuv_color_conversion_cuda.fingerprint) 'Capability acceptance detached from exact case bytes.'
+    }
+    Invoke-Gate -Options @('-CapabilityProfile', 'windows-cpu') -Expected 1 -Contains 'disagrees with the configured CUDA build'
+    Invoke-Gate -Options @('-CapabilityProfile', 'windows-cuda-kernels', '-Test', 'yuv_color_conversion_cuda') -Expected 1 -Contains 'Capability NotRun'
     Write-Host "PASS: $checks gate contract checks in $([math]::Round($clock.Elapsed.TotalSeconds, 2)) seconds; no GUI executed."
     Write-Host "Private fixture evidence: $root"
 } finally {

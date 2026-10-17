@@ -13,6 +13,8 @@ param(
     [ValidateSet('msvc-cpu-tests', 'msvc-cuda-tests')][string]$UncoveredByPreset,
     [string[]]$RetryInterrupted,
     [switch]$ExcludeGui,
+    [ValidateSet('development', 'windows-cpu', 'windows-cuda', 'windows-cuda-kernels')]
+    [string]$CapabilityProfile = 'development',
     [switch]$List
 )
 
@@ -26,6 +28,43 @@ function Get-Digest([string]$Text) {
 
 function Get-Labels($Case) {
     @($Case.properties | Where-Object name -eq LABELS | ForEach-Object value)
+}
+
+function Get-CapabilityRequirements([string]$Profile) {
+    $cuda = @('yuv_color_conversion_cuda', 'text_clarity_sauvola_cuda',
+        'stabilization_similarity_cuda', 'spatial_upscaler_reference_cuda',
+        'stabilization_replay_regression', 'cuda_architecture_coverage')
+    $base = @('shared_source_equivalence', 'settings_store_round_trip',
+        'phone_camera_contract', 'windows_runtime_contract', 'recording_manager',
+        'agent_control_contract', 'mcp_bridge_contract')
+    switch ($Profile) {
+        'windows-cpu' { @{ tests = $base; labels = @('gui'); cuda = $false } }
+        'windows-cuda' { @{ tests = $base + $cuda + 'media_writer_gpu_codecs'; labels = @('gui'); cuda = $true } }
+        'windows-cuda-kernels' { @{ tests = $cuda; labels = @(); cuda = $true } }
+        default { @{ tests = @(); labels = @(); cuda = $null } }
+    }
+}
+
+function Get-CapabilityVerdict($Requirements, $Inventory, $Records, [string[]]$SelectedNames) {
+    $names = @($Requirements.tests)
+    $rows = @()
+    foreach ($label in $Requirements.labels) {
+        $matches = @($Inventory | Where-Object { $label -cin (Get-Labels $_) })
+        if (!$matches.Count) { $rows += @{ name = "label:$label"; state = 'NotRun'; reason = 'Required label has no registered cases.' } }
+        $names += @($matches.name)
+    }
+    foreach ($name in @($names | Sort-Object -Unique)) {
+        $record = $Records[$name]
+        $state = if ($name -cnotin $Inventory.name -or $name -cnotin $SelectedNames -or !$record) { 'NotRun' }
+            elseif ($record.status -ceq 'Passed') { 'Passed' }
+            elseif ($record.status -ceq 'Failed') { 'Failed' }
+            else { 'Blocked' } # A CTest skip or skipped Qt row is not capability acceptance.
+        $rows += @{ name = $name; state = $state; sourceStatus = $(if ($record) { $record.status } else { 'Missing' }) }
+    }
+    $state = if (@($rows | Where-Object state -eq 'Failed').Count) { 'Failed' }
+        elseif (@($rows | Where-Object state -ne 'Passed').Count) { 'Blocked' }
+        elseif (!$rows.Count) { 'NotApplicable' } else { 'Passed' }
+    @{ state = $state; cases = $rows }
 }
 
 function Get-PresetDirectory([string]$Name) {
@@ -286,6 +325,19 @@ try {
     })
     if (!$selected.Count) { throw 'Selection contains no tests.' }
     if ($List) { $selected | ForEach-Object { $_.name }; exit 0 }
+    $capabilityRequirements = Get-CapabilityRequirements $CapabilityProfile
+    if ($CapabilityProfile -ne 'development') {
+        $cudaEnabled = [regex]::IsMatch($cache, '(?m)^OKUFLOW_ENABLE_CUDA:[^=]+=ON\r?$')
+        if ($cudaEnabled -ne $capabilityRequirements.cuda) { throw "Capability profile $CapabilityProfile disagrees with the configured CUDA build." }
+        if ($RetryInterrupted -or ($CapabilityProfile -ne 'windows-cuda-kernels' -and ($scoped -or $ExcludeGui))) {
+            throw "Capability profile $CapabilityProfile requires the complete unfiltered build inventory."
+        }
+        $missing = Get-CapabilityVerdict $capabilityRequirements $tests @{} @($selected.name)
+        $unregistered = @($missing.cases | Where-Object {
+            $_.name -like 'label:*' -or $_.name -cnotin $tests.name -or $_.name -cnotin $selected.name
+        })
+        if ($unregistered.Count) { throw "Capability NotRun: required cases absent from selection/inventory: $($unregistered.name -join ', ')" }
+    }
     $root = Join-Path $env:LOCALAPPDATA 'OkuFlow/test-evidence'
     [void][IO.Directory]::CreateDirectory($root)
     # Never delete another runner's lock or overlap CPU/CUDA/bundle gates.
@@ -444,6 +496,22 @@ try {
     })
     $skipped = @($required | Where-Object { $ledger.results[$_.name].status -eq 'Skipped' })
     $rowSkips = @($required | Where-Object { $ledger.results[$_.name].status -eq 'PassedWithSkips' })
+    $capability = Get-CapabilityVerdict $capabilityRequirements $tests $ledger.results @($required.name)
+    $capability.profile = $CapabilityProfile
+    $capability.checkedAt = [DateTime]::UtcNow.ToString('O')
+    $capability.shared = $runtime.sharedDigest
+    # The case records retain their exact fingerprints and original CTest statuses.
+    # This separate verdict cannot turn a skipped capability into passing evidence.
+    $capability.evidence = @{}
+    foreach ($row in $capability.cases) {
+        if ($ledger.results[$row.name]) { $capability.evidence[$row.name] = $ledger.results[$row.name].fingerprint }
+    }
+    $ledger.capabilityChecks = @($ledger.capabilityChecks | Select-Object -Last 31) + @($capability)
+    Save-Ledger $ledger $path
+    Write-Host "Capabilities ($CapabilityProfile): $($capability.state)"
+    foreach ($row in @($capability.cases | Where-Object state -ne 'Passed')) {
+        Write-Host "Capability $($row.state): $($row.name) [$($row.sourceStatus)]"
+    }
     Write-Host "Evidence: $path"
     Write-Host "Gate: $($required.Count - $unresolved.Count - $skipped.Count) passed ($($rowSkips.Count) with skipped Qt rows), $($skipped.Count) skipped, $($unresolved.Count) unresolved."
     foreach ($case in $unresolved) {
@@ -452,11 +520,11 @@ try {
         Write-Host "$state`: $($case.name)"
     }
     if ($scoped) {
-        $verdict = if ($unresolved.Count -or $errors.Count) { 'FAIL' } else { 'PASS' }
+        $verdict = if ($unresolved.Count -or $errors.Count -or $capability.state -in 'Failed', 'Blocked') { 'FAIL' } else { 'PASS' }
         Write-Host "SCOPED $verdict`: $($required.Count) of $($tests.Count) tests ($($required.name -join ', '))."
     }
     if ($ExcludeGui) { Write-Host 'PARTIAL VALIDATION: GUI checks remain pending; not the full release gate.' }
-    if ($unresolved.Count -or $errors.Count) { exit 1 }
+    if ($unresolved.Count -or $errors.Count -or $capability.state -in 'Failed', 'Blocked') { exit 1 }
     exit 0
 } catch {
     Write-Error $_ -ErrorAction Continue

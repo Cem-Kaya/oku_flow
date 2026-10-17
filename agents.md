@@ -632,3 +632,13 @@ aligned with the project goals.
   `ultra_clear_text_contract` and `ultra_clear_text_windows_ocr` are
   desktop-free; native GUI, NVDA and real-camera checks stay serial and
   separate. New UCT strings still need the translation review policy.
+
+## Required release-capability evidence (2026-10-17)
+- Bundle gates must select their strict `windows-cpu` or `windows-cuda`
+  capability profile. Required native GUI, state/ownership contracts and CUDA
+  kernel/cubin/GPU-fed H.264 cases need complete passes; skips or missing cases
+  are blocked/not run, never hardware acceptance. Development remains explicit.
+- Preserve separate capability receipts and original CTest statuses. Do not
+  weaken required profiles to accommodate unavailable release hardware. Optional
+  AV1 on Pascal is distinct from required H.264. See `tests/README.md` for scope
+  and the independent provider/device/Maxine/installer acceptance still needed.
