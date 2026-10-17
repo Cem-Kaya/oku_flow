@@ -18,6 +18,9 @@ advance temporal effects, SuperRes inference, or paired recording.
 
 `RecordingManager` preserves synchronized original/processed video, optional
 microphone AAC audio, bounded queues, finalization, and worker watchdogs.
+Its terminal state is published only after the old session's queues, flags and
+callback identities have retired. Video/audio error epilogues never clear a
+replacement session admitted at that boundary.
 `RecordingSessionInfo` lives in `include/okuflow/app/recording_session_info.hpp`;
 queued saved-segment and session-ended callbacks retain its stable identity.
 Saved-media callbacks continue adding recordings and photos to lecture notes.

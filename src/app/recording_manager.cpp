@@ -307,6 +307,9 @@ void RecordingManager::SetState(RecordingState state)
     }
     state_.store(state);
     qInfo() << "Recording state:" << StateName(state);
+    if (statePublicationObserver_) {
+        statePublicationObserver_(state);
+    }
 }
 
 void RecordingManager::SetCanvasMode(RecordingCanvasMode mode)
@@ -1540,7 +1543,6 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
                 ? QStringLiteral("Recording saved. %1").arg(drops)
                 : QStringLiteral("%1 Recording saved. %2")
                       .arg(stopMessage_, drops);
-        SetState(RecordingState::Completed);
     } else if (outcome ==
                RecordingCompletionOutcome::FailedBeforeFirstFrame) {
         message =
@@ -1548,7 +1550,6 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
                 ? QStringLiteral(
                       "Recording stopped before the first frame was written.")
                 : detail;
-        SetState(RecordingState::Failed);
     } else {
         message =
             detail.isEmpty()
@@ -1557,11 +1558,7 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
                       "fragments may still be playable. %1")
                       .arg(drops)
                 : QStringLiteral("%1 %2").arg(detail, drops);
-        SetState(RecordingState::Failed);
     }
-    PostButtonState(state_.load());
-    PostStatus(message, saved ? 9000 : 14000);
-
     RecordingSessionInfo endedSession;
     {
         std::lock_guard lock(queueMutex_);
@@ -1571,7 +1568,13 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
         audioQueue_.clear();
         stopRequested_ = false;
         stopMessage_.clear();
+        workerWriting_ = false;
     }
+    SetWorkerOp(WorkerOp::kIdle, 0);
+    const RecordingState terminalState = saved
+        ? RecordingState::Completed : RecordingState::Failed;
+    PostButtonState(terminalState);
+    PostStatus(message, saved ? 9000 : 14000);
     if (sessionEndedCallback_ && recordButton_ &&
         !workerAbandoned_.load()) {
         const SessionEndedCallback callback = sessionEndedCallback_;
@@ -1580,6 +1583,10 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
             [callback, endedSession]() { callback(endedSession); },
             Qt::QueuedConnection);
     }
+    // Completed/Failed admits the next session immediately. Publish only after
+    // all old-session mutations and callback snapshots have retired. Nothing
+    // below this boundary may clear queues or sample sessionInfo_ again.
+    SetState(terminalState);
 }
 
 void RecordingManager::RetireGpuInputReads()
@@ -1683,11 +1690,9 @@ void RecordingManager::WorkerLoop()
                 workerWriting_ = false;
             }
             queueCv_.notify_all();
-            if (!keepGoing) {
-                std::lock_guard lock(queueMutex_);
-                frameQueue_.clear();
-                stopRequested_ = false;
-            }
+            // A failing WriteFrame retires its session in FinishSession. Its
+            // terminal state may already have admitted a new GUI request.
+            (void)keepGoing;
             continue;
         }
         if (haveAudio) {
@@ -1698,12 +1703,8 @@ void RecordingManager::WorkerLoop()
                 workerWriting_ = false;
             }
             queueCv_.notify_all();
-            if (!keepGoing) {
-                std::lock_guard lock(queueMutex_);
-                frameQueue_.clear();
-                audioQueue_.clear();
-                stopRequested_ = false;
-            }
+            // WriteAudioFrame uses the same retirement/publication boundary.
+            (void)keepGoing;
             continue;
         }
 

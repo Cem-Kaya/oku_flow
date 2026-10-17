@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Retire recording queues, stop state and callback identity before admitting a
+  replacement session. Video/audio error cleanup cannot clear the new session.
+
 - Drain already-accepted fake adb connections before waiting for another
   arrival, covered by a deterministic two-client backlog regression. Declare
   the shared process-identity resource between legacy recovery and fixtures

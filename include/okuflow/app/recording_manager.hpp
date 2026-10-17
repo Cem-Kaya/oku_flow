@@ -155,6 +155,7 @@ public:
                           CapturedFrame originalFrame);
 
 private:
+    friend struct RecordingManagerTestAccess;
     struct QueuedFrame {
         std::vector<uint8_t> processedScene;
         GpuVideoFrame processedGpuScene;
@@ -219,6 +220,9 @@ private:
     VideoRecorder processedRecorder_;
     VideoRecorder originalRecorder_;
     std::atomic<RecordingState> state_{RecordingState::Idle};
+    // An immutable observer installed only by the desktop-free fixture. It
+    // exposes the actual publication boundary without involving native codecs.
+    std::function<void(RecordingState)> statePublicationObserver_;
     std::atomic<RecordingCanvasMode> canvasMode_{
         RecordingCanvasMode::Source};
     std::atomic<RecordingCanvasMode> activeCanvasMode_{

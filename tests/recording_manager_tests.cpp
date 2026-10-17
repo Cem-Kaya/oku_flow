@@ -6,6 +6,53 @@
 #include <QFileInfo>
 #include <QtTest>
 #include <limits>
+#include <chrono>
+
+namespace okuflow {
+struct RecordingManagerTestAccess {
+    static void PrimeRetirement(RecordingManager& manager) {
+        // Isolate the real retirement code from codecs and the idle worker.
+        // The fixture subsequently drives FinishSession on a controlled thread.
+        manager.ShutdownForProcessExit();
+        manager.shutdownRequested_ = false;
+        manager.SetState(RecordingState::Stopping);
+        manager.sessionHadOutput_ = true;
+        manager.segmentFinalized_ = true;
+        manager.frameQueue_.emplace_back();
+        manager.audioQueue_.emplace_back();
+        manager.stopRequested_ = true;
+        manager.stopMessage_ = QStringLiteral("session-a-stop");
+        manager.workerWriting_ = true;
+    }
+    static void Observe(RecordingManager& manager,
+                        std::function<void(RecordingState)> observer) {
+        manager.statePublicationObserver_ = std::move(observer);
+    }
+    static bool Retired(RecordingManager& manager) {
+        std::lock_guard lock(manager.queueMutex_);
+        return manager.frameQueue_.empty() && manager.audioQueue_.empty()
+            && !manager.stopRequested_ && !manager.workerWriting_
+            && manager.stopMessage_.isEmpty();
+    }
+    static void Finish(RecordingManager& manager, bool success) {
+        manager.FinishSession(success, success ? QString() : QStringLiteral("fixture failure"));
+    }
+    static void SeedReplacement(RecordingManager& manager) {
+        std::lock_guard lock(manager.queueMutex_);
+        manager.frameQueue_.emplace_back();
+        manager.audioQueue_.emplace_back();
+        manager.stopRequested_ = true;
+        manager.stopMessage_ = QStringLiteral("session-b-stop");
+    }
+    static bool ReplacementIntact(RecordingManager& manager, const QString& id) {
+        std::lock_guard lock(manager.queueMutex_);
+        return manager.sessionInfo_.id == id
+            && manager.frameQueue_.size() == 1 && manager.audioQueue_.size() == 1
+            && manager.stopRequested_
+            && manager.stopMessage_ == QStringLiteral("session-b-stop");
+    }
+};
+} // namespace okuflow
 
 namespace {
 
@@ -29,6 +76,66 @@ struct FakeSinkWriterStatistics {
 class RecordingManagerTests : public QObject {
     Q_OBJECT
 private slots:
+    void terminalPublicationRetiresOldSession_data()
+    {
+        QTest::addColumn<bool>("success");
+        QTest::newRow("normal-stop") << true;
+        QTest::newRow("video-error") << false;
+        QTest::newRow("audio-error") << false;
+    }
+    void terminalPublicationRetiresOldSession()
+    {
+        QFETCH(bool, success);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        okuflow::UserDataPaths paths(directory.path(), QStringLiteral("C:/fixture-install"));
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths);
+        okuflow::RecordingSessionInfo first;
+        first.id = QStringLiteral("session-a");
+        manager.SetRequested(true, first);
+        QVERIFY(manager.CurrentSessionInfo());
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeRetirement(manager);
+        std::mutex gateMutex;
+        std::condition_variable gate;
+        bool published = false, resume = false, retiredAtPublication = false;
+        Access::Observe(manager, [&](okuflow::RecordingState state) {
+            if (state != okuflow::RecordingState::Completed
+                && state != okuflow::RecordingState::Failed) return;
+            const bool retired = Access::Retired(manager);
+            std::unique_lock lock(gateMutex);
+            retiredAtPublication = retired;
+            published = true;
+            gate.notify_all();
+            gate.wait_for(lock, std::chrono::seconds(5), [&] { return resume; });
+        });
+        std::thread finishing([&] { Access::Finish(manager, success); });
+        bool reached = false;
+        {
+            std::unique_lock lock(gateMutex);
+            reached = gate.wait_for(lock, std::chrono::seconds(3), [&] { return published; });
+        }
+        okuflow::RecordingSessionInfo second;
+        second.id = QStringLiteral("session-b");
+        bool replacementAdmitted = false;
+        if (reached) {
+            manager.SetRequested(true, second);
+            const auto session = manager.CurrentSessionInfo();
+            replacementAdmitted = session && session->id == second.id;
+            Access::SeedReplacement(manager);
+        }
+        {
+            std::lock_guard lock(gateMutex);
+            resume = true;
+        }
+        gate.notify_all();
+        finishing.join();
+        // Assert after joining so a failed assertion cannot strand a worker.
+        QVERIFY(reached);
+        QVERIFY(retiredAtPublication);
+        QVERIFY(replacementAdmitted);
+        QVERIFY(Access::ReplacementIntact(manager, second.id));
+    }
     void exactSessionStopCannotTouchReplacement()
     {
         QTemporaryDir directory; QVERIFY(directory.isValid());

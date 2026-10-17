@@ -1,5 +1,18 @@
 # OkuFlow Code Reference
 
+## Recording session retirement (audit NP-003)
+
+`RecordingManager::FinishSession` captures the ending session, clears its video
+and audio queues and stop flags, retires its worker-operation marker and queues
+immutable completion callbacks before publishing `Completed` or `Failed`.
+Those states admit a new session immediately, so worker video/audio error
+epilogues must not clear shared queues afterward. The private immutable
+`statePublicationObserver_` and friend `RecordingManagerTestAccess` expose this
+boundary to the desktop-free fixture without starting a codec. Its
+`terminalPublicationRetiresOldSession` cases hold publication for normal,
+video-error and audio-error retirement while a replacement is admitted; old
+cleanup cannot remove the replacement's queues, stop request or session id.
+
 ## CUDA toolkit selection and one-time comparison
 
 `cmake/CudaTargets.cmake::okuflow_select_cuda_architectures` selects the shared
