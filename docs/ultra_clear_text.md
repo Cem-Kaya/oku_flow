@@ -263,3 +263,10 @@ A recorded parent CPU fixture run showed cached-glyph `OnPresented` p95/p99
 The separate 52-line 4K residual diagnostic measured p95 58.12 ms; this is why
 that work runs on the probe worker. These observations are one development-PC
 fixture run, exclude capture/GPU/display scanout, and are not end-to-end FPS.
+
+Live synthetic-camera review found that independently fitting every word's
+height distorted ascenders/descenders. Glyph layout now fits a shared type size
+and baseline per accepted OCR line using cached reference-font ink metrics.
+Pan/zoom only reprojects that cached geometry; it does not measure fonts or run
+recognition. Word backgrounds cover both original ink and the replacement ink,
+and all backgrounds are painted before letters.

@@ -32,6 +32,7 @@ public:
         QString text;
         QRectF sceneRect; // offset already applied
         uct::LineColors colors;
+        std::uint64_t lineId{}; // one shared type size and baseline per OCR line
     };
     void SetWords(QVector<SceneWord> words);
     void ClearWords();
@@ -45,6 +46,11 @@ public:
 
     // Words as drawn for the current transform (tests and diagnostics).
     QVector<QRectF> ProjectedWordRects() const;
+    struct GlyphGeometry {
+        QRectF inkRect;
+        qreal baselineY{};
+    };
+    QVector<GlyphGeometry> ProjectedGlyphs() const;
     std::uint64_t PaintCount() const noexcept { return paintCount_; }
 
 protected:
@@ -54,13 +60,19 @@ protected:
 private:
     void SyncGeometryToRenderTarget();
     void UpdateVisibility();
-    qreal AdvanceAtReference(const QString& text);
+    void RebuildGlyphLayout();
+    QRectF InkAtReference(const QString& text);
 
     QPointer<QWidget> renderTarget_;
     QPointer<QWidget> excludedWidget_;
     ViewTransform transform_;
     QVector<SceneWord> words_;
-    QHash<QString, qreal> advanceCache_;
+    struct SceneGlyph {
+        QRectF inkRect;
+        QPointF origin;
+    };
+    QVector<SceneGlyph> glyphs_;
+    QHash<QString, QRectF> inkCache_;
     int strokeWeight_{};
     std::uint64_t paintCount_{};
 };

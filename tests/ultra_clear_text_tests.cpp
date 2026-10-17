@@ -12,6 +12,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QElapsedTimer>
+#include <QFontMetricsF>
 #include <QHash>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -427,6 +428,7 @@ private slots:
     void sourceRetirementRevokesWithoutAnotherPresentation();
     void mixedHeightReadingOrderIsStableAndOnlyFreshTextIsRead();
     void unchangedWordsRefreshMeasuredColors();
+    void glyphsShareLineBaselineDespiteDifferentInkHeights();
 
     // --- Validation primitives ----------------------------------------------
     void patchMatchesUnchangedTextAcrossPanAndZoom();
@@ -463,6 +465,57 @@ private slots:
     void denseMovingPageValidationCostAt4K();
     void panelExposesAccessibleControls();
 };
+
+void UltraClearTextTests::glyphsShareLineBaselineDespiteDifferentInkHeights()
+{
+    QWidget target;
+    target.resize(960, 540);
+    UltraClearTextOverlay overlay(&target, &target);
+    overlay.resize(target.size());
+    overlay.SetViewTransform(ComputeViewTransform(960, 540, 960, 540, 1.0f, 0.5f, 0.5f,
+                                                ViewportFitMode::kFit));
+    QFont font(QStringLiteral("Segoe UI"));
+    font.setPixelSize(100);
+    font.setWeight(QFont::Medium);
+    font.setHintingPreference(QFont::PreferNoHinting);
+    const QFontMetricsF metrics(font);
+    QVector<UltraClearTextOverlay::SceneWord> words;
+    QVector<QRectF> expected;
+    const QStringList texts{QStringLiteral("Changing"), QStringLiteral("the"),
+                            QStringLiteral("page"), QStringLiteral("of"), QStringLiteral("CAPITAL")};
+    qreal left = 30.0;
+    for (int line = 0; line < 2; ++line) {
+        const qreal baseline = 150.0 + line * 130.0;
+        left = 30.0;
+        for (const QString& text : texts) {
+            const QRectF ink = metrics.tightBoundingRect(text);
+            const QRectF bounds(left, baseline + ink.top() * 0.45,
+                                ink.width() * 0.45, ink.height() * 0.45);
+            expected.push_back(bounds);
+            words.push_back({text, QRectF(bounds.x() / 960.0, bounds.y() / 540.0,
+                                         bounds.width() / 960.0, bounds.height() / 540.0),
+                             {}, static_cast<std::uint64_t>(line + 1)});
+            left += bounds.width() + 20.0;
+        }
+    }
+    overlay.SetWords(words);
+    const auto glyphs = overlay.ProjectedGlyphs();
+    QCOMPARE(glyphs.size(), words.size());
+    for (int i = 0; i < glyphs.size(); ++i) {
+        QVERIFY(std::abs(glyphs[i].baselineY - (150.0 + (i / texts.size()) * 130.0)) < 0.1);
+        QVERIFY(std::abs(glyphs[i].inkRect.top() - expected[i].top()) < 0.1);
+        QVERIFY(std::abs(glyphs[i].inkRect.height() - expected[i].height()) < 0.1);
+    }
+    // Pan/zoom uses the existing cached line layout, with no new OCR words.
+    const auto zoom = ComputeViewTransform(960, 540, 960, 540, 2.0f, 0.4f, 0.4f,
+                                           ViewportFitMode::kFill);
+    overlay.SetViewTransform(zoom);
+    const auto moved = overlay.ProjectedGlyphs();
+    for (int i = 0; i < moved.size(); ++i) {
+        const QPointF base(0.5, (150.0 + (i / texts.size()) * 130.0) / 540.0);
+        QVERIFY(std::abs(moved[i].baselineY - SceneToViewPixel(zoom, 960, 540, base).y()) < 0.1);
+    }
+}
 
 void UltraClearTextTests::geometryRoundTripsThroughFitFillZoomPanAndDpi()
 {

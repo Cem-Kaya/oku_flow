@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+- Keep Ultra Clear Text words on a shared line baseline and type size instead
+  of stretching each word to its own OCR ink height.
 - Persist Quick Modes at the Save action and preserve previous modes on write
   failure, so an immediate crash cannot lose an apparently saved mode.
 - Open and retire microphones on an independent worker, including final native

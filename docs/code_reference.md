@@ -4291,3 +4291,12 @@ output API is ready or the deadline/owner exit refuses it. `Invoke-ObsRequest`
 retains typed ObsStatusCode; only NotReady (207) retries on a connected socket.
 `test_lecture_camera.ps1` evaluates those actual functions with fake protocol
 replies, testing convergence, permanent failure, exit and expiry without OBS.
+
+`UltraClearTextOverlay::RebuildGlyphLayout` caches ink metrics and a robust
+shared type size/baseline per accepted OCR line. `SceneWord::lineId` is carried
+from the model through the controller; unlabeled words remain independent.
+`ProjectedGlyphs` exposes the same cached layout reprojected for diagnostics.
+Paint draws every original/replacement union plate before any sharp letters,
+so adjacent plates cannot erase previously drawn overhangs. The offscreen
+fixture checks capitals, ascenders and descenders across two independent lines
+and pan/zoom, rather than matching UI wording.
