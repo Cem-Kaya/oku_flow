@@ -148,3 +148,20 @@ The independent Maxine producer is now implemented; see its
 [ownership/capture policy and fixtures](maxine_async_producer_design.md).
 Native performance, UCT/hardware/provider/installer acceptance remain open with
 the limits recorded above. Earlier gates above predate this continuation.
+
+## Hosted relocated-SDK repair
+
+Run `39051051673` on `08e877d` confirms that VS discovery/initialization no longer
+times out: the preflight finishes in 3.47 seconds but fails because it searches
+the local Qt default instead of the runner's `QT_ROOT_DIR`. The bundle now
+recognizes that prefix after explicit overrides. Hosted Qt setup also installs
+only the matching Multimedia source archive for the required FFmpeg notice.
+The regression receives CTest's configured SDK/source root, uses a private real
+SDK junction with spaces in its path, and fingerprints its notice inputs. It
+failed against the previous batch before the fix (2.87 seconds), then passed;
+the final tracked SCOPED gate passed 1 of 146 cases in 3.74 seconds with no
+skips or unresolved results. CPU compilation, YAML parsing and 24-catalog
+translation parity passed. The infrastructure selector correctly requests the
+full pre-merge gate; this focused local result is not release acceptance.
+Original hosted/local failures and final scoped evidence remain under
+`%LOCALAPPDATA%/OkuFlow/ci-39051051673`. No foreground UI or device was touched.

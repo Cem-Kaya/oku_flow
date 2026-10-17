@@ -309,6 +309,11 @@ Release packaging also needs the matching Qt `Sources` component so it can
 stage Qt Multimedia's exact FFmpeg LGPL-2.1-or-later text. The script discovers
 the normal sibling `Src` directory automatically; set `QT_SOURCE_ROOT` when the
 matching source tree is installed elsewhere.
+For CI-installed SDKs, the bundle also recognizes `QT_ROOT_DIR` after the
+explicit `QT_PREFIX` / `Qt6_DIR` overrides and before its local default. It logs
+the selected deployment prefix and still validates the deployment tools, Qt
+license, module SPDX files and FFmpeg source notice. Hosted Windows checks
+install just the matching Qt Multimedia source archive for that notice.
 
 The published bundle contains the native `oku_flow.exe` launcher,
 `OkuFlowApp.exe`, the signed Microsoft `vc_redist.x64.exe` installer, Qt runtime files,

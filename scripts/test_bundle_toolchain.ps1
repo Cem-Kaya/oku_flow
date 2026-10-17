@@ -10,6 +10,7 @@ $dist = Join-Path $repository 'dist'
 $distExisted = Test-Path -LiteralPath $dist
 $saved = @{}
 foreach ($name in @('CMAKE_GENERATOR','CMAKE_ARGS','OKUFLOW_BUNDLE_BUILD_DIR',
+    'QT_PREFIX','Qt6_DIR','QT_ROOT_DIR','QT_SOURCE_ROOT',
     'VSCMD_VER','VisualStudioVersion','VSCMD_ARG_TGT_ARCH','VSCMD_ARG_HOST_ARCH','VSINSTALLDIR')) {
     $saved[$name] = [Environment]::GetEnvironmentVariable($name,'Process')
 }
@@ -35,6 +36,17 @@ function Invoke-Preflight([string]$Case,[bool]$ExpectPass,[string]$ExpectedMessa
     Write-Output ("PASS bundle preflight: {0} ({1:F2} s)" -f $Case,$watch.Elapsed.TotalSeconds)
 }
 try {
+    # CTest supplies the SDK it actually configured. Relocate its complete
+    # runtime through an owned junction so the owner's default C:\Qt cannot
+    # hide CI-only prefix bugs; no SDK files are copied or replaced.
+    Assert-Toolchain (-not [string]::IsNullOrWhiteSpace($env:QT_ROOT_DIR)) 'CTest must supply the configured QT_ROOT_DIR.'
+    $configuredQt = [IO.Path]::GetFullPath($env:QT_ROOT_DIR)
+    $relocatedQt = Join-Path $work 'relocated Qt SDK'
+    New-Item -ItemType Junction -Path $relocatedQt -Target $configuredQt | Out-Null
+    if (-not $env:QT_SOURCE_ROOT) { $env:QT_SOURCE_ROOT = [IO.Path]::GetFullPath((Join-Path $configuredQt '../Src')) }
+    $env:QT_ROOT_DIR = $relocatedQt
+    Remove-Item Env:QT_PREFIX -ErrorAction SilentlyContinue
+    Remove-Item Env:Qt6_DIR -ErrorAction SilentlyContinue
     Remove-Item Env:CMAKE_GENERATOR -ErrorAction SilentlyContinue
     Remove-Item Env:CMAKE_ARGS -ErrorAction SilentlyContinue
     $env:OKUFLOW_BUNDLE_BUILD_DIR = Join-Path $work 'never-created-build'
@@ -58,7 +70,7 @@ try {
     Write-Output ("PASS bundle preflight: reject-forged-environment ({0:F2} s)" -f $claimWatch.Elapsed.TotalSeconds)
     # The actual batch must initialize the installed shell even with those
     # same forged declarations, then validate its real registered compiler.
-    Invoke-Preflight 'default-real-toolchain' $true 'No configuration, compilation or dist mutation' $true
+    Invoke-Preflight 'default-real-toolchain' $true "Using Qt deployment prefix: `"$relocatedQt`"" $true
     Assert-Toolchain (-not (Test-Path -LiteralPath $env:OKUFLOW_BUNDLE_BUILD_DIR)) 'Check-only created a build directory.'
     $caseIndex = 0
     foreach ($generator in @('Visual Studio 17 2022','Ninja Multi-Config','Unix Makefiles')) {

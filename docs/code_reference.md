@@ -4525,6 +4525,18 @@ owner data/path/junction refusals, and injected rename/verification rollback.
 preflights with private cache fixtures. These are scoped regressions rather
 than full release evidence.
 
+`build_release_bundle.bat::resolve_qt` selects `QT_PREFIX`, `Qt6_DIR`,
+`QT_ROOT_DIR`, then the local SDK default, preserving explicit-override failure.
+It prints the selected path before checking real deployment tools, licenses and
+module SPDX files. CTest's `bundle_publication.cmake` supplies its configured
+SDK/source root and declares those actual notice inputs in `REQUIRED_FILES`.
+The positive `Invoke-Preflight` case uses a private junction to that real SDK
+with spaces in its path and asserts the selected prefix, so an installed local
+default cannot conceal CI's relocated-SDK regression. It restores all changed
+process environment variables. The workflow's existing pinned Qt action also
+installs the matching `qtmultimedia` source archive; its source-aware cache key
+does not restore the older runtime-only SDK inventory.
+
 ## Exact recording identity (audit PW-004)
 
 `NotesRecordingIdentity` runs only inside `AssistiveRuntime::AppendNoteBlock`'s

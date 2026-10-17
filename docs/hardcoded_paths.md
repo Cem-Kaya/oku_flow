@@ -43,6 +43,12 @@ directory and takes its actual prefix from `QT_ROOT_DIR`. It pins aqtinstall to
 repository layout. CI logs/screenshots go under `RUNNER_TEMP/okuflow-evidence`,
 never the owner's desktop or fixture settings. Action commits are pinned in the
 workflow; update them deliberately with CI validation.
+The same Qt action installs only the `qtmultimedia` source archive for the
+bundle preflight's matching FFmpeg notice, with a separate source-aware cache
+prefix. Bundle Qt resolution is `QT_PREFIX`, then `Qt6_DIR`, then `QT_ROOT_DIR`,
+then the documented local default. An invalid explicit override fails rather
+than falling through. CTest supplies its configured SDK/source root to the
+preflight fixture and fingerprints the module SPDX and license files it reads.
 MSVC setup discovers only Visual Studio 2022 (`[17.0,18.0)`) and uses its installed
 `Common7/Tools/Launch-VsDevShell.ps1` with x64 host/target. Android host protocol
 checks pin `ubuntu-24.04`; review that image deliberately rather than inheriting

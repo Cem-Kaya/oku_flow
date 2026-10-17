@@ -1173,6 +1173,7 @@ Run from a Windows PowerShell 7 terminal:
 
 ```powershell
 pwsh -NoProfile -File scripts/test_bundle_publication.ps1
+$env:QT_ROOT_DIR = 'C:\Qt\6.12.0\msvc2022_64' # actual SDK; CTest supplies its configured path
 pwsh -NoProfile -File scripts/test_bundle_toolchain.ps1
 ```
 
@@ -1199,6 +1200,16 @@ helper/runtime inputs. Publication takes the native process-identity resource
 lock because its private console image shares an OkuFlow application name.
 Both carry `headless;packaging`, require no free owner desktop and retain the
 same scoped limits described above.
+
+The toolchain regression receives CTest's configured Qt SDK/source root and
+exercises the real batch through a private relocated SDK junction whose path
+contains spaces. It asserts that prefix, preventing a local `C:\Qt` installation
+from masking missing CI setup. Explicit overrides are cleared only inside the
+fixture and restored afterward. Real qmake/deployment, license and module SPDX
+checks remain required, with notice inputs fingerprinted. Hosted Qt setup
+includes the matching `qtmultimedia` source archive for its FFmpeg notice;
+it does not install all Qt sources or fabricate license files. The 60-second
+limit and exactly one real VS initialization are unchanged.
 
 ## Exact recording identity fixtures (audit PW-004)
 

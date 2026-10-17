@@ -788,3 +788,15 @@ aligned with the project goals.
 - Run the three desktop-free Maxine CUDA fixtures and scheduler/UCT regressions
   after ownership changes. Strict Windows-CUDA release acceptance requires all
   three; private fake SDKs prove neither vendor quality nor native pan latency.
+
+## Relocated Qt bundle preflight (2026-10-17)
+- Bundle Qt discovery honors explicit `QT_PREFIX` / `Qt6_DIR`, then CI's
+  `QT_ROOT_DIR`, then the local default. Invalid explicit overrides must fail;
+  keep the complete deployment/license checks and selected-prefix diagnostic.
+- CTest supplies the SDK and source root it configured. The preflight fixture
+  uses a private junction to that actual SDK, never fake Qt tools/licenses, and
+  declares all module SPDX and notice files as runtime inputs. Preserve the
+  single real VS initialization, refusal assertions and 60-second deadline.
+- Hosted Qt setup includes only matching Multimedia sources for the FFmpeg
+  notice and uses a source-aware cache key. Do not assume a compile-only SDK
+  installation contains the release preflight's source/license inventory.

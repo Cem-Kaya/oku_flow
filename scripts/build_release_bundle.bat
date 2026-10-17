@@ -267,10 +267,13 @@ if defined QT_PREFIX (
     set "QT_ROOT=%QT_PREFIX%"
 ) else if defined Qt6_DIR (
     for %%I in ("%Qt6_DIR%\..\..\..") do set "QT_ROOT=%%~fI"
+) else if defined QT_ROOT_DIR (
+    set "QT_ROOT=%QT_ROOT_DIR%"
 ) else (
     set "QT_ROOT=%QT_PREFIX_DEFAULT%"
 )
 for %%I in ("%QT_ROOT%") do set "QT_ROOT=%%~fI"
+echo Using Qt deployment prefix: "%QT_ROOT%"
 set "QT_BIN_DIR=%QT_ROOT%\bin"
 set "WINDEPLOYQT=%QT_BIN_DIR%\windeployqt.exe"
 set "QT_LICENSE_FILE=%QT_ROOT%\LICENSES\LGPL-3.0-only.txt"
@@ -278,12 +281,12 @@ if not exist "%QT_LICENSE_FILE%" for %%I in ("%QT_ROOT%\..\..\Licenses\LICENSE")
 if not exist "%QT_BIN_DIR%\qmake.exe" (
     echo ERROR: Qt was not found at "%QT_ROOT%".
     echo Set QT_PREFIX to the Qt msvc2022_64 root, set Qt6_DIR to its
-    echo Qt6 CMake package, or install the documented default.
+    echo Qt6 CMake package, set QT_ROOT_DIR to the CI SDK, or install the documented default.
     exit /b 1
 )
 if not exist "%WINDEPLOYQT%" (
     echo ERROR: windeployqt.exe was not found at "%WINDEPLOYQT%".
-    echo Set QT_PREFIX or Qt6_DIR to a complete Qt msvc2022_64 installation.
+    echo Set QT_PREFIX, Qt6_DIR or QT_ROOT_DIR to a complete Qt msvc2022_64 installation.
     exit /b 1
 )
 if not exist "%QT_LICENSE_FILE%" (
