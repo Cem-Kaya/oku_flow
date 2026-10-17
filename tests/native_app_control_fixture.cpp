@@ -1,4 +1,4 @@
-#include "okuflow/app/app.hpp"
+#include "../src/app/app_internal.hpp"
 #include "okuflow/app/agent/app_control_target.hpp"
 #include "okuflow/app/agent/parameter_registry.hpp"
 #include "okuflow/app/settings_controller.hpp"
@@ -94,6 +94,24 @@ public:
     }
     static void CancelAgentTurn(OkuFlowApp& app,const QString& context,bool undo) {app.agentContext_=context;app.CancelAgentTurn(undo);}
     static QString AgentContext(OkuFlowApp& app) {return app.agentContext_;}
+    static bool StartBlockedCamera(OkuFlowApp& app,CameraSourceOrigin origin,
+        std::function<bool(const std::atomic<bool>&)> start) {
+        CameraDescriptor camera;camera.name=L"Private startup fixture";camera.symbolicLink=L"fixture-physical-camera";
+        app.cameras_.push_back(std::move(camera));app.cameraStartForTest_=std::move(start);
+        return app.StartCameraCapture(app.cameras_.size()-1,false,false,false,origin);
+    }
+    static void StopCamera(OkuFlowApp& app) {app.StopCameraCapture();}
+    static void BeginReconnect(OkuFlowApp& app) {app.pipelineOrchestrator_->BeginCameraReconnect(QDateTime::currentMSecsSinceEpoch());}
+    static bool ReconnectPending(OkuFlowApp& app) {return app.pipelineOrchestrator_->IsCameraReconnectPending();}
+    static int ReconnectAttempts(OkuFlowApp& app) {return app.pipelineOrchestrator_->CameraReconnectAttempt();}
+    static bool CameraPending(OkuFlowApp& app) {
+        return app.cameraStartupPending_ || app.cameraStopPending_ || app.startupWorkers_->active.load()!=0;
+    }
+    static void ResetCameraFixture(OkuFlowApp& app) {
+        app.pipelineOrchestrator_->CancelCameraReconnect();
+        app.cameraStartForTest_={};app.cameras_.clear();app.selectedCameraIndex_=-1;
+        app.currentCameraAccelerationKey_.clear();app.cameraIntent_.LoadSaved({});
+    }
     static int Exec(OkuFlowApp& app) {return app.qtApp_->exec();}
 };
 }
@@ -151,6 +169,50 @@ class NativeAcceptance final : public QObject {
 public:
     explicit NativeAcceptance(OkuFlowApp& app):app_(app) {}
 private slots:
+    void physicalCameraOpenStaysOffUiAndStopRetiresItsOwnWorker_data() {
+        QTest::addColumn<int>("origin");
+        QTest::newRow("manual-reopen")<<int(CameraSourceOrigin::Manual);
+        QTest::newRow("reconnect")<<int(CameraSourceOrigin::Reconnect);
+        QTest::newRow("agent-format")<<int(CameraSourceOrigin::AgentTemporary);
+    }
+    void physicalCameraOpenStaysOffUiAndStopRetiresItsOwnWorker() {
+        QFETCH(int,origin);
+        struct Gate {std::atomic<bool> entered{},release{},onUi{},sawCancel{};};
+        auto gate=std::make_shared<Gate>();const auto ui=std::this_thread::get_id();
+        const auto cleanup=qScopeGuard([&] {
+            gate->release=true;NativeControlFixture::StopCamera(app_);
+            QElapsedTimer clock;clock.start();
+            while(NativeControlFixture::CameraPending(app_) && clock.elapsed()<3000) {
+                QCoreApplication::processEvents();QTest::qWait(1);
+            }
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        const bool accepted=NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin(origin),
+            [gate,ui](const std::atomic<bool>& canceled) {
+                gate->onUi=std::this_thread::get_id()==ui;gate->entered=true;
+                const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+                while(!gate->release && std::chrono::steady_clock::now()<until)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                gate->sawCancel=canceled.load();return false;
+            });
+        QVERIFY(accepted);QTRY_VERIFY(gate->entered.load());QVERIFY(!gate->onUi);
+        bool pulse=false;QTimer::singleShot(0,&app_,[&] {pulse=true;});QTRY_VERIFY(pulse);
+        NativeControlFixture::StopCamera(app_);
+        QVERIFY(NativeControlFixture::CameraPending(app_));
+        pulse=false;QTimer::singleShot(0,&app_,[&] {pulse=true;});QTRY_VERIFY(pulse);
+        gate->release=true;QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(gate->sawCancel);
+    }
+    void asyncReconnectFailureSchedulesRetryRatherThanAnnouncingSuccess() {
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ResetCameraFixture(app_);});
+        NativeControlFixture::BeginReconnect(app_);
+        QVERIFY(NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin::Reconnect,
+            [](const std::atomic<bool>&) {return false;}));
+        QVERIFY(NativeControlFixture::ReconnectPending(app_));
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(NativeControlFixture::ReconnectPending(app_));
+        QCOMPARE(NativeControlFixture::ReconnectAttempts(app_),1);
+    }
     void failedNativeCommitRestoresActualControlsWithoutPersisting() {
         auto& target=NativeControlFixture::Target(app_);
         const auto before=target.Fields();

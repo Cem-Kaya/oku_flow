@@ -391,6 +391,8 @@ private:
     QString preferredPhoneCamera_;
     bool automaticPhoneSelectionAllowed_{};
     std::shared_ptr<std::atomic<bool>> pendingCameraStartupCancel_;
+    // Private deterministic native-fixture seam; empty in every normal launch.
+    std::function<bool(const std::atomic<bool>&)> cameraStartForTest_;
     std::unordered_map<std::string, PhoneRetryPolicy> phoneRetries_;
     std::vector<VideoFormat> cameraFormats_;
     MediaCapture mediaCapture_;

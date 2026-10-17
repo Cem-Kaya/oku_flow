@@ -4213,3 +4213,13 @@ A later save retries due cleanup and refuses further growth while blocked;
 so a later failed write cannot hide committed history cleanup from observers.
 Tests use exact Windows file locks to
 force commit failure and cleanup failure without changing owner data/permissions.
+
+`OkuFlowApp::StartCameraCapture` routes ordinary initial/reopen/format/reconnect
+starts through `QueueInitialCameraStart`, retaining its revocable ingress,
+worker tracker and generation checks. Only explicit legacy startup profiling
+may use the old synchronous path. The private `cameraStartForTest_` seam replaces
+driver activation in the native fixture, never in normal launches.
+`DriveCameraReconnect` recreates the saved requested symbolic link on that worker
+without UI-side device enumeration or premature mode reads. Completion owns
+success/retry; acceptance does not announce a reconnect. Native fixture barriers
+hold Open/Start while the UI pumps events and Stop revokes the exact worker.

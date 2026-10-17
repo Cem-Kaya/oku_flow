@@ -67,3 +67,9 @@ UCT now snapshots applied scene identity only at successful processing and
 invalidates immediately on camera retirement. Probe work is off-thread; the
 GPU readback handoff swaps immutable pooled vectors after other consumers.
 Requested/applied geometry mismatch hides text while processing catches up.
+
+Physical camera reopen, format changes and reconnect use the same asynchronous
+startup owner as initial capture. Reconnect retains its retry state until the
+worker completes and reuses the requested symbolic link without enumerating
+hardware on the UI tick. The legacy synchronous comparison remains opt-in for
+startup profiling only.

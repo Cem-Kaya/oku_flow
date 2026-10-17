@@ -1573,7 +1573,9 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
     UpdateKeystoneTrackingUi();
 
     const CameraDescriptor& descriptor = cameras_[index];
-    backgroundStartup = backgroundStartup || !descriptor.phoneSerial.empty();
+    // Only the explicit legacy profiling comparison may open a physical
+    // driver on this thread. Every ordinary reopen/reconnect uses one owner.
+    backgroundStartup = backgroundStartup || !startupSynchronousProfile_ || !descriptor.phoneSerial.empty();
     auto& persistent = settingsController_->MutableSettings();
     currentCameraAccelerationKey_ =
         QString::fromStdWString(descriptor.symbolicLink);
@@ -1686,6 +1688,8 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
     }
 
     auto startWithMode = [&](CaptureAccelerationMode mode) {
+        const std::atomic<bool> notCanceled{false};
+        if (cameraStartForTest_) return cameraStartForTest_(notCanceled);
         return mediaCapture_.StartCapture(
             descriptor,
             nullptr,
@@ -1782,6 +1786,13 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
             UpdateProcessingStatusLabel();
             if (interactive) ShowStatusMessage(message, 12000, LivePoliteness::kAssertive);
             QTimer::singleShot(100, this, &OkuFlowApp::StartFallbackCamera);
+        } else if (cameraIntent_.Requested().origin == agent::CameraSourceOrigin::Reconnect &&
+                   pipelineOrchestrator_->IsCameraReconnectPending()) {
+            qWarning() << "Camera reconnect attempt failed:" << message;
+            lastCameraError_ = message;
+            StopCameraCapture();
+            pipelineOrchestrator_->ScheduleCameraReconnectRetry(QDateTime::currentMSecsSinceEpoch());
+            UpdateProcessingStatusLabel();
         } else if (interactive &&
             (kind == CameraFailureKind::DeviceBusy ||
              kind == CameraFailureKind::DeviceMissing)) {
@@ -1870,6 +1881,12 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
         uiState_->cameraFormatNoticeLabel_->setVisible(!notice.isEmpty());
     }
     lastCameraError_.clear();
+    if (cameraIntent_.Requested().origin == agent::CameraSourceOrigin::Reconnect &&
+        pipelineOrchestrator_->IsCameraReconnectPending()) {
+        qInfo() << "Camera reconnected after" << pipelineOrchestrator_->CameraReconnectAttempt()+1 << "attempt(s)";
+        pipelineOrchestrator_->CancelCameraReconnect();
+        ShowStatusMessage(QStringLiteral("Camera reconnected."), 5000);
+    }
     if (startupCameraReadyMs_ < 0) {
         startupCameraReadyMs_ = startupTimer_.elapsed();
         qInfo() << "Startup timing: camera ready" << startupCameraReadyMs_ << "ms";
@@ -2076,19 +2093,24 @@ void OkuFlowApp::DriveCameraReconnect() {
         return;
     }
 
-    // Re-enumerate and look for the same physical device again.
-    const std::wstring targetLink = mediaCapture_.LastSymbolicLink();
-    // Phone recovery is reconciled indefinitely by the background five-second
-    // discovery task; do not perform its socket/decoder startup on the UI tick.
+    if (cameraStartupPending_ || cameraStopPending_ ||
+        (startupWorkers_ && startupWorkers_->active.load()!=0)) return;
+    // Recreate the known physical source from its opaque link on the startup
+    // worker. Re-enumerating/activating devices on this UI tick can hang too.
+    const std::wstring targetLink = cameraIntent_.Requested().identity.symbolicLink.toStdWString();
     if (targetLink.starts_with(L"okuflow-phone:")) return;
-    const auto previous = cameras_;
-    cameras_ = mediaCapture_.EnumerateCameras(false);
-    for (const auto& camera : previous) {
-        if (!camera.phoneSerial.empty()) cameras_.push_back(camera);
-    }
-    {
-        auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-        PopulateCameraCombo();
+
+    if (pipelineOrchestrator_->CameraReconnectExpired(now)) {
+        pipelineOrchestrator_->CancelCameraReconnect();
+        const std::string detail = mediaCapture_.LastError();
+        lastCameraError_ = !detail.empty()
+            ? QString::fromStdString(detail)
+            : QStringLiteral("The camera did not come back. Check the connection, then pick it "
+                             "again from the camera list.");
+        qWarning() << "Camera reconnect gave up:" << lastCameraError_;
+        ShowStatusMessage(lastCameraError_, 15000,
+                          LivePoliteness::kAssertive);
+        return;
     }
 
     int matchIndex = -1;
@@ -2102,32 +2124,12 @@ void OkuFlowApp::DriveCameraReconnect() {
     }
 
     if (matchIndex >= 0 && StartCameraCapture(static_cast<size_t>(matchIndex), false,false,false,agent::CameraSourceOrigin::Reconnect)) {
-        const int attempts =
-            pipelineOrchestrator_->CameraReconnectAttempt() + 1;
-        pipelineOrchestrator_->CancelCameraReconnect();
-        qInfo() << "Camera reconnected after" << attempts << "attempt(s)";
-        if (uiState_->cameraCombo_) {
-            auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-            uiState_->cameraCombo_->setCurrentIndex(matchIndex);
-        }
-        RefreshCameraFormats(static_cast<size_t>(matchIndex));
-        ShowStatusMessage(QStringLiteral("Camera reconnected."), 5000);
+        // Accepted is not ready. Completion owns retry/cancel and updates
+        // the mode list only after the worker's reader has been adopted.
         return;
     }
 
     pipelineOrchestrator_->ScheduleCameraReconnectRetry(now);
-    if (pipelineOrchestrator_->CameraReconnectExpired(now)) {
-        pipelineOrchestrator_->CancelCameraReconnect();
-        const std::string detail = mediaCapture_.LastError();
-        lastCameraError_ = !detail.empty()
-            ? QString::fromStdString(detail)
-            : QStringLiteral("The camera did not come back. Check the connection, then pick it "
-                             "again from the camera list.");
-        qWarning() << "Camera reconnect gave up:" << lastCameraError_;
-        ShowStatusMessage(lastCameraError_, 15000,
-                          LivePoliteness::kAssertive);
-        return;
-    }
 
     // The orchestrator schedules 2s/4s/8s retry backoff.
 }

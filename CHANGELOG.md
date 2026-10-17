@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+- Keep webcam reopen, format changes and reconnect driver startup off the UI
+  thread; report reconnect success only after asynchronous completion.
+
 
 - Commit conversation history before pruning older records. Failed replacement
   leaves existing chats intact; blocked cleanup retains one durable, bounded
