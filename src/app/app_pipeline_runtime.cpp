@@ -2963,15 +2963,15 @@ void OkuFlowApp::SaveAnnotationSnapshot(
     const QString timestamp =
         QDateTime::currentDateTime().toString(
             QStringLiteral("yyyyMMdd_HHmmss_zzz"));
-    const QString path = QDir(dirPath).filePath(
-        QStringLiteral("ANNOTATION_%1.png").arg(timestamp));
+    const QString preferredStem = QStringLiteral("ANNOTATION_%1").arg(timestamp);
     QPointer<OkuFlowApp> owner(this);
     const bool queued = imageIoPool_ && imageIoPool_->tryStart(
         [owner,
          annotated = std::move(annotated),
          strokes,
          transform,
-         path,
+         dirPath,
+         preferredStem,
          heading]() mutable {
             {
                 QPainter painter(&annotated);
@@ -2980,9 +2980,13 @@ void OkuFlowApp::SaveAnnotationSnapshot(
                                         transform,
                                         annotated.size());
             }
-            const bool saved = annotated.save(path, "PNG");
+            const auto result = UserDataPaths::WriteAnnotationImage(dirPath, preferredStem,
+                [&annotated](QIODevice* file) { return annotated.save(file, "PNG"); });
+            const bool saved = result.committed;
+            const QString path = result.path;
             if (!saved) {
-                qWarning() << "Failed to save annotation snapshot to" << path;
+                qWarning() << "Failed to publish annotation snapshot; owned temporary leftovers:"
+                           << result.leftoverPaths;
             }
             if (!owner) {
                 return;

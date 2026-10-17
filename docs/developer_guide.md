@@ -1089,3 +1089,7 @@ Release manifest freshness preserves the typed UTC timestamp returned by
 PowerShell JSON parsing. Run `pwsh -NoProfile -File scripts/test_publication_time.ps1`
 after changing publisher timestamp handling; its offline fixtures cover UTC,
 explicit offsets, JSON date conversion and rejection of ambiguous timestamps.
+
+Annotation snapshots now encode into a private same-directory temporary and
+publish by atomic no-clobber rename. Timestamp collisions receive unique suffixes;
+only committed files are added to notes. Failed encode bytes stay unpublished.

@@ -7,6 +7,8 @@
 #include <QLockFile>
 #include <QStandardPaths>
 #include <QStringList>
+#include <QTemporaryFile>
+#include <QRegularExpression>
 #include <QUuid>
 
 #include <filesystem>
@@ -310,6 +312,46 @@ QString UserDataPaths::Analysis(QString* error) const
 QString UserDataPaths::Debug(QString* error) const
 {
     return EnsureRelative(QStringLiteral("Debug"), error);
+}
+
+AnnotationWriteResult UserDataPaths::WriteAnnotationImage(
+    const QString& directory, const QString& preferredStem,
+    const std::function<bool(QIODevice*)>& encode)
+{
+    AnnotationWriteResult result;
+    if (!QRegularExpression(QStringLiteral("^ANNOTATION_[A-Za-z0-9_-]{1,96}$"))
+             .match(preferredStem).hasMatch() || !encode) {
+        return result;
+    }
+    const QDir dir(directory);
+    QTemporaryFile temporary(dir.filePath(QStringLiteral(".okuflow-annotation-XXXXXX.writing")));
+    const auto fail = [&] {
+        if (!temporary.fileName().isEmpty() && !temporary.remove()) {
+            result.leftoverPaths.append(temporary.fileName());
+        }
+        return result;
+    };
+    if (!temporary.open()) return result;
+    if (!encode(&temporary) || temporary.error() != QFileDevice::NoError ||
+        temporary.size() <= 0 || !temporary.flush()) {
+        return fail();
+    }
+    temporary.close();
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        const QString stem = attempt == 0 ? preferredStem :
+            preferredStem + QLatin1Char('_') + QUuid::createUuid().toString(QUuid::Id128);
+        const QString path = dir.filePath(stem + QStringLiteral(".png"));
+        // QTemporaryFile::rename is atomic-only and refuses existing targets.
+        // Never use QFile's copy/delete fallback or renameOverwrite here.
+        if (temporary.rename(path)) {
+            temporary.setAutoRemove(false);
+            result.committed = true;
+            result.path = path;
+            return result;
+        }
+        if (!QFileInfo::exists(path)) return fail();
+    }
+    return fail();
 }
 
 PhotoPairWriteResult UserDataPaths::WritePhotoPair(

@@ -4319,3 +4319,12 @@ existing Qt/UIA character geometry is preserved. A synthetic duplicate-message
 regression changes earlier content and streams later content, checking exact
 selection endpoints and direction rather than interface wording.
 
+`AnnotationWriteResult` and `UserDataPaths::WriteAnnotationImage` give single
+annotation PNGs collision-safe atomic publication. Encoding/flush completes in
+an exclusive same-directory QTemporaryFile before atomic-only rename; existing
+names are never replaced, including a racing destination. Collision retries
+choose UUID suffixes. Failed/empty encodes clean up only that owned temporary,
+reporting any cleanup leftovers. `SaveAnnotationSnapshot` records notes only
+for the committed returned name. File fixtures preserve an open prior capture,
+repeat a timestamp, race publication and simulate a failed partial encoder;
+they do not claim a physical disk-full run or power-loss durability.

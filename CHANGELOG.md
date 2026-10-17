@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+- Save annotation PNGs atomically under unused names, preserving prior captures
+  and hiding incomplete encodes from the photo library.
 - Preserve the exact selected chat occurrence, selection direction and reading
   position when messages stream or reflow.
 - Wait for real recording-preference state changes instead of immediately

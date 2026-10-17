@@ -30,6 +30,12 @@ struct PhotoPairWriteResult {
     QStringList leftoverPaths;
 };
 
+struct AnnotationWriteResult {
+    bool committed{};
+    QString path;
+    QStringList leftoverPaths;
+};
+
 // Owns every user-created OkuFlow artifact path. Configuration and downloaded
 // tools deliberately remain under the application-data directory.
 class UserDataPaths final {
@@ -60,6 +66,12 @@ public:
         const QString& directory, const QString& preferredStem,
         const std::function<bool(QIODevice*)>& encodeOriginal,
         const std::function<bool(QIODevice*)>& encodeProcessed);
+
+    // Encode privately in the destination directory, then atomically publish
+    // without replacing any existing name. A failed encode never exposes PNG.
+    static AnnotationWriteResult WriteAnnotationImage(
+        const QString& directory, const QString& preferredStem,
+        const std::function<bool(QIODevice*)>& encode);
 
     // Reconciles stale IMG_* original/processed transactions after an
     // interrupted process. If one final rename succeeded and the other
