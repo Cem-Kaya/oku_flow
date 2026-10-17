@@ -102,7 +102,7 @@ binaries and caches are not added to Windows/Android release inventories.
   release notice staging. No compiler, toolkit archive or new third-party
   implementation is added to the repository or application payload.
 - OkuFlow redistribution scope:
-  - CUDA-enabled builds link `cudart_static` into `oku_flow.exe`
+  - CUDA-enabled builds link `cudart_static` into `OkuFlowApp.exe`
   - no standalone CUDA Toolkit runtime DLLs, headers, compilers, or developer
     tools are copied into release bundles
   - the Toolkit EULA (`EULA.txt` or the newer `LICENSE` filename) from the exact build toolkit is staged as
@@ -133,6 +133,10 @@ binaries and caches are not added to Windows/Android release inventories.
   notice as `licenses/NVIDIA_MAXINE_INTEGRATION_NOTICE.txt`.
 - Required product attribution: `SuperRes powered by NVIDIA Maxine™`.
   This attribution does not imply NVIDIA endorsement.
+- Development lifecycle/navigation fixtures compile first-party fake ABI
+  implementations against these existing MIT headers. Their private helper
+  DLLs contain no NVIDIA runtime/models, are not Maxine image-quality evidence,
+  and must never enter release staging.
 
 ## Lucide Icons
 - Upstream: <https://lucide.dev/>
@@ -148,6 +152,12 @@ binaries and caches are not added to Windows/Android release inventories.
 
 ## Microsoft Platform Components
 - APIs used: Media Foundation, Direct3D 12, DXGI, Windows Imaging Component, and other Windows SDK libraries
+- Ultra Clear Text (experimental) calls the built-in `Windows.Media.Ocr`
+  engine through C++/WinRT projection headers from the Windows SDK and links
+  `windowsapp.lib`. The OCR engine and its language data are Windows
+  components on the user's machine; OkuFlow ships no OCR model, language pack
+  or third-party OCR library and copies no C++/WinRT source into the
+  repository. C++/WinRT headers are used as provided by the installed SDK.
 - License source: Windows SDK / Visual Studio / OS redistribution terms
 - Notes: these platform APIs are not copied into the repository as standalone
   third-party source code. When `windeployqt` stages `D3Dcompiler_47.dll`, the
@@ -274,6 +284,12 @@ MIT header snapshot. It does not add a link-time or redistribution dependency
 on the proprietary runtime.
 
 ## Optional External Tools And Services
+- MSI tooling executes the WiX apphost directly from the already reviewed
+  4.0.6 NuGet archive after complete extracted-tree byte verification. No
+  separately resolved NuGet tool, new WiX version or shipped component is
+  introduced. CUDA metadata and notice staging use CMake's effective compiler
+  and linked static runtime facts; the selected toolkit's exact license bytes
+  must match the configured manifest.
 - WiX Toolset 4.0.6 is a developer-only MSI compiler under MS-RL, pinned by
   NuGet SHA-256 in `scripts/windows-installer/tools.json`. The unmodified exact
   upstream license is retained as `scripts/windows-installer/WIX_LICENSE.txt`;

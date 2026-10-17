@@ -166,12 +166,19 @@ struct ProcessingSettings {
     bool enableGlareSuppression{false};
     float glareSuppressionStrength{0.5f};
     bool enableMlSuperRes{false};
+    // Transient scheduling intent, never a persisted user preference. Keep
+    // current-frame spatial/base output while navigation has priority.
+    bool deferMlSuperResForInteraction{false};
     float mlSuperResStrength{0.65f};
     bool mlSuperResUltra1440p{false};
 
     // Apply only to an effective per-frame copy, never persisted preferences.
     // Independent Black & White, display colors, and Maxine remain unchanged.
     void ApplyTextClarityMaster() {
+        // Background and glare share a kernel. Its flatten arithmetic must be
+        // neutral when only glare is selected, without erasing the saved knob.
+        if (!enableAutoTextClarity || !enableBackgroundFlatten)
+            backgroundFlattenStrength = 0.0f;
         if (enableAutoTextClarity) return;
         enableBackgroundFlatten = false;
         enableAdaptiveBinarization = false;

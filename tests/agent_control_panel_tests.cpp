@@ -24,12 +24,15 @@
 #include <QGroupBox>
 #include <QJsonDocument>
 #include <QKeyEvent>
+#include <QResizeEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTextDocument>
+#include <QAbstractTextDocumentLayout>
+#include <QTextFrame>
 #include <QtTest>
 #include <algorithm>
 
@@ -48,6 +51,8 @@ private slots:
     void routingReadinessOffersExplicitTest();
     void sharedChatDraftAndKeyboard();
     void escapedMessagesSelectionAndReadIsolation();
+    void streamingKeepsDuplicateSelectionIdentityAndDirection();
+    void streamingTailMatchesFullRenderAndFallback();
     void chatAccessibleCharacterGeometry();
     void chatFramePreviewsRenderInBothViews();
     void compactComposerActions();
@@ -363,6 +368,130 @@ void AgentControlPanelTests::escapedMessagesSelectionAndReadIsolation()
     overlay.SetChatSnapshot(snapshot);
     QVERIFY(view->transcript()->toPlainText().contains("Yes, go ahead"));
 }
+void AgentControlPanelTests::streamingKeepsDuplicateSelectionIdentityAndDirection()
+{
+    okuflow::AssistantChatView view;
+    QJsonObject first{{"id","first"},{"role","assistant"},{"text","repeat repeat"},{"status","completed"}};
+    QJsonObject second{{"id","second"},{"role","assistant"},{"text","repeat repeat"},{"status","completed"}};
+    QJsonObject last{{"id","last"},{"role","assistant"},{"text","stream"},{"status","streaming"}};
+    QJsonObject snapshot{{"conversationId","duplicate-selection"},{"messages",QJsonArray{first,second,last}}};
+    view.SetChatSnapshot(snapshot);
+    auto* document=view.transcript()->document();
+    QTextCursor selected;
+    for(int i=0;i<4;++i)selected=document->find("repeat",selected);
+    QVERIFY(selected.hasSelection());
+    QTextCursor reversed(document);
+    reversed.setPosition(selected.selectionEnd());
+    reversed.setPosition(selected.selectionStart(),QTextCursor::KeepAnchor);
+    view.transcript()->setTextCursor(reversed);
+    first["text"]="new text before the old message repeat repeat";
+    last["text"]="stream with an appended delta";
+    snapshot["messages"]=QJsonArray{first,second,last};
+    view.SetChatSnapshot(snapshot);
+    QTextCursor expected;
+    for(int i=0;i<4;++i)expected=view.transcript()->document()->find("repeat",expected);
+    const auto actual=view.transcript()->textCursor();
+    QCOMPARE(actual.anchor(),expected.selectionEnd());
+    QCOMPARE(actual.position(),expected.selectionStart());
+    QCOMPARE(actual.selectedText(),QStringLiteral("repeat"));
+    snapshot["messages"]=QJsonArray{first,last};
+    view.SetChatSnapshot(snapshot);
+    QVERIFY(!view.transcript()->textCursor().hasSelection());
+}
+
+void AgentControlPanelTests::streamingTailMatchesFullRenderAndFallback()
+{
+    QVERIFY(QFontDatabase::addApplicationFont(QDir(qEnvironmentVariable("WINDIR")).filePath("Fonts/segoeui.ttf"))>=0);
+    for(const bool rtl:{false,true})for(const int width:{360,780}) {
+        okuflow::AssistantChatView view;
+        view.setLayoutDirection(rtl?Qt::RightToLeft:Qt::LeftToRight);
+        view.resize(width,700);view.show();QApplication::processEvents();
+        QJsonArray messages;
+        for(int i=0;i<12;++i)messages.append(QJsonObject{{"id",QString::number(i)},
+            {"role",i%2?"assistant":"user"},
+            {"text",QStringLiteral("repeat phrase with visible wrapping and normal spaces. ").repeated(20)},
+            {"status",i==11?"streaming":"completed"},{"updatedAt",1700000000000LL}});
+        QJsonObject snapshot{{"conversationId","incremental"},{"messages",messages},{"busy",true}};
+        view.SetChatSnapshot(snapshot);QApplication::processEvents();
+        const auto compareFull=[&] {
+            okuflow::AssistantChatView reference;
+            reference.setLayoutDirection(view.layoutDirection());reference.resize(view.size());
+            reference.show();reference.SetChatSnapshot(snapshot);QApplication::processEvents();
+            auto* actual=view.transcript()->document();auto* expected=reference.transcript()->document();
+            QCOMPARE(view.transcript()->viewport()->width(),reference.transcript()->viewport()->width());
+            QCOMPARE(actual->toPlainText(),expected->toPlainText());
+            QCOMPARE(actual->blockCount(),expected->blockCount());
+            actual->documentLayout()->documentSize();expected->documentLayout()->documentSize();
+            auto right=expected->begin();
+            for(auto left=actual->begin();left.isValid();left=left.next(),right=right.next()) {
+                QVERIFY(right.isValid());QCOMPARE(left.position(),right.position());
+                QCOMPARE(left.blockFormat(),right.blockFormat());
+                QCOMPARE(QTextCursor(left).currentFrame(),actual->rootFrame());
+                const auto a=actual->documentLayout()->blockBoundingRect(left);
+                const auto b=expected->documentLayout()->blockBoundingRect(right);
+                QVERIFY2(qAbs(a.x()-b.x())<=1 && qAbs(a.y()-b.y())<=1 &&
+                         qAbs(a.width()-b.width())<=1 && qAbs(a.height()-b.height())<=1,
+                    qPrintable(QStringLiteral("Block %1 geometry differs after streaming: %2,%3 %4x%5 vs %6,%7 %8x%9")
+                        .arg(left.blockNumber()).arg(a.x()).arg(a.y()).arg(a.width()).arg(a.height())
+                        .arg(b.x()).arg(b.y()).arg(b.width()).arg(b.height())));
+            }
+        };
+        QTextCursor selection;
+        for(int i=0;i<4;++i)selection=view.transcript()->document()->find("repeat",selection);
+        QTextCursor reversed(view.transcript()->document());reversed.setPosition(selection.selectionEnd());
+        reversed.setPosition(selection.selectionStart(),QTextCursor::KeepAnchor);view.transcript()->setTextCursor(reversed);
+        view.transcript()->verticalScrollBar()->setValue(view.transcript()->verticalScrollBar()->maximum()/2);
+        const int anchor=reversed.anchor(),position=reversed.position();
+        for(const auto& delta:{QStringLiteral(" <img src=x> &  two spaces"),QStringLiteral("\nnext line\n\n"),
+                              QStringLiteral(" العربية שלום tabs\tand spaces "),QStringLiteral("after trailing whitespace")}) {
+            auto* document=view.transcript()->document();
+            const int tail=document->lastBlock().position();
+            const auto top=view.transcript()->cursorForPosition(QPoint(0,0));
+            const int topY=view.transcript()->cursorRect(top).top();
+            QSignalSpy changes(document,&QTextDocument::contentsChange);
+            // A queued observation can describe a width already rendered.
+            // It must not later reconstruct the prefix after this tail edit.
+            QResizeEvent staleResize(view.transcript()->viewport()->size(),view.transcript()->viewport()->size());
+            QApplication::sendEvent(view.transcript()->viewport(),&staleResize);
+            auto last=messages.last().toObject();last["text"]=last.value("text").toString()+delta;
+            messages[messages.size()-1]=last;snapshot["messages"]=messages;view.SetChatSnapshot(snapshot);
+            QVERIFY(!changes.isEmpty());
+            for(const auto& change:changes)QVERIFY2(change[0].toInt()>=tail,"Append reconstructed an earlier message");
+            QCOMPARE(view.transcript()->textCursor().anchor(),anchor);
+            QCOMPARE(view.transcript()->textCursor().position(),position);
+            QVERIFY(qAbs(view.transcript()->cursorRect(top).top()-topY)<=1);
+            compareFull();
+            for(const auto& change:changes)QVERIFY2(change[0].toInt()>=tail,"Deferred resize reconstructed an unchanged prefix");
+        }
+        // Receipt/header/status/short-body changes use complete reconstruction.
+        for(int transition=0;transition<5;++transition) {
+            auto last=messages.last().toObject();
+            if(transition==0)last["actions"]=QJsonArray{"Saved <safe> receipt"};
+            if(transition==1){last.remove("actions");last["updatedAt"]=1700000060000LL;}
+            if(transition==2){last["status"]="completed";last["complete"]=true;}
+            if(transition==3){last["status"]="streaming";last["text"]="short";}
+            if(transition==4)last["text"]=QStringLiteral("short followed by enough text to change a narrow bubble. ").repeated(8);
+            messages[messages.size()-1]=last;snapshot["messages"]=messages;view.SetChatSnapshot(snapshot);
+            compareFull();
+        }
+        // The full-HTML cache must describe current text after fast edits.
+        auto last=messages.last().toObject();last["text"]=last.value("text").toString()+" final delta";
+        messages[messages.size()-1]=last;snapshot["messages"]=messages;view.SetChatSnapshot(snapshot);
+        view.resize(width+70,700);QApplication::processEvents();compareFull();
+        view.transcript()->verticalScrollBar()->setValue(view.transcript()->verticalScrollBar()->maximum());
+        auto* accessible=QAccessible::queryAccessibleInterface(view.transcript());QVERIFY(accessible);
+        auto* text=accessible->textInterface();QVERIFY(text);
+        for(int offset=view.transcript()->document()->lastBlock().position();offset<view.transcript()->document()->characterCount()-1;offset+=17) {
+            QTextCursor cursor(view.transcript()->document());cursor.setPosition(offset);
+            const auto painted=view.transcript()->cursorRect(cursor);
+            if(!view.transcript()->viewport()->rect().contains(painted.center()))continue;
+            const auto expected=view.transcript()->viewport()->mapToGlobal(painted.topLeft());
+            const auto actual=text->characterRect(offset);
+            QVERIFY(qAbs(actual.x()-expected.x())<=2 && actual.top()>=expected.y()-2 && actual.bottom()<=expected.y()+painted.height()+2);
+        }
+    }
+}
+
 void AgentControlPanelTests::chatAccessibleCharacterGeometry()
 {
     QVERIFY(QFontDatabase::addApplicationFont(QDir(qEnvironmentVariable("WINDIR")).filePath("Fonts/segoeui.ttf"))>=0);

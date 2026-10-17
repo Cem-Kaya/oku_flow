@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>Đang thực hiện thao tác.</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>Không thể xem trạng thái thao tác.</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>Bật đèn điện thoại</translation>
         </message>

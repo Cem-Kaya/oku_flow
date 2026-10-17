@@ -1,8 +1,10 @@
 #include "okuflow/app/cuda_surface_retry.hpp"
 #include "okuflow/app/capture_handoff_policy.hpp"
+#include "okuflow/cuda/timing_event_pair.hpp"
 
 #include <chrono>
 #include <iostream>
+#include <set>
 
 int main() {
     using namespace std::chrono;
@@ -22,6 +24,58 @@ int main() {
             passed = false;
         }
     };
+
+    // A second timing-event allocation can fail under memory pressure. The
+    // caller must never observe half of the new pair, leak the first event,
+    // or record a later frame against a null stop handle.
+    int startEvent = 0;
+    int stopEvent = 0;
+    int allocation = 0;
+    int failAt = 2;
+    int duplicateDestroy = 0;
+    std::set<int> liveEvents;
+    const auto createEvent = [&](int* event) {
+        ++allocation;
+        if (allocation == failAt) return false;
+        *event = allocation;
+        liveEvents.insert(*event);
+        return true;
+    };
+    const auto destroyEvent = [&](int event) {
+        if (liveEvents.erase(event) != 1) ++duplicateDestroy;
+    };
+    check(!okuflow::EnsureTimingEventPair(startEvent, stopEvent,
+                createEvent, destroyEvent), "second event failure was accepted");
+    check(startEvent == 0 && stopEvent == 0 && liveEvents.empty(),
+          "failed pair escaped or leaked its first event");
+    failAt = 0;
+    check(okuflow::EnsureTimingEventPair(startEvent, stopEvent,
+                createEvent, destroyEvent), "event pair could not recover after failure");
+    check(startEvent != 0 && stopEvent != 0 && startEvent != stopEvent &&
+          liveEvents.size() == 2, "recovered timing pair is incomplete");
+    const int completeAllocationCount = allocation;
+    check(okuflow::EnsureTimingEventPair(startEvent, stopEvent,
+                createEvent, destroyEvent) && allocation == completeAllocationCount,
+          "valid timing pair was needlessly reallocated");
+    // Also repair legacy partial state transactionally: failure retains old
+    // ownership, success replaces it and retires each old/new handle once.
+    destroyEvent(stopEvent);
+    stopEvent = 0;
+    const int retainedStart = startEvent;
+    failAt = allocation + 2;
+    check(!okuflow::EnsureTimingEventPair(startEvent, stopEvent,
+                createEvent, destroyEvent) && startEvent == retainedStart &&
+          stopEvent == 0 && liveEvents.size() == 1,
+          "failed repair lost the existing timing event");
+    failAt = 0;
+    check(okuflow::EnsureTimingEventPair(startEvent, stopEvent,
+                createEvent, destroyEvent) && startEvent != retainedStart &&
+          liveEvents.size() == 2 && !liveEvents.contains(retainedStart),
+          "partial pair was not replaced atomically");
+    destroyEvent(startEvent);
+    destroyEvent(stopEvent);
+    check(liveEvents.empty() && duplicateDestroy == 0,
+          "timing pair leaked or destroyed an event twice");
 
     // Model both raw and CPU-converted requests for every 60-Hz frame. A
     // persistent failure must perform no new work until the retry deadline.

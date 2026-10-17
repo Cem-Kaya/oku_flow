@@ -17,6 +17,27 @@
 #include <limits>
 #include <thread>
 #include <vector>
+#include <cstring>
+
+namespace okuflow {
+struct VideoRecorderTestAccess {
+    static std::uint64_t PcmFrames(const VideoRecorder& recorder) {
+        return recorder.audioTimeline_.Frames();
+    }
+    static void ClearExpectedInputRejection(VideoRecorder& recorder) {
+        recorder.lastError_.clear();
+    }
+    static bool TrySinkAtExistingPath(VideoRecorder& recorder,
+                                       const std::filesystem::path& path) {
+        try {
+            return recorder.InitializeSink(path.wstring(), 320, 180, 30, 1,
+                VideoRecorder::Codec::H264, nullptr, nullptr, MFVideoFormat_ARGB32);
+        } catch (...) {
+            return false;
+        }
+    }
+};
+} // namespace okuflow
 
 namespace {
 
@@ -31,11 +52,21 @@ std::filesystem::path TemporaryMp4Path()
     std::filesystem::path path(file);
     std::filesystem::remove(path);
     path.replace_extension(L".mp4");
+    const DWORD evidenceLength = GetEnvironmentVariableW(
+        L"OKUFLOW_TEST_AAC_EVIDENCE_DIR", nullptr, 0);
+    if (evidenceLength > 0) {
+        std::wstring evidence(evidenceLength, L'\0');
+        evidence.resize(GetEnvironmentVariableW(L"OKUFLOW_TEST_AAC_EVIDENCE_DIR",
+            evidence.data(), evidenceLength));
+        std::filesystem::create_directories(evidence);
+        path = std::filesystem::path(evidence) / path.filename();
+    }
     return path;
 }
 
 bool ValidateDecodedAudio(const std::filesystem::path& path,
-                          std::int64_t expectedGap100ns = 0)
+                          std::int64_t expectedGap100ns,
+                          std::int64_t* lateMarker100ns)
 {
     ComPtr<IMFSourceReader> reader;
     if (FAILED(MFCreateSourceReaderFromURL(
@@ -59,9 +90,13 @@ bool ValidateDecodedAudio(const std::filesystem::path& path,
             if (FAILED(MFCreateMediaType(pcm.GetAddressOf())) ||
                 FAILED(pcm->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio)) ||
                 FAILED(pcm->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM)) ||
+                FAILED(pcm->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 1)) ||
+                FAILED(pcm->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 48'000)) ||
+                FAILED(pcm->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16)) ||
                 FAILED(reader->SetCurrentMediaType(stream, nullptr, pcm.Get()))) return false;
             std::uint64_t decodedBytes = 0;
             LONGLONG lastTimestamp = -1;
+            *lateMarker100ns = -1;
             bool ended = false;
             for (unsigned read = 0; read < 1024 && !ended; ++read) {
                 DWORD flags = 0;
@@ -76,18 +111,103 @@ bool ValidateDecodedAudio(const std::filesystem::path& path,
                 DWORD bytes = 0;
                 if (FAILED(sample->GetTotalLength(&bytes))) return false;
                 decodedBytes += bytes;
+                ComPtr<IMFMediaBuffer> buffer;
+                BYTE* data = nullptr;
+                DWORD length = 0;
+                if (FAILED(sample->ConvertToContiguousBuffer(&buffer)) ||
+                    FAILED(buffer->Lock(&data, nullptr, &length))) return false;
+                // Compare 10 ms tone windows, independent of AAC packet size
+                // and encoder priming. The 880 Hz marker starts after the gap;
+                // payload length or a late PTS alone cannot prove its position.
+                constexpr std::size_t window = 480;
+                for (std::size_t at = 0; at + window <= length / 2;
+                     at += window) {
+                    double lowRe = 0, lowIm = 0, highRe = 0, highIm = 0;
+                    for (std::size_t index = 0; index < window; ++index) {
+                        std::int16_t value;
+                        std::memcpy(&value, data + (at + index) * 2, 2);
+                        const double phase = 2.0 * 3.14159265358979323846 *
+                                             index / 48'000.0;
+                        lowRe += value * std::cos(440.0 * phase);
+                        lowIm += value * std::sin(440.0 * phase);
+                        highRe += value * std::cos(880.0 * phase);
+                        highIm += value * std::sin(880.0 * phase);
+                    }
+                    const double low = lowRe * lowRe + lowIm * lowIm;
+                    const double high = highRe * highRe + highIm * highIm;
+                    if (*lateMarker100ns < 0 && high > 1.0e10 && high > low * 4.0) {
+                        *lateMarker100ns = timestamp +
+                            static_cast<LONGLONG>(at) * 10'000'000 / 48'000;
+                    }
+                }
+                buffer->Unlock();
             }
             // AAC's fixed packets may pad a boundary. Decode the entire track,
             // rather than accepting a stream header with missing late speech.
             const auto decodedFrames = decodedBytes / 2;
             std::cout << "AAC decoded PCM frames=" << decodedFrames
-                      << " last timestamp=" << lastTimestamp << '\n';
+                      << " last timestamp=" << lastTimestamp
+                      << " late-tone marker=" << *lateMarker100ns
+                      << " expected=" << 10'000'000 + expectedGap100ns << '\n';
+            // The decoder may expose a PTS gap or materialize it as silence.
+            // Either representation must preserve the audible marker's time.
             return ended && decodedFrames >= 144'000 - 4096 &&
-                decodedFrames <= 144'000 + 4096 &&
+                decodedFrames <= 144'000 +
+                    static_cast<std::uint64_t>(expectedGap100ns * 48'000 / 10'000'000) + 4096 &&
+                std::abs(*lateMarker100ns - (10'000'000 + expectedGap100ns)) <= 1'500'000 &&
                 lastTimestamp >= 28'000'000 + expectedGap100ns;
         }
     }
     return false;
+}
+
+bool ValidateDecodedVideoMarker(const std::filesystem::path& path,
+                                std::int64_t audioMarker100ns,
+                                std::int64_t gap100ns)
+{
+    ComPtr<IMFAttributes> attributes;
+    ComPtr<IMFSourceReader> reader;
+    ComPtr<IMFMediaType> rgb;
+    if (FAILED(MFCreateAttributes(&attributes, 1)) ||
+        FAILED(attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE)) ||
+        FAILED(MFCreateSourceReaderFromURL(path.c_str(), attributes.Get(), &reader)) ||
+        FAILED(reader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE)) ||
+        FAILED(reader->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE)) ||
+        FAILED(MFCreateMediaType(&rgb)) ||
+        FAILED(rgb->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)) ||
+        FAILED(rgb->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32)) ||
+        FAILED(reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                                          nullptr, rgb.Get()))) return false;
+    LONGLONG marker = -1, previous = -1;
+    unsigned frames = 0;
+    bool ended = false;
+    for (unsigned read = 0; read < 1024 && !ended; ++read) {
+        DWORD flags = 0;
+        LONGLONG timestamp = 0;
+        ComPtr<IMFSample> sample;
+        if (FAILED(reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0,
+                                     nullptr, &flags, &timestamp, &sample))) return false;
+        ended = (flags & MF_SOURCE_READERF_ENDOFSTREAM) != 0;
+        if (!sample) continue;
+        if (timestamp <= previous) return false;
+        previous = timestamp;
+        ++frames;
+        ComPtr<IMFMediaBuffer> buffer;
+        BYTE* data = nullptr;
+        DWORD length = 0;
+        if (FAILED(sample->ConvertToContiguousBuffer(&buffer)) ||
+            FAILED(buffer->Lock(&data, nullptr, &length))) return false;
+        constexpr std::size_t center = (90u * 320u + 160u) * 4u;
+        const bool green = length >= center + 4 &&
+            data[center + 1] > 150 && data[center + 2] < 80;
+        buffer->Unlock();
+        if (green && marker < 0) marker = timestamp;
+    }
+    std::cout << "Video decoded frames=" << frames << " green marker=" << marker
+              << " audio/video marker delta=" << audioMarker100ns - marker << '\n';
+    return ended && frames == 90 &&
+        std::abs(marker - (10'000'000 + gap100ns)) <= 400'000 &&
+        std::abs(audioMarker100ns - marker) <= 1'500'000;
 }
 
 } // namespace
@@ -113,7 +233,11 @@ bool RunCodecPass(okuflow::VideoRecorder::Codec codec, bool* skipped,
                   << recorder.LastError() << '\n';
         *skipped = true;
         std::error_code cleanupError;
-        std::filesystem::remove(output, cleanupError);
+        if (GetEnvironmentVariableW(L"OKUFLOW_TEST_AAC_EVIDENCE_DIR", nullptr, 0) == 0) {
+            std::filesystem::remove(output, cleanupError);
+        } else {
+            std::cout << "Retained unavailable-codec fixture: " << output << '\n';
+        }
         return true;
     }
 
@@ -127,6 +251,11 @@ bool RunCodecPass(okuflow::VideoRecorder::Codec codec, bool* skipped,
             std::numeric_limits<std::int64_t>::max(), 333'333) &&
         !recorder.AddAudioFrame(&oneByte, oversized, 0, 333'333) &&
         recorder.IsRecording(); // invalid input must never copy/truncate DWORD
+    passed = passed && !recorder.CanAcceptAudioFrame(3200, 100'010'000, 333'333) &&
+        okuflow::VideoRecorderTestAccess::PcmFrames(recorder) == 0;
+    // The deliberately rejected oversized input sets LastError. Keep that
+    // expected validation diagnostic separate from subsequent codec failures.
+    if (passed) okuflow::VideoRecorderTestAccess::ClearExpectedInputRejection(recorder);
 
     std::vector<std::uint8_t> video(320u * 180u * 4u, 0);
     std::vector<std::int16_t> audio(1600u, 0);
@@ -138,16 +267,14 @@ bool RunCodecPass(okuflow::VideoRecorder::Codec codec, bool* skipped,
     constexpr int kFrameCount = 90;
     for (int frame = 0; passed && frame < kFrameCount; ++frame) {
         for (std::size_t pixel = 0; pixel < video.size(); pixel += 4) {
-            video[pixel + 0] =
-                static_cast<std::uint8_t>((pixel / 4 + frame * 7) % 255);
-            video[pixel + 1] =
-                static_cast<std::uint8_t>((frame * 17) % 255);
-            video[pixel + 2] = 96;
+            video[pixel + 0] = 0;
+            video[pixel + 1] = frame < 30 ? 0 : 230;
+            video[pixel + 2] = frame < 30 ? 230 : 0;
             video[pixel + 3] = 255;
         }
         for (std::size_t sample = 0; sample < audio.size(); ++sample) {
             const double phase =
-                2.0 * pi * 440.0 *
+                2.0 * pi * (frame < 30 ? 440.0 : 880.0) *
                 (frame * audio.size() + sample) / 48'000.0;
             audio[sample] =
                 static_cast<std::int16_t>(std::sin(phase) * 6000.0);
@@ -197,13 +324,25 @@ bool RunCodecPass(okuflow::VideoRecorder::Codec codec, bool* skipped,
             frameDuration100ns);
     }
 
+    const auto expectedPcmFrames = 144'000ULL +
+        static_cast<std::uint64_t>(gap100ns * 48'000 / 10'000'000);
+    const auto submittedPcmFrames = okuflow::VideoRecorderTestAccess::PcmFrames(recorder);
+    std::cout << "Submitted PCM frames=" << submittedPcmFrames
+              << " expected=" << expectedPcmFrames << '\n';
+    passed = passed && submittedPcmFrames == expectedPcmFrames;
     const okuflow::VideoRecorder::FinalizeResult finalized =
         recorder.Stop();
+    std::int64_t lateAudioMarker100ns = -1;
     passed = passed && finalized.HasPlayableVideo() &&
              finalized.videoSamplesWritten == kFrameCount &&
              std::filesystem::exists(output) &&
-             std::filesystem::file_size(output) > 1024u &&
-             ValidateDecodedAudio(output, gap100ns);
+             std::filesystem::file_size(output) > 1024u;
+    const bool decodedAudio = ValidateDecodedAudio(output, gap100ns, &lateAudioMarker100ns);
+    // Gap verification uses H.264's native decoder. Ordinary AV1 encoding
+    // coverage does not require an independently installed AV1 decoder.
+    const bool decodedVideo = gap100ns == 0 ||
+        ValidateDecodedVideoMarker(output, lateAudioMarker100ns, gap100ns);
+    passed = passed && decodedAudio && decodedVideo;
     if (!passed) {
         std::cerr << "Synthetic " << codecName
                   << "/AAC MP4 validation failed: "
@@ -234,7 +373,12 @@ bool RunCodecPass(okuflow::VideoRecorder::Codec codec, bool* skipped,
         }
     }
     std::error_code removeError;
-    std::filesystem::remove(output, removeError);
+    if (passed && GetEnvironmentVariableW(
+            L"OKUFLOW_TEST_AAC_EVIDENCE_DIR", nullptr, 0) == 0) {
+        std::filesystem::remove(output, removeError);
+    } else {
+        std::cout << "Retained marked " << codecName << "/AAC fixture: " << output << '\n';
+    }
     return passed;
 }
 
@@ -278,8 +422,30 @@ int main()
                       : (av1Passed ? "PASSED" : "FAILED"))
               << '\n';
     passed = passed && av1Passed;
-    // Explicit diagnostic for the pre-existing MP4/AAC gap-collapse defect.
-    // Kept out of the ordinary codec gate until its separate timeline repair.
+    // Bypass Start's advisory precheck to model another process publishing a
+    // file immediately before native sink creation. The sink itself must be
+    // exclusive, including for a pre-existing zero-byte user file.
+    for (const std::string bytes : {std::string(), std::string("user-owned bytes")}) {
+        const auto collision = TemporaryMp4Path();
+        { std::ofstream existing(collision, std::ios::binary); existing << bytes; }
+        okuflow::VideoRecorder recorder;
+        const bool rejected = !okuflow::VideoRecorderTestAccess::TrySinkAtExistingPath(
+            recorder, collision);
+        recorder.Stop();
+        std::ifstream existing(collision, std::ios::binary);
+        const std::string retained((std::istreambuf_iterator<char>(existing)),
+                                    std::istreambuf_iterator<char>());
+        existing.close();
+        if (!rejected || retained != bytes) {
+            std::cerr << "Exclusive recording output collision failed\n";
+            passed = false;
+        }
+        std::error_code cleanup;
+        std::filesystem::remove(collision, cleanup);
+    }
+    // Opt-in verification of an unconfirmed codec/timeline finding. Actual
+    // decoded 440->880 Hz speech surrogate and red->green video markers must
+    // remain aligned at 4 s after a 3 s capture gap. No fake codec is used.
     if (GetEnvironmentVariableW(L"OKUFLOW_TEST_AAC_GAP_DIAGNOSTIC", nullptr, 0) > 0) {
         bool gapSkipped = false;
         const bool gapPassed = RunCodecPass(okuflow::VideoRecorder::Codec::H264,

@@ -11,6 +11,8 @@ void OkuFlowApp::SetZoomCenter(float normX, float normY, bool syncUi,
                                 bool persist) {
     const float clampedX = std::clamp(normX, 0.0f, 1.0f);
     const float clampedY = std::clamp(normY, 0.0f, 1.0f);
+    if (clampedX != zoomCenterX_ || clampedY != zoomCenterY_)
+        pipelineOrchestrator_->NotifyViewportMotion();
     zoomCenterX_ = clampedX;
     zoomCenterY_ = clampedY;
     pipelineOrchestrator_->MarkViewportDirty();

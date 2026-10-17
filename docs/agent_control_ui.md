@@ -182,3 +182,7 @@ Scoped repairs require a fresh serial native check; earlier offscreen visual
 approval does not establish native focus or docking acceptance.
 That gate's native screenshots include foreign magnifier/toolbar content and
 cannot be used as clean visual evidence; no foreign process or pixels were changed.
+
+Streaming and reflow retain selection endpoints by message/paragraph identity
+and preserve their direction, including repeated identical text. The viewport
+keeps its top message anchor while an earlier message changes height.

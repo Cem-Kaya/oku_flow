@@ -56,6 +56,11 @@ public:
     GpuFrameReadbackResult ReadbackGpuFrame(MediaFrame& frame);
     bool HasPendingGpuReadback() const { return gpuReadbackFrame_.has_value(); }
 
+    // Working time excludes system sleep/hibernation, unlike GetTickCount64.
+    static std::int64_t ReadWatchdogNowMs() noexcept {
+        ULONGLONG ticks = 0;
+        return QueryUnbiasedInterruptTime(&ticks) ? static_cast<std::int64_t>(ticks / 10000) : 0;
+    }
     // Atomically returns whether the capture thread detected mid-stream device
     // loss, clearing the flag. Poll from the app's frame tick to drive reconnection.
     bool ConsumeDeviceLost();
@@ -143,6 +148,9 @@ private:
     std::weak_ptr<void> activeCudaLease_;
     std::atomic<bool> running_{false};
     std::atomic<bool> deviceLost_{false};
+    // >0: exact in-flight ReadSample start; 0: no read; -1: watchdog won.
+    // A returned STREAMTICK clears this too: processing time is not driver wait.
+    std::atomic<std::int64_t> readStartedWorkingMs_{0};
     std::atomic<CameraFailureKind> lastFailureKind_{CameraFailureKind::None};
     std::atomic<bool> accelerationValidated_{false};
     std::atomic<bool> accelerationRejected_{false};

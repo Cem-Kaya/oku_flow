@@ -587,3 +587,184 @@ aligned with the project goals.
   lived OkuFlow-named processes. Preserve their `okuflow_process_identity`
   CTest lock when adding related fixtures; do not relax fail-closed image
   classification to accommodate concurrent test process exits.
+
+## Windows RC evidence prerequisites (2026-10-16)
+- Resolve cached/discovered PowerShell launch aliases through
+  `cmake/PowerShell.cmake`; evidence must hash the actual interpreter image.
+  Keep the stable launcher cached and resolve its current image on configure.
+  Keep Qt stderr logging on for registered Qt fixtures so row skips and
+  assertions remain visible. Truncated passing output is incomplete evidence.
+- Keep batch bookkeeping outside CUDA/Qt/OKUFLOW runtime variable namespaces.
+  A resume with changed shared runtime inputs for a latest unresolved result must refuse;
+  diagnose it and run an explicitly fresh gate after repair, rather than
+  clearing the failure by changing the environment. Rebuilt per-test inputs
+  may resume under the same shared runtime after a diagnosed repair.
+- Windows Application Control refusal is a prerequisite failure. Retain the
+  native error and original Code Integrity evidence; never disable security,
+  turn it into a skip, or weaken a deadline to obtain passing coverage.
+
+## Desktop-sized native visual evidence (2026-10-17)
+- Keep wide/tall geometry regression inputs intact. Use the desktop visual
+  cases for complete native examples on smaller/high-DPI work areas instead
+  of changing OS scaling or accepting clipped screenshots.
+- Preserve the capture manifest and refused-image diagnostics. A requested
+  desktop visual example must fail if its full native bounds cannot be saved;
+  offscreen widget grabs never substitute for native visual evidence.
+
+## Exact-byte validation evidence (2026-10-17)
+- Hash runtime, executable and declared fixture bytes afresh in the pre-run and
+  post-run fingerprint passes, including resume. Persistent length/mtime caches
+  are diagnostic only. Duplicate inputs may share a digest within a pass; clear
+  that memo before post-run verification. Keep metadata-preserving mutation
+  regressions and all unresolved-failure blockers intact.
+
+## Ultra Clear Text development (2026-10-17)
+- UCT is experimental and opt-in. Keep recognition off the UI/presentation
+  path: one latest-only worker, at most one presenter readback outstanding,
+  overlay reprojection on the presentation clock. Never add synchronous
+  readback or block present on OCR. See `docs/ultra_clear_text.md`.
+- Keep stamps from the copied pixels through jobs, results and accepted lines;
+  invalidate on source/geometry changes and fail closed for uncertain, moving,
+  high-risk or composite-frame text. Never fabricate math, handwriting or
+  curves, and do not claim recognition accuracy without measured evidence.
+- The backend is built-in `Windows.Media.Ocr`; do not add OCR models or
+  libraries without license review in `docs/THIRD_PARTY_LICENSES.md`.
+  `ultra_clear_text_contract` and `ultra_clear_text_windows_ocr` are
+  desktop-free; native GUI, NVDA and real-camera checks stay serial and
+  separate. New UCT strings still need the translation review policy.
+
+## Required release-capability evidence (2026-10-17)
+- Bundle gates must select their strict `windows-cpu` or `windows-cuda`
+  capability profile. Required native GUI, state/ownership contracts and CUDA
+  kernel/cubin/GPU-fed H.264 cases need complete passes; skips or missing cases
+  are blocked/not run, never hardware acceptance. Development remains explicit.
+- Preserve separate capability receipts and original CTest statuses. Do not
+  weaken required profiles to accommodate unavailable release hardware. Optional
+  AV1 on Pascal is distinct from required H.264. See `tests/README.md` for scope
+  and the independent provider/device/Maxine/installer acceptance still needed.
+
+## Imported Android host dependencies (2026-10-17)
+- Keep `scripts/android_camera_probe.py` in Android host CI and the scoped
+  impact manifest. Probe-only edits require the host protocol suite without
+  a Windows rebuild. Preserve that selection in `test_select_tests.ps1`.
+
+## Preset parser baseline (2026-10-17)
+- CMake 3.25 is the minimum for the checked-in schema-6 presets. Keep both
+  preset entrypoints, root minimum and developer prerequisite aligned. Check
+  root configuration and both manifests with the documented minimum when
+  changing preset schema; the included `cmake/` directory is not a source root.
+
+## Lecture-output readiness (2026-10-17)
+- WebSocket identification is not output readiness. Poll typed OBS NotReady
+  (207) within the owned startup deadline, preserving other request failures.
+  Run `scripts/test_lecture_camera.ps1` after readiness changes. This private
+  protocol fixture does not replace inspecting genuine virtual-camera frames.
+
+## Packaging provenance authority (2026-10-17)
+- Execute WiX only through `windows-installer/wix_tool.ps1`: verify the pinned
+  archive and complete extracted tree before each invocation. Do not restore
+  ambient-feed installs or reuse unverified installed shims.
+- Release CUDA tier, compiler/runtime versions, architecture coverage and notice
+  identity come from CMake's per-configuration `okuflow-build-facts` manifest.
+  Require its successful post-build facts/executable seal, preserve
+  cache/configuration and built/staged-byte checks; shell CUDA paths
+  are inputs to configuration, never independent release facts. Run the private
+  `scripts/test_release_provenance.ps1` fixtures after changing this contract;
+  they do not replace shipping builds, hardware or disposable-VM acceptance.
+
+## Transactional bundle publication and generator preflight (2026-10-17)
+- `build_release_bundle.bat` requires Ninja, initializes only VS2022 x64, and
+  forces the compilation database required by shared-source equivalence. Use
+  `--check-toolchain` for read-only tool/Qt/cache checks. Unsupported generators
+  and incompatible caches require a fresh `OKUFLOW_BUNDLE_BUILD_DIR`; never
+  delete an existing cache as an automatic repair.
+- Use unique `dist/OkuFlow.staging-<guid>` generations and the tracked
+  `publish_release_bundle.ps1` transaction. Before renaming a prior bundle,
+  require its exact manifest inventory/hashes, no owner output/captures,
+  unknown files/directories, reparse points, running images or file locks.
+  Primary refusal may select exactly `OkuFlow2`; secondary refusal is fatal.
+- Exchange only same-parent directory names, retain the complete prior
+  `*.previous-<guid>` generation, rehash after switching, and roll back a failed
+  rename/verification. Never copy or recursively delete an old bundle to force
+  publication. Preserve transaction-failure staging and recovery evidence.
+- Run `test_bundle_publication.ps1` and `test_bundle_toolchain.ps1` for private
+  transaction/preflight regressions. They do not establish compilation, native
+  GUI, hardware, installer or full release acceptance.
+
+## Exact notes recording identity (2026-10-17)
+- Keep the immutable `.okuflow-media.json` marker with its finalized Original
+  recording. Generate/reuse it only in the serial notes worker; never hash a large
+  recording synchronously on the native UI thread. Existing mismatched markers
+  are refusals, not permission to replace a recording's UUID.
+- Bind granted directory resolution, fresh bounded file fingerprints, handoff
+  messages and version-2 transcript sidecars to the same full identity. A folder
+  name, basename, byte size or modification time alone cannot authorize reuse.
+  Address transcript sidecars by UUID (`.okuflow-transcript-<mediaId>.json`), so
+  an old awaited writer cannot overwrite a successor recording at the same video
+  basename. Do not trust or automatically migrate basename-only legacy sidecars.
+  Preserve immutable save snapshots, per-media write order and absolute media PTS.
+
+## Bounded performance evidence (2026-10-17)
+
+- Use the excluded `assistant_chat_benchmark` target only as explicit offline
+  Qt-offscreen CPU evidence; preserve its raw JSON and invalid anchor/selection
+  results. Controlled `DeadlineWorker` sleeps are not Maxine measurements.
+- `OKUFLOW_MAXINE_PROFILE=1` retains at most the last 16,384 host-call samples
+  per worker and emits a teardown summary. Keep omitted-earlier counts and
+  censored timeout/throw outcomes visible. No per-frame file I/O is permitted.
+- Native camera/desktop profiling still requires an explicitly available
+  session. Host waits, GPU completion, sensor latency, pan-to-present and stale
+  result/queue traces are distinct evidence. See `docs/performance_diagnostics.md`.
+
+## Private Maxine lifecycle and navigation validation (2026-10-17)
+
+- The `maxine_lifecycle_cuda` and `maxine_navigation_cuda` fixtures use privately
+  built fake SDK DLLs, a real CUDA device and, for navigation, private D3D12
+  textures without a native window. They are desktop-free `gpu` cases, serial
+  with other GPU tests. Keep exact helper DLLs in CTest `REQUIRED_FILES` and
+  outside release staging; never substitute the owner's installed runtime.
+- Fake SDK transitions validate ownership, failure handling and same-frame
+  fallback admission, not actual model pixels, optical quality or performance.
+  Preserve separate real-runtime/pan-to-submission acceptance and the full
+  independent-producer follow-up. See `tests/README.md` for scoped commands.
+
+## Bounded bundle preflight and compiler identity (2026-10-17)
+- Reject generator arguments and incompatible bundle caches with the explicit
+  configuration-only check before initializing VS. That check must never claim
+  toolchain or Qt readiness. Valid batch invocations still initialize the real
+  installed VS2022 x64 shell and run the complete preflight before dist writes.
+- Never reuse inherited version/architecture declarations as toolchain proof.
+  Clear inherited `VSINSTALLDIR` before the selected Microsoft initializer;
+  verify the resulting root against installed 17.x C++ discovery and the active
+  compiler's exact Hostx64/x64 path. Keep environment-spoof refusal coverage.
+- The bundle fixture performs exactly one real initialization and asserts early
+  refusal for all invalid configurations. Keep its 60-second limit, named case
+  progress and original failed evidence. Do not raise the deadline, fake VS or
+  remove assertions to mask a slow setup path.
+
+## Advisory pressure and native read progress (2026-10-17)
+- Android METADATA is lossy advisory state. Preserve the bounded control reserve
+  for ACK/STATE/ERROR and keep reliable/video overflow and stalled-write failure
+  policy. Validate the actual `OutboundQueue` helper with JVM tests; do not
+  substitute those checks for physical USB transport acceptance.
+- Native camera-read watchdogs measure only an armed `ReadSample`, using working
+  time that excludes system suspension. A timeout revokes delivery and enters
+  existing split stop; it never frees a blocked driver or permits abandoned
+  session reuse. Test late returns and cancellation without a physical camera.
+- Reader adoption is not restored video. Physical reconnect completion requires
+  successful frame presentation; repeated zero-frame attempts retain their
+  original retry deadline, and expiry also cancels pending/adopted attempts.
+  Keep the actual-app offscreen and orchestrator regressions separate from
+  native GUI and hardware acceptance.
+
+## Direct bundle toolchain discovery and diagnostics (2026-10-17)
+- Resolve the installed VS2022 root through `vswhere -property installationPath`
+  and its fixed `Common7/Tools/VsDevCmd.bat` path. Do not recursively scan an
+  entire toolchain to locate this known entrypoint.
+- Keep compiler initialization and full identity/Qt checks. Scope Microsoft's
+  auxiliary telemetry suppression to the batch environment; do not set a user
+  or machine preference. Stream child setup output into CTest and private case
+  logs so timeout evidence retains the last completed stage.
+- Preserve the preflight's 60-second deadline and all refusal/no-mutation
+  assertions. Let tracked runners own setup instead of redundantly initializing
+  the caller shell, which can overflow Windows batch environment lines.

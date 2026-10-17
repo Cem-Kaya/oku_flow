@@ -5,14 +5,19 @@
 #include <windows.h>
 #include <cuda_runtime_api.h>
 #include <QDebug>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "okuflow/common/deadline_worker.hpp"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
 #include <string_view>
+#include <vector>
 
 // nvCVImage.h marks its C++ convenience wrapper dllexport under MSVC, which
 // would make a runtime-only client emit link-time references to the SDK. Hide
@@ -297,17 +302,22 @@ public:
         WrapBgra(SourceView(), sourceDevicePixels, sourcePitchBytes, sourceWidth_, sourceHeight_);
         WrapBgra(DestinationView(), destinationDevicePixels, destinationPitchBytes,
                  destinationWidth_, destinationHeight_);
-        if (imageTransfer_(SourceView(), SourceFloat(), 1.0f / 255.0f,
-                           reinterpret_cast<CUstream>(stream_), TransferTemp()) != NVCV_SUCCESS ||
-            // NVIDIA's own SuperRes samples use synchronous execution. Async
-            // can expose the previous frame while the output is consumed on
-            // the application stream, which looks like a moving ghost layer.
-            run_(effect_, 0) != NVCV_SUCCESS ||
-            imageTransfer_(DestinationFloat(), DestinationView(), 255.0f,
-                           reinterpret_cast<CUstream>(stream_), TransferTemp()) != NVCV_SUCCESS) {
-            lastError_ = "NVIDIA SuperRes frame processing failed";
+        const auto failRun = [this](const char* stage, NvCV_Status status) {
+            lastError_ = std::string("NVIDIA SuperRes ") + stage +
+                         " failed (code " + std::to_string(static_cast<int>(status)) + ")";
             return false;
-        }
+        };
+        NvCV_Status status = imageTransfer_(SourceView(), SourceFloat(), 1.0f / 255.0f,
+                                            reinterpret_cast<CUstream>(stream_), TransferTemp());
+        if (status != NVCV_SUCCESS) return failRun("input transfer", status);
+        // NVIDIA's own SuperRes samples use synchronous execution. Async
+        // can expose the previous frame while the output is consumed on
+        // the application stream, which looks like a moving ghost layer.
+        status = run_(effect_, 0);
+        if (status != NVCV_SUCCESS) return failRun("effect execution", status);
+        status = imageTransfer_(DestinationFloat(), DestinationView(), 255.0f,
+                                reinterpret_cast<CUstream>(stream_), TransferTemp());
+        if (status != NVCV_SUCCESS) return failRun("output transfer", status);
         lastError_.clear();
         return true;
     }
@@ -355,6 +365,9 @@ public:
     void Teardown() {
         TeardownEffect();
         UnloadModules();
+        // Explicit retirement permits a later Ensure on this adapter to probe
+        // again. Failed loads remain latched until that deliberate boundary.
+        runtimeProbeAttempted_ = false;
     }
 
     HMODULE videoEffectsModule_{};
@@ -391,18 +404,35 @@ public:
 
 class MaxineSuperRes::Worker {
 public:
+    Worker() {
+        if (qEnvironmentVariableIntValue("OKUFLOW_MAXINE_PROFILE") == 1)
+            profile_ = std::make_unique<Profile>();
+    }
+    ~Worker() {
+        if (profile_) profile_->Report();
+    }
     DeadlineWorker worker;
     int device{};
     bool Execute(const std::function<bool()>& operation, const char* stage, std::string& error) {
         auto success = std::make_shared<bool>(false);
         auto deviceReady = std::make_shared<bool>(false);
+        const auto timing = profile_ ? std::make_shared<CallTiming>() : nullptr;
         const auto started = std::chrono::steady_clock::now();
-        const auto result = worker.Execute([operation, success, deviceReady, device = device] {
+        const auto result = worker.Execute([operation, success, deviceReady, timing, started, device = device] {
+            if (timing) timing->dispatchUs.store(MicrosecondsSince(started));
             *deviceReady = cudaSetDevice(device) == cudaSuccess;
-            if (*deviceReady) *success = operation();
+            if (*deviceReady) {
+                const auto callStarted = timing ? std::chrono::steady_clock::now()
+                                                : std::chrono::steady_clock::time_point{};
+                *success = operation();
+                if (timing) timing->operationUs.store(MicrosecondsSince(callStarted));
+            }
         }, std::chrono::milliseconds(1000));
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - started).count();
+        const auto elapsedUs = MicrosecondsSince(started);
+        const auto elapsed = elapsedUs / 1000;
+        if (profile_) profile_->Record({stage, result, elapsedUs,
+            timing->dispatchUs.load(), timing->operationUs.load(),
+            result == DeadlineWorker::Result::Completed && *success});
         if (result != DeadlineWorker::Result::Completed) {
             error = std::string("NVIDIA SuperRes ") + stage +
                 " did not complete safely; restart OkuFlow to resume video";
@@ -413,6 +443,75 @@ public:
         if (!*deviceReady) error = "NVIDIA SuperRes could not select its CUDA device";
         return *success;
     }
+private:
+    using Clock = std::chrono::steady_clock;
+    static qint64 MicrosecondsSince(Clock::time_point started) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - started).count();
+    }
+    struct CallTiming {
+        // A timed-out task may publish these after the caller has returned.
+        std::atomic<qint64> dispatchUs{-1}, operationUs{-1};
+    };
+    struct Sample {
+        const char* stage;
+        DeadlineWorker::Result outcome;
+        qint64 waitUs, dispatchUs, operationUs;
+        bool success;
+    };
+    struct Profile {
+        static constexpr size_t Capacity = 16384;
+        std::vector<Sample> samples;
+        size_t calls{};
+        Profile() { samples.reserve(Capacity); }
+        void Record(Sample sample) {
+            if (samples.size() < Capacity) samples.push_back(sample);
+            else samples[calls % Capacity] = sample;
+            ++calls;
+        }
+        static QJsonObject Distribution(std::vector<qint64> values) {
+            if (values.empty()) return {{"count", 0}};
+            std::sort(values.begin(), values.end());
+            const auto rank = [&](double p) {
+                return values[static_cast<size_t>(std::ceil(p * values.size())) - 1];
+            };
+            return {{"count", static_cast<qint64>(values.size())},
+                {"p50_us", rank(.50)}, {"p95_us", rank(.95)},
+                {"p99_us", rank(.99)}, {"max_us", values.back()}};
+        }
+        void Report() const {
+            QJsonObject stages;
+            for (const char* stage : {"model load", "frame processing", "teardown"}) {
+                std::vector<qint64> wait, dispatch, operation;
+                int completed = 0, timedOut = 0, rejected = 0, threw = 0, succeeded = 0;
+                for (const auto& sample : samples) {
+                    if (std::string_view(sample.stage) != stage) continue;
+                    wait.push_back(sample.waitUs);
+                    if (sample.dispatchUs >= 0) dispatch.push_back(sample.dispatchUs);
+                    // Timed-out calls are censored, not successful operation samples.
+                    if (sample.outcome == DeadlineWorker::Result::Completed && sample.operationUs >= 0)
+                        operation.push_back(sample.operationUs);
+                    completed += sample.outcome == DeadlineWorker::Result::Completed;
+                    timedOut += sample.outcome == DeadlineWorker::Result::TimedOut;
+                    rejected += sample.outcome == DeadlineWorker::Result::Rejected;
+                    threw += sample.outcome == DeadlineWorker::Result::Threw;
+                    succeeded += sample.success;
+                }
+                stages.insert(QString::fromLatin1(stage), QJsonObject{
+                    {"completed", completed}, {"timed_out", timedOut}, {"rejected", rejected},
+                    {"threw", threw}, {"sdk_success", succeeded},
+                    {"caller_wait", Distribution(std::move(wait))},
+                    {"worker_dispatch_delay", Distribution(std::move(dispatch))},
+                    {"completed_sdk_host_call", Distribution(std::move(operation))}});
+            }
+            const QJsonObject report{{"schema", 1}, {"scope", "host-calls; not-gpu-completion-or-pan-to-present"},
+                {"total_calls", static_cast<qint64>(calls)},
+                {"retained_last_calls", static_cast<qint64>(samples.size())},
+                {"omitted_earlier_calls", static_cast<qint64>(calls - samples.size())},
+                {"stage_statistics_scope", "retained_last_calls"}, {"stages", stages}};
+            qInfo().noquote() << "OKUFLOW_MAXINE_PROFILE" << QJsonDocument(report).toJson(QJsonDocument::Compact);
+        }
+    };
+    std::unique_ptr<Profile> profile_;
 };
 
 MaxineSuperRes::MaxineSuperRes() : impl_(std::make_shared<Impl>()), worker_(std::make_unique<Worker>()) {
@@ -441,6 +540,7 @@ bool MaxineSuperRes::Ensure(unsigned int sourceWidth,
         impl_->stream_ == cudaStream && impl_->loadedStrength_ == impl_->strength_) return true;
     qInfo() << "NVIDIA SuperRes loading" << sourceWidth << "x" << sourceHeight
             << "to" << destinationWidth << "x" << destinationHeight;
+    retired_ = false;
     return worker_->Execute([owner = impl_, sourceWidth, sourceHeight, destinationWidth, destinationHeight, cudaStream] {
         return owner->Ensure(sourceWidth, sourceHeight, destinationWidth, destinationHeight, cudaStream);
     }, "model load", workerError_);
@@ -472,7 +572,10 @@ void MaxineSuperRes::SetStrength(float strength) {
 }
 
 void MaxineSuperRes::Teardown() {
-    if (!IsFaulted()) worker_->Execute([owner = impl_] { owner->Teardown(); return true; }, "teardown", workerError_);
+    if (!IsFaulted() && !retired_ &&
+        worker_->Execute([owner = impl_] { owner->Teardown(); return true; }, "teardown", workerError_)) {
+        retired_ = true;
+    }
 }
 bool MaxineSuperRes::IsReady() const { return !IsFaulted() && impl_->effect_ != nullptr; }
 bool MaxineSuperRes::IsFaulted() const { return !workerError_.empty(); }

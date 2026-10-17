@@ -1,0 +1,11 @@
+LIBRARY NVVideoEffects
+EXPORTS
+    NvVFX_CreateEffect
+    NvVFX_DestroyEffect
+    NvVFX_SetU32
+    NvVFX_SetF32
+    NvVFX_SetString
+    NvVFX_SetImage
+    NvVFX_SetCudaStream
+    NvVFX_Load
+    NvVFX_Run

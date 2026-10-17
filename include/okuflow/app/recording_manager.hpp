@@ -102,6 +102,7 @@ public:
 
     void SetRequested(bool requested, std::optional<RecordingSessionInfo> reserved = std::nullopt);
     bool StopSession(const QString& expectedSessionId);
+    void SetSessionAudioPending(const QString& expectedSessionId);
     void SetSessionAudioResult(const QString& expectedSessionId, bool actualAudio);
     void Stop(const QString& message = {});
     void SetCanvasMode(RecordingCanvasMode mode);
@@ -155,6 +156,7 @@ public:
                           CapturedFrame originalFrame);
 
 private:
+    friend struct RecordingManagerTestAccess;
     struct QueuedFrame {
         std::vector<uint8_t> processedScene;
         GpuVideoFrame processedGpuScene;
@@ -219,6 +221,9 @@ private:
     VideoRecorder processedRecorder_;
     VideoRecorder originalRecorder_;
     std::atomic<RecordingState> state_{RecordingState::Idle};
+    // An immutable observer installed only by the desktop-free fixture. It
+    // exposes the actual publication boundary without involving native codecs.
+    std::function<void(RecordingState)> statePublicationObserver_;
     std::atomic<RecordingCanvasMode> canvasMode_{
         RecordingCanvasMode::Source};
     std::atomic<RecordingCanvasMode> activeCanvasMode_{
@@ -291,6 +296,10 @@ private:
     std::size_t encoderSubmitSampleIndex_{0};
     std::size_t encoderSubmitSampleCount_{0};
     UINT processedWidth_{};
+    QString segmentProcessedPath_;
+    QString segmentOriginalPath_;
+    // Deterministic codec-failure fixture; normal instances use VideoRecorder.
+    std::function<bool(bool, const QString&, VideoRecorder::Codec)> encoderStartOverride_;
     bool segmentFinalized_{true};
     UINT processedHeight_{};
     UINT originalWidth_{};
@@ -299,6 +308,7 @@ private:
     UINT frameRateDenominator_{1};
     std::int64_t segmentClockOrigin100ns_{-1};
     std::atomic<bool> audioCaptureEnabled_{false};
+    bool audioStartupPending_{}; // queueMutex_: no segment before actual audio decision.
     int segmentIndex_{1};
     bool sessionHadOutput_{false};
     bool sessionFinalizationFailed_{false};

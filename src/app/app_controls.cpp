@@ -370,137 +370,147 @@ bool OkuFlowApp::SetPhoneTorch(bool enabled,std::shared_ptr<std::atomic<bool>> c
     pipelineOrchestrator_->MarkViewportDirty();return true;
 }
 
-bool OkuFlowApp::StartSelectedMicrophone()
+OkuFlowApp::MicrophoneStartResult OkuFlowApp::StartSelectedMicrophone()
 {
     StopMicrophoneCapture();
-    if (recordingManager_) {
-        recordingManager_->SetAudioCaptureEnabled(false);
+    if (!uiState_ || !uiState_->microphoneCombo_) return MicrophoneStartResult::Disabled;
+    const QString endpoint=uiState_->microphoneCombo_->currentData().toString();
+    if(endpoint.isEmpty() || endpoint==QStringLiteral("__none__"))return MicrophoneStartResult::Disabled;
+    const auto microphone=std::find_if(microphones_.cbegin(),microphones_.cend(),[&](const AudioDeviceDescriptor& item) {
+        return QString::fromStdWString(item.endpointId)==endpoint;
+    });
+    if(microphone==microphones_.cend() || (microphoneWorker_ &&
+       (!microphoneWorker_->done.load() || microphoneWorker_->abandoned.load()))) {
+        ShowStatusMessage(QStringLiteral("The selected microphone is unavailable. Recording will continue without sound."),9000);
+        return MicrophoneStartResult::Failed;
     }
-    if (!uiState_ || !uiState_->microphoneCombo_) {
-        return true;
+    const auto recording=recordingManager_?recordingManager_->CurrentSessionInfo():std::nullopt;
+    if(!recording || !recordingManager_->IsActive())return MicrophoneStartResult::Failed;
+    const QString recordingId=recording->id;
+    const auto target=microphoneCallbackTarget_;
+    std::uint64_t generation=0;
+    {std::lock_guard lock(target->mutex);generation=++target->generation;target->accepting=target->app==this;}
+    auto worker=std::make_shared<MicrophoneWorkerState>();microphoneWorker_=worker;
+    pendingMicrophoneRecording_=recordingId;
+    recordingManager_->SetSessionAudioPending(recordingId);
+    AudioFrameCallback frameCallback=[target,generation,recordingId](AudioFrame&& frame) {
+        std::lock_guard lock(target->mutex);auto* app=target->app;
+        if(!target->accepting || !app || target->generation!=generation || !app->recordingManager_)return;
+        const auto session=app->recordingManager_->CurrentSessionInfo();
+        if(session && session->id==recordingId)app->recordingManager_->AddAudioFrame(std::move(frame));
+    };
+    AudioErrorCallback errorCallback=[target,generation,recordingId](const std::string& error) {
+        std::lock_guard lock(target->mutex);auto* app=target->app;
+        if(!target->accepting || !app || target->generation!=generation)return;
+        QMetaObject::invokeMethod(app,[target,generation,recordingId,detail=QString::fromStdString(error)] {
+            OkuFlowApp* current=nullptr;
+            {std::lock_guard guard(target->mutex);if(target->accepting && target->generation==generation)current=target->app;}
+            if(!current || !current->recordingManager_)return;
+            if(!current->StopRecording(recordingId))return;
+            current->ShowStatusMessage(detail,12000);
+        },Qt::QueuedConnection);
+    };
+    const auto startForTest=microphoneStartForTest_;const auto stopForTest=microphoneStopForTest_;
+    try {
+        std::thread([worker,target,generation,recordingId,endpoint=endpoint.toStdWString(),
+                     frameCallback=std::move(frameCallback),errorCallback=std::move(errorCallback),startForTest,stopForTest]() mutable {
+            const HRESULT apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+            // Native state is constructed, used and destroyed on this worker.
+            // A blocked Open/Flush/Shutdown retains this owner, never the app.
+            std::unique_ptr<AudioCapture> capture;
+            try {
+                capture=std::make_unique<AudioCapture>();
+                ThrowIfFailed(apartment,"Initialize microphone COM apartment");
+                AudioDeviceDescriptor descriptor;descriptor.endpointId=endpoint;
+                if(!startForTest && !worker->canceled.load()) {
+                    Microsoft::WRL::ComPtr<IMFAttributes> attributes;
+                    ThrowIfFailed(MFCreateAttributes(&attributes,2),"Create microphone attributes");
+                    ThrowIfFailed(attributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_GUID),"Set microphone source type");
+                    ThrowIfFailed(attributes->SetString(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_ENDPOINT_ID,endpoint.c_str()),"Set microphone endpoint");
+                    ThrowIfFailed(MFCreateDeviceSourceActivate(attributes.Get(),&descriptor.activation),"Create microphone activation");
+                }
+                if(!worker->canceled.load())worker->started=startForTest?startForTest(worker->canceled):
+                    capture->Start(descriptor,std::move(frameCallback),std::move(errorCallback));
+                if(!worker->started.load()) {std::lock_guard lock(worker->mutex);worker->error=capture->LastError();}
+            } catch(const std::exception& error) {std::lock_guard lock(worker->mutex);worker->error=error.what();}
+              catch(...) {std::lock_guard lock(worker->mutex);worker->error="Unknown error opening microphone";}
+            worker->startupFinished=true;
+            {
+                std::lock_guard lock(target->mutex);auto* app=target->app;
+                if(target->accepting && app && target->generation==generation)
+                    QMetaObject::invokeMethod(app,[app,worker,recordingId,generation] {
+                        app->CompleteMicrophoneStart(worker,recordingId,generation);
+                    },Qt::QueuedConnection);
+            }
+            if(worker->started.load()) {
+                std::unique_lock lock(worker->mutex);worker->changed.wait(lock,[&] {return worker->canceled.load();});
+            }
+            // The retirement boundary includes every native cleanup and release,
+            // not only the reader-loop/flusher's earlier three-second wait.
+            try {if(stopForTest)stopForTest();if(capture)capture->Stop();}
+            catch(...) {worker->abandoned=true;(void)capture.release();}
+            if(capture)worker->abandoned=worker->abandoned.load() || capture->WasAbandoned();
+            capture.reset();frameCallback={};errorCallback={};
+            if(SUCCEEDED(apartment))CoUninitialize();
+            worker->done=true;worker->changed.notify_all();
+        }).detach();
+    } catch(const std::exception& error) {
+        {std::lock_guard lock(worker->mutex);worker->error=error.what();}
+        worker->startupFinished=worker->done=true;
+        CompleteMicrophoneStart(worker,recordingId,generation);
+        return MicrophoneStartResult::Failed;
     }
-    const QString endpoint =
-        uiState_->microphoneCombo_->currentData().toString();
-    if (endpoint.isEmpty() ||
-        endpoint == QStringLiteral("__none__")) {
-        return true;
-    }
+    QTimer::singleShot(microphoneDeadlineMs_,this,[this,worker,recordingId,generation] {
+        if(microphoneWorker_!=worker || worker->startupFinished.load() || worker->canceled.load())return;
+        {std::lock_guard lock(worker->mutex);worker->error="Microphone startup timed out";}
+        StopMicrophoneCapture();
+        ShowStatusMessage(QStringLiteral("The selected microphone could not start: %1. Recording will continue without sound.")
+            .arg(QStringLiteral("Microphone startup timed out")),12000);
+    });
+    return MicrophoneStartResult::Pending;
+}
 
-    const auto microphone = std::find_if(
-        microphones_.cbegin(), microphones_.cend(),
-        [&endpoint](const AudioDeviceDescriptor& candidate) {
-            return QString::fromStdWString(candidate.endpointId) ==
-                   endpoint;
-        });
-    if (microphone == microphones_.cend()) {
-        ShowStatusMessage(
-            QStringLiteral(
-                "The selected microphone is unavailable. Recording will "
-                "continue without sound."),
-            9000);
-        return false;
+void OkuFlowApp::CompleteMicrophoneStart(const std::shared_ptr<MicrophoneWorkerState>& worker,
+                                        const QString& recordingId,std::uint64_t generation)
+{
+    if(microphoneWorker_!=worker || worker->canceled.load())return;
+    {std::lock_guard lock(microphoneCallbackTarget_->mutex);
+     if(!microphoneCallbackTarget_->accepting || microphoneCallbackTarget_->generation!=generation)return;}
+    const auto session=recordingManager_?recordingManager_->CurrentSessionInfo():std::nullopt;
+    if(!session || session->id!=recordingId || !recordingManager_->IsActive()) {StopMicrophoneCapture();return;}
+    pendingMicrophoneRecording_.clear();
+    recordingManager_->SetSessionAudioResult(recordingId,worker->started.load());
+    if(!worker->started.load()) {
+        std::string error;{std::lock_guard lock(worker->mutex);error=worker->error;}
+        StopMicrophoneCapture();
+        ShowStatusMessage(QStringLiteral("The selected microphone could not start: %1. Recording will continue without sound.")
+            .arg(QString::fromStdString(error)),12000);
     }
-
-    const std::shared_ptr<MicrophoneCallbackTarget> callbackTarget =
-        microphoneCallbackTarget_;
-    std::uint64_t callbackGeneration = 0;
-    if (callbackTarget) {
-        std::lock_guard lock(callbackTarget->mutex);
-        callbackGeneration = ++callbackTarget->generation;
-        callbackTarget->accepting = callbackTarget->app == this;
-    }
-
-    const bool started = audioCapture_.Start(
-        *microphone,
-        [callbackTarget, callbackGeneration](AudioFrame&& frame) {
-            if (!callbackTarget) {
-                return;
-            }
-            std::lock_guard lock(callbackTarget->mutex);
-            OkuFlowApp* app = callbackTarget->app;
-            if (!callbackTarget->accepting || !app ||
-                callbackTarget->generation != callbackGeneration) {
-                return;
-            }
-            if (app->recordingManager_) {
-                app->recordingManager_->AddAudioFrame(std::move(frame));
-            }
-        },
-        [callbackTarget, callbackGeneration](const std::string& message) {
-            if (!callbackTarget) {
-                return;
-            }
-            std::lock_guard lock(callbackTarget->mutex);
-            OkuFlowApp* app = callbackTarget->app;
-            if (!callbackTarget->accepting || !app ||
-                callbackTarget->generation != callbackGeneration) {
-                return;
-            }
-            const QString detail = QString::fromStdString(message);
-            QMetaObject::invokeMethod(
-                app,
-                [callbackTarget, callbackGeneration, detail]() {
-                    OkuFlowApp* currentApp = nullptr;
-                    {
-                        std::lock_guard lock(callbackTarget->mutex);
-                        if (!callbackTarget->accepting ||
-                            callbackTarget->generation !=
-                                callbackGeneration) {
-                            return;
-                        }
-                        currentApp = callbackTarget->app;
-                    }
-                    if (!currentApp) {
-                        return;
-                    }
-                    if (currentApp->recordingManager_) {
-                        currentApp->recordingManager_->Stop(
-                            QStringLiteral(
-                                "Recording stopped because microphone "
-                                "capture failed."));
-                    }
-                    currentApp->StopMicrophoneCapture();
-                    currentApp->ShowStatusMessage(detail, 12000);
-                },
-                Qt::QueuedConnection);
-        });
-    if (!started) {
-        if (callbackTarget) {
-            std::lock_guard lock(callbackTarget->mutex);
-            if (callbackTarget->generation == callbackGeneration) {
-                callbackTarget->accepting = false;
-            }
-        }
-        ShowStatusMessage(
-            QStringLiteral(
-                "The selected microphone could not start: %1. Recording "
-                "will continue without sound.")
-                .arg(QString::fromStdString(
-                    audioCapture_.LastError())),
-            12000);
-        return false;
-    }
-    if (recordingManager_) {
-        recordingManager_->SetAudioCaptureEnabled(true);
-    }
-    return true;
 }
 
 void OkuFlowApp::StopMicrophoneCapture(bool retainQueuedAudio)
 {
-    // Cancel and serialize callback delivery before waiting for ReadSample.
-    // If Stop must detach a wedged thread, its retained callback can reach
-    // only this independently owned, inactive target. The next Start uses a
-    // different generation.
-    if (microphoneCallbackTarget_) {
+    if(microphoneCallbackTarget_) {
         std::lock_guard lock(microphoneCallbackTarget_->mutex);
-        microphoneCallbackTarget_->accepting = false;
-        ++microphoneCallbackTarget_->generation;
+        microphoneCallbackTarget_->accepting=false;++microphoneCallbackTarget_->generation;
     }
-    audioCapture_.Stop();
-    if (recordingManager_ && !retainQueuedAudio) {
-        recordingManager_->SetAudioCaptureEnabled(false);
+    const auto worker=microphoneWorker_;
+    if(worker && !worker->canceled.exchange(true)) {
+        worker->changed.notify_all();
+        QTimer::singleShot(microphoneDeadlineMs_,this,[this,worker] {
+            if(microphoneWorker_==worker && !worker->done.load())
+                ShowStatusMessage(QStringLiteral("Microphone shutdown timed out"),12000);
+        });
     }
+    if(recordingManager_) {
+        if(!pendingMicrophoneRecording_.isEmpty())recordingManager_->SetSessionAudioResult(std::exchange(pendingMicrophoneRecording_,{}),false);
+        if(!retainQueuedAudio)recordingManager_->SetAudioCaptureEnabled(false);
+    }
+}
+
+bool OkuFlowApp::MicrophoneTeardownUnsafe() const
+{
+    return microphoneWorker_ && (!microphoneWorker_->done.load() || microphoneWorker_->abandoned.load());
 }
 
 void OkuFlowApp::OnBlackWhiteToggled(bool checked) {
@@ -516,6 +526,7 @@ void OkuFlowApp::OnBlackWhiteThresholdChanged(int value) {
 }
 
 void OkuFlowApp::OnZoomToggled(bool checked) {
+    if (zoomEnabled_ != checked) pipelineOrchestrator_->NotifyViewportMotion();
     zoomEnabled_ = checked;
     pipelineOrchestrator_->MarkViewportDirty();
     UpdateControlEnabledStates();
@@ -562,6 +573,7 @@ void OkuFlowApp::SetZoom(float amount, std::optional<QPointF> anchor, bool enabl
         SetZoomCenter(x,y,true,true);
     } else if (changed || enableChanged) SyncCurrentConfigToPersistence(true);
     if (changed || enableChanged || (anchor && recenterAnchor)) {
+        pipelineOrchestrator_->NotifyViewportMotion();
         pipelineOrchestrator_->MarkViewportDirty(); UpdateProcessingStatusLabel();
     }
 }
@@ -619,6 +631,7 @@ void OkuFlowApp::SetRotationQuarterTurns(int index) {
         cudaSurface_->ResetTemporalHistory();
         cudaSurface_->ResetStabilization();
         cudaSurface_->ResetKeystone();
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
     }
     UpdateKeystoneTrackingUi();
@@ -777,6 +790,7 @@ void OkuFlowApp::OnStabilizationToggled(bool checked) {
     if (cudaSurface_) {
         cudaSurface_->ResetStabilization();
         cudaSurface_->ResetKeystone();
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
     }
     UpdateKeystoneTrackingUi();
@@ -794,6 +808,7 @@ void OkuFlowApp::OnKeystoneToggled(bool checked) {
     UpdateControlEnabledStates();
     if (cudaSurface_) {
         cudaSurface_->ResetKeystone();
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
     }
     UpdateKeystoneTrackingUi();
@@ -922,6 +937,7 @@ void OkuFlowApp::OnKeystoneStepBack() {
         return;
     }
     if (cudaSurface_->StepKeystoneCorrection(-1)) {
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
         ShowStatusMessage(QStringLiteral("Screen correction moved back and tracking stopped."), 3500);
     }
@@ -943,6 +959,7 @@ void OkuFlowApp::OnKeystoneStepForward() {
         return;
     }
     if (cudaSurface_->StepKeystoneCorrection(1)) {
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
         const bool pending = cudaSurface_->GetKeystoneTrackingState().stepPending;
         ShowStatusMessage(pending ? QStringLiteral("Finding one new screen correction...")
@@ -1080,8 +1097,10 @@ void OkuFlowApp::OnTextClarityControlsChanged() {
         }
     }
 
-    if (wasZoomEnabled != zoomEnabled_ || previousZoom != zoomAmount_)
+    if (wasZoomEnabled != zoomEnabled_ || previousZoom != zoomAmount_) {
+        pipelineOrchestrator_->NotifyViewportMotion();
         pipelineOrchestrator_->MarkViewportDirty();
+    }
     UpdateControlEnabledStates();
     if (cudaSurface_) {
         cudaSurface_->ResetTextClarityHistory();
@@ -1141,7 +1160,8 @@ void OkuFlowApp::UpdateControlEnabledStates() {
     setEnabled(uiState_->mlTextSuperResolutionUltra1440pCheckbox_,
                superResAvailable);
     if (mainWindow_) mainWindow_->refreshTextClarityUi();
-    UpdateSectionChangedCounts();
+    // Config sync owns preset matching and section badges. Transient controls
+    // such as Extra Stable do not affect saved profiles.
 }
 
 void OkuFlowApp::UpdateSectionChangedCounts() {

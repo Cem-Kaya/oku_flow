@@ -7,22 +7,15 @@ param(
     [switch]$AllowUnsignedPreview
 )
 . (Join-Path $PSScriptRoot 'windows-installer\common.ps1')
+. (Join-Path $PSScriptRoot 'windows-installer\wix_tool.ps1')
 $parsedVersion = [version]$Version
 if ($parsedVersion.Major -gt 255 -or $parsedVersion.Minor -gt 255 -or $parsedVersion.Build -gt 65535) { throw 'MSI version fields exceed Windows Installer limits.' }
 $repository = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $pins = Get-Content (Join-Path $PSScriptRoot 'windows-installer\tools.json') -Raw | ConvertFrom-Json
 $toolDirectory = Join-Path $env:LOCALAPPDATA "OkuFlow\installer-tools\wix-$($pins.wix.version)"
-New-Item -ItemType Directory -Path $toolDirectory -Force | Out-Null
-$archive = Join-Path $toolDirectory "wix.$($pins.wix.version).nupkg"
-if (-not (Test-Path -LiteralPath $archive)) { Invoke-WebRequest $pins.wix.url -OutFile $archive }
-if ((Get-FileHash -LiteralPath $archive).Hash.ToLowerInvariant() -ne $pins.wix.sha256) { throw 'WiX package differs from the reviewed pin.' }
-$wix = Join-Path $toolDirectory 'wix.exe'
-if (-not (Test-Path -LiteralPath $wix)) {
-    & dotnet tool install wix --tool-path $toolDirectory --version $pins.wix.version --no-cache
-    if ($LASTEXITCODE -ne 0) { throw 'WiX installation failed.' }
-}
-$actualVersion = & $wix --version
-if ($LASTEXITCODE -ne 0 -or $actualVersion -notlike "$($pins.wix.version)+*") { throw 'Unexpected WiX tool version.' }
+$wix = Get-VerifiedWixTool $pins.wix $toolDirectory
+$actualVersion = Invoke-VerifiedWix $wix -Arguments @('--version')
+if ($actualVersion -notlike "$($pins.wix.version)+*") { throw 'Unexpected WiX tool version.' }
 $work = Join-Path $env:LOCALAPPDATA "OkuFlow\installer-build\$Version-$([Guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 $snapshot = New-VerifiedBundleSnapshot $BundlePath (Join-Path $work 'payload')
@@ -109,10 +102,9 @@ try {
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $output = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) "OkuFlow-$Version-x64.msi"
 if (Test-Path -LiteralPath $output) { throw 'Versioned installer already exists; choose a new output folder or version.' }
-& $wix build $sourcePath -arch x64 -out $output -intermediateFolder (Join-Path $work 'intermediate')
-if ($LASTEXITCODE -ne 0) { throw 'MSI compilation/validation failed.' }
+Invoke-VerifiedWix $wix -Arguments @('build', $sourcePath, '-arch', 'x64', '-out', $output, '-intermediateFolder', (Join-Path $work 'intermediate'))
 $signature = Set-InstallerSignature $output -AllowUnsignedPreview:$AllowUnsignedPreview
 & (Join-Path $PSScriptRoot 'test_msi_package.ps1') -InstallerPath $output -BundlePath $snapshot.path
-$receipt = [ordered]@{schema=1;product='OkuFlow';version=$Version;architecture='x64';productCode=$productCode;upgradeCode=$pins.upgradeCode;sourceCommit=$snapshot.manifest.sourceCommit;installer=(Split-Path $output -Leaf);sha256=(Get-FileHash -LiteralPath $output).Hash.ToLowerInvariant();authenticode=$signature;unsignedPreview=[bool]$AllowUnsignedPreview;wixVersion=$pins.wix.version;buildDirectory=$work;validation='MSI tables and extracted payload; VM install/upgrade/uninstall pending'}
+$receipt = [ordered]@{schema=1;product='OkuFlow';version=$Version;architecture='x64';productCode=$productCode;upgradeCode=$pins.upgradeCode;sourceCommit=$snapshot.manifest.sourceCommit;installer=(Split-Path $output -Leaf);sha256=(Get-FileHash -LiteralPath $output).Hash.ToLowerInvariant();authenticode=$signature;unsignedPreview=[bool]$AllowUnsignedPreview;wixVersion=$pins.wix.version;wixPackageSha256=$wix.Sha256;wixExecutableSha256=(Get-FileHash -LiteralPath $wix.Executable).Hash.ToLowerInvariant();buildDirectory=$work;validation='MSI tables and extracted payload; VM install/upgrade/uninstall pending'}
 $receipt | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$output.json" -Encoding utf8NoBOM
 Write-Output "MSI ready: $output"

@@ -7,8 +7,8 @@
 
 namespace okuflow {
 
-// Offline compatibility gate for the dedicated agent child. This does not
-// prove dynamic-tool runtime acceptance, nor alter the ordinary Codex child.
+// Offline compatibility gate for constrained ordinary vision/Assistant and
+// dedicated agent children. This does not prove live provider/tool acceptance.
 struct CodexAgentLaunchProfile {
     bool available{};
     QString errorCode;
@@ -20,7 +20,8 @@ public:
     static constexpr auto Version = "0.160.1";
     static CodexAgentLaunchProfile Validate(const QString& versionOutput,
                                             const QString& featureOutput,
-                                            const QJsonArray& mcpInventory);
+                                            const QJsonArray& mcpInventory,
+                                            bool allowWebSearch = false);
     static QString FeatureInventoryDigest(const QString& featureOutput);
     static QJsonObject Initialization();
     static QStringList DisabledFeatures();

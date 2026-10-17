@@ -1466,7 +1466,8 @@ private slots:
     }
 
     // [service][fake target] A late asynchronous completion of an approved
-    // action never reports into a replacement context.
+    // action retains its original human receipt identity, never appearing
+    // in the replacement context's tool-visible event stream.
     void lateApprovalReceiptStaysWithItsContext() {
         FakeTarget target;
         AppControlService service(target, CatalogEdition::DevFull);
@@ -1478,11 +1479,15 @@ private slots:
         service.End(first);
         const auto second = Embedded(service);
         QVERIFY(!second.isEmpty() && second != first);
-        QStringList sinkTypes;
-        service.SetEventSink([&](const QJsonObject& event) { sinkTypes << event["type"].toString(); });
+        QVector<QJsonObject> receipts;
+        service.SetEventSink([&](const QJsonObject& event) {
+            if(event["type"]=="operation_receipt")receipts.push_back(event);
+        });
         target.held.front()({{{"ok", true}, {"pending", true}, {"operationId", "late"}, {"state", "queued"}}, {}});
         for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
-        QVERIFY(!sinkTypes.contains("operation_receipt"));
+        QCOMPARE(receipts.size(),1);
+        QCOMPARE(receipts[0]["contextId"].toString(),first);
+        QVERIFY(receipts[0]["outcome"].toObject()["pending"].toBool());
         const auto events = Call(service, second, "read", "app_state_get", {{"sinceEvent", 0}}).content["eventsAfter"].toArray();
         for (const auto event : events) QVERIFY(event.toObject()["type"] != "operation_receipt");
     }

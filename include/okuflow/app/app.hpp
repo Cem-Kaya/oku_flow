@@ -20,6 +20,7 @@
 #include "okuflow/app/recording_manager.hpp"
 #include "okuflow/app/pipeline_orchestrator.hpp"
 #include "okuflow/app/settings_controller.hpp"
+#include "okuflow/app/ultra_clear_text_controller.hpp"
 #include "okuflow/app/suspend_guard.hpp"
 #include "okuflow/app/ui_state_manager.hpp"
 #include "okuflow/app/user_data_paths.hpp"
@@ -93,6 +94,7 @@ class ColorSchemePicker;
 struct MicrophoneCallbackTarget;
 struct CameraIngress;
 struct StartupWorkerTracker;
+struct MicrophoneWorkerState;
 
 class D3D12Presenter;
 class CudaInteropSurface;
@@ -167,6 +169,7 @@ private:
     QTimer* agentSceneTimer_{};
     bool agentSceneRequested_{}, agentSceneEffective_{}, agentSceneCapturePending_{};
     std::optional<ChatTurnTicket> agentReceiptTicket_;
+    std::map<QString,ChatTurnTicket> agentReceiptTickets_;
     QHash<QString,QString> agentTranscripts_;
     std::unique_ptr<VisibleChatSessionStore> visibleChatStore_;
     QTimer* visibleChatSaveTimer_{};
@@ -244,8 +247,12 @@ private:
     void PopulateCameraCombo();
     void EnumerateMicrophones();
     void PopulateMicrophoneCombo();
-    bool StartSelectedMicrophone();
+    enum class MicrophoneStartResult { Disabled, Pending, Failed };
+    MicrophoneStartResult StartSelectedMicrophone();
+    void CompleteMicrophoneStart(const std::shared_ptr<MicrophoneWorkerState>& worker,
+                                 const QString& recordingId, std::uint64_t generation);
     void StopMicrophoneCapture(bool retainQueuedAudio = false);
+    bool MicrophoneTeardownUnsafe() const;
     void RefreshCameraFormats(size_t index);
     void UpdatePhoneLightUi();
     bool StartCameraCapture(size_t index,
@@ -325,6 +332,10 @@ private:
                                UINT processedHeight,
                                const CapturedFrame& originalFrame);
     void QueueAnnotationSnapshot(int reason);
+    struct AnnotationGpuPresentation;
+    bool AnnotationFrameMatches(const UctFrameContext& candidate) const;
+    bool AnnotationGpuPresentationMatches(const AnnotationGpuPresentation& candidate) const;
+    void CancelAnnotationCaptures();
     void SaveAnnotationSnapshot(const uint8_t* processedData,
                                 UINT processedWidth,
                                 UINT processedHeight,
@@ -348,6 +359,13 @@ private:
     static void RotateNormalizedPoint(float inX, float inY, int quarterTurns, float& outX, float& outY);
     void ApplyPersistentSettings(settings::PersistentSettings settings);
     void SavePersistentSettings();
+    // Ultra Clear Text: presentation-clock context and production wiring.
+    // The context describes the cached scene actually presented (CUDA or
+    // CPU snapshot) plus the current request.
+    UctFrameContext UltraClearTextContext(bool cudaScene, const ViewTransform& transform,
+                                          UINT viewportWidth, UINT viewportHeight) const;
+    UctSceneSettings UltraClearTextRequest() const;
+    void InitializeUltraClearText();
 
     QApplication* qtApp_{};
     bool initialized_{false};
@@ -383,11 +401,18 @@ private:
     QString preferredPhoneCamera_;
     bool automaticPhoneSelectionAllowed_{};
     std::shared_ptr<std::atomic<bool>> pendingCameraStartupCancel_;
+    // Private deterministic native-fixture seam; empty in every normal launch.
+    std::function<bool(const std::atomic<bool>&)> cameraStartForTest_;
     std::unordered_map<std::string, PhoneRetryPolicy> phoneRetries_;
     std::vector<VideoFormat> cameraFormats_;
     MediaCapture mediaCapture_;
     std::vector<AudioDeviceDescriptor> microphones_;
-    AudioCapture audioCapture_;
+    AudioCapture audioCapture_; // Enumeration only; live capture belongs to its worker.
+    std::shared_ptr<MicrophoneWorkerState> microphoneWorker_;
+    std::function<bool(const std::atomic<bool>&)> microphoneStartForTest_;
+    std::function<void()> microphoneStopForTest_;
+    int microphoneDeadlineMs_{3000};
+    QString pendingMicrophoneRecording_;
     // Capture threads hold this target independently of the app. Every
     // delivery is serialized with Stop/destruction and tagged with a
     // generation, so a detached old reader cannot reach this object or a
@@ -540,11 +565,26 @@ private:
     UINT64 pendingPhotoReadbackId_{};
     CapturedFrame pendingPhotoOriginal_;
     QElapsedTimer pendingPhotoReadbackTimer_;
+    struct AnnotationGpuPresentation {
+        const void* texture{};
+        UINT width{}, height{};
+        ViewTransform transform;
+        bool superRes{}, focusMarker{};
+        float focusX{}, focusY{};
+    };
     struct PendingAnnotationCapture {
         QVector<AnnotationStroke> strokes;
         ViewTransform transform;
         QString heading;
+        UctFrameContext frame;
+        std::uint64_t sceneRevision{};
+        AnnotationGpuPresentation presentation;
     };
+    std::optional<UctFrameContext> lastAnnotationPresentation_;
+    std::optional<AnnotationGpuPresentation> lastAnnotationGpuPresentation_;
+    std::uint64_t annotationSceneRevision_{};
+    std::uint64_t lastAnnotationSceneRevision_{};
+    bool annotationPresentationCuda_{};
     std::deque<PendingAnnotationCapture> annotationCaptureQueue_;
     std::optional<PendingAnnotationCapture> activeAnnotationCapture_;
     UINT64 pendingAnnotationReadbackId_{};
@@ -583,6 +623,16 @@ private:
     UINT presentationHeight_{0};
 
     bool cudaSceneReady_{false};
+
+    // Ultra Clear Text provenance of the cached CUDA/CPU scenes, snapshotted
+    // only when processing succeeded, and the discrete warp revision bumped
+    // whenever keystone/stabilization warps are reset or stepped.
+    UctSceneProvenance uctProvenance_;
+    std::uint64_t uctWarpRevision_{};
+
+    // Declared last so it is destroyed first: its worker callbacks retire
+    // before the windows it draws into and the presenter go away.
+    std::unique_ptr<UltraClearTextController> ultraClearText_;
 };
 
 } // namespace okuflow

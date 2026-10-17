@@ -32,6 +32,7 @@ public:
     std::function<bool(const ControlPlan&)> rejectBegin; // validation-only refusal, no effect
     QString session{"session-a"}, owner{"manual"}, ownedSource;
     ControlCompletion delayed;
+    QJsonObject operationStatus{{"ok",true},{"operationId","operation-a"},{"state","queued"}};
     QJsonObject State() const override { return {{"zoom",fields.at(Field::ZoomAmount)}}; }
     std::map<Field,QJsonValue> Fields() const override { return fields; }
     void SynchronizeNativeState() override { if(synchronize)synchronize(); }
@@ -78,6 +79,7 @@ public:
     }
     bool Save() override { ++saves; return !saveFails; }
     QJsonObject Query(ToolId tool,const QJsonObject& args) const override {
+        if(tool==ToolId::Operation)return operationStatus;
         QJsonObject values;
         if (tool == ToolId::ImageSettingsGet) for (const auto& value : args["fields"].toArray()) {
             if (value == "image.contrast") values["image.contrast"] = QJsonObject{{"requested",fields.at(Field::Contrast)}};
@@ -121,6 +123,42 @@ class AgentControlTests : public QObject {
     }
     QString Error(const ControlResult& r) { return r.content["error"].toObject()["code"].toString(); }
 private slots:
+    void approvedAsyncReceiptsTrackAdmissionAndActualOutcome_data() {
+        QTest::addColumn<QString>("terminal");
+        QTest::newRow("committed")<<QStringLiteral("committed");
+        QTest::newRow("failed")<<QStringLiteral("failed");
+        QTest::newRow("unknown")<<QStringLiteral("unknown");
+    }
+    void approvedAsyncReceiptsTrackAdmissionAndActualOutcome() {
+        QFETCH(QString,terminal);
+        Target target;AppControlService service(target,CatalogEdition::DevCapture);
+        const auto context=Begin(service);
+        QVector<QJsonObject> receipts;
+        service.SetEventSink([&](const QJsonObject& event) {
+            if(event["type"]=="operation_receipt")receipts.push_back(event);
+        });
+        const auto request=Call(service,context,"approval","capture_photo_take");
+        const auto id=request.content["approvalId"].toString();QVERIFY(!id.isEmpty());
+        QVERIFY(service.ResolveApproval(id,true).content["ok"].toBool());
+        QTRY_COMPARE(receipts.size(),1);
+        QVERIFY(receipts[0]["outcome"].toObject()["pending"].toBool());
+        QCOMPARE(receipts[0]["outcome"].toObject()["state"].toString(),"queued");
+        // A subsequent turn cannot relabel the approved action or steal its
+        // final outcome. The read-only watcher survives context replacement.
+        service.End(context);const auto successor=Begin(service);QVERIFY(successor!=context);
+        if(terminal=="unknown")target.operationStatus=QJsonObject{{"ok",false}};
+        else target.operationStatus["state"]=terminal;
+        QTRY_COMPARE(receipts.size(),2);
+        QCOMPARE(receipts[1]["contextId"].toString(),context);
+        QCOMPARE(receipts[1]["approvalId"].toString(),id);
+        const auto outcome=receipts[1]["outcome"].toObject();
+        if(terminal=="unknown")QVERIFY(outcome["statusUnavailable"].toBool());
+        else {
+            QVERIFY(!outcome["pending"].toBool());
+            QCOMPARE(outcome["ok"].toBool(),terminal=="committed");
+        }
+        QTest::qWait(300);QCOMPARE(receipts.size(),2); // one final receipt
+    }
     void failedCommitRestoresNativeStateWithoutSaveOrUndo() {
         Target target;target.failCommit=true;
         AppControlService service(target,CatalogEdition::DevFull);const auto context=Begin(service);
@@ -370,6 +408,11 @@ private slots:
         QImage image(1000,1000,QImage::Format_ARGB32); image.fill(Qt::white);
         const auto encoded = ObservationService::Encode(image,frame,true,768);
         QVERIFY(encoded.content["ok"].toBool()); QVERIFY(encoded.jpeg.size() <= 192*1024);
+        QVERIFY(encoded.observation);
+        QVERIFY(encoded.observation->stamp == frame.stamp);
+        QCOMPARE(encoded.observation->frameSequence, frame.sequence);
+        QCOMPARE(encoded.observation->processedAt, frame.processedAt);
+        QVERIFY(encoded.observation->contextId.isEmpty()); // the service adds authority later
         QVERIFY(!encoded.content.contains("jpeg")); QCOMPARE(encoded.content["versions"].toObject()["sourceEpoch"].toInt(),7);
         std::optional<ControlResult> completed;
         service.Request(true,768,frame.stamp,[&](ControlResult result) { completed = result; });

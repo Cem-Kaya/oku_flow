@@ -69,6 +69,8 @@ protected:
 private:
     void OpenDrawer(QWidget* drawer);
     void RenderMessages();
+    bool TryRenderStreamingAppend(const QJsonObject& previous);
+    QString RenderContext() const;
     void RefreshActions();
     void RefreshTabOrder();
     void RefreshIcons();
@@ -84,6 +86,7 @@ private:
     QPointer<QWidget> restoreFocus_;
     QJsonObject snapshot_;
     QString renderedHtml_;
+    QString renderedContext_;
     QWidget *approval_{}, *routing_{};
     bool undoAvailable_{};
     bool renderQueued_{};

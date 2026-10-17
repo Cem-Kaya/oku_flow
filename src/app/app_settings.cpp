@@ -168,7 +168,9 @@ void OkuFlowApp::PromoteCurrentConfigToPreset()
         return;
     }
 
-    settingsController_->PromoteCurrentConfig(CaptureCurrentAdvancedConfig(), name);
+    const auto promoted=settingsController_->PromoteCurrentConfig(CaptureCurrentAdvancedConfig(), name);
+    if(!settingsController_->LastError().isEmpty())ShowStatusMessage(settingsController_->LastError(),10000);
+    if(!promoted)return;
 
     PopulatePresetList();
     RefreshPresetSelection(true);

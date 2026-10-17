@@ -42,8 +42,8 @@ public:
     // Per-request JSON-RPC reply deadline (default 60 s). Tests shorten it to
     // exercise initialization timeouts without waiting for the default.
     void SetRequestTimeoutMs(int timeoutMs);
-    // Scoped vision only: async pinned offline profile validation before the
-    // child starts. Ordinary Read/Explain/Assistant keep their launch behavior.
+    // Forces the same constrained offline profile used for all Read/Explain
+    // turns, even when an ordinary persistent caller enables coding/internet.
     void SetRestrictedLaunchMode(bool restricted);
 
     bool IsReady() const;
@@ -146,6 +146,7 @@ private:
                           const QString& error,
                           bool interrupted);
     void RejectForbiddenAgentItem(const QJsonObject& item);
+    bool EnsureLaunchPermissions(bool coding, bool internet);
     void StartRestrictedPreflight(int stage);
     void FailRestrictedPreflight(const QString& code);
     void TouchTurnWatchdog();
@@ -167,11 +168,14 @@ private:
     std::unique_ptr<CodexJsonRpcProcess> rpc_;
     QTimer* turnWatchdogTimer_{nullptr};
     QProcess restrictedPreflight_;
+    QMetaObject::Connection restrictedStageFinished_;
     QTimer* restrictedPreflightDeadline_{};
     QByteArray restrictedPreflightBytes_;
     QString restrictedVersion_, restrictedFeatures_;
     quint64 restrictedPreflightEpoch_{};
     bool restrictedLaunch_{}, restrictedPreflightActive_{};
+    // Immutable for each child. Idle/login children start with neither grant.
+    bool launchCoding_{}, launchInternet_{};
 
     QString configuredExecutable_;
     QString preferredModel_;

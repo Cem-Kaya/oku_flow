@@ -8,15 +8,21 @@
 #include "okuflow/ui/main_window.hpp"
 #include "okuflow/ui/theme_contrast.hpp"
 #include "okuflow/ui/ui_translation.hpp"
+#include "okuflow/ui/ultra_clear_text_panel.hpp"
 
 #include <QApplication>
+#include <QAccessible>
 #include <QAbstractButton>
+#include <QBuffer>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCursor>
 #include <QDialog>
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QImage>
@@ -37,12 +43,14 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSplitter>
+#include <QStyleHints>
 #include <QStringList>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QTextBrowser>
 #include <QTimer>
 #include <QToolButton>
+#include <QVBoxLayout>
 #include <QtTest>
 
 #include <algorithm>
@@ -50,6 +58,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <Windows.h>
+#include <dwmapi.h>
 
 namespace okuflow {
 
@@ -251,11 +260,101 @@ void SyncScreenshotState(MainWindow& window, const QString& languageCode)
     }
 }
 
-void SaveScreenshot(MainWindow& window, const QString& name)
+QList<QWidget*> CaptureWindows(QWidget& window)
+{
+    QList<QWidget*> result{&window};
+    for (auto* peer : QApplication::topLevelWidgets()) {
+        if (peer != &window && peer->isVisible() && window.isAncestorOf(peer))
+            result.append(peer);
+    }
+    return result;
+}
+
+QRect CaptureBounds(QWidget& window)
+{
+    QRect result;
+    for (auto* peer : CaptureWindows(window)) result = result.united(peer->frameGeometry());
+    return result;
+}
+
+// Visual examples fit the real work area. Large geometry contracts below keep
+// their original sizes and assertions, even when that size cannot be captured.
+bool PrepareVisualWindow(QWidget& window)
+{
+    // Suppress only this fixture HWND's opening transition. A compositor flush
+    // alone cannot prevent a genuine native grab from capturing its cross-fade.
+    const BOOL disabled = TRUE;
+    return SUCCEEDED(DwmSetWindowAttribute(reinterpret_cast<HWND>(window.winId()),
+        DWMWA_TRANSITIONS_FORCEDISABLED, &disabled, sizeof(disabled)));
+}
+
+QString FitVisualWindow(QWidget& window, const QSize& preferred)
+{
+    auto* screen = window.screen();
+    if (!screen) return QStringLiteral("No native screen for visual fixture");
+    const QRect available = screen->availableGeometry().adjusted(12, 12, -12, -12);
+    const QSize frame = window.frameGeometry().size() - window.size();
+    window.resize(preferred.boundedTo(available.size() - frame));
+    window.move(available.topLeft());
+    if (!QTest::qWaitFor([&] { return available.contains(CaptureBounds(window)); }, 1000))
+        return QStringLiteral("Fixture minimum size does not fit native work area %1x%2")
+            .arg(available.width()).arg(available.height());
+    return {};
+}
+
+bool CaptureUnobstructed(QWidget& window)
+{
+    DWORD foregroundProcess = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &foregroundProcess);
+    if (foregroundProcess != GetCurrentProcessId()) return false;
+    // Sample each visible native peer in physical coordinates, not Qt logical
+    // coordinates. A foreign topmost window must not become screenshot evidence.
+    for (auto* peer : CaptureWindows(window)) {
+        const HWND handle = reinterpret_cast<HWND>(peer->winId());
+        RECT client{};
+        if (!IsWindowVisible(handle) || !GetClientRect(handle, &client)) return false;
+        for (const int x : {1, 2, 3}) for (const int y : {1, 2, 3}) {
+            POINT point{client.right * x / 4, client.bottom * y / 4};
+            if (!ClientToScreen(handle, &point)) return false;
+            DWORD owner = 0;
+            GetWindowThreadProcessId(WindowFromPoint(point), &owner);
+            if (owner != GetCurrentProcessId()) return false;
+        }
+    }
+    return true;
+}
+
+bool NativeHitBelongsTo(QWidget* widget, QString* problem)
+{
+    auto* owner = widget->window();
+    const HWND handle = reinterpret_cast<HWND>(owner->winId());
+    const QPoint local = widget->mapTo(owner, widget->rect().center());
+    const qreal ratio = owner->devicePixelRatioF();
+    POINT point{qRound(local.x() * ratio), qRound(local.y() * ratio)};
+    if (!ClientToScreen(handle, &point)) return false;
+    const HWND hit = WindowFromPoint(point);
+    const bool belongs = hit == handle || IsChild(handle, hit);
+    if (!belongs) {
+        RECT client{};
+        GetClientRect(handle, &client);
+        DWORD process = 0;
+        GetWindowThreadProcessId(hit, &process);
+        wchar_t name[128]{};
+        GetClassNameW(hit, name, 128);
+        *problem = QStringLiteral("Native footer %1 is covered/outside its owner: Qt owner %2x%3, "
+            "native client %4x%5, local %6,%7, DPR %8, native point %9,%10, hit %11 PID %12")
+            .arg(widget->objectName()).arg(owner->width()).arg(owner->height())
+            .arg(client.right).arg(client.bottom).arg(local.x()).arg(local.y())
+            .arg(ratio).arg(point.x).arg(point.y).arg(QString::fromWCharArray(name)).arg(process);
+    }
+    return belongs;
+}
+
+bool SaveScreenshot(QWidget& window, const QString& name)
 {
     const QString root = qEnvironmentVariable("OKUFLOW_UI_TEST_SCREENSHOTS");
     if (root.isEmpty()) {
-        return;
+        return true;
     }
     // Native tool windows can be exposed before their first compositor frame.
     QTest::qWait(80);
@@ -263,25 +362,44 @@ void SaveScreenshot(MainWindow& window, const QString& name)
     QDir directory(root);
     if (!directory.exists() && !directory.mkpath(QStringLiteral("."))) {
         qWarning().noquote() << "Cannot create screenshot directory:" << root;
-        return;
-    }
-    DWORD foregroundProcess = 0;
-    const HWND foreground = GetForegroundWindow();
-    if (!foreground || !GetWindowThreadProcessId(foreground, &foregroundProcess) ||
-        foregroundProcess != GetCurrentProcessId()) {
-        qWarning().noquote() << "Skipping UI screenshot while another process owns the foreground:"
-                             << name << "foreground PID" << foregroundProcess;
-        return;
+        return false;
     }
     const QString path = directory.filePath(name + QStringLiteral(".png"));
     // Corner controls and the quick grid are native tool windows. Capture the
     // composed desktop region so the optional evidence includes those peers.
     QScreen* screen = window.screen();
-    const QRect area = window.frameGeometry();
-    if (!screen || !screen->grabWindow(0, area.x(), area.y(),
-                                       area.width(), area.height()).save(path)) {
-        qWarning().noquote() << "Cannot save UI screenshot:" << path;
+    const QRect area = CaptureBounds(window);
+    QString problem;
+    QPixmap pixels;
+    if (!screen || !screen->availableGeometry().contains(area))
+        problem = QStringLiteral("window/native peers exceed available desktop");
+    else if (!CaptureUnobstructed(window))
+        problem = QStringLiteral("foreign foreground or obstructed native window");
+    else {
+        pixels = screen->grabWindow(0, area.x(), area.y(), area.width(), area.height());
+        if (pixels.isNull()) problem = QStringLiteral("native grab failed");
+        else if (CaptureBounds(window) != area || !CaptureUnobstructed(window))
+            problem = QStringLiteral("native ownership/geometry changed during grab");
+        else if (qAbs(pixels.width() - area.width() * pixels.devicePixelRatio()) > 1 ||
+                 qAbs(pixels.height() - area.height() * pixels.devicePixelRatio()) > 1)
+            problem = QStringLiteral("native grab dimensions do not cover requested bounds");
+        else if (!pixels.save(path)) problem = QStringLiteral("cannot save native grab");
     }
+    const auto rect = [](const QRect& value) {
+        return QJsonArray{value.x(), value.y(), value.width(), value.height()};
+    };
+    const QJsonObject record{{"name", name}, {"saved", problem.isEmpty()}, {"problem", problem},
+        {"available", screen ? rect(screen->availableGeometry()) : QJsonArray{}},
+        {"bounds", rect(area)}, {"dpr", screen ? screen->devicePixelRatio() : 0.0},
+        {"pixels", QJsonArray{pixels.width(), pixels.height()}}};
+    QFile manifest(directory.filePath(QStringLiteral("native-captures.jsonl")));
+    if (!manifest.open(QIODevice::WriteOnly | QIODevice::Append) ||
+        manifest.write(QJsonDocument(record).toJson(QJsonDocument::Compact) + '\n') < 0) {
+        qWarning().noquote() << "Cannot record native screenshot manifest:" << name;
+        return false;
+    }
+    if (!problem.isEmpty()) qWarning().noquote() << "Refusing incomplete UI screenshot:" << name << problem;
+    return problem.isEmpty();
 }
 
 } // namespace
@@ -289,11 +407,16 @@ void SaveScreenshot(MainWindow& window, const QString& name)
 class MainWindowTests final : public QObject {
     Q_OBJECT
 private slots:
+    void desktopVisualLayouts_data();
+    void desktopVisualLayouts();
+    void desktopVisualChat_data();
+    void desktopVisualChat();
     void modesGridSearchAndGeometry_data();
     void modesGridSearchAndGeometry();
     void dependentControls();
     void desktopZoomSliderReachesSixteenX();
     void textClarityMasterPreservesRefinements();
+    void ultraClearTextControlsHaveNativeGeometry();
     void disabledSlidersHaveDistinctAppearance();
     void inspectorContrastAppearance_data();
     void inspectorContrastAppearance();
@@ -321,6 +444,209 @@ private slots:
     void modalDialogKeepsTabAndNumberKeys();
     void streamingPreservesReadingState();
 };
+
+void MainWindowTests::desktopVisualLayouts_data()
+{
+    QTest::addColumn<int>("language");
+    QTest::addColumn<QString>("code");
+    QTest::newRow("english") << int(AppLanguage::English) << QStringLiteral("en");
+    QTest::newRow("turkish") << int(AppLanguage::Turkish) << QStringLiteral("tr");
+    QTest::newRow("german") << int(AppLanguage::German) << QStringLiteral("de");
+}
+
+void MainWindowTests::desktopVisualLayouts()
+{
+    QFETCH(int, language);
+    QFETCH(QString, code);
+    auto* application = qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application);
+    LanguageManager translations(*application);
+    QVERIFY(translations.SetLanguage(static_cast<AppLanguage>(language), false));
+    MainWindow window;
+    AddQuickModes(window);
+    SyncScreenshotState(window, code);
+    QVERIFY(PrepareVisualWindow(window));
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    const QString fit = FitVisualWindow(window, QSize(1280, 900));
+    QVERIFY2(fit.isEmpty(), qPrintable(fit));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
+    const QString prefix = QStringLiteral("desktop-%1-").arg(code);
+    QVERIFY(SaveScreenshot(window, prefix + QStringLiteral("simple")));
+
+    auto* gridButton = Named<QToolButton>(window, "modeGridButton");
+    auto* grid = Named<QWidget>(window, "modeGridPopup");
+    QVERIFY(gridButton && grid);
+    QVERIFY2(ActivateFixtureWindow(gridButton), test::ActivationFailureMessage());
+    QTest::mouseClick(gridButton, Qt::LeftButton);
+    QTRY_VERIFY(grid->isVisible());
+    QVERIFY(SaveScreenshot(window, prefix + QStringLiteral("grid")));
+    QTest::keyClick(window.presetList(), Qt::Key_Escape);
+    QTRY_VERIFY(!grid->isVisible());
+
+    window.advancedModeButton()->click();
+    QTRY_VERIFY(!window.isSimpleMode());
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
+    QVERIFY(SaveScreenshot(window, prefix + QStringLiteral("image")));
+    auto* tabs = Named<QTabWidget>(window, "advancedPage");
+    auto* settings = Named<QWidget>(window, "settingsTabPage");
+    QVERIFY(tabs && settings);
+    tabs->setCurrentWidget(settings);
+    QVERIFY(SaveScreenshot(window, prefix + QStringLiteral("settings")));
+
+    const QString narrowFit = FitVisualWindow(window, QSize(720, 900));
+    QVERIFY2(narrowFit.isEmpty(), qPrintable(narrowFit));
+    window.setAdvancedPanelWidth(360);
+    QTRY_VERIFY(window.renderWidget()->width() >= 320);
+    int rows = 0;
+    QString problem = ActionRowsProblem(window, &rows);
+    QVERIFY2(problem.isEmpty(), qPrintable(problem));
+    QVERIFY(SaveScreenshot(window, prefix + QStringLiteral("narrow")));
+    if (!qEnvironmentVariableIsEmpty("OKUFLOW_UI_TEST_SCREENSHOTS")) {
+        // An oversized geometry case must never produce a clipped evidence PNG.
+        window.resize(window.screen()->availableGeometry().width() + 100, window.height());
+        QTRY_VERIFY(!window.screen()->availableGeometry().contains(CaptureBounds(window)));
+        const QString rejected = prefix + QStringLiteral("rejected-offscreen");
+        QVERIFY(!SaveScreenshot(window, rejected));
+        QVERIFY(!QFileInfo::exists(QDir(qEnvironmentVariable("OKUFLOW_UI_TEST_SCREENSHOTS"))
+            .filePath(rejected + QStringLiteral(".png"))));
+    }
+    QVERIFY(translations.SetLanguage(AppLanguage::English, false));
+}
+
+void MainWindowTests::desktopVisualChat_data()
+{
+    QTest::addColumn<bool>("light");
+    QTest::newRow("light") << true;
+    QTest::newRow("dark") << false;
+}
+
+void MainWindowTests::desktopVisualChat()
+{
+    QFETCH(bool, light);
+    const QPalette original = QApplication::palette();
+    auto* hints = QApplication::styleHints();
+    const auto originalScheme = hints->colorScheme();
+    const auto restore = qScopeGuard([&] {
+        hints->setColorScheme(originalScheme);
+        QApplication::setPalette(original);
+    });
+    // A palette alone does not switch native Windows checkbox/style assets.
+    // This overrides only this test process, leaving the OS theme unchanged.
+    const auto scheme = light ? Qt::ColorScheme::Light : Qt::ColorScheme::Dark;
+    hints->setColorScheme(scheme);
+    QTRY_COMPARE(hints->colorScheme(), scheme);
+    QApplication::setPalette(SchemePalette(light));
+    QCoreApplication::processEvents();
+    MainWindow window;
+    QVERIFY(PrepareVisualWindow(window));
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    const QString fit = FitVisualWindow(window, QSize(1200, 900));
+    QVERIFY2(fit.isEmpty(), qPrintable(fit));
+    window.advancedModeButton()->click();
+    auto* tabs = Named<QTabWidget>(window, "advancedPage");
+    auto* page = Named<QWidget>(window, "assistantTabPage");
+    QVERIFY(tabs && page);
+    tabs->setCurrentWidget(page);
+    window.setAdvancedPanelWidth(440);
+    AssistiveOverlay overlay(window.renderWidget());
+    overlay.ShowChat(false);
+    QVERIFY(PrepareVisualWindow(overlay));
+    VisibleChatSession session;
+    connect(&session, &VisibleChatSession::SnapshotChanged, window.assistantChatView(), &AssistantChatView::SetChatSnapshot);
+    connect(&session, &VisibleChatSession::SnapshotChanged, &overlay, &AssistiveOverlay::SetChatSnapshot);
+    const auto ticket = session.Admit(QStringLiteral("Explain this synthetic frame"), ChatBackendKind::Explain);
+    QVERIFY(ticket);
+    QImage frame(240, 120, QImage::Format_RGB32);
+    frame.fill(Qt::green);
+    QByteArray jpeg;
+    QBuffer buffer(&jpeg);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+    QVERIFY(frame.save(&buffer, "JPG"));
+    QVERIFY(session.SetImagePreview(*ticket, jpeg));
+    const QString answer = QStringLiteral(
+        "This synthetic answer wraps across several lines. The native visual fixture checks the whole window, "
+        "including its thumbnail, reading action, attachment switch and keyboard focus. ").repeated(3);
+    QVERIFY(session.Complete(*ticket, answer));
+    const QString prefix = QStringLiteral("desktop-chat-%1-").arg(light ? "light" : "dark");
+    for (auto* view : {window.assistantChatView(), overlay.chatView()}) {
+        if (view == overlay.chatView()) {
+            overlay.ShowChat(true);
+            QTRY_VERIFY(overlay.isVisible());
+        }
+        QVERIFY2(ActivateFixtureWindow(view), test::ActivationFailureMessage());
+        QTRY_VERIFY(view->transcript()->toPlainText().contains(answer));
+        QCOMPARE(view->transcript()->horizontalScrollBar()->maximum(), 0);
+        for (QWidget* action : {static_cast<QWidget*>(view->readAloudButton()),
+                                static_cast<QWidget*>(view->attachmentCheckbox()),
+                                static_cast<QWidget*>(view->sendButton())}) {
+            QVERIFY(action->isVisible());
+            QVERIFY(view->rect().contains(QRect(action->mapTo(view, QPoint()), action->size())));
+            // setAdvancedPanelWidth queues its splitter resize. Wait for the
+            // resulting native layout, not just the updated text snapshot.
+            QString hitProblem;
+            const bool hit = QTest::qWaitFor([&] { return NativeHitBelongsTo(action, &hitProblem); }, 1000);
+            if (!hit) SaveScreenshot(window, prefix + QStringLiteral("diagnostic-footer"));
+            QVERIFY2(hit, qPrintable(hitProblem));
+        }
+        view->attachmentCheckbox()->setChecked(true);
+        view->attachmentCheckbox()->setFocus();
+        QTRY_VERIFY(view->attachmentCheckbox()->hasFocus());
+        view->transcript()->verticalScrollBar()->setValue(0);
+        QVERIFY(SaveScreenshot(window, prefix + (view == overlay.chatView() ? QStringLiteral("floating") : QStringLiteral("advanced"))));
+        view->transcript()->verticalScrollBar()->setValue(view->transcript()->verticalScrollBar()->maximum());
+        view->attachmentCheckbox()->setChecked(false);
+        view->readAloudButton()->setFocus();
+        QTRY_VERIFY(view->readAloudButton()->hasFocus());
+        QVERIFY(SaveScreenshot(window, prefix + (view == overlay.chatView() ? QStringLiteral("floating-reading") : QStringLiteral("advanced-reading"))));
+    }
+    const QPoint oldFrame = window.frameGeometry().topLeft();
+    const QPoint oldOverlay = overlay.frameGeometry().topLeft();
+    window.move(oldFrame + QPoint(8, 8));
+    QTRY_COMPARE(overlay.frameGeometry().topLeft() - oldOverlay, QPoint(8, 8));
+    QVERIFY(SaveScreenshot(window, prefix + QStringLiteral("moved")));
+
+    // Native Details evidence uses the production panel with synthetic data,
+    // without any connected app service capable of approving a real action.
+    QDialog dialog(&window);
+    QVERIFY(PrepareVisualWindow(dialog));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* panel = new AgentControlPanel(&dialog);
+    layout->addWidget(panel);
+    QJsonObject changes;
+    for (int i = 0; i < 40; ++i)
+        changes.insert(QStringLiteral("field-%1").arg(i, 2, 10, QLatin1Char('0')), QString(80, QLatin1Char('x')));
+    QJsonObject approval{{"approvalId", "visual-fixture"}, {"tool", "capture.photo.take"},
+        {"kind", "action"}, {"targetIdentity", "synthetic-target"}, {"expiresInMs", 300000},
+        {"normalizedChanges", changes}};
+    panel->SetPendingApproval(approval);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+    const QString dialogFit = FitVisualWindow(dialog, QSize(600, 600));
+    QVERIFY2(dialogFit.isEmpty(), qPrintable(dialogFit));
+    QVERIFY2(ActivateFixtureWindow(&dialog), test::ActivationFailureMessage());
+    auto* detailsButton = panel->findChild<QPushButton*>(QStringLiteral("agentApprovalDetails"));
+    auto* details = panel->findChild<QPlainTextEdit*>(QStringLiteral("agentApprovalArguments"));
+    QVERIFY(detailsButton && details);
+    detailsButton->click();
+    QTRY_VERIFY(details->verticalScrollBar()->maximum() > 0);
+    details->verticalScrollBar()->setValue(details->verticalScrollBar()->maximum() / 2);
+    auto cursor = details->cursorForPosition(details->viewport()->rect().center());
+    cursor.setPosition(std::min(cursor.position() + 30, details->document()->characterCount() - 1), QTextCursor::KeepAnchor);
+    details->setTextCursor(cursor);
+    QVERIFY(!cursor.selectedText().isEmpty());
+    details->setFocus();
+    QTRY_VERIFY(details->hasFocus());
+    const int scroll = details->verticalScrollBar()->value();
+    QVERIFY(SaveScreenshot(dialog, prefix + QStringLiteral("approval-before")));
+    approval["expiresInMs"] = 299000;
+    panel->SetPendingApproval(approval);
+    QCOMPARE(details->textCursor().anchor(), cursor.anchor());
+    QCOMPARE(details->textCursor().position(), cursor.position());
+    QCOMPARE(details->verticalScrollBar()->value(), scroll);
+    QVERIFY(SaveScreenshot(dialog, prefix + QStringLiteral("approval-after")));
+}
 
 void MainWindowTests::streamingPreservesReadingState()
 {
@@ -647,6 +973,61 @@ void MainWindowTests::textClarityMasterPreservesRefinements()
     QVERIFY(fine->headerWidget()->isEnabled());
     QVERIFY(help->isVisible() && help->isEnabled());
     QVERIFY(help->width() <= imageScroll->viewport()->width());
+}
+
+void MainWindowTests::ultraClearTextControlsHaveNativeGeometry()
+{
+    MainWindow window;
+    QVERIFY(PrepareVisualWindow(window));
+    window.show();
+    const QString fit = FitVisualWindow(window, QSize(1380, 1000));
+    QVERIFY2(fit.isEmpty(), qPrintable(fit));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
+    window.advancedModeButton()->click();
+    QTRY_VERIFY(!window.isSimpleMode());
+    auto* panel = window.ultraClearTextPanel();
+    auto* scroll = Named<QScrollArea>(window, "imageSettingsScroll");
+    QVERIFY(panel && scroll);
+    for (QWidget* parent = panel->parentWidget(); parent; parent = parent->parentWidget()) {
+        if (auto* section = qobject_cast<CollapsibleSection*>(parent)) section->setExpanded(true);
+    }
+    window.textClarityCheckbox()->setChecked(false);
+    auto* enabled = panel->enableCheckbox();
+    auto* original = panel->showOriginalCheckbox();
+    QVERIFY(!enabled->isChecked());
+    QVERIFY(enabled->isEnabled()); // OCR works independently of CUDA refinements.
+    QVERIFY(!original->isEnabled());
+    scroll->ensureWidgetVisible(panel);
+    QTRY_VERIFY(GlobalRect(scroll->viewport()).contains(GlobalRect(enabled)));
+    QVERIFY2(ActivateFixtureWindow(enabled), test::ActivationFailureMessage());
+    enabled->setFocus();
+    QTRY_VERIFY(enabled->hasFocus());
+    QTest::keyClick(enabled, Qt::Key_Space);
+    QVERIFY(enabled->isChecked());
+    QVERIFY(original->isEnabled());
+    QTest::keyClick(enabled, Qt::Key_Tab);
+    QTRY_VERIFY(original->hasFocus());
+    QTest::keyClick(original, Qt::Key_Space);
+    QVERIFY(original->isChecked());
+    for (QWidget* widget : {static_cast<QWidget*>(enabled), static_cast<QWidget*>(original),
+                            static_cast<QWidget*>(panel->readingPane())}) {
+        auto* accessible = QAccessible::queryAccessibleInterface(widget);
+        QVERIFY(accessible && accessible->isValid());
+        // Native styles expose the indicator/label click area for a checkbox,
+        // rather than its layout's unused horizontal space. It must still be
+        // nonempty and registered inside the actual screen-space widget.
+        QVERIFY(!accessible->rect().isEmpty());
+        QVERIFY2(GlobalRect(widget).contains(accessible->rect()),
+                 qPrintable(QStringLiteral("Accessible bounds displaced for %1").arg(widget->objectName())));
+        QVERIFY(!accessible->state().invisible);
+    }
+    auto* toggle = QAccessible::queryAccessibleInterface(enabled);
+    QCOMPARE(toggle->role(), QAccessible::CheckBox);
+    QVERIFY(toggle->state().checked);
+    QVERIFY(panel->readingPane()->isReadOnly());
+    QVERIFY(SaveScreenshot(window, QStringLiteral("desktop-en-ultra-clear-controls")));
+    QString problem;
+    QVERIFY2(NativeHitBelongsTo(enabled, &problem), qPrintable(problem));
 }
 
 void MainWindowTests::disabledSlidersHaveDistinctAppearance()

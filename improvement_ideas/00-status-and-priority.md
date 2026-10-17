@@ -9,6 +9,14 @@ Completed plans have moved to [`done/`](done/README.md) — kept for provenance,
 not as work. Refuted findings live in
 [`verified-non-issues.md`](verified-non-issues.md); read it before analyzing.
 
+## Ultra Clear Text MVP implemented in development, 2026-10-17
+
+An experimental, opt-in [Ultra Clear Text](../docs/ultra_clear_text.md) MVP
+exists: built-in Windows OCR, scene-registered glyph overlay, accessible
+controls and desktop-free fixtures. Native GUI/NVDA, real-camera, GTX 1070
+and RTX desktop acceptance, latency tails, CER/WER and translations remain
+open. Not release-accepted; math, handwriting and curved pages are deferred.
+
 ## High-priority phone and recording follow-up added 2026-10-12
 
 The owner's [future test redesign request, 2026-10-14](24-test-build-gates.md#future-test-redesign-requested-by-the-owner-2026-10-14)

@@ -262,13 +262,13 @@ jobs:
         run: |
           changes=all
           if [ -n "$PR_BASE" ]; then
-            changes=$(git diff --name-only "$PR_BASE" -- android/ ':!android/**/*.md' ':!android/*.md')
+            changes=$(git diff --name-only "$PR_BASE" -- android/ scripts/android_camera_probe.py tests/test_impact.json .github/workflows/windows-checks.yml ':!android/**/*.md' ':!android/*.md')
           fi
           if [ -n "$changes" ]; then
             echo 'run=true' >> "$GITHUB_OUTPUT"
           else
             echo 'run=false' >> "$GITHUB_OUTPUT"
-            echo 'Android host protocol: no Android changes; skipped.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Android host protocol: no protocol dependency changes; skipped.' >> "$GITHUB_STEP_SUMMARY"
           fi
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         if: ${{ steps.selection.outputs.run == 'true' }}

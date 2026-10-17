@@ -220,6 +220,7 @@ bool OkuFlowApp::Initialize()
         [this]() { StartNewAssistantConversation(); },
         *userDataPaths_);
     mainWindow_->annotationOverlay()->SetExcludedWidget(&assistiveManager_->Overlay());
+    InitializeUltraClearText();
     assistiveManager_->Runtime().SetResponseLanguage(
         languageManager_->languageCode());
     auto* mainChat = mainWindow_->assistantChatView();
@@ -1394,7 +1395,8 @@ OkuFlowApp::~OkuFlowApp() {
     // If a detached thread may still be inside Media Foundation, or poisoned
     // recorder objects were intentionally leaked after a recovered worker,
     // process-global MF/COM teardown must be skipped.
-    bool mediaFoundationTeardownUnsafe = audioCapture_.WasAbandoned();
+    bool mediaFoundationTeardownUnsafe = audioCapture_.WasAbandoned() ||
+        MicrophoneTeardownUnsafe();
     if (recordingManager_) {
         const bool managerSafeToDestroy =
             recordingManager_->ShutdownForProcessExit();

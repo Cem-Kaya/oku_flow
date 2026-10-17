@@ -1,5 +1,14 @@
 # Local MCP control (development)
 
+Image delivery retains the native observation's original control stamp, frame
+sequence and monotonic processing time through local preview, HTTP/Codex and
+MCP serialization. The final delivery fence rechecks that exact record, current
+modal state and frame-grant generation. Turning image permission off and back
+on cannot authorize an earlier captured image. Synthetic targets may report
+unknown frame sequence/time; native observations supply their encoded frame's
+provenance. No new image lifetime or hardware acceptance is implied by this
+internal authorization record.
+
 Plan 52's development implementation builds `okuflow_mcp.exe`, a Qt-free `/MT`
 console MCP server. It uses MCP **2025-11-25**, newline-delimited UTF-8 JSON-RPC
 on stdin/stdout, and Windows named pipes to the running app. It never launches,
@@ -201,3 +210,11 @@ availability is never fabricated to obtain a passing mutation.
 Its results must stay separate from the synthetic fixture above, and neither
 proves all 94 native effects, real camera/media, live provider, rendered approval
 UI, accessibility, the embedded assistant adapter or shipping acceptance.
+
+Operation-state waits compare the complete public status projection at admission
+and each poll. Unchanged deferred preference metadata is not a transition.
+
+Exact approval admits an asynchronous operation; it does not certify completion.
+Human receipts remain in progress until the operation reports its actual outcome,
+with unavailable status distinguished. Outcome-only notifications keep their
+original identity across turns and never enter a successor's control event ring.

@@ -5,6 +5,7 @@
 namespace okuflow {
 
 void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
+    CancelAnnotationCaptures();
     if (atProcessExit) {
         pendingCameraStart_.reset();
         if (retiredCameraIngress_) retiredCameraIngress_->retainedAfterTimeout = retiredCameraIngress_;
@@ -40,6 +41,8 @@ void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
     currentCameraCaptureClock100ns_ = -1; currentCameraFrameSequence_ = 0;
     pendingSceneCaptureClock100ns_.reset();
     cudaSceneReady_ = cpuSceneReady_ = false;
+    uctProvenance_.Reset();
+    if (ultraClearText_) ultraClearText_->OnSourceRetired();
     mediaCapture_.BeginStopCapture();
     UpdateProcessingStatusLabel();
     QTimer::singleShot(0,this,&OkuFlowApp::DriveCameraRetirement);

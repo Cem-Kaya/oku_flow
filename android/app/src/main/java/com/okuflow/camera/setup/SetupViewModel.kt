@@ -30,10 +30,11 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
     val diagnostics = HostLink.details.asStateFlow()
     val problem = HostLink.problem
 
-    fun updateSettings(settings: CameraSettings) {
-        if (settings != settingsStore.state.value && HostLink.problem.value in listOf(
+    fun updateSettings(patch: (CameraSettings) -> CameraSettings) {
+        val before = settingsStore.state.value
+        val after = settingsStore.update(patch)
+        if (before != after && HostLink.problem.value in listOf(
                 HostProblem.NoCompatibleMode, HostProblem.CameraBusy, HostProblem.CameraFailed)) HostLink.report(null)
-        settingsStore.update(settings)
     }
 
     /** Returning from privacy settings or another camera app is a new user-authorized attempt. */

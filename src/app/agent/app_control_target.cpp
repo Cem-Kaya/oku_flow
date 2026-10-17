@@ -584,7 +584,7 @@ void AppControlTarget::Execute(ToolId tool, const QJsonObject& args, const QStri
         const auto deadline = MonotonicNow()+args["timeoutMs"].toInt();
         const auto operationId = args["operationId"].toString();
         const auto condition = args["condition"].toString();
-        const auto initial = operationId.isEmpty() ? QJsonObject{} : operations_.SafeStatus(operationId);
+        const auto initial = operationId.isEmpty() ? QJsonObject{} : Query(ToolId::Operation,{{"operationId",operationId}});
         QObject::connect(timer,&QTimer::timeout,timer,[app,timer,deadline,stamp,condition,operationId,initial,completion] {
             if (!app || !app->controlTarget_) { timer->stop(); timer->deleteLater(); completion(ControlResult::Failure("canceled")); return; }
             auto& target = *app->controlTarget_;

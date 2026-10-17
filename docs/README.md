@@ -1,5 +1,8 @@
 # OkuFlow Documentation Guide
 
+[Argon report verification](argon_review_verification_2026_10_17.md) records
+every finding's disposition, confirmed repairs and intentional state/tool contracts.
+
 Website: <https://okuflow.com>
 
 [Application languages](localization.md) describes Windows 0.2.4's published
@@ -201,9 +204,13 @@ blocking finalization remain separate limits.
 [Review 47](../improvement_ideas/47-sequential-priority-fixes-2026-10-11.md) adds
 separate bounded AAC input accounting in PCM frames, including stale/padded
 packet progress, and audio-only loss counters. H.264/AV1 codec fixtures decode
-the complete audio track. A strict opt-in playback-gap diagnostic still fails
-and is retained as an open quality issue; admission does not depend on the
-broken timestamp mapping. Opus hit Claude's rate limit before its final review.
+the complete audio track. The original strict playback-gap failure was later
+confirmed with distinct decoded audio/video markers and repaired with bounded
+PCM silence; the marked native regression now passes. See
+[recording timeline evidence](recording_attempts_and_timeline.md) for exact
+measurements and the separate real-microphone acceptance limits. Admission does
+not depend on timestamp-derived AAC packet credit. Opus hit Claude's rate limit
+before its final review.
 
 [Review 48](../improvement_ideas/48-gemini-independent-review-2026-10-11.md)
 records independent source/probe verdicts for all four returned Gemini reports
@@ -231,40 +238,32 @@ the rotation/focus follow-ups and native desktop acceptance remain deferred.
 
 ## Language And Locale
 
-`LanguageManager` installs an embedded `QTranslator` before the main window is
-constructed and re-translates existing widgets when the user changes
-`Advanced > Settings > Language > Application language`. The stable persisted
-values are `en`, `tr`, and `de`; a profile without that key adopts a supported
-Windows locale once. The language setting is global and never part of a quick
-image profile.
+`LanguageManager` installs an embedded `QTranslator` before constructing the
+main window and re-translates existing widgets after a language change under
+`Advanced > Settings > Language`. The registry supports 25 languages, including
+Arabic, Persian, Hebrew and Urdu with RTL layout. Persisted choices use the
+canonical tags in [localization.md](localization.md), or `system` to follow the
+Windows display-language preferences. Explicit saved choices remain intact;
+Traditional Chinese is distinct from Simplified Chinese. Language is global,
+not part of a Quick Mode.
 
-Hand-built widgets retain their English source properties through
-`ui_translation`, while `SetLiveText` retains source state for dynamic status
-and accessibility updates. Data-driven values such as camera and microphone
-names, Codex model ids, file paths, telemetry, and serialization tokens are
-not translated. Turkish and German use locale-aware number presentation
-without changing JSON or media metadata.
+Hand-built widgets retain English source properties through `ui_translation`;
+`SetLiveText` retains dynamic status and accessibility source state. Device
+names, model ids, paths, telemetry and serialization tokens remain data values.
+Locale-aware presentation does not alter JSON or media metadata.
 
-Built-in AI instructions remain in English for model reliability. Turkish or
-German adds a final response-language directive; user-authored assistant
-instructions remain unmodified and retain higher specificity. Read Aloud
-remains manual-only. A language change prefers an installed matching speech
-voice and reports once through visible status when no matching voice exists.
+Built-in AI instructions retain their source text plus the selected response-
+language directive. User-authored instructions remain unmodified. Read Aloud
+is manual; language changes prefer an installed matching voice and report when
+one is unavailable. Locale metadata also drives the process layout direction
+and leading/trailing anchors for floating chrome and Draw toolbars. Developers
+can use `--rtl-test` or `OKUFLOW_FORCE_RTL=1` for additional layout checks.
 
-The localization layer uses Unicode Qt widgets and embedded Qt Linguist
-catalogs rather than Latin-only string handling. Additional LTR languages,
-including Chinese and Japanese, can reuse the same architecture. Locale
-metadata also drives the process layout direction, and OkuFlow's manually
-positioned floating chrome and Draw toolbars use logical leading/trailing
-anchors. Developers can run the English catalog with `--rtl-test` or
-`OKUFLOW_FORCE_RTL=1` to exercise that path before an RTL catalog exists.
-Shipping Arabic, Hebrew, Persian, Urdu, or another RTL language still requires
-a native translation, font/line-break review, and live NVDA/Narrator
-validation; none is currently shown in the language picker.
-
-Catalog source parity, complete translations, LF endings, and `lrelease`
-success are enforced by `scripts/check_translations.ps1`, which runs at the
-start of `scripts/agent_build.bat`.
+`scripts/check_translations.ps1` validates all 24 non-English Qt catalogs,
+source-key/format parity, LF endings and `lrelease` compilation. This structural
+check does not establish fluent wording, font coverage, RTL usability or live
+screen-reader acceptance. See [localization.md](localization.md) for review and
+published-build status.
 
 CUDA is the processing path and the CPU effects pipeline is deprecated: when the GPU pipeline is unavailable the app presents unprocessed passthrough video with a persistent "GPU required" notice instead of running effects on the CPU. The debug composite view remains CPU-only as a diagnostic.
 
@@ -451,7 +450,8 @@ legacy `powershell.exe` bridge.
 - Snapshots are saved as timestamp-matched `_original.jpg` and `_processed.jpg`
   pairs under `Documents\OkuFlow\Photos\YYYY-MM-DD\` by default.
 - Recordings are saved as timestamp-matched `_original.mp4` and
-  `_processed.mp4` pairs under
+  `_processed.mp4` pairs (or distinct `_attempt-{UUID}` names after an encoder
+  fallback) under
   `Documents\OkuFlow\Recordings\YYYY-MM-DD\`; encoding is live AV1 when
   available and otherwise live H.264.
 - The processing status label under Advanced Image diagnostics distinguishes
@@ -471,8 +471,10 @@ legacy `powershell.exe` bridge.
   the inspector is narrow, and feature status labels wrap within the panel.
 - Read transcribes the current view through the configured vision provider.
   New Codex settings select Luna 6 with low reasoning; existing explicit model
-  choices remain available. There is no separate local recognition engine,
-  language-data installation, or automatic text-recognition toggle.
+  choices remain available. Read uses the selected vision provider. The separate
+  experimental, opt-in [Ultra Clear Text](ultra_clear_text.md) development
+  feature uses installed Windows OCR languages locally; it is not part of the
+  published v0.2.5 download.
 - The non-blocking first-run Setup Assistant installs or updates the official
   Codex CLI and offers NVIDIA Video Effects on supported hardware. Downloads
   are pinned and verified, with a Windows downloader retry on transfer failure.
@@ -626,3 +628,26 @@ Assistant displays its status too. See [Windows runtime setup](windows_runtime_s
 [Assistant chat and consent UI](agent_control_ui.md) records the local 0.3.1
 chat-only layout, shared Explain presentation, sole persisted-master owner,
 contextual approvals, drawers, status/shortcuts and complete wording review.
+
+
+Annotation snapshots save the view that was displayed at the save action. They
+retain its strokes, transform and frame identity through asynchronous GPU copy;
+an unavailable/expired copy is refused rather than paired with a later frame.
+Camera retirement cancels pending annotation copies. This is independent of the
+experimental Ultra Clear Text recognition worker.
+
+
+Recording codec retries and the marked native AAC/video gap diagnostic are
+documented in [recording attempts and timeline validation](recording_attempts_and_timeline.md).
+
+[Bounded performance diagnostics](performance_diagnostics.md) records opt-in
+offscreen chat CPU tails, synthetic deadline-helper waits, actual Maxine host
+call profiling and the still-unmeasured native pan/queue/stale-frame seams.
+
+
+[Engineering audit closure, 2026-10-17](engineering_audit_closure_2026_10_17.md)
+maps all 36 supplied findings to fixes, measurements and remaining acceptance.
+
+[Maxine navigation safeguard and producer follow-up](maxine_async_producer_design.md)
+records navigation admission, same-frame fallback and the ownership/capture
+policies needed for an independent asynchronous producer.

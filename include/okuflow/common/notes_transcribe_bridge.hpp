@@ -89,6 +89,25 @@ R"JS(
   const toolOrigin = new URL(toolUrl).origin;
   let root = null;
   let popup = null;
+  const sidecarWrites = new Map();
+  async function saveTranscriptSnapshot(entry, payload, mediaKey) {
+    const previous = sidecarWrites.get(mediaKey) || Promise.resolve();
+    const pending = previous.catch(() => {}).then(async () => {
+      await verifyRecording(entry);
+      const handle = await entry.directory.getFileHandle(transcriptName(entry.identity), {create:true});
+      const writable = await handle.createWritable();
+      try {
+        await writable.write(payload);
+        await writable.close();
+      } catch (error) {
+        try { await writable.abort(); } catch (_) { /* Preserve the write error. */ }
+        throw error;
+      }
+    });
+    sidecarWrites.set(mediaKey, pending);
+    try { await pending; }
+    finally { if (sidecarWrites.get(mediaKey) === pending) sidecarWrites.delete(mediaKey); }
+  }
   function database() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open('okuflow-notes-files', 1);
@@ -119,8 +138,45 @@ R"JS(
       db.close();
     } catch (_) { root = null; }
   }
-  async function recording(source) {
-    const url = new URL(source, location.href);
+  function validIdentity(value) {
+    return value?.version === 1 && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value.mediaId) &&
+      typeof value.name === 'string' && value.name.length > 0 && value.name.length < 256 &&
+      !/[\\/]/.test(value.name) && Number.isSafeInteger(value.size) && value.size > 0 &&
+      value.algorithm === 'sha256-chain-1m-v1' && /^[a-f0-9]{64}$/.test(value.fingerprint);
+  }
+  function sameIdentity(a, b) {
+    return validIdentity(a) && validIdentity(b) &&
+      ['version','mediaId','name','size','algorithm','fingerprint'].every(key => a[key] === b[key]);
+  }
+  function transcriptName(identity) {
+    if (!validIdentity(identity)) throw new Error(l.missing);
+    // An old writer may resume after the path contains a new recording.
+    // Keep destinations unique to the UUID, with a bounded filename independent
+    // of the video's basename; validation alone cannot close that await race.
+    return '.okuflow-transcript-' + identity.mediaId + '.json';
+  }
+  async function fingerprint(file) {
+    let digest = new Uint8Array(32);
+    for (let offset = 0; offset < file.size; offset += 1024 * 1024) {
+      const chunk = new Uint8Array(await file.slice(offset, offset + 1024 * 1024).arrayBuffer());
+      const input = new Uint8Array(32 + chunk.length);
+      input.set(digest); input.set(chunk, 32);
+      digest = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
+    }
+    return [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+  async function verifyRecording(entry) {
+    const marker = await (await entry.directory.getFileHandle(entry.name + '.okuflow-media.json')).getFile();
+    if (marker.size > 4096 || !sameIdentity(JSON.parse(await marker.text()), entry.identity)) throw new Error(l.missing);
+    const file = await (await entry.directory.getFileHandle(entry.name)).getFile();
+    if (file.name !== entry.identity.name || file.size !== entry.identity.size ||
+        await fingerprint(file) !== entry.identity.fingerprint) throw new Error(l.missing);
+    return file;
+  }
+  async function recording(card) {
+    const identity = JSON.parse(card.dataset.recordingIdentity || 'null');
+    if (!validIdentity(identity)) throw new Error(l.missing);
+    const url = new URL(card.dataset.transcribeSrc, location.href);
     if (url.protocol !== 'file:') throw new Error(l.missing);
     const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     const index = parts.lastIndexOf(root.name);
@@ -131,8 +187,10 @@ R"JS(
       directory = await directory.getDirectoryHandle(part);
     }
     const name = parts.at(-1);
-    const handle = await directory.getFileHandle(name);
-    return {file:await handle.getFile(), directory, name};
+    if (name !== identity.name) throw new Error(l.missing);
+    const entry = {directory, name, identity};
+    entry.file = await verifyRecording(entry);
+    return entry;
   }
   function clock(seconds) {
     const s = Math.max(0, Math.floor(seconds));
@@ -162,12 +220,11 @@ R"JS(
   async function loadSaved(card) {
     if (!root || await root.queryPermission({mode:'readwrite'}) !== 'granted') return;
     try {
-      const entry = await recording(card.dataset.transcribeSrc);
-      const file = await (await entry.directory.getFileHandle(entry.name + '.okuflow-transcript.json')).getFile();
+      const entry = await recording(card);
+      const file = await (await entry.directory.getFileHandle(transcriptName(entry.identity))).getFile();
       if (file.size > 8 * 1024 * 1024) return;
       const data = JSON.parse(await file.text());
-      if (data.version !== 1 || data.recording?.size !== entry.file.size ||
-          data.recording?.lastModified !== entry.file.lastModified || !validSegments(data.segments)) return;
+      if (data.version !== 2 || !sameIdentity(data.recording, entry.identity) || !validSegments(data.segments)) return;
       card.segments = data.segments;
       card.querySelector('.transcribe-lines').replaceChildren();
       card.segments.forEach(s => showLine(card, s));
@@ -177,6 +234,9 @@ R"JS(
     } catch (_) { /* No saved transcript for this recording. */ }
   }
   async function begin(card) {
+    const generation = (card.transcribeJobGeneration || 0) + 1;
+    card.transcribeJobGeneration = generation;
+    const isCurrent = () => card.transcribeJobGeneration === generation;
     const status = card.querySelector('.transcribe-status');
     const button = card.querySelector('.transcribe-start');
     if (!window.showDirectoryPicker) { status.textContent = l.unsupported; return; }
@@ -196,7 +256,8 @@ R"JS(
       else popup.focus();
       if (!popup) { status.textContent = l.blocked; return; }
       status.textContent = l.waiting; button.disabled = true;
-      const entry = await recording(card.dataset.transcribeSrc);
+      const entry = await recording(card);
+      if (!isCurrent()) return;
       card.segments = []; card.querySelector('.transcribe-lines').replaceChildren();
       card.querySelector('.transcribe-result').hidden = false;
       card.querySelector('.transcribe-export').hidden = true;
@@ -207,7 +268,7 @@ R"JS(
       const finish = () => {complete = true; window.removeEventListener('message', receiveReady); clearInterval(ping); clearTimeout(timeout); button.disabled = false; stop.hidden = true; channel.port1.close();};
       stop.onclick = () => {channel.port1.postMessage({type:'cancel'}); status.textContent = l.stopped; finish();};
       channel.port1.onmessage = async ({data}) => {
-        if (complete || !data || typeof data !== 'object') return;
+        if (complete || !isCurrent() || !data || typeof data !== 'object' || !sameIdentity(data.recording, entry.identity)) return;
         if (data.type === 'segment' && validSegments([data])) {card.segments.push({start:data.start,end:data.end,text:data.text}); showLine(card, data);}
         if (data.type === 'status') {
           const phase = {queued:l.queued, loading:l.loading, downloading:l.downloading, decoding:l.reading, transcribing:l.running, cancelled:l.stopped};
@@ -216,23 +277,25 @@ R"JS(
         }
         if (data.type === 'error' || data.type === 'cancelled') {status.textContent = data.type === 'cancelled' ? l.stopped : l.failed + ' ' + String(data.message || ''); finish();}
         if (data.type === 'done' && validSegments(data.segments)) {
-          card.segments = data.segments; card.querySelector('.transcribe-lines').replaceChildren();
+          const completedSegments = data.segments.map(s => ({start:s.start,end:s.end,text:s.text}));
+          card.segments = completedSegments; card.querySelector('.transcribe-lines').replaceChildren();
           card.segments.forEach(s => showLine(card, s));
           card.querySelector('.transcribe-export').hidden = !card.segments.length;
           status.textContent = card.segments.length ? l.done : l.empty;
           finish();
           try {
-            const handle = await entry.directory.getFileHandle(entry.name + '.okuflow-transcript.json', {create:true});
-            const writable = await handle.createWritable();
-            await writable.write(JSON.stringify({version:1, recording:{name:entry.name,size:entry.file.size,lastModified:entry.file.lastModified}, model:data.model,device:data.device,language:data.language,segments:card.segments}));
-            await writable.close(); status.textContent = l.saved;
-          } catch (_) {status.textContent = l.saveFailed;}
+            // Freeze every byte before the first await. A new run may clear
+            // card.segments while this completed result waits for folder I/O.
+            const payload = JSON.stringify({version:2, recording:entry.identity, model:data.model,device:data.device,language:data.language,segments:completedSegments});
+            await saveTranscriptSnapshot(entry, payload, entry.identity.mediaId);
+            if (isCurrent()) status.textContent = l.saved;
+          } catch (error) {if (isCurrent()) status.textContent = error?.message === l.missing ? l.missing : l.saveFailed;}
         }
       };
       receiveReady = event => {
         if (event.source !== popup || event.origin !== toolOrigin || event.data?.type !== 'okuflow-transcribe-ready' || event.data.version !== 1) return;
         window.removeEventListener('message', receiveReady); clearTimeout(timeout);
-        popup.postMessage({type:'okuflow-transcribe-request', version:1, file:entry.file, title:document.title, language:lang}, toolOrigin, [channel.port2]);
+        popup.postMessage({type:'okuflow-transcribe-request', version:1, file:entry.file, recording:entry.identity, title:document.title, language:lang}, toolOrigin, [channel.port2]);
       };
       window.addEventListener('message', receiveReady);
       const ping = setInterval(() => {

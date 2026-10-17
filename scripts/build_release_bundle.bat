@@ -1,5 +1,9 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
+set "STAGING_DIR="
+set "BUNDLE_STAGE_CREATED="
+set "BUNDLE_FACTS_ENV="
+set "BUNDLE_PUBLISH_RESULT="
 
 rem Build, test, stage, validate, and publish a self-contained OkuFlow bundle.
 rem Existing bundles and user captures are untouched until staging succeeds.
@@ -10,55 +14,87 @@ if errorlevel 1 goto :fail_no_popd
 set "ROOT_DIR=%CD%"
 
 set "GENERATOR=%CMAKE_GENERATOR%"
-if not defined GENERATOR set "GENERATOR=Visual Studio 17 2022"
-set "CMAKE_ARCH_ARGS="
-if /I "%GENERATOR%"=="Visual Studio 17 2022" set "CMAKE_ARCH_ARGS=-A x64"
+if not defined GENERATOR set "GENERATOR=Ninja"
+if /I not "%GENERATOR%"=="Ninja" (
+    echo ERROR: Release bundles require Ninja and compile_commands.json for shared-source equivalence.
+    echo Set CMAKE_GENERATOR=Ninja and OKUFLOW_BUNDLE_BUILD_DIR to a fresh directory.
+    echo Existing build caches are never deleted automatically.
+    goto :fail
+)
+set "BUNDLE_CHECK_TOOLCHAIN="
+if /I "%~1"=="--check-toolchain" set "BUNDLE_CHECK_TOOLCHAIN=1"
+if not "%~1"=="" if not defined BUNDLE_CHECK_TOOLCHAIN (
+    echo ERROR: Supported option: --check-toolchain
+    goto :fail
+)
+if not "%~2"=="" (
+    echo ERROR: --check-toolchain takes no additional arguments.
+    goto :fail
+)
 
 set "BUILD_DIR=%ROOT_DIR%\build\release-bundle"
 if defined OKUFLOW_BUNDLE_BUILD_DIR for %%I in ("%OKUFLOW_BUNDLE_BUILD_DIR%") do set "BUILD_DIR=%%~fI"
 set "DIST_DIR=%ROOT_DIR%\dist"
 set "PRIMARY_DIR=%DIST_DIR%\OkuFlow"
 set "SECONDARY_DIR=%DIST_DIR%\OkuFlow2"
-set "STAGING_DIR=%DIST_DIR%\OkuFlow.staging"
-set "BACKUP_DIR=%DIST_DIR%\OkuFlow.previous"
 set "QT_PREFIX_DEFAULT=C:\Qt\6.12.0\msvc2022_64"
 
-if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
+rem Reject generator arguments and incompatible caches before the expensive
+rem real VS environment initialization. This check never certifies tools.
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\check_bundle_toolchain.ps1" -RepositoryPath "%ROOT_DIR%" -BuildDirectory "%BUILD_DIR%" -ConfigurationOnly
+if errorlevel 1 goto :fail
+echo Initializing Visual Studio 2022 x64 toolchain.
+call :initialize_toolchain
+if errorlevel 1 goto :fail
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\check_bundle_toolchain.ps1" -RepositoryPath "%ROOT_DIR%" -BuildDirectory "%BUILD_DIR%"
 if errorlevel 1 goto :fail
 
 call :resolve_qt
 if errorlevel 1 goto :fail
 set "Path=%QT_BIN_DIR%;%Path%"
+if defined BUNDLE_CHECK_TOOLCHAIN (
+    echo PASS: Qt deployment prerequisites are present. Check-only mode made no build or dist changes.
+    popd
+    endlocal
+    exit /b 0
+)
 
 set "CMAKE_EXTRA_ARGS=%CMAKE_ARGS%"
 if not defined OKUFLOW_ENABLE_CUDA set "OKUFLOW_ENABLE_CUDA=ON"
 if not defined OKUFLOW_ENABLE_TEXT_SR set "OKUFLOW_ENABLE_TEXT_SR=ON"
-set "CUDA_LICENSE_PATH="
 set "TEST_RESUME="
 if "%OKUFLOW_TEST_RESUME%"=="1" set "TEST_RESUME=-Resume"
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" call :resolve_cuda_license
-if errorlevel 1 goto :fail
 
 echo ===== CONFIGURE TESTED RELEASE =====
-cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -G "%GENERATOR%" %CMAKE_ARCH_ARGS% ^
-    -DCMAKE_BUILD_TYPE=Release ^
+cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -G "%GENERATOR%" ^
     "-DCMAKE_PREFIX_PATH:PATH=%QT_PREFIX%" ^
     "-DQt6_DIR:PATH=%QT_PREFIX%\lib\cmake\Qt6" ^
     -DOKUFLOW_ENABLE_CUDA=%OKUFLOW_ENABLE_CUDA% ^
     -DOKUFLOW_ENABLE_TEXT_SR=%OKUFLOW_ENABLE_TEXT_SR% ^
-    -DOKUFLOW_ENABLE_TESTS=ON ^
-    %CMAKE_EXTRA_ARGS%
+    %CMAKE_EXTRA_ARGS% ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ^
+    -DOKUFLOW_ENABLE_TESTS=ON
 if errorlevel 1 goto :fail
 pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\validate_mcp_release_build.ps1" -BuildDirectory "%BUILD_DIR%" -CacheOnly
 if errorlevel 1 goto :fail
 
 echo ===== BUILD APPLICATION AND TESTS =====
-if /I "%GENERATOR%"=="Visual Studio 17 2022" (
-    cmake --build "%BUILD_DIR%" --config Release
-) else (
-    cmake --build "%BUILD_DIR%"
-)
+cmake --build "%BUILD_DIR%"
 if errorlevel 1 goto :fail
+
+rem CMake's effective target/compiler facts, never ambient CUDA variables,
+rem select the release capability profile and exact toolkit notice.
+for /f "usebackq delims=" %%T in (`pwsh.exe -NoProfile -Command "Join-Path ([IO.Path]::GetTempPath()) ('OkuFlow-build-facts-' + [Guid]::NewGuid().ToString('N') + '.cmd')"`) do set "BUNDLE_FACTS_ENV=%%T"
+if not defined BUNDLE_FACTS_ENV goto :fail
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\get_release_build_facts.ps1" -BuildDirectory "%BUILD_DIR%" -Configuration Release -BatchEnvironmentPath "%BUNDLE_FACTS_ENV%"
+if errorlevel 1 goto :fail
+call "%BUNDLE_FACTS_ENV%"
+if errorlevel 1 goto :fail
+del /q "%BUNDLE_FACTS_ENV%"
+set "BUNDLE_FACTS_ENV="
+set "CAPABILITY_PROFILE=windows-cpu"
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" set "CAPABILITY_PROFILE=windows-cuda"
 
 if "%OKUFLOW_SKIP_BUNDLE_TESTS%"=="1" (
     echo.
@@ -68,7 +104,7 @@ if "%OKUFLOW_SKIP_BUNDLE_TESTS%"=="1" (
     echo.
 ) else (
     echo ===== RUN RELEASE TEST GATE =====
-    pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -BuildDirectory "%BUILD_DIR%" -Configuration Release %TEST_RESUME%
+    pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\run_test_gate.ps1" -BuildDirectory "%BUILD_DIR%" -Configuration Release -CapabilityProfile %CAPABILITY_PROFILE% %TEST_RESUME%
     if errorlevel 1 goto :fail
 )
 
@@ -84,15 +120,22 @@ call :sign_release_binary "%PROBE_PATH%"
 if errorlevel 1 goto :fail
 call :sign_release_binary "%MCP_EXE_PATH%"
 if errorlevel 1 goto :fail
+rem Signing may change the built application; reseal only this controlled path.
+if defined OKUFLOW_SIGN_CERT_SHA1 (
+    cmake "-DFactsPath=%BUILD_DIR%\okuflow-build-facts\Release.json" -P "%ROOT_DIR%\cmake\SealReleaseBuildFacts.cmake"
+    if errorlevel 1 goto :fail
+)
 
 echo ===== ASSEMBLE STAGING BUNDLE =====
-if exist "%STAGING_DIR%" rmdir /s /q "%STAGING_DIR%"
+for /f "usebackq delims=" %%T in (`pwsh.exe -NoProfile -Command "[Guid]::NewGuid().ToString('N')"`) do set "STAGING_DIR=%DIST_DIR%\OkuFlow.staging-%%T"
+if not defined STAGING_DIR goto :fail
 if exist "%STAGING_DIR%" (
-    echo ERROR: Could not clear stale staging directory "%STAGING_DIR%".
+    echo ERROR: Refusing a staging name already in use: "%STAGING_DIR%".
     goto :fail
 )
-mkdir "%STAGING_DIR%"
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\publish_release_bundle.ps1" -DistDirectory "%DIST_DIR%" -StagingDirectory "%STAGING_DIR%" -Action CreateStage
 if errorlevel 1 goto :fail
+set "BUNDLE_STAGE_CREATED=1"
 
 copy /y "%EXE_PATH%" "%STAGING_DIR%\oku_flow.exe" >nul
 if errorlevel 1 goto :fail
@@ -146,15 +189,15 @@ if exist "%QT_SBOM_DIR%\qtpdf-%QT_RUNTIME_VERSION%.spdx.json" call :copy_require
 if errorlevel 1 goto :fail
 call :copy_required_file "%ROOT_DIR%\assets\icons\lucide\LICENSE" "%STAGING_DIR%\licenses\LUCIDE_LICENSE.txt"
 if errorlevel 1 goto :fail
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\amd_fsr1\LICENSE.txt" "%STAGING_DIR%\licenses\AMD_FSR1_LICENSE.txt"
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\amd_fsr1\LICENSE.txt" "%STAGING_DIR%\licenses\AMD_FSR1_LICENSE.txt"
 if errorlevel 1 goto :fail
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\nvidia_nis\LICENSE.txt" "%STAGING_DIR%\licenses\NVIDIA_NIS_LICENSE.txt"
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\nvidia_nis\LICENSE.txt" "%STAGING_DIR%\licenses\NVIDIA_NIS_LICENSE.txt"
 if errorlevel 1 goto :fail
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\maxine\Maxine-VFX-SDK\LICENSE" "%STAGING_DIR%\licenses\NVIDIA_MAXINE_SDK_HEADERS_LICENSE.txt"
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\maxine\Maxine-VFX-SDK\LICENSE" "%STAGING_DIR%\licenses\NVIDIA_MAXINE_SDK_HEADERS_LICENSE.txt"
 if errorlevel 1 goto :fail
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\maxine\LICENSE.txt" "%STAGING_DIR%\licenses\NVIDIA_MAXINE_INTEGRATION_NOTICE.txt"
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" call :copy_required_file "%ROOT_DIR%\third_party\maxine\LICENSE.txt" "%STAGING_DIR%\licenses\NVIDIA_MAXINE_INTEGRATION_NOTICE.txt"
 if errorlevel 1 goto :fail
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" call :copy_required_file "%CUDA_LICENSE_PATH%" "%STAGING_DIR%\licenses\NVIDIA_CUDA_EULA.txt"
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" call :copy_required_file "%BUNDLE_CUDA_LICENSE_PATH%" "%STAGING_DIR%\licenses\NVIDIA_CUDA_EULA.txt"
 if errorlevel 1 goto :fail
 
 echo ===== STAGE SOURCE-BUILT ANDROID DEBUG BRIDGE =====
@@ -176,7 +219,7 @@ if errorlevel 1 goto :fail
 echo ===== GENERATE RELEASE INTEGRITY METADATA =====
 pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\generate_release_metadata.ps1" ^
     -BundlePath "%STAGING_DIR%" -RepositoryPath "%ROOT_DIR%" -QtVersion "%QT_RUNTIME_VERSION%" ^
-    -CudaEnabled "%OKUFLOW_ENABLE_CUDA%" -BuildDirectory "%BUILD_DIR%"
+    -BuildDirectory "%BUILD_DIR%"
 if errorlevel 1 (
     echo ERROR: Release checksums, manifest, or SBOM could not be generated.
     goto :fail
@@ -272,38 +315,11 @@ if not exist "%QT_FFMPEG_LICENSE_FILE%" (
 set "QT_PREFIX=%QT_ROOT%"
 exit /b 0
 
-:resolve_cuda_license
-if defined OKUFLOW_CUDA_TOOLKIT_ROOT (
-    if exist "%OKUFLOW_CUDA_TOOLKIT_ROOT%\EULA.txt" set "CUDA_LICENSE_PATH=%OKUFLOW_CUDA_TOOLKIT_ROOT%\EULA.txt"
-    if not defined CUDA_LICENSE_PATH if exist "%OKUFLOW_CUDA_TOOLKIT_ROOT%\LICENSE" set "CUDA_LICENSE_PATH=%OKUFLOW_CUDA_TOOLKIT_ROOT%\LICENSE"
-    if not defined CUDA_LICENSE_PATH (
-        echo ERROR: The explicitly selected OkuFlow CUDA toolkit has no license.
-        exit /b 1
-    )
-    exit /b 0
-)
-if defined CUDA_PATH if exist "%CUDA_PATH%\EULA.txt" set "CUDA_LICENSE_PATH=%CUDA_PATH%\EULA.txt"
-if not defined CUDA_LICENSE_PATH if defined CUDAToolkit_ROOT if exist "%CUDAToolkit_ROOT%\EULA.txt" set "CUDA_LICENSE_PATH=%CUDAToolkit_ROOT%\EULA.txt"
-rem Recent toolkits install the same license material as LICENSE.
-if not defined CUDA_LICENSE_PATH if defined CUDA_PATH if exist "%CUDA_PATH%\LICENSE" set "CUDA_LICENSE_PATH=%CUDA_PATH%\LICENSE"
-if not defined CUDA_LICENSE_PATH if defined CUDAToolkit_ROOT if exist "%CUDAToolkit_ROOT%\LICENSE" set "CUDA_LICENSE_PATH=%CUDAToolkit_ROOT%\LICENSE"
-if not defined CUDA_LICENSE_PATH (
-    echo ERROR: CUDA is enabled but the CUDA Toolkit EULA.txt or LICENSE was not found.
-    echo Set CUDA_PATH or CUDAToolkit_ROOT to the toolkit used for this build.
-    exit /b 1
-)
-exit /b 0
-
 :find_built_executable
 rem Select only this generator's output. Old Release subdirectories can remain
 rem after a Ninja migration and must never take precedence over its new binary.
-if /I "%GENERATOR%"=="Visual Studio 17 2022" (
-    set "EXE_PATH=%BUILD_DIR%\cmake\Release\oku_flow.exe"
-    set "PROBE_PATH=%BUILD_DIR%\sandbox_mf_dxva_minimal\Release\mf_dxva_minimal.exe"
-) else (
-    set "EXE_PATH=%BUILD_DIR%\cmake\oku_flow.exe"
-    set "PROBE_PATH=%BUILD_DIR%\sandbox_mf_dxva_minimal\mf_dxva_minimal.exe"
-)
+set "EXE_PATH=%BUILD_DIR%\cmake\oku_flow.exe"
+set "PROBE_PATH=%BUILD_DIR%\sandbox_mf_dxva_minimal\mf_dxva_minimal.exe"
 if not exist "%EXE_PATH%" (
     echo ERROR: Built executable was not found under "%BUILD_DIR%".
     exit /b 1
@@ -368,11 +384,11 @@ if not exist "%STAGING_DIR%\app\licenses\QT_FFMPEG_LGPL_2_1.txt" goto :deploy_in
 for %%M in (qtbase qtimageformats qtmultimedia qtspeech qtsvg) do if not exist "%STAGING_DIR%\app\licenses\qt-sbom\%%M-%QT_RUNTIME_VERSION%.spdx.json" goto :deploy_incomplete
 if exist "%STAGING_DIR%\app\Qt6Pdf.dll" if not exist "%STAGING_DIR%\app\licenses\qt-sbom\qtpdf-%QT_RUNTIME_VERSION%.spdx.json" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\licenses\LUCIDE_LICENSE.txt" goto :deploy_incomplete
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\AMD_FSR1_LICENSE.txt" goto :deploy_incomplete
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_NIS_LICENSE.txt" goto :deploy_incomplete
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_MAXINE_SDK_HEADERS_LICENSE.txt" goto :deploy_incomplete
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_MAXINE_INTEGRATION_NOTICE.txt" goto :deploy_incomplete
-if /I "%OKUFLOW_ENABLE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_CUDA_EULA.txt" goto :deploy_incomplete
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\AMD_FSR1_LICENSE.txt" goto :deploy_incomplete
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_NIS_LICENSE.txt" goto :deploy_incomplete
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_MAXINE_SDK_HEADERS_LICENSE.txt" goto :deploy_incomplete
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_MAXINE_INTEGRATION_NOTICE.txt" goto :deploy_incomplete
+if /I "%BUNDLE_EFFECTIVE_CUDA%"=="ON" if not exist "%STAGING_DIR%\app\licenses\NVIDIA_CUDA_EULA.txt" goto :deploy_incomplete
 for %%F in (adb.exe AdbWinApi.dll AdbWinUsbApi.dll NOTICE.txt source.properties adb-build.json) do if not exist "%STAGING_DIR%\app\platform-tools\%%F" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\licenses\adb\LIBUSB_LGPL_2_1.txt" goto :deploy_incomplete
 if not exist "%STAGING_DIR%\app\sources\adb-37.0.0-okuflow-source.zip" goto :deploy_incomplete
@@ -478,102 +494,27 @@ exit /b 0
 
 :publish_staging_bundle_impl
 set "PUBLISHED_BUNDLE="
-if exist "%BACKUP_DIR%" (
-    rmdir /s /q "%BACKUP_DIR%"
-    if exist "%BACKUP_DIR%" (
-        echo ERROR: Stale bundle backup could not be removed: "%BACKUP_DIR%".
-        exit /b 1
-    )
-)
-
-if not exist "%PRIMARY_DIR%" (
-    move "%STAGING_DIR%" "%PRIMARY_DIR%" >nul
-    if errorlevel 1 exit /b 1
-    set "PUBLISHED_BUNDLE=%PRIMARY_DIR%"
-    call :verify_published_executable
-    if errorlevel 1 exit /b 1
-    exit /b 0
-)
-
-rem Legacy output is user-owned. Never move it into a disposable bundle
-rem backup; leave the primary tree untouched and publish the new app beside it.
-if exist "%PRIMARY_DIR%\output" (
-    echo Existing dist\OkuFlow contains legacy user output; leaving it untouched.
-    goto :publish_secondary
-)
-
-if exist "%PRIMARY_DIR%\oku_flow.exe" (
-    ren "%PRIMARY_DIR%\oku_flow.exe" "oku_flow.bundle-lock-check.exe" >nul 2>&1
-    if errorlevel 1 goto :publish_secondary
-    ren "%PRIMARY_DIR%\oku_flow.bundle-lock-check.exe" "oku_flow.exe" >nul 2>&1
-    if errorlevel 1 (
-        echo ERROR: Bundle lock check could not restore oku_flow.exe.
-        exit /b 1
-    )
-)
-
-rem Protect either the legacy or nested Qt child from an active file lock.
-call :check_child_lock "%PRIMARY_DIR%\app\OkuFlowApp.exe"
-if errorlevel 1 goto :publish_secondary
-rem The Qt child can also be launched directly by an existing shortcut.
-if exist "%PRIMARY_DIR%\OkuFlowApp.exe" (
-    ren "%PRIMARY_DIR%\OkuFlowApp.exe" "OkuFlowApp.bundle-lock-check.exe" >nul 2>&1
-    if errorlevel 1 goto :publish_secondary
-    ren "%PRIMARY_DIR%\OkuFlowApp.bundle-lock-check.exe" "OkuFlowApp.exe" >nul 2>&1
-    if errorlevel 1 (
-        echo ERROR: Bundle lock check could not restore OkuFlowApp.exe.
-        exit /b 1
-    )
-)
-
-move "%PRIMARY_DIR%" "%BACKUP_DIR%" >nul
-if errorlevel 1 goto :publish_secondary
-
-move "%STAGING_DIR%" "%PRIMARY_DIR%" >nul
-if errorlevel 1 (
-    echo ERROR: Validated staging bundle could not replace dist\OkuFlow.
-    goto :rollback_primary
-)
-
-set "PUBLISHED_BUNDLE=%PRIMARY_DIR%"
-call :verify_published_executable
-if errorlevel 1 (
-    echo ERROR: Published executable verification failed.
+for /f "usebackq delims=" %%T in (`pwsh.exe -NoProfile -Command "[IO.Path]::GetTempFileName()"`) do set "BUNDLE_PUBLISH_RESULT=%%T"
+if not defined BUNDLE_PUBLISH_RESULT exit /b 1
+rem Preserve staging/recovery evidence if the publication transaction fails.
+set "BUNDLE_STAGE_CREATED="
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\publish_release_bundle.ps1" -DistDirectory "%DIST_DIR%" -StagingDirectory "%STAGING_DIR%" -ResultPath "%BUNDLE_PUBLISH_RESULT%"
+if errorlevel 1 exit /b 1
+if exist "%STAGING_DIR%" (
+    echo ERROR: Transactional publication did not consume the owned staging directory.
     exit /b 1
 )
-rmdir /s /q "%BACKUP_DIR%"
-if exist "%BACKUP_DIR%" (
-    echo WARNING: The old runtime backup remains at "%BACKUP_DIR%".
-)
-exit /b 0
-
-:rollback_primary
-if not exist "%PRIMARY_DIR%" move "%BACKUP_DIR%" "%PRIMARY_DIR%" >nul
-exit /b 1
-
-:publish_secondary
-echo Existing dist\OkuFlow cannot be replaced safely; publishing to dist\OkuFlow2.
-if exist "%SECONDARY_DIR%" (
-    if exist "%SECONDARY_DIR%\output" (
-        echo ERROR: dist\OkuFlow2 contains legacy user output and was left untouched.
-        echo Open that bundle once to copy its files, then retry packaging.
-        exit /b 1
-    )
-    rmdir /s /q "%SECONDARY_DIR%"
-    if exist "%SECONDARY_DIR%" (
-        echo ERROR: Existing dist\OkuFlow2 is also in use.
-        exit /b 1
-    )
-)
-move "%STAGING_DIR%" "%SECONDARY_DIR%" >nul
-if errorlevel 1 exit /b 1
-set "PUBLISHED_BUNDLE=%SECONDARY_DIR%"
+set /p "PUBLISHED_BUNDLE=" < "%BUNDLE_PUBLISH_RESULT%"
+del /q "%BUNDLE_PUBLISH_RESULT%"
+set "BUNDLE_PUBLISH_RESULT="
+if not defined PUBLISHED_BUNDLE exit /b 1
 call :verify_published_executable
-if errorlevel 1 exit /b 1
-exit /b 0
+exit /b %errorlevel%
 
 :fail
-if exist "%STAGING_DIR%" rmdir /s /q "%STAGING_DIR%"
+if defined BUNDLE_PUBLISH_RESULT if exist "%BUNDLE_PUBLISH_RESULT%" del /q "%BUNDLE_PUBLISH_RESULT%"
+if defined BUNDLE_FACTS_ENV if exist "%BUNDLE_FACTS_ENV%" del /q "%BUNDLE_FACTS_ENV%"
+if defined BUNDLE_STAGE_CREATED if exist "%STAGING_DIR%" pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\publish_release_bundle.ps1" -DistDirectory "%DIST_DIR%" -StagingDirectory "%STAGING_DIR%" -Action DiscardStage
 popd
 :fail_no_popd
 echo.
@@ -581,10 +522,36 @@ echo OkuFlow release bundle failed. No incomplete bundle was declared ready.
 endlocal
 exit /b 1
 
-:check_child_lock
-if not exist "%~1" exit /b 0
-ren "%~1" "OkuFlowApp.bundle-lock-check.exe" >nul 2>&1
-if errorlevel 1 exit /b 1
-ren "%~dp1OkuFlowApp.bundle-lock-check.exe" "OkuFlowApp.exe" >nul 2>&1
-if errorlevel 1 exit /b 1
+:initialize_toolchain
+set "BUNDLE_VSDEVCMD="
+set "BUNDLE_VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+rem VsDevCmd also invokes vswhere by name on some installed SDKs.
+set "Path=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%Path%"
+rem Query registered roots directly. A recursive -find **\VsDevCmd.bat scans
+rem the entire installed Enterprise tree on hosted runners before setup starts.
+echo Discovering the installed Visual Studio 2022 C++ root.
+if exist "%BUNDLE_VSWHERE%" (
+    for /f "usebackq delims=" %%V in (`call "%BUNDLE_VSWHERE%" -latest -version "[17.0,18.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do if exist "%%V\Common7\Tools\VsDevCmd.bat" if not defined BUNDLE_VSDEVCMD set "BUNDLE_VSDEVCMD=%%V\Common7\Tools\VsDevCmd.bat"
+)
+if not defined BUNDLE_VSDEVCMD if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" set "BUNDLE_VSDEVCMD=C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"
+if not defined BUNDLE_VSDEVCMD (
+    echo ERROR: Visual Studio 2022 C++ build tools were not found.
+    echo Install the Desktop development with C++ workload and try again.
+    exit /b 1
+)
+rem Microsoft's script preserves an inherited VSINSTALLDIR. Let the selected
+rem installed script derive its own root instead of trusting an environment claim.
+rem This build needs compiler setup only. Do not launch Microsoft telemetry
+rem grandchildren that can retain a captured process pipe after setup returns.
+set "VSCMD_SKIP_SENDTELEMETRY=1"
+rem Keep setup errors visible without enabling environment/secret dumps.
+set "VSCMD_DEBUG="
+set "VSINSTALLDIR="
+echo Using installed VS2022 initializer: "%BUNDLE_VSDEVCMD%"
+call "%BUNDLE_VSDEVCMD%" -no_logo -arch=x64 -host_arch=x64
+if errorlevel 1 (
+    echo ERROR: Visual Studio 2022 x64 environment could not be initialized.
+    exit /b 1
+)
+echo Visual Studio 2022 x64 initialization completed.
 exit /b 0

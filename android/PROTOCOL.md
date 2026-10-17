@@ -86,6 +86,12 @@ binding the video channel. The token is installation/session-local, never
 included in probe logs. Closing either connection retires both and releases
 the camera. An authorized computer has the normal privileges of USB debugging.
 
+Service events retain the host token internally through command dispatch and
+camera callbacks. The service serializes Stop, restart and retirement on its
+main event owner, rechecking the exact connected host at execution. Socket
+callbacks run outside the session lock. Retired-host commands/results cannot
+be forwarded to a successor. The v1 wire layout and command names are unchanged.
+
 ## Hello and packet framing
 
 All integers are little-endian. Each connection starts with:
@@ -164,7 +170,7 @@ also accept the initial prototype's `camera` + string `id` spelling for compatib
 
 | op | Additional fields | Behavior |
 | --- | --- | --- |
-| `start` | None | Negotiate and start with saved phone settings |
+| `start` | Optional `startupBudgetMs` positive integer | Negotiate and start with saved phone settings within the host's remaining startup budget |
 | `stop` | None | Release capture; retain the socket session |
 | `zoom` | `ratio` positive finite number | Clamp to the exposed zoom ratio range |
 | `camera` | `cameraId` exposed camera id | Persist and restart using that camera |
@@ -180,7 +186,13 @@ after three seconds, using one snapshot of the volatile write-start timestamp
 to avoid mistaking a completed write for a stall. No arbitrary inter-frame packets are dropped: video
 queue pressure disconnects the session so the next start begins with a
 fresh codec configuration and key frame. The video queue holds at most
-32 packets / 32 MiB; control holds 128 packets / 512 KiB.
+32 packets / 32 MiB; control holds 128 packets / 512 KiB. Byte limits include
+the packet being written. Per-frame METADATA is advisory: once control holds
+96 packets or 384 KiB, new METADATA is dropped and the session stays up. The
+remaining 32 packets / 128 KiB are kept for ACK, STATE and ERROR, which keep
+their order and are never dropped. Overflow of that full control bound still
+disconnects the session, without a retry. Hosts must tolerate gaps in
+METADATA `frameNumber`.
 
 `configured` precedes video for a generation. `streaming` follows the first
 non-configuration encoded frame. Both report `generation`, `camera`, `width`,
@@ -189,8 +201,41 @@ non-configuration encoded frame. Both report `generation`, `camera`, `width`,
 API 33+, otherwise `device-default`. Startup tries up to six capability-probed
 candidates from the local camera/encoder intersection, bounded by the saved
 size/rate pair and host limits. It reduces size/FPS or falls back to AVC after rejection
-or four seconds without frames. Thermal status SEVERE requests at most 30 FPS;
+or the candidate's first-video deadline. Thermal status SEVERE requests at most 30 FPS;
 CRITICAL stops capture and requires a new start after cooling.
+
+### Startup budget and candidate progress
+
+Native Windows keeps one 12-second deadline from `PhoneCameraTransport::Start`,
+including USB/listener negotiation and any initial HEVC-to-AVC reconnect. Just
+before `start`, it sends the remaining milliseconds minus a one-second decoder
+reserve as `startupBudgetMs`; an exhausted budget fails without starting camera
+work. This field is optional for compatibility: an older host gets a 12-second
+phone cap, and an older companion may ignore the field while the host retains
+its own deadline.
+
+The phone clamps this field to 1–12000 ms. Time starts when the command arrives,
+so the main-owner queue, camera-handler queue, catalog discovery, synchronous
+encoder setup, teardown and 200 ms retry gaps consume the same absolute budget.
+It retains at most six candidates, reducing that count if necessary to reserve
+at least 500 ms per candidate. Each attempt receives an equal share of the
+remaining time after future retry gaps, capped at four seconds. Fast rejection
+returns unused time to later candidates. Fewer candidates keep up to four seconds
+each; a single candidate still fails after four seconds without encoded video.
+Settings/thermal restarts before the first video retain the original budget.
+Stop, disconnect, replacement start and close retire the start token, preventing
+queued retries and old camera callbacks from reopening or publishing a stream.
+Android platform calls cannot be preempted inside a stalled camera/codec driver;
+late results are rejected and resources released when the handler resumes.
+
+`configured` adds `attempt` (one-based), `candidates`, `startupBudgetMs`,
+`remainingMs` and `attemptTimeoutMs`. On a failed candidate with another attempt
+available, `retrying` carries the same fields plus `reason`, `retryInMs` and
+`failedGeneration`; it omits `generation` because encoder creation can fail
+before that generation was configured. These fields are diagnostic data, not
+localized UI copy. Terminal ERROR includes the failed candidate's mode and
+reason, or states that insufficient startup time remains. Hosts must not parse
+free-text reasons for behavior.
 
 ## Video and capture metadata
 
@@ -215,8 +260,11 @@ JSONL. Native Windows decodes AVC and optional HEVC through system Media Foundat
 MFTs, requesting low latency and sharing its capture DXGI manager when supported.
 HEVC uses Main 8-bit / Annex B input and NV12 output. Its codec is not bundled:
 the installed Windows decoder must activate and pass an input/output probe.
-If HEVC decoder creation/processing fails or produces no initial frame for four
-seconds, Windows closes both channels and reconnects once offering AVC only.
+If HEVC decoder creation/processing fails or produces no initial decoded frame
+for four seconds after its first non-configuration encoded frame, Windows closes
+both channels and reconnects once offering AVC only. Codec configuration alone
+does not start this four-second clock while the phone is still trying modes;
+the overall startup and 12-second decoded-progress deadlines remain bounded.
 This changes negotiation for that session, not the saved phone preference.
 The phone status includes the actual codec, so AVC fallback is visible.
 Samples pin decoder textures until consumers release them; CPU NV12 is the
@@ -228,3 +276,7 @@ The desktop source exposes queued zoom/camera APIs, and discovered camera IDs
 appear as camera-list entries. Automatic handoff of OkuFlow's viewport zoom,
 per-frame metadata joins, clock synchronization and high-speed capture above
 60 FPS remain separate plan-51 work.
+
+Zoom accepted during Camera2 startup is retained for that host/start generation
+and applied when the capture session is configured. It does not consume a mode
+fallback. A new start resets zoom; retired host/start commands cannot affect it.

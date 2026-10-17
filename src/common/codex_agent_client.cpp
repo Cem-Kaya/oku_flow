@@ -171,7 +171,8 @@ QJsonArray CodexAgentClient::Tools(bool probe) const
     }
     return result;
 }
-bool CodexAgentClient::SubmitTurn(QString context,QString prompt,QByteArray jpeg,QJsonArray completedTextContext)
+bool CodexAgentClient::SubmitTurn(QString context,QString prompt,QByteArray jpeg,QJsonArray completedTextContext,
+                                std::optional<agent::AuthorizedObservation> observation)
 {
     bool validContext=completedTextContext.size()<=20;
     for(const auto& value:completedTextContext) {
@@ -188,12 +189,14 @@ bool CodexAgentClient::SubmitTurn(QString context,QString prompt,QByteArray jpeg
        status.value(QStringLiteral("contextId")).toString()!=context ||
        status.value(QStringLiteral("ownerKind")).toString()!=QStringLiteral("agent-session") ||
        (!jpeg.isEmpty() && !status.value(QStringLiteral("grants")).toObject().value(QStringLiteral("frames")).toBool()) ||
+       (!jpeg.isEmpty() && (!observation || observation->contextId != context
+                           || !service_->AuthorizeFrameDelivery(*observation))) ||
        prompt.trimmed().isEmpty() || prompt.size()>32768 || jpeg.toBase64().size()>kImageBase64Bytes) {
         return false; // Rejection owns no turn and cannot finish an active one.
     }
     context_=std::move(context);prompt_=std::move(prompt);jpeg_=std::move(jpeg);
     completedTextContext_=std::move(completedTextContext);
-    initialImageStamp_=service_->Stamp();
+    initialImageAuthorization_=std::move(observation);
     active_=true;probing_=false;++generation_; started_=activity_=Now();
     imageBase64Bytes_=jpeg_.toBase64().size();text_.clear();turn_.clear();
     watchdog_.start();
@@ -234,7 +237,8 @@ void CodexAgentClient::StartTurn()
        service_->ContextStatus().value(QStringLiteral("contextId")).toString()!=context_)) {
         Finish(QStringLiteral("canceled"));return;
     }
-    if(!jpeg_.isEmpty() && (!service_ || !service_->AuthorizeFrameDelivery(context_,initialImageStamp_))) {
+    if(!jpeg_.isEmpty() && (!service_ || !initialImageAuthorization_
+        || !service_->AuthorizeFrameDelivery(*initialImageAuthorization_))) {
         Finish(QStringLiteral("consent_denied"));return;
     }
     const auto generation=generation_,epoch=epoch_;
@@ -350,6 +354,10 @@ void CodexAgentClient::Answer(const Call& call,agent::ControlResult result)
 {
     if(call.epoch!=epoch_ || !rpc_->IsRunning())return;
     QJsonArray items;
+    if(!result.jpeg.isEmpty() && (!service_ || !result.observation
+       || result.observation->contextId != context_
+       || !service_->AuthorizeFrameDelivery(*result.observation)))
+        result=agent::ControlResult::Failure(QStringLiteral("consent_denied"));
     if(!result.jpeg.isEmpty()) {
         const auto base64=result.jpeg.toBase64();
         if(call.params.value(QStringLiteral("tool")).toString()!=QStringLiteral("okuflow_view_observe") ||
@@ -368,6 +376,9 @@ void CodexAgentClient::Answer(const Call& call,agent::ControlResult result)
         response={{QStringLiteral("success"),false},{QStringLiteral("contentItems"),QJsonArray{
             QJsonObject{{QStringLiteral("type"),QStringLiteral("inputText")},
                         {QStringLiteral("text"),QStringLiteral("{\"ok\":false,\"error\":{\"code\":\"result_too_large\",\"retryable\":false}}")}}}}};
+    }
+    if (!result.jpeg.isEmpty() && !service_->AuthorizeFrameDelivery(*result.observation)) {
+        Answer(call,agent::ControlResult::Failure(QStringLiteral("consent_denied"))); return;
     }
     rpc_->SendResult(call.id,response);
 }

@@ -272,3 +272,40 @@ finished sources. German/Dutch Details are reviewed cognates with narrow
 validator exceptions. This establishes model review and structural parity,
 not native-speaker, rendered RTL, font or screen-reader acceptance. Published
 release claims remain unchanged.
+
+## Ultra Clear Text strings (pending review)
+
+The experimental Ultra Clear Text controls use `TranslateUi`/live-text routing
+but their sources are **not yet in the catalogs**, so every language currently
+shows English. They were not machine-translated or added to the manifest
+without the required small-agent review. Add them through
+`scripts/check_translations.ps1 -UpdateManifest` with per-entry review before
+calling the feature localized. English sources:
+
+- Controls: `Ultra Clear Text (experimental)`, `Show original camera text`,
+  `Recognized text`.
+- Descriptions/tooltips: `Recognizes steady printed text on this computer and
+  draws sharp letters over it. Recognition can be wrong. Use Show original
+  to compare with the camera image.`; `Temporarily hides the sharp letters so
+  you can compare with the camera image.`; `Text accepted by Ultra Clear Text,
+  in reading order. An ellipsis marks words left as the original image.`;
+  overlay `Ultra Clear Text overlay` / `Visual glyph overlay. The recognized
+  text is available in the Ultra Clear Text reading pane.`
+- Status: `Ultra Clear Text is off.`, `Starting text recognition…`,
+  `Text recognition is unavailable: Windows has no OCR language installed. The
+  original camera image is shown.`, `Text recognition is unavailable on this
+  computer. The original camera image is shown.`, `Text recognition stopped
+  working. The original camera image is shown.`, `Paused while Temporal Smooth
+  or Extra Stable is on. The original camera image is shown.`, `Waiting for the
+  camera.`, `Original camera text shown.`, `Showing sharp text for %1 words.`,
+  `Text moved. Showing the original until it is steady again.`,
+  `Reading text…`, `No steady printed text recognized yet.`,
+  `Waiting for steady text…`; `Image settings changed. Showing the camera image until the new image is read.`.
+
+Recognized words in the reading pane are camera content, not UI text, and are
+never translated. Recognition languages come from the Windows OCR languages
+installed on the computer, independent of the UI language.
+
+The 2026-10-17 approval-receipt additions bring the current Windows source
+catalog to 807 keys. All 48 additions received small-agent review; see
+[the complete review record](localization_review_2026_10_17.md).

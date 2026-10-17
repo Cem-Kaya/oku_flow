@@ -79,6 +79,10 @@ set_tests_properties(shared_source_equivalence PROPERTIES
     $null = Assert-Selection 'mixed docs and unknown' @('README.md', 'unknown.bin') full
     $android = Assert-Selection 'Android host protocol' @('android/protocol.py') scoped
     if ('android-host-protocol' -notin $android.extraChecks) { throw 'Missing Android extra check.' }
+    $probe = Assert-Selection 'host probe only' @('scripts/android_camera_probe.py') scoped
+    if ('android-host-protocol' -notin $probe.extraChecks -or $probe.tests.Count -or $probe.targets.Count) {
+        throw 'Probe-only changes must select host protocol checks without a Windows rebuild.'
+    }
     # A configured but unbuilt object must never hide header consumers.
     'add_library(unbuilt STATIC unbuilt.cpp)' | Add-Content -LiteralPath "$fixture/CMakeLists.txt"
     '#include "core.hpp"' | Set-Content -LiteralPath "$fixture/unbuilt.cpp"

@@ -52,6 +52,13 @@ CodexAppServerClient::CodexAppServerClient(QObject* parent)
     turnWatchdogTimer_->setInterval(1000);
     connect(turnWatchdogTimer_, &QTimer::timeout,
             this, &CodexAppServerClient::CheckTurnWatchdog);
+    connect(&restrictedPreflight_,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,
+        [this](int,QProcess::ExitStatus) {
+            // A retired preflight can finish after a new turn has selected a
+            // different immutable child profile. Resume only current work.
+            if(!restrictedPreflightActive_ && pendingTurn_.valid && !rpc_->IsRunning())
+                QTimer::singleShot(0,this,[this] {if(pendingTurn_.valid)Start();});
+        });
     restrictedPreflightDeadline_=new QTimer(this);restrictedPreflightDeadline_->setSingleShot(true);
     connect(restrictedPreflightDeadline_,&QTimer::timeout,this,[this]{FailRestrictedPreflight("preflight_timeout");});
     connect(&restrictedPreflight_,&QProcess::readyReadStandardError,this,[this]{restrictedPreflight_.readAllStandardError();});
@@ -86,7 +93,7 @@ CodexAppServerClient::CodexAppServerClient(QObject* parent)
     connect(rpc_.get(), &CodexJsonRpcProcess::NotificationReceived,
             this, &CodexAppServerClient::HandleNotification);
     connect(rpc_.get(), &CodexJsonRpcProcess::StderrText, this, [this](const QString& diagnostic) {
-        if(!restrictedLaunch_)qWarning().noquote() << "codex app-server:" << diagnostic;
+        if(launchCoding_)qWarning().noquote() << "codex app-server:" << diagnostic;
     });
     connect(rpc_.get(), &CodexJsonRpcProcess::ProtocolFailed, this, [this](const QString& reason) {
         emit ServerStateChanged(false, reason);
@@ -151,6 +158,8 @@ void CodexAppServerClient::Configure(const QString& executablePath,
 {
     const QString newExecutable = executablePath.trimmed();
     const bool executableChanged = configuredExecutable_ != newExecutable;
+    const bool oldCoding=codingEnabled_, oldInternet=internetEnabled_;
+    const QString oldWorkspace=workspaceDirectory_;
     configuredExecutable_ = newExecutable;
     preferredModel_ = preferredModel.trimmed();
     const QString normalizedEffort = reasoningEffort.trimmed().toLower();
@@ -171,8 +180,11 @@ void CodexAppServerClient::Configure(const QString& executablePath,
     if (!preferredModel_.isEmpty()) {
         selectedModel_ = preferredModel_;
     }
-    if (executableChanged && (rpc_->IsRunning() || restrictedPreflightActive_)) {
+    if (executableChanged || oldCoding!=codingEnabled_ || oldInternet!=internetEnabled_ || oldWorkspace!=workspaceDirectory_) {
         Shutdown();
+        // Preserve a wider child's identity if it refuses retirement; a later
+        // turn must not mistake that process for a new constrained child.
+        if(!rpc_->IsRunning())launchCoding_=launchInternet_=false;
     }
 }
 
@@ -182,16 +194,24 @@ void CodexAppServerClient::Start()
         return;
     }
 
+    if(!pendingTurn_.valid)launchCoding_=launchInternet_=false;
     initialized_ = false;
     accountReadInFlight_ = false;
     retiredTurnIds_.clear();
-    if(restrictedLaunch_) {StartRestrictedPreflight(0);return;}
-    rpc_->SetProgram(ResolveExecutable(),
-                     {QStringLiteral("app-server"),
-                      QStringLiteral("--listen"),
-                      QStringLiteral("stdio://")});
-    rpc_->SetProcessEnvironment(QProcessEnvironment::systemEnvironment());
     emit ServerStateChanged(false, QStringLiteral("Starting Codex..."));
+    if(!launchCoding_) {StartRestrictedPreflight(0);return;}
+    // Coding is a separately requested profile, never inherited by vision.
+    // Thread/turn policies retain the exact configured workspace and grants.
+    rpc_->SetProgram(ResolveExecutable(),
+                     {QStringLiteral("app-server"),QStringLiteral("--listen"),QStringLiteral("stdio://"),
+                      QStringLiteral("-c"),QStringLiteral("approval_policy=\"never\""),
+                      QStringLiteral("-c"),QStringLiteral("sandbox_mode=\"workspace-write\""),
+                      QStringLiteral("-c"),QStringLiteral("sandbox_workspace_write.writable_roots=%1").arg(
+                          QString::fromUtf8(QJsonDocument(QJsonArray{workspaceDirectory_}).toJson(QJsonDocument::Compact))),
+                      QStringLiteral("-c"),QStringLiteral("sandbox_workspace_write.network_access=%1").arg(launchInternet_?"true":"false"),
+                      QStringLiteral("-c"),launchInternet_?QStringLiteral("web_search=\"live\""):QStringLiteral("web_search=\"disabled\"")});
+    auto environment=QProcessEnvironment::systemEnvironment();environment.remove("OKUFLOW_VLM_API_KEY");
+    rpc_->SetProcessEnvironment(environment);
     rpc_->Start();
 }
 
@@ -215,6 +235,17 @@ void CodexAppServerClient::SetRestrictedLaunchMode(bool restricted)
 {
     if(restricted==restrictedLaunch_)return;
     Shutdown();restrictedLaunch_=restricted;
+    if(!rpc_->IsRunning())launchCoding_=launchInternet_=false;
+}
+
+bool CodexAppServerClient::EnsureLaunchPermissions(bool coding,bool internet)
+{
+    coding=coding && !restrictedLaunch_;internet=internet && !restrictedLaunch_;
+    if(launchCoding_==coding && launchInternet_==internet)return true;
+    Shutdown();
+    if(rpc_->IsRunning())return false; // Never submit through an unretired wider child.
+    launchCoding_=coding;launchInternet_=internet;
+    return true;
 }
 
 void CodexAppServerClient::FailRestrictedPreflight(const QString& code)
@@ -233,9 +264,9 @@ void CodexAppServerClient::StartRestrictedPreflight(int stage)
 {
     restrictedPreflightActive_=true;
     const auto epoch=++restrictedPreflightEpoch_;
-    disconnect(&restrictedPreflight_,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,nullptr);
+    disconnect(restrictedStageFinished_);
     restrictedPreflightBytes_.clear();
-    connect(&restrictedPreflight_,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,
+    restrictedStageFinished_=connect(&restrictedPreflight_,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,
         [this,stage,epoch](int exit,QProcess::ExitStatus status) {
             if(epoch!=restrictedPreflightEpoch_ || !restrictedPreflightActive_)return;
             restrictedPreflightDeadline_->stop();
@@ -245,7 +276,7 @@ void CodexAppServerClient::StartRestrictedPreflight(int stage)
             if(stage==1) {restrictedFeatures_=QString::fromUtf8(restrictedPreflightBytes_);StartRestrictedPreflight(2);return;}
             QJsonParseError error;const auto inventory=QJsonDocument::fromJson(restrictedPreflightBytes_,&error);
             if(error.error!=QJsonParseError::NoError || !inventory.isArray()) {FailRestrictedPreflight("invalid_mcp_inventory");return;}
-            const auto profile=CodexAgentProfile::Validate(restrictedVersion_,restrictedFeatures_,inventory.array());
+            const auto profile=CodexAgentProfile::Validate(restrictedVersion_,restrictedFeatures_,inventory.array(),launchInternet_);
             restrictedPreflightBytes_.clear();restrictedVersion_.clear();restrictedFeatures_.clear();
             if(!profile.available) {FailRestrictedPreflight(profile.errorCode);return;}
             restrictedPreflightActive_=false;
@@ -389,6 +420,13 @@ void CodexAppServerClient::RequestVisionTurn(const QString& prompt,
         }
     }
     CancelConversationLoad();
+    const bool allowCoding=persistent && permitCoding && codingEnabled_ && !restrictedLaunch_;
+    const bool allowInternet=persistent && internetEnabled_ && !restrictedLaunch_;
+    if(!EnsureLaunchPermissions(allowCoding,allowInternet)) {
+        if(!imagePath.trimmed().isEmpty())QFile::remove(imagePath);
+        emit TurnFinished(threadId,{},{},QStringLiteral("Codex did not stop before changing permissions."),false,persistent);
+        return;
+    }
     pendingTurn_.generation = ++lastRequestGeneration_;
     pendingTurn_.opening = false;
     turnStartedAtMs_ = QDateTime::currentMSecsSinceEpoch();
@@ -400,8 +438,8 @@ void CodexAppServerClient::RequestVisionTurn(const QString& prompt,
     // Read is isolated even if a caller supplies a remembered conversation.
     pendingTurn_.threadId = persistent || retainThread ? threadId.trimmed() : QString();
     pendingTurn_.persistent = persistent;
-    pendingTurn_.allowCoding = persistent && permitCoding && codingEnabled_;
-    pendingTurn_.allowInternet = persistent && internetEnabled_;
+    pendingTurn_.allowCoding = allowCoding;
+    pendingTurn_.allowInternet = allowInternet;
     pendingTurn_.workspace = workspaceDirectory_;
     pendingTurn_.retainThread = !persistent && retainThread;
     pendingTurn_.valid = true;

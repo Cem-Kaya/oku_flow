@@ -1,7 +1,8 @@
 # Record consumer ownership before removing production sources. The generated
 # compile database supplies the fully resolved compiler environment, including
 # transitive Qt usage requirements, without synthetic compilation targets.
-find_program(OKUFLOW_EQUIVALENCE_PWSH NAMES pwsh REQUIRED)
+include("${PROJECT_SOURCE_DIR}/cmake/PowerShell.cmake")
+okuflow_find_powershell(OKUFLOW_EQUIVALENCE_PWSH)
 set(OKUFLOW_EQUIVALENCE_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/shared-source-consumers.tsv")
 set(OKUFLOW_EQUIVALENCE_ENVIRONMENTS "${CMAKE_CURRENT_BINARY_DIR}/shared-source-environments.tsv")
 file(WRITE "${OKUFLOW_EQUIVALENCE_MANIFEST}" "")

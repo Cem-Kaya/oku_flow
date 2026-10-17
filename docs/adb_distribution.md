@@ -81,6 +81,14 @@ reviewing its provenance and updating the distribution pin.
 
 Windows uses raw host-protocol requests against an existing local server. It
 never invokes a version-changing client command to stop/replace that server.
+An explicit `OKUFLOW_ADB_PATH` and the documented SDK/PATH development
+fallbacks are trusted local executable inputs, not remote inputs. Normal
+bundles select their adjacent runtime ahead of implicit SDK/PATH candidates;
+the explicit override has priority. Every owned launch logs its resolved
+absolute path. Runtime lookup does not establish manifest integrity: staged
+bundle validation and legacy-process reclamation have separate pinning gates.
+Do not infer permission to terminate an unknown process from a path override.
+
 If no listener or endpoint override exists, it starts adb hidden with
 `-L tcp:<port> server nodaemon`, which binds loopback without `-a`. Bootstrap is
 throttled to 30 seconds. New owned servers use a private ephemeral port and a

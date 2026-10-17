@@ -17,14 +17,7 @@ QString MakeCustomEntityId(const QString& prefix)
 {
     return QStringLiteral("%1-%2")
         .arg(prefix)
-        .arg(QDateTime::currentMSecsSinceEpoch());
-}
-
-// Save reports only success; the size limit is the one refusal with a
-// user-actionable cause, so name it rather than a generic I/O failure.
-bool ExceedsSettingsLimit(const settings::PersistentSettings& value)
-{
-    return settings::Serialize(value).size() > settings::kMaxSettingsFileBytes;
+        .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
 }
 
 QString SettingsLimitMessage()
@@ -50,7 +43,7 @@ SettingsController::SettingsController(QString settingsPath, StorageOperations s
     if (!storage_.readSecret) storage_.readSecret = ProtectedSecretStore::Read;
     if (!storage_.writeSecret) storage_.writeSecret = ProtectedSecretStore::Write;
     if (!storage_.removeSecret) storage_.removeSecret = ProtectedSecretStore::Remove;
-    if (!storage_.saveSettings) storage_.saveSettings = settings::Save;
+    if (!storage_.saveSettings) storage_.saveSettings = settings::SaveDetailed;
     bool restoreBackupAfterSecretLoad = false;
     bool rewriteMigratedSettings = false;
     const QString backupPath = settingsPath_ + QStringLiteral(".backup");
@@ -115,13 +108,14 @@ SettingsController::SettingsController(QString settingsPath, StorageOperations s
     pendingCredentialRemovals_ = settings_.assistive.pendingCredentialRemovals;
     LoadProtectedSecrets();
     if (restoreBackupAfterSecretLoad || rewriteMigratedSettings) {
-        if (storage_.saveSettings(settingsPath_, settings_)) {
+        const auto saveStatus = storage_.saveSettings(settingsPath_, settings_);
+        if (saveStatus == settings::SaveStatus::Saved) {
             RememberCommittedSettings(settings_);
         } else {
             startupNotice_ +=
                 (startupNotice_.isEmpty() ? QString() : QStringLiteral(" ")) +
                 QStringLiteral("The recovered or migrated settings could not be written back to disk.");
-            if (ExceedsSettingsLimit(settings_)) {
+            if (saveStatus == settings::SaveStatus::TooLarge) {
                 startupNotice_ += QStringLiteral(" ") + SettingsLimitMessage();
             }
         }
@@ -160,6 +154,9 @@ void SettingsController::LoadProtectedSecrets()
     switch (secret.status) {
     case ProtectedSecretResult::Status::Found:
         assistive.vlmApiKey = secret.value;
+        preparedCredential_ = CredentialBinding{
+            assistive.vlmCredentialId.trimmed(), assistive.aiProvider,
+            assistive.vlmApiUrl, secret.value};
         break;
     case ProtectedSecretResult::Status::NotFound:
         startupNotice_ +=
@@ -275,9 +272,13 @@ QString SettingsController::DefaultPromotedPresetName() const
     return QStringLiteral("Custom Quick Option");
 }
 
-settings::PresetDefinition SettingsController::PromoteCurrentConfig(
+std::optional<settings::PresetDefinition> SettingsController::PromoteCurrentConfig(
     settings::AdvancedConfig config, const QString& name)
 {
+    const auto previousConfigs=settings_.customConfigs;
+    const auto previousPresets=settings_.customPresets;
+    const auto previousCurrent=settings_.currentConfig;
+    const auto previousSelection=settings_.selectedPresetId;
     config.id = MakeCustomEntityId(QStringLiteral("custom-config"));
     config.name = name;
     config.description =
@@ -294,6 +295,15 @@ settings::PresetDefinition SettingsController::PromoteCurrentConfig(
     settings_.customPresets.push_back(preset);
     settings_.currentConfig = config;
     settings_.selectedPresetId = preset.id;
+    const bool complete=Save(config);
+    // Credential cleanup can fail after the new settings generation committed.
+    // Preserve that durable success and its warning; only undo an unpublished mode.
+    const bool committed=lastCommittedSettings_ && lastCommittedSettings_->selectedPresetId==preset.id;
+    if(!complete && !committed) {
+        settings_.customConfigs=previousConfigs;settings_.customPresets=previousPresets;
+        settings_.currentConfig=previousCurrent;settings_.selectedPresetId=previousSelection;
+        return std::nullopt;
+    }
     return preset;
 }
 
@@ -309,11 +319,12 @@ bool SettingsController::Save(const settings::AdvancedConfig& current)
     if (pendingCredentialRemovals_.contains(persisted.assistive.vlmCredentialId.trimmed())) {
         persisted.assistive.vlmCredentialId.clear();
     }
-    if (!storage_.saveSettings(settingsPath_, persisted)) {
+    const auto saveStatus = storage_.saveSettings(settingsPath_, persisted);
+    if (saveStatus != settings::SaveStatus::Saved) {
         // A late commit failure can leave the backup rotated to the current
         // primary, so do not promise that both generations are unchanged.
         lastError_ = QStringLiteral("OkuFlow could not save settings.");
-        if (ExceedsSettingsLimit(persisted)) {
+        if (saveStatus == settings::SaveStatus::TooLarge) {
             lastError_ += QStringLiteral(" ") + SettingsLimitMessage();
         } else {
             lastError_ += QStringLiteral(
@@ -334,7 +345,7 @@ bool SettingsController::Save(const settings::AdvancedConfig& current)
     }
     if (!pendingCredentialRemovals_.isEmpty()) {
         persisted.assistive.pendingCredentialRemovals.clear();
-        if (!storage_.saveSettings(settingsPath_, persisted)) {
+        if (storage_.saveSettings(settingsPath_, persisted) != settings::SaveStatus::Saved) {
             lastError_ = QStringLiteral("Credential deletion completed, but its settings cleanup could not be saved. It will be retried.");
             return false;
         }
@@ -356,25 +367,30 @@ bool SettingsController::PrepareProtectedSecrets()
     }
 
     if (!assistive.vlmApiKey.isEmpty()) {
-        if (assistive.vlmCredentialId.trimmed().isEmpty()) {
-            assistive.vlmCredentialId =
-                ProtectedSecretStore::DefaultVlmCredentialId();
+        if (preparedCredential_
+            && preparedCredential_->id == assistive.vlmCredentialId.trimmed()
+            && preparedCredential_->provider == assistive.aiProvider
+            && preparedCredential_->endpoint == assistive.vlmApiUrl
+            && preparedCredential_->secret == assistive.vlmApiKey
+            && !pendingCredentialRemovals_.contains(preparedCredential_->id)) {
+            return true;
         }
-        if (pendingCredentialRemovals_.contains(assistive.vlmCredentialId.trimmed())) {
-            // A durable tombstone must never identify a newly written key:
-            // settings publication may fail and a later process will still
-            // execute the old deletion intent from disk.
-            assistive.vlmCredentialId =
-                ProtectedSecretStore::DefaultVlmCredentialId() + QLatin1Char('/') +
-                QUuid::createUuid().toString(QUuid::WithoutBraces);
-        }
+        // Never overwrite an id referenced by the primary or a recoverable
+        // backup. Endpoint/provider changes are new bindings even when the
+        // caller keeps the same key. Publish the new reference only after its
+        // write succeeds; a failed settings save can retry this generation.
+        const QString replacementId =
+            ProtectedSecretStore::DefaultVlmCredentialId() + QLatin1Char('/') +
+            QUuid::createUuid().toString(QUuid::WithoutBraces);
         QString error;
-        if (!storage_.writeSecret(assistive.vlmCredentialId,
-                                         assistive.vlmApiKey,
-                                         &error)) {
+        if (!storage_.writeSecret(replacementId, assistive.vlmApiKey, &error)) {
             lastError_ = error;
             return false;
         }
+        assistive.vlmCredentialId = replacementId;
+        preparedCredential_ = CredentialBinding{
+            replacementId, assistive.aiProvider, assistive.vlmApiUrl,
+            assistive.vlmApiKey};
         protectedSecretReadFailed_ = false;
         return true;
     }
