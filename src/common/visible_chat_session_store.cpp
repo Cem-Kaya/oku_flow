@@ -93,7 +93,9 @@ void VisibleChatSessionStore::Reload() {
     while (files.hasNext() && ++visited<=256) {
         files.next();const auto file=files.fileInfo();const auto id=file.completeBaseName();
         if (!SafeFile(id) || file.size()>kFileBytes) continue;
-        if (readBytes+file.size()>kTotalBytes) break;
+        // A committed replacement may coexist with the retention set until
+        // pruning succeeds. Reload must be able to recover that one extra file.
+        if (readBytes+file.size()>kTotalBytes+kFileBytes) break;
         readBytes+=file.size();
         QFile input(file.absoluteFilePath());if (!input.open(QIODevice::ReadOnly)) continue;
         const auto bytes=input.read(kFileBytes+1);if (bytes.size()>kFileBytes) continue;
@@ -116,18 +118,17 @@ bool VisibleChatSessionStore::Write(const StoredVisibleChat& entry) {
     if (!SafeFile(entry.id) || ContainsSecret(entry)) {error_="invalid_record";return false;}
     const auto bytes=QJsonDocument(Encode(entry)).toJson(QJsonDocument::Compact);
     if (bytes.size()>kFileBytes) {error_="storage_limit";return false;}
-    auto sorted=List();qsizetype projected=bytes.size();
-    for (const auto& [id,stored] : entries_) if (id!=entry.id) projected+=QFileInfo(Path(id)).size();
-    while ((entries_.size()+(entries_.contains(entry.id)?0:1)>kEntries || projected>kTotalBytes) && !sorted.isEmpty()) {
-        const auto oldest=sorted.takeLast();if (oldest.id==entry.id) continue;
-        const auto size=QFileInfo(Path(oldest.id)).size();
-        if (!SafeFile(oldest.id) || !QFile::remove(Path(oldest.id))) {error_="storage_unavailable";return false;}
-        entries_.erase(oldest.id);++revision_;projected-=size;
+    // Retry cleanup of an already committed overflow before admitting another
+    // write. Never evict old conversations to make room for an uncommitted one.
+    if (entries_.size()>kEntries || StoredBytes()>kTotalBytes) {
+        Prune(entry.id);
+        if (entries_.size()>kEntries || StoredBytes()>kTotalBytes) {error_="storage_limit";return false;}
     }
-    if (projected>kTotalBytes || entries_.size()+(entries_.contains(entry.id)?0:1)>kEntries) {error_="storage_limit";return false;}
     QSaveFile file(Path(entry.id));file.setDirectWriteFallback(false);
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes)!=bytes.size() || !file.commit()) {error_="storage_unavailable";return false;}
-    entries_[entry.id]=entry;++revision_;error_.clear();Prune(entry.id);return true;
+    entries_[entry.id]=entry;++revision_;error_.clear();Prune(entry.id);
+    if (entries_.size()>kEntries || StoredBytes()>kTotalBytes) error_="retention_pending";
+    return true; // The new record is durable, even if old-file cleanup must retry.
 }
 bool VisibleChatSessionStore::Save(const QJsonObject& snapshot,const QString& title) {
     const auto id=snapshot.value("conversationId").toString();
@@ -172,13 +173,18 @@ bool VisibleChatSessionStore::Delete(const QString& id) {
     if (!QFile::remove(Path(id))) {error_="storage_unavailable";return false;}
     entries_.erase(id);++revision_;error_.clear();return true;
 }
+qsizetype VisibleChatSessionStore::StoredBytes() const {
+    qsizetype bytes=0;
+    for (const auto& [id,entry] : entries_) bytes+=QFileInfo(Path(id)).size();
+    return bytes;
+}
 void VisibleChatSessionStore::Prune(const QString& keepId) {
     auto sorted=List();qsizetype bytes=0;for (const auto& entry : sorted) bytes+=QFileInfo(Path(entry.id)).size();
     while ((entries_.size()>kEntries || bytes>kTotalBytes) && !sorted.isEmpty()) {
         const auto oldest=sorted.takeLast();if (oldest.id==keepId) continue;
         const auto size=QFileInfo(Path(oldest.id)).size();
         if (!SafeFile(oldest.id) || !QFile::remove(Path(oldest.id))) {error_="storage_unavailable";break;}
-        entries_.erase(oldest.id);bytes-=size;
+        entries_.erase(oldest.id);++revision_;bytes-=size;
     }
 }
 } // namespace okuflow

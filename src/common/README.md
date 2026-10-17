@@ -103,3 +103,8 @@ UCT `PixelPool`/`SharedPixels` retain immutable buffers across its two latest-on
 workers. `ProbeWorker` builds bounded probes and residual checks off the UI;
 `RecognitionScheduler` prepares OCR lines. Budget-exhausted validation remains
 unverified. Reading order uses strict sorting plus explicit row clustering.
+
+Visible chat history commits a new/replacement record atomically before old
+retention entries can be deleted. Failed publication preserves previous files.
+A cleanup failure permits one bounded committed overflow and blocks further
+writes until retention cleanup succeeds; restart can recover that overflow.

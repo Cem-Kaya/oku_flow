@@ -4202,3 +4202,14 @@ flatten/glare combinations.
   repaint frames during held OCR, source retirement without another present,
   mixed-height reading order across permutations and unchanged-word recoloring.
   They remain separate from native camera, UIA word ranges and frame latency.
+
+`VisibleChatSessionStore::Write` commits its QSaveFile replacement before
+retention pruning. A failed open/write/rename cannot delete any prior retained
+conversation. `StoredBytes` measures committed storage; at most one additional
+record (1 MiB, 65 total entries / 33 MiB) can remain committed if pruning fails.
+`ErrorCode=retention_pending` distinguishes that successful commit from cleanup.
+A later save retries due cleanup and refuses further growth while blocked;
+`Reload` can read the bounded overflow. Successful pruning advances `Revision`
+so a later failed write cannot hide committed history cleanup from observers.
+Tests use exact Windows file locks to
+force commit failure and cleanup failure without changing owner data/permissions.

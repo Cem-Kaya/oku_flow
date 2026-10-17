@@ -31,6 +31,7 @@ private:
     QString Path(const QString& id) const;
     bool Write(const StoredVisibleChat& entry);
     bool ContainsSecret(const StoredVisibleChat& entry) const;
+    qsizetype StoredBytes() const;
     void Reload();
     void Prune(const QString& keepId = {});
     QString root_, error_;

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Commit conversation history before pruning older records. Failed replacement
+  leaves existing chats intact; blocked cleanup retains one durable, bounded
+  overflow and refuses further growth until cleanup succeeds.
+
 - Move Ultra Clear Text probe/validation work off the presentation thread and
   hand GPU readbacks to workers through immutable pooled buffers. Cached scenes
   keep their applied frame/settings identity through deferred processing; source
