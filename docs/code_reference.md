@@ -4154,3 +4154,9 @@ bounded `capabilityChecks` history records the separate profile verdict, shared
 runtime and per-case fingerprints. `build_release_bundle.bat` selects the strict
 profile before staging. `test_test_gate.ps1` uses pure policy contracts plus
 actual command-line runner fixtures for whole-test and Qt-row skip failures.
+
+`MainWindowTests::ultraClearTextControlsHaveNativeGeometry` is a serial native
+fixture for the production UCT panel: independent opt-in while optical Text
+Clarity is off, keyboard toggle/Tab order, read-only pane and Qt accessibility
+screen bounds, foreground hit ownership and an unobstructed native capture.
+It uses no camera/provider and does not establish real OCR/UIA word ranges.

@@ -8,8 +8,10 @@
 #include "okuflow/ui/main_window.hpp"
 #include "okuflow/ui/theme_contrast.hpp"
 #include "okuflow/ui/ui_translation.hpp"
+#include "okuflow/ui/ultra_clear_text_panel.hpp"
 
 #include <QApplication>
+#include <QAccessible>
 #include <QAbstractButton>
 #include <QBuffer>
 #include <QCheckBox>
@@ -414,6 +416,7 @@ private slots:
     void dependentControls();
     void desktopZoomSliderReachesSixteenX();
     void textClarityMasterPreservesRefinements();
+    void ultraClearTextControlsHaveNativeGeometry();
     void disabledSlidersHaveDistinctAppearance();
     void inspectorContrastAppearance_data();
     void inspectorContrastAppearance();
@@ -970,6 +973,61 @@ void MainWindowTests::textClarityMasterPreservesRefinements()
     QVERIFY(fine->headerWidget()->isEnabled());
     QVERIFY(help->isVisible() && help->isEnabled());
     QVERIFY(help->width() <= imageScroll->viewport()->width());
+}
+
+void MainWindowTests::ultraClearTextControlsHaveNativeGeometry()
+{
+    MainWindow window;
+    QVERIFY(PrepareVisualWindow(window));
+    window.show();
+    const QString fit = FitVisualWindow(window, QSize(1380, 1000));
+    QVERIFY2(fit.isEmpty(), qPrintable(fit));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
+    window.advancedModeButton()->click();
+    QTRY_VERIFY(!window.isSimpleMode());
+    auto* panel = window.ultraClearTextPanel();
+    auto* scroll = Named<QScrollArea>(window, "imageSettingsScroll");
+    QVERIFY(panel && scroll);
+    for (QWidget* parent = panel->parentWidget(); parent; parent = parent->parentWidget()) {
+        if (auto* section = qobject_cast<CollapsibleSection*>(parent)) section->setExpanded(true);
+    }
+    window.textClarityCheckbox()->setChecked(false);
+    auto* enabled = panel->enableCheckbox();
+    auto* original = panel->showOriginalCheckbox();
+    QVERIFY(!enabled->isChecked());
+    QVERIFY(enabled->isEnabled()); // OCR works independently of CUDA refinements.
+    QVERIFY(!original->isEnabled());
+    scroll->ensureWidgetVisible(panel);
+    QTRY_VERIFY(GlobalRect(scroll->viewport()).contains(GlobalRect(enabled)));
+    QVERIFY2(ActivateFixtureWindow(enabled), test::ActivationFailureMessage());
+    enabled->setFocus();
+    QTRY_VERIFY(enabled->hasFocus());
+    QTest::keyClick(enabled, Qt::Key_Space);
+    QVERIFY(enabled->isChecked());
+    QVERIFY(original->isEnabled());
+    QTest::keyClick(enabled, Qt::Key_Tab);
+    QTRY_VERIFY(original->hasFocus());
+    QTest::keyClick(original, Qt::Key_Space);
+    QVERIFY(original->isChecked());
+    for (QWidget* widget : {static_cast<QWidget*>(enabled), static_cast<QWidget*>(original),
+                            static_cast<QWidget*>(panel->readingPane())}) {
+        auto* accessible = QAccessible::queryAccessibleInterface(widget);
+        QVERIFY(accessible && accessible->isValid());
+        // Native styles expose the indicator/label click area for a checkbox,
+        // rather than its layout's unused horizontal space. It must still be
+        // nonempty and registered inside the actual screen-space widget.
+        QVERIFY(!accessible->rect().isEmpty());
+        QVERIFY2(GlobalRect(widget).contains(accessible->rect()),
+                 qPrintable(QStringLiteral("Accessible bounds displaced for %1").arg(widget->objectName())));
+        QVERIFY(!accessible->state().invisible);
+    }
+    auto* toggle = QAccessible::queryAccessibleInterface(enabled);
+    QCOMPARE(toggle->role(), QAccessible::CheckBox);
+    QVERIFY(toggle->state().checked);
+    QVERIFY(panel->readingPane()->isReadOnly());
+    QVERIFY(SaveScreenshot(window, QStringLiteral("desktop-en-ultra-clear-controls")));
+    QString problem;
+    QVERIFY2(NativeHitBelongsTo(enabled, &problem), qPrintable(problem));
 }
 
 void MainWindowTests::disabledSlidersHaveDistinctAppearance()
