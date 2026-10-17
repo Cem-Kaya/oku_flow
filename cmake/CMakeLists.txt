@@ -113,6 +113,11 @@ target_sources(oku_flow PRIVATE
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistant_chat_view.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistive_overlay.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/annotation_overlay.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_overlay.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_panel.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/app/ultra_clear_text_controller.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/common/ultra_clear_text.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/common/uct_windows_ocr.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/joystick_overlay.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/live_status_text.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/render_widget.hpp
@@ -210,7 +215,12 @@ if (WIN32)
         advapi32
         version
         bcrypt
+        # Ultra Clear Text: built-in Windows.Media.Ocr through C++/WinRT.
+        windowsapp
     )
+    # The C++/WinRT translation unit stays free of the Qt precompiled header.
+    set_source_files_properties(${PROJECT_SOURCE_DIR}/src/common/uct_windows_ocr.cpp
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
     target_compile_definitions(oku_flow PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 

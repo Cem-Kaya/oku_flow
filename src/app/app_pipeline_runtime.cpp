@@ -1129,6 +1129,12 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     if (mainWindow_) {
         mainWindow_->setAnnotationViewTransform(annotationTransform);
     }
+    // Ultra Clear Text reprojects cached words on this presentation clock and
+    // at most asks for one more asynchronous copy of the presented viewport.
+    const UctFrameContext uctContext = UltraClearTextContext(
+        annotationTransform, processedFrameWidth_, processedFrameHeight_,
+        viewportWidth, viewportHeight);
+    const bool uctWanted = ultraClearText_ && ultraClearText_->OnPresented(uctContext);
 
     ID3D12Resource* presentationTexture = cudaSharedTexture_.Get();
     UINT presentationSourceWidth = processedFrameWidth_;
@@ -1241,7 +1247,8 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     presentationOptions.focusY = presentationFocusY;
     presentationOptions.requestReadback =
         assistiveWanted || photoWanted || annotationWanted ||
-        onDemandAssistiveWanted || assistantFrameWanted || observationWanted;
+        onDemandAssistiveWanted || assistantFrameWanted || observationWanted ||
+        uctWanted;
     UINT64 readbackRequestId = 0;
     QElapsedTimer presentationTimer;
     presentationTimer.start();
@@ -1273,6 +1280,9 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
                 MeasureCaptureToPresentLatency(*pendingSceneCaptureClock100ns_));
             pendingSceneCaptureClock100ns_.reset();
         }
+    }
+    if (uctWanted) {
+        ultraClearText_->OnReadbackRequested(readbackRequestId, uctContext);
     }
     if (readbackRequestId != 0) {
         if (observationWanted) controlTarget_->ObservationReadbackSubmitted(readbackRequestId,observationFrame);
@@ -1425,6 +1435,11 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                                                &requestId)) {
         if (controlTarget_) controlTarget_->ConsumeObservationReadback(requestId,QImage(asyncReadbackBuffer_.data(),
             readbackWidth,readbackHeight,readbackWidth*4,QImage::Format_ARGB32));
+        if (ultraClearText_ && ultraClearText_->OwnsReadback(requestId)) {
+            ultraClearText_->OnReadbackCompleted(
+                requestId, asyncReadbackBuffer_.data(), static_cast<int>(readbackWidth),
+                static_cast<int>(readbackHeight), static_cast<int>(readbackWidth * 4));
+        }
         if (requestId == pendingPhotoReadbackId_ &&
             pendingPhotoOriginal_.HasCpuPixels()) {
             SaveCapturedPhotoPair(asyncReadbackBuffer_.data(),
@@ -2513,6 +2528,18 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
             dstPixel[1] = srcPixel[1];
             dstPixel[2] = srcPixel[2];
             dstPixel[3] = srcPixel[3];
+        }
+    }
+
+    // CPU presentation already owns system-memory viewport pixels; copy them
+    // for Ultra Clear Text before the focus marker is drawn into them.
+    if (ultraClearText_) {
+        const UctFrameContext uctContext = UltraClearTextContext(
+            transform, srcWidth, srcHeight, mapping.targetWidth, mapping.targetHeight);
+        if (ultraClearText_->OnPresented(uctContext)) {
+            ultraClearText_->OnCpuViewport(
+                uctContext, presentationBuffer_.data(), static_cast<int>(mapping.targetWidth),
+                static_cast<int>(mapping.targetHeight), static_cast<int>(dstStride));
         }
     }
 

@@ -220,6 +220,7 @@ bool OkuFlowApp::Initialize()
         [this]() { StartNewAssistantConversation(); },
         *userDataPaths_);
     mainWindow_->annotationOverlay()->SetExcludedWidget(&assistiveManager_->Overlay());
+    InitializeUltraClearText();
     assistiveManager_->Runtime().SetResponseLanguage(
         languageManager_->languageCode());
     auto* mainChat = mainWindow_->assistantChatView();

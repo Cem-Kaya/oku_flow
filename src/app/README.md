@@ -46,3 +46,10 @@ writes require exact native Configuration approval. Agent Scene Explain is a
 separate context-only intent, obtains each image through core Observe budgets,
 and preserves unrelated native periodic activity. It never persists a frame
 grant or enables legacy periodic egress on the agent's behalf.
+
+`UltraClearTextController` (wired in `app_ultra_clear_text.cpp`) attaches
+Ultra Clear Text to `PresentLatestCudaScene`, `PresentFitted` and the existing
+presenter readback ring. It never blocks presentation, keeps one copy and one
+recognition in flight at most, and invalidates text on camera session,
+scene size, rotation, keystone or stabilization changes. See
+[`docs/ultra_clear_text.md`](../../docs/ultra_clear_text.md).

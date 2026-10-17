@@ -934,6 +934,23 @@ source changes make no measured throughput or latency claim.
   than queued without bound, and shutdown drains active jobs before dependent
   services are destroyed.
 
+### `include/okuflow/app/ultra_clear_text_controller.hpp`
+`okuflow::UctGeometryKey`, `okuflow::UctFrameContext`, `okuflow::UctTiming`,
+`okuflow::UltraClearTextController`
+- UI-thread Ultra Clear Text runtime. `OnPresented(...)` runs on every
+  presentation: it forwards the transform to the overlay, starts a new
+  geometry generation (and clears everything) when `UctGeometryKey` changes,
+  pauses for composite frames, enforces freshness and returns whether one
+  asynchronous viewport copy is wanted (80 ms probe interval, one outstanding).
+- `OnReadbackRequested`/`OwnsReadback`/`OnReadbackCompleted` attach to the
+  presenter readback ring; `OnCpuViewport` serves the CPU presentation path.
+  Probes revalidate accepted lines and decide latest-only submissions; results
+  return through queued calls and are admitted by `uct::OverlayModel`.
+- Off by default and session-only. `OkuFlowApp::InitializeUltraClearText()`
+  and `OkuFlowApp::UltraClearTextContext(...)` (in
+  `src/app/app_ultra_clear_text.cpp`) provide production wiring; the
+  controller member is declared last in `OkuFlowApp` so it retires first.
+
 ### `include/okuflow/app/pipeline_orchestrator.hpp`
 `okuflow::TimingPercentiles`
 - Rolling timing summary with nearest-rank `p50Ms`, `p95Ms`, `p99Ms`, and
@@ -2042,6 +2059,42 @@ Namespace `okuflow::processing`
 - `ComputePixelViewMapping(...)` derives integer destination bounds and source
   sampling increments for the CPU fallback from the same transform.
 
+### `include/okuflow/common/ultra_clear_text.hpp`
+`okuflow::uct::SourceStamp`, `ProbeFrame`, `Recognizer`, `BackendStatus`,
+`RecognitionScheduler`, `RecognitionResult`, `ReferencePatch`, `PatchMatch`,
+`OverlayModel`, `AcceptedLine`, `SceneWord`, `DisplayWord`, `AdmitVerdict`
+- Ultra Clear Text core (Qt Core/Gui only). `SourceStamp` carries camera
+  epoch, UCT geometry generation, frame sequence, request time and the exact
+  full-scene `ViewTransform` of a viewport copy; results and accepted lines
+  keep the stamp of their own pixels.
+- `ViewPixelToScene`/`SceneToViewPixel`/`ViewRectToScene`/`SceneRectToView`
+  map through one transform via normalized coordinates (DPI applied once).
+- `MakeProbeFrame(...)` builds a decimated luma copy plus summed-area table.
+  `BuildReferencePatch`/`MatchPatch` correlate box-filtered scene cells
+  (zoom-consistent) with a bounded translation search; `SceneSimilarity`
+  compares two probes over their common scene area.
+- `RecognitionScheduler` owns one worker, one in-flight job and one
+  latest-only pending slot; `Submit` deep-copies input, `Cancel` revokes
+  authority without releasing in-flight input, destruction is bounded and
+  detaches a held worker that keeps its own state.
+- `OverlayModel::Admit` rejects stale scene, late, failed and moved-content
+  results, requires temporal agreement and drops `IsHighRiskToken` words;
+  `Validate` revalidates lines against newer probes; `SceneWords`/
+  `DisplayWords` apply the 350 ms freshness rule; `ReadingText` orders lines
+  and marks omissions with an ellipsis.
+- `CreateDefaultRecognizer()` (in `src/common/uct_default_recognizer.cpp`)
+  returns the Windows OCR adapter: grayscale, dark-background inversion and
+  the engine's maximum dimension, mapping boxes back to copy pixels.
+
+### `include/okuflow/common/uct_windows_ocr.hpp`
+`okuflow::uct::windows_ocr::Engine`
+- Qt-free C++/WinRT wrapper of `Windows.Media.Ocr` compiled without the Qt
+  precompiled header. `Initialize()` joins the worker to the MTA and creates
+  an engine from profile languages or the first installed OCR language.
+  `Recognize(...)` copies BGRA rows into a `SoftwareBitmap`, waits through its
+  own completion handler, requests `Cancel()` on cancellation and still waits
+  (bounded) before returning.
+
 ## D3D12 Module
 
 ### `include/okuflow/d3d12/presenter.hpp`
@@ -2458,6 +2511,22 @@ Namespace `okuflow`
 - `SetComboItemsAreData(...)` exempts camera names, voices, model ids, and
   other data-driven combo entries while still translating their surrounding
   UI metadata.
+
+### `include/okuflow/ui/ultra_clear_text_overlay.hpp`
+`okuflow::UltraClearTextOverlay`
+- Click-through, non-activating tool window over the render target that
+  paints accepted scene-space words as glyph plates through the latest
+  `ViewTransform`. Measured colors are kept at ≥ 7:1 contrast, otherwise
+  black/white in scene polarity; weight follows Text Clarity stroke weight.
+  Paint is clipped away from floating panels, annotation chrome and the
+  floating Assistant. `ProjectedWordRects()` exposes drawn geometry.
+
+### `include/okuflow/ui/ultra_clear_text_panel.hpp`
+`okuflow::UltraClearTextPanel`
+- Accessible opt-in checkbox, Show original checkbox (enabled while on), a
+  live status label (polite for important states, coalesced silent
+  otherwise) and a read-only selectable `Recognized text` pane that preserves
+  scroll position. Hosted at the end of MainWindow's Text clarity section.
 
 ### `include/okuflow/ui/live_status_text.hpp`
 `okuflow::LivePoliteness`, `okuflow::SetLiveText(...)`, and

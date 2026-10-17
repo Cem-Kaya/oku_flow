@@ -91,3 +91,10 @@ The scoped scene lane in AssistiveRuntime is independent from shared chat and
 native Read/periodic ownership. Its app-issued frame guard fences actual HTTP
 submission, delayed Codex turn/start and terminal presentation/notes. It stays
 tool-free, temporary, silent and bounded by the requesting core context.
+
+Ultra Clear Text core lives in `ultra_clear_text.cpp` (stamps, probes,
+box-filtered residual matching, latest-only scheduler, overlay model). The
+built-in Windows OCR backend is split into the Qt-free C++/WinRT unit
+`uct_windows_ocr.cpp` (no precompiled header) and the adapter
+`uct_default_recognizer.cpp`, so fixtures can link the core without WinRT.
+See [`docs/ultra_clear_text.md`](../../docs/ultra_clear_text.md).
