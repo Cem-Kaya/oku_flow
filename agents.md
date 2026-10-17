@@ -800,6 +800,11 @@ aligned with the project goals.
 - Hosted Qt setup includes only matching Multimedia sources for the FFmpeg
   notice and uses a source-aware cache key. Do not assume a compile-only SDK
   installation contains the release preflight's source/license inventory.
+- Archive SDKs may lack the online installer's license folder. Preserve the
+  fallback to the matching Multimedia source's `LICENSES/LGPL-3.0-only.txt`,
+  its exact staging bytes and runtime-input fingerprint. The relocated fixture
+  excludes only the optional SDK `LICENSES` directory and must assert the real
+  source notice is selected; never manufacture a license to make it pass.
 
 ## Focused bundle publication scenarios (2026-10-17)
 - Preserve all 13 synthetic publication scenarios across the Exchange,

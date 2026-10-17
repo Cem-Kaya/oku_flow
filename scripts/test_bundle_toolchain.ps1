@@ -36,13 +36,24 @@ function Invoke-Preflight([string]$Case,[bool]$ExpectPass,[string]$ExpectedMessa
     Write-Output ("PASS bundle preflight: {0} ({1:F2} s)" -f $Case,$watch.Elapsed.TotalSeconds)
 }
 try {
-    # CTest supplies the SDK it actually configured. Relocate its complete
-    # runtime through an owned junction so the owner's default C:\Qt cannot
-    # hide CI-only prefix bugs; no SDK files are copied or replaced.
+    # CTest supplies the SDK it actually configured. Expose its unchanged
+    # runtime through owned junctions, omitting only the optional installer
+    # license directory to exercise an archive-installed SDK. The matching
+    # source tree must supply the real LGPL notice; never fabricate one.
     Assert-Toolchain (-not [string]::IsNullOrWhiteSpace($env:QT_ROOT_DIR)) 'CTest must supply the configured QT_ROOT_DIR.'
     $configuredQt = [IO.Path]::GetFullPath($env:QT_ROOT_DIR)
     $relocatedQt = Join-Path $work 'relocated Qt SDK'
-    New-Item -ItemType Junction -Path $relocatedQt -Target $configuredQt | Out-Null
+    New-Item -ItemType Directory -Path $relocatedQt | Out-Null
+    foreach ($entry in Get-ChildItem -LiteralPath $configuredQt -Force) {
+        if ($entry.Name -ieq 'LICENSES') { continue }
+        $destination = Join-Path $relocatedQt $entry.Name
+        if ($entry.PSIsContainer) {
+            New-Item -ItemType Junction -Path $destination -Target $entry.FullName | Out-Null
+        } else {
+            Copy-Item -LiteralPath $entry.FullName -Destination $destination
+            Assert-Toolchain ((Get-FileHash -LiteralPath $destination).Hash -eq (Get-FileHash -LiteralPath $entry.FullName).Hash) 'Relocated SDK file bytes changed.'
+        }
+    }
     if (-not $env:QT_SOURCE_ROOT) { $env:QT_SOURCE_ROOT = [IO.Path]::GetFullPath((Join-Path $configuredQt '../Src')) }
     $env:QT_ROOT_DIR = $relocatedQt
     Remove-Item Env:QT_PREFIX -ErrorAction SilentlyContinue
@@ -71,6 +82,9 @@ try {
     # The actual batch must initialize the installed shell even with those
     # same forged declarations, then validate its real registered compiler.
     Invoke-Preflight 'default-real-toolchain' $true "Using Qt deployment prefix: `"$relocatedQt`"" $true
+    $expectedLicense = Join-Path $env:QT_SOURCE_ROOT 'qtmultimedia/LICENSES/LGPL-3.0-only.txt'
+    $positiveOutput = Get-Content -LiteralPath (Join-Path $work 'default-real-toolchain.log') -Raw
+    Assert-Toolchain ($positiveOutput.Contains("Using Qt license text: `"$([IO.Path]::GetFullPath($expectedLicense))`"")) 'Archive SDK did not select its matching source LGPL notice.'
     Assert-Toolchain (-not (Test-Path -LiteralPath $env:OKUFLOW_BUNDLE_BUILD_DIR)) 'Check-only created a build directory.'
     $caseIndex = 0
     foreach ($generator in @('Visual Studio 17 2022','Ninja Multi-Config','Unix Makefiles')) {

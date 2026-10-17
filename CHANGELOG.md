@@ -2,8 +2,9 @@
 
 ## [Unreleased]
 - Resolve the bundle's Qt SDK from CI's `QT_ROOT_DIR` after explicit overrides,
-  and install the matching Multimedia source notice in hosted checks. Exercise
-  a relocated real SDK so local default paths cannot mask missing CI setup.
+  and install the matching Multimedia source notices in hosted checks. Accept
+  its original Qt LGPL text when an archive SDK lacks installer license files.
+  Exercise that layout so local paths/notices cannot mask missing CI setup.
 - Run Maxine model loading, inference and teardown on an independent producer
   with private GPU snapshots/output. Keep live current-frame fallback and publish
   only matching completions through the graphics fence; late results cannot

@@ -276,8 +276,16 @@ for %%I in ("%QT_ROOT%") do set "QT_ROOT=%%~fI"
 echo Using Qt deployment prefix: "%QT_ROOT%"
 set "QT_BIN_DIR=%QT_ROOT%\bin"
 set "WINDEPLOYQT=%QT_BIN_DIR%\windeployqt.exe"
+if defined QT_SOURCE_ROOT (
+    for %%I in ("%QT_SOURCE_ROOT%") do set "QT_SOURCE_ROOT=%%~fI"
+) else (
+    for %%I in ("%QT_ROOT%\..\Src") do set "QT_SOURCE_ROOT=%%~fI"
+)
 set "QT_LICENSE_FILE=%QT_ROOT%\LICENSES\LGPL-3.0-only.txt"
 if not exist "%QT_LICENSE_FILE%" for %%I in ("%QT_ROOT%\..\..\Licenses\LICENSE") do set "QT_LICENSE_FILE=%%~fI"
+rem Archive-installed SDKs omit the online installer's shared Licenses folder.
+rem Use the unchanged LGPL text from the same version's Multimedia sources.
+if not exist "%QT_LICENSE_FILE%" set "QT_LICENSE_FILE=%QT_SOURCE_ROOT%\qtmultimedia\LICENSES\LGPL-3.0-only.txt"
 if not exist "%QT_BIN_DIR%\qmake.exe" (
     echo ERROR: Qt was not found at "%QT_ROOT%".
     echo Set QT_PREFIX to the Qt msvc2022_64 root, set Qt6_DIR to its
@@ -291,8 +299,10 @@ if not exist "%WINDEPLOYQT%" (
 )
 if not exist "%QT_LICENSE_FILE%" (
     echo ERROR: Qt license text was not found for "%QT_ROOT%".
+    echo Install the matching Qt Multimedia sources or set QT_SOURCE_ROOT to their Src directory.
     exit /b 1
 )
+echo Using Qt license text: "%QT_LICENSE_FILE%"
 set "QT_RUNTIME_VERSION="
 for /f "usebackq delims=" %%V in (`"%QT_BIN_DIR%\qmake.exe" -query QT_VERSION`) do set "QT_RUNTIME_VERSION=%%V"
 if not defined QT_RUNTIME_VERSION (
@@ -303,11 +313,6 @@ set "QT_SBOM_DIR=%QT_ROOT%\sbom"
 for %%M in (qtbase qtimageformats qtmultimedia qtspeech qtsvg) do if not exist "%QT_SBOM_DIR%\%%M-%QT_RUNTIME_VERSION%.spdx.json" (
     echo ERROR: Required Qt module SBOM is missing: "%QT_SBOM_DIR%\%%M-%QT_RUNTIME_VERSION%.spdx.json".
     exit /b 1
-)
-if defined QT_SOURCE_ROOT (
-    for %%I in ("%QT_SOURCE_ROOT%") do set "QT_SOURCE_ROOT=%%~fI"
-) else (
-    for %%I in ("%QT_ROOT%\..\Src") do set "QT_SOURCE_ROOT=%%~fI"
 )
 set "QT_FFMPEG_LICENSE_FILE=%QT_SOURCE_ROOT%\qtmultimedia\src\3rdparty\ffmpeg\LICENSE.LGPL-2.1-or-later.txt"
 if not exist "%QT_FFMPEG_LICENSE_FILE%" (

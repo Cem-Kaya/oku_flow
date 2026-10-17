@@ -4547,6 +4547,17 @@ process environment variables. The workflow's existing pinned Qt action also
 installs the matching `qtmultimedia` source archive; its source-aware cache key
 does not restore the older runtime-only SDK inventory.
 
+`resolve_qt` normalizes the matching source root before resolving license
+inputs. After the SDK and online-installer license locations, it accepts the
+module source's unchanged `qtmultimedia/LICENSES/LGPL-3.0-only.txt`, logs the
+selected file, and fails when all candidates are absent. CTest mirrors that
+selection and fingerprints the source LGPL notice as well as the FFmpeg notice.
+The regression's relocated SDK exposes the actual SDK entries through private
+junctions (root files are hash-verified copies), excluding only `LICENSES`.
+Its positive case requires the selected license to be the matching source file,
+so the owner's installed notices cannot mask the archive-layout failure. It
+still performs exactly one real VS initialization within the 60-second limit.
+
 ## Exact recording identity (audit PW-004)
 
 `NotesRecordingIdentity` runs only inside `AssistiveRuntime::AppendNoteBlock`'s

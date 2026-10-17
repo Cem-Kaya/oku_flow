@@ -181,3 +181,24 @@ and translation parity also passed. These local timings do not establish the
 hosted cause or replacement hosted pass. Original failed evidence and focused
 results are under `%LOCALAPPDATA%/OkuFlow/ci-39055193846`. No GUI or phone was
 touched, and no public release was produced.
+
+## Archive SDK license-layout repair
+
+Run `39056398406` on `0c9051b` passes all three publication groups, but CTest
+refuses to start the toolchain regression because the archive-installed SDK
+lacks `Qt/Licenses/LICENSE`. Preflight now accepts the unchanged LGPL notice
+from the matching Multimedia source archive after the two existing SDK/installer
+locations. CTest resolves and fingerprints that actual source file; no notice
+requirement or staging-byte check is removed. Hosted setup already installs
+this source archive, so no additional action or dependency is introduced.
+
+The relocated real-SDK fixture now omits only its optional `LICENSES` directory
+and verifies selection of the source notice. It reproduces the original failure
+before the fix (3.10 seconds). With the fix, the tracked CPU build and SCOPED
+gate pass 1 of 148 cases in 3.89 seconds, without skips or unresolved results;
+24-catalog translation parity also passes. One real VS initialization and the
+60-second deadline remain intact. Local source inputs come from the official
+Qt Multimedia `v6.12.0` archive; its LGPL file is byte-identical to the installed
+SDK's copy. Download provenance, hashes and both attempts are retained under
+`%LOCALAPPDATA%/OkuFlow/ci-39056398406`. Hosted confirmation remains pending.
+No native GUI, phone or release acceptance was performed.

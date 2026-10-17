@@ -40,8 +40,12 @@ if(WIN32)
     if(NOT EXISTS "${bundle_fixture_qt_license}")
         get_filename_component(bundle_fixture_qt_license "${bundle_fixture_qt_prefix}/../../Licenses/LICENSE" ABSOLUTE)
     endif()
+    if(NOT EXISTS "${bundle_fixture_qt_license}")
+        set(bundle_fixture_qt_license "${bundle_fixture_qt_source}/qtmultimedia/LICENSES/LGPL-3.0-only.txt")
+    endif()
     set_property(TEST bundle_toolchain_contract APPEND PROPERTY REQUIRED_FILES
         "${bundle_fixture_qt_license}"
+        "${bundle_fixture_qt_source}/qtmultimedia/LICENSES/LGPL-3.0-only.txt"
         "${bundle_fixture_qt_source}/qtmultimedia/src/3rdparty/ffmpeg/LICENSE.LGPL-2.1-or-later.txt")
     foreach(module IN ITEMS qtbase qtimageformats qtmultimedia qtspeech qtsvg)
         set_property(TEST bundle_toolchain_contract APPEND PROPERTY REQUIRED_FILES

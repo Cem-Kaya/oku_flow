@@ -313,7 +313,10 @@ For CI-installed SDKs, the bundle also recognizes `QT_ROOT_DIR` after the
 explicit `QT_PREFIX` / `Qt6_DIR` overrides and before its local default. It logs
 the selected deployment prefix and still validates the deployment tools, Qt
 license, module SPDX files and FFmpeg source notice. Hosted Windows checks
-install just the matching Qt Multimedia source archive for that notice.
+install just the matching Qt Multimedia source archive for that notice and
+its `LICENSES/LGPL-3.0-only.txt`. The latter supplies the Qt notice when an
+archive-installed SDK lacks the SDK/online-installer license directories.
+Missing all three license locations still fails preflight.
 
 The published bundle contains the native `oku_flow.exe` launcher,
 `OkuFlowApp.exe`, the signed Microsoft `vc_redist.x64.exe` installer, Qt runtime files,

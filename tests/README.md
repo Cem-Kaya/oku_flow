@@ -1211,8 +1211,13 @@ exercises the real batch through a private relocated SDK junction whose path
 contains spaces. It asserts that prefix, preventing a local `C:\Qt` installation
 from masking missing CI setup. Explicit overrides are cleared only inside the
 fixture and restored afterward. Real qmake/deployment, license and module SPDX
-checks remain required, with notice inputs fingerprinted. Hosted Qt setup
-includes the matching `qtmultimedia` source archive for its FFmpeg notice;
+checks remain required, with notice inputs fingerprinted. The relocated view
+omits only the SDK's `LICENSES` directory and asserts that the real batch
+selects `QT_SOURCE_ROOT/qtmultimedia/LICENSES/LGPL-3.0-only.txt`; all other SDK
+entries use real directory junctions or hash-verified root-file copies. The
+source file must exist even when a local SDK also includes its own copy.
+Hosted Qt setup includes the matching `qtmultimedia` source archive for its
+Qt LGPL and FFmpeg notices;
 it does not install all Qt sources or fabricate license files. The 60-second
 limit and exactly one real VS initialization are unchanged.
 

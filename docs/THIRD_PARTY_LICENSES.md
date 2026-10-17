@@ -52,8 +52,11 @@ binaries and caches are not added to Windows/Android release inventories.
   - If you modify Qt itself, those changes must be handled under Qt's licensing terms.
   - Development builds expect the user to provide a local Qt installation.
   - Hosted checks install the matching `qtmultimedia` source archive alongside
-    the SDK for the bundle preflight's FFmpeg notice. This CI-only source input
-    does not add a new runtime dependency or change the redistribution gate.
+    the SDK for the bundle preflight's FFmpeg notice. Archive installations
+    can also supply the unchanged `LICENSES/LGPL-3.0-only.txt` from that module
+    when neither the SDK nor Qt's online-installer directory contains the Qt
+    license text. The original bytes are still staged and checked; the source
+    fallback is not permission to omit a notice. This adds no runtime dependency.
 
 ### FFmpeg libraries deployed by Qt Multimedia
 - Upstream: <https://ffmpeg.org/>
