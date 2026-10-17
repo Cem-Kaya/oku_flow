@@ -94,6 +94,7 @@ class ColorSchemePicker;
 struct MicrophoneCallbackTarget;
 struct CameraIngress;
 struct StartupWorkerTracker;
+struct MicrophoneWorkerState;
 
 class D3D12Presenter;
 class CudaInteropSurface;
@@ -245,8 +246,12 @@ private:
     void PopulateCameraCombo();
     void EnumerateMicrophones();
     void PopulateMicrophoneCombo();
-    bool StartSelectedMicrophone();
+    enum class MicrophoneStartResult { Disabled, Pending, Failed };
+    MicrophoneStartResult StartSelectedMicrophone();
+    void CompleteMicrophoneStart(const std::shared_ptr<MicrophoneWorkerState>& worker,
+                                 const QString& recordingId, std::uint64_t generation);
     void StopMicrophoneCapture(bool retainQueuedAudio = false);
+    bool MicrophoneTeardownUnsafe() const;
     void RefreshCameraFormats(size_t index);
     void UpdatePhoneLightUi();
     bool StartCameraCapture(size_t index,
@@ -397,7 +402,12 @@ private:
     std::vector<VideoFormat> cameraFormats_;
     MediaCapture mediaCapture_;
     std::vector<AudioDeviceDescriptor> microphones_;
-    AudioCapture audioCapture_;
+    AudioCapture audioCapture_; // Enumeration only; live capture belongs to its worker.
+    std::shared_ptr<MicrophoneWorkerState> microphoneWorker_;
+    std::function<bool(const std::atomic<bool>&)> microphoneStartForTest_;
+    std::function<void()> microphoneStopForTest_;
+    int microphoneDeadlineMs_{3000};
+    QString pendingMicrophoneRecording_;
     // Capture threads hold this target independently of the app. Every
     // delivery is serialized with Stop/destruction and tagged with a
     // generation, so a detached old reader cannot reach this object or a

@@ -112,6 +112,33 @@ public:
         app.cameraStartForTest_={};app.cameras_.clear();app.selectedCameraIndex_=-1;
         app.currentCameraAccelerationKey_.clear();app.cameraIntent_.LoadSaved({});
     }
+    static std::optional<RecordingSessionInfo> RecordWithMicrophone(OkuFlowApp& app,bool selected,
+        std::function<bool(const std::atomic<bool>&)> start={},std::function<void()> stop={}) {
+        app.cameraActive_=true;app.microphoneStartForTest_=std::move(start);app.microphoneStopForTest_=std::move(stop);
+        if(selected) {
+            AudioDeviceDescriptor microphone;microphone.name=L"Private microphone fixture";
+            microphone.endpointId=L"fixture-microphone";app.microphones_.push_back(std::move(microphone));
+            app.uiState_->microphoneCombo_->addItem("Private microphone fixture","fixture-microphone");
+            app.uiState_->microphoneCombo_->setCurrentIndex(app.uiState_->microphoneCombo_->count()-1);
+        } else app.uiState_->microphoneCombo_->setCurrentIndex(0);
+        return app.RequestRecording(RecordingAudioRequest::SavedMicrophone,RecordingOwnerKind::Manual,{});
+    }
+    static void StopMicrophoneRecording(OkuFlowApp& app) {
+        if(const auto session=app.recordingManager_->CurrentSessionInfo())app.StopRecording(session->id);
+        else app.StopMicrophoneCapture();
+    }
+    static bool RecordingRetired(OkuFlowApp& app) {return !app.recordingManager_->CurrentSessionInfo().has_value();}
+    static bool AudioOpening(OkuFlowApp& app) {return !app.pendingMicrophoneRecording_.isEmpty();}
+    static bool MicrophoneUnsafe(OkuFlowApp& app) {return app.MicrophoneTeardownUnsafe();}
+    static void ShortMicrophoneDeadline(OkuFlowApp& app) {app.microphoneDeadlineMs_=30;}
+    static std::optional<RecordingSessionInfo> Recording(OkuFlowApp& app) {return app.recordingManager_->CurrentSessionInfo();}
+    static bool MicrophoneRetired(OkuFlowApp& app) {return !app.microphoneWorker_ || app.microphoneWorker_->done.load();}
+    static bool MicrophoneStartupFinished(OkuFlowApp& app) {return app.microphoneWorker_ && app.microphoneWorker_->startupFinished.load();}
+    static void ResetMicrophoneFixture(OkuFlowApp& app) {
+        app.microphoneStartForTest_={};app.microphoneStopForTest_={};app.microphones_.clear();app.microphoneDeadlineMs_=3000;
+        app.uiState_->microphoneCombo_->setCurrentIndex(0);while(app.uiState_->microphoneCombo_->count()>1)app.uiState_->microphoneCombo_->removeItem(1);
+        app.cameraActive_=false;
+    }
     static int Exec(OkuFlowApp& app) {return app.qtApp_->exec();}
 };
 }
@@ -212,6 +239,75 @@ private slots:
         QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
         QVERIFY(NativeControlFixture::ReconnectPending(app_));
         QCOMPARE(NativeControlFixture::ReconnectAttempts(app_),1);
+    }
+    void noSelectedMicrophoneNeverClaimsRecordedAudio() {
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::StopMicrophoneRecording(app_);QElapsedTimer clock;clock.start();
+            while(!NativeControlFixture::RecordingRetired(app_) && clock.elapsed()<3000) {QCoreApplication::processEvents();QTest::qWait(1);}
+            NativeControlFixture::ResetMicrophoneFixture(app_);
+        });
+        const auto session=NativeControlFixture::RecordWithMicrophone(app_,false);QVERIFY(session);
+        QVERIFY(!session->actualAudio);
+        NativeControlFixture::StopMicrophoneRecording(app_);QTRY_VERIFY(NativeControlFixture::RecordingRetired(app_));
+    }
+    void microphoneDriverOpenAndFinalShutdownNeverBlockUi() {
+        struct Gate {std::atomic<bool> opening{},openRelease{},stopping{},stopRelease{},onUi{};};
+        auto gate=std::make_shared<Gate>();const auto ui=std::this_thread::get_id();
+        const auto cleanup=qScopeGuard([&] {
+            gate->openRelease=gate->stopRelease=true;NativeControlFixture::StopMicrophoneRecording(app_);
+            QElapsedTimer clock;clock.start();
+            while((!NativeControlFixture::MicrophoneRetired(app_) || !NativeControlFixture::RecordingRetired(app_)) && clock.elapsed()<4000) {
+                QCoreApplication::processEvents();QTest::qWait(1);
+            }
+            NativeControlFixture::ResetMicrophoneFixture(app_);
+        });
+        const auto session=NativeControlFixture::RecordWithMicrophone(app_,true,
+            [gate,ui](const std::atomic<bool>& canceled) {
+                gate->onUi=std::this_thread::get_id()==ui;gate->opening=true;
+                const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+                while(!gate->openRelease && std::chrono::steady_clock::now()<until)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                return !canceled;
+            },[gate,ui] {
+                gate->onUi=gate->onUi || std::this_thread::get_id()==ui;gate->stopping=true;
+                const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+                while(!gate->stopRelease && std::chrono::steady_clock::now()<until)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            });
+        QVERIFY(session);QTRY_VERIFY(gate->opening.load());QVERIFY(!gate->onUi);
+        QVERIFY(!session->actualAudio);
+        bool pulse=false;QTimer::singleShot(0,&app_,[&] {pulse=true;});QTRY_VERIFY(pulse);
+        gate->openRelease=true;QTRY_VERIFY(NativeControlFixture::MicrophoneStartupFinished(app_));
+        NativeControlFixture::StopMicrophoneRecording(app_);QTRY_VERIFY(gate->stopping.load());
+        QVERIFY(!NativeControlFixture::MicrophoneRetired(app_));QVERIFY(NativeControlFixture::MicrophoneUnsafe(app_));
+        pulse=false;QTimer::singleShot(0,&app_,[&] {pulse=true;});QTRY_VERIFY(pulse);QVERIFY(!gate->onUi);
+        gate->stopRelease=true;QTRY_VERIFY(NativeControlFixture::MicrophoneRetired(app_));
+        QVERIFY(!NativeControlFixture::MicrophoneUnsafe(app_));
+        QTRY_VERIFY(NativeControlFixture::RecordingRetired(app_));
+    }
+    void timedOutMicrophoneCannotPublishIntoANewerRecording() {
+        auto release=std::make_shared<std::atomic<bool>>(false);
+        auto entered=std::make_shared<std::atomic<bool>>(false);
+        const auto cleanup=qScopeGuard([&] {
+            *release=true;NativeControlFixture::StopMicrophoneRecording(app_);QElapsedTimer clock;clock.start();
+            while((!NativeControlFixture::MicrophoneRetired(app_) || !NativeControlFixture::RecordingRetired(app_)) && clock.elapsed()<3000) {
+                QCoreApplication::processEvents();QTest::qWait(1);
+            }
+            NativeControlFixture::ResetMicrophoneFixture(app_);
+        });
+        NativeControlFixture::ShortMicrophoneDeadline(app_);
+        const auto first=NativeControlFixture::RecordWithMicrophone(app_,true,[release,entered](const std::atomic<bool>&) {
+            *entered=true;const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+            while(!*release && std::chrono::steady_clock::now()<until)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            return true; // A late successful native return must not revive authority.
+        });
+        QVERIFY(first);QTRY_VERIFY(entered->load());QTRY_VERIFY(!NativeControlFixture::AudioOpening(app_));
+        QVERIFY(!NativeControlFixture::Recording(app_)->actualAudio);QVERIFY(NativeControlFixture::MicrophoneUnsafe(app_));
+        NativeControlFixture::StopMicrophoneRecording(app_);QTRY_VERIFY(NativeControlFixture::RecordingRetired(app_));
+        const auto successor=NativeControlFixture::RecordWithMicrophone(app_,true);QVERIFY(successor);
+        QVERIFY(successor->id!=first->id);QVERIFY(!successor->actualAudio);
+        *release=true;QTRY_VERIFY(NativeControlFixture::MicrophoneRetired(app_));
+        QCOMPARE(NativeControlFixture::Recording(app_)->id,successor->id);
+        QVERIFY(!NativeControlFixture::Recording(app_)->actualAudio);
+        NativeControlFixture::StopMicrophoneRecording(app_);QTRY_VERIFY(NativeControlFixture::RecordingRetired(app_));
     }
     void failedNativeCommitRestoresActualControlsWithoutPersisting() {
         auto& target=NativeControlFixture::Target(app_);

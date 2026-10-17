@@ -102,6 +102,7 @@ public:
 
     void SetRequested(bool requested, std::optional<RecordingSessionInfo> reserved = std::nullopt);
     bool StopSession(const QString& expectedSessionId);
+    void SetSessionAudioPending(const QString& expectedSessionId);
     void SetSessionAudioResult(const QString& expectedSessionId, bool actualAudio);
     void Stop(const QString& message = {});
     void SetCanvasMode(RecordingCanvasMode mode);
@@ -303,6 +304,7 @@ private:
     UINT frameRateDenominator_{1};
     std::int64_t segmentClockOrigin100ns_{-1};
     std::atomic<bool> audioCaptureEnabled_{false};
+    bool audioStartupPending_{}; // queueMutex_: no segment before actual audio decision.
     int segmentIndex_{1};
     bool sessionHadOutput_{false};
     bool sessionFinalizationFailed_{false};

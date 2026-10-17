@@ -178,3 +178,9 @@ is reconnected, at most once per phone/server per minute; a new transport ID
 does not bypass this limit. Pause/busy/error codes, cancellation, unrelated
 phones and unknown shared server ownership remain intact. See the deliberate
 reviewed-legacy exception and WinUSB ownership limits in adb_distribution.md.
+
+`AudioCapture::Start` and `Stop` are synchronous worker-only primitives. Stop's
+three-second reader/Flush wait does not bound subsequent driver Shutdown or COM
+release. The application now owns their complete lifetime on a microphone worker
+and preserves it after a UI deadline. The Flush helper initializes its own MTA
+and retires its reader reference before publishing completion.

@@ -26,9 +26,9 @@ std::optional<RecordingSessionInfo> OkuFlowApp::RequestRecording(RecordingAudioR
     // denied preflight never steals microphone resources or saved preferences.
     recordingManager_->SetRequested(true,reservation);
     if (!recordingManager_->IsActive()) return {};
-    const bool actualAudio = audio == RecordingAudioRequest::SavedMicrophone && StartSelectedMicrophone();
-    if (audio == RecordingAudioRequest::None) StopMicrophoneCapture();
-    recordingManager_->SetSessionAudioResult(reservation.id,actualAudio);
+    const auto microphone=audio==RecordingAudioRequest::SavedMicrophone?StartSelectedMicrophone():MicrophoneStartResult::Disabled;
+    if(audio==RecordingAudioRequest::None)StopMicrophoneCapture();
+    if(microphone!=MicrophoneStartResult::Pending)recordingManager_->SetSessionAudioResult(reservation.id,false);
     return recordingManager_->CurrentSessionInfo();
 }
 bool OkuFlowApp::StopRecording(const QString& expectedSessionId)

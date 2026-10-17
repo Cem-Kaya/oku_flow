@@ -431,6 +431,7 @@ void RecordingManager::SetRequested(bool requested, std::optional<RecordingSessi
         segmentIndex_ = 1;
         sessionHadOutput_ = false;
         sessionFinalizationFailed_ = false;
+        audioStartupPending_ = false;
         processedWidth_ = 0;
         segmentFinalized_ = true;
         processedHeight_ = 0;
@@ -487,10 +488,20 @@ bool RecordingManager::StopSession(const QString& expectedSessionId)
     return true;
 }
 
-void RecordingManager::SetSessionAudioResult(const QString& expectedSessionId, bool actualAudio)
+void RecordingManager::SetSessionAudioPending(const QString& expectedSessionId)
 {
     std::lock_guard lock(queueMutex_);
-    if (sessionInfo_.id == expectedSessionId) sessionInfo_.actualAudio = actualAudio;
+    if(sessionInfo_.id==expectedSessionId && IsActive()) {
+        audioStartupPending_=true;audioCaptureEnabled_=true;sessionInfo_.actualAudio=false;
+    }
+}
+void RecordingManager::SetSessionAudioResult(const QString& expectedSessionId,bool actualAudio)
+{
+    {std::lock_guard lock(queueMutex_);
+     if(sessionInfo_.id!=expectedSessionId || !IsActive())return;
+     sessionInfo_.actualAudio=actualAudio;audioStartupPending_=false;audioCaptureEnabled_=actualAudio;
+     if(!actualAudio)audioQueue_.clear();}
+    queueCv_.notify_all();
 }
 
 void RecordingManager::Stop(const QString& message)
@@ -764,7 +775,7 @@ void RecordingManager::AddSceneFrame(
     queued.original = std::move(originalFrame);
 
     std::unique_lock lock(queueMutex_);
-    if (stopRequested_ || shutdownRequested_) {
+    if (stopRequested_ || shutdownRequested_ || audioStartupPending_) {
         return;
     }
     if (frameQueue_.size() >= kMaxQueuedFrames) {
@@ -794,7 +805,7 @@ void RecordingManager::AddGpuSceneFrame(
     queued.original = std::move(originalFrame);
 
     std::unique_lock lock(queueMutex_);
-    if (stopRequested_ || shutdownRequested_) {
+    if (stopRequested_ || shutdownRequested_ || audioStartupPending_) {
         return;
     }
     if (frameQueue_.size() >= kMaxQueuedFrames) {
@@ -1490,6 +1501,7 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
         qWarning() << "Recording worker resumed after the stop watchdog "
                       "abandoned the session; suppressing its completion.";
         std::lock_guard lock(queueMutex_);
+        audioStartupPending_=false;
         frameQueue_.clear();
         audioQueue_.clear();
         stopRequested_ = false;
@@ -1564,6 +1576,7 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
         std::lock_guard lock(queueMutex_);
         endedSession = sessionInfo_;
         endedSession.completion = saved ? RecordingSessionCompletion::Completed : RecordingSessionCompletion::Failed;
+        audioStartupPending_=false;
         frameQueue_.clear();
         audioQueue_.clear();
         stopRequested_ = false;
@@ -1641,8 +1654,8 @@ void RecordingManager::WorkerLoop()
             std::unique_lock lock(queueMutex_);
             const auto workAvailable = [this]() {
                 return shutdownRequested_ || stopRequested_ ||
-                       !frameQueue_.empty() ||
-                       (!audioQueue_.empty() &&
+                       (!audioStartupPending_ && !frameQueue_.empty()) ||
+                       (!audioStartupPending_ && !audioQueue_.empty() &&
                         processedRecorder_.IsRecording() &&
                         originalRecorder_.IsRecording());
             };
@@ -1660,7 +1673,7 @@ void RecordingManager::WorkerLoop()
                 processedRecorder_.IsRecording() &&
                 originalRecorder_.IsRecording();
             const bool audioComesFirst =
-                !stopRequested_ && recorderReady && !audioQueue_.empty() &&
+                !stopRequested_ && !audioStartupPending_ && recorderReady && !audioQueue_.empty() &&
                 (frameQueue_.empty() ||
                  audioQueue_.front().captureClock100ns <=
                      frameQueue_.front()
@@ -1670,7 +1683,7 @@ void RecordingManager::WorkerLoop()
                 audioQueue_.pop_front();
                 workerWriting_ = true;
                 haveAudio = true;
-            } else if (!stopRequested_ && !frameQueue_.empty() &&
+            } else if (!stopRequested_ && !audioStartupPending_ && !frameQueue_.empty() &&
                        !shouldShutdown) {
                 frame = std::move(frameQueue_.front());
                 frameQueue_.pop_front();

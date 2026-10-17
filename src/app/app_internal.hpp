@@ -120,6 +120,15 @@ struct CameraIngress final {
     std::shared_ptr<CameraIngress> retainedAfterTimeout;
 };
 
+// One worker owns microphone Open, reader startup, Flush, Shutdown and final
+// COM release. UI cancellation revokes delivery; it never releases native state.
+struct MicrophoneWorkerState final {
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::atomic<bool> canceled{}, startupFinished{}, started{}, done{}, abandoned{};
+    std::string error;
+};
+
 // Independently owned cancellation/lifetime gate for microphone callbacks.
 // A detached AudioCapture thread may retain this block, but app shutdown
 // clears app under the same mutex used by callback delivery. Holding the

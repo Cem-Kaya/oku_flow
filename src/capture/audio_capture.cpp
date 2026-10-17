@@ -314,8 +314,11 @@ void AudioCapture::Stop()
     if (session && sourceReader_ && captureThread_.joinable()) {
         session->flushDone.store(false);
         Microsoft::WRL::ComPtr<IMFSourceReader> reader = sourceReader_;
-        flusher = std::thread([session, reader]() {
+        flusher = std::thread([session, reader]() mutable {
+            const HRESULT apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
             reader->Flush(MF_SOURCE_READER_ALL_STREAMS);
+            reader.Reset();
+            if(SUCCEEDED(apartment))CoUninitialize();
             session->flushDone.store(true);
         });
     }

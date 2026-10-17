@@ -10,6 +10,15 @@
 
 namespace okuflow {
 struct RecordingManagerTestAccess {
+    static void PrimeStartingWithoutCodecWorker(RecordingManager& manager) {
+        manager.ShutdownForProcessExit();manager.shutdownRequested_=false;
+        manager.stopRequested_=false;manager.frameQueue_.clear();manager.audioQueue_.clear();
+        manager.segmentFinalized_=true;manager.SetState(RecordingState::Starting);
+    }
+    static std::size_t QueuedVideo(RecordingManager& manager) {
+        std::lock_guard lock(manager.queueMutex_);return manager.frameQueue_.size();
+    }
+    static bool AudioEnabled(RecordingManager& manager) {return manager.audioCaptureEnabled_.load();}
     static void PrimeRetirement(RecordingManager& manager) {
         // Isolate the real retirement code from codecs and the idle worker.
         // The fixture subsequently drives FinishSession on a controlled thread.
@@ -31,7 +40,7 @@ struct RecordingManagerTestAccess {
     static bool Retired(RecordingManager& manager) {
         std::lock_guard lock(manager.queueMutex_);
         return manager.frameQueue_.empty() && manager.audioQueue_.empty()
-            && !manager.stopRequested_ && !manager.workerWriting_
+            && !manager.audioStartupPending_ && !manager.stopRequested_ && !manager.workerWriting_
             && manager.stopMessage_.isEmpty();
     }
     static void Finish(RecordingManager& manager, bool success) {
@@ -156,6 +165,30 @@ private slots:
         manager.SetRequested(true,second); QVERIFY(manager.CurrentSessionInfo());
         QVERIFY(!manager.StopSession(first.id)); QCOMPARE(manager.CurrentSessionInfo()->id,second.id);
         QVERIFY(manager.StopSession(second.id)); QVERIFY(manager.ShutdownForProcessExit());
+    }
+    void microphoneDecisionHoldsVideoAndLateResultsCannotEnableAnotherSession()
+    {
+        QTemporaryDir directory;QVERIFY(directory.isValid());
+        okuflow::UserDataPaths paths(directory.path(),QStringLiteral("C:/fixture-install"));
+        okuflow::RecordingManager manager(nullptr,{},{},paths);
+        okuflow::RecordingSessionInfo first;first.id="audio-pending-a";manager.SetRequested(true,first);
+        using Access=okuflow::RecordingManagerTestAccess;Access::PrimeStartingWithoutCodecWorker(manager);
+        manager.SetSessionAudioPending(first.id);
+        const std::vector<uint8_t> pixels(64*64*4,127);
+        const auto submit=[&] {
+            okuflow::CapturedFrame original;original.width=original.height=64;original.pixels=pixels;
+            original.identity.captureClock100ns=100000;okuflow::RecordingViewTransform transform;transform.valid=true;
+            manager.AddSceneFrame(pixels.data(),64,64,transform,std::move(original));
+        };
+        submit();QCOMPARE(Access::QueuedVideo(manager),std::size_t(0));
+        manager.SetSessionAudioResult("foreign",true);submit();QCOMPARE(Access::QueuedVideo(manager),std::size_t(0));
+        QVERIFY(!manager.CurrentSessionInfo()->actualAudio);
+        manager.SetSessionAudioResult(first.id,false);submit();QCOMPARE(Access::QueuedVideo(manager),std::size_t(1));
+        QVERIFY(manager.StopSession(first.id));Access::Finish(manager,false);
+        manager.SetSessionAudioResult(first.id,true);QVERIFY(!Access::AudioEnabled(manager));
+        okuflow::RecordingSessionInfo second;second.id="audio-pending-b";manager.SetRequested(true,second);
+        manager.SetSessionAudioResult(first.id,true);QVERIFY(!manager.CurrentSessionInfo()->actualAudio);
+        QVERIFY(manager.StopSession(second.id));Access::Finish(manager,false);
     }
     void startupBudgetRequiresPendingAndNextFrameToFit()
     {

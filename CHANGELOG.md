@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+- Open and retire microphones on an independent worker, including final native
+  shutdown. Keep controls responsive on timeout, reject late session callbacks,
+  and report video-only recordings truthfully when no microphone is selected.
 - Constrain non-coding Codex sessions before launch and replace the child when
   coding/internet permissions change; Read and Explain stay offline.
 - Keep webcam reopen, format changes and reconnect driver startup off the UI

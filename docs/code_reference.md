@@ -4245,3 +4245,23 @@ until independent probe checks validate the lines. The content-moved algorithm
 case explicitly permits complete matching, so CPU scheduling cannot turn a
 partial deferred result into an incorrect test failure. Production stays at
 its 3 ms UI admission budget.
+
+`MicrophoneWorkerState` retains cancellation, startup/retirement completion,
+abandonment and error state independently of the app. The worker constructs the
+activation from the endpoint ID in its own MTA and owns Open/reader/Flush/
+Shutdown/final release. `OkuFlowApp::StartSelectedMicrophone` now returns
+`MicrophoneStartResult` (Disabled/Pending/Failed); `CompleteMicrophoneStart`
+checks exact worker, recording ID and callback generation. `StopMicrophoneCapture`
+revokes callback authority and signals that worker without a native wait.
+`MicrophoneTeardownUnsafe` gates global MF teardown through final release, not
+only reader-loop exit. An unretired or abandoned worker prevents new microphone
+acquisition. Private Start/Stop seams and a shortened fixture-only deadline
+exercise held driver work and late success without touching a device.
+
+`RecordingManager::SetSessionAudioPending` collects bounded audio while holding
+segment admission; pending pre-start video frames are discarded. Its exact-ID
+`SetSessionAudioResult` resolves readiness, wakes the worker and updates actual
+audio only for an active matching session. Stop/retirement clears pending state;
+late or foreign decisions cannot enable audio in a successor. The codec-free
+fixture checks this production admission boundary and the native app fixture
+checks UI events, retirement retention, None, timeout and successor identity.

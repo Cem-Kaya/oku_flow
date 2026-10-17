@@ -73,3 +73,15 @@ startup owner as initial capture. Reconnect retains its retry state until the
 worker completes and reuses the requested symbolic link without enumerating
 hardware on the UI tick. The legacy synchronous comparison remains opt-in for
 startup profiling only.
+
+Microphone activation, reader setup, Flush, Shutdown and final COM release now
+belong to one independently retained worker. Start returns Disabled/Pending/
+Failed; UI callbacks retain both the recording ID and callback generation.
+Opening has a three-second decision deadline, after which recording proceeds
+without audio. An unretired/abandoned microphone refuses another acquisition
+without blocking video or UI. Cancellation immediately revokes deliveries.
+Recording remains Starting and discards pre-decision video frames until actual
+audio readiness is known; successful start then permits the first segment.
+None never claims audio. Shutdown skips process-global MF teardown while the
+worker is live or native resources were abandoned. These ownership contracts
+have native fixture coverage, separate from physical-microphone acceptance.
