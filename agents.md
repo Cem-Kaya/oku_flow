@@ -647,3 +647,9 @@ aligned with the project goals.
 - Keep `scripts/android_camera_probe.py` in Android host CI and the scoped
   impact manifest. Probe-only edits require the host protocol suite without
   a Windows rebuild. Preserve that selection in `test_select_tests.ps1`.
+
+## Preset parser baseline (2026-10-17)
+- CMake 3.25 is the minimum for the checked-in schema-6 presets. Keep both
+  preset entrypoints, root minimum and developer prerequisite aligned. Check
+  root configuration and both manifests with the documented minimum when
+  changing preset schema; the included `cmake/` directory is not a source root.

@@ -4279,3 +4279,9 @@ Android host CI and `tests/test_impact.json` now include the imported
 `scripts/android_camera_probe.py` dependency. `test_select_tests.ps1` exercises
 a probe-only change: host protocol tests are selected without Windows targets.
 Workflow/impact-manifest changes also select the CI protocol job.
+
+The root preset file, included `cmake/CMakePresets.json` and root minimum
+declare CMake 3.25, matching schema version 6. Portable 3.25.3 configures the
+root project and parses both preset manifests. `cmake/` is an included CMake
+implementation directory, not a standalone source root. A diagnostic attempt
+to configure it directly was retained separately and is not passing evidence.

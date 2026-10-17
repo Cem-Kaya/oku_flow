@@ -109,7 +109,7 @@ CUDA is the processing path; the CPU effects pipeline is deprecated. When the D3
 - Windows 10 or Windows 11.
 - Visual Studio 2022 with the Desktop C++ workload and Windows SDK.
 - Qt 6.12.0 for `msvc2022_64`, or matching overrides via `QT_PREFIX` / `Qt6_DIR`.
-- CMake 3.23 or newer.
+- CMake 3.25 or newer (the checked-in schema-6 presets require it).
 - NVIDIA GPU plus CUDA Toolkit 12.9 if you want the default CUDA path.
   CUDA 12.9 is the compatibility build for Pascal GTX 10-series (`sm_61`)
   through RTX 50-series. CUDA 13 comparison builds require an explicit toolkit
