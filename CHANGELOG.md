@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+- Add experimental, opt-in **Ultra Clear Text** (development, not
+  release-accepted): local Windows OCR of steady printed camera text drawn as
+  sharp glyph plates registered to the processed scene, with an accessible
+  on/off switch, an always-available Show original comparison, a polite status
+  line and a selectable Recognized text pane. Recognition runs asynchronously
+  on one latest-only worker fed by the existing presenter readback ring;
+  pan/zoom reprojection stays on the presentation clock. Results carry
+  source/geometry/frame stamps and pass age, pixel-residual, temporal-agreement
+  and high-risk-token checks; uncertain words, handwriting, math, drawings and
+  moving text stay as the original image. Pauses during Temporal Smooth and
+  Extra Stable. New strings are English-only pending translation review.
+
 - Drain already-accepted fake adb connections before waiting for another
   arrival, covered by a deterministic two-client backlog regression. Declare
   the shared process-identity resource between legacy recovery and fixtures

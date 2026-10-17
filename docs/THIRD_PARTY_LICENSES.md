@@ -148,6 +148,12 @@ binaries and caches are not added to Windows/Android release inventories.
 
 ## Microsoft Platform Components
 - APIs used: Media Foundation, Direct3D 12, DXGI, Windows Imaging Component, and other Windows SDK libraries
+- Ultra Clear Text (experimental) calls the built-in `Windows.Media.Ocr`
+  engine through C++/WinRT projection headers from the Windows SDK and links
+  `windowsapp.lib`. The OCR engine and its language data are Windows
+  components on the user's machine; OkuFlow ships no OCR model, language pack
+  or third-party OCR library and copies no C++/WinRT source into the
+  repository. C++/WinRT headers are used as provided by the installed SDK.
 - License source: Windows SDK / Visual Studio / OS redistribution terms
 - Notes: these platform APIs are not copied into the repository as standalone
   third-party source code. When `windeployqt` stages `D3Dcompiler_47.dll`, the

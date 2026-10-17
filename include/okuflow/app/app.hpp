@@ -20,6 +20,7 @@
 #include "okuflow/app/recording_manager.hpp"
 #include "okuflow/app/pipeline_orchestrator.hpp"
 #include "okuflow/app/settings_controller.hpp"
+#include "okuflow/app/ultra_clear_text_controller.hpp"
 #include "okuflow/app/suspend_guard.hpp"
 #include "okuflow/app/ui_state_manager.hpp"
 #include "okuflow/app/user_data_paths.hpp"
@@ -348,6 +349,11 @@ private:
     static void RotateNormalizedPoint(float inX, float inY, int quarterTurns, float& outX, float& outY);
     void ApplyPersistentSettings(settings::PersistentSettings settings);
     void SavePersistentSettings();
+    // Ultra Clear Text: presentation-clock context and production wiring.
+    UctFrameContext UltraClearTextContext(const ViewTransform& transform,
+                                          UINT sceneWidth, UINT sceneHeight,
+                                          UINT viewportWidth, UINT viewportHeight) const;
+    void InitializeUltraClearText();
 
     QApplication* qtApp_{};
     bool initialized_{false};
@@ -583,6 +589,10 @@ private:
     UINT presentationHeight_{0};
 
     bool cudaSceneReady_{false};
+
+    // Declared last so it is destroyed first: its worker callbacks retire
+    // before the windows it draws into and the presenter go away.
+    std::unique_ptr<UltraClearTextController> ultraClearText_;
 };
 
 } // namespace okuflow

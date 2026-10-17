@@ -144,3 +144,9 @@ Input routing from the window into app-level behavior stays split between this m
 The Draw inline text editor retires pending entry on actual FocusOut,
 including unchanged empty input. The guarded commit path inserts typed text
 once and cancels empty input, then releases keyboard ownership to the camera.
+
+`UltraClearTextOverlay` is a click-through floating tool window that repaints
+accepted Ultra Clear Text words through the current presentation transform;
+`UltraClearTextPanel` holds the accessible opt-in, Show original, status and
+Recognized text pane inside the Text clarity section. Neither performs
+recognition. See [`docs/ultra_clear_text.md`](../../docs/ultra_clear_text.md).
