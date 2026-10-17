@@ -17,7 +17,9 @@
 #include <QPlainTextEdit>
 #include <QtTest>
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -154,6 +156,10 @@ struct Harness {
     double maxPresentMs{};
     double maxProbeMs{};
     bool completeReadbacks{true};
+    // Emulates the presenter's reusable readback vector.
+    std::vector<std::uint8_t> readback;
+    QVector<double> presentMs;
+    QVector<double> readbackMs;
 
     explicit Harness(BackendState initState = BackendState::kReady)
     {
@@ -170,7 +176,10 @@ struct Harness {
             overlay, panel, [sharedCopy] { return std::make_unique<ScriptedRecognizer>(sharedCopy); },
             nullptr, [this] { return now; });
         SetPage(MakePage(kLines));
-        context.geometry = {7, kSceneWidth, kSceneHeight, 0, false, false};
+        context.geometry.settings.sourceEpoch = 7;
+        context.geometry.sceneWidth = kSceneWidth;
+        context.geometry.sceneHeight = kSceneHeight;
+        context.requested = context.geometry.settings;
         context.transform = Transform(1.0f, 0.5f, 0.5f);
         context.viewportWidth = kViewWidth;
         context.viewportHeight = kViewHeight;
@@ -181,6 +190,13 @@ struct Harness {
     {
         shared->SetHold(false);
         controller.reset();
+    }
+
+    // A newly processed scene with these settings, matching the request.
+    void SetSceneSettings(const UctSceneSettings& settings)
+    {
+        context.geometry.settings = settings;
+        context.requested = settings;
     }
 
     void SetPage(const SyntheticPage& value)
@@ -206,23 +222,29 @@ struct Harness {
         QElapsedTimer timer;
         timer.start();
         const bool wanted = controller->OnPresented(context);
-        maxPresentMs = std::max(maxPresentMs, timer.nsecsElapsed() / 1e6);
+        presentMs.push_back(timer.nsecsElapsed() / 1e6);
+        maxPresentMs = std::max(maxPresentMs, presentMs.last());
         if (!wanted) {
             return false;
         }
         const std::uint64_t id = nextReadback++;
         controller->OnReadbackRequested(id, context);
         if (completeReadbacks) {
-            const QImage view = RenderView(page.image, context.transform, kViewWidth, kViewHeight);
+            const int w = static_cast<int>(context.viewportWidth);
+            const int hgt = static_cast<int>(context.viewportHeight);
+            const QImage view = RenderView(page.image, context.transform, w, hgt);
             {
                 std::lock_guard lock(shared->mutex);
                 shared->transforms.insert(Checksum(view), context.transform);
             }
+            // The presenter's own mapped copy into its reusable vector.
+            readback.resize(static_cast<std::size_t>(w) * hgt * 4);
+            std::memcpy(readback.data(), view.constBits(), readback.size());
             QElapsedTimer probeTimer;
             probeTimer.start();
-            controller->OnReadbackCompleted(id, view.constBits(), view.width(), view.height(),
-                                            static_cast<int>(view.bytesPerLine()));
-            maxProbeMs = std::max(maxProbeMs, probeTimer.nsecsElapsed() / 1e6);
+            controller->OnReadbackCompleted(id, readback, w, hgt, w * 4);
+            readbackMs.push_back(probeTimer.nsecsElapsed() / 1e6);
+            maxProbeMs = std::max(maxProbeMs, readbackMs.last());
         }
         return true;
     }
@@ -331,6 +353,66 @@ RecognitionResult ResultFor(const SyntheticPage& page, const ViewTransform& t, c
     return result;
 }
 
+// Dense printed page: many long rows of small print, as on a textbook page.
+QStringList DenseLines(int rows)
+{
+    static const QStringList kWords{
+        QStringLiteral("reading"), QStringLiteral("page"),    QStringLiteral("camera"),
+        QStringLiteral("glasses"), QStringLiteral("people"),  QStringLiteral("printed"),
+        QStringLiteral("morning"), QStringLiteral("letters"), QStringLiteral("window"),
+        QStringLiteral("teacher"), QStringLiteral("board"),   QStringLiteral("notes"),
+        QStringLiteral("market"),  QStringLiteral("river"),   QStringLiteral("garden"),
+        QStringLiteral("evening"), QStringLiteral("travel"),  QStringLiteral("number")};
+    QStringList lines;
+    for (int r = 0; r < rows; ++r) {
+        QStringList words;
+        for (int w = 0; w < 30; ++w) {
+            words.push_back(kWords[(r * 7 + w * 5 + (w * w) % 11) % kWords.size()]);
+        }
+        lines.push_back(words.join(QLatin1Char(' ')));
+    }
+    return lines;
+}
+
+// Generalized ResultFor for any viewport size.
+RecognitionResult ResultForView(const SyntheticPage& page, const ViewTransform& t, const SourceStamp& stamp,
+                                int width, int height)
+{
+    const QImage view = RenderView(page.image, t, width, height);
+    RecognitionResult result;
+    result.stamp = stamp;
+    result.stamp.viewTransform = t;
+    result.stamp.viewportWidth = static_cast<std::uint32_t>(width);
+    result.stamp.viewportHeight = static_cast<std::uint32_t>(height);
+    result.output.ok = true;
+    for (const PageWord& word : page.words) {
+        const QRectF px = SceneRectToView(t, width, height, word.sceneRect);
+        if (!QRectF(0, 0, width, height).contains(px)) {
+            continue;
+        }
+        if (result.output.lines.isEmpty() ||
+            std::abs(result.output.lines.last().words.first().boundsPx.top() - px.top()) > px.height() * 0.5) {
+            result.output.lines.push_back({});
+            result.lineColors.push_back({});
+        }
+        result.output.lines.last().words.push_back({word.text, px});
+    }
+    result.reference = MakeProbeFrame(view.constBits(), view.width(), view.height(),
+                                      static_cast<int>(view.bytesPerLine()), 4, result.stamp);
+    return result;
+}
+
+double Percentile(QVector<double> values, double p)
+{
+    if (values.isEmpty()) {
+        return 0.0;
+    }
+    std::sort(values.begin(), values.end());
+    const int index = std::clamp(static_cast<int>(std::ceil(p * values.size())) - 1, 0,
+                                 static_cast<int>(values.size()) - 1);
+    return values[index];
+}
+
 } // namespace
 
 class UltraClearTextTests final : public QObject {
@@ -341,6 +423,10 @@ private slots:
 
     // --- Geometry -----------------------------------------------------------
     void geometryRoundTripsThroughFitFillZoomPanAndDpi();
+    void processedSceneProvenanceSurvivesDeferredFrames();
+    void sourceRetirementRevokesWithoutAnotherPresentation();
+    void mixedHeightReadingOrderIsStableAndOnlyFreshTextIsRead();
+    void unchangedWordsRefreshMeasuredColors();
 
     // --- Validation primitives ----------------------------------------------
     void patchMatchesUnchangedTextAcrossPanAndZoom();
@@ -363,6 +449,7 @@ private slots:
 
     // --- Controller (production widgets, scripted OCR) ----------------------
     void slowOcrNeverBlocksPresentationClock();
+    void cachedGlyphsRepaintWhileRecognitionIsHeld();
     void controllerCoalescesChangingSceneWhileOcrHeld();
     void acceptedTextReprojectsOnPresentationClockWithDpi();
     void sourceSwitchAndGeometryChangeInvalidateImmediately();
@@ -372,6 +459,7 @@ private slots:
     void originalPixelsAndNonTextGraphicsArePreserved();
     void presentationWatchdogHidesTextWithoutPresents();
     void probeWorkIsBoundedForLargeViewports();
+    void denseMovingPageValidationCostAt4K();
     void panelExposesAccessibleControls();
 };
 
@@ -582,7 +670,7 @@ void UltraClearTextTests::modelOmitsHighRiskWordsFromReadingText()
     const SourceStamp current = Stamp(1, 1, 0, t);
     model.Admit(ResultFor(page, t, Stamp(1, 1, 100, t)), current, nullptr, 110);
     model.Admit(ResultFor(page, t, Stamp(1, 1, 200, t)), current, nullptr, 210);
-    const QString text = model.ReadingText();
+    const QString text = model.ReadingText(210, model.Lines().first().validatedFrameSeq);
     QVERIFY2(text.contains(QStringLiteral("3.14")), qPrintable(text));
     QVERIFY2(!text.contains(QStringLiteral("l0O")), qPrintable(text));
     QVERIFY2(text.endsWith(QStringLiteral("…")), qPrintable(text));
@@ -703,13 +791,20 @@ void UltraClearTextTests::controllerCoalescesChangingSceneWhileOcrHeld()
     Harness h;
     h.shared->SetHold(true);
     h.Enable();
-    const SyntheticPage a = MakePage(kLines);
-    const SyntheticPage b = MakePage({QStringLiteral("Board text changes"), QStringLiteral("while recognition waits")});
-    for (int i = 0; i < 400; ++i) {
-        // Content alternates in pairs: each pair is briefly steady.
-        h.SetPage((i / 16) % 2 ? b : a);
-        h.Present();
-        QCoreApplication::processEvents();
+    // Establish the first held OCR call using completed probe feedback.
+    // Alternating camera frames faster than the asynchronous probe worker
+    // can inspect them is not evidence of stable content or an OCR admission.
+    for (int i = 0; i < 200 && h.controller->SchedulerStatistics().started == 0; ++i) {
+        h.Present(); QCoreApplication::processEvents(); QThread::msleep(1);
+    }
+    QCOMPARE(h.controller->SchedulerStatistics().started, std::uint64_t{1});
+    for (const SyntheticPage& page : {MakePage({QStringLiteral("Board text changes")}), MakePage(kLines)}) {
+        h.SetPage(page);
+        const auto before = h.controller->SchedulerStatistics().submitted;
+        for (int i = 0; i < 200 && h.controller->SchedulerStatistics().submitted == before; ++i) {
+            h.Present(); QCoreApplication::processEvents(); QThread::msleep(1);
+        }
+        QVERIFY(h.controller->SchedulerStatistics().submitted > before);
     }
     const SchedulerStats stats = h.controller->SchedulerStatistics();
     QCOMPARE(stats.started, std::uint64_t{1});
@@ -769,7 +864,11 @@ void UltraClearTextTests::sourceSwitchAndGeometryChangeInvalidateImmediately()
     }
     QVERIFY(h.controller->SchedulerStatistics().started > startedBefore);
     const std::uint64_t generation = h.controller->GeometryGeneration();
-    h.context.geometry.sourceEpoch = 8;
+    {
+        UctSceneSettings settings = h.context.geometry.settings;
+        settings.sourceEpoch = 8;
+        h.SetSceneSettings(settings);
+    }
     h.Present(true, 1);
     QCOMPARE(h.overlay->WordCount(), 0);
     QVERIFY(h.controller->Model().Lines().isEmpty());
@@ -784,7 +883,11 @@ void UltraClearTextTests::sourceSwitchAndGeometryChangeInvalidateImmediately()
     QCOMPARE(h.overlay->WordCount(), 0);
 
     QVERIFY(h.RunUntilShown());
-    h.context.geometry.rotationQuarterTurns = 1;
+    {
+        UctSceneSettings settings = h.context.geometry.settings;
+        settings.rotationQuarterTurns = 1;
+        h.SetSceneSettings(settings);
+    }
     h.Present(true, 1);
     QCOMPARE(h.overlay->WordCount(), 0);
 }
@@ -891,7 +994,147 @@ void UltraClearTextTests::presentationWatchdogHidesTextWithoutPresents()
     QVERIFY(h.controller->Model().HasAcceptedText());
     // The next presentation of the unchanged scene restores validated text.
     h.Present(false, 1);
-    QVERIFY(h.overlay->WordCount() > 0);
+    QTRY_VERIFY(h.overlay->WordCount() > 0); // fresh validation is now asynchronous
+}
+
+void UltraClearTextTests::cachedGlyphsRepaintWhileRecognitionIsHeld()
+{
+    Harness h;
+    h.Enable();
+    QVERIFY(h.RunUntilShown());
+    const auto started = h.controller->SchedulerStatistics().started;
+    h.shared->SetHold(true);
+    h.now += 1600;
+    for (int i = 0; i < 200 && h.controller->SchedulerStatistics().started == started; ++i) {
+        h.Present(); QCoreApplication::processEvents(); QThread::msleep(1);
+    }
+    QVERIFY(h.controller->SchedulerStatistics().started > started);
+    QTRY_VERIFY(h.overlay->WordCount() > 0);
+    const auto completed = h.controller->SchedulerStatistics().completed;
+    // Re-present one known camera scene at a high rate while its next OCR
+    // result is held. Existing glyphs must actually draw, not only update a
+    // transform in an empty overlay.
+    h.frameSeq = h.controller->Model().Lines().first().validatedFrameSeq;
+    h.completeReadbacks = false;
+    h.owner.resize(1940, 1100);
+    h.target->resize(1920, 1080);
+    QImage painted(1920, 1080, QImage::Format_ARGB32_Premultiplied);
+    QVector<double> paints;
+    h.presentMs.clear();
+    for (int frame = 0; frame < 300; ++frame) {
+        h.context.transform = Transform(1.3f, 0.45f + 0.0001f * frame, 0.5f, ViewportFitMode::kFill);
+        h.Present(false, 8);
+        QVERIFY(h.overlay->WordCount() > 0);
+        QCOMPARE(h.overlay->CurrentViewTransform().sourceX, h.context.transform.sourceX);
+        QElapsedTimer timer; timer.start();
+        painted.fill(Qt::transparent);
+        h.overlay->render(&painted);
+        paints.push_back(timer.nsecsElapsed() / 1e6);
+    }
+    QCOMPARE(h.controller->SchedulerStatistics().completed, completed);
+    qInfo("cached glyphs with held OCR: OnPresented p95 %.3f / p99 %.3f ms; 1920x1080 paint p95 %.3f / p99 %.3f ms",
+        Percentile(h.presentMs, 0.95), Percentile(h.presentMs, 0.99), Percentile(paints, 0.95), Percentile(paints, 0.99));
+    QVERIFY(Percentile(h.presentMs, 0.99) < 25.0);
+    h.shared->SetHold(false);
+}
+
+void UltraClearTextTests::processedSceneProvenanceSurvivesDeferredFrames()
+{
+    UctSceneProvenance scenes;
+    UctSceneSettings requested;
+    requested.sourceEpoch = 7;
+    scenes.OnCudaSceneProcessed(requested, 1600, 900, 42, false);
+    const auto present = [&](bool cuda) { return scenes.Context(cuda, requested, false,
+        Transform(1.0f, 0.5f, 0.5f, ViewportFitMode::kFit), 960, 540, true, 0); };
+    QCOMPARE(present(true).frameSeq, std::uint64_t{42});
+    // A newer capture/request can arrive while the GPU rejects or defers it.
+    // No successful scene publication occurred, so the old pixels keep 42/0.
+    requested.rotationQuarterTurns = 1;
+    requested.keystone = true;
+    requested.warpRevision = 9;
+    auto held = present(true);
+    QCOMPARE(held.frameSeq, std::uint64_t{42});
+    QCOMPARE(held.geometry.settings.rotationQuarterTurns, 0);
+    QVERIFY(!(held.geometry.settings == held.requested));
+    scenes.OnCudaSceneProcessed(requested, 900, 1600, 43, false);
+    QCOMPARE(present(true).frameSeq, std::uint64_t{43});
+    QVERIFY(present(true).geometry.settings == present(true).requested);
+    scenes.OnCpuSceneProcessed(7, 1, 900, 1600, 44, false);
+    requested.stabilization = true;
+    requested.colorScheme = 0x100000001ull;
+    const auto cpu = present(false);
+    QCOMPARE(cpu.frameSeq, std::uint64_t{44});
+    QVERIFY(!cpu.geometry.settings.keystone && !cpu.geometry.settings.stabilization);
+    QCOMPARE(cpu.geometry.settings.colorScheme, std::uint64_t{0});
+    QVERIFY(cpu.geometry.settings == cpu.requested); // CPU has no pending CUDA warp/color.
+    scenes.Reset();
+    QVERIFY(!present(true).cameraActive);
+    QVERIFY(!present(false).cameraActive);
+}
+
+void UltraClearTextTests::sourceRetirementRevokesWithoutAnotherPresentation()
+{
+    Harness h;
+    h.Enable();
+    QVERIFY(h.RunUntilShown());
+    const auto oldGeneration = h.controller->GeometryGeneration();
+    h.controller->OnSourceRetired();
+    QCOMPARE(h.overlay->WordCount(), 0);
+    QVERIFY(h.controller->Model().Lines().isEmpty());
+    QVERIFY(h.panel->readingPane()->toPlainText().isEmpty());
+    QVERIFY(h.controller->GeometryGeneration() > oldGeneration);
+    QCoreApplication::processEvents();
+    QCOMPARE(h.overlay->WordCount(), 0);
+}
+
+void UltraClearTextTests::mixedHeightReadingOrderIsStableAndOnlyFreshTextIsRead()
+{
+    const auto top = [](int size, double centre) {
+        const QFontMetricsF metrics(PageFont(size));
+        return centre - (metrics.ascent() + metrics.descent()) * 0.5;
+    };
+    const SyntheticPage page = MakeLayoutPage({
+        {QStringLiteral("Alpha"), {800, top(20, 100)}, 20},
+        {QStringLiteral("Beta"), {500, top(100, 108)}, 100},
+        {QStringLiteral("Gamma"), {200, top(20, 116)}, 20}});
+    const auto transform = Transform(1.0f, 0.5f, 0.5f, ViewportFitMode::kFit);
+    auto stamp = Stamp(7, 1, 100, transform);
+    stamp.frameSeq = 9;
+    const auto base = ResultFor(page, transform, stamp);
+    std::array<int, 3> order{0, 1, 2};
+    do {
+        auto result = base;
+        result.output.lines.clear(); result.lineColors.clear();
+        for (const int index : order) {
+            const auto& word = page.words[index];
+            result.output.lines.push_back({{{word.text, SceneRectToView(transform, kViewWidth, kViewHeight, word.sceneRect)}}});
+            result.lineColors.push_back({});
+        }
+        OverlayModel model;
+        result.jobId = 1;
+        model.Admit(result, stamp, nullptr, 100);
+        result.jobId = 2;
+        QCOMPARE(model.Admit(result, stamp, nullptr, 200), AdmitVerdict::kAccepted);
+        QCOMPARE(model.ReadingText(200, 9), QStringLiteral("Beta\nAlpha\nGamma"));
+        QVERIFY(model.ReadingText(1000, 10).isEmpty());
+    } while (std::next_permutation(order.begin(), order.end()));
+}
+
+void UltraClearTextTests::unchangedWordsRefreshMeasuredColors()
+{
+    Harness h;
+    h.Enable();
+    QVERIFY(h.RunUntilShown());
+    h.SetPage(MakePage(kLines, {}, 1600, 900, 64, QColor(100, 0, 0), QColor(255, 255, 255)));
+    h.now += 1600; // recognition refresh, with identical word geometry
+    const auto red = [&] {
+        return !h.overlay->Words().isEmpty() && h.overlay->Words().first().colors.foreground.red() >
+            h.overlay->Words().first().colors.foreground.blue() + 20;
+    };
+    for (int i = 0; i < 200 && !red(); ++i) {
+        h.Present(); QCoreApplication::processEvents(); QThread::msleep(1);
+    }
+    QVERIFY(red());
 }
 
 void UltraClearTextTests::probeWorkIsBoundedForLargeViewports()
@@ -922,6 +1165,58 @@ void UltraClearTextTests::probeWorkIsBoundedForLargeViewports()
     }
     qInfo("worst 4K probe handling incl. one owned submit copy: %.2f ms", worst);
     QVERIFY2(worst < 80.0, qPrintable(QString::number(worst)));
+}
+
+void UltraClearTextTests::denseMovingPageValidationCostAt4K()
+{
+    // Worst case for residual validation: a dense 4K page whose lines are all
+    // accepted, then moving a little every probe so no line takes the static
+    // fast path. Reports the per-probe core cost (probe build + validation).
+    constexpr int kW = 3840;
+    constexpr int kH = 2160;
+    const QStringList lines = DenseLines(52);
+    const SyntheticPage page = MakePage(lines, {}, kW, kH, 24);
+    const ViewTransform t = ComputeViewTransform(kW, kH, kW, kH, 1.0f, 0.5f, 0.5f, ViewportFitMode::kFit);
+    OverlayModel model;
+    const SourceStamp current = Stamp(1, 1, 0, t);
+    model.Admit(ResultForView(page, t, Stamp(1, 1, 100, t), kW, kH), current, nullptr, 110);
+    model.Admit(ResultForView(page, t, Stamp(1, 1, 200, t), kW, kH), current, nullptr, 210);
+    const int acceptedLines = model.Lines().size();
+    QVERIFY2(acceptedLines >= 48, qPrintable(QString::number(acceptedLines)));
+    QVector<double> probeMs;
+    QVector<double> validateMs;
+    int searched = 0;
+    for (int i = 0; i < 12; ++i) {
+        // Alternating small shifts: every line needs the full translation search.
+        const QPointF shift((i % 2) ? 12.0 : -12.0, (i % 2) ? 7.0 : -7.0);
+        const SyntheticPage moved = MakePage(lines, shift, kW, kH, 24);
+        const QImage view = RenderView(moved.image, t, kW, kH);
+        SourceStamp stamp = Stamp(1, 1, 300 + i * 80, t);
+        stamp.viewportWidth = kW;
+        stamp.viewportHeight = kH;
+        stamp.frameSeq = 10 + i;
+        QElapsedTimer timer;
+        timer.start();
+        const ProbeFrame probe = MakeProbeFrame(view.constBits(), kW, kH, static_cast<int>(view.bytesPerLine()),
+                                                4, stamp);
+        probeMs.push_back(timer.nsecsElapsed() / 1e6);
+        timer.restart();
+        const ValidationSummary summary = model.Validate(probe, stamp.timestampMs);
+        validateMs.push_back(timer.nsecsElapsed() / 1e6);
+        searched += summary.valid + summary.invalid;
+        // Re-admit so later iterations still have every line to validate.
+        if (model.Lines().size() < acceptedLines) {
+            model.Reset();
+            model.Admit(ResultForView(page, t, Stamp(1, 1, stamp.timestampMs, t), kW, kH), current, nullptr,
+                        stamp.timestampMs);
+            model.Admit(ResultForView(page, t, Stamp(1, 1, stamp.timestampMs, t), kW, kH), current, nullptr,
+                        stamp.timestampMs);
+        }
+    }
+    qInfo("dense 4K moving page, %d lines: probe build p50 %.2f / max %.2f ms; validation p50 %.2f / "
+          "p95 %.2f / max %.2f ms (%d line checks)",
+          acceptedLines, Percentile(probeMs, 0.5), Percentile(probeMs, 1.0), Percentile(validateMs, 0.5),
+          Percentile(validateMs, 0.95), Percentile(validateMs, 1.0), searched);
 }
 
 void UltraClearTextTests::panelExposesAccessibleControls()

@@ -22,25 +22,37 @@ void OkuFlowApp::InitializeUltraClearText()
     }
 }
 
-UctFrameContext OkuFlowApp::UltraClearTextContext(const ViewTransform& transform,
-                                                  UINT sceneWidth, UINT sceneHeight,
+// What the user asks for now, as the CUDA path would apply it. The CPU path
+// narrows this in UctSceneProvenance::RequestFor.
+UctSceneSettings OkuFlowApp::UltraClearTextRequest() const
+{
+    UctSceneSettings request;
+    request.sourceEpoch = cameraSessionId_;
+    request.rotationQuarterTurns = rotationQuarterTurns_;
+    request.keystone = keystoneEnabled_;
+    request.stabilization = stabilizationEnabled_;
+    request.warpRevision = uctWarpRevision_;
+    // "normal" leaves pixels untouched; every other scheme recolors them, and
+    // the LUT generation changes whenever its colors do.
+    request.colorScheme =
+        displayColorScheme_.id == QStringLiteral("normal")
+            ? 0u
+            : displayColorLutGeneration_;
+    return request;
+}
+
+UctFrameContext OkuFlowApp::UltraClearTextContext(bool cudaScene, const ViewTransform& transform,
                                                   UINT viewportWidth, UINT viewportHeight) const
 {
-    UctFrameContext context;
-    context.geometry.sourceEpoch = cameraSessionId_;
-    context.geometry.sceneWidth = sceneWidth;
-    context.geometry.sceneHeight = sceneHeight;
-    context.geometry.rotationQuarterTurns = rotationQuarterTurns_;
-    context.geometry.keystoneEnabled = keystoneEnabled_;
-    context.geometry.stabilizationEnabled = stabilizationEnabled_;
-    context.frameSeq = currentCameraFrameSequence_;
-    context.transform = transform;
-    context.viewportWidth = viewportWidth;
-    context.viewportHeight = viewportHeight;
-    context.cameraActive = cameraActive_ && cameraFramePresented_;
-    context.compositeFrames = temporalSmoothEnabled_ || (stabilizationEnabled_ && bumpHoldEnabled_);
-    context.strokeWeight = strokeWeight_;
-    return context;
+    // Composites the path would produce for the current request: CUDA runs
+    // Temporal Smooth and Extra Stable; the CPU fallback only blends in the
+    // legacy debug view.
+    const bool requestedComposite =
+        cudaScene ? (temporalSmoothEnabled_ || (stabilizationEnabled_ && bumpHoldEnabled_))
+                  : (debugViewEnabled_ && temporalSmoothEnabled_);
+    return uctProvenance_.Context(cudaScene, UltraClearTextRequest(), requestedComposite, transform,
+                                  viewportWidth, viewportHeight, cameraActive_ && cameraFramePresented_,
+                                  strokeWeight_);
 }
 
 } // namespace okuflow

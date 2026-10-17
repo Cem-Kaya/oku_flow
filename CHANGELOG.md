@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Move Ultra Clear Text probe/validation work off the presentation thread and
+  hand GPU readbacks to workers through immutable pooled buffers. Cached scenes
+  keep their applied frame/settings identity through deferred processing; source
+  retirement clears text immediately. Correct reading order, freshness and
+  measured-color refresh, with cached glyph repaint checks while OCR is held.
+
 - Keep background flattening neutral when only glare reduction is selected.
   Ordinary pixels retain their original values and the saved flatten strength
   remains available when re-enabled.

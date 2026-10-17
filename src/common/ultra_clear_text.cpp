@@ -1,6 +1,7 @@
 #include "okuflow/common/ultra_clear_text.hpp"
 
 #include <QElapsedTimer>
+#include <QHash>
 
 #include <algorithm>
 #include <chrono>
@@ -235,6 +236,120 @@ QImage ToOwnedArgb(const std::uint8_t* bgra, int width, int height, int stride)
 
 } // namespace
 
+// --- Pixel hand-off -----------------------------------------------------------
+
+std::shared_ptr<PixelPool> PixelPool::Create(int capacity)
+{
+    return std::shared_ptr<PixelPool>(new PixelPool(std::max(1, capacity)));
+}
+
+std::vector<std::uint8_t> PixelPool::Take(std::size_t minimumSize)
+{
+    std::lock_guard lock(mutex_);
+    for (auto it = free_.begin(); it != free_.end(); ++it) {
+        if (it->size() >= minimumSize) {
+            std::vector<std::uint8_t> bytes = std::move(*it);
+            free_.erase(it);
+            return bytes;
+        }
+    }
+    return {};
+}
+
+void PixelPool::Give(std::vector<std::uint8_t>&& bytes)
+{
+    std::lock_guard lock(mutex_);
+    if (static_cast<int>(free_.size()) < capacity_ && !bytes.empty()) {
+        free_.push_back(std::move(bytes));
+    }
+}
+
+SharedPixels PixelPool::Wrap(PixelBuffer* buffer)
+{
+    std::weak_ptr<PixelPool> weak = weak_from_this();
+    return SharedPixels(buffer, [weak](const PixelBuffer* owned) {
+        auto* mutableBuffer = const_cast<PixelBuffer*>(owned);
+        if (const std::shared_ptr<PixelPool> pool = weak.lock()) {
+            pool->Give(std::move(mutableBuffer->bytes));
+        }
+        delete mutableBuffer;
+    });
+}
+
+SharedPixels PixelPool::Adopt(std::vector<std::uint8_t>& bytes, int width, int height, int strideBytes)
+{
+    const std::size_t needed = static_cast<std::size_t>(std::max(0, strideBytes)) *
+                               static_cast<std::size_t>(std::max(0, height));
+    if (width <= 0 || height <= 0 || strideBytes < width * 4 || bytes.size() < needed) {
+        return {};
+    }
+    auto* buffer = new PixelBuffer;
+    buffer->bytes.swap(bytes);
+    buffer->width = width;
+    buffer->height = height;
+    buffer->strideBytes = strideBytes;
+    // A recycled vector of the same size makes the presenter's next resize()
+    // a no-op; otherwise it allocates once, as before.
+    bytes = Take(needed);
+    if (bytes.empty()) {
+        std::lock_guard lock(mutex_);
+        ++allocations_; // the caller's next fill allocates once
+    }
+    if (bytes.size() > needed) {
+        bytes.resize(needed);
+    }
+    return Wrap(buffer);
+}
+
+SharedPixels PixelPool::Copy(const std::uint8_t* bgra, int width, int height, int strideBytes)
+{
+    if (!bgra || width <= 0 || height <= 0 || strideBytes < width * 4) {
+        return {};
+    }
+    const std::size_t rowBytes = static_cast<std::size_t>(width) * 4;
+    const std::size_t needed = rowBytes * static_cast<std::size_t>(height);
+    auto* buffer = new PixelBuffer;
+    buffer->bytes = Take(needed);
+    if (buffer->bytes.size() < needed) {
+        std::lock_guard lock(mutex_);
+        ++allocations_;
+    }
+    buffer->bytes.resize(needed);
+    for (int y = 0; y < height; ++y) {
+        std::copy_n(bgra + static_cast<std::size_t>(y) * strideBytes, rowBytes,
+                    buffer->bytes.data() + static_cast<std::size_t>(y) * rowBytes);
+    }
+    buffer->width = width;
+    buffer->height = height;
+    buffer->strideBytes = static_cast<int>(rowBytes);
+    return Wrap(buffer);
+}
+
+int PixelPool::FreeCount() const
+{
+    std::lock_guard lock(mutex_);
+    return static_cast<int>(free_.size());
+}
+
+std::uint64_t PixelPool::Allocations() const
+{
+    std::lock_guard lock(mutex_);
+    return allocations_;
+}
+
+QImage WrapPixels(const SharedPixels& pixels)
+{
+    if (!pixels || !pixels->IsValid()) {
+        return {};
+    }
+    // Read-only constructor: any non-const access deep-copies instead of
+    // writing into the shared buffer.
+    auto* keepAlive = new SharedPixels(pixels);
+    return QImage(
+        static_cast<const uchar*>(pixels->bytes.data()), pixels->width, pixels->height, pixels->strideBytes,
+        QImage::Format_ARGB32, [](void* info) { delete static_cast<SharedPixels*>(info); }, keepAlive);
+}
+
 // --- Geometry ----------------------------------------------------------------
 
 bool ViewPixelToScene(const ViewTransform& t, double width, double height,
@@ -382,7 +497,8 @@ ReferencePatch BuildReferencePatch(const ProbeFrame& reference, const QRectF& li
     return patch;
 }
 
-PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, const MatchTuning& tuning)
+PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, const MatchTuning& tuning,
+                      std::optional<QPointF> seedSceneOffset)
 {
     PatchMatch match;
     if (!patch.valid || !probe.IsValid()) {
@@ -394,34 +510,57 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
     if (!match.visible) {
         return match;
     }
+    const double confident = tuning.minimumScore + 0.08;
+    const int radius = std::max(1, tuning.searchRadiusPx);
     double bestScore = zero.score;
     double bestX = 0.0, bestY = 0.0;
     // Static fast path: an unmoved, unchanged line is the common case.
-    if (zero.score < tuning.minimumScore + 0.08) {
-        const int radius = std::max(1, tuning.searchRadiusPx);
-        for (int dy = -radius; dy <= radius; dy += 2) {
-            for (int dx = -radius; dx <= radius; dx += 2) {
-                const Correlation c = Correlate(patch, g, probe, dx, dy, 3);
-                if (c.visibleFraction >= tuning.minimumVisibleFraction && c.score > bestScore) {
+    if (zero.score < confident) {
+        bool seeded = false;
+        if (seedSceneOffset) {
+            // Motion continuity: try the last validated offset first, but only
+            // inside the same bounded window the grid would search.
+            const double sx = std::round(seedSceneOffset->x() / g.sceneUnitsPerPixelX);
+            const double sy = std::round(seedSceneOffset->y() / g.sceneUnitsPerPixelY);
+            if ((sx != 0.0 || sy != 0.0) && std::abs(sx) <= radius && std::abs(sy) <= radius) {
+                const Correlation c = Correlate(patch, g, probe, sx, sy, 1);
+                if (c.visibleFraction >= tuning.minimumVisibleFraction && c.score >= confident) {
                     bestScore = c.score;
-                    bestX = dx;
-                    bestY = dy;
+                    bestX = sx;
+                    bestY = sy;
+                    seeded = true;
                 }
             }
         }
+        if (!seeded) {
+            for (int dy = -radius; dy <= radius; dy += 2) {
+                for (int dx = -radius; dx <= radius; dx += 2) {
+                    const Correlation c = Correlate(patch, g, probe, dx, dy, 3);
+                    if (c.visibleFraction >= tuning.minimumVisibleFraction && c.score > bestScore) {
+                        bestScore = c.score;
+                        bestX = dx;
+                        bestY = dy;
+                    }
+                }
+            }
+            bestScore = Correlate(patch, g, probe, bestX, bestY, 1).score;
+        }
         const double coarseX = bestX, coarseY = bestY;
-        bestScore = Correlate(patch, g, probe, coarseX, coarseY, 1).score;
         for (int dy = -1; dy <= 1; ++dy) {
             for (int dx = -1; dx <= 1; ++dx) {
                 if (dx == 0 && dy == 0) {
                     continue;
                 }
-                const Correlation c =
-                    Correlate(patch, g, probe, coarseX + dx, coarseY + dy, 1);
+                const double x = coarseX + dx;
+                const double y = coarseY + dy;
+                if (std::abs(x) > radius + 1 || std::abs(y) > radius + 1) {
+                    continue;
+                }
+                const Correlation c = Correlate(patch, g, probe, x, y, 1);
                 if (c.visibleFraction >= tuning.minimumVisibleFraction && c.score > bestScore) {
                     bestScore = c.score;
-                    bestX = coarseX + dx;
-                    bestY = coarseY + dy;
+                    bestX = x;
+                    bestY = y;
                 }
             }
         }
@@ -446,6 +585,62 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
     match.matched = bestScore >= tuning.minimumScore;
     match.sceneOffset = {bestX * g.sceneUnitsPerPixelX, bestY * g.sceneUnitsPerPixelY};
     return match;
+}
+
+QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFrame& probe,
+                              const MatchTuning& tuning, double budgetMs,
+                              const std::atomic<bool>* cancelled)
+{
+    QVector<LineCheck> checks;
+    checks.reserve(lines.size());
+    QElapsedTimer timer;
+    timer.start();
+    bool stopped = !probe.IsValid();
+    for (const LineReference& line : lines) {
+        LineCheck check;
+        check.lineId = line.lineId;
+        if (!stopped && ((cancelled && cancelled->load(std::memory_order_relaxed)) ||
+                         (budgetMs > 0.0 && timer.nsecsElapsed() / 1e6 >= budgetMs))) {
+            stopped = true;
+        }
+        if (!stopped) {
+            check.checked = true;
+            const bool hasSeed = line.lastSceneOffset != QPointF();
+            check.match = MatchPatch(line.reference, probe, tuning,
+                                     hasSeed ? std::optional<QPointF>(line.lastSceneOffset) : std::nullopt);
+        }
+        checks.push_back(check);
+    }
+    return checks;
+}
+
+QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minimumWordHeightPx)
+{
+    QVector<PreparedLine> prepared;
+    prepared.reserve(result.output.lines.size());
+    const SourceStamp& stamp = result.stamp;
+    const double width = stamp.viewportWidth;
+    const double height = stamp.viewportHeight;
+    for (const RecognizedLine& line : result.output.lines) {
+        PreparedLine out;
+        for (const RecognizedWord& word : line.words) {
+            const QString text = word.text.trimmed();
+            if (text.isEmpty() || word.boundsPx.height() < minimumWordHeightPx) {
+                continue;
+            }
+            const QRectF scene = ViewRectToScene(stamp.viewTransform, width, height, word.boundsPx);
+            if (scene.isEmpty()) {
+                continue;
+            }
+            out.words.push_back({text, scene});
+            out.sceneRect = out.sceneRect.isNull() ? scene : out.sceneRect.united(scene);
+        }
+        if (!out.words.isEmpty()) {
+            out.reference = BuildReferencePatch(result.reference, out.sceneRect);
+        }
+        prepared.push_back(std::move(out));
+    }
+    return prepared;
 }
 
 std::optional<double> SceneSimilarity(const ProbeFrame& a, const ProbeFrame& b)
@@ -566,6 +761,7 @@ struct RecognitionScheduler::State {
     Completion completion;
     StatusChanged statusChanged;
     int referenceDecimation{2};
+    double minimumWordHeightPx{7.0};
     std::optional<Job> pending;
     bool inFlight{};
     std::atomic<bool> cancelInFlight{false};
@@ -587,6 +783,28 @@ struct RecognitionScheduler::State {
         if (callbacksEnabled && statusChanged) {
             statusChanged(value);
         }
+    }
+
+    std::uint64_t Enqueue(const SourceStamp& stamp, QImage owned)
+    {
+        std::lock_guard lock(mutex);
+        if (shutdown || status.state == BackendState::kUnavailable ||
+            status.state == BackendState::kFailed) {
+            return 0;
+        }
+        if (pending) {
+            ++stats.coalesced;
+        }
+        Job job;
+        job.id = nextJobId++;
+        job.authority = authority;
+        job.stamp = stamp;
+        job.pixels = std::move(owned);
+        const std::uint64_t id = job.id;
+        pending = std::move(job);
+        ++stats.submitted;
+        wake.notify_one();
+        return id;
     }
 
     static void Run(std::shared_ptr<State> self)
@@ -640,6 +858,9 @@ struct RecognitionScheduler::State {
                     }
                     result.lineColors.push_back(MeasureLineColors(job.pixels, bounds.toAlignedRect()));
                 }
+                // Scene mapping and residual references are pixel work too:
+                // done here so UI-thread admission stays cheap.
+                result.prepared = PrepareLines(result, self->minimumWordHeightPx);
             }
             result.durationMs = timer.nsecsElapsed() / 1e6;
             bool current = false;
@@ -670,9 +891,11 @@ struct RecognitionScheduler::State {
 RecognitionScheduler::RecognitionScheduler(std::unique_ptr<Recognizer> recognizer,
                                            Completion completion,
                                            StatusChanged statusChanged,
-                                           int referenceDecimation)
+                                           int referenceDecimation,
+                                           double minimumWordHeightPx)
     : state_(std::make_shared<State>())
 {
+    state_->minimumWordHeightPx = minimumWordHeightPx;
     state_->recognizer = std::move(recognizer);
     state_->completion = std::move(completion);
     state_->statusChanged = std::move(statusChanged);
@@ -723,24 +946,18 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, QImage pixe
     if (owned.isNull()) {
         return 0;
     }
-    std::lock_guard lock(state_->mutex);
-    if (state_->shutdown || state_->status.state == BackendState::kUnavailable ||
-        state_->status.state == BackendState::kFailed) {
+    return state_->Enqueue(stamp, std::move(owned));
+}
+
+std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixels pixels)
+{
+    // Shared pixels are immutable after hand-off, so a read-only view is an
+    // owned input: the worker keeps the buffer alive until it is done.
+    QImage view = WrapPixels(pixels);
+    if (view.isNull()) {
         return 0;
     }
-    if (state_->pending) {
-        ++state_->stats.coalesced;
-    }
-    State::Job job;
-    job.id = state_->nextJobId++;
-    job.authority = state_->authority;
-    job.stamp = stamp;
-    job.pixels = std::move(owned);
-    const std::uint64_t id = job.id;
-    state_->pending = std::move(job);
-    ++state_->stats.submitted;
-    state_->wake.notify_one();
-    return id;
+    return state_->Enqueue(stamp, std::move(view));
 }
 
 void RecognitionScheduler::Cancel()
@@ -789,6 +1006,166 @@ SchedulerStats RecognitionScheduler::Stats() const
     return state_->stats;
 }
 
+// --- Probe worker ------------------------------------------------------------
+
+struct ProbeWorker::State {
+    std::mutex mutex;
+    std::condition_variable wake;
+    std::mutex callbackMutex;
+    bool callbacksEnabled{true};
+    Completion completion;
+    std::optional<std::pair<std::uint64_t, ProbeRequest>> pending;
+    std::uint64_t pendingAuthority{};
+    bool inFlight{};
+    std::atomic<bool> cancelInFlight{false};
+    std::uint64_t authority{1};
+    std::uint64_t nextJobId{1};
+    bool shutdown{};
+    ProbeWorkerStats stats;
+    std::thread thread;
+
+    static void Run(std::shared_ptr<State> self)
+    {
+        for (;;) {
+            std::uint64_t jobId = 0;
+            std::uint64_t jobAuthority = 0;
+            ProbeRequest request;
+            {
+                std::unique_lock lock(self->mutex);
+                self->wake.wait(lock, [&] { return self->shutdown || self->pending.has_value(); });
+                if (self->shutdown) {
+                    break;
+                }
+                jobId = self->pending->first;
+                request = std::move(self->pending->second);
+                jobAuthority = self->pendingAuthority;
+                self->pending.reset();
+                self->inFlight = true;
+                self->cancelInFlight.store(jobAuthority != self->authority);
+            }
+            ProbeOutcome outcome;
+            outcome.jobId = jobId;
+            outcome.authority = jobAuthority;
+            outcome.stamp = request.stamp;
+            QElapsedTimer timer;
+            timer.start();
+            if (request.pixels && request.pixels->IsValid()) {
+                auto probe = std::make_shared<ProbeFrame>(MakeProbeFrame(
+                    request.pixels->bytes.data(), request.pixels->width, request.pixels->height,
+                    request.pixels->strideBytes, std::max(1, request.decimation), request.stamp));
+                if (probe->IsValid()) {
+                    outcome.probe = std::move(probe);
+                }
+            }
+            outcome.probeMs = timer.nsecsElapsed() / 1e6;
+            timer.restart();
+            if (outcome.probe) {
+                if (request.previous) {
+                    outcome.similarity = SceneSimilarity(*request.previous, *outcome.probe);
+                }
+                outcome.checks = CheckLines(request.lines, *outcome.probe, request.tuning, request.budgetMs,
+                                            &self->cancelInFlight);
+                for (const LineCheck& check : outcome.checks) {
+                    outcome.uncheckedLines += check.checked ? 0 : 1;
+                }
+            }
+            outcome.checkMs = timer.nsecsElapsed() / 1e6;
+            outcome.pixels = std::move(request.pixels);
+            bool current = false;
+            {
+                std::lock_guard lock(self->mutex);
+                self->inFlight = false;
+                current = jobAuthority == self->authority && !self->shutdown;
+                ++(current ? self->stats.completed : self->stats.revoked);
+                self->stats.maxCheckMs = std::max(self->stats.maxCheckMs, outcome.checkMs);
+            }
+            if (current) {
+                std::lock_guard callbackLock(self->callbackMutex);
+                if (self->callbacksEnabled && self->completion) {
+                    self->completion(std::move(outcome));
+                }
+            }
+        }
+    }
+};
+
+ProbeWorker::ProbeWorker(Completion completion)
+    : state_(std::make_shared<State>())
+{
+    state_->completion = std::move(completion);
+    state_->thread = std::thread(&State::Run, state_);
+}
+
+ProbeWorker::~ProbeWorker()
+{
+    {
+        std::lock_guard lock(state_->mutex);
+        state_->shutdown = true;
+        state_->pending.reset();
+        ++state_->authority;
+        state_->cancelInFlight.store(true);
+    }
+    state_->wake.notify_all();
+    {
+        std::lock_guard callbackLock(state_->callbackMutex);
+        state_->callbacksEnabled = false;
+    }
+    // Budgeted CPU work that stops at the next line once cancelled.
+    state_->thread.join();
+}
+
+std::uint64_t ProbeWorker::Submit(ProbeRequest request)
+{
+    std::lock_guard lock(state_->mutex);
+    if (state_->shutdown) {
+        return 0;
+    }
+    if (state_->pending) {
+        ++state_->stats.coalesced;
+    }
+    const std::uint64_t id = state_->nextJobId++;
+    state_->pending.emplace(id, std::move(request));
+    state_->pendingAuthority = state_->authority;
+    ++state_->stats.submitted;
+    state_->wake.notify_one();
+    return id;
+}
+
+void ProbeWorker::Cancel()
+{
+    std::lock_guard lock(state_->mutex);
+    ++state_->authority;
+    if (state_->pending) {
+        state_->pending.reset();
+        ++state_->stats.revoked;
+    }
+    state_->cancelInFlight.store(true);
+}
+
+bool ProbeWorker::IsCurrent(const ProbeOutcome& outcome) const
+{
+    std::lock_guard lock(state_->mutex);
+    return outcome.authority == state_->authority;
+}
+
+bool ProbeWorker::HasPending() const
+{
+    std::lock_guard lock(state_->mutex);
+    return state_->pending.has_value();
+}
+
+bool ProbeWorker::HasWork() const
+{
+    std::lock_guard lock(state_->mutex);
+    return state_->inFlight || state_->pending.has_value();
+}
+
+ProbeWorkerStats ProbeWorker::Stats() const
+{
+    std::lock_guard lock(state_->mutex);
+    return state_->stats;
+}
+
 // --- Overlay model -----------------------------------------------------------
 
 OverlayModel::OverlayModel(ModelTuning tuning)
@@ -823,55 +1200,55 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
     const bool newerProbe = latestProbe && latestProbe->IsValid() &&
                             latestProbe->stamp.SameScene(current) &&
                             latestProbe->stamp.timestampMs > stamp.timestampMs;
+    // The scheduler prepares lines on its worker; hand-built results are
+    // prepared here.
+    const QVector<PreparedLine> prepared =
+        result.prepared.size() == result.output.lines.size()
+            ? result.prepared
+            : PrepareLines(result, tuning_.minimumWordHeightPx);
 
     struct Candidate {
         AcceptedLine line;
-        QVector<AcceptedWord> words; // all usable words, job scene coords
+        const PreparedLine* source{};
     };
     QVector<Candidate> candidates;
     int movedLines = 0;
     int trackableLines = 0;
-    for (int i = 0; i < result.output.lines.size(); ++i) {
-        Candidate candidate;
-        QRectF lineRect;
-        for (const RecognizedWord& word : result.output.lines[i].words) {
-            const QString text = word.text.trimmed();
-            if (text.isEmpty() || word.boundsPx.height() < tuning_.minimumWordHeightPx) {
-                continue;
-            }
-            const QRectF scene = ViewRectToScene(stamp.viewTransform, jobWidth, jobHeight, word.boundsPx);
-            if (scene.isEmpty()) {
-                continue;
-            }
-            candidate.words.push_back({text, scene});
-            lineRect = lineRect.isNull() ? scene : lineRect.united(scene);
-        }
-        if (candidate.words.isEmpty()) {
-            continue;
-        }
-        candidate.line.sceneRect = lineRect;
-        candidate.line.reference = BuildReferencePatch(result.reference, lineRect);
-        if (!candidate.line.reference.valid) {
+    QElapsedTimer matchTimer;
+    matchTimer.start();
+    for (int i = 0; i < prepared.size(); ++i) {
+        const PreparedLine& line = prepared[i];
+        if (line.words.isEmpty() || !line.reference.valid) {
             continue; // untrackable: never displayed
         }
         ++trackableLines;
+        Candidate candidate;
+        candidate.source = &line;
+        candidate.line.sceneRect = line.sceneRect;
+        candidate.line.reference = line.reference;
         candidate.line.colors = i < result.lineColors.size() ? result.lineColors[i] : LineColors{};
         candidate.line.provenance = stamp;
         candidate.line.valid = true;
         candidate.line.validatedAtMs = stamp.timestampMs;
         candidate.line.validatedFrameSeq = stamp.frameSeq;
         if (newerProbe) {
-            const PatchMatch m = MatchPatch(candidate.line.reference, *latestProbe, tuning_.match);
-            if (m.visible && !m.matched) {
-                ++movedLines;
-                continue;
-            }
-            if (m.matched) {
-                candidate.line.sceneOffset = m.sceneOffset;
-                candidate.line.validatedAtMs = latestProbe->stamp.timestampMs;
-                candidate.line.validatedFrameSeq = latestProbe->stamp.frameSeq;
+            if (matchTimer.nsecsElapsed() / 1e6 >= tuning_.admitMatchBudgetMs) {
+                // Budget spent on the UI thread: admit unverified. The line
+                // stays hidden until an off-thread probe validates it.
+                candidate.line.valid = false;
             } else {
-                candidate.line.valid = false; // out of the newer view: unverified
+                const PatchMatch m = MatchPatch(candidate.line.reference, *latestProbe, tuning_.match);
+                if (m.visible && !m.matched) {
+                    ++movedLines;
+                    continue;
+                }
+                if (m.matched) {
+                    candidate.line.sceneOffset = m.sceneOffset;
+                    candidate.line.validatedAtMs = latestProbe->stamp.timestampMs;
+                    candidate.line.validatedFrameSeq = latestProbe->stamp.frameSeq;
+                } else {
+                    candidate.line.valid = false; // out of the newer view: unverified
+                }
             }
         }
         candidates.push_back(std::move(candidate));
@@ -884,23 +1261,30 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
     }
 
     // Temporal agreement: a word is shown only after two independent
-    // recognitions of the same scene agree on its text and position.
-    const auto confirmedBefore = [&](const QString& text, const QRectF& currentRect) {
-        for (const AcceptedLine& line : lines_) {
-            if (!line.provenance.SameScene(current)) {
-                continue;
-            }
-            for (const AcceptedWord& word : line.words) {
-                if (word.text == text &&
-                    Iou(word.sceneRect.translated(line.sceneOffset), currentRect) >= tuning_.agreementIou) {
-                    return true;
-                }
-            }
+    // recognitions of the same scene agree on its text and position. Earlier
+    // words are indexed by text so dense pages stay linear, not quadratic.
+    QHash<QString, QVector<QRectF>> earlier;
+    for (const AcceptedLine& line : lines_) {
+        if (!line.provenance.SameScene(current)) {
+            continue;
         }
-        for (const PendingWord& word : pending_) {
-            if (word.sourceEpoch == current.sourceEpoch &&
-                word.geometryGeneration == current.geometryGeneration && word.text == text &&
-                Iou(word.sceneRect, currentRect) >= tuning_.agreementIou) {
+        for (const AcceptedWord& word : line.words) {
+            earlier[word.text].push_back(word.sceneRect.translated(line.sceneOffset));
+        }
+    }
+    for (const PendingWord& word : pending_) {
+        if (word.sourceEpoch == current.sourceEpoch &&
+            word.geometryGeneration == current.geometryGeneration) {
+            earlier[word.text].push_back(word.sceneRect);
+        }
+    }
+    const auto confirmedBefore = [&](const QString& text, const QRectF& currentRect) {
+        const auto it = earlier.constFind(text);
+        if (it == earlier.constEnd()) {
+            return false;
+        }
+        for (const QRectF& rect : it.value()) {
+            if (Iou(rect, currentRect) >= tuning_.agreementIou) {
                 return true;
             }
         }
@@ -910,14 +1294,14 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
     QVector<AcceptedLine> admitted;
     QVector<PendingWord> nextPending;
     for (Candidate& candidate : candidates) {
-        for (const AcceptedWord& word : candidate.words) {
+        for (const PreparedWord& word : candidate.source->words) {
             const QRectF currentRect = word.sceneRect.translated(candidate.line.sceneOffset);
             if (IsHighRiskToken(word.text)) {
                 ++candidate.line.omittedWords;
                 continue;
             }
             if (confirmedBefore(word.text, currentRect)) {
-                candidate.line.words.push_back(word);
+                candidate.line.words.push_back({word.text, word.sceneRect});
             } else {
                 ++candidate.line.omittedWords;
                 nextPending.push_back({word.text, currentRect, current.sourceEpoch,
@@ -952,42 +1336,61 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
                               : AdmitVerdict::kPending;
 }
 
-ValidationSummary OverlayModel::Validate(const ProbeFrame& probe, std::int64_t nowMs)
+QVector<LineReference> OverlayModel::LineReferences(const SourceStamp& scene) const
 {
-    Q_UNUSED(nowMs);
-    ValidationSummary summary;
-    if (!probe.IsValid()) {
-        return summary;
+    QVector<LineReference> references;
+    references.reserve(lines_.size());
+    for (const AcceptedLine& line : lines_) {
+        if (line.provenance.SameScene(scene)) {
+            references.push_back({line.id, line.reference, line.sceneOffset});
+        }
     }
-    constexpr int kMaximumCheckedLines = 48;
+    return references;
+}
+
+ValidationSummary OverlayModel::ApplyChecks(const QVector<LineCheck>& checks, const SourceStamp& probeStamp)
+{
+    ValidationSummary summary;
+    QHash<std::uint64_t, const LineCheck*> byId;
+    byId.reserve(checks.size());
+    for (const LineCheck& check : checks) {
+        byId.insert(check.lineId, &check);
+    }
     QVector<AcceptedLine> kept;
     kept.reserve(lines_.size());
     for (AcceptedLine& line : lines_) {
-        if (!line.provenance.SameScene(probe.stamp)) {
+        if (!line.provenance.SameScene(probeStamp)) {
             ++summary.invalid;
             continue;
         }
-        if (summary.checked >= kMaximumCheckedLines) {
-            line.valid = false;
+        const LineCheck* check = byId.value(line.id, nullptr);
+        // Not part of this probe (admitted after it was taken), or already
+        // validated against newer pixels: keep the newer state.
+        if (!check || probeStamp.timestampMs < line.validatedAtMs) {
+            kept.push_back(line);
+            continue;
+        }
+        if (!check->checked) {
+            line.valid = false; // budget exhausted: unverified, hidden
+            ++summary.unchecked;
             kept.push_back(line);
             continue;
         }
         ++summary.checked;
-        const PatchMatch m = MatchPatch(line.reference, probe, tuning_.match);
-        if (!m.visible) {
+        if (!check->match.visible) {
             line.valid = false;
             ++summary.notVisible;
             kept.push_back(line);
             continue;
         }
-        if (!m.matched) {
+        if (!check->match.matched) {
             ++summary.invalid; // content changed, occluded or moved too far
             continue;
         }
         line.valid = true;
-        line.sceneOffset = m.sceneOffset;
-        line.validatedAtMs = probe.stamp.timestampMs;
-        line.validatedFrameSeq = probe.stamp.frameSeq;
+        line.sceneOffset = check->match.sceneOffset;
+        line.validatedAtMs = probeStamp.timestampMs;
+        line.validatedFrameSeq = probeStamp.frameSeq;
         ++summary.valid;
         kept.push_back(line);
     }
@@ -995,16 +1398,26 @@ ValidationSummary OverlayModel::Validate(const ProbeFrame& probe, std::int64_t n
     return summary;
 }
 
+ValidationSummary OverlayModel::Validate(const ProbeFrame& probe, std::int64_t nowMs)
+{
+    Q_UNUSED(nowMs);
+    if (!probe.IsValid()) {
+        return {};
+    }
+    return ApplyChecks(CheckLines(LineReferences(probe.stamp), probe, tuning_.match, 0.0), probe.stamp);
+}
+
+bool OverlayModel::IsShown(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const
+{
+    return line.valid && !line.words.isEmpty() &&
+           (nowMs - line.validatedAtMs <= tuning_.freshnessMs || currentFrameSeq == line.validatedFrameSeq);
+}
+
 QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t currentFrameSeq) const
 {
     QVector<SceneWord> words;
     for (const AcceptedLine& line : lines_) {
-        if (!line.valid) {
-            continue;
-        }
-        const bool fresh = nowMs - line.validatedAtMs <= tuning_.freshnessMs ||
-                           currentFrameSeq == line.validatedFrameSeq;
-        if (!fresh) {
+        if (!IsShown(line, nowMs, currentFrameSeq)) {
             continue;
         }
         for (const AcceptedWord& word : line.words) {
@@ -1033,29 +1446,64 @@ QVector<DisplayWord> OverlayModel::DisplayWords(const ViewTransform& transform, 
     return words;
 }
 
-QString OverlayModel::ReadingText() const
+QString OverlayModel::ReadingText(std::int64_t nowMs, std::uint64_t currentFrameSeq) const
 {
-    QVector<const AcceptedLine*> ordered;
+    // Only text that is verified on screen now is offered for reading;
+    // unverified, moved or stale lines are left out rather than guessed.
+    struct Entry {
+        QRectF rect;
+        std::uint64_t id{};
+        const AcceptedLine* line{};
+        int row{};
+    };
+    QVector<Entry> entries;
     for (const AcceptedLine& line : lines_) {
-        ordered.push_back(&line);
-    }
-    std::sort(ordered.begin(), ordered.end(), [](const AcceptedLine* a, const AcceptedLine* b) {
-        const QRectF ra = a->sceneRect.translated(a->sceneOffset);
-        const QRectF rb = b->sceneRect.translated(b->sceneOffset);
-        const double band = std::min(ra.height(), rb.height()) * 0.5;
-        if (std::abs(ra.center().y() - rb.center().y()) > band) {
-            return ra.center().y() < rb.center().y();
+        if (IsShown(line, nowMs, currentFrameSeq)) {
+            entries.push_back({line.sceneRect.translated(line.sceneOffset), line.id, &line, 0});
         }
-        return ra.left() < rb.left();
+    }
+    // 1) Strict order by vertical centre (ties: left edge, then id).
+    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
+        const double ay = a.rect.center().y();
+        const double by = b.rect.center().y();
+        if (ay != by) {
+            return ay < by;
+        }
+        if (a.rect.left() != b.rect.left()) {
+            return a.rect.left() < b.rect.left();
+        }
+        return a.id < b.id;
+    });
+    // 2) Explicit row clustering: a line joins the current row while its
+    //    centre lies inside the row anchor's vertical extent. The anchor is
+    //    the row's first line, so membership never depends on pair order.
+    int row = -1;
+    double anchorBottom = 0.0;
+    for (Entry& entry : entries) {
+        if (row < 0 || entry.rect.center().y() > anchorBottom) {
+            ++row;
+            anchorBottom = entry.rect.bottom();
+        }
+        entry.row = row;
+    }
+    // 3) Strict order within rows by left edge (ties: id).
+    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
+        if (a.row != b.row) {
+            return a.row < b.row;
+        }
+        if (a.rect.left() != b.rect.left()) {
+            return a.rect.left() < b.rect.left();
+        }
+        return a.id < b.id;
     });
     QStringList out;
-    for (const AcceptedLine* line : ordered) {
+    for (const Entry& entry : entries) {
         QStringList words;
-        for (const AcceptedWord& word : line->words) {
+        for (const AcceptedWord& word : entry.line->words) {
             words.push_back(word.text);
         }
         QString text = words.join(QLatin1Char(' '));
-        if (line->omittedWords > 0) {
+        if (entry.line->omittedWords > 0) {
             text += QStringLiteral(" …");
         }
         out.push_back(text);

@@ -6,8 +6,11 @@ opt-in, session-only development feature. It is **not** release-accepted, and
 nothing here claims recognition accuracy beyond the fixtures listed below.
 
 OCR is not optical sharpening. UCT replaces only words it has recognized and
-validated; everything else (uncertain words, handwriting, math notation,
-drawings, charts, curves) stays as the original camera image.
+validated; other pixels stay as the original image. It is intended for steady,
+flat printed words. Token filters conservatively omit some risky notation, but
+there is no reliable handwriting/math/diagram classifier: two agreeing OCR
+reads can repeat the same mistake. Complex notation and curved pages are not
+accepted use cases. Use Show original to compare, especially for numbers.
 
 ## What the user gets
 
@@ -52,20 +55,21 @@ stopped working*; it then shows only the original image.
 ## Architecture
 
 ```text
-camera → CUDA/CPU processing → presenter ──────────────► viewport (unchanged)
-                                   │
-                    existing async readback ring (≤ 1 UCT copy outstanding)
-                                   ▼
-             UltraClearTextController (Qt UI thread, cheap)
-              ├─ probe: decimated luma + integral table  ─► validate accepted lines
-              └─ latest-only submit (owned ARGB copy) ──► RecognitionScheduler worker
-                                                            └─ Windows.Media.Ocr
-             results ◄─ queued to UI thread ─ stamp/age/residual/agreement checks
-                                   ▼
-             OverlayModel (scene-space accepted words)
-                                   ▼
-             UltraClearTextOverlay (click-through tool window)
-               repaints on every presentation transform change
+camera -> CUDA/CPU processing -> presenter -----------------> viewport
+                                 |
+                     stamped asynchronous viewport readback
+                                 |
+             UI: immutable pooled-buffer handoff (vector swap)
+                                 |
+             ProbeWorker: luma/integral, similarity, residual checks
+                                 |
+             UI: apply matching outcomes / latest-only OCR admission
+                                 |
+             RecognitionScheduler: Windows OCR + line preparation
+                                 |
+             UI: bounded admission / cached scene-space words
+                                 |
+             overlay reprojects and paints on the presentation clock
 ```
 
 There is no second capture or render pipeline. UCT reuses:
@@ -84,14 +88,21 @@ There is no second capture or render pipeline. UCT reuses:
   decides whether to request one more copy. It never waits for recognition.
 - The overlay holds only accepted scene-space words. Pan, zoom, Fit/Fill and
   resize repaint through the newest transform on the presentation clock.
-- Probes are decimated to at most about 960 pixels wide, so their UI-thread
-  cost tracks the probe size rather than the viewport resolution. Fixture
-  measurements on the development machine (CPU build, not a native
-  presentation-tail measurement): `OnPresented` ≤ 0.02 ms; probe handling
-  about 1.4 ms at 960×540; worst 4K probe about 8.5 ms including one owned
-  submission copy, which happens at most once per recognition request.
-- If presentations stop for 600 ms (camera stopped, source switching,
-  placeholder shown), a watchdog hides cached words; the next presentation
+- Probe construction, similarity and residual searching run on `ProbeWorker`,
+  with one executing and one latest-only waiting request. A 60 ms per-probe
+  search budget leaves unchecked lines unverified/hidden; a cancellation is
+  checked between line searches. OCR preparation also runs on its worker.
+- GPU readback bytes move into a shared immutable pooled buffer after all other
+  readback consumers finish. The handoff is a vector swap, with recycled
+  buffers returned after their last consumer. CPU fallback still copies its
+  reused presentation buffer; this remaining copy has not been called zero-copy.
+- OCR results carry prepared scene-space boxes/reference patches. Admission
+  against a newer probe has a 3 ms search budget; unverified lines stay hidden
+  until a later worker outcome verifies them. Rendering never waits for either
+  worker. These are scheduling budgets, not sensor-to-photon guarantees.
+- Source retirement immediately revokes both worker generations and clears
+  glyphs/reading text. If presentations otherwise stop for 600 ms, a watchdog
+  hides cached words; the next presentation
   of an unchanged, validated scene restores them.
 - Probes are requested at most every 80 ms and only when no UCT copy is
   outstanding (1 s timeout, like the other readback users). If the ring is
@@ -108,6 +119,12 @@ There is no second capture or render pipeline. UCT reuses:
 
 ### Provenance and coordinate invariants
 
+- `UctSceneProvenance` snapshots the applied source, rotation, warp revision,
+  exact display-LUT generation, dimensions and frame only on successful scene
+  processing. Busy/deferred submissions keep the earlier snapshot. CPU fallback
+  records rotation without claiming CUDA warps/colors. A mismatch between the
+  requested and applied scene revokes words until a matching scene arrives.
+  Failed presentations hide glyphs rather than projecting onto unseen pixels.
 - Every copy carries a `uct::SourceStamp`: camera session epoch, UCT geometry
   generation, camera frame sequence, request time, the exact transform and the
   copy's pixel size. Jobs, results and accepted lines keep the stamp of the
@@ -226,3 +243,23 @@ confidence (Windows OCR exposes none), languages beyond the installed Windows
 OCR languages, rotation-aware tracking beyond translation, a frozen-region
 reading mode, persistence of the opt-in, and translations of the new strings
 (see [Localization](localization.md#ultra-clear-text-strings-pending-review)).
+
+## Follow-up verification
+
+The parent independently exercised the original contract and real Windows OCR
+fixture, then completed the interrupted Opus worker/provenance refactor. Added
+contracts cover deferred-frame snapshots, CPU applied settings, immediate
+source retirement, stable mixed-height reading order across all permutations,
+stale reading-pane exclusion and measured-color updates without word movement.
+The cached-glyph test actually repaints 300 panned frames while OCR is held,
+checking that accepted glyphs remain and no OCR completion advances rendering.
+Its p95/p99 callback/paint observations are fixture measurements on this PC,
+not acceptance on a GTX 1070 or physical moving page. Dense 4K residual searches
+are measured separately from their small UI handoff. Raw failures from the
+unfinished refactor and fixture corrections remain in the private audit logs.
+
+A recorded parent CPU fixture run showed cached-glyph `OnPresented` p95/p99
+0.005/0.006 ms and 1920x1080 Qt paint p95/p99 2.829/2.943 ms while OCR was held.
+The separate 52-line 4K residual diagnostic measured p95 58.12 ms; this is why
+that work runs on the probe worker. These observations are one development-PC
+fixture run, exclude capture/GPU/display scanout, and are not end-to-end FPS.

@@ -62,3 +62,8 @@ presenter readback ring. It never blocks presentation, keeps one copy and one
 recognition in flight at most, and invalidates text on camera session,
 scene size, rotation, keystone or stabilization changes. See
 [`docs/ultra_clear_text.md`](../../docs/ultra_clear_text.md).
+
+UCT now snapshots applied scene identity only at successful processing and
+invalidates immediately on camera retirement. Probe work is off-thread; the
+GPU readback handoff swaps immutable pooled vectors after other consumers.
+Requested/applied geometry mismatch hides text while processing catches up.

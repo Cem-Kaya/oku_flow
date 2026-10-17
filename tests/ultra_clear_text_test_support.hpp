@@ -55,18 +55,20 @@ inline SyntheticPage MakePage(const QStringList& lines,
                               QPointF shift = {},
                               int width = 1600,
                               int height = 900,
-                              int pixelSize = 64)
+                              int pixelSize = 64,
+                              QColor ink = QColor(18, 18, 22),
+                              QColor paper = QColor(246, 244, 236))
 {
     RegisterFixtureFonts();
     SyntheticPage page;
     page.image = QImage(width, height, QImage::Format_ARGB32);
-    page.image.fill(QColor(246, 244, 236));
+    page.image.fill(paper);
     QPainter painter(&page.image);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
     painter.setRenderHint(QPainter::Antialiasing, true);
     const QFont font = PageFont(pixelSize);
     painter.setFont(font);
-    painter.setPen(QColor(18, 18, 22));
+    painter.setPen(ink);
     const QFontMetricsF metrics(font);
     const qreal space = metrics.horizontalAdvance(QLatin1Char(' '));
     qreal baseline = 110.0 + shift.y();
@@ -96,6 +98,38 @@ inline SyntheticPage MakePage(const QStringList& lines,
     painter.end();
     page.chartRegion = QRectF(chart.x() / width, chart.y() / height, chart.width() / width,
                               chart.height() / height);
+    return page;
+}
+
+// Words drawn at explicit scene-pixel boxes (each box's height sets its
+// font size), for reading-order fixtures with mixed line heights.
+struct LayoutWord {
+    QString text;
+    QPointF topLeftPx;
+    int pixelSize{};
+};
+
+inline SyntheticPage MakeLayoutPage(const QVector<LayoutWord>& layout, int width = 1600, int height = 900)
+{
+    RegisterFixtureFonts();
+    SyntheticPage page;
+    page.image = QImage(width, height, QImage::Format_ARGB32);
+    page.image.fill(QColor(246, 244, 236));
+    QPainter painter(&page.image);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+    painter.setPen(QColor(18, 18, 22));
+    for (const LayoutWord& word : layout) {
+        const QFont font = PageFont(word.pixelSize);
+        painter.setFont(font);
+        const QFontMetricsF metrics(font);
+        const qreal baseline = word.topLeftPx.y() + metrics.ascent();
+        painter.drawText(QPointF(word.topLeftPx.x(), baseline), word.text);
+        const QRectF box(word.topLeftPx.x(), word.topLeftPx.y(), metrics.horizontalAdvance(word.text),
+                         metrics.ascent() + metrics.descent());
+        page.words.push_back({word.text, QRectF(box.x() / width, box.y() / height, box.width() / width,
+                                                box.height() / height)});
+    }
+    painter.end();
     return page;
 }
 

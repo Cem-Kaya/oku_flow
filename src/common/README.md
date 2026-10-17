@@ -98,3 +98,8 @@ built-in Windows OCR backend is split into the Qt-free C++/WinRT unit
 `uct_windows_ocr.cpp` (no precompiled header) and the adapter
 `uct_default_recognizer.cpp`, so fixtures can link the core without WinRT.
 See [`docs/ultra_clear_text.md`](../../docs/ultra_clear_text.md).
+
+UCT `PixelPool`/`SharedPixels` retain immutable buffers across its two latest-only
+workers. `ProbeWorker` builds bounded probes and residual checks off the UI;
+`RecognitionScheduler` prepares OCR lines. Budget-exhausted validation remains
+unverified. Reading order uses strict sorting plus explicit row clustering.

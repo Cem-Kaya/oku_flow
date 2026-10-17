@@ -36,6 +36,7 @@ public:
     void SetWords(QVector<SceneWord> words);
     void ClearWords();
     int WordCount() const noexcept { return words_.size(); }
+    const QVector<SceneWord>& Words() const noexcept { return words_; }
 
     // User style: -3..3 maps onto font weight, reusing Text Clarity's
     // existing stroke-weight preference.

@@ -13,7 +13,9 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <vector>
 
 // Ultra Clear Text (UCT): local OCR of stable printed camera text, accepted
 // only after provenance, temporal-agreement and pixel-residual checks, and
@@ -60,6 +62,51 @@ QRectF ViewRectToScene(const ViewTransform& transform, double width, double heig
 QRectF SceneRectToView(const ViewTransform& transform, double width, double height,
                        const QRectF& sceneRect);
 
+// Owned BGRA pixels handed from the UI thread to workers without copying.
+// After hand-off nobody writes to the buffer; workers only read it.
+struct PixelBuffer {
+    std::vector<std::uint8_t> bytes;
+    int width{};
+    int height{};
+    int strideBytes{};
+    bool IsValid() const noexcept
+    {
+        return width > 0 && height > 0 && strideBytes >= width * 4 &&
+               bytes.size() >= static_cast<std::size_t>(strideBytes) * static_cast<std::size_t>(height);
+    }
+};
+using SharedPixels = std::shared_ptr<const PixelBuffer>;
+
+// Recycles viewport-sized byte vectors so the steady-state hand-off of a
+// presenter readback is a vector swap, never a 4K copy or allocation. A
+// buffer returns to the pool when its last owner (UI, probe worker or OCR
+// worker) releases it, on whichever thread that happens.
+class PixelPool : public std::enable_shared_from_this<PixelPool> {
+public:
+    static std::shared_ptr<PixelPool> Create(int capacity = 4);
+    // Takes ownership of `bytes` (e.g. the presenter's reusable readback
+    // vector) and refills it with a recycled vector when one is free.
+    SharedPixels Adopt(std::vector<std::uint8_t>& bytes, int width, int height, int strideBytes);
+    // Copies caller-owned pixels into a pooled buffer.
+    SharedPixels Copy(const std::uint8_t* bgra, int width, int height, int strideBytes);
+    int FreeCount() const;
+    std::uint64_t Allocations() const;
+
+private:
+    explicit PixelPool(int capacity) : capacity_(capacity) {}
+    SharedPixels Wrap(PixelBuffer* buffer);
+    std::vector<std::uint8_t> Take(std::size_t minimumSize);
+    void Give(std::vector<std::uint8_t>&& bytes);
+
+    mutable std::mutex mutex_;
+    std::vector<std::vector<std::uint8_t>> free_;
+    int capacity_{};
+    std::uint64_t allocations_{};
+};
+
+// QImage view of shared pixels; the image keeps the buffer alive.
+QImage WrapPixels(const SharedPixels& pixels);
+
 // Low-resolution luma copy used for residual validation and scene stability.
 // The image can be any size; mapping uses the stamp's normalized transform.
 struct ProbeFrame {
@@ -77,6 +124,14 @@ struct ProbeFrame {
 // integer factor (>= 1). Returns an invalid probe for malformed input.
 ProbeFrame MakeProbeFrame(const std::uint8_t* bgra, int width, int height, int strideBytes,
                           int decimation, const SourceStamp& stamp);
+
+struct ReferencePatch {
+    QRectF sceneRect; // sampled area (line box plus margin), scene units
+    int columns{};
+    int rows{};
+    QVector<float> values; // zero-mean, unit-variance samples
+    bool valid{};
+};
 
 // --- Recognition backend -------------------------------------------------
 
@@ -132,6 +187,20 @@ struct LineColors {
     QColor background{Qt::white};
 };
 
+// A recognized line already mapped to scene coordinates with its residual
+// reference, prepared on the recognition worker so admission on the UI
+// thread does no pixel work.
+struct PreparedWord {
+    QString text;
+    QRectF sceneRect;
+};
+
+struct PreparedLine {
+    QVector<PreparedWord> words; // usable words only (non-empty, tall enough)
+    QRectF sceneRect;
+    ReferencePatch reference;    // invalid when untrackable
+};
+
 struct RecognitionResult {
     std::uint64_t jobId{};
     std::uint64_t authority{};
@@ -141,8 +210,15 @@ struct RecognitionResult {
     // acceptance validates against the exact recognized content.
     ProbeFrame reference;
     QVector<LineColors> lineColors; // parallel to output.lines
+    // Parallel to output.lines when filled by the scheduler; Admit prepares
+    // lines itself when this is empty (hand-built fixtures).
+    QVector<PreparedLine> prepared;
     double durationMs{};
 };
+
+// Maps recognized words into scene coordinates and builds per-line residual
+// references from `result.reference`. Pure; safe on any thread.
+QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minimumWordHeightPx);
 
 struct SchedulerStats {
     std::uint64_t submitted{};
@@ -166,7 +242,8 @@ public:
     RecognitionScheduler(std::unique_ptr<Recognizer> recognizer,
                          Completion completion,
                          StatusChanged statusChanged,
-                         int referenceDecimation = 2);
+                         int referenceDecimation = 2,
+                         double minimumWordHeightPx = 7.0);
     ~RecognitionScheduler();
     RecognitionScheduler(const RecognitionScheduler&) = delete;
     RecognitionScheduler& operator=(const RecognitionScheduler&) = delete;
@@ -174,6 +251,8 @@ public:
     // Takes an independently owned copy (detached by the caller or here).
     // Returns the job id, or 0 when the backend is unavailable/failed.
     std::uint64_t Submit(const SourceStamp& stamp, QImage pixels);
+    // Zero-copy hand-off of already shared, immutable pixels.
+    std::uint64_t Submit(const SourceStamp& stamp, SharedPixels pixels);
     void Cancel();
     std::uint64_t Authority() const;
     bool IsCurrent(const RecognitionResult& result) const;
@@ -188,14 +267,6 @@ private:
 };
 
 // --- Acceptance and registration ------------------------------------------
-
-struct ReferencePatch {
-    QRectF sceneRect; // sampled area (line box plus margin), scene units
-    int columns{};
-    int rows{};
-    QVector<float> values; // zero-mean, unit-variance samples
-    bool valid{};
-};
 
 ReferencePatch BuildReferencePatch(const ProbeFrame& reference, const QRectF& sceneRect);
 
@@ -212,8 +283,33 @@ struct MatchTuning {
     int searchRadiusPx{6}; // probe pixels
 };
 
+// `seedSceneOffset` (e.g. the line's last validated offset) is tried before
+// the coarse grid; it never widens the bounded search window.
 PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe,
-                      const MatchTuning& tuning = {});
+                      const MatchTuning& tuning = {},
+                      std::optional<QPointF> seedSceneOffset = std::nullopt);
+
+// One accepted line to revalidate, snapshotted for a worker thread.
+// ReferencePatch values are implicitly shared and never mutated after
+// creation, so the snapshot is a reference-count copy.
+struct LineReference {
+    std::uint64_t lineId{};
+    ReferencePatch reference;
+    QPointF lastSceneOffset;
+};
+
+struct LineCheck {
+    std::uint64_t lineId{};
+    bool checked{}; // false: budget exhausted or cancelled, so unverified
+    PatchMatch match;
+};
+
+// Residual-checks lines against a probe until `budgetMs` elapses (<= 0 is
+// unlimited) or `cancelled` is set. Unchecked lines are reported, never
+// silently treated as valid.
+QVector<LineCheck> CheckLines(const QVector<LineReference>& lines, const ProbeFrame& probe,
+                              const MatchTuning& tuning, double budgetMs,
+                              const std::atomic<bool>* cancelled = nullptr);
 
 // Scene-registered similarity of two probes over their common area. Returns
 // a correlation in [-1, 1], or nullopt when they share too little area.
@@ -224,6 +320,67 @@ std::optional<double> SceneSimilarity(const ProbeFrame& a, const ProbeFrame& b);
 // notation the MVP never claims (superscripts, math operators beyond simple
 // arithmetic). Such words fail closed to original pixels.
 bool IsHighRiskToken(const QString& text);
+
+// --- Probe worker -------------------------------------------------------------
+
+// Everything one probe needs, owned by the request: the viewport pixels, the
+// previous probe for scene stability, and snapshots of the lines to check.
+struct ProbeRequest {
+    SourceStamp stamp;
+    SharedPixels pixels;
+    int decimation{2};
+    std::shared_ptr<const ProbeFrame> previous;
+    QVector<LineReference> lines;
+    MatchTuning tuning;
+    double budgetMs{60.0}; // residual checks stop here; the rest stay unverified
+};
+
+struct ProbeOutcome {
+    std::uint64_t jobId{};
+    std::uint64_t authority{};
+    SourceStamp stamp;
+    SharedPixels pixels; // handed back for a possible zero-copy OCR submit
+    std::shared_ptr<const ProbeFrame> probe; // null when the pixels were unusable
+    std::optional<double> similarity;        // against `previous`
+    QVector<LineCheck> checks;
+    int uncheckedLines{};
+    double probeMs{};
+    double checkMs{};
+};
+
+struct ProbeWorkerStats {
+    std::uint64_t submitted{};
+    std::uint64_t coalesced{}; // pending requests replaced before starting
+    std::uint64_t completed{};
+    std::uint64_t revoked{};
+    double maxCheckMs{};
+};
+
+// Builds probes and runs residual validation off the UI thread. One worker,
+// at most one request in flight plus one latest-only pending slot; Submit
+// never blocks on work. Cancel() revokes authority immediately and stops the
+// in-flight check loop at the next line. Work is CPU-only and budgeted, so
+// destruction joins.
+class ProbeWorker {
+public:
+    using Completion = std::function<void(ProbeOutcome)>; // worker thread
+
+    explicit ProbeWorker(Completion completion);
+    ~ProbeWorker();
+    ProbeWorker(const ProbeWorker&) = delete;
+    ProbeWorker& operator=(const ProbeWorker&) = delete;
+
+    std::uint64_t Submit(ProbeRequest request);
+    void Cancel();
+    bool IsCurrent(const ProbeOutcome& outcome) const;
+    bool HasPending() const;
+    bool HasWork() const;
+    ProbeWorkerStats Stats() const;
+
+private:
+    struct State;
+    std::shared_ptr<State> state_;
+};
 
 enum class AdmitVerdict : std::uint8_t {
     kAccepted,      // at least one word now displayed
@@ -274,6 +431,9 @@ struct ModelTuning {
     std::int64_t freshnessMs{350};
     double minimumWordHeightPx{7.0};
     double agreementIou{0.5};
+    // UI-thread budget for checking a result against a newer probe. Lines not
+    // reached stay hidden until the next off-thread probe validates them.
+    double admitMatchBudgetMs{3.0};
     MatchTuning match;
 };
 
@@ -282,6 +442,7 @@ struct ValidationSummary {
     int valid{};
     int invalid{};
     int notVisible{};
+    int unchecked{}; // budget exhausted: unverified, hidden
 };
 
 class OverlayModel {
@@ -293,8 +454,15 @@ public:
                        const SourceStamp& current,
                        const ProbeFrame* latestProbe,
                        std::int64_t nowMs);
-    // Revalidates every accepted line against a newer probe of the same scene.
+    // Revalidates every accepted line against a newer probe of the same scene
+    // (synchronous: CheckLines + ApplyChecks).
     ValidationSummary Validate(const ProbeFrame& probe, std::int64_t nowMs);
+    // Snapshots of lines of `scene` for an off-thread CheckLines.
+    QVector<LineReference> LineReferences(const SourceStamp& scene) const;
+    // Applies off-thread checks made against a probe stamped `probeStamp`.
+    // Lines removed or re-admitted meanwhile are ignored; lines validated by
+    // newer pixels than the probe keep that newer state.
+    ValidationSummary ApplyChecks(const QVector<LineCheck>& checks, const SourceStamp& probeStamp);
     // Words safe to draw now, in scene units. A line is shown only if its
     // latest validation is fresh, or no newer camera frame has been
     // presented since it.
@@ -303,14 +471,20 @@ public:
     QVector<DisplayWord> DisplayWords(const ViewTransform& transform, double width,
                                       double height, std::int64_t nowMs,
                                       std::uint64_t currentFrameSeq) const;
-    // Plain reading-order text of accepted lines; omitted words become "…".
-    QString ReadingText() const;
+    // Plain reading-order text of the lines that SceneWords would show now;
+    // omitted words become "…". Rows are clustered explicitly, then each row
+    // is ordered left to right, so the order is deterministic and strict.
+    QString ReadingText(std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
     const QVector<AcceptedLine>& Lines() const noexcept { return lines_; }
     int AcceptedWordCount() const;
     int PendingWordCount() const noexcept { return pending_.size(); }
     bool HasAcceptedText() const;
 
+    // Single display predicate shared by SceneWords and ReadingText.
+    bool IsShown(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
+
 private:
+
     struct PendingWord {
         QString text;
         QRectF sceneRect;

@@ -1080,10 +1080,19 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
 
     cudaPipelineAvailable_ = true;
     UpdateKeystoneTrackingUi();
-    Q_UNUSED(presentWidth);
-    Q_UNUSED(presentHeight);
     usingCudaLastFrame_ = true;
     cudaSceneReady_ = true;
+    // Ultra Clear Text provenance: exactly what this admitted scene was built
+    // with. Busy/failed submissions above keep the previous snapshot, so
+    // re-presents of the cached texture never borrow a newer frame/setting.
+    {
+        UctSceneSettings applied = UltraClearTextRequest();
+        applied.keystone = settings.enableKeystone;
+        applied.stabilization = settings.enableStabilization;
+        uctProvenance_.OnCudaSceneProcessed(
+            applied, presentWidth, presentHeight, currentCameraFrameSequence_,
+            settings.enableTemporalSmoothing || (settings.enableStabilization && settings.enableBumpHold));
+    }
     if (controlTarget_) controlTarget_->FrameProcessed();
     // CPU pixels belong to the last CPU presentation, not this GPU scene.
     presentationBuffer_.clear();
@@ -1132,8 +1141,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     // Ultra Clear Text reprojects cached words on this presentation clock and
     // at most asks for one more asynchronous copy of the presented viewport.
     const UctFrameContext uctContext = UltraClearTextContext(
-        annotationTransform, processedFrameWidth_, processedFrameHeight_,
-        viewportWidth, viewportHeight);
+        true, annotationTransform, viewportWidth, viewportHeight);
     const bool uctWanted = ultraClearText_ && ultraClearText_->OnPresented(uctContext);
 
     ID3D12Resource* presentationTexture = cudaSharedTexture_.Get();
@@ -1265,6 +1273,9 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         static_cast<float>(presentationTimer.nsecsElapsed()) * 1e-6f);
     if (!presented) {
         pipelineOrchestrator_->MarkViewportDirty();
+        if (ultraClearText_) {
+            ultraClearText_->OnPresentationFailed();
+        }
         if (presenter_->IsFaulted()) {
             HandlePresenterFault();
             return;
@@ -1435,11 +1446,6 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                                                &requestId)) {
         if (controlTarget_) controlTarget_->ConsumeObservationReadback(requestId,QImage(asyncReadbackBuffer_.data(),
             readbackWidth,readbackHeight,readbackWidth*4,QImage::Format_ARGB32));
-        if (ultraClearText_ && ultraClearText_->OwnsReadback(requestId)) {
-            ultraClearText_->OnReadbackCompleted(
-                requestId, asyncReadbackBuffer_.data(), static_cast<int>(readbackWidth),
-                static_cast<int>(readbackHeight), static_cast<int>(readbackWidth * 4));
-        }
         if (requestId == pendingPhotoReadbackId_ &&
             pendingPhotoOriginal_.HasCpuPixels()) {
             SaveCapturedPhotoPair(asyncReadbackBuffer_.data(),
@@ -1510,6 +1516,13 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                                                  debugViewEnabled_,
                                                  focusGateEnabled,
                                                  focusAcceptable);
+        // Last consumer: Ultra Clear Text takes the pixels by swapping the
+        // vector with a recycled one, so no 4K copy happens on this thread.
+        if (ultraClearText_ && ultraClearText_->OwnsReadback(requestId)) {
+            ultraClearText_->OnReadbackCompleted(
+                requestId, asyncReadbackBuffer_, static_cast<int>(readbackWidth),
+                static_cast<int>(readbackHeight), static_cast<int>(readbackWidth * 4));
+        }
     }
 }
 
@@ -1554,6 +1567,7 @@ bool OkuFlowApp::StartCameraCapture(size_t index,
         cudaSurface_->ResetTemporalHistory();
         cudaSurface_->ResetStabilization();
         cudaSurface_->ResetKeystone();
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
     }
     UpdateKeystoneTrackingUi();
@@ -1948,6 +1962,7 @@ void OkuFlowApp::StopCameraCaptureAtExit() {
         cudaSurface_->ResetTemporalHistory();
         cudaSurface_->ResetStabilization();
         cudaSurface_->ResetKeystone();
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
     }
     UpdateKeystoneTrackingUi();
@@ -2399,6 +2414,10 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
         cpuSceneWidth_ = width;
         cpuSceneHeight_ = height;
         cpuSceneReady_ = true;
+        // CPU fallback applies rotation only: no keystone, stabilization,
+        // color scheme or temporal composite.
+        uctProvenance_.OnCpuSceneProcessed(cameraSessionId_, rotationQuarterTurns_, width, height,
+                                           currentCameraFrameSequence_, false);
         if (controlTarget_) controlTarget_->FrameProcessed();
         pendingSceneCaptureClock100ns_ = currentCameraCaptureClock100ns_;
         ++startupProcessedScenes_;
@@ -2445,6 +2464,9 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
     cpuSceneWidth_ = output.width;
     cpuSceneHeight_ = output.height;
     cpuSceneReady_ = true;
+    uctProvenance_.OnCpuSceneProcessed(cameraSessionId_, rotationQuarterTurns_, output.width,
+                                       output.height, currentCameraFrameSequence_,
+                                       config.enableTemporalSmooth);
     if (controlTarget_) controlTarget_->FrameProcessed();
     pendingSceneCaptureClock100ns_ = currentCameraCaptureClock100ns_;
     ++startupProcessedScenes_;
@@ -2535,7 +2557,7 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
     // for Ultra Clear Text before the focus marker is drawn into them.
     if (ultraClearText_) {
         const UctFrameContext uctContext = UltraClearTextContext(
-            transform, srcWidth, srcHeight, mapping.targetWidth, mapping.targetHeight);
+            false, transform, mapping.targetWidth, mapping.targetHeight);
         if (ultraClearText_->OnPresented(uctContext)) {
             ultraClearText_->OnCpuViewport(
                 uctContext, presentationBuffer_.data(), static_cast<int>(mapping.targetWidth),
@@ -2623,6 +2645,11 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         }
     }
     presenter_->Present(presentationBuffer_.data(), mapping.targetWidth, mapping.targetHeight);
+    if (presenter_->IsFaulted() || presenter_->NeedsScenePresent()) {
+        if (ultraClearText_) {
+            ultraClearText_->OnPresentationFailed();
+        }
+    }
     if (presenter_->IsFaulted()) return;
     if (presenter_->NeedsScenePresent()) {
         pipelineOrchestrator_->MarkViewportDirty();

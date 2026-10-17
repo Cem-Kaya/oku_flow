@@ -619,6 +619,7 @@ void OkuFlowApp::SetRotationQuarterTurns(int index) {
         cudaSurface_->ResetTemporalHistory();
         cudaSurface_->ResetStabilization();
         cudaSurface_->ResetKeystone();
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
     }
     UpdateKeystoneTrackingUi();
@@ -777,6 +778,7 @@ void OkuFlowApp::OnStabilizationToggled(bool checked) {
     if (cudaSurface_) {
         cudaSurface_->ResetStabilization();
         cudaSurface_->ResetKeystone();
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
     }
     UpdateKeystoneTrackingUi();
@@ -794,6 +796,7 @@ void OkuFlowApp::OnKeystoneToggled(bool checked) {
     UpdateControlEnabledStates();
     if (cudaSurface_) {
         cudaSurface_->ResetKeystone();
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
     }
     UpdateKeystoneTrackingUi();
@@ -922,6 +925,7 @@ void OkuFlowApp::OnKeystoneStepBack() {
         return;
     }
     if (cudaSurface_->StepKeystoneCorrection(-1)) {
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
         ShowStatusMessage(QStringLiteral("Screen correction moved back and tracking stopped."), 3500);
     }
@@ -943,6 +947,7 @@ void OkuFlowApp::OnKeystoneStepForward() {
         return;
     }
     if (cudaSurface_->StepKeystoneCorrection(1)) {
+        ++uctWarpRevision_;
         cudaSurface_->ResetTextClarityHistory();
         const bool pending = cudaSurface_->GetKeystoneTrackingState().stepPending;
         ShowStatusMessage(pending ? QStringLiteral("Finding one new screen correction...")

@@ -18,40 +18,151 @@ QT_END_NAMESPACE
 #include <limits>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace okuflow {
 
 class UltraClearTextPanel;
 
+// Processing settings that decide where text lands in the processed scene
+// or how it looks. Used twice: as *applied* (what a cached scene was really
+// built with) and as *requested* (what the user asks for now, mapped to what
+// the active pipeline path would apply).
+struct UctSceneSettings {
+    std::uint64_t sourceEpoch{};
+    int rotationQuarterTurns{};
+    bool keystone{};        // CUDA keystone warp applied
+    bool stabilization{};   // CUDA stabilization warp applied
+    // Discrete warp resets/steps (keystone step, stabilization/keystone
+    // reset). Continuous keystone/stabilization tracking between those is
+    // not exposed by the CUDA surface; residual validation covers it.
+    std::uint64_t warpRevision{};
+    std::uint64_t colorScheme{}; // exact display LUT generation, 0 for normal
+    bool operator==(const UctSceneSettings&) const = default;
+};
+
 // Everything that defines the processed-scene geometry. Any change starts a
 // new geometry generation and immediately revokes recognized text.
 struct UctGeometryKey {
-    std::uint64_t sourceEpoch{};
+    UctSceneSettings settings;
     std::uint32_t sceneWidth{};
     std::uint32_t sceneHeight{};
-    int rotationQuarterTurns{};
-    bool keystoneEnabled{};
-    bool stabilizationEnabled{};
 
     bool operator==(const UctGeometryKey&) const = default;
 };
 
 // Per-presentation inputs, sampled on the Qt UI thread at present time.
 struct UctFrameContext {
-    UctGeometryKey geometry;
-    std::uint64_t frameSeq{};
-    ViewTransform transform;     // full-scene -> viewport (not the SR ROI remap)
+    UctGeometryKey geometry;      // applied: baked into the presented scene
+    UctSceneSettings requested;   // requested now; a mismatch revokes text
+    std::uint64_t frameSeq{};     // camera frame baked into the presented scene
+    ViewTransform transform;      // full-scene -> viewport (not the SR ROI remap)
     std::uint32_t viewportWidth{};
     std::uint32_t viewportHeight{};
     bool cameraActive{};
     // Temporal Smooth / Extra Stable present multi-frame composites whose
-    // provenance UCT cannot state truthfully; UCT pauses instead.
+    // provenance UCT cannot state truthfully; UCT pauses instead. True when
+    // either the cached scene or the request is a composite.
     bool compositeFrames{};
     int strokeWeight{};
 };
 
+// Snapshot of what one cached processed scene was built with. Taken only
+// when processing succeeded, so deferred, busy or failed processing and
+// re-presents of cached pixels keep the old scene's provenance.
+struct UctSceneSnapshot {
+    bool valid{};
+    UctGeometryKey geometry;
+    std::uint64_t frameSeq{};
+    bool composite{};
+};
+
+// The production seam between OkuFlowApp's processing paths and Ultra Clear
+// Text. One snapshot per cached scene (CUDA shared texture, CPU scene
+// buffer); presentation builds the context from the snapshot of the scene it
+// actually presents plus the current request.
+class UctSceneProvenance {
+public:
+    // CUDA processing was admitted and queued for `frameSeq`. `applied`
+    // carries the settings actually submitted with this frame.
+    void OnCudaSceneProcessed(const UctSceneSettings& applied, std::uint32_t width,
+                              std::uint32_t height, std::uint64_t frameSeq, bool composite)
+    {
+        cuda_ = {true, {Normalize(applied), width, height}, frameSeq, composite};
+    }
+    // CPU fallback: rotation is applied on the CPU; keystone,
+    // stabilization and display colors are not.
+    void OnCpuSceneProcessed(std::uint64_t sourceEpoch, int rotationQuarterTurns,
+                             std::uint32_t width, std::uint32_t height, std::uint64_t frameSeq,
+                             bool composite)
+    {
+        UctSceneSettings applied;
+        applied.sourceEpoch = sourceEpoch;
+        applied.rotationQuarterTurns = NormalizeTurns(rotationQuarterTurns);
+        cpu_ = {true, {applied, width, height}, frameSeq, composite};
+    }
+    void InvalidateCuda() { cuda_ = {}; }
+    void Reset()
+    {
+        cuda_ = {};
+        cpu_ = {};
+    }
+
+    const UctSceneSnapshot& Cuda() const noexcept { return cuda_; }
+    const UctSceneSnapshot& Cpu() const noexcept { return cpu_; }
+
+    // `requested` is the full user request; the CPU path maps it to what
+    // that path can apply so a lasting CPU fallback is not "settling".
+    static UctSceneSettings RequestFor(bool cudaPath, UctSceneSettings requested)
+    {
+        if (!cudaPath) {
+            requested.keystone = false;
+            requested.stabilization = false;
+            requested.colorScheme = 0;
+        }
+        return Normalize(requested);
+    }
+
+    // Warp revisions only matter while a warp is applied; rotation is mod 4.
+    static UctSceneSettings Normalize(UctSceneSettings settings)
+    {
+        settings.rotationQuarterTurns = NormalizeTurns(settings.rotationQuarterTurns);
+        if (!settings.keystone && !settings.stabilization) {
+            settings.warpRevision = 0;
+        }
+        return settings;
+    }
+
+    UctFrameContext Context(bool cudaPath, const UctSceneSettings& requested, bool requestedComposite,
+                            const ViewTransform& transform, std::uint32_t viewportWidth,
+                            std::uint32_t viewportHeight, bool cameraActive, int strokeWeight) const
+    {
+        const UctSceneSnapshot& scene = cudaPath ? cuda_ : cpu_;
+        UctFrameContext context;
+        context.geometry = scene.geometry;
+        context.requested = RequestFor(cudaPath, requested);
+        context.frameSeq = scene.frameSeq;
+        context.transform = transform;
+        context.viewportWidth = viewportWidth;
+        context.viewportHeight = viewportHeight;
+        // Without a snapshot there is no truthful provenance: behave as if
+        // no camera image were shown.
+        context.cameraActive = cameraActive && scene.valid;
+        context.compositeFrames = scene.composite || requestedComposite;
+        context.strokeWeight = strokeWeight;
+        return context;
+    }
+
+    static int NormalizeTurns(int turns) { return ((turns % 4) + 4) % 4; }
+
+private:
+    UctSceneSnapshot cuda_;
+    UctSceneSnapshot cpu_;
+};
+
 struct UctTiming {
     std::int64_t probeIntervalMs{80};
+    double probeCheckBudgetMs{60.0}; // off-thread residual budget per probe
     std::int64_t readbackTimeoutMs{1000};
     std::int64_t refreshIntervalMs{1500};
     double stableSimilarity{0.92};
@@ -84,18 +195,36 @@ public:
     // Presentation clock. Never blocks; returns true when a viewport copy
     // should be requested with this presentation.
     bool OnPresented(const UctFrameContext& context);
+    void OnSourceRetired(); // immediate revocation; does not wait for another presentation
+    // The presenter rejected the frame: the screen still shows older pixels,
+    // so words reprojected for this context are hidden until the next
+    // successful presentation.
+    void OnPresentationFailed();
     // requestId 0 means the presenter's readback ring was full.
     void OnReadbackRequested(std::uint64_t requestId, const UctFrameContext& context);
     bool OwnsReadback(std::uint64_t requestId) const noexcept;
+    // Takes ownership of the presenter's readback vector by swapping it with
+    // a recycled one (no copy). Call after every other consumer of the same
+    // readback has read the pixels.
+    void OnReadbackCompleted(std::uint64_t requestId, std::vector<std::uint8_t>& bgra, int width,
+                             int height, int strideBytes);
+    // Copying variant for caller-owned memory (fixtures).
     void OnReadbackCompleted(std::uint64_t requestId, const std::uint8_t* bgra, int width,
                              int height, int strideBytes);
-    // CPU presentation path: pixels are already in system memory.
+    // CPU presentation path: the presentation buffer is reused by the app,
+    // so its pixels are copied once into a pooled buffer.
     void OnCpuViewport(const UctFrameContext& context, const std::uint8_t* bgra, int width,
                        int height, int strideBytes);
 
     // Diagnostics and fixtures.
     const uct::OverlayModel& Model() const noexcept { return model_; }
     uct::SchedulerStats SchedulerStatistics() const;
+    uct::ProbeWorkerStats ProbeStatistics() const;
+    std::uint64_t PixelAllocations() const { return pool_->Allocations(); }
+    bool IsSettling() const noexcept { return settling_; }
+    // Wall time of the latest UI-thread probe-outcome handling (diagnostics).
+    double LastOutcomeHandlingMs() const noexcept { return lastOutcomeMs_; }
+    double LastResultHandlingMs() const noexcept { return lastResultMs_; }
     uct::BackendStatus BackendStatusSnapshot() const { return backend_; }
     std::uint64_t GeometryGeneration() const noexcept { return geometryGeneration_; }
     std::uint64_t PresentCount() const noexcept { return presentCount_; }
@@ -110,8 +239,8 @@ signals:
 private:
     void EnsureScheduler();
     void Invalidate(const QString& statusSource);
-    void HandleProbe(const uct::SourceStamp& stamp, const std::uint8_t* bgra, int width,
-                     int height, int strideBytes);
+    void SubmitProbe(const uct::SourceStamp& stamp, uct::SharedPixels pixels);
+    void HandleProbeOutcome(uct::ProbeOutcome outcome);
     void HandleResult(uct::RecognitionResult result);
     void HandleBackendStatus(uct::BackendStatus status);
     void RefreshOverlay(std::int64_t nowMs);
@@ -126,7 +255,9 @@ private:
     RecognizerFactory factory_;
     Clock clock_;
     UctTiming timing_;
+    std::shared_ptr<uct::PixelPool> pool_;
     std::unique_ptr<uct::RecognitionScheduler> scheduler_;
+    std::unique_ptr<uct::ProbeWorker> probeWorker_;
     uct::OverlayModel model_;
     uct::BackendStatus backend_;
 
@@ -135,6 +266,8 @@ private:
     bool compositePaused_{};
     bool cameraActive_{};
     bool haveGeometry_{};
+    bool settling_{};
+    bool presentationFailed_{};
     UctGeometryKey geometry_;
     std::uint64_t geometryGeneration_{};
     std::uint64_t currentFrameSeq_{};
@@ -144,7 +277,7 @@ private:
     std::int64_t pendingSinceMs_{};
     std::int64_t lastProbeRequestMs_{std::numeric_limits<std::int64_t>::min() / 2};
 
-    std::optional<uct::ProbeFrame> latestProbe_;
+    std::shared_ptr<const uct::ProbeFrame> latestProbe_;
     int stableProbes_{};
     bool changedSinceSubmit_{true};
     std::int64_t lastSubmitMs_{std::numeric_limits<std::int64_t>::min() / 2};
@@ -162,6 +295,9 @@ private:
     std::uint64_t acceptedResults_{};
     int shownWords_{-1};
     QString statusSource_;
+    QString readingText_;
+    double lastOutcomeMs_{};
+    double lastResultMs_{};
 };
 
 } // namespace okuflow

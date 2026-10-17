@@ -40,6 +40,8 @@ void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
     currentCameraCaptureClock100ns_ = -1; currentCameraFrameSequence_ = 0;
     pendingSceneCaptureClock100ns_.reset();
     cudaSceneReady_ = cpuSceneReady_ = false;
+    uctProvenance_.Reset();
+    if (ultraClearText_) ultraClearText_->OnSourceRetired();
     mediaCapture_.BeginStopCapture();
     UpdateProcessingStatusLabel();
     QTimer::singleShot(0,this,&OkuFlowApp::DriveCameraRetirement);

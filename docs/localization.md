@@ -285,8 +285,8 @@ calling the feature localized. English sources:
 - Controls: `Ultra Clear Text (experimental)`, `Show original camera text`,
   `Recognized text`.
 - Descriptions/tooltips: `Recognizes steady printed text on this computer and
-  draws sharp letters over it. Uncertain words, handwriting, math and drawings
-  stay as the original camera image.`; `Temporarily hides the sharp letters so
+  draws sharp letters over it. Recognition can be wrong. Use Show original
+  to compare with the camera image.`; `Temporarily hides the sharp letters so
   you can compare with the camera image.`; `Text accepted by Ultra Clear Text,
   in reading order. An ellipsis marks words left as the original image.`;
   overlay `Ultra Clear Text overlay` / `Visual glyph overlay. The recognized
@@ -300,7 +300,7 @@ calling the feature localized. English sources:
   camera.`, `Original camera text shown.`, `Showing sharp text for %1 words.`,
   `Text moved. Showing the original until it is steady again.`,
   `Reading text…`, `No steady printed text recognized yet.`,
-  `Waiting for steady text…`.
+  `Waiting for steady text…`; `Image settings changed. Showing the camera image until the new image is read.`.
 
 Recognized words in the reading pane are camera content, not UI text, and are
 never translated. Recognition languages come from the Windows OCR languages

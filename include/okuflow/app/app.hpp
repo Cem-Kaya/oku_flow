@@ -350,9 +350,11 @@ private:
     void ApplyPersistentSettings(settings::PersistentSettings settings);
     void SavePersistentSettings();
     // Ultra Clear Text: presentation-clock context and production wiring.
-    UctFrameContext UltraClearTextContext(const ViewTransform& transform,
-                                          UINT sceneWidth, UINT sceneHeight,
+    // The context describes the cached scene actually presented (CUDA or
+    // CPU snapshot) plus the current request.
+    UctFrameContext UltraClearTextContext(bool cudaScene, const ViewTransform& transform,
                                           UINT viewportWidth, UINT viewportHeight) const;
+    UctSceneSettings UltraClearTextRequest() const;
     void InitializeUltraClearText();
 
     QApplication* qtApp_{};
@@ -589,6 +591,12 @@ private:
     UINT presentationHeight_{0};
 
     bool cudaSceneReady_{false};
+
+    // Ultra Clear Text provenance of the cached CUDA/CPU scenes, snapshotted
+    // only when processing succeeded, and the discrete warp revision bumped
+    // whenever keystone/stabilization warps are reset or stepped.
+    UctSceneProvenance uctProvenance_;
+    std::uint64_t uctWarpRevision_{};
 
     // Declared last so it is destroyed first: its worker callbacks retire
     // before the windows it draws into and the presenter go away.

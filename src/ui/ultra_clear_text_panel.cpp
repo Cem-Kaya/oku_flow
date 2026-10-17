@@ -27,7 +27,7 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     enableCheckbox_->setAccessibleName(QStringLiteral("Ultra Clear Text (experimental)"));
     enableCheckbox_->setAccessibleDescription(QStringLiteral(
         "Recognizes steady printed text on this computer and draws sharp letters over it. "
-        "Uncertain words, handwriting, math and drawings stay as the original camera image."));
+        "Recognition can be wrong. Use Show original to compare with the camera image."));
     enableCheckbox_->setToolTip(enableCheckbox_->accessibleDescription());
     layout->addWidget(enableCheckbox_);
 

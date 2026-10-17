@@ -1111,3 +1111,12 @@ Run `scripts/test_test_gate.ps1 -CMake <cmake.exe>` after policy changes. Its
 private command-line fixtures cover required missing/skipped/row-skipped/failed
 capabilities, exact fingerprint binding and CPU/CUDA build mismatches without
 opening GUI windows or using a GPU.
+
+UCT follow-up contracts exercise actual cached glyph painting during held OCR,
+worker-outcome synchronization, processed-scene provenance (including deferred
+processing/CPU fallback), immediate source retirement, strict mixed-height
+reading order and same-word color refresh. The GPU readback fixture uses pooled
+immutable vector handoff; CPU presentation copying remains explicit. Dense 4K
+residual costs are reported separately from UI/presentation callback costs.
+The 33-case UCT contract and installed Windows OCR passed in both CPU and CUDA
+builds on the development PC; this is not physical-page/GTX1070/UIA acceptance.

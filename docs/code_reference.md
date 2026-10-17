@@ -2140,7 +2140,8 @@ Namespace `okuflow::processing`
   (zoom-consistent) with a bounded translation search; `SceneSimilarity`
   compares two probes over their common scene area.
 - `RecognitionScheduler` owns one worker, one in-flight job and one
-  latest-only pending slot; `Submit` deep-copies input, `Cancel` revokes
+  latest-only pending slot; its QImage `Submit` copies caller-owned pixels and
+  its SharedPixels overload transfers shared immutable ownership. `Cancel` revokes
   authority without releasing in-flight input, destruction is bounded and
   detaches a held worker that keeps its own state.
 - `OverlayModel::Admit` rejects stale scene, late, failed and moved-content
@@ -4169,3 +4170,35 @@ glare-only selection. Saved preferences retain their dormant strength.
 all 1024 master/child combinations; `GlareOnlyLeavesOrdinaryPixelsUnchanged`
 checks ordinary/highlight GPU pixels, alpha and pitched guards for all four
 flatten/glare combinations.
+
+### UCT immutable handoff and processed-scene provenance
+
+- `UctSceneSettings`, `UctSceneSnapshot` and `UctSceneProvenance` retain exact
+  applied source/rotation/warp/LUT identity and frame on successful processing.
+  `OnCudaSceneProcessed`, `OnCpuSceneProcessed`, `RequestFor`, `Context`,
+  `InvalidateCuda` and `Reset` distinguish cached scenes from pending requests;
+  CPU fallback claims no CUDA warps/colors. `UltraClearTextRequest` and
+  `UltraClearTextContext` use this seam; `uctWarpRevision_` tracks discrete resets.
+- `PixelBuffer`, `SharedPixels`, `PixelPool::{Create,Adopt,Copy,Take,Give,Wrap}`
+  retain immutable readback storage across probe/OCR workers. GPU completion
+  transfers the reusable vector after other consumers; CPU presentation copies.
+  `WrapPixels` gives a read-only QImage view with shared lifetime.
+- `PreparedWord`, `PreparedLine` and `PrepareLines` prepare scene boxes/reference
+  patches on the recognition worker; the scheduler accepts owned shared pixels.
+- `LineReference`, `LineCheck`, `CheckLines`, `ProbeRequest`, `ProbeOutcome`,
+  `ProbeWorkerStats` and `ProbeWorker` implement budgeted off-thread probe
+  construction, similarity and residual matching with latest-only admission.
+- `UltraClearTextController::{SubmitProbe,HandleProbeOutcome,ProbeStatistics}`
+  apply current-generation outcomes only. `OnSourceRetired` immediately revokes
+  work and text; `OnPresentationFailed` hides words for rejected presentation.
+  `LastOutcomeHandlingMs`, `LastResultHandlingMs` and `PixelAllocations` expose
+  bounded fixture diagnostics. Full LUT generations are retained without hashes.
+- `OverlayModel::{LineReferences,ApplyChecks,IsShown}` merge per-line outcomes
+  without overwriting newer validation. `Admit` has a bounded residual budget,
+  leaving unchecked lines hidden. `ReadingText(now,frame)` excludes stale/invalid
+  lines and clusters rows before strict sorting. `RefreshOverlay` compares colors
+  as well as content/geometry; `UltraClearTextOverlay::Words` exposes fixture data.
+- Added UCT regressions exercise these production seams, 300 actual cached-glyph
+  repaint frames during held OCR, source retirement without another present,
+  mixed-height reading order across permutations and unchanged-word recoloring.
+  They remain separate from native camera, UIA word ranges and frame latency.
