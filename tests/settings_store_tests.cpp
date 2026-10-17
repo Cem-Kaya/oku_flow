@@ -202,6 +202,9 @@ private slots:
     void credentialDeletionRetries();
     void pendingDeletionNeverReusesReplacementKey_data();
     void pendingDeletionNeverReusesReplacementKey();
+    void credentialRotationKeepsRecoverableEndpointBinding_data();
+    void credentialRotationKeepsRecoverableEndpointBinding();
+    void unchangedCredentialBindingDoesNotCreateGenerations();
     void ignoresPlaintextApiKeyField();
     void clampsOutOfRangeValues();
     void sixteenXZoomPreservesSettingsAndBoundsProfiles();
@@ -1607,6 +1610,94 @@ void SettingsStoreTests::pendingDeletionNeverReusesReplacementKey()
     QVERIFY(savedDisk.has_value());
     QVERIFY(savedDisk->assistive.pendingCredentialRemovals.isEmpty());
     QCOMPARE(savedDisk->assistive.vlmCredentialId, restart ? QString() : replacementId);
+}
+
+void SettingsStoreTests::credentialRotationKeepsRecoverableEndpointBinding_data()
+{
+    QTest::addColumn<bool>("commitReplacement");
+    QTest::addColumn<bool>("changeKey");
+    QTest::newRow("failed-settings-publication") << false << true;
+    QTest::newRow("recover-backup-after-rotation") << true << true;
+    QTest::newRow("endpoint-only-failed-publication") << false << false;
+}
+
+void SettingsStoreTests::credentialRotationKeepsRecoverableEndpointBinding()
+{
+    QFETCH(bool, commitReplacement);
+    QFETCH(bool, changeKey);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto path = directory.filePath(QStringLiteral("settings.json"));
+    const auto oldId = QStringLiteral("fixture-original-key-id");
+    const auto oldKey = QStringLiteral("fixture-key-a");
+    const auto newKey = changeKey ? QStringLiteral("fixture-key-b") : oldKey;
+    PersistentSettings original;
+    original.assistive.aiProvider = QStringLiteral("vlm");
+    original.assistive.vlmApiUrl = QStringLiteral("https://endpoint-a.invalid/v1");
+    original.assistive.vlmCredentialId = oldId;
+    QVERIFY(Save(path, original));
+    QMap<QString, QString> secrets{{oldId, oldKey}};
+    int writes = 0;
+    SettingsController::StorageOperations storage;
+    storage.readSecret = [&](const QString& id) {
+        return secrets.contains(id)
+            ? ProtectedSecretResult{ProtectedSecretResult::Status::Found, secrets.value(id), {}}
+            : ProtectedSecretResult{};
+    };
+    storage.writeSecret = [&](const QString& id, const QString& value, QString*) {
+        ++writes;
+        secrets.insert(id, value);
+        return true;
+    };
+    storage.removeSecret = [&](const QString& id, QString*) { secrets.remove(id); return true; };
+    storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
+        return commitReplacement && Save(target, value);
+    };
+    SettingsController controller(path, storage);
+    controller.MutableSettings().assistive.vlmApiUrl = QStringLiteral("https://endpoint-b.invalid/v1");
+    controller.MutableSettings().assistive.vlmApiKey = newKey;
+    QCOMPARE(controller.Save(controller.Settings().currentConfig), commitReplacement);
+    const auto replacementId = controller.Settings().assistive.vlmCredentialId;
+    QVERIFY(replacementId != oldId);
+    QCOMPARE(secrets.value(oldId), oldKey);
+    QCOMPARE(secrets.value(replacementId), newKey);
+    QCOMPARE(writes, 1);
+    if (!commitReplacement) {
+        QVERIFY(!controller.Save(controller.Settings().currentConfig));
+        QCOMPARE(controller.Settings().assistive.vlmCredentialId, replacementId);
+        QCOMPARE(writes, 1); // retry the same staged immutable generation
+    } else {
+        QVERIFY(WriteBytes(path, "{ corrupt primary"));
+    }
+    SettingsController restarted(path, storage);
+    QCOMPARE(restarted.Settings().assistive.vlmApiUrl, original.assistive.vlmApiUrl);
+    QCOMPARE(restarted.Settings().assistive.vlmCredentialId, oldId);
+    QCOMPARE(restarted.Settings().assistive.vlmApiKey, oldKey);
+}
+
+void SettingsStoreTests::unchangedCredentialBindingDoesNotCreateGenerations()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto path = directory.filePath(QStringLiteral("settings.json"));
+    PersistentSettings original;
+    original.assistive.vlmApiUrl = QStringLiteral("https://endpoint-a.invalid/v1");
+    original.assistive.vlmCredentialId = QStringLiteral("fixture-key-id");
+    QVERIFY(Save(path, original));
+    int writes = 0;
+    SettingsController::StorageOperations storage;
+    storage.readSecret = [](const QString&) {
+        return ProtectedSecretResult{ProtectedSecretResult::Status::Found,
+                                     QStringLiteral("fixture-key-a"), {}};
+    };
+    storage.writeSecret = [&](const QString&, const QString&, QString*) { ++writes; return true; };
+    storage.removeSecret = [](const QString&, QString*) { return true; };
+    storage.saveSettings = Save;
+    SettingsController controller(path, storage);
+    QVERIFY(controller.Save(controller.Settings().currentConfig));
+    QVERIFY(controller.Save(controller.Settings().currentConfig));
+    QCOMPARE(controller.Settings().assistive.vlmCredentialId, original.assistive.vlmCredentialId);
+    QCOMPARE(writes, 0);
 }
 
 void SettingsStoreTests::ignoresPlaintextApiKeyField()

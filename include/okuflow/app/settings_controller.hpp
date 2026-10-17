@@ -45,6 +45,12 @@ public:
     QString LastError() const;
 
 private:
+    struct CredentialBinding {
+        QString id;
+        QString provider;
+        QString endpoint;
+        QString secret;
+    };
     void InitializeDefaults();
     void LoadProtectedSecrets();
     bool PrepareProtectedSecrets();
@@ -55,6 +61,9 @@ private:
     QString settingsPath_;
     settings::PersistentSettings settings_;
     std::optional<settings::PersistentSettings> lastCommittedSettings_;
+    // Runtime-only identity of the loaded/staged immutable secret generation.
+    // A failed JSON commit may retry it, but cannot rewrite an older key id.
+    std::optional<CredentialBinding> preparedCredential_;
     QString startupNotice_;
     QString lastError_;
     bool protectedSecretReadFailed_{false};

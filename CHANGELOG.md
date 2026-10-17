@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Store changed API keys, endpoints and provider bindings under new protected
+  credential ids. Failed settings saves and backup recovery retain the prior
+  endpoint/key pair; unchanged saves and retries reuse their existing generation.
+
 - Retire recording queues, stop state and callback identity before admitting a
   replacement session. Video/audio error cleanup cannot clear the new session.
 

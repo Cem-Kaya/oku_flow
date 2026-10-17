@@ -1,5 +1,18 @@
 # OkuFlow Code Reference
 
+## Protected credential generations (audit AS-002)
+
+`SettingsController::CredentialBinding` records the runtime id/provider/endpoint/
+secret tuple loaded by `LoadProtectedSecrets` or staged by
+`PrepareProtectedSecrets`. An unchanged binding is reused without rewriting the
+secret. Any change stages a fresh UUID-suffixed id, preserving earlier primary
+and backup references. A failed JSON publication retries that exact staged
+generation; a failed secret write leaves the old reference untouched. Older
+generations are deliberately retained for recoverable settings rather than
+automatically deleted during rotation. The fake-secret-store regressions cover
+failed publication, corrupt-primary backup recovery, endpoint-only changes and
+unchanged-save stability, without accessing Windows Credential Manager.
+
 ## Recording session retirement (audit NP-003)
 
 `RecordingManager::FinishSession` captures the ending session, clears its video

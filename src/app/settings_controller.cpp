@@ -160,6 +160,9 @@ void SettingsController::LoadProtectedSecrets()
     switch (secret.status) {
     case ProtectedSecretResult::Status::Found:
         assistive.vlmApiKey = secret.value;
+        preparedCredential_ = CredentialBinding{
+            assistive.vlmCredentialId.trimmed(), assistive.aiProvider,
+            assistive.vlmApiUrl, secret.value};
         break;
     case ProtectedSecretResult::Status::NotFound:
         startupNotice_ +=
@@ -356,25 +359,30 @@ bool SettingsController::PrepareProtectedSecrets()
     }
 
     if (!assistive.vlmApiKey.isEmpty()) {
-        if (assistive.vlmCredentialId.trimmed().isEmpty()) {
-            assistive.vlmCredentialId =
-                ProtectedSecretStore::DefaultVlmCredentialId();
+        if (preparedCredential_
+            && preparedCredential_->id == assistive.vlmCredentialId.trimmed()
+            && preparedCredential_->provider == assistive.aiProvider
+            && preparedCredential_->endpoint == assistive.vlmApiUrl
+            && preparedCredential_->secret == assistive.vlmApiKey
+            && !pendingCredentialRemovals_.contains(preparedCredential_->id)) {
+            return true;
         }
-        if (pendingCredentialRemovals_.contains(assistive.vlmCredentialId.trimmed())) {
-            // A durable tombstone must never identify a newly written key:
-            // settings publication may fail and a later process will still
-            // execute the old deletion intent from disk.
-            assistive.vlmCredentialId =
-                ProtectedSecretStore::DefaultVlmCredentialId() + QLatin1Char('/') +
-                QUuid::createUuid().toString(QUuid::WithoutBraces);
-        }
+        // Never overwrite an id referenced by the primary or a recoverable
+        // backup. Endpoint/provider changes are new bindings even when the
+        // caller keeps the same key. Publish the new reference only after its
+        // write succeeds; a failed settings save can retry this generation.
+        const QString replacementId =
+            ProtectedSecretStore::DefaultVlmCredentialId() + QLatin1Char('/') +
+            QUuid::createUuid().toString(QUuid::WithoutBraces);
         QString error;
-        if (!storage_.writeSecret(assistive.vlmCredentialId,
-                                         assistive.vlmApiKey,
-                                         &error)) {
+        if (!storage_.writeSecret(replacementId, assistive.vlmApiKey, &error)) {
             lastError_ = error;
             return false;
         }
+        assistive.vlmCredentialId = replacementId;
+        preparedCredential_ = CredentialBinding{
+            replacementId, assistive.aiProvider, assistive.vlmApiUrl,
+            assistive.vlmApiKey};
         protectedSecretReadFailed_ = false;
         return true;
     }

@@ -3,6 +3,12 @@
 This module owns Qt startup, application wiring, settings persistence,
 interaction orchestration, and recording sessions.
 
+Protected VLM credential ids are immutable generations. A changed key, provider
+or endpoint stages a new id before publishing settings; save retries reuse that
+staged binding. Previous generations remain available for settings-backup
+recovery rather than being overwritten. Plaintext keys and the controller's
+runtime `CredentialBinding` never enter settings JSON or diagnostic receipts.
+
 Normal source changes now retire capture through asynchronous producer and
 consumer phases in `app_camera_transition.cpp`. Queued camera frames and imports
 belong to an independent cleanup worker; the GUI only polls bounded state.
