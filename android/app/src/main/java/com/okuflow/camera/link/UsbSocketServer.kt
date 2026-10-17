@@ -18,11 +18,11 @@ import kotlin.concurrent.thread
  */
 class UsbSocketServer(
     private val capabilities: () -> JSONObject,
-    private val onCommand: (JSONObject) -> Unit,
-    private val onConnect: () -> Unit,
+    private val onCommand: (String, JSONObject) -> Unit,
+    private val onConnect: (String) -> Unit,
     private val problem: () -> String? = { null },
     private val onListenerFailed: () -> Unit = {},
-    private val onDisconnect: () -> Unit,
+    private val onDisconnect: (String) -> Unit,
 ) : AutoCloseable {
     private val server = LocalServerSocket("okuflow_camera")
     private val running = AtomicBoolean(true)
@@ -163,7 +163,7 @@ class UsbSocketServer(
                         send(created.control, WireProtocol.STATE, JSONObject().put("event", "pong").put("id", command.optLong("id")))
                     } else {
                         require(synchronized(lock) { session === created && created.video != null }) { "Video channel is not connected" }
-                        onCommand(command)
+                        onCommand(created.token, command)
                     }
                 }
             } else {
@@ -171,13 +171,13 @@ class UsbSocketServer(
                     val current = requireNotNull(session) { "Connect the control channel first" }
                     require(current.token == json.optString("token") && current.video == null) { "Invalid video binding" }
                     current.video = Channel(socket, 32, 32 * 1024 * 1024)
-                    // Serialize binding with retirement: an old session cannot publish
-                    // Disconnected or stop capture after this session is Connected.
-                    onConnect()
-                    current.video!!
+                    current
+
                 }
-                // Connected is already published before the ACK permits the first frame.
-                send(bound, WireProtocol.ACK, JSONObject().put("channel", "video"))
+                // No service callback runs under the socket lock. Its serial owner checks
+                // this immutable token again; delayed old callbacks cannot affect a successor.
+                onConnect(bound.token)
+                send(bound.video!!, WireProtocol.ACK, JSONObject().put("channel", "video"))
                 socket.soTimeout = 0
                 // Video is unidirectional. EOF detects disconnect even while the camera is idle.
                 require(socket.inputStream.read() == -1) { "Unexpected video input" }
@@ -188,31 +188,38 @@ class UsbSocketServer(
         } finally { disconnect(socket) }
     }
 
-    fun hostCodecs(): Set<String> = synchronized(lock) { session?.codecs ?: emptySet() }
-    fun hostLimits(): HostLimits = synchronized(lock) { session?.limits ?: HostLimits() }
+    fun hostCodecs(id: String): Set<String> = synchronized(lock) { session?.takeIf { it.token == id }?.codecs ?: emptySet() }
+    fun hostLimits(id: String): HostLimits = synchronized(lock) { session?.takeIf { it.token == id }?.limits ?: HostLimits() }
+    fun connected(id: String): Boolean = synchronized(lock) { session?.let { it.token == id && it.video != null } == true }
     fun connected(): Boolean = synchronized(lock) { session?.video != null }
-    fun state(json: JSONObject): Boolean {
-        val accepted = synchronized(lock) {
-            val current = session ?: return@synchronized false
+    fun invalidateStream(id: String) = synchronized(lock) {
+        session?.takeIf { it.token == id }?.generation = -1
+    }
+    fun state(id: String, json: JSONObject): Boolean {
+        val channel = synchronized(lock) {
+            val current = session?.takeIf { it.token == id && it.video != null } ?: return@synchronized null
             if (json.optString("event") == "configured") current.generation = json.getInt("generation")
-            !json.has("generation") || current.generation == json.getInt("generation")
-        }
-        if (accepted) control(WireProtocol.STATE, json)
-        return accepted
+            current.control.takeIf { !json.has("generation") || current.generation == json.getInt("generation") }
+        } ?: return false
+        send(channel, WireProtocol.STATE, json)
+        return true
     }
-    fun metadata(json: JSONObject) {
-        if (synchronized(lock) { session?.generation == json.optInt("generation", -2) }) control(WireProtocol.METADATA, json)
+    fun metadata(id: String, json: JSONObject) {
+        val channel = synchronized(lock) {
+            session?.takeIf { it.token == id && it.generation == json.optInt("generation", -2) }?.control
+        } ?: return
+        send(channel, WireProtocol.METADATA, json)
     }
-    fun error(message: String, code: String? = null) =
-        control(WireProtocol.ERROR, JSONObject().put("error", message).apply { if (code != null) put("code", code) })
+    fun error(id: String, message: String, code: String? = null) =
+        control(id, WireProtocol.ERROR, JSONObject().put("error", message).apply { if (code != null) put("code", code) })
 
     /** One small reply on a connection that never joins the session; it fits the socket send buffer. */
     private fun writeDirect(socket: LocalSocket, type: Int, json: JSONObject) {
         runCatching { WireProtocol.writePacket(socket.outputStream, type, json.toString().toByteArray(Charsets.UTF_8)) }
     }
 
-    private fun control(type: Int, json: JSONObject) {
-        val channel = synchronized(lock) { session?.control } ?: return
+    private fun control(id: String, type: Int, json: JSONObject) {
+        val channel = synchronized(lock) { session?.takeIf { it.token == id }?.control } ?: return
         send(channel, type, json)
     }
     private fun send(channel: Channel, type: Int, json: JSONObject) {
@@ -223,8 +230,8 @@ class UsbSocketServer(
         }
     }
 
-    fun frame(pts: Long, sequence: Long, generation: Int, flags: Int, bytes: ByteArray) {
-        val channel = synchronized(lock) { session?.takeIf { it.generation == generation }?.video } ?: return
+    fun frame(id: String, pts: Long, sequence: Long, generation: Int, flags: Int, bytes: ByteArray) {
+        val channel = synchronized(lock) { session?.takeIf { it.token == id && it.generation == generation }?.video } ?: return
         if (!channel.send(WireProtocol.Packet(WireProtocol.FRAME, flags,
                 WireProtocol.framePayload(pts, sequence, generation, bytes)))) {
             Log.w("OkuFlow-USB", "Video queue limit reached")
@@ -237,13 +244,11 @@ class UsbSocketServer(
             val current = session
             if (current != null && (current.control.socket === socket || current.video?.socket === socket)) {
                 session = null
-                // Invalidate capture before another control host can claim the slot.
-                // Close native sockets afterward, outside the session lock.
-                runCatching(onDisconnect).onFailure { Log.w("OkuFlow-USB", "Session cleanup failed", it) }
                 current
             } else null
         }
         if (retired != null) {
+            runCatching { onDisconnect(retired.token) }.onFailure { Log.w("OkuFlow-USB", "Session cleanup failed", it) }
             retired.control.close()
             retired.video?.close()
             sockets.remove(retired.control.socket)

@@ -28,10 +28,10 @@ import java.util.concurrent.atomic.AtomicInteger
 /** Camera2 -> encoder input Surface. Only compressed output bytes cross the CPU. All work is serialized. */
 class CameraEngine(
     private val catalog: CameraCatalog,
-    private val onState: (JSONObject) -> Unit,
-    private val onMetadata: (JSONObject) -> Unit,
-    private val onFrame: (Long, Long, Int, Int, ByteArray) -> Unit,
-    private val onError: (HostProblem, String) -> Unit,
+    private val onState: (String, JSONObject) -> Unit,
+    private val onMetadata: (String, JSONObject) -> Unit,
+    private val onFrame: (String, Long, Long, Int, Int, ByteArray) -> Unit,
+    private val onError: (String, HostProblem, String) -> Unit,
 ) : AutoCloseable {
     private val thread = HandlerThread("OkuFlow-Camera").apply { start() }
     private val handler = Handler(thread.looper)
@@ -42,7 +42,7 @@ class CameraEngine(
     private var closed = false
     private val startToken = AtomicInteger()
 
-    private class Run(val config: CameraConfiguration, val settings: CameraSettings, val generation: Int, val token: Int) {
+    private class Run(val config: CameraConfiguration, val settings: CameraSettings, val generation: Int, val token: Int, val sessionId: String) {
         var codec: MediaCodec? = null
         var surface: Surface? = null
         var camera: CameraDevice? = null
@@ -52,7 +52,7 @@ class CameraEngine(
         var startupFailure: ((HostProblem, String) -> Unit)? = null
     }
 
-    fun start(settings: CameraSettings, hostCodecs: Set<String>, thermalFps: Int, hostLimits: HostLimits) {
+    fun start(sessionId: String, settings: CameraSettings, hostCodecs: Set<String>, thermalFps: Int, hostLimits: HostLimits) {
         val token = startToken.incrementAndGet()
         handler.post {
             if (closed || token != startToken.get()) return@post
@@ -60,29 +60,29 @@ class CameraEngine(
             try {
                 val candidates = catalog.configurations(settings, hostCodecs, thermalFps, hostLimits)
                 if (candidates.isEmpty()) {
-                    onError(HostProblem.NoCompatibleMode, "No compatible camera/encoder mode within the selected limits")
+                    onError(sessionId, HostProblem.NoCompatibleMode, "No compatible camera/encoder mode within the selected limits")
                     return@post
                 }
-                begin(candidates, 0, settings, token)
+                begin(candidates, 0, settings, token, sessionId)
             } catch (exception: Exception) {
                 stopInternal()
-                onError(problemFor(exception), exception.message ?: "Unable to start camera")
+                onError(sessionId, problemFor(exception), exception.message ?: "Unable to start camera")
             }
         }
     }
 
-    private fun begin(candidates: List<CameraConfiguration>, index: Int, settings: CameraSettings, token: Int) {
+    private fun begin(candidates: List<CameraConfiguration>, index: Int, settings: CameraSettings, token: Int, sessionId: String) {
         if (closed || token != startToken.get()) return
-        val run = Run(candidates[index], settings, ++generation, token)
+        val run = Run(candidates[index], settings, ++generation, token, sessionId)
         run.startupFailure = { problem, message ->
             if (index + 1 < minOf(candidates.size, 6)) {
-                handler.postDelayed({ begin(candidates, index + 1, settings, token) }, 200)
-            } else onError(problem, message)
+                handler.postDelayed({ begin(candidates, index + 1, settings, token, sessionId) }, 200)
+            } else onError(run.sessionId, problem, message)
         }
         active = run
         try {
             createEncoder(run)
-            onState(JSONObject().put("event", "configured").put("generation", run.generation)
+            onState(run.sessionId, JSONObject().put("event", "configured").put("generation", run.generation)
                 .put("camera", run.config.camera.id).put("width", run.config.mode.width).put("height", run.config.mode.height)
                 .put("fps", run.config.mode.fps).put("bitrate", run.config.mode.bitrate).put("mime", run.config.encoder.mime)
                 .put("orientation", run.config.camera.orientation).put("facing", run.config.camera.facing))
@@ -128,7 +128,7 @@ class CameraEngine(
                     for (index in 0..2) {
                         val buffer = format.getByteBuffer("csd-$index") ?: continue
                         val bytes = ByteArray(buffer.remaining()).also { buffer.duplicate().get(it) }
-                        onFrame(0, run.sequence++, run.generation, WireProtocol.CONFIG, annexB(bytes))
+                        onFrame(run.sessionId, 0, run.sequence++, run.generation, WireProtocol.CONFIG, annexB(bytes))
                     }
                 } catch (exception: Exception) { fail(run, exception.message ?: "Invalid codec configuration") }
             }
@@ -142,10 +142,10 @@ class CameraEngine(
                         val bytes = ByteArray(info.size).also { buffer.get(it) }
                         val flags = (if (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0) WireProtocol.KEY_FRAME else 0) or
                             (if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) WireProtocol.CONFIG else 0)
-                        onFrame(info.presentationTimeUs, run.sequence++, run.generation, flags, annexB(bytes))
+                        onFrame(run.sessionId, info.presentationTimeUs, run.sequence++, run.generation, flags, annexB(bytes))
                         if (flags and WireProtocol.CONFIG == 0 && !run.delivered) {
                             run.delivered = true
-                            onState(JSONObject().put("event", "streaming").put("generation", run.generation)
+                            onState(run.sessionId, JSONObject().put("event", "streaming").put("generation", run.generation)
                                 .put("camera", run.config.camera.id).put("width", mode.width).put("height", mode.height)
                                 .put("fps", mode.fps).put("bitrate", mode.bitrate).put("mime", run.config.encoder.mime)
                                 .put("orientation", run.config.camera.orientation).put("facing", run.config.camera.facing)
@@ -238,7 +238,7 @@ class CameraEngine(
             override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
                 if (!current(run)) return
                 val crop = result[CaptureResult.SCALER_CROP_REGION]
-                onMetadata(JSONObject().put("generation", run.generation).put("frameNumber", result.frameNumber)
+                onMetadata(run.sessionId, JSONObject().put("generation", run.generation).put("frameNumber", result.frameNumber)
                     .put("sensorTimestampNs", result[CaptureResult.SENSOR_TIMESTAMP] ?: 0L)
                     .put("zoom", result[CaptureResult.CONTROL_ZOOM_RATIO] ?: 1f)
                     .put("physicalCamera", result[CaptureResult.LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID] ?: run.config.camera.id)
@@ -260,7 +260,7 @@ class CameraEngine(
     private fun fail(run: Run, message: String, problem: HostProblem = HostProblem.CameraFailed) {
         if (!current(run)) return
         stopInternal()
-        if (!run.delivered) run.startupFailure?.invoke(problem, message) else onError(problem, message)
+        if (!run.delivered) run.startupFailure?.invoke(problem, message) else onError(run.sessionId, problem, message)
     }
 
     private fun stopInternal() {

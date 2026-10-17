@@ -43,7 +43,7 @@ class CameraStreamService : Service() {
     private lateinit var store: CameraSettingsStore
     private lateinit var power: PowerManager
     private lateinit var streamingIntent: StreamingIntentStore
-    @Volatile private var requested = false
+    private lateinit var sessionOwner: StreamSessionOwner
     @Volatile private var thermalFps = 60
     @Volatile private var lastSettings: CameraSettings? = null
     @Volatile private var lastThermalFps = 0
@@ -56,12 +56,10 @@ class CameraStreamService : Service() {
         if (destroyed) return@OnThermalStatusChangedListener
         val next = if (status >= PowerManager.THERMAL_STATUS_SEVERE) 30 else 60
         if (status >= PowerManager.THERMAL_STATUS_CRITICAL) {
-            requested = false
-            lastSettings = null
-            engine.stop()
+            sessionOwner.sessionId?.let { sessionOwner.stop(it) }
             publishIdle()
             HostLink.report(HostProblem.TooHot)
-            server.error("Phone is too hot; streaming stopped. Let it cool, then start again.", HostProblem.TooHot.wireCode)
+            sessionOwner.sessionId?.let { server.error(it, "Phone is too hot; streaming stopped. Let it cool, then start again.", HostProblem.TooHot.wireCode) }
         } else {
             // Cooling below CRITICAL makes a new start possible; drop the stale warning.
             if (HostLink.problem.value == HostProblem.TooHot) HostLink.report(null)
@@ -98,10 +96,9 @@ class CameraStreamService : Service() {
         thermalFps = if (power.currentThermalStatus >= PowerManager.THERMAL_STATUS_SEVERE) 30 else 60
         val catalog = CameraCatalog(this)
         engine = CameraEngine(catalog,
-            onState = { state ->
-                if (!streamingIntent.canStart(true)) return@CameraEngine
-                if (!::server.isInitialized || !server.connected()) return@CameraEngine
-                if (!server.state(state)) return@CameraEngine
+            onState = { id, state -> onOwner {
+                if (!streamingIntent.canStart(true) || !sessionOwner.streaming(id)) return@onOwner
+                if (!server.state(id, state)) return@onOwner
                 if (state.optString("event") == "streaming") {
                     HostLink.report(null)
                     HostLink.publish(HostLinkState.Streaming)
@@ -111,33 +108,35 @@ class CameraStreamService : Service() {
                     state.optInt("fps"), codec, state.optInt("bitrate") / 1_000_000)
                 if (state.optString("event") == "streaming")
                     updateNotification(getString(R.string.service_streaming_notification, HostLink.details.value))
-            }, onMetadata = { server.metadata(it) }, onFrame = { pts, seq, generation, flags, bytes ->
-                server.frame(pts, seq, generation, flags, bytes)
-            }, onError = { problem, message ->
+            } }, onMetadata = { id, metadata -> server.metadata(id, metadata) },
+            onFrame = { id, pts, seq, generation, flags, bytes ->
+                server.frame(id, pts, seq, generation, flags, bytes)
+            }, onError = { id, problem, message -> onOwner {
+                if (!sessionOwner.streaming(id)) return@onOwner
                 lastSettings = null
                 publishIdle()
                 HostLink.report(problem)
-                server.error(message, problem.wireCode)
-            })
+                server.error(id, message, problem.wireCode)
+            } })
+        sessionOwner = StreamSessionOwner({ ::server.isInitialized && server.connected(it) }, { id ->
+            lastSettings = null
+            if (::server.isInitialized) server.invalidateStream(id)
+            engine.stop()
+        })
         try {
-            server = UsbSocketServer(catalog::capabilities, ::command, onConnect = {
+            server = UsbSocketServer(catalog::capabilities, ::command, onConnect = { id -> onOwner {
+                if (!sessionOwner.bind(id)) return@onOwner
                 store.update(store.state.value.forNewHostSession())
-                // A new host session is a fresh attempt; its own failure reports again.
                 if (HostLink.problem.value != HostProblem.TooHot) HostLink.report(null)
                 HostLink.publish(HostLinkState.Connected)
                 updateNotification(getString(R.string.service_connected_notification))
-            }, problem = { HostLink.problem.value?.wireCode }, onListenerFailed = {
-                // The resumed activity retries; a dead listener must not leave a silent running service.
-                mainExecutor.execute { HostLink.report(HostProblem.ServiceFailed); stopSelf() }
-            }) {
-                requested = false
-                lastSettings = null
+            } }, problem = { HostLink.problem.value?.wireCode }, onListenerFailed = {
+                onOwner { HostLink.report(HostProblem.ServiceFailed); stopSelf() }
+            }) { id -> onOwner {
+                if (!sessionOwner.retire(id)) return@onOwner
                 store.update(store.state.value.forNewHostSession())
-                engine.stop()
-                HostLink.publish(HostLinkState.Disconnected)
-                HostLink.details.value = ""
-                updateNotification(getString(R.string.service_notification))
-            }
+                publishIdle()
+            } }
         } catch (exception: Exception) {
             Log.w("OkuFlow-Service", "USB listener startup failed", exception)
             HostLink.report(HostProblem.ServiceFailed)
@@ -171,24 +170,28 @@ class CameraStreamService : Service() {
         running.set(true)
     }
 
-    private fun command(command: JSONObject) {
-        if (!streamingIntent.canStart(true)) return
+    /** Socket and engine callbacks post to the same owner as settings, thermal and destruction. */
+    private fun onOwner(action: () -> Unit) {
+        mainExecutor.execute { if (!destroyed) action() }
+    }
+
+    private fun command(id: String, command: JSONObject) = onOwner { commandOnOwner(id, command) }
+
+    private fun commandOnOwner(id: String, command: JSONObject) {
+        if (!streamingIntent.canStart(true) || !sessionOwner.accepts(id)) return
         try {
             when (command.getString("op")) {
                 "start" -> {
                     if (power.currentThermalStatus >= PowerManager.THERMAL_STATUS_CRITICAL) {
                         HostLink.report(HostProblem.TooHot)
-                        server.error("Phone is too hot", HostProblem.TooHot.wireCode)
+                        server.error(id, "Phone is too hot", HostProblem.TooHot.wireCode)
                         return
                     }
-                    requested = true
-                    restart()
+                    if (sessionOwner.start(id)) restart()
                 }
                 "stop" -> {
-                    requested = false
-                    lastSettings = null
+                    sessionOwner.stop(id)
                     store.update(store.state.value.forNewHostSession())
-                    engine.stop()
                     publishIdle()
                 }
                 "zoom" -> engine.setZoom(command.getDouble("ratio").toFloat())
@@ -203,19 +206,22 @@ class CameraStreamService : Service() {
                 "keyframe" -> engine.requestKeyFrame()
                 else -> error("Unsupported command")
             }
-            server.state(JSONObject().put("event", "commandAccepted").put("id", command.optLong("id")))
-        } catch (exception: Exception) { server.error(exception.message ?: "Command failed") }
+            server.state(id, JSONObject().put("event", "commandAccepted").put("id", command.optLong("id")))
+        } catch (exception: Exception) { server.error(id, exception.message ?: "Command failed") }
     }
 
-    // Settings, thermal and command threads all restart; serialize the compare-and-start.
-    @Synchronized private fun restart() {
-        if (destroyed || !streamingIntent.canStart(true) || !requested || !::server.isInitialized || server.hostCodecs().isEmpty()) return
-        val settings = store.state.value
-        if (settings == lastSettings && thermalFps == lastThermalFps) return
-        lastSettings = settings
-        lastThermalFps = thermalFps
-        publishIdle()
-        engine.start(settings, server.hostCodecs(), thermalFps, server.hostLimits())
+    private fun restart() {
+        if (destroyed || !streamingIntent.canStart(true) || !::server.isInitialized) return
+        sessionOwner.restart restartSession@{ id ->
+            val codecs = server.hostCodecs(id)
+            if (codecs.isEmpty()) return@restartSession
+            val settings = store.state.value
+            if (settings == lastSettings && thermalFps == lastThermalFps) return@restartSession
+            lastSettings = settings
+            lastThermalFps = thermalFps
+            publishIdle()
+            engine.start(id, settings, codecs, thermalFps, server.hostLimits(id))
+        }
     }
 
     /** Not streaming: Connected while OkuFlow still holds the session, otherwise Disconnected. */
@@ -245,7 +251,7 @@ class CameraStreamService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
         destroyed = true
-        requested = false
+        if (::sessionOwner.isInitialized) sessionOwner.close()
         running.set(false)
         scope.cancel()
         cleanup("thermal listener") { thermalRegistration.close() }

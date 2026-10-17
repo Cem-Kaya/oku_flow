@@ -86,6 +86,12 @@ binding the video channel. The token is installation/session-local, never
 included in probe logs. Closing either connection retires both and releases
 the camera. An authorized computer has the normal privileges of USB debugging.
 
+Service events retain the host token internally through command dispatch and
+camera callbacks. The service serializes Stop, restart and retirement on its
+main event owner, rechecking the exact connected host at execution. Socket
+callbacks run outside the session lock. Retired-host commands/results cannot
+be forwarded to a successor. The v1 wire layout and command names are unchanged.
+
 ## Hello and packet framing
 
 All integers are little-endian. Each connection starts with:

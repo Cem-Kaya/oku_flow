@@ -4052,3 +4052,21 @@ ownership bookkeeping, with no device enumeration/open/start. Its
 `CancelAgentTurn`/`AgentContext` helpers exercise and inspect the production
 trusted cancellation path. The regression checks source-restore intent, native
 zoom restoration and the absence of a spurious user-edit event after cleanup.
+
+### Android stream event ownership (PW-001)
+
+- `camera/StreamSessionOwner.kt`: thread-confined `bind`, `accepts`, `streaming`,
+  `start`, `stop`, `retire`, `restart` and terminal `close` own exact-host intent.
+  Restart eligibility and `CameraEngine.start` admission share one serial event.
+- `CameraStreamService.onOwner` posts socket and engine state/error callbacks to
+  Android's main executor. `commandOnOwner` revalidates the command's immutable
+  host token; settings, thermal changes and destruction use the same owner.
+- `CameraEngine.start` and each `Run` carry `sessionId`; all state, metadata,
+  encoded frame and error callbacks return that identity, including fallback.
+- `UsbSocketServer` connect/command/disconnect callbacks include the original
+  token and run outside its socket lock. `state`, `metadata`, `frame`, `error`,
+  `hostCodecs`, `hostLimits` and `connected(id)` select only that host;
+  `invalidateStream(id)` revokes its old frame generation at Stop.
+- `StreamSessionOwnerTest` exercises held restart delivery after Stop, successor
+  ownership, stale callbacks, immediate transport loss, shutdown and owner-thread
+  enforcement. It is JVM lifecycle evidence, not phone/hardware acceptance.

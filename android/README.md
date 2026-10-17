@@ -280,3 +280,18 @@ The immediate destination is the owner's first Google Play **closed test** for
 12 invited testers, rather than production. USB streaming stays unchanged with
 no application PIN, pairing step or encryption added. Trust wording is explicit;
 this technical choice is not evidence of a Google Play policy exception or approval.
+
+## Serial host ownership
+
+Socket connect/disconnect/command callbacks post immutable host tokens to the
+service's main event owner. `StreamSessionOwner` admits a restart only while
+that exact host is connected and has requested streaming. Stop revokes intent
+before invalidating the engine token; a delayed settings restart stays stopped.
+Camera state/errors carry the initiating token, and state, metadata and frames
+are routed only to the matching socket session. Socket callbacks run outside
+its session lock; old retirement cannot stop a replacement host.
+
+`StreamSessionOwnerTest` uses a held producer and deterministic owner-event
+ordering for Stop/restart, delayed old connect/command/disconnect, close and
+wrong-thread rejection. These JVM tests do not establish real Camera2, cable
+recovery or long-soak acceptance. No display configuration is changed.

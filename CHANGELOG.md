@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Android Stop, host replacement and settings restarts now use one main-thread
+  lifecycle owner. Commands, camera results and outgoing packets retain their
+  original host token; a retired session cannot restart or change its successor.
+
 - Freeze completed note transcripts before asynchronous file access and serialize
   writes for the same recording. Starting another transcription cannot clear an
   older sidecar or let its delayed status overwrite the active run.
