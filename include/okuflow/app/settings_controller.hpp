@@ -37,7 +37,7 @@ public:
     std::optional<settings::AdvancedConfig> ResolvePreset(
         const QString& presetId) const;
     QString DefaultPromotedPresetName() const;
-    settings::PresetDefinition PromoteCurrentConfig(
+    std::optional<settings::PresetDefinition> PromoteCurrentConfig(
         settings::AdvancedConfig config, const QString& name);
 
     bool Save(const settings::AdvancedConfig& current);

@@ -85,3 +85,8 @@ audio readiness is known; successful start then permits the first segment.
 None never claims audio. Shutdown skips process-global MF teardown while the
 worker is live or native resources were abandoned. These ownership contracts
 have native fixture coverage, separate from physical-microphone acceptance.
+
+Save as Quick Mode commits its unique preset/config to settings before the
+native mode list reports success. Failed publication leaves prior modes and
+live configuration intact and reports the storage error; shutdown is no longer
+required for the new mode to survive a crash.

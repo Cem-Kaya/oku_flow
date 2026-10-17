@@ -17,7 +17,7 @@ QString MakeCustomEntityId(const QString& prefix)
 {
     return QStringLiteral("%1-%2")
         .arg(prefix)
-        .arg(QDateTime::currentMSecsSinceEpoch());
+        .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
 }
 
 // Save reports only success; the size limit is the one refusal with a
@@ -278,9 +278,13 @@ QString SettingsController::DefaultPromotedPresetName() const
     return QStringLiteral("Custom Quick Option");
 }
 
-settings::PresetDefinition SettingsController::PromoteCurrentConfig(
+std::optional<settings::PresetDefinition> SettingsController::PromoteCurrentConfig(
     settings::AdvancedConfig config, const QString& name)
 {
+    const auto previousConfigs=settings_.customConfigs;
+    const auto previousPresets=settings_.customPresets;
+    const auto previousCurrent=settings_.currentConfig;
+    const auto previousSelection=settings_.selectedPresetId;
     config.id = MakeCustomEntityId(QStringLiteral("custom-config"));
     config.name = name;
     config.description =
@@ -297,6 +301,15 @@ settings::PresetDefinition SettingsController::PromoteCurrentConfig(
     settings_.customPresets.push_back(preset);
     settings_.currentConfig = config;
     settings_.selectedPresetId = preset.id;
+    const bool complete=Save(config);
+    // Credential cleanup can fail after the new settings generation committed.
+    // Preserve that durable success and its warning; only undo an unpublished mode.
+    const bool committed=lastCommittedSettings_ && lastCommittedSettings_->selectedPresetId==preset.id;
+    if(!complete && !committed) {
+        settings_.customConfigs=previousConfigs;settings_.customPresets=previousPresets;
+        settings_.currentConfig=previousCurrent;settings_.selectedPresetId=previousSelection;
+        return std::nullopt;
+    }
     return preset;
 }
 

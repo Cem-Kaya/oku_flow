@@ -210,6 +210,8 @@ private slots:
     void sixteenXZoomPreservesSettingsAndBoundsProfiles();
     void equivalenceUsesUiTolerances();
     void presetIdentitySurvivesApplyTimeMutations();
+    void quickModeSaveIsDurableBeforeReturn();
+    void failedQuickModeSavePreservesOldModesAndLiveSettings();
     void danglingPresetResolutionLeavesSelectionUnchanged();
 };
 
@@ -1747,6 +1749,34 @@ void SettingsStoreTests::equivalenceUsesUiTolerances()
     QVERIFY(!AreConfigsEquivalent(base, outside));
 }
 
+void SettingsStoreTests::quickModeSaveIsDurableBeforeReturn()
+{
+    QTemporaryDir dir;QVERIFY(dir.isValid());const auto path=dir.filePath("settings.json");
+    SettingsController controller(path);auto live=controller.Settings().currentConfig;live.zoomAmount=3.25f;
+    QVERIFY(controller.PromoteCurrentConfig(live,"Durable mode"));
+    // Reopen without a destructor/shutdown save or a separate Save action.
+    SettingsController reopened(path);
+    QCOMPARE(reopened.Settings().customPresets.size(),std::size_t(1));
+    const auto preset=reopened.Settings().customPresets.front();
+    const auto restored=reopened.ResolvePreset(preset.id);QVERIFY(restored);
+    QCOMPARE(restored->zoomAmount,3.25f);QCOMPARE(reopened.Settings().selectedPresetId,preset.id);
+}
+
+void SettingsStoreTests::failedQuickModeSavePreservesOldModesAndLiveSettings()
+{
+    QTemporaryDir dir;QVERIFY(dir.isValid());const auto path=dir.filePath("settings.json");bool refuse=false;
+    SettingsController::StorageOperations storage;
+    storage.saveSettings=[&](const QString& target,const PersistentSettings& value) {return !refuse && Save(target,value);};
+    SettingsController controller(path,storage);QVERIFY(controller.Save(controller.Settings().currentConfig));
+    const auto before=Serialize(controller.Settings());const auto bytes=ReadBytes(path);
+    auto live=controller.Settings().currentConfig;live.zoomAmount=4.5f;refuse=true;
+    QVERIFY(!controller.PromoteCurrentConfig(live,"Must not look saved"));
+    QCOMPARE(Serialize(controller.Settings()),before);QCOMPARE(ReadBytes(path),bytes);
+    QVERIFY(!controller.LastError().isEmpty());
+    refuse=false;QVERIFY(controller.PromoteCurrentConfig(live,"Retry durable mode"));
+    SettingsController reopened(path);QCOMPARE(reopened.Settings().customPresets.size(),std::size_t(1));
+}
+
 void SettingsStoreTests::presetIdentitySurvivesApplyTimeMutations()
 {
     QTemporaryDir dir;
@@ -1756,8 +1786,9 @@ void SettingsStoreTests::presetIdentitySurvivesApplyTimeMutations()
 
     // A promoted custom preset is unique, so re-derivation cannot hide
     // behind a coincidental built-in match.
-    const PresetDefinition preset = controller.PromoteCurrentConfig(
+    const auto promoted = controller.PromoteCurrentConfig(
         MakePopulatedConfig(), QStringLiteral("Apply Mutation Fixture"));
+    QVERIFY(promoted);const PresetDefinition preset=*promoted;
     const auto resolved = controller.ResolvePreset(preset.id);
     QVERIFY(resolved.has_value());
 

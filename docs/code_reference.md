@@ -4265,3 +4265,12 @@ audio only for an active matching session. Stop/retirement clears pending state;
 late or foreign decisions cannot enable audio in a successor. The codec-free
 fixture checks this production admission boundary and the native app fixture
 checks UI events, retirement retention, None, timeout and successor identity.
+
+`SettingsController::PromoteCurrentConfig` now returns an optional committed
+preset. It assigns unique UUID-based config/preset identities, saves the staged
+mode immediately and restores only its affected live vectors/selection/config
+if publication fails. A post-commit credential-cleanup failure retains the
+committed mode with LastError as a warning. `PromoteCurrentConfigToPreset`
+refreshes the native list only after durable publication and displays storage
+errors. Tests reopen immediately without shutdown save and force a failed
+commit followed by retry while preserving prior mode/live settings.

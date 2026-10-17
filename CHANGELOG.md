@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+- Persist Quick Modes at the Save action and preserve previous modes on write
+  failure, so an immediate crash cannot lose an apparently saved mode.
 - Open and retire microphones on an independent worker, including final native
   shutdown. Keep controls responsive on timeout, reject late session callbacks,
   and report video-only recordings truthfully when no microphone is selected.
