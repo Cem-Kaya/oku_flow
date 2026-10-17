@@ -1067,3 +1067,18 @@ hundredth-step speech rate, and native-scene guards. These are synthetic
 headless boundaries, not native voice/camera/provider or GUI acceptance.
 
 The opt-in actual-app control fixture requires a private CPU dev-full configure with -DOKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE=ON. Build native_app_control_fixture explicitly and run only native_app_control_offscreen. It uses actual production Qt controls and private settings under Qt offscreen, bypassing platform/device/provider startup. The separate scripts/test_mcp_native_sdk.mjs validates authenticated stdio/IPC against that real target. These checks establish the executed CPU-native subset, not CUDA effects, physical camera/phone or complete 94-field hardware acceptance.
+
+## Ultra Clear Text fixtures (development)
+
+`ultra_clear_text_contract` (label `headless`) runs under Qt offscreen with
+production overlay/panel widgets, a deterministic synthetic printed page
+(`ultra_clear_text_test_support.hpp`, no downloaded images) and scripted or
+held recognizers. It covers geometry/DPI, residual tracking and rejection,
+high-risk tokens, temporal agreement, stale/late/moved results, freshness,
+latest-only coalescing, cancellation ownership, bounded destruction, and the
+controller's presentation-clock independence while OCR is held.
+`ultra_clear_text_windows_ocr` (labels `headless;ocr-runtime`) exercises the
+real built-in Windows OCR engine on synthetic dark-on-light and light-on-dark
+pages and skips when no OCR language is installed; a skip is not a pass.
+Neither opens native windows, cameras or network connections. Native GUI
+layout, screen-reader and real-camera acceptance remain separate.

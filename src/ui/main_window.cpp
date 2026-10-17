@@ -4,6 +4,8 @@
 #include "okuflow/ui/assistive_overlay.hpp"
 #include "okuflow/ui/annotation_overlay.hpp"
 #include "okuflow/ui/joystick_overlay.hpp"
+#include "okuflow/ui/ultra_clear_text_overlay.hpp"
+#include "okuflow/ui/ultra_clear_text_panel.hpp"
 
 #include "okuflow/app/app.hpp"
 #include "okuflow/app/constants.hpp"
@@ -971,6 +973,10 @@ MainWindow::MainWindow()
     textClaritySectionLayout->addWidget(refinements);
     connect(textClarityCheckbox_, &QCheckBox::toggled, this,
             &MainWindow::refreshTextClarityUi);
+    // Ultra Clear Text (local OCR glyph overlay) is independent of the
+    // optical Text Clarity switch and stays off until the user opts in.
+    ultraClearTextPanel_ = new UltraClearTextPanel();
+    textClaritySectionLayout->addWidget(ultraClearTextPanel_);
 
     auto addTextSliderRow = [textClarityLayout, &addSliderReadout](
                                 QCheckBox*& checkbox,
@@ -1693,6 +1699,7 @@ MainWindow::MainWindow()
         }
     });
     rootLayout->addWidget(contentSplitter_, 1);
+    ultraClearTextOverlay_ = new UltraClearTextOverlay(renderWidget_, this);
     annotationOverlay_ = new AnnotationOverlay(renderWidget_, this);
 
     // D3D presents directly into a native window, so frameless owned tool

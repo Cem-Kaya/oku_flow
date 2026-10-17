@@ -46,6 +46,7 @@ include(visible_chat.cmake)
 include(visible_chat_store.cmake)
 include(mcp.cmake)
 include(native_control.cmake)
+include(ultra_clear_text.cmake)
 set_tests_properties(deadline_worker PROPERTIES TIMEOUT 15
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 add_executable(launcher_fixture launcher_fixture.cpp)
@@ -672,6 +673,11 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/src/ui/render_widget.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/assistive_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/annotation_overlay.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_overlay.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_panel.hpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_overlay.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_panel.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/joystick_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/color_scheme_picker.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/collapsible_section.cpp

@@ -617,3 +617,18 @@ aligned with the project goals.
   are diagnostic only. Duplicate inputs may share a digest within a pass; clear
   that memo before post-run verification. Keep metadata-preserving mutation
   regressions and all unresolved-failure blockers intact.
+
+## Ultra Clear Text development (2026-10-17)
+- UCT is experimental and opt-in. Keep recognition off the UI/presentation
+  path: one latest-only worker, at most one presenter readback outstanding,
+  overlay reprojection on the presentation clock. Never add synchronous
+  readback or block present on OCR. See `docs/ultra_clear_text.md`.
+- Keep stamps from the copied pixels through jobs, results and accepted lines;
+  invalidate on source/geometry changes and fail closed for uncertain, moving,
+  high-risk or composite-frame text. Never fabricate math, handwriting or
+  curves, and do not claim recognition accuracy without measured evidence.
+- The backend is built-in `Windows.Media.Ocr`; do not add OCR models or
+  libraries without license review in `docs/THIRD_PARTY_LICENSES.md`.
+  `ultra_clear_text_contract` and `ultra_clear_text_windows_ocr` are
+  desktop-free; native GUI, NVDA and real-camera checks stay serial and
+  separate. New UCT strings still need the translation review policy.

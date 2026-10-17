@@ -430,6 +430,14 @@ profiling flags for ordinary operation.
   choice. [Localization](localization.md) lists codes, draft translation
   provenance, the required small-agent translation review policy and the native
   wording/layout/screen-reader checks still pending.
+- `Ultra Clear Text (experimental)` at the end of `Advanced > Image > Text
+  clarity` recognizes steady printed text with the built-in Windows OCR engine
+  and draws sharp letters over validated words; everything else stays the
+  original image. It is off on every launch, offers `Show original camera
+  text`, and lists accepted words in a selectable `Recognized text` pane. It
+  pauses during Temporal Smooth/Extra Stable and reports when Windows has no
+  OCR language. Development feature, not release-accepted; see
+  [Ultra Clear Text](ultra_clear_text.md).
 - `Viewport framing` under `Advanced > Settings > View and navigation`
   is a global viewport preference:
   `Fill (crop)` fills the camera area without distorting it, while `Fit (show
@@ -901,6 +909,8 @@ by Windows Credential Manager instead.
 ## Documentation Map
 - [`docs/README.md`](../docs/README.md) for the architecture overview.
 - [`docs/code_reference.md`](../docs/code_reference.md) for the current class and file map.
+- [`docs/ultra_clear_text.md`](ultra_clear_text.md) for the experimental OCR glyph overlay, its
+  clocks, provenance invariants and validation boundaries.
 - [`docs/hardcoded_paths.md`](../docs/hardcoded_paths.md) for machine-specific defaults.
 - [`improvement_ideas/00-status-and-priority.md`](../improvement_ideas/00-status-and-priority.md)
   for implementation status and what to work on next — the single tracker.
