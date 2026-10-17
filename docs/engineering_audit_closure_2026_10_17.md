@@ -21,7 +21,7 @@ v0.2.5 downloads have not been replaced by this work.
 | NP-007 | Repaired | Every failed encoder attempt keeps its bytes; retries use exclusive GUID paths and notes use the selected finalized pair. |
 | NP-008 | Repaired | Annotation intent retains displayed source/frame/processing revision, actual GPU output signature and transform; camera retirement revokes pending copies. |
 | NP-009 | Repaired | Saved microphone None is distinct from actual audio capture; metadata follows real capture state. |
-| NP-010 | Measured; async producer under review | One actual 60 s Maxine run measured host p95/p99 7.583/12.469 ms, max 80.766 ms and 201.780 ms model load. A bounded asynchronous producer is under review; no native pan/stale-frame speedup is claimed. |
+| NP-010 | Measured follow-up; not repaired | One actual 60 s Maxine run measured host p95/p99 7.583/12.469 ms, max 80.766 ms and 201.780 ms model load. A bounded asynchronous producer needs explicit capture/flicker semantics and further input/frame-age evidence; no native pan/stale-frame speedup is claimed. |
 | PW-001 | Repaired | One serial Android session owner fences restart, stop and disconnect with immutable host/session tokens. |
 | PW-002 | Repaired, sibling website | Cancellation generation rechecked after every await and before worker/result publication. |
 | PW-003 | Repaired | Completed segments are frozen before awaits; sidecar writes serialize by media identity. |
@@ -100,8 +100,9 @@ caller wait was 7.583/12.469 ms and maximum 80.766 ms; model load took 201.780 m
 There were no timeouts, rejected calls or SDK failures. Off/on camera-tick p95
 was 1.889/6.411 ms and UI heartbeat-delay p95 was 1.914/5.010 ms. These are one
 development-PC pair with a virtual source, not pan-to-present or real optics
-acceptance. An independently scheduled, bounded SR producer is being reviewed
-against GPU lifetime, capture pairing and exact presentation provenance before
-any asynchronous replacement is accepted. The [performance diagnostic record](performance_diagnostics.md)
+acceptance. The [read-only producer design review](maxine_async_producer_design.md) found
+that an asynchronous replacement needs explicit GPU lifetime, capture pairing,
+exact presentation provenance and sharpness-flicker policies. It recommends
+retaining this follow-up until input/frame-age evidence justifies those changes. The [performance diagnostic record](performance_diagnostics.md)
 keeps the unsuccessful intermediate chat measurement as well as the final
 improvement; controlled sleeps are not vendor SDK performance measurements.

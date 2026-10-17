@@ -652,3 +652,6 @@ call profiling and the still-unmeasured native pan/queue/stale-frame seams.
 
 [Engineering audit closure, 2026-10-17](engineering_audit_closure_2026_10_17.md)
 maps all 36 supplied findings to fixes, measurements and remaining acceptance.
+
+[Maxine asynchronous-producer follow-up](maxine_async_producer_design.md)
+records why the measured host tail does not justify a helper-only GPU rewrite.

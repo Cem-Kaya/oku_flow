@@ -183,5 +183,5 @@ maximum (about 1.1 s in both); that value cannot isolate SR latency.
 Raw settings, reports and stderr are under the private audit archive's
 `maxine-profile/{off,on}/worker-1`. These observations confirm nonzero synchronous
 host tails. Pan-input, stale-SR frame age and camera queue identities remain
-unmeasured; no async-producer speedup follows from this pair. The independent
-producer's ownership/provenance design is reviewed separately before changes.
+unmeasured; no async-producer speedup follows from this pair. The [independent producer review](maxine_async_producer_design.md) records the
+ownership/provenance/capture policy work needed before changing the pipeline.
