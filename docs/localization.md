@@ -305,3 +305,7 @@ calling the feature localized. English sources:
 Recognized words in the reading pane are camera content, not UI text, and are
 never translated. Recognition languages come from the Windows OCR languages
 installed on the computer, independent of the UI language.
+
+The 2026-10-17 approval-receipt additions bring the current Windows source
+catalog to 807 keys. All 48 additions received small-agent review; see
+[the complete review record](localization_review_2026_10_17.md).

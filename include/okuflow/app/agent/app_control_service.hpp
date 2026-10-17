@@ -205,6 +205,14 @@ private:
         qint64 expires{};
         bool frame{}, pending{true};
     };
+    struct PendingReceipt {
+        QString contextId, approvalId, operationId;
+        ToolId tool{};
+    };
+    void ApprovedOperationOutcome(const QString& contextId,const QString& approvalId,
+                                  ToolId tool,ControlResult result);
+    void PublishOperationReceipt(const PendingReceipt& receipt,QJsonObject outcome);
+    void PollOperationReceipts();
     void Dispatch(const ControlRequest& request, ControlCompletion completion);
     void Continue(const ControlRequest& request, ToolId tool);
     ControlResult Run(Context& context, ToolId tool, const QJsonObject& args,
@@ -227,6 +235,7 @@ private:
     bool embeddedEnabled_{}, externalEnabled_{};
     std::optional<Context> context_;
     std::optional<Approval> approval_;
+    std::map<QString,PendingReceipt> pendingReceipts_; // bounded by operation capacity
     std::map<Field, Revision> revisions_;
     std::map<QString, Revision> cameraRevisions_;
     quint64 stateVersion_{}, viewVersion_{}, processingVersion_{}, sourceEpoch_{1}, geometryEpoch_{1};

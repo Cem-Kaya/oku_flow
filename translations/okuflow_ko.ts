@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>작업을 실행 중입니다.</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>작업 상태를 확인할 수 없습니다.</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>휴대전화 조명 켜기</translation>
         </message>

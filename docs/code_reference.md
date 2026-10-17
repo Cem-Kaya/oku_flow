@@ -4349,3 +4349,22 @@ callbacks carry just chosen values; Reset remains an explicit whole-state reset.
 Same-field conflicts use last accepted patch; no-op patches do not restart the
 stream. JVM fixtures cover both orders, a barrier-held concurrent persist, an
 explicit same-field policy, failed publication and new-host torch reset.
+
+`AppControlService::ApprovedOperationOutcome` publishes admission as pending,
+reserving a bounded watcher before Execute. `PollOperationReceipts` uses public
+Operation Query until committed/completed/first_frame, recording-start success
+or failure; missing status becomes explicitly unavailable, never inferred success
+or continued progress. Each terminal receipt is emitted once. Watchers outlive
+turn/context retirement without granting authority. `PublishOperationReceipt`
+keeps the original context/approval/operation identity in outcome-only human
+notifications; it appends no event to a replacement context's tool-visible ring.
+`OkuFlowApp::agentReceiptTickets_` retains only still-owned visible-chat tickets,
+so a later outcome appends to its original retained turn rather than a new turn.
+Switching/deleting the conversation invalidates its tickets and does not transfer
+a receipt to another conversation. Service fixtures cover pending→commit/failure/
+unknown and context replacement; the old coverage fixture's drop-all-human-
+receipts expectation was reconciled while preserving its no-cross-context assertion.
+
+Two new receipt strings have complete read-only Luna review of all 48 changed
+entries, separate from native-speaker and rendered accessibility acceptance; see
+`localization_review_2026_10_17.md`.

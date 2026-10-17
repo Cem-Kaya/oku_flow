@@ -213,3 +213,8 @@ UI, accessibility, the embedded assistant adapter or shipping acceptance.
 
 Operation-state waits compare the complete public status projection at admission
 and each poll. Unchanged deferred preference metadata is not a transition.
+
+Exact approval admits an asynchronous operation; it does not certify completion.
+Human receipts remain in progress until the operation reports its actual outcome,
+with unavailable status distinguished. Outcome-only notifications keep their
+original identity across turns and never enter a successor's control event ring.

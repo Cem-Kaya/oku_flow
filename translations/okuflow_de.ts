@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>Aktion wird ausgeführt.</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>Aktionsstatus nicht verfügbar.</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>Telefonlicht einschalten</translation>
         </message>

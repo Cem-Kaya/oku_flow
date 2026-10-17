@@ -169,6 +169,7 @@ private:
     QTimer* agentSceneTimer_{};
     bool agentSceneRequested_{}, agentSceneEffective_{}, agentSceneCapturePending_{};
     std::optional<ChatTurnTicket> agentReceiptTicket_;
+    std::map<QString,ChatTurnTicket> agentReceiptTickets_;
     QHash<QString,QString> agentTranscripts_;
     std::unique_ptr<VisibleChatSessionStore> visibleChatStore_;
     QTimer* visibleChatSaveTimer_{};

@@ -36,8 +36,12 @@ QString FieldLabel(const QString& field) {
 QString Receipt(const QJsonObject& event) {
     const auto type = event.value("type").toString();
     if (type == "settings_not_saved") return Ui("Settings could not be saved.");
-    if (type == "operation_receipt") return event.value("outcome").toObject().value("ok").toBool()
-        ? Ui("Action completed.") : Ui("Action could not be completed.");
+    if (type == "operation_receipt") {
+        const auto outcome=event.value("outcome").toObject();
+        if (outcome["statusUnavailable"].toBool())return Ui("Action status is unavailable.");
+        if (outcome["pending"].toBool())return Ui("Action in progress.");
+        return outcome["ok"].toBool()?Ui("Action completed."):Ui("Action could not be completed.");
+    }
     if (type == "applied") {
         QStringList fields;
         const auto applied = event.value("applied").toObject();
@@ -170,9 +174,10 @@ void OkuFlowApp::InitializeAgentControl()
         }
         const auto approval = controlService_->PendingApproval();
         const auto receipt = Receipt(event);
-        if (!receipt.isEmpty() && agentReceiptTicket_ && event.value("contextId").toString() == agentReceiptContext_ &&
-            assistiveManager_->Runtime().ChatSession().AppendActionReceipt(*agentReceiptTicket_,receipt))
-            agentTranscripts_[agentConversationId_] = QString::fromUtf8(QJsonDocument(
+        const auto receiptTicket=agentReceiptTickets_.find(event.value("contextId").toString());
+        if (!receipt.isEmpty() && receiptTicket!=agentReceiptTickets_.end() &&
+            assistiveManager_->Runtime().ChatSession().AppendActionReceipt(receiptTicket->second,receipt))
+            agentTranscripts_[receiptTicket->second.conversationId] = QString::fromUtf8(QJsonDocument(
                 assistiveManager_->Runtime().ChatSession().Snapshot().value("messages").toArray()).toJson(QJsonDocument::Compact));
         for (auto* panel : panels()) {
             if (approval.isEmpty()) panel->ClearPendingApproval(); else panel->SetPendingApproval(approval);
@@ -279,6 +284,9 @@ void OkuFlowApp::SubmitAgentPrompt(const QString& prompt)
     }
     auto& runtime=assistiveManager_->Runtime();
     agentReceiptContext_ = agentContext_; agentReceiptTicket_ = runtime.ChatSession().ActiveTicket();
+    for (auto it=agentReceiptTickets_.begin();it!=agentReceiptTickets_.end();)
+        it=runtime.ChatSession().OwnsTicket(it->second)?std::next(it):agentReceiptTickets_.erase(it);
+    if (agentReceiptTicket_)agentReceiptTickets_[agentContext_]=*agentReceiptTicket_;
     if(!runtime.BeginControlAnswer(prompt,[this] {CancelAgentTurn();})) {
         controlService_->End(agentContext_);agentContext_.clear();runtime.FailPreparedChat("busy");return;
     }

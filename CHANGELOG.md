@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+- Keep approved asynchronous actions in progress until their real operation
+  outcome, attaching the final receipt to the original retained chat turn.
 - Preserve concurrent phone UI and USB-host setting changes with serialized
   field patches instead of replacing stale whole settings objects.
 - Retain phone camera zoom commands during startup until capture is ready,

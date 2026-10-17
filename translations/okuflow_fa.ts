@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>عملیات در حال انجام است.</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>وضعیت عملیات در دسترس نیست.</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>چراغ گوشی را روشن کنید</translation>
         </message>

@@ -836,21 +836,69 @@ ControlResult AppControlService::ResolveApproval(const QString& id, bool allow) 
         } else { context.spec.grants.frames = true; Event(context,"grant_changed"); }
         return {{{"ok",true},{"changed",false},{"grantActivated",true}},{}};
     }
+    if ((IsAsync(approval.tool) || currentPlan.asynchronous) && pendingReceipts_.size() >= 256)
+        return ControlResult::Failure("budget_exhausted");
     auto result = Run(context,approval.tool,approval.args,currentPlan,true);
     if (result.content["ok"].toBool() && (IsAsync(approval.tool) || currentPlan.asynchronous)) {
         QPointer<AppControlService> self(this);
         const auto contextId = context.id;
-        target_.Execute(approval.tool,approval.args,context.spec.owner,context.spec.kind,[self,contextId,id](ControlResult completed) {
+        pendingReceipts_[id]={contextId,id,{},approval.tool}; // reserve before async admission
+        target_.Execute(approval.tool,approval.args,context.spec.owner,context.spec.kind,[self,contextId,id,tool=approval.tool](ControlResult completed) {
             if (!self) return;
-            QMetaObject::invokeMethod(self,[self,contextId,id,completed] {
-                if (self && self->context_ && self->context_->id == contextId)
-                    self->Event(*self->context_,"operation_receipt",{{"approvalId",id},{"outcome",completed.content}});
+            QMetaObject::invokeMethod(self,[self,contextId,id,tool,completed] {
+                if (self) self->ApprovedOperationOutcome(contextId,id,tool,completed);
             },Qt::QueuedConnection);
         });
     }
     Event(context,"grant_changed",{{"approvalId",id},{"outcome",result.content}});
     target_.FinalizeMutationReceipt();
     return result;
+}
+void AppControlService::ApprovedOperationOutcome(const QString& contextId,const QString& approvalId,
+                                                ToolId tool,ControlResult result) {
+    PendingReceipt receipt{contextId,approvalId,result.content["operationId"].toString(),tool};
+    pendingReceipts_.erase(approvalId);
+    if (result.content["ok"].toBool() && result.content["pending"].toBool()) {
+        if (receipt.operationId.isEmpty()) {
+            result.content["state"]="unknown";
+            result.content["statusUnavailable"]=true;
+        } else pendingReceipts_[approvalId]=receipt;
+    }
+    PublishOperationReceipt(receipt,std::move(result.content));
+}
+void AppControlService::PublishOperationReceipt(const PendingReceipt& receipt,QJsonObject outcome) {
+    QJsonObject data{{"type","operation_receipt"},{"contextId",receipt.contextId},
+        {"approvalId",receipt.approvalId},{"operationId",receipt.operationId},{"outcome",outcome}};
+    if (context_ && context_->id==receipt.contextId) {
+        data["sequence"]=static_cast<qint64>(++context_->eventCursor);
+        context_->events.push_back(data);
+        if (context_->events.size()>256)context_->events.pop_front();
+    }
+    if (!eventSink_)return;
+    QPointer<AppControlService> self(this);
+    const auto generation=eventSinkGeneration_;
+    // Outcome-only notifications may outlive their turn. They grant no
+    // authority and retain the original context/ticket instead of being
+    // relabelled as the currently active context.
+    QMetaObject::invokeMethod(this,[self,generation,data=std::move(data)] {
+        if (!self || !self->eventSink_ || self->eventSinkGeneration_!=generation)return;
+        const auto sink=self->eventSink_;sink(data);
+    },Qt::QueuedConnection);
+}
+void AppControlService::PollOperationReceipts() {
+    for (auto it=pendingReceipts_.begin();it!=pendingReceipts_.end();) {
+        if (it->second.operationId.isEmpty()) {++it;continue;}
+        auto status=target_.Query(ToolId::Operation,{{"operationId",it->second.operationId}});
+        const auto state=status["state"].toString();
+        const bool terminal=state=="committed" || state=="completed" || state=="first_frame" ||
+            state=="failed" || (it->second.tool==ToolId::RecordingStart && state=="recording");
+        if (!status["ok"].toBool()) {
+            status["statusUnavailable"]=true;status["state"]="unknown";
+        } else if (!terminal) {++it;continue;}
+        if (terminal) {status["ok"]=state!="failed";status["pending"]=false;}
+        PublishOperationReceipt(it->second,std::move(status));
+        it=pendingReceipts_.erase(it);
+    }
 }
 void AppControlService::Finish(const QString& id, const QString& key, ControlResult result) {
     if (!context_ || context_->id != id) return;
@@ -923,6 +971,7 @@ void AppControlService::SetEventSink(std::function<void(const QJsonObject&)> sin
     ++eventSinkGeneration_; eventSink_ = std::move(sink);
 }
 void AppControlService::Expire() {
+    PollOperationReceipts();
     if (context_ && context_->active) ValidContext(*context_);
     if (approval_ && Now() >= approval_->expires) approval_.reset();
     if (context_ && context_->active) {
