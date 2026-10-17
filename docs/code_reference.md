@@ -4337,3 +4337,15 @@ a repeating request until CameraDevice and capture session are ready; the
 configured callback reads that intent. Pure JVM regressions verify readiness,
 fallback retention and stale/foreign commands. This changes camera crop only;
 no Android display size, density, aspect ratio, font, rotation or scaling is set.
+
+`CameraSettingsState::update` is the serialized read/patch/persist/publish owner
+with monotonically increasing `revision` for actual accepted changes. UI actions
+and host commands now submit field transformations, evaluated against the latest
+state inside that boundary; stale Compose snapshots cannot replace independent
+host fields. `CameraSettingsStore` retains the existing preferences format and
+session-only, never-persisted torch. `SetupViewModel::updateSettings` clears a
+transient problem only after an actual accepted patch. Advanced/ModeSetting
+callbacks carry just chosen values; Reset remains an explicit whole-state reset.
+Same-field conflicts use last accepted patch; no-op patches do not restart the
+stream. JVM fixtures cover both orders, a barrier-held concurrent persist, an
+explicit same-field policy, failed publication and new-host torch reset.

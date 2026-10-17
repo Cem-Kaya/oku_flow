@@ -90,7 +90,7 @@ class CameraStreamService : Service() {
             return
         }
         store = CameraSettingsStore.get(this)
-        store.update(store.state.value.forNewHostSession())
+        store.update { it.forNewHostSession() }
         monitor = DeviceSetupMonitor(this).also { it.start() }
         power = getSystemService(PowerManager::class.java)
         thermalFps = if (power.currentThermalStatus >= PowerManager.THERMAL_STATUS_SEVERE) 30 else 60
@@ -126,7 +126,7 @@ class CameraStreamService : Service() {
         try {
             server = UsbSocketServer(catalog::capabilities, ::command, onConnect = { id -> onOwner {
                 if (!sessionOwner.bind(id)) return@onOwner
-                store.update(store.state.value.forNewHostSession())
+                store.update { it.forNewHostSession() }
                 if (HostLink.problem.value != HostProblem.TooHot) HostLink.report(null)
                 HostLink.publish(HostLinkState.Connected)
                 updateNotification(getString(R.string.service_connected_notification))
@@ -134,7 +134,7 @@ class CameraStreamService : Service() {
                 onOwner { HostLink.report(HostProblem.ServiceFailed); stopSelf() }
             }) { id -> onOwner {
                 if (!sessionOwner.retire(id)) return@onOwner
-                store.update(store.state.value.forNewHostSession())
+                store.update { it.forNewHostSession() }
                 publishIdle()
             } }
         } catch (exception: Exception) {
@@ -191,18 +191,18 @@ class CameraStreamService : Service() {
                 }
                 "stop" -> {
                     sessionOwner.stop(id)
-                    store.update(store.state.value.forNewHostSession())
+                    store.update { it.forNewHostSession() }
                     publishIdle()
                 }
                 "zoom" -> engine.setZoom(id, command.getDouble("ratio").toFloat())
                 "camera" -> {
                     val id = if (command.has("cameraId")) command.getString("cameraId") else command.getString("id")
                     require(CameraCatalog(this).cameras().any { it.id == id }) { "Unknown camera" }
-                    store.update(store.state.value.copy(cameraId = id))
+                    store.update { it.copy(cameraId = id) }
                 }
-                "torch" -> store.update(store.state.value.copy(torch = command.getBoolean("enabled")))
-                "exposure" -> store.update(store.state.value.copy(exposure = command.getInt("steps")))
-                "autofocus" -> store.update(store.state.value.copy(autofocus = command.getBoolean("enabled")))
+                "torch" -> store.update { it.copy(torch = command.getBoolean("enabled")) }
+                "exposure" -> store.update { it.copy(exposure = command.getInt("steps")) }
+                "autofocus" -> store.update { it.copy(autofocus = command.getBoolean("enabled")) }
                 "keyframe" -> engine.requestKeyFrame()
                 else -> error("Unsupported command")
             }

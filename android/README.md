@@ -295,3 +295,8 @@ its session lock; old retirement cannot stop a replacement host.
 ordering for Stop/restart, delayed old connect/command/disconnect, close and
 wrong-thread rejection. These JVM tests do not establish real Camera2, cable
 recovery or long-soak acceptance. No display configuration is changed.
+
+Camera setting edits apply as serialized field patches. A delayed local control
+callback preserves independent USB host changes; edits to the same setting use
+the last accepted value. Reset explicitly restores all camera preferences.
+Torch remains session-only and is cleared on host replacement.
