@@ -4300,3 +4300,22 @@ Paint draws every original/replacement union plate before any sharp letters,
 so adjacent plates cannot erase previously drawn overhangs. The offscreen
 fixture checks capitals, ascenders and descenders across two independent lines
 and pan/zoom, rather than matching UI wording.
+
+`AppControlTarget::Execute(Wait)` snapshots the same enriched Operation Query
+projection that subsequent polls compare. Deferred recording preferences no
+longer satisfy operation_state merely because Query adds preference metadata.
+The real-target offscreen fixture seeds a deferred tracker entry, verifies an
+unchanged wait times out unmet, then verifies an actual completion satisfies it.
+`NativeControlFixture` is the target's test-only friend for controlled ledger
+setup; the wait and projection are unchanged production paths.
+
+`AssistantChatView::RenderMessages` tags root heading/body blocks with stable
+message identity (`ChatBlockIdentity`, `TagChatBlocks`). `CaptureChatAnchor`
+and `RestoreChatAnchor` retain each selection endpoint's message, part and UTF-16
+offset separately, preserving reverse selections and duplicate occurrences.
+The viewport restores a semantic top anchor plus its pixel offset; it does not
+search for the first matching selected string. Reflow remains root-level, so
+existing Qt/UIA character geometry is preserved. A synthetic duplicate-message
+regression changes earlier content and streams later content, checking exact
+selection endpoints and direction rather than interface wording.
+

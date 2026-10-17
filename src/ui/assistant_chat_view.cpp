@@ -27,6 +27,7 @@
 #include <QSignalBlocker>
 #include <QStyle>
 #include <QTextBrowser>
+#include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QToolButton>
@@ -34,6 +35,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <optional>
 
 namespace okuflow {
 namespace {
@@ -84,6 +86,45 @@ QPushButton* Action(const QString& text,const char* name,QWidget* parent=nullptr
     return button;
 }
 QString Escape(const QString& text) { return text.toHtmlEscaped().replace(QLatin1Char('\n'),QStringLiteral("<br>")); }
+class ChatBlockIdentity final : public QTextBlockUserData {
+public:
+    QString messageId;
+    int part{}; // heading or message body, both root-level paragraphs
+};
+struct ChatTextAnchor {
+    QString messageId;
+    int part{}, offset{}, absolute{};
+};
+ChatTextAnchor CaptureChatAnchor(QTextDocument* document,int position)
+{
+    const auto block=document->findBlock(position);
+    const auto* identity=dynamic_cast<ChatBlockIdentity*>(block.userData());
+    return {identity?identity->messageId:QString(),identity?identity->part:0,
+            position-block.position(),position};
+}
+std::optional<int> RestoreChatAnchor(QTextDocument* document,const ChatTextAnchor& anchor)
+{
+    if(anchor.messageId.isEmpty())return {};
+    for(auto block=document->begin();block.isValid();block=block.next()) {
+        const auto* identity=dynamic_cast<ChatBlockIdentity*>(block.userData());
+        if(identity && identity->messageId==anchor.messageId && identity->part==anchor.part)
+            return block.position()+std::clamp(anchor.offset,0,std::max(0,block.length()-1));
+    }
+    return {};
+}
+void TagChatBlocks(QTextDocument* document,const QJsonArray& messages)
+{
+    auto block=document->begin();int index=0;
+    for(const auto value:messages) {
+        const auto id=value.toObject().value("id").toString();
+        const QString identity=id.isEmpty()?QStringLiteral("index/%1").arg(index):QStringLiteral("id/")+id;
+        for(int part=0;part<2 && block.isValid();++part,block=block.next()) {
+            auto* data=new ChatBlockIdentity;
+            data->messageId=identity;data->part=part;block.setUserData(data);
+        }
+        ++index;
+    }
+}
 }
 AssistantChatView::AssistantChatView(QWidget* parent):QWidget(parent)
 {
@@ -229,8 +270,12 @@ void AssistantChatView::SetChatSnapshot(const QJsonObject& value)
 void AssistantChatView::RenderMessages()
 {
     const auto cursor=transcript_->textCursor();const int oldScroll=transcript_->verticalScrollBar()->value();
-    const bool hadSelection=cursor.hasSelection();const int oldAnchor=cursor.anchor(),oldPosition=cursor.position();
-    const QString selected=cursor.selectedText().replace(QChar::ParagraphSeparator,QLatin1Char('\n'));
+    const bool hadSelection=cursor.hasSelection();
+    const auto oldAnchor=CaptureChatAnchor(transcript_->document(),cursor.anchor());
+    const auto oldPosition=CaptureChatAnchor(transcript_->document(),cursor.position());
+    const auto topCursor=transcript_->cursorForPosition(QPoint(0,0));
+    const auto topAnchor=CaptureChatAnchor(transcript_->document(),topCursor.position());
+    const int topOffset=transcript_->cursorRect(topCursor).top();
     const bool follow=!hadSelection && oldScroll>=transcript_->verticalScrollBar()->maximum()-4;
     const bool dark=palette().color(QPalette::Base).lightness()<128;
     const QString textColor=palette().color(QPalette::Text).name();
@@ -302,17 +347,29 @@ void AssistantChatView::RenderMessages()
     transcript_->document()->addResource(QTextDocument::ImageResource,QUrl(QStringLiteral("okuflow-chat-origin")),originIcon);
     for(const auto& preview:previews)transcript_->document()->addResource(QTextDocument::ImageResource,preview.first,preview.second);
     renderedHtml_=html;transcript_->setHtml(html);
+    TagChatBlocks(transcript_->document(),snapshot_.value("messages").toArray());
     for(const auto& preview:previews)transcript_->document()->addResource(QTextDocument::ImageResource,preview.first,preview.second);
     transcript_->document()->addResource(QTextDocument::ImageResource,QUrl(QStringLiteral("okuflow-chat-origin")),originIcon);
-    if(hadSelection) {
+    {
         QTextCursor restored(transcript_->document());
         const int end=std::max(0,transcript_->document()->characterCount()-1);
-        const QString plain=transcript_->toPlainText();int found=selected.isEmpty()?-1:plain.indexOf(selected);
-        if(found>=0){restored.setPosition(found);restored.setPosition(found+selected.size(),QTextCursor::KeepAnchor);}
-        else{restored.setPosition(std::min(oldAnchor,end));restored.setPosition(std::min(oldPosition,end),QTextCursor::KeepAnchor);}
+        const auto anchor=RestoreChatAnchor(transcript_->document(),oldAnchor);
+        const auto position=RestoreChatAnchor(transcript_->document(),oldPosition);
+        if((!oldAnchor.messageId.isEmpty() && !anchor) || (!oldPosition.messageId.isEmpty() && !position)) {
+            // A removed message must not transfer selection to unrelated text.
+            restored.setPosition(position.value_or(anchor.value_or(end)));
+        } else {
+            restored.setPosition(anchor.value_or(std::min(oldAnchor.absolute,end)));
+            restored.setPosition(position.value_or(std::min(oldPosition.absolute,end)),QTextCursor::KeepAnchor);
+        }
         transcript_->setTextCursor(restored);
     }
-    transcript_->verticalScrollBar()->setValue(follow?transcript_->verticalScrollBar()->maximum():oldScroll);
+    if(follow)transcript_->verticalScrollBar()->setValue(transcript_->verticalScrollBar()->maximum());
+    else if(const auto position=RestoreChatAnchor(transcript_->document(),topAnchor)) {
+        QTextCursor top(transcript_->document());top.setPosition(*position);
+        const int delta=transcript_->cursorRect(top).top()-topOffset;
+        transcript_->verticalScrollBar()->setValue(transcript_->verticalScrollBar()->value()+delta);
+    } else transcript_->verticalScrollBar()->setValue(oldScroll);
 }
 void AssistantChatView::RefreshActions()
 {

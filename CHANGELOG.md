@@ -1,6 +1,10 @@
 # Changelog
 
 ## [Unreleased]
+- Preserve the exact selected chat occurrence, selection direction and reading
+  position when messages stream or reflow.
+- Wait for real recording-preference state changes instead of immediately
+  reporting unchanged enriched metadata as a transition.
 - Keep Ultra Clear Text words on a shared line baseline and type size instead
   of stretching each word to its own OCR ink height.
 - Persist Quick Modes at the Save action and preserve previous modes on write

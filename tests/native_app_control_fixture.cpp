@@ -65,6 +65,15 @@ public:
     }
     static AppControlService& Service(OkuFlowApp& app) {return *app.controlService_;}
     static AppControlTarget& Target(OkuFlowApp& app) {return *app.controlTarget_;}
+    static QString DeferredPreferenceOperation(OkuFlowApp& app) {
+        auto& operations=app.controlTarget_->operations_;
+        const auto id=operations.Create(OperationKind::Recording,"wait-fixture");
+        operations.Advance(id,OperationState::Stopping,{{"recordingPreferences",true}});
+        return id;
+    }
+    static void CompletePreferenceOperation(OkuFlowApp& app,const QString& id) {
+        app.controlTarget_->operations_.Advance(id,OperationState::Completed,{{"recordingPreferences",true}});
+    }
     static QJsonObject NativeState(OkuFlowApp& app) {
         const auto& saved=app.settingsController_->LastCommittedSettings();
         return {{"realTarget",true},{"contrastSlider",app.uiState_->contrastSlider_->value()},
@@ -196,6 +205,25 @@ class NativeAcceptance final : public QObject {
 public:
     explicit NativeAcceptance(OkuFlowApp& app):app_(app) {}
 private slots:
+    void deferredPreferenceWaitUsesTheSameStatusProjection() {
+        auto& target=NativeControlFixture::Target(app_);
+        const auto id=NativeControlFixture::DeferredPreferenceOperation(app_);
+        QVERIFY(target.Query(ToolId::Operation,{{"operationId",id}})["preferencesPending"].toBool());
+        std::optional<ControlResult> result;
+        const auto wait=[&] {
+            result.reset();
+            target.Execute(ToolId::Wait,{{"condition","operation_state"},{"operationId",id},{"timeoutMs",75}},
+                "wait-fixture",ContextKind::EmbeddedTurn,[&](ControlResult value){result=std::move(value);});
+        };
+        wait();QTRY_VERIFY(result.has_value());
+        QVERIFY(result->content["ok"].toBool());
+        QVERIFY(!result->content["met"].toBool());
+        wait();
+        QTimer::singleShot(30,&app_,[&]{NativeControlFixture::CompletePreferenceOperation(app_,id);});
+        QTRY_VERIFY(result.has_value());
+        QVERIFY(result->content["met"].toBool());
+        QVERIFY(!target.Query(ToolId::Operation,{{"operationId",id}})["preferencesPending"].toBool());
+    }
     void physicalCameraOpenStaysOffUiAndStopRetiresItsOwnWorker_data() {
         QTest::addColumn<int>("origin");
         QTest::newRow("manual-reopen")<<int(CameraSourceOrigin::Manual);

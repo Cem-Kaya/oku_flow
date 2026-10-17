@@ -19,6 +19,7 @@ namespace okuflow::agent {
 // Original production slots own pipeline resets and dependent-widget updates.
 // This adapter prepares an allowlisted delta and invokes explicit transitions.
 class AppControlTarget final : public IAppControlTarget {
+    friend class NativeControlFixture;
 public:
     explicit AppControlTarget(OkuFlowApp& app);
     QJsonObject State() const override;

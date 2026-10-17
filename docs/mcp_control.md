@@ -210,3 +210,6 @@ availability is never fabricated to obtain a passing mutation.
 Its results must stay separate from the synthetic fixture above, and neither
 proves all 94 native effects, real camera/media, live provider, rendered approval
 UI, accessibility, the embedded assistant adapter or shipping acceptance.
+
+Operation-state waits compare the complete public status projection at admission
+and each poll. Unchanged deferred preference metadata is not a transition.

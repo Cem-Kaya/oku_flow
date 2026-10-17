@@ -48,6 +48,7 @@ private slots:
     void routingReadinessOffersExplicitTest();
     void sharedChatDraftAndKeyboard();
     void escapedMessagesSelectionAndReadIsolation();
+    void streamingKeepsDuplicateSelectionIdentityAndDirection();
     void chatAccessibleCharacterGeometry();
     void chatFramePreviewsRenderInBothViews();
     void compactComposerActions();
@@ -363,6 +364,37 @@ void AgentControlPanelTests::escapedMessagesSelectionAndReadIsolation()
     overlay.SetChatSnapshot(snapshot);
     QVERIFY(view->transcript()->toPlainText().contains("Yes, go ahead"));
 }
+void AgentControlPanelTests::streamingKeepsDuplicateSelectionIdentityAndDirection()
+{
+    okuflow::AssistantChatView view;
+    QJsonObject first{{"id","first"},{"role","assistant"},{"text","repeat repeat"},{"status","completed"}};
+    QJsonObject second{{"id","second"},{"role","assistant"},{"text","repeat repeat"},{"status","completed"}};
+    QJsonObject last{{"id","last"},{"role","assistant"},{"text","stream"},{"status","streaming"}};
+    QJsonObject snapshot{{"conversationId","duplicate-selection"},{"messages",QJsonArray{first,second,last}}};
+    view.SetChatSnapshot(snapshot);
+    auto* document=view.transcript()->document();
+    QTextCursor selected;
+    for(int i=0;i<4;++i)selected=document->find("repeat",selected);
+    QVERIFY(selected.hasSelection());
+    QTextCursor reversed(document);
+    reversed.setPosition(selected.selectionEnd());
+    reversed.setPosition(selected.selectionStart(),QTextCursor::KeepAnchor);
+    view.transcript()->setTextCursor(reversed);
+    first["text"]="new text before the old message repeat repeat";
+    last["text"]="stream with an appended delta";
+    snapshot["messages"]=QJsonArray{first,second,last};
+    view.SetChatSnapshot(snapshot);
+    QTextCursor expected;
+    for(int i=0;i<4;++i)expected=view.transcript()->document()->find("repeat",expected);
+    const auto actual=view.transcript()->textCursor();
+    QCOMPARE(actual.anchor(),expected.selectionEnd());
+    QCOMPARE(actual.position(),expected.selectionStart());
+    QCOMPARE(actual.selectedText(),QStringLiteral("repeat"));
+    snapshot["messages"]=QJsonArray{first,last};
+    view.SetChatSnapshot(snapshot);
+    QVERIFY(!view.transcript()->textCursor().hasSelection());
+}
+
 void AgentControlPanelTests::chatAccessibleCharacterGeometry()
 {
     QVERIFY(QFontDatabase::addApplicationFont(QDir(qEnvironmentVariable("WINDIR")).filePath("Fonts/segoeui.ttf"))>=0);
