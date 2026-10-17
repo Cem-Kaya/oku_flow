@@ -1,5 +1,16 @@
 # OkuFlow Code Reference
 
+## Fresh test-input hashing (audit TB-001)
+
+`run_test_gate.ps1::Initialize-HashCache` starts an empty pass-local memo rather
+than trusting persisted length/mtime digests. `Add-FileDigest` hashes every
+distinct input at least once per pass; duplicate references can reuse that
+pass's digest. The gate clears the memo before its post-run runtime/test
+fingerprints, so metadata-preserving edits invalidate evidence across runs and
+during execution. `Save-HashCache` retains diagnostics only. The runner contract
+checks identical-length replacement with restored timestamps and fresh-pass
+hash calls, while preserving all existing failure blockers and resume rules.
+
 ## Observation authority at egress (audit AS-004)
 
 `AuthorizedObservation` is internal control-result provenance: context id,

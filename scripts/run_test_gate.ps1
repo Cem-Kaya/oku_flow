@@ -47,14 +47,9 @@ function Initialize-HashCache([string]$Path) {
     $script:hashCachePath = $Path
     $script:hashCache = @{}
     $script:hashCacheDirty = $false
-    if (Test-Path -LiteralPath $Path) {
-        try {
-            $stored = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable
-            if ($stored.schema -eq 1 -and $stored.files -is [System.Collections.IDictionary]) {
-                $script:hashCache = $stored.files
-            }
-        } catch { Write-Warning 'Unreadable file hash cache; rebuilding it.' }
-    }
+    # Persisted hashes are diagnostic only. Length/mtime cannot certify exact
+    # bytes across invocations: builds, copies or deliberate edits can restore
+    # both metadata values. Memoize only within this fingerprint pass.
 }
 
 function Save-HashCache {
@@ -415,6 +410,8 @@ try {
         })
         if ($added.Count) { $errors.Add("Test inventory changed during testing; new required tests: $($added.name -join ', ')") }
     }
+    # Read bytes again even when lengths/timestamps were preserved by a writer.
+    $script:hashCache.Clear()
     $afterRuntime = Get-RuntimeInputs (Get-Content -LiteralPath (Join-Path $BuildDirectory 'CMakeCache.txt') -Raw) $ctest $hasGui
     foreach ($case in $fingerprinted) {
         $afterCase = $afterTests | Where-Object name -CEQ $case.name

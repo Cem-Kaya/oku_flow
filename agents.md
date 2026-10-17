@@ -610,3 +610,10 @@ aligned with the project goals.
 - Preserve the capture manifest and refused-image diagnostics. A requested
   desktop visual example must fail if its full native bounds cannot be saved;
   offscreen widget grabs never substitute for native visual evidence.
+
+## Exact-byte validation evidence (2026-10-17)
+- Hash runtime, executable and declared fixture bytes afresh in the pre-run and
+  post-run fingerprint passes, including resume. Persistent length/mtime caches
+  are diagnostic only. Duplicate inputs may share a digest within a pass; clear
+  that memo before post-run verification. Keep metadata-preserving mutation
+  regressions and all unresolved-failure blockers intact.

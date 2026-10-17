@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Verify exact test-input bytes afresh before and after every gate, including
+  resume. Preserved file lengths/timestamps cannot reuse an old digest; duplicate
+  references are still memoized within each individual fingerprint pass.
+
 - Carry native observation source/view/processing/geometry and frame provenance
   through Assistant previews and provider/MCP delivery. Final sends recheck the
   original authority, modal state and frame-grant generation; revoking and

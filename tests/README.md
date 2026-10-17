@@ -1,5 +1,12 @@
 # OkuFlow Tests
 
+Test evidence hashes each distinct file's bytes afresh before and after every
+invocation, including resume. Length and modification time only optimize
+duplicate references within one fingerprint pass; persisted digests are not
+authority for skipping a fresh hash. Metadata-preserving replacements must
+invalidate previous passes. The post-run pass clears its memo before rereading
+runtime and case inputs.
+
 The 2026-10-15 scoped chat regression repair preserves native foreground,
 Escape focus, drag latching/cancellation, streaming selection/scroll, and Hide UI
 assertions. Fixtures use the visible chat header and `VisibleChatSession` shared

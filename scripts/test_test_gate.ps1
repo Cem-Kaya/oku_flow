@@ -72,26 +72,36 @@ try {
     $parts = [ordered]@{}
     Add-FileDigest $parts $hashFile
     $initialHash = $parts["file:$hashFile"]
+    Add-FileDigest $parts $hashFile
+    Assert-Contract ($script:hashCalls -eq 1) 'Repeated input in one fingerprint pass was not deduplicated.'
     Save-HashCache
     Initialize-HashCache $cachePath
     Add-FileDigest $parts $hashFile
-    Assert-Contract ($script:hashCalls -eq 1 -and $parts["file:$hashFile"] -eq $initialHash) 'Persistent hash cache did not reuse SHA256.'
+    Assert-Contract ($script:hashCalls -eq 2 -and $parts["file:$hashFile"] -eq $initialHash) 'New fingerprint pass trusted a persisted metadata-only digest.'
+    $time = (Get-Item -LiteralPath $hashFile).LastWriteTimeUtc
+    [IO.File]::WriteAllText($hashFile, 'wxyz')
+    [IO.File]::SetLastWriteTimeUtc($hashFile, $time)
+    Save-HashCache
+    Initialize-HashCache $cachePath
+    Add-FileDigest $parts $hashFile
+    Assert-Contract ($script:hashCalls -eq 3 -and $parts["file:$hashFile"] -ne $initialHash) 'Same-length bytes with restored timestamp reused passing evidence.'
+    $initialHash = $parts["file:$hashFile"]
     $time = (Get-Item -LiteralPath $hashFile).LastWriteTimeUtc
     [IO.File]::WriteAllText($hashFile, 'efgh')
     [IO.File]::SetLastWriteTimeUtc($hashFile, $time.AddSeconds(2))
     Add-FileDigest $parts $hashFile
-    Assert-Contract ($script:hashCalls -eq 2 -and $parts["file:$hashFile"] -ne $initialHash) 'Same-length mtime change did not invalidate hash cache.'
+    Assert-Contract ($script:hashCalls -eq 4 -and $parts["file:$hashFile"] -ne $initialHash) 'Same-length mtime change did not invalidate hash cache.'
     $time = (Get-Item -LiteralPath $hashFile).LastWriteTimeUtc
     $previousHash = $parts["file:$hashFile"]
     [IO.File]::WriteAllText($hashFile, 'longer content')
     [IO.File]::SetLastWriteTimeUtc($hashFile, $time)
     Add-FileDigest $parts $hashFile
-    Assert-Contract ($script:hashCalls -eq 3 -and $parts["file:$hashFile"] -ne $previousHash) 'Length change with unchanged mtime did not invalidate hash cache.'
+    Assert-Contract ($script:hashCalls -eq 5 -and $parts["file:$hashFile"] -ne $previousHash) 'Length change with unchanged mtime did not invalidate hash cache.'
     Remove-Item -LiteralPath $hashFile
     Add-FileDigest $parts $hashFile
     Assert-Contract ($parts["file:$hashFile"] -eq 'MISSING' -and !$script:hashCache.ContainsKey($hashFile)) 'Missing file reused cached hash.'
     Remove-Item Function:\Get-FileHash
-    Write-Host 'PASS: persistent hash cache reused SHA256 and invalidated mtime/length changes.'
+    Write-Host 'PASS: fingerprint passes hash exact bytes afresh, including restored metadata; duplicate inputs are deduplicated within one pass.'
 
     # Resolve a cached launch alias to the readable image, as both production
     # CMake consumers must do before evidence tries to hash the interpreter.
@@ -196,10 +206,20 @@ $countFile = Join-Path $PSScriptRoot "$Case.count"
 $count = if (Test-Path $countFile) { [int](Get-Content $countFile) + 1 } else { 1 }
 Set-Content $countFile $count
 if ($Case -eq 'mutate') {
-    Set-Content (Join-Path $PSScriptRoot 'data.json') 'changed during execution'
+    $path = Join-Path $PSScriptRoot 'data.json'
+    $time = (Get-Item -LiteralPath $path).LastWriteTimeUtc
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $bytes[0] = $bytes[0] -bxor 1
+    [IO.File]::WriteAllBytes($path, $bytes)
+    [IO.File]::SetLastWriteTimeUtc($path, $time)
 }
 if ($Case -eq 'runtime_mutate') {
-    Set-Content (Join-Path $PSScriptRoot 'qt/bin/runtime.dll') 'changed during execution'
+    $path = Join-Path $PSScriptRoot 'qt/bin/runtime.dll'
+    $time = (Get-Item -LiteralPath $path).LastWriteTimeUtc
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $bytes[0] = $bytes[0] -bxor 1
+    [IO.File]::WriteAllBytes($path, $bytes)
+    [IO.File]::SetLastWriteTimeUtc($path, $time)
 }
 if ($Case -eq 'inventory_mutate') {
     Add-Content (Join-Path $PSScriptRoot 'build/CTestTestfile.cmake') 'add_test(fixture_late "cmd.exe" "/c" "exit 0")'
