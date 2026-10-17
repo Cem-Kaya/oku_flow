@@ -653,3 +653,9 @@ aligned with the project goals.
   preset entrypoints, root minimum and developer prerequisite aligned. Check
   root configuration and both manifests with the documented minimum when
   changing preset schema; the included `cmake/` directory is not a source root.
+
+## Lecture-output readiness (2026-10-17)
+- WebSocket identification is not output readiness. Poll typed OBS NotReady
+  (207) within the owned startup deadline, preserving other request failures.
+  Run `scripts/test_lecture_camera.ps1` after readiness changes. This private
+  protocol fixture does not replace inspecting genuine virtual-camera frames.

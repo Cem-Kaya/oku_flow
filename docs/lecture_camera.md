@@ -185,3 +185,8 @@ This verifies capture/processing integration, not sensor latency or optical
 quality. The report is at
 `local_evidence/lecture_camera/mf-bridge-okuflow/worker-1/startup.json`.
 Earlier probes made before the bridge was active are not lecture validation.
+
+Startup waits for an actual GetVirtualCamStatus response, not only WebSocket
+identification. OBS NotReady (207) is a bounded readiness condition; other
+connected request errors remain failures. `scripts/test_lecture_camera.ps1`
+checks those production functions with private protocol fakes and no desktop.

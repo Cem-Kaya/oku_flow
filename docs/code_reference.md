@@ -4285,3 +4285,9 @@ declare CMake 3.25, matching schema version 6. Portable 3.25.3 configures the
 root project and parses both preset manifests. `cmake/` is an included CMake
 implementation directory, not a standalone source root. A diagnostic attempt
 to configure it directly was retained separately and is not passing evidence.
+
+`lecture_camera.ps1::Wait-ObsCameraReady` polls the exact owned startup until its
+output API is ready or the deadline/owner exit refuses it. `Invoke-ObsRequest`
+retains typed ObsStatusCode; only NotReady (207) retries on a connected socket.
+`test_lecture_camera.ps1` evaluates those actual functions with fake protocol
+replies, testing convergence, permanent failure, exit and expiry without OBS.
