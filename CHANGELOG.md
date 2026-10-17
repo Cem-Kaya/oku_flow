@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+- Avoid recursive Visual Studio file discovery and auxiliary setup telemetry in
+  Windows bundle preflight. Stream setup diagnostics while retaining the strict
+  compiler/Qt checks and existing test deadline.
 - Drop advisory Android camera metadata under control-channel pressure while
   reserving space for state and acknowledgments; metadata overflow no longer
   disconnects otherwise viable video. Reliable/video overflow and the stalled-

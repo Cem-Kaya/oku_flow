@@ -756,3 +756,15 @@ aligned with the project goals.
   original retry deadline, and expiry also cancels pending/adopted attempts.
   Keep the actual-app offscreen and orchestrator regressions separate from
   native GUI and hardware acceptance.
+
+## Direct bundle toolchain discovery and diagnostics (2026-10-17)
+- Resolve the installed VS2022 root through `vswhere -property installationPath`
+  and its fixed `Common7/Tools/VsDevCmd.bat` path. Do not recursively scan an
+  entire toolchain to locate this known entrypoint.
+- Keep compiler initialization and full identity/Qt checks. Scope Microsoft's
+  auxiliary telemetry suppression to the batch environment; do not set a user
+  or machine preference. Stream child setup output into CTest and private case
+  logs so timeout evidence retains the last completed stage.
+- Preserve the preflight's 60-second deadline and all refusal/no-mutation
+  assertions. Let tracked runners own setup instead of redundantly initializing
+  the caller shell, which can overflow Windows batch environment lines.

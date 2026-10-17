@@ -1308,6 +1308,20 @@ not certify a toolchain. The positive batch must repair those same claims by
 initializing the installed shell, then independently checking its registered
 17.x C++ root and exact x64 compiler path. Installer `vswhere.exe` is required
 for that identity verification. No fake VS executable or setup script is run.
+
+The installed-root lookup uses `vswhere -property installationPath` and the
+known `Common7/Tools/VsDevCmd.bat` path, avoiding a recursive search through the
+entire installed toolchain. The bundle's local environment sets Microsoft's
+`VSCMD_SKIP_SENDTELEMETRY=1`: compiler initialization and identity checks still
+run, while the initializer does not spawn unrelated background telemetry that
+can retain a captured child pipe. Setup stage output streams into CTest and a
+per-case log immediately, including on a timeout; it is not held until exit.
+
+Run 39047500019 timed out in the positive case on commit `8f4567c`. Its buffered
+output identifies that case, but does not establish which inner setup operation
+stalled. Keep that original failure separate from subsequent local and hosted
+validation. Let `agent_build.bat` initialize its own developer shell; redundant
+caller initialization can overflow Windows batch environment lines.
 This is a bounded-work correction for the remote timeout, with no automatic
 retry, deadline increase or relaxed assertion. Original failed evidence stays
 separate from subsequent validation.

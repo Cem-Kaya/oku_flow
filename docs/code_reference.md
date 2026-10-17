@@ -4688,6 +4688,15 @@ helper independently queries the installed VS2022 C++ roots with Installer
 exact `VC/Tools/MSVC/<version>/bin/Hostx64/x64/cl.exe` layout under that root.
 An arbitrary ancestor path or a different PATH compiler cannot certify it.
 
+`build_release_bundle.bat::initialize_toolchain` selects the registered root
+with `vswhere -property installationPath`, then uses its fixed
+`Common7/Tools/VsDevCmd.bat` location instead of recursively enumerating the
+installation. Within the batch's `setlocal` environment it disables only the
+initializer's auxiliary telemetry process with `VSCMD_SKIP_SENDTELEMETRY=1`;
+the real initializer, registered compiler check and Qt checks still execute.
+`test_bundle_toolchain.ps1::Invoke-Preflight` tees child output live into CTest
+and an individual case log, preserving the last setup stage if CTest times out.
+
 The fixture preserves all generator/cache and no-mutation assertions while
 performing exactly one real VS initialization. Configuration refusals assert
 that the initializer was never reached. In-process negative checks use forged

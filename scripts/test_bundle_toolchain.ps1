@@ -19,10 +19,14 @@ function Assert-Toolchain([bool]$Value,[string]$Message) { if (-not $Value) { th
 function Invoke-Preflight([string]$Case,[bool]$ExpectPass,[string]$ExpectedMessage,[bool]$ExpectInitialization = $false) {
     Write-Output "BEGIN bundle preflight: $Case"
     $watch = [Diagnostics.Stopwatch]::StartNew()
-    $output = (& $env:ComSpec /d /c "call `"$batch`" --check-toolchain" 2>&1 | Out-String)
+    # Stream the real child while retaining exact case output. CTest must see
+    # the last completed setup stage even if it terminates this fixture.
+    $caseLog = Join-Path $work ($Case + '.log')
+    & $env:ComSpec /d /c "call `"$batch`" --check-toolchain" 2>&1 |
+        Tee-Object -FilePath $caseLog | ForEach-Object { Write-Host $_ }
     $exitCode = $LASTEXITCODE
     $watch.Stop()
-    $output | Set-Content -LiteralPath (Join-Path $work ($Case + '.log'))
+    $output = Get-Content -LiteralPath $caseLog -Raw
     $initializations = [regex]::Matches($output,[regex]::Escape($initializationMarker)).Count
     $script:initializationsObserved += $initializations
     Assert-Toolchain ($initializations -eq [int]$ExpectInitialization) "Unexpected VS initialization count in $Case : $output"

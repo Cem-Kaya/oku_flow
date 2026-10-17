@@ -527,8 +527,11 @@ set "BUNDLE_VSDEVCMD="
 set "BUNDLE_VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 rem VsDevCmd also invokes vswhere by name on some installed SDKs.
 set "Path=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%Path%"
+rem Query registered roots directly. A recursive -find **\VsDevCmd.bat scans
+rem the entire installed Enterprise tree on hosted runners before setup starts.
+echo Discovering the installed Visual Studio 2022 C++ root.
 if exist "%BUNDLE_VSWHERE%" (
-    for /f "usebackq delims=" %%V in (`call "%BUNDLE_VSWHERE%" -latest -version "[17.0,18.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find **\VsDevCmd.bat`) do if not defined BUNDLE_VSDEVCMD set "BUNDLE_VSDEVCMD=%%V"
+    for /f "usebackq delims=" %%V in (`call "%BUNDLE_VSWHERE%" -latest -version "[17.0,18.0)" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do if exist "%%V\Common7\Tools\VsDevCmd.bat" if not defined BUNDLE_VSDEVCMD set "BUNDLE_VSDEVCMD=%%V\Common7\Tools\VsDevCmd.bat"
 )
 if not defined BUNDLE_VSDEVCMD if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" set "BUNDLE_VSDEVCMD=C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"
 if not defined BUNDLE_VSDEVCMD (
@@ -538,10 +541,17 @@ if not defined BUNDLE_VSDEVCMD (
 )
 rem Microsoft's script preserves an inherited VSINSTALLDIR. Let the selected
 rem installed script derive its own root instead of trusting an environment claim.
+rem This build needs compiler setup only. Do not launch Microsoft telemetry
+rem grandchildren that can retain a captured process pipe after setup returns.
+set "VSCMD_SKIP_SENDTELEMETRY=1"
+rem Keep setup errors visible without enabling environment/secret dumps.
+set "VSCMD_DEBUG="
 set "VSINSTALLDIR="
-call "%BUNDLE_VSDEVCMD%" -arch=x64 -host_arch=x64 >nul
+echo Using installed VS2022 initializer: "%BUNDLE_VSDEVCMD%"
+call "%BUNDLE_VSDEVCMD%" -no_logo -arch=x64 -host_arch=x64
 if errorlevel 1 (
     echo ERROR: Visual Studio 2022 x64 environment could not be initialized.
     exit /b 1
 )
+echo Visual Studio 2022 x64 initialization completed.
 exit /b 0

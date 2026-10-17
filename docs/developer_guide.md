@@ -1154,8 +1154,12 @@ and select a fresh `OKUFLOW_BUNDLE_BUILD_DIR` when migrating generators.
 
 Run `scripts\build_release_bundle.bat --check-toolchain` to check VS2022 x64,
 Ninja, CMake, Qt deployment/license prerequisites and any existing cache without
-configuring, compiling or modifying `dist`. Normal builds force Release, tests
-and compilation-database export after optional CMake arguments.
+configuring, compiling or modifying `dist`. Discovery uses the registered VS
+root and fixed initializer path rather than recursively scanning its files.
+The batch disables the initializer's auxiliary telemetry within its own local
+environment and streams setup diagnostics; full compiler/Qt checks still run.
+Normal builds force Release, tests and compilation-database export after
+optional CMake arguments.
 
 Each invocation owns a fresh `dist\OkuFlow.staging-<guid>\` directory. The
 publisher validates every prior runtime file against its manifest and refuses
