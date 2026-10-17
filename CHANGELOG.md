@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Freeze completed note transcripts before asynchronous file access and serialize
+  writes for the same recording. Starting another transcription cannot clear an
+  older sidecar or let its delayed status overwrite the active run.
+
 - Verify exact test-input bytes afresh before and after every gate, including
   resume. Preserved file lengths/timestamps cannot reuse an old digest; duplicate
   references are still memoized within each individual fingerprint pass.

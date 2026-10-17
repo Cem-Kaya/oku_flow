@@ -89,6 +89,24 @@ R"JS(
   const toolOrigin = new URL(toolUrl).origin;
   let root = null;
   let popup = null;
+  const sidecarWrites = new Map();
+  async function saveTranscriptSnapshot(entry, payload, mediaKey) {
+    const previous = sidecarWrites.get(mediaKey) || Promise.resolve();
+    const pending = previous.catch(() => {}).then(async () => {
+      const handle = await entry.directory.getFileHandle(entry.name + '.okuflow-transcript.json', {create:true});
+      const writable = await handle.createWritable();
+      try {
+        await writable.write(payload);
+        await writable.close();
+      } catch (error) {
+        try { await writable.abort(); } catch (_) { /* Preserve the write error. */ }
+        throw error;
+      }
+    });
+    sidecarWrites.set(mediaKey, pending);
+    try { await pending; }
+    finally { if (sidecarWrites.get(mediaKey) === pending) sidecarWrites.delete(mediaKey); }
+  }
   function database() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open('okuflow-notes-files', 1);
@@ -177,6 +195,9 @@ R"JS(
     } catch (_) { /* No saved transcript for this recording. */ }
   }
   async function begin(card) {
+    const generation = (card.transcribeJobGeneration || 0) + 1;
+    card.transcribeJobGeneration = generation;
+    const isCurrent = () => card.transcribeJobGeneration === generation;
     const status = card.querySelector('.transcribe-status');
     const button = card.querySelector('.transcribe-start');
     if (!window.showDirectoryPicker) { status.textContent = l.unsupported; return; }
@@ -207,7 +228,7 @@ R"JS(
       const finish = () => {complete = true; window.removeEventListener('message', receiveReady); clearInterval(ping); clearTimeout(timeout); button.disabled = false; stop.hidden = true; channel.port1.close();};
       stop.onclick = () => {channel.port1.postMessage({type:'cancel'}); status.textContent = l.stopped; finish();};
       channel.port1.onmessage = async ({data}) => {
-        if (complete || !data || typeof data !== 'object') return;
+        if (complete || !isCurrent() || !data || typeof data !== 'object') return;
         if (data.type === 'segment' && validSegments([data])) {card.segments.push({start:data.start,end:data.end,text:data.text}); showLine(card, data);}
         if (data.type === 'status') {
           const phase = {queued:l.queued, loading:l.loading, downloading:l.downloading, decoding:l.reading, transcribing:l.running, cancelled:l.stopped};
@@ -216,17 +237,19 @@ R"JS(
         }
         if (data.type === 'error' || data.type === 'cancelled') {status.textContent = data.type === 'cancelled' ? l.stopped : l.failed + ' ' + String(data.message || ''); finish();}
         if (data.type === 'done' && validSegments(data.segments)) {
-          card.segments = data.segments; card.querySelector('.transcribe-lines').replaceChildren();
+          const completedSegments = data.segments.map(s => ({start:s.start,end:s.end,text:s.text}));
+          card.segments = completedSegments; card.querySelector('.transcribe-lines').replaceChildren();
           card.segments.forEach(s => showLine(card, s));
           card.querySelector('.transcribe-export').hidden = !card.segments.length;
           status.textContent = card.segments.length ? l.done : l.empty;
           finish();
           try {
-            const handle = await entry.directory.getFileHandle(entry.name + '.okuflow-transcript.json', {create:true});
-            const writable = await handle.createWritable();
-            await writable.write(JSON.stringify({version:1, recording:{name:entry.name,size:entry.file.size,lastModified:entry.file.lastModified}, model:data.model,device:data.device,language:data.language,segments:card.segments}));
-            await writable.close(); status.textContent = l.saved;
-          } catch (_) {status.textContent = l.saveFailed;}
+            // Freeze every byte before the first await. A new run may clear
+            // card.segments while this completed result waits for folder I/O.
+            const payload = JSON.stringify({version:1, recording:{name:entry.name,size:entry.file.size,lastModified:entry.file.lastModified}, model:data.model,device:data.device,language:data.language,segments:completedSegments});
+            await saveTranscriptSnapshot(entry, payload, new URL(card.dataset.transcribeSrc, location.href).href);
+            if (isCurrent()) status.textContent = l.saved;
+          } catch (_) {if (isCurrent()) status.textContent = l.saveFailed;}
         }
       };
       receiveReady = event => {

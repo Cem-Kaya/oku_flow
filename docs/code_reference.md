@@ -1,5 +1,19 @@
 # OkuFlow Code Reference
 
+## Immutable transcript publication (audit PW-003)
+
+The compiled notes bridge's `saveTranscriptSnapshot` serializes sidecar writes
+by resolved recording URI. Completed segments and metadata become an immutable
+JSON payload before file-handle awaits. Each card's `transcribeJobGeneration`
+fences delayed save success/failure updates, while prior durable results still
+finish writing. Failed writes abort their stream and do not prevent successor
+writes. `scripts/test_notes_transcribe_bridge.mjs` executes the actual C++ raw
+script literals under Node with only DOM/file-handle primitives simulated. It
+holds the first file open while a successor clears its UI or finishes, proving
+snapshot preservation, write ordering and status ownership without a browser,
+model, real media or desktop. This does not establish browser file identity
+(PW-004), codec timing or actual Chrome permission acceptance.
+
 ## Fresh test-input hashing (audit TB-001)
 
 `run_test_gate.ps1::Initialize-HashCache` starts an empty pass-local memo rather

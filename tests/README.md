@@ -1,5 +1,12 @@
 # OkuFlow Tests
 
+`node --test scripts/test_notes_transcribe_bridge.mjs` checks the actual embedded
+notes bridge with controlled asynchronous file-handle barriers. It requires
+Node's built-in test/VM modules only and creates no browser, model or media.
+These desktop-free publication contracts complement `notes_html_contract` and
+the separate native Chrome handoff fixture; they do not replace browser/device
+acceptance.
+
 Test evidence hashes each distinct file's bytes afresh before and after every
 invocation, including resume. Length and modification time only optimize
 duplicate references within one fingerprint pass; persisted digests are not
