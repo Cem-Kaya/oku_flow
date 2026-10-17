@@ -4238,3 +4238,10 @@ driver activation in the native fixture, never in normal launches.
 without UI-side device enumeration or premature mode reads. Completion owns
 success/retry; acceptance does not announce a reconnect. Native fixture barriers
 hold Open/Start while the UI pumps events and Stop revokes the exact worker.
+
+`UltraClearTextTests::modelAdmissionBudgetNeverDisplaysUncheckedText` forces a
+zero admission-matching budget and proves glyphs/reading text remain hidden
+until independent probe checks validate the lines. The content-moved algorithm
+case explicitly permits complete matching, so CPU scheduling cannot turn a
+partial deferred result into an incorrect test failure. Production stays at
+its 3 ms UI admission budget.

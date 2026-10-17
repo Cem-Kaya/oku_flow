@@ -438,6 +438,7 @@ private slots:
     void modelRequiresTemporalAgreement();
     void modelRejectsStaleSceneAndLateResults();
     void modelRejectsResultWhoseContentMoved();
+    void modelAdmissionBudgetNeverDisplaysUncheckedText();
     void modelHidesTextOnMotionAndExpiresFreshness();
     void modelReprojectsWithCurrentTransform();
     void modelOmitsHighRiskWordsFromReadingText();
@@ -605,12 +606,30 @@ void UltraClearTextTests::modelRejectsResultWhoseContentMoved()
     const SyntheticPage page = MakePage(kLines);
     const SyntheticPage moved = MakePage(kLines, QPointF(120.0, 70.0));
     const ViewTransform t = Transform(1.0f, 0.5f, 0.5f);
-    OverlayModel model;
+    ModelTuning tuning;
+    // This tests matching, not the controller's bounded UI admission work.
+    tuning.admitMatchBudgetMs = 1000.0;
+    OverlayModel model(tuning);
     const SourceStamp current = Stamp(3, 4, 0, t);
     const ProbeFrame newer = ProbeOf(RenderView(moved.image, t, kViewWidth, kViewHeight), t, 3, 4, 9, 500);
     QCOMPARE(model.Admit(ResultFor(page, t, Stamp(3, 4, 100, t)), current, &newer, 520),
              AdmitVerdict::kContentMoved);
     QCOMPARE(model.AcceptedWordCount(), 0);
+}
+
+void UltraClearTextTests::modelAdmissionBudgetNeverDisplaysUncheckedText()
+{
+    const SyntheticPage page = MakePage(kLines);
+    const ViewTransform t = Transform(1.0f, 0.5f, 0.5f);
+    ModelTuning tuning;tuning.admitMatchBudgetMs = 0.0;
+    OverlayModel model(tuning);const auto current=Stamp(3,4,0,t);
+    const auto newer=ProbeOf(RenderView(page.image,t,kViewWidth,kViewHeight),t,3,4,9,500);
+    model.Admit(ResultFor(page,t,Stamp(3,4,100,t)),current,nullptr,110);
+    model.Admit(ResultFor(page,t,Stamp(3,4,200,t)),current,&newer,520);
+    QVERIFY(model.HasAcceptedText());
+    QVERIFY(model.SceneWords(520,9).isEmpty());QVERIFY(model.ReadingText(520,9).isEmpty());
+    model.ApplyChecks(CheckLines(model.LineReferences(current),newer,tuning.match,0.0),newer.stamp);
+    QVERIFY(!model.SceneWords(530,9).isEmpty());QVERIFY(!model.ReadingText(530,9).isEmpty());
 }
 
 void UltraClearTextTests::modelHidesTextOnMotionAndExpiresFreshness()
