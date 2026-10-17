@@ -39,6 +39,11 @@ set "PRIMARY_DIR=%DIST_DIR%\OkuFlow"
 set "SECONDARY_DIR=%DIST_DIR%\OkuFlow2"
 set "QT_PREFIX_DEFAULT=C:\Qt\6.12.0\msvc2022_64"
 
+rem Reject generator arguments and incompatible caches before the expensive
+rem real VS environment initialization. This check never certifies tools.
+pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\check_bundle_toolchain.ps1" -RepositoryPath "%ROOT_DIR%" -BuildDirectory "%BUILD_DIR%" -ConfigurationOnly
+if errorlevel 1 goto :fail
+echo Initializing Visual Studio 2022 x64 toolchain.
 call :initialize_toolchain
 if errorlevel 1 goto :fail
 pwsh.exe -NoProfile -File "%ROOT_DIR%\scripts\check_bundle_toolchain.ps1" -RepositoryPath "%ROOT_DIR%" -BuildDirectory "%BUILD_DIR%"
@@ -531,6 +536,9 @@ if not defined BUNDLE_VSDEVCMD (
     echo Install the Desktop development with C++ workload and try again.
     exit /b 1
 )
+rem Microsoft's script preserves an inherited VSINSTALLDIR. Let the selected
+rem installed script derive its own root instead of trusting an environment claim.
+set "VSINSTALLDIR="
 call "%BUNDLE_VSDEVCMD%" -arch=x64 -host_arch=x64 >nul
 if errorlevel 1 (
     echo ERROR: Visual Studio 2022 x64 environment could not be initialized.

@@ -715,3 +715,29 @@ aligned with the project goals.
 - Native camera/desktop profiling still requires an explicitly available
   session. Host waits, GPU completion, sensor latency, pan-to-present and stale
   result/queue traces are distinct evidence. See `docs/performance_diagnostics.md`.
+
+## Private Maxine lifecycle and navigation validation (2026-10-17)
+
+- The `maxine_lifecycle_cuda` and `maxine_navigation_cuda` fixtures use privately
+  built fake SDK DLLs, a real CUDA device and, for navigation, private D3D12
+  textures without a native window. They are desktop-free `gpu` cases, serial
+  with other GPU tests. Keep exact helper DLLs in CTest `REQUIRED_FILES` and
+  outside release staging; never substitute the owner's installed runtime.
+- Fake SDK transitions validate ownership, failure handling and same-frame
+  fallback admission, not actual model pixels, optical quality or performance.
+  Preserve separate real-runtime/pan-to-submission acceptance and the full
+  independent-producer follow-up. See `tests/README.md` for scoped commands.
+
+## Bounded bundle preflight and compiler identity (2026-10-17)
+- Reject generator arguments and incompatible bundle caches with the explicit
+  configuration-only check before initializing VS. That check must never claim
+  toolchain or Qt readiness. Valid batch invocations still initialize the real
+  installed VS2022 x64 shell and run the complete preflight before dist writes.
+- Never reuse inherited version/architecture declarations as toolchain proof.
+  Clear inherited `VSINSTALLDIR` before the selected Microsoft initializer;
+  verify the resulting root against installed 17.x C++ discovery and the active
+  compiler's exact Hostx64/x64 path. Keep environment-spoof refusal coverage.
+- The bundle fixture performs exactly one real initialization and asserts early
+  refusal for all invalid configurations. Keep its 60-second limit, named case
+  progress and original failed evidence. Do not raise the deadline, fake VS or
+  remove assertions to mask a slow setup path.

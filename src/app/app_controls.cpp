@@ -526,6 +526,7 @@ void OkuFlowApp::OnBlackWhiteThresholdChanged(int value) {
 }
 
 void OkuFlowApp::OnZoomToggled(bool checked) {
+    if (zoomEnabled_ != checked) pipelineOrchestrator_->NotifyViewportMotion();
     zoomEnabled_ = checked;
     pipelineOrchestrator_->MarkViewportDirty();
     UpdateControlEnabledStates();
@@ -572,6 +573,7 @@ void OkuFlowApp::SetZoom(float amount, std::optional<QPointF> anchor, bool enabl
         SetZoomCenter(x,y,true,true);
     } else if (changed || enableChanged) SyncCurrentConfigToPersistence(true);
     if (changed || enableChanged || (anchor && recenterAnchor)) {
+        pipelineOrchestrator_->NotifyViewportMotion();
         pipelineOrchestrator_->MarkViewportDirty(); UpdateProcessingStatusLabel();
     }
 }
@@ -1095,8 +1097,10 @@ void OkuFlowApp::OnTextClarityControlsChanged() {
         }
     }
 
-    if (wasZoomEnabled != zoomEnabled_ || previousZoom != zoomAmount_)
+    if (wasZoomEnabled != zoomEnabled_ || previousZoom != zoomAmount_) {
+        pipelineOrchestrator_->NotifyViewportMotion();
         pipelineOrchestrator_->MarkViewportDirty();
+    }
     UpdateControlEnabledStates();
     if (cudaSurface_) {
         cudaSurface_->ResetTextClarityHistory();

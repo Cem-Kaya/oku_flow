@@ -159,8 +159,9 @@ rejection count is not camera queue depth, and ingress drops are not stale SR
 results. A controlled sleep can demonstrate the helper's synchronous wait,
 but cannot establish a vendor-call tail. Measure those remaining native seams
 with immutable input/frame/presentation identities before deciding whether a
-bounded independent SR producer is justified. No asynchronous architecture or
-chat coalescing change is introduced.
+bounded independent SR producer is justified. No independent asynchronous SR
+producer is introduced by these diagnostics; the separate chat optimization
+and Maxine navigation admission must be assessed by their own evidence.
 
 
 ## Actual Maxine host run (2026-10-17)
@@ -185,3 +186,19 @@ Raw settings, reports and stderr are under the private audit archive's
 host tails. Pan-input, stale-SR frame age and camera queue identities remain
 unmeasured; no async-producer speedup follows from this pair. The [independent producer review](maxine_async_producer_design.md) records the
 ownership/provenance/capture policy work needed before changing the pipeline.
+
+## Navigation admission and lifecycle continuation
+
+The Maxine caller now defers new model loads and frame calls while the viewport
+scheduler reports keyboard/joystick/mouse navigation or its 150 ms tail. Actual
+pan/zoom changes explicitly stamp navigation; generic photo/readback redraws
+cannot keep inference paused. The current camera frame uses the normal
+spatial/base fallback, and the performance guard/model state survives the pause.
+This prevents admission during observed input; it cannot preempt an earlier SDK
+call, remove idle-call waits, or prove a native pan latency improvement.
+
+Explicit adapter teardown can load again, and repeated teardown/destruction does
+not dispatch another worker teardown. The two teardown calls in the original run
+above are retained historical evidence, not the expected post-repair call count.
+Private fake-SDK lifecycle tests and transactional timing-event fault tests check
+these ownership boundaries without measuring proprietary SR pixels or speed.

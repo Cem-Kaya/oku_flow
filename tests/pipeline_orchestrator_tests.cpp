@@ -17,6 +17,7 @@ private slots:
     void coalescesCameraFrameWakeups();
     void busyFrameRetriesLeaveQtHeartbeatResponsive();
     void sceneArrivalsDoNotExtendUserMotionTail();
+    void interactionAdmissionDistinguishesNavigationFromSceneArrival();
     void cameraHandoffRetriesStillPresentHeldViewport();
 };
 
@@ -167,6 +168,46 @@ void PipelineOrchestratorTests::sceneArrivalsDoNotExtendUserMotionTail()
     orchestrator.MarkViewportPresented();
     orchestrator.UpdateTimerPolicy();
     QCOMPARE(orchestrator.timer_.interval(), 8);
+}
+
+void PipelineOrchestratorTests::interactionAdmissionDistinguishesNavigationFromSceneArrival()
+{
+    bool continuousMotion = false;
+    bool mousePan = false;
+    PipelineOrchestrator orchestrator(*this,
+        PipelineOrchestrator::Callbacks{
+            .hasContinuousMotion = [&] { return continuousMotion; },
+            .isMousePanActive = [&] { return mousePan; },
+        });
+    QVERIFY(!orchestrator.IsViewportInteractionActive());
+    orchestrator.MarkSceneDirty();
+    QVERIFY(!orchestrator.IsViewportInteractionActive());
+    continuousMotion = true;
+    QVERIFY(orchestrator.IsViewportInteractionActive());
+    continuousMotion = false;
+    mousePan = true;
+    QVERIFY(orchestrator.IsViewportInteractionActive());
+    mousePan = false;
+    QVERIFY(!orchestrator.IsViewportInteractionActive());
+
+    // Redraw/readback/photo retries may request the fast viewport clock, but
+    // cannot masquerade as navigation and indefinitely suppress inference.
+    for (int retry = 0; retry != 20; ++retry) {
+        orchestrator.MarkViewportDirty();
+        QVERIFY(!orchestrator.IsViewportInteractionActive());
+    }
+    // A wheel/key update explicitly opens the navigation settling tail.
+    // Camera/redraw activity neither resets nor extends that input lease.
+    orchestrator.NotifyViewportMotion();
+    QVERIFY(orchestrator.IsViewportInteractionActive());
+    orchestrator.MarkViewportPresented();
+    QVERIFY(orchestrator.IsViewportInteractionActive());
+    orchestrator.viewportInteractionTailTimer_.invalidate();
+    for (int frame = 0; frame != 20; ++frame) {
+        orchestrator.MarkSceneDirty();
+        orchestrator.MarkViewportDirty();
+        QVERIFY(!orchestrator.IsViewportInteractionActive());
+    }
 }
 
 void PipelineOrchestratorTests::cameraHandoffRetriesStillPresentHeldViewport()

@@ -166,6 +166,9 @@ struct ProcessingSettings {
     bool enableGlareSuppression{false};
     float glareSuppressionStrength{0.5f};
     bool enableMlSuperRes{false};
+    // Transient scheduling intent, never a persisted user preference. Keep
+    // current-frame spatial/base output while navigation has priority.
+    bool deferMlSuperResForInteraction{false};
     float mlSuperResStrength{0.65f};
     bool mlSuperResUltra1440p{false};
 

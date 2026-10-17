@@ -21,7 +21,7 @@ v0.2.5 downloads have not been replaced by this work.
 | NP-007 | Repaired | Every failed encoder attempt keeps its bytes; retries use exclusive GUID paths and notes use the selected finalized pair. |
 | NP-008 | Repaired | Annotation intent retains displayed source/frame/processing revision, actual GPU output signature and transform; camera retirement revokes pending copies. |
 | NP-009 | Repaired | Saved microphone None is distinct from actual audio capture; metadata follows real capture state. |
-| NP-010 | Measured follow-up; not repaired | One actual 60 s Maxine run measured host p95/p99 7.583/12.469 ms, max 80.766 ms and 201.780 ms model load. A bounded asynchronous producer needs explicit capture/flicker semantics and further input/frame-age evidence; no native pan/stale-frame speedup is claimed. |
+| NP-010 | Partly repaired; independent producer open | Defer new synchronous Maxine load/frame calls during actual pan/zoom and its 150 ms tail, preserving same-frame spatial fallback and guard state. Repair runtime reload/idempotent teardown and transactional timing-event allocation. Prior actual 60 s host p95/p99 was 7.583/12.469 ms, max 80.766 ms, model load 201.780 ms. Independent async inference still needs explicit capture/flicker semantics and input/frame-age evidence; no native pan speedup is claimed. |
 | PW-001 | Repaired | One serial Android session owner fences restart, stop and disconnect with immutable host/session tokens. |
 | PW-002 | Repaired, sibling website | Cancellation generation rechecked after every await and before worker/result publication. |
 | PW-003 | Repaired | Completed segments are frozen before awaits; sidecar writes serialize by media identity. |
@@ -81,7 +81,8 @@ Private archive: `%LOCALAPPDATA%/OkuFlow/audit-closure-20261017`.
   fixtures passed; no installer was installed on the owner's PC.
 - Native target fixture verifies annotation source/geometry/actual-output refusal,
   camera/microphone worker ownership, operation waiting and stop/undo. Refreshed native fixture passed after the actual SR/focus-output signature
-  regressions. The final tracked Windows gate passed: shipping compile, all 146
+  regressions. At `0c8c853`, before the continuation below, the complete tracked
+  Windows gate passed: shipping compile, all 146
   CPU/native cases (one optional dev-full Qt row skipped), and seven CUDA delta
   cases with no skips or unresolved failures. No saved results matched; all
   selected cases ran. PCH-OFF compilation plus chat, recording-integrity and
@@ -103,6 +104,45 @@ development-PC pair with a virtual source, not pan-to-present or real optics
 acceptance. The [read-only producer design review](maxine_async_producer_design.md) found
 that an asynchronous replacement needs explicit GPU lifetime, capture pairing,
 exact presentation provenance and sharpness-flicker policies. It recommends
-retaining this follow-up until input/frame-age evidence justifies those changes. The [performance diagnostic record](performance_diagnostics.md)
+retaining the independent producer follow-up until input/frame-age evidence
+justifies those changes. A later bounded patch now admits no new synchronous
+SDK work during actual navigation, fixes adapter reload/double teardown and
+allocates timing events transactionally; generic photo/readback requests do not
+activate that navigation gate. The [performance diagnostic record](performance_diagnostics.md)
 keeps the unsuccessful intermediate chat measurement as well as the final
 improvement; controlled sleeps are not vendor SDK performance measurements.
+
+## Navigation, lifecycle and CI continuation
+
+Private evidence for this continuation is under
+`%LOCALAPPDATA%/OkuFlow/audit-continuation-20261017`.
+
+- The actual Maxine adapter now reloads after explicit teardown, dispatches no
+  redundant teardown after retirement, and preserves stage/status diagnostics
+  without changing timeout quarantine or device ownership. The private
+  `maxine_lifecycle_cuda` fixture passed, including controlled partial failure,
+  stage short-circuit/recovery and late completion after a timeout.
+- `maxine_navigation_cuda` passed through the actual CUDA surface and private
+  D3D12 textures. Known pattern readbacks verify no SDK admission during
+  navigation, current-frame spatial/base pixels after previous neural output,
+  same-model idle resumption and balanced retirement. It uses fake SDK code,
+  not a proprietary model, native window, camera or presenter fence.
+- The CPU navigation/timing-allocation cases passed. They distinguish actual
+  input from repeated photo/readback-style redraws and inject partial event-pair
+  allocation/repair without a GPU.
+- Remote run `39043882433` timed out in `bundle_toolchain_contract` at 60.15 s;
+  that failed log is retained. Configuration refusals now precede VS setup,
+  retaining one real initializer rather than three. The fixture additionally
+  refuses forged VS environment claims and fingerprints cmd/vswhere helpers.
+  It passed locally in 5.17 s alone and 9.06 s in the parallel background gate,
+  preserving its 60 s deadline and behavior assertions. Those local results do
+  not establish a passing replacement remote run.
+- The tracked background matrix passed: shipping Release compilation, all 83
+  selected CPU cases (one optional development MCP Qt row skipped), and all
+  eight CUDA delta cases with no skips or unresolved failures. No saved results
+  matched. GUI was explicitly excluded; the prior complete native gate does
+  not certify these newer changes. This is partial validation, not release
+  acceptance. No phone, native foreground window or public release was touched.
+
+The independent Maxine producer and broader UCT/hardware/provider/installer
+acceptance remain open with the limits recorded above.

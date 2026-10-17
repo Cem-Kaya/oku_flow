@@ -18,6 +18,8 @@ if(WIN32)
         "${PROJECT_SOURCE_DIR}/scripts/test_bundle_toolchain.ps1"
         "${PROJECT_SOURCE_DIR}/scripts/check_bundle_toolchain.ps1"
         "${PROJECT_SOURCE_DIR}/scripts/build_release_bundle.bat"
+        "$ENV{ComSpec}"
+        "$ENV{ProgramFiles\(x86\)}/Microsoft Visual Studio/Installer/vswhere.exe"
         "${QT_QMAKE_EXECUTABLE}"
         "${QT_BIN_DIRECTORY}/windeployqt.exe")
 endif()

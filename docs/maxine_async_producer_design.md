@@ -1,4 +1,4 @@
-# Maxine asynchronous producer — measured follow-up, not implemented
+# Maxine navigation safeguard and asynchronous producer follow-up
 
 The audit requested measurement before replacing this pipeline. One actual
 60-second off/on virtual-camera pair measured Maxine frame host-wait p95/p99
@@ -7,10 +7,33 @@ heartbeat-delay p95 was 5.010/1.914 ms, and viewport rate stayed about 21 FPS in
 both. This confirms synchronous tails, but does not establish a pan-to-present
 budget failure. See [raw measurement scope](performance_diagnostics.md).
 
-The read-only design review recommends keeping NP-010 open while the other 35
-audit repairs proceed. Moving only `MaxineSuperRes::Worker` is unsafe: the
+The full independent producer remains unimplemented. Moving only
+`MaxineSuperRes::Worker` is unsafe: the
 existing signal-after-SDK order, shared NIS/SR cache, current-frame capture
 pairing and base-scene observation identity cross several module boundaries.
+
+## Implemented navigation admission
+
+The next bounded repair defers synchronous Maxine model loading and inference
+while keyboard/joystick pan, a mouse pan, or the viewport's 150 ms interaction
+tail is active. Camera arrivals, photo requests and generic redraw/readback
+retries do not extend the navigation tail. After navigation settles,
+the next eligible camera frame resumes normal neural processing.
+
+This is scheduling admission, not asynchronous inference or a new user setting.
+The current camera frame still passes through the existing spatial/base fallback;
+no previous neural result is reused. Photos, recordings, annotations and agent
+observations therefore keep their existing same-frame provenance. Their processed
+image may use spatial/base enlargement during navigation. Model ownership,
+failure latches and the performance guard survive the pause, so repeated input
+cannot reset the guard's measurement window. A call already started before an
+input event arrives cannot be preempted; idle inference and model setup retain
+their existing synchronous limits. No new pan latency or FPS speedup is claimed
+without a separately authorized native measurement.
+
+Timing-event creation also adopts its start/stop pair transactionally. If the
+second allocation fails, the first new handle is retired and neither partial
+new handle becomes visible to subsequent frames.
 
 ## Bounded design
 

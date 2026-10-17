@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "okuflow/cuda/cuda_interop.hpp"
+#include "okuflow/cuda/timing_event_pair.hpp"
 #include "okuflow/common/gpu_copy_lease.hpp"
 
 #include <d3d12.h>
@@ -1906,6 +1907,18 @@ void CudaInteropSurface::UpdateSuperResCache(
     }
 
 #if OKUFLOW_ENABLE_TEXT_SR
+    ConsumeSuperResTiming();
+    if (settings.deferMlSuperResForInteraction) {
+        // Never start a synchronous model load/SDK call while the user is
+        // navigating. The ordinary spatial cache below uses this same camera
+        // frame, so captures/observations cannot inherit an older SR result.
+        // Keep the model, failure latch and performance window across input;
+        // navigation is not a user toggle and must not defeat the guard.
+        if (!superResAutoDisabled_ && !superResFailureLatched_)
+            superResStatus_ = "NVIDIA SuperRes paused during viewport navigation";
+        return;
+    }
+
     struct SuperResScale {
         unsigned int numerator;
         unsigned int denominator;
@@ -2037,7 +2050,6 @@ void CudaInteropSurface::UpdateSuperResCache(
         superResLastAverageMs_ = -1.0f;
         superResAutoDisabled_ = false;
     }
-    ConsumeSuperResTiming();
     if (superResAutoDisabled_) return;
 
     const auto* sourceRoi =
@@ -2064,11 +2076,13 @@ void CudaInteropSurface::UpdateSuperResCache(
         return;
     }
 
-    if (!superResStartEvent_) {
-        ThrowIfCudaFailed(cudaEventCreate(&superResStartEvent_),
-                          "cudaEventCreate SuperRes start failed");
-        ThrowIfCudaFailed(cudaEventCreate(&superResStopEvent_),
-                          "cudaEventCreate SuperRes stop failed");
+    cudaError_t timingAllocation = cudaSuccess;
+    if (!EnsureTimingEventPair(superResStartEvent_, superResStopEvent_,
+            [&](cudaEvent_t* event) {
+                timingAllocation = cudaEventCreate(event);
+                return timingAllocation == cudaSuccess;
+            }, [](cudaEvent_t event) { (void)cudaEventDestroy(event); })) {
+        ThrowIfCudaFailed(timingAllocation, "cudaEventCreate SuperRes timing pair failed");
     }
     const bool measure = !superResTimingPending_;
     if (measure) {

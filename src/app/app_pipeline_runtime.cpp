@@ -993,6 +993,8 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     settings.enableGlareSuppression = glareSuppressionEnabled_;
     settings.glareSuppressionStrength = glareSuppressionStrength_;
     settings.enableMlSuperRes = mlTextSuperResolutionEnabled_;
+    settings.deferMlSuperResForInteraction =
+        pipelineOrchestrator_->IsViewportInteractionActive();
     settings.mlSuperResStrength = mlTextSuperResolutionStrength_;
     settings.mlSuperResUltra1440p = mlTextSuperResolutionUltra1440p_;
     if (settings.enableMlSuperRes && !settings.mlSuperResUltra1440p &&

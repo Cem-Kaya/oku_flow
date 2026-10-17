@@ -1096,6 +1096,11 @@ source changes make no measured throughput or latency claim.
   CPU/GPU scene or a presenter's resize redraw without advancing temporal
   processing, SuperRes, or paired recording. A fresh camera frame's successful
   presentation clears dirtiness, so the callback does not redraw it twice.
+- `IsViewportInteractionActive()` reads keyboard/joystick motion, a held mouse
+  pan, or a dedicated 150 ms navigation tail. Camera-only `MarkSceneDirty()`
+  and generic redraw/readback `MarkViewportDirty()` calls do not extend it.
+  Actual pan/zoom calls explicitly notify motion. The timer policy and per-camera-frame Maxine
+  admission use this same predicate; no SDK call is begun while it is true.
 
 ### `include/okuflow/app/recording_session_info.hpp`
 `okuflow::RecordingSessionInfo`
@@ -2353,6 +2358,12 @@ Supporting types:
   - Maxine SuperRes: `enableMlSuperRes`, `mlSuperResStrength` (0..1), and
     `mlSuperResUltra1440p` for full-frame inference into the separate
     high-resolution cache
+  - `deferMlSuperResForInteraction` is transient scheduling intent from the
+    viewport scheduler, never a saved mode or user toggle. The SuperRes stage
+    polls old timing but bypasses model loading and inference during navigation,
+    invalidates the old SR ROI for that frame, and leaves the normal current-frame
+    spatial/base path to present and capture. Model ownership, failure latches,
+    performance override and the measured timing window remain intact.
 - `struct ProcessingInput`
   - `hostPixels`, `hostStrideBytes`, `pixelSizeBytes`, `width`, `height` — `width`/`height` always describe the host pixel layout (pre-rotation)
   - optional `d3d11Texture` plus `d3d11Subresource` and a required
@@ -4594,3 +4605,74 @@ three-second-gap case and placed decoded audio/video markers at 3.999333 /
 3.999967 seconds, respectively. Normal submissions remained 144,000 frames.
 This verifies the synthetic codec timeline seam; physical microphone and full
 release acceptance remain separate.
+
+### Maxine explicit runtime retirement and private lifecycle fixture (2026-10-17)
+
+`MaxineSuperRes::Impl::Teardown` re-arms its runtime-probe latch after unloading
+the effect and DLLs, allowing `Ensure → Teardown → Ensure` on the same adapter.
+`MaxineSuperRes::retired_` starts true, becomes false before an actual model-load
+dispatch, and becomes true only after a completed worker teardown. Repeated
+explicit teardown and destruction of a known retired adapter dispatch no further
+SDK task. Worker faults still prevent teardown and preserve the existing full
+`Impl` quarantine; retirement never cancels or releases a timed-out call. Every
+dispatched lifecycle operation retains the adapter's originally selected device.
+
+`maxine_lifecycle_tests` compiles the production adapter and loads privately built
+`maxine_fake_image` / `maxine_fake_effects` DLLs through the existing explicit
+runtime-directory override. `MaxineFakeSnapshot` and `OkuFlowFake*` exports exist
+only in those test DLLs. They control a failed model load and a gated late frame,
+and count effect/image ownership, thread/device identity and dispatch profiles.
+`maxine_lifecycle_cuda` covers reload, idempotent retirement, partial-failure
+recovery and timeout/destructor/late-completion retention using a real CUDA device
+without a proprietary model, camera or native window. Fake image storage and
+transfers deliberately validate lifecycle/ABI behavior, not GPU image quality or
+actual Maxine performance. See [fixture commands](../tests/README.md).
+
+`EnsureTimingEventPair` in `cuda/timing_event_pair.hpp` constructs both timing
+events before replacing either caller-owned handle. Failed creation retires new
+partial resources and preserves previous ownership; successful adoption retires
+any previous partial pair exactly once. Complete pairs are reused. Production
+callbacks retain the exact CUDA allocation error, while `cuda_surface_retry`
+injects second-allocation failure and recovery without a GPU.
+
+`MaxineSuperRes::Impl::Run` checks input transfer, synchronous effect execution
+and output transfer in order. A failure preserves its exact stage and numeric
+`NvCV_Status` in `LastError`, then returns before any later stage; an ordinary SDK
+status retains the existing optional-failure policy rather than becoming a worker
+fault. The private fixture fails each stage once, verifies downstream calls were
+skipped, then processes successfully with the same loaded effect and image owner.
+
+`maxine_navigation_tests` drives the real `CudaInteropSurface` using a private
+matching-LUID D3D12 device/shared textures, compiled production CUDA/NIS kernels
+and CPU input frames. Its harness copies completed private textures to a bounded
+readback buffer without a native window/presenter. The private fake-image
+`OkuFlowFakeFillOutput` control is off by default; it can enqueue one known
+32-bit pattern on the supplied CUDA stream, allowing exact neural-versus-current
+fallback checks. The fixture checks deferral before model load, fallback after a
+new input, disabled SR, idle model reuse and balanced teardown. Original driver,
+SDK-model quality, native navigation performance and external-presenter fence
+acceptance remain separate from this scoped fixture.
+
+### Bounded bundle toolchain preflight (CI follow-up, 2026-10-17)
+
+`check_bundle_toolchain.ps1 -ConfigurationOnly` validates Ninja selection,
+generator arguments and existing cache identity before any VS shell startup.
+Its success explicitly leaves toolchain/Qt readiness unchecked. The batch still
+runs the real installed VS2022 x64 initializer on every valid invocation and
+then performs the complete helper/Qt preflight; it never trusts an inherited
+`VSCMD_VER` or architecture claim as a shortcut. Before initialization it clears
+`VSINSTALLDIR`, which Microsoft's script otherwise preserves. The complete
+helper independently queries the installed VS2022 C++ roots with Installer
+`vswhere.exe`, verifies the selected root, and requires the active compiler's
+exact `VC/Tools/MSVC/<version>/bin/Hostx64/x64/cl.exe` layout under that root.
+An arbitrary ancestor path or a different PATH compiler cannot certify it.
+
+The fixture preserves all generator/cache and no-mutation assertions while
+performing exactly one real VS initialization. Configuration refusals assert
+that the initializer was never reached. In-process negative checks use forged
+environment declarations with the real installed discovery tool, without fake
+VS scripts, executable replacements, compilation or GUI. Named case logs and
+elapsed progress expose the stage reached if a deadline is hit. The existing
+60-second CTest limit is unchanged. This removes redundant setup identified
+after the remote 60.15-second timeout; runtime/CI verification remains separate
+from static review of the repair.

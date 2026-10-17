@@ -48,6 +48,7 @@ include(mcp.cmake)
 include(bundle_publication.cmake)
 include(native_control.cmake)
 include(ultra_clear_text.cmake)
+include(maxine_lifecycle.cmake)
 set_tests_properties(deadline_worker PROPERTIES TIMEOUT 15
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 add_executable(launcher_fixture launcher_fixture.cpp)

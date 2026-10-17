@@ -133,6 +133,10 @@ binaries and caches are not added to Windows/Android release inventories.
   notice as `licenses/NVIDIA_MAXINE_INTEGRATION_NOTICE.txt`.
 - Required product attribution: `SuperRes powered by NVIDIA Maxine™`.
   This attribution does not imply NVIDIA endorsement.
+- Development lifecycle/navigation fixtures compile first-party fake ABI
+  implementations against these existing MIT headers. Their private helper
+  DLLs contain no NVIDIA runtime/models, are not Maxine image-quality evidence,
+  and must never enter release staging.
 
 ## Lucide Icons
 - Upstream: <https://lucide.dev/>

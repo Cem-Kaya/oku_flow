@@ -302,17 +302,22 @@ public:
         WrapBgra(SourceView(), sourceDevicePixels, sourcePitchBytes, sourceWidth_, sourceHeight_);
         WrapBgra(DestinationView(), destinationDevicePixels, destinationPitchBytes,
                  destinationWidth_, destinationHeight_);
-        if (imageTransfer_(SourceView(), SourceFloat(), 1.0f / 255.0f,
-                           reinterpret_cast<CUstream>(stream_), TransferTemp()) != NVCV_SUCCESS ||
-            // NVIDIA's own SuperRes samples use synchronous execution. Async
-            // can expose the previous frame while the output is consumed on
-            // the application stream, which looks like a moving ghost layer.
-            run_(effect_, 0) != NVCV_SUCCESS ||
-            imageTransfer_(DestinationFloat(), DestinationView(), 255.0f,
-                           reinterpret_cast<CUstream>(stream_), TransferTemp()) != NVCV_SUCCESS) {
-            lastError_ = "NVIDIA SuperRes frame processing failed";
+        const auto failRun = [this](const char* stage, NvCV_Status status) {
+            lastError_ = std::string("NVIDIA SuperRes ") + stage +
+                         " failed (code " + std::to_string(static_cast<int>(status)) + ")";
             return false;
-        }
+        };
+        NvCV_Status status = imageTransfer_(SourceView(), SourceFloat(), 1.0f / 255.0f,
+                                            reinterpret_cast<CUstream>(stream_), TransferTemp());
+        if (status != NVCV_SUCCESS) return failRun("input transfer", status);
+        // NVIDIA's own SuperRes samples use synchronous execution. Async
+        // can expose the previous frame while the output is consumed on
+        // the application stream, which looks like a moving ghost layer.
+        status = run_(effect_, 0);
+        if (status != NVCV_SUCCESS) return failRun("effect execution", status);
+        status = imageTransfer_(DestinationFloat(), DestinationView(), 255.0f,
+                                reinterpret_cast<CUstream>(stream_), TransferTemp());
+        if (status != NVCV_SUCCESS) return failRun("output transfer", status);
         lastError_.clear();
         return true;
     }
@@ -360,6 +365,9 @@ public:
     void Teardown() {
         TeardownEffect();
         UnloadModules();
+        // Explicit retirement permits a later Ensure on this adapter to probe
+        // again. Failed loads remain latched until that deliberate boundary.
+        runtimeProbeAttempted_ = false;
     }
 
     HMODULE videoEffectsModule_{};
@@ -532,6 +540,7 @@ bool MaxineSuperRes::Ensure(unsigned int sourceWidth,
         impl_->stream_ == cudaStream && impl_->loadedStrength_ == impl_->strength_) return true;
     qInfo() << "NVIDIA SuperRes loading" << sourceWidth << "x" << sourceHeight
             << "to" << destinationWidth << "x" << destinationHeight;
+    retired_ = false;
     return worker_->Execute([owner = impl_, sourceWidth, sourceHeight, destinationWidth, destinationHeight, cudaStream] {
         return owner->Ensure(sourceWidth, sourceHeight, destinationWidth, destinationHeight, cudaStream);
     }, "model load", workerError_);
@@ -563,7 +572,10 @@ void MaxineSuperRes::SetStrength(float strength) {
 }
 
 void MaxineSuperRes::Teardown() {
-    if (!IsFaulted()) worker_->Execute([owner = impl_] { owner->Teardown(); return true; }, "teardown", workerError_);
+    if (!IsFaulted() && !retired_ &&
+        worker_->Execute([owner = impl_] { owner->Teardown(); return true; }, "teardown", workerError_)) {
+        retired_ = true;
+    }
 }
 bool MaxineSuperRes::IsReady() const { return !IsFaulted() && impl_->effect_ != nullptr; }
 bool MaxineSuperRes::IsFaulted() const { return !workerError_.empty(); }

@@ -1,6 +1,11 @@
 # Changelog
 
 ## [Unreleased]
+- Prioritize pan/zoom over new synchronous Maxine calls, resuming after a short
+  navigation tail while keeping current-frame spatial fallback and performance
+  guard state. Photo/readback retries do not count as input. Create SuperRes
+  timing events as a complete pair so allocation failure cannot leave a null
+  stop event on the next frame.
 - Add opt-in offline chat render/reading-anchor measurements and bounded Maxine
   host-call latency distributions; retain actual native pan, queue and stale-frame
   performance as unverified instead of claiming an unmeasured speedup.
@@ -1922,3 +1927,15 @@
 > Upload `dist/OkuFlow/OkuFlow.zip` to GitHub Releases when publishing v0.1.
 
 - Development agent controls show canonical normalized approval changes and retain exact recording-stop disclosure. Native source selection supersedes pending agent transitions; actual source activation retires earlier frame permission. Device-bound format and torch requests reject mismatched camera identities (unreleased; hardware acceptance pending).
+
+### Unreleased Maxine lifecycle repair (2026-10-17)
+
+- Explicit SuperRes teardown now permits the same runtime adapter to initialize
+  again and avoids redundant worker teardown after successful retirement.
+  Timed-out SDK calls retain their existing resource quarantine. A desktop-free
+  CUDA fixture exercises the real adapter with private controlled fake SDK DLLs;
+  this change does not move frame processing off the UI path or establish an
+  asynchronous speedup.
+- SuperRes frame errors now identify input transfer, effect execution or output
+  transfer and retain the SDK's numeric status. Failure short-circuiting and
+  successful reuse of the same loaded model are covered by the private fixture.

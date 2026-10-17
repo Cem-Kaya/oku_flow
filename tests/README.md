@@ -1244,3 +1244,70 @@ submission was 288,000 frames, with decoded audio/video markers at 3.999333 /
 3.999967 seconds (about -0.633 ms). Normal input stayed at 144,000 submitted
 frames. This is native synthetic codec evidence, not a physical microphone or
 release-matrix result; see the retained-evidence details in the timeline guide.
+
+## Private Maxine adapter lifecycle fixture
+
+The CUDA-only `maxine_lifecycle_tests` target builds the production runtime
+adapter with two private fake SDK DLLs under the build's `tests/maxine-fixture/`
+directory. `maxine_lifecycle_cuda` is desktop-free and labelled `gpu`; the tracked
+CUDA delta includes it. It requires a real CUDA device (CTest skip code 77 when
+unavailable) but never loads a proprietary Maxine runtime/model or opens a camera.
+Its exact fake DLLs are declared CTest runtime inputs and selected only through
+the existing process-local `OKUFLOW_MAXINE_PATH`. Nothing is installed or staged.
+
+```powershell
+cmake --preset msvc-cuda-tests
+cmake --build --preset msvc-cuda-tests-build --target maxine_lifecycle_tests
+ctest --preset msvc-cuda-tests -R '^maxine_lifecycle_cuda$' --output-on-failure
+```
+
+Coverage uses actual adapter transitions: repeated teardown dispatch count,
+successful reload after retirement, failed partial-load cleanup and retry,
+original device/worker-thread ownership, and a controlled blocked frame whose
+deadline/destructor/late completion cannot release quarantined SDK resources.
+The quarantine case deliberately retains its small fake effect/images until
+process exit. Synthetic malloc-backed images and no-op transfers are lifecycle
+fixtures, not SR pixel, driver-failure, model-performance or async-producer proof.
+This scoped run does not replace the tracked shipping/CPU/CUDA acceptance gate.
+
+The sibling target `maxine_navigation_tests` / CTest `maxine_navigation_cuda`
+adds the actual `CudaInteropSurface`, CUDA/NIS kernels and private D3D12 shared
+textures. It opens no native window, presenter or camera. A default-off fixture
+control fills neural output with a known CUDA pattern. Readback checks prove
+navigation admits no model/run, uses the changed current frame's spatial/base
+pixels rather than previous neural pixels, and resumes the same loaded model.
+Retirement balances effect/image ownership. Both helpers are exact runtime
+inputs; the GPU cases serialize. This establishes neither real Maxine output
+quality nor pan-to-submission performance.
+
+```powershell
+cmake --build --preset msvc-cuda-tests-build --target maxine_navigation_tests
+ctest --preset msvc-cuda-tests -R '^maxine_navigation_cuda$' --output-on-failure
+```
+
+The same fixture fails each frame stage once (input transfer, synchronous effect
+execution, output transfer), verifies exact stage/status diagnostics and skipped
+downstream calls, then checks that a later successful frame reuses the original
+loaded effect/images and clears the ordinary error. These controlled SDK statuses
+do not simulate or establish recovery from an actual device failure.
+
+## Bundle preflight startup bound (CI follow-up, 2026-10-17)
+
+`bundle_toolchain_contract` retains its 60-second deadline and all original
+assertions. Unsupported generators still fail in the batch before any setup;
+generator overrides and incompatible caches now fail in a configuration-only
+helper before VS initialization. Exactly one valid actual-batch invocation
+starts the real installed VS2022 x64 shell and checks the full toolchain/Qt
+prerequisites. The fixture records a named BEGIN/PASS and elapsed time for each
+case and asserts that rejected configurations never reached initialization.
+
+Additional negative checks cannot replace real tools: they forge only version,
+architecture and installation-root environment claims, require the full helper
+to reject an unregistered root, and prove that configuration-only success does
+not certify a toolchain. The positive batch must repair those same claims by
+initializing the installed shell, then independently checking its registered
+17.x C++ root and exact x64 compiler path. Installer `vswhere.exe` is required
+for that identity verification. No fake VS executable or setup script is run.
+This is a bounded-work correction for the remote timeout, with no automatic
+retry, deadline increase or relaxed assertion. Original failed evidence stays
+separate from subsequent validation.
