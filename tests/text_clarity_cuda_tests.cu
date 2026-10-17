@@ -38,6 +38,45 @@ struct DeviceBytes {
     DeviceBytes& operator=(const DeviceBytes&) = delete;
 };
 
+void GlareOnlyLeavesOrdinaryPixelsUnchanged()
+{
+    constexpr int width = 4, stride = 7;
+    const std::size_t colorBytes = stride * 2 * sizeof(uchar4);
+    const std::vector<uchar4> input{make_uchar4(128, 128, 128, 17),
+        make_uchar4(252, 252, 252, 29), make_uchar4(224, 224, 224, 41),
+        make_uchar4(50, 50, 50, 53)};
+    std::vector<float> luma(stride * 2, 0.0f), mean(stride * 2, 0.4f);
+    for (int x = 0; x < width; ++x) luma[x] = input[x].x / 255.0f;
+    DeviceBytes source(colorBytes), destination(colorBytes);
+    DeviceBytes deviceLuma(luma.size() * sizeof(float)), deviceMean(mean.size() * sizeof(float));
+    CheckCuda(cudaMemcpy(source.data, input.data(), width * sizeof(uchar4), cudaMemcpyHostToDevice), "upload glare fixture");
+    CheckCuda(cudaMemcpy(deviceLuma.data, luma.data(), luma.size() * sizeof(float), cudaMemcpyHostToDevice), "upload glare luma");
+    CheckCuda(cudaMemcpy(deviceMean.data, mean.data(), mean.size() * sizeof(float), cudaMemcpyHostToDevice), "upload glare mean");
+    for (const bool flatten : {false, true}) for (const bool glare : {false, true}) {
+        CheckCuda(cudaMemset(destination.data, kGuard, colorBytes), "initialize glare guards");
+        okuflow::LaunchBackgroundFlattenLinear(reinterpret_cast<uchar4*>(destination.data), stride * sizeof(uchar4),
+            reinterpret_cast<const uchar4*>(source.data), stride * sizeof(uchar4),
+            reinterpret_cast<const float*>(deviceLuma.data), reinterpret_cast<const float*>(deviceMean.data),
+            stride * sizeof(float), width, 1, flatten ? 0.8f : 0.0f, glare, 1.0f, nullptr, nullptr);
+        std::vector<uchar4> actual(stride * 2);
+        CheckCuda(cudaMemcpy(actual.data(), destination.data, colorBytes, cudaMemcpyDeviceToHost), "read glare pixels");
+        for (int x = 0; x < stride * 2; ++x) {
+            const auto p = actual[x];
+            if (x >= width) {
+                if (p.x != kGuard || p.y != kGuard || p.z != kGuard || p.w != kGuard)
+                    throw std::runtime_error("Glare/flatten wrote padding");
+                continue;
+            }
+            if (p.w != input[x].w) throw std::runtime_error("Glare/flatten changed alpha");
+            if (!flatten && (x != 1 || !glare) &&
+                (p.x != input[x].x || p.y != input[x].y || p.z != input[x].z))
+                throw std::runtime_error("Glare-only modified ordinary pixels");
+        }
+        if (glare && actual[1].x >= input[1].x) throw std::runtime_error("Bright glare was not reduced");
+        if (flatten && actual[0].x == input[0].x) throw std::runtime_error("Selected flatten had no effect");
+    }
+}
+
 std::vector<float> Complement(const std::vector<float>& image)
 {
     std::vector<float> inverted(image.size());
@@ -675,6 +714,7 @@ int main()
     }
     try {
         OpaqueAlphaPreservesRgbAndGuards();
+        GlareOnlyLeavesOrdinaryPixelsUnchanged();
         SoftEdgesSurviveHysteresis();
         TextCompositeSupportsExactAliasing();
         AutomaticDocumentSharpenSkipsOnlyReplacedScenes();

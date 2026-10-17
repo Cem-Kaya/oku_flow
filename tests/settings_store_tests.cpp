@@ -393,6 +393,11 @@ void SettingsStoreTests::textClarityStageSelectionHonorsEveryRefinement()
             QCOMPARE(normalized.smartSharpen, stages.smartSharpen);
             QCOMPARE(normalized.selectiveSharpen, stages.selectiveSharpen);
             QCOMPARE(normalized.pipeline, stages.pipeline);
+            // Dormant flatten strength must never leak into the combined
+            // glare-only launch. The persisted preference remains available.
+            QCOMPARE(effective.backgroundFlattenStrength,
+                     stages.background ? preferences.backgroundFlattenStrength : 0.0f);
+            QCOMPARE(preferences.backgroundFlattenStrength, 0.8f);
         }
     }
 }

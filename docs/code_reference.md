@@ -4160,3 +4160,12 @@ fixture for the production UCT panel: independent opt-in while optical Text
 Clarity is off, keyboard toggle/Tab order, read-only pane and Qt accessibility
 screen bounds, foreground hit ownership and an unobstructed native capture.
 It uses no camera/provider and does not establish real OCR/UIA word ranges.
+
+`ProcessingSettings::ApplyTextClarityMaster` also neutralizes the effective
+background-flatten strength whenever the master or flatten child is off. The
+combined background/glare kernel then leaves ordinary pixels unchanged for
+glare-only selection. Saved preferences retain their dormant strength.
+`SettingsStoreTests::textClarityStageSelectionHonorsEveryRefinement` verifies
+all 1024 master/child combinations; `GlareOnlyLeavesOrdinaryPixelsUnchanged`
+checks ordinary/highlight GPU pixels, alpha and pitched guards for all four
+flatten/glare combinations.

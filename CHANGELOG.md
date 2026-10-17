@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Keep background flattening neutral when only glare reduction is selected.
+  Ordinary pixels retain their original values and the saved flatten strength
+  remains available when re-enabled.
+
 - Release bundle validation now requires an explicit CPU/CUDA capability profile.
   Missing cases, CTest skips and skipped Qt rows cannot satisfy required native
   GUI or CUDA/recording coverage. Development checks keep optional skips visible.
