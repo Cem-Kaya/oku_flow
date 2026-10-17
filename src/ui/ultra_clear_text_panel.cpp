@@ -8,11 +8,34 @@
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QScrollBar>
+#include <QTextCursor>
 #include <QVBoxLayout>
 
 #include <algorithm>
 
 namespace okuflow {
+namespace {
+
+// Maps one document offset from the previous pane text onto refreshed text
+// through their common prefix and suffix. Offsets in the unchanged prefix
+// keep their value, offsets in the unchanged suffix shift by the length
+// delta, and offsets inside the replaced middle keep their relative
+// position clamped to the new middle. The mapping is monotonic, so mapping
+// anchor and position independently preserves selection direction.
+int RemapReadingOffset(int offset, qsizetype prefix, qsizetype suffix,
+                       qsizetype previousLength, qsizetype newLength)
+{
+    if (offset <= prefix) {
+        return offset;
+    }
+    if (offset >= previousLength - suffix) {
+        return static_cast<int>(offset + (newLength - previousLength));
+    }
+    const qsizetype newMiddle = newLength - prefix - suffix;
+    return static_cast<int>(prefix + std::min<qsizetype>(offset - prefix, newMiddle));
+}
+
+} // namespace
 
 UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
     : QWidget(parent)
@@ -97,14 +120,63 @@ void UltraClearTextPanel::SetStatus(const QString& sourceText, bool important)
 
 void UltraClearTextPanel::SetReadingText(const QString& text)
 {
-    if (readingPane_->toPlainText() == text) {
+    const QString previous = readingPane_->toPlainText();
+    if (previous == text) {
         return;
     }
-    QScrollBar* bar = readingPane_->verticalScrollBar();
-    const int scroll = bar ? bar->value() : 0;
+    const QTextCursor previousCursor = readingPane_->textCursor();
+    // QTextCursor copies stay attached to the document and move when
+    // setPlainText replaces it. Snapshot integer endpoints before that edit.
+    const int previousAnchor = previousCursor.anchor();
+    const int previousPosition = previousCursor.position();
+    QScrollBar* verticalBar = readingPane_->verticalScrollBar();
+    QScrollBar* horizontalBar = readingPane_->horizontalScrollBar();
+    const int verticalScroll = verticalBar ? verticalBar->value() : 0;
+    const int horizontalScroll = horizontalBar ? horizontalBar->value() : 0;
+
+    const qsizetype commonLimit = std::min(previous.size(), text.size());
+    qsizetype prefix = 0;
+    while (prefix < commonLimit && previous.at(prefix) == text.at(prefix)) {
+        ++prefix;
+    }
+    qsizetype suffix = 0;
+    while (suffix < commonLimit - prefix &&
+           previous.at(previous.size() - 1 - suffix) == text.at(text.size() - 1 - suffix)) {
+        ++suffix;
+    }
+    // A remapped offset must not land between a surrogate pair.
+    if (prefix > 0 && prefix < previous.size() && previous.at(prefix - 1).isHighSurrogate() &&
+        previous.at(prefix).isLowSurrogate()) {
+        --prefix;
+    }
+    const qsizetype suffixStart = previous.size() - suffix;
+    if (suffix > 0 && suffixStart > 0 && suffixStart < previous.size() &&
+        previous.at(suffixStart - 1).isHighSurrogate() && previous.at(suffixStart).isLowSurrogate()) {
+        --suffix;
+    }
+
     readingPane_->setPlainText(text);
-    if (bar) {
-        bar->setValue(std::min(scroll, bar->maximum()));
+    const auto remap = [&](int offset) {
+        int mapped = RemapReadingOffset(offset, prefix, suffix, previous.size(), text.size());
+        // A replaced middle can introduce a new supplementary character,
+        // even when both unchanged boundaries were valid UTF-16 offsets.
+        if (mapped > 0 && mapped < text.size() && text.at(mapped - 1).isHighSurrogate() &&
+            text.at(mapped).isLowSurrogate()) {
+            --mapped;
+        }
+        return mapped;
+    };
+    QTextCursor restored(readingPane_->document());
+    restored.setPosition(remap(previousAnchor));
+    restored.setPosition(remap(previousPosition), QTextCursor::KeepAnchor);
+    readingPane_->setTextCursor(restored);
+    // Restore scroll after the caret so the reader's viewport wins over any
+    // ensure-cursor-visible scrolling.
+    if (verticalBar) {
+        verticalBar->setValue(std::min(verticalScroll, verticalBar->maximum()));
+    }
+    if (horizontalBar) {
+        horizontalBar->setValue(std::min(horizontalScroll, horizontalBar->maximum()));
     }
 }
 

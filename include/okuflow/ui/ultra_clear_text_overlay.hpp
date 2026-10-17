@@ -4,6 +4,7 @@
 
 #include "okuflow/common/ultra_clear_text.hpp"
 
+#include <QFont>
 #include <QHash>
 #include <QPointer>
 #include <QWidget>
@@ -67,12 +68,19 @@ private:
     QPointer<QWidget> excludedWidget_;
     ViewTransform transform_;
     QVector<SceneWord> words_;
+    // Fitted glyph cached when words or style change; paint only reprojects
+    // it. A word whose glyph is not valid is never drawn in either pass, so
+    // an opaque plate can never erase the original without its replacement.
     struct SceneGlyph {
         QRectF inkRect;
         QPointF origin;
+        QRectF referenceInk;      // measured ink at the reference pixel size
+        uct::LineColors colors{}; // readable-color decision, made once
+        bool valid{};
     };
     QVector<SceneGlyph> glyphs_;
     QHash<QString, QRectF> inkCache_;
+    QFont referenceFont_;
     int strokeWeight_{};
     std::uint64_t paintCount_{};
 };

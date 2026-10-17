@@ -632,6 +632,12 @@ aligned with the project goals.
   `ultra_clear_text_contract` and `ultra_clear_text_windows_ocr` are
   desktop-free; native GUI, NVDA and real-camera checks stay serial and
   separate. New UCT strings still need the translation review policy.
+- Treat `OnPresented` as submission preflight; only the actual present-success
+  receipt may refresh presentation availability. Watchdog/failure suppression
+  applies to both glyphs and reading text, including queued completions/toggles.
+- Background plates and glyphs must share one drawability decision. Keep font
+  and color preparation off the pan/zoom paint path, preserve ordered omission
+  gaps and reading selections, and test actual pixels as well as word counts.
 
 ## Required release-capability evidence (2026-10-17)
 - Bundle gates must select their strict `windows-cpu` or `windows-cuda`

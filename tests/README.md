@@ -1100,6 +1100,22 @@ The opt-in actual-app control fixture requires a private CPU dev-full configure 
 
 ## Ultra Clear Text fixtures (development)
 
+The review follow-up adds fail-before/pass-after cases for presentation timeout
+and failed-attempt restoration, ordered omission gaps, plate/glyph eligibility,
+and reading-pane cursor/selection/scroll retention. The real Windows OCR rows
+also cover a printed region surrounded by the opposite brightness. These
+synthetic results do not establish accuracy on real boards or paper.
+`main_window_interactions.ultraClearTextOverlayFollowsNativeViewport` is a
+separate serial native GUI case with known words, Fill-mode pan/zoom, resize,
+owner-hide and complete screenshot evidence. Fit intentionally ignores zoom;
+the pan test must establish that its source rectangle actually changed.
+Matching/admission cases also preserve a dense incumbent through sparse aliasing
+without losing the coarse proposal's odd-pixel neighbor, prevent duplicate text
+after return pan, reject seven kinds of borrowed validation proof, retry terminal
+initialization explicitly, and preserve dense-word polarity. The held-OCR
+presentation test establishes its asynchronous worker before counting the fixed
+300 presentations; it does not count worker-startup scheduling as rendering work.
+
 `ultra_clear_text_contract` (label `headless`) runs under Qt offscreen with
 production overlay/panel widgets, a deterministic synthetic printed page
 (`ultra_clear_text_test_support.hpp`, no downloaded images) and scripted or

@@ -16,6 +16,36 @@ namespace okuflow {
 namespace {
 
 constexpr qreal kReferencePixelSize = 100.0;
+// Tiny glyphs gain nothing from replacement; leave the original camera text.
+constexpr qreal kMinProjectedHeight = 6.0;
+constexpr qreal kMinProjectedWidth = 3.0;
+
+// The one eligibility decision shared by the plate pass and the glyph pass.
+// The plate covers the original word, so it may only be painted when the
+// replacement glyph will be painted over it in the same frame, and the
+// glyph may only be painted on its plate. Both the original box and the
+// fitted ink must meet the minimum projected size, the fitted glyph must be
+// valid, and some of both the plate and the ink must survive clipping.
+bool ReplacementIsDrawable(bool glyphValid, const QRectF& referenceInk,
+                           const QRectF& originalView, const QRectF& inkView,
+                           const QRectF& plateView, const QRegion& clip)
+{
+    if (!glyphValid || referenceInk.isEmpty() || originalView.isEmpty() ||
+        inkView.isEmpty() || plateView.isEmpty()) {
+        return false;
+    }
+    if (!std::isfinite(originalView.width()) || !std::isfinite(originalView.height()) ||
+        !std::isfinite(inkView.width()) || !std::isfinite(inkView.height())) {
+        return false;
+    }
+    if (originalView.height() < kMinProjectedHeight ||
+        originalView.width() < kMinProjectedWidth ||
+        inkView.height() < kMinProjectedHeight || inkView.width() < kMinProjectedWidth) {
+        return false;
+    }
+    return clip.intersects(plateView.toAlignedRect()) &&
+           clip.intersects(inkView.toAlignedRect());
+}
 
 qreal RelativeLuminance(const QColor& color)
 {
@@ -59,6 +89,7 @@ UltraClearTextOverlay::UltraClearTextOverlay(QWidget* renderTarget, QWidget* own
                          Qt::WindowTransparentForInput | Qt::WindowDoesNotAcceptFocus),
       renderTarget_(renderTarget)
 {
+    referenceFont_ = GlyphFont(strokeWeight_, kReferencePixelSize);
     setObjectName(QStringLiteral("ultraClearTextOverlay"));
     setAttribute(Qt::WA_TranslucentBackground, true);
     setAttribute(Qt::WA_NoSystemBackground, true);
@@ -125,6 +156,7 @@ void UltraClearTextOverlay::SetStrokeWeight(int weight)
         return;
     }
     strokeWeight_ = weight;
+    referenceFont_ = GlyphFont(strokeWeight_, kReferencePixelSize);
     inkCache_.clear();
     RebuildGlyphLayout();
     update();
@@ -211,7 +243,7 @@ QRectF UltraClearTextOverlay::InkAtReference(const QString& text)
     if (it != inkCache_.constEnd()) {
         return it.value();
     }
-    const QFontMetricsF metrics(GlyphFont(strokeWeight_, kReferencePixelSize));
+    const QFontMetricsF metrics(referenceFont_);
     const QRectF ink = metrics.tightBoundingRect(text);
     inkCache_.insert(text, ink);
     return ink;
@@ -257,18 +289,31 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
                 baselines.push_back(words_[i].sceneRect.top() - ink.top() * scaleY);
             }
         }
+        if (baselines.isEmpty()) {
+            continue;
+        }
         const qreal baseline = median(std::move(baselines));
         for (int i : indices) {
             const SceneWord& word = words_[i];
             const QRectF ink = InkAtReference(word.text);
-            if (ink.isEmpty()) {
+            if (ink.isEmpty() || word.sceneRect.isEmpty()) {
                 glyphs_[i] = {};
                 continue;
             }
             const qreal scaleX = word.sceneRect.width() / ink.width();
-            glyphs_[i] = {QRectF(word.sceneRect.left(), baseline + ink.top() * scaleY,
-                                    word.sceneRect.width(), ink.height() * scaleY),
-                          QPointF(word.sceneRect.left() - ink.left() * scaleX, baseline)};
+            const QRectF fitted(word.sceneRect.left(), baseline + ink.top() * scaleY,
+                                word.sceneRect.width(), ink.height() * scaleY);
+            if (!std::isfinite(scaleX) || !std::isfinite(scaleY) || fitted.isEmpty()) {
+                glyphs_[i] = {};
+                continue;
+            }
+            // Cache the measured reference ink and the readable-color
+            // decision with the layout. Paint only reprojects these, so
+            // pan/zoom at presentation rate repeats neither font
+            // measurement nor color work.
+            glyphs_[i] = {fitted,
+                          QPointF(word.sceneRect.left() - ink.left() * scaleX, baseline),
+                          ink, ReadableColors(word.colors), true};
         }
     }
 }
@@ -277,7 +322,7 @@ void UltraClearTextOverlay::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
     ++paintCount_;
-    if (words_.isEmpty() || !transform_.valid) {
+    if (words_.isEmpty() || glyphs_.size() != words_.size() || !transform_.valid) {
         return;
     }
     QPainter painter(this);
@@ -312,37 +357,41 @@ void UltraClearTextOverlay::paintEvent(QPaintEvent* event)
     }
     painter.setClipRegion(clip);
 
+    // Decide eligibility once per word for this projection, then let both
+    // passes consume that single decision: a plate is painted if and only
+    // if its glyph is painted over it.
+    const QVector<GlyphGeometry> projected = ProjectedGlyphs();
+    QVector<QRectF> plateRects(words_.size());
+    QVector<bool> drawable(words_.size(), false);
+    for (int i = 0; i < words_.size(); ++i) {
+        const QRectF view = uct::SceneRectToView(transform_, width(), height(), words_[i].sceneRect);
+        const qreal pad = view.height() * 0.12;
+        plateRects[i] = view.united(projected[i].inkRect).adjusted(-pad, -pad * 0.5, pad, pad * 0.5);
+        drawable[i] = ReplacementIsDrawable(glyphs_[i].valid, glyphs_[i].referenceInk, view,
+                                            projected[i].inkRect, plateRects[i], clip);
+    }
     // Paint all plates before any glyphs so a neighbouring word's plate
     // cannot erase an overhang or descender already drawn.
-    const QVector<GlyphGeometry> projected = ProjectedGlyphs();
     for (int i = 0; i < words_.size(); ++i) {
-        const SceneWord& word = words_[i];
-        const QRectF view = uct::SceneRectToView(transform_, width(), height(), word.sceneRect);
-        // Tiny glyphs gain nothing from replacement; leave the original.
-        if (view.height() < 6.0 || view.width() < 3.0 || !rect().intersects(view.toAlignedRect())) {
-            continue;
+        if (drawable[i]) {
+            painter.fillRect(plateRects[i], glyphs_[i].colors.background);
         }
-        const uct::LineColors colors = ReadableColors(word.colors);
-        const qreal pad = view.height() * 0.12;
-        painter.fillRect(view.united(projected[i].inkRect).adjusted(-pad, -pad * 0.5, pad, pad * 0.5),
-                         colors.background);
     }
     for (int i = 0; i < words_.size(); ++i) {
+        if (!drawable[i]) {
+            continue;
+        }
         const SceneWord& word = words_[i];
         const SceneGlyph& glyph = glyphs_[i];
         const QRectF view = projected[i].inkRect;
-        if (projected[i].inkRect.isEmpty() || view.height() < 6.0 || view.width() < 3.0 ||
-            !rect().intersects(view.toAlignedRect())) {
-            continue;
-        }
         const QPointF origin = uct::SceneToViewPixel(transform_, width(), height(), glyph.origin);
-        const qreal scaleX = view.width() / InkAtReference(word.text).width();
-        const qreal scaleY = view.height() / InkAtReference(word.text).height();
+        const qreal scaleX = view.width() / glyph.referenceInk.width();
+        const qreal scaleY = view.height() / glyph.referenceInk.height();
         painter.save();
         painter.translate(origin);
         painter.scale(scaleX, scaleY);
-        painter.setFont(GlyphFont(strokeWeight_, kReferencePixelSize));
-        painter.setPen(ReadableColors(word.colors).foreground);
+        painter.setFont(referenceFont_);
+        painter.setPen(glyph.colors.foreground);
         painter.drawText(QPointF(0.0, 0.0), word.text);
         painter.restore();
     }

@@ -1,6 +1,14 @@
 # Changelog
 
 ## [Unreleased]
+- Hide Ultra Clear Text and its reading pane after failed or stalled
+  presentations until the presenter confirms success. Preserve omitted-word
+  positions and the reader's selection during recognition updates; draw a
+  replacement background only when its glyph is drawable, with cached paint data.
+  Keep dense patch matches during coarse search, retire duplicate cropped lines
+  on return pan, and retain only exact current validation during a delayed OCR
+  refresh. Retry failed initialization on explicit off/on and preserve dense
+  text polarity using surrounding paper/board pixels.
 - Resolve the bundle's Qt SDK from CI's `QT_ROOT_DIR` after explicit overrides,
   and install the matching Multimedia source notices in hosted checks. Accept
   its original Qt LGPL text when an archive SDK lacks installer license files.

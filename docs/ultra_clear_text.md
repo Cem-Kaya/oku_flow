@@ -23,7 +23,8 @@ accepted use cases. Use Show original to compare, especially for numbers.
   **Recognized text** pane with the accepted words in reading order. An
   ellipsis (…) marks words that were left as the original image.
 - Glyph weight follows the existing Text Clarity **Stroke weight** slider.
-  Plate colors are measured from the processed camera pixels, so the display
+  Plate colors are measured from the processed camera pixels, using a bounded
+  surrounding margin to identify the background of dense/bold print, so the display
   color scheme is preserved; if that pair reads below 7:1 contrast the plate
   falls back to pure black/white in the scene's polarity.
 
@@ -51,6 +52,9 @@ Runtime availability:
 
 Repeated backend errors (three in a row) switch UCT to *Text recognition
 stopped working*; it then shows only the original image.
+An explicit off/on retries a failed or unavailable initialization with a fresh
+recognizer; queued callbacks from the retired scheduler cannot overwrite the
+new attempt. Ordinary slow recognition does not trigger restart.
 
 ## Architecture
 
@@ -83,9 +87,11 @@ There is no second capture or render pipeline. UCT reuses:
 
 ### Clocks and non-blocking guarantees
 
-- `OnPresented` runs on every presentation. It compares a small geometry key,
+- `OnPresented` runs before each presentation attempt. It compares a small geometry key,
   forwards the current transform to the overlay, enforces freshness and
   decides whether to request one more copy. It never waits for recognition.
+  `OnPresentationSucceeded` separately records the presenter's successful
+  submission receipt; this does not measure GPU scanout or sensor-to-photon time.
 - The overlay holds only accepted scene-space words. Pan, zoom, Fit/Fill and
   resize repaint through the newest transform on the presentation clock.
 - Probe construction, similarity and residual searching run on `ProbeWorker`,
@@ -102,8 +108,10 @@ There is no second capture or render pipeline. UCT reuses:
   worker. These are scheduling budgets, not sensor-to-photon guarantees.
 - Source retirement immediately revokes both worker generations and clears
   glyphs/reading text. If presentations otherwise stop for 600 ms, a watchdog
-  hides cached words; the next presentation
-  of an unchanged, validated scene restores them.
+  hides cached words and reading-pane text. Only an explicit successful
+  presenter receipt restores an unchanged, validated scene; submission attempts,
+  control toggles and worker completions cannot restore it. Failed presentations
+  hide both surfaces immediately. The watchdog uses successful receipts only.
 - Probes are requested at most every 80 ms and only when no UCT copy is
   outstanding (1 s timeout, like the other readback users). If the ring is
   full the presentation is not blocked; the next presentation retries.
@@ -227,12 +235,17 @@ no native windows, no camera, no network):
   work.
 - `ultra_clear_text_windows_ocr` (labels `headless;ocr-runtime`): real
   `Windows.Media.Ocr` through the production scheduler on synthetic printed
-  pages, dark-on-light and light-on-dark. It skips when Windows has no OCR
+  pages, dark-on-light and light-on-dark, each also tested with an
+  opposite-brightness surround that dominates the frame. It skips when Windows has no OCR
   language; a skip is not a pass.
 
-Not yet validated (parent/native lanes): native Qt GUI layout and tab order
-with the new panel (`main_window_interactions`), NVDA/Narrator reading of the
-pane and status, real camera text on paper and boards, GTX 1070 and RTX
+The native `main_window_interactions` UCT cases check control geometry and
+overlay alignment through Fill-mode pan/zoom, resize and owner hiding, using
+synthetic accepted words and composed native-window screenshots. They do not
+exercise a physical camera or the recognition engine.
+
+Not yet validated: NVDA/Narrator reading of the pane and status, real camera
+text on paper and boards, GTX 1070 and RTX
 desktops, high-DPI multi-monitor overlay placement, long-session CPU cost,
 p50/p95/p99 presentation tails with UCT on, and any CER/WER measurement.
 
@@ -243,6 +256,10 @@ confidence (Windows OCR exposes none), languages beyond the installed Windows
 OCR languages, rotation-aware tracking beyond translation, a frozen-region
 reading mode, persistence of the opt-in, and translations of the new strings
 (see [Localization](localization.md#ultra-clear-text-strings-pending-review)).
+Cross-decimation rounding/centroid precision also remains follow-up: measured
+synthetic production pairings stayed above the match threshold but showed up to
+3.35 source pixels of residual offset (under one probe pixel). See the
+[independent review evidence](engineering_audit_closure_2026_10_17.md#independent-uct-review-and-regression-repairs).
 
 ## Follow-up verification
 
@@ -270,3 +287,30 @@ and baseline per accepted OCR line using cached reference-font ink metrics.
 Pan/zoom only reprojects that cached geometry; it does not measure fonts or run
 recognition. Word backgrounds cover both original ink and the replacement ink,
 and all backgrounds are painted before letters.
+
+Both passes use the same eligibility decision: the original box and fitted ink
+must be usable at the current scale and survive native clipping. Otherwise the
+original camera pixels remain visible. Font ink metrics, readable colors and
+the reference font are cached when words or weight change; viewport updates
+only project and paint that cached data. Recognition updates also preserve the
+reading pane's selection direction, caret and scroll through unchanged text.
+Cursor endpoints are snapshotted as integer UTF-16 offsets before replacing
+the document: copied `QTextCursor` objects remain live and otherwise move with
+the replacement. Changed-middle remapping avoids splitting surrogate pairs.
+
+Shared line height and baseline do not preserve each font's natural horizontal
+aspect: words still fit their recognized widths. A future aspect-preserving
+layout must work in physical pixel space and protect omitted neighbors before
+widening any replacement. Foreground/background inference remains heuristic;
+the dense-word inversion regression is repaired, while textured surroundings
+and subpixel strokes need broader real-camera evidence. Stroke-control
+placement and translated UCT controls also need separate follow-up.
+
+### Reading-pane omission positions
+
+Accepted lines retain source token order separately from drawable glyphs.
+Unconfirmed and high-risk tokens leave an ellipsis at their original position
+(consecutive omissions collapse), so `Take 1 tablet` reads `Take ... tablet`
+with a single typographic ellipsis, never `Take tablet ...`. Show original
+keeps verified reading text available while hiding glyphs; presentation failure
+or timeout hides both until a confirmed successful presentation.

@@ -208,8 +208,22 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
     };
     const QColor darkColor = average(dark, darkCount);
     const QColor lightColor = average(light, lightCount);
-    // Printed glyphs cover the minority of a line box.
-    const bool darkText = darkCount <= lightCount;
+    // Dense/bold print can cover most of a tight OCR box. Prefer surrounding
+    // paper/board evidence to the minority-ink heuristic when a margin exists.
+    // This is bounded local color work on the recognition worker, never paint.
+    const int margin = std::clamp(box.height() / 6, 2, 12);
+    const QRect surround = box.adjusted(-margin, -margin, margin, margin).intersected(image.rect());
+    int darkSurround = 0, lightSurround = 0;
+    for (int y = surround.top(); y <= surround.bottom(); y += 2) {
+        const uchar* row = image.constScanLine(y);
+        for (int x = surround.left(); x <= surround.right(); x += 2) {
+            if (box.contains(x, y)) continue;
+            ++(Luma(row + x * 4) < threshold ? darkSurround : lightSurround);
+        }
+    }
+    const bool darkText = darkSurround != lightSurround
+                              ? lightSurround > darkSurround
+                              : darkCount <= lightCount;
     colors.foreground = darkText ? darkColor : lightColor;
     colors.background = darkText ? lightColor : darkColor;
     if (!colors.foreground.isValid() || !colors.background.isValid()) {
@@ -413,7 +427,7 @@ ProbeFrame MakeProbeFrame(const std::uint8_t* bgra, int width, int height, int s
     if (luma.isNull()) {
         return probe;
     }
-    // At most 2x2 samples per block keep the cost proportional to the probe
+    // At most 3x3 samples per block keep the cost proportional to the probe
     // size rather than the viewport resolution.
     const int step = std::max(1, decimation / 2);
     const int perAxis = (decimation + step - 1) / step;
@@ -516,6 +530,7 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
     double bestX = 0.0, bestY = 0.0;
     // Static fast path: an unmoved, unchanged line is the common case.
     if (zero.score < confident) {
+        double searchX = 0.0, searchY = 0.0;
         bool seeded = false;
         if (seedSceneOffset) {
             // Motion continuity: try the last validated offset first, but only
@@ -528,24 +543,40 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
                     bestScore = c.score;
                     bestX = sx;
                     bestY = sy;
+                    searchX = sx;
+                    searchY = sy;
                     seeded = true;
                 }
             }
         }
         if (!seeded) {
+            // Coarse scores rank only coarse candidates. They must never
+            // replace the already measured full-density zero hypothesis.
+            double coarseScore = -1.0;
+            double coarseBestX = 0.0, coarseBestY = 0.0;
             for (int dy = -radius; dy <= radius; dy += 2) {
                 for (int dx = -radius; dx <= radius; dx += 2) {
                     const Correlation c = Correlate(patch, g, probe, dx, dy, 3);
-                    if (c.visibleFraction >= tuning.minimumVisibleFraction && c.score > bestScore) {
-                        bestScore = c.score;
-                        bestX = dx;
-                        bestY = dy;
+                    if (c.visibleFraction >= tuning.minimumVisibleFraction && c.score > coarseScore) {
+                        coarseScore = c.score;
+                        coarseBestX = dx;
+                        coarseBestY = dy;
                     }
                 }
             }
-            bestScore = Correlate(patch, g, probe, bestX, bestY, 1).score;
+            // A sparse proposal may have a poor dense centre but a valid
+            // odd-pixel neighbor. Keep its neighborhood independently from
+            // the best fully evaluated hypothesis.
+            searchX = coarseBestX;
+            searchY = coarseBestY;
+            const Correlation dense = Correlate(patch, g, probe, coarseBestX, coarseBestY, 1);
+            if (dense.visibleFraction >= tuning.minimumVisibleFraction && dense.score > bestScore) {
+                bestScore = dense.score;
+                bestX = coarseBestX;
+                bestY = coarseBestY;
+            }
         }
-        const double coarseX = bestX, coarseY = bestY;
+        const double coarseX = searchX, coarseY = searchY;
         for (int dy = -1; dy <= 1; ++dy) {
             for (int dx = -1; dx <= 1; ++dx) {
                 if (dx == 0 && dy == 0) {
@@ -568,8 +599,13 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
         const auto refine = [&](bool horizontal) {
             const double sx = horizontal ? 1.0 : 0.0;
             const double sy = horizontal ? 0.0 : 1.0;
-            const double minus = Correlate(patch, g, probe, bestX - sx, bestY - sy, 1).score;
-            const double plus = Correlate(patch, g, probe, bestX + sx, bestY + sy, 1).score;
+            const Correlation left = Correlate(patch, g, probe, bestX - sx, bestY - sy, 1);
+            const Correlation right = Correlate(patch, g, probe, bestX + sx, bestY + sy, 1);
+            if (left.visibleFraction < tuning.minimumVisibleFraction ||
+                right.visibleFraction < tuning.minimumVisibleFraction || left.score <= -1.0 || right.score <= -1.0) {
+                return 0.0;
+            }
+            const double minus = left.score, plus = right.score;
             const double denominator = minus - 2.0 * bestScore + plus;
             if (denominator < -1e-9) {
                 return std::clamp(0.5 * (minus - plus) / denominator, -0.5, 0.5);
@@ -578,8 +614,12 @@ PatchMatch MatchPatch(const ReferencePatch& patch, const ProbeFrame& probe, cons
         };
         const double subX = refine(true);
         const double subY = refine(false);
-        bestX += subX;
-        bestY += subY;
+        const Correlation refined = Correlate(patch, g, probe, bestX + subX, bestY + subY, 1);
+        if (refined.visibleFraction >= tuning.minimumVisibleFraction && refined.score >= bestScore) {
+            bestScore = refined.score;
+            bestX += subX;
+            bestY += subY;
+        }
     }
     match.score = bestScore;
     match.matched = bestScore >= tuning.minimumScore;
@@ -1210,6 +1250,7 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
     struct Candidate {
         AcceptedLine line;
         const PreparedLine* source{};
+        bool matchDeferred{};
     };
     QVector<Candidate> candidates;
     int movedLines = 0;
@@ -1236,6 +1277,7 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
                 // Budget spent on the UI thread: admit unverified. The line
                 // stays hidden until an off-thread probe validates it.
                 candidate.line.valid = false;
+                candidate.matchDeferred = true;
             } else {
                 const PatchMatch m = MatchPatch(candidate.line.reference, *latestProbe, tuning_.match);
                 if (m.visible && !m.matched) {
@@ -1298,17 +1340,54 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
             const QRectF currentRect = word.sceneRect.translated(candidate.line.sceneOffset);
             if (IsHighRiskToken(word.text)) {
                 ++candidate.line.omittedWords;
+                candidate.line.readingTokens.push_back({});
                 continue;
             }
             if (confirmedBefore(word.text, currentRect)) {
                 candidate.line.words.push_back({word.text, word.sceneRect});
+                candidate.line.readingTokens.push_back(word.text);
             } else {
                 ++candidate.line.omittedWords;
+                candidate.line.readingTokens.push_back({});
                 nextPending.push_back({word.text, currentRect, current.sourceEpoch,
                                        current.geometryGeneration});
             }
         }
         if (!candidate.line.words.isEmpty()) {
+            if (candidate.matchDeferred && latestProbe) {
+                // Reuse only the proof for this exact same reference and
+                // accepted text, already checked against the latest pixels.
+                // Different/new references remain hidden for worker validation.
+                for (const AcceptedLine& old : lines_) {
+                    const ReferencePatch& a = old.reference;
+                    const ReferencePatch& b = candidate.line.reference;
+                    if (!old.valid || !old.provenance.SameScene(current) ||
+                        old.validatedAtMs < latestProbe->stamp.timestampMs ||
+                        old.validatedFrameSeq < latestProbe->stamp.frameSeq ||
+                        old.sceneRect != candidate.line.sceneRect ||
+                        a.valid != b.valid || a.sceneRect != b.sceneRect ||
+                        a.columns != b.columns || a.rows != b.rows || a.values != b.values ||
+                        old.words.size() != candidate.line.words.size() ||
+                        old.readingTokens != candidate.line.readingTokens) {
+                        continue;
+                    }
+                    bool identicalWords = true;
+                    for (int i = 0; i < old.words.size(); ++i) {
+                        if (old.words[i].text != candidate.line.words[i].text ||
+                            old.words[i].sceneRect != candidate.line.words[i].sceneRect) {
+                            identicalWords = false;
+                            break;
+                        }
+                    }
+                    if (identicalWords) {
+                        candidate.line.valid = true;
+                        candidate.line.sceneOffset = old.sceneOffset;
+                        candidate.line.validatedAtMs = old.validatedAtMs;
+                        candidate.line.validatedFrameSeq = old.validatedFrameSeq;
+                        break;
+                    }
+                }
+            }
             candidate.line.id = nextLineId_++;
             admitted.push_back(std::move(candidate.line));
         }
@@ -1323,7 +1402,34 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
             continue;
         }
         if (!coverage.contains(line.sceneRect.translated(line.sceneOffset).center())) {
-            kept.push_back(line);
+            // A cropped OCR line can replace words of a wider cached line
+            // whose centre is outside coverage. Retaining both would revive
+            // duplicate words when a later full-view probe validates them.
+            // Retire the whole old line conservatively, without inventing
+            // reading tokens for its unrecognized/offscreen remainder.
+            bool replaced = false;
+            const QRectF oldBounds = line.sceneRect.translated(line.sceneOffset);
+            for (const AcceptedLine& replacement : admitted) {
+                if (!oldBounds.intersects(replacement.sceneRect.translated(replacement.sceneOffset))) {
+                    continue;
+                }
+                for (const AcceptedWord& oldWord : line.words) {
+                    const QRectF a = oldWord.sceneRect.translated(line.sceneOffset);
+                    for (const AcceptedWord& newWord : replacement.words) {
+                        const QRectF b = newWord.sceneRect.translated(replacement.sceneOffset);
+                        const QRectF overlap = a.intersected(b);
+                        const double smallerArea = std::min(a.width() * a.height(), b.width() * b.height());
+                        if (smallerArea > 0.0 && !overlap.isEmpty() &&
+                            overlap.width() * overlap.height() >= tuning_.agreementIou * smallerArea) {
+                            replaced = true;
+                            break;
+                        }
+                    }
+                    if (replaced) break;
+                }
+                if (replaced) break;
+            }
+            if (!replaced) kept.push_back(line);
         }
     }
     kept += admitted;
@@ -1499,14 +1605,19 @@ QString OverlayModel::ReadingText(std::int64_t nowMs, std::uint64_t currentFrame
     QStringList out;
     for (const Entry& entry : entries) {
         QStringList words;
-        for (const AcceptedWord& word : entry.line->words) {
-            words.push_back(word.text);
+        bool previousOmission = false;
+        for (const QString& token : entry.line->readingTokens) {
+            if (token.isEmpty()) {
+                if (!previousOmission) {
+                    words.push_back(QStringLiteral("\u2026"));
+                }
+                previousOmission = true;
+            } else {
+                words.push_back(token);
+                previousOmission = false;
+            }
         }
-        QString text = words.join(QLatin1Char(' '));
-        if (entry.line->omittedWords > 0) {
-            text += QStringLiteral(" …");
-        }
-        out.push_back(text);
+        out.push_back(words.join(QLatin1Char(' ')));
     }
     return out.join(QLatin1Char('\n'));
 }

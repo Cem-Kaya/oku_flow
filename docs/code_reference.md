@@ -4840,3 +4840,72 @@ if callback completion is unknown, including a callback that has not entered.
 `NativeControlFixture::CurrentImageConfig`, `RestoreImageConfig`,
 `ProcessingGeneration` and `NativeContrastWithoutAgent` verify generation
 advancement and restore isolated settings with the agent target absent.
+
+### UCT confirmed presentation and ordered omissions
+
+`UltraClearTextController::OnPresented` is submission preflight;
+`OnPresentationSucceeded` is the explicit presenter receipt. The latter owns
+the watchdog clock and restores cached unchanged-scene text after a failure or
+600 ms presentation timeout. `PresentationAvailable` gates both glyphs and the
+reading pane, including control-toggle and worker-completion paths. Show original
+alone leaves verified reading text available. Production CUDA/CPU presenters and
+the UCT fixture report success separately from preflight.
+
+`uct::AcceptedLine::readingTokens` retains source token order separately from
+its drawable accepted words; empty tokens represent omitted original words.
+`OverlayModel::ReadingText` emits those gaps in place and collapses consecutive
+omissions. Controller timeout/failure fixtures and the data-driven omission
+fixture cover these boundaries.
+
+### UCT replacement eligibility and reading-position refresh
+
+`UltraClearTextOverlay::SceneGlyph` caches reference ink, the reference font's
+fitted geometry and readable colors at content/style changes. `referenceFont_`
+is reused during paint. `ReplacementIsDrawable` makes one projected-size,
+validity and clipping decision consumed by both background and glyph passes;
+an ineligible glyph cannot leave an opaque plate over the original camera word.
+The existing per-line baseline and coordinate contract are preserved.
+
+`UltraClearTextPanel::SetReadingText` remaps both selection endpoints through
+unchanged prefix/suffix text via `RemapReadingOffset`, clamps replaced-middle
+positions and keeps them outside UTF-16 surrogate pairs. It restores vertical
+and horizontal scroll after the cursor. Recognition never waits for pane focus.
+Data-driven fixtures cover missing glyph/plate pairs, forward/reversed selection,
+caret, prepended/deleted content, shorter replacements and supplementary text.
+
+`MainWindowTests::ultraClearTextOverlayFollowsNativeViewport` exercises the real
+native overlay with known synthetic words, Fill-mode pan/zoom, resize, geometry,
+paint receipts and complete composed captures. It does not open a camera or
+verify OCR accuracy. The Windows OCR fixture additionally checks both text
+polarities against an opposite-brightness surround through the real backend.
+
+### UCT independent-review matching and lifecycle repairs
+
+`MatchPatch` separates coarse stride-3 ranking from dense acceptance, keeps
+the measured zero-displacement incumbent, and checks visibility/score again
+after combined subpixel refinement. Coarse proposals still seed their own local
+neighborhood search. Invalid border samples cannot determine interpolation.
+No NCC threshold or search radius is relaxed.
+
+`OverlayModel::Admit` retires cached outside-coverage lines whose words are
+spatially replaced by a cropped recognition, preventing duplicate resurrection
+after returning to the wider view. Budget-deferred candidates may reuse only
+exact reference/grid/sample, word/text/geometry and reading-token validation
+already current for the latest probe in the same scene. Different or older
+proof remains hidden for worker validation; no unconditional validity transfer
+is permitted. Fixtures include positive refresh and seven negative proof rows.
+
+`MeasureLineColors` uses the bounded surrounding margin to distinguish paper
+from dense foreground; minority-ink inference remains the no-margin fallback.
+Both polarities are checked through the actual scheduler with controlled dense
+strokes, independently of recognition quality.
+
+`UltraClearTextController::SetEnabled` retries terminal initialization on an
+explicit off/on using a fresh recognizer. `schedulerGeneration_` rejects queued
+status/result callbacks from a predecessor scheduler; ordinary slow recognition
+does not cause a restart. Runtime-error and initialization-error retry remain
+separate paths. Two initialization-state rows exercise actual recreation.
+
+`slowOcrNeverBlocksPresentationClock` establishes a held OCR job before the
+300-presentation loop. Asynchronous worker startup under parallel test load
+cannot shorten that loop; the original progress/time assertions remain.

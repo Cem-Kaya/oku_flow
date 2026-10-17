@@ -1312,6 +1312,9 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         }
     }
     if (presented) {
+        if (ultraClearText_) {
+            ultraClearText_->OnPresentationSucceeded();
+        }
         lastAnnotationPresentation_ = uctContext;
         lastAnnotationGpuPresentation_ = annotationPresentation;
         lastAnnotationPresentation_->cameraActive = true;
@@ -1327,7 +1330,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
             pendingSceneCaptureClock100ns_.reset();
         }
     }
-    if (uctWanted) {
+    if (uctWanted && presented) {
         ultraClearText_->OnReadbackRequested(readbackRequestId, uctContext);
     }
     if (readbackRequestId != 0) {
@@ -2720,6 +2723,9 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
     if (presenter_->NeedsScenePresent()) {
         pipelineOrchestrator_->MarkViewportDirty();
         return;
+    }
+    if (ultraClearText_) {
+        ultraClearText_->OnPresentationSucceeded();
     }
     cameraFramePresented_ = true;
     lastAnnotationPresentation_ = UltraClearTextContext(false, transform,

@@ -198,6 +198,8 @@ public:
     // Presentation clock. Never blocks; returns true when a viewport copy
     // should be requested with this presentation.
     bool OnPresented(const UctFrameContext& context);
+    // Receipt from the actual presenter, never from submission/preflight.
+    void OnPresentationSucceeded();
     void OnSourceRetired(); // immediate revocation; does not wait for another presentation
     // The presenter rejected the frame: the screen still shows older pixels,
     // so words reprojected for this context are hidden until the next
@@ -248,6 +250,7 @@ private:
     void HandleBackendStatus(uct::BackendStatus status);
     void RefreshOverlay(std::int64_t nowMs);
     void UpdateReadingText();
+    bool PresentationAvailable(std::int64_t nowMs) const;
     void UpdateStatus();
     void SetStatus(const QString& source, bool important = false);
     uct::SourceStamp MakeStamp(const UctFrameContext& context, std::int64_t nowMs) const;
@@ -260,6 +263,7 @@ private:
     UctTiming timing_;
     std::shared_ptr<uct::PixelPool> pool_;
     std::unique_ptr<uct::RecognitionScheduler> scheduler_;
+    std::uint64_t schedulerGeneration_{}; // fences callbacks across explicit initialization retry
     std::unique_ptr<uct::ProbeWorker> probeWorker_;
     uct::OverlayModel model_;
     uct::BackendStatus backend_;
@@ -271,6 +275,7 @@ private:
     bool haveGeometry_{};
     bool settling_{};
     bool presentationFailed_{};
+    bool presentationAvailable_{};
     UctGeometryKey geometry_;
     std::uint64_t geometryGeneration_{};
     std::uint64_t currentFrameSeq_{};

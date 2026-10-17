@@ -6,6 +6,7 @@
 #include "ultra_clear_text_test_support.hpp"
 
 #include <QGuiApplication>
+#include <QPainter>
 #include <QSet>
 #include <QtTest>
 
@@ -26,17 +27,37 @@ private slots:
 void UltraClearTextWindowsOcrTests::recognizesSyntheticPrintedPage_data()
 {
     QTest::addColumn<bool>("lightOnDark");
-    QTest::newRow("dark print on light page") << false;
-    QTest::newRow("light print on dark board") << true;
+    QTest::addColumn<bool>("oppositeSurround");
+    QTest::newRow("dark print on light page") << false << false;
+    QTest::newRow("light print on dark board") << true << false;
+    QTest::newRow("dark print with dark surround") << false << true;
+    QTest::newRow("light print with bright surround") << true << true;
 }
 
 void UltraClearTextWindowsOcrTests::recognizesSyntheticPrintedPage()
 {
     QFETCH(bool, lightOnDark);
+    QFETCH(bool, oppositeSurround);
     const QStringList lines{QStringLiteral("MAGNIFIED PRINTED TEXT"), QStringLiteral("READS CLEARLY TODAY")};
     SyntheticPage page = MakePage(lines, {}, 1600, 900, 72);
     if (lightOnDark) {
         page.image.invertPixels(QImage::InvertRgb);
+    }
+    if (oppositeSurround) {
+        // The surrounding room dominates global luma, with the opposite
+        // polarity from the printed region. Exercise the actual Windows
+        // backend before assuming an inversion heuristic causes a failure.
+        QImage framed(page.image.size(), QImage::Format_ARGB32);
+        framed.fill(lightOnDark ? Qt::white : Qt::black);
+        QPainter painter(&framed);
+        painter.drawImage(QRect(320, 180, 960, 540), page.image);
+        painter.end();
+        page.image = std::move(framed);
+        for (PageWord& word : page.words) {
+            const QRectF original = word.sceneRect;
+            word.sceneRect = QRectF(0.2 + 0.6 * original.x(), 0.2 + 0.6 * original.y(),
+                                     0.6 * original.width(), 0.6 * original.height());
+        }
     }
     const ViewTransform t =
         ComputeViewTransform(1600, 900, 1600, 900, 1.0f, 0.5f, 0.5f, ViewportFitMode::kFit);

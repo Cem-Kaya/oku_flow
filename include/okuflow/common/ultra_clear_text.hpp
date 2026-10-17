@@ -402,6 +402,7 @@ struct AcceptedLine {
     QRectF sceneRect;
     QVector<AcceptedWord> words;   // confirmed words only
     int omittedWords{};            // unconfirmed / high-risk words left original
+    QVector<QString> readingTokens; // original order; empty token marks an omission
     LineColors colors;
     ReferencePatch reference;
     SourceStamp provenance;        // stamp of the pixels the text came from

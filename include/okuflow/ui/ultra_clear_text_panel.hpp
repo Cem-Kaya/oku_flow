@@ -29,8 +29,10 @@ public:
     bool IsShowingOriginal() const;
     // Status is English source text routed through the translation catalog.
     void SetStatus(const QString& sourceText, bool important = false);
-    // Replaces the pane text only when it changed, preserving the reader's
-    // caret and scroll position otherwise.
+    // Replaces the pane text only when it changed. The reader's caret and
+    // selection (in either direction) are remapped through the unchanged
+    // prefix/suffix of the refreshed text, and scroll is restored clamped,
+    // so a recognition refresh never loses the reading position.
     void SetReadingText(const QString& text);
 
 signals:

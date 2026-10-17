@@ -275,9 +275,10 @@ release claims remain unchanged.
 
 ## Ultra Clear Text strings (pending review)
 
-The experimental Ultra Clear Text controls use `TranslateUi`/live-text routing
-but their sources are **not yet in the catalogs**, so every language currently
-shows English. They were not machine-translated or added to the manifest
+The experimental Ultra Clear Text status uses live-text routing; its static
+control labels and descriptions are still English literals without a language-
+change hook. Their sources are **not yet in the catalogs**, so every language
+currently shows English. They were not machine-translated or added to the manifest
 without the required small-agent review. Add them through
 `scripts/check_translations.ps1 -UpdateManifest` with per-entry review before
 calling the feature localized. English sources:

@@ -54,7 +54,8 @@ v0.2.5 downloads have not been replaced by this work.
 The experimental opt-in uses local Windows OCR on one latest-only worker, an
 independent bounded probe worker and cached glyph reprojection on presentation.
 Slow recognition never blocks presentation. Shared line type sizes/baselines
-avoid per-word stretching. A live synthetic-camera review accepted all 44 printed
+avoid independently stretching each word's height; horizontal width fitting
+remains. A live synthetic-camera review accepted all 44 printed
 fixture words and exercised Show original. A held-OCR fixture measured presentation
 hook p99 0.006 ms and 1080p Qt painting p99 3.115 ms; these exclude real camera,
 GPU scanout and OCR accuracy beyond the fixture. High-risk/moving/composite text
@@ -202,3 +203,105 @@ Qt Multimedia `v6.12.0` archive; its LGPL file is byte-identical to the installe
 SDK's copy. Download provenance, hashes and both attempts are retained under
 `%LOCALAPPDATA%/OkuFlow/ci-39056398406`. Hosted confirmation remains pending.
 No native GUI, phone or release acceptance was performed.
+
+## Independent UCT review and regression repairs
+
+Private evidence for this continuation is under
+`%LOCALAPPDATA%/OkuFlow/uct-review-20261017`.
+
+Astra and Muse source reviews identified four independently reproduced defects:
+
+- Failed or stopped presentation could leave reading text available, and a
+  toggle or queued completion could restore cached glyphs without a successful
+  presentation. Both surfaces now require a recent successful presenter
+  submission receipt; attempted submission cannot refresh that clock.
+- Omitted high-risk/unconfirmed tokens appeared only at a line's end, changing
+  the apparent order. Accepted reading tokens now retain their original slots
+  and collapse only adjacent omission markers.
+- Plates and replacement glyphs had different size/clip predicates. Both now
+  consume one eligibility decision, leaving original pixels when either cannot
+  be drawn. Reference font, ink metrics and readable colors are cached for
+  presentation-rate repaint.
+- Recognition refresh reset reading-pane selection/caret. Common unchanged
+  prefix/suffix offsets preserve reading position and both scrollbars. Parent
+  regression tests additionally caught a live-`QTextCursor` bug in the proposed
+  patch; integer endpoints are now saved before document replacement and mapped
+  away from surrogate-pair interiors.
+
+The first focused UCT contract passed all 52 Qt rows, including the new
+regressions. Real Windows OCR recognized all six known words in each of four
+synthetic dark/light fixtures, including opposite-brightness surrounds. The
+suggested global-inversion failure did not reproduce, so no extra OCR pass was
+added. Native control geometry and overlay Fill-mode pan/zoom, resize and owner
+hiding checks passed with composed screenshots. The first native movement
+attempts used Fit mode, which deliberately ignores zoom; those original fixture
+failures are retained alongside the corrected Fill-mode check.
+
+A recorded held-recognizer fixture measured callback p95/p99 0.005/0.006 ms and
+1080p Qt paint p95/p99 2.912/3.078 ms. Dense 4K probe validation p95 was 64.15 ms
+on its separate worker. These are development-PC synthetic observations, not
+end-to-end FPS or physical camera accuracy. Cached pan/zoom reprojection follows
+the presentation clock; content motion remains translation-only and probe-rate
+(at most once per 80 ms), not high-FPS OCR or high-FPS content tracking.
+
+Aspect-preserving horizontal glyph geometry, stroke-control placement and UCT
+localization remain follow-up work. Background inference remains a heuristic,
+with the dense-word failure repaired below.
+Curves, handwriting, reliable math replacement, physical-camera quality and
+screen-reader/multi-monitor acceptance are not established by these fixtures.
+
+Argon's independent inline-source review completed after its first filesystem
+attempt was refused by the provider. Astra, Muse and the parent verified its
+claims separately rather than treating confidence scores as evidence:
+
+| Item | Disposition and actual evidence |
+| --- | --- |
+| 1, dense-match incumbent | Reproduced and repaired. Sparse ranking cannot replace the better dense zero score; combined subpixel output is rechecked. Astra then found a proposal-neighborhood regression in its patch, reproduced separately and repaired while retaining both positive cases. |
+| 2, cropped-line duplication | Reproduced: a return pan showed Gamma twice. Spatially replaced cached lines are retired, including those whose centers lie outside the current OCR coverage. Their unrecognized offscreen remainder is reacquired by later OCR. |
+| 3, delayed refresh validity | Reproduced: all ten words disappeared after a budget-deferred identical refresh. Only exact references/text/geometry already validated against the latest probe may reuse that proof. Seven negative rows reject altered samples, text, geometry, older proof and scene changes. |
+| 4, overflow and sampling geometry | Normal 8K runtime paths do not overflow the integral table. Actual-image diagnostics measured bounded cross-decimation bias: up to 3.35 source pixels (0.84 probe pixels) in the tested production pairing. This remains geometry precision follow-up, within the one-probe-pixel diagnostic tolerance. |
+| 5, differing probe decimation | No threshold failure reproduced in the nine measured pairings. At production width 2560, 8/12/16/28 px print scored 0.92–0.96 on identical content and 0.92–0.98 after a three-source-pixel shift, above 0.82. Changed-text controls were rejected. No blind resolution alignment or extra OCR pass was added. |
+| 6, initialization retry | Both failed/unavailable initialization rows reproduced. Explicit off/on now creates a fresh recognizer and generation-fences predecessor callbacks. |
+| 7, row chaining | Rejected. Entries remain OCR lines; the suggested observable order is already correct. Expanding the anchor would break existing mixed-height ordering. |
+| 8, dense text polarity | Both polarities reproduced through the real scheduler's color path with controlled 75%-fill strokes. A bounded surrounding margin identifies paper/board before the minority-ink fallback. This is not an OCR accuracy claim. |
+
+The focused contract now passes 67 Qt rows. All original failure logs and the
+counterexample to the first matching patch are retained. An initial full tracked
+run passed shipping compilation, 148 of 149 CPU cases (all 64 native GUI cases),
+and all ten CUDA delta cases. Its sole failure was the old held-OCR fixture's
+implicit startup ordering under parallel CPU load: it had only 110 presentation
+ticks after the worker started. The fixture now establishes the held job before
+the fixed 300-tick loop; progress/time assertions and deadlines are unchanged.
+
+The final tracked Windows run then passed shipping CUDA 12.9 Release
+compilation, all 149 CPU CTest cases (including 64 serial native GUI cases),
+and all ten CUDA delta cases. One explicitly optional development MCP Qt row
+skipped; no selected CTest case skipped or remained unresolved. No saved result
+matched, so every selected case ran. The final UCT contract's 67 Qt rows passed
+under parallel CPU load. Its held-OCR observations were callback p95/p99
+0.006/0.008 ms and 1080p Qt paint p95/p99 3.204/4.078 ms; separate dense 4K
+validation p95 was 62.54 ms. These are fixture observations, not camera FPS.
+
+A separate one-off Qt-offscreen probe compiled the unchanged production core
+under LocalAppData and measured Muse's cross-decimation hypotheses on actual
+rendered images. Raw JSON, stderr, source and CMake inputs are retained under
+`sampling-probe/`; it is not an added release runner or a CER/WER measurement.
+The 1003-wide ref2/probe4 pair is a stress case, not the controller's pairing at
+that width. Production-true width 2883 ref2/probe4 also stayed above threshold
+(0.92 identical, 0.91 shifted); its forced-search offset was the 3.35 source
+pixels recorded above. Same-decimation/divisible-width controls and both page
+sides distinguish remainder bias from kernel/renderer effects.
+
+The rebuilt CUDA application also completed one isolated 120-second session
+with the existing synthetic page through the private OBS/DroidCam feed. UCT
+paused while the fixture's Temporal Smooth was on, then displayed four accepted
+words and matching reading-pane content in the cropped 1.6x view after that mode
+was disabled. It received 3558 camera frames and presented 2538; aggregate idle
+viewport rate was 21.4 FPS, not a claim of high-FPS camera or overlay tracking.
+The profiling child exited normally and the private camera helper stopped its
+owned OBS. Its optional PNG export was refused because the parent supplied a
+90000 ms delay beyond the hook's 60000 ms limit; that failed export is retained,
+not represented as a saved screenshot. Actual Computer Use images were inspected;
+the complete native fixture captures are retained separately. Show-original's
+attempt at the session deadline found an already-closed window, so it adds no
+live comparison acceptance beyond the passing controller fixture.

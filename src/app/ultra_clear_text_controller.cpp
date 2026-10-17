@@ -69,11 +69,10 @@ UltraClearTextController::UltraClearTextController(UltraClearTextOverlay* overla
     watchdog_ = new QTimer(this);
     watchdog_->setInterval(200);
     connect(watchdog_, &QTimer::timeout, this, [this] {
-        if (enabled_ && overlay_ && overlay_->WordCount() > 0 &&
-            clock_() - lastPresentMs_ > kPresentationWatchdogMs) {
-            overlay_->ClearWords();
-            overlayWords_.clear();
-            shownWords_ = 0;
+        if (enabled_ && presentationAvailable_ && !PresentationAvailable(clock_())) {
+            presentationAvailable_ = false;
+            RefreshOverlay(clock_());
+            UpdateReadingText();
             UpdateStatus();
         }
     });
@@ -115,29 +114,30 @@ void UltraClearTextController::EnsureScheduler()
         return;
     }
     backend_ = {};
+    const std::uint64_t generation = ++schedulerGeneration_;
     scheduler_ = std::make_unique<uct::RecognitionScheduler>(
         factory_ ? factory_() : std::unique_ptr<uct::Recognizer>{},
-        [self](uct::RecognitionResult result) {
+        [self, generation](uct::RecognitionResult result) {
             if (!self) {
                 return;
             }
             QMetaObject::invokeMethod(
                 self.data(),
-                [self, result = std::move(result)]() mutable {
-                    if (self) {
+                [self, generation, result = std::move(result)]() mutable {
+                    if (self && self->schedulerGeneration_ == generation) {
                         self->HandleResult(std::move(result));
                     }
                 },
                 Qt::QueuedConnection);
         },
-        [self](uct::BackendStatus status) {
+        [self, generation](uct::BackendStatus status) {
             if (!self) {
                 return;
             }
             QMetaObject::invokeMethod(
                 self.data(),
-                [self, status = std::move(status)]() mutable {
-                    if (self) {
+                [self, generation, status = std::move(status)]() mutable {
+                    if (self && self->schedulerGeneration_ == generation) {
                         self->HandleBackendStatus(std::move(status));
                     }
                 },
@@ -157,6 +157,13 @@ void UltraClearTextController::SetEnabled(bool enabled)
     }
     enabled_ = enabled;
     if (enabled_) {
+        // Initialization failure is terminal for that worker. An explicit
+        // off/on retries with a fresh recognizer (for example after adding an
+        // OCR language), fencing already-queued callbacks from its predecessor.
+        if (scheduler_ && !BackendUsable(scheduler_->Status())) {
+            ++schedulerGeneration_;
+            scheduler_.reset();
+        }
         EnsureScheduler();
         watchdog_->start();
         // A user re-enable retries a backend that only failed at run time.
@@ -167,6 +174,7 @@ void UltraClearTextController::SetEnabled(bool enabled)
         settling_ = false;
         consecutiveFailures_ = 0;
     } else {
+        presentationAvailable_ = false;
         watchdog_->stop();
         Invalidate({});
     }
@@ -191,8 +199,7 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
         return false;
     }
     const std::int64_t now = clock_();
-    lastPresentMs_ = now;
-    presentationFailed_ = false;
+
     cameraActive_ = context.cameraActive;
     currentFrameSeq_ = context.frameSeq;
     if (overlay_) {
@@ -241,9 +248,33 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
     return now - lastProbeRequestMs_ >= timing_.probeIntervalMs;
 }
 
+bool UltraClearTextController::PresentationAvailable(std::int64_t nowMs) const
+{
+    return presentationAvailable_ && !presentationFailed_ &&
+           nowMs - lastPresentMs_ <= kPresentationWatchdogMs;
+}
+
+void UltraClearTextController::OnPresentationSucceeded()
+{
+    if (!enabled_) {
+        return;
+    }
+    const std::int64_t now = clock_();
+    const bool restoring = !PresentationAvailable(now);
+    lastPresentMs_ = now;
+    presentationAvailable_ = cameraActive_;
+    presentationFailed_ = false;
+    if (restoring) {
+        RefreshOverlay(now);
+        UpdateReadingText();
+        UpdateStatus();
+    }
+}
+
 void UltraClearTextController::OnSourceRetired()
 {
     cameraActive_ = false;
+    presentationAvailable_ = false;
     haveGeometry_ = false;
     ++geometryGeneration_;
     Invalidate(QStringLiteral("scene"));
@@ -256,11 +287,14 @@ void UltraClearTextController::OnPresentationFailed()
         return;
     }
     presentationFailed_ = true;
+    presentationAvailable_ = false;
     if (overlay_) {
         overlay_->ClearWords();
     }
     overlayWords_.clear();
     shownWords_ = 0;
+    UpdateReadingText();
+    UpdateStatus();
 }
 
 void UltraClearTextController::OnReadbackRequested(std::uint64_t requestId,
@@ -513,7 +547,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
     if (!overlay_) {
         return;
     }
-    if (!enabled_ || showOriginal_ || compositePaused_ || settling_ || presentationFailed_ ||
+    if (!enabled_ || showOriginal_ || compositePaused_ || settling_ || !PresentationAvailable(nowMs) ||
         !BackendUsable(backend_)) {
         overlay_->ClearWords();
         overlayWords_.clear();
@@ -553,7 +587,7 @@ void UltraClearTextController::UpdateReadingText()
     // The pane offers exactly the lines verified on screen now (also while
     // Show original hides the glyph plates).
     QString text;
-    if (enabled_ && !compositePaused_ && !settling_ && BackendUsable(backend_)) {
+    if (enabled_ && PresentationAvailable(clock_()) && !compositePaused_ && !settling_ && BackendUsable(backend_)) {
         text = model_.ReadingText(clock_(), currentFrameSeq_);
     }
     if (text == readingText_) {

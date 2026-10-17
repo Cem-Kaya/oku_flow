@@ -9,6 +9,8 @@
 #include "okuflow/ui/theme_contrast.hpp"
 #include "okuflow/ui/ui_translation.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
+#include "okuflow/ui/ultra_clear_text_overlay.hpp"
+#include "okuflow/ui/render_widget.hpp"
 
 #include <QApplication>
 #include <QAccessible>
@@ -27,6 +29,7 @@
 #include <QLabel>
 #include <QImage>
 #include <QLineEdit>
+#include <QLineF>
 #include <QListWidget>
 #include <QMap>
 #include <QMouseEvent>
@@ -417,6 +420,7 @@ private slots:
     void desktopZoomSliderReachesSixteenX();
     void textClarityMasterPreservesRefinements();
     void ultraClearTextControlsHaveNativeGeometry();
+    void ultraClearTextOverlayFollowsNativeViewport();
     void disabledSlidersHaveDistinctAppearance();
     void inspectorContrastAppearance_data();
     void inspectorContrastAppearance();
@@ -973,6 +977,53 @@ void MainWindowTests::textClarityMasterPreservesRefinements()
     QVERIFY(fine->headerWidget()->isEnabled());
     QVERIFY(help->isVisible() && help->isEnabled());
     QVERIFY(help->width() <= imageScroll->viewport()->width());
+}
+
+void MainWindowTests::ultraClearTextOverlayFollowsNativeViewport()
+{
+    MainWindow window;
+    QVERIFY(PrepareVisualWindow(window));
+    window.show();
+    const QString fit = FitVisualWindow(window, QSize(1100, 760));
+    QVERIFY2(fit.isEmpty(), qPrintable(fit));
+    QVERIFY2(ActivateFixtureWindow(&window), test::ActivationFailureMessage());
+    auto* target = window.renderWidget();
+    auto* overlay = window.ultraClearTextOverlay();
+    QVERIFY(target && overlay);
+    const auto transformFor = [&](float zoom, float centerX) {
+        return ComputeViewTransform(1600, 900, target->width(), target->height(),
+                                    zoom, centerX, 0.5f, ViewportFitMode::kFill);
+    };
+    overlay->SetViewTransform(transformFor(1.0f, 0.5f));
+    // Known accepted words exercise the production native overlay. This
+    // fixture deliberately does not open a camera or claim OCR accuracy.
+    overlay->SetWords({{QStringLiteral("Reading"), QRectF(0.28, 0.35, 0.23, 0.07),
+                         {QColor(Qt::black), QColor(Qt::white)}, 1},
+                       {QStringLiteral("clearly"), QRectF(0.54, 0.35, 0.20, 0.07),
+                         {QColor(Qt::black), QColor(Qt::white)}, 1}});
+    QTRY_VERIFY(overlay->isVisible());
+    QTRY_VERIFY(overlay->PaintCount() > 0);
+    QCOMPARE(GlobalRect(overlay), GlobalRect(target));
+    QVERIFY(SaveScreenshot(window, QStringLiteral("desktop-en-ultra-clear-overlay-before-pan")));
+    const auto before = overlay->PaintCount();
+    const ViewTransform zoomed = transformFor(1.4f, 0.48f);
+    QVERIFY(zoomed.valid);
+    QVERIFY(zoomed.sourceWidth < overlay->CurrentViewTransform().sourceWidth);
+    overlay->SetViewTransform(zoomed);
+    QTRY_VERIFY(overlay->PaintCount() > before);
+    QCOMPARE(overlay->WordCount(), 2);
+    const auto words = overlay->ProjectedWordRects();
+    QCOMPARE(words.size(), 2);
+    const QRectF expected = uct::SceneRectToView(zoomed, target->width(), target->height(),
+                                                QRectF(0.28, 0.35, 0.23, 0.07));
+    QVERIFY(QLineF(words.first().topLeft(), expected.topLeft()).length() < 0.5);
+    window.resize(window.width() - 80, window.height() - 40);
+    QTRY_COMPARE(GlobalRect(overlay), GlobalRect(target));
+    overlay->SetViewTransform(transformFor(1.2f, 0.5f));
+    QTRY_VERIFY(overlay->PaintCount() > before + 1);
+    QVERIFY(SaveScreenshot(window, QStringLiteral("desktop-en-ultra-clear-overlay")));
+    window.hide();
+    QTRY_VERIFY(!overlay->isVisible());
 }
 
 void MainWindowTests::ultraClearTextControlsHaveNativeGeometry()
