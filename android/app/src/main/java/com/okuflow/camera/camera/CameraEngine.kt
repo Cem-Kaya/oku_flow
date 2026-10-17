@@ -38,7 +38,7 @@ class CameraEngine(
     private val executor = Executor { handler.post(it) }
     private var active: Run? = null
     private var generation = 0
-    private var zoom = 1f
+    private val zoom = SessionZoomIntent()
     private var closed = false
     private val startToken = AtomicInteger()
 
@@ -57,6 +57,7 @@ class CameraEngine(
         handler.post {
             if (closed || token != startToken.get()) return@post
             stopInternal()
+            zoom.begin(sessionId, token)
             try {
                 val candidates = catalog.configurations(settings, hostCodecs, thermalFps, hostLimits)
                 if (candidates.isEmpty()) {
@@ -93,11 +94,17 @@ class CameraEngine(
         } catch (exception: Exception) { fail(run, exception.message ?: "Camera startup failed", problemFor(exception)) }
     }
 
-    fun setZoom(ratio: Float) {
+    fun setZoom(sessionId: String, ratio: Float) {
         require(ratio.isFinite() && ratio > 0) { "Invalid zoom ratio" }
+        val token = startToken.get()
         handler.post {
-            zoom = ratio
-            active?.let { run -> runCatching { repeatRequest(run) }.onFailure { fail(run, it.message ?: "Zoom failed") } }
+            if (closed || token != startToken.get()) return@post
+            val run = active
+            val ready = run != null && current(run) && run.sessionId == sessionId &&
+                run.camera != null && run.session != null
+            runCatching {
+                zoom.set(sessionId, token, ratio, ready) { repeatRequest(checkNotNull(run)) }
+            }.onFailure { if (run != null) fail(run, it.message ?: "Zoom failed") }
         }
     }
 
@@ -214,7 +221,8 @@ class CameraEngine(
             set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
             set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, run.config.fpsRange)
             val zoomRange = chars[CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE]
-            set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom.coerceIn(zoomRange?.lower ?: 1f, zoomRange?.upper ?: 1f))
+            set(CaptureRequest.CONTROL_ZOOM_RATIO,
+                zoom.value(run.sessionId, run.token).coerceIn(zoomRange?.lower ?: 1f, zoomRange?.upper ?: 1f))
             val afModes = chars[CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES]?.toList().orEmpty()
             val af = if (settings.autofocus && CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO in afModes)
                 CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO else CaptureRequest.CONTROL_AF_MODE_OFF

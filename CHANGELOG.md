@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+- Retain phone camera zoom commands during startup until capture is ready,
+  without treating an unconfigured session as a camera-mode failure.
 - Save annotation PNGs atomically under unused names, preserving prior captures
   and hiding incomplete encodes from the photo library.
 - Preserve the exact selected chat occurrence, selection direction and reading

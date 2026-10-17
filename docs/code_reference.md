@@ -4328,3 +4328,12 @@ reporting any cleanup leftovers. `SaveAnnotationSnapshot` records notes only
 for the committed returned name. File fixtures preserve an open prior capture,
 repeat a timestamp, race publication and simulate a failed partial encoder;
 they do not claim a physical disk-full run or power-loss durability.
+
+`SessionZoomIntent` owns desired camera zoom for an exact host/start token.
+`CameraEngine::start` resets it once per start, while fallback candidates share
+it. `setZoom(sessionId,ratio)` captures the admission token and rejects retired
+or foreign runs on the camera handler. It stores early intent without creating
+a repeating request until CameraDevice and capture session are ready; the
+configured callback reads that intent. Pure JVM regressions verify readiness,
+fallback retention and stale/foreign commands. This changes camera crop only;
+no Android display size, density, aspect ratio, font, rotation or scaling is set.

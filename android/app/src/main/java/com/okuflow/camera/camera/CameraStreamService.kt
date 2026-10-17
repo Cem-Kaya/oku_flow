@@ -194,7 +194,7 @@ class CameraStreamService : Service() {
                     store.update(store.state.value.forNewHostSession())
                     publishIdle()
                 }
-                "zoom" -> engine.setZoom(command.getDouble("ratio").toFloat())
+                "zoom" -> engine.setZoom(id, command.getDouble("ratio").toFloat())
                 "camera" -> {
                     val id = if (command.has("cameraId")) command.getString("cameraId") else command.getString("id")
                     require(CameraCatalog(this).cameras().any { it.id == id }) { "Unknown camera" }

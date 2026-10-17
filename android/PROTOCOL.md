@@ -234,3 +234,7 @@ The desktop source exposes queued zoom/camera APIs, and discovered camera IDs
 appear as camera-list entries. Automatic handoff of OkuFlow's viewport zoom,
 per-frame metadata joins, clock synchronization and high-speed capture above
 60 FPS remain separate plan-51 work.
+
+Zoom accepted during Camera2 startup is retained for that host/start generation
+and applied when the capture session is configured. It does not consume a mode
+fallback. A new start resets zoom; retired host/start commands cannot affect it.
