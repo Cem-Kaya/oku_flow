@@ -35,6 +35,18 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   immediately without restarting. Debug logs, file names, device names, model
   ids, and persisted setting tokens remain stable English/data values.
 - Media Foundation camera enumeration with per-device mode listing (`width x height @ fps`), restart-safe device activation, plain-language failure reporting, and automatic reconnection: when a camera drops mid-lecture, OkuFlow quietly retries the same physical device for about 30 seconds (2s/4s/8s backoff) without any modal dialogs, and only reports failure if the device never comes back.
+  An in-flight native `ReadSample` also has a 10-second working-time watchdog
+  (four negotiated frame periods for slower sources, up to 60 seconds). It is
+  polled without waiting on the driver; sleep/hibernation and image processing
+  do not consume that pending-read budget. Recovery uses the existing bounded
+  split stop. If the driver never quiesces, its resources stay retained and a
+  restart is required rather than attempting unsafe reuse.
+  Reopening a webcam reader does not announce reconnection: the first successful
+  frame presentation does. Zero-frame attempts retain the original 30-second
+  recovery window; an adopted reader waits for video instead of reopening on
+  every tick, and expiry retires it even while opening or waiting for video.
+  Working manual or fallback video also retires an older recovery window,
+  without announcing that the original camera returned.
 - CPU frame pipeline for format conversion and rotation of formats the GPU path does not consume, plus the legacy debug composite view. NV12 and YUY2 camera frames bypass it entirely: color conversion and rotation run in CUDA.
 - Direct3D 12 presenter for swap-chain output plus GPU texture readback.
   Processed and rotation-correct unenhanced video recording use a bounded
@@ -779,7 +791,9 @@ manual reset requires removing both primary and backup.
   conversation index entries. If a file exceeds the limit, OkuFlow keeps it as
   `settings.json.too-large-<timestamp>` and restores the last valid backup. A
   save that would exceed the limit changes nothing and asks you to delete old
-  Assistant conversations.
+  Assistant conversations. Detailed save status propagates through the settings
+  controller without serializing again to diagnose a refusal. Each discrete
+  save still freshly validates the existing file before rotating its backup.
 - User-created files share one root: `Documents\OkuFlow\` by default.
   Advanced Assistant can change it to another writable folder outside the
   application directory. The choice persists as `paths.userDataRoot`.

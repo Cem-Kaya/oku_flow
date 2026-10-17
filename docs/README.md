@@ -1,5 +1,8 @@
 # OkuFlow Documentation Guide
 
+[Argon report verification](argon_review_verification_2026_10_17.md) records
+every finding's disposition, confirmed repairs and intentional state/tool contracts.
+
 Website: <https://okuflow.com>
 
 [Application languages](localization.md) describes Windows 0.2.4's published
@@ -235,40 +238,32 @@ the rotation/focus follow-ups and native desktop acceptance remain deferred.
 
 ## Language And Locale
 
-`LanguageManager` installs an embedded `QTranslator` before the main window is
-constructed and re-translates existing widgets when the user changes
-`Advanced > Settings > Language > Application language`. The stable persisted
-values are `en`, `tr`, and `de`; a profile without that key adopts a supported
-Windows locale once. The language setting is global and never part of a quick
-image profile.
+`LanguageManager` installs an embedded `QTranslator` before constructing the
+main window and re-translates existing widgets after a language change under
+`Advanced > Settings > Language`. The registry supports 25 languages, including
+Arabic, Persian, Hebrew and Urdu with RTL layout. Persisted choices use the
+canonical tags in [localization.md](localization.md), or `system` to follow the
+Windows display-language preferences. Explicit saved choices remain intact;
+Traditional Chinese is distinct from Simplified Chinese. Language is global,
+not part of a Quick Mode.
 
-Hand-built widgets retain their English source properties through
-`ui_translation`, while `SetLiveText` retains source state for dynamic status
-and accessibility updates. Data-driven values such as camera and microphone
-names, Codex model ids, file paths, telemetry, and serialization tokens are
-not translated. Turkish and German use locale-aware number presentation
-without changing JSON or media metadata.
+Hand-built widgets retain English source properties through `ui_translation`;
+`SetLiveText` retains dynamic status and accessibility source state. Device
+names, model ids, paths, telemetry and serialization tokens remain data values.
+Locale-aware presentation does not alter JSON or media metadata.
 
-Built-in AI instructions remain in English for model reliability. Turkish or
-German adds a final response-language directive; user-authored assistant
-instructions remain unmodified and retain higher specificity. Read Aloud
-remains manual-only. A language change prefers an installed matching speech
-voice and reports once through visible status when no matching voice exists.
+Built-in AI instructions retain their source text plus the selected response-
+language directive. User-authored instructions remain unmodified. Read Aloud
+is manual; language changes prefer an installed matching voice and report when
+one is unavailable. Locale metadata also drives the process layout direction
+and leading/trailing anchors for floating chrome and Draw toolbars. Developers
+can use `--rtl-test` or `OKUFLOW_FORCE_RTL=1` for additional layout checks.
 
-The localization layer uses Unicode Qt widgets and embedded Qt Linguist
-catalogs rather than Latin-only string handling. Additional LTR languages,
-including Chinese and Japanese, can reuse the same architecture. Locale
-metadata also drives the process layout direction, and OkuFlow's manually
-positioned floating chrome and Draw toolbars use logical leading/trailing
-anchors. Developers can run the English catalog with `--rtl-test` or
-`OKUFLOW_FORCE_RTL=1` to exercise that path before an RTL catalog exists.
-Shipping Arabic, Hebrew, Persian, Urdu, or another RTL language still requires
-a native translation, font/line-break review, and live NVDA/Narrator
-validation; none is currently shown in the language picker.
-
-Catalog source parity, complete translations, LF endings, and `lrelease`
-success are enforced by `scripts/check_translations.ps1`, which runs at the
-start of `scripts/agent_build.bat`.
+`scripts/check_translations.ps1` validates all 24 non-English Qt catalogs,
+source-key/format parity, LF endings and `lrelease` compilation. This structural
+check does not establish fluent wording, font coverage, RTL usability or live
+screen-reader acceptance. See [localization.md](localization.md) for review and
+published-build status.
 
 CUDA is the processing path and the CPU effects pipeline is deprecated: when the GPU pipeline is unavailable the app presents unprocessed passthrough video with a persistent "GPU required" notice instead of running effects on the CPU. The debug composite view remains CPU-only as a diagnostic.
 

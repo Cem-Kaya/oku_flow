@@ -190,6 +190,18 @@ void OkuFlowApp::ConfigureStartupProfiling() {
 }
 
 void OkuFlowApp::RecordStartupFirstPresent() {
+    if (cameraActive_ && cameraFramePresented_ &&
+        pipelineOrchestrator_->IsCameraReconnectPending()) {
+        const bool reconnected = cameraIntent_.Requested().origin == agent::CameraSourceOrigin::Reconnect;
+        const int attempts = pipelineOrchestrator_->CameraReconnectAttempt()+1;
+        // Working fallback/manual video also retires the old recovery owner,
+        // without claiming that its original source has returned.
+        pipelineOrchestrator_->CancelCameraReconnect();
+        if (reconnected) {
+            qInfo() << "Camera reconnected after" << attempts << "attempt(s)";
+            ShowStatusMessage(QStringLiteral("Camera reconnected."), 5000);
+        }
+    }
     ++startupPresentedFrames_;
     if (startupFirstFrameLogged_) return;
     startupFirstFrameLogged_ = true;

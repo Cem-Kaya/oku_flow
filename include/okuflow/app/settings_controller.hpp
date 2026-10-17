@@ -15,7 +15,7 @@ public:
         std::function<ProtectedSecretResult(const QString&)> readSecret;
         std::function<bool(const QString&, const QString&, QString*)> writeSecret;
         std::function<bool(const QString&, QString*)> removeSecret;
-        std::function<bool(const QString&, const settings::PersistentSettings&)> saveSettings;
+        std::function<settings::SaveStatus(const QString&, const settings::PersistentSettings&)> saveSettings;
     };
     explicit SettingsController(QString settingsPath = {});
     SettingsController(QString settingsPath, StorageOperations storage);

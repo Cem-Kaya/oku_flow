@@ -542,6 +542,11 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 - Adb lookup: `OKUFLOW_ADB_PATH`, executable-relative `platform-tools/adb.exe`,
   `ANDROID_HOME`, `ANDROID_SDK_ROOT`, PATH, then environment-derived
   `%LOCALAPPDATA%/Android/Sdk/platform-tools/adb.exe`. No user path is compiled.
+  These are trusted same-user executable inputs, including an explicit override;
+  runtime lookup is not a signature/pinning security boundary. SDK/PATH fallback
+  supports development trees without bundled adb. Owned launches log the exact
+  absolute executable path. Packaging and legacy reclamation retain their
+  separate reviewed-manifest checks.
   With no default listener/override, hidden direct server starts select a
   private ephemeral loopback port. An exact owned child in a non-inherited
   kill-on-close job dies at normal exit or process crash. Failed launch, child

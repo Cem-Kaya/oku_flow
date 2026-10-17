@@ -1893,12 +1893,6 @@ bool OkuFlowApp::CompleteCameraCaptureStart(bool started, bool interactive, cons
         uiState_->cameraFormatNoticeLabel_->setVisible(!notice.isEmpty());
     }
     lastCameraError_.clear();
-    if (cameraIntent_.Requested().origin == agent::CameraSourceOrigin::Reconnect &&
-        pipelineOrchestrator_->IsCameraReconnectPending()) {
-        qInfo() << "Camera reconnected after" << pipelineOrchestrator_->CameraReconnectAttempt()+1 << "attempt(s)";
-        pipelineOrchestrator_->CancelCameraReconnect();
-        ShowStatusMessage(QStringLiteral("Camera reconnected."), 5000);
-    }
     if (startupCameraReadyMs_ < 0) {
         startupCameraReadyMs_ = startupTimer_.elapsed();
         qInfo() << "Startup timing: camera ready" << startupCameraReadyMs_ << "ms";
@@ -2083,6 +2077,13 @@ void OkuFlowApp::HandleCameraRuntimeFailure(uint64_t captureSession, const QStri
 void OkuFlowApp::BeginCameraReconnect() {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (!pipelineOrchestrator_->BeginCameraReconnect(now)) {
+        // A reopened reader failed before presenting video. Keep the original
+        // deadline and retire this attempt; opening alone is not reconnection.
+        if (cameraActive_) {
+            StopCameraCapture();
+            pipelineOrchestrator_->ScheduleCameraReconnectRetry(now);
+            UpdateProcessingStatusLabel();
+        }
         return;
     }
     qWarning() << "Camera connection lost; reconnecting automatically";
@@ -2101,19 +2102,17 @@ void OkuFlowApp::BeginCameraReconnect() {
 
 void OkuFlowApp::DriveCameraReconnect() {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (!pipelineOrchestrator_->CameraReconnectDue(now)) {
-        return;
-    }
-
-    if (cameraStartupPending_ || cameraStopPending_ ||
-        (startupWorkers_ && startupWorkers_->active.load()!=0)) return;
-    // Recreate the known physical source from its opaque link on the startup
-    // worker. Re-enumerating/activating devices on this UI tick can hang too.
+    if (!pipelineOrchestrator_->IsCameraReconnectPending()) return;
     const std::wstring targetLink = cameraIntent_.Requested().identity.symbolicLink.toStdWString();
-    if (targetLink.starts_with(L"okuflow-phone:")) return;
-
+    if (targetLink.starts_with(L"okuflow-phone:")) return; // phone has separate retry ownership
+    // Expiry also applies while opening or waiting for the first video frame;
+    // a successful reader activation must not renew this recovery window.
     if (pipelineOrchestrator_->CameraReconnectExpired(now)) {
         pipelineOrchestrator_->CancelCameraReconnect();
+        if (pendingCameraStart_ && pendingCameraStart_->origin == agent::CameraSourceOrigin::Reconnect)
+            pendingCameraStart_.reset();
+        if (cameraIntent_.Requested().origin == agent::CameraSourceOrigin::Reconnect &&
+            (cameraActive_ || cameraStartupPending_)) StopCameraCapture();
         const std::string detail = mediaCapture_.LastError();
         lastCameraError_ = !detail.empty()
             ? QString::fromStdString(detail)
@@ -2125,6 +2124,11 @@ void OkuFlowApp::DriveCameraReconnect() {
         return;
     }
 
+    if (!pipelineOrchestrator_->CameraReconnectDue(now) || cameraActive_ ||
+        cameraStartupPending_ || cameraStopPending_ ||
+        (startupWorkers_ && startupWorkers_->active.load()!=0)) return;
+    // Wait for video from an adopted reader; never reopen it on every idle tick.
+    // Physical activation stays on the startup worker.
     int matchIndex = -1;
     if (!targetLink.empty()) {
         for (size_t i = 0; i < cameras_.size(); ++i) {
@@ -2174,8 +2178,7 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
     // Camera loss / reconnect state machine. ConsumeDeviceLost() is polled
     // here in addition to the capture error callback so the reconnect starts
     // no matter which side notices the loss first.
-    if (mediaCapture_.ConsumeDeviceLost() &&
-        !pipelineOrchestrator_->IsCameraReconnectPending()) {
+    if (mediaCapture_.ConsumeDeviceLost()) {
         BeginCameraReconnect();
     }
     if (pipelineOrchestrator_->IsCameraReconnectPending()) {

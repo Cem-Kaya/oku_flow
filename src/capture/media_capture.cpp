@@ -388,6 +388,7 @@ bool MediaCaptureSession::StartCapture(const CameraDescriptor& descriptor,
     nativeFormats_.clear();
     lastFailureKind_.store(CameraFailureKind::None);
     deviceLost_.store(false);
+    readStartedWorkingMs_.store(0);
     accelerationValidated_.store(false);
     accelerationRejected_.store(false);
     accelerationMode_ = accelerationMode;
@@ -688,6 +689,28 @@ bool MediaCaptureSession::CreateAccelerationDeviceManager()
 
 bool MediaCaptureSession::ConsumeDeviceLost()
 {
+    // The app polls on idle ticks as well as frame arrivals. Never call Flush,
+    // join or release driver objects here; the existing split stop owns that.
+    if (running_.load() && !phoneTransport_) {
+        auto started = readStartedWorkingMs_.load();
+        const auto now = ReadWatchdogNowMs();
+        const auto numerator = frameRateNumerator_.load();
+        const auto denominator = frameRateDenominator_.load();
+        // Ten seconds normally; allow four negotiated frame periods for a
+        // genuinely low-rate source, with a one-minute maximum.
+        const std::int64_t limit = numerator && denominator
+            ? std::clamp<std::int64_t>((4000LL * denominator + numerator - 1) / numerator,
+                                      10000, 60000)
+            : 10000;
+        if (started > 0 && now >= started && now - started >= limit &&
+            readStartedWorkingMs_.compare_exchange_strong(started, -1)) {
+            lastFailureKind_.store(CameraFailureKind::DeviceMissing);
+            // Revoke new deliveries before a late ReadSample can publish pixels.
+            Cancel();
+            deviceLost_.store(true);
+            qWarning() << "Camera ReadSample exceeded its progress deadline; starting safe recovery";
+        }
+    }
     return deviceLost_.exchange(false);
 }
 
@@ -1686,14 +1709,16 @@ void MediaCaptureSession::CaptureLoop(FrameCallback callback, CaptureErrorCallba
         LONGLONG timestamp = 0;
         Microsoft::WRL::ComPtr<IMFSample> sample;
 
+        readStartedWorkingMs_.store(ReadWatchdogNowMs());
         HRESULT hr = reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM,
                                         0,
                                         &streamIndex,
                                         &flags,
                                         &timestamp,
                                         &sample);
+        const bool readExpired = readStartedWorkingMs_.exchange(0) == -1;
 
-        if (!running_) {
+        if (readExpired || !running_) {
             break;
         }
 

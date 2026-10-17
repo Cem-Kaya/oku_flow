@@ -4,6 +4,7 @@
 #include "../src/capture/media_capture_session.hpp"
 
 #include <QtTest/QtTest>
+#include <wrl/implements.h>
 #include <atomic>
 #include <future>
 #include <memory>
@@ -18,6 +19,25 @@ struct CaptureReadbackTestAccess {
     static void AttachSyntheticPhone(MediaCapture& capture) {
         capture.session_->phoneTransport_=std::make_shared<PhoneCameraTransport>();
         capture.session_->running_.store(true);
+    }
+    static void SetPendingReadAge(MediaCapture& capture, std::chrono::milliseconds age) {
+        const auto now = MediaCaptureSession::ReadWatchdogNowMs();
+        capture.session_->readStartedWorkingMs_.store(now - age.count());
+    }
+    static std::int64_t PendingRead(MediaCapture& capture) {
+        return capture.session_->readStartedWorkingMs_.load();
+    }
+    static void SetFrameRate(MediaCapture& capture, unsigned numerator, unsigned denominator) {
+        capture.session_->frameRateNumerator_.store(numerator);
+        capture.session_->frameRateDenominator_.store(denominator);
+    }
+    static void StartReader(MediaCapture& capture, IMFSourceReader* reader, FrameCallback callback) {
+        auto session = capture.session_;
+        session->sourceReader_ = reader;
+        session->running_.store(true);
+        session->captureThread_ = std::thread([session, callback = std::move(callback)]() mutable {
+            session->CaptureLoop(std::move(callback), {});
+        });
     }
     static void SetCaptureWorker(MediaCapture& capture, std::shared_future<void> release) {
         capture.session_->captureThread_ = std::thread([release] { release.wait(); });
@@ -49,6 +69,36 @@ struct StopWorkerGate {
     void Open() { if (!released) { released = true; release.set_value(); } }
     ~StopWorkerGate() { Open(); }
 };
+// Executes the production CaptureLoop without a camera. One stream tick
+// returns normally, then the next ReadSample stalls until this fixture lets go.
+class TickThenBlockedReader final : public Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IMFSourceReader> {
+public:
+    explicit TickThenBlockedReader(std::shared_future<void> release) : release_(std::move(release)) {}
+    std::promise<void> blocked;
+    std::atomic<int> reads{0};
+    std::atomic<int> flushes{0};
+    HRESULT STDMETHODCALLTYPE GetStreamSelection(DWORD, BOOL*) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SetStreamSelection(DWORD, BOOL) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetNativeMediaType(DWORD, DWORD, IMFMediaType**) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetCurrentMediaType(DWORD, IMFMediaType**) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SetCurrentMediaType(DWORD, DWORD*, IMFMediaType*) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SetCurrentPosition(REFGUID, REFPROPVARIANT) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE ReadSample(DWORD, DWORD, DWORD* stream, DWORD* flags,
+                                         LONGLONG* time, IMFSample** sample) override {
+        *stream = 0; *flags = MF_SOURCE_READERF_STREAMTICK; *time = 0; *sample = nullptr;
+        if (reads.fetch_add(1) == 0) return S_OK;
+        blocked.set_value();
+        release_.wait();
+        return E_ABORT;
+    }
+    HRESULT STDMETHODCALLTYPE Flush(DWORD) override { ++flushes; return S_OK; }
+    HRESULT STDMETHODCALLTYPE GetServiceForStream(DWORD, REFGUID, REFIID, void**) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetPresentationAttribute(DWORD, REFGUID, PROPVARIANT*) override { return E_NOTIMPL; }
+private:
+    std::shared_future<void> release_;
+};
+
 struct ReadbackFixture {
     Microsoft::WRL::ComPtr<ID3D11Device> device;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
@@ -97,6 +147,72 @@ struct ReadbackFixture {
 class CaptureShutdownTests : public QObject {
     Q_OBJECT
 private slots:
+    void stalledReadIsDetectedOnceWithoutBlockingOrLateDelivery()
+    {
+        using Access = okuflow::CaptureReadbackTestAccess;
+        using Status = okuflow::CaptureStopStatus;
+        okuflow::MediaCapture capture;
+        StopWorkerGate gate;
+        auto reader = Microsoft::WRL::Make<TickThenBlockedReader>(gate.future);
+        auto blocked = reader->blocked.get_future();
+        std::atomic<int> deliveries{0};
+        Access::StartReader(capture, reader.Get(), [&](okuflow::MediaFrame&&) { ++deliveries; });
+        QVERIFY(blocked.wait_for(1s) == std::future_status::ready);
+        QCOMPARE(reader->reads.load(), 2); // returned STREAMTICK re-armed for the next read
+        QVERIFY(Access::PendingRead(capture) > 0);
+        QVERIFY(!capture.ConsumeDeviceLost());
+        // A very low-rate source gets four periods rather than a fixed 10 s.
+        Access::SetFrameRate(capture, 1, 4);
+        Access::SetPendingReadAge(capture, 12s);
+        QVERIFY(!capture.ConsumeDeviceLost());
+        Access::SetPendingReadAge(capture, 17s);
+        const auto start = std::chrono::steady_clock::now();
+        QVERIFY(capture.ConsumeDeviceLost());
+        QVERIFY(std::chrono::steady_clock::now() - start < 100ms);
+        QCOMPARE(capture.LastFailureKind(), okuflow::CameraFailureKind::DeviceMissing);
+        QVERIFY(!capture.ConsumeDeviceLost());
+        capture.BeginStopCapture();
+        QCOMPARE(capture.PollStopCapture(), Status::WaitingForQuiescence);
+        QCOMPARE(deliveries.load(), 0);
+        gate.Open(); // the late error return cannot revive delivery or another read
+        QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(), Status::ReadyToRelease, 1000);
+        QCOMPARE(reader->reads.load(), 2);
+        QCOMPARE(Access::PendingRead(capture), std::int64_t(0));
+        capture.ReleaseStoppedCapture(true);
+        QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(), Status::Completed, 1000);
+        QVERIFY(!capture.WasAbandoned());
+        QCOMPARE(deliveries.load(), 0);
+    }
+
+    void readWatchdogExcludesIdlePhoneAndCancelledSessions()
+    {
+        using Access = okuflow::CaptureReadbackTestAccess;
+        {
+            okuflow::MediaCapture capture;
+            QVERIFY(!capture.ConsumeDeviceLost()); // no running/pending read
+            Access::SetPendingReadAge(capture, 61s);
+            QVERIFY(!capture.ConsumeDeviceLost()); // a stale stamp alone is not live capture
+            Access::AttachSyntheticPhone(capture);
+            QVERIFY(!capture.ConsumeDeviceLost()); // phone has its own transport watchdog
+            QVERIFY(capture.StopCapture());
+        }
+        {
+            okuflow::MediaCapture capture;
+            StopWorkerGate gate;
+            auto reader = Microsoft::WRL::Make<TickThenBlockedReader>(gate.future);
+            auto blocked = reader->blocked.get_future();
+            Access::StartReader(capture, reader.Get(), {});
+            QVERIFY(blocked.wait_for(1s) == std::future_status::ready);
+            Access::SetPendingReadAge(capture, 61s);
+            capture.BeginStopCapture();
+            QVERIFY(!capture.ConsumeDeviceLost()); // explicit stop wins over a stall
+            gate.Open();
+            QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(), okuflow::CaptureStopStatus::ReadyToRelease, 1000);
+            capture.ReleaseStoppedCapture(true);
+            QTRY_COMPARE_WITH_TIMEOUT(capture.PollStopCapture(), okuflow::CaptureStopStatus::Completed, 1000);
+        }
+    }
+
     void boundedPhoneTorchAdmissionEndsAtExactSplitStop() {
         okuflow::MediaCapture capture;
         const auto token=std::make_shared<std::atomic<bool>>(false);

@@ -741,3 +741,18 @@ aligned with the project goals.
   refusal for all invalid configurations. Keep its 60-second limit, named case
   progress and original failed evidence. Do not raise the deadline, fake VS or
   remove assertions to mask a slow setup path.
+
+## Advisory pressure and native read progress (2026-10-17)
+- Android METADATA is lossy advisory state. Preserve the bounded control reserve
+  for ACK/STATE/ERROR and keep reliable/video overflow and stalled-write failure
+  policy. Validate the actual `OutboundQueue` helper with JVM tests; do not
+  substitute those checks for physical USB transport acceptance.
+- Native camera-read watchdogs measure only an armed `ReadSample`, using working
+  time that excludes system suspension. A timeout revokes delivery and enters
+  existing split stop; it never frees a blocked driver or permits abandoned
+  session reuse. Test late returns and cancellation without a physical camera.
+- Reader adoption is not restored video. Physical reconnect completion requires
+  successful frame presentation; repeated zero-frame attempts retain their
+  original retry deadline, and expiry also cancels pending/adopted attempts.
+  Keep the actual-app offscreen and orchestrator regressions separate from
+  native GUI and hardware acceptance.

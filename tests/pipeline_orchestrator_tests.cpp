@@ -19,7 +19,25 @@ private slots:
     void sceneArrivalsDoNotExtendUserMotionTail();
     void interactionAdmissionDistinguishesNavigationFromSceneArrival();
     void cameraHandoffRetriesStillPresentHeldViewport();
+    void zeroFrameReconnectRetriesKeepOriginalDeadline();
 };
+
+void PipelineOrchestratorTests::zeroFrameReconnectRetriesKeepOriginalDeadline()
+{
+    PipelineOrchestrator orchestrator(*this, {});
+    QVERIFY(orchestrator.BeginCameraReconnect(1000));
+    for (qint64 failureAt : {4000, 15000, 26000}) {
+        QVERIFY(!orchestrator.BeginCameraReconnect(failureAt));
+        orchestrator.ScheduleCameraReconnectRetry(failureAt);
+        QVERIFY(!orchestrator.CameraReconnectExpired(30999));
+        QVERIFY(orchestrator.CameraReconnectExpired(31000));
+    }
+    // A retry's next-attempt time may exceed expiry, but may not extend it.
+    QVERIFY(!orchestrator.CameraReconnectDue(31000));
+    QVERIFY(orchestrator.CameraReconnectExpired(31000));
+    orchestrator.CancelCameraReconnect();
+    QVERIFY(!orchestrator.IsCameraReconnectPending());
+}
 
 void PipelineOrchestratorTests::reportsNearestRankPercentiles()
 {

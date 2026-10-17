@@ -1311,3 +1311,28 @@ for that identity verification. No fake VS executable or setup script is run.
 This is a bounded-work correction for the remote timeout, with no automatic
 retry, deadline increase or relaxed assertion. Original failed evidence stays
 separate from subsequent validation.
+
+## Argon 54 focused regressions
+
+`capture_shutdown` now drives the production `CaptureLoop` with an owned fake
+`IMFSourceReader`: a STREAMTICK then a gated read. It injects only the pending
+read's age, checks negotiated low-rate grace and exactly one loss signal, and
+verifies nonblocking split stop, late-return suppression, phone exclusion and
+explicit cancellation. Existing abandonment tests retain the unsafe-driver
+quarantine contract. No camera, phone, system clock or desktop is changed.
+
+`settings_store_round_trip` retains actual size-limit/backup, failed publication,
+committed-state and protected-secret ordering coverage through the detailed
+`SaveStatus` injection contract. `OutboundQueueTest` exercises the exact Kotlin
+control/video factories under advisory saturation, reliable reserve, byte/FIFO,
+close/in-flight and concurrent-producer transitions. Run the Android build/JVM/
+lint command documented in `android/BUILDING.md`; do not install its debug APK
+or substitute queue tests for physical USB acceptance.
+
+The Argon recovery follow-up also exercises the actual app through
+`native_app_control_offscreen`: reader adoption alone stays pending, repeated
+idle drives do not reopen it, successful presentation completes recovery once,
+and a second silent adopted reader expires and retires. The pure orchestrator
+case preserves the original 30-second window even if backoff schedules its next
+attempt later. Synthetic adoption/presentation acknowledgment is not real
+camera or native GUI acceptance.

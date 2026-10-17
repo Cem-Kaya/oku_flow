@@ -1160,7 +1160,8 @@ void OkuFlowApp::UpdateControlEnabledStates() {
     setEnabled(uiState_->mlTextSuperResolutionUltra1440pCheckbox_,
                superResAvailable);
     if (mainWindow_) mainWindow_->refreshTextClarityUi();
-    UpdateSectionChangedCounts();
+    // Config sync owns preset matching and section badges. Transient controls
+    // such as Extra Stable do not affect saved profiles.
 }
 
 void OkuFlowApp::UpdateSectionChangedCounts() {

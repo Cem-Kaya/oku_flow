@@ -1334,7 +1334,7 @@ void SettingsStoreTests::committedSnapshotSeparatesLiveAndFailedSave()
     bool refuse = false;
     SettingsController::StorageOperations storage;
     storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
-        return !refuse && Save(target,value);
+        return refuse ? SaveStatus::Failed : SaveDetailed(target,value);
     };
     SettingsController controller(path,storage);
     QVERIFY(!controller.LastCommittedSettings()); // defaults have no file yet
@@ -1374,7 +1374,7 @@ void SettingsStoreTests::committedSnapshotTracksRecoveredBackup()
     PersistentSettings backup; backup.currentConfig.zoomAmount = 3.0f;
     QVERIFY(Save(path+QStringLiteral(".backup"),backup));
     SettingsController::StorageOperations storage;
-    storage.saveSettings = [](const QString&,const PersistentSettings&) { return false; };
+    storage.saveSettings = [](const QString&,const PersistentSettings&) { return SaveStatus::Failed; };
     SettingsController controller(path,storage);
     QVERIFY(controller.LastCommittedSettings());
     QCOMPARE(controller.LastCommittedSettings()->currentConfig.zoomAmount,3.0f);
@@ -1403,8 +1403,8 @@ void SettingsStoreTests::committedSnapshotTracksPartialCredentialCommit()
     };
     storage.saveSettings = [&](const QString& target,const PersistentSettings& value) {
         ++saves;
-        if (failCleanup && value.assistive.pendingCredentialRemovals.isEmpty()) return false;
-        return Save(target,value);
+        if (failCleanup && value.assistive.pendingCredentialRemovals.isEmpty()) return SaveStatus::Failed;
+        return SaveDetailed(target,value);
     };
     SettingsController controller(path,storage);
     QVERIFY(controller.LastCommittedSettings());
@@ -1514,9 +1514,9 @@ void SettingsStoreTests::credentialDeletionRetries()
     };
     storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
         ++saveCalls;
-        if (!value.assistive.vlmCredentialId.isEmpty()) return false;
-        if (failSave && saveCalls == 1) return false;
-        return Save(target, value);
+        if (!value.assistive.vlmCredentialId.isEmpty()) return SaveStatus::Failed;
+        if (failSave && saveCalls == 1) return SaveStatus::Failed;
+        return SaveDetailed(target, value);
     };
     SettingsController controller(path, storage);
     QCOMPARE(readCalls, 1);
@@ -1583,8 +1583,8 @@ void SettingsStoreTests::pendingDeletionNeverReusesReplacementKey()
         return true;
     };
     storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
-        if (failPublication) return false;
-        return Save(target, value);
+        if (failPublication) return SaveStatus::Failed;
+        return SaveDetailed(target, value);
     };
     SettingsController controller(path, storage);
     controller.MutableSettings().assistive.vlmApiKey = QStringLiteral("new fixture key");
@@ -1658,7 +1658,7 @@ void SettingsStoreTests::credentialRotationKeepsRecoverableEndpointBinding()
     };
     storage.removeSecret = [&](const QString& id, QString*) { secrets.remove(id); return true; };
     storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
-        return commitReplacement && Save(target, value);
+        return commitReplacement ? SaveDetailed(target, value) : SaveStatus::Failed;
     };
     SettingsController controller(path, storage);
     controller.MutableSettings().assistive.vlmApiUrl = QStringLiteral("https://endpoint-b.invalid/v1");
@@ -1699,7 +1699,7 @@ void SettingsStoreTests::unchangedCredentialBindingDoesNotCreateGenerations()
     };
     storage.writeSecret = [&](const QString&, const QString&, QString*) { ++writes; return true; };
     storage.removeSecret = [](const QString&, QString*) { return true; };
-    storage.saveSettings = Save;
+    storage.saveSettings = SaveDetailed;
     SettingsController controller(path, storage);
     QVERIFY(controller.Save(controller.Settings().currentConfig));
     QVERIFY(controller.Save(controller.Settings().currentConfig));
@@ -1766,7 +1766,7 @@ void SettingsStoreTests::failedQuickModeSavePreservesOldModesAndLiveSettings()
 {
     QTemporaryDir dir;QVERIFY(dir.isValid());const auto path=dir.filePath("settings.json");bool refuse=false;
     SettingsController::StorageOperations storage;
-    storage.saveSettings=[&](const QString& target,const PersistentSettings& value) {return !refuse && Save(target,value);};
+    storage.saveSettings=[&](const QString& target,const PersistentSettings& value) {return refuse ? SaveStatus::Failed : SaveDetailed(target,value);};
     SettingsController controller(path,storage);QVERIFY(controller.Save(controller.Settings().currentConfig));
     const auto before=Serialize(controller.Settings());const auto bytes=ReadBytes(path);
     auto live=controller.Settings().currentConfig;live.zoomAmount=4.5f;refuse=true;

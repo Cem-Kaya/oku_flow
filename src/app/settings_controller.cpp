@@ -20,13 +20,6 @@ QString MakeCustomEntityId(const QString& prefix)
         .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
 }
 
-// Save reports only success; the size limit is the one refusal with a
-// user-actionable cause, so name it rather than a generic I/O failure.
-bool ExceedsSettingsLimit(const settings::PersistentSettings& value)
-{
-    return settings::Serialize(value).size() > settings::kMaxSettingsFileBytes;
-}
-
 QString SettingsLimitMessage()
 {
     return QStringLiteral("Settings would exceed the %1 MiB settings file limit. "
@@ -50,7 +43,7 @@ SettingsController::SettingsController(QString settingsPath, StorageOperations s
     if (!storage_.readSecret) storage_.readSecret = ProtectedSecretStore::Read;
     if (!storage_.writeSecret) storage_.writeSecret = ProtectedSecretStore::Write;
     if (!storage_.removeSecret) storage_.removeSecret = ProtectedSecretStore::Remove;
-    if (!storage_.saveSettings) storage_.saveSettings = settings::Save;
+    if (!storage_.saveSettings) storage_.saveSettings = settings::SaveDetailed;
     bool restoreBackupAfterSecretLoad = false;
     bool rewriteMigratedSettings = false;
     const QString backupPath = settingsPath_ + QStringLiteral(".backup");
@@ -115,13 +108,14 @@ SettingsController::SettingsController(QString settingsPath, StorageOperations s
     pendingCredentialRemovals_ = settings_.assistive.pendingCredentialRemovals;
     LoadProtectedSecrets();
     if (restoreBackupAfterSecretLoad || rewriteMigratedSettings) {
-        if (storage_.saveSettings(settingsPath_, settings_)) {
+        const auto saveStatus = storage_.saveSettings(settingsPath_, settings_);
+        if (saveStatus == settings::SaveStatus::Saved) {
             RememberCommittedSettings(settings_);
         } else {
             startupNotice_ +=
                 (startupNotice_.isEmpty() ? QString() : QStringLiteral(" ")) +
                 QStringLiteral("The recovered or migrated settings could not be written back to disk.");
-            if (ExceedsSettingsLimit(settings_)) {
+            if (saveStatus == settings::SaveStatus::TooLarge) {
                 startupNotice_ += QStringLiteral(" ") + SettingsLimitMessage();
             }
         }
@@ -325,11 +319,12 @@ bool SettingsController::Save(const settings::AdvancedConfig& current)
     if (pendingCredentialRemovals_.contains(persisted.assistive.vlmCredentialId.trimmed())) {
         persisted.assistive.vlmCredentialId.clear();
     }
-    if (!storage_.saveSettings(settingsPath_, persisted)) {
+    const auto saveStatus = storage_.saveSettings(settingsPath_, persisted);
+    if (saveStatus != settings::SaveStatus::Saved) {
         // A late commit failure can leave the backup rotated to the current
         // primary, so do not promise that both generations are unchanged.
         lastError_ = QStringLiteral("OkuFlow could not save settings.");
-        if (ExceedsSettingsLimit(persisted)) {
+        if (saveStatus == settings::SaveStatus::TooLarge) {
             lastError_ += QStringLiteral(" ") + SettingsLimitMessage();
         } else {
             lastError_ += QStringLiteral(
@@ -350,7 +345,7 @@ bool SettingsController::Save(const settings::AdvancedConfig& current)
     }
     if (!pendingCredentialRemovals_.isEmpty()) {
         persisted.assistive.pendingCredentialRemovals.clear();
-        if (!storage_.saveSettings(settingsPath_, persisted)) {
+        if (storage_.saveSettings(settingsPath_, persisted) != settings::SaveStatus::Saved) {
             lastError_ = QStringLiteral("Credential deletion completed, but its settings cleanup could not be saved. It will be retried.");
             return false;
         }

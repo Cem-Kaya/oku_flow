@@ -1231,6 +1231,10 @@ source changes make no measured throughput or latency claim.
 `okuflow::SettingsController`
 - Owns the persisted settings document and settings path, built-in/user preset
   lookup, live-config decoration/matching, quick-option promotion, and saving.
+  `StorageOperations::saveSettings` returns `settings::SaveStatus` and defaults
+  to `SaveDetailed`; size refusals propagate without reserializing the payload.
+  The public bool `settings::Save` wrapper remains available. Fresh on-disk
+  validation before backup rotation and secret-commit ordering are unchanged.
 - Rewrites a successfully loaded document when `LoadResult::migrationApplied`
   is true, preserving the pre-migration file through the normal backup path.
 - Loads/saves the runtime VLM secret through `ProtectedSecretStore` while
@@ -1263,6 +1267,9 @@ source changes make no measured throughput or latency claim.
 - `ApplyConfigToUI(config, preservePresetSelection = false)` forwards the
   identity policy to the final persistence sync. Preset activation and startup
   preserve the selected ID; manual edits and Reset continue to re-match it.
+  The final `SyncCurrentConfigToPersistence` owns the section-badge refresh;
+  enablement-only `UpdateControlEnabledStates` no longer performs a duplicate.
+  Session-only Extra Stable remains outside `AdvancedConfig` and mode badges.
 
 ### `include/okuflow/ui/theme_contrast.hpp`
 
@@ -1700,7 +1707,14 @@ Types:
     bytes for validation, original recording/photo capture, or fallback
   - `double CurrentFrameRate() const` — reports the negotiated capture rate;
     diagnostics do not claim viewport re-presentation as camera FPS
-  - `bool ConsumeDeviceLost()` — atomically returns and clears the mid-stream device-loss flag; polled from the app's frame tick to drive reconnection
+  - `bool ConsumeDeviceLost()` — returns/clears mid-stream loss and detects an
+    overdue in-flight Media Foundation `ReadSample` without calling the driver.
+    The deadline is 10 working seconds or four negotiated frame periods,
+    whichever is larger, capped at 60 seconds. A successful atomic claim revokes
+    new deliveries and signals the existing reconnect/split-stop path once.
+    Explicitly stopped and phone sessions are excluded. An unquiescent driver
+    still retains its exact session and refuses reuse; detection is not proof
+    that a wedged device can recover in process.
   - `const std::wstring& LastSymbolicLink() const` — symbolic link of the most recently requested device, including failed opens; kept across loss/stop so reconnection retries that physical camera
 - Internal helpers belong to independently shared `MediaCaptureSession`:
   - `ConfigureReader(...)`
@@ -1710,6 +1724,12 @@ Types:
     signed `MF_MT_DEFAULT_STRIDE`, using the calculated subtype pitch only
     when the media type has no explicit stride.
   - `CaptureLoop(FrameCallback callback, CaptureErrorCallback errorCallback)`
+    stamps each actual `ReadSample` in `readStartedWorkingMs_`; every return,
+    including STREAMTICK, disarms it. A watchdog-winning late return cannot
+    deliver or start another read. CPU/GPU conversion work is not a pending read.
+    `ReadWatchdogNowMs()` uses `QueryUnbiasedInterruptTime` so system sleep and
+    hibernation do not consume the driver's allowance. Zero disables expiry
+    when a clock observation is unavailable.
   - `CreateAccelerationDeviceManager()`, `AttachDxgiFrame(...)`,
     `CopyGpuFrame(...)`, `EnsureVideoProcessor(...)`, and
     `ValidateStartupFrame(...)`
@@ -3231,6 +3251,7 @@ illustrative draft carry the instruction; setup-state resolution is unchanged.
 | `camera/ServiceLifecycle.kt` | `ListenerRegistration.register/close` acquire ownership only after a successful add and remove it at most once, so a failed USB or thermal startup cannot remove an unregistered listener. `VisibleServiceStartGate.onResumed/onPaused/onRefused` requires a resumed activity for new foreground starts and suppresses refused starts until another resume. Both contracts have JVM regressions in `ServiceLifecycleTest`. |
 | `link/WireProtocol.kt` | `Hello`/`Packet`, `readHello`, `readPacket`, `writePacket`, `framePayload`, `readExact` implement bounded little-endian v1 framing: control 64 KiB, video 16 MiB. |
 | `link/UsbSocketServer.kt` | Authenticates shell/root peers and binds one control/video pair with a random token; `onConnect` runs after the video channel is bound and before its ACK permits the first start request. `Channel.send/close` own bounded writer queues; `readChannel`, `control`, `state`, `metadata`, `frame`, `disconnect`, `close` handle generation gating, ping, EOF/timeouts and pressure without blocking the camera on network writes. `disconnectHost` retires both channels and capture while retaining the abstract listener for cable recovery. The watchdog reads its volatile write-start timestamp once per check and logs transport/queue failure categories without session tokens. `HostLimits` holds decoder ceilings. |
+| `link/OutboundQueue.kt` | `OutboundQueue.offer/take/complete/close` implement one bounded FIFO writer with packet admission and queued-plus-in-flight byte ownership. `controlQueue()` reserves 32 of 128 slots and 128 KiB of 512 KiB for ACK/STATE/ERROR; advisory metadata drops above 96 slots/384 KiB. `videoQueue()` retains the 32-packet/32 MiB reliable limit. Close wakes waiting writers; reliable/video overflow and the socket watchdog retain session-failure policy. |
 
 All 25 `app/src/main/res/values*/strings.xml` catalogs have exact source-key
 parity (98 keys). AGP generates the per-app locale configuration;
@@ -4676,3 +4697,34 @@ elapsed progress expose the stage reached if a deadline is hit. The existing
 60-second CTest limit is unchanged. This removes redundant setup identified
 after the remote 60.15-second timeout; runtime/CI verification remains separate
 from static review of the repair.
+
+### Argon 54 private regression seams
+
+`CaptureReadbackTestAccess::StartReader`, `SetPendingReadAge`, `PendingRead`
+and `SetFrameRate` drive `CaptureLoop` through `TickThenBlockedReader` without
+a camera. Its first STREAMTICK returns; the next read blocks on an owned gate.
+`CaptureShutdownTests` checks low-rate grace, one timeout signal, nonblocking
+poll/stop, explicit cancellation, phone exclusion and late-read suppression.
+No fixture mutates the owner's camera or clock. `OutboundQueueTest` exercises
+the same production Kotlin queue and control/video factories under saturation,
+reserved-capacity, FIFO, concurrent producers and close/in-flight transitions.
+
+### Bounded camera-read recovery follow-up
+
+`CompleteCameraCaptureStart` adopts the reader but does not complete physical
+camera recovery. `RecordStartupFirstPresent` retires pending recovery on the successful
+CPU/CUDA presentation hook, before its one-time startup logging early return.
+It announces reconnection only for Reconnect-origin video; working manual or
+fallback video silently retires the superseded recovery owner. `BeginCameraReconnect` retires an active
+zero-frame failed attempt without resetting the original window;
+`DriveCameraReconnect` checks the physical source's 30-second expiry before due,
+startup or active-reader guards and never reopens an adopted reader every tick.
+Expiry cancels reconnect-owned pending startup and retires an adopted attempt.
+Phone retry ownership remains separate. `RunFrameTick` routes every consumed
+loss through this state machine, including failures during recovery.
+
+`NativeControlFixture::CameraActive`, `DriveReconnect`, `ExpireReconnect` and
+`PresentedCameraFrame`, `ReconnectDue` and `LoseActiveReconnect` exercise adoption, successful presentation acknowledgment
+and expiry without a camera or native presenter. The orchestrator regression
+separately checks that retries cannot renew the original deadline. These hooks
+validate control flow, not actual hardware or optical delivery.

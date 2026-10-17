@@ -1,6 +1,18 @@
 # Changelog
 
 ## [Unreleased]
+- Drop advisory Android camera metadata under control-channel pressure while
+  reserving space for state and acknowledgments; metadata overflow no longer
+  disconnects otherwise viable video. Reliable/video overflow and the stalled-
+  writer watchdog still retire the session.
+- Detect an overdue Media Foundation camera read from the idle frame tick,
+  revoke late deliveries and enter existing safe recovery. Sleeping time does
+  not count; a driver that cannot stop remains safely retained until restart.
+  Announce webcam reconnection only after a presented frame and retain the
+  original retry deadline across silent reader activations.
+- Avoid repeated settings serialization on save refusal and duplicate section-
+  badge refreshes during image changes. Refresh stale localization/work-tracking
+  docs and record which Argon findings are defects versus intentional contracts.
 - Prioritize pan/zoom over new synchronous Maxine calls, resuming after a short
   navigation tail while keeping current-frame spatial fallback and performance
   guard state. Photo/readback retries do not count as input. Create SuperRes

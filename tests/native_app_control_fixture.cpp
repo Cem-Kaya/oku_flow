@@ -38,7 +38,7 @@ public:
         storage.readSecret=[](const QString&) {return ProtectedSecretResult{};};
         storage.writeSecret=[](const QString&,const QString&,QString*) {return false;};
         storage.removeSecret=[](const QString&,QString*) {return true;};
-        storage.saveSettings=settings::Save;
+        storage.saveSettings=settings::SaveDetailed;
         app.settingsController_=std::make_unique<SettingsController>(root+"/settings.json",std::move(storage));
         auto& settings=app.settingsController_->MutableSettings();
         settings.userDataRoot=root+"/output";
@@ -152,7 +152,20 @@ public:
         return app.StartCameraCapture(app.cameras_.size()-1,false,false,false,origin);
     }
     static void StopCamera(OkuFlowApp& app) {app.StopCameraCapture();}
-    static void BeginReconnect(OkuFlowApp& app) {app.pipelineOrchestrator_->BeginCameraReconnect(QDateTime::currentMSecsSinceEpoch());}
+    static void BeginReconnect(OkuFlowApp& app) {app.pipelineOrchestrator_->BeginCameraReconnect(QDateTime::currentMSecsSinceEpoch()-3000);}
+    static bool ReconnectDue(OkuFlowApp& app) {return app.pipelineOrchestrator_->CameraReconnectDue(QDateTime::currentMSecsSinceEpoch());}
+    static void LoseActiveReconnect(OkuFlowApp& app) {app.BeginCameraReconnect();}
+    static bool CameraActive(OkuFlowApp& app) {return app.cameraActive_;}
+    static void DriveReconnect(OkuFlowApp& app) {app.DriveCameraReconnect();}
+    static void ExpireReconnect(OkuFlowApp& app) {
+        app.pipelineOrchestrator_->CancelCameraReconnect();
+        app.pipelineOrchestrator_->BeginCameraReconnect(QDateTime::currentMSecsSinceEpoch()-30001);
+    }
+    static void PresentedCameraFrame(OkuFlowApp& app) {
+        app.cameraFramePresented_=true;
+        app.cameraIntent_.MarkFirstFrame(app.startingCameraIntentGeneration_);
+        app.RecordStartupFirstPresent();
+    }
     static bool ReconnectPending(OkuFlowApp& app) {return app.pipelineOrchestrator_->IsCameraReconnectPending();}
     static int ReconnectAttempts(OkuFlowApp& app) {return app.pipelineOrchestrator_->CameraReconnectAttempt();}
     static bool CameraPending(OkuFlowApp& app) {
@@ -339,6 +352,81 @@ private slots:
         QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
         QVERIFY(NativeControlFixture::ReconnectPending(app_));
         QCOMPARE(NativeControlFixture::ReconnectAttempts(app_),1);
+    }
+    void reconnectRequiresFrameAndSilentAdoptionExpiresWithoutReopenChurn() {
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::StopCamera(app_); QElapsedTimer deadline;deadline.start();
+            while(NativeControlFixture::CameraPending(app_) && deadline.elapsed()<2000) {
+                QCoreApplication::processEvents();QTest::qWait(1);
+            }
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        const auto opens=std::make_shared<std::atomic<int>>(0);
+        NativeControlFixture::BeginReconnect(app_);
+        QVERIFY(NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin::Reconnect,
+            [opens](const std::atomic<bool>&) {++*opens;return true;}));
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(NativeControlFixture::CameraActive(app_));
+        QVERIFY(NativeControlFixture::ReconnectPending(app_)); // adoption is not video
+        QVERIFY(NativeControlFixture::ReconnectDue(app_)); // exercise the active-reader guard, not the backoff guard
+        for(int tick=0;tick<20;++tick)NativeControlFixture::DriveReconnect(app_);
+        QCOMPARE(opens->load(),1);
+        QVERIFY(NativeControlFixture::CameraActive(app_));
+        QVERIFY(!NativeControlFixture::CameraPending(app_)); // no hidden stop/reopen queued
+        NativeControlFixture::PresentedCameraFrame(app_);
+        QVERIFY(!NativeControlFixture::ReconnectPending(app_));
+        NativeControlFixture::PresentedCameraFrame(app_); // completion stays idempotent
+        QVERIFY(!NativeControlFixture::ReconnectPending(app_));
+        NativeControlFixture::StopCamera(app_);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        NativeControlFixture::BeginReconnect(app_);
+        QVERIFY(NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin::Reconnect,
+            [opens](const std::atomic<bool>&) {++*opens;return true;}));
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(NativeControlFixture::CameraActive(app_));
+        QVERIFY(NativeControlFixture::ReconnectPending(app_));
+        // A failed active attempt is retired without renewing the recovery owner.
+        NativeControlFixture::LoseActiveReconnect(app_);
+        QVERIFY(!NativeControlFixture::CameraActive(app_));
+        QVERIFY(NativeControlFixture::ReconnectPending(app_));
+        QCOMPARE(NativeControlFixture::ReconnectAttempts(app_),1);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin::Reconnect,
+            [opens](const std::atomic<bool>&) {++*opens;return true;}));
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(NativeControlFixture::CameraActive(app_));
+        // This successful adoption never delivers a frame and must expire.
+        NativeControlFixture::ExpireReconnect(app_);
+        NativeControlFixture::DriveReconnect(app_);
+        QVERIFY(!NativeControlFixture::ReconnectPending(app_));
+        QVERIFY(!NativeControlFixture::CameraActive(app_));
+        for(int tick=0;tick<20;++tick)NativeControlFixture::DriveReconnect(app_);
+        QCOMPARE(opens->load(),3);
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+    }
+    void nonReconnectVideoRetiresOldRecovery_data() {
+        QTest::addColumn<int>("origin");
+        QTest::newRow("fallback")<<int(CameraSourceOrigin::Fallback);
+        QTest::newRow("manual-format")<<int(CameraSourceOrigin::Manual);
+    }
+    void nonReconnectVideoRetiresOldRecovery() {
+        QFETCH(int,origin);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::StopCamera(app_);QElapsedTimer deadline;deadline.start();
+            while(NativeControlFixture::CameraPending(app_) && deadline.elapsed()<2000) {
+                QCoreApplication::processEvents();QTest::qWait(1);
+            }
+            NativeControlFixture::ResetCameraFixture(app_);
+        });
+        NativeControlFixture::BeginReconnect(app_);
+        QVERIFY(NativeControlFixture::StartBlockedCamera(app_,CameraSourceOrigin(origin),
+            [](const std::atomic<bool>&) {return true;}));
+        QTRY_VERIFY(!NativeControlFixture::CameraPending(app_));
+        QVERIFY(NativeControlFixture::ReconnectPending(app_));
+        NativeControlFixture::PresentedCameraFrame(app_);
+        QVERIFY(!NativeControlFixture::ReconnectPending(app_));
+        NativeControlFixture::DriveReconnect(app_);
+        QVERIFY(NativeControlFixture::CameraActive(app_));
     }
     void noSelectedMicrophoneNeverClaimsRecordedAudio() {
         const auto cleanup=qScopeGuard([&] {

@@ -6,7 +6,6 @@ import android.os.SystemClock
 import android.util.Log
 import org.json.JSONObject
 import java.util.UUID
-import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
@@ -40,20 +39,20 @@ class UsbSocketServer(
         return fresh
     }
 
-    private inner class Channel(val socket: LocalSocket, capacity: Int, private val byteLimit: Int) {
-        private val queue = ArrayBlockingQueue<WireProtocol.Packet>(capacity)
-        private var queuedBytes = 0
+    private inner class Channel(val socket: LocalSocket, private val queue: OutboundQueue) {
         @Volatile var writeStarted = 0L
         @Volatile var closed = false
+        // Logs once per pressure episode instead of once per dropped frame.
+        @Volatile var droppingAdvisory = false
         init {
             thread(name = "OkuFlow-USB-write", isDaemon = true) {
                 try {
                     while (!closed && running.get()) {
-                        val packet = queue.take()
+                        val packet = queue.take() ?: break
                         writeStarted = SystemClock.elapsedRealtime()
                         WireProtocol.writePacket(socket.outputStream, packet.type, packet.payload, packet.flags)
                         writeStarted = 0
-                        synchronized(this) { queuedBytes -= packet.payload.size }
+                        queue.complete()
                     }
                 } catch (exception: Exception) {
                     if (!closed) Log.w("OkuFlow-USB", "Channel write failed: ${exception.javaClass.simpleName}")
@@ -61,17 +60,12 @@ class UsbSocketServer(
                 }
             }
         }
-        @Synchronized fun send(packet: WireProtocol.Packet): Boolean {
-            if (closed || queuedBytes + packet.payload.size > byteLimit || !queue.offer(packet)) return false
-            queuedBytes += packet.payload.size
-            return true
-        }
+        fun send(packet: WireProtocol.Packet, advisory: Boolean = false) = queue.offer(packet, advisory)
         fun close() {
             closed = true
             runCatching { socket.close() }
             // Wake a writer blocked on take; socket closure wakes a blocked native write.
-            queue.clear()
-            queue.offer(WireProtocol.Packet(0, 0, byteArrayOf()))
+            queue.close()
         }
     }
     private inner class Session(val control: Channel, val codecs: Set<String>, val limits: HostLimits) {
@@ -145,7 +139,7 @@ class UsbSocketServer(
                 val ack = capabilityJson()
                 val created = synchronized(lock) {
                     if (session != null) null
-                    else Session(Channel(socket, 128, 512 * 1024), supported, limits).also { session = it }
+                    else Session(Channel(socket, controlQueue()), supported, limits).also { session = it }
                 }
                 if (created == null) {
                     writeDirect(socket, WireProtocol.ERROR, JSONObject()
@@ -170,7 +164,7 @@ class UsbSocketServer(
                 val bound = synchronized(lock) {
                     val current = requireNotNull(session) { "Connect the control channel first" }
                     require(current.token == json.optString("token") && current.video == null) { "Invalid video binding" }
-                    current.video = Channel(socket, 32, 32 * 1024 * 1024)
+                    current.video = Channel(socket, videoQueue())
                     current
 
                 }
@@ -204,11 +198,16 @@ class UsbSocketServer(
         send(channel, WireProtocol.STATE, json)
         return true
     }
+    /** Per-frame capture results are advisory: control pressure drops them, never the session. */
     fun metadata(id: String, json: JSONObject) {
         val channel = synchronized(lock) {
             session?.takeIf { it.token == id && it.generation == json.optInt("generation", -2) }?.control
         } ?: return
-        send(channel, WireProtocol.METADATA, json)
+        val bytes = json.toString().toByteArray(Charsets.UTF_8)
+        val admitted = bytes.size <= WireProtocol.MAX_CONTROL &&
+            channel.send(WireProtocol.Packet(WireProtocol.METADATA, 0, bytes), advisory = true) == OutboundQueue.Admission.Queued
+        if (!admitted && !channel.droppingAdvisory) Log.w("OkuFlow-USB", "Dropping metadata under control queue pressure")
+        channel.droppingAdvisory = !admitted
     }
     fun error(id: String, message: String, code: String? = null) =
         control(id, WireProtocol.ERROR, JSONObject().put("error", message).apply { if (code != null) put("code", code) })
@@ -222,9 +221,11 @@ class UsbSocketServer(
         val channel = synchronized(lock) { session?.takeIf { it.token == id }?.control } ?: return
         send(channel, type, json)
     }
+    /** ACK/STATE/ERROR are reliable and may use the control reserve; overflow retires the session. */
     private fun send(channel: Channel, type: Int, json: JSONObject) {
         val bytes = json.toString().toByteArray(Charsets.UTF_8)
-        if (bytes.size > WireProtocol.MAX_CONTROL || !channel.send(WireProtocol.Packet(type, 0, bytes))) {
+        if (bytes.size > WireProtocol.MAX_CONTROL ||
+            channel.send(WireProtocol.Packet(type, 0, bytes)) != OutboundQueue.Admission.Queued) {
             Log.w("OkuFlow-USB", "Control queue limit reached")
             disconnect(channel.socket)
         }
@@ -232,8 +233,8 @@ class UsbSocketServer(
 
     fun frame(id: String, pts: Long, sequence: Long, generation: Int, flags: Int, bytes: ByteArray) {
         val channel = synchronized(lock) { session?.takeIf { it.token == id && it.generation == generation }?.video } ?: return
-        if (!channel.send(WireProtocol.Packet(WireProtocol.FRAME, flags,
-                WireProtocol.framePayload(pts, sequence, generation, bytes)))) {
+        if (channel.send(WireProtocol.Packet(WireProtocol.FRAME, flags,
+                WireProtocol.framePayload(pts, sequence, generation, bytes))) != OutboundQueue.Admission.Queued) {
             Log.w("OkuFlow-USB", "Video queue limit reached")
             disconnect(channel.socket)
         }

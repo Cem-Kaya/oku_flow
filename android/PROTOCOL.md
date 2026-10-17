@@ -186,7 +186,13 @@ after three seconds, using one snapshot of the volatile write-start timestamp
 to avoid mistaking a completed write for a stall. No arbitrary inter-frame packets are dropped: video
 queue pressure disconnects the session so the next start begins with a
 fresh codec configuration and key frame. The video queue holds at most
-32 packets / 32 MiB; control holds 128 packets / 512 KiB.
+32 packets / 32 MiB; control holds 128 packets / 512 KiB. Byte limits include
+the packet being written. Per-frame METADATA is advisory: once control holds
+96 packets or 384 KiB, new METADATA is dropped and the session stays up. The
+remaining 32 packets / 128 KiB are kept for ACK, STATE and ERROR, which keep
+their order and are never dropped. Overflow of that full control bound still
+disconnects the session, without a retry. Hosts must tolerate gaps in
+METADATA `frameNumber`.
 
 `configured` precedes video for a generation. `streaming` follows the first
 non-configuration encoded frame. Both report `generation`, `camera`, `width`,

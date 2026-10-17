@@ -277,6 +277,7 @@ std::shared_ptr<OwnedAdbServer> CreateOwnedAdbServer(
             std::string error;
             auto arguments = fixtureArguments;
             arguments.insert(arguments.end(), {L"-L", L"tcp:" + std::to_wstring(port), L"server", L"nodaemon"});
+            qInfo() << "Starting owned Android USB support with" << executable;
             auto child = OwnedChildProcess::Launch({
                 executable.toStdWString(),
                 arguments, QFileInfo(executable).absolutePath().toStdWString(), {},
