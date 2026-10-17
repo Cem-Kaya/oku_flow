@@ -642,3 +642,8 @@ aligned with the project goals.
   weaken required profiles to accommodate unavailable release hardware. Optional
   AV1 on Pascal is distinct from required H.264. See `tests/README.md` for scope
   and the independent provider/device/Maxine/installer acceptance still needed.
+
+## Imported Android host dependencies (2026-10-17)
+- Keep `scripts/android_camera_probe.py` in Android host CI and the scoped
+  impact manifest. Probe-only edits require the host protocol suite without
+  a Windows rebuild. Preserve that selection in `test_select_tests.ps1`.

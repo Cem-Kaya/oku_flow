@@ -4274,3 +4274,8 @@ committed mode with LastError as a warning. `PromoteCurrentConfigToPreset`
 refreshes the native list only after durable publication and displays storage
 errors. Tests reopen immediately without shutdown save and force a failed
 commit followed by retry while preserving prior mode/live settings.
+
+Android host CI and `tests/test_impact.json` now include the imported
+`scripts/android_camera_probe.py` dependency. `test_select_tests.ps1` exercises
+a probe-only change: host protocol tests are selected without Windows targets.
+Workflow/impact-manifest changes also select the CI protocol job.

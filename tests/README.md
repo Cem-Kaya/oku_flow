@@ -1120,3 +1120,8 @@ immutable vector handoff; CPU presentation copying remains explicit. Dense 4K
 residual costs are reported separately from UI/presentation callback costs.
 The 33-case UCT contract and installed Windows OCR passed in both CPU and CUDA
 builds on the development PC; this is not physical-page/GTX1070/UIA acceptance.
+
+Android host protocol selection includes `scripts/android_camera_probe.py`, which
+its tests import outside the Android tree. Probe-only edits select the Python
+host suite without rebuilding Windows. CI also selects the job for workflow
+and impact-manifest changes. The change-selector fixture checks this dependency.
