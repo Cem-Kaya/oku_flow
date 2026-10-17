@@ -800,3 +800,14 @@ aligned with the project goals.
 - Hosted Qt setup includes only matching Multimedia sources for the FFmpeg
   notice and uses a source-aware cache key. Do not assume a compile-only SDK
   installation contains the release preflight's source/license inventory.
+
+## Focused bundle publication scenarios (2026-10-17)
+- Preserve all 13 synthetic publication scenarios across the Exchange,
+  Refusals and Rollback CTest groups (3/7/3 cases). Each keeps its 60-second
+  limit, named progress, exact coverage-count assertion and publisher runtime
+  inputs. Keep the shared process-identity lock; never overlap the hidden
+  running-image fixture with other identity-sensitive checks.
+- Direct `test_bundle_publication.ps1` defaults to All. Splitting the cumulative
+  fixture is not permission to omit locked/running-image, owner-data, exact
+  inventory, reparse, rollback or late-change assertions. Production publication
+  safety behavior is unchanged; native installer/release acceptance is separate.

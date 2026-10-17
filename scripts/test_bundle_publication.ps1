@@ -1,9 +1,22 @@
 #requires -Version 7.0
 # Private synthetic generations only. No build, GUI, signing or real dist writes.
+[CmdletBinding()]
+param([ValidateSet('All','Exchange','Refusals','Rollback')][string]$CaseSet = 'All')
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $env:LOCALAPPDATA ('OkuFlow/bundle-publication-fixtures/' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 $publisher = Join-Path $PSScriptRoot 'publish_release_bundle.ps1'
+$script:caseWatch = $null
+$script:caseName = ''
+$script:completedCases = 0
+function Complete-Case {
+    if ($script:caseWatch) {
+        $script:caseWatch.Stop()
+        ++$script:completedCases
+        Write-Host ("PASS bundle publication: {0} ({1:F2} s)" -f $script:caseName,$script:caseWatch.Elapsed.TotalSeconds)
+        $script:caseWatch = $null
+    }
+}
 function Assert-Publication([bool]$Value,[string]$Message) { if (-not $Value) { throw $Message } }
 function Assert-Refused([scriptblock]$Action,[string]$Message) {
     $refused = $false
@@ -23,6 +36,10 @@ function New-Bundle([string]$Root,[string]$Generation) {
     return $Root
 }
 function New-Case([string]$Name) {
+    Complete-Case
+    $script:caseName = $Name
+    $script:caseWatch = [Diagnostics.Stopwatch]::StartNew()
+    Write-Host "BEGIN bundle publication: $Name"
     $dist = Join-Path $work $Name
     New-Item -ItemType Directory -Path $dist | Out-Null
     return @{dist=$dist;stage=(Join-Path $dist ('OkuFlow.staging-' + [Guid]::NewGuid().ToString('N')));primary=(Join-Path $dist 'OkuFlow');secondary=(Join-Path $dist 'OkuFlow2')}
@@ -34,6 +51,7 @@ function Get-Inventory([string]$Root) {
 }
 function Invoke-Publish($Case) { & $publisher -DistDirectory $Case.dist -StagingDirectory $Case.stage }
 
+if ($CaseSet -in @('All','Exchange')) {
 $case = New-Case 'fresh-primary'
 & $publisher -DistDirectory $case.dist -StagingDirectory $case.stage -Action CreateStage
 Assert-Refused { & $publisher -DistDirectory $case.dist -StagingDirectory $case.stage -Action CreateStage } 'Existing stage accepted as newly owned.'
@@ -93,7 +111,9 @@ try {
     Assert-Publication ($child.WaitForExit(5000)) 'Private interpreter did not exit normally.'
     $child.Dispose()
 }
+}
 
+if ($CaseSet -in @('All','Refusals')) {
 foreach ($intrusion in @('output','captures','unknown.txt','empty-directory','tampered-runtime')) {
     $case = New-Case ('refuse-' + $intrusion)
     $null = New-Bundle $case.primary 'primary'
@@ -136,7 +156,9 @@ $linkedDist = Join-Path $work 'foreign-dist-junction'
 New-Item -ItemType Junction -Path $linkedDist -Target $foreign | Out-Null
 Assert-Refused { & $publisher -DistDirectory $linkedDist -StagingDirectory (Join-Path $linkedDist ('OkuFlow.staging-' + [Guid]::NewGuid().ToString('N'))) -Action CreateStage } 'Stage creation followed a dist junction.'
 Assert-Publication (@(Get-ChildItem -LiteralPath $foreign -Force).Count -eq 1) 'Stage creation wrote through a dist junction.'
+}
 
+if ($CaseSet -in @('All','Rollback')) {
 # Load the actual functions without invoking production entrypoint. Inject
 # failures only in this private fixture, never through a production bypass.
 $tokens = $null; $parseErrors = $null
@@ -182,4 +204,8 @@ try {
 } finally { Close-Bundle $old; Close-Bundle $new }
 Assert-Publication (Test-Path -LiteralPath (Join-Path $case.secondary 'late-owner-data')) 'Late owner directory was not retained at its original path.'
 Assert-Publication (Test-Path -LiteralPath $case.stage) 'Late owner directory refusal consumed staging.'
-Write-Output "PASS: transactional primary/secondary replacement, locked DLL/running image preservation, rename/verification rollback, exact inventories, owner-data/path/reparse refusals. Synthetic fixtures: $work"
+}
+Complete-Case
+$expectedCases = @{ All=13; Exchange=3; Refusals=7; Rollback=3 }[$CaseSet]
+Assert-Publication ($script:completedCases -eq $expectedCases) "Incomplete scenario coverage for $CaseSet : $script:completedCases of $expectedCases"
+Write-Output "PASS: bundle publication $CaseSet, all $expectedCases scenarios completed. Synthetic fixtures: $work"

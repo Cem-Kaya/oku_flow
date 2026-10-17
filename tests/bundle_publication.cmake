@@ -2,18 +2,23 @@ if(WIN32)
     include("${PROJECT_SOURCE_DIR}/cmake/PowerShell.cmake")
     okuflow_find_powershell(OKUFLOW_PWSH_EXECUTABLE)
     add_test(NAME bundle_publication_contract COMMAND "${OKUFLOW_PWSH_EXECUTABLE}" -NoProfile -File
-        "${PROJECT_SOURCE_DIR}/scripts/test_bundle_publication.ps1")
+        "${PROJECT_SOURCE_DIR}/scripts/test_bundle_publication.ps1" -CaseSet Exchange)
+    add_test(NAME bundle_publication_refusals COMMAND "${OKUFLOW_PWSH_EXECUTABLE}" -NoProfile -File
+        "${PROJECT_SOURCE_DIR}/scripts/test_bundle_publication.ps1" -CaseSet Refusals)
+    add_test(NAME bundle_publication_rollback COMMAND "${OKUFLOW_PWSH_EXECUTABLE}" -NoProfile -File
+        "${PROJECT_SOURCE_DIR}/scripts/test_bundle_publication.ps1" -CaseSet Rollback)
+    set(bundle_publication_cases bundle_publication_contract bundle_publication_refusals bundle_publication_rollback)
     add_test(NAME bundle_toolchain_contract COMMAND "${OKUFLOW_PWSH_EXECUTABLE}" -NoProfile -File
         "${PROJECT_SOURCE_DIR}/scripts/test_bundle_toolchain.ps1")
     get_filename_component(bundle_fixture_qt_prefix "${QT_BIN_DIRECTORY}" DIRECTORY)
     set_property(TEST bundle_toolchain_contract APPEND PROPERTY ENVIRONMENT
         "QT_ROOT_DIR=${bundle_fixture_qt_prefix}")
-    set_tests_properties(bundle_publication_contract bundle_toolchain_contract PROPERTIES
+    set_tests_properties(${bundle_publication_cases} bundle_toolchain_contract PROPERTIES
         TIMEOUT 60 LABELS "headless;packaging")
     # The publication fixture owns a hidden, normally exiting OkuFlow-named
     # process; serialize against fail-closed native process-identity probes.
-    set_tests_properties(bundle_publication_contract PROPERTIES RESOURCE_LOCK okuflow_process_identity)
-    set_property(TEST bundle_publication_contract APPEND PROPERTY REQUIRED_FILES
+    set_tests_properties(${bundle_publication_cases} PROPERTIES RESOURCE_LOCK okuflow_process_identity)
+    set_property(TEST ${bundle_publication_cases} APPEND PROPERTY REQUIRED_FILES
         "${PROJECT_SOURCE_DIR}/scripts/test_bundle_publication.ps1"
         "${PROJECT_SOURCE_DIR}/scripts/publish_release_bundle.ps1"
         "$ENV{ComSpec}")

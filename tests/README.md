@@ -1194,12 +1194,17 @@ a machine with the documented VS2022/Qt SDK installed. Both commands preserve
 private fixture evidence and establish scoped transaction/preflight behavior,
 not application compilation, GUI/hardware, MSI or full release acceptance.
 
-The bundle fixtures are also registered as `bundle_publication_contract` and
-`bundle_toolchain_contract` in the tracked CPU/CUDA inventories, with absolute
-helper/runtime inputs. Publication takes the native process-identity resource
-lock because its private console image shares an OkuFlow application name.
-Both carry `headless;packaging`, require no free owner desktop and retain the
-same scoped limits described above.
+CTest splits publication into `bundle_publication_contract` (three exchange,
+locked-DLL and running-image scenarios), `bundle_publication_refusals` (seven
+owner-data/inventory/path scenarios) and `bundle_publication_rollback` (three
+rollback/late-owner scenarios). Each retains a 60-second limit and asserts its
+scenario count; the direct script defaults to `-CaseSet All` for all 13.
+Named BEGIN/PASS timings identify the last reached scenario on failure.
+`bundle_toolchain_contract` remains separate. Every case declares absolute
+helper/runtime inputs and carries `headless;packaging`. All publication groups
+retain the native process-identity resource lock and run serially because the
+exchange group owns a hidden OkuFlow-named console child. No free owner desktop
+is needed; these are still scoped fixtures rather than full release acceptance.
 
 The toolchain regression receives CTest's configured Qt SDK/source root and
 exercises the real batch through a private relocated SDK junction whose path

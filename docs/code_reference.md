@@ -4525,6 +4525,16 @@ owner data/path/junction refusals, and injected rename/verification rollback.
 preflights with private cache fixtures. These are scoped regressions rather
 than full release evidence.
 
+`test_bundle_publication.ps1 -CaseSet All|Exchange|Refusals|Rollback` retains
+the same 13 synthetic scenarios. `Complete-Case` and `New-Case` emit named
+BEGIN/PASS timing without contaminating returned fixture objects; each selected
+set asserts its completed scenario count (13/3/7/3). CTest registers Exchange as
+`bundle_publication_contract`, plus `bundle_publication_refusals` and
+`bundle_publication_rollback`. All three retain the 60-second per-case limit,
+process-identity resource lock and actual publisher/helper runtime inputs.
+This splits a cumulative fixture timeout into focused results without changing
+production transaction checks, failure injection or owner-data assertions.
+
 `build_release_bundle.bat::resolve_qt` selects `QT_PREFIX`, `Qt6_DIR`,
 `QT_ROOT_DIR`, then the local SDK default, preserving explicit-override failure.
 It prints the selected path before checking real deployment tools, licenses and

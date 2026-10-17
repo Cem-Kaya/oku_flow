@@ -165,3 +165,19 @@ translation parity passed. The infrastructure selector correctly requests the
 full pre-merge gate; this focused local result is not release acceptance.
 Original hosted/local failures and final scoped evidence remain under
 `%LOCALAPPDATA%/OkuFlow/ci-39051051673`. No foreground UI or device was touched.
+
+## Focused publication fixture follow-up
+
+Run `39055193846` on `642ba49` repeats the Qt-prefix failure already addressed
+by `9171e03` and also times out the cumulative publication fixture at 60.20 s.
+Its buffered log does not isolate a blocked operation. Production publication
+logic is unchanged. All 13 existing scenarios now run in three serial CTest
+groups: Exchange (3), Refusals (7), Rollback (3), each with the same 60-second
+deadline, shared process-identity lock, named scenario progress and completed-
+coverage count. A single slow operation can still fail its focused group.
+The tracked SCOPED CPU gate passed all three groups (3 of 148 CTest cases) in
+2.24/2.01/1.34 seconds, without skips or unresolved results; CPU compilation
+and translation parity also passed. These local timings do not establish the
+hosted cause or replacement hosted pass. Original failed evidence and focused
+results are under `%LOCALAPPDATA%/OkuFlow/ci-39055193846`. No GUI or phone was
+touched, and no public release was produced.
