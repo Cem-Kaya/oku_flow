@@ -648,6 +648,6 @@ call profiling and the still-unmeasured native pan/queue/stale-frame seams.
 [Engineering audit closure, 2026-10-17](engineering_audit_closure_2026_10_17.md)
 maps all 36 supplied findings to fixes, measurements and remaining acceptance.
 
-[Maxine navigation safeguard and producer follow-up](maxine_async_producer_design.md)
-records navigation admission, same-frame fallback and the ownership/capture
-policies needed for an independent asynchronous producer.
+[Asynchronous Maxine producer](maxine_async_producer_design.md) records its
+private stream/slot ownership, exact-current-frame publication, immediate
+capture policy, cancellation and separate native performance acceptance.

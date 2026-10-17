@@ -97,6 +97,10 @@ void OkuFlowApp::UpdatePresetDescription()
 
 void OkuFlowApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
 {
+    // Revoke neural publication at the native edit, before another camera
+    // frame arrives, independently of optional agent-service observations.
+    ++cudaProcessingGeneration_;
+    if (cudaSurface_) cudaSurface_->InvalidateSuperResRequest();
     if (controlTarget_) controlTarget_->NoticeNativeChanges();
     if (configTrackingSuspended_) {
         return;

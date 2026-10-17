@@ -83,15 +83,20 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   saved choices return when it is enabled. Independent Colors and contrast
   controls and NVIDIA Super Resolution keep their own switches.
 - Optional NVIDIA Maxine SuperRes replaces NIS/FSR for zoomed text when the
-  separately installed Video Effects runtime is available. It runs on the
-  existing CUDA stream, discards 10 warmup samples, and automatically falls
+  separately installed Video Effects runtime is available. Its independent
+  producer owns a private CUDA stream and input/output buffers; model loading,
+  inference and teardown do not wait on the UI. It discards 10 warmup samples,
+  including completed stale jobs for the matching configuration, and falls
   back if its next 60-frame average exceeds the 24 ms latency target. Advanced
   reports the measured average and offers a compact checkbox override when
   latency is the only failure. New model loads and neural frame calls are
   deferred during pan/zoom and a 150 ms navigation tail; the same camera
   frame uses the normal spatial/base fallback in that interval. Generic
   redraw, photo and readback retries do not count as navigation. This does
-  not preempt an SDK call already running or make idle inference asynchronous.
+  not preempt an SDK call already running, but it no longer waits for that
+  call. The presentation clock publishes only exact-current-scene results;
+  photos/recordings keep immediate same-frame fallback while SR is pending.
+  See [ownership and capture policy](maxine_async_producer_design.md).
 - Two-speed UI: Simple mode gives the full client area to the live view and overlays three auto-fading primary clusters plus contextual screen-correction controls; Advanced keeps the camera visible beside a narrow inspector containing every parameter and pipeline diagnostics. The chosen mode persists.
 - Stage-1 quick modes backed by full stage-2 advanced configurations, including promotion of advanced tuning into user-defined quick options.
 - Text reading and scene explanations use a signed-in Codex CLI/ChatGPT

@@ -829,9 +829,10 @@ Actual validation/limits: [review 46](../improvement_ideas/46-additional-opus-re
   lower factors when a candidate exceeds its model limit, preserving desktop
   zoom. Other SDK resolution checks still apply. The spatial geometry fixture
   covers the 4000x2256 phone regression and model-height boundaries.
-  `UpdateSuperResCache` restarts timing by source/output extent and strength;
-  `discardSuperResTiming_` excludes an old pending sample after configuration
-  or override changes. Unrelated text controls do not reload the effect.
+  `UpdateSuperResCache` prepares an exact CPU descriptor; it never calls the
+  SDK or borrows the processing buffers for inference. Private completion timing
+  contributes only to its matching source/output/strength configuration,
+  including stale jobs. Unrelated text controls do not reload the effect.
 - `VirtualTripodPairInsideRoi` subtracts recovery keyframe origin for anchor
   ROI selection. `VirtualTripodRelativeFallbackKernel` rejection holds both
   correction and relative motion. CLAHE clamps both independently derived
@@ -3537,11 +3538,12 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
   caller; the worker never treats a timeout as completion.
 - `MaxineSuperRes::Worker` selects the CUDA device and runs load, synchronous
   inference and teardown within a one-second host deadline. `IsFaulted` forbids
-  further adapter access to a still-running SDK call. `CudaInteropSurface`
-  propagates this failure and quarantines its stream, images, buffers and SDK
-  owner. Strength changes settle for 200 ms before a model reload. The caller
-  still waits for a normal worker result; fully asynchronous inference is not
-  implemented by this guard. Performance override does not bypass safety bounds.
+  further adapter access to a still-running SDK call. The production caller
+  is now `MaxineAsyncProducer`'s independent worker, which retains its entire
+  private closure on unknown completion. `CudaInteropSurface` does not wait on
+  that adapter or quarantine healthy base storage for a private failure. Strength
+  changes settle for 200 ms before a model reload. Performance override never
+  bypasses safety bounds.
 
 Regression coverage: `deadline_worker` exercises completion publication, serial
 ownership, exceptions, timeout, rejected retries and destruction with a retained
@@ -4573,8 +4575,10 @@ runtime dependency is added: Qt, WebCrypto and Python's standard library are use
 - `MaxineSuperRes::Worker::Execute` retains its existing synchronous one-second
   deadline. With `OKUFLOW_MAXINE_PROFILE=1`, optional `CallTiming` atomics survive
   a late task and `Profile::Record/Report` summarize the last 16,384 stage/outcome
-  samples on destruction. Caller wait, worker dispatch and completed SDK host
-  duration are separate; timeout/throw samples do not certify GPU completion.
+  samples on destruction. Adapter-caller wait, worker dispatch and completed
+  SDK host duration are separate; timeout/throw samples do not certify GPU
+  completion. In production that caller is the independent producer worker,
+  not the Qt/presentation thread.
 - `tests/assistant_chat_benchmark.cpp` is an excluded, non-CTest diagnostic.
   `Snapshot/Delta` generate bounded pixel-free chat state and optional original
   JPEGs; `Distribution` uses nearest rank; `ControlledWaits` exercises the
@@ -4737,3 +4741,69 @@ loss through this state machine, including failures during recovery.
 and expiry without a camera or native presenter. The orchestrator regression
 separately checks that retries cannot renew the original deadline. These hooks
 validate control flow, not actual hardware or optical delivery.
+
+### Independent Maxine producer and presentation polling (2026-10-17)
+
+`common/maxine_async_producer.hpp/.cpp` defines `MaxineAsyncProducer`,
+`Ticket`, `Config`, `Output`, `Statistics` and its private `State` phase machine.
+`Request` overwrites a CPU descriptor; `TrySubmit` snapshots a full-scene CUDA
+array ROI onto private pitched input and records input-ready without waiting.
+`Run` owns allocation, exact configuration/strength setup, SDK calls, private
+completion timing and cleanup on one independent worker. `TryTake` exposes an
+exclusive output lease only for the full current ticket; stale output exposes
+only timing/config and retires without pixel publication. `ReleaseOutput`
+records a consumer event; reconfiguration/free wait on that event off UI.
+`Invalidate(false)` revokes authority without defeating ordinary failure
+latches. Default strong invalidation also permits a failed configuration to
+retry, including a failure completing after the reset; a worker/unknown-completion
+fault remains sticky. Destruction requests
+stop without joining; `State::quarantined` retains the entire unsafe closure
+without allocating. `HasWork`, `IsFaulted`, `LastError` and `Stats` return CPU
+state only. No app, source texture or presenter pointer is retained by the SDK.
+
+`ProcessingInput` carries unconditional `cameraEpoch`, `frameSequence` and
+`settingsGeneration`. `CudaInteropSurface::AsyncSuperResState` binds those to a
+processing serial, request generation, exact scale/strength and ROI.
+`UpdateSuperResCache` only requests private preparation; current-frame spatial
+fallback remains available. `RefreshSuperRes` polls readiness, snapshots input
+or publishes an exact result under the existing external fence reservation.
+`SuperResRefreshResult` distinguishes no work, submission, publication and
+uncertain shared work. `HasSuperResWork` selects actual work; `NeedsSuperResPolling`
+also covers model preparation and in-flight inference. `SuperResStatistics`
+returns bounded job/replacement/stale counters and accepted-result age.
+`AccumulateSuperResTiming` includes completed stale jobs for the matching
+configuration in the existing guard. Reset no longer drains a private SDK call.
+The former shared output scratch/timing-event ownership has been removed.
+`InvalidateSuperResRequest` revokes pending/active neural authority without
+model teardown or performance-guard reset. Native
+`SyncCurrentConfigToPersistence` advances `OkuFlowApp::cudaProcessingGeneration_`
+and calls this revocation before optional agent synchronization or suspended
+persistence tracking. `RunCudaPipeline` stamps that generation unconditionally.
+
+`OkuFlowApp::RefreshAsyncSuperRes` runs on the existing presentation callback,
+reserving/committing/canceling exact shared-fence values. Without a semaphore,
+it polls graphics before writing and polls CUDA before graphics reads the new
+cache. `asyncSuperResPresentPending_` retains that completion requirement.
+Publication increments annotation authority and marks scene output dirty without
+starting a user-navigation tail. `PipelineOrchestrator::Callbacks::hasAsyncSceneWork`
+keeps readiness polling at the effective display rate between slow camera frames,
+without reprocessing the camera or manufacturing navigation input.
+`UctGeometryKey::neuralEnhancement` revokes glyphs/held recognition across a
+base/spatial-to-neural transition of the same frame. Presented observation
+metadata names the selected enhancement, source/frame and cache generation.
+Immediate photos/recordings keep exact current-frame pairing and do not wait
+for neural output.
+
+`maxine_async_tests` drives private real-CUDA/fake-SDK snapshot, all-ticket-field
+rejection, one-slot/coalescing, consumer lease, invalidated shutdown and failed
+configuration retry cases. Fake `OkuFlowFakeEchoInput`/`inputFirstPixel` test
+pixel identity rather than recognition quality. The surface fixture imports a
+real shared D3D12 fence and verifies exact fallback/neural output. The scheduler
+fixture checks 120-Hz polling between 5-FPS camera frames, restoring idle policy
+without a motion tail; the UCT fixture rejects held recognition after enhancement
+changes. These are background/offscreen fixtures, not native optical/pan evidence.
+The async fixture's `Gate::State` is heap-owned and retained with its handles
+if callback completion is unknown, including a callback that has not entered.
+`NativeControlFixture::CurrentImageConfig`, `RestoreImageConfig`,
+`ProcessingGeneration` and `NativeContrastWithoutAgent` verify generation
+advancement and restore isolated settings with the agent target absent.

@@ -768,3 +768,23 @@ aligned with the project goals.
 - Preserve the preflight's 60-second deadline and all refusal/no-mutation
   assertions. Let tracked runners own setup instead of redundantly initializing
   the caller shell, which can overflow Windows batch environment lines.
+
+## Independent Maxine producer ownership (2026-10-17)
+- Keep model loading, inference, GPU completion and teardown on the private
+  producer worker. One in-flight slot and one overwriteable CPU descriptor;
+  never retain a borrowed scene/processing-buffer pointer as a queued job.
+- Publish only the complete current camera/processing/settings/request ticket.
+  Use the existing graphics fence and retain private output through its exact
+  consumer-copy event. Invalidation/shutdown never joins an SDK call on UI;
+  unknown completion retains the complete private state until process exit.
+- Async readiness uses the existing presentation clock through
+  `hasAsyncSceneWork`; it is neither camera processing nor navigation input.
+  Preserve immediate same-frame capture pairing and enhancement authority for
+  annotations, UCT and agent observations. See the Maxine producer policy doc.
+- Native settings changes must immediately advance processing authority and
+  revoke pending neural output independently of Assistant/MCP. Ordinary settings
+  invalidation preserves healthy models and failure/performance latches;
+  explicit reset alone permits retry of the same failed configuration.
+- Run the three desktop-free Maxine CUDA fixtures and scheduler/UCT regressions
+  after ownership changes. Strict Windows-CUDA release acceptance requires all
+  three; private fake SDKs prove neither vendor quality nor native pan latency.

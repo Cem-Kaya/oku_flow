@@ -330,6 +330,11 @@ bool OkuFlowApp::Initialize()
             .needsScenePresent = [this]() {
                 return presenter_ && presenter_->NeedsScenePresent();
             },
+            .hasAsyncSceneWork = [this]() {
+                return cameraActive_ && usingCudaLastFrame_ && cudaSceneReady_ && cudaSurface_ &&
+                    (asyncSuperResPresentPending_ || cudaSurface_->NeedsSuperResPolling()) &&
+                    !pipelineOrchestrator_->IsViewportInteractionActive();
+            },
             .cameraActive = [this]() { return cameraActive_; },
             .cameraFrameRate = [this]() {
                 return mediaCapture_.CurrentFrameRate();

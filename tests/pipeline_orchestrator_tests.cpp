@@ -17,6 +17,7 @@ private slots:
     void coalescesCameraFrameWakeups();
     void busyFrameRetriesLeaveQtHeartbeatResponsive();
     void sceneArrivalsDoNotExtendUserMotionTail();
+    void asyncWorkPollsBetweenCameraFramesWithoutNavigation();
     void interactionAdmissionDistinguishesNavigationFromSceneArrival();
     void cameraHandoffRetriesStillPresentHeldViewport();
     void zeroFrameReconnectRetriesKeepOriginalDeadline();
@@ -157,6 +158,38 @@ void PipelineOrchestratorTests::busyFrameRetriesLeaveQtHeartbeatResponsive()
     QVERIFY(busyTicks > 0);
     QCOMPARE(admissionPolls, 1);
     QVERIFY(!orchestrator.IsViewportDirty());
+}
+
+void PipelineOrchestratorTests::asyncWorkPollsBetweenCameraFramesWithoutNavigation()
+{
+    for (bool fenceInterop : {false, true}) {
+        bool pending = true;
+        int polls = 0;
+        PipelineOrchestrator orchestrator(*this,
+            PipelineOrchestrator::Callbacks{
+                .tick = [](double) { return false; }, // no new camera input
+                .presentPendingScene = [&] { if (++polls == 3) pending = false; },
+                .hasAsyncSceneWork = [&] { return pending; },
+                .cameraActive = [] { return true; },
+                .cameraFrameRate = [] { return 5.0; },
+                .usingCuda = [] { return true; },
+                .queryDisplayRefreshRate = [] { return 120; },
+            });
+        orchestrator.SetFenceInteropEnabled(fenceInterop);
+        orchestrator.displayRefreshHz_ = 120;
+        orchestrator.viewportMotionTailTimer_.invalidate();
+        orchestrator.MarkViewportPresented();
+        orchestrator.UpdateTimerPolicy();
+        QCOMPARE(orchestrator.timer_.interval(), 8);
+        for (int tick = 0; tick < 3; ++tick) {
+            QVERIFY(!orchestrator.IsViewportDirty());
+            QVERIFY(!orchestrator.IsViewportInteractionActive());
+            orchestrator.OnTick();
+        }
+        QCOMPARE(polls, 3);
+        QCOMPARE(orchestrator.timer_.interval(), 200); // completion restores camera-idle policy
+        QVERIFY(!orchestrator.viewportMotionTailTimer_.isValid());
+    }
 }
 
 void PipelineOrchestratorTests::sceneArrivalsDoNotExtendUserMotionTail()

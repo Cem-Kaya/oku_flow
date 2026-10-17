@@ -348,6 +348,7 @@ private:
         LivePoliteness politeness = LivePoliteness::kPolite);
     bool RunFrameTick(double elapsedSeconds);
     void PresentPendingScene();
+    void RefreshAsyncSuperRes();
     void PresentLatestCudaScene(bool newCameraFrame,
                                 CapturedFrame* originalFrame);
     void HandleCudaProcessingFailure();
@@ -622,6 +623,8 @@ private:
     UINT presentationWidth_{0};
     UINT presentationHeight_{0};
 
+    std::uint64_t cudaProcessingGeneration_{1};
+    bool asyncSuperResPresentPending_{};
     bool cudaSceneReady_{false};
 
     // Ultra Clear Text provenance of the cached CUDA/CPU scenes, snapshotted

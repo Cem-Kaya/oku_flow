@@ -453,6 +453,7 @@ private slots:
     // --- Controller (production widgets, scripted OCR) ----------------------
     void slowOcrNeverBlocksPresentationClock();
     void cachedGlyphsRepaintWhileRecognitionIsHeld();
+    void neuralPublicationRevokesHeldRecognition();
     void controllerCoalescesChangingSceneWhileOcrHeld();
     void acceptedTextReprojectsOnPresentationClockWithDpi();
     void sourceSwitchAndGeometryChangeInvalidateImmediately();
@@ -1067,6 +1068,33 @@ void UltraClearTextTests::presentationWatchdogHidesTextWithoutPresents()
     // The next presentation of the unchanged scene restores validated text.
     h.Present(false, 1);
     QTRY_VERIFY(h.overlay->WordCount() > 0); // fresh validation is now asynchronous
+}
+
+void UltraClearTextTests::neuralPublicationRevokesHeldRecognition()
+{
+    Harness h;
+    h.Enable();
+    QVERIFY(h.RunUntilShown());
+    const auto started = h.controller->SchedulerStatistics().started;
+    h.shared->SetHold(true);
+    h.now += 1600;
+    for (int i = 0; i < 200 && h.controller->SchedulerStatistics().started == started; ++i) {
+        h.Present(); QCoreApplication::processEvents(); QThread::msleep(1);
+    }
+    QVERIFY(h.controller->SchedulerStatistics().started > started);
+    h.completeReadbacks = false;
+    // Same source epoch and camera frame: only the presented enhancement
+    // changes. Neither accepted glyphs nor held base-image OCR may carry over.
+    const auto revoked = h.controller->SchedulerStatistics().revoked;
+    h.context.geometry.neuralEnhancement = true;
+    h.Present(false, 1);
+    QCOMPARE(h.overlay->WordCount(), 0);
+    QVERIFY(!h.controller->Model().HasAcceptedText());
+    h.shared->SetHold(false);
+    QTRY_VERIFY(h.controller->SchedulerStatistics().revoked > revoked);
+    h.Present(false, 1);
+    QCOMPARE(h.overlay->WordCount(), 0);
+    QVERIFY(!h.controller->Model().HasAcceptedText());
 }
 
 void UltraClearTextTests::cachedGlyphsRepaintWhileRecognitionIsHeld()

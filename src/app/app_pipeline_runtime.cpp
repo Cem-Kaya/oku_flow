@@ -1021,7 +1021,11 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
 
     QElapsedTimer cudaSubmissionTimer;
     cudaSubmissionTimer.start();
-    if (!cudaSurface_->ProcessFrame(input, settings, cudaSyncParams)) {
+    ProcessingInput stampedInput = input;
+    stampedInput.cameraEpoch = cameraSessionId_;
+    stampedInput.frameSequence = currentCameraFrameSequence_;
+    stampedInput.settingsGeneration = cudaProcessingGeneration_;
+    if (!cudaSurface_->ProcessFrame(stampedInput, settings, cudaSyncParams)) {
         pipelineOrchestrator_->RecordStageSample(
             FrameTimingStage::CudaSubmission,
             static_cast<float>(cudaSubmissionTimer.nsecsElapsed()) * 1e-6f);
@@ -1080,6 +1084,7 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
         }
     }
 
+    asyncSuperResPresentPending_ = false; // a new exact base scene supersedes enhancement
     cudaPipelineAvailable_ = true;
     UpdateKeystoneTrackingUi();
     usingCudaLastFrame_ = true;
@@ -1113,6 +1118,15 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         return;
     }
 
+    // Without external semaphore support, asynchronous cache publication
+    // retires via a nonblocking stream poll before any graphics read begins.
+    if (asyncSuperResPresentPending_) {
+        if (!cudaSurface_ || !cudaSurface_->PollIdle()) {
+            pipelineOrchestrator_->MarkSceneDirty();
+            return;
+        }
+        asyncSuperResPresentPending_ = false;
+    }
     const UINT viewportWidth = presenter_->ViewportWidth();
     const UINT viewportHeight = presenter_->ViewportHeight();
     ViewTransform transform =
@@ -1143,9 +1157,8 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     }
     // Ultra Clear Text reprojects cached words on this presentation clock and
     // at most asks for one more asynchronous copy of the presented viewport.
-    const UctFrameContext uctContext = UltraClearTextContext(
+    UctFrameContext uctContext = UltraClearTextContext(
         true, annotationTransform, viewportWidth, viewportHeight);
-    const bool uctWanted = ultraClearText_ && ultraClearText_->OnPresented(uctContext);
 
     ID3D12Resource* presentationTexture = cudaSharedTexture_.Get();
     UINT presentationSourceWidth = processedFrameWidth_;
@@ -1187,6 +1200,10 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         presentationSourceHeight = cudaSuperResHeight_;
         presentingSuperRes = cudaSurface_->IsSuperResActive();
     }
+    // An asynchronous enhancement changes the displayed image even when the
+    // camera frame/geometry did not change. Revoke older OCR/readback tickets.
+    uctContext.geometry.neuralEnhancement = presentingSuperRes;
+    const bool uctWanted = ultraClearText_ && ultraClearText_->OnPresented(uctContext);
     presentationFocusX = std::clamp(presentationFocusX, 0.0f, 1.0f);
     presentationFocusY = std::clamp(presentationFocusY, 0.0f, 1.0f);
 
@@ -1247,8 +1264,13 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     const bool assistantFrameWanted =
         pendingAssistantFrameReadbackId_ == 0 &&
         pendingAssistantFramePrompt_.has_value();
-    const auto observationFrame = controlTarget_ ? controlTarget_->PresentedFrame(annotationTransform,
+    auto observationFrame = controlTarget_ ? controlTarget_->PresentedFrame(annotationTransform,
         QSize(processedFrameWidth_,processedFrameHeight_),QSize(viewportWidth,viewportHeight)) : agent::ObservationFrame{};
+    observationFrame.diagnostics["enhancement"] = QJsonObject{
+        {"kind",presentingSuperRes ? "maxine" : presentationTexture == cudaSuperResTexture_.Get() ? "spatial" : "base"},
+        {"cacheGeneration",static_cast<qint64>(superResRoi.generation)},
+        {"cameraEpoch",static_cast<qint64>(cameraSessionId_)},
+        {"frameSequence",static_cast<qint64>(uctContext.frameSeq)}};
     const bool observationWanted = controlTarget_ && controlTarget_->WantsObservationReadback(observationFrame);
 
     FenceSyncParams presentSync{};
@@ -2152,7 +2174,42 @@ void OkuFlowApp::DriveCameraReconnect() {
 
 
 
+void OkuFlowApp::RefreshAsyncSuperRes() {
+    if (!cameraActive_ || !usingCudaLastFrame_ || !cudaSceneReady_ || !cudaSurface_ ||
+        !presenter_ || !presenter_->IsInitialized() || !cudaSurface_->HasSuperResWork() ||
+        pipelineOrchestrator_->IsViewportInteractionActive()) return;
+    FenceSyncParams sync{};
+    if (pipelineOrchestrator_->FenceInteropEnabled()) {
+        sync.enable = true;
+        sync.waitValue = presenter_->LastGraphicsSignal();
+        sync.signalValue = presenter_->ReserveExternalSignal();
+        if (!sync.signalValue) { HandlePresenterFault(); return; }
+    } else {
+        // A missing semaphore requires both APIs to be idle before a shared
+        // write. Poll once; never wait for graphics or inference on this clock.
+        auto* fence = presenter_->GetFence();
+        if (!fence || fence->GetCompletedValue() < presenter_->LastGraphicsSignal()) return;
+    }
+    const auto result = cudaSurface_->RefreshSuperRes(sync);
+    if (result == SuperResRefreshResult::Failed) {
+        HandlePresenterFault(); // uncertain shared work retains its reservation
+        return;
+    }
+    if (sync.enable) {
+        const bool accepted = result == SuperResRefreshResult::NoWork
+            ? presenter_->CancelExternalSignal(sync.signalValue)
+            : presenter_->CommitExternalSignal(sync.signalValue);
+        if (!accepted) { HandlePresenterFault(); return; }
+    }
+    if (result == SuperResRefreshResult::Published) {
+        ++annotationSceneRevision_;
+        asyncSuperResPresentPending_ = !sync.enable;
+        pipelineOrchestrator_->MarkSceneDirty();
+    }
+}
+
 void OkuFlowApp::PresentPendingScene() {
+    RefreshAsyncSuperRes();
     if (!presenter_ || HandlePresenterFault() || !cameraActive_ ||
         (!pipelineOrchestrator_->IsViewportDirty() &&
          !presenter_->NeedsScenePresent())) {

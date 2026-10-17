@@ -48,6 +48,9 @@ public:
         std::function<bool()> hasContinuousMotion;
         std::function<bool()> isMousePanActive;
         std::function<bool()> needsScenePresent;
+        // Async completion polling needs the presentation clock even while
+        // pixels/viewport are unchanged; it must not extend the motion tail.
+        std::function<bool()> hasAsyncSceneWork;
         std::function<bool()> cameraActive;
         std::function<double()> cameraFrameRate;
         std::function<bool()> usingCuda;

@@ -33,6 +33,7 @@ if(WIN32 AND OKUFLOW_ENABLE_CUDA)
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 
     add_executable(maxine_navigation_tests maxine_navigation_tests.cpp
+        "${PROJECT_SOURCE_DIR}/src/common/maxine_async_producer.cpp"
         "${PROJECT_SOURCE_DIR}/src/cuda/cuda_interop.cpp"
         "${PROJECT_SOURCE_DIR}/src/cuda/cuda_kernels.cu"
         "${PROJECT_SOURCE_DIR}/src/cuda/spatial_upscalers.cu"
@@ -55,6 +56,21 @@ if(WIN32 AND OKUFLOW_ENABLE_CUDA)
     add_test(NAME maxine_navigation_cuda COMMAND maxine_navigation_tests)
     set_tests_properties(maxine_navigation_cuda PROPERTIES
         TIMEOUT 30 SKIP_RETURN_CODE 77 LABELS gpu RUN_SERIAL TRUE
+        RESOURCE_LOCK okuflow_maxine_fixture
+        REQUIRED_FILES "$<TARGET_FILE:maxine_fake_image>;$<TARGET_FILE:maxine_fake_effects>"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+    add_executable(maxine_async_tests maxine_async_tests.cpp
+        "${PROJECT_SOURCE_DIR}/src/common/maxine_async_producer.cpp"
+        "${PROJECT_SOURCE_DIR}/src/common/maxine_superres.cpp")
+    target_include_directories(maxine_async_tests PRIVATE "${PROJECT_SOURCE_DIR}/include" "${maxine_fixture_include}")
+    target_compile_definitions(maxine_async_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN OKUFLOW_ENABLE_CUDA=1
+        OKUFLOW_MAXINE_FAKE_IMAGE="$<TARGET_FILE:maxine_fake_image>"
+        OKUFLOW_MAXINE_FAKE_EFFECTS="$<TARGET_FILE:maxine_fake_effects>")
+    target_compile_options(maxine_async_tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+    target_link_libraries(maxine_async_tests PRIVATE Qt6::Core CUDA::cudart_static advapi32)
+    add_dependencies(maxine_async_tests maxine_fake_image maxine_fake_effects)
+    add_test(NAME maxine_async_cuda COMMAND maxine_async_tests)
+    set_tests_properties(maxine_async_cuda PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77 LABELS gpu RUN_SERIAL TRUE
         RESOURCE_LOCK okuflow_maxine_fixture
         REQUIRED_FILES "$<TARGET_FILE:maxine_fake_image>;$<TARGET_FILE:maxine_fake_effects>"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")

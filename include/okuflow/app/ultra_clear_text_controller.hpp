@@ -47,6 +47,9 @@ struct UctGeometryKey {
     UctSceneSettings settings;
     std::uint32_t sceneWidth{};
     std::uint32_t sceneHeight{};
+    // Separate content authority for base/spatial versus neural pixels from
+    // the same camera frame; changing it revokes in-flight OCR/readbacks.
+    bool neuralEnhancement{};
 
     bool operator==(const UctGeometryKey&) const = default;
 };

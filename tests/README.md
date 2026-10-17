@@ -1350,3 +1350,47 @@ and a second silent adopted reader expires and retires. The pure orchestrator
 case preserves the original 30-second window even if backoff schedules its next
 attempt later. Synthetic adoption/presentation acknowledgment is not real
 camera or native GUI acceptance.
+
+## Independent Maxine producer validation (2026-10-17)
+
+`maxine_async_tests` / `maxine_async_cuda` runs with real CUDA and the same
+private fake SDK DLLs as the adapter/surface fixtures. It checks source mutation
+after a private snapshot, one in-flight job while the backend is gated, CPU
+request coalescing, rejection of each of five ticket fields, consumer-copy
+lifetime across reconfiguration, invalidation/destruction before a held SDK
+returns, and an explicit retry after an ordinary model-load failure. Output
+pixel echo is a test-only CUDA pattern operation, never neural-quality evidence.
+All gates are released by fixture ownership, including exception paths.
+Weak settings invalidation must preserve the failed-configuration latch; only
+an explicit reset permits a same-configuration retry.
+
+The surface fixture now imports a private shared D3D12 fence and exercises
+asynchronous snapshot/publication waits and signals. `AwaitNeural` is a fixture
+poll with a deadline; production has no wait loop or native window here.
+`pipeline_timing_percentiles` separately verifies fast async-work polling between
+5-FPS camera frames, returning to idle policy without a user-motion tail.
+`neuralPublicationRevokesHeldRecognition` keeps old OCR from being published
+when neural enhancement changes pixels from the same source/camera frame.
+The surface fixture also verifies immediate native-settings revocation before
+the next frame without retiring the healthy model. The opt-in
+`native_app_control_offscreen` case
+`nativeImageEditsAdvanceProcessingAuthorityWithoutAgent` verifies the actual
+app's settings-generation path with no agent target, then restores its fixture
+configuration. This is Qt-offscreen, without a native window or real camera.
+
+The strict `windows-cuda` release profile requires all three Maxine fixtures
+(`maxine_lifecycle_cuda`, `maxine_navigation_cuda`, `maxine_async_cuda`) in
+addition to its existing requirements. The kernel-only profile is unchanged.
+A missing, skipped or incomplete required fixture cannot certify a release.
+Helpers remain private test outputs and must never enter application staging.
+
+```powershell
+cmake --build --preset msvc-cuda-tests-build --target maxine_async_tests maxine_navigation_tests maxine_lifecycle_tests
+./scripts/run_test_gate.ps1 -Preset msvc-cuda-tests -Test maxine_async_cuda,maxine_navigation_cuda,maxine_lifecycle_cuda
+```
+
+This is background synthetic acceptance of scheduling, ownership and pixels.
+Real runtime pan-to-submission, sharpness transitions, optical quality,
+physical-phone/camera and installer acceptance remain separate. Immediate
+photos/recordings retain paired current-frame spatial/base output while neural
+processing is pending; no delayed SR capture queue is introduced.

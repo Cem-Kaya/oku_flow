@@ -435,7 +435,7 @@ public:
             result == DeadlineWorker::Result::Completed && *success});
         if (result != DeadlineWorker::Result::Completed) {
             error = std::string("NVIDIA SuperRes ") + stage +
-                " did not complete safely; restart OkuFlow to resume video";
+                " did not complete safely; restart OkuFlow to retry SuperRes";
             qWarning() << error.c_str() << "host time" << elapsed << "ms";
             return false;
         }

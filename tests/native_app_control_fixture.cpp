@@ -126,6 +126,16 @@ public:
             {"platformInitialized",app.comInitialized_ || app.mfInitialized_},
             {"recording",app.recordingManager_->IsActive()}};
     }
+    static settings::AdvancedConfig CurrentImageConfig(OkuFlowApp& app) {return app.CaptureCurrentAdvancedConfig();}
+    static void RestoreImageConfig(OkuFlowApp& app,const settings::AdvancedConfig& config) {
+        app.ApplyAdvancedConfig(config,true);app.SavePersistentSettings();
+    }
+    static std::uint64_t ProcessingGeneration(const OkuFlowApp& app) {return app.cudaProcessingGeneration_;}
+    static void NativeContrastWithoutAgent(OkuFlowApp& app,int value) {
+        auto target=std::move(app.controlTarget_);
+        const auto restore=qScopeGuard([&] {app.controlTarget_=std::move(target);});
+        app.OnContrastChanged(value);
+    }
     static void NativeContrast(OkuFlowApp& app,int value) {
         app.uiState_->contrastSlider_->setValue(value);app.OnContrastChanged(value);
         app.SavePersistentSettings(); // Same trusted native settings commit; no service notice.
@@ -260,6 +270,16 @@ class NativeAcceptance final : public QObject {
 public:
     explicit NativeAcceptance(OkuFlowApp& app):app_(app) {}
 private slots:
+    void nativeImageEditsAdvanceProcessingAuthorityWithoutAgent() {
+        const auto original=NativeControlFixture::CurrentImageConfig(app_);
+        const auto restore=qScopeGuard([&] {NativeControlFixture::RestoreImageConfig(app_,original);});
+        const auto before=NativeControlFixture::ProcessingGeneration(app_);
+        NativeControlFixture::NativeContrastWithoutAgent(app_,140);
+        QVERIFY(NativeControlFixture::ProcessingGeneration(app_)>before);
+        const auto changed=NativeControlFixture::ProcessingGeneration(app_);
+        NativeControlFixture::NativeZoom(app_);
+        QVERIFY(NativeControlFixture::ProcessingGeneration(app_)>changed);
+    }
     void annotationReadbackNeverRetargetsChangedSceneOrTransform() {
         const auto cleanup=qScopeGuard([&] {NativeControlFixture::ClearAnnotation(app_);});
         const auto original=NativeControlFixture::PrimeAnnotation(app_);

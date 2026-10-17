@@ -39,7 +39,8 @@ function Get-CapabilityRequirements([string]$Profile) {
         'agent_control_contract', 'mcp_bridge_contract')
     switch ($Profile) {
         'windows-cpu' { @{ tests = $base; labels = @('gui'); cuda = $false } }
-        'windows-cuda' { @{ tests = $base + $cuda + 'media_writer_gpu_codecs'; labels = @('gui'); cuda = $true } }
+        'windows-cuda' { @{ tests = $base + $cuda + @('media_writer_gpu_codecs',
+            'maxine_lifecycle_cuda', 'maxine_navigation_cuda', 'maxine_async_cuda'); labels = @('gui'); cuda = $true } }
         'windows-cuda-kernels' { @{ tests = $cuda; labels = @(); cuda = $true } }
         default { @{ tests = @(); labels = @(); cuda = $null } }
     }

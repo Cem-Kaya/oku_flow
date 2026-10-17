@@ -1,6 +1,11 @@
 # Changelog
 
 ## [Unreleased]
+- Run Maxine model loading, inference and teardown on an independent producer
+  with private GPU snapshots/output. Keep live current-frame fallback and publish
+  only matching completions through the graphics fence; late results cannot
+  replace newer camera frames. Revoke OCR/annotation authority on enhancement
+  changes and retain immediate same-frame photo/recording pairing.
 - Avoid recursive Visual Studio file discovery and auxiliary setup telemetry in
   Windows bundle preflight. Stream setup diagnostics while retaining the strict
   compiler/Qt checks and existing test deadline.

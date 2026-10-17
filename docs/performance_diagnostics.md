@@ -1,9 +1,10 @@
 # Bounded performance diagnostics (NP-010 / PF-001)
 
-The audit's Maxine latency concern remains unmeasured. An offline chat baseline
-confirmed CPU cost in a specific long-conversation workload; the conservative
-optimization below is evaluated using the same compiled benchmark. Synthetic
-CPU timings do not establish native input responsiveness or Maxine acceptance.
+The audit's Maxine host-call tails were measured before the independent producer
+implementation; post-change native pan latency remains unmeasured. An offline
+chat baseline confirmed CPU cost in a specific long-conversation workload; its
+optimization below uses the same compiled benchmark. Synthetic CPU timings do
+not establish native input responsiveness or Maxine acceptance.
 
 ## Chat baseline and bounded update
 
@@ -141,7 +142,9 @@ reports completed/timeout/rejected/exception/SDK-success counts and nearest-rank
 p50/p95/p99/max caller-wait and worker-dispatch microseconds. Completed SDK
 host-call duration excludes CUDA device selection; incomplete/throwing SDK
 calls are censored rather than included as successful operation durations.
-Caller-wait includes scheduling/device selection and timeout. These are host
+Adapter-caller wait includes scheduling/device selection and timeout. Production
+now makes those calls from the private producer, so it is not UI-thread wait.
+These are host
 timings, not CUDA-event GPU completion. More than 16,384 calls means the
 percentiles cover the retained tail window only. A fault can omit later stages;
 zero calls does not establish runtime availability.
@@ -153,15 +156,16 @@ window; startup JSON does not export all of those percentiles. The heartbeat
 retains its first 3000 samples. Capture-to-present ends at submission and begins
 after capture returns, not at physical sensor exposure.
 
-Pan-input-to-present p95/p99, exact Maxine frame-age/stale-result counts and
-camera/processing queue-depth traces are still uninstrumented. The helper's
-rejection count is not camera queue depth, and ingress drops are not stale SR
-results. A controlled sleep can demonstrate the helper's synchronous wait,
-but cannot establish a vendor-call tail. Measure those remaining native seams
-with immutable input/frame/presentation identities before deciding whether a
-bounded independent SR producer is justified. No independent asynchronous SR
-producer is introduced by these diagnostics; the separate chat optimization
-and Maxine navigation admission must be assessed by their own evidence.
+Pan-input-to-present p95/p99 and camera/processing queue-depth traces remain
+uninstrumented. The helper's rejection count is not camera queue depth, and
+ingress drops are not stale SR results. A controlled sleep demonstrates the
+helper's synchronous wait but cannot establish a vendor-call tail. The later
+independent producer exports bounded job/stale/replacement counters and
+accepted-result age through `SuperResStatistics`; these have not yet been
+collected as native traces. Its [policy and fixtures](maxine_async_producer_design.md)
+are separate evidence from the historical host measurements.
+Actual pan-to-submission distributions and temporal/optical quality still need
+native measurement; historical host waits are not post-change UI timings.
 
 
 ## Actual Maxine host run (2026-10-17)
@@ -185,7 +189,7 @@ Raw settings, reports and stderr are under the private audit archive's
 `maxine-profile/{off,on}/worker-1`. These observations confirm nonzero synchronous
 host tails. Pan-input, stale-SR frame age and camera queue identities remain
 unmeasured; no async-producer speedup follows from this pair. The [independent producer review](maxine_async_producer_design.md) records the
-ownership/provenance/capture policy work needed before changing the pipeline.
+implemented ownership/provenance/capture policy and its separate acceptance limits.
 
 ## Navigation admission and lifecycle continuation
 

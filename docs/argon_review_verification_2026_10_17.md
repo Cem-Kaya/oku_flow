@@ -82,4 +82,6 @@ and per-case results remain in the tracked test-evidence ledgers. The owner's
 desktop, phone display and running app/adb processes were untouched. Native GUI
 checks remain with the hosted Windows workflow. No installer or APK was
 published, no V1 promotion occurred, and physical-device/provider/clean-VM
-acceptance plus the independent asynchronous Maxine producer remain separate.
+acceptance remain separate. The later independent Maxine producer is now
+implemented with its [own policy and acceptance scope](maxine_async_producer_design.md);
+the Argon validation counts above predate that continuation.

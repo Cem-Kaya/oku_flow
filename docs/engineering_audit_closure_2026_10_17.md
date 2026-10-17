@@ -21,7 +21,7 @@ v0.2.5 downloads have not been replaced by this work.
 | NP-007 | Repaired | Every failed encoder attempt keeps its bytes; retries use exclusive GUID paths and notes use the selected finalized pair. |
 | NP-008 | Repaired | Annotation intent retains displayed source/frame/processing revision, actual GPU output signature and transform; camera retirement revokes pending copies. |
 | NP-009 | Repaired | Saved microphone None is distinct from actual audio capture; metadata follows real capture state. |
-| NP-010 | Partly repaired; independent producer open | Defer new synchronous Maxine load/frame calls during actual pan/zoom and its 150 ms tail, preserving same-frame spatial fallback and guard state. Repair runtime reload/idempotent teardown and transactional timing-event allocation. Prior actual 60 s host p95/p99 was 7.583/12.469 ms, max 80.766 ms, model load 201.780 ms. Independent async inference still needs explicit capture/flicker semantics and input/frame-age evidence; no native pan speedup is claimed. |
+| NP-010 | Implemented; native performance acceptance open | Independent Maxine producer owns its stream, private snapshots/output and one in-flight job. Model load, inference, completion and teardown stay off UI; publication requires the exact current scene and graphics fence, with immediate same-frame capture fallback. GPU fixtures cover stale/cancel/consumer lifetime and retry; native pan/quality/flicker acceptance remains separate. Historical host-tail measurements predate the implementation. |
 | PW-001 | Repaired | One serial Android session owner fences restart, stop and disconnect with immutable host/session tokens. |
 | PW-002 | Repaired, sibling website | Cancellation generation rechecked after every await and before worker/result publication. |
 | PW-003 | Repaired | Completed segments are frozen before awaits; sidecar writes serialize by media identity. |
@@ -101,13 +101,13 @@ caller wait was 7.583/12.469 ms and maximum 80.766 ms; model load took 201.780 m
 There were no timeouts, rejected calls or SDK failures. Off/on camera-tick p95
 was 1.889/6.411 ms and UI heartbeat-delay p95 was 1.914/5.010 ms. These are one
 development-PC pair with a virtual source, not pan-to-present or real optics
-acceptance. The [read-only producer design review](maxine_async_producer_design.md) found
-that an asynchronous replacement needs explicit GPU lifetime, capture pairing,
-exact presentation provenance and sharpness-flicker policies. It recommends
-retaining the independent producer follow-up until input/frame-age evidence
-justifies those changes. A later bounded patch now admits no new synchronous
-SDK work during actual navigation, fixes adapter reload/double teardown and
-allocates timing events transactionally; generic photo/readback requests do not
+acceptance. The earlier read-only review identified GPU lifetime, capture pairing,
+exact presentation provenance and sharpness-flicker policy requirements. After
+the owner's implementation request, the independent producer now implements the
+[exact-current-frame policy](maxine_async_producer_design.md), with native
+performance/optical acceptance still separate. The earlier bounded
+patch admitted no new synchronous SDK work during actual navigation, fixed
+reload/double teardown and allocated timing events transactionally; generic photo/readback requests do not
 activate that navigation gate. The [performance diagnostic record](performance_diagnostics.md)
 keeps the unsuccessful intermediate chat measurement as well as the final
 improvement; controlled sleeps are not vendor SDK performance measurements.
@@ -144,5 +144,7 @@ Private evidence for this continuation is under
   not certify these newer changes. This is partial validation, not release
   acceptance. No phone, native foreground window or public release was touched.
 
-The independent Maxine producer and broader UCT/hardware/provider/installer
-acceptance remain open with the limits recorded above.
+The independent Maxine producer is now implemented; see its
+[ownership/capture policy and fixtures](maxine_async_producer_design.md).
+Native performance, UCT/hardware/provider/installer acceptance remain open with
+the limits recorded above. Earlier gates above predate this continuation.

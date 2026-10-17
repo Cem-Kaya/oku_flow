@@ -75,7 +75,7 @@ public:
         Hr(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator_.Get(), nullptr,
                                       IID_PPV_ARGS(&commands_)), "copy command list creation failed");
         Hr(commands_->Close(), "initial copy list close failed");
-        Hr(device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence_)), "readback fence creation failed");
+        Hr(device_->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&fence_)), "readback fence creation failed");
         completed_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
         Require(completed_ != nullptr, "readback completion event creation failed");
         const auto desc = sr_->GetDesc();
@@ -93,9 +93,9 @@ public:
         buffer.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         Hr(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &buffer,
             D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readback_)), "readback buffer creation failed");
-        surface = std::make_unique<okuflow::CudaInteropSurface>(scene_.Get(), sr_.Get());
+        surface = std::make_unique<okuflow::CudaInteropSurface>(scene_.Get(), sr_.Get(), fence_.Get());
         Require(surface->IsValid(), surface->LastError().c_str());
-        Require(!surface->HasExternalSemaphore(), "fixture unexpectedly imported a presenter semaphore");
+        Require(surface->HasExternalSemaphore(), "fixture did not import its private graphics fence");
     }
     ~Harness() {
         if (pending_) {
@@ -143,6 +143,7 @@ public:
         Hr(commands_->Close(), "copy command list close failed");
         ID3D12CommandList* lists[]{commands_.Get()};
         pending_ = true;
+        Hr(queue_->Wait(fence_.Get(), fenceValue_), "graphics reader dependency failed");
         queue_->ExecuteCommandLists(1, lists);
         Hr(queue_->Signal(fence_.Get(), ++fenceValue_), "readback fence signal failed");
         Hr(fence_->SetEventOnCompletion(fenceValue_, completed_), "readback fence event failed");
@@ -160,6 +161,19 @@ public:
         const D3D12_RANGE noWrites{0, 0};
         readback_->Unmap(0, &noWrites);
         return result;
+    }
+    void AwaitNeural() {
+        const auto deadline = GetTickCount64() + 2500;
+        while (!surface->IsSuperResActive() && GetTickCount64() < deadline) {
+            const auto result = surface->RefreshSuperRes({true, fenceValue_, fenceValue_ + 1});
+            if (result == okuflow::SuperResRefreshResult::Submitted || result == okuflow::SuperResRefreshResult::Published)
+                ++fenceValue_;
+            Require(result != okuflow::SuperResRefreshResult::Failed, "private output publication failed");
+            if (result != okuflow::SuperResRefreshResult::NoWork)
+                Require(surface->WaitForIdle(), "private consumer copy failed to retire");
+            Sleep(1);
+        }
+        Require(surface->IsSuperResActive(), "asynchronous result never published for the exact current scene");
     }
     std::unique_ptr<okuflow::CudaInteropSurface> surface;
 private:
@@ -245,12 +259,19 @@ int main(int argc, char** argv) {
 
             settings.deferMlSuperResForInteraction = false;
             harness.Frame(71, settings);
+            harness.AwaitNeural();
             Require(harness.surface->IsSuperResActive() && harness.surface->SuperResRoi().valid,
                     "idle scene did not activate the neural route");
             Require(effects.Stats().created == 1 && effects.Stats().loaded == 1 && effects.Stats().ran == 1,
                     "idle scene did not load/run exactly once");
             CheckPixels(harness.Read(true), kNeuralBgra, 0);
             auto generation = harness.surface->SuperResRoi().generation;
+            harness.surface->InvalidateSuperResRequest(); // native edit, before another frame
+            Require(!harness.surface->IsSuperResActive() && !harness.surface->SuperResRoi().valid &&
+                    !harness.surface->HasSuperResWork() && !harness.surface->NeedsSuperResPolling(),
+                    "native settings edit left old neural publication authority alive");
+            Require(effects.Stats().loaded == 1 && effects.Stats().destroyed == 0,
+                    "request invalidation retired the healthy private model");
 
             settings.deferMlSuperResForInteraction = true;
             harness.Frame(181, settings);
@@ -268,13 +289,17 @@ int main(int argc, char** argv) {
 
             settings.enableMlSuperRes = true;
             harness.Frame(97, settings);
+            harness.AwaitNeural();
             Require(harness.surface->IsSuperResActive() && effects.Stats().created == 1 &&
                     effects.Stats().loaded == 1 && effects.Stats().ran == 2 && image.Stats().allocated == 2,
                     "resuming SR replaced the retained model or failed to run");
             CheckPixels(harness.Read(true), kNeuralBgra, 0);
         }
+        const auto cleanupDeadline = GetTickCount64() + 2500;
+        while ((effects.Stats().created != effects.Stats().destroyed || image.Stats().allocated != image.Stats().deallocated) &&
+               GetTickCount64() < cleanupDeadline) Sleep(1);
         Require(effects.Stats().created == effects.Stats().destroyed && image.Stats().allocated == image.Stats().deallocated,
-                "surface teardown did not retire private SDK ownership");
+                "asynchronous teardown did not retire private SDK ownership");
         std::puts("PASS: actual CUDA surface defers SDK for navigation, publishes current-frame fallback, and reuses ready model");
         return 0;
     } catch (const std::exception& error) {

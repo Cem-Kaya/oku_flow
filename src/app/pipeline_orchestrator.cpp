@@ -389,7 +389,9 @@ void PipelineOrchestrator::UpdateTimerPolicy()
         blockingCudaPresent
             ? std::min(effectiveViewportRate_, idleCameraRate)
             : effectiveViewportRate_;
-    const int targetRate =
+    const bool asyncSceneWork =
+        callbacks_.hasAsyncSceneWork && callbacks_.hasAsyncSceneWork();
+    const int targetRate = asyncSceneWork ? effectiveViewportRate_ :
         viewportActive
             ? activeViewportRate
             : (cameraActive ? idleCameraRate : 10);

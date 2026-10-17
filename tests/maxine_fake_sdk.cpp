@@ -18,7 +18,8 @@ std::atomic_int lastDevice{-1}, failLoad{}, failInputTransfer{}, failEffectRun{}
 std::atomic<DWORD> lastThread{};
 std::atomic<HANDLE> runEntered{}, runRelease{}, runReturned{};
 std::atomic_bool fillOutput{};
-std::atomic_uint outputBgra{};
+std::atomic_uint outputBgra{}, inputFirstPixel{};
+std::atomic_bool echoInput{};
 
 void ObserveDevice() {
     CUdevice device = -1;
@@ -35,7 +36,7 @@ struct Effect {
 extern "C" __declspec(dllexport) void __cdecl OkuFlowFakeRead(MaxineFakeSnapshot* result) {
     *result = {allocated.load(), deallocated.load(), created.load(), destroyed.load(),
         loaded.load(), ran.load(), transferred.load(), inputTransfers.load(), outputTransfers.load(),
-        lastDevice.load(), lastThread.load()};
+        lastDevice.load(), lastThread.load(), inputFirstPixel.load()};
 }
 extern "C" __declspec(dllexport) void __cdecl OkuFlowFakeReset() {
     allocated = deallocated = created = destroyed = loaded = ran = transferred = 0;
@@ -46,7 +47,7 @@ extern "C" __declspec(dllexport) void __cdecl OkuFlowFakeReset() {
     failInputTransfer = failEffectRun = failOutputTransfer = 0;
     runEntered = runRelease = runReturned = nullptr;
     fillOutput = false;
-    outputBgra = 0;
+    outputBgra = 0; inputFirstPixel = 0; echoInput = false;
 }
 extern "C" __declspec(dllexport) void __cdecl OkuFlowFakeFailLoad(int status) { failLoad = status; }
 extern "C" __declspec(dllexport) void __cdecl OkuFlowFakeFailStage(MaxineFakeStage stage, int status) {
@@ -65,6 +66,7 @@ extern "C" __declspec(dllexport) void __cdecl OkuFlowFakeFillOutput(bool enabled
     outputBgra = bgra;
     fillOutput = enabled;
 }
+extern "C" __declspec(dllexport) void __cdecl OkuFlowFakeEchoInput(bool enabled) { echoInput = enabled; }
 extern "C" __declspec(dllexport) const char* __cdecl NvCV_GetErrorStringFromCode(NvCV_Status) {
     return "private controlled fake SDK status";
 }
@@ -104,13 +106,21 @@ extern "C" NvCV_Status NvCV_API NvCVImage_Transfer(
     if (!source || !destination || !source->pixels || !destination->pixels || !stream)
         return NVCV_ERR_PARAMETER;
     const bool input = source->componentType == NVCV_U8;
-    if (input) ++inputTransfers;
-    else ++outputTransfers;
+    if (input) {
+        ++inputTransfers;
+        if (echoInput) {
+            unsigned pixel{};
+            if (cuStreamSynchronize(stream) != CUDA_SUCCESS ||
+                cuMemcpyDtoH(&pixel, reinterpret_cast<CUdeviceptr>(source->pixels), sizeof(pixel)) != CUDA_SUCCESS)
+                return NVCV_ERR_CUDA;
+            inputFirstPixel = pixel;
+        }
+    } else ++outputTransfers;
     const int failure = input ? failInputTransfer.exchange(0) : failOutputTransfer.exchange(0);
     if (failure) return static_cast<NvCV_Status>(failure);
     if (!input && fillOutput && cuMemsetD2D32Async(
             reinterpret_cast<CUdeviceptr>(destination->pixels), static_cast<size_t>(destination->pitch),
-            outputBgra.load(), destination->width, destination->height, stream) != CUDA_SUCCESS)
+            (echoInput ? inputFirstPixel.load() : outputBgra.load()), destination->width, destination->height, stream) != CUDA_SUCCESS)
         return NVCV_ERR_CUDA;
     ++transferred;
     // This fixture validates ownership and ABI transitions, never SR pixels.
