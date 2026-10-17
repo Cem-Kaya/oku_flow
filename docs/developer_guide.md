@@ -14,7 +14,7 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   a second first-use click opens the local-only tool at okuflow.com/transcribe/.
   Pick the speech model and processor explicitly there. Audio/text are never
   uploaded by the tool. Returned text is shown under the recording and saved
-  beside it as an `.okuflow-transcript.json` sidecar. Existing notes files are
+  beside it as a `.okuflow-transcript-<UUID>.json` sidecar. Existing notes files are
   preserved; transcription no longer runs in the Windows app.
 - Camera selection follows the saved physical device rather than its changing
   enumeration index; older settings use their numeric index until an identity
@@ -249,6 +249,17 @@ to `OFF` only for a bundle that intentionally omits the adapter. OkuFlow links
 no Maxine import library and ships no proprietary runtime or model files.
 
 ### Release bundle
+
+Release provenance now comes from CMake's per-configuration
+`okuflow-build-facts/Release.json`. The bundle checks that manifest against the
+cache and built application, uses its effective CPU/CUDA tier for capability
+selection, and stages the license from the compiler's actual toolkit. Metadata
+requires `-BuildDirectory` and checks the staged application and CUDA notice;
+ambient `CUDA_PATH` cannot change the recorded toolkit version or target
+architectures. A successful application build seals the facts and executable
+hashes; configure-only changes cannot relabel old CPU/CUDA bytes. Reconfigure
+and build an older tree to create this evidence. See
+[packaging provenance fixtures](../tests/README.md#packaging-provenance-fixtures-rb-001rb-002).
 
 For a complete build-to-GitHub release, use `scripts/publish_windows_release.ps1`
 with a new version, reviewed notes, a previous MSI fixture and `-Publish`.
@@ -978,6 +989,17 @@ transports plus two healthy default probes permit handback. `BorrowOnly` has no
 lifecycle effects; explicit webcam intent only releases idle owned support.
 See the provenance pins, private fixtures and limits in adb_distribution.md.
 
+Phone startup retains one 12-second Windows deadline, including listener setup
+and any initial codec retry. The receiver sends its remaining phone budget with
+a one-second decoding reserve; Android divides that remainder across at most
+six fallback modes and reports candidate progress. Queues, discovery, setup and
+retry gaps consume the same budget. HEVC's four-second decoder watchdog begins
+with real encoded input rather than codec headers. See the
+[startup timing contract](../android/PROTOCOL.md#startup-budget-and-candidate-progress).
+Validate changes with `scripts/build_android.ps1 -Lint`, the host protocol suite
+and the tracked Windows `phone_camera_contract` gate; fake clocks and protocol
+fixtures do not establish real-phone startup or stalled-driver recovery.
+
 ### Progress deadlines
 
 Steady-state GPU completion and deferred camera readback have one-second
@@ -1093,3 +1115,85 @@ explicit offsets, JSON date conversion and rejection of ambiguous timestamps.
 Annotation snapshots now encode into a private same-directory temporary and
 publish by atomic no-clobber rename. Timestamp collisions receive unique suffixes;
 only committed files are added to notes. Failed encode bytes stay unpublished.
+
+
+## Recording encoder fallback evidence
+
+Failed AV1 or native-GPU initialization retains its output while the next
+codec/input attempt uses an exclusively created GUID sibling. Notes use the
+selected writers' actual paths after both finalize. See [recording attempts
+and audio timeline validation](recording_attempts_and_timeline.md) for file
+ownership, regression fixtures and the opt-in marked Windows AAC diagnostic.
+
+### Transactional publication and toolchain checks (RB-003 / RB-004)
+
+The bundle entrypoint now defaults to Ninja and initializes Visual Studio 2022
+x64 itself. Ninja is required because the mandatory shared-source equivalence
+fixture consumes `compile_commands.json`. Other generators, including Visual
+Studio and Ninja Multi-Config, fail before configuration. Generator options in
+`CMAKE_ARGS` are refused; use `CMAKE_GENERATOR=Ninja`. Keep an old cache intact
+and select a fresh `OKUFLOW_BUNDLE_BUILD_DIR` when migrating generators.
+
+Run `scripts\build_release_bundle.bat --check-toolchain` to check VS2022 x64,
+Ninja, CMake, Qt deployment/license prerequisites and any existing cache without
+configuring, compiling or modifying `dist`. Normal builds force Release, tests
+and compilation-database export after optional CMake arguments.
+
+Each invocation owns a fresh `dist\OkuFlow.staging-<guid>\` directory. The
+publisher validates every prior runtime file against its manifest and refuses
+owner `output`/`captures`, unlisted files/empty directories, reparse paths,
+running images and locked files. A primary refusal leaves it untouched and
+selects exactly `dist\OkuFlow2\`; an unsafe secondary also stays untouched and
+fails publication. The switch uses same-parent directory renames with rollback,
+then verifies all new bytes. The complete preceding runtime remains in
+`OkuFlow.previous-<guid>` or `OkuFlow2.previous-<guid>` for recovery; packaging
+never recursively deletes these generations. Transaction-failure staging is
+retained for diagnosis. Review retained generations manually when reclaiming
+space, with the app closed and owner captures kept separately.
+
+Private regressions are documented in
+[tests/README.md](../tests/README.md#bundle-publication-and-toolchain-fixtures-rb-003--rb-004).
+They do not substitute for the tracked release matrix or real installer checks.
+
+## Exact notes recording selection (audit PW-004)
+
+New notes cards bind the finalized Original file to an immutable UUID/size/content
+fingerprint in `<original-video>.okuflow-media.json`. The existing serial notes
+worker creates/reuses that marker and embeds it in the card; hashing is never on
+the application UI thread. The notes browser checks the selected folder's marker
+and actual bytes in bounded 1 MiB slices before handoff, restoration or saving.
+Two unrelated trees with the same folder/video names cannot substitute content,
+even when size and modification time match. Keep the marker with its recording
+when moving/copying the notes tree. Version-2 transcript sidecars carry the same
+identity. The filename is `.okuflow-transcript-<UUID>.json` (61 characters,
+independent of the video basename), so an old writer cannot overwrite a new
+recording's transcript after an awaited file operation. Legacy basename-only
+sidecars, size/time sidecars and unbound old notes do not restore/transcribe
+automatically; playback and direct selection in Transcribe remain available.
+
+The website verifies the transferred File before model/cache work and echoes its
+identity on the private channel. Stop during fingerprint I/O uses its existing
+job fence; stale work cannot create a worker or publish results. These changes
+preserve media-relative transcript times and immutable serialized sidecar saves.
+Run the desktop-free `node --test scripts/test_notes_transcribe_bridge.mjs` and
+sibling `npm run check`, then the tracked native notes fixture when permitted.
+This patch's Node contracts are local boundary evidence, not actual Chrome grant,
+codec, native-UI or release acceptance. Preview regeneration now preserves
+immutable markers; use a fresh `--out` folder after changing generated media.
+
+## Opt-in chat and Maxine performance evidence
+
+Use the excluded `assistant_chat_benchmark` target for bounded offline chat
+render tails and controlled `DeadlineWorker` waits. `OKUFLOW_MAXINE_PROFILE=1`
+separately collects bounded actual Maxine host-call distributions during an
+authorized native session. Eligible append-only chat updates now reparse only
+the maximum-width final assistant body, with full-render fallbacks and reading
+anchor/geometry parity checks. Neither diagnostic proves native
+pan-to-present/stale-frame performance. See [measurement commands and
+limitations](performance_diagnostics.md).
+
+Native marked AAC/video verification reproduced and then closed three-second
+AAC gap compaction on the tested Windows codec. Missing PCM intervals now use
+bounded worker-side silence with sample-count accounting. The fixed synthetic
+markers differed by about -0.633 ms; this does not establish physical microphone
+clock accuracy or long-soak fidelity. See the linked timeline evidence.

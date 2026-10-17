@@ -4,12 +4,30 @@
 
 #include <QTemporaryDir>
 #include <QFileInfo>
+#include <QFile>
+#include <QSet>
 #include <QtTest>
 #include <limits>
 #include <chrono>
 
 namespace okuflow {
 struct RecordingManagerTestAccess {
+    static void SetEncoderStart(RecordingManager& manager,
+        std::function<bool(bool, const QString&, VideoRecorder::Codec)> start) {
+        manager.encoderStartOverride_ = std::move(start);
+    }
+    static bool StartSegment(RecordingManager& manager) {
+        RecordingManager::QueuedFrame frame;
+        frame.original.width = frame.original.height = 64;
+        frame.original.identity.captureClock100ns = 100'000;
+        return manager.StartSegment(frame);
+    }
+    static QString SelectedPath(RecordingManager& manager, bool processed) {
+        return processed ? manager.segmentProcessedPath_ : manager.segmentOriginalPath_;
+    }
+    static QString RequestedPath(RecordingManager& manager, bool processed) {
+        return manager.SegmentPath(processed);
+    }
     static void PrimeStartingWithoutCodecWorker(RecordingManager& manager) {
         manager.ShutdownForProcessExit();manager.shutdownRequested_=false;
         manager.stopRequested_=false;manager.frameQueue_.clear();manager.audioQueue_.clear();
@@ -85,6 +103,78 @@ struct FakeSinkWriterStatistics {
 class RecordingManagerTests : public QObject {
     Q_OBJECT
 private slots:
+    void failedCodecBytesCannotSuppressFallback_data()
+    {
+        QTest::addColumn<bool>("failProcessed");
+        QTest::newRow("processed-metadata-failure") << true;
+        QTest::newRow("original-metadata-failure") << false;
+    }
+    void failedCodecBytesCannotSuppressFallback()
+    {
+        QFETCH(bool, failProcessed);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        okuflow::UserDataPaths paths(directory.path(), QStringLiteral("C:/fixture-install"));
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths);
+        okuflow::RecordingSessionInfo session;
+        session.id = QStringLiteral("codec-fallback-fixture");
+        manager.SetRequested(true, session);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        QStringList attempted;
+        Access::SetEncoderStart(manager, [&](bool processed, const QString& path,
+                                             okuflow::VideoRecorder::Codec codec) {
+            attempted.append(path);
+            QFile output(path);
+            if (!output.open(QIODevice::WriteOnly | QIODevice::NewOnly) ||
+                output.write("fixture encoder metadata") != 24) return false;
+            return codec != okuflow::VideoRecorder::Codec::Av1 ||
+                   processed != failProcessed;
+        });
+        QVERIFY(Access::StartSegment(manager));
+        QCOMPARE(manager.State(), okuflow::RecordingState::Recording);
+        QCOMPARE(attempted.size(), failProcessed ? 3 : 4);
+        const QString processed = Access::SelectedPath(manager, true);
+        const QString original = Access::SelectedPath(manager, false);
+        QVERIFY(processed != Access::RequestedPath(manager, true));
+        QVERIFY(original != Access::RequestedPath(manager, false));
+        QVERIFY(processed != original);
+        for (const QString& path : attempted) {
+            QFile output(path);
+            QVERIFY(output.open(QIODevice::ReadOnly));
+            QCOMPARE(output.readAll(), QByteArray("fixture encoder metadata"));
+        }
+        QCOMPARE(QSet<QString>(attempted.begin(), attempted.end()).size(), attempted.size());
+        QVERIFY(manager.StopSession(session.id));
+        Access::Finish(manager, false);
+    }
+    void preexistingRecordingOutputIsPreserved()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        okuflow::UserDataPaths paths(directory.path(), QStringLiteral("C:/fixture-install"));
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths);
+        okuflow::RecordingSessionInfo session;
+        session.id = QStringLiteral("codec-collision-fixture");
+        manager.SetRequested(true, session);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        const QString path = Access::RequestedPath(manager, false);
+        QFile output(path);
+        QVERIFY(output.open(QIODevice::WriteOnly | QIODevice::NewOnly));
+        QCOMPARE(output.write("user-owned"), 10);
+        output.close();
+        int attempts = 0;
+        Access::SetEncoderStart(manager, [&](bool, const QString&,
+                                             okuflow::VideoRecorder::Codec) {
+            ++attempts;
+            return true;
+        });
+        QVERIFY(!Access::StartSegment(manager));
+        QCOMPARE(attempts, 0);
+        QVERIFY(output.open(QIODevice::ReadOnly));
+        QCOMPARE(output.readAll(), QByteArray("user-owned"));
+    }
     void terminalPublicationRetiresOldSession_data()
     {
         QTest::addColumn<bool>("success");

@@ -659,3 +659,59 @@ aligned with the project goals.
   (207) within the owned startup deadline, preserving other request failures.
   Run `scripts/test_lecture_camera.ps1` after readiness changes. This private
   protocol fixture does not replace inspecting genuine virtual-camera frames.
+
+## Packaging provenance authority (2026-10-17)
+- Execute WiX only through `windows-installer/wix_tool.ps1`: verify the pinned
+  archive and complete extracted tree before each invocation. Do not restore
+  ambient-feed installs or reuse unverified installed shims.
+- Release CUDA tier, compiler/runtime versions, architecture coverage and notice
+  identity come from CMake's per-configuration `okuflow-build-facts` manifest.
+  Require its successful post-build facts/executable seal, preserve
+  cache/configuration and built/staged-byte checks; shell CUDA paths
+  are inputs to configuration, never independent release facts. Run the private
+  `scripts/test_release_provenance.ps1` fixtures after changing this contract;
+  they do not replace shipping builds, hardware or disposable-VM acceptance.
+
+## Transactional bundle publication and generator preflight (2026-10-17)
+- `build_release_bundle.bat` requires Ninja, initializes only VS2022 x64, and
+  forces the compilation database required by shared-source equivalence. Use
+  `--check-toolchain` for read-only tool/Qt/cache checks. Unsupported generators
+  and incompatible caches require a fresh `OKUFLOW_BUNDLE_BUILD_DIR`; never
+  delete an existing cache as an automatic repair.
+- Use unique `dist/OkuFlow.staging-<guid>` generations and the tracked
+  `publish_release_bundle.ps1` transaction. Before renaming a prior bundle,
+  require its exact manifest inventory/hashes, no owner output/captures,
+  unknown files/directories, reparse points, running images or file locks.
+  Primary refusal may select exactly `OkuFlow2`; secondary refusal is fatal.
+- Exchange only same-parent directory names, retain the complete prior
+  `*.previous-<guid>` generation, rehash after switching, and roll back a failed
+  rename/verification. Never copy or recursively delete an old bundle to force
+  publication. Preserve transaction-failure staging and recovery evidence.
+- Run `test_bundle_publication.ps1` and `test_bundle_toolchain.ps1` for private
+  transaction/preflight regressions. They do not establish compilation, native
+  GUI, hardware, installer or full release acceptance.
+
+## Exact notes recording identity (2026-10-17)
+- Keep the immutable `.okuflow-media.json` marker with its finalized Original
+  recording. Generate/reuse it only in the serial notes worker; never hash a large
+  recording synchronously on the native UI thread. Existing mismatched markers
+  are refusals, not permission to replace a recording's UUID.
+- Bind granted directory resolution, fresh bounded file fingerprints, handoff
+  messages and version-2 transcript sidecars to the same full identity. A folder
+  name, basename, byte size or modification time alone cannot authorize reuse.
+  Address transcript sidecars by UUID (`.okuflow-transcript-<mediaId>.json`), so
+  an old awaited writer cannot overwrite a successor recording at the same video
+  basename. Do not trust or automatically migrate basename-only legacy sidecars.
+  Preserve immutable save snapshots, per-media write order and absolute media PTS.
+
+## Bounded performance evidence (2026-10-17)
+
+- Use the excluded `assistant_chat_benchmark` target only as explicit offline
+  Qt-offscreen CPU evidence; preserve its raw JSON and invalid anchor/selection
+  results. Controlled `DeadlineWorker` sleeps are not Maxine measurements.
+- `OKUFLOW_MAXINE_PROFILE=1` retains at most the last 16,384 host-call samples
+  per worker and emits a teardown summary. Keep omitted-earlier counts and
+  censored timeout/throw outcomes visible. No per-frame file I/O is permitted.
+- Native camera/desktop profiling still requires an explicitly available
+  session. Host waits, GPU completion, sensor latency, pan-to-present and stale
+  result/queue traces are distinct evidence. See `docs/performance_diagnostics.md`.

@@ -1,5 +1,25 @@
 # OkuFlow Tests
 
+## Packaging provenance fixtures (RB-001/RB-002)
+
+Run `pwsh -NoProfile -File scripts/test_release_provenance.ps1 -CMake
+<cmake.exe> -Ninja <ninja.exe>`. This desktop-free script configures private
+synthetic imported targets only; it never builds OkuFlow or installs anything.
+It checks corrupted WiX archives, preinstalled-shim isolation, changed/added
+tool dependencies, CPU and explicit CUDA toolkit facts under conflicting
+ambient variables, stale cache/configuration, staged-application mismatches,
+changed runtime/license bytes, missing/changed build seals, and CPU-to-CUDA
+reconfiguration retaining the prior CPU executable. Imported synthetic targets
+explicitly invoke the production post-build seal command without compiling.
+Actual metadata and SPDX generation use
+private synthetic payloads and signature results restricted to that fixture
+root. No certificate or credential is accessed. Optional `-WixPackage
+<reviewed-cached-wix.4.0.6.nupkg>` additionally runs the real pin's version check
+and compiles/extracts a tiny synthetic MSI from a verified private extraction,
+without network access, signing or installation.
+Evidence stays under `%LOCALAPPDATA%/OkuFlow/release-provenance-fixtures/`.
+These are script-contract results, not shipping builds or MSI/VM acceptance.
+
 `node --test scripts/test_notes_transcribe_bridge.mjs` checks the actual embedded
 notes bridge with controlled asynchronous file-handle barriers. It requires
 Node's built-in test/VM modules only and creates no browser, model or media.
@@ -411,6 +431,16 @@ First-run selection prefers only a companion that answered its handshake;
 saved webcam and legacy numeric preferences still win. Android settings tests
 verify a new host session clears only the light. The HEVC row explicitly skips only when the optional decoder probe fails;
 H.264 remains required.
+Fake-clock startup rows retain the original 12-second host deadline through
+negotiation/codec retry and its one-second decode reserve. They also check a
+stalled first mode followed by a decoding fallback, CSD without real input, the
+four-second HEVC clock after real input, and the unchanged 12-second silence
+bound. Android's `CameraStartupPlanTest` uses the production planner with a fake
+monotonic clock: stalled-first/fallback-success, one/two/six candidates, returned
+unused shares, depleted budgets, queue/setup time and retired-token cancellation.
+Run it with the tracked `scripts/build_android.ps1 -Lint` workflow. These timing
+fixtures do not validate physical Camera2/codec-driver latency or cancellation
+inside a blocked platform call.
 Private fake-server rows also verify targeted USB recovery, a healthy device
 with a stuck camera, a hung shared server, stalled transport selection,
 replug races, old listing transport IDs, unsupported-service throttling,
@@ -1125,3 +1155,92 @@ Android host protocol selection includes `scripts/android_camera_probe.py`, whic
 its tests import outside the Android tree. Probe-only edits select the Python
 host suite without rebuilding Windows. CI also selects the job for workflow
 and impact-manifest changes. The change-selector fixture checks this dependency.
+
+
+### Recording fallback and marked AAC timeline evidence
+
+The recording manager fixture injects failed AV1 metadata in either leg and
+verifies distinct H.264 output with all failed bytes retained. Native codec
+fixtures check exclusive sink creation; the GPU fixture rejects a native sink
+after metadata and then encodes through worker readback. The opt-in AAC gap
+run compares decoded 440/880 Hz audio and red/green video markers. See
+[the timeline contract](../docs/recording_attempts_and_timeline.md) for settings
+and evidence limits. Fake manager passes do not establish codec behavior.
+
+## Bundle publication and toolchain fixtures (RB-003 / RB-004)
+
+Run from a Windows PowerShell 7 terminal:
+
+```powershell
+pwsh -NoProfile -File scripts/test_bundle_publication.ps1
+pwsh -NoProfile -File scripts/test_bundle_toolchain.ps1
+```
+
+Publication fixtures use synthetic manifest-owned bundles under LocalAppData,
+including a locked secondary DLL and a private copied command interpreter
+started without a window and exited normally through redirected stdin. They
+assert byte-for-byte old-generation preservation, running-image refusal,
+primary/secondary exchange, rollback after injected rename/verification errors,
+and rejection of owner output/captures, unknown files/directories, tampering,
+external staging and junctions. Failure injection loads only the actual helper
+function definitions into the private fixture; production exposes no bypass.
+
+The toolchain fixture invokes the actual batch `--check-toolchain` entrypoint.
+It checks default Ninja/VS2022 x64/Qt prerequisites, refuses Visual Studio,
+Ninja Multi-Config, Makefiles and generator overrides, and proves stale cache
+bytes survive refusal. It creates no build tree or release payload. Run it on
+a machine with the documented VS2022/Qt SDK installed. Both commands preserve
+private fixture evidence and establish scoped transaction/preflight behavior,
+not application compilation, GUI/hardware, MSI or full release acceptance.
+
+The bundle fixtures are also registered as `bundle_publication_contract` and
+`bundle_toolchain_contract` in the tracked CPU/CUDA inventories, with absolute
+helper/runtime inputs. Publication takes the native process-identity resource
+lock because its private console image shares an OkuFlow application name.
+Both carry `headless;packaging`, require no free owner desktop and retain the
+same scoped limits described above.
+
+## Exact recording identity fixtures (audit PW-004)
+
+The notes bridge Node contracts cover unrelated same-named folder trees, matching
+name/size/mtime with different bytes, different UUIDs for identical bytes, wrong
+returned identity, stale/legacy sidecar refusal, identity-bearing File handoff,
+revalidation before sidecar save and bounded 1 MiB reads. A `createWritable`
+barrier replaces the media bytes, marker UUID and saved successor transcript
+after old validation; the old completion writes only its own UUID target and
+cannot overwrite that successor. The tests also refuse legacy basename-only
+sidecars without modifying/migrating them. Existing PW-003 barriers
+still prove immutable snapshots and ordered writers. `notes_html` additionally
+checks native UUID stability, no-clobber refusal after same-length replacement,
+escaped generated metadata and the fixed cross-language fingerprint vector.
+Native cases were added but must be compiled/run through the tracked gate.
+The sibling website's cancellation contracts verify byte validation before cached
+result reuse and Stop during a held fingerprint read. No browser/model/device is
+started by either Node command. For the opt-in actual Chrome notes fixture, the
+recording must be exactly the file identified by the generated notes and its
+sibling `.okuflow-media.json`; metadata-only lookalikes are deliberately refused.
+
+## Opt-in performance measurements (NP-010 / PF-001)
+
+`assistant_chat_benchmark` is excluded from the default build and CTest. It
+forces Qt offscreen, constructs production chat widgets with bounded synthetic
+snapshots and records per-delta p50/p95/p99 CPU/queued-callback timings, exact
+selection endpoints and reading-anchor displacement. Its controlled
+`DeadlineWorker` sleeps are explicitly separate from actual Maxine timings.
+The app-less `deadline_worker` fixture also tests rejection of a concurrent call
+without queueing/executing it. See [commands, evidence and limits](../docs/performance_diagnostics.md).
+
+
+`recording_integrity` also checks the production PCM planner: exact three-second
+silence, delayed onset, independent segment reset, one-frame rounding tolerance,
+covered overlaps, 44.1 kHz fractional conversion and huge/overflowing timestamp
+refusal without consuming the cursor. Native codec passes check exact submitted
+PCM-frame totals (144,000 normal, 288,000 for the three-second diagnostic),
+then decode and compare actual tone/video markers. Original failing evidence
+remains separate from the post-repair run.
+
+The post-repair Windows marked diagnostic passed: three-second-gap PCM
+submission was 288,000 frames, with decoded audio/video markers at 3.999333 /
+3.999967 seconds (about -0.633 ms). Normal input stayed at 144,000 submitted
+frames. This is native synthetic codec evidence, not a physical microphone or
+release-matrix result; see the retained-evidence details in the timeline guide.

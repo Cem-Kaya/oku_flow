@@ -296,6 +296,10 @@ private:
     std::size_t encoderSubmitSampleIndex_{0};
     std::size_t encoderSubmitSampleCount_{0};
     UINT processedWidth_{};
+    QString segmentProcessedPath_;
+    QString segmentOriginalPath_;
+    // Deterministic codec-failure fixture; normal instances use VideoRecorder.
+    std::function<bool(bool, const QString&, VideoRecorder::Codec)> encoderStartOverride_;
     bool segmentFinalized_{true};
     UINT processedHeight_{};
     UINT originalWidth_{};

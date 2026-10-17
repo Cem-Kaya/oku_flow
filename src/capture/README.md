@@ -22,13 +22,20 @@ launches the installed companion, and feeds a system AVC or HEVC decoder.
 HEVC enumerates synchronous MFTs accepting HEVC/NV12, including the installed
 Microsoft HEVC extension. This synchronous transform may internally use DXVA.
 HEVC is advertised only after activation and an input/output configuration probe.
-A failed HEVC decoder or four seconds without its first decoded frame closes the
+A failed HEVC decoder or four seconds after real encoded input without its first decoded frame closes the
 session and reconnects once advertising only AVC. Phone preferences survive,
 and frame sequence/timestamps remain continuous through the fallback. Hardware
 output can share the capture DXGI manager and pins its samples; CPU NV12 uses
 the normal buffer normalization path. Phone stop follows the same bounded
 shutdown coordinator. `SetPhoneZoom` / `SetPhoneCamera` coalesce commands and
 are no-ops for webcams; automatic viewport-to-phone zoom is later work.
+
+Initial phone startup keeps one 12-second deadline through negotiation and codec
+retry. `PhoneStartupBudget` sends the actual remainder less one second reserved
+for decoding as `start.startupBudgetMs`; Android divides it across bounded mode
+attempts and reports retry diagnostics. CSD alone does not consume the HEVC
+first-output clock, while packet/decoded progress remain independently bounded.
+See `android/PROTOCOL.md` for compatibility and per-candidate timing.
 `SetPhoneTorch` also coalesces requests. Its bounded actor overload returns
 admission only for this live phone session, before split stop begins, with a
 nonnull shared cancellation token and positive steady-clock millisecond deadline.

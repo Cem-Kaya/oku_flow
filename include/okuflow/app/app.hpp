@@ -332,6 +332,10 @@ private:
                                UINT processedHeight,
                                const CapturedFrame& originalFrame);
     void QueueAnnotationSnapshot(int reason);
+    struct AnnotationGpuPresentation;
+    bool AnnotationFrameMatches(const UctFrameContext& candidate) const;
+    bool AnnotationGpuPresentationMatches(const AnnotationGpuPresentation& candidate) const;
+    void CancelAnnotationCaptures();
     void SaveAnnotationSnapshot(const uint8_t* processedData,
                                 UINT processedWidth,
                                 UINT processedHeight,
@@ -561,11 +565,26 @@ private:
     UINT64 pendingPhotoReadbackId_{};
     CapturedFrame pendingPhotoOriginal_;
     QElapsedTimer pendingPhotoReadbackTimer_;
+    struct AnnotationGpuPresentation {
+        const void* texture{};
+        UINT width{}, height{};
+        ViewTransform transform;
+        bool superRes{}, focusMarker{};
+        float focusX{}, focusY{};
+    };
     struct PendingAnnotationCapture {
         QVector<AnnotationStroke> strokes;
         ViewTransform transform;
         QString heading;
+        UctFrameContext frame;
+        std::uint64_t sceneRevision{};
+        AnnotationGpuPresentation presentation;
     };
+    std::optional<UctFrameContext> lastAnnotationPresentation_;
+    std::optional<AnnotationGpuPresentation> lastAnnotationGpuPresentation_;
+    std::uint64_t annotationSceneRevision_{};
+    std::uint64_t lastAnnotationSceneRevision_{};
+    bool annotationPresentationCuda_{};
     std::deque<PendingAnnotationCapture> annotationCaptureQueue_;
     std::optional<PendingAnnotationCapture> activeAnnotationCapture_;
     UINT64 pendingAnnotationReadbackId_{};

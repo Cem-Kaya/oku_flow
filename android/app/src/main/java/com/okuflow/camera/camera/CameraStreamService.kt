@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -44,6 +45,8 @@ class CameraStreamService : Service() {
     private lateinit var power: PowerManager
     private lateinit var streamingIntent: StreamingIntentStore
     private lateinit var sessionOwner: StreamSessionOwner
+    private data class StartupWindow(val sessionId: String, val startedAtMs: Long, val budgetMs: Long)
+    private var startupWindow: StartupWindow? = null
     @Volatile private var thermalFps = 60
     @Volatile private var lastSettings: CameraSettings? = null
     @Volatile private var lastThermalFps = 0
@@ -99,7 +102,9 @@ class CameraStreamService : Service() {
             onState = { id, state -> onOwner {
                 if (!streamingIntent.canStart(true) || !sessionOwner.streaming(id)) return@onOwner
                 if (!server.state(id, state)) return@onOwner
+                if (state.optString("event") == "retrying") return@onOwner
                 if (state.optString("event") == "streaming") {
+                    startupWindow = null
                     HostLink.report(null)
                     HostLink.publish(HostLinkState.Streaming)
                 }
@@ -119,6 +124,7 @@ class CameraStreamService : Service() {
                 server.error(id, message, problem.wireCode)
             } })
         sessionOwner = StreamSessionOwner({ ::server.isInitialized && server.connected(it) }, { id ->
+            startupWindow = null
             lastSettings = null
             if (::server.isInitialized) server.invalidateStream(id)
             engine.stop()
@@ -175,9 +181,12 @@ class CameraStreamService : Service() {
         mainExecutor.execute { if (!destroyed) action() }
     }
 
-    private fun command(id: String, command: JSONObject) = onOwner { commandOnOwner(id, command) }
+    private fun command(id: String, command: JSONObject) {
+        val receivedAtMs = SystemClock.elapsedRealtime()
+        onOwner { commandOnOwner(id, command, receivedAtMs) }
+    }
 
-    private fun commandOnOwner(id: String, command: JSONObject) {
+    private fun commandOnOwner(id: String, command: JSONObject, receivedAtMs: Long) {
         if (!streamingIntent.canStart(true) || !sessionOwner.accepts(id)) return
         try {
             when (command.getString("op")) {
@@ -187,7 +196,11 @@ class CameraStreamService : Service() {
                         server.error(id, "Phone is too hot", HostProblem.TooHot.wireCode)
                         return
                     }
-                    if (sessionOwner.start(id)) restart()
+                    if (sessionOwner.start(id)) {
+                        startupWindow = StartupWindow(id, receivedAtMs,
+                            command.optLong("startupBudgetMs", CameraStartupPlan.MAX_STARTUP_MS))
+                        restart()
+                    }
                 }
                 "stop" -> {
                     sessionOwner.stop(id)
@@ -220,7 +233,11 @@ class CameraStreamService : Service() {
             lastSettings = settings
             lastThermalFps = thermalFps
             publishIdle()
-            engine.start(id, settings, codecs, thermalFps, server.hostLimits(id))
+            // Settings/thermal restarts before the first video must not renew
+            // the original host budget. A running stream uses the normal cap.
+            val startup = startupWindow?.takeIf { it.sessionId == id }
+                ?: StartupWindow(id, SystemClock.elapsedRealtime(), CameraStartupPlan.MAX_STARTUP_MS)
+            engine.start(id, settings, codecs, thermalFps, server.hostLimits(id), startup.budgetMs, startup.startedAtMs)
         }
     }
 

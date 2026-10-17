@@ -201,9 +201,13 @@ blocking finalization remain separate limits.
 [Review 47](../improvement_ideas/47-sequential-priority-fixes-2026-10-11.md) adds
 separate bounded AAC input accounting in PCM frames, including stale/padded
 packet progress, and audio-only loss counters. H.264/AV1 codec fixtures decode
-the complete audio track. A strict opt-in playback-gap diagnostic still fails
-and is retained as an open quality issue; admission does not depend on the
-broken timestamp mapping. Opus hit Claude's rate limit before its final review.
+the complete audio track. The original strict playback-gap failure was later
+confirmed with distinct decoded audio/video markers and repaired with bounded
+PCM silence; the marked native regression now passes. See
+[recording timeline evidence](recording_attempts_and_timeline.md) for exact
+measurements and the separate real-microphone acceptance limits. Admission does
+not depend on timestamp-derived AAC packet credit. Opus hit Claude's rate limit
+before its final review.
 
 [Review 48](../improvement_ideas/48-gemini-independent-review-2026-10-11.md)
 records independent source/probe verdicts for all four returned Gemini reports
@@ -451,7 +455,8 @@ legacy `powershell.exe` bridge.
 - Snapshots are saved as timestamp-matched `_original.jpg` and `_processed.jpg`
   pairs under `Documents\OkuFlow\Photos\YYYY-MM-DD\` by default.
 - Recordings are saved as timestamp-matched `_original.mp4` and
-  `_processed.mp4` pairs under
+  `_processed.mp4` pairs (or distinct `_attempt-{UUID}` names after an encoder
+  fallback) under
   `Documents\OkuFlow\Recordings\YYYY-MM-DD\`; encoding is live AV1 when
   available and otherwise live H.264.
 - The processing status label under Advanced Image diagnostics distinguishes
@@ -471,8 +476,10 @@ legacy `powershell.exe` bridge.
   the inspector is narrow, and feature status labels wrap within the panel.
 - Read transcribes the current view through the configured vision provider.
   New Codex settings select Luna 6 with low reasoning; existing explicit model
-  choices remain available. There is no separate local recognition engine,
-  language-data installation, or automatic text-recognition toggle.
+  choices remain available. Read uses the selected vision provider. The separate
+  experimental, opt-in [Ultra Clear Text](ultra_clear_text.md) development
+  feature uses installed Windows OCR languages locally; it is not part of the
+  published v0.2.5 download.
 - The non-blocking first-run Setup Assistant installs or updates the official
   Codex CLI and offers NVIDIA Video Effects on supported hardware. Downloads
   are pinned and verified, with a Windows downloader retry on transfer failure.
@@ -626,3 +633,22 @@ Assistant displays its status too. See [Windows runtime setup](windows_runtime_s
 [Assistant chat and consent UI](agent_control_ui.md) records the local 0.3.1
 chat-only layout, shared Explain presentation, sole persisted-master owner,
 contextual approvals, drawers, status/shortcuts and complete wording review.
+
+
+Annotation snapshots save the view that was displayed at the save action. They
+retain its strokes, transform and frame identity through asynchronous GPU copy;
+an unavailable/expired copy is refused rather than paired with a later frame.
+Camera retirement cancels pending annotation copies. This is independent of the
+experimental Ultra Clear Text recognition worker.
+
+
+Recording codec retries and the marked native AAC/video gap diagnostic are
+documented in [recording attempts and timeline validation](recording_attempts_and_timeline.md).
+
+[Bounded performance diagnostics](performance_diagnostics.md) records opt-in
+offscreen chat CPU tails, synthetic deadline-helper waits, actual Maxine host
+call profiling and the still-unmeasured native pan/queue/stale-frame seams.
+
+
+[Engineering audit closure, 2026-10-17](engineering_audit_closure_2026_10_17.md)
+maps all 36 supplied findings to fixes, measurements and remaining acceptance.

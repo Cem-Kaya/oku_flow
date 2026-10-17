@@ -17,11 +17,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace okuflow {
+
+// A fresh sibling filename for another encoder attempt. The original attempt
+// remains untouched, including metadata written before initialization failed.
+std::wstring NewRecordingAttemptPath(const std::wstring& requestedPath);
 
 // Normalizes a CPU BGRA fallback to the GPU writer's tightly packed,
 // BT.601 limited-range NV12 input contract. Never relabel BGRA as NV12.
@@ -268,6 +273,9 @@ public:
 
     double DurationSeconds() const;
     const std::string& LastError() const { return lastError_; }
+    // The selected attempt may differ from Start's requested path after a
+    // GPU-input fallback. Retained through Stop for finalization/publication.
+    const std::wstring& OutputPath() const { return targetPath_; }
     bool UsesGpuInput() const { return gpuInputEnabled_; }
     bool UsesWorkerGpuReadback() const {
         return gpuCompatibilityReadback_;
@@ -279,6 +287,10 @@ public:
                                        bool nativeNv12);
 
 private:
+    friend struct VideoRecorderTestAccess;
+    // Read-only fixture seam, except that a fixture may throw after writing
+    // diagnostic bytes to the exclusively owned stream. Empty in production.
+    std::function<void(bool, IMFByteStream*)> sinkInitializationObserver_;
     bool InitializeSink(const std::wstring& filePath,
                         UINT width,
                         UINT height,
@@ -299,6 +311,12 @@ private:
     bool QueueVideoSample(
         Microsoft::WRL::ComPtr<IMFSample> sample,
         const RecordingFrameIdentity& identity);
+    bool ValidAudioInput(std::size_t byteCount, std::int64_t sampleTime100ns,
+                         std::int64_t duration100ns) const;
+    bool CanAcceptAudioBlock(std::size_t byteCount, std::int64_t sampleTime100ns,
+                             std::int64_t duration100ns);
+    bool WriteAudioBlock(const std::uint8_t* pcmData, std::size_t byteCount,
+                         std::int64_t sampleTime100ns, std::int64_t duration100ns);
     bool CheckDiskSpace();
     FinalizeResult FinalizeAndStop(StopReason reason);
     bool WritePendingSample(std::int64_t duration100ns);
@@ -369,6 +387,7 @@ private:
     std::uint64_t videoSamplesWritten_{0};
     RecordingEncoderBacklog videoBacklog_;
     RecordingAudioBacklog audioBacklog_;
+    RecordingPcmTimeline audioTimeline_;
     long lastEncoderStatisticsError_{0};
     // Stop is idempotent until the next Start, including automatic stops.
     RecordingTerminalResult<FinalizeResult> terminalResult_;

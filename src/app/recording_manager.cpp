@@ -27,6 +27,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <exception>
 #include <utility>
 
 namespace okuflow {
@@ -433,6 +434,8 @@ void RecordingManager::SetRequested(bool requested, std::optional<RecordingSessi
         sessionFinalizationFailed_ = false;
         audioStartupPending_ = false;
         processedWidth_ = 0;
+        segmentProcessedPath_.clear();
+        segmentOriginalPath_.clear();
         segmentFinalized_ = true;
         processedHeight_ = 0;
         originalWidth_ = 0;
@@ -862,15 +865,16 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
     const VideoRecorder::AudioFormat audioFormat{};
     const bool includeAudio = audioCaptureEnabled_;
 
-    const QString processedPath = SegmentPath(true);
-    const QString originalPath = SegmentPath(false);
+    const QString requestedProcessedPath = SegmentPath(true);
+    const QString requestedOriginalPath = SegmentPath(false);
     const std::array codecs{
         VideoRecorder::Codec::Av1, VideoRecorder::Codec::H264};
     QStringList failures;
 
     // Never overwrite or clean a pre-existing path, including a user-owned
     // zero-byte file. The paths below belong to this segment only after this.
-    if (QFileInfo::exists(processedPath) || QFileInfo::exists(originalPath)) {
+    if (QFileInfo::exists(requestedProcessedPath) ||
+        QFileInfo::exists(requestedOriginalPath)) {
         FinishSession(false, QStringLiteral("Recording could not start."));
         return false;
     }
@@ -878,16 +882,26 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
     for (const VideoRecorder::Codec codec : codecs) {
         processedRecorder_.Stop();
         originalRecorder_.Stop();
-        RemoveEmptySessionRecording(processedPath);
-        RemoveEmptySessionRecording(originalPath);
-        // A failed initialization can already have written metadata or
-        // fragments. Retain it instead of reusing the filename for a retry.
-        if (QFileInfo::exists(processedPath) || QFileInfo::exists(originalPath)) {
-            break;
+        QString processedPath = requestedProcessedPath;
+        QString originalPath = requestedOriginalPath;
+        if (codec != codecs.front()) {
+            // Each codec owns fresh names. Failed metadata/fragments remain
+            // intact and cannot suppress a viable fallback or enter notes.
+            try {
+                processedPath = QString::fromStdWString(
+                    NewRecordingAttemptPath(requestedProcessedPath.toStdWString()));
+                originalPath = QString::fromStdWString(
+                    NewRecordingAttemptPath(requestedOriginalPath.toStdWString()));
+            } catch (const std::exception& error) {
+                failures.append(QString::fromUtf8(error.what()));
+                break;
+            }
         }
 
         const bool processedStarted =
-            firstFrame.processedGpuScene.IsValid()
+            encoderStartOverride_
+                ? encoderStartOverride_(true, processedPath, codec)
+                : firstFrame.processedGpuScene.IsValid()
                 ? processedRecorder_.StartGpu(
                       processedPath.toStdWString(),
                       parameters.processedWidth,
@@ -931,8 +945,13 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
                              processedRecorder_.LastError())));
             continue;
         }
+        if (!encoderStartOverride_) {
+            processedPath = QString::fromStdWString(processedRecorder_.OutputPath());
+        }
         const bool originalStarted =
-            firstFrame.original.HasGpuScene()
+            encoderStartOverride_
+                ? encoderStartOverride_(false, originalPath, codec)
+                : firstFrame.original.HasGpuScene()
                 ? originalRecorder_.StartGpu(
                       originalPath.toStdWString(),
                       parameters.originalWidth,
@@ -975,11 +994,15 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
                          QString::fromStdString(
                              originalRecorder_.LastError())));
             processedRecorder_.Stop();
-            RemoveEmptySessionRecording(processedPath);
             continue;
+        }
+        if (!encoderStartOverride_) {
+            originalPath = QString::fromStdWString(originalRecorder_.OutputPath());
         }
 
         processedWidth_ = parameters.processedWidth;
+        segmentProcessedPath_ = processedPath;
+        segmentOriginalPath_ = originalPath;
         segmentFinalized_ = false;
         processedHeight_ = parameters.processedHeight;
         originalWidth_ = parameters.originalWidth;
@@ -1056,8 +1079,6 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
 
     processedRecorder_.Stop();
     originalRecorder_.Stop();
-    RemoveEmptySessionRecording(processedPath);
-    RemoveEmptySessionRecording(originalPath);
     FinishSession(
         false,
         failures.isEmpty()
@@ -1337,8 +1358,8 @@ bool RecordingManager::FinalizeSegment(bool terminal)
     SetWorkerOp(WorkerOp::kFinalize,
                 workerOpFrameSequence_.load(std::memory_order_relaxed));
 
-    const QString processedPath = SegmentPath(true);
-    const QString originalPath = SegmentPath(false);
+    const QString processedPath = segmentProcessedPath_;
+    const QString originalPath = segmentOriginalPath_;
     const QString processedRoute =
         RecordingInputRoute(processedRecorder_);
     const QString originalRoute =

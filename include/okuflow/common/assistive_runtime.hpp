@@ -258,10 +258,13 @@ private:
         // Advanced Assistant conversation id (sanitized thread id): turns
         // sharing it are grouped under one collapsible Conversation block.
         QString conversationId;
+        // Finalized original video; fingerprinting runs in the serial writer.
+        QString recordingPath;
     };
     // Queues checked, flushed, rollback-on-short-write storage of one HTML
     // block and its retained images. All emitters share the same ordered queue.
-    bool AppendNoteBlock(const QString& blockHtml, const QString& identity = {});
+    bool AppendNoteBlock(const QString& blockHtml, const QString& identity = {},
+                         const QString& recordingPath = {});
     bool QueueNotesWork(const QString& path, qint64 bytes,
                         std::function<bool()> work, const QString& identity = {});
     void RemoveNoteImage(const QString& path);

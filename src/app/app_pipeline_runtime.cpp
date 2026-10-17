@@ -1089,6 +1089,7 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
         UctSceneSettings applied = UltraClearTextRequest();
         applied.keystone = settings.enableKeystone;
         applied.stabilization = settings.enableStabilization;
+        ++annotationSceneRevision_;
         uctProvenance_.OnCudaSceneProcessed(
             applied, presentWidth, presentHeight, currentCameraFrameSequence_,
             settings.enableTemporalSmoothing || (settings.enableStabilization && settings.enableBumpHold));
@@ -1202,12 +1203,10 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         pendingAnnotationReadbackTimer_.elapsed() > 1000) {
         pendingAnnotationReadbackId_ = 0;
         pendingAnnotationReadbackTimer_.invalidate();
-        if (activeAnnotationCapture_) {
-            annotationCaptureQueue_.push_front(
-                std::move(*activeAnnotationCapture_));
-            activeAnnotationCapture_.reset();
-        }
-        pipelineOrchestrator_->MarkViewportDirty();
+        // This intent belongs to the copied frame. A fresh frame cannot
+        // replace an expired readback, even if it has the same dimensions.
+        activeAnnotationCapture_.reset();
+        ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
     }
     if (pendingOnDemandReadbackId_ != 0 &&
         pendingOnDemandReadbackTimer_.isValid() &&
@@ -1230,8 +1229,15 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     const bool photoWanted =
         newCameraFrame && photoCapturePending_ &&
         originalFrame && originalFrame->HasCpuPixels();
-    const bool annotationWanted =
-        pendingAnnotationReadbackId_ == 0 &&
+    const AnnotationGpuPresentation annotationPresentation{presentationTexture,
+        presentationSourceWidth, presentationSourceHeight, transform,
+        presentingSuperRes, focusMarkerEnabled_, presentationFocusX, presentationFocusY};
+    if (!annotationCaptureQueue_.empty() &&
+        (!AnnotationFrameMatches(uctContext) || !AnnotationGpuPresentationMatches(annotationPresentation))) {
+        annotationCaptureQueue_.clear();
+        ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
+    }
+    const bool annotationWanted = pendingAnnotationReadbackId_ == 0 &&
         !annotationCaptureQueue_.empty();
     const bool onDemandAssistiveWanted =
         pendingOnDemandReadbackId_ == 0 &&
@@ -1282,6 +1288,11 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         }
     }
     if (presented) {
+        lastAnnotationPresentation_ = uctContext;
+        lastAnnotationGpuPresentation_ = annotationPresentation;
+        lastAnnotationPresentation_->cameraActive = true;
+        lastAnnotationSceneRevision_ = annotationSceneRevision_;
+        annotationPresentationCuda_ = true;
         cameraIntent_.MarkFirstFrame(startingCameraIntentGeneration_);
         if (controlTarget_) controlTarget_->FramePresented(observationFrame);
         cameraFramePresented_ = true;
@@ -1304,11 +1315,10 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
             pendingPhotoReadbackTimer_.restart();
             photoCapturePending_ = false;
         }
-        if (annotationWanted) {
+        if (annotationWanted && presented) {
             activeAnnotationCapture_ =
                 std::move(annotationCaptureQueue_.front());
             annotationCaptureQueue_.pop_front();
-            activeAnnotationCapture_->transform = annotationTransform;
             pendingAnnotationReadbackId_ = readbackRequestId;
             pendingAnnotationReadbackTimer_.restart();
         }
@@ -2418,6 +2428,7 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
         cpuSceneReady_ = true;
         // CPU fallback applies rotation only: no keystone, stabilization,
         // color scheme or temporal composite.
+        ++annotationSceneRevision_;
         uctProvenance_.OnCpuSceneProcessed(cameraSessionId_, rotationQuarterTurns_, width, height,
                                            currentCameraFrameSequence_, false);
         if (controlTarget_) controlTarget_->FrameProcessed();
@@ -2466,6 +2477,7 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
     cpuSceneWidth_ = output.width;
     cpuSceneHeight_ = output.height;
     cpuSceneReady_ = true;
+    ++annotationSceneRevision_;
     uctProvenance_.OnCpuSceneProcessed(cameraSessionId_, rotationQuarterTurns_, output.width,
                                        output.height, currentCameraFrameSequence_,
                                        config.enableTemporalSmooth);
@@ -2527,6 +2539,9 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         mainWindow_->setAnnotationViewTransform(transform);
     }
 
+    // The mutable CPU viewport no longer represents the last successful
+    // present until the new submission below succeeds.
+    lastAnnotationPresentation_.reset();
     presentationBuffer_.assign(static_cast<size_t>(mapping.targetWidth) * mapping.targetHeight * 4, 0);
     presentationWidth_ = mapping.targetWidth;
     presentationHeight_ = mapping.targetHeight;
@@ -2608,19 +2623,6 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         drawFilledCircle(markerX, markerY, kInnerRadius, 255, 255, 255, 255);
     }
 
-    if (!annotationCaptureQueue_.empty()) {
-        PendingAnnotationCapture capture =
-            std::move(annotationCaptureQueue_.front());
-        annotationCaptureQueue_.pop_front();
-        capture.transform = transform;
-        SaveAnnotationSnapshot(presentationBuffer_.data(),
-                               mapping.targetWidth,
-                               mapping.targetHeight,
-                               capture.strokes,
-                               capture.transform,
-                               capture.heading);
-    }
-
     const bool focusGateEnabled = autoTextClarityEnabled_;
     const bool focusAcceptable =
         !focusGateEnabled || !cudaSurface_ ||
@@ -2658,6 +2660,11 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         return;
     }
     cameraFramePresented_ = true;
+    lastAnnotationPresentation_ = UltraClearTextContext(false, transform,
+        mapping.targetWidth, mapping.targetHeight);
+    lastAnnotationSceneRevision_ = annotationSceneRevision_;
+    lastAnnotationGpuPresentation_.reset();
+    annotationPresentationCuda_ = false;
     cameraIntent_.MarkFirstFrame(startingCameraIntentGeneration_);
     RecordStartupFirstPresent();
     if (pendingSceneCaptureClock100ns_) {
@@ -2897,13 +2904,69 @@ void OkuFlowApp::SaveCapturedPhotoPair(const uint8_t* processedData,
     }
 }
 
+bool OkuFlowApp::AnnotationFrameMatches(const UctFrameContext& candidate) const
+{
+    if (annotationCaptureQueue_.empty()) return false;
+    const auto& capture = annotationCaptureQueue_.front();
+    const auto& frame = capture.frame;
+    const auto& a = frame.transform;
+    const auto& b = candidate.transform;
+    return frame.cameraActive && candidate.cameraActive &&
+        capture.sceneRevision == annotationSceneRevision_ &&
+        frame.geometry == candidate.geometry && frame.requested == candidate.requested &&
+        frame.frameSeq == candidate.frameSeq &&
+        frame.viewportWidth == candidate.viewportWidth && frame.viewportHeight == candidate.viewportHeight &&
+        frame.compositeFrames == candidate.compositeFrames &&
+        a.valid && b.valid && a.sourceX == b.sourceX && a.sourceY == b.sourceY &&
+        a.sourceWidth == b.sourceWidth && a.sourceHeight == b.sourceHeight &&
+        a.destinationX == b.destinationX && a.destinationY == b.destinationY &&
+        a.destinationWidth == b.destinationWidth && a.destinationHeight == b.destinationHeight;
+}
+
+bool OkuFlowApp::AnnotationGpuPresentationMatches(const AnnotationGpuPresentation& candidate) const
+{
+    if (annotationCaptureQueue_.empty()) return false;
+    const auto& before = annotationCaptureQueue_.front().presentation;
+    const auto& a = before.transform;
+    const auto& b = candidate.transform;
+    return before.texture == candidate.texture && before.width == candidate.width &&
+        before.height == candidate.height && before.superRes == candidate.superRes &&
+        before.focusMarker == candidate.focusMarker &&
+        (!before.focusMarker || (before.focusX == candidate.focusX && before.focusY == candidate.focusY)) &&
+        a.valid == b.valid && a.sourceX == b.sourceX && a.sourceY == b.sourceY &&
+        a.sourceWidth == b.sourceWidth && a.sourceHeight == b.sourceHeight &&
+        a.destinationX == b.destinationX && a.destinationY == b.destinationY &&
+        a.destinationWidth == b.destinationWidth && a.destinationHeight == b.destinationHeight;
+}
+
+void OkuFlowApp::CancelAnnotationCaptures()
+{
+    annotationCaptureQueue_.clear();
+    activeAnnotationCapture_.reset();
+    pendingAnnotationReadbackId_ = 0;
+    pendingAnnotationReadbackTimer_.invalidate();
+    lastAnnotationPresentation_.reset();
+    lastAnnotationGpuPresentation_.reset();
+    ++annotationSceneRevision_;
+}
+
 void OkuFlowApp::QueueAnnotationSnapshot(int reason)
 {
     if (!mainWindow_ || !mainWindow_->annotationOverlay() || !mainWindow_->annotationOverlay()->IsActive() ||
         !mainWindow_->annotationOverlay()->HasInk()) {
         return;
     }
+    if (!lastAnnotationPresentation_ || !lastAnnotationPresentation_->cameraActive ||
+        pendingAnnotationReadbackId_ != 0 || !annotationCaptureQueue_.empty() ||
+        (annotationPresentationCuda_ && !lastAnnotationGpuPresentation_)) {
+        ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
+        return;
+    }
     PendingAnnotationCapture capture;
+    capture.frame = *lastAnnotationPresentation_;
+    capture.sceneRevision = lastAnnotationSceneRevision_;
+    if (lastAnnotationGpuPresentation_) capture.presentation = *lastAnnotationGpuPresentation_;
+    capture.transform = capture.frame.transform;
     capture.strokes = mainWindow_->annotationOverlay()->Strokes();
     capture.heading =
         reason == 1
@@ -2913,10 +2976,21 @@ void OkuFlowApp::QueueAnnotationSnapshot(int reason)
                   ? QCoreApplication::translate(
                         "OkuFlow", "Annotation session ended - snapshot")
                   : QCoreApplication::translate("OkuFlow", "Annotated view");
+    if (!annotationPresentationCuda_) {
+        SaveAnnotationSnapshot(presentationBuffer_.data(), capture.frame.viewportWidth,
+            capture.frame.viewportHeight, capture.strokes, capture.transform, capture.heading);
+        return;
+    }
     annotationCaptureQueue_.push_back(std::move(capture));
-    pipelineOrchestrator_->MarkViewportDirty();
-    ShowStatusMessage(QStringLiteral("Saving annotated view to lecture notes..."),
-                      2500);
+    // Request the cached, already displayed scene in this UI turn, before a
+    // later camera tick can replace it. Never defer the intent to fresh pixels.
+    PresentLatestCudaScene(false, nullptr);
+    if (!annotationCaptureQueue_.empty()) {
+        annotationCaptureQueue_.clear(); // Ring full or unavailable scene: no retarget/retry.
+        ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
+    } else if (activeAnnotationCapture_) {
+        ShowStatusMessage(QStringLiteral("Saving annotated view to lecture notes..."), 2500);
+    }
 }
 
 void OkuFlowApp::SaveAnnotationSnapshot(

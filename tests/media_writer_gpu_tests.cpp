@@ -32,6 +32,16 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <stdexcept>
+
+namespace okuflow {
+struct VideoRecorderTestAccess {
+    static void ObserveSink(VideoRecorder& recorder,
+                            std::function<void(bool, IMFByteStream*)> observer) {
+        recorder.sinkInitializationObserver_ = std::move(observer);
+    }
+};
+} // namespace okuflow
 
 namespace {
 
@@ -336,7 +346,7 @@ bool RunGpuCodecPass(okuflow::VideoRecorder::Codec codec,
 {
     *skipped = false;
     const char* codecName = okuflow::VideoRecorder::CodecName(codec);
-    const std::filesystem::path output = TemporaryMp4Path();
+    std::filesystem::path output = TemporaryMp4Path();
     okuflow::VideoRecorder recorder;
     // Self-diagnosing watcher: if any writer call wedges (the 2026-07-30
     // incident class), this names the exact blocked stage on stderr once a
@@ -391,6 +401,7 @@ bool RunGpuCodecPass(okuflow::VideoRecorder::Codec codec,
         std::filesystem::remove(output, cleanupError);
         return true;
     }
+    output = recorder.OutputPath();
 
     if (!recorder.UsesGpuInput()) {
         std::cout << "SKIP: " << codecName
@@ -543,6 +554,58 @@ bool RunGpuCodecPass(okuflow::VideoRecorder::Codec codec,
     return passed;
 }
 
+bool RunGpuMetadataFallbackPass(const okuflow::GpuVideoFrame& frame)
+{
+    const auto requested = TemporaryMp4Path();
+    okuflow::VideoRecorder recorder;
+    unsigned gpuAttempts = 0, cpuAttempts = 0;
+    constexpr char diagnostic[] = "failed GPU encoder metadata";
+    okuflow::VideoRecorderTestAccess::ObserveSink(recorder,
+        [&](bool gpu, IMFByteStream* stream) {
+            if (!gpu) { ++cpuAttempts; return; }
+            ++gpuAttempts;
+            ULONG written = 0;
+            const HRESULT result = stream->Write(
+                reinterpret_cast<const BYTE*>(diagnostic), sizeof(diagnostic) - 1, &written);
+            if (FAILED(result) || written != sizeof(diagnostic) - 1) {
+                throw std::runtime_error("Could not emit injected GPU diagnostic bytes");
+            }
+            stream->Flush();
+            throw std::runtime_error("Injected native-input rejection after metadata");
+        });
+    bool passed = recorder.StartGpu(requested.wstring(), kWidth, kHeight,
+        30, 1, okuflow::VideoRecorder::Codec::H264, frame);
+    const std::filesystem::path selected = recorder.OutputPath();
+    passed = passed && gpuAttempts == 1 && cpuAttempts == 1 &&
+             recorder.UsesWorkerGpuReadback() && selected != requested;
+    for (int index = 0; passed && index < 3; ++index) {
+        okuflow::RecordingFrameIdentity identity;
+        identity.captureTimestamp100ns = index * 333'333LL;
+        identity.captureClock100ns = identity.captureTimestamp100ns;
+        identity.frameRateNumerator = 30;
+        identity.frameRateDenominator = 1;
+        identity.sequenceNumber = index;
+        passed = recorder.AddGpuFrame(frame, identity);
+    }
+    const auto finalized = recorder.Stop();
+    std::ifstream failed(requested, std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(failed)),
+                             std::istreambuf_iterator<char>());
+    failed.close();
+    passed = passed && bytes == diagnostic && finalized.HasPlayableVideo() &&
+             finalized.videoSamplesWritten == 3 && std::filesystem::exists(selected);
+    if (passed) {
+        std::error_code cleanup;
+        std::filesystem::remove(requested, cleanup);
+        std::filesystem::remove(selected, cleanup);
+        std::cout << "GPU metadata failure: retained bytes and encoded CPU fallback PASSED\n";
+    } else {
+        std::cerr << "GPU metadata fallback FAILED: " << recorder.LastError()
+                  << "; retained fixture=" << requested << '\n';
+    }
+    return passed;
+}
+
 } // namespace
 
 int main()
@@ -580,6 +643,7 @@ int main()
                 std::cout << "SKIP: GPU-fed writer unavailable\n";
                 exitCode = kSkipExitCode;
             } else {
+                passed = RunGpuMetadataFallbackPass(context.frame) && passed;
                 bool av1Skipped = false;
                 const bool av1Passed = RunGpuCodecPass(
                     okuflow::VideoRecorder::Codec::Av1,

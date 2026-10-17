@@ -5,6 +5,7 @@
 namespace okuflow {
 
 void OkuFlowApp::StopCameraCapture(bool atProcessExit) {
+    CancelAnnotationCaptures();
     if (atProcessExit) {
         pendingCameraStart_.reset();
         if (retiredCameraIngress_) retiredCameraIngress_->retainedAfterTimeout = retiredCameraIngress_;

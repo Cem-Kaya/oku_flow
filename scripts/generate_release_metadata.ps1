@@ -9,28 +9,33 @@ param(
     # QT_VERSION). Never hardcode: QT_PREFIX/Qt6_DIR overrides change it.
     [string]$QtVersion = '',
 
-    # Mirrors OKUFLOW_ENABLE_CUDA from the validated build so the SBOM does
-    # not claim a static CUDA runtime in a CPU-only emergency bundle.
-    [string]$CudaEnabled = 'ON',
-    [string]$BuildDirectory = ''
+    # Optional compatibility assertion only. Configured target facts are the
+    # authority, including when a shell or later CMake argument disagrees.
+    [ValidateSet('', 'ON', 'OFF', '1', '0', 'TRUE', 'FALSE', 'YES', 'NO')]
+    [string]$CudaEnabled = '',
+    [Parameter(Mandatory)][string]$BuildDirectory,
+    [string]$Configuration = 'Release'
 )
 
 $qtRuntimeVersion =
     if ([string]::IsNullOrWhiteSpace($QtVersion)) { 'unknown' }
     else { $QtVersion.Trim() }
-$cudaIsEnabled = $CudaEnabled.Trim().ToUpperInvariant() -in @('1', 'ON', 'TRUE', 'YES')
-$cudaToolkitVersion =
-    if ([string]::IsNullOrWhiteSpace($env:CUDA_PATH)) {
-        'unknown'
-    } else {
-        (Split-Path -Leaf $env:CUDA_PATH).TrimStart('v')
-    }
 $ErrorActionPreference = 'Stop'
 $bundle = (Resolve-Path -LiteralPath $BundlePath).Path
 . (Join-Path $PSScriptRoot 'windows-installer/bundle_layout.ps1')
 . (Join-Path $PSScriptRoot 'windows-installer/mcp_bundle.ps1')
+. (Join-Path $PSScriptRoot 'windows-installer/release_build_facts.ps1')
 $layout = Get-OkuFlowBundleLayout $bundle
 $payload = $layout.PayloadRoot
+$buildFacts = Get-OkuFlowReleaseBuildFacts $BuildDirectory $Configuration (Join-Path $bundle $layout.ApplicationRelativePath)
+$cudaIsEnabled = $buildFacts.cuda.enabled
+$cudaToolkitVersion = $buildFacts.cuda.toolkitVersion
+if ($CudaEnabled -and (($CudaEnabled.ToUpperInvariant() -in @('1','ON','TRUE','YES')) -ne $cudaIsEnabled)) {
+    throw 'Requested CUDA metadata assertion disagrees with the effective configured build.'
+}
+if ($cudaIsEnabled -and (Get-FileHash -LiteralPath (Join-Path $payload 'licenses/NVIDIA_CUDA_EULA.txt')).Hash.ToLowerInvariant() -cne $buildFacts.cuda.licenseSha256) {
+    throw 'Staged CUDA license differs from the effective build toolkit.'
+}
 $mcpExecutable = Join-Path $payload 'okuflow_mcp.exe'
 $mcpInfo = $null
 if (Test-Path -LiteralPath $mcpExecutable -PathType Leaf) {
@@ -38,6 +43,7 @@ if (Test-Path -LiteralPath $mcpExecutable -PathType Leaf) {
     $mcpInfo = Get-McpReleaseBuild $BuildDirectory $mcpExecutable
 }
 $repository = (Resolve-Path -LiteralPath $RepositoryPath).Path
+if ([IO.Path]::GetFullPath($buildFacts.sourceDirectory) -ne $repository) { throw 'Build facts belong to a different source checkout.' }
 $runtimePin = Get-Content (Join-Path $repository 'scripts/vc-runtime/pins.json') -Raw | ConvertFrom-Json
 $runtimeInstaller = Join-Path $payload $runtimePin.installer.name
 $runtimeLicense = Join-Path $payload 'licenses/MICROSOFT_VC_RUNTIME_LICENSE.rtf'
@@ -156,6 +162,7 @@ $manifest = [ordered]@{
     }
     executables = @($executableSignatures)
     payloadDirectory = if ($layout.Prefix) { 'app' } else { '.' }
+    buildFacts = $buildFacts
     windowsRuntime = [ordered]@{
         version = $runtimePin.version
         installation = 'system-wide, with user/admin approval only when required'
@@ -254,7 +261,7 @@ $packages = @(
         licenseConcluded = 'LicenseRef-NVIDIA-CUDA-EULA'
         licenseDeclared = 'LicenseRef-NVIDIA-CUDA-EULA'
         copyrightText = 'Copyright NVIDIA Corporation'
-        comment = 'cudart_static is linked into oku_flow.exe. The separately installed NVIDIA display driver is not bundled. The Toolkit EULA is staged as licenses/NVIDIA_CUDA_EULA.txt.'
+        comment = "cudart_static is linked into OkuFlowApp.exe. Effective compiler $($buildFacts.cuda.compilerVersion); target architectures $($buildFacts.cuda.architectures -join ','). The separately installed NVIDIA display driver is not bundled. The exact build Toolkit EULA is staged as licenses/NVIDIA_CUDA_EULA.txt."
     },
     [ordered]@{
         SPDXID = 'SPDXRef-Package-Maxine-Headers'

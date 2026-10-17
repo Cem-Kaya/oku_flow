@@ -1,9 +1,46 @@
 # OkuFlow Code Reference
 
+## Packaging provenance authority (audit RB-001/RB-002)
+
+`windows-installer/wix_tool.ps1` supplies `Get-VerifiedWixTool`,
+`Assert-VerifiedWixTree` and `Invoke-VerifiedWix`. They verify the pinned NuGet
+archive, extract into a hash-named private generation, reject unsafe paths,
+changed/missing files and unexpected file additions, and reverify the complete
+tree before executing the archive's own apphost. Both MSI compilation and
+payload extraction use it; an old installed `wix.exe` shim is never selected.
+The MSI receipt includes package and executed-apphost SHA-256 values.
+
+`cmake/ReleaseBuildFacts.cmake::okuflow_generate_release_build_facts` emits
+`okuflow-build-facts/<configuration>.json` from the application target: actual
+output, CUDA enablement, compiler/toolkit versions, compiler and linked static
+runtime hashes, target architectures and exact toolkit-license identity. Its
+`POST_BUILD` command runs `SealReleaseBuildFacts.cmake` to bind the facts hash
+and successfully linked application hash in `<configuration>.seal.json`; facts
+are also link dependencies so a provenance change cannot keep an old seal.
+CPU facts contain no CUDA claims. `Get-OkuFlowReleaseBuildFacts` in
+`windows-installer/release_build_facts.ps1` checks source/build/configuration and
+cache agreement, matching successful-build seal, built output,
+compiler/runtime/license bytes and toolkit paths;
+when given a staged application it also checks byte equality. The command
+`get_release_build_facts.ps1` exposes those facts or writes a fresh CRLF batch
+environment file using `BUNDLE_EFFECTIVE_CUDA` and `BUNDLE_CUDA_LICENSE_PATH`.
+`generate_release_metadata.ps1` requires the matching build directory, embeds
+these facts in the manifest, and checks the staged toolkit notice before using
+the effective toolkit version in SPDX. Metadata never creates or refreshes a
+seal; the bundle refreshes it only after its controlled successful signing step.
+Its optional `-CudaEnabled` is an agreement assertion only, never the source of
+metadata.
+
+`test_release_provenance.ps1` exercises these production helpers with private
+synthetic packages and CMake imported targets, including actual metadata/SBOM
+generation with guarded synthetic signature results. Optional `-WixPackage`
+also runs the real pin's version check and compiles/extracts a tiny synthetic
+MSI from a private copy; the fixture never installs that package.
+
 ## Immutable transcript publication (audit PW-003)
 
 The compiled notes bridge's `saveTranscriptSnapshot` serializes sidecar writes
-by resolved recording URI. Completed segments and metadata become an immutable
+by stable recording UUID. Completed segments and metadata become an immutable
 JSON payload before file-handle awaits. Each card's `transcribeJobGeneration`
 fences delayed save success/failure updates, while prior durable results still
 finish writing. Failed writes abort their stream and do not prevent successor
@@ -11,8 +48,8 @@ writes. `scripts/test_notes_transcribe_bridge.mjs` executes the actual C++ raw
 script literals under Node with only DOM/file-handle primitives simulated. It
 holds the first file open while a successor clears its UI or finishes, proving
 snapshot preservation, write ordering and status ownership without a browser,
-model, real media or desktop. This does not establish browser file identity
-(PW-004), codec timing or actual Chrome permission acceptance.
+model, real media or desktop. Exact media contracts below complement these
+publication checks; neither establishes codec timing or Chrome grant acceptance.
 
 ## Fresh test-input hashing (audit TB-001)
 
@@ -3178,7 +3215,7 @@ illustrative draft carry the instruction; setup-state resolution is unchanged.
 | `camera/CameraCatalog.kt` | `CameraChoice`, `EncoderChoice`, `CameraConfiguration` describe device/encoder/output/range. `cameras` orders rear first; `encoders` requires hardware/surface support; `recordingConfigurations` intersects Camera2 sizes/minimum durations/AE upper rates with hardware encoder limits; `modes` exposes unique locally supported pairs for the picker; `configurations` applies saved dimensions, host decoder and thermal bounds to order runtime candidates; `capabilities` reports camera controls and codecs. |
 | `camera/AnnexB.kt` | `annexB` preserves start-code NALs and validates/converts four-byte length-prefixed compressed output. |
 | `camera/CameraFailures.kt` | `problemForDeviceError`, `problemForAccessReason` and `problemFor` classify Camera2 device errors, `CameraAccessException` reasons and `SecurityException` as `HostProblem` busy/blocked/failed. |
-| `camera/CameraEngine.kt` | `start` uses locally discovered fallback candidates, bounded to six startup attempts, and reports an empty intersection as `NoCompatibleMode`; `onError` receives a `HostProblem` and the raw diagnostic for the host. `begin` creates a generation. `createEncoder` publishes CSD/frames; `openCamera` creates the recording session and SENSOR timestamps on API 33+. `repeatRequest` applies zoom/focus/exposure/light/OIS/EIS and capture-result metadata. `setZoom`, `requestKeyFrame`, `stop`, `fail`, `stopInternal`, `close` serialize hardware ownership; atomic tokens invalidate old callbacks before queued teardown. |
+| `camera/CameraEngine.kt` | `start` uses locally discovered fallback candidates and one `CameraStartupPlan`, reporting an empty intersection as `NoCompatibleMode`; `onError` receives a `HostProblem` and the raw candidate diagnostic for the host. `begin` creates a generation within its assigned absolute deadline; `candidateState` publishes bounded attempt progress and `startupCurrent` rejects late results. `createEncoder` publishes CSD/frames; `openCamera` creates the recording session and SENSOR timestamps on API 33+. `repeatRequest` applies zoom/focus/exposure/light/OIS/EIS and capture-result metadata. `setZoom`, `requestKeyFrame`, `stop`, `fail`, `stopInternal`, `close` serialize hardware ownership; atomic tokens invalidate old callbacks before queued teardown. |
 | `camera/CameraStreamService.kt` | Non-exported camera foreground service. `onCreate` owns notification/monitor/server/engine/preferences and thermal registration, and publishes the actual stream codec in status; `command` handles the control allowlist with separate camera selection/request IDs; `restart` avoids unchanged settings and respects host/thermal state. `publishIdle` clears stale mode details and reports Connected while the host session remains, otherwise Disconnected. An existing foreground listener survives unplug/replug; a two-second USB debounce invokes `disconnectHost` without recreating a camera service in the background. `listenerMustStop` still revokes the service on permission loss or debugging explicitly off. Engine/thermal/startup failures report a `HostProblem`; raw diagnostics reach the host in ERROR packets. `onDestroy` removes only an owned thermal registration and uses independent `cleanup` calls for partial startup; destroyed services cannot republish notifications. `onActivityResumed`/`onActivityPaused` control `startVisible`, and foreground refusal waits for a fresh resume. |
 | `camera/ServiceLifecycle.kt` | `ListenerRegistration.register/close` acquire ownership only after a successful add and remove it at most once, so a failed USB or thermal startup cannot remove an unregistered listener. `VisibleServiceStartGate.onResumed/onPaused/onRefused` requires a resumed activity for new foreground starts and suppresses refused starts until another resume. Both contracts have JVM regressions in `ServiceLifecycleTest`. |
 | `link/WireProtocol.kt` | `Hello`/`Packet`, `readHello`, `readPacket`, `writePacket`, `framePayload`, `readExact` implement bounded little-endian v1 framing: control 64 KiB, video 16 MiB. |
@@ -3414,9 +3451,29 @@ translated app strings; it is an HTML draft, not a native-device screenshot.
 
 ## Windows phone/GPU progress safeguards (2026-10-13)
 
+- `PhoneStartupBudget` in `capture/phone_startup_budget.hpp` owns `Start`'s
+  original 12-second monotonic `Deadline`; `RemainingCameraMs` subtracts USB
+  setup time and a one-second decode reserve. `PhoneCameraTransport::Run` sends
+  that value as `start.startupBudgetMs`; an initial HEVC retry shares the same
+  budget, and cancellation still wakes `Start` on its 20 ms wait slices.
+- Android `CameraStartupPlan` stores the command-arrival epoch, clamps the
+  budget to 1–12000 ms and retains at most six modes with at least 500 ms each.
+  `attempt` divides remaining time after future 200 ms retry gaps, capped at
+  four seconds; `remainingMs` and `retryDelayMs` cannot renew the absolute
+  deadline. The live start-token predicate rejects retired queued attempts.
+  `CameraEngine::begin`, `candidateState` and `startupCurrent` enforce and report
+  the assigned attempt deadline around synchronous setup and callbacks.
+  `CameraStreamService::command` captures arrival before the owner queue;
+  `StartupWindow` preserves it through pre-video settings/thermal restarts and
+  retires on first video or session stop. `restart` passes that immutable epoch
+  to the engine. JVM fake-clock regressions cover stalled-first/fallback-success,
+  1/2/6 candidates, depleted budgets, consumed queue/setup time and cancellation;
+  these are separate from physical camera/driver acceptance.
 - `PhoneFrameProgress` in `capture/phone_frame_progress.hpp` tracks packet and
-  decoded-frame clocks separately. `BeginGeneration` restarts only the HEVC
-  first-output check; `FrameDecoded` is the only decoded-progress renewal.
+  decoded-frame clocks separately. `BeginGeneration` clears HEVC generation
+  progress; `EncodedFrameReceived` starts its four-second first-output check
+  only with real video rather than CSD. `FrameDecoded` is the only
+  decoded-progress renewal.
   `PhoneCameraTransport` uses `Check` on packet and idle iterations, preserving
   the existing one-time HEVC fallback and reconnect policy.
 - `CaptureAperture` and `ResolveNv12DisplayAperture` in `capture/capture_buffer.hpp`
@@ -4368,3 +4425,172 @@ receipts expectation was reconciled while preserving its no-cross-context assert
 Two new receipt strings have complete read-only Luna review of all 48 changed
 entries, separate from native-speaker and rendered accessibility acceptance; see
 `localization_review_2026_10_17.md`.
+
+
+### Displayed-frame annotation leases (2026-10-17)
+
+`OkuFlowApp::PendingAnnotationCapture` retains the displayed scene source/frame,
+processing revision, viewport geometry and transform with its strokes.
+`AnnotationFrameMatches` rejects a later source, frame, reprocessed scene, request,
+viewport or pan/zoom transform. The GPU save requests a copy of the cached
+already-displayed scene immediately in the same UI turn; a full ring or expired
+readback fails closed instead of retrying on another frame. CPU saves copy the
+last successfully presented viewport directly. `CancelAnnotationCaptures` revokes
+queued/active IDs and the cached view before every camera-retirement early return.
+`lastAnnotationPresentation_` is invalidated before mutating CPU viewport pixels
+and is published only after presentation succeeds. Recognition permissions and OCR
+results do not participate: the existing applied-scene provenance is reused only
+as a spatial/source identity. The native offscreen fixture verifies changed frame,
+source, effects revision, dimensions, transform and retirement rejection without a
+camera, presenter, phone or provider.
+
+## Recording fallback and timeline audit (NP-006 / NP-007)
+
+`NewRecordingAttemptPath(const std::wstring&)` in `common/media_writer.hpp`
+allocates a GUID sibling for another codec/input attempt. `VideoRecorder`
+exclusively creates each sink byte stream, retains failed outputs, and exposes
+`OutputPath()` for its chosen attempt, retained through `Stop()`.
+`StartGpu` uses a fresh sibling when native sink initialization fails before
+trying worker readback. `RecordingManager::StartSegment` similarly gives
+H.264 fresh paths after either AV1 leg fails; `segmentProcessedPath_` and
+`segmentOriginalPath_` carry the chosen paths to `FinalizeSegment` and notes.
+No fallback deletes or reopens failed output. Private fixture callbacks permit
+metadata-failure injection without changing production policy.
+
+`ValidateDecodedAudio` and `ValidateDecodedVideoMarker` in the codec fixture
+check distinguishable frequency/color markers against media PTS, including the
+opt-in three-second-gap diagnostic. See
+[recording attempt ownership and timeline contract](recording_attempts_and_timeline.md)
+for the silence policy and the distinction between fake policy evidence and
+native codec verification.
+
+## Bundle publication and preflight helpers (RB-003 / RB-004)
+
+`scripts/publish_release_bundle.ps1` validates a uniquely named sibling stage
+and uses `Open-VerifiedBundle` to acquire temporary read leases, hash the exact
+manifest inventory, reject owner/unknown content and exclude running/locked
+runtime generations. `Switch-Bundle` closes verification leases (required by
+Windows directory renaming), checks the inventory again, renames the prior
+complete generation to a unique recovery path, publishes by same-parent rename,
+and rehashes all published files. Rename/verification failure rolls names back;
+recovery failure retains all remaining generations. Old generations are never
+recursively deleted. `Assert-PlainPath`/`Get-PlainTree` reject reparse traversal,
+and `Assert-NoRunningImage` observes process images without terminating any.
+The `CreateStage` action checks the parent for reparse traversal and exclusively
+creates a fresh GUID stage. The `DiscardStage` action accepts only that stage shape and
+refuses owner data, reparse paths or running images. A per-dist native mutex
+serializes publication; there is no copy/merge fallback.
+
+`scripts/check_bundle_toolchain.ps1` checks an initialized VS2022 x64 tool
+surface and compatible Ninja/Release cache without writes. The batch
+`--check-toolchain` path also checks Qt deployment prerequisites and exits
+before configure/build/staging. `test_bundle_publication.ps1` exercises exact
+old/new inventories, DLL locks, a normally exiting hidden private console child,
+owner data/path/junction refusals, and injected rename/verification rollback.
+`test_bundle_toolchain.ps1` drives the real batch's positive and negative
+preflights with private cache fixtures. These are scoped regressions rather
+than full release evidence.
+
+## Exact recording identity (audit PW-004)
+
+`NotesRecordingIdentity` runs only inside `AssistiveRuntime::AppendNoteBlock`'s
+serial notes-storage closure. `NoteSectionMetadata::recordingPath` carries the
+finalized Original path from `AppendNoteMediaPair` through
+`AppendNoteHtmlSection`; no filename counterpart is inferred. The worker reads
+at most 1 MiB at a time and verifies length/modification stability. It assigns a
+UUID and publishes `<actual-original-name>.okuflow-media.json` by a complete
+same-directory temporary file and a no-replace rename. A valid existing marker
+retains its UUID; invalid markers or changed bytes are refused, never rewritten.
+The immutable identity is escaped into `data-recording-identity` before the HTML
+block is appended. Hashing and filesystem publication never run on the UI thread.
+
+The marker contains version 1, `mediaId`, actual `name`, exact byte `size`,
+`algorithm: sha256-chain-1m-v1`, and a lowercase 64-hex `fingerprint`. The chain
+starts at 32 zero bytes; for each consecutive 1 MiB chunk (the last may be
+shorter), its next state is SHA-256(previous state || chunk). This bounded-memory
+fingerprint deliberately has its own algorithm name; it is not a whole-file
+SHA-256 digest. Empty recordings have no identity. Native/Node/Python fixtures
+share the fixed `fixture recording` vector
+`2e0fa70301bb1ee4a5875308ff4df614d95578a0d19cf1788dce6a0c11aa64ba`.
+
+The compiled bridge's `validIdentity`, `sameIdentity`, `fingerprint`,
+`verifyRecording` and `recording` require the exact marker plus a fresh byte
+fingerprint for the granted directory's resolved file. Native UUID, filename,
+size, algorithm and fingerprint bind the File handoff and every returned message.
+`saveTranscriptSnapshot` revalidates the current file before its serialized write;
+`transcriptName` addresses the target as `.okuflow-transcript-<mediaId>.json`
+(61 ASCII characters, independent of video basename). An older writer held at
+`createWritable` can therefore only publish to its old UUID's file after the
+recording path acquires new bytes, marker and transcript. Version-2 sidecars
+restore only against the complete expected identity. Legacy basename-only
+`<video>.okuflow-transcript.json`, size/mtime-only version-1 sidecars and old
+notes without identity are refused; legacy files are not migrated or modified.
+The browser can still play existing media and choose a file directly in Transcribe.
+
+The sibling website validates declaration shape in `recordingIdentity`, then
+`verifyRecordingFile` checks bounded slices before result reuse, cache/model work
+or decoding. Those awaits use the existing job-cancellation fence. `notify`
+echoes the immutable identity; `resultKey` binds notes results to UUID/fingerprint
+and isolates standalone selections by job. `render_notes_preview.py` mirrors the
+identity with `recording_identity`, including atomic no-replace marker publication;
+changed preview bytes require a fresh output folder. No cryptographic library or
+runtime dependency is added: Qt, WebCrypto and Python's standard library are used.
+
+## Performance measurement helpers (NP-010 / PF-001)
+
+- `MaxineSuperRes::Worker::Execute` retains its existing synchronous one-second
+  deadline. With `OKUFLOW_MAXINE_PROFILE=1`, optional `CallTiming` atomics survive
+  a late task and `Profile::Record/Report` summarize the last 16,384 stage/outcome
+  samples on destruction. Caller wait, worker dispatch and completed SDK host
+  duration are separate; timeout/throw samples do not certify GPU completion.
+- `tests/assistant_chat_benchmark.cpp` is an excluded, non-CTest diagnostic.
+  `Snapshot/Delta` generate bounded pixel-free chat state and optional original
+  JPEGs; `Distribution` uses nearest rank; `ControlledWaits` exercises the
+  production deadline helper only. `main` forces Qt offscreen and measures
+  production `AssistantChatView::SetChatSnapshot`, CPU paint, queued callback
+  delay, selection identity/direction and viewport-anchor displacement.
+- `DeadlineWorkerTests::busyWorkerRejectsRatherThanQueueing` uses owned promises
+  and a private worker to prove that an overlapping task is rejected and never
+  runs. It creates no GUI, CUDA context or third-party SDK call.
+
+See [performance diagnostic scope and commands](performance_diagnostics.md).
+
+`AssistantChatView::TryRenderStreamingAppend` handles only append-only,
+nonempty streaming assistant text in an already maximum-width final bubble.
+`RenderContext` compares palette/font/locale/layout/viewport width and translated
+headings; identical prefix and all other snapshot/message fields are required.
+The helper replaces only the escaped final root body, preserving its format and
+`ChatBlockIdentity`; it clears stale `renderedHtml_`. All other edits call
+`RenderMessages`. Both paths use `CaptureChatReadingState` and
+`RestoreChatReadingState` for message-scoped endpoints and viewport anchors.
+`AgentControlPanelTests::streamingTailMatchesFullRenderAndFallback` compares
+incremental text/paragraph geometry against fresh full renders and retains
+selection, immediate/deferred prefix-mutation, fallbacks and accessible-character
+assertions. Tail replacement temporarily disables layout with a scope-guarded
+restore; queued viewport resize callbacks rebuild only for a different final
+render context. The excluded benchmark's `DiagnosticApplication::notify` can
+record bounded inclusive slow-event timing with `--trace-events`, separately
+from ordinary A/B evidence.
+
+`AnnotationGpuPresentationMatches` additionally compares the actual selected GPU
+texture, SR route, source extents, remapped presentation transform and focus-marker
+options. Disabling SR can select different pixels without advancing the ordinary
+scene revision; these output signatures prevent that same-frame substitution.
+
+
+### PCM timeline continuity after native AAC verification
+`RecordingPcmSpan` and `RecordingPcmTimeline` in `recording_contract.hpp` plan
+integer silence/overlap/data spans without mutation; `Advance` commits only
+accepted PCM frames and `TimestampAfter` converts the absolute cursor without
+rounded-duration drift. Ten-second maximum holes and checked conversions reject
+huge/overflowing work. `VideoRecorder::ValidAudioInput`, `CanAcceptAudioBlock`
+and `WriteAudioBlock` separate input validation, per-block AAC admission and
+submission. `AddAudioFrame` streams fixed-size silence blocks under one 250 ms
+repair-admission deadline, trims covered overlaps and advances only after
+successful submission. Start/StartGpu reset the cursor per segment.
+
+The native marked post-repair diagnostic submitted 288,000 PCM frames for the
+three-second-gap case and placed decoded audio/video markers at 3.999333 /
+3.999967 seconds, respectively. Normal submissions remained 144,000 frames.
+This verifies the synthetic codec timeline seam; physical microphone and full
+release acceptance remain separate.

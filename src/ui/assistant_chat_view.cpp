@@ -25,6 +25,7 @@
 #include <QScrollBar>
 #include <QShortcut>
 #include <QSignalBlocker>
+#include <QScopeGuard>
 #include <QStyle>
 #include <QTextBrowser>
 #include <QTextBlock>
@@ -124,6 +125,43 @@ void TagChatBlocks(QTextDocument* document,const QJsonArray& messages)
         }
         ++index;
     }
+}
+struct ChatReadingState {
+    ChatTextAnchor anchor, position, top;
+    int scroll{}, topOffset{};
+    bool follow{};
+};
+ChatReadingState CaptureChatReadingState(QTextBrowser* transcript)
+{
+    const auto cursor=transcript->textCursor();
+    const int scroll=transcript->verticalScrollBar()->value();
+    const auto top=transcript->cursorForPosition(QPoint(0,0));
+    return {CaptureChatAnchor(transcript->document(),cursor.anchor()),
+        CaptureChatAnchor(transcript->document(),cursor.position()),
+        CaptureChatAnchor(transcript->document(),top.position()),scroll,
+        transcript->cursorRect(top).top(),
+        !cursor.hasSelection() && scroll>=transcript->verticalScrollBar()->maximum()-4};
+}
+void RestoreChatReadingState(QTextBrowser* transcript,const ChatReadingState& state)
+{
+    QTextCursor restored(transcript->document());
+    const int end=std::max(0,transcript->document()->characterCount()-1);
+    const auto anchor=RestoreChatAnchor(transcript->document(),state.anchor);
+    const auto position=RestoreChatAnchor(transcript->document(),state.position);
+    if((!state.anchor.messageId.isEmpty() && !anchor) || (!state.position.messageId.isEmpty() && !position)) {
+        // A removed message must not transfer selection to unrelated text.
+        restored.setPosition(position.value_or(anchor.value_or(end)));
+    } else {
+        restored.setPosition(anchor.value_or(std::min(state.anchor.absolute,end)));
+        restored.setPosition(position.value_or(std::min(state.position.absolute,end)),QTextCursor::KeepAnchor);
+    }
+    transcript->setTextCursor(restored);
+    if(state.follow)transcript->verticalScrollBar()->setValue(transcript->verticalScrollBar()->maximum());
+    else if(const auto position=RestoreChatAnchor(transcript->document(),state.top)) {
+        QTextCursor top(transcript->document());top.setPosition(*position);
+        const int delta=transcript->cursorRect(top).top()-state.topOffset;
+        transcript->verticalScrollBar()->setValue(transcript->verticalScrollBar()->value()+delta);
+    } else transcript->verticalScrollBar()->setValue(state.scroll);
 }
 }
 AssistantChatView::AssistantChatView(QWidget* parent):QWidget(parent)
@@ -261,22 +299,84 @@ AssistantChatView::AssistantChatView(QWidget* parent):QWidget(parent)
 void AssistantChatView::SetChatSnapshot(const QJsonObject& value)
 {
     const bool same=snapshot_.value("conversationId")==value.value("conversationId");
+    const auto previous=snapshot_;
     snapshot_=value;
     {const QSignalBlocker block(composer_);if(composer_->toPlainText()!=value.value("draft").toString())composer_->setPlainText(value.value("draft").toString());}
     SetAttachCurrentView(value.value("attachCurrentView").toBool());
     if(!same){transcript_->clear();renderedHtml_.clear();}
-    RenderMessages();RefreshActions();
+    if(!same || !TryRenderStreamingAppend(previous))RenderMessages();
+    RefreshActions();
+}
+QString AssistantChatView::RenderContext() const
+{
+    return QStringLiteral("%1/%2/%3/%4/%5/%6/%7/%8")
+        .arg(palette().cacheKey()).arg(transcript_->font().key()).arg(locale().name())
+        .arg(static_cast<int>(layoutDirection())).arg(transcript_->viewport()->width())
+        .arg(TranslateUi(QStringLiteral("You")),TranslateUi(QStringLiteral("Assistant")),TranslateUi(QStringLiteral("Explain")));
+}
+bool AssistantChatView::TryRenderStreamingAppend(const QJsonObject& previous)
+{
+    if(renderedContext_!=RenderContext())return false;
+    auto before=previous,after=snapshot_;
+    before.remove("messages");after.remove("messages");
+    if(before!=after)return false;
+    const auto oldMessages=previous.value("messages").toArray();
+    const auto messages=snapshot_.value("messages").toArray();
+    if(messages.isEmpty() || messages.size()!=oldMessages.size())return false;
+    for(int i=0;i<messages.size()-1;++i)if(messages[i]!=oldMessages[i])return false;
+    auto oldLast=oldMessages.last().toObject(),last=messages.last().toObject();
+    const QString oldText=oldLast.value("text").toString();
+    const QString text=last.value("text").toString();
+    oldLast.remove("text");last.remove("text");
+    if(oldLast!=last || last.value("role").toString()!=QStringLiteral("assistant") ||
+       last.value("status").toString()!=QStringLiteral("streaming") ||
+       !last.value("actions").toArray().isEmpty() || !last.value("imagePreviewJpeg").toString().isEmpty() ||
+       oldText.isEmpty() || text.size()<=oldText.size() || text.size()>262144 || !text.startsWith(oldText))return false;
+    auto* document=transcript_->document();
+    auto body=document->lastBlock();
+    const auto* identity=dynamic_cast<ChatBlockIdentity*>(body.userData());
+    const auto id=last.value("id").toString();
+    const auto expected=id.isEmpty()?QStringLiteral("index/%1").arg(messages.size()-1):QStringLiteral("id/")+id;
+    if(document->blockCount()!=messages.size()*2 || !identity || identity->messageId!=expected || identity->part!=1)return false;
+    const int available=std::max(1,transcript_->viewport()->width()-24);
+    const int maximum=std::max(1,available*85/100);
+    const bool rtl=layoutDirection()==Qt::RightToLeft;
+    const auto format=body.blockFormat();
+    // A saturated bubble cannot grow on append. Short bubbles use the full
+    // renderer so heading and body margins always change together.
+    const auto heading=body.previous().blockFormat();
+    const auto saturated=[&](const QTextBlockFormat& block) {
+        return qAbs(block.leftMargin()-(rtl?available-maximum:0))<.5 &&
+               qAbs(block.rightMargin()-(rtl?0:available-maximum))<.5;
+    };
+    if(!saturated(format) || !saturated(heading))return false;
+    const auto state=CaptureChatReadingState(transcript_);
+    // Reparse only the final body, so HTML whitespace/newline handling remains
+    // identical to a full render. Root paragraphs retain accessible geometry.
+    {
+        // QTextCursor replacement removes then reinserts text. Defer layout
+        // until the final body/format exists, avoiding transient scrollbar size
+        // changes and duplicate full-document work in queued resize callbacks.
+        const bool enabled=document->isLayoutEnabled();
+        document->setLayoutEnabled(false);
+        const auto restoreLayout=qScopeGuard([document,enabled] {document->setLayoutEnabled(enabled);});
+        QTextCursor edit(body);edit.movePosition(QTextCursor::EndOfBlock,QTextCursor::KeepAnchor);
+        edit.beginEditBlock();
+        edit.insertHtml(QStringLiteral("<span style='font-size:20px;color:%1'>%2</span>")
+            .arg(palette().color(QPalette::Text).name(),Escape(text)));
+        edit.setBlockFormat(format);edit.endEditBlock();
+        auto* tag=new ChatBlockIdentity;tag->messageId=expected;tag->part=1;edit.block().setUserData(tag);
+    }
+    // A later resize/status/action change must reconstruct current text rather
+    // than compare against the stale HTML from before these incremental edits.
+    renderedHtml_.clear();
+    RestoreChatReadingState(transcript_,state);
+    return true;
 }
 void AssistantChatView::RenderMessages()
 {
-    const auto cursor=transcript_->textCursor();const int oldScroll=transcript_->verticalScrollBar()->value();
-    const bool hadSelection=cursor.hasSelection();
-    const auto oldAnchor=CaptureChatAnchor(transcript_->document(),cursor.anchor());
-    const auto oldPosition=CaptureChatAnchor(transcript_->document(),cursor.position());
-    const auto topCursor=transcript_->cursorForPosition(QPoint(0,0));
-    const auto topAnchor=CaptureChatAnchor(transcript_->document(),topCursor.position());
-    const int topOffset=transcript_->cursorRect(topCursor).top();
-    const bool follow=!hadSelection && oldScroll>=transcript_->verticalScrollBar()->maximum()-4;
+    const auto readingState=CaptureChatReadingState(transcript_);
+    renderedContext_=RenderContext();
     const bool dark=palette().color(QPalette::Base).lightness()<128;
     const QString textColor=palette().color(QPalette::Text).name();
     const QString userColor=dark?QStringLiteral("#1d3d5a"):QStringLiteral("#dcecff");
@@ -350,26 +450,7 @@ void AssistantChatView::RenderMessages()
     TagChatBlocks(transcript_->document(),snapshot_.value("messages").toArray());
     for(const auto& preview:previews)transcript_->document()->addResource(QTextDocument::ImageResource,preview.first,preview.second);
     transcript_->document()->addResource(QTextDocument::ImageResource,QUrl(QStringLiteral("okuflow-chat-origin")),originIcon);
-    {
-        QTextCursor restored(transcript_->document());
-        const int end=std::max(0,transcript_->document()->characterCount()-1);
-        const auto anchor=RestoreChatAnchor(transcript_->document(),oldAnchor);
-        const auto position=RestoreChatAnchor(transcript_->document(),oldPosition);
-        if((!oldAnchor.messageId.isEmpty() && !anchor) || (!oldPosition.messageId.isEmpty() && !position)) {
-            // A removed message must not transfer selection to unrelated text.
-            restored.setPosition(position.value_or(anchor.value_or(end)));
-        } else {
-            restored.setPosition(anchor.value_or(std::min(oldAnchor.absolute,end)));
-            restored.setPosition(position.value_or(std::min(oldPosition.absolute,end)),QTextCursor::KeepAnchor);
-        }
-        transcript_->setTextCursor(restored);
-    }
-    if(follow)transcript_->verticalScrollBar()->setValue(transcript_->verticalScrollBar()->maximum());
-    else if(const auto position=RestoreChatAnchor(transcript_->document(),topAnchor)) {
-        QTextCursor top(transcript_->document());top.setPosition(*position);
-        const int delta=transcript_->cursorRect(top).top()-topOffset;
-        transcript_->verticalScrollBar()->setValue(transcript_->verticalScrollBar()->value()+delta);
-    } else transcript_->verticalScrollBar()->setValue(oldScroll);
+    RestoreChatReadingState(transcript_,readingState);
 }
 void AssistantChatView::RefreshActions()
 {
@@ -446,7 +527,12 @@ bool AssistantChatView::eventFilter(QObject* watched,QEvent* event)
 {
     if(transcript_ && watched==transcript_->viewport() && event->type()==QEvent::Resize && !renderQueued_) {
         renderQueued_=true;
-        QTimer::singleShot(0,this,[this] {renderQueued_=false;RenderMessages();});
+        QTimer::singleShot(0,this,[this] {
+            renderQueued_=false;
+            // A completed render/edit may already cover the final viewport
+            // width. A stale resize callback must not undo incremental work.
+            if(renderedContext_!=RenderContext())RenderMessages();
+        });
     }
     if(watched==composer_&&(event->type()==QEvent::ShortcutOverride||event->type()==QEvent::KeyPress)) {
         auto* key=static_cast<QKeyEvent*>(event);

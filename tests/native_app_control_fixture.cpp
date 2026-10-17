@@ -63,6 +63,48 @@ public:
         app.controlService_=std::make_unique<AppControlService>(*app.controlTarget_,CatalogEdition::DevFull);
         app.controlService_->SetEnabled(true,true);
     }
+    static UctFrameContext PrimeAnnotation(OkuFlowApp& app) {
+        app.CancelAnnotationCaptures();
+        UctFrameContext frame;
+        frame.cameraActive=true;frame.geometry={{},640,480};
+        frame.geometry.settings.sourceEpoch=app.cameraSessionId_;
+        frame.requested=frame.geometry.settings;frame.frameSeq=41;
+        frame.transform=ComputeViewTransform(640,480,800,600,1,0.5f,0.5f,ViewportFitMode::kFit);
+        frame.viewportWidth=800;frame.viewportHeight=600;
+        OkuFlowApp::PendingAnnotationCapture capture;
+        capture.frame=frame;capture.sceneRevision=app.annotationSceneRevision_;
+        capture.transform=frame.transform;
+        AnnotationStroke stroke;stroke.points={{0.25,0.25},{0.5,0.5}};capture.strokes={stroke};
+        app.annotationCaptureQueue_.push_back(capture);
+        app.activeAnnotationCapture_=capture;app.pendingAnnotationReadbackId_=91;
+        app.lastAnnotationPresentation_=frame;
+        return frame;
+    }
+    static bool AnnotationGpuSignatureRejectsChangedOutput(OkuFlowApp& app) {
+        PrimeAnnotation(app);
+        OkuFlowApp::AnnotationGpuPresentation displayed;
+        displayed.texture=&app;displayed.width=1280;displayed.height=720;
+        displayed.transform=app.annotationCaptureQueue_.front().transform;displayed.superRes=true;
+        app.annotationCaptureQueue_.front().presentation=displayed;
+        if(!app.AnnotationGpuPresentationMatches(displayed))return false;
+        auto candidate=displayed;candidate.superRes=false;
+        if(app.AnnotationGpuPresentationMatches(candidate))return false;
+        candidate=displayed;candidate.texture=nullptr;
+        if(app.AnnotationGpuPresentationMatches(candidate))return false;
+        candidate=displayed;candidate.width=640;
+        if(app.AnnotationGpuPresentationMatches(candidate))return false;
+        candidate=displayed;candidate.transform.sourceX=0.25f;
+        if(app.AnnotationGpuPresentationMatches(candidate))return false;
+        candidate=displayed;candidate.focusMarker=true;
+        return !app.AnnotationGpuPresentationMatches(candidate);
+    }
+    static bool AnnotationMatches(OkuFlowApp& app,const UctFrameContext& frame) {return app.AnnotationFrameMatches(frame);}
+    static void AnnotationSceneReprocessed(OkuFlowApp& app) {++app.annotationSceneRevision_;}
+    static bool AnnotationEmpty(OkuFlowApp& app) {
+        return app.annotationCaptureQueue_.empty() && !app.activeAnnotationCapture_ &&
+            app.pendingAnnotationReadbackId_==0 && !app.lastAnnotationPresentation_;
+    }
+    static void ClearAnnotation(OkuFlowApp& app) {app.CancelAnnotationCaptures();}
     static AppControlService& Service(OkuFlowApp& app) {return *app.controlService_;}
     static AppControlTarget& Target(OkuFlowApp& app) {return *app.controlTarget_;}
     static QString DeferredPreferenceOperation(OkuFlowApp& app) {
@@ -205,6 +247,36 @@ class NativeAcceptance final : public QObject {
 public:
     explicit NativeAcceptance(OkuFlowApp& app):app_(app) {}
 private slots:
+    void annotationReadbackNeverRetargetsChangedSceneOrTransform() {
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ClearAnnotation(app_);});
+        const auto original=NativeControlFixture::PrimeAnnotation(app_);
+        QVERIFY(NativeControlFixture::AnnotationMatches(app_,original));
+        auto later=original;++later.frameSeq;
+        QVERIFY(!NativeControlFixture::AnnotationMatches(app_,later));
+        later=original;later.transform.sourceWidth=0.5f;
+        QVERIFY(!NativeControlFixture::AnnotationMatches(app_,later));
+        later=original;++later.geometry.settings.sourceEpoch;
+        QVERIFY(!NativeControlFixture::AnnotationMatches(app_,later));
+        later=original;later.viewportWidth=1200;
+        QVERIFY(!NativeControlFixture::AnnotationMatches(app_,later));
+        later=original;++later.requested.rotationQuarterTurns;
+        QVERIFY(!NativeControlFixture::AnnotationMatches(app_,later));
+        // Reprocessing the same camera sequence with different effects is
+        // different pixels even when the spatial OCR key remains identical.
+        NativeControlFixture::AnnotationSceneReprocessed(app_);
+        QVERIFY(!NativeControlFixture::AnnotationMatches(app_,original));
+    }
+    void annotationReadbackRejectsChangedSrTextureAndPresentationOptions() {
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ClearAnnotation(app_);});
+        QVERIFY(NativeControlFixture::AnnotationGpuSignatureRejectsChangedOutput(app_));
+    }
+    void sourceRetirementRevokesPendingAnnotationReadback() {
+        NativeControlFixture::PrimeAnnotation(app_);
+        // Exercise the production retirement entry, including its no-camera
+        // early return. No device or native presenter is created by this fixture.
+        NativeControlFixture::StopCamera(app_);
+        QVERIFY(NativeControlFixture::AnnotationEmpty(app_));
+    }
     void deferredPreferenceWaitUsesTheSameStatusProjection() {
         auto& target=NativeControlFixture::Target(app_);
         const auto id=NativeControlFixture::DeferredPreferenceOperation(app_);

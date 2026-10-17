@@ -10,6 +10,7 @@
 #include <QBuffer>
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -131,6 +132,64 @@ QString NotesMediaUrl(const QString& notesFilePath, const QString& mediaPath)
                          ? QUrl::fromLocalFile(mediaInfo.absoluteFilePath())
                          : QUrl(relativePath);
     return QString::fromUtf8(url.toEncoded(QUrl::FullyEncoded));
+}
+
+// A portable bounded-memory fingerprint: start with 32 zero bytes and hash
+// (previous digest || next 1 MiB) until EOF. Browser WebCrypto can perform the
+// same chain without retaining the complete recording or custom crypto code.
+QJsonObject NotesRecordingIdentity(const QString& path)
+{
+    constexpr qint64 chunkBytes = 1024 * 1024;
+    QFile media(path);
+    if (!media.open(QIODevice::ReadOnly)) return {};
+    const auto modified = QFileInfo(media).lastModified();
+    const qint64 size = media.size();
+    if (size <= 0 || size > 9007199254740991LL) return {};
+    QByteArray digest(32, '\0');
+    qint64 total = 0;
+    while (total < size) {
+        const qint64 expected = std::min(chunkBytes, size - total);
+        const QByteArray chunk = media.read(expected);
+        if (chunk.size() != expected) return {};
+        digest = QCryptographicHash::hash(digest + chunk, QCryptographicHash::Sha256);
+        total += chunk.size();
+    }
+    const QFileInfo after(path);
+    if (media.error() != QFileDevice::NoError || total != size ||
+        after.size() != size || modified != after.lastModified()) return {};
+    media.close();
+    QJsonObject identity{{QStringLiteral("version"), 1},
+                         {QStringLiteral("mediaId"), QUuid::createUuid().toString(QUuid::WithoutBraces)},
+                         {QStringLiteral("name"), after.fileName()},
+                         {QStringLiteral("size"), size},
+                         {QStringLiteral("algorithm"), QStringLiteral("sha256-chain-1m-v1")},
+                         {QStringLiteral("fingerprint"), QString::fromLatin1(digest.toHex())}};
+    const QString manifestPath = path + QStringLiteral(".okuflow-media.json");
+    const auto existingIdentity = [&]() -> QJsonObject {
+        QFile input(manifestPath);
+        if (!input.open(QIODevice::ReadOnly) || input.size() > 4096) return {};
+        const auto existing = QJsonDocument::fromJson(input.readAll()).object();
+        const QString id = existing.value(QStringLiteral("mediaId")).toString();
+        if (QUuid(id).isNull() || QUuid(id).toString(QUuid::WithoutBraces) != id ||
+            existing.value(QStringLiteral("version")) != identity.value(QStringLiteral("version")))
+            return {};
+        for (const auto* key : {"name", "size", "algorithm", "fingerprint"})
+            if (existing.value(QLatin1String(key)) != identity.value(QLatin1String(key))) return {};
+        return existing;
+    };
+    // Identity is immutable. A stale/corrupt existing marker must never be
+    // silently replaced and certify different bytes under an old notes card.
+    if (QFileInfo::exists(manifestPath)) return existingIdentity();
+    QTemporaryFile staging(manifestPath + QStringLiteral(".XXXXXX"));
+    if (!staging.open()) return {};
+    const QByteArray payload = QJsonDocument(identity).toJson(QJsonDocument::Compact);
+    if (staging.write(payload) != payload.size() || !staging.flush()) return {};
+    staging.close();
+    // QFile::rename refuses an existing destination. Complete bytes become
+    // visible together and a competing writer cannot clobber the first UUID.
+    if (!staging.rename(manifestPath)) return existingIdentity();
+    staging.setAutoRemove(false);
+    return identity;
 }
 
 // Non-empty configured values take precedence over the environment variable.
@@ -2124,7 +2183,7 @@ void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
                  processedCaption);
     if (video) {
         content += QStringLiteral(
-            "    <section class=\"transcribe-tools\" data-transcribe-src=\"%1\">\n"
+            "    <section class=\"transcribe-tools\" data-transcribe-src=\"%1\" data-recording-identity=\"__OKUFLOW_MEDIA_IDENTITY__\">\n"
             "      <div class=\"transcribe-actions\"><button type=\"button\" class=\"transcribe-start\">Transcribe</button>"
             "<button type=\"button\" class=\"transcribe-stop\" hidden>Stop</button>"
             "<button type=\"button\" class=\"transcribe-export\" hidden>Save as text</button></div>\n"
@@ -2136,6 +2195,7 @@ void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
     NoteSectionMetadata metadata;
     metadata.cssClass = QStringLiteral("media");
     metadata.kind = video ? QStringLiteral("video") : QStringLiteral("photo");
+    if (video) metadata.recordingPath = originalPath;
     metadata.previewText =
         video ? QCoreApplication::translate("OkuFlow",
                                             "Original and processed video")
@@ -2198,7 +2258,8 @@ bool AssistiveRuntime::QueueNotesWork(const QString& path, qint64 bytes,
     return true;
 }
 
-bool AssistiveRuntime::AppendNoteBlock(const QString& blockHtml, const QString& identity)
+bool AssistiveRuntime::AppendNoteBlock(const QString& blockHtml, const QString& identity,
+                                      const QString& recordingPath)
 {
     if (!notesDocumentOpen_ || notesFilePath_.isEmpty()) return false;
     const QString path = notesFilePath_;
@@ -2211,7 +2272,14 @@ bool AssistiveRuntime::AppendNoteBlock(const QString& blockHtml, const QString& 
             it = noteImages_.erase(it);
         } else ++it;
     }
-    return QueueNotesWork(path, bytes, [path, blockHtml, images] {
+    return QueueNotesWork(path, bytes, [path, blockHtml, images, recordingPath] {
+        QString preparedHtml = blockHtml;
+        if (!recordingPath.isEmpty()) {
+            const QJsonObject mediaIdentity = NotesRecordingIdentity(recordingPath);
+            if (mediaIdentity.isEmpty()) return false;
+            preparedHtml.replace(QStringLiteral("__OKUFLOW_MEDIA_IDENTITY__"),
+                QString::fromUtf8(QJsonDocument(mediaIdentity).toJson(QJsonDocument::Compact)).toHtmlEscaped());
+        }
         QStringList created;
         auto cleanup = [&] { for (const auto& image : created) QFile::remove(image); };
         for (auto it = images.cbegin(); it != images.cend(); ++it) {
@@ -2222,7 +2290,7 @@ bool AssistiveRuntime::AppendNoteBlock(const QString& blockHtml, const QString& 
             if (!QDir().mkpath(QFileInfo(it.key()).absolutePath()) ||
                 !image.save(it.key(), "JPG", 88)) { cleanup(); return false; }
         }
-        const QByteArray blockBytes = blockHtml.toUtf8();
+        const QByteArray blockBytes = preparedHtml.toUtf8();
         QFile outputFile(path);
         // Never create a headerless file after a failed document creation.
         if (!outputFile.exists() || !outputFile.open(QIODevice::ReadWrite | QIODevice::Append)) {
@@ -2311,7 +2379,7 @@ bool AssistiveRuntime::AppendNoteHtmlSection(const QString& heading,
                                      metadata.startCollapsed ? QString()
                                                              : QStringLiteral(" open"),
                                      preview);
-    return AppendNoteBlock(section);
+    return AppendNoteBlock(section, {}, metadata.recordingPath);
 }
 
 void AssistiveRuntime::SpeakText(const QString& text)

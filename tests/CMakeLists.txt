@@ -45,6 +45,7 @@ include(http_agent.cmake)
 include(visible_chat.cmake)
 include(visible_chat_store.cmake)
 include(mcp.cmake)
+include(bundle_publication.cmake)
 include(native_control.cmake)
 include(ultra_clear_text.cmake)
 set_tests_properties(deadline_worker PROPERTIES TIMEOUT 15

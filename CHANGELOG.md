@@ -1,6 +1,35 @@
 # Changelog
 
 ## [Unreleased]
+- Add opt-in offline chat render/reading-anchor measurements and bounded Maxine
+  host-call latency distributions; retain actual native pan, queue and stale-frame
+  performance as unverified instead of claiming an unmeasured speedup.
+- Update only an eligible final streaming Assistant paragraph after measuring
+  full-conversation reconstruction cost, preserving reading position and full
+  rendering for metadata, style, short-bubble and other changes.
+- Bind browser notes transcription to an immutable recording UUID and fresh
+  bounded-memory file fingerprint. Same-named folders, changed media and stale
+  sidecars cannot substitute another recording; UUID-addressed sidecars keep
+  delayed old writers from overwriting successor transcripts. Hashing stays
+  off the native UI, and legacy basename-only sidecars remain untouched.
+- Preserve complete previous Windows bundles when a secondary runtime is locked;
+  publish with verified directory swaps and rollback, retaining recovery copies.
+  Require Ninja/VS2022 x64 for bundle equivalence and add read-only toolchain
+  preflight with actionable fresh-cache guidance.
+- Bind MSI tooling to the exact reviewed WiX package tree, and generate release
+  CUDA facts, capability selection and toolkit notices from the configured target
+  rather than the invoking shell's CUDA environment.
+- Continue recording codec/input fallback after a failed encoder leaves bytes.
+  Retain each failed attempt, exclusively create fresh retry outputs, and add
+  only the selected finalized pair to notes. After native AAC gap compaction
+  was reproduced, preserve elapsed audio time with bounded worker-side PCM
+  silence and exact sample-count accounting. Native synthetic audio/video
+  markers now retain their alignment across the measured three-second gap.
+- Keep phone fallback modes within the remaining Windows startup budget,
+  report candidate failure/progress, and reserve decode time. Codec headers
+  alone no longer trigger an early HEVC decoder fallback while modes start.
+- Bind saved annotations to the displayed camera frame and transform; reject
+  stale readbacks instead of drawing strokes onto a later or different source.
 - Keep approved asynchronous actions in progress until their real operation
   outcome, attaching the final receipt to the original retained chat turn.
 - Preserve concurrent phone UI and USB-host setting changes with serialized

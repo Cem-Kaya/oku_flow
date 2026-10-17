@@ -296,6 +296,9 @@ endif()
 include(PrecompiledHeaders.cmake)
 okuflow_enable_pch(oku_flow)
 
+include(ReleaseBuildFacts.cmake)
+okuflow_generate_release_build_facts(oku_flow)
+
 if (OKUFLOW_ENABLE_TESTS)
     if (EXISTS "${PROJECT_SOURCE_DIR}/tests/CMakeLists.txt")
         add_subdirectory(${PROJECT_SOURCE_DIR}/tests ${CMAKE_BINARY_DIR}/tests)

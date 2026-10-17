@@ -42,6 +42,30 @@ private:
     std::uint64_t unknownTimestampCount_{0};
 };
 
+// Maps an elapsed-media PCM block onto a continuous sample-count clock.
+// Microsoft AAC compacts timestamp holes, so absent intervals need actual PCM.
+struct RecordingPcmSpan {
+    std::uint64_t silenceFrames{};
+    std::uint64_t skipFrames{};
+    std::uint64_t dataFrames{};
+};
+
+class RecordingPcmTimeline {
+public:
+    static constexpr std::uint32_t kMaximumGapSeconds = 10;
+    void Reset(std::uint32_t sampleRate) { sampleRate_ = sampleRate; frames_ = 0; }
+    bool Plan(std::int64_t mediaTime100ns, std::uint64_t inputFrames,
+              RecordingPcmSpan& span) const;
+    // Returns -1 on overflow/invalid configuration. Absolute frame conversion
+    // avoids accumulating rounded per-block durations.
+    std::int64_t TimestampAfter(std::uint64_t additionalFrames = 0) const;
+    bool Advance(std::uint64_t frames);
+    std::uint64_t Frames() const { return frames_; }
+private:
+    std::uint32_t sampleRate_{48000};
+    std::uint64_t frames_{};
+};
+
 enum class RecordingCanvasMode {
     Source = 0,
     FullHd1080 = 1,

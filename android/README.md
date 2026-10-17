@@ -34,6 +34,14 @@ with an installed system decoder, HEVC into the existing MediaFrame pipeline.
 The Python probe also receives HEVC.
 The implemented wire contract is in [PROTOCOL.md](PROTOCOL.md).
 
+Development startup now shares the Windows receiver's remaining deadline across
+camera fallback attempts, including queues, discovery and retry gaps. The host
+keeps its 12-second startup cap and reserves time for decoding; the phone tries
+up to six modes with bounded per-candidate progress and failure diagnostics.
+Codec headers alone do not trigger premature HEVC decoder fallback. These local
+changes have not established physical-phone or published-release acceptance;
+see the [startup contract](PROTOCOL.md#startup-budget-and-candidate-progress).
+
 After setup the phone always states what is happening and what to do next.
 It shows **Open OkuFlow on your computer**, then **Connected to OkuFlow** while
 waiting for camera video, then **Streaming to OkuFlow** with the actual mode.

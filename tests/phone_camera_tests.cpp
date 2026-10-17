@@ -1,5 +1,6 @@
 #include "okuflow/capture/phone_camera.hpp"
 #include "okuflow/capture/phone_frame_progress.hpp"
+#include "okuflow/capture/phone_startup_budget.hpp"
 #include "okuflow/capture/adb_owned_server.hpp"
 #include <QtTest/QtTest>
 #include <QFile>
@@ -1229,6 +1230,7 @@ private slots:
         const auto start = Progress::TimePoint{};
         Progress progress(start);
         progress.BeginGeneration(true, start);
+        progress.EncodedFrameReceived(start);
         progress.PacketReceived(start + std::chrono::seconds(4));
         QCOMPARE(progress.Check(start + std::chrono::seconds(4)), Progress::Failure::HevcStalled);
         // The AVC replacement has a fresh transport deadline; later generation
@@ -1240,6 +1242,56 @@ private slots:
             avc.PacketReceived(start + std::chrono::seconds(second));
         }
         QCOMPARE(avc.Check(start + std::chrono::seconds(16)), Progress::Failure::DecoderStalled);
+    }
+    void phoneStartupNegotiationAndCodecRetryShareOneDeadline()
+    {
+        using Budget = okuflow::PhoneStartupBudget;
+        const auto start = Budget::TimePoint{};
+        const Budget budget(start);
+        QVERIFY(budget.Deadline() == start + std::chrono::seconds(12));
+        QCOMPARE(budget.RemainingCameraMs(start), 11000);
+        // adb/listener negotiation and a failed HEVC decoder spend the same
+        // startup clock; an AVC retry cannot mint another twelve seconds.
+        QCOMPARE(budget.RemainingCameraMs(start + std::chrono::milliseconds(4300)), 6700);
+        QCOMPARE(budget.RemainingCameraMs(start + std::chrono::seconds(8)), 3000);
+        QCOMPARE(budget.RemainingCameraMs(start + std::chrono::seconds(11)), 0);
+        QCOMPARE(budget.RemainingCameraMs(start + std::chrono::seconds(15)), 0);
+    }
+    void codecConfigurationDoesNotConsumeTheHevcOutputDeadline()
+    {
+        using Progress = okuflow::PhoneFrameProgress;
+        const auto start = Progress::TimePoint{};
+        Progress progress(start);
+        progress.BeginGeneration(true, start);
+        // The phone is still trying modes. SPS/PPS is packet arrival, not
+        // evidence that the system decoder has a real picture to decode.
+        progress.PacketReceived(start);
+        QCOMPARE(progress.Check(start + std::chrono::milliseconds(4199)), Progress::Failure::None);
+        progress.BeginGeneration(true, start + std::chrono::milliseconds(4200));
+        progress.PacketReceived(start + std::chrono::milliseconds(4200));
+        progress.EncodedFrameReceived(start + std::chrono::milliseconds(4300));
+        progress.FrameDecoded(start + std::chrono::milliseconds(4350));
+        QCOMPARE(progress.Check(start + std::chrono::seconds(8)), Progress::Failure::None);
+
+        Progress silent(start);
+        silent.BeginGeneration(true, start);
+        for (int second = 0; second <= 12; ++second)
+            silent.PacketReceived(start + std::chrono::seconds(second));
+        QCOMPARE(silent.Check(start + std::chrono::seconds(12)), Progress::Failure::HevcStalled);
+    }
+    void hevcOutputDeadlineStartsWithRealEncodedInput()
+    {
+        using Progress = okuflow::PhoneFrameProgress;
+        const auto start = Progress::TimePoint{};
+        Progress progress(start);
+        progress.BeginGeneration(true, start);
+        progress.PacketReceived(start);
+        progress.EncodedFrameReceived(start + std::chrono::seconds(3));
+        // More packets cannot reset the first encoded-frame clock.
+        progress.EncodedFrameReceived(start + std::chrono::seconds(6));
+        progress.PacketReceived(start + std::chrono::seconds(6));
+        QCOMPARE(progress.Check(start + std::chrono::milliseconds(6999)), Progress::Failure::None);
+        QCOMPARE(progress.Check(start + std::chrono::seconds(7)), Progress::Failure::HevcStalled);
     }
     void packetSilenceRetainsTransportFailureClassification()
     {

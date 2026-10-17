@@ -102,7 +102,7 @@ binaries and caches are not added to Windows/Android release inventories.
   release notice staging. No compiler, toolkit archive or new third-party
   implementation is added to the repository or application payload.
 - OkuFlow redistribution scope:
-  - CUDA-enabled builds link `cudart_static` into `oku_flow.exe`
+  - CUDA-enabled builds link `cudart_static` into `OkuFlowApp.exe`
   - no standalone CUDA Toolkit runtime DLLs, headers, compilers, or developer
     tools are copied into release bundles
   - the Toolkit EULA (`EULA.txt` or the newer `LICENSE` filename) from the exact build toolkit is staged as
@@ -280,6 +280,12 @@ MIT header snapshot. It does not add a link-time or redistribution dependency
 on the proprietary runtime.
 
 ## Optional External Tools And Services
+- MSI tooling executes the WiX apphost directly from the already reviewed
+  4.0.6 NuGet archive after complete extracted-tree byte verification. No
+  separately resolved NuGet tool, new WiX version or shipped component is
+  introduced. CUDA metadata and notice staging use CMake's effective compiler
+  and linked static runtime facts; the selected toolkit's exact license bytes
+  must match the configured manifest.
 - WiX Toolset 4.0.6 is a developer-only MSI compiler under MS-RL, pinned by
   NuGet SHA-256 in `scripts/windows-installer/tools.json`. The unmodified exact
   upstream license is retained as `scripts/windows-installer/WIX_LICENSE.txt`;
