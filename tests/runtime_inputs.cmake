@@ -6,7 +6,7 @@ set_property(TEST agent_control_coverage_contract mcp_bridge_contract APPEND PRO
     REQUIRED_FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/app_control_inventory.json")
 set_property(TEST agent_control_contract APPEND PROPERTY
     REQUIRED_FILES "${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp")
-set_property(TEST codex_agent_profile_contract codex_agent_client_contract ${assistive_preparation_cases}
+set_property(TEST notes_html codex_agent_profile_contract codex_agent_client_contract ${assistive_preparation_cases}
     APPEND PROPERTY REQUIRED_FILES "${PROJECT_SOURCE_DIR}/assets/codex-agent/0.160.1-profile.json")
 set_property(TEST phone_camera_contract APPEND PROPERTY REQUIRED_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/data/phone-camera.h264"

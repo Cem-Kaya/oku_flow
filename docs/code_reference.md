@@ -4214,6 +4214,21 @@ so a later failed write cannot hide committed history cleanup from observers.
 Tests use exact Windows file locks to
 force commit failure and cleanup failure without changing owner data/permissions.
 
+`CodexAppServerClient::EnsureLaunchPermissions` chooses immutable per-child
+coding/internet grants before admitting a turn. It retires any differently
+privileged child first. Read/Explain always choose constrained offline launch,
+including after coding-enabled persistent turns. Idle/account children start
+constrained. Configure retires changed executable/security/workspace profiles,
+retaining the old profile identity if retirement is incomplete so no new turn
+can silently reuse wider authority. `restrictedStageFinished_` tracks only the
+current preflight stage; the persistent finished handler resumes current work
+after a canceled earlier preflight exits. `CodexAgentProfile::Validate` accepts
+an explicit web-search grant for ordinary non-coding Assistant turns; it still
+disables ambient MCP, shell/code/computer/plugin/hooks and local `view_image`
+tools before app-server starts. Dedicated control/scoped vision callers retain
+the default offline profile. Attached input images are independent of the local
+file-image tool. Tests log child argv and exercise profile transitions.
+
 `OkuFlowApp::StartCameraCapture` routes ordinary initial/reopen/format/reconnect
 starts through `QueueInitialCameraStart`, retaining its revocable ingress,
 worker tracker and generation checks. Only explicit legacy startup profiling

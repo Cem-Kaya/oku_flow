@@ -23,18 +23,17 @@ int main(int argc,char** argv) {
         puts(mode=="bad-mcp"?"[{\"name\":\"bad.dot\"}]":"[{\"name\":\"fixture-private\",\"authorization\":\"fixture-secret\"}]");return 0;
     }
     if(qEnvironmentVariable("OKUFLOW_FAKE_SCENE_EXPECT_RESTRICTED")=="1") {
-        // Runtime's ordinary idle child retains the legacy launch. Only the
-        // additional scoped child writes isolation proof; a scope regression
-        // to the bare launch therefore cannot satisfy the test.
-        if(args==QStringList{"app-server","--listen","stdio://"})return OrdinaryFixtureMain();
+        // Both ordinary vision and scoped scene children require confinement.
+        // A bare legacy launch must not produce isolation proof.
+        if(args==QStringList{"app-server","--listen","stdio://"})return OrdinaryFixtureMain(argc,argv);
         for(const auto& pair:{QStringList{"--disable","apps"},QStringList{"--disable","plugins"},QStringList{"--disable","shell_tool"},
             QStringList{"-c","web_search=\"disabled\""},QStringList{"-c","mcp_servers.fixture-private.enabled=false"}}) {
             bool found=false;for(int i=0;i+1<args.size();++i)if(args[i]==pair[0] && args[i+1]==pair[1])found=true;
             if(!found)return 2;
         }
-    } else if(args!=QStringList{"app-server","--listen","stdio://"})return 3;
+    }
     const auto path=qEnvironmentVariable("OKUFLOW_FAKE_SCENE_ARGS_FILE");
     if(!path.isEmpty()) {QFile proof(path);if(!proof.open(QIODevice::WriteOnly))return 1;
         proof.write(QJsonDocument(QJsonArray::fromStringList(args)).toJson(QJsonDocument::Compact));}
-    return OrdinaryFixtureMain();
+    return OrdinaryFixtureMain(argc,argv);
 }

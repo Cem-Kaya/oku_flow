@@ -4,6 +4,7 @@
 // network. Exits when stdin closes.
 
 #include <QByteArray>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -373,8 +374,25 @@ void HandleMessage(const QJsonObject& message)
 
 } // namespace
 
-int main()
+int main(int argc,char** argv)
 {
+    QStringList arguments;for(int i=1;i<argc;++i)arguments.append(QString::fromLocal8Bit(argv[i]));
+    if(arguments.value(0)=="--version") {puts("codex-cli 0.160.1");return 0;}
+    if(arguments.value(0)=="features") {
+        QFile profile(QStringLiteral(OKUFLOW_AGENT_PROFILE_FIXTURE));if(!profile.open(QIODevice::ReadOnly))return 1;
+        for(const auto& row:QJsonDocument::fromJson(profile.readAll()).object().value("featureInventory").toArray()) {
+            const auto parts=row.toString().split('|');const auto line=(parts[0]+" "+parts[1]+" true\n").toUtf8();
+            fwrite(line.data(),1,line.size(),stdout);
+        }
+        return 0;
+    }
+    if(arguments.value(0)=="mcp") {puts("[{\"name\":\"fixture-private\"}]");return 0;}
+    const auto launchLog=qgetenv("OKUFLOW_FAKE_CODEX_LAUNCH_LOG");
+    if(!launchLog.isEmpty()) {
+        QFile file(QString::fromLocal8Bit(launchLog));if(!file.open(QIODevice::WriteOnly|QIODevice::Append))return 4;
+        file.write(QJsonDocument(QJsonArray::fromStringList(arguments)).toJson(QJsonDocument::Compact)+"\n");
+    }
+
     const char* scenario = std::getenv("OKUFLOW_FAKE_CODEX_SCENARIO");
     gScenario = scenario != nullptr ? QString::fromUtf8(scenario) : QStringLiteral("vision-happy");
 

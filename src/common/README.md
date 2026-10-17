@@ -108,3 +108,14 @@ Visible chat history commits a new/replacement record atomically before old
 retention entries can be deleted. Failed publication preserves previous files.
 A cleanup failure permits one bounded committed overflow and blocks further
 writes until retention cleanup succeeds; restart can recover that overflow.
+
+Ordinary non-coding Codex children use the pinned constrained launch profile
+before inference. Read/Explain stay offline after a coding session. Optional
+ordinary Assistant web search requires its internet preference. Changing
+coding/network/workspace permissions retires and replaces the child. The coding
+profile remains an explicit persistent-request opt-in with workspace sandbox
+and network policy. Protocol fixtures verify argv and lifecycle; they do not
+establish live model behavior or OS sandbox acceptance. Upstream
+[App Server documentation](https://learn.chatgpt.com/docs/app-server) describes
+thread/turn sandbox policies; the reviewed 0.160.1 feature inventory remains
+the compatibility authority here.

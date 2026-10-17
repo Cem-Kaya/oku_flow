@@ -742,6 +742,8 @@ if (WIN32)
         fake_codex_app_server.cpp
     )
     target_link_libraries(fake_codex_app_server PRIVATE Qt6::Core)
+    target_compile_definitions(fake_codex_app_server PRIVATE
+        OKUFLOW_AGENT_PROFILE_FIXTURE="${PROJECT_SOURCE_DIR}/assets/codex-agent/0.160.1-profile.json")
     add_dependencies(notes_html_tests fake_codex_app_server)
 
     add_executable(assistive_preparation_tests

@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+- Constrain non-coding Codex sessions before launch and replace the child when
+  coding/internet permissions change; Read and Explain stay offline.
 - Keep webcam reopen, format changes and reconnect driver startup off the UI
   thread; report reconnect success only after asynchronous completion.
 
