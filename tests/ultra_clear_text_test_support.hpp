@@ -7,6 +7,7 @@
 #include "okuflow/common/view_transform.hpp"
 
 #include <QFont>
+#include <QCryptographicHash>
 #include <QFontDatabase>
 #include <QFontMetricsF>
 #include <QImage>
@@ -15,8 +16,32 @@
 #include <QStringList>
 
 #include <cmath>
+#include <algorithm>
 
 namespace uct_test {
+
+// A synthetic observation really changes a few non-text corner pixels.
+// Temporal-admission fixtures must not manufacture independent evidence by
+// changing only a timestamp, job number or claimed hash of identical pixels.
+inline QImage IndependentFramePixels(const QImage& source, std::uint64_t frameSeq)
+{
+    QImage pixels = source.copy();
+    if (pixels.isNull()) return pixels;
+    for (int byte = 0; byte < std::min(8, pixels.width()); ++byte) {
+        pixels.setPixelColor(pixels.width() - 1 - byte, pixels.height() - 1,
+                             QColor(128, 128, static_cast<int>((frameSeq >> (byte * 8)) & 0xff)));
+    }
+    return pixels;
+}
+
+inline QByteArray SourcePixelsDigest(const QImage& pixels)
+{
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    for (int row = 0; row < pixels.height(); ++row)
+        hash.addData(QByteArrayView(reinterpret_cast<const char*>(pixels.constScanLine(row)),
+                                    static_cast<qsizetype>(pixels.width()) * 4));
+    return hash.result();
+}
 
 struct PageWord {
     QString text;

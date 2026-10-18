@@ -18,6 +18,16 @@
 
 namespace okuflow::agent {
 namespace {
+[[maybe_unused]] bool SelectedMediaImageField(Field field) {
+    switch(field) {
+    case Field::BlackWhite:case Field::Threshold:case Field::Contrast:case Field::Brightness:
+    case Field::Scheme:case Field::CustomColorMode:case Field::CustomColorStopCount:
+    case Field::CustomColorStops:case Field::CustomColorStepped:case Field::CustomColorRecipe:
+    case Field::UctGpuDetector:case Field::UctGpuRecognizer:case Field::UctCpuDetector:case Field::UctCpuRecognizer:
+        return true;
+    default:return false;
+    }
+}
 struct ParameterField { std::string_view id; Field field; };
 constexpr ParameterField kImageViewFields[] = {
     {"image.uct.gpu.detector",Field::UctGpuDetector},
@@ -501,8 +511,9 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
         saved[Field::ZoomWheelAcceleration]=committed->zoomWheelAcceleration;
     }
     const bool cuda=app_.cudaSurface_ && app_.cudaSurface_->IsValid() && app_.cudaPipelineAvailable_;
-    const bool live=app_.usingCudaLastFrame_ && app_.cameraActive_;
-    const bool master=Value(fields,Field::TextClarity).toBool();
+    const bool media=app_.MediaViewSelected();
+    const bool live=!media && app_.usingCudaLastFrame_ && app_.cameraActive_;
+    const bool master=!media && Value(fields,Field::TextClarity).toBool();
     const bool adaptive=master && Value(fields,Field::Adaptive).toBool();
     const bool twoColor=adaptive && Value(fields,Field::TwoColor).toBool();
     const auto enabled=[&](Field f){return Value(fields,f).toBool();};
@@ -514,7 +525,8 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
         bool available=app_.uiState_ && app_.mainWindow_ &&
             (ParameterWidget(field,*app_.uiState_,app_.mainWindow_.get()) || field==Field::KeystonePaused || field==Field::SuperResPerformanceOverride);
         QString unsupported=available?QString():QString("native_control_unavailable");
-        if(group==ParameterGroup::Image && field!=Field::DebugView && !IsUctModel(field) && !cuda) {available=false;unsupported="cuda_unavailable";}
+        if(group==ParameterGroup::Image && media && !SelectedMediaImageField(field)) {available=false;unsupported="selected_media_cpu_path";}
+        else if(group==ParameterGroup::Image && !media && field!=Field::DebugView && !IsUctModel(field) && !cuda) {available=false;unsupported="cuda_unavailable";}
         if(IsSuperRes(field)) {
 #if OKUFLOW_ENABLE_TEXT_SR
             if(!app_.mainWindow_ || !app_.mainWindow_->isMaxineRuntimeInstalled()) {available=false;unsupported="maxine_unavailable";}
@@ -522,7 +534,8 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
             available=false;unsupported="super_resolution_not_built";
 #endif
         }
-        bool active=live;QString inactive=live?QString():QString("no_processed_frame");
+        bool active=live || (media && SelectedMediaImageField(field));
+        QString inactive=active?QString():media?QString("selected_media_cpu_path"):QString("no_processed_frame");
         bool intent=ImageParameterEffectiveIntent(field,fields);
         if(TextHandler(field) && !IsSuperRes(field) && field!=Field::TextClarity && !master)inactive="text_clarity_disabled";
         if(IsSuperRes(field)) {
@@ -541,7 +554,7 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
         if(IsCustomComponent(field) && Value(fields,Field::Scheme)!="custom") {intent=false;inactive="custom_scheme_inactive";}
         if((field==Field::Scheme || IsCustomComponent(field)) && twoColor) {intent=false;inactive="two_color_text";}
         if(group==ParameterGroup::View || field==Field::DebugView) {
-            active=app_.cameraActive_;intent=requested.isBool()?requested.toBool():true;inactive=active?QString():QString("no_frame");
+            active=app_.cameraActive_ || media;intent=requested.isBool()?requested.toBool():true;inactive=active?QString():QString("no_frame");
             if(field==Field::PresentationRate || field==Field::Framing || field==Field::VirtualJoystick || field==Field::ZoomWheelAcceleration)active=true;
             if(field==Field::FocusMarker && (app_.debugViewEnabled_ || Value(fields,Field::Framing)=="fit")) {intent=false;inactive="view_layout";}
         }
@@ -556,8 +569,11 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
         QJsonValue effective=requested.isBool()?QJsonValue(active && intent):active && intent?requested:QJsonValue(QJsonValue::Null);
         if(field==Field::ZoomEnabled && Value(fields,Field::Framing)=="fit") {effective=false;inactive="view_layout";}
         if((field==Field::CenterX || field==Field::CenterY) && Value(fields,Field::Framing)=="fit") {effective=0.5;inactive="view_layout";}
-        if(field==Field::ZoomAmount)effective=app_.cameraActive_?QJsonValue(Value(fields,Field::Framing)=="fit" || !enabled(Field::ZoomEnabled)?1.0:app_.zoomAmount_):QJsonValue(QJsonValue::Null);
+        if(field==Field::ZoomAmount)effective=app_.cameraActive_ || media?QJsonValue(Value(fields,Field::Framing)=="fit" || !enabled(Field::ZoomEnabled)?1.0:app_.zoomAmount_):QJsonValue(QJsonValue::Null);
         if(field==Field::PresentationRate)effective=app_.pipelineOrchestrator_->EffectiveViewportRate();
+        if(media && group==ParameterGroup::Image && !SelectedMediaImageField(field)) {
+            effective=QJsonValue(QJsonValue::Null);inactive="selected_media_cpu_path";
+        }
         if(!intent && inactive.isEmpty())inactive="disabled";
         const bool sessionOnly=descriptor->persistence=="session_only";
         QJsonObject item{{"requested",requested},{"effective",effective},{"saved",sessionOnly?QJsonValue(QJsonValue::Null):WireValue(field,Value(saved,field))},
@@ -583,6 +599,9 @@ ControlPlan AppControlTarget::PrepareImageParameters(ToolId tool,const QJsonObje
     const auto fields=ImageParameterFields();const auto rows=QueryImageParameters(tool,{})["parameters"].toObject();
     for(auto it=args.begin();it!=args.end();++it) {
         const auto f=ImageParameterField(it.key().toStdString());
+        if(app_.MediaViewSelected() && group==ParameterGroup::Image && f && !SelectedMediaImageField(*f)) {
+            plan.error="unavailable";plan.writes.clear();return plan;
+        }
         const auto planned=f?std::find_if(plan.writes.begin(),plan.writes.end(),[&](const FieldWrite& w){return w.field==*f;}):plan.writes.end();
         const bool nativeWidget=f && app_.uiState_ && (ParameterWidget(*f,*app_.uiState_,app_.mainWindow_.get()) ||
             *f==Field::KeystonePaused || *f==Field::SuperResPerformanceOverride);

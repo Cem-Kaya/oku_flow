@@ -3,6 +3,7 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/ui/uct_screen_text_accessible.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 
 #include <QObject>
@@ -171,6 +172,43 @@ struct UctTiming {
     std::int64_t refreshIntervalMs{1500};
     double stableSimilarity{0.92};
     int probeDecimation{2};
+    // Current-job deadline, independent of an immutable frame's media age.
+    std::int64_t immutableJobTimeoutMs{30000};
+    std::int64_t mediaRecognitionIntervalMs{350}; // paced advancing-media OCR, not a per-frame task
+};
+
+// Full processed-scene pixels retained by the selected-media owner. The
+// timestamp belongs to the source image; it is never refreshed to admit OCR.
+struct UctImmutableFrame {
+    uct::SharedPixels pixels;
+    std::uint64_t frameSeq{};
+    std::int64_t timestampMs{};
+};
+
+// Explicit media authority, separate from live camera/presentation liveness.
+// Changing sourceAuthority (e.g. seek generation), geometry or selected frame
+// revokes earlier work. Pixels must cover the complete processed scene.
+struct UctImmutableScene {
+    UctGeometryKey geometry;
+    std::uint64_t sourceAuthority{};
+    UctImmutableFrame selected;
+    std::optional<UctImmutableFrame> corroboration;
+    ViewTransform transform;
+    std::uint32_t viewportWidth{};
+    std::uint32_t viewportHeight{};
+    int strokeWeight{};
+};
+
+// A receipt for a successfully presented advancing media frame. timestampMs
+// is its real media PTS (milliseconds); UI/job clocks remain separate.
+struct UctAdvancingMediaScene {
+    UctGeometryKey geometry;
+    std::uint64_t sourceAuthority{};
+    UctImmutableFrame current;
+    ViewTransform transform;
+    std::uint32_t viewportWidth{};
+    std::uint32_t viewportHeight{};
+    int strokeWeight{};
 };
 
 // Owns Ultra Clear Text runtime state on the UI thread. The presentation path
@@ -197,6 +235,27 @@ public:
     // Retire a previous worker asynchronously and fence its queued callbacks.
     void ReplaceRecognizerFactory(RecognizerFactory factory);
     void SetShowOriginal(bool showOriginal);
+
+    // Selected media uses the same recognition scheduler as live input.
+    // A successful selection recognizes its owned complete scene once, then
+    // optionally one real distinct neighbour. Invalid input still suspends
+    // hidden live analysis until ClearImmutableScene() is called.
+    bool SetImmutableScene(UctImmutableScene scene);
+    // Successful native media receipt only. Retains one latest scene lease,
+    // paces full-scene probes/OCR, and never fabricates a camera presentation.
+    bool OnAdvancingMediaPresented(UctAdvancingMediaScene scene);
+    void UpdateImmutableView(const ViewTransform& transform, std::uint32_t viewportWidth,
+                             std::uint32_t viewportHeight, int strokeWeight = 0);
+    // Media presenter faults hide every text surface until a real successful
+    // receipt. View-only updates and camera notifications cannot reopen it.
+    // SetImmutableScene/OnAdvancingMediaPresented already carry that receipt;
+    // use this success signal after a committed view-only media presentation.
+    void OnMediaPresentationSucceeded();
+    void OnMediaPresentationFailed();
+    void ClearImmutableScene();
+    // Selected-media ownership, including advancement, suspends hidden live OCR.
+    bool HasImmutableScene() const noexcept { return immutableScene_.has_value() || advancingMediaScene_.has_value(); }
+    bool HasAdvancingMediaScene() const noexcept { return advancingMediaScene_.has_value(); }
 
     // Presentation clock. Never blocks; returns true when a viewport copy
     // should be requested with this presentation.
@@ -246,6 +305,12 @@ public:
     std::uint64_t AcceptedResults() const noexcept { return acceptedResults_; }
     bool HasPendingReadback() const noexcept { return pendingReadbackId_ != 0; }
     QString StatusSource() const { return statusSource_; }
+    // UI Automation exposure of the drawn text (null without a render target).
+    UctScreenTextAccessibility* ScreenTextAccessibility() const noexcept { return screenText_; }
+    // Lines the overlay currently replaces, as exposed to screen readers:
+    // empty unless UCT is drawing glyphs now, each glyph word cross-checked
+    // against the overlay's word set.
+    UctScreenTextSnapshot ScreenTextSnapshot() const;
 
 signals:
     void recognitionAdmitted(int verdict);
@@ -257,6 +322,11 @@ private:
     void HandleProbeOutcome(uct::ProbeOutcome outcome);
     void HandleResult(uct::RecognitionResult result);
     void HandleBackendStatus(uct::BackendStatus status);
+    void SubmitImmutableIfNeeded();
+    void HandleImmutableResult(uct::RecognitionResult result);
+    uct::SourceStamp ImmutableStamp(const UctImmutableFrame& frame) const;
+    void SubmitAdvancingMediaProbe();
+    std::int64_t ModelTime(std::int64_t wallNowMs) const;
     void RefreshOverlay(std::int64_t nowMs);
     void UpdateReadingText();
     bool AnalysisHealthy() const;
@@ -268,6 +338,7 @@ private:
 
     QPointer<UltraClearTextOverlay> overlay_;
     QPointer<UltraClearTextPanel> panel_;
+    QPointer<UctScreenTextAccessibility> screenText_;
     RecognizerFactory factory_;
     Clock clock_;
     UctTiming timing_;
@@ -280,6 +351,20 @@ private:
     std::unique_ptr<uct::ProbeWorker> probeWorker_;
     uct::OverlayModel model_;
     uct::BackendStatus backend_;
+
+    std::optional<UctImmutableScene> immutableScene_;
+    std::optional<UctAdvancingMediaScene> advancingMediaScene_;
+    std::uint64_t advancingMediaJob_{};
+    std::int64_t advancingMediaSubmittedAtMs_{};
+    std::int64_t advancingMediaLastSubmitMs_{std::numeric_limits<std::int64_t>::min() / 2};
+    std::uint64_t advancingMediaProbeFrame_{};
+    bool advancingMediaHaveProbe_{};
+    std::optional<uct::RecognitionResult> immutableSelectedResult_;
+    std::uint64_t immutableSelectedJob_{};
+    std::uint64_t immutableCorroborationJob_{};
+    std::int64_t immutableSubmittedAtMs_{};
+    bool immutableSelectedAttempted_{};
+    bool immutableCorroborationAttempted_{};
 
     bool enabled_{};
     bool showOriginal_{};

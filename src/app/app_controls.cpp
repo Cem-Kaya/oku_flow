@@ -3,6 +3,7 @@
 #include "app_internal.hpp"
 #include "okuflow/app/agent/app_control_target.hpp"
 #include <QLocale>
+#include <initializer_list>
 #include "okuflow/capture/phone_camera.hpp"
 
 namespace okuflow {
@@ -349,6 +350,7 @@ void OkuFlowApp::OnMicrophoneSelectionChanged(int index)
     settingsController_->MutableSettings().microphoneEndpointId =
         endpoint;
     if (recordingManager_ && recordingManager_->IsActive()) {
+        if (const auto session = recordingManager_->CurrentSessionInfo()) OnVideoRecordingStopping(*session);
         recordingManager_->Stop(
             QStringLiteral(
                 "Recording stopped because the microphone selection changed."));
@@ -357,9 +359,9 @@ void OkuFlowApp::OnMicrophoneSelectionChanged(int index)
     SavePersistentSettings();
 }
 void OkuFlowApp::SetRecordingCanvasMode(RecordingCanvasMode mode) {
-    settingsController_->MutableSettings().recordingCanvasMode = mode;
-    if (recordingManager_) recordingManager_->SetCanvasMode(mode);
-    UpdateSectionChangedCounts(); SavePersistentSettings();
+    Q_UNUSED(mode);
+    // Compatibility slot only. Original dimensions are source-owned.
+    settingsController_->MutableSettings().recordingCanvasMode = RecordingCanvasMode::Source;
 }
 bool OkuFlowApp::SetPhoneTorch(bool enabled,std::shared_ptr<std::atomic<bool>> canceled,qint64 deadlineSteadyMs) {
     if(!cameraActive_ || !mediaCapture_.PhoneTorchAvailable())return false;
@@ -972,12 +974,12 @@ void OkuFlowApp::UpdateKeystoneTrackingUi() {
     if (!mainWindow_) {
         return;
     }
-    const bool available = cameraActive_ && cudaSurface_ && cudaSurface_->IsValid() &&
+    const bool available = !MediaViewSelected() && cameraActive_ && cudaSurface_ && cudaSurface_->IsValid() &&
                            cudaPipelineAvailable_;
     const KeystoneTrackingState state = cudaSurface_
                                             ? cudaSurface_->GetKeystoneTrackingState()
                                             : KeystoneTrackingState{};
-    mainWindow_->setKeystoneTrackingControls(keystoneEnabled_, available,
+    mainWindow_->setKeystoneTrackingControls(keystoneEnabled_ && !MediaViewSelected(), available,
                                              state.paused, state.canStepBack,
                                              state.canStepForward, state.stepPending,
                                              state.position, state.count);
@@ -1116,42 +1118,50 @@ void OkuFlowApp::OnTextClarityControlsChanged() {
 }
 
 void OkuFlowApp::UpdateControlEnabledStates() {
+    if (!uiState_) return;
     const auto setEnabled = [](QWidget* widget, bool enabled) {
         if (widget) {
             widget->setEnabled(enabled);
         }
     };
+    const bool gpuView = !MediaViewSelected();
 
     setEnabled(uiState_->bwSlider_, blackWhiteEnabled_);
     setEnabled(uiState_->zoomSlider_, zoomEnabled_);
     setEnabled(uiState_->zoomCenterXSlider_, zoomEnabled_);
     setEnabled(uiState_->zoomCenterYSlider_, zoomEnabled_);
-    setEnabled(uiState_->blurSigmaSlider_, blurEnabled_);
-    setEnabled(uiState_->blurRadiusSlider_, blurEnabled_);
-    setEnabled(uiState_->temporalSmoothSlider_, temporalSmoothEnabled_);
-    setEnabled(uiState_->autoContrastStrengthSlider_, autoContrastEnabled_);
-    setEnabled(uiState_->focusMarkerCheckbox_, !debugViewEnabled_);
+    setEnabled(uiState_->blurSigmaSlider_, gpuView && blurEnabled_);
+    setEnabled(uiState_->blurRadiusSlider_, gpuView && blurEnabled_);
+    setEnabled(uiState_->blurSigmaValueLabel_, gpuView && blurEnabled_);
+    setEnabled(uiState_->blurRadiusValueLabel_, gpuView && blurEnabled_);
+    setEnabled(uiState_->temporalSmoothSlider_, gpuView && temporalSmoothEnabled_);
+    setEnabled(uiState_->temporalSmoothValueLabel_, gpuView && temporalSmoothEnabled_);
+    setEnabled(uiState_->autoContrastStrengthSlider_, gpuView && autoContrastEnabled_);
+    setEnabled(uiState_->focusMarkerCheckbox_, gpuView && !debugViewEnabled_);
     setEnabled(mainWindow_ ? mainWindow_->bumpHoldCheckbox() : nullptr,
-               stabilizationEnabled_);
+               gpuView && stabilizationEnabled_);
+    setEnabled(uiState_->spatialBackendCombo_, gpuView && spatialSharpenEnabled_);
+    setEnabled(uiState_->spatialSharpnessSlider_, gpuView && spatialSharpenEnabled_);
+    setEnabled(uiState_->spatialSharpnessValueLabel_, gpuView && spatialSharpenEnabled_);
 
     setEnabled(uiState_->backgroundFlattenStrengthSlider_,
-               backgroundFlattenEnabled_ || autoTextClarityEnabled_);
+               gpuView && (backgroundFlattenEnabled_ || autoTextClarityEnabled_));
     setEnabled(uiState_->sauvolaStrengthSlider_,
-               adaptiveBinarizationEnabled_ || autoTextClarityEnabled_);
+               gpuView && (adaptiveBinarizationEnabled_ || autoTextClarityEnabled_));
     setEnabled(uiState_->binarizationSoftnessSlider_,
-               adaptiveBinarizationEnabled_ || autoTextClarityEnabled_);
+               gpuView && (adaptiveBinarizationEnabled_ || autoTextClarityEnabled_));
     setEnabled(uiState_->smartSharpenStrengthSlider_,
-               smartSharpenEnabled_ || autoTextClarityEnabled_);
-    setEnabled(uiState_->claheClipLimitSlider_, claheEnabled_);
+               gpuView && (smartSharpenEnabled_ || autoTextClarityEnabled_));
+    setEnabled(uiState_->claheClipLimitSlider_, gpuView && claheEnabled_);
     setEnabled(uiState_->textHysteresisStrengthSlider_,
-               textHysteresisEnabled_ || autoTextClarityEnabled_);
+               gpuView && (textHysteresisEnabled_ || autoTextClarityEnabled_));
     setEnabled(uiState_->focusThresholdSlider_,
-               focusDetectionEnabled_ || autoTextClarityEnabled_);
+               gpuView && (focusDetectionEnabled_ || autoTextClarityEnabled_));
     setEnabled(uiState_->glareSuppressionStrengthSlider_,
-               glareSuppressionEnabled_ || autoTextClarityEnabled_);
+               gpuView && (glareSuppressionEnabled_ || autoTextClarityEnabled_));
 
     const bool superResAvailable =
-        mlTextSuperResolutionEnabled_ && mainWindow_ &&
+        gpuView && mlTextSuperResolutionEnabled_ && mainWindow_ &&
         mainWindow_->isMaxineRuntimeInstalled();
     setEnabled(uiState_->mlTextSuperResolutionStrengthSlider_,
                superResAvailable);
@@ -1160,6 +1170,22 @@ void OkuFlowApp::UpdateControlEnabledStates() {
     setEnabled(uiState_->mlTextSuperResolutionUltra1440pCheckbox_,
                superResAvailable);
     if (mainWindow_) mainWindow_->refreshTextClarityUi();
+    // Keep the requested preferences intact. A selected media scene currently
+    // has a CPU viewing recipe, so these GPU controls cannot claim an effect.
+    for (QWidget* control : std::initializer_list<QWidget*>{
+        uiState_->debugButton_, uiState_->blurCheckbox_, uiState_->temporalSmoothCheckbox_,
+        uiState_->spatialSharpenCheckbox_, uiState_->stabilizationCheckbox_, uiState_->keystoneCheckbox_,
+        uiState_->autoContrastCheckbox_, uiState_->simpleTextClarityCheckbox_, uiState_->textClarityCheckbox_,
+        uiState_->backgroundFlattenCheckbox_, uiState_->adaptiveBinarizationCheckbox_,
+        uiState_->textPolarityCombo_, uiState_->strokeWeightSlider_, uiState_->smartSharpenCheckbox_,
+        uiState_->claheCheckbox_, uiState_->twoColorTextCheckbox_, uiState_->textHysteresisCheckbox_,
+        uiState_->selectiveSharpenCheckbox_, uiState_->focusDetectionCheckbox_, uiState_->glareSuppressionCheckbox_,
+        uiState_->vlmAssistCheckbox_}) setEnabled(control, gpuView);
+#if OKUFLOW_ENABLE_TEXT_SR
+    setEnabled(uiState_->mlTextSuperResolutionCheckbox_, gpuView && mainWindow_ && mainWindow_->isMaxineRuntimeInstalled());
+#else
+    setEnabled(uiState_->mlTextSuperResolutionCheckbox_, false);
+#endif
     // Config sync owns preset matching and section badges. Transient controls
     // such as Extra Stable do not affect saved profiles.
 }

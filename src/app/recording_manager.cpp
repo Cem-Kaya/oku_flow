@@ -6,13 +6,12 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QCoreApplication>
 #include <QUuid>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QImage>
-#include <QPainter>
 #include <QMetaObject>
 #include <QPointer>
 #include <QPushButton>
@@ -118,26 +117,6 @@ void RemoveEmptySessionRecording(const QString& path,
 
 } // namespace
 
-void ComposeRecordingAnnotations(std::vector<std::uint8_t>& processedCanvas,
-                                  UINT width, UINT height,
-                                  const RecordingViewTransform& transform,
-                                  const QVector<AnnotationStroke>& strokes)
-{
-    if (strokes.isEmpty() || !transform.valid || !width || !height ||
-        processedCanvas.size() != static_cast<std::size_t>(width) * height * 4u) {
-        return;
-    }
-    const auto& t = transform;
-    const ViewTransform inkTransform{
-        t.sourceX, t.sourceY, t.sourceWidth, t.sourceHeight,
-        t.targetX, t.targetY, t.targetWidth, t.targetHeight, t.valid};
-    QImage image(processedCanvas.data(), static_cast<int>(width),
-                 static_cast<int>(height), static_cast<int>(width * 4u),
-                 QImage::Format_ARGB32);
-    QPainter painter(&image);
-    RenderAnnotationStrokes(painter, strokes, inkTransform, image.size());
-}
-
 void RecordingManager::RecordEncoderSubmitTiming(float milliseconds)
 {
     if (!std::isfinite(milliseconds) || milliseconds < 0.0f) {
@@ -183,11 +162,13 @@ RecordingManager::RecordingManager(QPushButton* recordButton,
                                    StatusCallback statusCallback,
                                    SegmentSavedCallback segmentSavedCallback,
                                    const UserDataPaths& userDataPaths,
-                                   SessionEndedCallback sessionEndedCallback)
+                                   SessionEndedCallback sessionEndedCallback,
+                                   SessionStartedCallback sessionStartedCallback)
     : recordButton_(recordButton),
       statusCallback_(std::move(statusCallback)),
       segmentSavedCallback_(std::move(segmentSavedCallback)),
       sessionEndedCallback_(std::move(sessionEndedCallback)),
+      sessionStartedCallback_(std::move(sessionStartedCallback)),
       userDataPaths_(&userDataPaths)
 {
     if (recordButton_) {
@@ -212,6 +193,7 @@ bool RecordingManager::ShutdownForProcessExit()
         std::lock_guard lock(queueMutex_);
         shutdownRequested_ = true;
         stopRequested_ = true;
+        if (sessionStartTicket_) sessionStartTicket_->active.store(false);
         frameQueue_.clear();
         audioQueue_.clear();
     }
@@ -225,7 +207,7 @@ bool RecordingManager::ShutdownForProcessExit()
     // detach it. Detaching alone is not enough: the worker still references
     // this object, so on the false return the caller must leak the manager
     // (unique_ptr::release) — an unwedged worker then finds valid memory,
-    // abandoned recorders, and cleared queues, and exits without touching
+    // abandoned recorder, and cleared queues, and exits without touching
     // Qt or COM.
     bool done = false;
     {
@@ -242,13 +224,13 @@ bool RecordingManager::ShutdownForProcessExit()
     qCritical() << "Recording worker did not shut down within"
                 << kShutdownJoinMs << "ms; blocked at"
                 << DescribeWorkerStage()
-                << "- abandoning the recorders and detaching the worker; "
+                << "- abandoning the recorder and detaching the worker; "
                    "the manager must now be leaked for process exit.";
     // Order matters: the abandoned flag silences every worker-side posting
-    // and segment path before the recorders' COM teardown is redirected to
+    // and segment path before the recorder's COM teardown is redirected to
     // an intentional leak.
     workerAbandoned_.store(true);
-    processedRecorder_.MarkAbandoned();
+    completionDeliveryEnabled_->store(false);
     originalRecorder_.MarkAbandoned();
     workerDetached_ = true;
     worker_.detach();
@@ -260,8 +242,8 @@ RecordingManager::~RecordingManager()
     ShutdownForProcessExit();
     if (workerDetached_) {
         // Reachable only when a caller destroys the manager directly instead
-        // of leaking it after a false ShutdownForProcessExit. The recorders
-        // are already abandoned (their COM state leaks safely), but the
+        // of leaking it after a false ShutdownForProcessExit. The recorder
+        // is already abandoned (their COM state leaks safely), but the
         // detached worker still references this object's queues; freeing
         // them here is the residual hazard the leak contract exists to
         // avoid.
@@ -292,6 +274,24 @@ std::optional<RecordingSessionInfo> RecordingManager::CurrentSessionInfo() const
     return sessionInfo_;
 }
 
+std::shared_ptr<RecordingArchive> RecordingManager::CurrentArchive() const
+{
+    std::lock_guard lock(queueMutex_);
+    return currentArchive_;
+}
+
+std::optional<SavedRecordingSegment> RecordingManager::LastSavedSegment() const
+{
+    std::lock_guard lock(queueMutex_);
+    return lastSavedSegment_;
+}
+
+std::optional<ActiveRecordingTimeline> RecordingManager::CurrentTimeline() const
+{
+    std::lock_guard lock(queueMutex_);
+    return activeTimeline_;
+}
+
 QString RecordingManager::CodecName() const
 {
     std::lock_guard lock(queueMutex_);
@@ -313,20 +313,17 @@ void RecordingManager::SetState(RecordingState state)
     }
 }
 
-void RecordingManager::SetCanvasMode(RecordingCanvasMode mode)
+void RecordingManager::SetCanvasMode(RecordingCanvasMode /*mode*/)
 {
-    canvasMode_.store(mode);
+    // Deprecated compatibility seam. Original recording always retains the
+    // producer's complete source dimensions, including old saved preferences.
 }
 
 RecordingCanvasSize RecordingManager::ResolveCanvas(
     UINT sourceWidth,
     UINT sourceHeight) const
 {
-    return ResolveRecordingCanvas(
-        (IsActive() || State() == RecordingState::Stopping ||
-         State() == RecordingState::Finalizing)
-            ? activeCanvasMode_.load() : canvasMode_.load(),
-        sourceWidth, sourceHeight);
+    return {sourceWidth, sourceHeight};
 }
 
 void RecordingManager::SetAudioCaptureEnabled(bool enabled)
@@ -366,7 +363,7 @@ void RecordingManager::SetRequested(bool requested, std::optional<RecordingSessi
 
     if (workerAbandoned_.load()) {
         // The worker thread is permanently blocked inside an encoder or
-        // driver call and its recorders must not be reused. Everything else
+        // driver call and its recorder must not be reused. Everything else
         // in the app keeps working.
         ShowStatus(QStringLiteral(
             "Recording is unavailable because the video encoder stopped "
@@ -421,9 +418,13 @@ void RecordingManager::SetRequested(bool requested, std::optional<RecordingSessi
             sessionInfo_ = std::move(*reserved);
             sessionInfo_.timestampToken = sessionTimestamp_;
         }
+        if (sessionStartTicket_) sessionStartTicket_->active.store(false);
+        sessionStartTicket_ = std::make_shared<SessionStartTicket>(sessionInfo_.id);
+        sessionStartedPosted_ = false;
         sessionDirectory_ = outputDirectory;
-        // Resolution selection during recording applies to the next session.
-        activeCanvasMode_.store(canvasMode_.load());
+        currentArchive_.reset();
+        lastSavedSegment_.reset();
+        activeTimeline_.reset();
         codecName_.clear();
         stopMessage_.clear();
         frameQueue_.clear();
@@ -433,16 +434,15 @@ void RecordingManager::SetRequested(bool requested, std::optional<RecordingSessi
         sessionHadOutput_ = false;
         sessionFinalizationFailed_ = false;
         audioStartupPending_ = false;
-        processedWidth_ = 0;
-        segmentProcessedPath_.clear();
         segmentOriginalPath_.clear();
+        segmentFailedAttemptPaths_.clear();
         segmentFinalized_ = true;
-        processedHeight_ = 0;
         originalWidth_ = 0;
         originalHeight_ = 0;
         frameRateNumerator_ = 30;
         frameRateDenominator_ = 1;
         segmentClockOrigin100ns_ = -1;
+        segmentLastCaptureClock100ns_ = -1;
     }
     captureFramesSeen_.store(0);
     framesWritten_.store(0);
@@ -463,7 +463,6 @@ void RecordingManager::SetRequested(bool requested, std::optional<RecordingSessi
     unknownTimestamp_.store(0);
     gpuFramesWritten_.store(0);
     gpuInputFallbacks_.store(0);
-    processedFrameFallbacks_.store(0);
     originalFrameFallbacks_.store(0);
     {
         std::lock_guard lock(timingMutex_);
@@ -517,6 +516,7 @@ void RecordingManager::Stop(const QString& message)
     {
         std::lock_guard lock(queueMutex_);
         stopRequested_ = true;
+        if (sessionStartTicket_) sessionStartTicket_->active.store(false);
         stopMessage_ = message;
         // Stop means finish the sample currently owned by the worker, then
         // finalize. Retaining queued camera/audio work here made a button
@@ -597,10 +597,10 @@ void RecordingManager::AbandonWedgedWorker(const QString& trigger)
     if (workerAbandoned_.exchange(true)) {
         return; // Already abandoned by the other watchdog.
     }
-    // From here on, neither recorder's sink writer may ever be touched
+    completionDeliveryEnabled_->store(false);
+    // From here on, the recorder's sink writer may never be touched
     // again from any thread (Finalize concurrent with a wedged WriteSample
     // is forbidden); their teardown becomes a deliberate leak.
-    processedRecorder_.MarkAbandoned();
     originalRecorder_.MarkAbandoned();
     const QString stage = DescribeWorkerStage();
     qCritical() << "Recording watchdog (" << trigger
@@ -612,6 +612,8 @@ void RecordingManager::AbandonWedgedWorker(const QString& trigger)
         std::lock_guard lock(queueMutex_);
         endedSession = sessionInfo_;
         endedSession.completion = RecordingSessionCompletion::Abandoned;
+        if (sessionStartTicket_) sessionStartTicket_->active.store(false);
+        if (activeTimeline_) activeTimeline_->session = endedSession;
         frameQueue_.clear();
         audioQueue_.clear();
     }
@@ -643,20 +645,11 @@ QString RecordingManager::DescribeWorkerStage() const
             std::chrono::steady_clock::now().time_since_epoch())
             .count();
     QString description = QString::fromLatin1(WorkerOpName(op));
-    if (op == WorkerOp::kProcessedVideo || op == WorkerOp::kOriginalVideo ||
-        op == WorkerOp::kAudio || op == WorkerOp::kRetireGpuReaders ||
-        op == WorkerOp::kFinalize) {
-        // Whichever recorder is mid-call reports a non-idle stage; audio and
-        // finalize go through the same writers, so check both.
-        const VideoRecorder::WriterStage processedStage =
-            processedRecorder_.ActiveStage();
-        const VideoRecorder::WriterStage active =
-            processedStage != VideoRecorder::WriterStage::kIdle
-                ? processedStage
-                : originalRecorder_.ActiveStage();
+    if (op == WorkerOp::kOriginalVideo || op == WorkerOp::kAudio ||
+        op == WorkerOp::kRetireGpuReaders || op == WorkerOp::kFinalize) {
         description += QStringLiteral(", %1")
-                           .arg(QString::fromLatin1(
-                               VideoRecorder::StageName(active)));
+                           .arg(QString::fromLatin1(VideoRecorder::StageName(
+                               originalRecorder_.ActiveStage())));
     }
     if (op != WorkerOp::kIdle && startedMs > 0 && nowMs >= startedMs) {
         description += QStringLiteral(" for %1 s")
@@ -675,9 +668,7 @@ const char* RecordingManager::WorkerOpName(WorkerOp op)
     case WorkerOp::kIdle:
         return "between frames";
     case WorkerOp::kStartSegment:
-        return "starting the encoders";
-    case WorkerOp::kProcessedVideo:
-        return "writing the processed video stream";
+        return "starting the encoder";
     case WorkerOp::kOriginalVideo:
         return "writing the original video stream";
     case WorkerOp::kAudio:
@@ -685,7 +676,7 @@ const char* RecordingManager::WorkerOpName(WorkerOp op)
     case WorkerOp::kRetireGpuReaders:
         return "retiring GPU recording readers";
     case WorkerOp::kFinalize:
-        return "finalizing the files";
+        return "finalizing the file";
     }
     return "in an unknown operation";
 }
@@ -751,32 +742,13 @@ void RecordingManager::NotifyRecordingPoolSkipped()
     }
 }
 
-void RecordingManager::AddSceneFrame(
-    const uint8_t* processedSceneData,
-    UINT processedSceneWidth,
-    UINT processedSceneHeight,
-    const RecordingViewTransform& transform,
-    CapturedFrame originalFrame,
-    QVector<AnnotationStroke> strokes)
+void RecordingManager::AddOriginalFrame(CapturedFrame originalFrame)
 {
-    if (!IsActive() || !processedSceneData ||
-        processedSceneWidth == 0 || processedSceneHeight == 0 ||
-        !originalFrame.HasCpuPixels() || !transform.valid) {
+    if (!IsActive() || !originalFrame.IsValid()) {
         return;
     }
-
     QueuedFrame queued;
-    const std::size_t processedBytes =
-        static_cast<std::size_t>(processedSceneWidth) *
-        processedSceneHeight * 4u;
-    queued.processedScene.assign(
-        processedSceneData, processedSceneData + processedBytes);
-    queued.processedSceneWidth = processedSceneWidth;
-    queued.processedSceneHeight = processedSceneHeight;
-    queued.transform = transform;
-    queued.strokes = std::move(strokes);
     queued.original = std::move(originalFrame);
-
     std::unique_lock lock(queueMutex_);
     if (stopRequested_ || shutdownRequested_ || audioStartupPending_) {
         return;
@@ -788,50 +760,33 @@ void RecordingManager::AddSceneFrame(
     frameQueue_.push_back(std::move(queued));
     lock.unlock();
     queueCv_.notify_all();
+}
+
+void RecordingManager::AddSceneFrame(
+    const uint8_t* /*processedSceneData*/,
+    UINT /*processedSceneWidth*/,
+    UINT /*processedSceneHeight*/,
+    const RecordingViewTransform& /*transform*/,
+    CapturedFrame originalFrame,
+    QVector<AnnotationStroke> /*strokes*/)
+{
+    AddOriginalFrame(std::move(originalFrame));
 }
 
 void RecordingManager::AddGpuSceneFrame(
-    GpuVideoFrame processedScene,
-    const RecordingViewTransform& transform,
+    GpuVideoFrame /*processedScene*/,
+    const RecordingViewTransform& /*transform*/,
     CapturedFrame originalFrame)
 {
-    if (!IsActive() || !processedScene.IsValid() ||
-        !originalFrame.IsValid() || !transform.valid) {
-        return;
-    }
-
-    QueuedFrame queued;
-    queued.processedGpuScene = std::move(processedScene);
-    queued.processedSceneWidth = queued.processedGpuScene.width;
-    queued.processedSceneHeight = queued.processedGpuScene.height;
-    queued.transform = transform;
-    queued.original = std::move(originalFrame);
-
-    std::unique_lock lock(queueMutex_);
-    if (stopRequested_ || shutdownRequested_ || audioStartupPending_) {
-        return;
-    }
-    if (frameQueue_.size() >= kMaxQueuedFrames) {
-        frameQueue_.pop_front();
-        queueOverflow_.fetch_add(1);
-    }
-    frameQueue_.push_back(std::move(queued));
-    lock.unlock();
-    queueCv_.notify_all();
+    AddOriginalFrame(std::move(originalFrame));
 }
 
-QString RecordingManager::SegmentPath(bool processed) const
+QString RecordingManager::SegmentPath() const
 {
-    const QString segment =
-        segmentIndex_ <= 1
-            ? QString()
-            : QStringLiteral("_part%1").arg(segmentIndex_);
-    return QDir(sessionDirectory_)
-        .filePath(QStringLiteral("VID_%1%2_%3.mp4")
-                      .arg(sessionTimestamp_,
-                           segment,
-                           processed ? QStringLiteral("processed")
-                                     : QStringLiteral("original")));
+    const QString segment = segmentIndex_ <= 1
+        ? QString() : QStringLiteral("_part%1").arg(segmentIndex_);
+    return QDir(sessionDirectory_).filePath(
+        QStringLiteral("VID_%1%2_original.mp4").arg(sessionTimestamp_, segment));
 }
 
 bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
@@ -844,18 +799,7 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
     // the first-frame scenario from the 2026-07-30 field failure.
     SetWorkerOp(WorkerOp::kStartSegment,
                 firstFrame.original.identity.sequenceNumber);
-    const RecordingCanvasSize canvas =
-        ResolveRecordingCanvas(activeCanvasMode_.load(),
-                               firstFrame.original.width,
-                               firstFrame.original.height);
-    if (canvas.width == 0 || canvas.height == 0) {
-        FinishSession(false, QStringLiteral("The recording canvas is invalid."));
-        return false;
-    }
-
     SegmentParameters parameters;
-    parameters.processedWidth = canvas.width;
-    parameters.processedHeight = canvas.height;
     parameters.originalWidth = firstFrame.original.width;
     parameters.originalHeight = firstFrame.original.height;
     parameters.frameRateNumerator = std::max(
@@ -865,31 +809,26 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
     const VideoRecorder::AudioFormat audioFormat{};
     const bool includeAudio = audioCaptureEnabled_;
 
-    const QString requestedProcessedPath = SegmentPath(true);
-    const QString requestedOriginalPath = SegmentPath(false);
+    const QString requestedOriginalPath = SegmentPath();
+    segmentFailedAttemptPaths_.clear();
     const std::array codecs{
         VideoRecorder::Codec::Av1, VideoRecorder::Codec::H264};
     QStringList failures;
 
     // Never overwrite or clean a pre-existing path, including a user-owned
     // zero-byte file. The paths below belong to this segment only after this.
-    if (QFileInfo::exists(requestedProcessedPath) ||
-        QFileInfo::exists(requestedOriginalPath)) {
+    if (QFileInfo::exists(requestedOriginalPath)) {
         FinishSession(false, QStringLiteral("Recording could not start."));
         return false;
     }
 
     for (const VideoRecorder::Codec codec : codecs) {
-        processedRecorder_.Stop();
         originalRecorder_.Stop();
-        QString processedPath = requestedProcessedPath;
         QString originalPath = requestedOriginalPath;
         if (codec != codecs.front()) {
             // Each codec owns fresh names. Failed metadata/fragments remain
             // intact and cannot suppress a viable fallback or enter notes.
             try {
-                processedPath = QString::fromStdWString(
-                    NewRecordingAttemptPath(requestedProcessedPath.toStdWString()));
                 originalPath = QString::fromStdWString(
                     NewRecordingAttemptPath(requestedOriginalPath.toStdWString()));
             } catch (const std::exception& error) {
@@ -898,59 +837,9 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
             }
         }
 
-        const bool processedStarted =
-            encoderStartOverride_
-                ? encoderStartOverride_(true, processedPath, codec)
-                : firstFrame.processedGpuScene.IsValid()
-                ? processedRecorder_.StartGpu(
-                      processedPath.toStdWString(),
-                      parameters.processedWidth,
-                      parameters.processedHeight,
-                      parameters.frameRateNumerator,
-                      parameters.frameRateDenominator,
-                      codec,
-                      firstFrame.processedGpuScene,
-                      includeAudio ? &audioFormat : nullptr)
-                : processedRecorder_.Start(
-                      processedPath.toStdWString(),
-                      parameters.processedWidth,
-                      parameters.processedHeight,
-                      parameters.frameRateNumerator,
-                      parameters.frameRateDenominator,
-                      codec,
-                      includeAudio ? &audioFormat : nullptr);
-        if (!processedStarted) {
-            if (firstFrame.processedGpuScene.IsValid()) {
-                gpuInputFallbacks_.fetch_add(1);
-            }
-            if (RecordingConsoleDiagnosticsEnabled()) {
-                qWarning().noquote()
-                    << QStringLiteral(
-                           "Recording route attempt failed: segment %1, "
-                           "processed, codec %2, requested %3: %4")
-                           .arg(segmentIndex_)
-                           .arg(QString::fromLatin1(
-                               VideoRecorder::CodecName(codec)))
-                           .arg(firstFrame.processedGpuScene.IsValid()
-                                    ? QStringLiteral("GPU input")
-                                    : QStringLiteral("CPU input"))
-                           .arg(QString::fromStdString(
-                               processedRecorder_.LastError()));
-            }
-            failures.append(
-                QStringLiteral("%1 processed: %2")
-                    .arg(QString::fromLatin1(
-                             VideoRecorder::CodecName(codec)),
-                         QString::fromStdString(
-                             processedRecorder_.LastError())));
-            continue;
-        }
-        if (!encoderStartOverride_) {
-            processedPath = QString::fromStdWString(processedRecorder_.OutputPath());
-        }
         const bool originalStarted =
             encoderStartOverride_
-                ? encoderStartOverride_(false, originalPath, codec)
+                ? encoderStartOverride_(originalPath, codec)
                 : firstFrame.original.HasGpuScene()
                 ? originalRecorder_.StartGpu(
                       originalPath.toStdWString(),
@@ -969,7 +858,17 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
                       parameters.frameRateDenominator,
                       codec,
                       includeAudio ? &audioFormat : nullptr);
+        if (workerAbandoned_.load()) return false;
+        if (!encoderStartOverride_) {
+            for (const auto& failedPath : originalRecorder_.FailedAttemptPaths()) {
+                const QString path = QString::fromStdWString(failedPath);
+                if (!segmentFailedAttemptPaths_.contains(path))
+                    segmentFailedAttemptPaths_.append(path);
+            }
+        }
         if (!originalStarted) {
+            if (encoderStartOverride_ && QFileInfo::exists(originalPath))
+                segmentFailedAttemptPaths_.append(originalPath);
             if (firstFrame.original.HasGpuScene()) {
                 gpuInputFallbacks_.fetch_add(1);
             }
@@ -993,75 +892,44 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
                              VideoRecorder::CodecName(codec)),
                          QString::fromStdString(
                              originalRecorder_.LastError())));
-            processedRecorder_.Stop();
             continue;
         }
         if (!encoderStartOverride_) {
             originalPath = QString::fromStdWString(originalRecorder_.OutputPath());
         }
 
-        processedWidth_ = parameters.processedWidth;
-        segmentProcessedPath_ = processedPath;
         segmentOriginalPath_ = originalPath;
         segmentFinalized_ = false;
-        processedHeight_ = parameters.processedHeight;
         originalWidth_ = parameters.originalWidth;
         originalHeight_ = parameters.originalHeight;
         frameRateNumerator_ = parameters.frameRateNumerator;
         frameRateDenominator_ = parameters.frameRateDenominator;
-        segmentClockOrigin100ns_ =
-            firstFrame.original.identity.captureClock100ns;
+        segmentClockOrigin100ns_ = -1;
+        segmentLastCaptureClock100ns_ = -1;
         const QString selectedCodec =
             QString::fromLatin1(VideoRecorder::CodecName(codec));
         {
             std::lock_guard lock(queueMutex_);
             codecName_ = selectedCodec;
+            currentArchive_ = originalRecorder_.Archive();
         }
         SetState(RecordingState::Recording);
         PostButtonState(RecordingState::Recording);
-        const bool processedGpuFed = processedRecorder_.UsesGpuInput();
         const bool originalGpuFed = originalRecorder_.UsesGpuInput();
-        const bool processedWorkerReadback =
-            processedRecorder_.UsesWorkerGpuReadback();
-        const bool originalWorkerReadback =
-            originalRecorder_.UsesWorkerGpuReadback();
-        const QString feed =
-            processedGpuFed && originalGpuFed
-                ? QStringLiteral("GPU-fed original and processed")
-                : ((processedGpuFed || originalGpuFed)
-                       ? QStringLiteral("original and processed (partially GPU-fed)")
-                       : ((processedWorkerReadback || originalWorkerReadback)
-                              ? QStringLiteral("original and processed (worker-readback)")
-                              : QStringLiteral("original and processed")));
-        if (processedRecorder_.UsesWorkerGpuReadback()) {
-            gpuInputFallbacks_.fetch_add(1);
-        }
+        const QString feed = QStringLiteral("original");
         if (originalRecorder_.UsesWorkerGpuReadback()) {
             gpuInputFallbacks_.fetch_add(1);
         }
         if (RecordingConsoleDiagnosticsEnabled()) {
-            const QString diagnostic =
-                QStringLiteral(
-                    "Recording route: segment %1 | codec %2 | "
-                    "processed=%3 (%4x%5, \"%6\") | "
-                    "original=%7 (%8x%9, \"%10\") | audio=%11")
-                    .arg(segmentIndex_)
-                    .arg(selectedCodec)
-                    .arg(RecordingInputRoute(processedRecorder_))
-                    .arg(processedWidth_)
-                    .arg(processedHeight_)
-                    .arg(QDir::toNativeSeparators(processedPath))
-                    .arg(RecordingInputRoute(originalRecorder_))
-                    .arg(originalWidth_)
-                    .arg(originalHeight_)
-                    .arg(QDir::toNativeSeparators(originalPath))
-                    .arg(includeAudio ? QStringLiteral("microphone/AAC")
-                                      : QStringLiteral("off"));
-            if (processedGpuFed && originalGpuFed) {
-                qInfo().noquote() << diagnostic;
-            } else {
-                qWarning().noquote() << diagnostic;
-            }
+            const QString diagnostic = QStringLiteral(
+                "Recording route: segment %1 | codec %2 | original=%3 (%4x%5, \"%6\") | audio=%7")
+                .arg(segmentIndex_).arg(selectedCodec)
+                .arg(RecordingInputRoute(originalRecorder_))
+                .arg(originalWidth_).arg(originalHeight_)
+                .arg(QDir::toNativeSeparators(originalPath))
+                .arg(includeAudio ? QStringLiteral("microphone/AAC") : QStringLiteral("off"));
+            if (originalGpuFed) qInfo().noquote() << diagnostic;
+            else qWarning().noquote() << diagnostic;
         }
         PostStatus(
             QStringLiteral(
@@ -1077,7 +945,6 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
         return true;
     }
 
-    processedRecorder_.Stop();
     originalRecorder_.Stop();
     FinishSession(
         false,
@@ -1120,7 +987,7 @@ bool RecordingManager::WriteFrame(QueuedFrame&& frame)
         if (!StartSegment(frame)) {
             return false;
         }
-    } else if (!processedRecorder_.IsRecording() &&
+    } else if (!originalRecorder_.IsRecording() &&
                !StartSegment(frame)) {
         return false;
     }
@@ -1133,83 +1000,23 @@ bool RecordingManager::WriteFrame(QueuedFrame&& frame)
         synchronizedIdentity.captureTimestamp100ns =
             synchronizedIdentity.captureClock100ns;
     }
-    // Both admission queries run on this COM worker before either writer's
-    // timeline or pending sample changes. Pressure drops a matched video pair
-    // without sleeping, polling for retirement or enabling WriteSample's
-    // throttle. Audio remains eligible on the worker; GetStatistics itself is
-    // still a synchronous COM call observed by the existing watchdog.
-    SetWorkerOp(WorkerOp::kProcessedVideo,
-                synchronizedIdentity.sequenceNumber);
-    const bool processedAdmitted = processedRecorder_.CanAcceptVideoFrame();
-    SetWorkerOp(WorkerOp::kOriginalVideo,
-                synchronizedIdentity.sequenceNumber);
-    const bool originalAdmitted = originalRecorder_.CanAcceptVideoFrame();
-    if (!processedAdmitted || !originalAdmitted) {
+    // Query the sole writer before its timeline or pending sample changes.
+    // Pressure drops a source frame without blocking the producer or audio.
+    SetWorkerOp(WorkerOp::kOriginalVideo, synchronizedIdentity.sequenceNumber);
+    if (!originalRecorder_.CanAcceptVideoFrame()) {
         encoderBacklog_.fetch_add(1);
         if (!encoderBacklogWarningReported_.exchange(true)) {
             PostStatus(QStringLiteral(
-                "Recording is skipping video frames because the encoder queue "
-                "is full. Lower the recording resolution or stop and restart "
-                "recording if it continues."), 12000);
+                "Recording is skipping samples because encoder progress could not "
+                "be checked. Stop and restart recording if it continues."), 12000);
         }
         ReportEncoderStatisticsUnavailable();
         return true;
     }
-    if (processedRecorder_.LastEncoderStatisticsError() == S_OK &&
-        originalRecorder_.LastEncoderStatisticsError() == S_OK) {
+    if (originalRecorder_.LastEncoderStatisticsError() == S_OK) {
         encoderStatisticsWarningActive_ = false;
     }
     const auto encoderSubmitStarted = std::chrono::steady_clock::now();
-    SetWorkerOp(WorkerOp::kProcessedVideo,
-                synchronizedIdentity.sequenceNumber);
-    bool processedWritten = false;
-    if (frame.processedGpuScene.IsValid() &&
-        (processedRecorder_.UsesGpuInput() ||
-         processedRecorder_.UsesWorkerGpuReadback())) {
-        processedWritten = processedRecorder_.AddGpuFrame(
-            frame.processedGpuScene, synchronizedIdentity);
-        if (processedWritten && processedRecorder_.UsesGpuInput()) {
-            gpuFramesWritten_.fetch_add(1);
-        }
-    } else {
-        if (processedRecorder_.UsesGpuInput() ||
-            processedRecorder_.UsesWorkerGpuReadback()) {
-            const std::uint64_t fallback =
-                processedFrameFallbacks_.fetch_add(1) + 1;
-            if (RecordingConsoleDiagnosticsEnabled() &&
-                (fallback == 1 || fallback % 30 == 0)) {
-                qWarning()
-                    << "Processed recording frame lost its GPU surface;"
-                    << "using the CPU frame for this sample. Count:"
-                    << fallback;
-            }
-        }
-        std::vector<std::uint8_t> processedCanvas;
-        if (!ResampleRecordingCanvas(
-                frame.processedScene.data(),
-                frame.processedSceneWidth,
-                frame.processedSceneHeight,
-                frame.transform,
-                processedWidth_,
-                processedHeight_,
-                processedCanvas)) {
-            encoderReject_.fetch_add(1);
-            FinishSession(
-                false,
-                QStringLiteral(
-                    "Recording stopped because the processed frame could not "
-                    "be mapped to the recording canvas."));
-            return false;
-        }
-        // Paint only processed output from this frame's immutable ink snapshot.
-        ComposeRecordingAnnotations(processedCanvas, processedWidth_,
-                                    processedHeight_, frame.transform,
-                                    frame.strokes);
-        processedWritten = processedRecorder_.AddFrame(
-            processedCanvas.data(),
-            static_cast<std::size_t>(processedWidth_) * 4u,
-            synchronizedIdentity);
-    }
     SetWorkerOp(WorkerOp::kOriginalVideo,
                 synchronizedIdentity.sequenceNumber);
     bool originalWritten = false;
@@ -1244,26 +1051,15 @@ bool RecordingManager::WriteFrame(QueuedFrame&& frame)
             std::chrono::steady_clock::now() - encoderSubmitStarted)
             .count();
     RecordEncoderSubmitTiming(encoderSubmitMs);
-    if (!processedWritten || !originalWritten) {
-        encoderReject_.fetch_add(1);
-        const VideoRecorder& failed =
-            processedWritten ? originalRecorder_ : processedRecorder_;
-        const QString detail =
-            QString::fromStdString(failed.LastError());
-        FinishSession(
-            false,
-            detail.isEmpty()
-                ? QStringLiteral("Recording stopped because an encoder rejected a frame.")
-                : detail);
-        return false;
-    }
-
-    framesWritten_.fetch_add(1);
+    if (!CompleteFrameSubmission(originalWritten, frame.original.identity,
+            originalRecorder_.LastAdmittedVideoTimestamp100ns(),
+            QString::fromStdString(originalRecorder_.LastError()))) return false;
     constexpr double kMaxSeconds = 12.0 * 3600.0;
-    if (processedRecorder_.DurationSeconds() >= kMaxSeconds) {
+    if (originalRecorder_.DurationSeconds() >= kMaxSeconds) {
         {
             std::lock_guard lock(queueMutex_);
             stopRequested_ = true;
+            if (sessionStartTicket_) sessionStartTicket_->active.store(false);
             stopMessage_ =
                 QStringLiteral(
                     "Recording stopped after reaching the 12-hour limit.");
@@ -1273,14 +1069,59 @@ bool RecordingManager::WriteFrame(QueuedFrame&& frame)
     return true;
 }
 
+bool RecordingManager::CompleteFrameSubmission(bool accepted,
+                                                const RecordingFrameIdentity& identity,
+                                                std::int64_t admittedPts100ns,
+                                                const QString& error)
+{
+    if (!accepted) {
+        encoderReject_.fetch_add(1);
+        FinishSession(false, error.isEmpty()
+            ? QStringLiteral("Recording stopped because an encoder rejected a frame.") : error);
+        return false;
+    }
+    PublishFrameAdmission(identity, admittedPts100ns);
+    return true;
+}
+
+void RecordingManager::PublishFrameAdmission(const RecordingFrameIdentity& identity,
+                                             std::int64_t admittedPts100ns)
+{
+    if (workerAbandoned_.load()) return;
+    if (segmentClockOrigin100ns_ < 0)
+        segmentClockOrigin100ns_ = identity.captureClock100ns;
+    segmentLastCaptureClock100ns_ = identity.captureClock100ns;
+    {
+        std::lock_guard lock(queueMutex_);
+        if (!activeTimeline_ || activeTimeline_->segmentIndex != segmentIndex_ ||
+            activeTimeline_->session.id != sessionInfo_.id) {
+            activeTimeline_.emplace();
+            activeTimeline_->session = sessionInfo_;
+            activeTimeline_->segmentIndex = segmentIndex_;
+            activeTimeline_->archive = currentArchive_;
+            activeTimeline_->firstCaptureClock100ns = segmentClockOrigin100ns_;
+            activeTimeline_->recentAdmissions.reserve(kMaxRecentAdmissions);
+        }
+        auto& timeline = *activeTimeline_;
+        timeline.lastCaptureClock100ns = identity.captureClock100ns;
+        timeline.lastAdmittedSequence = identity.sequenceNumber;
+        timeline.lastAdmittedPts100ns = admittedPts100ns;
+        if (timeline.recentAdmissions.size() >= kMaxRecentAdmissions)
+            timeline.recentAdmissions.erase(timeline.recentAdmissions.begin());
+        timeline.recentAdmissions.push_back(
+            {identity.sequenceNumber, identity.captureClock100ns, admittedPts100ns});
+    }
+    framesWritten_.fetch_add(1);
+    PostSessionStarted();
+}
+
 bool RecordingManager::WriteAudioFrame(AudioFrame&& frame)
 {
     if (!audioCaptureEnabled_ || segmentClockOrigin100ns_ < 0 ||
         frame.captureClock100ns < segmentClockOrigin100ns_) {
         return true;
     }
-    if (!processedRecorder_.IsRecording() ||
-        !originalRecorder_.IsRecording()) {
+    if (!originalRecorder_.IsRecording()) {
         return true;
     }
 
@@ -1288,32 +1129,25 @@ bool RecordingManager::WriteAudioFrame(AudioFrame&& frame)
         frame.captureClock100ns - segmentClockOrigin100ns_;
     SetWorkerOp(WorkerOp::kAudio,
                 workerOpFrameSequence_.load(std::memory_order_relaxed));
-    // AAC output packets are not one-to-one with PCM blocks. Query BOTH
-    // PCM-frame budgets before submitting either side of this pair.
-    const bool processedAdmitted = processedRecorder_.CanAcceptAudioFrame(
-        frame.pcm.size(), sampleTime100ns, frame.duration100ns);
+    // AAC packets are not one-to-one with PCM blocks. Retain the exact
+    // PCM admission budget before submitting this microphone block once.
     const bool originalAdmitted = originalRecorder_.CanAcceptAudioFrame(
         frame.pcm.size(), sampleTime100ns, frame.duration100ns);
-    if (!processedAdmitted || !originalAdmitted) {
+    if (!originalAdmitted) {
         audioEncoderBacklog_.fetch_add(1);
         FinishSession(false, QStringLiteral(
             "Recording stopped because audio processing could not keep up or the input was invalid."));
         return false;
     }
-    const bool processedWritten = processedRecorder_.AddAudioFrame(
-        frame.pcm.data(), frame.pcm.size(), sampleTime100ns,
-        frame.duration100ns);
     const bool originalWritten = originalRecorder_.AddAudioFrame(
         frame.pcm.data(), frame.pcm.size(), sampleTime100ns,
         frame.duration100ns);
-    if (processedWritten && originalWritten) {
+    if (originalWritten) {
         return true;
     }
 
     encoderReject_.fetch_add(1);
-    const VideoRecorder& failed =
-        processedWritten ? originalRecorder_ : processedRecorder_;
-    const QString detail = QString::fromStdString(failed.LastError());
+    const QString detail = QString::fromStdString(originalRecorder_.LastError());
     FinishSession(
         false,
         detail.isEmpty()
@@ -1325,9 +1159,8 @@ bool RecordingManager::WriteAudioFrame(AudioFrame&& frame)
 
 void RecordingManager::ReportEncoderStatisticsUnavailable()
 {
-    const long processedError = processedRecorder_.LastEncoderStatisticsError();
     const long originalError = originalRecorder_.LastEncoderStatisticsError();
-    if (processedError == S_OK && originalError == S_OK) {
+    if (originalError == S_OK) {
         encoderStatisticsWarningActive_ = false;
         return;
     }
@@ -1335,7 +1168,6 @@ void RecordingManager::ReportEncoderStatisticsUnavailable()
     if (!encoderStatisticsWarningActive_.exchange(true)) {
         qWarning() << "Recording video admission reached its conservative cap"
                    << "without confirmed encoder statistics; HRESULTs:"
-                   << QString::number(processedError, 16)
                    << QString::number(originalError, 16);
         PostStatus(QStringLiteral(
             "Recording is skipping samples because encoder progress could not "
@@ -1358,81 +1190,36 @@ bool RecordingManager::FinalizeSegment(bool terminal)
     SetWorkerOp(WorkerOp::kFinalize,
                 workerOpFrameSequence_.load(std::memory_order_relaxed));
 
-    const QString processedPath = segmentProcessedPath_;
     const QString originalPath = segmentOriginalPath_;
-    const QString processedRoute =
-        RecordingInputRoute(processedRecorder_);
-    const QString originalRoute =
-        RecordingInputRoute(originalRecorder_);
-    const VideoRecorder::FinalizeResult processed =
-        processedRecorder_.Stop();
-    const VideoRecorder::FinalizeResult original =
-        originalRecorder_.Stop();
+    const QString originalRoute = RecordingInputRoute(originalRecorder_);
+    const VideoRecorder::FinalizeResult original = originalRecorder_.Stop();
     segmentFinalized_ = true;
     if (RecordingConsoleDiagnosticsEnabled()) {
-        qInfo().noquote()
-            << QStringLiteral(
-                   "Recording segment result: segment %1 | "
-                   "processed=%2, %3 samples, %4, \"%5\" | "
-                   "original=%6, %7 samples, %8, \"%9\"")
-                   .arg(segmentIndex_)
-                   .arg(processedRoute)
-                   .arg(processed.videoSamplesWritten)
-                   .arg(QString::fromLatin1(
-                       FinalizeDispositionName(processed.disposition)))
-                   .arg(QDir::toNativeSeparators(processedPath))
-                   .arg(originalRoute)
-                   .arg(original.videoSamplesWritten)
-                   .arg(QString::fromLatin1(
-                       FinalizeDispositionName(original.disposition)))
-                   .arg(QDir::toNativeSeparators(originalPath));
+        qInfo().noquote() << QStringLiteral(
+            "Recording segment result: segment %1 | original=%2, %3 samples, %4, \"%5\"")
+            .arg(segmentIndex_).arg(originalRoute).arg(original.videoSamplesWritten)
+            .arg(QString::fromLatin1(FinalizeDispositionName(original.disposition)))
+            .arg(QDir::toNativeSeparators(originalPath));
     }
-    const bool processedHasSamples =
-        processed.videoSamplesWritten > 0;
-    const bool originalHasSamples =
-        original.videoSamplesWritten > 0;
-    RemoveEmptySessionRecording(processedPath, processed.videoSamplesWritten);
     RemoveEmptySessionRecording(originalPath, original.videoSamplesWritten);
-    sessionHadOutput_ = sessionHadOutput_ || processedHasSamples ||
-        originalHasSamples;
-    if (!processedHasSamples && !originalHasSamples) {
-        if (processed.FullyCompleted() && original.FullyCompleted()) {
-            return true;
-        }
+    if (original.videoSamplesWritten == 0) {
+        if (original.FullyCompleted()) return true;
         sessionFinalizationFailed_ = true;
-        return false;
-    }
-    if (processedHasSamples != originalHasSamples) {
-        sessionFinalizationFailed_ = true;
-        PostStatus(
-            QStringLiteral(
-                "Recording stopped because the original and processed "
-                "streams did not form a complete pair."),
-            12000);
         return false;
     }
     sessionHadOutput_ = true;
-    const QString processedFailure =
-        FinalizeFailureText(QStringLiteral("Processed video"), processed);
-    const QString originalFailure =
-        FinalizeFailureText(QStringLiteral("Original video"), original);
-    if (!processedFailure.isEmpty() || !originalFailure.isEmpty()) {
+    const QString failure = FinalizeFailureText(QStringLiteral("Original video"), original);
+    if (!failure.isEmpty()) {
         sessionFinalizationFailed_ = true;
-        QStringList details;
-        if (!processedFailure.isEmpty()) {
-            details.append(processedFailure);
-        }
-        if (!originalFailure.isEmpty()) {
-            details.append(originalFailure);
-        }
-        PostStatus(details.join(QLatin1Char(' ')), 12000);
+        PostStatus(failure, 12000);
         return false;
     }
-    if (processed.HasPlayableVideo() && original.HasPlayableVideo() &&
-        QFileInfo::exists(processedPath) && QFileInfo::exists(originalPath)) {
-        PostSegmentSaved(originalPath, processedPath);
+    if (original.HasPlayableVideo() && QFileInfo::exists(originalPath)) {
+        PostSegmentSaved(originalPath, original.videoSamplesWritten);
+        return true;
     }
-    return true;
+    sessionFinalizationFailed_ = true;
+    return false;
 }
 
 RecordingDropCounts RecordingManager::DropCounts() const
@@ -1515,6 +1302,10 @@ QString RecordingManager::BuildDropSummary() const
 
 void RecordingManager::FinishSession(bool success, const QString& detail)
 {
+    {
+        std::lock_guard lock(queueMutex_);
+        if (sessionStartTicket_) sessionStartTicket_->active.store(false);
+    }
     if (workerAbandoned_.load()) {
         // The stop watchdog already declared this session dead and restored
         // the UI. If the worker eventually un-wedges, do not let it post a
@@ -1550,22 +1341,15 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
     if (RecordingConsoleDiagnosticsEnabled()) {
         qInfo().noquote()
             << QStringLiteral(
-                   "Recording session diagnostics: paired frames=%1 | "
-                   "direct-GPU stream samples=%2 | "
-                   "GPU-route degradations=%3 | "
-                   "processed per-frame CPU fallbacks=%4 | "
-                   "original per-frame CPU fallbacks=%5 | "
-                   "capture GPU-completion retries=%6 | "
-                   "capture safe-copy frames=%7 | %8")
-                   .arg(framesWritten_.load())
-                   .arg(gpuFramesWritten_.load())
-                   .arg(gpuInputFallbacks_.load())
-                   .arg(processedFrameFallbacks_.load())
-                   .arg(originalFrameFallbacks_.load())
-                   .arg(captureGpuRetry_.load())
-                   .arg(captureSafeCopyFallback_.load())
+                   "Recording session diagnostics: original frames=%1 | "
+                   "direct-GPU samples=%2 | GPU-route degradations=%3 | "
+                   "original per-frame CPU fallbacks=%4 | "
+                   "capture GPU-completion retries=%5 | capture safe-copy frames=%6 | %7")
+                   .arg(framesWritten_.load()).arg(gpuFramesWritten_.load())
+                   .arg(gpuInputFallbacks_.load()).arg(originalFrameFallbacks_.load())
+                   .arg(captureGpuRetry_.load()).arg(captureSafeCopyFallback_.load())
                    .arg(drops);
-        qInfo() << "Recording dropped video pairs without confirmed encoder"
+        qInfo() << "Recording dropped source frames without confirmed encoder"
                    "progress statistics:"
                 << encoderStatisticsUnavailable_.load();
     }
@@ -1597,6 +1381,7 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
         std::lock_guard lock(queueMutex_);
         endedSession = sessionInfo_;
         endedSession.completion = saved ? RecordingSessionCompletion::Completed : RecordingSessionCompletion::Failed;
+        if (activeTimeline_) activeTimeline_->session = endedSession;
         audioStartupPending_=false;
         frameQueue_.clear();
         audioQueue_.clear();
@@ -1635,24 +1420,15 @@ void RecordingManager::RetireGpuInputReads()
         // of the flushed conversion query; flush-capable GetData did.
         allowFlush = frameQueue_.empty();
     }
-    for (VideoRecorder* recorder :
-         {&processedRecorder_, &originalRecorder_}) {
-        if (!recorder->IsRecording() || !recorder->HasPendingGpuReads()) {
-            continue;
-        }
-        SetWorkerOp(WorkerOp::kRetireGpuReaders, 0);
-        if (!recorder->PollGpuInputReads(allowFlush)) {
-            // A failed query never authorizes reuse. The writer keeps unknown
-            // reads quarantined through the existing finalization contract.
-            const QString detail = QString::fromStdString(recorder->LastError());
-            FinishSession(false, detail.isEmpty()
-                ? QStringLiteral("Recording stopped because an encoder rejected a frame.")
-                : detail);
-            SetWorkerOp(WorkerOp::kIdle, 0);
-            return;
-        }
-        SetWorkerOp(WorkerOp::kIdle, 0);
+    if (!originalRecorder_.IsRecording() || !originalRecorder_.HasPendingGpuReads()) return;
+    SetWorkerOp(WorkerOp::kRetireGpuReaders, 0);
+    if (!originalRecorder_.PollGpuInputReads(allowFlush)) {
+        // Unknown reads remain quarantined through finalization.
+        const QString detail = QString::fromStdString(originalRecorder_.LastError());
+        FinishSession(false, detail.isEmpty()
+            ? QStringLiteral("Recording stopped because an encoder rejected a frame.") : detail);
     }
+    SetWorkerOp(WorkerOp::kIdle, 0);
 }
 
 void RecordingManager::WorkerLoop()
@@ -1663,7 +1439,7 @@ void RecordingManager::WorkerLoop()
 
     while (true) {
         // Retirement must progress even when pool pressure prevents another
-        // complete pair from reaching this worker. Never poll on the UI thread.
+        // source frame from reaching this worker. Never poll on the UI thread.
         RetireGpuInputReads();
         QueuedFrame frame;
         AudioFrame audio;
@@ -1677,12 +1453,10 @@ void RecordingManager::WorkerLoop()
                 return shutdownRequested_ || stopRequested_ ||
                        (!audioStartupPending_ && !frameQueue_.empty()) ||
                        (!audioStartupPending_ && !audioQueue_.empty() &&
-                        processedRecorder_.IsRecording() &&
                         originalRecorder_.IsRecording());
             };
             if (!workerAbandoned_.load() &&
-                (processedRecorder_.HasPendingGpuReads() ||
-                 originalRecorder_.HasPendingGpuReads())) {
+                originalRecorder_.HasPendingGpuReads()) {
                 queueCv_.wait_for(lock,
                     std::chrono::milliseconds(kGpuReaderPollIntervalMs),
                     workAvailable);
@@ -1691,7 +1465,6 @@ void RecordingManager::WorkerLoop()
             }
             shouldShutdown = shutdownRequested_;
             const bool recorderReady =
-                processedRecorder_.IsRecording() &&
                 originalRecorder_.IsRecording();
             const bool audioComesFirst =
                 !stopRequested_ && !audioStartupPending_ && recorderReady && !audioQueue_.empty() &&
@@ -1823,11 +1596,9 @@ void RecordingManager::PostButtonState(RecordingState state) const
 
 void RecordingManager::PostSegmentSaved(
     const QString& originalPath,
-    const QString& processedPath) const
+    std::uint64_t framesWritten)
 {
-    if (workerAbandoned_.load() || !recordButton_ ||
-        !segmentSavedCallback_ ||
-        originalPath.isEmpty() || processedPath.isEmpty()) {
+    if (workerAbandoned_.load() || originalPath.isEmpty()) {
         return;
     }
     SavedRecordingSegment saved;
@@ -1835,19 +1606,61 @@ void RecordingManager::PostSegmentSaved(
         std::lock_guard lock(queueMutex_);
         saved.session = sessionInfo_;
         saved.segmentIndex = segmentIndex_;
+        saved.archive = currentArchive_;
     }
     saved.originalPath = originalPath;
-    saved.processedPath = processedPath;
+    saved.firstCaptureClock100ns = segmentClockOrigin100ns_;
+    saved.lastCaptureClock100ns = segmentLastCaptureClock100ns_;
+    saved.framesWritten = framesWritten;
+    saved.failedAttemptPaths = segmentFailedAttemptPaths_;
+    {
+        std::lock_guard lock(queueMutex_);
+        lastSavedSegment_ = saved;
+    }
+    if (!recordButton_ || !segmentSavedCallback_) return;
     const QPointer<QPushButton> context(recordButton_);
     const SegmentSavedCallback callback = segmentSavedCallback_;
+    const auto deliveryEnabled = completionDeliveryEnabled_;
     QMetaObject::invokeMethod(
         recordButton_,
-        [context, callback, saved]() {
-            if (context && callback) {
+        [context, callback, saved, deliveryEnabled]() {
+            if (deliveryEnabled->load() && context && callback) {
                 callback(saved);
             }
         },
         Qt::QueuedConnection);
+}
+
+void RecordingManager::PostSessionStarted()
+{
+    if (workerAbandoned_.load() || !sessionStartedCallback_) return;
+    // A QCoreApplication context supports desktop-free callers too. Normal
+    // application instances use the existing record-button UI lifetime.
+    const QPointer<QObject> context(recordButton_
+        ? static_cast<QObject*>(recordButton_) : QCoreApplication::instance());
+    if (!context) return;
+    RecordingSessionInfo started;
+    std::shared_ptr<SessionStartTicket> ticket;
+    {
+        std::lock_guard lock(queueMutex_);
+        if (sessionStartedPosted_ || stopRequested_ || shutdownRequested_ ||
+            !IsActive() || !activeTimeline_ ||
+            activeTimeline_->session.id != sessionInfo_.id ||
+            framesWritten_.load() == 0 || !sessionStartTicket_ ||
+            !sessionStartTicket_->active.load() ||
+            sessionStartTicket_->sessionId != sessionInfo_.id ||
+            sessionInfo_.id.isEmpty()) return;
+        sessionStartedPosted_ = true;
+        started = sessionInfo_;
+        ticket = sessionStartTicket_;
+    }
+    const SessionStartedCallback callback = sessionStartedCallback_;
+    const auto deliveryEnabled = completionDeliveryEnabled_;
+    QMetaObject::invokeMethod(context.data(),
+        [context, callback, ticket, deliveryEnabled, started]() {
+            if (context && deliveryEnabled->load() && ticket->active.load() &&
+                ticket->sessionId == started.id && callback) callback(started);
+        }, Qt::QueuedConnection);
 }
 
 QString RecordingManager::EnsureOutputDirectory() const

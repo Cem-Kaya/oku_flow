@@ -1,5 +1,30 @@
 # Ultra Clear Text (experimental, development)
 
+## Selected-video and held-frame authority (development)
+
+Saved playback and same-session recording rewind use the same UCT scheduler
+with owned immutable source pixels, document identity and selection generation.
+Each selected frame is recognized once, with at most one genuinely distinct
+neighbor pass for glyph corroboration. Duplicate pixels or a new job identifier
+alone cannot corroborate an immutable frame. Without independent evidence,
+reading text can be shown in the pane while the original source ink remains.
+Completed unchanged stills schedule no periodic OCR or validation jobs; pan and
+zoom only reproject their retained scene artifact. The immutable job deadline
+does not expire an otherwise valid still because the live camera aged.
+
+Rejected or uncertain OCR spans remain ordered omissions (…). Their source
+rectangles protect original ink from replacement plates. Valid replacements
+and their plates share one drawability decision. See
+[uncertainty handling](uct_uncertainty_repair.md) and
+[immutable controller](uct_immutable_controller.md).
+
+UCT also supplies passive, positioned text elements to Qt's Windows UI
+Automation bridge. A render-viewport group contains read-only text lines;
+character geometry comes from the last actual glyph paint. Semantic additions
+use a one-second cadence with a bounded three-second reader hold, while loss
+of validation immediately removes text. It never requests speech or focus.
+See [screen-reader text and native acceptance limits](uct_screen_text_accessibility.md).
+
 Ultra Clear Text (UCT) recognizes steady printed camera text on this computer
 and draws sharp, high-contrast letters over the original words. It is an
 opt-in, session-only development feature. It is **not** release-accepted, and

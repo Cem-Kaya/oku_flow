@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>CPU پر متن پہچاننے والا ماڈل</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>موجودہ ریکارڈنگ</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>ویڈیو</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>لائیو</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>لائیو سے پیچھے</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>موقوف</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>ویڈیو کا اختتام</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>ویڈیو کھل رہی ہے…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>تلاش جاری ہے…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>ریکارڈنگ کا انتظار</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>ریکارڈنگ مکمل ہو رہی ہے</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>ویڈیو دستیاب نہیں</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>ویڈیو پلے بیک</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>10 سیکنڈ پیچھے جائیں</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>ویڈیو موقوف کریں</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>ویڈیو دوبارہ چلائیں</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>لائیو پر جائیں</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>اختتام پر جائیں</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>کیمرے پر واپس جائیں</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>فریم محفوظ کریں</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>پلے بیک کی آواز بحال کریں</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>پلے بیک کی آواز بند کریں</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>ویڈیو کنٹرولز</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>ویڈیو ٹائم لائن</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>بائیں اور دائیں: ایک سیکنڈ۔ Page Up اور Page Down: دس سیکنڈ۔ Home: آغاز۔ End: ریکارڈ شدہ اختتام۔</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 از %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>ویڈیو کھولیں</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>محفوظ شدہ ویڈیو کھولیں (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>اصل ویڈیو ریکارڈ کریں</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>اصل MP4 ریکارڈنگ شروع یا بند کریں</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>اصل ویڈیو ریکارڈنگ کے لیے آواز منتخب کریں۔ مائیکروفون صرف ریکارڈنگ کے دوران استعمال ہوتا ہے۔</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>اصل MP4 ریکارڈنگ کے لیے مائیکروفون آڈیو منتخب کریں، یا مائیکروفون استعمال نہ کرنے کا انتخاب کریں۔</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>دکھایا گیا فریم محفوظ نہیں رکھا جا سکا۔ ریکارڈ شدہ ویڈیو دستیاب ہے۔</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>ویڈیو نہیں کھل سکی: ایک موجودہ مقامی فائل منتخب کریں۔</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>ریکارڈنگ بند نہ ہو سکی، اس لیے ویڈیو نہیں کھولی گئی۔</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>ویڈیو کھولنے سے پہلے ریکارڈنگ مکمل کی جا رہی ہے...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>ریکارڈ شدہ ویڈیو میں آگے پیچھے جانا ممکن ہونے کا انتظار ہے۔</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>موقوف کیا گیا فریم ریکارڈ نہیں ہوا۔ جاری رکھنے کے لیے ریکارڈ شدہ ویڈیو پر جائیں۔</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>موقوف فریم کی ریکارڈ شدہ پوزیشن کی تصدیق نہیں ہو سکی۔ جاری رکھنے کے لیے ریکارڈ شدہ ویڈیو پر جائیں۔</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>ویڈیو کا اختتام۔ دوبارہ چلانے کے لیے پہلے کے مقام پر جائیں۔</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>کیمرہ دستیاب نہیں۔ ریکارڈنگ کا تازہ ترین فریم دکھایا جا رہا ہے۔</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>موقوف کیا گیا فریم ریکارڈ نہیں ہوا۔ محفوظ رکھی گئی تصویر اب بھی دستیاب ہے۔</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>موقوف فریم کی ریکارڈ شدہ پوزیشن کی تصدیق نہیں ہو سکی۔ محفوظ رکھی گئی تصویر اب بھی دستیاب ہے۔</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>دستیاب ریکارڈنگ کا اختتام۔ محفوظ رکھی گئی تصویر اب بھی دستیاب ہے۔</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>ویڈیو دستیاب نہیں: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>پلے بیک کی آواز دستیاب نہیں۔ ویڈیو چلتی رہے گی۔</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>فریم محفوظ نہیں ہوا: منتخب منظر دستیاب نہیں۔</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>فریم محفوظ نہیں ہوا: تصویر کو قطار میں شامل نہیں کیا جا سکا۔</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>فریم محفوظ نہیں ہوا: OkuFlow Photos فولڈر دستیاب نہیں۔</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>منتخب ویڈیو کا فریم محفوظ ہو گیا۔</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>منتخب ویڈیو کا فریم محفوظ نہیں ہو سکا۔</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>فریم محفوظ نہیں ہوا: تصویر لکھنے کا عمل مصروف ہے۔ دوبارہ کوشش کریں۔</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>ویڈیو کو موقوف کرنا ممکن نہیں: دکھایا گیا فریم محفوظ نہیں رکھا جا سکا۔</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;کنٹرولز&lt;/h2&gt;&lt;p&gt;&lt;b&gt;سادہ&lt;/b&gt; کیمرے کا منظر بڑا کر دیتا ہے۔ فوری موڈ بدلنے کے لیے کونے والے کیروسل یا 1 سے 9 تک عددی کلیدیں استعمال کریں۔&lt;/p&gt;&lt;p&gt;&lt;b&gt;UI چھپائیں&lt;/b&gt; یا &lt;b&gt;Ctrl+H&lt;/b&gt; کیمرے کے منظر سے کنٹرولز اور اسسٹنٹ ہٹا دیتا ہے۔ &lt;b&gt;UI دکھائیں&lt;/b&gt; انہیں اور موجودہ جواب کو واپس دکھاتا ہے۔&lt;/p&gt;&lt;p&gt;&lt;b&gt;اعلیٰ درجے کی&lt;/b&gt; منتخب کرنے سے تصویر اور اسسٹنٹ کی تفصیلی ترتیبات کھلتی ہیں۔ پینل کے کنارے پر موجود تقسیم کار کو کھینچ کر اس کا سائز بدلیں۔&lt;/p&gt;&lt;p&gt;کیمرے کا منظر کھینچ کر پین کریں۔ زوم کے لیے Ctrl دبا کر ماؤس کا پہیہ گھمائیں۔ اسکرین پر حرکت کا کنٹرول پانے کے لیے &lt;b&gt;ترتیبات &amp;gt; منظر اور نیویگیشن&lt;/b&gt; میں &lt;b&gt;ورچوئل جوائس اسٹک&lt;/b&gt; فعال کریں۔&lt;/p&gt;&lt;p&gt;تصویر اصل اور پراسیس شدہ دونوں ورژن محفوظ کرتی ہے۔ ریکارڈ اصل ویڈیو محفوظ کرتا ہے۔ وضاحت کریں منظر بیان کرتا ہے؛ پڑھیں متن پہچانتا ہے۔ اپنی OkuFlow فائلوں والا فولڈر کھولنے کے لیے &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; دبائیں۔&lt;/p&gt;&lt;h2&gt;خصوصیات&lt;/h2&gt;&lt;p&gt;&lt;b&gt;متن کی وضاحت&lt;/b&gt; دستاویز کی صفائی، مقامی کنٹراسٹ، شارپننگ اور متن کے مستحکم کناروں کو یکجا کرتی ہے۔ &lt;b&gt;ڈسپلے کے رنگ&lt;/b&gt; پڑھنے کے رنگین پیلیٹ اور حسبِ ضرورت رنگوں کے مجموعے فراہم کرتا ہے۔&lt;/p&gt;&lt;p&gt;اختیاری NVIDIA Video Effects رن ٹائم نصب ہو تو &lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; زوم کی گئی تفصیل بہتر کرتا ہے۔&lt;/p&gt;&lt;p&gt;&lt;b&gt;متن پڑھنا اور اسسٹنٹ&lt;/b&gt; متن پڑھ سکتا ہے، منظر سمجھا سکتا ہے، ضمنی سوالات کے جواب دے سکتا ہے اور نتائج لیکچر نوٹس میں شامل کر سکتا ہے۔&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>ویڈیو فائلیں (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;تمام فائلیں (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>اس منظر میں Ultra Clear Text</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… اس متن کی نشاندہی کرتا ہے جو اصل تصویر میں ہی رہ گیا ہے۔</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>ویڈیو پلے بیک: زوم، گھماؤ، پڑھنے کے رنگ اور UCT دستیاب ہیں۔ جدید GPU اثرات دستیاب نہیں ہیں۔</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC اصل، انکوڈر شروع ہو رہا ہے]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC اصل، %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>وقفہ ممکن نہیں: دکھائے گئے فریم کی ترتیب بالکل اسی طرح برقرار نہیں رکھی جا سکی۔</translation>
+        </message>
     </context>
 </TS>

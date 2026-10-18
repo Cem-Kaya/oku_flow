@@ -37,9 +37,18 @@ foreach ($source in @(
 # These words are spelled identically in the named languages. Keep exceptions
 # narrow and language-specific; untranslated English sentences still fail.
 $identicalByLanguage = @{
-    de = @("Details")
-    fr = @("Simple", "Orientation", "Conversation", "Application", "Assistant", "Image", "Rectangle", "Microphone", "Photo")
-    nl = @("Details", "Camera", "Stop", "Focus X:", "Focus Y:", "Pen", "Later", "Contrast")
+    # Reviewed native video labels: these are established local UI terms.
+    tr = @("Video")
+    de = @("Details", "Video", "Live")
+    fr = @("Simple", "Orientation", "Conversation", "Application", "Assistant", "Image", "Rectangle", "Microphone", "Photo", " [REC original, %1]")
+    es = @(" [REC original, %1]")
+    pt_BR = @(" [REC original, %1]")
+    nl = @("Details", "Camera", "Stop", "Focus X:", "Focus Y:", "Pen", "Later", "Contrast", "Video", "Live")
+    cs = @("Video")
+    sv = @("Video", "Live", " [REC original, %1]")
+    it = @("Video")
+    id = @("Video")
+    vi = @("Video")
 }
 
 function Get-FormatTokens {

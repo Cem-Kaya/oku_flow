@@ -111,11 +111,13 @@ target_sources(oku_flow PRIVATE
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/codex_json_rpc_process.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/d3d12/presenter.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/main_window.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/video_transport.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/agent_control_panel.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistant_chat_view.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistive_overlay.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/annotation_overlay.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_overlay.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/uct_screen_text_accessible.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_panel.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/ultra_clear_text_controller.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/ultra_clear_text.hpp
@@ -203,6 +205,7 @@ if (WIN32)
         dxgi
         mfplat
         mfreadwrite
+        propsys
         wmcodecdspuuid
         mfuuid
         dxguid

@@ -9,6 +9,14 @@ first-party file-access/MessageChannel glue, not a bundled recognition engine.
 
 OkuFlow relies on several third-party SDKs and code drops. Keep this summary with any redistributed build and update it whenever dependencies or bundled notices change.
 
+The development video player/archive and WASAPI playback output use Windows
+Media Foundation, COM and Windows audio APIs from the existing Windows SDK.
+They add first-party code, not a bundled media framework or downloaded codec.
+Native decoding depends on codecs installed on the user's Windows system;
+successful local AV1 decoding does not grant redistribution rights to an
+external codec extension. Existing Qt accessibility APIs serve the native
+transport under the Qt terms below.
+
 The new localization resources are machine-assisted translations of first-party
 public UI text generated during development. They introduce no translation SDK
 or runtime service dependency. See [localization provenance and validation](localization.md).

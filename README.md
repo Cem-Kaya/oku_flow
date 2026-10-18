@@ -54,6 +54,13 @@ OkuFlow is a **live camera magnifier**, for a page on your desk, a whiteboard or
 
 Photos and recordings are saved in pairs: the original camera image and OkuFlow's processed view. Draw on the picture to mark what matters. Recorded ink goes into the processed copy while the original stays clean.
 
+**Development builds:** new recordings save one clean Original video with
+optional microphone audio; photos still save both views. You can open a saved
+video or rewind an ongoing recording, magnify it and use UCT. Opening a saved
+video first finishes the current recording. The bottom transport names the
+selected source and keeps your held position. These changes are not yet a
+published installer; see [development status](docs/accessible_video_implementation.md).
+
 Record microphone audio or choose no microphone for silent video. Captures, readings and explanations gather in local HTML lecture notes. The default folder is `Documents\OkuFlow\`; you can choose another location.
 
 **Privacy-respecting local transcription:** open recorded-video notes in Chrome and choose Transcribe. Grant access to the folder containing your recording, then explicitly choose a speech model and processor in the [OkuFlow transcription tool](https://okuflow.com/transcribe/). First use downloads the selected model and runtime. Speech recognition runs on your own computer, without an inference server or audio/text upload. Returned text appears beneath the recording and is saved beside it as a transcript sidecar. Browser caches can be cleared or evicted, so a later session may need another download.

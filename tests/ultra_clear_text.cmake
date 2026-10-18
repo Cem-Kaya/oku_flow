@@ -16,11 +16,13 @@ add_executable(ultra_clear_text_tests
     ${PROJECT_SOURCE_DIR}/include/okuflow/app/ultra_clear_text_controller.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/common/ultra_clear_text.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_overlay.hpp
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/uct_screen_text_accessible.hpp
     ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_panel.hpp
     ${PROJECT_SOURCE_DIR}/src/app/ultra_clear_text_controller.cpp
     ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
     ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_overlay.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/uct_screen_text_accessible.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_panel.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/live_status_text.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp
@@ -57,6 +59,8 @@ set_tests_properties(ultra_clear_text_windows_ocr PROPERTIES TIMEOUT 60 LABELS "
 
 add_executable(uct_paddle_tests
     uct_paddle_tests.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
+    ${PROJECT_SOURCE_DIR}/src/common/view_transform.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_paddle_processing.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_paddle.cpp
     ${PROJECT_SOURCE_DIR}/src/common/uct_onnx_cpu.cpp
@@ -81,7 +85,7 @@ if(OKUFLOW_ENABLE_CUDA)
     set_target_properties(ultra_clear_text_windows_ocr_tests PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON
         CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}")
 endif()
-add_test(NAME uct_paddle_processing COMMAND uct_paddle_tests modelPinsMatchPreparationAndFailClosed normalizationAndBounds detectionRejectsNoiseAndMapsSource ctcBlankRepeatSpaceAndConfidence automaticFallback allBackendsUnavailable missingOrTamperedModelsFailClosed copyFaultKeepsFallbackUsableAndCopiesOnce cpuServesWhileGpuPreparesThenGpuPromotes promotedGpuFailureDoesNotResurrectRetiredCpu analysisAllocationBackoffAndUnknownCompletionQuarantine)
+add_test(NAME uct_paddle_processing COMMAND uct_paddle_tests modelPinsMatchPreparationAndFailClosed normalizationAndBounds detectionRejectsNoiseAndMapsSource ctcBlankRepeatSpaceAndConfidence decoderPreservesUncertainNegationThroughReading automaticFallback allBackendsUnavailable missingOrTamperedModelsFailClosed copyFaultKeepsFallbackUsableAndCopiesOnce cpuServesWhileGpuPreparesThenGpuPromotes promotedGpuFailureDoesNotResurrectRetiredCpu analysisAllocationBackoffAndUnknownCompletionQuarantine)
 set_tests_properties(uct_paddle_processing PROPERTIES TIMEOUT 30 LABELS "headless"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")

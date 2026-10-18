@@ -76,18 +76,22 @@ std::map<Field,QJsonValue> AppControlTarget::Fields() const {
     const auto capture=CaptureParameterFields();fields.insert(capture.begin(),capture.end());
     const auto ui=UiParameterFields();fields.insert(ui.begin(),ui.end());
     const auto recording=RecordingParameterFields();fields.insert(recording.begin(),recording.end());
+    const auto video=QueryVideoState();
+    fields[Field::VideoSelection]=QJsonObject{{"documentId",video["documentId"]},
+        {"selectionGeneration",video["selectionGeneration"]}};
     return fields;
 }
 QJsonObject AppControlTarget::State() const {
     const auto f = Fields();
     const bool fit = f.at(Field::Framing) == "fit";
-    const bool effects = app_.usingCudaLastFrame_;
+    const bool effects = app_.usingCudaLastFrame_ && !app_.MediaViewSelected();
     const bool binary = f.at(Field::TextClarity).toBool() && f.at(Field::Adaptive).toBool();
-    const auto effect = [effects](const QJsonValue& requested,bool shadowed = false) {
+    const bool selectedMedia=app_.MediaViewSelected();
+    const auto effect = [effects,selectedMedia](const QJsonValue& requested,bool shadowed = false,bool cpuSupported=false) {
         const bool enabled = !requested.isBool() || requested.toBool();
-        const bool effective = effects && !shadowed && enabled;
+        const bool effective = (effects || (selectedMedia && cpuSupported)) && !shadowed && enabled;
         return QJsonObject{{"requested",requested},{"effective",effective},
-            {"inactiveReason",effective ? QString() : !effects ? QStringLiteral("raw_passthrough")
+            {"inactiveReason",effective ? QString() : selectedMedia && !cpuSupported ? QStringLiteral("selected_media_cpu_path") : !effects ? QStringLiteral("raw_passthrough")
                 : !enabled ? QStringLiteral("disabled") : QStringLiteral("adaptive_binarization")}};
     };
     return {{"view",QJsonObject{{"framing",f.at(Field::Framing)},{"zoomRequested",f.at(Field::ZoomAmount)},
@@ -101,16 +105,18 @@ QJsonObject AppControlTarget::State() const {
             {"transitionPending",app_.cameraStartupPending_ || app_.cameraStopPending_ || app_.pendingCameraStart_.has_value()}}},
         {"image",QJsonObject{{"schemeId",f.at(Field::Scheme)},{"textClarity",f.at(Field::TextClarity)},{"contrast",f.at(Field::Contrast)},
             {"brightness",f.at(Field::Brightness)},{"monochrome",f.at(Field::BlackWhite)},
-            {"readingColors",QJsonObject{{"scheme",effect(f.at(Field::Scheme))},{"textClarity",effect(f.at(Field::TextClarity))},
+            {"readingColors",QJsonObject{{"scheme",effect(f.at(Field::Scheme),false,true)},{"textClarity",effect(f.at(Field::TextClarity))},
                 {"adaptive",effect(binary)},
                 {"twoColor",effect(f.at(Field::TwoColor),!binary)},
-                {"blackWhite",effect(f.at(Field::BlackWhite),binary)}}}}},
+                {"blackWhite",effect(f.at(Field::BlackWhite),!selectedMedia && binary,true)}}}}},
         {"ui",QJsonObject{{"modal",ModalActive()},{"userInteracting",UserInteracting()},{"hidden",app_.mainWindow_->isUiHidden()}}},
-        {"pipeline",app_.usingCudaLastFrame_ ? "cuda" : "raw_passthrough"},
-        {"profile",QJsonObject{{"presetId",f.at(Field::Preset)}}}};
+        {"pipeline",app_.MediaViewSelected() ? "cpu_selected_media" : app_.usingCudaLastFrame_ ? "cuda" : "raw_passthrough"},
+        {"profile",QJsonObject{{"presetId",f.at(Field::Preset)}}},
+        {"video",QueryVideoState()}};
 }
 ControlPlan AppControlTarget::Prepare(ToolId tool, const QJsonObject& args, const QString& owner) const {
     ControlPlan plan;
+    if(IsVideoControlTool(tool))return PrepareVideoControl(tool,args);
     if(tool==ToolId::UiPreferencesGet || tool==ToolId::UiPreferencesSet || tool==ToolId::AnnotationPreferencesGet || tool==ToolId::AnnotationPreferencesSet)
         return PrepareUiParameters(tool,args);
     if (tool==ToolId::ImageSettingsGet || tool==ToolId::ImageSettingsSet || tool==ToolId::ViewSettingsGet || tool==ToolId::ViewSettingsSet)
@@ -227,6 +233,13 @@ ControlPlan AppControlTarget::Prepare(ToolId tool, const QJsonObject& args, cons
         for (const auto& builtIn : color_schemes::BuiltInColorSchemes()) found |= builtIn.id == scheme;
         if (!found) plan.error = "not_found";
         else write(Field::Scheme,scheme);
+        if(app_.MediaViewSelected() && plan.error.isEmpty()) {
+            // The selected-media CPU path implements a source threshold and
+            // color recipe; it does not run CUDA's adaptive text pipeline.
+            plan.writes.clear();
+            write(Field::BlackWhite,intent.startsWith("high_contrast_"));
+            write(Field::Scheme,scheme);
+        }
         break;
     }
     case ToolId::ModeActivate: {
@@ -239,6 +252,7 @@ ControlPlan AppControlTarget::Prepare(ToolId tool, const QJsonObject& args, cons
         break;
     }
     case ToolId::AutoAdjust: {
+        if(app_.MediaViewSelected()) {plan.error="unavailable";break;}
         if (!operations_.HasCapacity()) { plan.error = "budget_exhausted"; break; }
         const auto metrics = observations_.Metrics(app_.controlService_->Stamp());
         if (metrics["stale"].toBool()) { plan.error = "stale_state"; break; }
@@ -272,10 +286,11 @@ ControlPlan AppControlTarget::Prepare(ToolId tool, const QJsonObject& args, cons
         break;
     }
     case ToolId::Observe: case ToolId::Metrics:
-        if (!app_.cameraActive_ || app_.debugViewEnabled_) plan.error = "unavailable";
+        if ((!app_.cameraActive_ && !app_.MediaViewSelected()) || app_.debugViewEnabled_) plan.error = "unavailable";
+        else if(app_.MediaViewSelected() && !QueryVideoState()["hasFrame"].toBool())plan.error="unavailable";
         break;
     case ToolId::Photo:
-        if (!app_.cameraActive_) plan.error = "unavailable";
+        if (app_.MediaViewSelected() || !app_.cameraActive_) plan.error = "unavailable";
         else if (!app_.photoOperationId_.isEmpty()) plan.error = "busy";
         break;
     case ToolId::RecordingStart:
@@ -325,12 +340,14 @@ ControlPlan AppControlTarget::Prepare(ToolId tool, const QJsonObject& args, cons
     default: break;
     }
     if (plan.error.isEmpty() && !app_.usingCudaLastFrame_) {
-        const bool imageMutation = std::any_of(plan.writes.begin(),plan.writes.end(),[&fields](const FieldWrite& field) {
+        const bool imageMutation = std::any_of(plan.writes.begin(),plan.writes.end(),[this,&fields](const FieldWrite& field) {
             const auto current = fields.find(field.field);
             if (current != fields.end() && current->second == field.value) return false;
             switch (field.field) {
             case Field::ZoomEnabled: case Field::ZoomAmount: case Field::CenterX: case Field::CenterY:
             case Field::Rotation: case Field::Framing: case Field::Preset: case Field::Camera: return false;
+            case Field::Scheme:case Field::BlackWhite:case Field::Threshold:case Field::Contrast:case Field::Brightness:
+                return !app_.MediaViewSelected();
             default: return true;
             }
         });
@@ -358,6 +375,7 @@ void AppControlTarget::EndFieldPlan() {
     fieldPlanActive_ = false; applying_ = fieldPlanPreviousApplying_; observed_ = Fields();
 }
 bool AppControlTarget::Apply(const FieldWrite& write) {
+    if(write.field==Field::RecordingCanvas)return false;
     const auto current = Fields();
     if (!current.contains(write.field)) return false;
     if (!write.retryUnacknowledged && ReadField(write) == write.value) return true;
@@ -470,6 +488,7 @@ QJsonObject AppControlTarget::EffectiveValues(const ControlPlan& plan) const {
     return values;
 }
 QJsonObject AppControlTarget::Query(ToolId tool, const QJsonObject& args) const {
+    if(tool==ToolId::VideoState)return QueryVideoState();
     if(tool==ToolId::UiPreferencesGet || tool==ToolId::UiPreferencesSet || tool==ToolId::AnnotationPreferencesGet || tool==ToolId::AnnotationPreferencesSet)
         return QueryUiParameters(tool,args);
     if (tool==ToolId::ImageSettingsGet || tool==ToolId::ImageSettingsSet || tool==ToolId::ViewSettingsGet || tool==ToolId::ViewSettingsSet)
@@ -555,6 +574,7 @@ QJsonObject AppControlTarget::Query(ToolId tool, const QJsonObject& args) const 
     return {{"ok",false},{"error",QJsonObject{{"code","unavailable"},{"retryable",false}}}};
 }
 void AppControlTarget::Execute(ToolId tool, const QJsonObject& args, const QString& owner, ContextKind kind, ControlCompletion completion) {
+    if(IsVideoControlTool(tool)) {ExecuteVideoControl(tool,args,owner,std::move(completion));return;}
     if(tool==ToolId::CameraSettingsSet) {
         ExecuteCaptureParameters(args,owner,kind,std::move(completion));return;
     }
@@ -788,6 +808,7 @@ void AppControlTarget::NoteNativeCameraAcceleration(const QString& symbolicLink)
     if(current.contains(Field::CameraAcceleration))observed_[Field::CameraAcceleration]=current.at(Field::CameraAcceleration);
 }
 void AppControlTarget::FrameProcessed() {
+    if(app_.MediaViewSelected())return; // hidden camera work cannot publish selected-view authority
     if (!app_.controlService_) return;
     const auto stamp = app_.controlService_->Stamp();
     const auto now = MonotonicNow();
@@ -803,13 +824,28 @@ void AppControlTarget::FrameProcessed() {
     processedCameraSession_=app_.cameraSessionId_;processedInputSeen_=true;
     processed_ = true;
 }
-void AppControlTarget::FramePresented(const ObservationFrame& frame) { presentedStamp_ = frame.stamp; presented_ = true; }
+void AppControlTarget::FramePresented(const ObservationFrame& frame) {
+    if(app_.MediaViewSelected() && !frame.immutableSource)return;
+    presentedStamp_ = frame.stamp; presented_ = true;
+}
 ObservationFrame AppControlTarget::PresentedFrame(const ViewTransform& transform, QSize source, QSize viewport) {
     if (lastViewport_.isValid() && lastViewport_ != viewport && app_.controlService_) {
         app_.controlService_->InvalidateGeometry(); observations_.Cancel("stale_observation"); observationReadbackId_ = 0;
     }
     lastViewport_ = viewport;
     const auto current = app_.controlService_ ? app_.controlService_->Stamp() : ControlStamp{};
+    if(app_.MediaViewSelected()) {
+        const auto state=app_.SelectedVideoState();
+        ObservationFrame frame{current,transform,source,viewport,
+            static_cast<quint64>(state["frameSequence"].toInteger()),0,!state["playing"].toBool(),false,0.0,
+            app_.focusThreshold_,false,{{"available",true},{"basis","selected-media-cpu"}}};
+        frame.immutableSource=true;
+        frame.documentId=state["documentId"].toString();
+        frame.documentGeneration=state["selectionGeneration"].toInteger();
+        frame.selectionGeneration=state["selectionGeneration"].toInteger();
+        frame.mediaPts100ns=state["selectedPts100ns"].isDouble()?state["selectedPts100ns"].toInteger():-1;
+        return frame;
+    }
     auto stamp = processedStamp_; stamp.viewVersion = current.viewVersion; stamp.geometryEpoch = current.geometryEpoch;
     std::optional<bool> held = false, converging = false, quad = false;
     QJsonObject diagnostics{{"available",true},{"basis","cpu-output"}};
@@ -848,9 +884,13 @@ void AppControlTarget::ObservationReadbackSubmitted(quint64 id, const Observatio
 }
 void AppControlTarget::ConsumeObservationReadback(quint64 id, const QImage& pixels) {
     if (!id || id != observationReadbackId_) return;
-    observationReadbackId_ = 0; observations_.Consume(pixels,readbackFrame_);
+    observationReadbackId_ = 0;
+    if(app_.MediaViewSelected() && !readbackFrame_.immutableSource)return;
+    observations_.Consume(pixels,readbackFrame_);
 }
 void AppControlTarget::CpuObservationPresented(const QImage& pixels, const ObservationFrame& frame) {
+    if(app_.MediaViewSelected() && !frame.immutableSource)return;
+    if(frame.immutableSource) {processedStamp_=frame.stamp;processed_=true;}
     FramePresented(frame); observations_.Consume(pixels,frame);
 }
 void AppControlTarget::CancelObservations() {

@@ -1,5 +1,19 @@
 # OkuFlow Documentation Guide
 
+[Accessible video implementation](accessible_video_implementation.md) records
+the corrected recording/playback contract. The [native archive/player](video_archive_backend.md),
+[document lifecycle](video_document_lifecycle.md), [transport](video_transport.md),
+[Original recording](original_only_recording.md), [presentation](media_presentation.md),
+[sound](video_audio_output.md), [immutable UCT](uct_immutable_controller.md),
+[OCR uncertainty](uct_uncertainty_repair.md) and [agent actions](video_agent_control.md)
+describe the development implementation and its separate acceptance boundaries.
+
+[Positioned UCT screen text](uct_screen_text_accessibility.md) describes the
+passive Windows accessibility model. [Video/UCT language review](uct_recap_localization_review_2026_10_18.md)
+records complete small-agent review of the new UI copy.
+[Review dispositions](uct_recap_review_2026_10_18.md) separate confirmed repairs
+from adapter limitations and native acceptance still required.
+
 [Ultra Clear Text](ultra_clear_text.md#paddleocr-development-backend-2026-10-18)
 documents optional local PaddleOCR/TensorRT, CPU/Windows fallback, independent
 pre-zoom analysis, preparation, transfer boundaries and acceptance limits.

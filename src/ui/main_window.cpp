@@ -6,6 +6,7 @@
 #include "okuflow/ui/joystick_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
+#include "okuflow/ui/video_transport.hpp"
 
 #include "okuflow/app/app.hpp"
 #include "okuflow/app/constants.hpp"
@@ -31,6 +32,7 @@
 #include <QCursor>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDropEvent>
 #include <QEvent>
 #include <QFocusEvent>
 #include <QAbstractItemView>
@@ -45,6 +47,7 @@
 #include <QListWidget>
 #include <QLocale>
 #include <QMouseEvent>
+#include <QMimeData>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QParallelAnimationGroup>
@@ -78,6 +81,7 @@
 #include <QVBoxLayout>
 #include <QWheelEvent>
 #include <QWindow>
+#include <QUrl>
 
 #include <algorithm>
 #include <array>
@@ -684,12 +688,16 @@ MainWindow::MainWindow()
     capturePhotoButton_ = new QPushButton("Photo");
     recordButton_ = new QPushButton("Record");
     recordButton_->setCheckable(true);
+    openVideoButton_ = new QPushButton(QStringLiteral("Open video"));
+    openVideoButton_->setObjectName(QStringLiteral("openVideoButton"));
+    openVideoButton_->setToolTip(QStringLiteral("Open a saved video (Ctrl+O)"));
+    connect(openVideoButton_, &QPushButton::clicked, this, &MainWindow::openVideoRequested);
     explainNowButton_ = new QPushButton("Explain");
     readTextButton_ = new QPushButton("Read");
     annotationButton_ = new QPushButton(QStringLiteral("Draw"));
     annotationButton_->setCheckable(true);
     capturePhotoButton_->setToolTip("Capture original and processed photos");
-    recordButton_->setToolTip("Record original and processed videos");
+    recordButton_->setToolTip("Record Original video");
     explainNowButton_->setToolTip("Explain the current view");
     readTextButton_->setToolTip("Read text in the current view");
 
@@ -1369,7 +1377,9 @@ MainWindow::MainWindow()
                                     QStringLiteral("recording"), false);
     auto* recordingLayout = sectionLayout(recordingSection_);
     sharedLayout->addWidget(recordingSection_);
-    recordingCanvasCombo_ = new WheelSafeComboBox();
+    // Retained for settings/control compatibility only. New recordings always
+    // use the clean Original camera resolution; there is no processed encoder.
+    recordingCanvasCombo_ = new WheelSafeComboBox(recordingSection_);
     recordingCanvasCombo_->addItem(
         "Match camera (recommended)",
         static_cast<int>(RecordingCanvasMode::Source));
@@ -1397,8 +1407,10 @@ MainWindow::MainWindow()
     auto* recordingCanvasLabel =
         new QLabel(QStringLiteral("Processed recording resolution"));
     recordingCanvasLabel->setBuddy(recordingCanvasCombo_);
-    recordingLayout->addWidget(recordingCanvasLabel);
-    recordingLayout->addWidget(recordingCanvasCombo_);
+    recordingCanvasLabel->setParent(recordingSection_);
+    recordingCanvasLabel->hide();
+    recordingCanvasCombo_->hide();
+    recordingCanvasCombo_->setEnabled(false);
 
     microphoneCombo_ = new WheelSafeComboBox();
     SetComboItemsAreData(microphoneCombo_);
@@ -1407,7 +1419,7 @@ MainWindow::MainWindow()
         QStringLiteral("__none__"));
     microphoneCombo_->setToolTip(
         QStringLiteral(
-            "Select sound for both original and processed video recordings. "
+            "Select sound for the Original video recording. "
             "The microphone is used only while recording."));
     auto* microphoneLabel = new QLabel(QStringLiteral("Microphone"));
     microphoneLabel->setBuddy(microphoneCombo_);
@@ -1428,6 +1440,11 @@ MainWindow::MainWindow()
     changeUserDataFolderButton_ =
         new QPushButton(QStringLiteral("Change OkuFlow folder..."));
     notesFilesLayout->addWidget(openNotesButton_);
+    auto* openVideoInSettings = new QPushButton(QStringLiteral("Open video"));
+    openVideoInSettings->setAccessibleName(QStringLiteral("Open video"));
+    openVideoInSettings->setToolTip(QStringLiteral("Open a saved video (Ctrl+O)"));
+    connect(openVideoInSettings, &QPushButton::clicked, this, &MainWindow::openVideoRequested);
+    notesFilesLayout->addWidget(openVideoInSettings);
     notesFilesLayout->addWidget(annotationCaptureOnExitCheckbox_);
     notesFilesLayout->addWidget(openUserDataFolderButton_);
     notesFilesLayout->addWidget(changeUserDataFolderButton_);
@@ -1679,11 +1696,19 @@ MainWindow::MainWindow()
     renderWidget_->installEventFilter(this);
     renderWidget_->setMouseTracking(true);
     renderWidget_->setMinimumSize(320, 240);
+    auto* viewColumn = new QWidget();
+    viewColumn->setObjectName(QStringLiteral("videoViewColumn"));
+    auto* viewLayout = new QVBoxLayout(viewColumn);
+    viewLayout->setContentsMargins(0, 0, 0, 0);
+    viewLayout->setSpacing(0);
+    viewLayout->addWidget(renderWidget_, 1);
+    videoTransport_ = new VideoTransport(viewColumn);
+    viewLayout->addWidget(videoTransport_);
     contentSplitter_ = new QSplitter(Qt::Horizontal);
     contentSplitter_->setObjectName(QStringLiteral("advancedContentSplitter"));
     contentSplitter_->setChildrenCollapsible(false);
     contentSplitter_->setHandleWidth(10);
-    contentSplitter_->addWidget(renderWidget_);
+    contentSplitter_->addWidget(viewColumn);
     contentSplitter_->addWidget(advancedPanel_);
     contentSplitter_->setStretchFactor(0, 1);
     contentSplitter_->setStretchFactor(1, 0);
@@ -1701,6 +1726,12 @@ MainWindow::MainWindow()
     rootLayout->addWidget(contentSplitter_, 1);
     ultraClearTextOverlay_ = new UltraClearTextOverlay(renderWidget_, this);
     annotationOverlay_ = new AnnotationOverlay(renderWidget_, this);
+    // Drag events only inspect the URL payload. The application opens/probes
+    // the selected file asynchronously after a committed CopyAction drop.
+    for (QWidget* surface : {static_cast<QWidget*>(this), static_cast<QWidget*>(renderWidget_),
+                             viewColumn, static_cast<QWidget*>(annotationOverlay_)}) {
+        surface->setAcceptDrops(true);
+    }
 
     // D3D presents directly into a native window, so frameless owned tool
     // windows provide predictable stacking and opacity above the swap chain.
@@ -1779,6 +1810,8 @@ MainWindow::MainWindow()
 
     bottomRightPanel_ = new QWidget(this, chromeFlags);
     bottomRightPanel_->setObjectName("bottomRightPanel");
+    for (QWidget* surface : {topLeftPanel_, bottomLeftPanel_, keystoneTrackingPanel_,
+                             bottomRightPanel_}) surface->setAcceptDrops(true);
     auto* bottomRightLayout = new QGridLayout(bottomRightPanel_);
     bottomRightLayout->setContentsMargins(10, 8, 8, 10);
     bottomRightLayout->setSpacing(6);
@@ -1788,7 +1821,8 @@ MainWindow::MainWindow()
     SetThemedIcon(readTextButton_, QStringLiteral(":/okuflow/icons/read.svg"));
     SetThemedIcon(annotationButton_, QStringLiteral(":/okuflow/icons/draw.svg"));
     annotationButton_->setIconSize(QSize(28, 28));
-    for (QPushButton* button : {capturePhotoButton_, recordButton_, explainNowButton_, readTextButton_}) {
+    openVideoButton_->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+    for (QPushButton* button : {capturePhotoButton_, recordButton_, explainNowButton_, readTextButton_, openVideoButton_}) {
         button->setIconSize(QSize(28, 28));
     }
     annotationButton_->setMinimumSize(88, 58);
@@ -1805,6 +1839,7 @@ MainWindow::MainWindow()
     bottomRightLayout->addWidget(explainNowButton_, 0, 2);
     bottomRightLayout->addWidget(readTextButton_, 0, 3);
     bottomRightLayout->addWidget(annotationButton_, 0, 4);
+    bottomRightLayout->addWidget(openVideoButton_, 0, 5);
 
     connect(annotationButton_, &QPushButton::toggled, this, [this](bool checked) {
         if (changingAnnotationMode_) {
@@ -2039,7 +2074,8 @@ MainWindow::MainWindow()
     setA11y(capturePhotoButton_, "Capture Photo",
             "Save synchronized original and processed camera photos");
     setA11y(recordButton_, "Record Video",
-            "Start or stop synchronized original and processed MP4 recordings");
+            "Start or stop an Original MP4 recording");
+    setA11y(openVideoButton_, "Open video", "Open a saved video (Ctrl+O)");
     setA11y(annotationButton_, "Draw on camera view",
             "Open annotation mode to mark the lecture view with scene-anchored ink.");
     setA11y(joystickCheckbox_, "Virtual Joystick",
@@ -2059,8 +2095,7 @@ MainWindow::MainWindow()
     setA11y(phoneLightButton_, "Phone light",
             "Starts off on each connection. Press to turn the phone light on or off.");
     setA11y(microphoneCombo_, "Recording microphone",
-            "Select microphone audio for both original and processed MP4 "
-            "recordings, or choose no microphone.");
+            "Select microphone audio for the Original MP4 recording, or choose no microphone.");
     setA11y(cameraFormatCombo_, "Resolution and frame rate",
             "Select the camera capture mode used by original photos and original video.");
     setA11y(cameraFormatNoticeLabel_, "Camera format notice",
@@ -2254,6 +2289,7 @@ MainWindow::MainWindow()
     QWidget::setTabOrder(recordButton_, explainNowButton_);
     QWidget::setTabOrder(explainNowButton_, readTextButton_);
     QWidget::setTabOrder(readTextButton_, annotationButton_);
+    QWidget::setTabOrder(annotationButton_, openVideoButton_);
 
     // Inside the inspector, keyboard order is each tab's visual order: its
     // search field, header controls, then section headers and contents
@@ -2820,6 +2856,11 @@ void MainWindow::FocusRegion(bool backwards)
     QWidget* carouselRegion = modeGridButton_->isVisibleTo(bottomLeftPanel_)
         ? static_cast<QWidget*>(modeGridButton_) : currentModeButton_;
     std::vector<QWidget*> regions{renderWidget_, simpleModeButton_, carouselRegion, capturePhotoButton_};
+    if (videoTransport_ && videoTransport_->isVisible()) {
+        for (QWidget* target : videoTransport_->FocusTargets()) {
+            if (target->isEnabled()) { regions.push_back(target); break; }
+        }
+    }
     if (!isSimpleMode() && advancedTabs_) regions.push_back(advancedTabs_->tabBar());
     if (annotationOverlay_ && annotationOverlay_->IsActive()) {
         const auto targets = annotationOverlay_->FocusTargets();
@@ -2833,10 +2874,16 @@ void MainWindow::FocusRegion(bool backwards)
     QWidget* focus = QApplication::focusWidget();
     int current = -1;
     for (int i = 0; i < static_cast<int>(regions.size()); ++i) {
-        if (focus && regions[i] && (focus->window() == regions[i]->window())) current = i;
+        if (focus && regions[i] && regions[i]->window() != this &&
+            (focus->window() == regions[i]->window())) current = i;
     }
-    if (!isSimpleMode() && focus && advancedPanel_->isAncestorOf(focus)) current = 4;
-    else if (focus == renderWidget_) current = 0;
+    for (int i = 0; i < static_cast<int>(regions.size()); ++i) {
+        if (focus == regions[i] || (focus && regions[i]->isAncestorOf(focus))) current = i;
+        if (focus && videoTransport_ && videoTransport_->isAncestorOf(focus) &&
+            videoTransport_->isAncestorOf(regions[i])) current = i;
+        if (focus && !isSimpleMode() && advancedPanel_->isAncestorOf(focus) &&
+            regions[i] == advancedTabs_->tabBar()) current = i;
+    }
     const int count = static_cast<int>(regions.size());
     for (int step = 1; step <= count; ++step) {
         auto* target = regions[(current + (backwards ? -step : step) + count * 2) % count];
@@ -3139,7 +3186,7 @@ void MainWindow::ShowHelpDialog()
     auto* guide = new QTextBrowser(&dialog);
     guide->setAccessibleName(QStringLiteral("OkuFlow controls and features guide"));
     guide->setOpenExternalLinks(false);
-    guide->setHtml(QStringLiteral(
+    guide->setHtml(TranslateUi(QStringLiteral(
         "<h2>Controls</h2>"
         "<p><b>Simple</b> maximizes the camera view. Use the corner carousel "
         "or number keys 1 through 9 to change quick modes.</p>"
@@ -3150,7 +3197,7 @@ void MainWindow::ShowHelpDialog()
         "<p>Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. "
         "Enable <b>Virtual Joystick</b> under <b>Settings &gt; View and navigation</b> "
         "for an on-screen movement control.</p>"
-        "<p>Photo and Record save both original and processed versions. Explain "
+        "<p>Photo saves original and processed versions. Record saves Original video. Explain "
         "describes the scene; Read recognizes text. Press <b>Ctrl+Shift+O</b> "
         "to open the folder containing your OkuFlow files.</p>"
         "<h2>Features</h2>"
@@ -3160,7 +3207,7 @@ void MainWindow::ShowHelpDialog()
         "<p><b>NVIDIA Super Resolution</b> improves zoomed detail when the "
         "optional NVIDIA Video Effects runtime is installed.</p>"
         "<p><b>Text reading and Assistant</b> can read text, explain the view, answer "
-        "follow-up questions, and add results to lecture notes.</p>"));
+        "follow-up questions, and add results to lecture notes.</p>")));
     layout->addWidget(guide, 1);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
@@ -3470,7 +3517,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
     UpdateUiVisibilityControl();
     currentModeButton_->setMinimumWidth(220);
     currentModeButton_->setMaximumWidth(QWIDGETSIZE_MAX);
-    const std::array<std::pair<QPushButton*, QString>, 5> actionButtons{{
+    const std::array<std::pair<QPushButton*, QString>, 6> actionButtons{{
         {capturePhotoButton_, QStringLiteral("Photo")},
         {recordButton_, !recordButton_->isEnabled()
                             ? QStringLiteral("Finishing")
@@ -3482,6 +3529,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
                                 : QStringLiteral("Explain")},
         {readTextButton_, QStringLiteral("Read")},
         {annotationButton_, QStringLiteral("Draw")},
+        {openVideoButton_, QStringLiteral("Open video")},
     }};
     for (const auto& [button, label] : actionButtons) {
         button->setText(TranslateUi(label));
@@ -3602,7 +3650,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
     };
     // Test the real translated button sizes, including stylesheet padding
     // and icons. Retain readable labels even at the minimum camera width.
-    arrangeActions(5);
+    arrangeActions(6);
     const bool cornerChrome =
         bottomLeftPanel_->width() + trackingWidth + refit(bottomRightPanel_) <= viewWidth;
     if (!cornerChrome) {
@@ -3819,6 +3867,8 @@ void MainWindow::UpdateUiVisibilityControl()
 void MainWindow::setUiHidden(bool hidden)
 {
     if (uiHidden_ == hidden) return;
+    const bool transportHadFocus = videoTransport_ && QApplication::focusWidget() &&
+        videoTransport_->isAncestorOf(QApplication::focusWidget());
     if (hidden) {
         modeBeforeUiHiddenSimple_ = isSimpleMode();
         if (!modeBeforeUiHiddenSimple_) advancedPanelPreferredWidth_ = advancedPanelWidth();
@@ -3845,9 +3895,13 @@ void MainWindow::setUiHidden(bool hidden)
         UpdateCameraPlaceholderVisibility();
     }
     if (auto* overlay = findChild<AssistiveOverlay*>()) overlay->SetUiSuppressed(hidden);
+    if (videoTransport_) videoTransport_->SetUiHidden(hidden);
     UpdateSimpleChromeGeometry();
     UpdateUiVisibilityControl();
-    if (hidden && uiVisibilityButton_->isVisible()) {
+    if (hidden && transportHadFocus) {
+        activateWindow();
+        renderWidget_->setFocus(Qt::ShortcutFocusReason);
+    } else if (hidden && uiVisibilityButton_->isVisible()) {
         uiVisibilityPanel_->activateWindow();
         uiVisibilityButton_->setFocus(Qt::ShortcutFocusReason);
     }
@@ -4249,6 +4303,28 @@ void MainWindow::UpdateDirectionalUi()
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 {
     const QEvent::Type type = event->type();
+    if (type == QEvent::DragEnter || type == QEvent::DragMove || type == QEvent::Drop) {
+        auto* widget = qobject_cast<QWidget*>(watched);
+        const bool ownedDropSurface = widget &&
+            (widget == this || widget == renderWidget_ ||
+             widget->objectName() == QStringLiteral("videoViewColumn") ||
+             widget->window() == topLeftPanel_ || widget->window() == bottomLeftPanel_ ||
+             widget->window() == bottomRightPanel_ || widget->window() == keystoneTrackingPanel_ ||
+             (annotationOverlay_ && widget->window() == annotationOverlay_->window()));
+        if (ownedDropSurface && !QApplication::activeModalWidget()) {
+            auto* drop = static_cast<QDropEvent*>(event);
+            const auto urls = drop->mimeData()->urls();
+            if (urls.size() == 1 && urls.front().isLocalFile() &&
+                !urls.front().toLocalFile().isEmpty()) {
+                drop->setDropAction(Qt::CopyAction);
+                drop->accept();
+                if (type == QEvent::Drop) emit videoFileDropped(urls.front().toLocalFile());
+                return true;
+            }
+            drop->ignore();
+            return true;
+        }
+    }
     if (type == QEvent::MouseButtonPress) {
         chromeKeyboardFocus_ = false;
     } else if (type == QEvent::FocusIn && SimpleChromeHasFocus()) {
@@ -4357,6 +4433,18 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 
     if (ownKeyboardSurface && type == QEvent::KeyPress) {
         auto* key = static_cast<QKeyEvent*>(event);
+        if (key->key() == Qt::Key_O && key->modifiers() == Qt::ControlModifier) {
+            if (!key->isAutoRepeat()) emit openVideoRequested();
+            event->accept();
+            return true;
+        }
+        if (watched == renderWidget_ && key->key() == Qt::Key_Space &&
+            key->modifiers() == Qt::NoModifier && videoTransport_ &&
+            videoTransport_->isVisible() && videoTransport_->playPauseButton()->isEnabled()) {
+            if (!key->isAutoRepeat()) emit videoTransport_->PlayPauseRequested();
+            event->accept();
+            return true;
+        }
         if (key->key() == Qt::Key_Escape && modeGridPopup_->isVisible()) {
             CloseModeGrid(true);
             event->accept();
@@ -4409,7 +4497,11 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
                 previousModeButton_, currentModeButton_, nextModeButton_,
                 simpleKeystoneBackButton_, simpleKeystonePauseButton_, simpleKeystoneNextButton_,
                 capturePhotoButton_, recordButton_, explainNowButton_, readTextButton_,
-                annotationButton_};
+                annotationButton_, openVideoButton_};
+            if (videoTransport_ && videoTransport_->isVisible()) {
+                const auto transportTargets = videoTransport_->FocusTargets();
+                focusOrder.insert(focusOrder.end(), transportTargets.begin(), transportTargets.end());
+            }
             focusOrder.push_back(uiVisibilityButton_);
             if (annotationOverlay_ && annotationOverlay_->IsActive()) {
                 const auto annotationTargets = annotationOverlay_->FocusTargets();

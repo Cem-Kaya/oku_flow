@@ -741,14 +741,8 @@ std::optional<PersistentSettings> ParseSettingsRoot(const QJsonObject& root)
             .toInt(static_cast<int>(settings.viewportFitMode)),
         static_cast<int>(ViewportFitModeSetting::Fill),
         static_cast<int>(ViewportFitModeSetting::Fit)));
-    const QJsonObject recording =
-        root.value(QStringLiteral("recording")).toObject();
-    settings.recordingCanvasMode =
-        static_cast<RecordingCanvasMode>(std::clamp(
-            recording.value(QStringLiteral("canvasMode"))
-                .toInt(static_cast<int>(settings.recordingCanvasMode)),
-            static_cast<int>(RecordingCanvasMode::Source),
-            static_cast<int>(RecordingCanvasMode::Nhd360)));
+    // Retired processed-canvas preferences never resize the clean Original.
+    settings.recordingCanvasMode = RecordingCanvasMode::Source;
     const QJsonObject sectionStates =
         ui.value(QStringLiteral("sectionStates")).toObject();
     for (auto it = sectionStates.begin(); it != sectionStates.end(); ++it) {
@@ -1058,10 +1052,6 @@ QByteArray Serialize(const PersistentSettings& settings)
                               {QStringLiteral("height"), geometry.height()}});
     }
     root.insert(QStringLiteral("ui"), ui);
-    root.insert(
-        QStringLiteral("recording"),
-        QJsonObject{{QStringLiteral("canvasMode"),
-                     static_cast<int>(settings.recordingCanvasMode)}});
 
     root.insert(
         QStringLiteral("annotations"),

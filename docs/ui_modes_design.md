@@ -12,6 +12,22 @@ the fold or surrounding it with permanent tool panels.
 
 ## Simple Mode
 
+### Selected-video transport (development)
+
+When a recording or saved video is selected, a native transport occupies its
+own layout row below the render surface in both modes. It never covers camera
+pixels. Its source label distinguishes the current recording from a saved file;
+ordinary live camera use has no timeline. Native Pause/Resume, timeline,
+forward-to-live/end, Return to camera, Mute and Save frame controls retain
+keyboard and accessibility semantics. Opening a file first finalizes recording.
+The Open video action joins the corner actions and is also available through
+Ctrl+O and a single local-file drop. See [transport layout](video_transport.md).
+
+Selected media uses the CPU presentation path for zoom, rotation, reading
+colors and UCT. Advanced GPU effects are unavailable there; preferences remain
+intact for returning to the camera. Camera setup and keystone strips must not
+obscure the selected file or imply that those effects are applied.
+
 Simple mode is the normal operating view:
 
 - The live camera fills the complete client area. Three primary control clusters
@@ -236,9 +252,11 @@ Recording values remain global and do not change with a quick profile:
 
 | Recording value | Reason |
 | --- | --- |
-| Processed recording resolution | Defines the fixed processed MP4 canvas independently of the viewport. |
 | Camera/original resolution and frame rate | Defines live capture plus original photo/video dimensions. |
-| Microphone | Selects audio for both synchronized MP4 outputs. |
+| Microphone | Selects audio for the single Original MP4 output. |
+
+The old processed-canvas control is hidden and disabled; persisted legacy
+values are ignored. Photos retain their separate original/processed pair.
 
 Viewport values affect only presentation or interaction and do not change
 captured camera pixels:
@@ -297,9 +315,9 @@ code persists and applies orientation at the top level of
   3 + 2 never forms an L shape. Application
   deactivation may temporarily hide the native tool window, but reactivation
   must restore this bar in both Simple and Advanced modes.
-- Record remains actionable while Draw is active. Vector ink is composited
-  into the processed recording only; the paired original recording remains
-  unannotated. The persistent action bar stays above the transparent drawing
+- Record remains actionable while Draw is active. New recordings remain clean
+  Original video; vector ink belongs to the view and selected-frame saves.
+  The persistent action bar stays above the transparent drawing
   surface for native hit testing: Photo, Record/Stop, Explain, Read, and Draw
   remain clickable, and pressing the checked Draw action leaves annotation
   mode.

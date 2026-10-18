@@ -46,6 +46,7 @@ public:
     void StopOwnedRecording(const QString& owner) override;
     void CancelOwnedSource(const QString& owner) override;
     bool HasOwnedSource(const QString& owner) const override;
+    bool ObservationStillCurrent(const AuthorizedObservation& expected) const override;
     void NoticeNativeChanges();
     void NoteNativeCameraAcceleration(const QString& symbolicLink);
     QString CreatePhoto(const QString& owner);
@@ -102,6 +103,10 @@ public:
     static std::optional<Field> UiParameterField(std::string_view id);
     static ControlPlan PlanUiParameterDependencies(const std::map<Field,QJsonValue>& current,
                                                    ToolId tool, const QJsonObject& args);
+    ControlPlan PrepareVideoControl(ToolId tool, const QJsonObject& args) const;
+    QJsonObject QueryVideoState() const;
+    void ExecuteVideoControl(ToolId tool, const QJsonObject& args, const QString& owner,
+                             ControlCompletion completion);
 private:
     QString CameraHandle(const QString& symbolicLink) const;
     mutable std::map<QString,QString> cameraHandles_;

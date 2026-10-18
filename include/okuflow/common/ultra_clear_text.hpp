@@ -5,6 +5,7 @@
 #include "okuflow/common/uct_model_settings.hpp"
 
 #include <QColor>
+#include <QByteArray>
 #include <QImage>
 #include <QPointF>
 #include <QRectF>
@@ -151,11 +152,25 @@ struct BackendStatus {
     QString detail;      // English technical detail for diagnostics
 };
 
+// Candidate text is evidence, not accepted reading text. Rejected spans stay
+// ordered through preparation/admission and protect their original pixels.
+enum class TokenDisposition : std::uint8_t {
+    kCandidate,
+    kLowConfidence,
+    kTooSmall,
+    kHighRisk,
+    kInvalidGeometry,
+    kUnrecognized,
+};
+
 struct RecognizedWord {
     QString text;
     QRectF boundsPx; // pixels of the job image
     bool paddedBounds{}; // detector/CTC region needs worker-side ink fitting
     QRectF inkSearchPx; // optional source search, bounded by the line/neighbours
+    TokenDisposition disposition{TokenDisposition::kCandidate};
+    double confidence{1.0}; // backend evidence; never increased during admission
+    QRectF protectedBoundsPx; // original detector span, before optional ink fitting
 };
 
 struct RecognizedLine {
@@ -210,10 +225,13 @@ struct LineColors {
 struct PreparedWord {
     QString text;
     QRectF sceneRect;
+    TokenDisposition disposition{TokenDisposition::kCandidate};
+    double confidence{1.0};
+    QRectF protectedSceneRect;
 };
 
 struct PreparedLine {
-    QVector<PreparedWord> words; // usable words only (non-empty, tall enough)
+    QVector<PreparedWord> words; // every known span, including rejected ones
     QRectF sceneRect;
     ReferencePatch reference;    // invalid when untrackable
 };
@@ -232,6 +250,7 @@ struct RecognitionResult {
     QVector<PreparedLine> prepared;
     double durationMs{};
     bool deviceInput{};
+    QByteArray sourcePixelDigest; // worker SHA-256 of exact owned recognition pixels
 };
 
 // Maps recognized words into scene coordinates and builds per-line residual
@@ -416,6 +435,7 @@ enum class AdmitVerdict : std::uint8_t {
 struct AcceptedWord {
     QString text;
     QRectF sceneRect;
+    bool glyphEligible{true}; // immutable text may be readable without corroboration
 };
 
 struct AcceptedLine {
@@ -424,6 +444,7 @@ struct AcceptedLine {
     QVector<AcceptedWord> words;   // confirmed words only
     int omittedWords{};            // unconfirmed / high-risk words left original
     QVector<QString> readingTokens; // original order; empty token marks an omission
+    QVector<QRectF> protectedSceneRects; // unconfirmed/rejected source ink, before offset
     LineColors colors;
     ReferencePatch reference;
     SourceStamp provenance;        // stamp of the pixels the text came from
@@ -439,7 +460,42 @@ struct SceneWord {
     QRectF sceneRect; // validated offset applied
     LineColors colors;
     std::uint64_t lineId{};
+    QVector<QRectF> protectedSceneRects; // all current protected spans, offset applied
+    int wordIndex{-1}; // index into the owning AcceptedLine::words (accessibility key)
 };
+
+// One token of a screen-reader line projection: a verified glyph word, or a
+// single collapsed run of spans left as the original image ("…").
+struct ScreenToken {
+    int wordIndex{-1}; // AcceptedLine::words index; -1 marks the "…" run
+    int start{};       // UTF-16 offset into ScreenLine::text
+    int length{};      // UTF-16 code units
+};
+
+// Text of one shown line exactly as the overlay replaces it: glyph-eligible
+// words joined by single spaces, every omission, rejected span and
+// reading-only word collapsed into one "…" per run. Never contains '\n'.
+struct ScreenLine {
+    std::uint64_t lineId{};
+    QString text;
+    QVector<ScreenToken> tokens; // ordered, non-overlapping, separated by one space
+    QRectF sceneRect;            // line box with the validated offset applied
+    bool truncated{};            // per-line cap reached; a trailing "…" was added
+};
+
+// Resource bounds for ScreenLines(); overflow is cut at the end of reading
+// order. maxTotalUtf16 counts UTF-16 code units (8192 units = 16 KiB).
+struct ScreenTextLimits {
+    int maxLines{128};
+    int maxLineUtf16{512};
+    int maxTotalUtf16{8192};
+};
+
+// Deterministic reading order shared by the reading pane and screen text:
+// lines are clustered into rows by vertical centre (a line joins the row
+// while its centre lies inside the row's first line), rows run top to
+// bottom, and lines inside a row left to right (ties: line id).
+QVector<const AcceptedLine*> OrderLinesForReading(QVector<const AcceptedLine*> lines);
 
 struct DisplayWord {
     QString text;
@@ -472,10 +528,29 @@ public:
     explicit OverlayModel(ModelTuning tuning = {});
 
     void Reset();
+    // A previously pending live word needs a different frame and unequal
+    // complete source-pixel digests under the same scheduler authority.
+    // Confirmed words may survive a duplicate refresh without new evidence.
     AdmitVerdict Admit(const RecognitionResult& result,
                        const SourceStamp& current,
                        const ProbeFrame* latestProbe,
                        std::int64_t nowMs);
+    // Advancing saved media retains real media PTS in every stamp. Admission
+    // uses the live temporal/residual policy with an independent caller-owned
+    // wall-clock job deadline instead of the live source-age gate.
+    AdmitVerdict AdmitAdvancingMedia(const RecognitionResult& result,
+                                     const SourceStamp& current,
+                                     const ProbeFrame* latestProbe,
+                                     std::int64_t mediaNowMs);
+    // One explicitly selected immutable frame: require exact scene/frame
+    // identity. One result exposes text with uncertainty and leaves source ink.
+    // Glyphs require an optional genuinely distinct compatible neighbor: full
+    // pixel digests, different frame identity, word agreement and registration.
+    // Caller owns selected-media/model authority; no periodic probe is needed.
+    AdmitVerdict AdmitImmutable(const RecognitionResult& result,
+                                const SourceStamp& selectedFrame,
+                                std::int64_t nowMs,
+                                const RecognitionResult* corroboration = nullptr);
     // Revalidates every accepted line against a newer probe of the same scene
     // (synchronous: CheckLines + ApplyChecks).
     ValidationSummary Validate(const ProbeFrame& probe, std::int64_t nowMs);
@@ -493,19 +568,32 @@ public:
     QVector<DisplayWord> DisplayWords(const ViewTransform& transform, double width,
                                       double height, std::int64_t nowMs,
                                       std::uint64_t currentFrameSeq) const;
-    // Plain reading-order text of the lines that SceneWords would show now;
-    // omitted words become "…". Rows are clustered explicitly, then each row
+    // Plain reading-order text with ordered omissions ("…"). Text with no
+    // safe registration stays in this pane, prefixed by an omission marker,
+    // while original pixels remain unchanged. Rows are clustered, then each row
     // is ordered left to right, so the order is deterministic and strict.
     QString ReadingText(std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
+    // Lines whose glyphs SceneWords() would draw now, projected for screen
+    // readers in reading order (see ScreenLine). Lines whose reading tokens
+    // and confirmed words disagree are left out rather than guessed.
+    QVector<ScreenLine> ScreenLines(std::int64_t nowMs, std::uint64_t currentFrameSeq,
+                                    const ScreenTextLimits& limits = {}) const;
     const QVector<AcceptedLine>& Lines() const noexcept { return lines_; }
     int AcceptedWordCount() const;
     int PendingWordCount() const noexcept { return pending_.size(); }
     bool HasAcceptedText() const;
 
-    // Single display predicate shared by SceneWords and ReadingText.
+    // Glyphs additionally require a valid registration reference. Reading-only
+    // evidence shares the same source freshness but cannot renew from a probe.
     bool IsShown(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
+    bool IsReadable(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const;
 
 private:
+
+    AdmitVerdict AdmitImpl(const RecognitionResult& result, const SourceStamp& current,
+                           const ProbeFrame* latestProbe, std::int64_t nowMs, bool immutable,
+                           const RecognitionResult* corroboration = nullptr,
+                           bool advancingMedia = false);
 
     struct PendingWord {
         QString text;
@@ -517,7 +605,14 @@ private:
     ModelTuning tuning_;
     QVector<AcceptedLine> lines_;
     QVector<PendingWord> pending_;
+    // pending_ is replaced as one batch after every successful admission;
+    // one fixed-size evidence ticket covers that batch, rather than storing
+    // hashes per token or retaining an unbounded history of source images.
+    SourceStamp pendingEvidenceStamp_;
+    QByteArray pendingEvidenceDigest_;
+    std::uint64_t pendingEvidenceAuthority_{};
     std::uint64_t nextLineId_{1};
+    bool immutable_{};
 };
 
 } // namespace okuflow::uct

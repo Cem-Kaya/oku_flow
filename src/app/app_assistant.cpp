@@ -63,7 +63,7 @@ void OkuFlowApp::SubmitOnDemandAnalysis(bool readText)
         ShowStatusMessage(QStringLiteral("Scene explanation is busy with a previous request. Try again in a moment."));
         return;
     }
-    if (readText && autoTextClarityEnabled_ && cudaSurface_ &&
+    if (readText && !MediaViewSelected() && autoTextClarityEnabled_ && cudaSurface_ &&
         !cudaSurface_->IsFocusAcceptable(focusThreshold_)) {
         const QString message = QStringLiteral(
             "Image out of focus. Tap the phone screen to refocus before reading text.");
@@ -83,7 +83,7 @@ void OkuFlowApp::SubmitOnDemandAnalysis(bool readText)
     // Prefer the processed GPU output. Queue the request with the next
     // viewport presentation so the existing CUDA/D3D fence contract orders
     // the copy without blocking the UI thread.
-    if (usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
+    if (!MediaViewSelected() && usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
         processedFrameWidth_ > 0 && processedFrameHeight_ > 0) {
         if (!readText && !assistiveManager_->Runtime().PrepareChatTurn(
             QCoreApplication::translate("OkuFlow","Explain"),ChatBackendKind::Explain,ChatRequestOrigin::ExplainButton)) return;
@@ -201,7 +201,7 @@ void OkuFlowApp::SubmitAssistantPromptText(const QString& prompt,
         DispatchAssistantPrompt(prompt,clearAdvancedEditor,nullptr,0,0,false);
         return;
     }
-    if (attachFrame && usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
+    if (attachFrame && !MediaViewSelected() && usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
         processedFrameWidth_ > 0 && processedFrameHeight_ > 0) {
         pendingAssistantFramePrompt_ = PendingAssistantFramePrompt{prompt.trimmed(),clearAdvancedEditor};
         ArmAssistantCaptureDeadline(); SetAssistantBusy(true);

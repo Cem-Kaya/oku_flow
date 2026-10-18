@@ -18,6 +18,7 @@
 #include "okuflow/app/settings_store.hpp"
 #include "okuflow/app/agent/camera_source_intent.hpp"
 #include "okuflow/app/recording_manager.hpp"
+#include "okuflow/app/presented_original_cache.hpp"
 #include "okuflow/app/pipeline_orchestrator.hpp"
 #include "okuflow/app/settings_controller.hpp"
 #include "okuflow/app/ultra_clear_text_controller.hpp"
@@ -95,6 +96,7 @@ struct MicrophoneCallbackTarget;
 struct CameraIngress;
 struct StartupWorkerTracker;
 struct MicrophoneWorkerState;
+struct VideoPlaybackFrame;
 
 class D3D12Presenter;
 class CudaInteropSurface;
@@ -194,6 +196,49 @@ private:
     std::optional<RecordingSessionInfo> RequestRecording(RecordingAudioRequest audio,
         RecordingOwnerKind ownerKind, const QString& ownerId);
     bool StopRecording(const QString& expectedSessionId);
+    // Selected document ownership is independent of camera capture/health.
+    void InitializeVideoPlayback();
+    void ShutdownVideoPlayback();
+    void OpenVideoFile(const QString& path);
+    void PollVideoPlayback();
+    void OnVideoRecordingStarted(const RecordingSessionInfo& session);
+    void OnVideoRecordingStopping(const RecordingSessionInfo& session);
+    void OnVideoRecordingEnded(const RecordingSessionInfo& session);
+    void OnVideoSegmentSaved(const SavedRecordingSegment& segment);
+    bool BeforeRequestRecording() const;
+    void ReturnVideoToCamera();
+    bool MediaViewSelected() const;
+    bool MediaPlaybackPlaying() const;
+    bool PresentMediaView();
+    void AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT width, UINT height,
+                             std::uint64_t sequence, std::int64_t captureClock100ns);
+    void SaveSelectedVideoFrame();
+    QJsonObject SelectedVideoState() const;
+    bool SetSelectedVideoPlaying(bool playing);
+#if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
+    void SeedVideoDocumentForTest(const RecordingSessionInfo& session,
+                                 std::shared_ptr<const VideoPlaybackFrame> frame,
+                                 bool recording, bool playing);
+    QString PendingVideoOpenForTest() const;
+    std::shared_ptr<const VideoPlaybackFrame> HeldVideoFrameForTest() const;
+    void SeedCommittedVideoSaveForTest();
+#endif
+    void SeekSelectedVideo(qint64 positionMs);
+    void ToggleSelectedVideoPlayback();
+    void JumpSelectedVideoToEnd();
+    void InvalidateMediaSelection(bool preservePendingReadback = false);
+    void OpenPendingVideoFile();
+    bool PresentSelectedMediaPixels(const std::uint8_t* pixels, UINT width, UINT height,
+                                    UINT strideBytes, std::uint64_t sourceEpoch,
+                                    std::uint64_t frameSequence,
+                                    const VideoPlaybackFrame* neighbor = nullptr,
+                                    std::int64_t pts100ns = 0,
+                                    bool continuousPlayback = false);
+    bool CaptureLiveForMediaHold();
+    void RetirePendingMediaHoldReadback();
+    bool DiscardRetiredMediaHoldReadback(UINT64 requestId);
+    void AdmitOriginalFrame(CapturedFrame& frame, bool cudaOriginal);
+    int CameraOriginalRotationQuarterTurns() const;
     settings::AdvancedConfig CaptureCurrentAdvancedConfig() const;
     // preservePresetSelection keeps the caller-selected preset id authoritative
     // instead of re-deriving it from the (possibly apply-mutated) live config.
@@ -292,7 +337,8 @@ private:
                        bool cropToFill,
                        float centerXNorm,
                        float centerYNorm,
-                       const CapturedFrame* originalFrame);
+                       const CapturedFrame* originalFrame,
+                       bool selectedMedia = false);
     void SetZoomCenter(float normX, float normY, bool syncUi,
                        bool preservePresetSelection = false,
                        bool persist = true);
@@ -563,6 +609,51 @@ private:
     processing::CpuFramePipeline capturePipeline_;
     std::unique_ptr<RecordingManager> recordingManager_;
     std::unique_ptr<QThreadPool> imageIoPool_;
+    struct VideoDocumentState;
+    std::shared_ptr<VideoDocumentState> videoDocument_;
+    QTimer* videoPlaybackTimer_{};
+    std::uint64_t mediaDocumentEpoch_{1};
+    uct::SharedPixels mediaScenePixels_;
+    uct::SharedPixels mediaPresentedScenePixels_;
+    UINT mediaSceneWidth_{}, mediaSceneHeight_{};
+    std::array<std::uint64_t, 12> mediaSceneRecipe_{};
+    std::uint64_t mediaSceneAppearanceRevision_{};
+    bool mediaSceneCacheValid_{};
+    std::uint64_t mediaUctNeighborSeq_{};
+    bool mediaUctContinuousPlayback_{};
+    struct MediaViewportAdmission {
+        struct Stamp {
+            std::array<std::uint64_t, 12> recipe{};
+            ViewTransform transform;
+            UINT width{}, height{};
+            bool focusMarker{};
+            float focusX{}, focusY{};
+            bool Matches(const Stamp& other) const {
+                const auto& a=transform;const auto& b=other.transform;
+                return recipe==other.recipe && width==other.width && height==other.height &&
+                    focusMarker==other.focusMarker && focusX==other.focusX && focusY==other.focusY &&
+                    a.valid==b.valid && a.sourceX==b.sourceX && a.sourceY==b.sourceY &&
+                    a.sourceWidth==b.sourceWidth && a.sourceHeight==b.sourceHeight &&
+                    a.destinationX==b.destinationX && a.destinationY==b.destinationY &&
+                    a.destinationWidth==b.destinationWidth && a.destinationHeight==b.destinationHeight;
+            }
+        };
+        std::optional<Stamp> displayed;
+        bool NeedsPresentation(const Stamp& candidate,bool viewportDirty,bool presenterNeeds) const {
+            return viewportDirty || presenterNeeds || !displayed || !displayed->Matches(candidate);
+        }
+        void Presented(const Stamp& stamp) {displayed=stamp;}
+    } mediaViewportAdmission_;
+    UINT64 mediaHoldReadbackId_{};
+    UINT64 retiredMediaHoldReadbackId_{};
+    bool mediaHoldReadbackRetired_{};
+    std::uint64_t mediaHoldFrameSeq_{};
+    std::int64_t mediaHoldCaptureClock100ns_{-1};
+    QElapsedTimer mediaHoldReadbackTimer_;
+    PresentedOriginalCache presentedOriginalCache_;
+    PresentedOriginalCache::ViewRecipe cudaSceneViewRecipe_;
+    ViewTransform mediaHoldViewTransform_;
+    int mediaHoldCameraRotation_{};
     bool photoCapturePending_{};
     UINT64 pendingPhotoReadbackId_{};
     CapturedFrame pendingPhotoOriginal_;

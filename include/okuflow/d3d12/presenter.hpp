@@ -76,6 +76,10 @@ public:
                          UINT width,
                          UINT height,
                          UINT64* outRequestId = nullptr);
+    // Reads an owned Original lease. The ring retains the producer lifetime
+    // through its copy fence, even if recording/selection drops its reference.
+    // At most one such owned hold copy is outstanding, including cancellation.
+    bool RequestReadback(const GpuVideoFrame& frame, UINT64* outRequestId = nullptr);
     // Renders the canonical recording transform into a shareable, fixed-size
     // BGRA texture. The returned frame is immediately queueable: D3D11 waits
     // on its shared fence on-GPU, so neither the UI nor recording worker has
@@ -196,6 +200,12 @@ private:
     // an in-flight copy never blocks presentation or the synchronous readback
     // path. A slot's allocator is only Reset while the slot is free, i.e.
     // after its previous fence value passed (or after a full queue drain).
+    struct ReadbackSourceLease {
+        std::shared_ptr<void> producer;
+        Microsoft::WRL::ComPtr<ID3D12Resource> texture;
+        Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+        std::shared_ptr<ReadbackSourceLease> quarantine;
+    };
     struct AsyncReadbackSlot {
         Microsoft::WRL::ComPtr<ID3D12Resource> buffer;
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
@@ -205,12 +215,17 @@ private:
         UINT height{};
         UINT64 fenceValue{};
         bool inFlight{};
+        std::shared_ptr<ReadbackSourceLease> sourceLease;
     };
     // Recording reads the processed scene independently from viewport/photo
     // readbacks. Four slots allow both copies to overlap two presented frames
     // without forcing the preview thread to wait.
     static constexpr UINT kAsyncReadbackSlotCount = 4;
     AsyncReadbackSlot* PrepareAsyncReadbackSlot(UINT width, UINT height);
+    bool RequestReadbackOwned(ID3D12Resource* texture, UINT width, UINT height,
+                              UINT64* outRequestId,
+                              std::shared_ptr<ReadbackSourceLease> sourceLease,
+                              UINT64 producerValue = 0);
     AsyncReadbackSlot asyncReadbackSlots_[kAsyncReadbackSlotCount];
 
     // Shareable recording textures are leased until Media Foundation releases

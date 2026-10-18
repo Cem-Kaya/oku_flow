@@ -15,9 +15,19 @@ QJsonObject StampJson(ControlStamp stamp) {
     return {{"sourceEpoch",static_cast<qint64>(stamp.sourceEpoch)},{"processingVersion",static_cast<qint64>(stamp.processingVersion)},
         {"viewVersion",static_cast<qint64>(stamp.viewVersion)},{"geometryEpoch",static_cast<qint64>(stamp.geometryEpoch)}};
 }
+bool SameImmutableFrame(const ObservationFrame& a, const ObservationFrame& b) {
+    return a.immutableSource && b.immutableSource && a.stamp == b.stamp &&
+        a.documentId == b.documentId && a.documentGeneration == b.documentGeneration &&
+        a.selectionGeneration == b.selectionGeneration && a.sequence == b.sequence &&
+        a.mediaPts100ns == b.mediaPts100ns;
 }
-ObservationService::ObservationService(QObject* parent, std::function<qint64()> clock)
-    : QObject(parent), clock_(clock ? std::move(clock) : MonotonicNow) {
+}
+ObservationService::ObservationService(QObject* parent, std::function<qint64()> clock,
+                                     std::function<QString()> observationId)
+    : QObject(parent), clock_(clock ? std::move(clock) : MonotonicNow),
+      observationId_(observationId ? std::move(observationId) : [] {
+          return QStringLiteral("obs-")+QUuid::createUuid().toString(QUuid::Id128);
+      }) {
     pool_.setMaxThreadCount(2); pool_.setExpiryTimeout(30000);
     connect(&expiry_,&QTimer::timeout,this,[this] {
         std::vector<ControlCompletion> callbacks;
@@ -41,26 +51,40 @@ bool ObservationService::WantsReadback(const ObservationFrame& frame) const {
     });
 }
 void ObservationService::Consume(const QImage& viewport, const ObservationFrame& frame) {
+    if (frame.immutableSource) latestImmutableFrame_ = frame;
+    else latestImmutableFrame_.reset();
     for (auto it = pending_.begin(); it != pending_.end();) {
         if (it->expected != frame.stamp || (it->requireKnownTemporal && (!frame.held || !frame.converging))) { ++it; continue; }
         const auto request = std::move(*it); it = pending_.erase(it);
         QPointer<ObservationService> self(this);
         const auto generation = generation_;
         const auto pixels = viewport.copy();
-        const bool accepted = pool_.tryStart([self,request,pixels,frame,generation] {
-            auto result = Encode(pixels,frame,request.image,request.maxLongSide);
+        const auto observationId=request.image?observationId_():QString();
+        const bool accepted = pool_.tryStart([self,request,pixels,frame,generation,observationId] {
+            auto result = Encode(pixels,frame,request.image,request.maxLongSide,observationId);
             if (!self) return;
             QMetaObject::invokeMethod(self,[self,request,frame,generation,result = std::move(result)]() mutable {
                 if (!self) return;
                 if (self->generation_ != generation) { request.completion(ControlResult::Failure("canceled")); return; }
+                if (frame.immutableSource && (!self->latestImmutableFrame_ ||
+                    !SameImmutableFrame(frame,*self->latestImmutableFrame_))) {
+                    request.completion(ControlResult::Failure("stale_observation")); return;
+                }
                 if (result.content["ok"].toBool()) {
                     self->metrics_ = result.content["metrics"].toObject(); self->metricsStamp_ = frame.stamp;
                     self->metricsProcessedAt_ = frame.processedAt;
+                    self->metricsImmutable_ = frame.immutableSource;
+                    self->metricsFrame_ = frame;
                     result.content["metrics"] = self->Metrics(frame.stamp);
                     if (request.image) {
                         const auto id = result.content["observationId"].toString();
                         self->mappings_[id] = {frame,QSize(result.content["width"].toInt(),result.content["height"].toInt())};
-                        while (self->mappings_.size() > 16) self->mappings_.erase(self->mappings_.begin());
+                        std::erase(self->mappingOrder_,id);
+                        self->mappingOrder_.push_back(id);
+                        while (self->mappingOrder_.size() > 16) {
+                            self->mappings_.erase(self->mappingOrder_.front());
+                            self->mappingOrder_.pop_front();
+                        }
                     }
                 }
                 request.completion(std::move(result));
@@ -70,7 +94,8 @@ void ObservationService::Consume(const QImage& viewport, const ObservationFrame&
     }
 }
 void ObservationService::Cancel(const QString& code) {
-    ++generation_; mappings_.clear(); metrics_ = {};
+    ++generation_; mappings_.clear(); mappingOrder_.clear(); metrics_ = {};
+    latestImmutableFrame_.reset(); metricsFrame_.reset();
     auto pending = std::move(pending_); pending_.clear();
     for (auto& request : pending) request.completion(ControlResult::Failure(code));
 }
@@ -78,11 +103,13 @@ QJsonObject ObservationService::Metrics(ControlStamp current) const {
     auto metrics = metrics_;
     const auto now = clock_();
     const auto age = std::max<qint64>(0, now-metricsProcessedAt_);
-    metrics["frameAgeMs"] = age;
-    if (age > MaximumFreshFrameAgeMs) metrics["fps"] = 0.0;
-    metrics["stale"] = metrics_.isEmpty() || metricsStamp_ != current
-        || metricsProcessedAt_ <= 0 || metricsProcessedAt_ > now || age > MaximumFreshFrameAgeMs
-        || metrics["held"].toBool();
+    metrics["frameAgeMs"] = metricsImmutable_ ? QJsonValue(QJsonValue::Null) : QJsonValue(age);
+    if (metricsImmutable_ || age > MaximumFreshFrameAgeMs) metrics["fps"] = 0.0;
+    metrics["stale"] = metrics_.isEmpty() || metricsStamp_ != current ||
+        (metricsImmutable_ && (!metricsFrame_ || !latestImmutableFrame_ ||
+            !SameImmutableFrame(*metricsFrame_,*latestImmutableFrame_))) ||
+        (!metricsImmutable_ && (metricsProcessedAt_ <= 0 || metricsProcessedAt_ > now ||
+            age > MaximumFreshFrameAgeMs || metrics["held"].toBool()));
     metrics["ok"] = true;
     return metrics;
 }
@@ -95,6 +122,8 @@ std::optional<ObservationPoint> ObservationService::Resolve(const QJsonObject& p
     const auto found = mappings_.find(point["observationId"].toString());
     if (found == mappings_.end()) return {};
     const auto& mapping = found->second;
+    if (mapping.frame.immutableSource && (!latestImmutableFrame_ ||
+        !SameImmutableFrame(mapping.frame,*latestImmutableFrame_))) return {};
     if (mapping.frame.stamp.sourceEpoch != current.sourceEpoch || mapping.frame.stamp.geometryEpoch != current.geometryEpoch
         || mapping.imageSize.width() <= 0 || mapping.imageSize.height() <= 0) return {};
     const auto& transform = mapping.frame.transform;
@@ -107,7 +136,8 @@ std::optional<ObservationPoint> ObservationService::Resolve(const QJsonObject& p
     return ObservationPoint{float(transform.sourceX+(x-transform.destinationX)/transform.destinationWidth*transform.sourceWidth),
         float(transform.sourceY+(y-transform.destinationY)/transform.destinationHeight*transform.sourceHeight)};
 }
-ControlResult ObservationService::Encode(const QImage& viewport, const ObservationFrame& frame, bool image, int maxLongSide) {
+ControlResult ObservationService::Encode(const QImage& viewport, const ObservationFrame& frame, bool image, int maxLongSide,
+                                         const QString& observationId) {
     if (viewport.isNull() || viewport.width() <= 0 || viewport.height() <= 0 || !frame.transform.valid
         || static_cast<quint64>(viewport.width())*viewport.height()*4 > 64*1024*1024) return ControlResult::Failure("unavailable");
     QImage sample = viewport.convertToFormat(QImage::Format_ARGB32);
@@ -149,9 +179,21 @@ ControlResult ObservationService::Encode(const QImage& viewport, const Observati
         {"stale",frame.processedAt <= 0 || frame.processedAt > MonotonicNow()
             || MonotonicNow()-frame.processedAt > MaximumFreshFrameAgeMs || frame.held.value_or(false)}};
     if (!frame.diagnostics.isEmpty()) metrics["diagnostics"] = frame.diagnostics;
+    if (frame.immutableSource) {
+        metrics["frameAgeMs"] = QJsonValue(QJsonValue::Null);
+        metrics["fps"] = 0.0;
+        metrics["fpsBasis"] = "selected_media";
+        metrics["stale"] = frame.documentId.isEmpty() || frame.sequence == 0;
+    }
     QJsonObject result{{"ok",true},{"metrics",metrics},{"versions",StampJson(frame.stamp)},{"frameSequence",static_cast<qint64>(frame.sequence)}};
+    if (frame.immutableSource) result["media"] = QJsonObject{
+        {"documentId",frame.documentId},{"documentGeneration",static_cast<qint64>(frame.documentGeneration)},
+        {"selectionGeneration",static_cast<qint64>(frame.selectionGeneration)},
+        {"pts100ns",frame.mediaPts100ns < 0 ? QJsonValue(QJsonValue::Null) : QJsonValue(frame.mediaPts100ns)},
+        {"immutable",true}};
     if (!image) return {result,{}};
-    const QString id = QStringLiteral("obs-")+QUuid::createUuid().toString(QUuid::Id128);
+    const QString id = observationId.isEmpty()
+        ?QStringLiteral("obs-")+QUuid::createUuid().toString(QUuid::Id128):observationId;
     int side = std::clamp(maxLongSide,384,1024);
     QByteArray jpeg; QSize size;
     while (side >= 384) {
@@ -171,7 +213,12 @@ ControlResult ObservationService::Encode(const QImage& viewport, const Observati
         {"width",frame.transform.sourceWidth},{"height",frame.transform.sourceHeight}};
     result["destinationRect"] = QJsonObject{{"x",frame.transform.destinationX},{"y",frame.transform.destinationY},
         {"width",frame.transform.destinationWidth},{"height",frame.transform.destinationHeight}};
-    return {result,std::move(jpeg),AuthorizedObservation{
-        {},frame.stamp,0,frame.sequence,frame.processedAt}};
+    AuthorizedObservation authority{{},frame.stamp,0,frame.sequence,frame.processedAt};
+    authority.immutableSource = frame.immutableSource;
+    authority.documentId = frame.documentId;
+    authority.documentGeneration = frame.documentGeneration;
+    authority.selectionGeneration = frame.selectionGeneration;
+    authority.mediaPts100ns = frame.mediaPts100ns;
+    return {result,std::move(jpeg),std::move(authority)};
 }
 } // namespace okuflow::agent

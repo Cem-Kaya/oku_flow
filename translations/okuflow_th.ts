@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>โมเดลรู้จำข้อความบน CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>การบันทึกปัจจุบัน</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>วิดีโอ</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>สด</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>ตามหลังภาพสด</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>หยุดชั่วคราว</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>สิ้นสุดวิดีโอ</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>กำลังเปิดวิดีโอ…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>กำลังเลื่อนไปยังตำแหน่ง…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>กำลังรอข้อมูลจากวิดีโอที่บันทึกไว้</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>กำลังบันทึกให้เสร็จสิ้น</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>วิดีโอไม่พร้อมใช้งาน</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>การเล่นวิดีโอ</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>ย้อนกลับ 10 วินาที</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>หยุดวิดีโอชั่วคราว</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>เล่นวิดีโอต่อ</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>ไปยังภาพสด</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>ไปยังท้ายวิดีโอ</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>กลับไปที่กล้อง</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>บันทึกเฟรม</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>เปิดเสียงการเล่น</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>ปิดเสียงการเล่น</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>ตัวควบคุมวิดีโอ</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>ไทม์ไลน์วิดีโอ</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>ลูกศรซ้ายและขวา: ครั้งละ 1 วินาที Page Up และ Page Down: ครั้งละ 10 วินาที Home: ต้นวิดีโอ End: ท้ายส่วนที่บันทึกไว้</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 จาก %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>เปิดวิดีโอ</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>เปิดวิดีโอที่บันทึกไว้ (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>บันทึกวิดีโอ Original</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>เริ่มหรือหยุดบันทึกวิดีโอ MP4 Original</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>เลือกเสียงสำหรับการบันทึกวิดีโอ Original ไมโครโฟนจะใช้งานเฉพาะระหว่างบันทึกเท่านั้น</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>เลือกเสียงไมโครโฟนสำหรับการบันทึก MP4 Original หรือเลือกไม่ใช้ไมโครโฟน</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>ไม่สามารถเก็บเฟรมที่แสดงไว้ได้ วิดีโอที่บันทึกไว้ยังใช้งานได้</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>เปิดวิดีโอไม่ได้: โปรดเลือกไฟล์ในเครื่องที่มีอยู่หนึ่งไฟล์</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>ไม่ได้เปิดวิดีโอเนื่องจากหยุดการบันทึกไม่ได้</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>กำลังบันทึกให้เสร็จสิ้นก่อนเปิดวิดีโอ...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>กำลังรอให้เลื่อนไปยังตำแหน่งต่าง ๆ ในวิดีโอที่บันทึกไว้ได้</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>เฟรมที่ค้างไว้ไม่ได้ถูกบันทึก เลื่อนไปยังตำแหน่งในวิดีโอที่บันทึกไว้เพื่อดำเนินการต่อ</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>ตรวจสอบตำแหน่งของเฟรมที่ค้างไว้ในวิดีโอที่บันทึกไว้ไม่ได้ เลื่อนไปยังตำแหน่งในวิดีโอที่บันทึกไว้เพื่อดำเนินการต่อ</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>สิ้นสุดวิดีโอแล้ว เลื่อนไปยังตำแหน่งก่อนหน้าเพื่อเล่นอีกครั้ง</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>กล้องไม่พร้อมใช้งาน กำลังแสดงเฟรมล่าสุดที่บันทึกไว้</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>เฟรมที่ค้างไว้ไม่ได้ถูกบันทึก แต่ยังใช้ภาพที่เก็บไว้ได้</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>ตรวจสอบตำแหน่งที่บันทึกของเฟรมที่ค้างไว้ไม่ได้ แต่ยังใช้ภาพที่เก็บไว้ได้</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>สิ้นสุดส่วนบันทึกที่มีแล้ว แต่ยังใช้ภาพที่เก็บไว้ได้</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>วิดีโอไม่พร้อมใช้งาน: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>ไม่มีเสียงสำหรับการเล่น วิดีโอยังคงเล่นต่อ</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>ไม่ได้บันทึกเฟรม: มุมมองที่เลือกไม่พร้อมใช้งาน</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>ไม่ได้บันทึกเฟรม: ไม่สามารถเข้าคิวภาพได้</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>ไม่ได้บันทึกเฟรม: โฟลเดอร์ OkuFlow Photos ไม่พร้อมใช้งาน</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>บันทึกเฟรมวิดีโอที่เลือกแล้ว</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>บันทึกเฟรมวิดีโอที่เลือกไม่ได้</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>ไม่ได้บันทึกเฟรม: ตัวบันทึกภาพกำลังทำงานอยู่ โปรดลองอีกครั้ง</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>หยุดชั่วคราวไม่ได้: ไม่สามารถเก็บเฟรมที่แสดงไว้ได้</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;การควบคุม&lt;/h2&gt;&lt;p&gt;&lt;b&gt;แบบง่าย&lt;/b&gt; ขยายภาพกล้องให้เต็มพื้นที่ ใช้วงล้อที่มุมหรือปุ่มตัวเลข 1 ถึง 9 เพื่อเปลี่ยนโหมดด่วน&lt;/p&gt;&lt;p&gt;&lt;b&gt;ซ่อน UI&lt;/b&gt; หรือ &lt;b&gt;Ctrl+H&lt;/b&gt; จะซ่อนตัวควบคุมและผู้ช่วยจากภาพกล้อง &lt;b&gt;แสดง UI&lt;/b&gt; จะแสดงสิ่งเหล่านั้นพร้อมคำตอบเดิมอีกครั้ง&lt;/p&gt;&lt;p&gt;&lt;b&gt;ขั้นสูง&lt;/b&gt; เปิดการตั้งค่าภาพและผู้ช่วยแบบละเอียด ลากเส้นแบ่งที่ขอบแผงเพื่อปรับขนาด&lt;/p&gt;&lt;p&gt;ลากภาพกล้องเพื่อเลื่อนมุมมอง กด Ctrl พร้อมหมุนล้อเมาส์เพื่อซูม เปิดใช้ &lt;b&gt;จอยสติ๊กเสมือน&lt;/b&gt; ที่ &lt;b&gt;การตั้งค่า &amp;gt; มุมมองและการนำทาง&lt;/b&gt; เพื่อแสดงตัวควบคุมการเคลื่อนที่บนหน้าจอ&lt;/p&gt;&lt;p&gt;ภาพถ่ายจะบันทึกทั้งฉบับต้นฉบับและฉบับที่ประมวลผลแล้ว บันทึกจะเก็บวิดีโอ Original อธิบายจะบรรยายฉาก ส่วนอ่านจะอ่านข้อความ กด &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; เพื่อเปิดโฟลเดอร์ที่มีไฟล์ OkuFlow ของคุณ&lt;/p&gt;&lt;h2&gt;คุณสมบัติ&lt;/h2&gt;&lt;p&gt;&lt;b&gt;ทำให้ข้อความชัดเจน&lt;/b&gt; ผสานการปรับเอกสารให้สะอาด การเพิ่มคอนทราสต์เฉพาะจุด การเพิ่มความคมชัด และการรักษาขอบตัวอักษรให้คงที่ &lt;b&gt;สีบนจอ&lt;/b&gt; มีชุดสีสำหรับการอ่านและชุดสีที่กำหนดเอง&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; ช่วยเพิ่มรายละเอียดเมื่อซูม หากติดตั้ง NVIDIA Video Effects runtime ซึ่งเป็นตัวเลือกไว้&lt;/p&gt;&lt;p&gt;&lt;b&gt;การอ่านข้อความและผู้ช่วย&lt;/b&gt; สามารถอ่านข้อความ อธิบายภาพ ตอบคำถามต่อเนื่อง และเพิ่มผลลัพธ์ลงในบันทึกการบรรยายได้&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>ไฟล์วิดีโอ (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;ไฟล์ทั้งหมด (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text ในมุมมองนี้</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… หมายถึงข้อความที่คงไว้ในภาพต้นฉบับ</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>การเล่นวิดีโอ: ใช้การซูม การหมุน สีสำหรับอ่าน และ UCT ได้ เอฟเฟ็กต์ GPU ขั้นสูงใช้ไม่ได้</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC ต้นฉบับ กำลังเริ่มตัวเข้ารหัส]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC ต้นฉบับ %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>หยุดชั่วคราวไม่ได้: ไม่สามารถคงกรอบภาพที่แสดงไว้ให้ตรงตามเดิมได้</translation>
+        </message>
     </context>
 </TS>

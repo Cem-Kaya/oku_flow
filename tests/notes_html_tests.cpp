@@ -13,6 +13,10 @@
 #include <QScopeGuard>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
+#include <QRegularExpression>
+#include <QUrl>
+#include <QXmlStreamReader>
 
 #include "okuflow/common/assistive_runtime.hpp"
 #include "okuflow/common/codex_app_server_client.hpp"
@@ -41,6 +45,88 @@ class NotesHtmlTests : public QObject {
             return {};
         }
         return QString::fromUtf8(file.readAll());
+    }
+
+    struct MediaCardDom {
+        QMap<QString, QString> attributes;
+        int videos{}, figures{}, mediaGrids{};
+        QStringList videoSources, imageSources, transcribeSources;
+        QList<QJsonObject> recordingIdentities;
+    };
+    struct MediaCardsDom {
+        QList<MediaCardDom> cards;
+        QString error;
+    };
+
+    static MediaCardsDom ParseMediaCards(const QString& html)
+    {
+        MediaCardsDom result;
+        // Parse the app-owned appended DOM, excluding header scripts/styles.
+        // The document deliberately stays open while notes are being written.
+        const int mainTag = html.indexOf(QStringLiteral("<main id=\"notes\">"));
+        if (mainTag < 0) { result.error = QStringLiteral("Missing notes main element"); return result; }
+        const int begin = html.indexOf(QLatin1Char('>'), mainTag) + 1;
+        const int end = html.indexOf(QStringLiteral("</main>"), begin);
+        const QString fragment = html.mid(begin, end < 0 ? -1 : end - begin);
+        // QXmlStreamReader gives structural elements/decoded attributes after
+        // normalizing only HTML boolean attributes and void source/img tags.
+        // No visible text or attribute values are rewritten.
+        const QRegularExpression tags(QStringLiteral("<[A-Za-z][^>]*>"));
+        const QRegularExpression booleanAttribute(QStringLiteral("\\s(controls|open|hidden)(?=\\s|>)"));
+        const QRegularExpression voidTag(QStringLiteral("^<(?:source|img)\\b"));
+        QString xml = QStringLiteral("<main>");
+        qsizetype offset = 0;
+        auto matches = tags.globalMatch(fragment);
+        while (matches.hasNext()) {
+            const auto match = matches.next();
+            xml += fragment.mid(offset, match.capturedStart() - offset);
+            QString tag = match.captured();
+            tag.replace(booleanAttribute, QStringLiteral(" \\1=\"\""));
+            if (voidTag.match(tag).hasMatch() && !tag.endsWith(QStringLiteral("/>"))) {
+                tag.chop(1); tag += QStringLiteral("/>");
+            }
+            xml += tag; offset = match.capturedEnd();
+        }
+        xml += fragment.mid(offset) + QStringLiteral("</main>");
+        QXmlStreamReader reader(xml);
+        QStringList stack;
+        qsizetype cardDepth = -1;
+        while (!reader.atEnd()) {
+            reader.readNext();
+            if (reader.isStartElement()) {
+                const QString name = reader.name().toString();
+                const QString parent = stack.isEmpty() ? QString() : stack.last();
+                stack.append(name);
+                const auto attributes = reader.attributes();
+                if (name == QStringLiteral("details")) {
+                    if (cardDepth >= 0) { result.error = QStringLiteral("Nested media card"); return result; }
+                    result.cards.append(MediaCardDom{}); cardDepth = stack.size();
+                    for (const auto& attribute : attributes)
+                        result.cards.last().attributes.insert(attribute.name().toString(), attribute.value().toString());
+                }
+                if (cardDepth < 0) continue;
+                auto& card = result.cards.last();
+                if (name == QStringLiteral("figure")) ++card.figures;
+                if (name == QStringLiteral("video")) ++card.videos;
+                if (name == QStringLiteral("source")) {
+                    if (parent != QStringLiteral("video")) { result.error = QStringLiteral("Video source outside video"); return result; }
+                    card.videoSources.append(attributes.value(QStringLiteral("src")).toString());
+                }
+                if (name == QStringLiteral("img")) card.imageSources.append(attributes.value(QStringLiteral("src")).toString());
+                const auto classes = attributes.value(QStringLiteral("class")).toString().split(QLatin1Char(' '));
+                if (name == QStringLiteral("div") && classes.contains(QStringLiteral("media-grid"))) ++card.mediaGrids;
+                if (name == QStringLiteral("section") && classes.contains(QStringLiteral("transcribe-tools"))) {
+                    card.transcribeSources.append(attributes.value(QStringLiteral("data-transcribe-src")).toString());
+                    card.recordingIdentities.append(QJsonDocument::fromJson(
+                        attributes.value(QStringLiteral("data-recording-identity")).toString().toUtf8()).object());
+                }
+            } else if (reader.isEndElement()) {
+                if (stack.size() == cardDepth) cardDepth = -1;
+                if (!stack.isEmpty()) stack.removeLast();
+            }
+        }
+        if (reader.hasError()) result.error = reader.errorString();
+        return result;
     }
 
 private slots:
@@ -403,6 +489,74 @@ private slots:
         QVERIFY(!ReadAll(path).contains(QStringLiteral("rejected")));
     }
 
+    void originalOnlyVideoAppearsOnceAndPreservesTranscriptionIdentity()
+    {
+        QTemporaryDir fixture; QVERIFY(fixture.isValid());
+        const QString safeOriginal = fixture.filePath(QStringLiteral("original & lecture.mp4"));
+        QFile media(safeOriginal); QVERIFY(media.open(QIODevice::WriteOnly));
+        QCOMPARE(media.write("sole original recording"), 23); media.close();
+        AssistiveRuntime runtime;
+        auto config = NotesConfig(); config.notesDirectory = fixture.path(); runtime.SetConfig(config);
+        QSignalSpy writes(&runtime, &AssistiveRuntime::NotesWriteFinished);
+        runtime.NoteCapturedVideo(safeOriginal, QStringLiteral("recording-session-a"), 2, 1234567);
+        QTRY_COMPARE(writes.size(), 2);
+        QVERIFY(writes.last().at(1).toString().isEmpty());
+        const auto dom = ParseMediaCards(ReadAll(runtime.notesFilePath()));
+        QVERIFY2(dom.error.isEmpty(), qPrintable(dom.error));
+        QCOMPARE(dom.cards.size(), 1);
+        const auto& card = dom.cards.first();
+        QCOMPARE(card.attributes.value(QStringLiteral("data-kind")), QStringLiteral("video"));
+        QCOMPARE(card.videos, 1); QCOMPARE(card.figures, 1); QCOMPARE(card.mediaGrids, 0);
+        QVERIFY(card.imageSources.isEmpty());
+        const QString expectedUrl = QString::fromUtf8(QUrl(QFileInfo(safeOriginal).fileName()).toEncoded(QUrl::FullyEncoded));
+        QCOMPARE(card.videoSources, QStringList{expectedUrl});
+        QCOMPARE(card.transcribeSources, card.videoSources);
+        QCOMPARE(card.recordingIdentities.size(), 1);
+        QCOMPARE(card.attributes.value(QStringLiteral("data-recording-session")), QStringLiteral("recording-session-a"));
+        QCOMPARE(card.attributes.value(QStringLiteral("data-recording-part")), QStringLiteral("2"));
+        QCOMPARE(card.attributes.value(QStringLiteral("data-source-clock-origin-100ns")), QStringLiteral("1234567"));
+        const auto identity = QJsonDocument::fromJson(
+            ReadAll(safeOriginal + QStringLiteral(".okuflow-media.json")).toUtf8()).object();
+        QCOMPARE(identity.value(QStringLiteral("name")).toString(), QFileInfo(safeOriginal).fileName());
+        QCOMPARE(identity.value(QStringLiteral("size")).toInt(), 23);
+        QVERIFY(!identity.value(QStringLiteral("mediaId")).toString().isEmpty());
+        QCOMPARE(card.recordingIdentities.first(), identity);
+        QVERIFY(!QFileInfo::exists(fixture.filePath(QStringLiteral("processed.mp4.okuflow-media.json"))));
+    }
+
+    void legacyVideoAndPhotoPairsKeepBothViews()
+    {
+        QTemporaryDir fixture; QVERIFY(fixture.isValid());
+        const QString original = fixture.filePath(QStringLiteral("legacy_original.mp4"));
+        QFile media(original); QVERIFY(media.open(QIODevice::WriteOnly));
+        QCOMPARE(media.write("legacy recording"), 16); media.close();
+        AssistiveRuntime runtime;
+        auto config = NotesConfig(); config.notesDirectory = fixture.path(); runtime.SetConfig(config);
+        QSignalSpy writes(&runtime, &AssistiveRuntime::NotesWriteFinished);
+        runtime.NoteCapturedVideoPair(original, fixture.filePath(QStringLiteral("legacy_processed.mp4")));
+        runtime.NoteCapturedPhotoPair(fixture.filePath(QStringLiteral("photo_original.jpg")),
+                                      fixture.filePath(QStringLiteral("photo_processed.jpg")));
+        QTRY_COMPARE(writes.size(), 3);
+        for (const auto& write : writes) QVERIFY(write.at(1).toString().isEmpty());
+        const auto dom = ParseMediaCards(ReadAll(runtime.notesFilePath()));
+        QVERIFY2(dom.error.isEmpty(), qPrintable(dom.error));
+        QCOMPARE(dom.cards.size(), 2);
+        const auto& video = dom.cards[0];
+        QCOMPARE(video.attributes.value(QStringLiteral("data-kind")), QStringLiteral("video"));
+        QCOMPARE(video.videos, 2); QCOMPARE(video.figures, 2); QCOMPARE(video.mediaGrids, 1);
+        QCOMPARE(video.videoSources, (QStringList{QStringLiteral("legacy_original.mp4"), QStringLiteral("legacy_processed.mp4")}));
+        QCOMPARE(video.transcribeSources, QStringList{QStringLiteral("legacy_original.mp4")});
+        QCOMPARE(video.recordingIdentities.size(), 1);
+        QVERIFY(!video.recordingIdentities.first().isEmpty());
+        QVERIFY(video.imageSources.isEmpty());
+        const auto& photo = dom.cards[1];
+        QCOMPARE(photo.attributes.value(QStringLiteral("data-kind")), QStringLiteral("photo"));
+        QCOMPARE(photo.videos, 0); QCOMPARE(photo.figures, 2); QCOMPARE(photo.mediaGrids, 1);
+        QCOMPARE(photo.imageSources, (QStringList{QStringLiteral("photo_original.jpg"), QStringLiteral("photo_processed.jpg")}));
+        QVERIFY(photo.videoSources.isEmpty()); QVERIFY(photo.transcribeSources.isEmpty());
+        QVERIFY(photo.recordingIdentities.isEmpty());
+    }
+
     void recordingIdentityIsStableAndRefusesReplacedBytes()
     {
         QTemporaryDir fixture;
@@ -419,17 +573,17 @@ private slots:
         config.notesDirectory = fixture.path();
         runtime.SetConfig(config);
         QSignalSpy writes(&runtime, &AssistiveRuntime::NotesWriteFinished);
-        runtime.NoteCapturedVideoPair(original, fixture.filePath(QStringLiteral("processed.mp4")));
+        runtime.NoteCapturedVideo(original);
         QTRY_COMPARE(writes.size(), 2);
         QVERIFY(writes.last().at(1).toString().isEmpty());
         const QString first = ReadAll(marker);
         QVERIFY(!first.isEmpty());
-        runtime.NoteCapturedVideoPair(original, fixture.filePath(QStringLiteral("processed.mp4")));
+        runtime.NoteCapturedVideo(original);
         QTRY_COMPARE(writes.size(), 3);
         QVERIFY(writes.last().at(1).toString().isEmpty());
         QCOMPARE(ReadAll(marker), first);
         QVERIFY(writeMedia("changed recording")); // Identical length, different bytes.
-        runtime.NoteCapturedVideoPair(original, fixture.filePath(QStringLiteral("processed.mp4")));
+        runtime.NoteCapturedVideo(original);
         QTRY_COMPARE(writes.size(), 4);
         QVERIFY(!writes.last().at(1).toString().isEmpty());
         QCOMPARE(ReadAll(marker), first); // Never replace an immutable identity marker.

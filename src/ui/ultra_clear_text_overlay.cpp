@@ -2,11 +2,16 @@
 
 #if defined(_WIN32)
 
+#include <QBackingStore>
 #include <QEvent>
 #include <QFontMetricsF>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QRegion>
+#include <QScreen>
+#include <QSet>
+#include <QTextLayout>
+#include <QTextOption>
 
 #include <algorithm>
 #include <cmath>
@@ -34,8 +39,11 @@ bool ReplacementIsDrawable(bool glyphValid, const QRectF& referenceInk,
         inkView.isEmpty() || plateView.isEmpty()) {
         return false;
     }
-    if (!std::isfinite(originalView.width()) || !std::isfinite(originalView.height()) ||
-        !std::isfinite(inkView.width()) || !std::isfinite(inkView.height())) {
+    const auto finite = [](const QRectF& r) {
+        return std::isfinite(r.x()) && std::isfinite(r.y()) &&
+               std::isfinite(r.width()) && std::isfinite(r.height());
+    };
+    if (!finite(originalView) || !finite(inkView) || !finite(plateView)) {
         return false;
     }
     if (originalView.height() < kMinProjectedHeight ||
@@ -43,8 +51,9 @@ bool ReplacementIsDrawable(bool glyphValid, const QRectF& referenceInk,
         inkView.height() < kMinProjectedHeight || inkView.width() < kMinProjectedWidth) {
         return false;
     }
-    return clip.intersects(plateView.toAlignedRect()) &&
-           clip.intersects(inkView.toAlignedRect());
+    const QRectF surface(clip.boundingRect());
+    return clip.intersects(plateView.intersected(surface).toAlignedRect()) &&
+           clip.intersects(inkView.intersected(surface).toAlignedRect());
 }
 
 qreal RelativeLuminance(const QColor& color)
@@ -155,6 +164,9 @@ void UltraClearTextOverlay::SetWords(QVector<SceneWord> words)
     if (inkCache_.size() > 4096) {
         inkCache_.clear();
     }
+    if (caretCache_.size() > 4096) {
+        caretCache_.clear();
+    }
     RebuildGlyphLayout();
     UpdateVisibility();
     update();
@@ -180,6 +192,7 @@ void UltraClearTextOverlay::SetStrokeWeight(int weight)
     strokeWeight_ = weight;
     referenceFont_ = GlyphFont(strokeWeight_, kReferencePixelSize);
     inkCache_.clear();
+    caretCache_.clear();
     RebuildGlyphLayout();
     update();
 }
@@ -340,16 +353,12 @@ void UltraClearTextOverlay::RebuildGlyphLayout()
     }
 }
 
-void UltraClearTextOverlay::paintEvent(QPaintEvent* event)
+void UltraClearTextOverlay::ComputePaintPlan()
 {
-    Q_UNUSED(event);
-    ++paintCount_;
-    if (words_.isEmpty() || glyphs_.size() != words_.size() || !transform_.valid) {
-        return;
-    }
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::TextAntialiasing, true);
-    painter.setRenderHint(QPainter::Antialiasing, true);
+    PaintPlan& plan = plan_;
+    const int count = words_.size();
+    plan.words.resize(count);
+    plan.texts.resize(count);
 
     // Never paint over native controls floating above the viewport.
     QRegion clip(rect());
@@ -377,46 +386,274 @@ void UltraClearTextOverlay::paintEvent(QPaintEvent* event)
             exclude(panel);
         }
     }
-    painter.setClipRegion(clip);
+    // Rejected spans retain their original source ink. Exclusion applies to
+    // both passes, including plate padding beyond an accepted word's box.
+    QRegion& protectedInk = protectedInk_;
+    protectedInk = QRegion();
+    QSet<const QRectF*> seenProtection;
+    for (const SceneWord& word : words_) {
+        if (word.protectedSceneRects.isEmpty() || seenProtection.contains(word.protectedSceneRects.constData()))
+            continue;
+        seenProtection.insert(word.protectedSceneRects.constData());
+        for (const QRectF& scene : word.protectedSceneRects) {
+            const QRectF view = uct::SceneRectToView(transform_, width(), height(), scene);
+            if (!view.isEmpty() && std::isfinite(view.x()) && std::isfinite(view.y()) &&
+                std::isfinite(view.width()) && std::isfinite(view.height()))
+                protectedInk += QRegion(view.intersected(QRectF(rect())).toAlignedRect());
+        }
+    }
 
     // Decide eligibility once per word for this projection, then let both
     // passes consume that single decision: a plate is painted if and only
     // if its glyph is painted over it.
-    const QVector<GlyphGeometry> projected = ProjectedGlyphs();
-    QVector<QRectF> plateRects(words_.size());
-    QVector<bool> drawable(words_.size(), false);
-    for (int i = 0; i < words_.size(); ++i) {
+    for (int i = 0; i < count; ++i) {
+        PlannedWord& planned = plan.words[i];
+        const SceneGlyph& glyph = glyphs_[i];
+        planned.lineId = words_[i].lineId;
+        planned.wordIndex = words_[i].wordIndex;
+        plan.texts[i] = words_[i].text;
         const QRectF view = uct::SceneRectToView(transform_, width(), height(), words_[i].sceneRect);
+        const QRectF ink = uct::SceneRectToView(transform_, width(), height(), glyph.inkRect);
+        planned.originalRect = view;
+        planned.inkRect = ink;
+        planned.origin = uct::SceneToViewPixel(transform_, width(), height(), glyph.origin);
+        planned.scaleX = glyph.referenceInk.width() > 0.0 ? ink.width() / glyph.referenceInk.width() : 0.0;
+        planned.scaleY = glyph.referenceInk.height() > 0.0 ? ink.height() / glyph.referenceInk.height() : 0.0;
         const qreal pad = view.height() * 0.12;
-        plateRects[i] = view.united(projected[i].inkRect).adjusted(-pad, -pad * 0.5, pad, pad * 0.5);
-        drawable[i] = ReplacementIsDrawable(glyphs_[i].valid, glyphs_[i].referenceInk, view,
-                                            projected[i].inkRect, plateRects[i], clip);
+        planned.plateRect = view.united(ink).adjusted(-pad, -pad * 0.5, pad, pad * 0.5);
+        planned.drawn = ReplacementIsDrawable(glyph.valid, glyph.referenceInk, view, ink,
+                                              planned.plateRect, clip);
+        if (!planned.drawn && !view.isEmpty() && std::isfinite(view.x()) && std::isfinite(view.y()) &&
+            std::isfinite(view.width()) && std::isfinite(view.height()))
+            protectedInk += QRegion(view.intersected(QRectF(rect())).toAlignedRect());
     }
+    // Never show a clipped fragment of an accepted word over protected ink.
+    // A suppressed replacement's own source box becomes protected too; resolve
+    // overlap chains before painting any plate so draw order cannot erase it.
+    bool changed;
+    int protectionPasses = 0;
+    do {
+        changed = false;
+        for (int i = 0; i < count; ++i) {
+            PlannedWord& planned = plan.words[i];
+            if (planned.drawn && (protectedInk.intersects(planned.originalRect.intersected(QRectF(rect())).toAlignedRect()) ||
+                                  protectedInk.intersects(planned.inkRect.intersected(QRectF(rect())).toAlignedRect()))) {
+                planned.drawn = false;
+                protectedInk += QRegion(planned.originalRect.intersected(QRectF(rect())).toAlignedRect());
+                changed = true;
+            }
+        }
+    } while (changed && ++protectionPasses < 8);
+    // Pathological overlapping detector boxes cannot make paint quadratic.
+    // If the closure is still growing, this frame keeps all original pixels.
+    if (changed) {
+        for (PlannedWord& planned : plan.words) planned.drawn = false;
+    }
+    plan.visibleClip = clip;
+    plan.paintClip = clip - protectedInk;
+}
+
+void UltraClearTextOverlay::paintEvent(QPaintEvent* event)
+{
+    Q_UNUSED(event);
+    ++paintCount_;
+    // An offscreen QWidget::render (frame export, grab) repaints into a
+    // redirected device other than the window backing store. Those pixels
+    // are not on screen, so such a paint must not become the painted-plan
+    // authority: draw with a scratch plan and restore the on-screen one.
+    const QPaintDevice* device = redirected(nullptr);
+    QBackingStore* store = backingStore();
+    const bool offscreenPaint = device && store && device != store->paintDevice();
+    PaintPlan savedPlan;
+    if (offscreenPaint) {
+        savedPlan = plan_;
+    }
+    plan_.valid = false;
+    if (words_.isEmpty() || glyphs_.size() != words_.size() || !transform_.valid) {
+        if (offscreenPaint) {
+            plan_ = std::move(savedPlan);
+        }
+        return;
+    }
+    ComputePaintPlan();
+    const QFont paintFont = referenceFont_;
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setClipRegion(plan_.paintClip);
     // Paint all plates before any glyphs so a neighbouring word's plate
     // cannot erase an overhang or descender already drawn.
     for (int i = 0; i < words_.size(); ++i) {
-        if (drawable[i]) {
-            painter.fillRect(plateRects[i], glyphs_[i].colors.background);
+        if (plan_.words[i].drawn) {
+            painter.fillRect(plan_.words[i].plateRect, glyphs_[i].colors.background);
         }
     }
     for (int i = 0; i < words_.size(); ++i) {
-        if (!drawable[i]) {
+        const PlannedWord& planned = plan_.words[i];
+        if (!planned.drawn) {
             continue;
         }
-        const SceneWord& word = words_[i];
-        const SceneGlyph& glyph = glyphs_[i];
-        const QRectF view = projected[i].inkRect;
-        const QPointF origin = uct::SceneToViewPixel(transform_, width(), height(), glyph.origin);
-        const qreal scaleX = view.width() / glyph.referenceInk.width();
-        const qreal scaleY = view.height() / glyph.referenceInk.height();
         painter.save();
-        painter.translate(origin);
-        painter.scale(scaleX, scaleY);
-        painter.setFont(referenceFont_);
-        painter.setPen(glyph.colors.foreground);
-        painter.drawText(QPointF(0.0, 0.0), word.text);
+        painter.translate(planned.origin);
+        painter.scale(planned.scaleX, planned.scaleY);
+        painter.setFont(paintFont);
+        painter.setPen(glyphs_[i].colors.foreground);
+        painter.drawText(QPointF(0.0, 0.0), words_[i].text);
         painter.restore();
     }
+    if (offscreenPaint) {
+        plan_ = std::move(savedPlan);
+        return;
+    }
+    // The plan now describes exactly these pixels.
+    plan_.transform = transform_;
+    plan_.font = paintFont;
+    plan_.size = size();
+    plan_.devicePixelRatio = devicePixelRatioF();
+    plan_.screen = screen();
+    ++plan_.generation;
+    plan_.valid = true;
+}
+
+bool UltraClearTextOverlay::PaintedGeometryCurrent() const
+{
+    if (!plan_.valid || !isVisible() || !renderTarget_ || plan_.size != size() ||
+        plan_.screen != screen() || plan_.devicePixelRatio != devicePixelRatioF()) {
+        return false;
+    }
+    // The invariant accessibility mapping needs: overlay-local coordinates
+    // are render-target-local coordinates. Compare both client origins in
+    // the same global space; a window-with-parent's geometry() may be
+    // frame-inclusive or parent-relative depending on the platform, while
+    // mapToGlobal() is the mapping the accessibility layer itself applies.
+    return size() == renderTarget_->size() &&
+           mapToGlobal(QPoint(0, 0)) == renderTarget_->mapToGlobal(QPoint(0, 0));
+}
+
+const QVector<qreal>& UltraClearTextOverlay::CaretPositions(const QString& text, const QFont& font) const
+{
+    // The cache key carries the font: carets shaped for one stroke weight
+    // must never answer for pixels painted with another, whichever order
+    // queries and SetStrokeWeight calls arrive in.
+    const QString key = text + QLatin1Char('\0') + font.key();
+    const auto it = caretCache_.constFind(key);
+    if (it != caretCache_.constEnd()) {
+        return it.value();
+    }
+    // Same font, shaping and font fallback as drawText(QPointF, text) at the
+    // glyph origin: one unwrapped line starting at x = 0.
+    QVector<qreal> carets(text.size() + 1, std::numeric_limits<qreal>::quiet_NaN());
+    QTextLayout layout(text, font);
+    QTextOption option;
+    option.setWrapMode(QTextOption::NoWrap);
+    layout.setTextOption(option);
+    layout.beginLayout();
+    QTextLine line = layout.createLine();
+    if (line.isValid()) {
+        line.setPosition(QPointF(0.0, 0.0));
+    }
+    layout.endLayout();
+    if (line.isValid()) {
+        for (int i = 0; i <= text.size(); ++i) {
+            if (i == 0 || i == text.size() || layout.isValidCursorPosition(i)) {
+                carets[i] = line.cursorToX(i);
+            }
+        }
+    }
+    return caretCache_.insert(key, std::move(carets)).value();
+}
+
+bool UltraClearTextOverlay::PaintedWord(std::uint64_t lineId, int wordIndex, const QString& text,
+                                        PaintedWordGeometry& out) const
+{
+    out = {};
+    if (!plan_.valid || text.isEmpty()) {
+        return false;
+    }
+    if (planIndexGeneration_ != plan_.generation) {
+        planIndex_.clear();
+        for (int i = 0; i < plan_.words.size(); ++i) {
+            planIndex_.insert({plan_.words[i].lineId, plan_.words[i].wordIndex}, i);
+        }
+        planIndexGeneration_ = plan_.generation;
+    }
+    const auto found = planIndex_.constFind({lineId, wordIndex});
+    if (found == planIndex_.constEnd() || plan_.texts[found.value()] != text) {
+        return false;
+    }
+    const PlannedWord& planned = plan_.words[found.value()];
+    out.drawn = planned.drawn;
+    out.box = planned.drawn ? planned.inkRect : planned.originalRect;
+    const QVector<qreal>& carets = CaretPositions(text, plan_.font);
+    // Visual caret extent over every shaped position. For right-to-left
+    // text the first logical caret sits at the visual maximum, so
+    // normalizing against the endpoint distance (abs(caret - first))
+    // would mirror the word; normalize against the visual minimum.
+    qreal visualMin = std::numeric_limits<qreal>::max();
+    qreal visualMax = std::numeric_limits<qreal>::lowest();
+    for (qreal caret : carets) {
+        if (!std::isfinite(caret)) {
+            continue;
+        }
+        visualMin = std::min(visualMin, caret);
+        visualMax = std::max(visualMax, caret);
+    }
+    const qreal extent = visualMax >= visualMin ? visualMax - visualMin : 0.0;
+    const int units = static_cast<int>(text.size());
+    const auto toX = [&](int position) {
+        if (extent <= 0.0) {
+            // No measurable advance: equal shares of the painted box.
+            return out.box.left() + out.box.width() * position / units;
+        }
+        if (planned.drawn) {
+            return planned.origin.x() + planned.scaleX * carets[position];
+        }
+        // Original ink: split the source box in proportion to the shaped
+        // advances, measured from the visual (left) edge.
+        return out.box.left() + out.box.width() * ((carets[position] - visualMin) / extent);
+    };
+    out.characters.resize(units);
+    int clusterStart = 0;
+    for (int i = 1; i <= units; ++i) {
+        if (i < units && !std::isfinite(carets[i])) {
+            continue; // inside a cluster: surrogate pair or combining sequence
+        }
+        const qreal a = toX(clusterStart);
+        const qreal b = toX(i);
+        const QRectF cell(QPointF(std::min(a, b), out.box.top()), QPointF(std::max(a, b), out.box.bottom()));
+        for (int unit = clusterStart; unit < i; ++unit) {
+            out.characters[unit] = cell;
+        }
+        clusterStart = i;
+    }
+    return true;
+}
+
+QRectF UltraClearTextOverlay::PaintedSceneRect(const QRectF& sceneRect) const
+{
+    if (!plan_.valid) {
+        return {};
+    }
+    return uct::SceneRectToView(plan_.transform, plan_.size.width(), plan_.size.height(), sceneRect);
+}
+
+QRectF UltraClearTextOverlay::VisiblePart(const QRectF& local, bool replacement) const
+{
+    if (!plan_.valid || local.isEmpty() || !std::isfinite(local.x()) || !std::isfinite(local.y()) ||
+        !std::isfinite(local.width()) || !std::isfinite(local.height())) {
+        return {};
+    }
+    const QRegion& clip = replacement ? plan_.paintClip : plan_.visibleClip;
+    const QRectF bounded = local.intersected(QRectF(QPointF(0.0, 0.0), QSizeF(plan_.size)));
+    if (bounded.isEmpty()) {
+        return {};
+    }
+    const QRegion visible = clip.intersected(bounded.toAlignedRect());
+    if (visible.isEmpty()) {
+        return {};
+    }
+    // Sub-pixel extents survive wherever the clip does not cut the rect.
+    return bounded.intersected(QRectF(visible.boundingRect()));
 }
 
 } // namespace okuflow

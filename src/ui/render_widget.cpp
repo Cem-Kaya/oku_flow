@@ -3,6 +3,7 @@
 #include "okuflow/ui/render_widget.hpp"
 
 #include "okuflow/d3d12/presenter.hpp"
+#include "okuflow/ui/uct_screen_text_accessible.hpp"
 
 #include <Windows.h>
 
@@ -22,6 +23,11 @@ RenderWidget::RenderWidget(QWidget* parent)
     setAttribute(Qt::WA_NoSystemBackground);
     setFocusPolicy(Qt::StrongFocus);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    // Opt in before the first accessibility query: Ultra Clear Text exposes
+    // its on-screen lines as virtual children of this viewport. Only the
+    // property is set here; the factory lives with the UCT accessibility
+    // module, so this file gains no link dependency.
+    setProperty(kAccessibleVirtualChildHostProperty, true);
     presenterResizeTimer_ = new QTimer(this);
     presenterResizeTimer_->setSingleShot(true);
     presenterResizeTimer_->setTimerType(Qt::PreciseTimer);

@@ -1,4 +1,5 @@
 #include "okuflow/common/ultra_clear_text.hpp"
+#include <QCryptographicHash>
 
 #include <QElapsedTimer>
 #include <QHash>
@@ -382,6 +383,18 @@ QImage ToOwnedArgb(const std::uint8_t* bgra, int width, int height, int stride)
                     owned.scanLine(y));
     }
     return owned;
+}
+
+QByteArray SourcePixelDigest(const QImage& pixels)
+{
+    if (pixels.isNull()) return {};
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    // Allocation padding is not source content and cannot establish distinct
+    // evidence for two otherwise identical images.
+    for (int y = 0; y < pixels.height(); ++y)
+        hash.addData(QByteArrayView(reinterpret_cast<const char*>(pixels.constScanLine(y)),
+                                    static_cast<qsizetype>(pixels.width()) * 4));
+    return hash.result();
 }
 
 } // namespace
@@ -799,19 +812,33 @@ QVector<PreparedLine> PrepareLines(const RecognitionResult& result, double minim
     const double height = stamp.viewportHeight;
     for (const RecognizedLine& line : result.output.lines) {
         PreparedLine out;
+        bool unmappedSpan = false;
         for (const RecognizedWord& word : line.words) {
             const QString text = word.text.trimmed();
-            if (text.isEmpty() || word.boundsPx.height() < minimumWordHeightPx) {
-                continue;
-            }
             const QRectF scene = ViewRectToScene(stamp.viewTransform, width, height, word.boundsPx);
-            if (scene.isEmpty()) {
-                continue;
+            const QRectF protectedScene = ViewRectToScene(stamp.viewTransform, width, height,
+                word.protectedBoundsPx.isEmpty() ? word.boundsPx : word.protectedBoundsPx);
+            TokenDisposition disposition = word.disposition;
+            const auto usableRect = [](const QRectF& r) {
+                return !r.isEmpty() && std::isfinite(r.x()) && std::isfinite(r.y()) &&
+                       std::isfinite(r.width()) && std::isfinite(r.height());
+            };
+            if (!usableRect(scene) || !usableRect(protectedScene)) {
+                disposition = TokenDisposition::kInvalidGeometry;
+                unmappedSpan = true;
+            } else if (disposition == TokenDisposition::kCandidate) {
+                if (!std::isfinite(word.confidence) || word.confidence < .7 || word.confidence > 1.0001)
+                    disposition = TokenDisposition::kLowConfidence;
+                else if (text.isEmpty()) disposition = TokenDisposition::kUnrecognized;
+                else if (word.boundsPx.height() < minimumWordHeightPx)
+                    disposition = TokenDisposition::kTooSmall;
+                else if (IsHighRiskToken(text)) disposition = TokenDisposition::kHighRisk;
             }
-            out.words.push_back({text, scene});
-            out.sceneRect = out.sceneRect.isNull() ? scene : out.sceneRect.united(scene);
+            out.words.push_back({text, scene, disposition, word.confidence, protectedScene});
+            if (usableRect(protectedScene))
+                out.sceneRect = out.sceneRect.isNull() ? protectedScene : out.sceneRect.united(protectedScene);
         }
-        if (!out.words.isEmpty()) {
+        if (!out.words.isEmpty() && !unmappedSpan) {
             out.reference = BuildReferencePatch(result.reference, out.sceneRect);
         }
         prepared.push_back(std::move(out));
@@ -1056,6 +1083,7 @@ struct RecognitionScheduler::State {
                     result.output.inputFault=pixels.isNull();
                 }
                 if(pixels.isNull()){result.output.ok=false;result.output.inputFault=true;result.output.cancelled=self->cancelInFlight.load();}
+                result.sourcePixelDigest = SourcePixelDigest(pixels);
                 result.reference = MakeProbeFrame(pixels.constBits(), pixels.width(),
                                                   pixels.height(),
                                                   static_cast<int>(pixels.bytesPerLine()),
@@ -1068,7 +1096,8 @@ struct RecognitionScheduler::State {
                     const LineColors colors = MeasureLineColors(pixels, bounds.toAlignedRect());
                     result.lineColors.push_back(colors);
                     for (RecognizedWord& word : line.words) {
-                        if (word.paddedBounds)
+                        if (word.protectedBoundsPx.isEmpty()) word.protectedBoundsPx = word.boundsPx;
+                        if (word.paddedBounds && word.disposition == TokenDisposition::kCandidate)
                             word.boundsPx = RefineWordInkBounds(pixels, word, colors);
                     }
                 }
@@ -1404,10 +1433,40 @@ void OverlayModel::Reset()
 {
     lines_.clear();
     pending_.clear();
+    pendingEvidenceStamp_ = {};
+    pendingEvidenceDigest_.clear();
+    pendingEvidenceAuthority_ = 0;
+    immutable_ = false;
 }
 
 AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceStamp& current,
                                  const ProbeFrame* latestProbe, std::int64_t nowMs)
+{
+    return AdmitImpl(result, current, latestProbe, nowMs, false);
+}
+
+AdmitVerdict OverlayModel::AdmitImmutable(const RecognitionResult& result,
+                                          const SourceStamp& selectedFrame, std::int64_t nowMs,
+                                          const RecognitionResult* corroboration)
+{
+    if (!result.output.ok || result.output.cancelled) return AdmitVerdict::kFailed;
+    if (result.stamp.frameSeq != selectedFrame.frameSeq ||
+        !result.reference.stamp.SameScene(result.stamp) ||
+        result.reference.stamp.frameSeq != result.stamp.frameSeq) return AdmitVerdict::kStaleScene;
+    return AdmitImpl(result, selectedFrame, nullptr, nowMs, true, corroboration);
+}
+
+AdmitVerdict OverlayModel::AdmitAdvancingMedia(const RecognitionResult& result,
+                                              const SourceStamp& current,
+                                              const ProbeFrame* latestProbe,
+                                              std::int64_t mediaNowMs)
+{
+    return AdmitImpl(result, current, latestProbe, mediaNowMs, false, nullptr, true);
+}
+
+AdmitVerdict OverlayModel::AdmitImpl(const RecognitionResult& result, const SourceStamp& current,
+                                    const ProbeFrame* latestProbe, std::int64_t nowMs, bool immutable,
+                                    const RecognitionResult* corroboration, bool advancingMedia)
 {
     if (!result.output.ok || result.output.cancelled) {
         return AdmitVerdict::kFailed;
@@ -1415,12 +1474,14 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
     if (!result.stamp.SameScene(current)) {
         return AdmitVerdict::kStaleScene;
     }
-    if (nowMs - result.stamp.timestampMs > tuning_.maxResultAgeMs) {
+    if (!immutable && !advancingMedia && nowMs - result.stamp.timestampMs > tuning_.maxResultAgeMs) {
         return AdmitVerdict::kTooOld;
     }
     if (!result.reference.IsValid()) {
         return AdmitVerdict::kFailed;
     }
+    if (immutable_ != immutable) Reset();
+    immutable_ = immutable;
     const SourceStamp& stamp = result.stamp;
     const double jobWidth = stamp.viewportWidth;
     const double jobHeight = stamp.viewportHeight;
@@ -1433,6 +1494,21 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
         result.prepared.size() == result.output.lines.size()
             ? result.prepared
             : PrepareLines(result, tuning_.minimumWordHeightPx);
+    const bool independentNeighbor = immutable && corroboration && corroboration->output.ok &&
+        !corroboration->output.cancelled && corroboration->authority == result.authority &&
+        corroboration->stamp.SameScene(stamp) && corroboration->stamp.frameSeq != stamp.frameSeq &&
+        corroboration->sourcePixelDigest.size() == 32 && result.sourcePixelDigest.size() == 32 &&
+        corroboration->sourcePixelDigest != result.sourcePixelDigest && corroboration->reference.IsValid() &&
+        corroboration->reference.stamp.SameScene(corroboration->stamp) &&
+        corroboration->reference.stamp.frameSeq == corroboration->stamp.frameSeq;
+    QHash<QString, QVector<QRectF>> neighborWords;
+    if (independentNeighbor) {
+        const auto neighbor = PrepareLines(*corroboration, tuning_.minimumWordHeightPx);
+        for (const PreparedLine& line : neighbor)
+            for (const PreparedWord& word : line.words)
+                if (word.disposition == TokenDisposition::kCandidate)
+                    neighborWords[word.text].push_back(word.sceneRect);
+    }
 
     struct Candidate {
         AcceptedLine line;
@@ -1441,25 +1517,23 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
     };
     QVector<Candidate> candidates;
     int movedLines = 0;
-    int trackableLines = 0;
     QElapsedTimer matchTimer;
     matchTimer.start();
     for (int i = 0; i < prepared.size(); ++i) {
         const PreparedLine& line = prepared[i];
-        if (line.words.isEmpty() || !line.reference.valid) {
-            continue; // untrackable: never displayed
+        if (line.words.isEmpty()) {
+            continue;
         }
-        ++trackableLines;
         Candidate candidate;
         candidate.source = &line;
         candidate.line.sceneRect = line.sceneRect;
         candidate.line.reference = line.reference;
         candidate.line.colors = StableLineColors(i < result.lineColors.size() ? result.lineColors[i] : LineColors{});
         candidate.line.provenance = stamp;
-        candidate.line.valid = true;
+        candidate.line.valid = !newerProbe || line.reference.valid;
         candidate.line.validatedAtMs = stamp.timestampMs;
         candidate.line.validatedFrameSeq = stamp.frameSeq;
-        if (newerProbe) {
+        if (newerProbe && line.reference.valid) {
             if (matchTimer.nsecsElapsed() / 1e6 >= tuning_.admitMatchBudgetMs) {
                 // Budget spent on the UI thread: admit unverified. The line
                 // stays hidden until an off-thread probe validates it.
@@ -1482,13 +1556,6 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
         }
         candidates.push_back(std::move(candidate));
     }
-    if (trackableLines == 0) {
-        return AdmitVerdict::kEmpty;
-    }
-    if (candidates.isEmpty() && movedLines > 0) {
-        return AdmitVerdict::kContentMoved;
-    }
-
     // Temporal agreement: a word is shown only after two independent
     // recognitions of the same scene agree on its text and position. Earlier
     // words are indexed by text so dense pages stay linear, not quadratic.
@@ -1501,13 +1568,25 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
             earlier[word.text].push_back(word.sceneRect.translated(line.sceneOffset));
         }
     }
-    for (const PendingWord& word : pending_) {
-        if (word.sourceEpoch == current.sourceEpoch &&
-            word.geometryGeneration == current.geometryGeneration) {
-            earlier[word.text].push_back(word.sceneRect);
+    const bool independentPending = !immutable && pendingEvidenceStamp_.SameScene(stamp) &&
+        pendingEvidenceAuthority_ == result.authority &&
+        pendingEvidenceStamp_.frameSeq != stamp.frameSeq &&
+        pendingEvidenceDigest_.size() == 32 && result.sourcePixelDigest.size() == 32 &&
+        pendingEvidenceDigest_ != result.sourcePixelDigest;
+    // Existing accepted words already have independent confirmation. Keep
+    // them above, including during a duplicate refresh. Only NEW words need
+    // a distinct prior observation; changed job IDs or timestamps alone are
+    // never evidence that the recognized source pixels changed.
+    if (independentPending) {
+        for (const PendingWord& word : pending_) {
+            if (word.sourceEpoch == current.sourceEpoch &&
+                word.geometryGeneration == current.geometryGeneration) {
+                earlier[word.text].push_back(word.sceneRect);
+            }
         }
     }
     const auto confirmedBefore = [&](const QString& text, const QRectF& currentRect) {
+        if (immutable) return true; // selectable result, separate from glyph eligibility
         const auto it = earlier.constFind(text);
         if (it == earlier.constEnd()) {
             return false;
@@ -1524,24 +1603,48 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
     QSet<std::uint64_t> retainedIds;
     QVector<PendingWord> nextPending;
     for (Candidate& candidate : candidates) {
+        // A registration failure never promotes a candidate into a glyph.
+        // Preserve the confirmed reading text, with visible uncertainty, only
+        // on the sample's own freshness clock.
+        bool neighborRegistered = false;
+        if (independentNeighbor && candidate.line.reference.valid &&
+            matchTimer.nsecsElapsed() / 1e6 < tuning_.admitMatchBudgetMs)
+            neighborRegistered = MatchPatch(candidate.line.reference, corroboration->reference,
+                                             tuning_.match).matched;
+        if (!candidate.line.reference.valid) candidate.line.readingTokens.push_back({});
         for (const PreparedWord& word : candidate.source->words) {
             const QRectF currentRect = word.sceneRect.translated(candidate.line.sceneOffset);
-            if (IsHighRiskToken(word.text)) {
+            if (word.disposition != TokenDisposition::kCandidate || IsHighRiskToken(word.text)) {
                 ++candidate.line.omittedWords;
                 candidate.line.readingTokens.push_back({});
+                if (!word.protectedSceneRect.isEmpty())
+                    candidate.line.protectedSceneRects.push_back(word.protectedSceneRect);
                 continue;
             }
             if (confirmedBefore(word.text, currentRect)) {
-                candidate.line.words.push_back({word.text, word.sceneRect});
+                const auto evidence = neighborWords.constFind(word.text);
+                const bool glyphEligible = !immutable || (neighborRegistered && evidence != neighborWords.constEnd() &&
+                    std::any_of(evidence->begin(), evidence->end(), [&](const QRectF& r) {
+                        return Iou(word.sceneRect, r) >= tuning_.agreementIou;
+                    }));
+                candidate.line.words.push_back({word.text, word.sceneRect, glyphEligible});
                 candidate.line.readingTokens.push_back(word.text);
+                if (!glyphEligible) candidate.line.protectedSceneRects.push_back(
+                    word.protectedSceneRect.isEmpty() ? word.sceneRect : word.protectedSceneRect);
             } else {
                 ++candidate.line.omittedWords;
                 candidate.line.readingTokens.push_back({});
+                candidate.line.protectedSceneRects.push_back(
+                    word.protectedSceneRect.isEmpty() ? word.sceneRect : word.protectedSceneRect);
                 nextPending.push_back({word.text, currentRect, current.sourceEpoch,
                                        current.geometryGeneration});
             }
         }
-        if (!candidate.line.words.isEmpty()) {
+        if (immutable && candidate.line.reference.valid &&
+            std::any_of(candidate.line.words.begin(), candidate.line.words.end(),
+                [](const AcceptedWord& word) { return !word.glyphEligible; }))
+            candidate.line.readingTokens.prepend(QString());
+        if (!candidate.line.readingTokens.isEmpty()) {
             bool retained = false;
             bool duplicate = false;
             if (latestProbe) {
@@ -1553,7 +1656,9 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
                 for (const AcceptedLine& old : lines_) {
                     if (!old.valid || !old.provenance.SameScene(current) ||
                         old.words.size() != candidate.line.words.size() ||
-                        old.readingTokens != candidate.line.readingTokens) {
+                        old.readingTokens != candidate.line.readingTokens ||
+                        old.protectedSceneRects != candidate.line.protectedSceneRects ||
+                        old.reference.valid != candidate.line.reference.valid) {
                         continue;
                     }
                     bool sameWords = true;
@@ -1609,37 +1714,29 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
             // duplicate words when a later full-view probe validates them.
             // Retire the whole old line conservatively, without inventing
             // reading tokens for its unrecognized/offscreen remainder.
-            bool replaced = false;
-            const QRectF oldBounds = line.sceneRect.translated(line.sceneOffset);
-            for (const AcceptedLine& replacement : admitted) {
-                if (!oldBounds.intersects(replacement.sceneRect.translated(replacement.sceneOffset))) {
-                    continue;
-                }
-                for (const AcceptedWord& oldWord : line.words) {
-                    const QRectF a = oldWord.sceneRect.translated(line.sceneOffset);
-                    for (const AcceptedWord& newWord : replacement.words) {
-                        const QRectF b = newWord.sceneRect.translated(replacement.sceneOffset);
-                        const QRectF overlap = a.intersected(b);
-                        const double smallerArea = std::min(a.width() * a.height(), b.width() * b.height());
-                        if (smallerArea > 0.0 && !overlap.isEmpty() &&
-                            overlap.width() * overlap.height() >= tuning_.agreementIou * smallerArea) {
-                            replaced = true;
-                            break;
-                        }
-                    }
-                    if (replaced) break;
-                }
-                if (replaced) break;
-            }
+            // The new result can contain only rejected spans or no spans.
+            // Neither permits falling back to old accepted words in its view.
+            const bool replaced = std::any_of(line.words.begin(), line.words.end(),
+                [&](const AcceptedWord& word) {
+                    return coverage.intersects(word.sceneRect.translated(line.sceneOffset));
+                }) || std::any_of(line.protectedSceneRects.begin(), line.protectedSceneRects.end(),
+                [&](const QRectF& r) { return coverage.intersects(r.translated(line.sceneOffset)); });
             if (!replaced) kept.push_back(line);
         }
     }
     kept += admitted;
     lines_ = std::move(kept);
     pending_ = std::move(nextPending);
-    if (!admitted.isEmpty()) {
+    pendingEvidenceStamp_ = stamp;
+    pendingEvidenceDigest_ = result.sourcePixelDigest.size() == 32 ? result.sourcePixelDigest : QByteArray{};
+    pendingEvidenceAuthority_ = result.authority;
+    if (std::any_of(admitted.begin(), admitted.end(), [&](const AcceptedLine& line) {
+        return !immutable ? !line.words.isEmpty() : line.reference.valid &&
+            std::any_of(line.words.begin(), line.words.end(), [](const AcceptedWord& word) { return word.glyphEligible; });
+    })) {
         return AdmitVerdict::kAccepted;
     }
+    if (immutable && !admitted.isEmpty()) return AdmitVerdict::kPending;
     return pending_.isEmpty() ? (movedLines > 0 ? AdmitVerdict::kContentMoved : AdmitVerdict::kEmpty)
                               : AdmitVerdict::kPending;
 }
@@ -1648,7 +1745,7 @@ QVector<LineReference> OverlayModel::LineReferences(const SourceStamp& scene) co
 {
     QVector<const AcceptedLine*> ordered;
     for (const AcceptedLine& line : lines_) {
-        if (line.provenance.SameScene(scene)) ordered.push_back(&line);
+        if (line.provenance.SameScene(scene) && line.reference.valid) ordered.push_back(&line);
     }
     std::stable_sort(ordered.begin(), ordered.end(), [](const auto* a, const auto* b) {
         if (a->valid != b->valid) return !a->valid;
@@ -1725,19 +1822,37 @@ ValidationSummary OverlayModel::Validate(const ProbeFrame& probe, std::int64_t n
 
 bool OverlayModel::IsShown(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const
 {
-    return line.valid && !line.words.isEmpty() &&
+    return line.reference.valid &&
+           std::any_of(line.words.begin(), line.words.end(), [](const AcceptedWord& word) { return word.glyphEligible; }) &&
+           IsReadable(line, nowMs, currentFrameSeq);
+}
+
+bool OverlayModel::IsReadable(const AcceptedLine& line, std::int64_t nowMs, std::uint64_t currentFrameSeq) const
+{
+    return line.valid && !line.readingTokens.isEmpty() &&
            (nowMs - line.validatedAtMs <= tuning_.freshnessMs || currentFrameSeq == line.validatedFrameSeq);
 }
 
 QVector<SceneWord> OverlayModel::SceneWords(std::int64_t nowMs, std::uint64_t currentFrameSeq) const
 {
     QVector<SceneWord> words;
+    QVector<QRectF> protectedRects;
+    for (const AcceptedLine& line : lines_) {
+        for (const QRectF& r : line.protectedSceneRects)
+            protectedRects.push_back(r.translated(line.sceneOffset));
+        if (!IsShown(line, nowMs, currentFrameSeq))
+            for (const AcceptedWord& word : line.words)
+                protectedRects.push_back(word.sceneRect.translated(line.sceneOffset));
+    }
     for (const AcceptedLine& line : lines_) {
         if (!IsShown(line, nowMs, currentFrameSeq)) {
             continue;
         }
-        for (const AcceptedWord& word : line.words) {
-            words.push_back({word.text, word.sceneRect.translated(line.sceneOffset), line.colors, line.id});
+        for (int i = 0; i < line.words.size(); ++i) {
+            const AcceptedWord& word = line.words[i];
+            if (!word.glyphEligible) continue;
+            words.push_back({word.text, word.sceneRect.translated(line.sceneOffset), line.colors, line.id,
+                             protectedRects, i});
         }
     }
     return words;
@@ -1762,21 +1877,17 @@ QVector<DisplayWord> OverlayModel::DisplayWords(const ViewTransform& transform, 
     return words;
 }
 
-QString OverlayModel::ReadingText(std::int64_t nowMs, std::uint64_t currentFrameSeq) const
+QVector<const AcceptedLine*> OrderLinesForReading(QVector<const AcceptedLine*> lines)
 {
-    // Only text that is verified on screen now is offered for reading;
-    // unverified, moved or stale lines are left out rather than guessed.
     struct Entry {
         QRectF rect;
-        std::uint64_t id{};
         const AcceptedLine* line{};
         int row{};
     };
     QVector<Entry> entries;
-    for (const AcceptedLine& line : lines_) {
-        if (IsShown(line, nowMs, currentFrameSeq)) {
-            entries.push_back({line.sceneRect.translated(line.sceneOffset), line.id, &line, 0});
-        }
+    entries.reserve(lines.size());
+    for (const AcceptedLine* line : lines) {
+        if (line) entries.push_back({line->sceneRect.translated(line->sceneOffset), line, 0});
     }
     // 1) Strict order by vertical centre (ties: left edge, then id).
     std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
@@ -1788,7 +1899,7 @@ QString OverlayModel::ReadingText(std::int64_t nowMs, std::uint64_t currentFrame
         if (a.rect.left() != b.rect.left()) {
             return a.rect.left() < b.rect.left();
         }
-        return a.id < b.id;
+        return a.line->id < b.line->id;
     });
     // 2) Explicit row clustering: a line joins the current row while its
     //    centre lies inside the row anchor's vertical extent. The anchor is
@@ -1810,13 +1921,29 @@ QString OverlayModel::ReadingText(std::int64_t nowMs, std::uint64_t currentFrame
         if (a.rect.left() != b.rect.left()) {
             return a.rect.left() < b.rect.left();
         }
-        return a.id < b.id;
+        return a.line->id < b.line->id;
     });
+    QVector<const AcceptedLine*> ordered;
+    ordered.reserve(entries.size());
+    for (const Entry& entry : entries) ordered.push_back(entry.line);
+    return ordered;
+}
+
+QString OverlayModel::ReadingText(std::int64_t nowMs, std::uint64_t currentFrameSeq) const
+{
+    // The pane also preserves exact-source recognition when registration is
+    // unavailable; its leading omission marks that original ink is retained.
+    QVector<const AcceptedLine*> readable;
+    for (const AcceptedLine& line : lines_) {
+        if (IsReadable(line, nowMs, currentFrameSeq)) {
+            readable.push_back(&line);
+        }
+    }
     QStringList out;
-    for (const Entry& entry : entries) {
+    for (const AcceptedLine* line : OrderLinesForReading(std::move(readable))) {
         QStringList words;
         bool previousOmission = false;
-        for (const QString& token : entry.line->readingTokens) {
+        for (const QString& token : line->readingTokens) {
             if (token.isEmpty()) {
                 if (!previousOmission) {
                     words.push_back(QStringLiteral("\u2026"));
@@ -1830,6 +1957,84 @@ QString OverlayModel::ReadingText(std::int64_t nowMs, std::uint64_t currentFrame
         out.push_back(words.join(QLatin1Char(' ')));
     }
     return out.join(QLatin1Char('\n'));
+}
+
+QVector<ScreenLine> OverlayModel::ScreenLines(std::int64_t nowMs, std::uint64_t currentFrameSeq,
+                                              const ScreenTextLimits& limits) const
+{
+    // Exactly the lines SceneWords() draws. Reading-only immutable evidence
+    // and every unconfirmed span stay "\u2026": a screen reader must never
+    // hear text that the overlay did not replace on screen.
+    QVector<const AcceptedLine*> shown;
+    for (const AcceptedLine& line : lines_) {
+        if (IsShown(line, nowMs, currentFrameSeq)) shown.push_back(&line);
+    }
+    const QString ellipsis(QChar(0x2026));
+    const int maxLine = std::max(3, limits.maxLineUtf16);
+    QVector<ScreenLine> out;
+    int total = 0;
+    for (const AcceptedLine* line : OrderLinesForReading(std::move(shown))) {
+        if (out.size() >= limits.maxLines) break;
+        // readingTokens holds one non-empty token per confirmed word, in
+        // order; anything else is an inconsistency and fails closed.
+        QVector<int> raw;
+        raw.reserve(line->readingTokens.size());
+        int next = 0;
+        bool consistent = true;
+        for (const QString& token : line->readingTokens) {
+            if (token.isEmpty()) {
+                raw.push_back(-1);
+                continue;
+            }
+            if (next >= line->words.size() || line->words[next].text != token) {
+                consistent = false;
+                break;
+            }
+            raw.push_back(line->words[next].glyphEligible ? next : -1);
+            ++next;
+        }
+        if (!consistent || next != line->words.size()) continue;
+
+        ScreenLine screen;
+        screen.lineId = line->id;
+        screen.sceneRect = line->sceneRect.translated(line->sceneOffset);
+        const auto append = [&screen](int wordIndex, const QString& piece) {
+            if (!screen.text.isEmpty()) screen.text += QLatin1Char(' ');
+            screen.tokens.push_back({wordIndex, static_cast<int>(screen.text.size()),
+                                     static_cast<int>(piece.size())});
+            screen.text += piece;
+        };
+        for (int wordIndex : raw) {
+            if (wordIndex < 0 && !screen.tokens.isEmpty() && screen.tokens.constLast().wordIndex < 0)
+                continue; // consecutive omissions collapse into one run
+            const QString& piece = wordIndex < 0 ? ellipsis : line->words[wordIndex].text;
+            if (piece.isEmpty()) continue;
+            const int separator = screen.text.isEmpty() ? 0 : 1;
+            if (screen.text.size() + separator + piece.size() > maxLine) {
+                screen.truncated = true;
+                break;
+            }
+            append(wordIndex, piece);
+        }
+        if (screen.truncated) {
+            // Make room for the trailing marker by dropping whole words.
+            while (!screen.tokens.isEmpty() && screen.tokens.constLast().wordIndex >= 0 &&
+                   screen.text.size() + 2 > maxLine) {
+                const int start = screen.tokens.constLast().start;
+                screen.tokens.removeLast();
+                screen.text.truncate(std::max(0, start - 1));
+            }
+            if (!screen.tokens.isEmpty() && screen.tokens.constLast().wordIndex >= 0)
+                append(-1, ellipsis);
+        }
+        if (std::none_of(screen.tokens.begin(), screen.tokens.end(),
+                         [](const ScreenToken& token) { return token.wordIndex >= 0; }))
+            continue;
+        if (total + screen.text.size() > limits.maxTotalUtf16) break;
+        total += static_cast<int>(screen.text.size());
+        out.push_back(std::move(screen));
+    }
+    return out;
 }
 
 int OverlayModel::AcceptedWordCount() const

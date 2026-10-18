@@ -1,6 +1,7 @@
 #include "okuflow/common/uct_paddle.hpp"
 #include "okuflow/common/uct_model_pins.hpp"
 #include "okuflow/cuda/uct_analysis_pool.hpp"
+#include "ultra_clear_text_test_support.hpp"
 #include <QFontDatabase>
 #include <QPainter>
 #include <QJsonDocument>
@@ -359,6 +360,71 @@ class PaddleTests final : public QObject
         QVERIFY(PaddleDecode(values, 8, 3, quad, dictionary).words.isEmpty());
         values[1] = std::numeric_limits<float>::quiet_NaN();
         QVERIFY(PaddleDecode(values, 8, 4, quad, dictionary).words.isEmpty());
+        const std::array<PaddleToken, 3> weak{{{1,0,0,.99f},{3,1,1,.99f},{2,2,2,.60f}}};
+        const auto rejected = PaddleDecodeTokens(weak, 3, quad, dictionary);
+        QCOMPARE(rejected.words.size(), 2);
+        QCOMPARE(rejected.words[1].text, QStringLiteral("B"));
+        QCOMPARE(rejected.words[1].disposition, TokenDisposition::kLowConfidence);
+        QVERIFY(std::abs(rejected.words[1].confidence - .60) < .0001);
+        QCOMPARE(rejected.words[1].protectedBoundsPx, rejected.words[1].boundsPx);
+        QVERIFY(rejected.words[0].inkSearchPx.right() <= rejected.words[1].inkSearchPx.left());
+    }
+    void decoderPreservesUncertainNegationThroughReading()
+    {
+        const QString phrase = QStringLiteral("Do not proceed");
+        QStringList dictionary{QString()};
+        for (const QChar ch : phrase)
+            if (!dictionary.contains(QString(ch))) dictionary.push_back(QString(ch));
+        const int steps = phrase.size() * 2;
+        const int classes = dictionary.size();
+        std::vector<float> values(static_cast<size_t>(steps) * classes, .001f);
+        for (int i = 0; i < phrase.size(); ++i) {
+            const float confidence = i >= 3 && i <= 5 ? .60f : .99f;
+            values[static_cast<size_t>(i * 2) * classes + dictionary.indexOf(QString(phrase[i]))] = confidence;
+            values[static_cast<size_t>(i * 2 + 1) * classes] = .99f;
+        }
+        const PaddleQuad quad{{QPointF(20,20),QPointF(620,20),QPointF(620,68),QPointF(20,68)},1};
+        const RecognizedLine decoded = PaddleDecode(values, steps, classes, quad, dictionary);
+        QCOMPARE(decoded.words.size(), 3);
+        QCOMPARE(decoded.words[1].text, QStringLiteral("not"));
+        QCOMPARE(decoded.words[1].disposition, TokenDisposition::kLowConfidence);
+        QImage pixels(640,128,QImage::Format_ARGB32);
+        pixels.fill(Qt::white);
+        QPainter painter(&pixels);
+        QFont font; font.setPixelSize(32); painter.setFont(font); painter.setPen(Qt::black);
+        for (const auto& word : decoded.words) painter.drawText(word.boundsPx, Qt::AlignCenter, word.text);
+        painter.end();
+        const auto transform = okuflow::ComputeViewTransform(640,128,640,128,1,.5f,.5f,
+                                                            okuflow::ViewportFitMode::kFit);
+        auto result = [&](std::uint64_t frame, std::int64_t time) {
+            RecognitionResult out;
+            out.output.ok = true; out.output.lines.push_back(decoded);
+            out.stamp.sourceEpoch=1; out.stamp.geometryGeneration=1;
+            out.stamp.frameSeq=frame; out.stamp.timestampMs=time;
+            out.stamp.viewportWidth=640; out.stamp.viewportHeight=128; out.stamp.viewTransform=transform;
+            const auto observed=uct_test::IndependentFramePixels(pixels,frame);
+            out.sourcePixelDigest=uct_test::SourcePixelsDigest(observed);
+            out.reference=MakeProbeFrame(observed.constBits(),640,128,observed.bytesPerLine(),1,out.stamp);
+            out.prepared=PrepareLines(out,7);
+            return out;
+        };
+        const auto first=result(10,100), second=result(11,200);
+        QCOMPARE(second.prepared[0].words.size(),3);
+        QCOMPARE(second.prepared[0].words[1].disposition,TokenDisposition::kLowConfidence);
+        QVERIFY(!second.prepared[0].words[1].protectedSceneRect.isEmpty());
+        QVERIFY(second.prepared[0].reference.valid);
+        OverlayModel model;
+        QCOMPARE(model.Admit(first,first.stamp,nullptr,110),AdmitVerdict::kPending);
+        QCOMPARE(model.Admit(second,second.stamp,nullptr,210),AdmitVerdict::kAccepted);
+        QCOMPARE(model.ReadingText(210,11),QStringLiteral("Do \u2026 proceed"));
+        const auto words=model.SceneWords(210,11);
+        QCOMPARE(words.size(),2);
+        QCOMPARE(words[0].text,QStringLiteral("Do"));
+        QCOMPARE(words[1].text,QStringLiteral("proceed"));
+        for(const auto& word:words) {
+            QCOMPARE(word.protectedSceneRects.size(),1);
+            QCOMPARE(word.protectedSceneRects[0],second.prepared[0].words[1].protectedSceneRect);
+        }
     }
     void gpuAlgorithmsAndOwnedInputs()
     {
@@ -653,7 +719,7 @@ class PaddleTests final : public QObject
         QStringList words;
         for (const auto &line : output.lines)
             for (const auto &word : line.words)
-                words.push_back(word.text);
+                if (word.disposition == TokenDisposition::kCandidate) words.push_back(word.text);
         qInfo() << "Paddle CPU ms" << timer.elapsed() << words;
         for (const auto &expected :
              QString("MAGNIFIED PRINTED TEXT READS CLEARLY TODAY").split(' '))
@@ -713,7 +779,7 @@ class PaddleTests final : public QObject
             QStringList words;
             for (const auto &line : output.lines)
                 for (const auto &word : line.words)
-                    words.push_back(word.text);
+                    if (word.disposition == TokenDisposition::kCandidate) words.push_back(word.text);
             qInfo() << "Paddle TensorRT iteration" << iteration << "ms" << timer.elapsed() << words;
             for (const auto &expected :
                  QString("MAGNIFIED PRINTED TEXT READS CLEARLY TODAY").split(' '))

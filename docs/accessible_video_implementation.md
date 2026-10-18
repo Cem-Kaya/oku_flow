@@ -8,7 +8,9 @@ reported defects are verified against production code before repair.
 
 The owner's correction supersedes the brief's concurrent foreign-file playback
 rules. Opening a saved video first stops and finalizes an ongoing recording.
-Starting a new recording leaves saved playback and returns to the live camera.
+Starting a new recording leaves saved playback and returns to the live camera
+only after the first successful Original-frame admission. Encoder startup
+failure preserves the selected video, cursor and playback intent.
 Same-session rewind remains available through the current Original archive.
 Stopping that recording preserves the selected position and playback intent.
 
@@ -57,5 +59,38 @@ player; active archive reads are checked while the writer remains active.
 Failures remain in the tracked evidence ledger. These checks do not establish
 screen-reader, optical-camera, installer or public-release acceptance.
 
-This document records the intended contract and implementation boundaries.
-Validation results are added after the corresponding checks actually run.
+## Local validation record (2026-10-18)
+
+The tracked `scripts/agent_build.bat` completed with
+`OKUFLOW_AGENT_EXCLUDE_GUI=1`, isolated Release output, CUDA 12.9.86, Qt 6.12.0
+and VS 2022. Its final summary is PASS for Release compilation, the CPU suite
+and the CUDA delta, explicitly marked partial because desktop tests were
+excluded. Fingerprint reuse retained unchanged passing evidence; rebuilt
+inputs received new recorded attempts. Earlier failures remain archived.
+
+| Check | Result and scope |
+| --- | --- |
+| Shipping Release configuration | Compiled successfully with CUDA 12.9. |
+| CPU CTest selection | 98 cases passed, zero unresolved. Two cases contain optional skipped Qt rows: `recording_manager` and `mcp_bridge_contract`. The explicit Original-native case ran separately within this selection; the optional private MCP SDK integration was not claimed. |
+| CUDA delta | 10 cases passed, no skipped rows or unresolved cases. Includes the three synthetic Maxine lifecycle/navigation/async fixtures and the UCT CUDA fixture. |
+| Actual-app native target, Qt offscreen | 43 Qt rows passed. Includes first-frame startup failure, source transitions, exact held-frame authority, repeated paused-poll admission, Save receipt identity and Stop/Undo restoration. No native desktop, device or provider was used. |
+| Shared-source equivalence | Passed with PCH enabled in the tracked matrix and disabled in the isolated native fixture configuration. |
+| Positioned UCT accessibility | 24 Qt rows at each of 100%, 150% and 200% scale passed in three offscreen CTest cases. These test Qt's accessibility interfaces and paint geometry, not the Windows UIA bridge or a real screen reader. |
+| Native synthetic media | Active-before-Finalize AVC/AAC and AV1/AAC decode, continued recording/rewind, sparse-video audio tail, actual EOF, Waiting/resumption pacing and 4K lease pressure passed. The twelve-frame 4K case peaked at 99,532,800 decoded bytes within the unchanged 100,663,296-byte quota. |
+| Localization | All 24 non-English catalogs compiled with 872 finished entries each. Small-agent review covered all 1,440 new/changed target entries; see the [review record](uct_recap_localization_review_2026_10_18.md). |
+
+The first final native integration run caught source-scoped undo skipping a view
+change across its own temporary camera restore. The repair binds the exception
+to the exact owned restore and unchanged selected-media identity/generation;
+synthetic native-selection cases and the actual-app fixture then passed.
+See the [review disposition](uct_recap_review_2026_10_18.md) for the other
+independently verified repairs.
+
+Native desktop/focus/layout tests, the Windows UIA bridge, Narrator/NVDA/Magnifier,
+mixed-monitor DPI, physical camera/phone and microphone quality, A/V sync,
+long-soak resource measurements, live providers and installer acceptance remain
+separate. No installer or public release is certified by this background run.
+Selected-media rendering currently supports the documented CPU view effects;
+advanced GPU effects explicitly report unavailable. The seven new media tools
+are in the opt-in `dev-full`/`v1` catalogs; this work does not promote the default
+MCP catalog or certify V1 acceptance.

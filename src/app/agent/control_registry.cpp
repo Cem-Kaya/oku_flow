@@ -113,6 +113,31 @@ std::vector<ToolDescriptor> MakeCatalog(CatalogEdition edition) {
                    R"(["cameraHandle"])"));
     }
     if (edition == CatalogEdition::DevFull || edition == CatalogEdition::V1) {
+        const std::string videoTarget = R"({"documentId":{"type":"string","pattern":"^media-[a-f0-9]{32}$"},"selectionGeneration":{"type":"integer","minimum":1,"maximum":9007199254740991}})";
+        const auto videoRequired = R"(["documentId","selectionGeneration"])";
+        add(ToolId::VideoState, "video.state.get", "video_state_get",
+            "Read selected document, actual selected media PTS, native request completion and independent recording state; no file paths.",
+            Tier::Read, true, false, false, Object("{}"));
+        add(ToolId::VideoPause, "video.pause", "video_pause",
+            "Pause the exact displayed document on its actually presented frame; camera recording continues.",
+            Tier::View, true, false, true, Object(videoTarget,videoRequired));
+        add(ToolId::VideoResume, "video.resume", "video_resume",
+            "Play forward from the exact displayed held position; never jump live or restart at EOF.",
+            Tier::View, true, false, true, Object(videoTarget,videoRequired));
+        auto seekTarget=videoTarget;seekTarget.pop_back();
+        seekTarget+=R"(,"positionMs":{"type":"integer","minimum":0,"maximum":2147483647}})";
+        add(ToolId::VideoSeek, "video.seek", "video_seek",
+            "Seek the exact displayed document to absolute milliseconds; completion reports actual frame PTS, not the requested time.",
+            Tier::View, true, false, true, Object(seekTarget,R"(["documentId","selectionGeneration","positionMs"])"));
+        add(ToolId::VideoJumpLatestEnd, "video.jump_latest_end", "video_jump_latest_end",
+            "For the displayed recording follow its latest live scene; for a saved file select its last decodable frame and pause.",
+            Tier::View, true, false, true, Object(videoTarget,videoRequired));
+        add(ToolId::VideoReturnCamera, "video.return_to_camera", "video_return_to_camera",
+            "Return the exact displayed document to the camera without stopping or changing any recording owner.",
+            Tier::View, true, false, true, Object(videoTarget,videoRequired));
+        add(ToolId::VideoSaveFrame, "video.save_frame", "video_save_frame",
+            "Save an explicit derivative of the selected document/frame/view; requires photo consent and never overwrites the video.",
+            Tier::Capture, false, false, true, Object(videoTarget,videoRequired));
         add(ToolId::ControlsList, "app.controls.list", "app_controls_list",
             "List up to 16 immutable control descriptors after a stable field id. Metadata grants no "
             "control; target support and native-only workflows are explicit.",
@@ -212,6 +237,8 @@ bool ControlToolDestructiveHint(ToolId id) noexcept {
     case ToolId::NotesPreferencesGet:
     case ToolId::UiPreferencesGet:
     case ToolId::AnnotationPreferencesGet:
+    case ToolId::VideoState:
+    case ToolId::VideoSaveFrame:
         return false;
     default:
         // Replacement/reset/stop operations may modify existing state. A
@@ -219,6 +246,9 @@ bool ControlToolDestructiveHint(ToolId id) noexcept {
         // preferences, microphone intent, output destination or drawing state.
         return true;
     }
+}
+bool IsVideoControlTool(ToolId id) noexcept {
+    return id >= ToolId::VideoState && id <= ToolId::VideoSaveFrame;
 }
 CatalogEdition BuiltControlCatalogEdition() noexcept {
 #if defined(OKUFLOW_CONTROL_CATALOG_EDITION_INDEX)

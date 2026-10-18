@@ -1,5 +1,41 @@
 # OkuFlow Tests
 
+## Accessible video and positioned UCT (development)
+
+`video_playback_contract` checks pure archive/resource admission. Explicit native
+`video_archive_native_avc_aac` and `video_archive_native_av1_aac` cases require
+`OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1`; they write private synthetic Original/AAC
+files, decode before finalization, keep the writer advancing during rewind,
+seek the newly verified prefix and check saved-file EOF/PCM/VFR timing. They
+run serially under the `codec` label and preserve unavailable-codec skips.
+`recording_original_native` verifies one successful Original output by held file
+identity and accounts for failed codec attempts. These are not optical-camera,
+microphone or long-recording acceptance.
+
+`video_transport_contract`, `video_audio_output_contract`,
+`video_agent_control_contract` and `immutable_uct_contract` cover the native
+widget contract, bounded audio queue, actual service/recording policy and
+single-job held-frame recognition respectively. Ordinary audio tests never open
+an endpoint; WASAPI hardware acceptance is explicit and separate.
+
+`uct_screen_text_accessibility_scale_1`, `_scale_1_5` and `_scale_2` exercise the
+QAccessible text/tree/paint geometry model offscreen. They do not establish
+Windows UIA, Narrator, NVDA or Magnifier behaviour. Those checks require a free
+native desktop. New semantic content is bounded to one-second publication with
+a three-second reader hold; invalid content is revoked immediately.
+
+The opt-in CPU `dev-full` actual-app fixture adds saved-video opening with the
+camera offline, corrected finalization/latest-open routing, cursor preservation,
+actual displayed N versus deferred N+1 Pause, and unsupported-recipe rejection.
+Configure `OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE=ON` and explicitly build
+`native_app_control_fixture`; run `native_app_control_offscreen` through the
+tracked gate. This fixture creates no native capture or presenter window.
+
+Run only affected cases while editing. The tracked final release/CPU/CUDA
+matrix remains required; use fingerprint reuse for unchanged passes and keep
+GUI excluded when the owner reserves the desktop. A scoped/offscreen pass is
+never a full release or native screen-reader acceptance claim.
+
 ## Optional PaddleOCR acceptance (2026-10-18)
 
 `uct_paddle_processing` reconciles all six compiled tier pins against the

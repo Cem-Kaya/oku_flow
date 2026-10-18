@@ -200,6 +200,11 @@ void OkuFlowApp::UpdateCameraPlaceholder() {
     if (!mainWindow_) {
         return;
     }
+    if (MediaViewSelected() && !presenterFaultReported_) {
+        // A disconnected/starting camera must not cover a selected video.
+        mainWindow_->setCameraPlaceholder({}, {});
+        return;
+    }
     QString title;
     QString detail;
     if (presenterFaultReported_) {
@@ -271,6 +276,10 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         detail = text;
         color = errorColor;
         politeness = LivePoliteness::kAssertive;
+    } else if (MediaViewSelected()) {
+        text = QStringLiteral("Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.");
+        detail = text;
+        color = readyColor;
     } else if (!cameraActive_ &&
         pipelineOrchestrator_->IsCameraReconnectPending()) {
         text = QStringLiteral("Reconnecting to camera…");
@@ -329,18 +338,18 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
     if (recordingManager_ && recordingManager_->IsActive()) {
         text.append(QStringLiteral(" [REC]"));
         if (recordingManager_->CodecName().isEmpty()) {
-            detail.append(QStringLiteral(" [REC original + processed, starting encoder]"));
+            detail.append(TranslateUi(QStringLiteral(" [REC original, starting encoder]")));
         } else {
-            detail.append(QStringLiteral(" [REC original + processed, %1]")
+            detail.append(TranslateUi(QStringLiteral(" [REC original, %1]"))
                               .arg(recordingManager_->CodecName()));
         }
     }
 
-    if (vlmAssistEnabled_) {
+    if (vlmAssistEnabled_ && !MediaViewSelected()) {
         text.append(QStringLiteral(" [VLM]"));
         detail.append(QStringLiteral(" [VLM]"));
     }
-    if (cameraActive_ && stabilizationEnabled_ && cudaSurface_) {
+    if (!MediaViewSelected() && cameraActive_ && stabilizationEnabled_ && cudaSurface_) {
         QString stabilizerLine =
             QStringLiteral("\nStabilizer: %1")
                 .arg(QString::fromStdString(cudaSurface_->StabilizerStatus()));
@@ -358,7 +367,7 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
     // sampled GPU kernel-chain ms, tooltip only (corner label stays short).
     const float frameTickAverageMs =
         pipelineOrchestrator_->FrameTickAverageMs();
-    if (cameraActive_ && frameTickAverageMs >= 0.0f) {
+    if (!MediaViewSelected() && cameraActive_ && frameTickAverageMs >= 0.0f) {
         QString timing = QStringLiteral("\n%1 ms/frame - %2")
                              .arg(static_cast<double>(frameTickAverageMs), 0, 'f', 1)
                              .arg(usingCudaLastFrame_ ? QStringLiteral("CUDA")
@@ -370,7 +379,7 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         }
         detail.append(timing);
     }
-    if (cameraActive_) {
+    if (!MediaViewSelected() && cameraActive_) {
         const double cameraFps = mediaCapture_.CurrentFrameRate();
         const QString cameraRate =
             cameraFps > 0.0
@@ -447,7 +456,7 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
     QString superResLogState = QStringLiteral("off");
     QString superResLogMessage = superResStatus;
     bool superResActive = false;
-    if (mlTextSuperResolutionEnabled_) {
+    if (mlTextSuperResolutionEnabled_ && !MediaViewSelected()) {
         if (!mlTextSuperResolutionUltra1440p_ &&
             (!zoomEnabled_ || zoomAmount_ < 1.33f)) {
             superResStatus = QStringLiteral(
@@ -530,7 +539,7 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         mainWindow_->setSuperResStatus(
             superResStatus,
             superResActive,
-            cudaSurface_ && cudaSurface_->IsSuperResPerformanceLimited());
+            !MediaViewSelected() && cudaSurface_ && cudaSurface_->IsSuperResPerformanceLimited());
     }
     if (superResLogState != lastSuperResLogState_) {
         qInfo().noquote() << "NVIDIA Super Resolution:"

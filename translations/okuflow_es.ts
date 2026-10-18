@@ -3273,5 +3273,245 @@ Use «Connect ChatGPT» en la pestaña Asistente del modo avanzado para iniciar 
             <source>CPU text recognizer</source>
             <translation>Reconocimiento de texto en CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>Grabación actual</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>Vídeo</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>En directo</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>Retrasado respecto al directo</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>En pausa</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>Fin del vídeo</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>Abriendo vídeo…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>Buscando…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>Esperando a que haya una grabación</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>Finalizando la grabación</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>Vídeo no disponible</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>Reproducción de vídeo</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>Retroceder 10 segundos</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>Pausar vídeo</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>Reanudar vídeo</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>Ir al directo</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>Ir al final</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>Volver a la cámara</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>Guardar fotograma</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>Activar el sonido de la reproducción</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>Silenciar la reproducción</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>Controles de vídeo</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>Línea de tiempo del vídeo</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>Izquierda y Derecha: un segundo. Re Pág y Av Pág: diez segundos. Inicio: principio. Fin: final grabado.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 de %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>Abrir vídeo</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>Abrir un vídeo guardado (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>Grabar vídeo Original</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>Iniciar o detener una grabación de vídeo Original en MP4</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>Selecciona el sonido para la grabación de vídeo Original. El micrófono solo se usa durante la grabación.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>Selecciona el audio del micrófono para la grabación Original en MP4, o elige no usar micrófono.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>No se pudo conservar el fotograma mostrado. El vídeo grabado sigue disponible.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>No se pudo abrir el vídeo: selecciona un único archivo local existente.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>No se abrió el vídeo porque no se pudo detener la grabación.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>Finalizando la grabación antes de abrir el vídeo…</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>Esperando a que se pueda buscar en el vídeo grabado.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>El fotograma congelado no se grabó. Busca un punto del vídeo grabado para continuar.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>No se pudo verificar la posición grabada del fotograma congelado. Busca un punto del vídeo grabado para continuar.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>Fin del vídeo. Busca un punto anterior para volver a reproducirlo.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>Cámara no disponible. Se muestra el último fotograma grabado.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>El fotograma congelado no se grabó. La imagen conservada sigue disponible.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>No se pudo verificar la posición grabada del fotograma congelado. La imagen conservada sigue disponible.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>Fin de la grabación disponible. La imagen conservada sigue disponible.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>Vídeo no disponible: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>El sonido de reproducción no está disponible. El vídeo sigue reproduciéndose.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>No se guardó el fotograma: la vista seleccionada no está disponible.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>No se guardó el fotograma: no se pudo poner la imagen en cola.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>No se guardó el fotograma: la carpeta OkuFlow Photos no está disponible.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>Se guardó el fotograma seleccionado del vídeo.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>No se pudo guardar el fotograma seleccionado del vídeo.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>No se guardó el fotograma: el grabador de imágenes está ocupado. Inténtalo de nuevo.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>No se puede pausar: no se pudo conservar el fotograma mostrado.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;Controles&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximiza la vista de la cámara. Usa el carrusel de la esquina o las teclas numéricas del 1 al 9 para cambiar de modo rápido.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Ocultar interfaz&lt;/b&gt; o &lt;b&gt;Ctrl+H&lt;/b&gt; quita los controles y el asistente de la vista de la cámara. &lt;b&gt;Mostrar interfaz&lt;/b&gt; los restaura junto con la respuesta existente.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Avanzado&lt;/b&gt; abre los ajustes detallados de imagen y del Asistente. Arrastra el separador del borde del panel para cambiar su tamaño.&lt;/p&gt;&lt;p&gt;Arrastra la vista de la cámara para desplazarte. Usa Ctrl y la rueda del ratón para ampliar. Activa &lt;b&gt;Joystick virtual&lt;/b&gt; en &lt;b&gt;Ajustes &amp;gt; Vista y navegación&lt;/b&gt; para mostrar un control de movimiento en pantalla.&lt;/p&gt;&lt;p&gt;Foto guarda las versiones original y procesada. Grabar guarda vídeo Original. Explicar describe la escena; Leer reconoce el texto. Pulsa &lt;b&gt;Ctrl+Mayús+O&lt;/b&gt; para abrir la carpeta que contiene tus archivos de OkuFlow.&lt;/p&gt;&lt;h2&gt;Funciones&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Claridad del texto&lt;/b&gt; combina la limpieza de documentos, el contraste local, el realce de la nitidez y unos bordes de texto estables. &lt;b&gt;Colores de pantalla&lt;/b&gt; ofrece paletas de lectura y esquemas de color personalizados.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; mejora los detalles ampliados cuando está instalado el entorno de ejecución opcional NVIDIA Video Effects.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Lectura de texto y Asistente&lt;/b&gt; pueden leer texto, explicar la vista, responder preguntas de seguimiento y añadir resultados a las notas de clase.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>Archivos de vídeo (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;Todos los archivos (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text en esta vista</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… indica que el texto se ha dejado en la imagen original.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>Reproducción de vídeo: zoom, giro, colores de lectura y UCT disponibles. Los efectos avanzados de GPU no están disponibles.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC original, iniciando el codificador]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC original, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>No se puede pausar: no se pudo conservar exactamente el encuadre mostrado.</translation>
+        </message>
     </context>
 </TS>

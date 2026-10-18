@@ -15,6 +15,9 @@ namespace okuflow {
 
 class D3D12Presenter;
 
+// Native D3D12 camera viewport. Marked as an accessibility host
+// (kAccessibleVirtualChildHostProperty) so Ultra Clear Text can expose its
+// on-screen text lines as virtual children; see uct_screen_text_accessible.hpp.
 class RenderWidget final : public QWidget {
     Q_OBJECT
 

@@ -36,3 +36,9 @@ Grouped native parameter integration is in development. All eight finite paramet
 The default immutable application catalog remains `dev-camera`; `dev-full` exposes the expanded 94-field contract only in explicitly selected development builds. Native source choices supersede actor generations, and actual producer activation invalidates earlier pixel permission. Torch retries use a native-only unacknowledged marker, bounded cancellation/deadline tokens and ACK-derived effective state; provider arguments cannot request that marker.
 
 Native decision-time synchronization now protects dispatch, approvals, delayed preference commits and Undo. BeginFieldPlan validates without effects; CommitFieldPlan stages coupled writes only after inverse capture, and failed batches retire processing provenance even after successful restoration. Device-qualified acceleration and temporary source/format journals preserve native user wins. Discovery reports native support separately from acceptance. The opt-in actual-app CPU/dev-full fixture uses production controls with isolated settings and no platform, device or provider bootstrap; its offscreen and SDK evidence covers only the executed native subset.
+
+Selected-media controls, immutable observation identity and Original-only canvas
+deprecation are documented in [video_agent_control.md](../../../docs/video_agent_control.md).
+The explicit expanded development catalog now has 43 tools and 98 parameter
+descriptors (including deprecated read-only canvas metadata). Open video remains
+native-UI-only; no tool accepts arbitrary paths.

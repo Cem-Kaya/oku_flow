@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>CPU テキスト認識モデル</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>現在の録画</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>動画</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>ライブ</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>ライブより遅れています</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>一時停止</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>動画の終わり</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>動画を開いています…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>シーク中…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>録画を待っています</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>録画を終了しています</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>動画を利用できません</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>動画再生</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>10秒戻る</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>動画を一時停止</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>動画を再開</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>ライブに移動</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>最後に移動</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>カメラに戻る</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>フレームを保存</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>再生音声をオンにする</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>再生音声をミュート</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>動画コントロール</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>動画タイムライン</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>左／右：1秒。Page Up／Page Down：10秒。Home：先頭。End：録画の最後。</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 / %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>動画を開く</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>保存した動画を開く (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>オリジナル動画を録画</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>オリジナルMP4録画を開始または停止</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>オリジナル動画の録画に使う音声を選択します。マイクは録画中のみ使用されます。</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>オリジナルMP4録画に使うマイク音声を選択するか、マイクを使わない設定を選択します。</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>表示中のフレームを保持できませんでした。録画済みの動画は引き続き利用できます。</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>動画を開けませんでした。既存のローカルファイルを1つ選択してください。</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>録画を停止できなかったため、動画を開きませんでした。</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>動画を開く前に録画を終了しています...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>録画した動画をシークできるようになるまで待っています。</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>保持中のフレームは録画されていません。続行するには、録画済み動画内の位置を指定してください。</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>保持中のフレームの録画位置を確認できませんでした。続行するには、録画済み動画内の位置を指定してください。</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>動画の終わりです。もう一度再生するには、前の位置に移動してください。</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>カメラを利用できません。直近に録画されたフレームを表示しています。</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>保持中のフレームは録画されていません。保持した画像は引き続き利用できます。</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>保持中のフレームの録画位置を確認できませんでした。保持した画像は引き続き利用できます。</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>利用可能な録画の末尾です。保持した画像は引き続き利用できます。</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>動画を利用できません：%1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>再生音声を利用できません。動画の再生は続行されます。</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>フレームを保存できませんでした：選択した表示を利用できません。</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>フレームを保存できませんでした：画像を保存待ちに追加できませんでした。</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>フレームを保存できませんでした：OkuFlow Photosフォルダーを利用できません。</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>選択した動画のフレームを保存しました。</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>選択した動画のフレームを保存できませんでした。</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>フレームを保存できませんでした：画像の保存処理中です。もう一度お試しください。</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>一時停止できません：表示中のフレームを保持できませんでした。</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;操作方法&lt;/h2&gt;&lt;p&gt;&lt;b&gt;シンプル&lt;/b&gt;ではカメラ映像を最大化します。画面の隅のカルーセルまたは数字キー1～9でクイックモードを切り替えます。&lt;/p&gt;&lt;p&gt;&lt;b&gt;UIを隠す&lt;/b&gt;または&lt;b&gt;Ctrl+H&lt;/b&gt;を使うと、カメラ映像上のコントロールとアシスタントが消えます。&lt;b&gt;UIを表示&lt;/b&gt;すると、それらと現在の回答が戻ります。&lt;/p&gt;&lt;p&gt;&lt;b&gt;詳細&lt;/b&gt;では画像とアシスタントの設定を細かく調整できます。パネル端の仕切りをドラッグして幅を変更します。&lt;/p&gt;&lt;p&gt;カメラ映像をドラッグして表示位置を移動します。Ctrlキーを押しながらマウスホイールを回すと拡大・縮小できます。画面上の移動コントロールを使うには、&lt;b&gt;設定 &amp;gt; 表示とナビゲーション&lt;/b&gt;で&lt;b&gt;仮想ジョイスティック&lt;/b&gt;を有効にします。&lt;/p&gt;&lt;p&gt;写真ではオリジナル版と処理済み版を保存します。録画ではオリジナル動画を保存します。説明ではシーンを説明し、読み取りでは文字を認識します。&lt;b&gt;Ctrl+Shift+O&lt;/b&gt;を押すとOkuFlowファイルの保存先フォルダーが開きます。&lt;/p&gt;&lt;h2&gt;機能&lt;/h2&gt;&lt;p&gt;&lt;b&gt;テキストの明瞭化&lt;/b&gt;は、文書の補正、局所コントラスト、シャープ化、文字輪郭の安定化を組み合わせます。&lt;b&gt;表示色&lt;/b&gt;では読書用の配色とカスタム配色を利用できます。&lt;/p&gt;&lt;p&gt;オプションのNVIDIA Video Effectsランタイムをインストールすると、&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt;で拡大時の細部を鮮明にできます。&lt;/p&gt;&lt;p&gt;&lt;b&gt;テキスト読み上げとアシスタント&lt;/b&gt;では、文字の読み上げ、表示内容の説明、追加質問への回答、結果の講義ノートへの追加ができます。&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>動画ファイル (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;すべてのファイル (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>この表示のUltra Clear Text</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>…は元の画像のまま残されたテキストを示します。</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>動画再生中は、ズーム、回転、読み上げ用の色、UCTを利用できます。高度なGPUエフェクトは利用できません。</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC オリジナル、エンコーダー起動中]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC オリジナル、%1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>一時停止できません：表示中の構図を正確に保持できませんでした。</translation>
+        </message>
     </context>
 </TS>

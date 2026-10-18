@@ -3273,5 +3273,245 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
             <source>CPU text recognizer</source>
             <translation>Textigenkänning med CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>Aktuell inspelning</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>Video</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>Live</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>Inspelning bakom livebilden</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>Pausad</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>Slut på videon</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>Öppnar video…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>Söker position…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>Väntar på inspelning</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>Slutför inspelning</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>Video inte tillgänglig</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>Videouppspelning</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>Spola tillbaka 10 sekunder</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>Pausa video</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>Fortsätt spela upp</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>Hoppa till livebilden</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>Hoppa till slutet</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>Tillbaka till kameran</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>Spara bildruta</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>Slå på ljudet vid uppspelning</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>Stäng av ljudet vid uppspelning</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>Videokontroller</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>Videotidslinje</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>Vänster- och högerpil: en sekund. Page Up och Page Down: tio sekunder. Home: början. End: inspelningens slut.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 av %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>Öppna video</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>Öppna en sparad video (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>Spela in originalvideo</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>Starta eller stoppa en MP4-inspelning i originalformat</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>Välj ljud för inspelningen av originalvideon. Mikrofonen används bara under inspelning.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>Välj mikrofonljud för MP4-inspelningen i originalformat, eller välj ingen mikrofon.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>Den visade bildrutan kunde inte bevaras. Den inspelade videon är fortfarande tillgänglig.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>Videon kunde inte öppnas: välj en befintlig lokal fil.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>Videon öppnades inte eftersom inspelningen inte kunde stoppas.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>Slutför inspelningen innan videon öppnas…</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>Väntar på att det ska gå att hoppa till en viss tid i den inspelade videon.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>Den pausade bildrutan spelades inte in. Gå till den inspelade videon för att fortsätta.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>Det gick inte att verifiera den pausade bildrutans position i inspelningen. Gå till den inspelade videon för att fortsätta.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>Slut på videon. Gå till en tidigare punkt för att spela upp igen.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>Kameran är inte tillgänglig. Den senast inspelade bildrutan visas.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>Den pausade bildrutan spelades inte in. Den bevarade bilden är fortfarande tillgänglig.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>Det gick inte att verifiera den pausade bildrutans position i inspelningen. Den bevarade bilden är fortfarande tillgänglig.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>Slut på tillgänglig inspelning. Den bevarade bilden är fortfarande tillgänglig.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>Video inte tillgänglig: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>Ljudet vid uppspelning är inte tillgängligt. Videon fortsätter att spelas upp.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>Bildrutan sparades inte: den valda vyn är inte tillgänglig.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>Bildrutan sparades inte: bilden kunde inte läggas i kön.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>Bildrutan sparades inte: OkuFlow Photos-mappen är inte tillgänglig.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>Den valda videobildrutan har sparats.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>Den valda videobildrutan kunde inte sparas.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>Bildrutan sparades inte: bilden håller redan på att sparas. Försök igen.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>Det går inte att pausa: den visade bildrutan kunde inte bevaras.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;Kontroller&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Enkelt&lt;/b&gt; maximerar kameravyn. Använd karusellen i hörnet eller siffertangenterna 1 till 9 för att byta snabblägen.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Dölj gränssnitt&lt;/b&gt; eller &lt;b&gt;Ctrl+H&lt;/b&gt; döljer kontrollerna och assistenten i kameravyn. &lt;b&gt;Visa gränssnitt&lt;/b&gt; visar dem igen tillsammans med det befintliga svaret.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Avancerat&lt;/b&gt; öppnar detaljerade inställningar för bild och assistent. Dra avdelaren vid panelkanten för att ändra storlek.&lt;/p&gt;&lt;p&gt;Dra kameravyn för att panorera. Håll Ctrl och rulla med mushjulet för att zooma. Aktivera &lt;b&gt;Virtuell joystick&lt;/b&gt; under &lt;b&gt;Inställningar &amp;gt; Vy och navigering&lt;/b&gt; för att styra rörelsen på skärmen.&lt;/p&gt;&lt;p&gt;Foto sparar både originalversionen och den bearbetade versionen. Spela in sparar originalvideon. Förklara beskriver scenen; Läs identifierar text. Tryck på &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; för att öppna mappen med dina OkuFlow-filer.&lt;/p&gt;&lt;h2&gt;Funktioner&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Textskärpa&lt;/b&gt; kombinerar dokumentrensning, lokal kontrast, skärpning och stabila textkanter. &lt;b&gt;Visningsfärger&lt;/b&gt; innehåller läspaletter och anpassade färgscheman.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; förbättrar detaljer vid zoomning när den valfria NVIDIA Video Effects-körmiljön är installerad.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Textläsning och assistent&lt;/b&gt; kan läsa text, förklara vyn, besvara följdfrågor och lägga till resultat i föreläsningsanteckningar.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>Videofiler (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;Alla filer (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text i den här vyn</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… markerar text som lämnats kvar i originalbilden.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>Videouppspelning: zoom, rotation, läsfärger och UCT är tillgängliga. Avancerade GPU-effekter är inte tillgängliga.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC original, startar kodaren]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC original, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>Det går inte att pausa: den visade bildens utsnitt kunde inte behållas exakt.</translation>
+        </message>
     </context>
 </TS>

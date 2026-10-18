@@ -3303,21 +3303,21 @@
         ]
       },
       "native": {
-        "source": "src/app/app_bootstrap.cpp",
-        "handler": "RecordingManager::SetCanvasMode (bootstrap lambda)",
-        "widget": "recordingCanvasCombo",
-        "settingsMember": "recordingCanvasMode"
+        "source": "src/app/agent/app_control_recording_parameters.cpp",
+        "handler": "QueryRecordingParameters (deprecated Original-only metadata)",
+        "widget": "removed",
+        "settingsMember": "ignored legacy key; omitted on save"
       },
-      "units": "processed_mp4_pixels",
-      "nativePersistence": "shared_saved_immediate",
+      "units": "original_source_dimensions",
+      "nativePersistence": "deprecated_not_persisted",
       "permissionDomain": "capture_configuration",
       "effects": [
-        "next_recording_canvas_only",
-        "activeCanvasMode_is_snapshotted_at_Start",
+        "deprecated_original_only",
+        "no_writes",
         "original_mp4_keeps_camera_resolution"
       ],
-      "availability": "source size or640x360,854x480,1280x720,1920x1080,2560x1440,3840x2160",
-      "mcpAccess": "typed_get_set_required",
+      "availability": "deprecated; Original recording always retains selected camera source dimensions; writes unavailable",
+      "mcpAccess": "read_only_deprecated",
       "serviceField": null,
       "validation": {
         "native": "Finite native widget/handler range; enum data rather than translated labels.",
@@ -3335,7 +3335,7 @@
         "tests/recording_manager_tests.cpp",
         "tests/recording_integrity_tests.cpp"
       ],
-      "agentCoverage": "not_yet_implemented_for_expanded_field",
+      "agentCoverage": "deprecated writes rejected before side effects",
       "nativeEnum": {
         "source": 0,
         "1080p": 1,
@@ -5797,6 +5797,55 @@
         "never_infer_UI_user_intent"
       ],
       "implementationStatus": "native_UI_existing_metadata_registered"
+    },
+    {
+      "actionId": "video.pause",
+      "source": "src/app/app_video_playback.cpp",
+      "handler": "SetSelectedVideoPlaying(false)",
+      "mcpAccess": "existing-tool-runtime-gated",
+      "permissionDomain": "selected_view"
+    },
+    {
+      "actionId": "video.resume",
+      "source": "src/app/app_video_playback.cpp",
+      "handler": "SetSelectedVideoPlaying(true)",
+      "mcpAccess": "existing-tool-runtime-gated",
+      "permissionDomain": "selected_view"
+    },
+    {
+      "actionId": "video.seek",
+      "source": "src/app/app_video_playback.cpp",
+      "handler": "SeekSelectedVideo",
+      "mcpAccess": "existing-tool-runtime-gated",
+      "permissionDomain": "selected_view"
+    },
+    {
+      "actionId": "video.jump_latest_end",
+      "source": "src/app/app_video_playback.cpp",
+      "handler": "JumpSelectedVideoToEnd",
+      "mcpAccess": "existing-tool-runtime-gated",
+      "permissionDomain": "selected_view"
+    },
+    {
+      "actionId": "video.return_to_camera",
+      "source": "src/app/app_video_playback.cpp",
+      "handler": "ReturnVideoToCamera",
+      "mcpAccess": "existing-tool-runtime-gated",
+      "permissionDomain": "selected_view"
+    },
+    {
+      "actionId": "video.save_frame",
+      "source": "src/app/app_video_playback.cpp",
+      "handler": "SaveSelectedVideoFrame",
+      "mcpAccess": "existing-tool-runtime-gated",
+      "permissionDomain": "photos_exact_selected_frame"
+    },
+    {
+      "actionId": "video.open",
+      "source": "src/app/app_video_playback.cpp",
+      "handler": "OpenVideoFile (native file chooser/drop only)",
+      "mcpAccess": "native-ui-only",
+      "permissionDomain": "native_file_chooser_or_drop"
     }
   ],
   "requiredCatalog": [

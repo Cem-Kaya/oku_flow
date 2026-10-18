@@ -59,6 +59,7 @@ class OkuFlowApp;
 class ColorSchemePicker;
 class UltraClearTextOverlay;
 class UltraClearTextPanel;
+class VideoTransport;
 class CollapsibleSection;
 namespace settings { struct AdvancedConfig; }
 
@@ -98,6 +99,8 @@ public:
     QCheckBox* zoomWheelAccelerationCheckbox() const;
     QPushButton* capturePhotoButton() const;
     QPushButton* recordButton() const;
+    QPushButton* openVideoButton() const { return openVideoButton_; }
+    VideoTransport* videoTransport() const { return videoTransport_; }
     QPushButton* annotationButton() const;
     AnnotationOverlay* annotationOverlay() const;
     UltraClearTextOverlay* ultraClearTextOverlay() const { return ultraClearTextOverlay_; }
@@ -251,6 +254,8 @@ signals:
                                       const QString& shapeKind,
                                       int textSizePixels);
     void applicationLanguageRequested(const QString& code);
+    void openVideoRequested();
+    void videoFileDropped(const QString& path);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -345,6 +350,8 @@ private:
     std::vector<ScopedDescription> scopedDescriptions_;
     QPushButton* capturePhotoButton_{};
     QPushButton* recordButton_{};
+    QPushButton* openVideoButton_{};
+    VideoTransport* videoTransport_{};
     QPushButton* annotationButton_{};
     AnnotationOverlay* annotationOverlay_{};
     UltraClearTextOverlay* ultraClearTextOverlay_{};

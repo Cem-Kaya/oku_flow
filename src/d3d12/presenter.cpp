@@ -382,6 +382,7 @@ D3D12Presenter::~D3D12Presenter()
         slot.buffer.Reset();
         slot.allocator.Reset();
         slot.inFlight = false;
+        slot.sourceLease.reset();
     }
     if (fenceEvent_) {
         CloseHandle(fenceEvent_);
@@ -473,6 +474,7 @@ try
     // TryGetCompletedReadback result for those frames.
     for (auto& slot : asyncReadbackSlots_) {
         slot.inFlight = false;
+        slot.sourceLease.reset();
     }
     for (auto& buffer : backBuffers_) {
         buffer.Reset();
@@ -1453,6 +1455,41 @@ bool D3D12Presenter::RequestReadback(ID3D12Resource* texture,
                                      UINT width,
                                      UINT height,
                                      UINT64* outRequestId)
+{
+    return RequestReadbackOwned(texture, width, height, outRequestId, {});
+}
+
+bool D3D12Presenter::RequestReadback(const GpuVideoFrame& frame, UINT64* outRequestId)
+try
+{
+    if (!initialized_ || !frame.IsValid()) return false;
+    // Cancellation may retire UI authority before GPU completion. Keep just
+    // one owned hold copy outstanding until its exact ring slot is drained.
+    for (const auto& slot : asyncReadbackSlots_) if (slot.sourceLease) return false;
+    auto lease = std::make_shared<ReadbackSourceLease>();
+    lease->producer = frame.lifetime;
+    ThrowIfFailed(device_->OpenSharedHandle(frame.textureSharedHandle,
+        IID_PPV_ARGS(&lease->texture)), "Failed to open retained Original for readback");
+    ThrowIfFailed(device_->OpenSharedHandle(frame.fenceSharedHandle,
+        IID_PPV_ARGS(&lease->fence)), "Failed to open retained Original producer fence");
+    const auto description = lease->texture->GetDesc();
+    if (description.Width != frame.width || description.Height != frame.height ||
+        description.Format != DXGI_FORMAT_B8G8R8A8_UNORM) return false;
+    auto* texture = lease->texture.Get();
+    return RequestReadbackOwned(texture, frame.width, frame.height, outRequestId,
+                                std::move(lease), frame.readyFenceValue);
+}
+catch (const std::exception& error)
+{
+    qWarning() << "Retained Original readback unavailable:" << error.what();
+    return false;
+}
+
+bool D3D12Presenter::RequestReadbackOwned(ID3D12Resource* texture,
+                                        UINT width, UINT height,
+                                        UINT64* outRequestId,
+                                        std::shared_ptr<ReadbackSourceLease> sourceLease,
+                                        UINT64 producerValue)
 try
 {
     if (!initialized_ || !texture || width == 0 || height == 0) {
@@ -1495,8 +1532,16 @@ try
     ThrowIfFailed(commandList_->Close(), "Failed to close command list");
 
     ID3D12CommandList* lists[] = { commandList_.Get() };
-    if (!KeepSubmittedResource(texture)) return false;
+    // Owned readbacks retire through their ring slot. Do not accumulate a
+    // newly opened shared-resource wrapper across repeated Pause operations.
+    if (!sourceLease && !KeepSubmittedResource(texture)) return false;
     if (!QueueExternalDependency()) return false;
+    if (sourceLease && producerValue > 0) {
+        ThrowIfFailed(commandQueue_->Wait(sourceLease->fence.Get(), producerValue),
+                      "Failed to queue retained Original producer wait");
+    }
+    // Retain before Execute: a later Signal failure is unknown completion.
+    slot->sourceLease = std::move(sourceLease);
     commandQueue_->ExecuteCommandLists(static_cast<UINT>(std::size(lists)), lists);
 
     const UINT64 signalValue = ReserveGraphicsSignal();
@@ -1809,6 +1854,7 @@ try
     oldest->buffer->Unmap(0, &emptyRange);
 
     oldest->inFlight = false;
+    oldest->sourceLease.reset();
     outWidth = width;
     outHeight = height;
     if (outRequestId) {
@@ -1967,6 +2013,10 @@ void D3D12Presenter::QuarantineResources() noexcept
     for (auto& slot : asyncReadbackSlots_) {
         slot.buffer.Detach();
         slot.allocator.Detach();
+        // Unknown GPU completion cannot release a recorder-pool lease or its
+        // imported fence/resource. A self-reference preserves this bounded
+        // ring owner until process exit without allocation during failure.
+        if (slot.sourceLease) slot.sourceLease->quarantine = slot.sourceLease;
     }
     for (auto& texture : submittedSourceTextures_) texture.Detach();
     if (recordingFramePool_) recordingFramePool_->RetainUntilProcessExit(recordingFramePool_);

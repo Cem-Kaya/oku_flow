@@ -428,6 +428,28 @@ private slots:
         QVERIFY(!service.Resolve({{"space","observation"},{"observationId",id},{"px",width/2},{"py",height/2}},geometry));
         service.Cancel(); QVERIFY(service.Metrics(frame.stamp)["stale"].toBool());
     }
+    void observationCacheRetainsNewestInsertionsRegardlessOfUuidOrder() {
+        int next=100;
+        ObservationService service(nullptr,{},[&]{return QString("obs-%1").arg(next--,32,16,QChar('0'));});
+        ObservationFrame frame;frame.stamp={7,4,3,2};
+        frame.transform=okuflow::ComputeViewTransform(64,64,64,64,1,0.5,0.5,okuflow::ViewportFitMode::kFit);
+        frame.sourceSize=frame.viewportSize=QSize(64,64);
+        QImage image(64,64,QImage::Format_ARGB32);image.fill(Qt::white);
+        QStringList ids;
+        for(int index=0;index<24;++index) {
+            std::optional<ControlResult> result;
+            service.Request(true,384,frame.stamp,[&](ControlResult value){result=std::move(value);});
+            service.Consume(image,frame);QTRY_VERIFY(result.has_value());QVERIFY(result->content["ok"].toBool());
+            const auto id=result->content["observationId"].toString();ids.push_back(id);
+            QVERIFY(service.Resolve({{"space","observation"},{"observationId",id},{"px",192},{"py",192}},frame.stamp));
+        }
+        for(int index=0;index<ids.size();++index) {
+            const auto resolved=service.Resolve({{"space","observation"},{"observationId",ids[index]},{"px",192},{"py",192}},frame.stamp);
+            QCOMPARE(resolved.has_value(),index>=ids.size()-16);
+        }
+        service.Cancel();
+        QVERIFY(!service.Resolve({{"space","observation"},{"observationId",ids.last()},{"px",192},{"py",192}},frame.stamp));
+    }
     void observationFreshnessUsesElapsedTimeAndHeldTruth() {
         qint64 now = 5000;
         ObservationService service(nullptr,[&] { return now; });
@@ -454,6 +476,36 @@ private slots:
         result.reset(); service.Request(false,768,frame.stamp,[&](ControlResult value) { result = value; });
         service.Consume(image,frame); QTRY_VERIFY(result.has_value());
         QVERIFY(service.Metrics(frame.stamp)["stale"].toBool());
+    }
+    void immutableObservationsFollowThePresentedFrameWithoutCameraFreshness() {
+        qint64 now=50'000;
+        ObservationService service(nullptr,[&]{return now;});
+        ObservationFrame frame;frame.stamp={4,2,1,8};frame.sequence=9;
+        frame.transform=okuflow::ComputeViewTransform(64,64,64,64,1,0.5,0.5,okuflow::ViewportFitMode::kFit);
+        frame.sourceSize=frame.viewportSize=QSize(64,64);frame.held=true;frame.converging=false;
+        frame.immutableSource=true;frame.documentId="media-"+QString(32,'a');
+        frame.documentGeneration=frame.selectionGeneration=7;frame.mediaPts100ns=12'000'000;
+        QImage image(64,64,QImage::Format_ARGB32);image.fill(Qt::white);
+        std::optional<ControlResult> result;
+        service.Request(true,384,frame.stamp,[&](ControlResult value){result=std::move(value);});
+        service.Consume(image,frame);QTRY_VERIFY(result.has_value());
+        QVERIFY(result->content["ok"].toBool());QVERIFY(result->observation.has_value());
+        QVERIFY(result->observation->immutableSource);
+        QCOMPARE(result->observation->mediaPts100ns,frame.mediaPts100ns);
+        QCOMPARE(result->content["media"].toObject()["documentId"].toString(),frame.documentId);
+        const auto id=result->content["observationId"].toString();
+        const QJsonObject point{{"space","observation"},{"observationId",id},{"px",192},{"py",192}};
+        now+=60'000;
+        QVERIFY(service.Metrics(frame.stamp)["frameAgeMs"].isNull());
+        QVERIFY(!service.Metrics(frame.stamp)["stale"].toBool());
+        QVERIFY(service.Resolve(point,frame.stamp));
+        // Playback advanced without changing document/seek authority. Old
+        // coordinates must still be rejected against the actual new pixels.
+        ++frame.sequence;frame.mediaPts100ns+=333'333;
+        service.Consume(image,frame);
+        QVERIFY(!service.Resolve(point,frame.stamp));
+        QVERIFY(service.Metrics(frame.stamp)["stale"].toBool());
+        service.Cancel();QVERIFY(!service.Resolve(point,frame.stamp));
     }
     void durableOperationsRejectLateAndUnsafeUpdates() {
         qint64 now = 1; OperationTracker tracker([&] { return now; });
@@ -844,7 +896,7 @@ private slots:
         const auto fallback = QString::fromUtf8(kReceiptFallbackLabel.data(),static_cast<qsizetype>(kReceiptFallbackLabel.size()));
         QVERIFY(cataloged(fallback));
         // Layout-only preferences without their own caption keep the neutral label.
-        const QSet<QString> neutral{"ui.mode","ui.activeTab","ui.sectionExpanded"};
+        const QSet<QString> neutral{"ui.mode","ui.activeTab","ui.sectionExpanded","video.selection"};
         QCOMPARE(ParameterRegistry().size(),size_t(98));
         for (const auto& descriptor : ParameterRegistry()) {
             const auto id = QString::fromUtf8(descriptor.id.data(),static_cast<qsizetype>(descriptor.id.size()));
@@ -852,7 +904,7 @@ private slots:
             QVERIFY2(neutral.contains(id) || label(id) != fallback,qPrintable(id));
         }
         // Every legacy receipt spelling resolves to the caption of its canonical id.
-        for (int index = 0; index <= static_cast<int>(Field::UctCpuRecognizer); ++index) {
+        for (int index = 0; index <= static_cast<int>(Field::VideoSelection); ++index) {
             const auto field = static_cast<Field>(index);
             const auto legacy = FieldName(field), canonical = ParameterId(field);
             QVERIFY2(!legacy.isEmpty() && cataloged(label(legacy)),qPrintable(legacy));

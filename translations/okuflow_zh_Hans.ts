@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>CPU 文本识别模型</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>当前录制</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>视频</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>实时</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>落后于实时</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>已暂停</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>视频结束</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>正在打开视频…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>正在定位…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>正在等待可读取的录制内容</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>正在完成录制</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>视频不可用</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>视频播放</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>倒退 10 秒</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>暂停视频</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>继续播放</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>跳到实时位置</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>跳到结尾</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>返回摄像头</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>保存帧</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>取消视频静音</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>将视频静音</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>视频控件</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>视频时间轴</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>左/右键：1 秒。Page Up/Page Down：10 秒。Home：开头。End：录制结尾。</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 / %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>打开视频</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>打开已保存的视频 (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>录制原始视频</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>开始或停止录制原始 MP4</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>选择录制原始视频时使用的声音。仅在录制期间使用麦克风。</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>选择录制原始 MP4 时使用的麦克风音频，或选择不使用麦克风。</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>无法保留当前显示的画面。录制的视频仍可使用。</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>无法打开视频：请选择一个现有的本地文件。</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>由于无法停止录制，未打开视频。</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>正在完成录制，然后打开视频...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>正在等待录制视频可供定位。</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>该定格画面未被录制。请定位到录制的视频以继续。</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>无法确认该定格画面在录制中的位置。请定位到录制的视频以继续。</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>视频已结束。请定位到较早的位置以再次播放。</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>摄像头不可用。正在显示最近录制的画面。</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>该定格画面未被录制。保留的图像仍可使用。</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>无法确认该定格画面在录制中的位置。保留的图像仍可使用。</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>已到当前可用录制内容的末尾。保留的图像仍可使用。</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>视频不可用：%1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>无法播放声音。视频仍会继续播放。</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>未保存画面：所选视图不可用。</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>未保存画面：无法将图像加入队列。</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>未保存画面：OkuFlow Photos 文件夹不可用。</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>已保存所选视频画面。</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>无法保存所选视频画面。</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>未保存画面：当前正在处理图像保存，请稍后重试。</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>无法暂停：无法保留当前显示的画面。</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;操作&lt;/h2&gt;&lt;p&gt;&lt;b&gt;简易&lt;/b&gt;模式会最大化摄像头画面。使用角落中的轮播控件或数字键 1 至 9 切换快捷模式。&lt;/p&gt;&lt;p&gt;使用&lt;b&gt;隐藏界面&lt;/b&gt;或按 &lt;b&gt;Ctrl+H&lt;/b&gt; 可从摄像头画面中隐藏控件和助手。使用&lt;b&gt;显示界面&lt;/b&gt;可恢复它们和现有回答。&lt;/p&gt;&lt;p&gt;&lt;b&gt;高级&lt;/b&gt;模式可打开详细的图像和助手设置。拖动面板边缘的分隔线可调整面板大小。&lt;/p&gt;&lt;p&gt;拖动摄像头画面可平移。按住 Ctrl 并滚动鼠标滚轮可缩放。在&lt;b&gt;设置 &amp;gt; 视图与导航&lt;/b&gt;中启用&lt;b&gt;虚拟摇杆&lt;/b&gt;，即可使用屏幕上的移动控件。&lt;/p&gt;&lt;p&gt;照片会同时保存原始版和处理版。录制会保存原始视频。解释用于描述场景；阅读用于识别文字。按 &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; 可打开存放 OkuFlow 文件的文件夹。&lt;/p&gt;&lt;h2&gt;功能&lt;/h2&gt;&lt;p&gt;&lt;b&gt;文本清晰度&lt;/b&gt;结合文档增强、局部对比度、锐化和稳定的文字边缘。&lt;b&gt;显示颜色&lt;/b&gt;提供阅读配色和自定义配色方案。&lt;/p&gt;&lt;p&gt;安装可选的 NVIDIA Video Effects 运行时后，&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt;可改善放大后的细节。&lt;/p&gt;&lt;p&gt;&lt;b&gt;文字阅读与助手&lt;/b&gt;可朗读文字、解释视图、回答后续问题，并将结果添加到课堂笔记中。&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>视频文件 (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;所有文件 (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>此视图中的 Ultra Clear Text</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… 表示该文字保留为原始图像。</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>视频播放：可使用缩放、旋转、阅读配色和 UCT。高级 GPU 效果不可用。</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC 原始画面，编码器启动中]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC 原始画面，%1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>无法暂停：无法准确保留当前显示的取景画面。</translation>
+        </message>
     </context>
 </TS>

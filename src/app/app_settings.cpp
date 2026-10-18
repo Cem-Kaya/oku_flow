@@ -327,15 +327,7 @@ void OkuFlowApp::SavePersistentSettings() {
         pipelineOrchestrator_->ViewportRateMode();
     settingsController_->MutableSettings().viewportFitMode =
         pipelineOrchestrator_->ViewportFitMode();
-    if (uiState_->recordingCanvasCombo_) {
-        const int storedValue =
-            uiState_->recordingCanvasCombo_->currentData().toInt();
-        settingsController_->MutableSettings().recordingCanvasMode =
-            static_cast<RecordingCanvasMode>(std::clamp(
-                storedValue,
-                static_cast<int>(RecordingCanvasMode::Source),
-                static_cast<int>(RecordingCanvasMode::Nhd360)));
-    }
+    settingsController_->MutableSettings().recordingCanvasMode = RecordingCanvasMode::Source;
     if (mainWindow_) {
         settingsController_->MutableSettings().advancedPanelWidth = mainWindow_->preferredAdvancedPanelWidth();
         settingsController_->MutableSettings().uiSectionStates =

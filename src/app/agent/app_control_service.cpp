@@ -70,6 +70,15 @@ void DeriveParameterPolicy(ControlPlan& plan) {
 }
 bool IsAsync(ToolId tool) { return tool == ToolId::Observe || tool == ToolId::Metrics || tool == ToolId::Wait || tool == ToolId::Photo
     || tool == ToolId::RecordingStart || tool == ToolId::RecordingStop || tool == ToolId::CameraSelect; }
+void BindViewAuthority(ControlPlan& plan, ToolId tool, const IAppControlTarget& target,
+                       CatalogEdition edition) {
+    const ToolDescriptor* descriptor=nullptr;
+    for(const auto& entry:ControlRegistry(edition))if(entry.id==tool) {descriptor=&entry;break;}
+    if(!descriptor || (descriptor->tier!=Tier::View && (!IsVideoControlTool(tool) || tool==ToolId::VideoState)))return;
+    if(target.Fields().contains(Field::VideoSelection) &&
+       std::find(plan.requiredFields.begin(),plan.requiredFields.end(),Field::VideoSelection)==plan.requiredFields.end())
+        plan.requiredFields.push_back(Field::VideoSelection);
+}
 }
 QString FieldName(Field field) {
     static constexpr const char* names[]{"zoomEnabled","zoomAmount","centerX","centerY","framing","rotation","camera",
@@ -91,7 +100,7 @@ QString FieldName(Field field) {
         "ui.setupPromptDeclined","ui.activeTab","annotation.color","annotation.width","annotation.textSize","annotation.dashed",
         "annotation.shape","annotation.captureOnExit","annotation.tool","annotation.enabled",
         "camera.format","camera.acceleration","camera.phoneTorch","recording.microphone","recording.canvas","notes_output.root",
-        "image.uct.gpu.detector","image.uct.gpu.recognizer","image.uct.cpu.detector","image.uct.cpu.recognizer"};
+        "image.uct.gpu.detector","image.uct.gpu.recognizer","image.uct.cpu.detector","image.uct.cpu.recognizer","video.selection"};
     const auto index = static_cast<std::size_t>(field);
     return index < std::size(names) ? QString::fromLatin1(names[index]) : QString();
 }
@@ -114,6 +123,9 @@ AppControlService::AppControlService(IAppControlTarget& target, CatalogEdition e
 void AppControlService::SetEnabled(bool embedded, bool external) {
     Q_ASSERT(QThread::currentThread() == thread());
     embeddedEnabled_ = embedded; externalEnabled_ = external;
+    for(const auto& weak:operationAuthorities_)if(const auto authority=weak.lock())
+        if((authority->kind==ContextKind::EmbeddedTurn && !embedded) ||
+           (authority->kind==ContextKind::ExternalLease && !external))authority->canceled=true;
     if (!embedded) nextFrameOwner_.clear();
     if (context_ && ((context_->spec.kind == ContextKind::EmbeddedTurn && !embedded)
         || (context_->spec.kind == ContextKind::ExternalLease && !external))) RetireOwner(context_->spec.owner);
@@ -122,11 +134,16 @@ QString AppControlService::Begin(const ContextSpec& spec) {
     Q_ASSERT(QThread::currentThread() == thread());
     if (spec.owner.isEmpty() || !spec.epoch || (context_ && context_->active)
         || (spec.kind == ContextKind::EmbeddedTurn ? !embeddedEnabled_ : !externalEnabled_)) return {};
+    std::erase_if(operationAuthorities_,[](const auto& weak){return weak.expired();});
+    if(operationAuthorities_.size()>=256)return {};
     // Native edits made before the turn belong to its starting baseline.
     target_.SynchronizeNativeState();
     approval_.reset();
     Context context;
     context.id = Id(); context.spec = spec;
+    context.operationAuthority=std::make_shared<AdmittedControlAuthority>();
+    context.operationAuthority->owner=spec.owner;context.operationAuthority->kind=spec.kind;
+    operationAuthorities_.push_back(context.operationAuthority);
     if (spec.kind == ContextKind::EmbeddedTurn && nextFrameOwner_ == spec.owner
         && nextFrameSource_ == sourceEpoch_ && Now() < nextFrameExpires_) context.spec.grants.frames = true;
     nextFrameOwner_.clear();
@@ -143,6 +160,7 @@ void AppControlService::End(const QString& id, bool normal) {
     Q_ASSERT(QThread::currentThread() == thread());
     if (!context_ || context_->id != id || !context_->active) return;
     context_->active = false; context_->ended = Now();
+    if(!normal || context_->spec.kind==ContextKind::ExternalLease)context_->operationAuthority->canceled=true;
     if (approval_ && approval_->contextId == id) {
         if (normal) approval_->expires = std::min(approval_->expires, context_->ended + 30000);
         else approval_.reset();
@@ -170,6 +188,8 @@ void AppControlService::End(const QString& id, bool normal) {
 void AppControlService::RetireOwner(const QString& owner) {
     Q_ASSERT(QThread::currentThread() == thread());
     if (owner.isEmpty()) return;
+    for(const auto& weak:operationAuthorities_)if(const auto authority=weak.lock())
+        if(authority->owner==owner)authority->canceled=true;
     if (nextFrameOwner_ == owner) nextFrameOwner_.clear();
     bool stopped = false;
     if (context_ && context_->spec.owner == owner) {
@@ -187,6 +207,7 @@ void AppControlService::SetGrants(const QString& id, const ControlGrants& grants
     if (!context_ || context_->id != id || !context_->active) return;
     if (context_->spec.kind == ContextKind::ExternalLease) return; // immutable lease bundle
     const bool recordingRevoked = context_->spec.grants.recording && !grants.recording;
+    if(context_->spec.grants.photos && !grants.photos)context_->operationAuthority->photosRevoked=true;
     if (context_->spec.grants.frames != grants.frames) ++context_->frameGrantGeneration;
     context_->spec.grants = grants; context_->spec.grants.source = false;
     if (recordingRevoked) target_.StopOwnedRecording(context_->spec.owner);
@@ -194,6 +215,7 @@ void AppControlService::SetGrants(const QString& id, const ControlGrants& grants
 }
 void AppControlService::SourceChanged() {
     ++sourceEpoch_; ++geometryEpoch_; ++stateVersion_;
+    auto& selected=revisions_[Field::VideoSelection];++selected.value;selected.user=true;
     approval_.reset();
     nextFrameOwner_.clear();
     if (context_) { context_->spec.grants.frames = false; Event(*context_, "source_changed"); }
@@ -285,6 +307,10 @@ bool AppControlService::IsContextActive(const QString& id) {
     Q_ASSERT(QThread::currentThread()==thread());
     return context_ && context_->id==id && context_->active && ValidContext(*context_);
 }
+std::shared_ptr<const AdmittedControlAuthority> AppControlService::CaptureOperationAuthority(const QString& id) {
+    if(!IsContextActive(id))return {};
+    return context_->operationAuthority;
+}
 quint64 AppControlService::FieldRevision(Field field) const {
     Q_ASSERT(QThread::currentThread()==thread());
     const auto found=revisions_.find(field);return found==revisions_.end()?0:found->second.value;
@@ -319,7 +345,8 @@ bool AppControlService::AuthorizeFrameDelivery(const QString& contextId, Control
 }
 bool AppControlService::AuthorizeFrameDelivery(const AuthorizedObservation& expected) {
     return AuthorizeFrameDelivery(expected.contextId, expected.stamp)
-        && context_->frameGrantGeneration == expected.grantGeneration;
+        && context_->frameGrantGeneration == expected.grantGeneration
+        && target_.ObservationStillCurrent(expected);
 }
 bool AppControlService::ValidContext(Context& context) {
     if (!context.active) return false;
@@ -373,6 +400,12 @@ bool AppControlService::HasDomainGrant(const Context& context, ToolId tool, cons
     }
 }
 bool AppControlService::Stale(const Context& context, const ControlPlan& plan) const {
+    for(const auto field:plan.requiredFields) {
+        const auto revision=revisions_.find(field);
+        const auto baseline=context.baseline.find(field);
+        if(revision!=revisions_.end() && revision->second.user &&
+           (baseline==context.baseline.end() || revision->second.value>baseline->second))return true;
+    }
     for (const auto& write : plan.writes) {
         if(write.field==Field::CameraAcceleration && !write.targetIdentity.isEmpty()) {
             const auto revision=cameraRevisions_.find(write.targetIdentity);
@@ -399,6 +432,9 @@ void AppControlService::Dispatch(const ControlRequest& request, ControlCompletio
     if (request.callKey.isEmpty() || request.callKey.size() > 256) { completion(ControlResult::Failure("invalid_argument")); return; }
     const auto* descriptor = FindControlTool(request.tool.toStdString(), edition_);
     if (!descriptor) { completion(ControlResult::Failure("denied_by_policy")); return; }
+    if(descriptor->id==ToolId::RecordingSettingsSet && request.arguments.contains("recording.canvas")) {
+        completion(ControlResult::Failure("unavailable"));return;
+    }
     const auto args = Normalize(*descriptor, request.arguments);
     if (!args) { completion(ControlResult::Failure("invalid_argument")); return; }
     const auto digest = Digest(descriptor->id, *args);
@@ -461,12 +497,13 @@ void AppControlService::Continue(const ControlRequest& request, ToolId tool) {
         const bool toggleMissing =
             (tool == ToolId::Observe && !grants.frames)
             || ((tool == ToolId::Orientation || tool == ToolId::CameraSelect || tool == ToolId::CameraSettingsSet) && !grants.source)
-            || (tool == ToolId::Photo && !grants.photos)
+            || ((tool == ToolId::Photo || tool==ToolId::VideoSaveFrame) && !grants.photos)
             || ((tool == ToolId::RecordingStart || tool == ToolId::RecordingStop) && !grants.recording);
         if (toggleMissing) { Finish(context.id, request.callKey, ControlResult::Failure("denied_by_policy")); return; }
     }
     auto plan = target_.Prepare(tool, *args, context.spec.owner);
     DeriveParameterPolicy(plan);
+    BindViewAuthority(plan,tool,target_,edition_);
     if (!plan.error.isEmpty()) { Finish(context.id, request.callKey, ControlResult::Failure(plan.error)); return; }
     if (descriptor->tier != Tier::Read && target_.ModalActive()) { Finish(context.id, request.callKey, ControlResult::Failure("modal_active", true)); return; }
     if (descriptor->tier == Tier::Source && target_.RecordingActive()) { Finish(context.id, request.callKey, ControlResult::Failure("busy")); return; }
@@ -677,8 +714,15 @@ ControlResult AppControlService::Run(Context& context, ToolId tool, const QJsonO
             auto [inverse,inserted]=context.cameraJournal.try_emplace(write.targetIdentity,Inverse{existing->second,scoped.value,write.targetIdentity});
             inverse->second.lastWrite=scoped.value;context.cameraBaseline[write.targetIdentity]=scoped.value;
         } else {
-            auto [inverse, inserted] = context.journal.try_emplace(write.field, Inverse{existing->second, revision.value,write.targetIdentity});
+            const auto selection=fields.find(Field::VideoSelection);
+            const auto videoSelection=selection==fields.end()?QJsonValue():selection->second;
+            auto [inverse, inserted] = context.journal.try_emplace(write.field, Inverse{existing->second, revision.value,write.targetIdentity,sourceEpoch_,videoSelection});
+            if(!inserted && (IsView(write.field) || write.field==Field::Rotation) && inverse->second.sourceEpoch!=sourceEpoch_) {
+                inverse->second.previous=existing->second;inverse->second.targetIdentity=write.targetIdentity;
+            }
             inverse->second.lastWrite = revision.value;
+            inverse->second.sourceEpoch=sourceEpoch_;
+            inverse->second.videoSelection=videoSelection;
         }
         context.baseline[write.field] = revision.value;
         if (IsFlash(write.field)) context.flashAt[write.field] = now;
@@ -760,6 +804,7 @@ ControlResult AppControlService::Ask(Context& context, ToolId tool, const QJsonO
     approval.digest = digest; approval.plan = plan; approval.expires = Now()+300000;
     approval.frame = tool == ToolId::Observe || (plan.requiresFrames && !context.spec.grants.frames);
     for (const auto& write : plan.writes) approval.revisions[write.field] = revisions_[write.field].value;
+    for(const auto field:plan.requiredFields)approval.revisions[field]=revisions_[field].value;
     approval_ = std::move(approval); ++context.approvals;
     Event(context,"approval_requested",{{"approvalId",approval_->id}});
     auto result = ControlResult::Failure("consent_required"); result.content["approvalId"] = approval_->id;
@@ -785,6 +830,7 @@ QJsonObject AppControlService::PendingApproval() const {
     case ToolId::NotesPreferencesSet: domain = "output"; break;
     case ToolId::AnnotationPreferencesSet: domain = "drawing"; break;
     case ToolId::UiPreferencesSet: domain = "ui"; break;
+    case ToolId::VideoSaveFrame: domain = "photo"; break;
     default: break;
     }
     if (approval_->frame) { domain = "frame"; sideEffects = {}; }
@@ -814,6 +860,7 @@ ControlResult AppControlService::ResolveApproval(const QString& id, bool allow) 
     for (const auto& [field, revision] : approval.revisions) if (revisions_[field].value != revision) return ControlResult::Failure("stale_state");
     auto currentPlan = target_.Prepare(approval.tool,approval.args,context.spec.owner);
     DeriveParameterPolicy(currentPlan);
+    BindViewAuthority(currentPlan,approval.tool,target_,edition_);
     const auto& bound = approval.plan;
     bool sameWrites = currentPlan.writes.size() == bound.writes.size();
     for (size_t index = 0; sameWrites && index < bound.writes.size(); ++index)
@@ -822,6 +869,7 @@ ControlResult AppControlService::ResolveApproval(const QString& id, bool allow) 
             && currentPlan.writes[index].targetIdentity == bound.writes[index].targetIdentity
             && currentPlan.writes[index].retryUnacknowledged == bound.writes[index].retryUnacknowledged;
     if (!currentPlan.error.isEmpty() || currentPlan.targetIdentity != bound.targetIdentity || !sameWrites
+        || currentPlan.requiredFields != bound.requiredFields
         || currentPlan.approvalDomain != bound.approvalDomain || currentPlan.requiresFrames != bound.requiresFrames
         || currentPlan.requiresPhotos != bound.requiresPhotos
         || currentPlan.requiresRecording != bound.requiresRecording || currentPlan.asynchronous != bound.asynchronous
@@ -936,6 +984,8 @@ ControlResult AppControlService::Delivery(Context& context, const Reservation& r
     if (reservation.imageStamp != Stamp()) return ControlResult::Failure("stale_observation");
     if (result.observation && result.observation->stamp != reservation.imageStamp)
         return ControlResult::Failure("stale_observation");
+    if(result.observation && !target_.ObservationStillCurrent(*result.observation))
+        return ControlResult::Failure("stale_observation");
     if (reservation.imageGrantGeneration != context.frameGrantGeneration)
         return ControlResult::Failure("consent_denied");
     const auto bytes = result.jpeg.toBase64().size();
@@ -984,6 +1034,8 @@ void AppControlService::Expire() {
 ControlResult AppControlService::StopAndUndo() {
     target_.SynchronizeNativeState();
     if (!context_) return {{{"ok",true},{"changed",false}},{}};
+    for(const auto& weak:operationAuthorities_)if(const auto authority=weak.lock())
+        if(authority->owner==context_->spec.owner)authority->canceled=true;
     // Read the exact source ownership and its journal before ending: ending
     // performs the restore and consumes that journal.
     const bool sourceRestoreRequested=target_.HasOwnedSource(context_->spec.owner);
@@ -1012,9 +1064,19 @@ ControlResult AppControlService::StopAndUndo() {
     if (context_->journal.contains(Field::CustomColorRecipe))
         for (const auto field : {Field::CustomColorMode,Field::CustomColorStopCount,Field::CustomColorStops,Field::CustomColorStepped,Field::Scheme})
             if (revisions_[field].user && revisions_[field].value > context_->baseline[field]) customStale = true;
+    const auto undoFields=target_.Fields();
+    const auto selectedVideo=undoFields.find(Field::VideoSelection);
+    const auto videoSelection=selectedVideo==undoFields.end()?QJsonValue():selectedVideo->second;
     ControlPlan inversePlan;
     for (const auto field : order) {
         const auto inverse = context_->journal.at(field);
+        // Returning the exact owner's temporary camera is part of Undo, not a
+        // native selection. Preserve its view inverses only while the selected
+        // media identity/generation is unchanged. A user open/seek still wins.
+        const bool ownedCameraRestore=sourceRestoreRequested && inverse.videoSelection==videoSelection;
+        if((IsView(field) || field==Field::Rotation) && inverse.sourceEpoch!=sourceEpoch_ && !ownedCameraRestore) {
+            skipped.append(FieldName(field));continue;
+        }
         if (customStale && custom(field)) { skipped.append(FieldName(field)); continue; }
         if (field == Field::Rotation && ((revisions_[Field::CenterX].user && revisions_[Field::CenterX].value > context_->baseline[Field::CenterX])
             || (revisions_[Field::CenterY].user && revisions_[Field::CenterY].value > context_->baseline[Field::CenterY]))) {

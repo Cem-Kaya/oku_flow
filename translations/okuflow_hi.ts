@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>CPU टेक्स्ट रिकग्नाइज़र</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>मौजूदा रिकॉर्डिंग</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>वीडियो</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>लाइव</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>लाइव से पीछे</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>रुका हुआ</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>वीडियो का अंत</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>वीडियो खुल रहा है…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>वीडियो में स्थान बदला जा रहा है…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>रिकॉर्डिंग का इंतज़ार</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>रिकॉर्डिंग पूरी हो रही है</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>वीडियो उपलब्ध नहीं है</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>वीडियो प्लेबैक</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>10 सेकंड पीछे जाएँ</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>वीडियो रोकें</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>वीडियो फिर चलाएँ</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>लाइव पर जाएँ</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>अंत पर जाएँ</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>कैमरे पर लौटें</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>फ़्रेम सहेजें</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>प्लेबैक की आवाज़ चालू करें</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>प्लेबैक की आवाज़ बंद करें</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>वीडियो नियंत्रण</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>वीडियो टाइमलाइन</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>बायाँ और दायाँ: एक सेकंड। Page Up और Page Down: दस सेकंड। Home: शुरुआत। End: रिकॉर्डिंग का अंत।</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>कुल %2 में से %1</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>वीडियो खोलें</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>सहेजा हुआ वीडियो खोलें (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>मूल वीडियो रिकॉर्ड करें</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>मूल MP4 रिकॉर्डिंग शुरू या बंद करें</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>मूल वीडियो रिकॉर्डिंग के लिए ध्वनि चुनें। माइक्रोफ़ोन का उपयोग केवल रिकॉर्डिंग के दौरान होता है।</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>मूल MP4 रिकॉर्डिंग के लिए माइक्रोफ़ोन ऑडियो चुनें, या माइक्रोफ़ोन न चुनें।</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>दिखाया गया फ़्रेम थामकर नहीं रखा जा सका। रिकॉर्ड किया गया वीडियो उपलब्ध है।</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>वीडियो नहीं खुल सका: कोई एक मौजूदा स्थानीय फ़ाइल चुनें।</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>वीडियो नहीं खोला गया क्योंकि रिकॉर्डिंग रोकी नहीं जा सकी।</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>वीडियो खोलने से पहले रिकॉर्डिंग पूरी की जा रही है...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>रिकॉर्ड किए गए वीडियो में स्थान बदलना संभव होने का इंतज़ार है।</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>थामकर रखा गया फ़्रेम रिकॉर्ड नहीं हुआ। जारी रखने के लिए रिकॉर्ड किए गए वीडियो में किसी स्थान पर जाएँ।</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>थामकर रखे गए फ़्रेम की रिकॉर्ड की गई स्थिति की पुष्टि नहीं हो सकी। जारी रखने के लिए रिकॉर्ड किए गए वीडियो में किसी स्थान पर जाएँ।</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>वीडियो का अंत। फिर चलाने के लिए पहले के किसी बिंदु पर जाएँ।</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>कैमरा उपलब्ध नहीं है। रिकॉर्डिंग का सबसे नया फ़्रेम दिखाया जा रहा है।</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>थामकर रखा गया फ़्रेम रिकॉर्ड नहीं हुआ। रखी गई छवि अब भी उपलब्ध है।</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>थामकर रखे गए फ़्रेम की रिकॉर्ड की गई स्थिति की पुष्टि नहीं हो सकी। रखी गई छवि अब भी उपलब्ध है।</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>उपलब्ध रिकॉर्डिंग का अंत। सहेजी गई छवि अब भी उपलब्ध है।</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>वीडियो उपलब्ध नहीं है: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>प्लेबैक की आवाज़ उपलब्ध नहीं है। वीडियो चलता रहेगा।</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>फ़्रेम सहेजा नहीं गया: चुना हुआ दृश्य उपलब्ध नहीं है।</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>फ़्रेम सहेजा नहीं गया: छवि को कतार में नहीं रखा जा सका।</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>फ़्रेम सहेजा नहीं गया: OkuFlow Photos फ़ोल्डर उपलब्ध नहीं है।</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>चुने हुए वीडियो का फ़्रेम सहेजा गया।</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>चुने हुए वीडियो का फ़्रेम सहेजा नहीं जा सका।</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>फ़्रेम सहेजा नहीं गया: छवि सहेजने का काम अभी व्यस्त है। फिर कोशिश करें।</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>वीडियो रोकना संभव नहीं है: दिखाए गए फ़्रेम को थामकर नहीं रखा जा सका।</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;नियंत्रण&lt;/h2&gt;&lt;p&gt;&lt;b&gt;सरल&lt;/b&gt; कैमरे का दृश्य बड़ा करके दिखाता है। तुरंत मोड बदलने के लिए कोने वाले कैरोसेल या 1 से 9 तक की संख्या-कुंजियों का उपयोग करें।&lt;/p&gt;&lt;p&gt;&lt;b&gt;यूआई छुपाएं&lt;/b&gt; या &lt;b&gt;Ctrl+H&lt;/b&gt; कैमरे के दृश्य से नियंत्रण और सहायक हटा देता है। &lt;b&gt;यूआई दिखाएँ&lt;/b&gt; उन्हें और मौजूदा उत्तर को वापस दिखाता है।&lt;/p&gt;&lt;p&gt;&lt;b&gt;उन्नत&lt;/b&gt; में छवि और सहायक की विस्तृत सेटिंग्स खुलती हैं। पैनल के किनारे की विभाजक रेखा खींचकर उसका आकार बदलें।&lt;/p&gt;&lt;p&gt;कैमरे का दृश्य खींचकर पैन करें। ज़ूम करने के लिए Ctrl के साथ माउस व्हील घुमाएँ। स्क्रीन पर चलने वाला नियंत्रण पाने के लिए &lt;b&gt;सेटिंग्स &amp;gt; देखें और नेविगेशन&lt;/b&gt; में &lt;b&gt;आभासी जॉयस्टिक&lt;/b&gt; चालू करें।&lt;/p&gt;&lt;p&gt;फ़ोटो मूल और संसाधित, दोनों संस्करण सहेजता है। रिकॉर्ड करें मूल वीडियो सहेजता है। समझाओ दृश्य का वर्णन करता है; पढ़ें पाठ पहचानता है। अपनी OkuFlow फ़ाइलों वाला फ़ोल्डर खोलने के लिए &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; दबाएँ।&lt;/p&gt;&lt;h2&gt;सुविधाएँ&lt;/h2&gt;&lt;p&gt;&lt;b&gt;पाठ स्पष्टता&lt;/b&gt; दस्तावेज़ की सफ़ाई, स्थानीय कंट्रास्ट, शार्पनिंग और स्थिर पाठ किनारों को जोड़ती है। &lt;b&gt;रंग प्रदर्शित करें&lt;/b&gt; पढ़ने के लिए रंग-पैलेट और अपनी रंग योजनाएँ देता है।&lt;/p&gt;&lt;p&gt;वैकल्पिक NVIDIA Video Effects रनटाइम इंस्टॉल होने पर &lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; ज़ूम किए गए विवरण को बेहतर करता है।&lt;/p&gt;&lt;p&gt;&lt;b&gt;पाठ पढ़ना और सहायक&lt;/b&gt; पाठ पढ़ सकता है, दृश्य समझा सकता है, आगे के प्रश्नों के उत्तर दे सकता है और नतीजे व्याख्यान नोट्स में जोड़ सकता है।&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>वीडियो फ़ाइलें (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;सभी फ़ाइलें (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>इस दृश्य में Ultra Clear Text</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… उन शब्दों को दर्शाता है जिन्हें मूल छवि में ही छोड़ा गया है।</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>वीडियो प्लेबैक: ज़ूम, घुमाव, पढ़ने के रंग और UCT उपलब्ध हैं। उन्नत GPU प्रभाव उपलब्ध नहीं हैं।</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC मूल, एन्कोडर शुरू हो रहा है]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC मूल, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>वीडियो को रोककर रखना संभव नहीं है: दिखाए गए फ़्रेम को बिल्कुल उसी रूप में बनाए रखना संभव नहीं हुआ।</translation>
+        </message>
     </context>
 </TS>
