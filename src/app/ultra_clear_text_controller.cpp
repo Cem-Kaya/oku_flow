@@ -238,7 +238,9 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
     const std::int64_t now = clock_();
 
     cameraActive_ = context.cameraActive;
-    currentFrameSeq_ = context.frameSeq;
+    attemptedFrameSeq_ = context.frameSeq;
+    attemptedTransform_ = context.transform;
+    attemptedViewport_ = QSize(context.viewportWidth, context.viewportHeight);
     if (overlay_) {
         overlay_->SetStrokeWeight(context.strokeWeight);
         overlay_->SetViewTransform(context.transform);
@@ -305,13 +307,37 @@ void UltraClearTextController::OnPresentationSucceeded()
     const std::int64_t now = clock_();
     const bool restoring = !PresentationAvailable(now);
     lastPresentMs_ = now;
+    currentFrameSeq_ = attemptedFrameSeq_;
+    presentedTransform_ = attemptedTransform_;
+    presentedViewport_ = attemptedViewport_;
+    presentedGeometryGeneration_ = geometryGeneration_;
     presentationAvailable_ = cameraActive_;
     presentationFailed_ = false;
+    RefreshOverlay(now);
     if (restoring) {
-        RefreshOverlay(now);
         UpdateReadingText();
         UpdateStatus();
     }
+}
+
+void UltraClearTextController::OnPresentationDeferred()
+{
+    if (!enabled_) return;
+    if (presentedGeometryGeneration_ != geometryGeneration_ ||
+        presentedViewport_ != attemptedViewport_ || attemptedViewport_.isEmpty() ||
+        !attemptedTransform_.valid) {
+        OnPresentationFailed();
+        return;
+    }
+    // OnPresented stages the next transform before the nonblocking presenter
+    // knows whether its frame slot is free. Revert that projection when no draw
+    // was submitted, instead of hiding and recreating the overlay on each pan.
+    if (overlay_ && presentedGeometryGeneration_ == geometryGeneration_) {
+        overlay_->SetViewTransform(presentedTransform_);
+    }
+    RefreshOverlay(clock_());
+    UpdateReadingText();
+    UpdateStatus();
 }
 
 void UltraClearTextController::OnSourceRetired()

@@ -1149,6 +1149,16 @@ The opt-in actual-app control fixture requires a private CPU dev-full configure 
 
 ## Ultra Clear Text fixtures (development)
 
+The desktop-free contract includes padded Paddle-box ink fitting (title,
+descenders and accents), rendered source-gray contrast, busy-slot projection
+retention without watchdog renewal, bounded missed-probe tolerance, and refresh
+retention that keeps old reference/geometry/identity rather than lending proof
+to a new reference. Review regressions include 300 alternating successful/busy
+pan attempts with held OCR and zero overlay Hide/Show events, resize refusal,
+duplicate-retention prevention, fair probe order, palette hysteresis, neighbouring
+line exclusion and recovery of a CTC edge undershoot. Native pan smoothness and exact camera glyph fit remain
+separate manual/native acceptance; the offscreen cases do not verify DWM timing.
+
 The review follow-up adds fail-before/pass-after cases for presentation timeout
 and failed-attempt restoration, ordered omission gaps, plate/glyph eligibility,
 and reading-pane cursor/selection/scroll retention. The real Windows OCR rows

@@ -7,6 +7,7 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QSize>
 #include <QRectF>
 
 QT_BEGIN_NAMESPACE
@@ -200,6 +201,9 @@ public:
     bool OnPresented(const UctFrameContext& context);
     // Receipt from the actual presenter, never from submission/preflight.
     void OnPresentationSucceeded();
+    // A busy frame slot submitted nothing. Keep the last successful projection
+    // without renewing its watchdog; an actual presenter fault still hides it.
+    void OnPresentationDeferred();
     void OnSourceRetired(); // immediate revocation; does not wait for another presentation
     // The presenter rejected the frame: the screen still shows older pixels,
     // so words reprojected for this context are hidden until the next
@@ -286,6 +290,7 @@ private:
     UctGeometryKey geometry_;
     std::uint64_t geometryGeneration_{};
     std::uint64_t currentFrameSeq_{};
+    std::uint64_t attemptedFrameSeq_{};
 
     std::uint64_t pendingReadbackId_{};
     uct::SourceStamp pendingStamp_;
@@ -306,6 +311,11 @@ private:
     bool analysisPoolFailed_{};
     QTimer* watchdog_{};
     std::int64_t lastPresentMs_{};
+    ViewTransform attemptedTransform_;
+    ViewTransform presentedTransform_;
+    QSize attemptedViewport_;
+    QSize presentedViewport_;
+    std::uint64_t presentedGeometryGeneration_{};
     QVector<UltraClearTextOverlay::SceneWord> overlayWords_;
 
     std::uint64_t presentCount_{};

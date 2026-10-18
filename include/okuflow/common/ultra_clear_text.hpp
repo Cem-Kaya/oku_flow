@@ -153,6 +153,8 @@ struct BackendStatus {
 struct RecognizedWord {
     QString text;
     QRectF boundsPx; // pixels of the job image
+    bool paddedBounds{}; // detector/CTC region needs worker-side ink fitting
+    QRectF inkSearchPx; // optional source search, bounded by the line/neighbours
 };
 
 struct RecognizedLine {

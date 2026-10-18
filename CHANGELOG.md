@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased]
+- Keep Ultra Clear Text visible through busy presentation slots and small OCR
+  refresh jitter without extending validation deadlines. Fit padded Paddle boxes
+  to visible source ink and retain gray/source backgrounds when improving contrast.
 - Add optional local PaddleOCR with TensorRT CUDA inference and automatic
   same-model ONNX Runtime CPU fallback, then built-in Windows OCR. Analyze
   owned pre-zoom scenes so 16x display zoom retains text context. Keep motion

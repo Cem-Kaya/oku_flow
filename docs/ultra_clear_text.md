@@ -24,10 +24,22 @@ accepted use cases. Use Show original to compare, especially for numbers.
   ellipsis (…) marks words that were left as the original image.
 - Glyph weight follows the existing Text Clarity **Stroke weight** slider.
   Plate colors are measured from the analysis pixels, using a bounded
-  surrounding margin to identify the background of dense/bold print. CUDA's
+  surrounding margin and its background-class median to identify dense/bold print. CUDA's
   neutral analysis branch precedes display color effects, so its plates preserve
-  source polarity rather than a display LUT. If that pair reads below 7:1 contrast the plate
-  falls back to pure black/white in the scene's polarity.
+  source polarity rather than a display LUT. Below 7:1 contrast, ink moves to
+  white or black first (neutral ink always snaps to that extreme) while retaining
+  the source paper/board color. Only when
+  that cannot reach 7:1 does the background move the minimum distance toward
+  its polarity endpoint. Moderate gray backgrounds therefore stay gray. Accepted
+  background brightness uses a fixed 64-level grid preserving hue; small color
+  changes remain within an 8-level hysteresis band rather than shimmering on
+  every recognition. This affects replacement colors, not the camera image.
+- Paddle detector/CTC boxes include padding. After inference, bounded worker-side
+  source-ink fitting uses row bands to avoid adjacent-line ink and a one-CTC-step
+  search bounded by the line and neighbouring words to recover clipped edges
+  before glyph layout; native
+  Windows OCR boxes keep their existing geometry. This is a local printed-ink
+  estimate, not character outlines or a guarantee for handwriting/curved text.
 
 ## Recognition backend
 
@@ -156,7 +168,8 @@ There is no second capture or render pipeline. UCT reuses:
   resize repaint through the newest transform on the presentation clock.
 - Probe construction, similarity and residual searching run on `ProbeWorker`,
   with one executing and one latest-only waiting request. A 60 ms per-probe
-  search budget leaves unchecked lines unverified/hidden; a cancellation is
+  search budget leaves new unchecked lines hidden; an already validated line
+  retains its prior proof only until the unchanged freshness deadline. A cancellation is
   checked between line searches. OCR preparation also runs on its worker.
 - CUDA analysis uses two independently owned device snapshots. Stream events
   protect copies; slots held by a reader/inference job are never overwritten.
@@ -165,14 +178,24 @@ There is no second capture or render pipeline. UCT reuses:
   still uses a bounded immutable pixel pool and an owned scene copy.
 - OCR results carry prepared scene-space boxes/reference patches. Admission
   against a newer probe has a 3 ms search budget; unverified lines stay hidden
-  until a later worker outcome verifies them. Rendering never waits for either
-  worker. These are scheduling budgets, not sensor-to-photon guarantees.
+  until a later worker outcome verifies them. A near-identical refresh can keep
+  the complete old object while its existing proof remains fresh and the candidate
+  is unverified or no fresher: its
+  reference, geometry, identity and validation clock remain together. Proof is
+  never transferred to the new unverified reference. Rendering never waits for either
+  worker. Each old identity is retained at most once. Probe checks prioritize
+  unverified lines, then the oldest proof, so dense-page tails can progress.
+  These are scheduling budgets, not sensor-to-photon guarantees.
 - Source retirement immediately revokes both worker generations and clears
   glyphs/reading text. If presentations otherwise stop for 600 ms, a watchdog
   hides cached words and reading-pane text. Only an explicit successful
   presenter receipt restores an unchanged, validated scene; submission attempts,
   control toggles and worker completions cannot restore it. Failed presentations
-  hide both surfaces immediately. The watchdog uses successful receipts only.
+  hide both surfaces immediately. A busy frame slot is a deferred presentation,
+  not a fault: the overlay keeps the last successful transform and neither hides
+  nor renews the watchdog. An invalid transform or changed viewport size refuses
+  that reuse. A different source/geometry still invalidates at once.
+  The watchdog uses successful receipts only.
 - Analysis opportunities are throttled to 80 ms. Busy snapshot slots skip an
   opportunity instead of blocking presentation. Source/frame/processing
   provenance must match the successfully presented scene before handoff.

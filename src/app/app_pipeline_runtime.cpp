@@ -1311,7 +1311,10 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     if (!presented) {
         pipelineOrchestrator_->MarkViewportDirty();
         if (ultraClearText_) {
-            ultraClearText_->OnPresentationFailed();
+            if (!presenter_->IsFaulted() && presenter_->NeedsScenePresent())
+                ultraClearText_->OnPresentationDeferred();
+            else
+                ultraClearText_->OnPresentationFailed();
         }
         if (presenter_->IsFaulted()) {
             HandlePresenterFault();
@@ -2731,7 +2734,8 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
     presenter_->Present(presentationBuffer_.data(), mapping.targetWidth, mapping.targetHeight);
     if (presenter_->IsFaulted() || presenter_->NeedsScenePresent()) {
         if (ultraClearText_) {
-            ultraClearText_->OnPresentationFailed();
+            if (presenter_->IsFaulted()) ultraClearText_->OnPresentationFailed();
+            else ultraClearText_->OnPresentationDeferred();
         }
     }
     if (presenter_->IsFaulted()) return;

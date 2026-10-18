@@ -317,8 +317,7 @@ RecognizedLine PaddleDecode(std::span<const float> probabilities, int steps, int
 }
 
 RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps,
-                                  const PaddleQuad &quad, const QStringList &dictionary)
-{
+                                  const PaddleQuad &quad, const QStringList &dictionary) {
     RecognizedLine line;
     if (steps <= 0)
         return line;
@@ -327,8 +326,7 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
     double confidence = 0;
     int count = 0;
     auto flush = [&] {
-        if (!word.isEmpty() && count && confidence / count >= .7)
-        {
+        if (!word.isEmpty() && count && confidence / count >= .7) {
             const double x0 = std::max(0.0, (first - .5) / steps),
                          x1 = std::min(1.0, (last + 1.5) / steps);
             const auto a = At(quad, x0, 0), b = At(quad, x1, 0), c = At(quad, x1, 1),
@@ -337,22 +335,27 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
                          top = std::min({a.y(), b.y(), c.y(), d.y()});
             const double right = std::max({a.x(), b.x(), c.x(), d.x()}),
                          bottom = std::max({a.y(), b.y(), c.y(), d.y()});
-            line.words.push_back({word, QRectF(left, top, right - left, bottom - top)});
+            const double searchX0 = std::max(0.0, x0 - 1.0 / steps);
+            const double searchX1 = std::min(1.0, x1 + 1.0 / steps);
+            const auto sa = At(quad, searchX0, 0), sb = At(quad, searchX1, 0),
+                       sc = At(quad, searchX1, 1), sd = At(quad, searchX0, 1);
+            const double searchLeft = std::min({sa.x(), sb.x(), sc.x(), sd.x()}),
+                         searchRight = std::max({sa.x(), sb.x(), sc.x(), sd.x()});
+            line.words.push_back({word, QRectF(left, top, right - left, bottom - top), true,
+                                  QRectF(searchLeft, top, searchRight - searchLeft, bottom - top)});
         }
         word.clear();
         confidence = 0;
         count = 0;
     };
-    for (const auto &token : tokens)
-    {
+    for (const auto &token : tokens) {
         if (token.id <= 0 || token.id >= dictionary.size() || token.first < 0 ||
             token.last < token.first || token.last >= steps || !std::isfinite(token.confidence) ||
             token.confidence < 0 || token.confidence > 1.0001f)
             return {};
         if (dictionary[token.id] == " ")
             flush();
-        else
-        {
+        else {
             if (word.isEmpty())
                 first = token.first;
             last = token.last;
@@ -362,6 +365,19 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
         }
     }
     flush();
+    for (int i = 0; i < line.words.size(); ++i) {
+        auto &current = line.words[i];
+        const double left =
+            i > 0 ? (line.words[i - 1].boundsPx.right() + current.boundsPx.left()) * .5
+                  : current.inkSearchPx.left();
+        const double right =
+            i + 1 < line.words.size()
+                ? (current.boundsPx.right() + line.words[i + 1].boundsPx.left()) * .5
+                : current.inkSearchPx.right();
+        current.inkSearchPx = current.inkSearchPx.intersected(
+            QRectF(left, current.boundsPx.top(), right - left, current.boundsPx.height()));
+    }
     return line;
 }
+
 } // namespace okuflow::uct

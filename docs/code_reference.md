@@ -23,8 +23,8 @@ below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
   analysis provenance separately from annotation neural provenance.
   `PresentFitted` hands CPU UCT the pre-zoom scene and an identity transform.
 - `Recognizer::{Status,Preparing,WantsDeviceInput,RecognizeDevice}` provides status,
-  device routing and default CPU readback. `RecognitionResult::{deviceInput,
-  stability}` records the route and worker-computed scene similarity.
+  device routing and default CPU readback. `RecognitionResult::deviceInput`
+  records the route; validation similarity is computed independently by probes.
   `RecognitionScheduler::SubmitDevice` validates/retains the device lease and
   coalesces it latest-only. Native exceptions produce failed outputs. GPU OCR
   precedes that job's full reference/color readback. Its `probeOnly` mode uses
@@ -4936,6 +4936,15 @@ reading pane, including control-toggle and worker-completion paths. Show origina
 alone leaves verified reading text available. Production CUDA/CPU presenters and
 the UCT fixture report success separately from preflight.
 
+`OnPresentationDeferred` distinguishes a non-faulted busy frame slot from a
+failed presentation. `attemptedTransform_` is staged by `OnPresented`;
+`presentedTransform_` and `presentedGeometryGeneration_` commit only on success.
+`attemptedFrameSeq_` commits to `currentFrameSeq_` only on success as well.
+`attemptedViewport_`/`presentedViewport_` refuse deferred reuse across a resize
+or invalid transform, even if the presenter's retry flag remains set.
+Deferral reverts to that exact same-generation projection without renewing the
+watchdog; actual faults, source/geometry changes and expiry keep their guards.
+
 `uct::AcceptedLine::readingTokens` retains source token order separately from
 its drawable accepted words; empty tokens represent omitted original words.
 `OverlayModel::ReadingText` emits those gaps in place and collapses consecutive
@@ -4974,16 +4983,35 @@ No NCC threshold or search radius is relaxed.
 
 `OverlayModel::Admit` retires cached outside-coverage lines whose words are
 spatially replaced by a cropped recognition, preventing duplicate resurrection
-after returning to the wider view. Budget-deferred candidates may reuse only
-exact reference/grid/sample, word/text/geometry and reading-token validation
-already current for the latest probe in the same scene. Different or older
-proof remains hidden for worker validation; no unconditional validity transfer
-is permitted. Fixtures include positive refresh and seven negative proof rows.
+after returning to the wider view. Near-identical refreshes retain the entire old
+line only when its text/reading tokens agree, boxes differ by at most 10% of
+word height (IoU >= 0.8), and its existing proof is still fresh in the same scene;
+a fresher validated candidate wins. The old reference, boxes, id and validation
+timestamp remain intact and each retained id is consumed once; the new reference
+never inherits that proof. Different text stays hidden for worker validation.
+`LineReferences` orders unverified lines first, then oldest validation, to avoid
+fixed-order starvation. `ApplyChecks` leaves existing proof unchanged on a
+missed check budget; `IsShown` still applies the original 350 ms freshness limit.
 
 `MeasureLineColors` uses the bounded surrounding margin to distinguish paper
-from dense foreground; minority-ink inference remains the no-margin fallback.
+from dense foreground and takes the background-class median of that ring;
+minority-ink inference remains the no-margin fallback. `StableLineColors` snaps
+background brightness to 64 fixed levels while retaining hue, and keeps previous
+colors inside an 8-channel-level same-polarity hysteresis band.
 Both polarities are checked through the actual scheduler with controlled dense
 strokes, independently of recognition quality.
+
+`RecognizedWord::paddedBounds` marks Paddle detector/CTC regions; `inkSearchPx`
+allows a one-CTC-step extension inside the line and neighbouring-word midpoints.
+The scheduler
+uses worker-only `RefineWordInkBounds` to fit bounded (about 16K samples) source
+ink before `PrepareLines`. Row runs isolate the dominant word body; detached
+marks are retained for matching dotted/accented tokens. Low-contrast/tiny or
+ambiguous multi-band fits retain their detector box. Native Windows OCR boxes
+are unmarked. Overlay `ReadableColors` preserves source background and polarity,
+snaps neutral ink to black/white (readable chromatic ink keeps its hue),
+and binary-searches only the minimum background adjustment still needed for 7:1.
+Both operations occur outside the pan/zoom paint path.
 
 `UltraClearTextController::SetEnabled` retries terminal initialization on an
 explicit off/on using a fresh recognizer. `schedulerGeneration_` rejects queued

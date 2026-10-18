@@ -27,6 +27,17 @@ axis. Detector long edge is 960, recognizer canvas 1024×48, accepted regions
 at most 128, detector thresholds 0.2/0.4 and word confidence at least 0.7.
 These are bounded experimental defaults, not accuracy or latency promises.
 
+UCT's optional padded-box ink fit samples about 16K pixels per word, requires
+at least 24 luma levels of separation, and refuses a fit under 35% of its input
+width/height. Near-identical refresh retention requires IoU >= 0.8 and edges/
+dimensions within 10% of word height, plus current independent validation.
+The existing 350 ms freshness and 600 ms presentation watchdog are unchanged.
+Source-color contrast adjustment targets 7:1 and uses 16 bounded search steps.
+Accepted background brightness uses 64 fixed levels; same-polarity foreground/
+background changes up to 8 RGB channel levels retain the prior color. A neutral
+ink channel spread up to 16 snaps to pure black/white. Only replacement colors
+are stabilized; the camera image is not quantized to a global palette.
+
 ## Browser notes transcription
 
 The opt-in notes renderer defaults to `%LOCALAPPDATA%\OkuFlow\notes-preview\`.

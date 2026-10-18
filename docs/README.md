@@ -5,6 +5,8 @@ documents optional local PaddleOCR/TensorRT, CPU/Windows fallback, independent
 pre-zoom analysis, preparation, transfer boundaries and acceptance limits.
 [Implementation review repairs](uct_paddle_review_2026_10_18.md) distinguish
 verified fallback/ownership regressions from remaining camera/release acceptance.
+[Pan continuity and source-style review](uct_pan_style_review_2026_10_18.md)
+records the busy-slot, bounded refresh, ink-fit and stable-color repairs.
 
 [Argon report verification](argon_review_verification_2026_10_17.md) records
 every finding's disposition, confirmed repairs and intentional state/tool contracts.

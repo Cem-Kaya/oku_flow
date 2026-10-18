@@ -319,6 +319,12 @@ class PaddleTests final : public QObject
         QCOMPARE(line.words.size(), 2);
         QCOMPARE(line.words[0].text, QString("AA"));
         QCOMPARE(line.words[1].text, QString("B"));
+        const double boundary=(line.words[0].boundsPx.right()+line.words[1].boundsPx.left())*.5;
+        QVERIFY(line.words[0].paddedBounds && line.words[1].paddedBounds);
+        QVERIFY(line.words[0].inkSearchPx.right()<=boundary);
+        QVERIFY(line.words[1].inkSearchPx.left()>=boundary);
+        QVERIFY(QRectF(0,0,160,48).contains(line.words[0].inkSearchPx));
+        QVERIFY(QRectF(0,0,160,48).contains(line.words[1].inkSearchPx));
         QVERIFY(PaddleDecode(values, 8, 3, quad, dictionary).words.isEmpty());
         values[1] = std::numeric_limits<float>::quiet_NaN();
         QVERIFY(PaddleDecode(values, 8, 4, quad, dictionary).words.isEmpty());

@@ -2,6 +2,7 @@
 
 #include <QElapsedTimer>
 #include <QHash>
+#include <QSet>
 
 #include <algorithm>
 #include <chrono>
@@ -215,11 +216,16 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
     const int margin = std::clamp(box.height() / 6, 2, 12);
     const QRect surround = box.adjusted(-margin, -margin, margin, margin).intersected(image.rect());
     int darkSurround = 0, lightSurround = 0;
+    int surroundHistogram[2][3][256]{};
     for (int y = surround.top(); y <= surround.bottom(); y += 2) {
         const uchar* row = image.constScanLine(y);
         for (int x = surround.left(); x <= surround.right(); x += 2) {
             if (box.contains(x, y)) continue;
-            ++(Luma(row + x * 4) < threshold ? darkSurround : lightSurround);
+            const uchar* px = row + x * 4;
+            const int side = Luma(px) < threshold ? 0 : 1;
+            ++(side == 0 ? darkSurround : lightSurround);
+            for (int channel = 0; channel < 3; ++channel)
+                ++surroundHistogram[side][channel][px[2-channel]];
         }
     }
     const bool darkText = darkSurround != lightSurround
@@ -227,10 +233,139 @@ LineColors MeasureLineColors(const QImage& image, const QRect& bounds)
                               : darkCount <= lightCount;
     colors.foreground = darkText ? darkColor : lightColor;
     colors.background = darkText ? lightColor : darkColor;
+    const int backgroundSide = darkText ? 1 : 0;
+    const int surroundingSamples = darkText ? lightSurround : darkSurround;
+    if (surroundingSamples >= 8) {
+        int median[3]{};
+        for (int channel = 0; channel < 3; ++channel) {
+            int total = 0;
+            for (int value = 0; value < 256; ++value) {
+                total += surroundHistogram[backgroundSide][channel][value];
+                if (total > surroundingSamples/2) { median[channel]=value;break; }
+            }
+        }
+        colors.background = QColor(median[0],median[1],median[2]);
+    }
     if (!colors.foreground.isValid() || !colors.background.isValid()) {
         colors = {};
     }
     return colors;
+}
+
+LineColors StableLineColors(LineColors measured, const LineColors *previous = nullptr) {
+    // A fixed 64-level brightness grid, not a per-frame fitted palette. Scaling
+    // RGB together retains hue; the camera image itself is never posterized.
+    const int value = std::max(
+        {measured.background.red(), measured.background.green(), measured.background.blue()});
+    if (value > 0) {
+        const int snapped =
+            static_cast<int>(std::lround(std::round(value * 63.0 / 255.0) * 255.0 / 63.0));
+        measured.background = QColor(measured.background.red() * snapped / value,
+                                     measured.background.green() * snapped / value,
+                                     measured.background.blue() * snapped / value);
+    }
+    if (previous) {
+        const auto difference = [](const QColor &a, const QColor &b) {
+            return std::max({std::abs(a.red() - b.red()), std::abs(a.green() - b.green()),
+                             std::abs(a.blue() - b.blue())});
+        };
+        const auto polarity = [](const LineColors &pair) {
+            return qGray(pair.foreground.rgb()) < qGray(pair.background.rgb());
+        };
+        if (polarity(measured) == polarity(*previous) &&
+            difference(measured.foreground, previous->foreground) <= 8 &&
+            difference(measured.background, previous->background) <= 8)
+            return *previous;
+    }
+    return measured;
+}
+
+QRectF RefineWordInkBounds(const QImage &image, const RecognizedWord &word,
+                           const LineColors &colors) {
+    const QRectF detected = word.boundsPx;
+    const QRect box = (word.inkSearchPx.isEmpty() ? detected : word.inkSearchPx)
+                          .toAlignedRect()
+                          .intersected(image.rect());
+    if (box.isEmpty())
+        return detected;
+    const auto luma = [](const QColor &color) {
+        return (77 * color.red() + 150 * color.green() + 29 * color.blue()) / 256;
+    };
+    const int ink = luma(colors.foreground), paper = luma(colors.background);
+    if (std::abs(ink - paper) < 24)
+        return detected;
+    const int threshold = (ink + paper) / 2;
+    // Detector unclip and CTC spans include background padding. Fit to the
+    // visible source ink, not that padded rectangle, after inference completes.
+    // Bound work for unusually large boxes; all scanning stays on the worker.
+    const int step = std::max(1, static_cast<int>(std::ceil(std::sqrt(
+                                     static_cast<double>(box.width()) * box.height() / 16384.0))));
+    QVector<QPoint> samples;
+    QVector<int> rows(box.height(), 0);
+    for (int y = box.top(); y <= box.bottom(); y += step) {
+        const uchar *row = image.constScanLine(y);
+        for (int x = box.left(); x <= box.right(); x += step) {
+            const int value = Luma(row + x * 4);
+            if (ink < paper ? value >= threshold : value <= threshold)
+                continue;
+            samples.push_back(QPoint(x, y));
+            ++rows[y - box.top()];
+        }
+    }
+    if (samples.size() < 8)
+        return detected;
+    struct InkRun {
+        int top;
+        int bottom;
+        int mass;
+    };
+    QVector<InkRun> runs;
+    for (int y = 0; y < rows.size(); ++y) {
+        if (!rows[y])
+            continue;
+        if (runs.isEmpty() || y - runs.last().bottom > step * 2)
+            runs.push_back({y, y, rows[y]});
+        else {
+            runs.last().bottom = y;
+            runs.last().mass += rows[y];
+        }
+    }
+    int main = 0;
+    for (int i = 1; i < runs.size(); ++i)
+        if (runs[i].mass > runs[main].mass)
+            main = i;
+    // Separated substantial bands may be a multi-part glyph; leave ambiguous
+    // layouts intact instead of mistaking one stroke for the entire word.
+    if (runs[main].mass < samples.size() * .55)
+        return detected;
+    int top = runs[main].top + box.top(), bottom = runs[main].bottom + box.top();
+    bool detachedMarks = word.text.contains(QLatin1Char('i'), Qt::CaseInsensitive) ||
+                         word.text.contains(QLatin1Char('j'), Qt::CaseInsensitive);
+    for (QChar c : word.text.normalized(QString::NormalizationForm_D))
+        detachedMarks = detachedMarks || c.isMark() || QStringLiteral("!?:;").contains(c);
+    if (detachedMarks)
+        for (int i = 0; i < runs.size(); ++i) {
+            if (i == main || runs[i].mass > runs[main].mass * .3)
+                continue;
+            const int a = runs[i].top + box.top(), b = runs[i].bottom + box.top();
+            const int gap = std::max({top - b, a - bottom, 0});
+            if (gap <= std::max(2.0, detected.height() * .22)) {
+                top = std::min(top, a);
+                bottom = std::max(bottom, b);
+            }
+        }
+    int left = box.right() + 1, right = box.left() - 1;
+    for (const QPoint &sample : samples)
+        if (sample.y() >= top && sample.y() <= bottom) {
+            left = std::min(left, sample.x());
+            right = std::max(right, sample.x());
+        }
+    const QRectF refined(QPointF(left, top), QPointF(std::min(box.right() + 1, right + step),
+                                                     std::min(box.bottom() + 1, bottom + step)));
+    // Tiny/ambiguous isolated marks are not evidence for shrinking a word.
+    if (refined.width() < detected.width() * 0.35 || refined.height() < detected.height() * 0.35)
+        return detected;
+    return refined;
 }
 
 QImage ToOwnedArgb(const std::uint8_t* bgra, int width, int height, int stride)
@@ -925,12 +1060,17 @@ struct RecognitionScheduler::State {
                                                   pixels.height(),
                                                   static_cast<int>(pixels.bytesPerLine()),
                                                   self->referenceDecimation, job.stamp);
-                for (const RecognizedLine& line : result.output.lines) {
+                for (RecognizedLine& line : result.output.lines) {
                     QRectF bounds;
                     for (const RecognizedWord& word : line.words) {
                         bounds = bounds.isNull() ? word.boundsPx : bounds.united(word.boundsPx);
                     }
-                    result.lineColors.push_back(MeasureLineColors(pixels, bounds.toAlignedRect()));
+                    const LineColors colors = MeasureLineColors(pixels, bounds.toAlignedRect());
+                    result.lineColors.push_back(colors);
+                    for (RecognizedWord& word : line.words) {
+                        if (word.paddedBounds)
+                            word.boundsPx = RefineWordInkBounds(pixels, word, colors);
+                    }
                 }
                 // Scene mapping and residual references are pixel work too:
                 // done here so UI-thread admission stays cheap.
@@ -1314,7 +1454,7 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
         candidate.source = &line;
         candidate.line.sceneRect = line.sceneRect;
         candidate.line.reference = line.reference;
-        candidate.line.colors = i < result.lineColors.size() ? result.lineColors[i] : LineColors{};
+        candidate.line.colors = StableLineColors(i < result.lineColors.size() ? result.lineColors[i] : LineColors{});
         candidate.line.provenance = stamp;
         candidate.line.valid = true;
         candidate.line.validatedAtMs = stamp.timestampMs;
@@ -1381,6 +1521,7 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
     };
 
     QVector<AcceptedLine> admitted;
+    QSet<std::uint64_t> retainedIds;
     QVector<PendingWord> nextPending;
     for (Candidate& candidate : candidates) {
         for (const PreparedWord& word : candidate.source->words) {
@@ -1401,41 +1542,55 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
             }
         }
         if (!candidate.line.words.isEmpty()) {
-            if (candidate.matchDeferred && latestProbe) {
-                // Reuse only the proof for this exact same reference and
-                // accepted text, already checked against the latest pixels.
-                // Different/new references remain hidden for worker validation.
+            bool retained = false;
+            bool duplicate = false;
+            if (latestProbe) {
+                // Keep the already validated object when re-recognition only
+                // jitters its boxes/reference. Do NOT transfer proof to the new
+                // pixels or coordinates: retain the old reference, geometry,
+                // line identity and validation clock together. The next probe
+                // still checks that object and real content changes remove it.
                 for (const AcceptedLine& old : lines_) {
-                    const ReferencePatch& a = old.reference;
-                    const ReferencePatch& b = candidate.line.reference;
                     if (!old.valid || !old.provenance.SameScene(current) ||
-                        old.validatedAtMs < latestProbe->stamp.timestampMs ||
-                        old.validatedFrameSeq < latestProbe->stamp.frameSeq ||
-                        old.sceneRect != candidate.line.sceneRect ||
-                        a.valid != b.valid || a.sceneRect != b.sceneRect ||
-                        a.columns != b.columns || a.rows != b.rows || a.values != b.values ||
                         old.words.size() != candidate.line.words.size() ||
                         old.readingTokens != candidate.line.readingTokens) {
                         continue;
                     }
-                    bool identicalWords = true;
+                    bool sameWords = true;
                     for (int i = 0; i < old.words.size(); ++i) {
-                        if (old.words[i].text != candidate.line.words[i].text ||
-                            old.words[i].sceneRect != candidate.line.words[i].sceneRect) {
-                            identicalWords = false;
+                        const QRectF a = old.words[i].sceneRect.translated(old.sceneOffset);
+                        const QRectF b = candidate.line.words[i].sceneRect.translated(candidate.line.sceneOffset);
+                        const double tolerance = std::min(a.height(), b.height()) * 0.1;
+                        if (old.words[i].text != candidate.line.words[i].text || Iou(a,b) < 0.8 ||
+                            std::abs(a.left()-b.left()) > tolerance ||
+                            std::abs(a.top()-b.top()) > tolerance ||
+                            std::abs(a.width()-b.width()) > tolerance ||
+                            std::abs(a.height()-b.height()) > tolerance) {
+                            sameWords = false;
                             break;
                         }
                     }
-                    if (identicalWords) {
-                        candidate.line.valid = true;
-                        candidate.line.sceneOffset = old.sceneOffset;
-                        candidate.line.validatedAtMs = old.validatedAtMs;
-                        candidate.line.validatedFrameSeq = old.validatedFrameSeq;
+                    if (sameWords) {
+                        candidate.line.colors = StableLineColors(candidate.line.colors, &old.colors);
+                        if (!IsShown(old, nowMs, latestProbe->stamp.frameSeq) ||
+                            (candidate.line.valid &&
+                             (candidate.line.validatedAtMs > old.validatedAtMs ||
+                              candidate.line.validatedFrameSeq > old.validatedFrameSeq))) break;
+                        if (retainedIds.contains(old.id)) {
+                            duplicate = true;
+                            break;
+                        }
+                        const LineColors colors = candidate.line.colors;
+                        candidate.line = old;
+                        candidate.line.colors = colors;
+                        retained = true;
+                        retainedIds.insert(old.id);
                         break;
                     }
                 }
             }
-            candidate.line.id = nextLineId_++;
+            if (duplicate) continue;
+            if (!retained) candidate.line.id = nextLineId_++;
             admitted.push_back(std::move(candidate.line));
         }
     }
@@ -1491,12 +1646,18 @@ AdmitVerdict OverlayModel::Admit(const RecognitionResult& result, const SourceSt
 
 QVector<LineReference> OverlayModel::LineReferences(const SourceStamp& scene) const
 {
-    QVector<LineReference> references;
-    references.reserve(lines_.size());
+    QVector<const AcceptedLine*> ordered;
     for (const AcceptedLine& line : lines_) {
-        if (line.provenance.SameScene(scene)) {
-            references.push_back({line.id, line.reference, line.sceneOffset});
-        }
+        if (line.provenance.SameScene(scene)) ordered.push_back(&line);
+    }
+    std::stable_sort(ordered.begin(), ordered.end(), [](const auto* a, const auto* b) {
+        if (a->valid != b->valid) return !a->valid;
+        return a->validatedAtMs < b->validatedAtMs;
+    });
+    QVector<LineReference> references;
+    references.reserve(ordered.size());
+    for (const auto* line : ordered) {
+        references.push_back({line->id, line->reference, line->sceneOffset});
     }
     return references;
 }
@@ -1524,7 +1685,9 @@ ValidationSummary OverlayModel::ApplyChecks(const QVector<LineCheck>& checks, co
             continue;
         }
         if (!check->checked) {
-            line.valid = false; // budget exhausted: unverified, hidden
+            // A missed budget is not evidence that previously verified text
+            // changed. Keep its existing proof without renewing it; IsShown's
+            // unchanged freshness deadline hides it if checks remain delayed.
             ++summary.unchecked;
             kept.push_back(line);
             continue;

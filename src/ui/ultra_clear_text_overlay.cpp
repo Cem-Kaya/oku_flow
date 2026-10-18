@@ -56,20 +56,42 @@ qreal RelativeLuminance(const QColor& color)
            0.0722 * channel(color.blueF());
 }
 
-// Keeps the scene's own colors (and so the user's display color scheme)
-// when they already read well; otherwise falls back to pure black/white in
-// the scene's polarity.
-uct::LineColors ReadableColors(const uct::LineColors& measured)
-{
-    const qreal fg = RelativeLuminance(measured.foreground);
-    const qreal bg = RelativeLuminance(measured.background);
-    const qreal ratio = (std::max(fg, bg) + 0.05) / (std::min(fg, bg) + 0.05);
-    if (ratio >= 7.0) {
-        return measured;
+// Preserve the source board/paper color. Improve ink first; only if even pure
+// ink cannot reach 7:1 do we move the background toward its polarity endpoint.
+// This is cached with the layout, never performed on the pan/zoom paint path.
+uct::LineColors ReadableColors(const uct::LineColors &measured) {
+    const auto contrast = [](const QColor &a, const QColor &b) {
+        const qreal x = RelativeLuminance(a), y = RelativeLuminance(b);
+        return (std::max(x, y) + 0.05) / (std::min(x, y) + 0.05);
+    };
+    const int spread = std::max({measured.foreground.red(), measured.foreground.green(),
+                                 measured.foreground.blue()}) -
+                       std::min({measured.foreground.red(), measured.foreground.green(),
+                                 measured.foreground.blue()});
+    if (spread > 16 && contrast(measured.foreground, measured.background) >= 7.0)
+        return measured; // already readable chromatic ink retains its hue
+    const bool darkText =
+        RelativeLuminance(measured.foreground) <= RelativeLuminance(measured.background);
+    uct::LineColors result{darkText ? QColor(Qt::black) : QColor(Qt::white), measured.background};
+    if (contrast(result.foreground, result.background) >= 7.0)
+        return result;
+    const QColor endpoint = darkText ? QColor(Qt::white) : QColor(Qt::black);
+    const auto mix = [&](double amount) {
+        return QColor::fromRgbF(
+            measured.background.redF() * (1.0 - amount) + endpoint.redF() * amount,
+            measured.background.greenF() * (1.0 - amount) + endpoint.greenF() * amount,
+            measured.background.blueF() * (1.0 - amount) + endpoint.blueF() * amount);
+    };
+    double low = 0.0, high = 1.0;
+    for (int i = 0; i < 16; ++i) {
+        const double middle = (low + high) * 0.5;
+        if (contrast(result.foreground, mix(middle)) >= 7.0)
+            high = middle;
+        else
+            low = middle;
     }
-    const bool darkText = fg <= bg;
-    return {darkText ? QColor(Qt::black) : QColor(Qt::white),
-            darkText ? QColor(Qt::white) : QColor(Qt::black)};
+    result.background = mix(high);
+    return result;
 }
 
 QFont GlyphFont(int strokeWeight, qreal pixelSize)
