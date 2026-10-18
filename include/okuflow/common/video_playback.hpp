@@ -5,13 +5,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace okuflow {
 
 struct VideoPlaybackFrame {
-    std::vector<std::uint8_t> bgra;
+    // Immutable pixels can be reticketed after a same-frame seek without a
+    // second image allocation. The final pixel lease owns the budget charge.
+    std::shared_ptr<const std::vector<std::uint8_t>> bgra;
     std::uint32_t width{}, height{}, strideBytes{};
     std::uint32_t rotationDegrees{}, pixelAspectNumerator{1}, pixelAspectDenominator{1};
     std::int64_t pts100ns{}, duration100ns{};
@@ -34,13 +37,26 @@ struct VideoPlaybackSnapshot {
     VideoFileIdentity file;
     std::uint32_t videoTrackId{};
     std::int64_t duration100ns{}, seekableEnd100ns{-1};
-    std::size_t decodedBytes{}, peakDecodedBytes{};
+    std::size_t decodedBytes{}, peakDecodedBytes{}, decodedByteLimit{}, decodeWorkingBytes{};
+    std::uint32_t readyFrames{}, lookaheadFrames{}, lastRequestReadCount{}, lastRequestCopiedFrames{};
+    std::int64_t lastRequestLatencyUs{};
+    bool memoryPressure{};
+    bool lastRequestReusedFrame{};
     bool hasAudio{}, audioAvailable{}, muted{true}, incomplete{}, activeRecording{};
     std::string error;
 };
 
-// Pure resource-admission seam. The 96 MiB pool includes frames retained by
-// consumers: keeping old snapshots can make a new decode unavailable.
+struct VideoPlaybackMemoryPlan {
+    std::size_t stagingBytes{}, frameBytes{}, workingBytes{}, retainedBytes{}, byteLimit{};
+    std::uint32_t lookaheadFrames{};
+};
+// Checked, resolution/stride-aware admission under the absolute decoded cap.
+// A decode starts only with credit for staging + its replacement; retained
+// leases are charged and apply interruptible backpressure when credit is tight.
+std::optional<VideoPlaybackMemoryPlan> PlanVideoPlaybackMemory(
+    std::uint32_t width, std::uint32_t height, std::int64_t strideBytes,
+    std::uint32_t pixelAspectNumerator = 1, std::uint32_t pixelAspectDenominator = 1,
+    bool activeArchive = false);
 bool VideoPlaybackLayoutFits(std::uint32_t width, std::uint32_t height,
                              std::int64_t strideBytes);
 // Nonnegative presentation interval representable by the nanosecond host
@@ -51,7 +67,8 @@ bool VideoPlaybackTimestampFits(std::int64_t pts100ns,
 class VideoPlayback {
 public:
     struct State;
-    static constexpr std::size_t kDecodedByteLimit = 96u * 1024 * 1024;
+    static constexpr std::size_t kMinimumDecodedByteLimit = 96u * 1024 * 1024;
+    static constexpr std::size_t kDecodedByteLimit = 256u * 1024 * 1024;
     static constexpr std::size_t kReadWindowByteLimit = 64u * 1024 * 1024;
     static constexpr std::size_t kAudioByteLimit = 2u * 1024 * 1024;
     static constexpr std::uint32_t kSeekSampleLimit = 120;

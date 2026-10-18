@@ -8,6 +8,12 @@
 files, decode before finalization, keep the writer advancing during rewind,
 seek the newly verified prefix and check saved-file EOF/PCM/VFR timing. They
 run serially under the `codec` label and preserve unavailable-codec skips.
+`video_playback_native_4k` and `video_playback_native_dci_4k` additionally retain
+displayed-frame leases while decoding UHD/DCI clips, check real ready depth,
+adaptive capacity and rapid newest-wins seeks. Their latency output is a small
+synthetic native request-to-worker-publication measurement, not visible seek
+latency or a sustained 4K60 benchmark. The pure contract covers complete working
+admission, stride/PAR bounds and lookahead reduction near the ceiling.
 `recording_original_native` verifies one successful Original output by held file
 identity and accounts for failed codec attempts. These are not optical-camera,
 microphone or long-recording acceptance.

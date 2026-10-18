@@ -5,6 +5,7 @@
 #include <mfapi.h>
 #include <wrl/client.h>
 #include <wrl/implements.h>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -59,6 +60,31 @@ void LayoutAndIdentity() {
     Expect(!VideoPlaybackLayoutFits(0, 1080, 7680), "zero width rejected");
     Expect(!VideoPlaybackLayoutFits(8192, 8192, 32768), "oversized decoded frame rejected");
     Expect(!VideoPlaybackLayoutFits(1920, 1080, 400), "short stride rejected");
+    const auto uhd=PlanVideoPlaybackMemory(3840,2160,15360);
+    const auto dci=PlanVideoPlaybackMemory(4096,2160,16384+256);
+    const auto archivePlan=PlanVideoPlaybackMemory(3840,2160,15360,1,1,true);
+    Expect(uhd && dci && archivePlan,"UHD and padded DCI working sets admitted");
+    if(uhd && dci && archivePlan) {
+        Expect(uhd->byteLimit>96u*1024*1024 && dci->byteLimit<=VideoPlayback::kDecodedByteLimit,
+            "adaptive 4K capacity has working and retained-scene headroom under hard ceiling");
+        Expect(uhd->retainedBytes>=uhd->frameBytes*3 &&
+            uhd->byteLimit-uhd->retainedBytes>=uhd->stagingBytes+uhd->frameBytes,
+            "retained capacity leaves explicit staging plus replacement reserve");
+        Expect(uhd->lookaheadFrames==2 && archivePlan->lookaheadFrames==1,
+            "saved video and archive retain distinct bounded lookahead policies");
+    }
+    const auto large=PlanVideoPlaybackMemory(4096,2560,16384);
+    Expect(large && large->lookaheadFrames==1 && large->byteLimit<=VideoPlayback::kDecodedByteLimit,
+        "40 MiB frames reduce optional lookahead rather than over-promising the working set");
+    const auto expanded=PlanVideoPlaybackMemory(1920,1080,7680,2,1);
+    Expect(expanded && expanded->frameBytes>expanded->stagingBytes &&
+        expanded->workingBytes==expanded->frameBytes+expanded->stagingBytes,
+        "square-pixel expansion reserves destination separately from native staging");
+    Expect(PlanVideoPlaybackMemory(4096,2730,16384).has_value() &&
+        !PlanVideoPlaybackMemory(4096,2731,16384),"minimum working-set boundary rejects the next row before allocation");
+    Expect(!PlanVideoPlaybackMemory(7680,4320,30720),"8K rejected before decoding an unaffordable working set");
+    Expect(!PlanVideoPlaybackMemory(3840,2160,15360,UINT32_MAX,1) &&
+        !PlanVideoPlaybackMemory(3840,2160,INT64_MIN),"aspect expansion and stride overflow rejected");
     constexpr auto maximumClock = std::numeric_limits<std::int64_t>::max() / 100;
     Expect(VideoPlaybackTimestampFits(0) && VideoPlaybackTimestampFits(maximumClock) &&
         VideoPlaybackTimestampFits(maximumClock - 1, 1), "representable timestamp endpoints admitted");
@@ -293,6 +319,13 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
         const auto endPts = player.Snapshot().frame ? player.Snapshot().frame->pts100ns : -1;
         Expect(endPts >= 0 && player.Snapshot().seekableEnd100ns == endPts, "actual last decodable frame retained");
         player.SetPlaying(true); Expect(player.Snapshot().state == VideoPlaybackState::Ended, "Resume at EOF never restarts");
+        const auto beforeEnd=player.Seek100ns(endPts-666666);
+        Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==beforeEnd && s.state==VideoPlaybackState::Paused;}),
+            "a seek before EOF does not inherit the end scan's broad anchor interval");
+        Expect(player.Snapshot().frame && player.Snapshot().frame->pts100ns<endPts &&
+            !player.Snapshot().lastRequestReusedFrame,"end cache does not substitute the final frame for an earlier target");
+        player.SetPlaying(true);
+        Expect(Wait([&]{return player.Snapshot().state==VideoPlaybackState::Ended;}),"playback resumes from a real pre-end seek");
         player.Close();
     }
     archive.reset();
@@ -368,42 +401,143 @@ void NativeSparseVideoAudio(VideoRecorder::Codec codec) {
         if (ec) std::wcout << L"Retained sparse fixture pending handle retirement: " << path.wstring() << L'\n';
     } else std::wcout << L"Retained failed sparse fixture: " << path.wstring() << L'\n';
 }
-void NativeFourKPool() {
+void NativeFourKPool(bool dci=false) {
     const auto path = TempPath(); const int priorFailures = failures;
     std::wcout << L"4K decoded-pool fixture: " << path.wstring() << L'\n';
     VideoRecorder recorder;
-    Expect(recorder.Start(path.wstring(), 3840, 2160, 5, 1, VideoRecorder::Codec::H264), "4K AVC fixture starts");
+    const std::uint32_t width=dci?4096u:3840u,height=2160;
+    Expect(recorder.Start(path.wstring(), width, height, 5, 1, VideoRecorder::Codec::H264), "4K AVC fixture starts");
     if (!recorder.IsRecording()) return;
-    std::vector<std::uint8_t> pixels(std::size_t(3840) * 2160 * 4, 255);
+    std::vector<std::uint8_t> pixels(std::size_t(width) * height * 4, 255);
     for (int frame = 0; frame < 12 && recorder.IsRecording(); ++frame) {
         for (std::size_t offset = 0; offset < pixels.size(); offset += 4) pixels[offset] = static_cast<BYTE>(frame * 15);
         RecordingFrameIdentity id; id.captureTimestamp100ns = id.captureClock100ns = frame * 2'000'000ll;
         id.sequenceNumber = frame + 1; id.frameRateNumerator = 5; id.frameRateDenominator = 1;
         const bool admitted = Wait([&] { return recorder.CanAcceptVideoFrame(); }, 4000);
-        Expect(admitted && recorder.AddFrame(pixels.data(), 3840 * 4, id), "4K video admitted");
+        Expect(admitted && recorder.AddFrame(pixels.data(), width * 4, id), "4K video admitted");
         if (!admitted) break;
     }
     Expect(recorder.Stop().FullyCompleted(), "4K fixture finalized");
     pixels.clear(); pixels.shrink_to_fit();
     VideoPlayback player; const auto open = player.OpenFile(path.wstring());
     Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == open && s.state == VideoPlaybackState::Paused; }),
-        "4K first frame opens within the unchanged decoded pool");
+        "4K first frame opens with an admitted complete working set");
+    auto held=player.Snapshot(); // Actual app retains a displayed pair across decoder work.
     player.SetPlaying(true); std::set<std::int64_t> displayed;
     Expect(Wait([&] {
         const auto s = player.Snapshot();
         Expect(s.state != VideoPlaybackState::Unavailable, "ordinary 4K playback remains available");
-        Expect(s.decodedBytes <= VideoPlayback::kDecodedByteLimit && s.peakDecodedBytes <= VideoPlayback::kDecodedByteLimit,
-            "4K staging and immutable leases stay within exactly 96 MiB");
+        Expect(s.decodedBytes <= s.decodedByteLimit && s.peakDecodedBytes <= VideoPlayback::kDecodedByteLimit,
+            "4K working and immutable leases stay inside adaptive/hard limits");
         if (s.frame) displayed.insert(s.frame->pts100ns);
         return displayed.size() >= 5 || s.state == VideoPlaybackState::Unavailable;
     }, 3000) && displayed.size() >= 5, "at least five distinct 4K frames play without pool exhaustion");
+    Expect(Wait([&]{return player.Snapshot().readyFrames==2;},1000),"saved file prepares two genuine future frames");
     player.SetPlaying(false);
+    held={};
     const auto seek = player.Seek100ns(7'000'000);
     Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == seek && s.state == VideoPlaybackState::Paused; }),
         "4K multi-sample seek drops optional prior frames before allocating replacements");
     { const auto s = player.Snapshot();
-      Expect(s.frame && s.frame->width == 3840 && s.frame->height == 2160 && s.frame->pts100ns >= 7'000'000 &&
+      Expect(s.frame && s.frame->width == width && s.frame->height == height && s.frame->pts100ns >= 7'000'000 &&
           s.peakDecodedBytes <= VideoPlayback::kDecodedByteLimit, "4K seek keeps actual selected pixels and exact quota"); }
+    std::vector<std::int64_t> seekTimes;unsigned mostSeekReads{};
+    for(const auto target:{16'000'000ll,0ll,10'000'000ll,2'000'000ll,18'000'000ll,4'000'000ll,12'000'000ll,6'000'000ll}) {
+        for(int burst=0;burst<5;++burst)player.Seek100ns((target+burst*2'000'000)%20'000'000);
+        const auto latest=player.Seek100ns(target);
+        const auto pending=player.Snapshot();
+        Expect(pending.requestGeneration==latest &&
+            (pending.state!=VideoPlaybackState::Seeking || !pending.readyFrames),"seek never drains stale lookahead");
+        Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==latest && s.state==VideoPlaybackState::Paused;}),
+            "newest rapid backward/forward seek completes");
+        const auto s=player.Snapshot();
+        Expect(s.frame && s.frame->requestGeneration==latest && s.frame->pts100ns>=target,
+            "rapid seek retains exact latest-generation pixels");
+        Expect(s.lastRequestReadCount<=VideoPlayback::kSeekSampleLimit && s.lastRequestLatencyUs>0 &&
+            s.lastRequestLatencyUs<=2'000'000,"request diagnostics measure first target publication within safety bound");
+        Expect(s.lastRequestCopiedFrames==1,"discarded seek preroll produces no owned full-frame copies");
+        mostSeekReads=std::max(mostSeekReads,s.lastRequestReadCount);
+        seekTimes.push_back(s.lastRequestLatencyUs);
+    }
+    Expect(mostSeekReads>1,"the native fixture actually exercises discarded codec preroll");
+    std::sort(seekTimes.begin(),seekTimes.end());
+    std::cout<<(dci?"DCI":"UHD")<<" 4K native request-to-target latency us: p50="<<seekTimes[seekTimes.size()/2]
+        <<" max="<<seekTimes.back()<<" (8 bursts; worker publication, not display latency)\n";
+    {
+    const auto fineStart=player.Seek100ns(1);
+    Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==fineStart && s.state==VideoPlaybackState::Paused;}),
+        "fine-scrub fixture selects the first frame after zero");
+    const auto fineFrame=player.Snapshot().frame;
+    std::vector<std::int64_t> fineTimes;
+    for(const auto target:{100'000ll,500'000ll,1'000'000ll,1'500'000ll,200'000ll,1ll}) {
+        const auto request=player.Seek100ns(target);
+        Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==request && s.state==VideoPlaybackState::Paused;}),
+            "same-frame fine scrub completes under newest authority");
+        const auto s=player.Snapshot();
+        Expect(s.lastRequestReusedFrame && !s.lastRequestReadCount && !s.lastRequestCopiedFrames,
+            "same-frame seek performs no native seek/preroll reads or pixel copies");
+        Expect(s.frame && fineFrame && s.frame->pts100ns==fineFrame->pts100ns &&
+            s.frame->requestGeneration==request && s.frame->bgra==fineFrame->bgra,
+            "cached seek retickets exact immutable pixels without changing their source time");
+        fineTimes.push_back(s.lastRequestLatencyUs);
+    }
+    std::sort(fineTimes.begin(),fineTimes.end());
+    std::cout<<(dci?"DCI":"UHD")<<" 4K same-frame scrub latency us: p50="<<fineTimes[fineTimes.size()/2]
+        <<" max="<<fineTimes.back()<<" (6 seeks; worker publication)\n";
+    }
+    {
+        const auto heldFrame=player.Snapshot().frame;
+        const auto failed=player.Seek100ns(40'000'000);
+        Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==failed && s.state==VideoPlaybackState::Unavailable;}),
+            "seek beyond native duration truthfully fails");
+        Expect(player.Snapshot().frame==heldFrame,"failed seek preserves pointer-identical last selected pixels");
+    }
+    const auto pressureStart=player.Seek100ns(0);
+    Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==pressureStart && s.state==VideoPlaybackState::Paused;}),
+        "retained-lease pressure fixture selects start");
+    std::vector<std::shared_ptr<const VideoPlaybackFrame>> leases;
+    player.SetPlaying(true);
+    Expect(Wait([&]{
+        const auto s=player.Snapshot();
+        if(s.frame && (leases.empty() || leases.back()->pts100ns!=s.frame->pts100ns))leases.push_back(s.frame);
+        Expect(s.state!=VideoPlaybackState::Unavailable,"consumer hoarding applies backpressure without invalidating decoder");
+        return s.memoryPressure && !s.readyFrames && leases.size()>=4;
+    },5000),"retained external leases cannot grow the pool past its cap");
+    const auto pressureBytes=player.Snapshot().decodedBytes;
+    const auto cacheUnderPressure=player.Seek100ns(0);
+    Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==cacheUnderPressure && s.state==VideoPlaybackState::Paused;}),
+        "same-frame seek succeeds while consumers retain all available pixel credit");
+    {const auto s=player.Snapshot();
+     Expect(s.lastRequestReusedFrame && !s.lastRequestReadCount && !s.lastRequestCopiedFrames &&
+         !leases.empty() && s.frame && s.frame->bgra==leases.front()->bgra && s.decodedBytes<=pressureBytes,
+         "pressure reticket shares the exact charged allocation without growing the pixel pool");}
+    auto pressured=player.Snapshot();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    Expect(player.Snapshot().state!=VideoPlaybackState::Unavailable,"waiting for consumer credit remains available");
+    leases.clear();
+    player.SetPlaying(true);
+    Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==cacheUnderPressure && s.frame && pressured.frame &&
+        s.frame->pts100ns>pressured.frame->pts100ns && s.state!=VideoPlaybackState::Unavailable;}),
+        "releasing old leases resumes without a new seek or Resume");
+    pressured={};player.SetPlaying(false);
+    const auto sequenceStart=player.Seek100ns(0);
+    Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==sequenceStart && s.state==VideoPlaybackState::Paused;}),
+        "ordered playback fixture selects start");
+    player.SetPlaying(true);std::int64_t previousPts=-1;bool pausedOnce=false;
+    Expect(Wait([&]{
+        const auto s=player.Snapshot();
+        Expect(s.state!=VideoPlaybackState::Unavailable,"ordered ready queue remains available");
+        if(s.frame) {
+            Expect(s.frame->pts100ns>=previousPts,"queued playback never presents a backward frame");previousPts=s.frame->pts100ns;
+            if(!pausedOnce && previousPts>=4'000'000) {
+                pausedOnce=true;player.SetPlaying(false);const auto paused=player.Snapshot().frame;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                Expect(player.Snapshot().frame==paused,"Pause holds exact frame while lookahead is retained");
+                player.SetPlaying(true);
+            }
+        }
+        return s.state==VideoPlaybackState::Ended;
+    },5000) && previousPts==22'000'000,"EOF occurs only after the final queued frame is published");
     const auto end = player.JumpToEnd();
     Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == end && s.state == VideoPlaybackState::Ended; }),
         "4K endpoint retains its last frame through the final no-sample EOS read");
@@ -423,7 +557,7 @@ int main(int argc, char** argv) {
             std::cout << "SKIP opt-in native codec run requires OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1\n";
             MFShutdown(); CoUninitialize(); return 77;
         }
-        if (mode == "--native-4k") NativeFourKPool();
+        if (mode == "--native-4k" || mode == "--native-dci-4k") NativeFourKPool(mode=="--native-dci-4k");
         else {
             const auto codec = mode == "--native-av1" ? VideoRecorder::Codec::Av1 : VideoRecorder::Codec::H264;
             NativeAvcAac(codec, true);

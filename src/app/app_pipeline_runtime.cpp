@@ -2837,9 +2837,9 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
             if (neighborId != 0 && neighbor && neighbor->sampleId != frameSeq &&
                 neighbor->width == width && neighbor->height == height &&
                 VideoPlaybackLayoutFits(width, height, neighbor->strideBytes) &&
-                neighbor->bgra.size() >= static_cast<std::size_t>(neighbor->strideBytes) * height) {
+                neighbor->bgra && neighbor->bgra->size() >= static_cast<std::size_t>(neighbor->strideBytes) * height) {
                 try {
-                    auto pixels = PrepareMediaScene(neighbor->bgra.data(), width, height,
+                    auto pixels = PrepareMediaScene(neighbor->bgra->data(), width, height,
                         neighbor->strideBytes, turns, blackWhiteEnabled_, blackWhiteThreshold_,
                         colorTransform, displayColorLut_, contrast_, brightness_);
                     if (pixels) pausedScene->corroboration = UctImmutableFrame{

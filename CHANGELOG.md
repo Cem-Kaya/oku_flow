@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Make video buffering resolution/stride aware under a 256 MiB decoded ceiling.
+  Check staging/replacement credit, backpressure retained-frame pressure and
+  keep a small saved-file lookahead. New seeks discard queued frames, skip
+  owned copies of discarded preroll and publish their exact target before
+  optional OCR corroboration. Remove the worker's fixed per-frame wait and
+  keep archive/live lookahead shallow. Fine scrubs share proven immutable pixels
+  without decoding/copying again; End scans cannot misclassify earlier seeks.
 - Expose verified UCT glyph text as passive, positioned native accessibility
   lines on the render viewport. Throttle semantic additions while keeping
   geometry current and revoking invalid text immediately; native screen-reader

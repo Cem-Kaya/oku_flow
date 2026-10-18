@@ -12,7 +12,7 @@ are not independent test passes.
 | Confirmed issue | Repair / regression |
 | --- | --- |
 | Repeated still resampling/upload on every 16 ms poll | Exact successful viewport stamp reuses unchanged pixels; admission-count test covers 120 polls, dirty view and retry. |
-| 4K staging plus retained neighbors exceeded decoded quota | Drop optional decoder leases before new samples, retain through no-sample EOS; native twelve-frame 4K playback/seek stays within 96 MiB. |
+| 4K staging plus retained neighbors exceeded decoded quota | Initial 41eb8cd repair dropped optional decoder leases before new samples and retained through no-sample EOS. Follow-up review below replaces the fragile fixed 96 MiB policy. |
 | IStream cursor raced validation/actual file offset | Per-stream cursor lock encloses validation, seek, I/O and advancement before backing lock. |
 | Playing video continually restarted immutable OCR | Paced advancing-media receipts share OCR/probe workers; separate real PTS and wall deadline; held-worker/change/pause/authority cases. |
 | Finalization collapsed previously proven part duration | Retain proven duration while revoking old byte-range leases. |
@@ -32,6 +32,33 @@ are not independent test passes.
 | Hidden endpoints created a nonempty native range | Shared hidden-run anchor plus exact Qt endpoint-aggregation regression. |
 | Export/grab paint became on-screen geometry authority | Redirected paints use a scratch plan; later real paint alone promotes authority. |
 | Source-scoped undo skipped a view change across its own temporary camera restore | Exact-owner restore preserves the inverse only for the same selected media identity/generation; native selection and field changes still win. Actual-app fixture plus both synthetic selection rows cover it. |
+
+## Seek/buffer follow-up
+
+Muse Wonderful compared the fixed decoded allowance with modern bounded
+playback queues and reviewed the adaptive implementation. The coordinator
+confirmed that UHD leaves almost no spare capacity at 96 MiB and DCI 4K cannot
+fit the same roles. The replacement accounts for staging, replacement,
+presentation/seek retention and small ready queues under a 256 MiB ceiling;
+arbitrarily retained external leases cause backpressure. Muse also caught
+credit waits holding their own optional predecessor and a due-head deadline
+discard; those paths were repaired before the native stress runs.
+
+Grok 4.7 High independently found an End-scan cache interval incorrectly
+covering earlier real frames. End now proves only its actual endpoint. The
+coordinator also verified predecessor loss across sample-less EOS, copied
+same-frame scrubs, audible Resume preroll copies and stale request diagnostics.
+Repairs retain optional predecessors when credit permits, share immutable pixel
+allocations across reticketed frames, filter Resume preroll and clear counters
+on Submit. Native 30 fps cases test End followed by an earlier seek and Resume;
+UHD/DCI cases test allocation identity under full consumer-held credit.
+
+The first audio regression run caught the new copy filter leaving the Resume
+loop after a discarded sample and later replacing the same held PTS. The
+worker now carries the cursor floor across passes and continues past discarded
+samples. Both AVC/AAC and AV1/AAC failed attempts remain archived; the repaired
+focused cases passed. Performance output describes worker publication on short
+synthetic clips, not measured screen latency or a GPU decoder benchmark.
 
 ## Scope and remaining acceptance
 

@@ -2,8 +2,15 @@
 
 ## Selected-video resource limits (development)
 
-Playback admits at most 96 MiB of decoded pixels including consumer-held
-frames, a 64 MiB byte-read window, an 8 MiB archive metadata/index budget and
+Playback uses resolution/stride/PAR-aware decoded admission with a 96 MiB
+minimum allowance and 256 MiB absolute ceiling, including consumer-held
+frames. This is a cap, not eager allocation. A complete working set must fit
+before decoding. Saved-file lookahead is at most two frames (one at larger
+admitted sizes); archive lookahead is one. Seek invalidates it without draining.
+Optional neighbor preparation waits for a 50 ms quiet period after target
+publication; immediate scrubs supersede it. Proven same-frame seeks share pixels
+and require neither native decode nor another full-frame allocation.
+Additional limits are a 64 MiB byte-read window, an 8 MiB metadata/index budget and
 120 decoded samples per seek. Audio queues include in-flight PCM and are
 bounded to 2 MiB, 32 packets and 500 ms; the native output endpoint is capped
 at 250 ms. These are admission limits, not latency promises. The selected

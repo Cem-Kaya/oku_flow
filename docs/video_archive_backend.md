@@ -67,6 +67,12 @@ That transition rebases the host clock to the held cursor and invalidates the
 consumed-audio clock, so time spent waiting cannot fast-forward the new media.
 `decodedBytes` and `peakDecodedBytes` report the shared staging/lease quota,
 including old frame leases retained by consumers.
+`decodedByteLimit` and `decodeWorkingBytes` expose the current allowance and
+required staging/replacement credit. `readyFrames`/`lookaheadFrames` distinguish
+future frames from scratch surfaces; `memoryPressure` reports interruptible
+retained-lease backpressure. `lastRequestLatencyUs`, `lastRequestReadCount` and
+`lastRequestCopiedFrames` measure a completed exact target before optional
+forward-neighbor decoding. They are not native display/sensor latency.
 
 `VideoPlaybackAudio` contains interleaved signed 16-bit PCM, actual sample PTS,
 sample rate/channels and request generation. `TakeAudio` transfers only current
@@ -180,21 +186,31 @@ remain unavailable instead of silently scanning an entire lecture. EOF Resume
 does not restart. Failed open/seek keeps the displayed lease; the previous
 decoder may already have retired, so another explicit open/seek can be required.
 
-Additional CPU decoded staging plus leased BGRA frames share a 96 MiB budget.
-`VideoPlaybackLayoutFits` validates dimensions (maximum 16,384 per axis), stride
-and byte multiplication before frame allocation. Native coded dimensions are
+Additional CPU decoded staging plus leased BGRA frames share an adaptive budget,
+with a 96 MiB floor and 256 MiB absolute ceiling. No full allowance is allocated
+up front. `PlanVideoPlaybackMemory` validates dimensions (maximum 16,384 per
+axis), stride and square-pixel expansion before frame allocation. Its model
+includes native staging, a replacement, bounded presentation/neighbor and
+seek-local retention, plus up to two future saved-file frames or one archive
+frame. Optional second lookahead degrades when the ceiling cannot fit it.
+An unaffordable minimum working set is refused before decoding. Native coded dimensions are
 checked before requesting RGB32 conversion, then decoded dimensions are checked
 again. Buffer lengths, row pitches
 and IMF2DBuffer2 address bounds are validated. A consumer retaining old frames
-uses that same budget and can make a subsequent decode unavailable. The file
+uses that same budget. Ordinary playback applies interruptible backpressure when
+those leases exhaust working credit, without marking a valid decoder unavailable.
+New seeks discard internal ready frames immediately and supersede that wait.
+Arbitrarily retained external leases still require release; the bounded request
+safety deadline remains effective. The file
 decoder must expose one RGB32 buffer whose total/current/capacity fit the
 reserved staging bytes; GetBufferByIndex avoids an uncounted contiguous-copy
 allocation. Source-format growth beyond the admitted staging returns unavailable.
 Optional neighbors and intermediate seek frames release their leases before a
 required replacement pixel allocation when credit is tight. A previous seek
-frame is kept through a no-sample EOS read. Normal 4K decoding needs at most the
-displayed frame, one native staging buffer and one replacement owned frame
-(99,532,800 bytes for tight 3840x2160 RGB32), below the 100,663,296-byte cap.
+frame is kept through a no-sample EOS read. The plan's retained roles include
+display and transient presentation holds, not just ready-to-display lookahead.
+UHD and padded DCI 4K therefore retain working headroom instead of depending on
+a display poll dropping a neighbor at exactly the right time.
 The file
 stream accepts at most a 64 MiB individual read and retains no read-ahead cache.
 Parser metadata remains below 8 MiB; mutation bookkeeping is fixed size.
@@ -202,6 +218,40 @@ Audio queues retain at most 32 packets, 2 MiB and 500 ms, with individual packet
 limited to 256 KiB. Native decoder reference pictures/driver/internal caches
 remain separate platform allocations requiring measurement. CPU output is
 requested; no new replay GPU pool is allocated by this backend.
+
+### Seek-first scheduling
+
+There is no fixed ten-millisecond wait between active playback operations.
+Newest request generations replace pending requests and immediately discard the
+ready queue; they never wait for queued frames to play out. The worker checks
+authority at native-call boundaries and after reads. One synchronous native call
+can still delay its successor; cancellation does not forcibly interrupt a driver.
+
+Normal seeks still decode required codec reference/preroll samples, but skip
+owned BGRA copies and alpha sweeps for frames before the requested position.
+The exact target is published before reading a missing optional UCT neighbor.
+That one-shot corroboration waits for a 50 ms quiet period, then runs on the
+same worker and cannot revoke
+the completed result if it fails. Ordinary file playback prepares up to two
+future frames, subject to working credit and measured recent decode/copy cost.
+It does not delay an already-due head to fill the queue. Archive rewind keeps
+one-frame lookahead. Muted/silent Resume reuses queued video; audible Resume
+repositions both tracks for PCM continuity. EOF waits for queued frames to be
+presented. OCR workers are not an admission dependency of a native seek.
+
+A completed normal seek proves that requested positions between its original
+request and selected PTS resolve to the same image. A weak reference permits
+those fine scrubs to reticket the exact immutable pixel allocation with zero
+native reads and zero full-frame copies. Pixel accounting follows the last
+allocation lease, including frames with different request generations. It adds
+no retained raw-frame history and still works when consumers hold all decode
+credit. End scans cache only their actual endpoint; earlier search anchors do
+not prove this interval. Subsequent playback/corroboration repositions native
+tracks when necessary. Pending requests clear old completion diagnostics.
+
+This implementation still uses CPU RGB32 decoding/conversion. Hardware-decoded
+textures and GPU color conversion are a separate implementation step; increasing
+the cap does not accelerate codec reference decoding or establish screen latency.
 
 Spatial display effects and UCT belong to the selected-view controller. This
 backend applies no live temporal filter and never changes capture timestamps,
@@ -245,9 +295,16 @@ the final tracked CPU gate for both native codecs, including actual EOF after
 the longer files and the sparse-video audio tail. The native active cases also hold a one-second
 Waiting interval, append without another seek/Resume, and check resumed PTS
 advancement against elapsed host time to catch waiting-clock fast-forward.
-`video_playback_native_4k`
-creates twelve 4K AVC samples, requires five distinct playback frames, a
-multi-sample seek and actual EOS while checking the exact unchanged quota.
+`video_playback_native_4k` and `video_playback_native_dci_4k`
+create twelve UHD/DCI 4K AVC samples, require distinct playback and two future
+frames while a consumer retains the displayed pair, rapid newest-generation
+seeks with actual discarded preroll, and exact EOS after queued playback.
+They check fine-scrub shared allocation identity, full-credit hoarding and
+backpressure recovery, Pause/Resume ordering and the adaptive/hard quotas.
+Reported median/maximum request-to-target timings describe these short synthetic
+clips and worker publication only; they are not display or 4K60 benchmarks.
+The 30 fps AVC/AV1 cases also seek before the endpoint after an End scan and
+require actual earlier pixels and successful Resume.
 The sparse fixture submits video
 at 0/33 ms followed by a two-second gap, then requires at least 700 ms of PCM
 while the exact early video image is still held. Its original video samples

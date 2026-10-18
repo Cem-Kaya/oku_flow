@@ -52,9 +52,28 @@
   pixels, a genuinely distinct optional neighbour and actual PTS/track identity.
   `SetPlaying`, `SetMuted`, `SetAudioClock100ns`, `TakeAudio` and `Close` preserve
   held-position, EOF and cancellation semantics. `VideoPlaybackLayoutFits`
-  enforces decoded resource admission; `VideoPlaybackTimestampFits` bounds
-  media and host-clock arithmetic. Snapshot `decodedBytes`/`peakDecodedBytes`
-  account retained frames and staging against the unchanged 96 MiB quota.
+  enforces complete decoded resource admission; `PlanVideoPlaybackMemory`
+  returns a checked `VideoPlaybackMemoryPlan` with staging/frame bytes, working
+  and retained allowances, adaptive cap and admitted lookahead. It accounts for
+  stride and square-pixel expansion under a 256 MiB absolute ceiling.
+  `VideoPlaybackTimestampFits` bounds media and host-clock arithmetic. Snapshot
+  `decodedBytes`/`peakDecodedBytes` account retained frames and staging;
+  `decodedByteLimit`, `decodeWorkingBytes`, `readyFrames`, `lookaheadFrames`
+  and `memoryPressure` expose current admission/backpressure. First-target
+  `lastRequestLatencyUs`, `lastRequestReadCount` and `lastRequestCopiedFrames`
+  exclude deferred optional corroboration and distinguish codec preroll from
+  owned copies. `lastRequestReusedFrame` identifies a proven same-frame seek;
+  pending/failed requests clear the previous completion counters. They measure
+  worker publication, not screen latency. `VideoPlaybackFrame::bgra` is an
+  immutable shared pixel allocation; `AllocatePixels` charges it until its last
+  lease retires. Reticketing metadata shares those pixels without a copy or a
+  second budget charge. A weak exact-seek interval retains no extra raw history;
+  an End scan proves only its selected endpoint, never its search anchor range.
+  The ready queue holds at most two future saved-file frames or one archive
+  frame. `Submit` invalidates it immediately; native calls remain cooperative.
+  Optional corroboration follows exact-target publication and a 50 ms quiet
+  period, so immediate scrubs take priority. A reused native cursor repositions
+  before corroboration/Resume; audible Resume also skips owned preroll copies.
   `VideoPlaybackState::Waiting` retains forward intent at a growing archive's
   verified tail; new complete fragments resume it without another user action.
   Archive `parserBoxAttempts` exposes bounded unsupported-generation work.

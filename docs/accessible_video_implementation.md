@@ -59,7 +59,7 @@ player; active archive reads are checked while the writer remains active.
 Failures remain in the tracked evidence ledger. These checks do not establish
 screen-reader, optical-camera, installer or public-release acceptance.
 
-## Local validation record (2026-10-18)
+## Initial local validation record (2026-10-18, commit 41eb8cd)
 
 The tracked `scripts/agent_build.bat` completed with
 `OKUFLOW_AGENT_EXCLUDE_GUI=1`, isolated Release output, CUDA 12.9.86, Qt 6.12.0
@@ -94,3 +94,25 @@ Selected-media rendering currently supports the documented CPU view effects;
 advanced GPU effects explicitly report unavailable. The seven new media tools
 are in the opt-in `dev-full`/`v1` catalogs; this work does not promote the default
 MCP catalog or certify V1 acceptance.
+
+## CPU seek/buffer follow-up (2026-10-18)
+
+The tracked background matrix passed again after adaptive admission, small ready
+queues, copy-free same-frame reticketing and seek-priority scheduling: Release
+compiled, 99 CPU cases and all 10 CUDA delta cases passed. The same two optional
+Qt-row skips remain inside passed cases. Native GUI tests were excluded.
+New UHD/DCI fixtures retain the application's displayed pair and deliberately
+hoard leases, check two actual ready frames, discard real codec preroll without
+owned copies, validate superseded seeks, preserve failed-seek pixels and require
+ordered Resume/EOF. AVC/AAC and AV1/AAC test pre-end seeks after Jump to End and
+sparse-video continuous audio. Earlier diagnostic and Resume failures remain in
+the per-attempt ledger; their causes were repaired before this matrix.
+
+On the final short synthetic 5 fps 4K files, eight seek bursts measured UHD
+median 217,121 us / maximum 279,443 us and DCI median 210,497 us / maximum
+347,235 us from request to worker publication. Six proven same-frame seeks
+measured UHD median 30 us / maximum 43 us and DCI median 15 us / maximum 25 us,
+with the same shared pixel allocation and no native reads or owned pixel copies.
+These small samples are observations, not screen-latency, 4K60, real-lecture or
+hardware-decoder acceptance. The CPU path is retained as the compatibility
+fallback for the subsequent GPU-playback implementation.

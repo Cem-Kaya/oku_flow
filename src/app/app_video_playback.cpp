@@ -384,7 +384,7 @@ bool OkuFlowApp::PresentMediaView()
     if (!MediaViewSelected() || !videoDocument_->frame) return false;
     auto& doc = *videoDocument_;
     const auto& frame = *doc.frame;
-    const bool presented = PresentSelectedMediaPixels(frame.bgra.data(), frame.width, frame.height,
+    const bool presented = frame.bgra && PresentSelectedMediaPixels(frame.bgra->data(), frame.width, frame.height,
         frame.strideBytes, mediaDocumentEpoch_, frame.sampleId, doc.neighbor.get(), frame.pts100ns,
         MediaPlaybackPlaying());
     if (presented) {
@@ -436,7 +436,7 @@ void OkuFlowApp::AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT widt
         return;
     }
     auto frame = std::make_shared<VideoPlaybackFrame>();
-    frame->bgra = std::move(pixels); frame->width = width; frame->height = height;
+    frame->bgra = std::make_shared<const std::vector<std::uint8_t>>(std::move(pixels)); frame->width = width; frame->height = height;
     frame->strideBytes = width * 4; frame->sampleId = sequence;
     frame->requestGeneration = doc.requestGeneration;
     doc.frame = frame; doc.neighbor.reset(); doc.heldLive = true;

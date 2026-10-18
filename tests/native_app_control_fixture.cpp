@@ -478,7 +478,7 @@ bool WritePrivateVideoFixture(const QString& path) {
 }
 std::shared_ptr<const VideoPlaybackFrame> OwnedVideoPolicyFrame() {
     auto frame=std::make_shared<VideoPlaybackFrame>();frame->width=32;frame->height=16;frame->strideBytes=128;
-    frame->bgra.assign(32*16*4,127);frame->sampleId=41;frame->pts100ns=55'000'000;return frame;
+    frame->bgra=std::make_shared<const std::vector<std::uint8_t>>(32*16*4,127);frame->sampleId=41;frame->pts100ns=55'000'000;return frame;
 }
 #endif
 // Fault injection changes only the commit outcome; every state read and write
@@ -556,7 +556,7 @@ private slots:
         const auto held=NativeControlFixture::HeldVideoFrame(app_);
         QVERIFY(held);
         QCOMPARE(held->sampleId,std::uint64_t(71));
-        QVERIFY(std::all_of(held->bgra.begin(),held->bgra.end(),[](auto pixel) {return pixel==31;}));
+        QVERIFY(held->bgra && std::all_of(held->bgra->begin(),held->bgra->end(),[](auto pixel) {return pixel==31;}));
         const auto heldConfig=NativeControlFixture::CurrentImageConfig(app_);
         QVERIFY(heldConfig.zoomEnabled);
         QVERIFY(std::abs(heldConfig.zoomAmount-2.0f)<0.00001f);
