@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>פענוח טקסט ב-CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>ההקלטה הנוכחית</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>וידאו</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>חי</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>בהשהיה מאחורי השידור החי</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>מושהה</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>סוף הווידאו</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>פתיחת הווידאו…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>עובר למיקום שנבחר…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>ממתין להקלטה</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>מסיים את ההקלטה</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>הווידאו אינו זמין</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>ניגון וידאו</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>חזרה 10 שניות</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>השהיית הווידאו</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>המשך ניגון הווידאו</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>מעבר לשידור החי</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>מעבר לסוף</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>חזרה למצלמה</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>שמירת פריים</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>ביטול השתקה</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>השתקת הניגון</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>פקדי הווידאו</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>ציר הזמן של הווידאו</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>חץ שמאלה וחץ ימינה: שנייה אחת. Page Up ו-Page Down: עשר שניות. Home: התחלה. End: סוף ההקלטה.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 מתוך %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>פתיחת וידאו</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>פתיחת וידאו שמור (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>הקלטת וידאו Original</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>התחלה או עצירה של הקלטת Original MP4</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>בחירת צליל להקלטת וידאו Original. המיקרופון משמש רק בזמן ההקלטה.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>בחירת שמע מהמיקרופון להקלטת Original MP4, או בחירה ללא מיקרופון.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>לא ניתן לשמור את הפריים המוצג. הווידאו המוקלט עדיין זמין.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>לא ניתן לפתוח את הווידאו: יש לבחור קובץ מקומי קיים אחד.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>הווידאו לא נפתח כי לא ניתן לעצור את ההקלטה.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>מסיים את ההקלטה לפני פתיחת הווידאו...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>ממתין עד שניתן יהיה לדלג למיקומים בווידאו המוקלט.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>הפריים המושהה לא הוקלט. יש לדלג לווידאו המוקלט כדי להמשיך.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>לא ניתן לאמת את המיקום המוקלט של הפריים המושהה. יש לדלג לווידאו המוקלט כדי להמשיך.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>סוף הווידאו. יש לדלג לנקודה מוקדמת יותר כדי לנגן שוב.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>המצלמה אינה זמינה. מוצג הפריים המוקלט האחרון.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>הפריים המושהה לא הוקלט. התמונה השמורה עדיין זמינה.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>לא ניתן לאמת את המיקום המוקלט של הפריים המושהה. התמונה השמורה עדיין זמינה.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>סוף ההקלטה הזמינה. התמונה השמורה עדיין זמינה.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>הווידאו אינו זמין: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>צליל הניגון אינו זמין. ניגון הווידאו נמשך.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>הפריים לא נשמר: התצוגה שנבחרה אינה זמינה.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>הפריים לא נשמר: לא ניתן להוסיף את התמונה לתור.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>הפריים לא נשמר: תיקיית OkuFlow Photos אינה זמינה.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>פריים הווידאו שנבחר נשמר.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>לא ניתן לשמור את פריים הווידאו שנבחר.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>הפריים לא נשמר: כותב התמונות עסוק. יש לנסות שוב.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>ההשהיה אינה זמינה: לא ניתן לשמור את הפריים המוצג.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;פקדים&lt;/h2&gt;&lt;p&gt;&lt;b&gt;פשוט&lt;/b&gt; מציג את תמונת המצלמה בגודל מרבי. השתמשו בקרוסלת הפינה או במקשי הספרות 1 עד 9 כדי לשנות מצבים מהירים.&lt;/p&gt;&lt;p&gt;&lt;b&gt;הסתרת הממשק&lt;/b&gt; או &lt;b&gt;Ctrl+H&lt;/b&gt; מסתירים את הפקדים ואת העוזר מתצוגת המצלמה. &lt;b&gt;הצגת הממשק&lt;/b&gt; מחזירה אותם ואת התשובה הקיימת.&lt;/p&gt;&lt;p&gt;&lt;b&gt;מתקדם&lt;/b&gt; פותח הגדרות מפורטות לתמונה ולעוזר. גררו את המפריד שבקצה החלונית כדי לשנות את גודלה.&lt;/p&gt;&lt;p&gt;גררו את תצוגת המצלמה כדי להזיז אותה. השתמשו ב-Ctrl ובגלגלת העכבר כדי לשנות את הזום. הפעילו &lt;b&gt;ג'ויסטיק וירטואלי&lt;/b&gt; תחת &lt;b&gt;הגדרות &amp;gt; תצוגה וניווט&lt;/b&gt; כדי להציג פקד תנועה על המסך.&lt;/p&gt;&lt;p&gt;צילום שומר תמונות מקוריות ומעובדות. הקלטה שומרת וידאו Original. הסבר מתאר את הסצנה; קריאה מזהה טקסט. לחצו על &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; כדי לפתוח את התיקייה שמכילה את קובצי OkuFlow.&lt;/p&gt;&lt;h2&gt;תכונות&lt;/h2&gt;&lt;p&gt;&lt;b&gt;בהירות טקסט&lt;/b&gt; משלבת ניקוי מסמכים, ניגודיות מקומית, חידוד וקצוות טקסט יציבים. &lt;b&gt;צבעי תצוגה&lt;/b&gt; מספקים לוחות צבעים לקריאה וסכמות צבעים מותאמות אישית.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; משפר פרטים בהגדלה כאשר סביבת זמן הריצה האופציונלית NVIDIA Video Effects מותקנת.&lt;/p&gt;&lt;p&gt;&lt;b&gt;קריאת טקסט והעוזר&lt;/b&gt; יכולים לקרוא טקסט, להסביר את התצוגה, לענות על שאלות המשך ולהוסיף תוצאות להערות ההרצאה.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>קובצי וידאו (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;כל הקבצים (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text בתצוגה הזו</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… מציין טקסט שנותר בתמונה המקורית.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>ניגון וידאו: זום, סיבוב, צבעי קריאה ו‑UCT זמינים. אפקטים מתקדמים של GPU אינם זמינים.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC המקורי, מפעיל את המקודד]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC המקורי, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>ההשהיה אינה זמינה: לא ניתן היה לשמור בדיוק על המסגור המוצג.</translation>
+        </message>
     </context>
 </TS>

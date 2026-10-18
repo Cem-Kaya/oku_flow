@@ -3273,5 +3273,245 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
             <source>CPU text recognizer</source>
             <translation>Rozpoznávání textu na CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>Aktuální nahrávka</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>Video</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>Živě</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>Záznam za živým obrazem</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>Pozastaveno</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>Konec videa</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>Otevírání videa…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>Přesun na pozici…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>Čeká se na nahrávku</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>Dokončování nahrávky</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>Video není k dispozici</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>Přehrávání videa</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>Vrátit o 10 sekund</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>Pozastavit video</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>Pokračovat v přehrávání</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>Přejít na živý obraz</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>Přejít na konec</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>Zpět ke kameře</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>Uložit snímek</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>Zapnout zvuk přehrávání</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>Vypnout zvuk přehrávání</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>Ovládání videa</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>Časová osa videa</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>Šipky vlevo a vpravo: o jednu sekundu. Page Up a Page Down: o deset sekund. Home: začátek. End: konec nahrávky.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 z %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>Otevřít video</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>Otevřít uložené video (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>Nahrávat původní video</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>Spustit nebo zastavit nahrávání původního videa MP4</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>Vyberte zvuk pro nahrávání původního videa. Mikrofon se používá pouze během nahrávání.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>Vyberte zvuk z mikrofonu pro nahrávání původního videa MP4, nebo zvolte možnost bez mikrofonu.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>Zobrazený snímek se nepodařilo uchovat. Nahrané video je stále k dispozici.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>Video se nepodařilo otevřít: vyberte jeden existující místní soubor.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>Video nebylo otevřeno, protože se nepodařilo zastavit nahrávání.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>Dokončování nahrávky před otevřením videa…</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>Čeká se, až bude možné přejít na zvolenou pozici v nahraném videu.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>Pozastavený snímek nebyl nahrán. Pokračujte přechodem na nahrané video.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>Pozici pozastaveného snímku v nahrávce se nepodařilo ověřit. Pokračujte přechodem na nahrané video.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>Konec videa. Chcete-li znovu přehrávat, přejděte na dřívější místo.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>Kamera není k dispozici. Zobrazuje se poslední nahraný snímek.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>Pozastavený snímek nebyl nahrán. Uchovaný obrázek je stále k dispozici.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>Pozici pozastaveného snímku v nahrávce se nepodařilo ověřit. Uchovaný obrázek je stále k dispozici.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>Konec dostupné nahrávky. Uchovaný obrázek je stále k dispozici.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>Video není k dispozici: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>Zvuk přehrávání není k dispozici. Video se přehrává dál.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>Snímek nebyl uložen: vybraný pohled není k dispozici.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>Snímek nebyl uložen: obrázek se nepodařilo zařadit do fronty.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>Snímek nebyl uložen: složka OkuFlow Photos není k dispozici.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>Vybraný snímek videa byl uložen.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>Vybraný snímek videa se nepodařilo uložit.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>Snímek nebyl uložen: probíhá ukládání obrázku. Zkuste to znovu.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>Pozastavení není k dispozici: zobrazený snímek se nepodařilo uchovat.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;Ovládání&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Jednoduchý režim&lt;/b&gt; maximalizuje pohled z kamery. Pomocí rohového karuselu nebo číselných kláves 1 až 9 můžete měnit rychlé režimy.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Skrýt rozhraní&lt;/b&gt; nebo &lt;b&gt;Ctrl+H&lt;/b&gt; skryje ovládací prvky a asistenta v pohledu z kamery. &lt;b&gt;Zobrazit rozhraní&lt;/b&gt; je obnoví spolu s dosavadní odpovědí.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Pokročilý režim&lt;/b&gt; otevře podrobné nastavení obrazu a asistenta. Velikost panelu změníte přetažením oddělovače na jeho okraji.&lt;/p&gt;&lt;p&gt;Pohled z kamery posunete přetažením. Přiblížení změníte podržením Ctrl a otáčením kolečka myši. Pohyb na obrazovce zpřístupníte zapnutím &lt;b&gt;Virtuální joystick&lt;/b&gt; v nabídce &lt;b&gt;Nastavení &amp;gt; Zobrazení a navigace&lt;/b&gt;.&lt;/p&gt;&lt;p&gt;Fotografie ukládá původní i zpracovanou verzi. Nahrávání ukládá původní video. Funkce Vysvětlit popíše scénu; funkce Číst rozpozná text. Stisknutím &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; otevřete složku se soubory OkuFlow.&lt;/p&gt;&lt;h2&gt;Funkce&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Čitelnost textu&lt;/b&gt; kombinuje vyčištění dokumentu, místní kontrast, doostření a stabilní hrany textu. &lt;b&gt;Barvy zobrazení&lt;/b&gt; nabízí palety pro čtení a vlastní barevná schémata.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; zlepšuje detaily při přiblížení, pokud je nainstalováno volitelné prostředí NVIDIA Video Effects.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Čtení textu a asistent&lt;/b&gt; umí číst text, vysvětlit pohled, odpovídat na doplňující otázky a přidávat výsledky do poznámek k přednášce.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>Video soubory (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;Všechny soubory (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text v tomto zobrazení</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… označuje text ponechaný v původním obrázku.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>Přehrávání videa: je dostupné přiblížení, otočení, barvy pro čtení a UCT. Pokročilé efekty GPU nejsou dostupné.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC originál, spouštění kodéru]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC originál, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>Pozastavení není k dispozici: zobrazený výřez se nepodařilo přesně zachovat.</translation>
+        </message>
     </context>
 </TS>

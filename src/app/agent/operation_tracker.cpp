@@ -17,6 +17,8 @@ bool Allowed(OperationKind kind, OperationState from, OperationState to) {
     if (kind == OperationKind::Recording) return (from == OperationState::Starting && (to == OperationState::Recording || to == OperationState::Stopping))
         || (from == OperationState::Recording && to == OperationState::Stopping)
         || (from == OperationState::Stopping && to == OperationState::Completed);
+    if(kind==OperationKind::Video)return (from==OperationState::Requested && to==OperationState::Starting)
+        || (from==OperationState::Starting && to==OperationState::Completed);
     return (from == OperationState::Requested && to == OperationState::Stopping)
         || ((from == OperationState::Requested || from == OperationState::Stopping) && to == OperationState::Starting)
         || (from == OperationState::Starting && to == OperationState::FirstFrame);
@@ -95,6 +97,26 @@ QJsonObject OperationTracker::SafeStatus(const QString& id) const {
         if(record->summary["savedStartupPreserved"]==true)dto["savedStartupPreserved"]=true;
     }
     if (!record->sessionId.isEmpty()) dto["sessionId"] = record->sessionId;
+    if(record->kind==OperationKind::Video) {
+        // These DTO fields are native-generated media identity, never paths or
+        // worker diagnostic text. A completion retains the admitted Save ticket.
+        for(const auto* key:{"documentId","resultDocumentId"}) {
+            const auto value=record->summary[key].toString();
+            if(QRegularExpression("^media-[a-f0-9]{32}$").match(value).hasMatch() || value.isEmpty())dto[key]=value;
+        }
+        for(const auto* key:{"selectionGeneration","requestGeneration","completedRequestGeneration","saveRevision",
+                             "selectedPts100ns","frameSequence","provisionalCaptureClock100ns","requestedPositionMs","resultSelectionGeneration"}) {
+            const auto value=record->summary[key];
+            if(value.isNull() || (value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble()>=0 && value.toDouble()<=9007199254740991.0))dto[key]=value;
+        }
+        for(const auto* key:{"kind","mode","waitingReason","saveState"}) {
+            const auto value=record->summary[key].toString();
+            if(QStringList{"camera","recording","file","live","behind_live","paused","playing","holding","held_unrecorded","video","end","opening","seeking",
+                           "waiting","finishing","unavailable","idle","writing","committed","failed","latest_live","file_end"}.contains(value))dto[key]=value;
+        }
+        for(const auto* key:{"playing","recordingActive","hasFrame","heldUnrecorded"})
+            if(record->summary[key].isBool())dto[key]=record->summary[key];
+    }
     if(record->kind==OperationKind::Adjustment && record->summary["deviceAcknowledged"].isBool())dto["deviceAcknowledged"]=record->summary["deviceAcknowledged"];
     // Strict allowlist; a producer cannot forward arbitrary worker error/path
     // strings through the durable operation query.

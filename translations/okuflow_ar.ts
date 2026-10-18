@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>التعرف على النص باستخدام CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>التسجيل الحالي</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>فيديو</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>مباشر</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>متأخر عن البث المباشر</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>متوقف مؤقتًا</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>نهاية الفيديو</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>جارٍ فتح الفيديو…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>جارٍ الانتقال…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>بانتظار التسجيل</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>جارٍ إنهاء التسجيل</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>الفيديو غير متاح</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>تشغيل الفيديو</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>إرجاع 10 ثوانٍ</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>إيقاف الفيديو مؤقتًا</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>استئناف الفيديو</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>الانتقال إلى البث المباشر</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>الانتقال إلى النهاية</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>العودة إلى الكاميرا</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>حفظ الإطار</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>إلغاء كتم الصوت</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>كتم الصوت</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>عناصر التحكم بالفيديو</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>الخط الزمني للفيديو</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>السهمان لليسار واليمين: ثانية واحدة. Page Up وPage Down: عشر ثوانٍ. Home: البداية. End: نهاية التسجيل.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 من %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>فتح فيديو</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>فتح فيديو محفوظ (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>تسجيل فيديو Original</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>بدء تسجيل Original MP4 أو إيقافه</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>اختر الصوت لتسجيل فيديو Original. لا يُستخدم الميكروفون إلا أثناء التسجيل.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>اختر صوت الميكروفون لتسجيل Original MP4، أو اختر عدم استخدام ميكروفون.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>تعذر الاحتفاظ بالإطار المعروض. يظل الفيديو المسجل متاحًا.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>تعذر فتح الفيديو: اختر ملفًا محليًا موجودًا واحدًا.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>لم يُفتح الفيديو لتعذر إيقاف التسجيل.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>جارٍ إنهاء التسجيل قبل فتح الفيديو...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>بانتظار أن يصبح الفيديو المسجل قابلًا للانتقال إلى مواضع مختلفة.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>لم يُسجَّل الإطار المُجمَّد. انتقل إلى الفيديو المسجل للمتابعة.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>تعذر التحقق من موضع الإطار المُجمَّد في التسجيل. انتقل إلى الفيديو المسجل للمتابعة.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>نهاية الفيديو. انتقل إلى موضع أسبق لتشغيله مجددًا.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>الكاميرا غير متاحة. يُعرض أحدث إطار مسجل.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>لم يُسجَّل الإطار المُجمَّد. لا تزال الصورة المحتفَظ بها متاحة.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>تعذر التحقق من موضع الإطار المُجمَّد في التسجيل. لا تزال الصورة المحتفَظ بها متاحة.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>نهاية التسجيل المتاح. لا تزال الصورة المحتفَظ بها متاحة.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>الفيديو غير متاح: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>صوت التشغيل غير متاح. يستمر تشغيل الفيديو.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>لم يُحفظ الإطار: العرض المحدد غير متاح.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>لم يُحفظ الإطار: تعذرت إضافة الصورة إلى قائمة الانتظار.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>لم يُحفظ الإطار: مجلد OkuFlow Photos غير متاح.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>حُفظ إطار الفيديو المحدد.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>تعذر حفظ إطار الفيديو المحدد.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>لم يُحفظ الإطار: أداة حفظ الصور مشغولة. حاول مرة أخرى.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>الإيقاف المؤقت غير متاح: تعذر الاحتفاظ بالإطار المعروض.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;عناصر التحكم&lt;/h2&gt;&lt;p&gt;يعرض &lt;b&gt;الوضع البسيط&lt;/b&gt; صورة الكاميرا بأكبر حجم. استخدم شريط التنقل الدائري في الزاوية أو مفاتيح الأرقام من 1 إلى 9 لتغيير الأوضاع السريعة.&lt;/p&gt;&lt;p&gt;يؤدي &lt;b&gt;إخفاء الواجهة&lt;/b&gt; أو &lt;b&gt;Ctrl+H&lt;/b&gt; إلى إخفاء عناصر التحكم والمساعد عن عرض الكاميرا. ويعيد &lt;b&gt;إظهار الواجهة&lt;/b&gt; عرضها مع الإجابة الحالية.&lt;/p&gt;&lt;p&gt;يفتح &lt;b&gt;الوضع المتقدم&lt;/b&gt; إعدادات الصورة والمساعد التفصيلية. اسحب الفاصل عند حافة اللوحة لتغيير حجمها.&lt;/p&gt;&lt;p&gt;اسحب عرض الكاميرا لتحريكه. استخدم Ctrl مع عجلة الماوس للتكبير. فعّل &lt;b&gt;عصا التحكم الافتراضية&lt;/b&gt; من &lt;b&gt;الإعدادات &amp;gt; العرض والتنقل&lt;/b&gt; لإظهار أداة تحكم بالحركة على الشاشة.&lt;/p&gt;&lt;p&gt;يحفظ التقاط صورة النسختين الأصلية والمعالجة. ويحفظ تسجيل فيديو Original. يصف شرح المشهد، ويتعرف قراءة على النص. اضغط &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; لفتح المجلد الذي يحتوي على ملفات OkuFlow.&lt;/p&gt;&lt;h2&gt;الميزات&lt;/h2&gt;&lt;p&gt;يجمع &lt;b&gt;وضوح النص&lt;/b&gt; بين تحسين المستندات والتباين الموضعي وزيادة الحدة وثبات حواف النص. وتوفر &lt;b&gt;ألوان الشاشة&lt;/b&gt; لوحات ألوان للقراءة وأنظمة ألوان مخصصة.&lt;/p&gt;&lt;p&gt;تحسّن &lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; التفاصيل عند التكبير عند تثبيت بيئة تشغيل NVIDIA Video Effects الاختيارية.&lt;/p&gt;&lt;p&gt;يمكن لميزة &lt;b&gt;قراءة النص والمساعد&lt;/b&gt; قراءة النص وشرح العرض والإجابة عن أسئلة المتابعة وإضافة النتائج إلى ملاحظات المحاضرة.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>ملفات الفيديو (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;كل الملفات (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text في هذا العرض</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>تشير علامة … إلى النص الذي تُرك على الصورة الأصلية.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>تشغيل الفيديو: يتوفر التكبير والتدوير وألوان القراءة وUCT. تأثيرات GPU المتقدمة غير متاحة.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC الأصلي، جارٍ بدء المُرمِّز]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC الأصلي، %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>الإيقاف المؤقت غير متاح: تعذّر الاحتفاظ بتأطير المشهد المعروض كما هو تمامًا.</translation>
+        </message>
     </context>
 </TS>

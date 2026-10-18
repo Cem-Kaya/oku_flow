@@ -48,6 +48,11 @@ Settings > Camera provides a phone-only light button whose label follows capture
 metadata. The light starts off each connection and is never a saved preference.
 
 Current contents:
+- `VideoTransport` hosts the source-aware native timeline below the render
+  surface; ordinary unrecorded camera use has no timeline.
+- `UctScreenTextAccessibility` hosts passive virtual text lines on the render
+  viewport, with geometry from `UltraClearTextOverlay`'s last actual paint.
+  See [UIA model and validation limits](../../docs/uct_screen_text_accessibility.md).
 - `MainWindow` for the persistent render surface, three auto-fading Simple-mode
   corner clusters, the shared Simple/Advanced quick-mode carousel and numbered
   grid/toast, and right-side Advanced Image, Assistant, and Settings

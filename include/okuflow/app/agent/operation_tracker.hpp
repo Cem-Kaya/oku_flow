@@ -6,7 +6,7 @@
 #include <functional>
 
 namespace okuflow::agent {
-enum class OperationKind { Photo, Recording, Camera, Adjustment };
+enum class OperationKind { Photo, Recording, Camera, Adjustment, Video };
 enum class OperationState { Queued, Readback, Writing, Committed, Starting, Recording, Stopping, Completed, Requested, FirstFrame, Failed };
 struct OperationRecord {
     QString id, owner, sessionId;

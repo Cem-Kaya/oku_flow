@@ -3273,5 +3273,245 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
             <source>CPU text recognizer</source>
             <translation>Pengenal teks CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>Rekaman saat ini</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>Video</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>Langsung</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>Tertinggal dari siaran langsung</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>Dijeda</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>Akhir video</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>Membuka video…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>Mencari posisi…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>Menunggu rekaman</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>Menyelesaikan rekaman</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>Video tidak tersedia</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>Pemutaran video</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>Mundur 10 detik</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>Jeda video</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>Lanjutkan video</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>Lompat ke siaran langsung</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>Lompat ke akhir</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>Kembali ke kamera</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>Simpan bingkai</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>Aktifkan suara pemutaran</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>Bisukan pemutaran</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>Kontrol video</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>Linimasa video</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>Panah Kiri dan Kanan: satu detik. Page Up dan Page Down: sepuluh detik. Home: awal. End: akhir rekaman.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 dari %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>Buka video</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>Buka video tersimpan (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>Rekam video Original</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>Mulai atau hentikan rekaman MP4 Original</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>Pilih suara untuk rekaman video Original. Mikrofon hanya digunakan saat merekam.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>Pilih audio mikrofon untuk rekaman MP4 Original, atau pilih tanpa mikrofon.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>Bingkai yang ditampilkan tidak dapat dipertahankan. Video rekaman tetap tersedia.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>Video tidak dapat dibuka: pilih satu file lokal yang sudah ada.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>Video tidak dibuka karena rekaman tidak dapat dihentikan.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>Menyelesaikan rekaman sebelum membuka video...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>Menunggu video rekaman siap untuk berpindah ke posisi yang dipilih.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>Bingkai yang ditahan tidak terekam. Cari posisi pada video rekaman untuk melanjutkan.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>Posisi bingkai yang ditahan dalam rekaman tidak dapat diverifikasi. Cari posisi pada video rekaman untuk melanjutkan.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>Akhir video. Cari posisi lebih awal untuk memutar lagi.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>Kamera tidak tersedia. Menampilkan bingkai rekaman terbaru.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>Bingkai yang ditahan tidak terekam. Gambar yang tersimpan tetap tersedia.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>Posisi rekaman bingkai yang ditahan tidak dapat diverifikasi. Gambar yang tersimpan tetap tersedia.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>Akhir rekaman yang tersedia. Gambar yang tersimpan tetap tersedia.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>Video tidak tersedia: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>Suara pemutaran tidak tersedia. Video tetap diputar.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>Bingkai tidak disimpan: tampilan yang dipilih tidak tersedia.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>Bingkai tidak disimpan: gambar tidak dapat dimasukkan ke antrean.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>Bingkai tidak disimpan: folder OkuFlow Photos tidak tersedia.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>Bingkai video yang dipilih berhasil disimpan.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>Bingkai video yang dipilih tidak dapat disimpan.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>Bingkai tidak disimpan: proses penyimpanan gambar sedang sibuk. Coba lagi.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>Jeda tidak tersedia: bingkai yang ditampilkan tidak dapat dipertahankan.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;Kontrol&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Sederhana&lt;/b&gt; memaksimalkan tampilan kamera. Gunakan carousel di sudut atau tombol angka 1 sampai 9 untuk mengganti mode cepat.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Sembunyikan UI&lt;/b&gt; atau &lt;b&gt;Ctrl+H&lt;/b&gt; menghilangkan kontrol dan asisten dari tampilan kamera. &lt;b&gt;Tampilkan UI&lt;/b&gt; memulihkannya beserta jawaban yang ada.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Lanjutan&lt;/b&gt; membuka pengaturan gambar dan Asisten yang lebih lengkap. Seret pemisah di tepi panel untuk mengubah ukurannya.&lt;/p&gt;&lt;p&gt;Seret tampilan kamera untuk menggeser. Gunakan Ctrl dan roda mouse untuk memperbesar atau memperkecil. Aktifkan &lt;b&gt;Joystick Virtual&lt;/b&gt; di &lt;b&gt;Pengaturan &amp;gt; Tampilan dan navigasi&lt;/b&gt; untuk menampilkan kontrol gerak di layar.&lt;/p&gt;&lt;p&gt;Foto menyimpan versi asli dan versi yang telah diproses. Rekam menyimpan video Original. Jelaskan menguraikan pemandangan; Baca mengenali teks. Tekan &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; untuk membuka folder yang berisi file OkuFlow Anda.&lt;/p&gt;&lt;h2&gt;Fitur&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Kejelasan Teks&lt;/b&gt; memadukan pembersihan dokumen, kontras lokal, penajaman, dan tepi teks yang stabil. &lt;b&gt;Warna Tampilan&lt;/b&gt; menyediakan palet untuk membaca dan skema warna khusus.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; meningkatkan detail saat diperbesar jika runtime NVIDIA Video Effects opsional terpasang.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Pembacaan teks dan Asisten&lt;/b&gt; dapat membacakan teks, menjelaskan tampilan, menjawab pertanyaan lanjutan, dan menambahkan hasil ke catatan kuliah.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>File video (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;Semua file (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text pada tampilan ini</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… menandai teks yang dibiarkan pada gambar asli.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>Pemutaran video: zoom, rotasi, warna baca, dan UCT tersedia. Efek GPU lanjutan tidak tersedia.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC asli, encoder sedang dimulai]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC asli, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>Jeda tidak tersedia: area gambar yang sedang ditampilkan tidak dapat dipertahankan dengan tepat.</translation>
+        </message>
     </context>
 </TS>

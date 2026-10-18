@@ -3273,5 +3273,245 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
             <source>CPU text recognizer</source>
             <translation>Tekstherkenning op CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>Huidige opname</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>Video</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>Live</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>Opname achter livebeeld</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>Gepauzeerd</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>Einde van video</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>Video openen…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>Naar positie springen…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>Wachten op opname</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>Opname afronden</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>Video niet beschikbaar</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>Videoweergave</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>10 seconden terugspoelen</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>Video pauzeren</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>Video hervatten</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>Naar livebeeld springen</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>Naar einde springen</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>Terug naar camera</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>Beeld opslaan</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>Geluid bij afspelen inschakelen</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>Geluid bij afspelen uitschakelen</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>Videobediening</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>Videotijdlijn</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>Pijl-links en pijl-rechts: één seconde. Page Up en Page Down: tien seconden. Home: begin. End: einde van de opname.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 van %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>Video openen</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>Opgeslagen video openen (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>Originele video opnemen</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>Een originele MP4-opname starten of stoppen</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>Kies geluid voor de opname van de originele video. De microfoon wordt alleen tijdens het opnemen gebruikt.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>Kies microfoongeluid voor de originele MP4-opname, of kies geen microfoon.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>Het weergegeven beeld kon niet worden bewaard. De opgenomen video is nog beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>Video kon niet worden geopend: selecteer één bestaand lokaal bestand.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>Video is niet geopend omdat de opname niet kon worden gestopt.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>Opname afronden voordat de video wordt geopend…</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>Wachten tot je in de opgenomen video naar een tijdstip kunt springen.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>Het stilgezette beeld is niet opgenomen. Ga naar de opgenomen video om verder te gaan.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>De opgenomen positie van het stilgezette beeld kon niet worden gecontroleerd. Ga naar de opgenomen video om verder te gaan.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>Einde van video. Ga naar een eerder punt om opnieuw af te spelen.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>Camera niet beschikbaar. Het laatst opgenomen beeld wordt weergegeven.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>Het stilgezette beeld is niet opgenomen. De bewaarde afbeelding is nog beschikbaar.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>De opgenomen positie van het stilgezette beeld kon niet worden gecontroleerd. De bewaarde afbeelding is nog beschikbaar.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>Einde van de beschikbare opname. De bewaarde afbeelding is nog beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>Video niet beschikbaar: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>Geluid bij het afspelen is niet beschikbaar. De video wordt verder afgespeeld.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>Beeld niet opgeslagen: de geselecteerde weergave is niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>Beeld niet opgeslagen: de afbeelding kon niet aan de wachtrij worden toegevoegd.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>Beeld niet opgeslagen: de map OkuFlow Photos is niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>Geselecteerd videobeeld opgeslagen.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>Het geselecteerde videobeeld kon niet worden opgeslagen.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>Beeld niet opgeslagen: de afbeelding wordt al opgeslagen. Probeer het opnieuw.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>Pauzeren niet beschikbaar: het weergegeven beeld kon niet worden bewaard.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;Bediening&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Eenvoudig&lt;/b&gt; maximaliseert het camerabeeld. Gebruik het carrouselmenu in de hoek of de cijfertoetsen 1 tot en met 9 om snelstanden te wijzigen.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Gebruikersinterface verbergen&lt;/b&gt; of &lt;b&gt;Ctrl+H&lt;/b&gt; verbergt de bedieningselementen en de assistent in het camerabeeld. &lt;b&gt;Gebruikersinterface tonen&lt;/b&gt; herstelt ze samen met het bestaande antwoord.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Geavanceerd&lt;/b&gt; opent de uitgebreide instellingen voor beeld en assistent. Versleep de scheidingslijn aan de rand van het paneel om het formaat te wijzigen.&lt;/p&gt;&lt;p&gt;Versleep het camerabeeld om het te verschuiven. Houd Ctrl ingedrukt en gebruik het muiswiel om in of uit te zoomen. Schakel &lt;b&gt;Virtuele joystick&lt;/b&gt; in via &lt;b&gt;Instellingen &amp;gt; Weergave en navigatie&lt;/b&gt; voor bediening op het scherm.&lt;/p&gt;&lt;p&gt;Foto slaat zowel de originele als de bewerkte versie op. Opnemen slaat de originele video op. Uitleggen beschrijft de scène; Lezen herkent tekst. Druk op &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; om de map met je OkuFlow-bestanden te openen.&lt;/p&gt;&lt;h2&gt;Functies&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Tekstverbetering&lt;/b&gt; combineert documentverbetering, lokaal contrast, verscherping en stabiele tekstcontouren. &lt;b&gt;Weergavekleuren&lt;/b&gt; biedt leespaletten en aangepaste kleurschema's.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; verbetert details bij inzoomen wanneer de optionele NVIDIA Video Effects-runtime is geïnstalleerd.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Tekst lezen en assistent&lt;/b&gt; kan tekst lezen, het beeld uitleggen, vervolgvragen beantwoorden en resultaten toevoegen aan collegeaantekeningen.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>Videobestanden (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;Alle bestanden (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text in deze weergave</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… geeft aan dat de tekst als onderdeel van de oorspronkelijke afbeelding is behouden.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>Videoweergave: zoomen, draaien, leeskleuren en UCT zijn beschikbaar. Geavanceerde GPU-effecten zijn niet beschikbaar.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC origineel, encoder wordt gestart]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC origineel, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>Pauzeren niet beschikbaar: het weergegeven kader kon niet exact worden behouden.</translation>
+        </message>
     </context>
 </TS>

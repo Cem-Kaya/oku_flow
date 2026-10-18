@@ -1,5 +1,219 @@
 # OkuFlow Code Reference
 
+## Accessible video and immutable UCT (2026-10-18, development)
+
+- `AccessibleVirtualChildren`, `MarkAccessibleVirtualChildHost` and
+  `kAccessibleVirtualChildHostProperty` add virtual elements to `RenderWidget`'s
+  normal accessibility tree. `UctScreenTextAccessibility::{SetEnabled,
+  ContentChanged,RevokeAll,ProcessDueWork}` owns bounded per-line StaticText
+  elements, passive one/three-second semantic timing and immediate revocation.
+  `UctScreenTextSnapshot` and `UctScreenTextTiming` define its source/timing DTOs.
+  `uct::OrderLinesForReading`, `ScreenToken`, `ScreenLine`, `ScreenTextLimits`
+  and `OverlayModel::ScreenLines` project only eligible glyph text and omission
+  runs. The overlay's `PaintedWordGeometry`, `PaintedWord`, `PaintedSceneRect`,
+  `VisiblePart`, `PaintedGeometryCurrent` and `PaintedGeneration` answer geometry
+  from the actual paint; `SceneWord::wordIndex` binds that projection to glyphs.
+  Controller `ScreenTextAccessibility`/`ScreenTextSnapshot` hooks reuse native
+  invalidation without adding OCR/probe work. See
+  [screen text accessibility](uct_screen_text_accessibility.md); offscreen
+  model checks do not establish native Windows UIA or screen-reader acceptance.
+
+- `VideoFileIdentity::SameFile`, `OpenStableVideoReadStream` and
+  `CreateRecordingArchiveOutputStream` bind read-only inputs and exclusively
+  created outputs to held Windows file IDs. `RecordingArchive` observes writes
+  before mutation, validates complete fMP4 configuration/sample payload ranges,
+  and exposes independent accepted/verified/finalized watermarks through
+  `RecordingArchiveSnapshot`. Its parser and byte-stream ownership are described
+  in [the native backend contract](video_archive_backend.md).
+- `VideoRecorder::{Archive,LastAdmittedVideoTimestamp100ns,FailedAttemptPaths}`
+  preserve the selected attempt and real admission clock separately from encoder
+  completion. `RecordingManager::AddOriginalFrame` owns one clean source stream;
+  its old paired submission wrappers ignore processed pixels/ink. `CurrentArchive`,
+  `LastSavedSegment` and `CurrentTimeline` expose bounded immutable snapshots.
+  `ActiveRecordingTimeline::FindAdmission` requires both source sequence and
+  capture clock; absence never invents a recorded PTS. `SavedRecordingSegment`
+  retains its archive, first/last capture clocks, successful frame count and
+  failed-attempt paths. See [Original recording](original_only_recording.md).
+- `RecordingManager::SessionStartedCallback` is the optional final constructor
+  callback. `CompleteFrameSubmission`/`PublishFrameAdmission` publish the first
+  accepted Original's timeline before queuing one exact-session acknowledgement.
+  Stop, startup failure, replacement, abandonment, shutdown and destruction
+  revoke stale delivery. The app switches saved playback to live only from this
+  acknowledgement, so an encoder failure preserves the prior file/cursor.
+- `AssistiveRuntime::NoteCapturedVideo` and the feature-manager forwarding API
+  write one video card with its existing transcript identity and sidecar handoff.
+  Its `AppendNoteHtmlSection` submission uses a single-media layout; legacy video
+  pairs and photo pairs retain both views. `ParseSettingsRoot` ignores retired recording canvas values
+  and serialization omits them. `SetRecordingCanvasMode` is a compatibility slot;
+  `PrepareRecordingPreferencePatch` rejects deprecated canvas mutations atomically.
+- `VideoPlayback` owns one native decoder worker, including retirement, and one
+  newest pending request. `OpenFile`, `OpenArchive`, `Seek100ns` and `JumpToEnd`
+  return request generations. `Snapshot` supplies owned `VideoPlaybackFrame`
+  pixels, a genuinely distinct optional neighbour and actual PTS/track identity.
+  `SetPlaying`, `SetMuted`, `SetAudioClock100ns`, `TakeAudio` and `Close` preserve
+  held-position, EOF and cancellation semantics. `VideoPlaybackLayoutFits`
+  enforces complete decoded resource admission; `PlanVideoPlaybackMemory`
+  returns a checked `VideoPlaybackMemoryPlan` with staging/frame bytes, working
+  and retained allowances, adaptive cap and admitted lookahead. It accounts for
+  stride and square-pixel expansion under a 256 MiB absolute ceiling.
+  `VideoPlaybackTimestampFits` bounds media and host-clock arithmetic. Snapshot
+  `decodedBytes`/`peakDecodedBytes` account retained frames and staging;
+  `decodedByteLimit`, `decodeWorkingBytes`, `readyFrames`, `lookaheadFrames`
+  and `memoryPressure` expose current admission/backpressure. First-target
+  `lastRequestLatencyUs`, `lastRequestReadCount` and `lastRequestCopiedFrames`
+  exclude deferred optional corroboration and distinguish codec preroll from
+  owned copies. `lastRequestReusedFrame` identifies a proven same-frame seek;
+  pending/failed requests clear the previous completion counters. They measure
+  worker publication, not screen latency. `VideoPlaybackFrame::bgra` is an
+  immutable shared pixel allocation; `AllocatePixels` charges it until its last
+  lease retires. Reticketing metadata shares those pixels without a copy or a
+  second budget charge. A weak exact-seek interval retains no extra raw history;
+  an End scan proves only its selected endpoint, never its search anchor range.
+  The ready queue holds at most two future saved-file frames or one archive
+  frame. `Submit` invalidates it immediately; native calls remain cooperative.
+  Optional corroboration follows exact-target publication and a 50 ms quiet
+  period, so immediate scrubs take priority. A reused native cursor repositions
+  before corroboration/Resume; audible Resume also skips owned preroll copies.
+  `VideoPlaybackState::Waiting` retains forward intent at a growing archive's
+  verified tail; new complete fragments resume it without another user action.
+  Archive `parserBoxAttempts` exposes bounded unsupported-generation work.
+  No playback method finalizes a writer.
+- `VideoAudioOutput::{Configure,Push,Reset,Close,Snapshot}` provide one bounded
+  WASAPI owner. `VideoAudioOutputSnapshot` reports device-consumed PTS rather
+  than submitted PCM; generation changes flush obsolete sound. See
+  [audio ownership and clock limits](video_audio_output.md).
+- `OkuFlowApp::VideoDocumentState` owns the selected source, part manifest,
+  held scene, transport intent and pending-finalization open. `InitializeVideoPlayback`,
+  `OpenVideoFile`, `OpenPendingVideoFile`, `PollVideoPlayback` and
+  `ShutdownVideoPlayback` manage it without UI-thread decoder/encoder joins.
+  `OnVideoRecordingStarted`, `OnVideoRecordingStopping`, `OnVideoRecordingEnded`
+  and `OnVideoSegmentSaved` preserve the same-session cursor while opening a
+  foreign file waits for finalization. `BeforeRequestRecording` preserves the
+  existing file on refused preflight. `SeekSelectedVideo`,
+  `ToggleSelectedVideoPlayback`, `SetSelectedVideoPlaying`,
+  `JumpSelectedVideoToEnd` and `ReturnVideoToCamera` execute native transport
+  intents. `SelectedVideoState` supplies path-free frame/PTS/operation receipts.
+  `MediaPlaybackPlaying` separates selected forward intent from actual decoder
+  Playing, so tail waits never start stale audio. `RetirePendingMediaHoldReadback`
+  retains canceled full-source request identities until their exact completion.
+  `SaveSelectedVideoFrame` owns the exact selected viewport and admitted UCT/ink
+  before asynchronous atomic PNG writing. See [document lifecycle](video_document_lifecycle.md).
+- `PresentedOriginalCache::{Stage,Presented,Displayed,Reset}` keep at most the
+  last successfully displayed Original and one pending successor within 96 MiB.
+  They share recorder leases without collecting unrecorded camera history.
+  `AdmitOriginalFrame` separates source admission from presentation.
+  `CaptureLiveForMediaHold` uses an owned matching receipt;
+  `D3D12Presenter::RequestReadback(GpuVideoFrame)` retains its resource/fence
+  through asynchronous completion. `AcceptLiveMediaHold` accepts only that
+  exact still. `PresentMediaView`, `PresentSelectedMediaPixels` and the
+  `PresentFitted` selected-media branch reuse owned pixels for pan/zoom without
+  claiming camera liveness. `CameraOriginalRotationQuarterTurns` separates
+  recording orientation from file-view rotation. See [presentation](media_presentation.md).
+- `VideoPlaybackGpuImage` owns immutable D3D11 texture storage;
+  `VideoGpuFormat` describes decoded/square-pixel geometry and orientation.
+  `VideoGpuDecoder::{Create,CreateFromDevice,ConfigureReader,SetFormat,Convert,
+  RetainedBytes,HasConversionCredit}` implement exact-adapter DXGI decode output,
+  checked GPU color conversion and bounded texture admission/retirement.
+  `CreateFromDevice` can force a private conversion target for compatibility
+  validation. `VideoPlayback::{SetGpuAdapter,UseCpuFallback}` select the preferred
+  reader and explicit compatibility transition; `gpuResident`, `gpuTextureBytes`
+  and `backendReason` report actual output rather than inferred hardware use.
+- `MediaGpuScene::{Prepare,Process,Texture,Width,Height,SceneReady,SceneEpoch,
+  SceneFrameSequence,SceneAppearance,PresentationSync,RecordPresented,
+  TakeUctAnalysis,Analysis,UctAnalysisFailed,Error,Invalidate}` own one private
+  CUDA scene with worker initialization/retirement, exact input leases and
+  independent producer/read-completion signals. `Status` distinguishes Pending,
+  Ready and Failed without a UI join. Camera stateful effects are cleared.
+  `FenceSyncParams::presentationFence` selects this independent timeline for
+  presenter reads, leaving camera/external signal authority unchanged.
+- `PresentSelectedMediaGpuFrame`, `MediaGpuViewSelected` and
+  `RequestMediaCpuFallback` wire the scene, supported appearance, viewport
+  admission, observations and current UCT. `PresentSelectedMediaFrameForCapture`
+  temporarily selects the actual presented frame instead of decoder-ahead work.
+  `BeginSelectedVideoSaveReceipt`, `QueueSelectedVideoFrameImage`,
+  `PollSelectedVideoSave` and `ConsumeVideoGpuReadback` preserve the exact owned
+  Save payload across asynchronous GPU readback/PNG writing and resize retry;
+  retired save copies cannot enter unrelated image consumers. GPU annotation
+  requests use the selected-media presentation and exact matching receipt.
+- `UctImmutableFrame::device` and device/pixel validation helpers
+  (`DeviceMatchesFrame`, `PixelsMatchFrame`, `FrameInputValid`, `EffectiveDevice`)
+  admit exact owned GPU analysis or CPU fallback. `UctAdvancingMediaPresentation`,
+  `OnAdvancingMediaPresentedWithoutAnalysis`, `HasAdvancingDisplayReceipt`,
+  `AdvancingDisplayFrameSeq`, `AdvancingDisplayTimestampMs`, `ModelTime` and
+  `AdvancingValidationFresh` separate the displayed media clock from analysis
+  ownership. Missing input never restamps pixels or refreshes validation;
+  `mediaValidationFreshnessMs` bounds wall retention as well as real media PTS.
+  Consumed advancing device leases use weak identity after worker handoff.
+- `VideoGpuPresenterFixture` is the private window-free initialization/upload
+  seam used only by `video_gpu_snapshot_tests`. It exercises production snapshot
+  shaders, fence signals and owned readbacks. `NativeGpuConversion` checks actual
+  NV12/P010 pixels, pool credit and private-target conversion;
+  `NativeGpuExternal` validates exact private codec files through Open/Seek/End.
+  `media_gpu_scene_tests` checks real CUDA scene pixels, rotation, effects,
+  device analysis identity, private reads, source leases and init cancellation.
+- `VideoTransport::Snapshot`, `SetSnapshot`, `SetUiHidden`, `TimeText` and its
+  semantic signals expose native keyboard/accessibility controls without owning
+  media. `MainWindow::videoTransport`, `openVideoButton`, `openVideoRequested`
+  and `videoFileDropped` host it below the render surface. Drag mappings stay
+  fixed until release; the slider supplies numeric milliseconds and human time
+  through its accessible value interface. See [transport UI](video_transport.md).
+- `TokenDisposition`, confidence and protected geometry preserve rejected OCR
+  spans through Paddle decoding, `PrepareLines`, reading projection and paint.
+  `RecognitionResult::sourcePixelDigest` is computed on the worker without row
+  padding. `OverlayModel::AdmitImmutable` requires distinct neighbouring frame
+  and pixel evidence before glyphs; a lone immutable result remains text-only.
+  `protectedSceneRects` keeps replacement plates away from uncertain source ink.
+  See [uncertainty contracts](uct_uncertainty_repair.md).
+- `UctImmutableFrame` and `UctImmutableScene` carry owned source pixels and
+  explicit media authority. `UltraClearTextController::{SetImmutableScene,
+  UpdateImmutableView,ClearImmutableScene,HasImmutableScene}` share the existing
+  scheduler, submit at most a selected and optional corroborating pass, and use
+  an independent job deadline. Unchanged completed stills schedule no periodic
+  OCR/probes; view updates only reproject. See [immutable controller](uct_immutable_controller.md).
+- `UctAdvancingMediaScene` and `OnAdvancingMediaPresented` bind successful
+  playback receipts to real media PTS and independent wall-clock job deadlines.
+  They pace residual probes at 80 ms and OCR at a 350 ms minimum/1,500 ms
+  refresh on the same scheduler, preserving ordinary frame authority while
+  seek/source changes revoke it. `OverlayModel::AdmitAdvancingMedia` changes
+  only the live source-age admission rule; distinct-pixel temporal evidence
+  and current residual checks remain required. Unchanged paused scenes return
+  to one-shot immutable admission. `HasAdvancingMediaScene` distinguishes modes.
+  `OnMediaPresentationFailed` immediately hides glyph/pane/screen text and
+  latches late-result suppression; `OnMediaPresentationSucceeded` restores only
+  after a truthful selected-frame receipt. View-only updates and hidden-camera
+  notifications cannot renew that authority.
+- `OkuFlowApp::MediaViewportAdmission` and its `Stamp` retain exact successful
+  source, recipe, transform, extent and marker identity. Matching still polls
+  reuse the viewport/receipt without resampling or uploading it; source/view
+  dirtiness and presenter retry requests still admit work. Discarded full-source
+  hold copies cannot be consumed as viewport observations.
+- `ObservationService` accepts an optional deterministic ID factory, stores its
+  latest 16 mappings in insertion order and clears the order on cancellation.
+  Its immutable `ObservationFrame` carries document/generation/PTS metadata,
+  reports no camera frame age, and rejects prior-frame coordinates after media
+  advances even within the same document. `AuthorizedObservation` preserves
+  that identity through `ObservationStillCurrent` checks at actual delivery.
+- `Field::VideoSelection` and `ControlPlan::requiredFields` add revision
+  preconditions without fabricated writes or undo entries. View inverses also
+  retain source authority, so a prior seek cannot undo into a new document.
+  `Inverse.videoSelection` preserves the exact media identity/generation across
+  the same owner's temporary camera restore without allowing an older view
+  inverse into a newly opened or sought video. Native field revisions still win.
+  `AdmittedControlAuthority` and `CaptureOperationAuthority` retain cancellation
+  for finite admitted work after normal turn completion. `OperationKind::Video`
+  exposes bounded path-free durable receipts. `PrepareVideoControl`,
+  `QueryVideoState` and `ExecuteVideoControl` share native actions through seven
+  new full/V1 tools (43 total); Open remains native UI-only. The default camera
+  catalog is not promoted by this change. See [agent control](video_agent_control.md).
+
+The native fixture's `OKUFLOW_VIDEO_DOCUMENT_TESTS` seams are compiled only in
+that opt-in fixture, including owned-frame seeding and held-frame inspection.
+They are not a shipping app or externally callable API.
+
+`SeedCommittedVideoSaveForTest` seeds only the fixture's prior save receipt;
+real source/controller checks still reject a new unadmitted Save. Invalid native
+save clicks leave that receipt unchanged; queued payloads receive fresh identity.
+
 ## Configurable UCT models (2026-10-18)
 
 - `uct_model_settings.hpp`: `ModelTier`, `ModelSettings`, `ModelTierToken` and
@@ -1257,41 +1471,29 @@ source changes make no measured throughput or latency claim.
   `NotifyCaptureFrame(...)`, `NotifyCaptureGpuRetry()`, and
   `NotifyCaptureSafeCopyFallback()` keep capture overwrite, asynchronous GPU
   retry, and actual system-memory fallback accounting distinct.
-- Matches asynchronous processed-scene readbacks to rotation-correct original
-  frames by request id and preserves capture timestamp, sequence number, and
-  negotiated fractional frame rate across both streams.
-- On the CUDA/D3D12 path, queues paired GPU frames instead: the processed
-  recording canvas and a pre-effect, post-conversion/post-rotation original.
-  It starts each stream independently on GPU input and falls back to the
-  existing CPU BGRA writer when required.
-- Probes AV1 then H.264 for the synchronized pair, maps the processed scene
-  into a persistent Match-camera/360p/480p/720p/1080p/1440p/2160p canvas,
-  starts `_partN` pairs when the camera format changes, and reports
-  capture/readback/recording-pool/queue/encoder drops by cause. A
-  failed finalization can never produce a "saved" result.
-- When OkuFlow has an attached Windows console, each segment prints its exact
-  processed/original input route (direct GPU, GPU source with worker readback,
-  or CPU/system memory), codec, dimensions, file paths, finalized sample
-  counts, and a session summary of per-frame GPU-surface fallbacks,
-  D3D11-completion retries, and true capture safe-copy frames. These
-  diagnostics remain silent for an ordinary packaged GUI launch.
-- `Stop(...)` immediately releases queued frame/audio leases and finalizes
-  after the sample currently owned by the worker. Each started segment is
-  finalized once even when a writer stopped itself after an error. Each
-  nonempty original or processed file is preserved independently, including
-  an asymmetric pair or a failed finalization; only session-owned regular,
-  non-symlink zero-byte output with no accepted video samples is removed.
-  Only a fully finalized pair is registered in lecture notes.
+- `AddOriginalFrame` accepts the full clean, orientation-normalized camera
+  source independently of selected playback. GPU input retains its producer
+  fence/lease; CPU input owns tightly packed BGRA. Compatibility paired entry
+  points ignore processed payloads and ink. A source-format change creates
+  another Original part, never a processed companion.
+- Probes AV1 then H.264 for one selected output. Failed attempts retain their
+  exact paths and bytes. Diagnostics report codec/input route, dimensions,
+  samples and capture/pool/queue/encoder drops without claiming hardware
+  completion. Ordinary packaged GUI launches remain silent.
+- `Stop` releases queued video/audio and finalizes the worker-owned sample.
+  Nonempty failed outputs remain preserved; only owned regular zero-byte
+  outputs with no accepted video are removed. Exactly one successfully
+  finalized Original per part is registered in notes.
 - Stop is bounded: an independent UI-thread watchdog fires when
   Stopping/Finalizing has not reached a terminal state within 8 seconds,
   reports the exact blocked call via `DescribeWorkerStage()` (worker
-  operation plus each `VideoRecorder`'s observable `WriterStage`), forces
+  operation plus the `VideoRecorder`'s observable `WriterStage`), forces
   `Failed`, restores the UI, and disables recording for the rest of the
   process (`IsWorkerAbandoned()`).
 - App close uses `ShutdownForProcessExit()`: a bounded handshake that joins a
   worker that exits and returns true when manager destruction is safe. On
   false the worker is still wedged
-  inside a synchronous encoder/driver call — both recorders are abandoned
+  inside a synchronous encoder/driver call — the recorder is abandoned
   (their COM teardown becomes an intentional leak), the worker is detached,
   and the caller must leak the manager (`unique_ptr::release`) so the
   detached worker can never touch freed queues or a dangling record button
@@ -1309,21 +1511,21 @@ source changes make no measured throughput or latency claim.
   capture it by value, so a delayed callback can never be associated with a
   newer session's saved-media metadata or notes.
 - Its constructor accepts a `SegmentSavedCallback`. The worker posts that
-  callback to the Qt thread only after both files in a segment fully finalize,
-  providing a `SavedRecordingSegment` (session identity, segment index, and
-  the original and processed paths) for lecture-note integration.
+  callback to the Qt thread only after the selected Original finalizes,
+  providing `SavedRecordingSegment` (session/index, Original path, archive,
+  accepted capture clocks, frame count and failed attempts). `processedPath`
+  is compatibility-only and empty for new recordings.
 - Its optional `SessionEndedCallback` receives the ended session's identity
   and lets the application release the active
   microphone after asynchronous finalization. `SetAudioCaptureEnabled(...)`
   controls whether new segments contain sound, and `AddAudioFrame(...)`
   transfers normalized PCM into the same bounded recording worker. Each audio
-  sample is written to both recorders relative to the segment's shared
-  monotonic clock origin.
+  sample is written once relative to the segment's monotonic clock origin.
 - `EncoderSubmitTiming()` exposes rolling p50/p95/p99 CPU time for submitting
-  the paired video samples on the recording worker. It intentionally does not
+  Original video samples on the recording worker. It intentionally does not
   claim to measure asynchronous hardware-encoder completion.
 - Also owns UI button state, destination free-space preflight, dated
-  `UserDataPaths` output, and paired asynchronous teardown.
+  `UserDataPaths` output, and asynchronous teardown.
 
 ### `include/okuflow/app/user_data_paths.hpp`
 `okuflow::UserDataValidationResult`, `okuflow::PhotoPairRecoveryResult`, `okuflow::PhotoPairWriteResult`,
@@ -2401,12 +2603,15 @@ Namespace `okuflow::processing`
   - `void Present(const uint8_t* data, UINT width, UINT height)`
   - `bool PresentSceneTexture(ID3D12Resource*, UINT sourceWidth,
     UINT sourceHeight, const ViewTransform&, const FenceSyncParams*,
-    const ViewportPresentationOptions*, UINT64* outReadbackRequestId)`
+    const ViewportPresentationOptions*, UINT64* outReadbackRequestId,
+    UINT64* outIndependentReadSignal)`
   - `bool ReadbackTexture(ID3D12Resource* texture, UINT width, UINT height,
     std::vector<uint8_t>& outBgra, UINT64 waitFenceValue = 0)` — optionally
     queues a shared-fence wait before the blocking GPU copy, used by on-demand
     Read and Assistant frame attachment to avoid reading active CUDA writes
   - `bool RequestReadback(ID3D12Resource* texture, UINT width, UINT height, UINT64* outRequestId = nullptr)` — enqueues an async copy into a four-slot ring, optionally returning its fence-backed request id; returns false when every slot is in flight
+  - `bool HasReadbackRequest(UINT64)` - reports an exact active ring receipt,
+    allowing an owned snapshot to retry after resize dropped its old copy.
   - `GpuVideoFrame RequestRecordingFrame(...)` — samples the canonical
     recording transform into a leased shareable BGRA texture. The lazily grown
     pool is capped at 384 MiB and 48 slots; a null result with
@@ -2416,10 +2621,13 @@ Namespace `okuflow::processing`
     uploaded into a per-lease texture and alpha-composited after scene
     framing. Only the processed caller supplies this layer, so original
     recordings remain clean.
-    Its final optional `UINT64 waitFenceValue = 0` queues the CUDA producer
+    Its optional `UINT64 waitFenceValue = 0` queues the CUDA producer
     dependency explicitly, so recording clones remain valid when viewport
     admission is busy. The presenter reserves and publishes the actual clone
-    completion on its timeline. The no-semaphore fallback retains its bounded
+    completion on its timeline. Optional `independentSceneSync` instead waits
+    and signals the private media producer/read fence, returning the actual read
+    signal even when a later operation fails. `viewportOptions` retains focus
+    marker geometry in an exact selected-view clone. The no-semaphore fallback retains its bounded
     completion drain before the next CUDA overwrite. Pool reuse and
     obsolete-dimension eviction both require the producer fence to retire,
     as well as consumer-reader lease release; pending or device-lost completion
@@ -5126,3 +5334,169 @@ upload resource faults do not retire the engines.
 Repair rechecks require exact named matching Failed/Unfinished cases; a failed
 recheck cannot repeat unchanged. Results retain `repairRecheckOf` and `repairReason`;
 capability records retain `repairRechecks`, and summaries identify repaired passes.
+
+### GPU playback lifetime and exact selected-frame observations
+
+`VideoGpuIncompatible` identifies native GPU device/format/conversion failures;
+`VideoGpuBackpressure` identifies temporary consumer-held allocation credit.
+Only the former may select the same-document CPU compatibility retry.
+`VideoGpuDecoder::AttachSourceReader`, `DetachSourceReader`, `HasUnsafePending`,
+`PollPending`, `DrainPending`, `ClearPending` and `MarkUnsafe` preserve the complete
+reader/sample/view/output/query owner before GPU submission. A never-ended
+query is not polled; unproven completion retains the entire converter until
+process exit. Native calls remain on the one playback worker.
+
+`VideoReadStreamClone`, returned optionally by `OpenStableVideoReadStream` and
+`RecordingArchive::OpenReadStream`, creates independent stream cursors over the
+same held file backing and archive validation policy. GPU-to-CPU replacement
+cannot share a still-prefetching reader's cursor or reopen an unrelated path.
+`VideoPlaybackSnapshot::gpuDecodedBitsPerComponent` records the accepted decoded
+subtype's precision before display conversion.
+
+`D3D12Presenter::KeepSubmittedFence` retains a producer fence before queuing its
+Wait. `SubmittedSource<T>::lastRead` is assigned only by a real global graphics
+submission. `RetireCompletedSourceReferences` transfers proven-completed source
+textures and fences to the single bounded `sourceRetirement_` worker. Unknown
+completion follows presenter quarantine, preserving both native object types.
+
+`AppControlTarget::PresentedMediaFrame` constructs immutable observation authority
+from the submitted candidate's exact frame sequence and media PTS. The ordinary
+selected-document identity and control stamp remain source-scoped; the previous
+`doc.presented` cursor is never attached to newly submitted pixels. CPU media
+calls this only after a successful viewport receipt. `QueueAnnotationSnapshot`
+regenerates the actual selected frame before reading its annotation authority;
+Read/Explain and non-agent image attachments do the same in their click turn.
+`QueryVideoState` and `State` report `gpu_selected_media` or `cpu_selected_media`
+from the displayed path. `AppControlTarget::SelectedMediaImageFieldAvailable`
+separates the basic CPU-rendering whitelist from all supported GPU image effects;
+Debug remains camera-only. Writable capability comes from
+`SelectedMediaGpuProcessingAvailable`, independently of the actual decoder, while
+effective values require an actual processed media receipt. Preparing effects use
+`no_processed_frame`; unsupported effects use `selected_media_unsupported_effect`.
+
+### Complete selected-video processing and transport repairs
+
+`OkuFlowApp::BuildProcessingSettings` is shared by live-camera and selected-video
+submission. It maps the same effective Text Clarity, blur/sharpen, color,
+auto-contrast, tracking, temporal and neural preferences; the hidden recording
+camera still requests only clean Original conversion. `ProcessingCacheExtent`
+bounds the media spatial/neural cache while preserving aspect ratio.
+`MediaAppearanceSignature` hashes explicit effect members without padding,
+host pointers, frame clocks or view-only geometry. `mediaGpuViewRecipe_` tracks
+ROI/navigation separately, preserving UCT's full-scene appearance authority.
+
+`SetMediaOverlaySuppressed` revokes media OCR jobs, glyph/pane text and UIA
+exposure when processed-view correspondence is unprovable, while retaining
+the user's enable preference. Job admission and late callbacks honor the gate;
+clearing media removes it even when no immutable input remains owned.
+
+`VideoGpuDecoder::DecoderPreferredOutputs` probes a bounded merit-ordered native
+decoder's offered types for the exact coded input and device without streaming.
+`CodedBitsPerComponent` uses bounded container records/profile evidence before
+opportunistic negotiation. GPU incompatibility can start one fresh CPU-attempt
+budget; it cannot extend or restart the failed GPU attempt indefinitely.
+
+`CudaInteropSurface::D3D11SourceStatus`, `D3D11SourceStatistics`,
+`EnableAsyncD3D11SourcePreparation`, `PrepareD3D11Source`, `SourceStatistics`,
+`D3D11PrepareSlot`, `BuildD3D11Import`, `AdoptPreparedImport`, `PollImportCopy`,
+`PollAllImportCopies` and `DestroyD3D11Import` separate bounded source preparation,
+eight-entry reuse, exact copy leases and worker-only native import retirement.
+`MediaGpuScene::SourceStatistics` exposes evidence of worker imports and reuse.
+
+`VideoTransport::IsActionReady`, `SetFocusReturnTarget` and its focus/readiness
+helpers preserve semantic focus while a transiently unavailable action is inert.
+`SeekBaseline` and `CommitSeek` use current/pending document time for relative
+keys, wheel and accessible increments, independently of the frozen inspection
+thumb. `AnnounceSettledState` coalesces only settled states and their current time.
+`MainWindow::eventFilter` checks action readiness for Space on the render host.
+Wide controls retain translated labels; recording hides duplicate Return/Mute,
+and file Return remains last in the tab order.
+
+`VideoDocumentState::controlsMediaGpuAvailable` refreshes native enabled states
+when media processing capability changes without changing documents. New file or
+own-recording rebindings clear the prior document's display receipt and completed
+request; offscreen decode alone cannot authorize image actions for the new file.
+`openingDifferentVideoCannotInheritPreviousDisplayReceipt` covers this boundary.
+
+`PresentedMediaFrame` also accepts the candidate's `gpuProcessed` flag. A first
+GPU frame cannot inherit CPU diagnostic certainty from the previous display;
+missing/mismatched private-scene diagnostics remain unknown until proven.
+
+`MediaGpuScene::Prepare` accepts optional bounded cache extents. `BaseTexture`,
+`SuperResTexture`, `SuperResWidth/Height`, `SuperResRoi`, `IsSuperResActive`,
+`IsSuperResPerformanceLimited`, `SuperResStatus`, `SetSuperResPerformanceOverride`,
+`NeedsSuperResPolling`, `RefreshSuperRes` and `SuperResStatistics` expose the private
+media enhancement lifecycle. Publication advances `SceneGeneration` and the
+private producer fence; a paused scene polls this independently of decode.
+`GetKeystoneTrackingState`, `SetKeystoneTrackingPaused`, `StepKeystoneCorrection`
+and `ControlDiagnostics` route controls to the selected scene rather than the
+hidden camera. Successful steps force exact-frame replay. `HistoryResetCount`
+and `UctCoordinatesReliable` describe processing discontinuity and single-frame
+OCR correspondence, without promising real model quality.
+
+`ProcessingInput::reprocessFrame`, `CudaInteropSurface::EnableFrameReprocessing`,
+`FrameReprocessingState`, `ResetFrameHistory` and `RefreshUctAnalysis` preserve
+post-geometry pixels and histories from before the current immutable sample.
+Forward samples advance tracking/history; same-sample appearance/ROI updates
+replay without registering or blending that sample again. Analysis-only retry
+uses the owned geometry snapshot and closes its private-fence submission even
+when the analysis pool is busy. `EffectAndHistoryTests` and
+`SpatialAndNeuralTests` inspect actual GPU pixels, replay/reset, paused keystone
+step, private fake-SDK publication, retained models and obsolete tickets.
+`AwaitOwnedWorkers` is console-fixture shutdown only: it keeps the static CUDA
+runtime loaded until the fixture's own detached host workers finish.
+
+`SelectedMediaDocumentPts100ns` adds the current recording part's document offset
+before producing observation authority; UCT and decoder internals keep local PTS.
+`SelectedMediaGpuSceneProcessed` preserves a matching analysis lease across a
+throttled view replay, rejects foreign epoch/frame/appearance leases before
+storing them, and spends retries only when their deadline is due.
+Correspondence recovery resets the bounded analysis budget. Media keystone and
+processing/SR status refresh on a 100-ms cadence, including paused polling.
+`ExpireAnnotationReadback` is shared by live processing and media polling; a
+missing ring receipt or one-second expiry retires that exact annotation intent
+without substituting a later frame. Save uses the displayed processing backend,
+independently of whether decode supplied CPU bytes or a resident GPU texture.
+
+`ProcessingInput::rotateBgraOnGpu` is opt-in for unrotated host video BGRA;
+camera BGRA keeps its existing pre-rotated contract. `PrepareMediaBgraInput`
+checks post-rotation extent and pinned-ring/stream credit before allocating or
+queuing work. CPU input validates actual row pitch and last-row minimum bytes;
+weak exact storage identity plus layout/type prevents false same-frame reuse
+across CPU/GPU transitions. `MediaGpuScene::Process` admits only one in-flight
+processing pass, leaving newer ROI/source requests pending rather than queuing
+obsolete work. `ResetSuperRes` and `ResetTextClarityHistory` revoke pending neural
+output on explicit native edits without joining workers. The latter also clears
+the saved pre-frame text-mask validity so replay cannot resurrect old settings.
+
+
+`validUctLeaseSurvivesViewReplaysAndRetryStaysBounded` checks 125 replay polls,
+exact backoff boundaries, immediate rejection of mismatched incoming OCR leases
+and recovery in the real app wiring. `selectedMediaPollingExpiresPendingAnnotationReadbackWithoutRetargeting`
+uses the document timer to expire a genuinely active annotation intent without
+requiring a camera or retargeting later pixels. `ActionRowsProblem` inventories
+all six production action buttons, including Open video, while preserving its
+rectangle, equal-row-width and minimum-height assertions.
+
+`MediaGpuScene(unsigned outputBuffers = 1)` accepts one or two outputs. The
+experimental two-output `OutputSlot` rotates base/cache textures and a private
+fence timeline while preserving one `CudaInteropSurface`, processing history,
+source-import cache and inference worker. `Bundle::SelectOutput` swaps only
+prepared output bindings. Both reader completions are proven during retirement;
+Pending admission never advances history or publishes another texture's stamp.
+`Release()` gives a nonblocking exact-owner completion receipt for explicit
+resource release, unlike cache-preserving `Invalidate()`.
+
+`CudaInteropSurface::AlternateOutput`, `ConfigureMediaOutputBuffer`,
+`SwapMediaOutputBindings` and `SelectMediaOutputBuffer` prepare matching native
+resources on the construction worker and swap their imported surfaces/semaphore
+only with an idle producer. Quarantine retains the entire alternate owner too.
+Ordinary camera/app construction does not allocate or select an alternate.
+
+`media_gpu_buffer_benchmark.hpp` supplies `DoubleOutputTests` and the explicit
+`BufferBenchmark` entry point. `VideoGpuPresenterFixture::Initialize` uses the
+existing friend seam to create production viewport commands/shaders without an
+HWND. `AwaitProducer` verifies independent output completion; `Percentile`
+reduces local timing samples. Existing effect/history and spatial/neural cases
+accept an output count and validate both configurations. Timed comparisons stay
+outside recurring CTest and do not claim end-to-end player/monitor latency.

@@ -3273,5 +3273,245 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
             <source>CPU text recognizer</source>
             <translation>CPU metin tanıma modeli</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>Mevcut kayıt</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>Video</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>Canlı</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>Canlı görüntünün gerisinde</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>Duraklatıldı</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>Videonun sonu</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>Video açılıyor…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>Aranıyor…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>Kayıt bekleniyor</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>Kayıt tamamlanıyor</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>Video kullanılamıyor</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>Video oynatma</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>10 saniye geri sar</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>Videoyu duraklat</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>Videoyu sürdür</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>Canlı görüntüye geç</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>Sona git</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>Kameraya dön</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>Kareyi kaydet</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>Oynatma sesini aç</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>Oynatma sesini kapat</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>Video denetimleri</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>Video zaman çizelgesi</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>Sol ve Sağ: bir saniye. Page Up ve Page Down: on saniye. Home: başlangıç. End: kaydın sonu.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 / %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>Video aç</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>Kayıtlı bir video aç (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>İşlenmemiş videoyu kaydet</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>İşlenmemiş MP4 kaydını başlatın veya durdurun</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>İşlenmemiş video kaydı için sesi seçin. Mikrofon yalnızca kayıt sırasında kullanılır.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>İşlenmemiş MP4 kaydı için mikrofon sesini seçin veya mikrofon kullanmamayı seçin.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>Görüntülenen kare saklanamadı. Kaydedilmiş video kullanılabilir durumda.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>Video açılamadı: mevcut tek bir yerel dosya seçin.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>Kayıt durdurulamadığı için video açılmadı.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>Video açılmadan önce kayıt tamamlanıyor...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>Kaydedilen videoda ileri veya geri sarma özelliğinin etkinleşmesi bekleniyor.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>Dondurulan kare kaydedilmedi. Devam etmek için kaydedilmiş videoda bir konuma gidin.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>Dondurulan karenin kayıt içindeki konumu doğrulanamadı. Devam etmek için kaydedilmiş videoda bir konuma gidin.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>Videonun sonu. Yeniden oynatmak için daha önceki bir konuma gidin.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>Kamera kullanılamıyor. Kaydedilmiş en son kare gösteriliyor.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>Dondurulan kare kaydedilmedi. Saklanan görüntü kullanılabilir durumda.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>Dondurulan karenin kayıt içindeki konumu doğrulanamadı. Saklanan görüntü kullanılabilir durumda.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>Kullanılabilir kaydın sonu. Saklanan görüntü kullanılabilir durumda.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>Video kullanılamıyor: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>Oynatma sesi kullanılamıyor. Video oynatılmaya devam ediyor.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>Kare kaydedilmedi: seçili görüntü kullanılamıyor.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>Kare kaydedilmedi: görüntü kuyruğa eklenemedi.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>Kare kaydedilmedi: OkuFlow Photos klasörü kullanılamıyor.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>Seçili video karesi kaydedildi.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>Seçili video karesi kaydedilemedi.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>Kare kaydedilmedi: görüntüyü kaydeden bileşen meşgul. Yeniden deneyin.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>Duraklatılamıyor: görüntülenen kare saklanamadı.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;Denetimler&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Basit&lt;/b&gt;, kamera görüntüsünü büyütür. Hızlı modları değiştirmek için köşe karuselini veya 1 ile 9 arasındaki sayı tuşlarını kullanın.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Arayüzü gizle&lt;/b&gt; veya &lt;b&gt;Ctrl+H&lt;/b&gt;, kamera görüntüsündeki denetimleri ve asistanı kaldırır. &lt;b&gt;Arayüzü göster&lt;/b&gt;, bunları ve mevcut yanıtı yeniden gösterir.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Gelişmiş&lt;/b&gt;, ayrıntılı görüntü ve Asistan ayarlarını açar. Boyutunu değiştirmek için panel kenarındaki ayırıcıyı sürükleyin.&lt;/p&gt;&lt;p&gt;Görüntüyü kaydırmak için kamera görüntüsünü sürükleyin. Yakınlaştırmak için Ctrl tuşunu basılı tutup fare tekerleğini kullanın. Ekranda hareket denetimi için &lt;b&gt;Ayarlar &amp;gt; Görünüm ve gezinme&lt;/b&gt; bölümünden &lt;b&gt;Sanal oyun çubuğu&lt;/b&gt;nu etkinleştirin.&lt;/p&gt;&lt;p&gt;Fotoğraf, işlenmemiş ve işlenmiş sürümleri kaydeder. Kayıt, işlenmemiş videoyu kaydeder. Açıkla sahneyi betimler; Oku metni tanır. OkuFlow dosyalarınızın bulunduğu klasörü açmak için &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; tuşlarına basın.&lt;/p&gt;&lt;h2&gt;Özellikler&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Metin Netliği&lt;/b&gt;; belge temizleme, yerel kontrast, keskinleştirme ve kararlı metin kenarlarını bir araya getirir. &lt;b&gt;Ekran Renkleri&lt;/b&gt;, okuma paletleri ve özel renk şemaları sunar.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Süper Çözünürlük&lt;/b&gt;, isteğe bağlı NVIDIA Video Effects çalışma zamanı yüklüyse yakınlaştırılmış ayrıntıları iyileştirir.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Metin okuma ve Asistan&lt;/b&gt;; metni okuyabilir, görüntüyü açıklayabilir, ek soruları yanıtlayabilir ve sonuçları ders notlarına ekleyebilir.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>Video dosyaları (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;Tüm dosyalar (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Bu görüntüdeki Ultra Clear Text</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… işareti, orijinal görüntüde bırakılan metni belirtir.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>Video oynatma: yakınlaştırma, döndürme, okuma renkleri ve UCT kullanılabilir. Gelişmiş GPU efektleri kullanılamıyor.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC orijinal, kodlayıcı başlatılıyor]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC orijinal, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>Duraklatılamıyor: görüntülenen kadraj aynen korunamadı.</translation>
+        </message>
     </context>
 </TS>

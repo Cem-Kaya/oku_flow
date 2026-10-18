@@ -12,6 +12,8 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCryptographicHash>
+#include <QWheelEvent>
 #include <QToolButton>
 #include <QElapsedTimer>
 #include <QFontMetricsF>
@@ -242,7 +244,8 @@ struct Harness {
         if (completeReadbacks) {
             const int w = static_cast<int>(context.viewportWidth);
             const int hgt = static_cast<int>(context.viewportHeight);
-            const QImage view = RenderView(page.image, context.transform, w, hgt);
+            const QImage view = IndependentFramePixels(
+                RenderView(page.image, context.transform, w, hgt), context.frameSeq);
             {
                 std::lock_guard lock(shared->mutex);
                 shared->transforms.insert(Checksum(view), context.transform);
@@ -340,9 +343,13 @@ SourceStamp Stamp(std::uint64_t epoch, std::uint64_t generation, std::int64_t ti
 RecognitionResult ResultFor(const SyntheticPage& page, const ViewTransform& t, const SourceStamp& stamp,
                             const QStringList& replaceText = {})
 {
-    const QImage view = RenderView(page.image, t, kViewWidth, kViewHeight);
     RecognitionResult result;
     result.stamp = stamp;
+    if (result.stamp.frameSeq == 0)
+        result.stamp.frameSeq = static_cast<std::uint64_t>(std::max<std::int64_t>(0, stamp.timestampMs));
+    const QImage view = IndependentFramePixels(RenderView(page.image, t, kViewWidth, kViewHeight),
+                                               result.stamp.frameSeq);
+    result.sourcePixelDigest = SourcePixelsDigest(view);
     result.stamp.viewTransform = t;
     result.output.ok = true;
     int index = 0;
@@ -388,9 +395,12 @@ QStringList DenseLines(int rows)
 RecognitionResult ResultForView(const SyntheticPage& page, const ViewTransform& t, const SourceStamp& stamp,
                                 int width, int height)
 {
-    const QImage view = RenderView(page.image, t, width, height);
     RecognitionResult result;
     result.stamp = stamp;
+    if (result.stamp.frameSeq == 0)
+        result.stamp.frameSeq = static_cast<std::uint64_t>(std::max<std::int64_t>(0, stamp.timestampMs));
+    const QImage view = IndependentFramePixels(RenderView(page.image, t, width, height), result.stamp.frameSeq);
+    result.sourcePixelDigest = SourcePixelsDigest(view);
     result.stamp.viewTransform = t;
     result.stamp.viewportWidth = static_cast<std::uint32_t>(width);
     result.stamp.viewportHeight = static_cast<std::uint32_t>(height);
@@ -524,6 +534,42 @@ private slots:
         QVERIFY(h.panel->readingPane()->toPlainText().isEmpty());
         QCOMPARE(h.controller->BackendStatusSnapshot().state,BackendState::kUnavailable);
     }
+    void modelSelectorsIgnoreWheelAndKeepDeliberateKeyboardSelection() {
+        UltraClearTextPanel panel;
+        auto* advanced=panel.findChild<QToolButton*>("uctAdvancedSettings");QVERIFY(advanced);
+        advanced->setChecked(true);panel.show();
+        const QVector<QComboBox*> selectors{panel.gpuDetectorCombo(),panel.gpuRecognizerCombo(),
+                                           panel.cpuDetectorCombo(),panel.cpuRecognizerCombo()};
+        for(auto* combo:selectors) combo->setCurrentIndex(1);
+        const auto initial=panel.ModelSettings();
+        QSignalSpy changes(&panel,&UltraClearTextPanel::modelSettingsChanged);
+        for(auto* combo:selectors) {
+            for(const bool focused:{false,true}) {
+                if(focused) combo->setFocus();else advanced->setFocus();
+                for(const int direction:{-120,120}) {
+                    const QPointF point(combo->rect().center());
+                    QWheelEvent wheel(point,combo->mapToGlobal(point.toPoint()),QPoint(),QPoint(0,direction),
+                                      Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);
+                    wheel.setAccepted(true);QApplication::sendEvent(combo,&wheel);
+                    QVERIFY(!wheel.isAccepted());QCOMPARE(combo->currentIndex(),1);
+                }
+                const QPointF point(combo->rect().center());
+                QWheelEvent trackpad(point,combo->mapToGlobal(point.toPoint()),QPoint(0,24),QPoint(),
+                                     Qt::NoButton,Qt::NoModifier,Qt::ScrollUpdate,false);
+                trackpad.setAccepted(true);QApplication::sendEvent(combo,&trackpad);
+                QVERIFY(!trackpad.isAccepted());QCOMPARE(combo->currentIndex(),1);
+            }
+        }
+        QCOMPARE(changes.size(),0);QVERIFY(panel.ModelSettings()==initial);
+        for(auto* combo:selectors) {
+            combo->setFocus();QTest::keyClick(combo,Qt::Key_Down);
+            QCOMPARE(combo->currentIndex(),2);
+        }
+        QCOMPARE(changes.size(),4);QVERIFY(!panel.IsEnabledByUser());
+        const auto changed=panel.ModelSettings();
+        QCOMPARE(changed.cpuDetector,ModelTier::Medium);QCOMPARE(changed.cpuRecognizer,ModelTier::Medium);
+        panel.SetModelSettings(initial);QCOMPARE(changes.size(),4);QVERIFY(panel.ModelSettings()==initial);
+    }
 
     // --- Geometry -----------------------------------------------------------
     void geometryRoundTripsThroughFitFillZoomPanAndDpi();
@@ -558,6 +604,9 @@ private slots:
 
     // --- Model --------------------------------------------------------------
     void modelRequiresTemporalAgreement();
+    void livePendingEvidenceRejectsDuplicatePixels();
+    void liveDuplicateRefreshPreservesEstablishedWords();
+    void pendingEvidenceCannotCrossResetOrAdmissionMode();
     void modelRejectsStaleSceneAndLateResults();
     void modelRejectsResultWhoseContentMoved();
     void modelAdmissionBudgetNeverDisplaysUncheckedText();
@@ -566,11 +615,18 @@ private slots:
     void modelOmitsHighRiskWordsFromReadingText();
     void readingTextPreservesOmissionPositions_data();
     void readingTextPreservesOmissionPositions();
+    void rejectedTinyAndDenseSpansKeepOrderedOmissions();
+    void untrackableTextStaysReadableWithoutReplacement();
+    void rejectedRefreshCannotRestoreOldAcceptedText();
+    void immutableEvidenceRequiresDistinctPixelsAndSafeRegistration();
+    void protectedAdjacentInkSurvivesCompositing_data();
+    void protectedAdjacentInkSurvivesCompositing();
 
     // --- Scheduler ----------------------------------------------------------
     void schedulerCoalescesLatestOnly();
     void schedulerCancelRevokesWithoutReleasingInput();
     void schedulerDestructionIsBoundedWhileHeld();
+    void schedulerPixelEvidenceIgnoresAllocationPadding();
     void deviceRecognitionPrecedesReadbackAndDoesNotBlockUi();
     void cancelledDeviceJobRetainsInputAndRejectsLateOutput();
     void deviceProbesContinueAt16xWhileInferenceIsHeld();
@@ -720,7 +776,9 @@ void UltraClearTextTests::staticDeviceSceneDoesNotContinuouslyRunOcr()
     int captures=0;
     for(int frame=1;frame<=300;++frame){
         now+=20;context.frameSeq=frame;const bool wanted=controller.OnPresented(context);controller.OnPresentationSucceeded();
-        if(wanted){auto image=std::make_shared<SceneDeviceImage>(page.image);image->timestampMs=now;image->frameSequence=frame;
+        if(wanted){const auto pixels=IndependentFramePixels(page.image,frame);
+            {std::lock_guard lock(shared->mutex);shared->transforms.insert(Checksum(pixels),identity);}
+            auto image=std::make_shared<SceneDeviceImage>(pixels);image->timestampMs=now;image->frameSequence=frame;
             controller.OnDeviceScene(context,image);++captures;}
         QTest::qWait(5);
     }
@@ -1098,6 +1156,89 @@ void UltraClearTextTests::modelRequiresTemporalAgreement()
     QCOMPARE(disagree.AcceptedWordCount(), page.words.size() - 1);
 }
 
+void UltraClearTextTests::livePendingEvidenceRejectsDuplicatePixels()
+{
+    const auto page=MakePage({QStringLiteral("Read page")});
+    const auto t=Transform(1,.5f,.5f);
+    auto first=ResultFor(page,t,Stamp(3,4,100,t));first.jobId=1;first.authority=7;
+    OverlayModel model;
+    QCOMPARE(model.Admit(first,first.stamp,nullptr,110),AdmitVerdict::kPending);
+    auto duplicate=first;
+    for(std::uint64_t job=2;job<=5;++job) {
+        duplicate.jobId=job;duplicate.stamp.frameSeq=100+job;
+        duplicate.stamp.timestampMs=100+static_cast<std::int64_t>(job)*10;
+        duplicate.reference.stamp=duplicate.stamp;
+        QCOMPARE(duplicate.sourcePixelDigest,first.sourcePixelDigest); // literally the same source bytes
+        QCOMPARE(model.Admit(duplicate,duplicate.stamp,nullptr,duplicate.stamp.timestampMs+1),
+                 AdmitVerdict::kPending);
+        QCOMPARE(model.AcceptedWordCount(),0);
+        QVERIFY(model.SceneWords(duplicate.stamp.timestampMs+1,duplicate.stamp.frameSeq).isEmpty());
+    }
+    auto sameFrame=ResultFor(page,t,Stamp(3,4,200,t));sameFrame.authority=7;
+    sameFrame.stamp.frameSeq=duplicate.stamp.frameSeq;sameFrame.reference.stamp=sameFrame.stamp;
+    QVERIFY(sameFrame.sourcePixelDigest!=duplicate.sourcePixelDigest);
+    QCOMPARE(model.Admit(sameFrame,sameFrame.stamp,nullptr,210),AdmitVerdict::kPending);
+    auto independent=ResultFor(page,t,Stamp(3,4,300,t));independent.authority=7;
+    QVERIFY(independent.sourcePixelDigest!=sameFrame.sourcePixelDigest);
+    QCOMPARE(model.Admit(independent,independent.stamp,nullptr,310),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(310,independent.stamp.frameSeq),QStringLiteral("Read page"));
+
+    OverlayModel missing;
+    missing.Admit(first,first.stamp,nullptr,110);
+    auto unknown=independent;unknown.sourcePixelDigest.clear();
+    QCOMPARE(missing.Admit(unknown,unknown.stamp,nullptr,310),AdmitVerdict::kPending);
+    auto fresh=ResultFor(page,t,Stamp(3,4,400,t));fresh.authority=7;
+    QCOMPARE(missing.Admit(fresh,fresh.stamp,nullptr,410),AdmitVerdict::kPending);
+    auto otherAuthority=ResultFor(page,t,Stamp(3,4,500,t));otherAuthority.authority=8;
+    QCOMPARE(missing.Admit(otherAuthority,otherAuthority.stamp,nullptr,510),AdmitVerdict::kPending);
+    QCOMPARE(missing.AcceptedWordCount(),0);
+}
+
+void UltraClearTextTests::liveDuplicateRefreshPreservesEstablishedWords()
+{
+    const auto page=MakePage({QStringLiteral("Read page")});
+    const auto t=Transform(1,.5f,.5f);
+    OverlayModel model;
+    auto first=ResultFor(page,t,Stamp(3,4,100,t));first.output.lines[0].words.removeLast();
+    auto second=ResultFor(page,t,Stamp(3,4,200,t));second.output.lines[0].words.removeLast();
+    model.Admit(first,first.stamp,nullptr,110);
+    QCOMPARE(model.Admit(second,second.stamp,nullptr,210),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(210,second.stamp.frameSeq),QStringLiteral("Read"));
+    auto withNewWord=ResultFor(page,t,Stamp(3,4,300,t));
+    QCOMPARE(model.Admit(withNewWord,withNewWord.stamp,nullptr,310),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(310,withNewWord.stamp.frameSeq),QStringLiteral("Read \u2026"));
+    QCOMPARE(model.AcceptedWordCount(),1);
+    auto duplicate=withNewWord;duplicate.jobId=19;duplicate.stamp.timestampMs=400;duplicate.stamp.frameSeq=400;
+    duplicate.reference.stamp=duplicate.stamp;
+    QCOMPARE(model.Admit(duplicate,duplicate.stamp,nullptr,410),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(410,duplicate.stamp.frameSeq),QStringLiteral("Read \u2026"));
+    QCOMPARE(model.SceneWords(410,duplicate.stamp.frameSeq).size(),1);
+    QCOMPARE(model.SceneWords(410,duplicate.stamp.frameSeq).first().text,QStringLiteral("Read"));
+    auto independent=ResultFor(page,t,Stamp(3,4,500,t));
+    QCOMPARE(model.Admit(independent,independent.stamp,nullptr,510),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(510,independent.stamp.frameSeq),QStringLiteral("Read page"));
+}
+
+void UltraClearTextTests::pendingEvidenceCannotCrossResetOrAdmissionMode()
+{
+    const auto page=MakePage({QStringLiteral("Read page")});
+    const auto t=Transform(1,.5f,.5f);
+    const auto first=ResultFor(page,t,Stamp(3,4,100,t));
+    const auto second=ResultFor(page,t,Stamp(3,4,200,t));
+    OverlayModel model;
+    QCOMPARE(model.Admit(first,first.stamp,nullptr,110),AdmitVerdict::kPending);
+    model.Reset();
+    QCOMPARE(model.Admit(second,second.stamp,nullptr,210),AdmitVerdict::kPending);
+    const auto third=ResultFor(page,t,Stamp(3,4,300,t));
+    QCOMPARE(model.AdmitImmutable(third,third.stamp,310),AdmitVerdict::kPending);
+    QVERIFY(model.SceneWords(310,third.stamp.frameSeq).isEmpty());
+    const auto fourth=ResultFor(page,t,Stamp(3,4,400,t));
+    QCOMPARE(model.Admit(fourth,fourth.stamp,nullptr,410),AdmitVerdict::kPending);
+    QCOMPARE(model.AcceptedWordCount(),0);
+    const auto fifth=ResultFor(page,t,Stamp(3,4,500,t));
+    QCOMPARE(model.Admit(fifth,fifth.stamp,nullptr,510),AdmitVerdict::kAccepted);
+}
+
 void UltraClearTextTests::modelRejectsStaleSceneAndLateResults()
 {
     const SyntheticPage page = MakePage(kLines);
@@ -1246,6 +1387,234 @@ void UltraClearTextTests::readingTextPreservesOmissionPositions()
         QVERIFY(!IsHighRiskToken(word.text));
         QVERIFY(word.text != QStringLiteral("\u2026"));
     }
+}
+
+void UltraClearTextTests::rejectedTinyAndDenseSpansKeepOrderedOmissions()
+{
+    const auto page=MakePage({QStringLiteral("Read x\u00b2 page")});
+    const auto t=Transform(1,.5f,.5f);
+    const auto make=[&](std::int64_t time) {
+        auto result=ResultFor(page,t,Stamp(1,1,time,t));
+        const auto original=result.output.lines[0].words;
+        QVector<RecognizedWord> spans{original[0]};
+        const QRectF tiny(original[0].boundsPx.right()+1,original[0].boundsPx.top(),2,3);
+        spans.push_back({QStringLiteral("."),tiny});
+        spans.push_back(original[1]); // full-height unsupported notation
+        for(int i=0;i<180;++i)
+            spans.push_back({QStringLiteral("not"),original[1].boundsPx,false,{},
+                             TokenDisposition::kLowConfidence,.60,original[1].boundsPx});
+        spans.push_back(original[2]);
+        result.output.lines[0].words=spans;
+        result.prepared=PrepareLines(result,7);
+        return result;
+    };
+    auto first=make(100),second=make(200);
+    QCOMPARE(second.prepared[0].words.size(),184);
+    QCOMPARE(second.prepared[0].words[1].disposition,TokenDisposition::kTooSmall);
+    QCOMPARE(second.prepared[0].words[2].disposition,TokenDisposition::kHighRisk);
+    OverlayModel model;
+    QCOMPARE(model.Admit(first,first.stamp,nullptr,110),AdmitVerdict::kPending);
+    QCOMPARE(model.Admit(second,second.stamp,nullptr,210),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(210,0),QStringLiteral("Read \u2026 page"));
+    QCOMPARE(model.Lines()[0].omittedWords,182);
+    QCOMPARE(model.Lines()[0].protectedSceneRects.size(),182);
+    QCOMPARE(model.SceneWords(210,0).size(),2);
+}
+
+void UltraClearTextTests::untrackableTextStaysReadableWithoutReplacement()
+{
+    const auto page=MakePage({QStringLiteral("Read page")});
+    const auto t=Transform(1,.5f,.5f);
+    const auto make=[&](std::int64_t time) {
+        auto result=ResultFor(page,t,Stamp(1,1,time,t));
+        QImage flat(kViewWidth,kViewHeight,QImage::Format_ARGB32);flat.fill(Qt::white);
+        flat=IndependentFramePixels(flat,result.stamp.frameSeq);
+        result.sourcePixelDigest=SourcePixelsDigest(flat);
+        result.reference=MakeProbeFrame(flat.constBits(),flat.width(),flat.height(),flat.bytesPerLine(),2,result.stamp);
+        result.prepared=PrepareLines(result,7);
+        return result;
+    };
+    auto first=make(100),second=make(200);
+    QVERIFY(!second.prepared[0].reference.valid);
+    OverlayModel model;
+    QCOMPARE(model.Admit(first,first.stamp,nullptr,110),AdmitVerdict::kPending);
+    QCOMPARE(model.Admit(second,second.stamp,nullptr,210),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(210,0),QStringLiteral("\u2026 Read page"));
+    QVERIFY(model.SceneWords(210,0).isEmpty());
+    QVERIFY(model.LineReferences(second.stamp).isEmpty());
+    QCOMPARE(model.ReadingText(5000,second.stamp.frameSeq),QStringLiteral("\u2026 Read page"));
+    QVERIFY(model.ReadingText(551,1).isEmpty());
+    // An unrelated probe cannot renew text without a registration reference.
+    model.Validate(second.reference,6000);
+    QVERIFY(model.ReadingText(6000,1).isEmpty());
+}
+
+void UltraClearTextTests::rejectedRefreshCannotRestoreOldAcceptedText()
+{
+    const auto page=MakePage({QStringLiteral("Read page")});
+    const auto t=Transform(1,.5f,.5f);
+    OverlayModel model;
+    model.Admit(ResultFor(page,t,Stamp(1,1,100,t)),Stamp(1,1,100,t),nullptr,110);
+    model.Admit(ResultFor(page,t,Stamp(1,1,200,t)),Stamp(1,1,200,t),nullptr,210);
+    QVERIFY(!model.SceneWords(210,0).isEmpty());
+    auto rejected=ResultFor(page,t,Stamp(1,1,300,t));
+    for(auto& word:rejected.output.lines[0].words) {
+        word.disposition=TokenDisposition::kLowConfidence;word.confidence=.60;
+    }
+    QCOMPARE(model.Admit(rejected,rejected.stamp,nullptr,310),AdmitVerdict::kEmpty);
+    QVERIFY(model.SceneWords(310,0).isEmpty());
+    QCOMPARE(model.ReadingText(310,0),QStringLiteral("\u2026"));
+    QCOMPARE(model.AcceptedWordCount(),0);
+    auto empty=ResultFor(page,t,Stamp(1,1,400,t));empty.output.lines.clear();
+    QCOMPARE(model.Admit(empty,empty.stamp,nullptr,410),AdmitVerdict::kEmpty);
+    QVERIFY(model.ReadingText(410,0).isEmpty());
+}
+
+void UltraClearTextTests::immutableEvidenceRequiresDistinctPixelsAndSafeRegistration()
+{
+    const auto page=MakePage({QStringLiteral("Read page")});
+    const auto t=Transform(1,.5f,.5f);
+    auto stamp=Stamp(1,1,100,t);stamp.frameSeq=50;
+    auto selected=ResultFor(page,t,stamp);
+    const auto digest=[](const QImage& pixels) {
+        return QCryptographicHash::hash(QByteArrayView(reinterpret_cast<const char*>(pixels.constBits()),
+                                                     pixels.sizeInBytes()),QCryptographicHash::Sha256);
+    };
+    auto pixels=IndependentFramePixels(RenderView(page.image,t,kViewWidth,kViewHeight),selected.stamp.frameSeq);
+    selected.sourcePixelDigest=digest(pixels);
+    stamp.frameSeq=51;stamp.timestampMs=200;
+    auto neighbor=ResultFor(page,t,stamp);
+    auto differentPixels=pixels.copy();differentPixels.setPixelColor(0,0,Qt::black);
+    neighbor.sourcePixelDigest=digest(differentPixels);
+    neighbor.reference=MakeProbeFrame(differentPixels.constBits(),kViewWidth,kViewHeight,
+                                      differentPixels.bytesPerLine(),2,stamp);
+    ModelTuning tuning;tuning.admitMatchBudgetMs=1000;
+    OverlayModel model(tuning);
+    constexpr std::int64_t hour=60*60*1000;
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour),AdmitVerdict::kPending);
+    QCOMPARE(model.ReadingText(hour,50),QStringLiteral("\u2026 Read page"));
+    QVERIFY(model.SceneWords(hour,50).isEmpty());
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour+1),AdmitVerdict::kPending);
+    QVERIFY(model.SceneWords(hour+1,50).isEmpty());
+    auto duplicate=neighbor;duplicate.sourcePixelDigest=selected.sourcePixelDigest;
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&duplicate),AdmitVerdict::kPending);
+    duplicate=neighbor;duplicate.stamp.frameSeq=50;
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&duplicate),AdmitVerdict::kPending);
+    duplicate=neighbor;duplicate.authority=selected.authority+1;
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&duplicate),AdmitVerdict::kPending);
+    auto unsafe=neighbor;
+    for(auto& word:unsafe.output.lines[0].words)word.confidence=.60;
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&unsafe),AdmitVerdict::kPending);
+    auto moved=MakePage({QStringLiteral("Different content")},QPointF(200,100));
+    auto mismatched=neighbor;
+    auto changedPixels=RenderView(moved.image,t,kViewWidth,kViewHeight);
+    mismatched.sourcePixelDigest=digest(changedPixels);
+    mismatched.reference=MakeProbeFrame(changedPixels.constBits(),kViewWidth,kViewHeight,
+                                        changedPixels.bytesPerLine(),2,stamp);
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&mismatched),AdmitVerdict::kPending);
+    QCOMPARE(model.AdmitImmutable(selected,selected.stamp,hour,&neighbor),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(hour,50),QStringLiteral("Read page"));
+    QCOMPARE(model.SceneWords(hour,50).size(),2);
+    for(const auto& word:model.SceneWords(hour,50))QVERIFY(word.protectedSceneRects.isEmpty());
+    auto wrongFrame=selected.stamp;++wrongFrame.frameSeq;
+    QCOMPARE(model.AdmitImmutable(selected,wrongFrame,hour,&neighbor),AdmitVerdict::kStaleScene);
+    // Exact immutable evidence cannot corroborate the live policy.
+    QCOMPARE(model.Admit(selected,selected.stamp,nullptr,110),AdmitVerdict::kPending);
+    QVERIFY(model.SceneWords(110,50).isEmpty());
+    QCOMPARE(model.Admit(selected,selected.stamp,nullptr,hour),AdmitVerdict::kTooOld);
+}
+
+void UltraClearTextTests::protectedAdjacentInkSurvivesCompositing_data()
+{
+    QTest::addColumn<QString>("notation");QTest::addColumn<QRectF>("protectedPx");QTest::addColumn<int>("scale");
+    for(const int scale:{1,2}) {
+        const auto add=[&](const char* name,const QString& text,const QRectF& r) {
+            QTest::newRow(qPrintable(QString::fromLatin1(name)+QString::number(scale)))<<text<<r<<scale;
+        };
+        add("minus-",QStringLiteral("-"),QRectF(242,90,4,2));
+        add("exponent-",QStringLiteral("\u00b2"),QRectF(242,57,4,4));
+        add("decimal-",QStringLiteral("."),QRectF(242,118,2,2));
+        add("punctuation-",QStringLiteral(","),QRectF(242,80,2,4));
+    }
+}
+
+void UltraClearTextTests::protectedAdjacentInkSurvivesCompositing()
+{
+    QFETCH(QString,notation);QFETCH(QRectF,protectedPx);QFETCH(int,scale);
+    const QRectF acceptedPx(80,60,160,60);
+    QImage source(960,540,QImage::Format_ARGB32);source.fill(QColor(246,244,236));
+    QPainter ink(&source);ink.setFont(PageFont(56));ink.setPen(Qt::black);
+    ink.drawText(acceptedPx,Qt::AlignCenter,QStringLiteral("READ"));
+    ink.fillRect(protectedPx,QColor(191,17,39));ink.end();
+    const auto transform=ComputeViewTransform(960,540,960,540,1,.5f,.5f,ViewportFitMode::kFit);
+    const auto result=[&](std::int64_t time) {
+        RecognitionResult r;r.output.ok=true;r.stamp=Stamp(1,1,time,transform);r.stamp.frameSeq=time;
+        const auto observed=IndependentFramePixels(source,r.stamp.frameSeq);
+        r.sourcePixelDigest=SourcePixelsDigest(observed);
+        r.output.lines.push_back({{{QStringLiteral("READ"),acceptedPx},{notation,protectedPx}}});
+        r.reference=MakeProbeFrame(observed.constBits(),960,540,observed.bytesPerLine(),1,r.stamp);
+        return r;
+    };
+    OverlayModel model;
+    const auto first=result(100),second=result(200);
+    model.Admit(first,first.stamp,nullptr,110);
+    QCOMPARE(model.Admit(second,second.stamp,nullptr,210),AdmitVerdict::kAccepted);
+    QCOMPARE(model.ReadingText(210,0),QStringLiteral("READ \u2026"));
+    const auto sceneWords=model.SceneWords(210,0);QCOMPARE(sceneWords.size(),1);
+    QWidget target;target.resize(960*scale,540*scale);
+    UltraClearTextOverlay overlay(&target,&target);overlay.resize(target.size());
+    overlay.SetViewTransform(transform);
+    const auto& word=sceneWords[0];
+    overlay.SetWords({{word.text,word.sceneRect,word.colors,word.lineId,{}}});
+    QImage unprotected(target.size(),QImage::Format_ARGB32_Premultiplied);unprotected.fill(Qt::transparent);
+    overlay.render(&unprotected);
+    const QRect probe=QRectF(protectedPx.x()*scale,protectedPx.y()*scale,
+                             protectedPx.width()*scale,protectedPx.height()*scale).toAlignedRect();
+    QVERIFY2(qAlpha(unprotected.pixel(probe.center()))>200,"Fixture did not reproduce plate coverage of adjacent ink");
+    overlay.SetWords({{word.text,word.sceneRect,word.colors,word.lineId,word.protectedSceneRects}});
+    QImage layer(target.size(),QImage::Format_ARGB32_Premultiplied);layer.fill(Qt::transparent);overlay.render(&layer);
+    QImage original=RenderView(source,transform,target.width(),target.height());
+    QImage composite=original.copy();QPainter painter(&composite);painter.drawImage(0,0,layer);painter.end();
+    for(int y=probe.top();y<=probe.bottom();++y)for(int x=probe.left();x<=probe.right();++x) {
+        QCOMPARE(qAlpha(layer.pixel(x,y)),0);
+        QCOMPARE(composite.pixel(x,y),original.pixel(x,y));
+    }
+    int replacementPixels=0;
+    for(int y=60*scale;y<120*scale;++y)for(int x=80*scale;x<240*scale;++x)
+        replacementPixels+=qAlpha(layer.pixel(x,y))>0;
+    QVERIFY(replacementPixels>100);
+}
+
+void UltraClearTextTests::schedulerPixelEvidenceIgnoresAllocationPadding()
+{
+    auto shared=std::make_shared<HeldRecognizer::Shared>();shared->release=true;
+    std::mutex mutex;QVector<RecognitionResult> results;
+    RecognitionScheduler scheduler(std::make_unique<HeldRecognizer>(shared),
+        [&](RecognitionResult result) {std::lock_guard lock(mutex);results.push_back(std::move(result));},
+        [](BackendStatus){},1);
+    QTRY_COMPARE(scheduler.Status().state,BackendState::kReady);
+    QImage source(16,16,QImage::Format_ARGB32);source.fill(QColor(10,20,30));
+    const auto pixels=[&](std::uint8_t padding) {
+        auto buffer=std::make_shared<PixelBuffer>();buffer->width=16;buffer->height=16;buffer->strideBytes=80;
+        buffer->bytes.resize(80*16,padding);
+        for(int y=0;y<16;++y)std::memcpy(buffer->bytes.data()+y*80,source.constScanLine(y),16*4);
+        return SharedPixels(buffer);
+    };
+    ViewTransform transform;transform.valid=true;
+    SourceStamp stamp;stamp.sourceEpoch=1;stamp.geometryGeneration=1;stamp.frameSeq=1;
+    stamp.viewportWidth=16;stamp.viewportHeight=16;stamp.viewTransform=transform;
+    QVERIFY(scheduler.Submit(stamp,pixels(13))!=0);
+    QTRY_VERIFY(([&]{std::lock_guard lock(mutex);return results.size()==1;})());
+    ++stamp.frameSeq;
+    QVERIFY(scheduler.Submit(stamp,pixels(91))!=0);
+    QTRY_VERIFY(([&]{std::lock_guard lock(mutex);return results.size()==2;})());
+    const auto expected=QCryptographicHash::hash(QByteArrayView(reinterpret_cast<const char*>(source.constBits()),
+                                                              source.sizeInBytes()),QCryptographicHash::Sha256);
+    std::lock_guard lock(mutex);
+    QCOMPARE(results[0].sourcePixelDigest.size(),32);
+    QCOMPARE(results[0].sourcePixelDigest,expected);
+    QCOMPARE(results[1].sourcePixelDigest,expected);
+    QVERIFY(results[0].stamp.frameSeq!=results[1].stamp.frameSeq);
 }
 
 void UltraClearTextTests::schedulerCoalescesLatestOnly()
@@ -1463,8 +1832,9 @@ void UltraClearTextTests::refreshRetainsLineOnceAndStabilizesColors() {
     auto first = ResultFor(page, t, Stamp(3, 4, 100, t));
     first.lineColors = {{QColor(220, 220, 220), QColor(80, 80, 80)}};
     model.Admit(first, current, nullptr, 110);
-    first.stamp.timestampMs = 200;
-    model.Admit(first, current, nullptr, 210);
+    auto second = ResultFor(page, t, Stamp(3, 4, 200, t));
+    second.lineColors = first.lineColors;
+    model.Admit(second, current, nullptr, 210);
     const auto newer = ProbeOf(RenderView(page.image, t, kViewWidth, kViewHeight), t, 3, 4, 9, 500);
     model.Validate(newer, 500);
     const auto old = model.Lines().first();
@@ -1851,23 +2221,35 @@ void UltraClearTextTests::originalPixelsAndNonTextGraphicsArePreserved()
     h.Enable();
     // CPU presentation path: the controller must not modify the buffer.
     QImage view = RenderView(h.page.image, h.context.transform, kViewWidth, kViewHeight);
-    {
-        std::lock_guard lock(h.shared->mutex);
-        h.shared->transforms.insert(Checksum(view), h.context.transform);
-    }
     const quint64 before = Checksum(view);
+    std::optional<quint64> previousObservation;
+    int observations = 0;
     for (int i = 0; i < 200 && h.overlay->WordCount() == 0; ++i) {
         h.now += 100;
         h.context.frameSeq = ++h.frameSeq;
         if (h.controller->OnPresented(h.context)) {
-            h.controller->OnCpuViewport(h.context, view.constBits(), view.width(), view.height(),
-                                        static_cast<int>(view.bytesPerLine()));
+            // This manual CPU path bypasses Harness::Present. Supply actual
+            // distinct observations here too; new sequence IDs over the same
+            // view are deliberately insufficient for temporal admission.
+            const QImage observed = IndependentFramePixels(view, h.context.frameSeq);
+            const quint64 observationBefore = Checksum(observed);
+            if (previousObservation) QVERIFY(observationBefore != *previousObservation);
+            previousObservation = observationBefore;
+            ++observations;
+            {
+                std::lock_guard lock(h.shared->mutex);
+                h.shared->transforms.insert(observationBefore, h.context.transform);
+            }
+            h.controller->OnCpuViewport(h.context, observed.constBits(), observed.width(), observed.height(),
+                                        static_cast<int>(observed.bytesPerLine()));
+            QCOMPARE(Checksum(observed), observationBefore);
         }
         h.controller->OnPresentationSucceeded();
         QCoreApplication::processEvents();
         QThread::msleep(1);
     }
     QVERIFY(h.overlay->WordCount() > 0);
+    QVERIFY(observations >= 2);
     QCOMPARE(Checksum(view), before);
     // No glyph plate may cover the curve.
     const QRectF chart = SceneRectToView(h.context.transform, h.overlay->width(), h.overlay->height(),
@@ -2098,10 +2480,12 @@ void UltraClearTextTests::mixedHeightReadingOrderIsStableAndOnlyFreshTextIsRead(
         OverlayModel model;
         result.jobId = 1;
         model.Admit(result, stamp, nullptr, 100);
-        result.jobId = 2;
-        QCOMPARE(model.Admit(result, stamp, nullptr, 200), AdmitVerdict::kAccepted);
-        QCOMPARE(model.ReadingText(200, 9), QStringLiteral("Beta\nAlpha\nGamma"));
-        QVERIFY(model.ReadingText(1000, 10).isEmpty());
+        auto secondStamp=stamp;secondStamp.timestampMs=200;secondStamp.frameSeq=10;
+        auto second=ResultFor(page,transform,secondStamp);
+        second.output.lines=result.output.lines;second.lineColors=result.lineColors;second.jobId=2;
+        QCOMPARE(model.Admit(second, stamp, nullptr, 200), AdmitVerdict::kAccepted);
+        QCOMPARE(model.ReadingText(200, 10), QStringLiteral("Beta\nAlpha\nGamma"));
+        QVERIFY(model.ReadingText(1000, 11).isEmpty());
     } while (std::next_permutation(order.begin(), order.end()));
 }
 
@@ -2196,8 +2580,8 @@ void UltraClearTextTests::denseMovingPageValidationCostAt4K()
             model.Reset();
             model.Admit(ResultForView(page, t, Stamp(1, 1, stamp.timestampMs, t), kW, kH), current, nullptr,
                         stamp.timestampMs);
-            model.Admit(ResultForView(page, t, Stamp(1, 1, stamp.timestampMs, t), kW, kH), current, nullptr,
-                        stamp.timestampMs);
+            model.Admit(ResultForView(page, t, Stamp(1, 1, stamp.timestampMs + 1, t), kW, kH), current, nullptr,
+                        stamp.timestampMs + 1);
         }
     }
     qInfo("dense 4K moving page, %d lines: probe build p50 %.2f / max %.2f ms; validation p50 %.2f / "

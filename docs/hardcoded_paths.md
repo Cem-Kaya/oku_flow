@@ -1,5 +1,35 @@
 # Hard-Coded Paths and Defaults
 
+## Selected-video resource limits (development)
+
+Playback uses resolution/stride/PAR-aware decoded admission with a 96 MiB
+minimum allowance and 256 MiB absolute ceiling, including consumer-held
+frames. This is a cap, not eager allocation. A complete working set must fit
+before decoding. Saved-file lookahead is at most two frames (one at larger
+admitted sizes); archive lookahead is one. Seek invalidates it without draining.
+Optional neighbor preparation waits for a 50 ms quiet period after target
+publication; immediate scrubs supersede it. Proven same-frame seeks share pixels
+and require neither native decode nor another full-frame allocation.
+Additional limits are a 64 MiB byte-read window, an 8 MiB metadata/index budget and
+120 decoded samples per seek. Audio queues include in-flight PCM and are
+bounded to 2 MiB, 32 packets and 500 ms; the native output endpoint is capped
+at 250 ms. These are admission limits, not latency promises. The selected
+transport polls at 16 ms only while a recording/file document exists; normal
+unrecorded camera mode does not run a history collector.
+
+UCT screen text has at most 128 lines, 512 UTF-16 units per line and 16 KiB
+total. Semantic additions publish at one second, with a three-second maximum
+reader hold; authority loss revokes immediately. Geometry is queried from the
+last actual paint and is independent of OCR cadence. Native UIA/DPI behaviour
+remains separately validated. See [screen text](uct_screen_text_accessibility.md).
+
+Advancing-media UCT uses real selected PTS for scene validation, an 80 ms probe
+admission interval, a 350 ms minimum OCR interval and the existing 1,500 ms
+stable refresh. Its job deadline is separately 30 seconds of wall time.
+One scheduler and one latest-only probe worker serve all modes; a paused still
+returns to one-shot admission. These are bounded scheduling defaults, not an
+OCR-rate or native display-latency guarantee.
+
 ## Optional PaddleOCR (2026-10-18)
 
 `scripts/uct/pins.json` pins upstream model revisions, model/config/card hashes,
@@ -809,3 +839,16 @@ for its repair and following speech. Oversized gaps or unavailable credit stop
 and finalize existing recording output rather than compacting speech. Native
 COM/driver calls retain their separate watchdog limits. See
 [recording timeline evidence](recording_attempts_and_timeline.md).
+
+
+## GPU selected-video resource policy
+
+The GPU decoder admits eight logical BGRA texture allocations / 256 MiB across
+published leases, pool storage, optional private conversion target and deferred
+native release. The CPU decoded allowance remains adaptive 96-256 MiB. These
+are separate from CUDA scene/scratch, analysis/model buffers, driver decoder DPB,
+Original recording and one explicit Save snapshot. No allocation equals a total
+RAM/VRAM ceiling. UCT advancing gap retention uses 350 ms wall validation plus
+real-media freshness; gap receipts cannot renew either. Save's owned GPU clone
+has a three-second asynchronous readback deadline and retains exact identity
+through resize retry/late-result discard. See [GPU playback](gpu_video_playback.md).

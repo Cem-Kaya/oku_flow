@@ -3,6 +3,7 @@
 #if defined(_WIN32)
 
 #include "okuflow/ui/live_status_text.hpp"
+#include "okuflow/ui/wheel_safe_combo_box.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -81,7 +82,7 @@ UltraClearTextPanel::UltraClearTextPanel(QWidget* parent)
         auto* caption=new QLabel(label,modelControls);
         caption->setWordWrap(true);
         caption->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
-        auto* combo=new QComboBox(modelControls);
+        auto* combo=new WheelSafeComboBox(modelControls);
         combo->setObjectName(QString::fromLatin1(name));
         combo->setAccessibleName(label);
         combo->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);

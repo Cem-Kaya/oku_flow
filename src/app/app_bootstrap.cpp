@@ -331,6 +331,8 @@ bool OkuFlowApp::Initialize()
                 return presenter_ && presenter_->NeedsScenePresent();
             },
             .hasAsyncSceneWork = [this]() {
+                if (MediaViewSelected())
+                    return mediaGpuScene_ && mediaGpuScene_->NeedsSuperResPolling();
                 return cameraActive_ && usingCudaLastFrame_ && cudaSceneReady_ && cudaSurface_ &&
                     (asyncSuperResPresentPending_ || cudaSurface_->NeedsSuperResPolling()) &&
                     !pipelineOrchestrator_->IsViewportInteractionActive();
@@ -339,7 +341,7 @@ bool OkuFlowApp::Initialize()
             .cameraFrameRate = [this]() {
                 return mediaCapture_.CurrentFrameRate();
             },
-            .usingCuda = [this]() { return usingCudaLastFrame_; },
+            .usingCuda = [this]() { return !MediaViewSelected() && usingCudaLastFrame_; },
             .queryDisplayRefreshRate = [this]() {
                 return uiState_ && uiState_->renderWidget_
                            ? QueryDisplayRefreshHz(reinterpret_cast<HWND>(
@@ -364,13 +366,16 @@ bool OkuFlowApp::Initialize()
             ShowStatusMessage(message, durationMs);
         },
         [this](const SavedRecordingSegment& segment) {
+            OnVideoSegmentSaved(segment);
             if (assistiveManager_) {
-                assistiveManager_->Runtime().NoteCapturedVideoPair(
-                    segment.originalPath, segment.processedPath);
+                assistiveManager_->NoteCapturedVideo(
+                    segment.originalPath, segment.session.id,
+                    segment.segmentIndex, segment.firstCaptureClock100ns);
             }
         },
         *userDataPaths_,
         [this](const RecordingSessionInfo& session) {
+            OnVideoRecordingEnded(session);
             if (controlTarget_) controlTarget_->RecordingEnded(session);
             // Session-ended callbacks are queued from the recording worker
             // after the terminal state is published. If a new recording has
@@ -381,7 +386,11 @@ bool OkuFlowApp::Initialize()
                 return;
             }
             StopMicrophoneCapture();
+        },
+        [this](const RecordingSessionInfo& session) {
+            OnVideoRecordingStarted(session);
         });
+    InitializeVideoPlayback();
     qInfo() << "Rotation combo ready with"
             << uiState_->rotationCombo_->count() << "items";
 
@@ -1373,6 +1382,7 @@ bool OkuFlowApp::Initialize()
 }
 
 OkuFlowApp::~OkuFlowApp() {
+    ShutdownVideoPlayback();
     CancelAgentTurn();
     if (visibleChatSaveTimer_) visibleChatSaveTimer_->stop();
     PersistVisibleChat();

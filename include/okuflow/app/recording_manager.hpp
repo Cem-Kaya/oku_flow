@@ -10,6 +10,7 @@
 #include "okuflow/capture/audio_capture.hpp"
 
 #include <QString>
+#include <QStringList>
 
 #include <array>
 #include <atomic>
@@ -17,6 +18,8 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <limits>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -29,10 +32,7 @@ QT_END_NAMESPACE
 
 namespace okuflow {
 
-void ComposeRecordingAnnotations(std::vector<std::uint8_t>& processedCanvas,
-                                  UINT width, UINT height,
-                                  const RecordingViewTransform& transform,
-                                  const QVector<AnnotationStroke>& strokes);
+class RecordingArchive;
 
 struct RecordingTimingSnapshot {
     float p50Ms{-1.0f};
@@ -51,7 +51,9 @@ struct CapturedFrame {
     RecordingFrameIdentity identity{};
 
     bool HasCpuPixels() const {
-        return !pixels.empty() && width > 0 && height > 0;
+        return width > 0 && height > 0 &&
+               width <= std::numeric_limits<std::size_t>::max() / height / 4u &&
+               pixels.size() == static_cast<std::size_t>(width) * height * 4u;
     }
 
     bool HasGpuScene() const {
@@ -70,7 +72,42 @@ struct SavedRecordingSegment {
     RecordingSessionInfo session;
     int segmentIndex{1};
     QString originalPath;
+    std::shared_ptr<RecordingArchive> archive;
+    // Compatibility only: new sessions never create a processed companion.
     QString processedPath;
+    std::int64_t firstCaptureClock100ns{-1};
+    std::int64_t lastCaptureClock100ns{-1};
+    std::uint64_t framesWritten{};
+    RecordingSessionCompletion completion{RecordingSessionCompletion::Completed};
+    QStringList failedAttemptPaths;
+};
+
+struct RecordingFrameAdmission {
+    std::uint64_t sequenceNumber{};
+    std::int64_t captureClock100ns{-1};
+    std::int64_t pts100ns{-1};
+};
+
+// Immutable, bounded evidence of source frames accepted by this exact part's
+// writer input. Acceptance can precede WriteSample; Archive() separately
+// reports writer-committed and verified/seekable boundaries.
+struct ActiveRecordingTimeline {
+    RecordingSessionInfo session;
+    int segmentIndex{1};
+    std::shared_ptr<RecordingArchive> archive;
+    std::int64_t firstCaptureClock100ns{-1};
+    std::int64_t lastCaptureClock100ns{-1};
+    std::uint64_t lastAdmittedSequence{};
+    std::int64_t lastAdmittedPts100ns{-1};
+    std::vector<RecordingFrameAdmission> recentAdmissions;
+
+    std::optional<RecordingFrameAdmission> FindAdmission(
+        std::uint64_t sequence, std::int64_t captureClock100ns) const {
+        for (auto it = recentAdmissions.rbegin(); it != recentAdmissions.rend(); ++it)
+            if (it->sequenceNumber == sequence && it->captureClock100ns == captureClock100ns)
+                return *it;
+        return std::nullopt;
+    }
 };
 
 class RecordingManager {
@@ -80,12 +117,17 @@ public:
         std::function<void(const SavedRecordingSegment&)>;
     using SessionEndedCallback =
         std::function<void(const RecordingSessionInfo&)>;
+    // Queued once only after a successful first Original frame admission.
+    // Stopped/failed/replaced sessions cannot deliver a late start.
+    using SessionStartedCallback =
+        std::function<void(const RecordingSessionInfo&)>;
 
     RecordingManager(QPushButton* recordButton,
                      StatusCallback statusCallback,
                      SegmentSavedCallback segmentSavedCallback,
                      const UserDataPaths& userDataPaths,
-                     SessionEndedCallback sessionEndedCallback = {});
+                     SessionEndedCallback sessionEndedCallback = {},
+                     SessionStartedCallback sessionStartedCallback = {});
     ~RecordingManager();
 
     // Bounded shutdown handshake for app close. Returns true when the worker
@@ -93,7 +135,7 @@ public:
     // caller must still consult sticky IsWorkerAbandoned() before global
     // MF/COM teardown because poisoned recorder objects are leaked. Returns
     // false when the worker is wedged inside a synchronous encoder/driver
-    // call: both recorders are abandoned and the worker is detached, so the
+    // call: the recorder is abandoned and the worker is detached, so the
     // caller MUST leak this object (unique_ptr::release) instead of
     // destroying it — the detached worker still references its queues and
     // atomics, and freeing them would hand it dangling memory if the
@@ -116,6 +158,11 @@ public:
     // Identity of the active session; empty while not recording. Saved-media
     // callbacks retain this id independently of later sessions.
     std::optional<RecordingSessionInfo> CurrentSessionInfo() const;
+    // Snapshots never call into an encoder on the caller's thread. The last
+    // selected archive/receipt survive finalization until the next session.
+    std::shared_ptr<RecordingArchive> CurrentArchive() const;
+    std::optional<SavedRecordingSegment> LastSavedSegment() const;
+    std::optional<ActiveRecordingTimeline> CurrentTimeline() const;
     QString CodecName() const;
     RecordingTimingSnapshot EncoderSubmitTiming() const;
     // True after the stop watchdog declared the recording worker permanently
@@ -145,6 +192,12 @@ public:
     RecordingDropCounts DropCounts() const;
     void NotifyReadbackSkipped();
     void NotifyRecordingPoolSkipped();
+    // Owns the clean full-source frame/lease independently of presentation.
+    // Color conversion and source orientation are already normalized by the
+    // producer; view effects, crop and annotations never enter this queue.
+    void AddOriginalFrame(CapturedFrame originalFrame);
+    // Transitional source compatibility. Processed payload/transform/ink are
+    // ignored and never copied, resampled or submitted to an encoder.
     void AddSceneFrame(const uint8_t* processedSceneData,
                        UINT processedSceneWidth,
                        UINT processedSceneHeight,
@@ -158,18 +211,10 @@ public:
 private:
     friend struct RecordingManagerTestAccess;
     struct QueuedFrame {
-        std::vector<uint8_t> processedScene;
-        GpuVideoFrame processedGpuScene;
-        UINT processedSceneWidth{};
-        UINT processedSceneHeight{};
-        RecordingViewTransform transform;
-        QVector<AnnotationStroke> strokes;
         CapturedFrame original;
     };
 
     struct SegmentParameters {
-        UINT processedWidth{};
-        UINT processedHeight{};
         UINT originalWidth{};
         UINT originalHeight{};
         UINT frameRateNumerator{30};
@@ -181,7 +226,6 @@ private:
     enum class WorkerOp : std::uint8_t {
         kIdle = 0,
         kStartSegment,
-        kProcessedVideo,
         kOriginalVideo,
         kAudio,
         kRetireGpuReaders,
@@ -197,6 +241,12 @@ private:
     void AbandonWedgedWorker(const QString& trigger);
     bool StartSegment(const QueuedFrame& firstFrame);
     bool WriteFrame(QueuedFrame&& frame);
+    bool CompleteFrameSubmission(bool accepted,
+                                 const RecordingFrameIdentity& identity,
+                                 std::int64_t admittedPts100ns,
+                                 const QString& error = {});
+    void PublishFrameAdmission(const RecordingFrameIdentity& identity,
+                               std::int64_t admittedPts100ns);
     void RecordEncoderSubmitTiming(float milliseconds);
     bool WriteAudioFrame(AudioFrame&& frame);
     void ReportEncoderStatisticsUnavailable();
@@ -206,9 +256,10 @@ private:
     void PostStatus(const QString& message, int durationMs = 7000) const;
     void PostButtonState(RecordingState state) const;
     void PostSegmentSaved(const QString& originalPath,
-                          const QString& processedPath) const;
+                          std::uint64_t framesWritten);
+    void PostSessionStarted();
     QString BuildDropSummary() const;
-    QString SegmentPath(bool processed) const;
+    QString SegmentPath() const;
     QString EnsureOutputDirectory() const;
     void ShowStatus(const QString& message, int durationMs = 7000) const;
     void UpdateButton();
@@ -217,19 +268,29 @@ private:
     StatusCallback statusCallback_;
     SegmentSavedCallback segmentSavedCallback_;
     SessionEndedCallback sessionEndedCallback_;
+    SessionStartedCallback sessionStartedCallback_;
     const UserDataPaths* userDataPaths_{};
-    VideoRecorder processedRecorder_;
     VideoRecorder originalRecorder_;
     std::atomic<RecordingState> state_{RecordingState::Idle};
     // An immutable observer installed only by the desktop-free fixture. It
     // exposes the actual publication boundary without involving native codecs.
     std::function<void(RecordingState)> statePublicationObserver_;
-    std::atomic<RecordingCanvasMode> canvasMode_{
-        RecordingCanvasMode::Source};
-    std::atomic<RecordingCanvasMode> activeCanvasMode_{
-        RecordingCanvasMode::Source};
     QString sessionTimestamp_;
     RecordingSessionInfo sessionInfo_;  // guarded by queueMutex_
+    // A queued acknowledgement owns no manager pointer. Revocation on stop,
+    // failure, replacement and shutdown fences exact session identity even
+    // after this manager has been destroyed.
+    struct SessionStartTicket {
+        explicit SessionStartTicket(const QString& id) : sessionId(id) {}
+        const QString sessionId;
+        std::atomic<bool> active{true};
+    };
+    std::shared_ptr<SessionStartTicket> sessionStartTicket_; // queueMutex_
+    bool sessionStartedPosted_{}; // queueMutex_: once per session, across parts
+    std::shared_ptr<RecordingArchive> currentArchive_; // queueMutex_
+    std::optional<SavedRecordingSegment> lastSavedSegment_; // queueMutex_
+    std::optional<ActiveRecordingTimeline> activeTimeline_; // queueMutex_
+    static constexpr std::size_t kMaxRecentAdmissions = 128;
     QString sessionDirectory_;
     QString codecName_;
     QString stopMessage_;
@@ -265,6 +326,9 @@ private:
     std::atomic<std::uint64_t> workerOpFrameSequence_{0};
     std::atomic<std::uint32_t> stopGeneration_{0};
     std::atomic<bool> workerAbandoned_{false};
+    // Queued successful callbacks cannot outlive an abandonment decision.
+    std::shared_ptr<std::atomic<bool>> completionDeliveryEnabled_{
+        std::make_shared<std::atomic<bool>>(true)};
     // Set on the ShutdownForProcessExit wedge path; makes the destructor's
     // leak-contract diagnostic accurate even though detach() clears
     // joinable().
@@ -288,25 +352,23 @@ private:
     std::atomic<std::uint64_t> unknownTimestamp_{0};
     std::atomic<std::uint64_t> gpuFramesWritten_{0};
     std::atomic<std::uint64_t> gpuInputFallbacks_{0};
-    std::atomic<std::uint64_t> processedFrameFallbacks_{0};
     std::atomic<std::uint64_t> originalFrameFallbacks_{0};
     static constexpr std::size_t kTimingSampleCapacity = 240;
     mutable std::mutex timingMutex_;
     std::array<float, kTimingSampleCapacity> encoderSubmitSamplesMs_{};
     std::size_t encoderSubmitSampleIndex_{0};
     std::size_t encoderSubmitSampleCount_{0};
-    UINT processedWidth_{};
-    QString segmentProcessedPath_;
     QString segmentOriginalPath_;
+    QStringList segmentFailedAttemptPaths_;
     // Deterministic codec-failure fixture; normal instances use VideoRecorder.
-    std::function<bool(bool, const QString&, VideoRecorder::Codec)> encoderStartOverride_;
+    std::function<bool(const QString&, VideoRecorder::Codec)> encoderStartOverride_;
     bool segmentFinalized_{true};
-    UINT processedHeight_{};
     UINT originalWidth_{};
     UINT originalHeight_{};
     UINT frameRateNumerator_{30};
     UINT frameRateDenominator_{1};
     std::int64_t segmentClockOrigin100ns_{-1};
+    std::int64_t segmentLastCaptureClock100ns_{-1};
     std::atomic<bool> audioCaptureEnabled_{false};
     bool audioStartupPending_{}; // queueMutex_: no segment before actual audio decision.
     int segmentIndex_{1};

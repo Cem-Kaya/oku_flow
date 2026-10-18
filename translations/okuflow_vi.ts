@@ -3273,5 +3273,245 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
             <source>CPU text recognizer</source>
             <translation>Mô hình nhận dạng văn bản trên CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>Bản ghi hiện tại</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>Video</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>Trực tiếp</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>Chậm hơn hình ảnh trực tiếp</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>Đã tạm dừng</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>Cuối video</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>Đang mở video…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>Đang tua…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>Đang chờ bản ghi</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>Đang hoàn tất bản ghi</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>Video không khả dụng</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>Phát video</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>Lùi 10 giây</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>Tạm dừng video</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>Tiếp tục phát video</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>Chuyển đến trực tiếp</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>Chuyển đến cuối video</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>Quay lại camera</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>Lưu khung hình</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>Bật tiếng phát lại</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>Tắt tiếng phát lại</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>Điều khiển video</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>Thanh thời gian video</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>Phím Mũi tên trái và phải: mỗi lần 1 giây. Page Up và Page Down: mỗi lần 10 giây. Home: đầu video. End: cuối phần đã ghi.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 trên %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>Mở video</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>Mở video đã lưu (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>Ghi video Original</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>Bắt đầu hoặc dừng ghi MP4 Original</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>Chọn âm thanh cho video Original đang ghi. Chỉ dùng micrô trong lúc ghi.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>Chọn âm thanh micrô cho bản ghi MP4 Original hoặc chọn không dùng micrô.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>Không thể giữ lại khung hình đang hiển thị. Video đã ghi vẫn dùng được.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>Không thể mở video: hãy chọn một tệp cục bộ đang tồn tại.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>Không mở video vì không thể dừng quá trình ghi.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>Đang hoàn tất bản ghi trước khi mở video...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>Đang chờ để có thể tua trong video đã ghi.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>Khung hình đã giữ không được ghi lại. Hãy tua đến đoạn video đã ghi để tiếp tục.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>Không thể xác minh vị trí của khung hình đang giữ trong bản ghi. Hãy tua đến phần video đã ghi để tiếp tục.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>Đã hết video. Hãy tua về trước để phát lại.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>Camera không khả dụng. Đang hiển thị khung hình mới nhất đã ghi.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>Khung hình đã giữ không được ghi vào video. Ảnh được giữ lại vẫn dùng được.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>Không thể xác minh vị trí của khung hình đang giữ trong bản ghi. Ảnh được giữ lại vẫn dùng được.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>Đã hết phần ghi hiện có. Ảnh đã lưu vẫn dùng được.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>Video không khả dụng: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>Không có âm thanh phát lại. Video vẫn tiếp tục phát.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>Không lưu được khung hình: chế độ xem đã chọn không khả dụng.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>Không lưu được khung hình: không thể đưa ảnh vào hàng đợi.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>Không lưu được khung hình: thư mục OkuFlow Photos không khả dụng.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>Đã lưu khung hình video được chọn.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>Không thể lưu khung hình video được chọn.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>Không lưu được khung hình: trình ghi ảnh đang bận. Hãy thử lại.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>Không thể tạm dừng: không giữ lại được khung hình đang hiển thị.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;Điều khiển&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Đơn giản&lt;/b&gt; phóng tối đa hình ảnh camera. Dùng vòng xoay ở góc hoặc các phím số từ 1 đến 9 để đổi chế độ nhanh.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Ẩn giao diện&lt;/b&gt; hoặc &lt;b&gt;Ctrl+H&lt;/b&gt; sẽ ẩn các nút điều khiển và trợ lý khỏi hình ảnh camera. &lt;b&gt;Hiện giao diện&lt;/b&gt; khôi phục chúng cùng câu trả lời hiện có.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Nâng cao&lt;/b&gt; mở các cài đặt chi tiết về hình ảnh và Trợ lý. Kéo vạch chia ở cạnh bảng để đổi kích thước.&lt;/p&gt;&lt;p&gt;Kéo hình ảnh camera để di chuyển vùng nhìn. Giữ Ctrl rồi cuộn con lăn chuột để phóng to/thu nhỏ. Bật &lt;b&gt;Cần điều khiển ảo&lt;/b&gt; trong &lt;b&gt;Cài đặt &amp;gt; Chế độ xem và điều hướng&lt;/b&gt; để dùng nút di chuyển trên màn hình.&lt;/p&gt;&lt;p&gt;Ảnh lưu cả bản gốc và bản đã xử lý. Ghi lưu video Original. Giải thích mô tả khung cảnh; Đọc nhận dạng văn bản. Nhấn &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; để mở thư mục chứa các tệp OkuFlow của bạn.&lt;/p&gt;&lt;h2&gt;Tính năng&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Làm rõ văn bản&lt;/b&gt; kết hợp làm sạch tài liệu, tăng tương phản cục bộ, làm sắc nét và giữ đường nét chữ ổn định. &lt;b&gt;Màu hiển thị&lt;/b&gt; cung cấp bảng màu dễ đọc và phối màu tùy chỉnh.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; cải thiện chi tiết khi phóng to nếu đã cài runtime NVIDIA Video Effects tùy chọn.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Đọc văn bản và Trợ lý&lt;/b&gt; có thể đọc văn bản, giải thích hình ảnh, trả lời câu hỏi tiếp theo và thêm kết quả vào ghi chú bài giảng.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>Tệp video (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;Tất cả tệp (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text trong chế độ xem này</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… cho biết phần văn bản được giữ nguyên trong ảnh gốc.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>Phát video: có thể thu phóng, xoay, đổi màu hỗ trợ đọc và dùng UCT. Các hiệu ứng GPU nâng cao không khả dụng.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC bản gốc, đang khởi động bộ mã hóa]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC bản gốc, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>Không thể tạm dừng: không thể giữ nguyên chính xác khung hình đang hiển thị.</translation>
+        </message>
     </context>
 </TS>

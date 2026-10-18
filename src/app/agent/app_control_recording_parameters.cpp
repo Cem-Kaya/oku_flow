@@ -16,10 +16,6 @@ QString MicHandle(std::map<QString,QString>& handles,const QString& endpoint) {
     if(inserted)it->second="mic-"+QUuid::createUuid().toString(QUuid::Id128);
     return it->second;
 }
-QString Canvas(RecordingCanvasMode mode) {
-    static const QStringList values{"source","1080p","1440p","2160p","720p","480p","360p"};
-    return values.value(static_cast<int>(mode));
-}
 qint64 Now() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
@@ -29,7 +25,7 @@ std::map<Field,QJsonValue> AppControlTarget::RecordingParameterFields() const {
     if(!app_.settingsController_)return {};
     const auto& settings=app_.settingsController_->Settings();
     return {{Field::RecordingMicrophone,MicHandle(microphoneHandles_,settings.microphoneEndpointId)},
-            {Field::RecordingCanvas,Canvas(settings.recordingCanvasMode)}};
+            {Field::RecordingCanvas,QStringLiteral("source")}};
 }
 
 ControlPlan AppControlTarget::PrepareRecordingParameters(ToolId tool,const QJsonObject& args,const QString& owner) const {
@@ -64,24 +60,16 @@ ControlPlan AppControlTarget::PrepareRecordingParameters(ToolId tool,const QJson
         !app_.recordingManager_ || app_.recordingManager_->IsWorkerAbandoned());
     if(!plan.error.isEmpty())return plan;
     for(const auto& write:plan.writes) {
-        auto* combo=write.field==Field::RecordingMicrophone?app_.uiState_->microphoneCombo_:app_.uiState_->recordingCanvasCombo_;
+        auto* combo=app_.uiState_->microphoneCombo_;
         if(!combo) {plan=ControlPlan{};plan.error="unavailable";return plan;}
-        QVariant nativeValue;
-        if(write.field==Field::RecordingMicrophone) {
-            QString endpoint="__none__";
-            if(write.value!="none") {
-                const auto found=std::find_if(microphoneHandles_.begin(),microphoneHandles_.end(),
-                    [&](const auto& item){return item.second==write.value.toString();});
-                if(found==microphoneHandles_.end()) {plan=ControlPlan{};plan.error="not_found";return plan;}
-                endpoint=found->first;
-            }
-            nativeValue=endpoint;
-        } else {
-            static const QStringList modes{"source","1080p","1440p","2160p","720p","480p","360p"};
-            const int mode=modes.indexOf(write.value.toString());
-            if(mode<0) {plan=ControlPlan{};plan.error="invalid_argument";return plan;}
-            nativeValue=mode;
+        QString endpoint="__none__";
+        if(write.value!="none") {
+            const auto found=std::find_if(microphoneHandles_.begin(),microphoneHandles_.end(),
+                [&](const auto& item){return item.second==write.value.toString();});
+            if(found==microphoneHandles_.end()) {plan=ControlPlan{};plan.error="not_found";return plan;}
+            endpoint=found->first;
         }
+        const QVariant nativeValue=endpoint;
         // Admission must prove native availability before any irreversible stop.
         const int nativeIndex=combo->findData(nativeValue);
         if(nativeIndex<0) {plan=ControlPlan{};plan.error="unavailable";return plan;}
@@ -116,11 +104,18 @@ QJsonObject AppControlTarget::QueryRecordingParameters(ToolId tool,const QJsonOb
         const auto value=found!=fields.end()?found->second:QJsonValue(QJsonValue::Null);
         const bool missingMic=field==Field::RecordingMicrophone && value!="none" && !installed.contains(value.toString());
         const auto saved=!committed?QJsonValue(QJsonValue::Null):field==Field::RecordingCanvas?
-            QJsonValue(Canvas(committed->recordingCanvasMode)):QJsonValue(MicHandle(microphoneHandles_,committed->microphoneEndpointId));
+            QJsonValue(QStringLiteral("source")):QJsonValue(MicHandle(microphoneHandles_,committed->microphoneEndpointId));
         QJsonObject row{{"requested",value},{"effective",available && !missingMic?value:QJsonValue(QJsonValue::Null)},
             {"saved",saved},{"available",available && !missingMic},{"writable",available},
             {"unsupportedReason",!available?"recorder_unavailable":missingMic?"microphone_unavailable":""},
             {"persistence","shared_saved"},{"requiresUi",field==Field::RecordingMicrophone},{"appliesTo","next_recording"}};
+        if(field==Field::RecordingCanvas) {
+            row["requested"]="source";row["effective"]="source";row["saved"]=QJsonValue(QJsonValue::Null);
+            row["available"]=false;row["writable"]=false;row["requiresUi"]=false;
+            row["unsupportedReason"]="deprecated_original_only";row["persistence"]="not_persisted";
+            row["appliesTo"]="original_source_dimensions";
+            parameters.insert(name,row);continue;
+        }
         if(field==Field::RecordingMicrophone) {row["choices"]=microphones;if(omitted)row["omittedChoices"]=omitted;}
         if(RecordingActive()) {
             row["effective"]=QJsonValue(QJsonValue::Null);row["inactiveReason"]="active_session_configuration_retained";
@@ -145,12 +140,8 @@ std::optional<bool> AppControlTarget::ApplyRecordingParameter(const FieldWrite& 
         {const QSignalBlocker block(combo);combo->setCurrentIndex(index);}
         app_.OnMicrophoneSelectionChanged(index);return true;
     }
-    static const QStringList modes{"source","1080p","1440p","2160p","720p","480p","360p"};
-    const int mode=modes.indexOf(write.value.toString());
-    auto* combo=app_.uiState_->recordingCanvasCombo_;const int index=combo?combo->findData(mode):-1;
-    if(mode<0 || index<0)return false;
-    {const QSignalBlocker block(combo);combo->setCurrentIndex(index);}
-    app_.SetRecordingCanvasMode(static_cast<RecordingCanvasMode>(mode));return true;
+    // Legacy processed-canvas writes are never acknowledged, including source.
+    return false;
 }
 
 void AppControlTarget::ExecuteRecordingParameters(ToolId tool,const QJsonObject& args,const QString& owner,

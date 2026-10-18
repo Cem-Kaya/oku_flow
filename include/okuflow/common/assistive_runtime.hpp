@@ -144,8 +144,14 @@ public:
     // thread id and the in-memory OpenAI-compatible Explain history.
     void StartNewExplainConversation();
 
-    // Appends synchronized original and processed media to the HTML lecture
-    // notes (no-op when notes are disabled).
+    // A new finalized recording has one genuine Original media reference.
+    // Optional session/part/clock metadata survives asynchronous note writes.
+    void NoteCapturedVideo(const QString& originalPath,
+                           const QString& recordingSessionId = {},
+                           int segmentIndex = 1,
+                           qint64 sourceClockOrigin100ns = -1);
+    // Legacy paired videos and paired photos retain their existing renderer.
+    // All media note methods are no-ops when notes are disabled.
     void NoteCapturedPhotoPair(const QString& originalPath,
                                const QString& processedPath);
     void NoteCapturedVideoPair(const QString& originalPath,
@@ -245,6 +251,8 @@ private:
         QString id;                    // [A-Za-z0-9_-]+ or dropped
         QString cssClass;              // [A-Za-z0-9 _-]+ or dropped
         QString dataRecordingSession;  // [A-Za-z0-9-]+ or dropped
+        int dataRecordingPart{-1};     // > 0 to emit
+        qint64 dataSourceClockOrigin100ns{-1}; // source monotonic anchor
         qint64 dataSequence{-1};       // >= 0 to emit
         bool approximateTime{false};
         QString languageOverride;      // section lang; empty = current

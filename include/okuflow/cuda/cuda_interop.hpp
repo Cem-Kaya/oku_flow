@@ -53,6 +53,9 @@ struct FenceSyncParams {
     bool enable{false};
     uint64_t waitValue{0};
     uint64_t signalValue{0};
+    // PresentSceneTexture may use an independent producer timeline. CUDA uses
+    // the fence imported by its own surface constructor.
+    ID3D12Fence* presentationFence{nullptr};
 };
 
 struct KeystoneTrackingState {
@@ -77,6 +80,23 @@ struct SuperResRoiMetadata {
 };
 
 enum class SuperResRefreshResult { NoWork, Submitted, Published, Failed };
+
+// Async D3D11 source preparation (media playback). Pending means the caller
+// retries later; nothing was imported or destroyed on the calling thread.
+enum class D3D11SourceStatus { Ready, Pending, Failed };
+
+// Diagnostics for the bounded D3D11 source-import cache. Counters are
+// cumulative for the surface's lifetime; asyncImportThread is the hashed
+// std::thread::id that ran the most recent completed async import (0 when
+// none) so tests can prove imports never ran on the calling thread.
+struct D3D11SourceStatistics {
+    std::uint64_t asyncPreparations{};
+    std::uint64_t importsCompleted{};
+    std::uint64_t importsFailed{};
+    std::uint64_t cacheHits{};
+    std::uint64_t asyncImportThread{};
+    std::uint64_t cachedImports{};
+};
 
 struct SuperResAsyncStatistics {
     std::uint64_t submitted{}, completed{}, staleDiscarded{}, desiredOverwritten{};
@@ -226,8 +246,8 @@ struct ProcessingSettings {
 // Input frame description.
 //
 // width/height are ALWAYS the dimensions of the host pixel data as laid out in
-// memory (i.e. pre-rotation). When inputFormat != 0 and rotationQuarterTurns is
-// odd (90/270), the GPU rotates after conversion, so the interop surface (and
+// memory (i.e. pre-rotation). Raw YUV, device BGRA and opt-in host BGRA
+// rotate on the GPU. With an odd rotation (90/270), the interop surface (and
 // every processing stage) runs at the POST-rotation dimensions
 // (height x width). The caller must create the surface at the post-rotation
 // size; ProcessFrame validates that.
@@ -242,7 +262,7 @@ struct ProcessingInput {
     const void* hostPlane2{nullptr};      // NV12 UV plane (nullptr otherwise)
     unsigned int hostPlane2StrideBytes{0};
     int rotationQuarterTurns{0};          // 0..3 clockwise, applied on GPU after conversion.
-                                          // Ignored for inputFormat 0 (CPU already rotated BGRA).
+                                          // Host BGRA ignores this unless rotateBgraOnGpu is set.
     // Optional device-resident BGRA source produced by the accelerated camera
     // path. When present, hostPixels/strides/planes are ignored and CUDA maps
     // this D3D11 resource directly before running the existing stages.
@@ -256,6 +276,16 @@ struct ProcessingInput {
     bool publishOriginalFrame{false};
     // Unconditional presentation identity, independent of optional agent diagnostics.
     std::uint64_t cameraEpoch{}, frameSequence{}, settingsGeneration{};
+    // Media-only replay of the exact immutable frame. Reuse its post-geometry
+    // snapshot and restore the histories from BEFORE that frame; retries and
+    // viewport edits must not register/blend the same sample a second time.
+    // Requires EnableFrameReprocessing() on the initialization worker.
+    bool reprocessFrame{false};
+    // Selected-media CPU decoding supplies unrotated BGRA. Opt in to the
+    // same GPU rotation as device inputs; camera BGRA stays pre-rotated.
+    // Host rows are copied into owned event-guarded pinned storage before
+    // ProcessFrame returns; no borrowed host pointer survives submission.
+    bool rotateBgraOnGpu{false};
 };
 
 #if OKUFLOW_HAS_CUDA_EXT_MEMORY
@@ -275,11 +305,22 @@ public:
     bool IsValid() const { return valid_; }
     bool IsFaulted() const { return streamFaulted_; }
     bool HasExternalSemaphore() const { return externalSemaphore_ != nullptr; }
+    // Experimental media-only second output. Configure on the construction
+    // worker before any frame; selection is nonblocking and requires an idle
+    // producer stream. Both outputs share one effect history/model/stream.
+    // The caller owns per-output graphics completion and safe retirement.
+    bool ConfigureMediaOutputBuffer(ID3D12Resource*, ID3D12Resource*, ID3D12Fence*);
+    bool SelectMediaOutputBuffer(unsigned index);
 
 
     bool ProcessFrame(const ProcessingInput& input,
                       const ProcessingSettings& settings,
                       const FenceSyncParams& fenceSync);
+    // Media-only nonblocking input admission, before changing frame history.
+    // Host BGRA uses the pinned ring; both types prepare GPU rotation storage.
+    // Busy queues no work and sets LastFailureWasBusy(); retry the same frame.
+    bool PrepareMediaBgraInput(unsigned int width, unsigned int height,
+                               int rotationQuarterTurns, bool deviceResident);
     void EnableUctAnalysis(bool enabled);
     bool UctAnalysisFailed() const;
     uct::SharedDeviceImage TakeUctAnalysis() { return std::move(uctAnalysisFrame_); }
@@ -295,6 +336,13 @@ public:
     bool StepKeystoneCorrection(int direction);
     KeystoneTrackingState GetKeystoneTrackingState() const;
     void ResetTextClarityHistory();
+    void ResetFrameHistory();
+    // Allocate bounded replay storage on the surface's construction worker.
+    // Camera surfaces leave this disabled and retain their existing path.
+    void EnableFrameReprocessing();
+    // Capture the saved current post-geometry image without running effects
+    // or advancing history. True means the supplied fence signal was queued.
+    bool RefreshUctAnalysis(const FenceSyncParams& fenceSync);
     bool HasFocusScore() const { return focusScoreValid_; }
     float LatestFocusScore() const { return latestFocusScore_; }
     bool IsFocusAcceptable(float threshold) const {
@@ -318,6 +366,27 @@ public:
     bool NeedsSuperResPolling() const;
     SuperResRefreshResult RefreshSuperRes(const FenceSyncParams& fenceSync);
     SuperResAsyncStatistics SuperResStatistics() const;
+    // Opt-in async source preparation for rotating decoder textures (media
+    // playback). When enabled, UploadD3D11Frame never imports or destroys a
+    // source import on the calling thread: PrepareD3D11Source must reach
+    // Ready first. The camera path never enables this and keeps its inline
+    // single-texture import behavior.
+    void EnableAsyncD3D11SourcePreparation(bool enabled);
+    // Bounded preparation of one decoder source texture. Ready: the import
+    // is cached (at most 8, LRU) and its previous copy has retired, so
+    // ProcessFrame may upload from it. Pending: the one preparation worker
+    // is building an import, a prior copy from this slot is still retiring,
+    // or no cache slot can be evicted yet; retry the same frame. Failed:
+    // see LastError(). The worker retains the exact storage lease and the
+    // texture while importing; adoption on this thread only moves the
+    // finished import into the cache (no native import/destroy calls).
+    // Evicted imports are destroyed by an AsyncCleanup worker after their
+    // copy is proven complete.
+    D3D11SourceStatus PrepareD3D11Source(ID3D11Texture2D* texture,
+                                         unsigned int subresource,
+                                         unsigned int width, unsigned int height,
+                                         std::shared_ptr<void> storageLease);
+    D3D11SourceStatistics SourceStatistics() const;
     // Releases per-camera imports only after a nonblocking copy-completion
     // probe. Pending/failed copies retain imports and their producer lease.
     // atProcessExit retains the isolated legacy-driver registration fallback.
@@ -350,6 +419,8 @@ public:
     CudaInteropSurface& operator=(const CudaInteropSurface&) = delete;
 
 private:
+    struct FrameReprocessingState;
+    std::unique_ptr<FrameReprocessingState> frameReprocessing_;
     bool uctAnalysisEnabled_{};
     std::unique_ptr<uct::AnalysisPool> uctAnalysisPool_;
     uct::SharedDeviceImage uctAnalysisFrame_;
@@ -370,8 +441,10 @@ private:
     bool EnsureTemporalHistory(unsigned int width, unsigned int height);
     bool EnsureStabilizationBuffers(unsigned int width, unsigned int height);
     bool EnsureRawInputBuffers(unsigned int width, unsigned int height, int format);
-    bool EnsurePinnedUploadRing(size_t requiredBytes);
-    bool EnsurePreRotateBuffer(unsigned int width, unsigned int height);
+    // streamAlreadyIdle is only for pre-fence media admission after PollIdle.
+    bool EnsurePinnedUploadRing(size_t requiredBytes, bool streamAlreadyIdle = false);
+    bool EnsurePreRotateBuffer(unsigned int width, unsigned int height,
+                               bool streamAlreadyIdle = false);
     bool EnsureKeystoneResources(unsigned int width, unsigned int height);
     bool EnsureAutoContrastBuffers();
     bool EnsureTextClarityBuffers(unsigned int width, unsigned int height);
@@ -409,12 +482,50 @@ private:
     void ResetKeystoneCornersToIdentity();
     bool SynchronizeStream() noexcept;
     void QuarantineGpuResources() noexcept;
+    void SwapMediaOutputBindings() noexcept;
+    struct AlternateOutput;
+    std::unique_ptr<AlternateOutput> alternateOutput_;
+    unsigned mediaOutputIndex_{};
     bool UploadD3D11Frame(const ProcessingInput& input,
                           uchar4* destination,
                           size_t destinationPitch);
 
     struct D3D11InteropState;
+    struct D3D11PrepareSlot;
+    // Builds one complete source import (shared handles, CUDA external
+    // memory, copy event) without touching any surface member, so it may run
+    // on the preparation worker. Partial imports are destroyed on the same
+    // thread; unprovable destruction leaks the state and reports failure.
+    static std::unique_ptr<D3D11InteropState> BuildD3D11Import(
+        ID3D12Device* device, int cudaDeviceId, ID3D11Texture2D* texture,
+        unsigned int subresource, unsigned int width, unsigned int height,
+        std::string& error);
+    // Destroys one import's native handles. False means completion could
+    // not be proven and the caller must retain the state (an AsyncCleanup
+    // failure retains its closure until process exit).
+    static bool DestroyD3D11Import(D3D11InteropState& state, int cudaDeviceId,
+                                   bool atProcessExit) noexcept;
+    bool PollImportCopy(D3D11InteropState& state);
+    bool PollAllImportCopies();
+    D3D11InteropState* FindImport(ID3D11Texture2D* texture,
+                                  unsigned int subresource);
+    void ActivateImport(D3D11InteropState* state);
+    bool AdoptPreparedImport(ID3D11Texture2D*& finishedIdentity,
+                             std::string& finishedError);
+    bool EvictOldestImport();
+    void DestroyImportAsync(std::unique_ptr<D3D11InteropState> state);
+    void RetirePrepareSlotAtDestruction();
+    void LeakPrepareSlot() noexcept;
+
+    // Active source import plus a bounded LRU cache of parked imports
+    // (front = least recently activated). Active + parked never exceeds the
+    // decoder's 8-slot ceiling; the scene/analysis pools stay separate.
     std::unique_ptr<D3D11InteropState> d3d11Interop_;
+    std::vector<std::unique_ptr<D3D11InteropState>> d3d11ImportCache_;
+    std::shared_ptr<D3D11PrepareSlot> d3d11PrepareSlot_;
+    std::shared_ptr<AsyncCleanup> d3d11EvictionCleanup_;
+    bool asyncSourcePreparation_{};
+    D3D11SourceStatistics sourceStatistics_{};
     Microsoft::WRL::ComPtr<ID3D12Device> d3d12Device_;
     Microsoft::WRL::ComPtr<ID3D12Resource> retainedMainTexture_;
     Microsoft::WRL::ComPtr<ID3D12Resource> retainedSuperResTexture_;
@@ -688,7 +799,10 @@ public:
 
     const std::string& LastError() const { static std::string dummy; return dummy; }
     bool LastFailureWasCaptureInterop() const { return false; }
+    bool ConfigureMediaOutputBuffer(ID3D12Resource*, ID3D12Resource*, ID3D12Fence*) { return false; }
+    bool SelectMediaOutputBuffer(unsigned index) { return index == 0; }
     bool LastFailureWasBusy() const { return false; }
+    bool PrepareMediaBgraInput(unsigned int, unsigned int, int, bool) { return false; }
     void ResetTemporalHistory() {}
     void ResetStabilization() {}
     void ResetKeystone() {}
@@ -696,6 +810,9 @@ public:
     bool StepKeystoneCorrection(int /*direction*/) { return false; }
     KeystoneTrackingState GetKeystoneTrackingState() const { return {}; }
     void ResetTextClarityHistory() {}
+    void ResetFrameHistory() {}
+    void EnableFrameReprocessing() {}
+    bool RefreshUctAnalysis(const FenceSyncParams&) { return false; }
     bool HasFocusScore() const { return false; }
     float LatestFocusScore() const { return 0.0f; }
     bool IsFocusAcceptable(float /*threshold*/) const { return true; }
@@ -713,6 +830,13 @@ public:
     bool NeedsSuperResPolling() const { return false; }
     SuperResRefreshResult RefreshSuperRes(const FenceSyncParams&) { return SuperResRefreshResult::NoWork; }
     SuperResAsyncStatistics SuperResStatistics() const { return {}; }
+    void EnableAsyncD3D11SourcePreparation(bool /*enabled*/) {}
+    D3D11SourceStatus PrepareD3D11Source(ID3D11Texture2D*, unsigned int,
+                                         unsigned int, unsigned int,
+                                         std::shared_ptr<void>) {
+        return D3D11SourceStatus::Failed;
+    }
+    D3D11SourceStatistics SourceStatistics() const { return {}; }
     void ResetCaptureInterop(bool /*atProcessExit*/ = false) {}
     void AbandonCaptureInterop() noexcept {}
     bool PollCaptureCopy() { return true; }

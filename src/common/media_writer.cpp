@@ -445,6 +445,7 @@ bool VideoRecorder::Start(const std::wstring& filePath,
         return false;
     }
     Stop();
+    failedAttemptPaths_.clear();
 
     ULONGLONG freeBytes = 0;
     terminalResult_.Reset();
@@ -714,6 +715,7 @@ bool VideoRecorder::StartGpu(
         return false;
     }
     Stop();
+    failedAttemptPaths_.clear();
     terminalResult_.Reset();
     writeFailureHr_ = S_OK;
     if (!InputFitsEncoderBudget(width, height, true)) {
@@ -898,6 +900,9 @@ VideoRecorder::FinalizeResult VideoRecorder::FinalizeAndStop(StopReason reason)
         result.videoSamplesWritten = videoSamplesWritten_;
     }
     sinkWriter_.Reset();
+    if (hadSink) {
+        if (auto archive = Archive()) archive->Finalized(result.FullyCompleted());
+    }
     pendingSample_.Reset();
     pendingSampleTime100ns_ = -1;
     if (recording_) {
@@ -967,9 +972,17 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
     // The earlier existence check is advisory: exclusively create the actual
     // output so a racing user file can never be truncated by the URL sink.
     Microsoft::WRL::ComPtr<IMFByteStream> output;
-    ThrowIfFailed(MFCreateFile(MF_ACCESSMODE_WRITE, MF_OPENMODE_FAIL_IF_EXIST,
-                              MF_FILEFLAGS_NONE, filePath.c_str(), &output),
+    ThrowIfFailed(CreateRecordingArchiveOutputStream(filePath, &output),
                   "Exclusively create recording output");
+    // Keep every actually created failed attempt. The sole successful output
+    // is removed from this list only after BeginWriting has succeeded.
+    failedAttemptPaths_.push_back(filePath);
+    auto archive = std::make_shared<RecordingArchive>(filePath);
+    archive_.store(archive, std::memory_order_release);
+    Microsoft::WRL::ComPtr<IMFByteStream> observed;
+    ThrowIfFailed(RecordingArchive::Observe(output.Get(), archive, &observed),
+                  "Observe recording byte-stream mutations");
+    output = observed;
     if (sinkInitializationObserver_) {
         sinkInitializationObserver_(d3dManager != nullptr, output.Get());
     }
@@ -1129,6 +1142,7 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
 
     sinkWriter_ = writer;
     targetPath_ = filePath;
+    failedAttemptPaths_.pop_back();
     return true;
 }
 
@@ -1283,6 +1297,7 @@ bool VideoRecorder::WritePendingSample(std::int64_t duration100ns)
         return false;
     }
     ThrowIfFailed(writeHr, "WriteSample");
+    if (auto archive = Archive()) archive->WriterAccepted(pendingSampleTime100ns_);
     ++videoSamplesWritten_;
     timelineEnd100ns_ =
         std::max(timelineEnd100ns_,

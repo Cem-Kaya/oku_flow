@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>بازشناسی متن روی CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>ضبط جاری</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>ویدئو</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>زنده</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>عقب‌تر از پخش زنده</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>در حالت مکث</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>پایان ویدئو</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>در حال باز کردن ویدئو…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>در حال رفتن به موقعیت انتخاب‌شده…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>در انتظار ضبط</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>در حال پایان دادن به ضبط</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>ویدئو در دسترس نیست</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>پخش ویدئو</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>۱۰ ثانیه به عقب برگرد</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>مکث ویدئو</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>ادامهٔ پخش ویدئو</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>رفتن به پخش زنده</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>رفتن به پایان</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>بازگشت به دوربین</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>ذخیرهٔ فریم</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>فعال‌کردن صدای پخش</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>بی‌صدا کردن</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>کنترل‌های ویدئو</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>خط زمان ویدئو</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>کلیدهای چپ و راست: یک ثانیه. Page Up و Page Down: ده ثانیه. Home: ابتدا. End: پایان بخش ضبط‌شده.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 از %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>باز کردن ویدئو</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>باز کردن ویدئوی ذخیره‌شده (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>ضبط ویدئوی Original</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>شروع یا توقف ضبط Original MP4</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>صدا را برای ضبط ویدئوی Original انتخاب کنید. میکروفون فقط هنگام ضبط استفاده می‌شود.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>صدای میکروفون را برای ضبط Original MP4 انتخاب کنید، یا گزینهٔ «بدون میکروفون» را برگزینید.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>فریم نمایش‌داده‌شده نگه‌داری نشد. ویدئوی ضبط‌شده همچنان در دسترس است.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>ویدئو باز نشد: یک فایل محلیِ موجود انتخاب کنید.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>ویدئو باز نشد، زیرا امکان متوقف‌کردن ضبط وجود نداشت.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>پیش از باز کردن ویدئو، ضبط در حال پایان یافتن است...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>در انتظار آماده‌شدن ویدئوی ضبط‌شده برای جابه‌جایی در آن.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>فریم نگه‌داشته‌شده ضبط نشده است. برای ادامه به ویدئوی ضبط‌شده بروید.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>موقعیت ضبط‌شدهٔ فریم نگه‌داشته‌شده تأیید نشد. برای ادامه به ویدئوی ضبط‌شده بروید.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>پایان ویدئو. برای پخش دوباره به نقطه‌ای پیش‌تر بروید.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>دوربین در دسترس نیست. تازه‌ترین فریم ضبط‌شده نمایش داده می‌شود.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>فریم نگه‌داشته‌شده ضبط نشده است. تصویر همچنان در دسترس است.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>موقعیت ضبط‌شدهٔ فریم نگه‌داشته‌شده تأیید نشد. تصویر همچنان در دسترس است.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>پایان بخش ضبط‌شدهٔ موجود. تصویر نگه‌داشته‌شده همچنان در دسترس است.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>ویدئو در دسترس نیست: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>صدای پخش در دسترس نیست. پخش ویدئو ادامه دارد.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>فریم ذخیره نشد: نمای انتخاب‌شده در دسترس نیست.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>فریم ذخیره نشد: امکان افزودن تصویر به صف وجود نداشت.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>فریم ذخیره نشد: پوشهٔ OkuFlow Photos در دسترس نیست.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>فریم انتخاب‌شدهٔ ویدئو ذخیره شد.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>فریم انتخاب‌شدهٔ ویدئو ذخیره نشد.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>فریم ذخیره نشد: ذخیره‌سازی تصویر دیگری در جریان است. دوباره تلاش کنید.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>امکان مکث وجود ندارد: فریم نمایش‌داده‌شده نگه‌داری نشد.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;کنترل‌ها&lt;/h2&gt;&lt;p&gt;&lt;b&gt;ساده&lt;/b&gt; نمای دوربین را بزرگ می‌کند. برای تغییر حالت‌های سریع، از گردونهٔ گوشه یا کلیدهای عددی 1 تا 9 استفاده کنید.&lt;/p&gt;&lt;p&gt;&lt;b&gt;پنهان‌کردن رابط کاربری&lt;/b&gt; یا &lt;b&gt;Ctrl+H&lt;/b&gt; کنترل‌ها و دستیار را از نمای دوربین پنهان می‌کند. &lt;b&gt;نمایش رابط کاربری&lt;/b&gt; آن‌ها و پاسخ فعلی را دوباره نشان می‌دهد.&lt;/p&gt;&lt;p&gt;&lt;b&gt;پیشرفته&lt;/b&gt; تنظیمات دقیق تصویر و دستیار را باز می‌کند. برای تغییر اندازهٔ پنل، جداکنندهٔ کنار آن را بکشید.&lt;/p&gt;&lt;p&gt;برای جابه‌جایی، نمای دوربین را بکشید. برای بزرگ‌نمایی، Ctrl را نگه دارید و چرخ ماوس را بچرخانید. برای نمایش کنترل حرکت روی صفحه، &lt;b&gt;جوی‌استیک مجازی&lt;/b&gt; را از &lt;b&gt;تنظیمات &amp;gt; نمایش و پیمایش&lt;/b&gt; فعال کنید.&lt;/p&gt;&lt;p&gt;عکس نسخه‌های اصلی و پردازش‌شده را ذخیره می‌کند. ضبط ویدئوی Original را ذخیره می‌کند. توضیح صحنه را شرح می‌دهد و خواندن متن را تشخیص می‌دهد. برای باز کردن پوشهٔ فایل‌های OkuFlow، &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; را فشار دهید.&lt;/p&gt;&lt;h2&gt;ویژگی‌ها&lt;/h2&gt;&lt;p&gt;&lt;b&gt;وضوح متن&lt;/b&gt; پاک‌سازی سند، کنتراست موضعی، شارپ‌سازی و لبه‌های پایدار متن را ترکیب می‌کند. &lt;b&gt;رنگ‌های نمایشگر&lt;/b&gt; پالت‌های مطالعه و طرح‌رنگ‌های دلخواه ارائه می‌دهد.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; هنگام بزرگ‌نمایی جزئیات را بهتر می‌کند، مشروط بر اینکه زمان‌اجرای اختیاری NVIDIA Video Effects نصب شده باشد.&lt;/p&gt;&lt;p&gt;&lt;b&gt;خواندن متن و دستیار&lt;/b&gt; می‌تواند متن را بخواند، نما را توضیح دهد، به پرسش‌های بعدی پاسخ دهد و نتیجه‌ها را به یادداشت‌های سخنرانی اضافه کند.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>پرونده‌های ویدئو (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;همهٔ پرونده‌ها (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text در این نما</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… متنی را نشان می‌دهد که در تصویر اصلی باقی مانده است.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>پخش ویدئو: بزرگ‌نمایی، چرخش، رنگ‌های مطالعه و UCT در دسترس‌اند. جلوه‌های پیشرفتهٔ GPU در دسترس نیستند.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC اصلی، در حال راه‌اندازی رمزگذار]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC اصلی، %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>مکث در دسترس نیست: قاب‌بندیِ نمایشی را نمی‌شد دقیقاً حفظ کرد.</translation>
+        </message>
     </context>
 </TS>

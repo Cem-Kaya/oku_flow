@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>CPU 텍스트 인식 모델</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>현재 녹화</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>동영상</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>실시간</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>실시간보다 지연됨</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>일시 정지</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>동영상 끝</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>동영상 여는 중…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>탐색 중…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>녹화 대기 중</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>녹화 마무리 중</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>동영상을 사용할 수 없음</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>동영상 재생</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>10초 되감기</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>동영상 일시 정지</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>동영상 재개</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>실시간으로 이동</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>끝으로 이동</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>카메라로 돌아가기</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>프레임 저장</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>재생 음소거 해제</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>재생 음소거</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>동영상 컨트롤</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>동영상 타임라인</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>왼쪽/오른쪽: 1초. Page Up/Page Down: 10초. Home: 시작. End: 녹화 끝.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 / %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>동영상 열기</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>저장된 동영상 열기 (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>원본 동영상 녹화</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>원본 MP4 녹화 시작 또는 중지</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>원본 동영상 녹화에 사용할 소리를 선택하세요. 마이크는 녹화 중에만 사용됩니다.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>원본 MP4 녹화에 사용할 마이크 오디오를 선택하거나 마이크 사용 안 함을 선택하세요.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>표시된 프레임을 유지하지 못했습니다. 녹화된 동영상은 계속 사용할 수 있습니다.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>동영상을 열 수 없습니다. 기존 로컬 파일 하나를 선택하세요.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>녹화를 중지할 수 없어 동영상을 열지 않았습니다.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>동영상을 열기 전에 녹화를 마무리하는 중...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>녹화된 동영상에서 탐색할 수 있을 때까지 기다리는 중입니다.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>멈춰 둔 프레임은 녹화되지 않았습니다. 계속하려면 녹화 영상에서 위치를 이동하세요.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>멈춰 둔 프레임의 녹화 위치를 확인할 수 없습니다. 계속하려면 녹화 영상에서 위치를 이동하세요.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>동영상 끝입니다. 다시 재생하려면 이전 위치로 이동하세요.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>카메라를 사용할 수 없습니다. 가장 최근에 녹화된 프레임을 표시합니다.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>멈춰 둔 프레임은 녹화되지 않았습니다. 남아 있는 이미지는 계속 사용할 수 있습니다.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>멈춰 둔 프레임의 녹화 위치를 확인할 수 없습니다. 남아 있는 이미지는 계속 사용할 수 있습니다.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>사용 가능한 녹화 구간의 끝입니다. 남아 있는 이미지는 계속 사용할 수 있습니다.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>동영상을 사용할 수 없음: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>재생 소리를 사용할 수 없습니다. 동영상 재생은 계속됩니다.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>프레임을 저장하지 못했습니다: 선택한 화면을 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>프레임을 저장하지 못했습니다: 이미지를 대기열에 추가할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>프레임을 저장하지 못했습니다: OkuFlow Photos 폴더를 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>선택한 동영상 프레임을 저장했습니다.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>선택한 동영상 프레임을 저장하지 못했습니다.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>프레임을 저장하지 못했습니다: 이미지 저장 작업이 진행 중입니다. 잠시 후 다시 시도하세요.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>일시 정지할 수 없습니다: 표시된 프레임을 보관하지 못했습니다.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;조작 방법&lt;/h2&gt;&lt;p&gt;&lt;b&gt;간편&lt;/b&gt; 모드에서는 카메라 화면을 최대화합니다. 모서리의 모드 선택 컨트롤이나 숫자 키 1~9로 빠른 모드를 바꿀 수 있습니다.&lt;/p&gt;&lt;p&gt;&lt;b&gt;UI 숨기기&lt;/b&gt; 또는 &lt;b&gt;Ctrl+H&lt;/b&gt;를 누르면 카메라 화면의 컨트롤과 어시스턴트가 사라집니다. &lt;b&gt;UI 표시&lt;/b&gt;를 누르면 기존 답변과 함께 다시 표시됩니다.&lt;/p&gt;&lt;p&gt;&lt;b&gt;고급&lt;/b&gt;에서는 이미지와 어시스턴트 설정을 자세히 조정할 수 있습니다. 패널 가장자리의 구분선을 끌어 크기를 조정하세요.&lt;/p&gt;&lt;p&gt;카메라 화면을 끌어 이동하고, Ctrl 키를 누른 채 마우스 휠을 사용해 확대/축소하세요. 화면에서 이동을 제어하려면 &lt;b&gt;설정 &amp;gt; 보기 및 탐색&lt;/b&gt;에서 &lt;b&gt;가상 조이스틱&lt;/b&gt;을 켜세요.&lt;/p&gt;&lt;p&gt;사진은 원본과 처리된 버전을 모두 저장합니다. 녹화는 원본 동영상을 저장합니다. 설명은 장면을 설명하고, 읽기는 텍스트를 인식합니다. &lt;b&gt;Ctrl+Shift+O&lt;/b&gt;를 누르면 OkuFlow 파일이 있는 폴더가 열립니다.&lt;/p&gt;&lt;h2&gt;기능&lt;/h2&gt;&lt;p&gt;&lt;b&gt;텍스트 선명도&lt;/b&gt;는 문서 보정, 국부 대비, 선명화 및 안정적인 글자 가장자리를 결합합니다. &lt;b&gt;화면 색상&lt;/b&gt;에서는 읽기용 팔레트와 사용자 지정 색상 구성을 사용할 수 있습니다.&lt;/p&gt;&lt;p&gt;선택 사항인 NVIDIA Video Effects 런타임을 설치하면 &lt;b&gt;NVIDIA Super Resolution&lt;/b&gt;이 확대된 세부 묘사를 개선합니다.&lt;/p&gt;&lt;p&gt;&lt;b&gt;텍스트 읽기 및 어시스턴트&lt;/b&gt;는 텍스트를 읽고, 화면을 설명하고, 후속 질문에 답하며, 결과를 강의 노트에 추가할 수 있습니다.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>동영상 파일 (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;모든 파일 (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>이 보기의 Ultra Clear Text</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… 표시는 원본 이미지 그대로 남겨 둔 텍스트를 뜻합니다.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>동영상 재생 중에는 확대/축소, 회전, 읽기 색상, UCT를 사용할 수 있습니다. 고급 GPU 효과는 사용할 수 없습니다.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC 원본, 인코더 시작 중]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC 원본, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>일시 정지할 수 없습니다: 현재 표시된 구도를 정확히 유지할 수 없습니다.</translation>
+        </message>
     </context>
 </TS>

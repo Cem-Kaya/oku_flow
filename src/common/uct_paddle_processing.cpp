@@ -330,7 +330,7 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
     double confidence = 0;
     int count = 0;
     auto flush = [&] {
-        if (!word.isEmpty() && count && confidence / count >= .7) {
+        if (!word.isEmpty() && count) {
             const double x0 = std::max(0.0, (first - .5) / steps),
                          x1 = std::min(1.0, (last + 1.5) / steps);
             const auto a = At(quad, x0, 0), b = At(quad, x1, 0), c = At(quad, x1, 1),
@@ -345,8 +345,13 @@ RecognizedLine PaddleDecodeTokens(std::span<const PaddleToken> tokens, int steps
                        sc = At(quad, searchX1, 1), sd = At(quad, searchX0, 1);
             const double searchLeft = std::min({sa.x(), sb.x(), sc.x(), sd.x()}),
                          searchRight = std::max({sa.x(), sb.x(), sc.x(), sd.x()});
-            line.words.push_back({word, QRectF(left, top, right - left, bottom - top), true,
-                                  QRectF(searchLeft, top, searchRight - searchLeft, bottom - top)});
+            const QRectF bounds(left, top, right - left, bottom - top);
+            const double meanConfidence = confidence / count;
+            line.words.push_back({word, bounds, true,
+                                  QRectF(searchLeft, top, searchRight - searchLeft, bottom - top),
+                                  meanConfidence >= .7 ? TokenDisposition::kCandidate
+                                                       : TokenDisposition::kLowConfidence,
+                                  meanConfidence, bounds});
         }
         word.clear();
         confidence = 0;

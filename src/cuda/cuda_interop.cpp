@@ -31,12 +31,15 @@
 #include <string>
 #include <utility>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 #include <QDebug>
 #include <QString>
 
 namespace okuflow {
+
+namespace { void ThrowIfCudaFailed(cudaError_t status, const char* message); }
 
 void CudaInteropSurface::EnableUctAnalysis(bool enabled)
 {
@@ -63,6 +66,92 @@ struct CudaInteropSurface::AsyncSuperResState {
     bool enabled{};
 };
 
+// Only media surfaces allocate this workspace, on their construction worker.
+// Storage and all snapshot copies belong to the processing stream. Destroyed
+// only after the surface's bounded drain, or retained with a quarantined surface.
+struct CudaInteropSurface::FrameReprocessingState {
+    uchar4* geometry{};
+    uchar4* preKeystone{};
+    float4* temporal{};
+    unsigned char* mask{};
+    float2* levels{};
+    size_t geometryPitch{}, preKeystonePitch{}, temporalPitch{}, maskPitch{};
+    bool valid{}, temporalValid{}, maskValid{}, levelsValid{};
+    bool keystoneDirty{};
+    std::uint64_t epoch{}, frame{}, appearance{};
+    ~FrameReprocessingState() {
+        if (geometry) cudaFree(geometry);
+        if (preKeystone) cudaFree(preKeystone);
+        if (temporal) cudaFree(temporal);
+        if (mask) cudaFree(mask);
+        if (levels) cudaFree(levels);
+    }
+};
+
+void CudaInteropSurface::EnableFrameReprocessing() {
+    if (frameReprocessing_ || !valid_) return;
+    ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "Media replay CUDA device selection failed");
+    auto state = std::make_unique<FrameReprocessingState>();
+    ThrowIfCudaFailed(cudaMallocPitch(reinterpret_cast<void**>(&state->geometry), &state->geometryPitch,
+        static_cast<size_t>(width_) * sizeof(uchar4), height_), "Media geometry snapshot allocation failed");
+    ThrowIfCudaFailed(cudaMallocPitch(reinterpret_cast<void**>(&state->preKeystone), &state->preKeystonePitch,
+        static_cast<size_t>(width_) * sizeof(uchar4), height_), "Media pre-keystone snapshot allocation failed");
+    ThrowIfCudaFailed(cudaMallocPitch(reinterpret_cast<void**>(&state->temporal), &state->temporalPitch,
+        static_cast<size_t>(width_) * sizeof(float4), height_), "Media temporal snapshot allocation failed");
+    ThrowIfCudaFailed(cudaMallocPitch(reinterpret_cast<void**>(&state->mask), &state->maskPitch,
+        width_, height_), "Media text snapshot allocation failed");
+    ThrowIfCudaFailed(cudaMalloc(reinterpret_cast<void**>(&state->levels), sizeof(float2)),
+        "Media contrast snapshot allocation failed");
+    frameReprocessing_ = std::move(state);
+}
+
+void CudaInteropSurface::ResetFrameHistory() {
+    ResetTemporalHistory();
+    ResetStabilization();
+    ResetKeystone();
+    ResetTextClarityHistory();
+    autoLevelsValid_ = false;
+    focusScoreValid_ = false;
+    discardFocusCopy_ = focusCopyPending_;
+    uctAnalysisFrame_.reset();
+    uctLastCaptureMs_ = 0;
+    if (frameReprocessing_) { frameReprocessing_->valid = false; frameReprocessing_->keystoneDirty = false; }
+    // Revocation preserves the independent model and performance/failure latches.
+    InvalidateSuperResRequest();
+}
+
+bool CudaInteropSurface::RefreshUctAnalysis(const FenceSyncParams& sync) {
+    if (!valid_ || !uctAnalysisEnabled_ || !frameReprocessing_ ||
+        !frameReprocessing_->valid || uctAnalysisFrame_) return false;
+    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (now - uctLastCaptureMs_ < 80) return false;
+    try {
+        ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "Media analysis CUDA device selection failed");
+        if (sync.enable && externalSemaphore_) {
+            cudaExternalSemaphoreWaitParams wait{}; wait.params.fence.value = sync.waitValue;
+            ThrowIfCudaFailed(cudaWaitExternalSemaphoresAsync(&externalSemaphore_, &wait, 1, stream_),
+                "Media analysis graphics wait failed");
+        }
+        if (!uctAnalysisPool_) uctAnalysisPool_ = std::make_unique<uct::AnalysisPool>();
+        auto frame = uctAnalysisPool_->Capture(frameReprocessing_->geometry,
+            frameReprocessing_->geometryPitch, width_, height_, stream_,
+            frameReprocessing_->epoch, frameReprocessing_->frame, frameReprocessing_->appearance);
+        if (frame) { uctAnalysisFrame_ = std::move(frame); uctLastCaptureMs_ = now; }
+        // Even a busy analysis pool may have queued a wait. Always close the
+        // reservation once we begin submitting work to the private timeline.
+        if (sync.enable && externalSemaphore_) {
+            cudaExternalSemaphoreSignalParams signal{}; signal.params.fence.value = sync.signalValue;
+            ThrowIfCudaFailed(cudaSignalExternalSemaphoresAsync(&externalSemaphore_, &signal, 1, stream_),
+                "Media analysis signal failed");
+        }
+        return true;
+    } catch (const std::exception& error) {
+        lastError_ = error.what(); streamFaulted_ = true; valid_ = false;
+        return false;
+    }
+}
+
 struct CudaInteropSurface::D3D11InteropState {
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
     Microsoft::WRL::ComPtr<ID3D12Resource> d3d12Resource;
@@ -78,6 +167,22 @@ struct CudaInteropSurface::D3D11InteropState {
     bool copyEventRecorded{};
     GpuCopyLease copyLease;
 };
+
+// One bounded in-flight source preparation. The worker owns the slot
+// through the shared_ptr captured by its closure and never references the
+// surface; the calling thread adopts the finished import under the mutex.
+struct CudaInteropSurface::D3D11PrepareSlot {
+    std::mutex mutex;
+    bool done{};
+    std::unique_ptr<D3D11InteropState> entry;
+    std::string error;
+    ID3D11Texture2D* identity{};
+    std::uint64_t workerThread{};
+};
+
+// Decoder rotation ceiling: at most eight imported source textures
+// (active + parked) per surface, separate from scene/analysis pools.
+constexpr std::size_t kMaxD3D11SourceImports = 8;
 
 namespace {
 
@@ -497,6 +602,71 @@ void ReleaseMappedExternalImage(cudaSurfaceObject_t* surfaceObject,
 
 } // namespace
 
+// Only output interop rotates: histories, source imports, inference and the
+// processing stream remain single-owned. Destroy only after both output fences
+// and the producer stream have completed, or quarantine the entire owner.
+struct CudaInteropSurface::AlternateOutput {
+    Microsoft::WRL::ComPtr<ID3D12Resource> texture, cache;
+    Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+    cudaExternalMemory_t memory{}, cacheMemory{};
+    cudaMipmappedArray_t mip{}, cacheMip{};
+    cudaArray_t array{}, cacheArray{};
+    cudaSurfaceObject_t surface{}, cacheSurface{};
+    cudaExternalSemaphore_t semaphore{};
+    ~AlternateOutput() {
+        ReleaseMappedExternalImage(&surface, mip, array, memory, "alternate scene");
+        ReleaseMappedExternalImage(&cacheSurface, cacheMip, cacheArray, cacheMemory, "alternate cache");
+        if (semaphore) cudaDestroyExternalSemaphore(semaphore);
+    }
+};
+
+void CudaInteropSurface::SwapMediaOutputBindings() noexcept {
+    auto& other = *alternateOutput_;
+    retainedMainTexture_.Swap(other.texture); retainedSuperResTexture_.Swap(other.cache);
+    retainedSharedFence_.Swap(other.fence);
+    std::swap(externalMemory_, other.memory); std::swap(mipArray_, other.mip);
+    std::swap(level0Array_, other.array); std::swap(surfaceObject_, other.surface);
+    std::swap(superResExternalMemory_, other.cacheMemory); std::swap(superResMipArray_, other.cacheMip);
+    std::swap(superResLevel0Array_, other.cacheArray); std::swap(superResSurfaceObject_, other.cacheSurface);
+    std::swap(externalSemaphore_, other.semaphore);
+}
+
+bool CudaInteropSurface::ConfigureMediaOutputBuffer(ID3D12Resource* texture,
+    ID3D12Resource* cache, ID3D12Fence* fence) {
+    if (!valid_ || !frameReprocessing_ || alternateOutput_ || !texture || !cache || !fence) return false;
+    const auto desc = texture->GetDesc(); const auto cacheDesc = cache->GetDesc();
+    if (desc.Width != width_ || desc.Height != height_ || desc.Format != format_ ||
+        cacheDesc.Width != superResWidth_ || cacheDesc.Height != superResHeight_ || cacheDesc.Format != format_)
+        return false;
+    Microsoft::WRL::ComPtr<ID3D12Device> device, otherDevice, cacheDevice, fenceDevice;
+    if (FAILED(retainedMainTexture_->GetDevice(IID_PPV_ARGS(&device))) ||
+        FAILED(texture->GetDevice(IID_PPV_ARGS(&otherDevice))) ||
+        FAILED(cache->GetDevice(IID_PPV_ARGS(&cacheDevice))) || FAILED(fence->GetDevice(IID_PPV_ARGS(&fenceDevice))) ||
+        device.Get() != otherDevice.Get() || device.Get() != cacheDevice.Get() || device.Get() != fenceDevice.Get()) return false;
+    alternateOutput_ = std::make_unique<AlternateOutput>();
+    SwapMediaOutputBindings(); // park output zero, construct output one in the empty bindings
+    retainedMainTexture_ = texture; retainedSuperResTexture_ = cache; retainedSharedFence_ = fence;
+    bool configured = false;
+    try {
+        ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "Alternate output device selection failed");
+        CreateSurfaceFromResource(device.Get(), texture);
+        CreateSuperResSurfaceFromResource(device.Get(), cache);
+        ImportFenceSemaphore(device.Get(), fence);
+        configured = true;
+    } catch (const std::exception& error) { lastError_ = error.what(); }
+    SwapMediaOutputBindings(); // output zero remains selected, including on partial failure
+    if (!configured) alternateOutput_.reset(); // no work has ever referenced output one
+    return configured;
+}
+
+bool CudaInteropSurface::SelectMediaOutputBuffer(unsigned index) {
+    if (index == mediaOutputIndex_) return valid_ && !streamFaulted_;
+    if (index > 1 || !alternateOutput_ || !PollIdle()) return false;
+    SwapMediaOutputBindings();
+    mediaOutputIndex_ = index;
+    return true;
+}
+
 CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
                                        ID3D12Resource* superResTexture,
                                        ID3D12Fence* sharedFence,
@@ -554,30 +724,26 @@ std::shared_ptr<AsyncCleanup> CudaInteropSurface::BeginCaptureInteropCleanup(std
     // Admission and detachment happen on the GUI thread only after both the
     // producer and full consumer stream are quiescent. The worker holds no
     // surface, presenter, app or facade pointer.
+    if (d3d11PrepareSlot_) {
+        ID3D11Texture2D* finishedIdentity = nullptr;
+        std::string finishedError;
+        (void)AdoptPreparedImport(finishedIdentity, finishedError);
+        if (d3d11PrepareSlot_) return {}; // import worker still running
+    }
     if (!PollIdle() || !PollCaptureCopy()) return {};
-    auto imports = std::shared_ptr<D3D11InteropState>(std::move(d3d11Interop_));
+    auto imports = std::make_shared<std::vector<std::unique_ptr<D3D11InteropState>>>();
+    if (d3d11Interop_) imports->push_back(std::move(d3d11Interop_));
+    for (auto& entry : d3d11ImportCache_) {
+        if (entry) imports->push_back(std::move(entry));
+    }
+    d3d11ImportCache_.clear();
     const auto device = cudaDeviceId_;
     return AsyncCleanup::Start([imports,device,atProcessExit,producerKeepAlive = std::move(producerKeepAlive)] {
-        if (!imports) return true;
-        if (atProcessExit && imports->resource) return false;
-        if (device >= 0 && cudaSetDevice(device) != cudaSuccess) return false;
-        if (imports->resource) {
-            if (cudaGraphicsUnregisterResource(imports->resource) != cudaSuccess) return false;
-            imports->resource = nullptr;
+        bool ok = true;
+        for (auto& entry : *imports) {
+            if (entry) ok = DestroyD3D11Import(*entry, device, atProcessExit) && ok;
         }
-        if (imports->mipArray) {
-            if (cudaFreeMipmappedArray(imports->mipArray) != cudaSuccess) return false;
-            imports->mipArray = nullptr; imports->level0Array = nullptr;
-        }
-        if (imports->externalMemory) {
-            if (cudaDestroyExternalMemory(imports->externalMemory) != cudaSuccess) return false;
-            imports->externalMemory = nullptr;
-        }
-        if (imports->copyComplete) {
-            if (cudaEventDestroy(imports->copyComplete) != cudaSuccess) return false;
-            imports->copyComplete = nullptr;
-        }
-        return true;
+        return ok;
     });
 }
 
@@ -608,8 +774,12 @@ void CudaInteropSurface::QuarantineGpuResources() noexcept {
     // owning C++ states and D3D storage too: releasing either is unsafe while
     // queued work may still use the destination or imported camera source.
     (void)d3d11Interop_.release();
+    for (auto& entry : d3d11ImportCache_) (void)entry.release();
+    LeakPrepareSlot();
     (void)maxineProducer_.release();
     (void)asyncSuperRes_.release();
+    (void)frameReprocessing_.release();
+    (void)alternateOutput_.release();
     d3d12Device_.Detach();
     retainedMainTexture_.Detach();
     retainedSuperResTexture_.Detach();
@@ -620,11 +790,15 @@ void CudaInteropSurface::QuarantineGpuResources() noexcept {
 CudaInteropSurface::~CudaInteropSurface() {
     if (!SynchronizeStream()) { QuarantineGpuResources(); return; }
     ResetCaptureInterop();
+    RetirePrepareSlotAtDestruction();
 
     ReleaseSuperRes();
     if (streamFaulted_) { QuarantineGpuResources(); return; }
     ReleasePinnedUploadRing();
     ReleaseDeviceBuffers();
+
+    frameReprocessing_.reset();
+    alternateOutput_.reset();
 
     if (processTimingStartEvent_) {
         cudaEventDestroy(processTimingStartEvent_);
@@ -673,10 +847,12 @@ void CudaInteropSurface::AbandonCaptureInterop() noexcept {
     // Losing producer quiescence must never enter CUDA/D3D release routines.
     // Preserve mappings, source storage, completion event, and session lease.
     (void)d3d11Interop_.release();
+    for (auto& entry : d3d11ImportCache_) (void)entry.release();
+    LeakPrepareSlot();
 }
 
 void CudaInteropSurface::ResetCaptureInterop(bool atProcessExit) {
-    if (!d3d11Interop_) {
+    if (!d3d11Interop_ && d3d11ImportCache_.empty()) {
         return;
     }
     if (cudaDeviceId_ >= 0) {
@@ -686,54 +862,26 @@ void CudaInteropSurface::ResetCaptureInterop(bool atProcessExit) {
                        << cudaGetErrorString(deviceStatus);
         }
     }
-    if (!PollCaptureCopy()) return;
-    if (atProcessExit && d3d11Interop_->resource) {
-        // The installed NVIDIA driver faults inside the otherwise balanced
-        // legacy unregister call after a VideoProcessor-written texture has
-        // been used for capture. Keep both the registration and its texture
-        // alive until Windows reclaims the process. Releasing only the ComPtr
-        // here would violate CUDA's registered-resource lifetime contract.
-        qWarning() << "Retaining the legacy CUDA/D3D11 camera registration "
-                      "until process exit due to an NVIDIA driver workaround";
-        (void)d3d11Interop_.release();
-        return;
-    }
-    if (d3d11Interop_->resource) {
-        qInfo() << "Releasing CUDA/D3D11 camera interop registration";
-        const cudaError_t result =
-            cudaGraphicsUnregisterResource(d3d11Interop_->resource);
-        if (result != cudaSuccess) {
-            qWarning() << "CUDA camera texture unregister failed:"
-                       << cudaGetErrorString(result);
-        } else {
-            qInfo() << "CUDA/D3D11 camera interop registration released";
+    // Each import is released only after its own copy proved complete.
+    // Pending copies, the legacy atProcessExit retention, and unprovable
+    // destruction keep their entry (or leak it) instead of freeing live work.
+    const auto resetOne = [&](std::unique_ptr<D3D11InteropState>& entry) {
+        if (!entry) return;
+        if (!PollImportCopy(*entry)) return;
+        if (DestroyD3D11Import(*entry, cudaDeviceId_, atProcessExit)) {
+            entry.reset();
+        } else if (atProcessExit && entry->resource) {
+            (void)entry.release();
         }
-        d3d11Interop_->resource = nullptr;
-    }
-    if (d3d11Interop_->mipArray) {
-        const cudaError_t result =
-            cudaFreeMipmappedArray(d3d11Interop_->mipArray);
-        if (result != cudaSuccess) {
-            qWarning() << "CUDA camera external-memory array release failed:"
-                       << cudaGetErrorString(result);
-        }
-        d3d11Interop_->mipArray = nullptr;
-        d3d11Interop_->level0Array = nullptr;
-    }
-    if (d3d11Interop_->externalMemory) {
-        const cudaError_t result =
-            cudaDestroyExternalMemory(d3d11Interop_->externalMemory);
-        if (result != cudaSuccess) {
-            qWarning() << "CUDA camera external-memory release failed:"
-                       << cudaGetErrorString(result);
-        }
-        d3d11Interop_->externalMemory = nullptr;
-    }
-    if (d3d11Interop_->copyComplete) {
-        cudaEventDestroy(d3d11Interop_->copyComplete);
-        d3d11Interop_->copyComplete = nullptr;
-    }
-    d3d11Interop_.reset();
+    };
+    resetOne(d3d11Interop_);
+    for (auto& entry : d3d11ImportCache_) resetOne(entry);
+    d3d11ImportCache_.erase(
+        std::remove_if(d3d11ImportCache_.begin(), d3d11ImportCache_.end(),
+                       [](const std::unique_ptr<D3D11InteropState>& entry) {
+                           return !entry;
+                       }),
+        d3d11ImportCache_.end());
 }
 
 bool CudaInteropSurface::SelectCudaDeviceMatching(LUID adapterLuid) {
@@ -832,7 +980,7 @@ bool CudaInteropSurface::CreateSurfaceFromResource(ID3D12Device* device, ID3D12R
         ThrowIfCudaFailed(cudaCreateSurfaceObject(&surfaceObject_, &resourceDesc),
                           "cudaCreateSurfaceObject failed");
 
-        ThrowIfCudaFailed(cudaStreamCreate(&stream_), "cudaStreamCreate failed");
+        if (!stream_) ThrowIfCudaFailed(cudaStreamCreate(&stream_), "cudaStreamCreate failed");
     } catch (const std::exception& e) {
         lastError_ = e.what();
         qWarning() << "CreateSurfaceFromResource exception:" << e.what();
@@ -1615,7 +1763,7 @@ bool CudaInteropSurface::EnsureRawInputBuffers(unsigned int width, unsigned int 
     return true;
 }
 
-bool CudaInteropSurface::EnsurePinnedUploadRing(size_t requiredBytes) {
+bool CudaInteropSurface::EnsurePinnedUploadRing(size_t requiredBytes, bool streamAlreadyIdle) {
     if (requiredBytes == 0) {
         return false;
     }
@@ -1626,8 +1774,9 @@ bool CudaInteropSurface::EnsurePinnedUploadRing(size_t requiredBytes) {
     }
 
     // Reallocation is resolution/format-change work, never steady-state work.
-    // Drain the stream because a queued H2D copy may still reference a slot.
-    if (!SynchronizeStream()) return false;
+    // Camera callers drain; media admission has already proved idle BEFORE
+    // queuing its graphics-fence wait and must never wait on the UI thread.
+    if (!streamAlreadyIdle && !SynchronizeStream()) return false;
     ReleasePinnedUploadRing();
 
     try {
@@ -1664,13 +1813,14 @@ void CudaInteropSurface::ReleasePinnedUploadRing() {
 
 // Conversion target at pre-rotation extent; only allocated when the GPU also
 // rotates (for turns == 0 the converter writes straight into buffer A).
-bool CudaInteropSurface::EnsurePreRotateBuffer(unsigned int width, unsigned int height) {
+bool CudaInteropSurface::EnsurePreRotateBuffer(unsigned int width, unsigned int height,
+                                               bool streamAlreadyIdle) {
     if (devicePreRotate_ && preRotateWidth_ == width && preRotateHeight_ == height) {
         return true;
     }
 
     if (devicePreRotate_) {
-        if (!SynchronizeStream()) return false;
+        if (!streamAlreadyIdle && !SynchronizeStream()) return false;
         cudaFree(devicePreRotate_);
         devicePreRotate_ = nullptr;
     }
@@ -1685,6 +1835,61 @@ bool CudaInteropSurface::EnsurePreRotateBuffer(unsigned int width, unsigned int 
     preRotateWidth_ = width;
     preRotateHeight_ = height;
     return true;
+}
+
+bool CudaInteropSurface::PrepareMediaBgraInput(unsigned int width, unsigned int height,
+                                               int rotationQuarterTurns, bool deviceResident) {
+    uploadAdmissionBusy_ = false;
+    const int turns = rotationQuarterTurns & 3;
+    if (!valid_ || width == 0 || height == 0 || width > kMaxInputExtent || height > kMaxInputExtent ||
+        ((turns & 1) ? height : width) != width_ || ((turns & 1) ? width : height) != height_) {
+        lastError_ = "Media BGRA input does not match the post-rotation scene extent";
+        return false;
+    }
+    try {
+        // Also selects the construction worker's CUDA device on this thread.
+        const bool idle = PollIdle();
+        if (streamFaulted_) return false;
+        if (!deviceResident && pinnedUploadCapacity_ != 0) {
+            bool available = false;
+            for (auto& slot : pinnedUploadSlots_) {
+                if (!slot.uploadPending) { available = true; break; }
+                const auto status = cudaEventQuery(slot.uploadComplete);
+                if (status == cudaErrorNotReady) continue;
+                ThrowIfCudaFailed(status, "cudaEventQuery media upload admission failed");
+                slot.uploadPending = false;
+                available = true;
+                break;
+            }
+            if (!available) {
+                uploadAdmissionBusy_ = true; lastError_.clear(); return false;
+            }
+        }
+        const size_t bytes = static_cast<size_t>(width) * height * sizeof(uchar4);
+        const bool needsUpload = !deviceResident && (pinnedUploadCapacity_ < bytes ||
+            std::any_of(pinnedUploadSlots_.begin(), pinnedUploadSlots_.end(),
+                        [](const PinnedUploadSlot& slot) { return !slot.data; }));
+        const bool needsRotation = turns != 0 &&
+            (!devicePreRotate_ || preRotateWidth_ != width || preRotateHeight_ != height);
+        const bool needsBuffers = !deviceBufferA_ || !deviceBufferB_ ||
+            deviceWidth_ != width_ || deviceHeight_ != height_ || bufferFormat_ != CudaBufferFormat::kRgba8;
+        if (needsUpload || needsRotation || needsBuffers) {
+            // Never drain or free storage still referenced by this stream.
+            // This proof precedes the new graphics-fence wait and any work.
+            if (!idle) { uploadAdmissionBusy_ = true; lastError_.clear(); return false; }
+            // Working-buffer initialization releases raw/rotation scratch;
+            // do it first, before preparing this input's pre-rotation target.
+            if ((needsBuffers && !EnsureDeviceBuffers(width_, height_, CudaBufferFormat::kRgba8)) ||
+                (needsUpload && !EnsurePinnedUploadRing(bytes, true)) ||
+                (turns != 0 && !EnsurePreRotateBuffer(width, height, true))) {
+                throw std::runtime_error("Could not prepare media BGRA upload storage");
+            }
+        }
+        return true;
+    } catch (const std::exception& error) {
+        lastError_ = error.what(); streamFaulted_ = true; valid_ = false;
+        return false;
+    }
 }
 
 void CudaInteropSurface::ReleaseRawInput() {
@@ -2512,18 +2717,21 @@ bool CudaInteropSurface::StepKeystoneCorrection(int direction) {
         }
         --keystoneHistoryIndex_;
         RestoreKeystoneCorrection();
+        if (frameReprocessing_) frameReprocessing_->keystoneDirty = true;
         return true;
     }
 
     if (keystoneHistoryIndex_ + 1 < static_cast<int>(keystoneHistory_.size())) {
         ++keystoneHistoryIndex_;
         RestoreKeystoneCorrection();
+        if (frameReprocessing_) frameReprocessing_->keystoneDirty = true;
         return true;
     }
     if (keystoneCopyPending_ || keystoneSingleStepRequested_ || keystoneSingleStepInFlight_) {
         return false;
     }
     keystoneSingleStepRequested_ = true;
+    if (frameReprocessing_) frameReprocessing_->keystoneDirty = true;
     return true;
 }
 
@@ -2676,6 +2884,7 @@ void CudaInteropSurface::ReleaseTextClarity() {
 
 void CudaInteropSurface::ResetTextClarityHistory() {
     textMaskHistoryValid_ = false;
+    if (frameReprocessing_) frameReprocessing_->maskValid = false;
 }
 
 // Folds a finished small-luma snapshot into the smoothed corner state. Runs on
@@ -2842,17 +3051,17 @@ bool CudaInteropSurface::EnsureDisplayColorLut(const std::uint32_t* lut,
     return true;
 }
 
-bool CudaInteropSurface::PollCaptureCopy() {
+bool CudaInteropSurface::PollImportCopy(D3D11InteropState& state) {
     if (streamFaulted_) return false;
-    if (!d3d11Interop_ || !d3d11Interop_->copyLease.Pending()) return true;
+    if (!state.copyLease.Pending()) return true;
     cudaError_t status = cudaDeviceId_ >= 0 ? cudaSetDevice(cudaDeviceId_) : cudaSuccess;
     if (status == cudaSuccess)
-        status = d3d11Interop_->copyEventRecorded ?
-            cudaEventQuery(d3d11Interop_->copyComplete) : cudaErrorUnknown;
+        status = state.copyEventRecorded ?
+            cudaEventQuery(state.copyComplete) : cudaErrorUnknown;
     const auto completion = status == cudaSuccess ? GpuCopyCompletion::Complete :
         status == cudaErrorNotReady ? GpuCopyCompletion::Pending : GpuCopyCompletion::Failed;
-    const bool complete = d3d11Interop_->copyLease.Poll(completion, GetTickCount64());
-    if (d3d11Interop_->copyLease.Failed()) {
+    const bool complete = state.copyLease.Poll(completion, GetTickCount64());
+    if (state.copyLease.Failed()) {
         streamFaulted_ = true;
         valid_ = false;
         captureInteropFailed_ = false;
@@ -2861,11 +3070,457 @@ bool CudaInteropSurface::PollCaptureCopy() {
     return complete;
 }
 
+bool CudaInteropSurface::PollAllImportCopies() {
+    bool allComplete = true;
+    if (d3d11Interop_) allComplete = PollImportCopy(*d3d11Interop_) && allComplete;
+    for (auto& entry : d3d11ImportCache_) {
+        if (entry) allComplete = PollImportCopy(*entry) && allComplete;
+    }
+    return allComplete;
+}
+
+bool CudaInteropSurface::PollCaptureCopy() {
+    return PollAllImportCopies();
+}
+
+CudaInteropSurface::D3D11InteropState* CudaInteropSurface::FindImport(
+    ID3D11Texture2D* texture, unsigned int subresource) {
+    if (d3d11Interop_ && d3d11Interop_->identity == texture &&
+        d3d11Interop_->subresource == subresource) {
+        return d3d11Interop_.get();
+    }
+    for (auto& entry : d3d11ImportCache_) {
+        if (entry && entry->identity == texture &&
+            entry->subresource == subresource) {
+            return entry.get();
+        }
+    }
+    return nullptr;
+}
+
+void CudaInteropSurface::ActivateImport(D3D11InteropState* state) {
+    if (!state || state == d3d11Interop_.get()) return;
+    for (auto it = d3d11ImportCache_.begin(); it != d3d11ImportCache_.end(); ++it) {
+        if (it->get() != state) continue;
+        auto entry = std::move(*it);
+        d3d11ImportCache_.erase(it);
+        // The parked import keeps its own copy event and producer lease;
+        // retiring it is a later poll's job, never this switch's.
+        if (d3d11Interop_) d3d11ImportCache_.push_back(std::move(d3d11Interop_));
+        d3d11Interop_ = std::move(entry);
+        return;
+    }
+}
+
+void CudaInteropSurface::DestroyImportAsync(
+    std::unique_ptr<D3D11InteropState> state) {
+    if (!state) return;
+    auto owned = std::shared_ptr<D3D11InteropState>(std::move(state));
+    const int device = cudaDeviceId_;
+    // A still-running eviction keeps its own closure alive; replacing the
+    // handle here never cancels it.
+    d3d11EvictionCleanup_ = AsyncCleanup::Start([owned, device] {
+        return DestroyD3D11Import(*owned, device, false);
+    });
+}
+
+bool CudaInteropSurface::EvictOldestImport() {
+    for (auto it = d3d11ImportCache_.begin(); it != d3d11ImportCache_.end(); ++it) {
+        if (!*it) {
+            d3d11ImportCache_.erase(it);
+            return true;
+        }
+        if (!PollImportCopy(**it)) {
+            if (streamFaulted_) return false;
+            continue; // still retiring; a newer parked import may be free
+        }
+        auto evicted = std::move(*it);
+        d3d11ImportCache_.erase(it);
+        DestroyImportAsync(std::move(evicted));
+        return true;
+    }
+    return false;
+}
+
+bool CudaInteropSurface::AdoptPreparedImport(
+    ID3D11Texture2D*& finishedIdentity, std::string& finishedError) {
+    finishedIdentity = nullptr;
+    finishedError.clear();
+    if (!d3d11PrepareSlot_) return false;
+    std::unique_ptr<D3D11InteropState> entry;
+    {
+        std::lock_guard lock(d3d11PrepareSlot_->mutex);
+        if (!d3d11PrepareSlot_->done) return false;
+        entry = std::move(d3d11PrepareSlot_->entry);
+        finishedError = d3d11PrepareSlot_->error;
+        finishedIdentity = d3d11PrepareSlot_->identity;
+        if (entry) {
+            sourceStatistics_.asyncImportThread =
+                d3d11PrepareSlot_->workerThread;
+        }
+    }
+    d3d11PrepareSlot_.reset();
+    if (!entry) {
+        ++sourceStatistics_.importsFailed;
+        return true;
+    }
+    ++sourceStatistics_.importsCompleted;
+    if (FindImport(entry->identity, entry->subresource)) {
+        DestroyImportAsync(std::move(entry)); // duplicate of a cached import
+        return true;
+    }
+    // Capacity was reserved before the worker started; evict again in case
+    // an inline camera import claimed the reserved slot meanwhile.
+    while (d3d11ImportCache_.size() + (d3d11Interop_ ? 1u : 0u) >=
+               kMaxD3D11SourceImports &&
+           EvictOldestImport()) {
+    }
+    if (d3d11ImportCache_.size() + (d3d11Interop_ ? 1u : 0u) >=
+        kMaxD3D11SourceImports) {
+        DestroyImportAsync(std::move(entry)); // no evictable slot yet
+        return true;
+    }
+    d3d11ImportCache_.push_back(std::move(entry));
+    return true;
+}
+
+void CudaInteropSurface::EnableAsyncD3D11SourcePreparation(bool enabled) {
+    asyncSourcePreparation_ = enabled;
+}
+
+D3D11SourceStatistics CudaInteropSurface::SourceStatistics() const {
+    D3D11SourceStatistics stats = sourceStatistics_;
+    stats.cachedImports =
+        d3d11ImportCache_.size() + (d3d11Interop_ ? 1u : 0u);
+    return stats;
+}
+
+D3D11SourceStatus CudaInteropSurface::PrepareD3D11Source(
+    ID3D11Texture2D* texture, unsigned int subresource, unsigned int width,
+    unsigned int height, std::shared_ptr<void> storageLease) {
+    if (streamFaulted_ || !valid_) return D3D11SourceStatus::Failed;
+    if (!texture || !storageLease || width == 0 || height == 0 ||
+        !d3d12Device_) {
+        captureInteropFailed_ = true;
+        lastError_ = "Media source preparation: missing texture, storage "
+                     "lease, or D3D12 device";
+        return D3D11SourceStatus::Failed;
+    }
+    if (subresource != 0) {
+        captureInteropFailed_ = true;
+        lastError_ = "Media source preparation: shared texture must use "
+                     "subresource zero";
+        return D3D11SourceStatus::Failed;
+    }
+    D3D11_TEXTURE2D_DESC description{};
+    texture->GetDesc(&description);
+    if (description.Width < width || description.Height < height ||
+        description.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
+        captureInteropFailed_ = true;
+        lastError_ = "Media source preparation: expected a BGRA8 texture "
+                     "matching the frame";
+        return D3D11SourceStatus::Failed;
+    }
+
+    // Retire every completed source copy so producer leases release even
+    // while this texture's own import is still being built.
+    (void)PollAllImportCopies();
+    if (streamFaulted_) return D3D11SourceStatus::Failed;
+
+    ID3D11Texture2D* finishedIdentity = nullptr;
+    std::string finishedError;
+    if (AdoptPreparedImport(finishedIdentity, finishedError) &&
+        !finishedError.empty() && finishedIdentity == texture) {
+        captureInteropFailed_ = true;
+        lastError_ = "Media source preparation: " + finishedError;
+        return D3D11SourceStatus::Failed;
+    }
+
+    if (D3D11InteropState* existing = FindImport(texture, subresource)) {
+        if (existing != d3d11Interop_.get()) {
+            ActivateImport(existing);
+            ++sourceStatistics_.cacheHits;
+        }
+        if (!PollImportCopy(*d3d11Interop_)) {
+            return streamFaulted_ ? D3D11SourceStatus::Failed
+                                  : D3D11SourceStatus::Pending;
+        }
+        return D3D11SourceStatus::Ready;
+    }
+
+    if (d3d11PrepareSlot_) return D3D11SourceStatus::Pending;
+    while (d3d11ImportCache_.size() + (d3d11Interop_ ? 1u : 0u) >=
+           kMaxD3D11SourceImports) {
+        if (!EvictOldestImport()) {
+            return streamFaulted_ ? D3D11SourceStatus::Failed
+                                  : D3D11SourceStatus::Pending;
+        }
+    }
+
+    auto slot = std::make_shared<D3D11PrepareSlot>();
+    slot->identity = texture;
+    const Microsoft::WRL::ComPtr<ID3D12Device> device = d3d12Device_;
+    const Microsoft::WRL::ComPtr<ID3D11Texture2D> retainedTexture = texture;
+    const int cudaDevice = cudaDeviceId_;
+    try {
+        std::thread([slot, device, retainedTexture,
+                     storageLease = std::move(storageLease), cudaDevice,
+                     subresource, width, height] {
+            std::string error;
+            auto entry = BuildD3D11Import(device.Get(), cudaDevice,
+                                          retainedTexture.Get(), subresource,
+                                          width, height, error);
+            std::lock_guard lock(slot->mutex);
+            slot->entry = std::move(entry);
+            slot->error = std::move(error);
+            slot->workerThread = static_cast<std::uint64_t>(
+                std::hash<std::thread::id>{}(std::this_thread::get_id()));
+            slot->done = true;
+        }).detach();
+    } catch (...) {
+        captureInteropFailed_ = true;
+        lastError_ = "Media source preparation: could not start the import "
+                     "worker";
+        return D3D11SourceStatus::Failed;
+    }
+    d3d11PrepareSlot_ = std::move(slot);
+    ++sourceStatistics_.asyncPreparations;
+    return D3D11SourceStatus::Pending;
+}
+
+void CudaInteropSurface::RetirePrepareSlotAtDestruction() {
+    if (!d3d11PrepareSlot_) return;
+    auto slot = std::move(d3d11PrepareSlot_);
+    const int device = cudaDeviceId_;
+    (void)AsyncCleanup::Start([slot, device] {
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        std::unique_ptr<D3D11InteropState> entry;
+        for (;;) {
+            {
+                std::lock_guard lock(slot->mutex);
+                if (slot->done) {
+                    entry = std::move(slot->entry);
+                    break;
+                }
+            }
+            if (std::chrono::steady_clock::now() >= deadline) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return !entry || DestroyD3D11Import(*entry, device, false);
+    });
+}
+
+void CudaInteropSurface::LeakPrepareSlot() noexcept {
+    // The worker may still be importing through this slot; retain it (and
+    // any finished import) until process exit rather than racing it.
+    if (d3d11PrepareSlot_) {
+        (void)new std::shared_ptr<D3D11PrepareSlot>(std::move(d3d11PrepareSlot_));
+    }
+}
+
+std::unique_ptr<CudaInteropSurface::D3D11InteropState>
+CudaInteropSurface::BuildD3D11Import(ID3D12Device* device, int cudaDeviceId,
+                                     ID3D11Texture2D* texture,
+                                     unsigned int subresource,
+                                     unsigned int width, unsigned int height,
+                                     std::string& error) {
+    auto state = std::make_unique<D3D11InteropState>();
+    state->texture = texture;
+    state->identity = texture;
+    state->subresource = subresource;
+
+    HANDLE d3d11SharedHandle = nullptr;
+    HANDLE d3d12SharedHandle = nullptr;
+    const auto closeSharedHandles = [&]() {
+        if (d3d12SharedHandle) {
+            CloseHandle(d3d12SharedHandle);
+            d3d12SharedHandle = nullptr;
+        }
+        if (d3d11SharedHandle) {
+            CloseHandle(d3d11SharedHandle);
+            d3d11SharedHandle = nullptr;
+        }
+    };
+
+    try {
+        if (cudaDeviceId >= 0) {
+            ThrowIfCudaFailed(
+                cudaSetDevice(cudaDeviceId),
+                "Camera external-memory cudaSetDevice failed");
+        }
+        D3D11_TEXTURE2D_DESC description{};
+        texture->GetDesc(&description);
+        if (description.Width < width || description.Height < height ||
+            description.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
+            throw std::runtime_error(
+                "expected a BGRA8 texture matching the frame");
+        }
+
+        Microsoft::WRL::ComPtr<IDXGIResource1> dxgiResource;
+        ThrowIfFailed(
+            texture->QueryInterface(
+                IID_PPV_ARGS(dxgiResource.GetAddressOf())),
+            "Camera shared texture does not expose IDXGIResource1");
+        ThrowIfFailed(
+            dxgiResource->CreateSharedHandle(
+                nullptr,
+                DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
+                nullptr,
+                &d3d11SharedHandle),
+            "Failed to create the D3D11 camera NT shared handle");
+        ThrowIfFailed(
+            device->OpenSharedHandle(
+                d3d11SharedHandle,
+                IID_PPV_ARGS(state->d3d12Resource.GetAddressOf())),
+            "Failed to open the camera texture on D3D12");
+
+        WindowsSecurityAttributes securityAttributes;
+        ThrowIfFailed(
+            device->CreateSharedHandle(
+                state->d3d12Resource.Get(),
+                securityAttributes.get(),
+                GENERIC_ALL,
+                nullptr,
+                &d3d12SharedHandle),
+            "Failed to create the D3D12 camera shared handle");
+
+        const D3D12_RESOURCE_DESC resourceDescription =
+            state->d3d12Resource->GetDesc();
+        if (resourceDescription.Dimension !=
+                D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+            resourceDescription.Width != description.Width ||
+            resourceDescription.Height != description.Height ||
+            resourceDescription.Format != description.Format) {
+            throw std::runtime_error(
+                "D3D12 opened camera texture does not match its D3D11 "
+                "allocation");
+        }
+        const D3D12_RESOURCE_ALLOCATION_INFO allocationInfo =
+            device->GetResourceAllocationInfo(0, 1, &resourceDescription);
+        if (allocationInfo.SizeInBytes == 0 ||
+            allocationInfo.SizeInBytes == UINT64_MAX) {
+            throw std::runtime_error(
+                "D3D12 could not report the camera allocation size");
+        }
+
+        cudaExternalMemoryHandleDesc memoryDescription{};
+        memoryDescription.type = cudaExternalMemoryHandleTypeD3D12Resource;
+        memoryDescription.handle.win32.handle = d3d12SharedHandle;
+        memoryDescription.size = allocationInfo.SizeInBytes;
+        memoryDescription.flags = cudaExternalMemoryDedicated;
+        ThrowIfCudaFailed(
+            cudaImportExternalMemory(&state->externalMemory,
+                                     &memoryDescription),
+            "CUDA camera external-memory import failed");
+
+        cudaExternalMemoryMipmappedArrayDesc arrayDescription{};
+        arrayDescription.offset = 0;
+        arrayDescription.numLevels = 1;
+        arrayDescription.extent =
+            make_cudaExtent(description.Width, description.Height, 1);
+        arrayDescription.formatDesc =
+            MakeChannelDescForFormat(description.Format);
+        arrayDescription.flags =
+            cudaArraySurfaceLoadStore | cudaArrayColorAttachment;
+        ThrowIfCudaFailed(
+            cudaExternalMemoryGetMappedMipmappedArray(
+                &state->mipArray, state->externalMemory, &arrayDescription),
+            "CUDA camera external-memory array mapping failed");
+        ThrowIfCudaFailed(
+            cudaGetMipmappedArrayLevel(&state->level0Array, state->mipArray, 0),
+            "CUDA camera external-memory level query failed");
+        ThrowIfCudaFailed(cudaEventCreateWithFlags(&state->copyComplete,
+                                                   cudaEventDisableTiming),
+                          "Camera copy event creation failed");
+        closeSharedHandles();
+        qInfo() << "Camera texture imported through "
+                   "D3D11 -> D3D12 -> CUDA external memory ("
+                << description.Width << "x" << description.Height << ")";
+        return state;
+    } catch (const std::exception& failure) {
+        closeSharedHandles();
+        error = failure.what();
+        (void)cudaGetLastError();
+        if (!DestroyD3D11Import(*state, cudaDeviceId, false)) {
+            // Unprovable partial-import destruction: retain until exit.
+            (void)state.release();
+        }
+        return nullptr;
+    }
+}
+
+bool CudaInteropSurface::DestroyD3D11Import(D3D11InteropState& state,
+                                            int cudaDeviceId,
+                                            bool atProcessExit) noexcept {
+    if (atProcessExit && state.resource) {
+        // The installed NVIDIA driver faults inside the otherwise balanced
+        // legacy unregister call after a VideoProcessor-written texture has
+        // been used for capture. Keep both the registration and its texture
+        // alive until Windows reclaims the process.
+        qWarning() << "Retaining the legacy CUDA/D3D11 camera registration "
+                      "until process exit due to an NVIDIA driver workaround";
+        return false;
+    }
+    if (cudaDeviceId >= 0 && cudaSetDevice(cudaDeviceId) != cudaSuccess) {
+        (void)cudaGetLastError();
+        return false;
+    }
+    bool ok = true;
+    if (state.resource) {
+        const cudaError_t result =
+            cudaGraphicsUnregisterResource(state.resource);
+        if (result == cudaSuccess) {
+            state.resource = nullptr;
+        } else {
+            qWarning() << "CUDA camera texture unregister failed:"
+                       << cudaGetErrorString(result);
+            ok = false;
+        }
+    }
+    if (state.mipArray) {
+        const cudaError_t result = cudaFreeMipmappedArray(state.mipArray);
+        if (result == cudaSuccess) {
+            state.mipArray = nullptr;
+            state.level0Array = nullptr;
+        } else {
+            qWarning() << "CUDA camera external-memory array release failed:"
+                       << cudaGetErrorString(result);
+            ok = false;
+        }
+    }
+    if (state.externalMemory) {
+        const cudaError_t result =
+            cudaDestroyExternalMemory(state.externalMemory);
+        if (result == cudaSuccess) {
+            state.externalMemory = nullptr;
+        } else {
+            qWarning() << "CUDA camera external-memory release failed:"
+                       << cudaGetErrorString(result);
+            ok = false;
+        }
+    }
+    if (state.copyComplete) {
+        if (cudaEventDestroy(state.copyComplete) == cudaSuccess) {
+            state.copyComplete = nullptr;
+        } else {
+            ok = false;
+        }
+    }
+    if (!ok) {
+        (void)cudaGetLastError();
+        return false;
+    }
+    state.texture.Reset();
+    state.d3d12Resource.Reset();
+    state.identity = nullptr;
+    return true;
+}
+
 bool CudaInteropSurface::UploadD3D11Frame(
     const ProcessingInput& input,
     uchar4* destination,
     size_t destinationPitch) {
-    if (!PollCaptureCopy()) return false;
     if (!input.d3d11TextureLease || !input.d3d11Texture || !destination || stream_ == nullptr ||
         !d3d12Device_) {
         captureInteropFailed_ = true;
@@ -2894,128 +3549,62 @@ bool CudaInteropSurface::UploadD3D11Frame(
         return false;
     }
 
-    HANDLE d3d11SharedHandle = nullptr;
-    HANDLE d3d12SharedHandle = nullptr;
-    const auto closeSharedHandles = [&]() {
-        if (d3d12SharedHandle) {
-            CloseHandle(d3d12SharedHandle);
-            d3d12SharedHandle = nullptr;
-        }
-        if (d3d11SharedHandle) {
-            CloseHandle(d3d11SharedHandle);
-            d3d11SharedHandle = nullptr;
-        }
-    };
-
     try {
         if (cudaDeviceId_ >= 0) {
             ThrowIfCudaFailed(
                 cudaSetDevice(cudaDeviceId_),
                 "Camera external-memory cudaSetDevice failed");
         }
-        if (!d3d11Interop_ ||
-            d3d11Interop_->identity != input.d3d11Texture) {
-            ResetCaptureInterop();
-            d3d11Interop_ = std::make_unique<D3D11InteropState>();
-            d3d11Interop_->texture = input.d3d11Texture;
-            d3d11Interop_->identity = input.d3d11Texture;
-            d3d11Interop_->subresource = input.d3d11Subresource;
+        // Retire completed copies (releasing producer leases) without
+        // blocking this frame on parked slots it does not read.
+        (void)PollAllImportCopies();
+        if (streamFaulted_) return false;
 
-            Microsoft::WRL::ComPtr<IDXGIResource1> dxgiResource;
-            ThrowIfFailed(
-                input.d3d11Texture->QueryInterface(
-                    IID_PPV_ARGS(dxgiResource.GetAddressOf())),
-                "Camera shared texture does not expose IDXGIResource1");
-            ThrowIfFailed(
-                dxgiResource->CreateSharedHandle(
-                    nullptr,
-                    DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
-                    nullptr,
-                    &d3d11SharedHandle),
-                "Failed to create the D3D11 camera NT shared handle");
-            ThrowIfFailed(
-                d3d12Device_->OpenSharedHandle(
-                    d3d11SharedHandle,
-                    IID_PPV_ARGS(
-                        d3d11Interop_->d3d12Resource.GetAddressOf())),
-                "Failed to open the camera texture on D3D12");
-
-            WindowsSecurityAttributes securityAttributes;
-            ThrowIfFailed(
-                d3d12Device_->CreateSharedHandle(
-                    d3d11Interop_->d3d12Resource.Get(),
-                    securityAttributes.get(),
-                    GENERIC_ALL,
-                    nullptr,
-                    &d3d12SharedHandle),
-                "Failed to create the D3D12 camera shared handle");
-
-            const D3D12_RESOURCE_DESC resourceDescription =
-                d3d11Interop_->d3d12Resource->GetDesc();
-            if (resourceDescription.Dimension !=
-                    D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
-                resourceDescription.Width != description.Width ||
-                resourceDescription.Height != description.Height ||
-                resourceDescription.Format != description.Format) {
-                throw std::runtime_error(
-                    "D3D12 opened camera texture does not match its D3D11 "
-                    "allocation");
+        if (D3D11InteropState* existing =
+                FindImport(input.d3d11Texture, input.d3d11Subresource)) {
+            if (existing != d3d11Interop_.get()) {
+                ActivateImport(existing);
+                ++sourceStatistics_.cacheHits;
             }
-            const D3D12_RESOURCE_ALLOCATION_INFO allocationInfo =
-                d3d12Device_->GetResourceAllocationInfo(
-                    0, 1, &resourceDescription);
-            if (allocationInfo.SizeInBytes == 0 ||
-                allocationInfo.SizeInBytes == UINT64_MAX) {
-                throw std::runtime_error(
-                    "D3D12 could not report the camera allocation size");
-            }
-
-            cudaExternalMemoryHandleDesc memoryDescription{};
-            memoryDescription.type =
-                cudaExternalMemoryHandleTypeD3D12Resource;
-            memoryDescription.handle.win32.handle = d3d12SharedHandle;
-            memoryDescription.size = allocationInfo.SizeInBytes;
-            memoryDescription.flags = cudaExternalMemoryDedicated;
-            ThrowIfCudaFailed(
-                cudaImportExternalMemory(
-                    &d3d11Interop_->externalMemory,
-                    &memoryDescription),
-                "CUDA camera external-memory import failed");
-
-            cudaExternalMemoryMipmappedArrayDesc arrayDescription{};
-            arrayDescription.offset = 0;
-            arrayDescription.numLevels = 1;
-            arrayDescription.extent =
-                make_cudaExtent(description.Width, description.Height, 1);
-            arrayDescription.formatDesc =
-                MakeChannelDescForFormat(description.Format);
-            arrayDescription.flags =
-                cudaArraySurfaceLoadStore | cudaArrayColorAttachment;
-            ThrowIfCudaFailed(
-                cudaExternalMemoryGetMappedMipmappedArray(
-                    &d3d11Interop_->mipArray,
-                    d3d11Interop_->externalMemory,
-                    &arrayDescription),
-                "CUDA camera external-memory array mapping failed");
-            ThrowIfCudaFailed(
-                cudaGetMipmappedArrayLevel(
-                    &d3d11Interop_->level0Array,
-                    d3d11Interop_->mipArray,
-                    0),
-                "CUDA camera external-memory level query failed");
-            closeSharedHandles();
-            qInfo() << "Camera texture imported through "
-                       "D3D11 -> D3D12 -> CUDA external memory ("
-                    << description.Width << "x" << description.Height << ")";
-        }
-
-        if (!d3d11Interop_->copyComplete) {
-            ThrowIfCudaFailed(cudaEventCreateWithFlags(&d3d11Interop_->copyComplete,
-                                                       cudaEventDisableTiming),
-                              "Camera copy event creation failed");
-        }
-        if (!d3d11Interop_->copyLease.Begin(input.d3d11TextureLease, GetTickCount64()))
+        } else if (asyncSourcePreparation_) {
+            // Media contract: PrepareD3D11Source built this import on its
+            // worker. Never import here; the caller retries as Pending.
+            uploadAdmissionBusy_ = true;
             return false;
+        } else {
+            // Camera contract (unchanged): import the one conversion
+            // texture inline. Previously imported textures are parked in
+            // the bounded cache instead of being destroyed on switch.
+            while (d3d11ImportCache_.size() + (d3d11Interop_ ? 1u : 0u) >=
+                   kMaxD3D11SourceImports) {
+                if (!EvictOldestImport()) {
+                    captureInteropFailed_ = true;
+                    lastError_ =
+                        "Camera external-memory interop: source import "
+                        "cache busy";
+                    return false;
+                }
+            }
+            std::string error;
+            auto entry = BuildD3D11Import(
+                d3d12Device_.Get(), cudaDeviceId_, input.d3d11Texture,
+                input.d3d11Subresource, input.width, input.height, error);
+            if (!entry) throw std::runtime_error(error);
+            ++sourceStatistics_.importsCompleted;
+            if (d3d11Interop_) {
+                d3d11ImportCache_.push_back(std::move(d3d11Interop_));
+            }
+            d3d11Interop_ = std::move(entry);
+        }
+
+        if (!PollImportCopy(*d3d11Interop_)) {
+            if (!streamFaulted_) uploadAdmissionBusy_ = true;
+            return false;
+        }
+        if (!d3d11Interop_->copyLease.Begin(input.d3d11TextureLease, GetTickCount64())) {
+            uploadAdmissionBusy_ = true;
+            return false;
+        }
         d3d11Interop_->copyEventRecorded = false;
         ThrowIfCudaFailed(
             cudaMemcpy2DFromArrayAsync(
@@ -3037,7 +3626,6 @@ bool CudaInteropSurface::UploadD3D11Frame(
         d3d11Interop_->copyEventRecorded = true;
         return true;
     } catch (const std::exception& error) {
-        closeSharedHandles();
         const bool copyMayBeInFlight = d3d11Interop_ && d3d11Interop_->copyLease.Pending();
         captureInteropFailed_ = !copyMayBeInFlight;
         if (copyMayBeInFlight) {
@@ -3048,7 +3636,9 @@ bool CudaInteropSurface::UploadD3D11Frame(
         lastError_ =
             std::string("Camera external-memory interop: ") + error.what();
         qWarning() << QString::fromStdString(lastError_);
-        ResetCaptureInterop();
+        // The media surface destroys its imports on the bundle retirement
+        // worker, never on this (UI) thread.
+        if (!asyncSourcePreparation_) ResetCaptureInterop();
         // Import and device-copy failures are handled by the capture fallback
         // ladder. Clear CUDA's per-thread error slot so this frame can retry
         // through the pinned host-copy rung.
@@ -3071,6 +3661,10 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         // Keep the pending slot owned until its event completes, then discard
         // its old measurement; never reuse host/device storage while busy.
         discardFocusCopy_ = focusCopyPending_;
+        if (frameReprocessing_) {
+            frameReprocessing_->temporalValid = false;
+            frameReprocessing_->maskValid = false;
+        }
     }
     if (!settings.enableAutoTextClarity) focusScoreValid_ = false;
     const bool deviceResidentInput = input.d3d11Texture != nullptr;
@@ -3135,11 +3729,10 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         return false;
     }
 
-    // CPU BGRA inputs arrive pre-rotated. Retained D3D11 BGRA textures have
-    // not crossed the CPU conversion path, so they use the same GPU rotation
-    // stage as raw NV12/YUY2 inputs.
+    // Camera host BGRA is already rotated. Selected-media host BGRA opts in
+    // to the same GPU rotation as retained D3D11 BGRA and raw YUV inputs.
     int turns = 0;
-    if (format == 0 && !deviceResidentInput) {
+    if (format == 0 && !deviceResidentInput && !input.rotateBgraOnGpu) {
         if (input.rotationQuarterTurns != 0 && !gWarnedBgraRotationIgnored) {
             qWarning() << "ProcessFrame: rotationQuarterTurns ignored for BGRA input"
                           " (CPU path rotates before upload)";
@@ -3183,6 +3776,10 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 lastError_.clear();
                 return false;
             }
+        }
+        if (format == 0 && (input.rotateBgraOnGpu || (deviceResidentInput && frameReprocessing_)) &&
+            !PrepareMediaBgraInput(input.width, input.height, turns, deviceResidentInput)) {
+            return false;
         }
         if (fenceSync.enable && externalSemaphore_ != nullptr) {
             cudaExternalSemaphoreWaitParams waitParams{};
@@ -3289,7 +3886,9 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                     turns, stream_);
             }
         } else if (format == 0) {
-            // BGRA path: identical to the historical behavior.
+            // Copy owned host rows into pinned storage before asynchronous
+            // upload. Media rotates this compact upload on the GPU; the
+            // camera default still writes its already-rotated BGRA directly.
             if (pixelSize != sizeof(uchar4)) {
                 if (!gWarnedFp16Unsupported) {
                     qWarning() << "ProcessFrame RGBA16F upload requested but GPU kernel path expects RGBA8; using RGBA8 upload";
@@ -3305,11 +3904,24 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             }
             copyRows(slot->data, rowBytes, input.hostPixels, input.hostStrideBytes,
                      rowBytes, input.height);
-            ThrowIfCudaFailed(cudaMemcpy2DAsync(deviceBufferA_, devicePitchA_,
+            uchar4* uploadTarget = deviceBufferA_;
+            size_t uploadPitch = devicePitchA_;
+            if (turns != 0) {
+                // Opt-in host BGRA admission prepared this before fence waits.
+                uploadTarget = devicePreRotate_;
+                uploadPitch = devicePitchPreRotate_;
+            }
+            ThrowIfCudaFailed(cudaMemcpy2DAsync(uploadTarget, uploadPitch,
                                                 slot->data, rowBytes,
                                                 rowBytes, input.height,
                                                 cudaMemcpyHostToDevice, stream_),
                               "cudaMemcpy2DAsync host->device failed");
+            if (turns != 0) {
+                LaunchRotateQuarterLinear(deviceBufferA_, devicePitchA_,
+                                          devicePreRotate_, devicePitchPreRotate_,
+                                          static_cast<int>(input.width), static_cast<int>(input.height),
+                                          turns, stream_);
+            }
         } else {
             // Raw NV12/YUY2 path: upload the compact planes (1.5-2 B/px instead
             // of 4), convert to BGRA on the GPU, then rotate if requested. With
@@ -3432,11 +4044,55 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 "cudaEventRecord input timing boundary failed");
         }
 
+        const bool replay = input.reprocessFrame && frameReprocessing_ && frameReprocessing_->valid;
+        if (input.reprocessFrame && !replay) {
+            throw std::runtime_error("Media frame replay has no matching geometry snapshot");
+        }
+        if (frameReprocessing_) {
+            auto& saved = *frameReprocessing_;
+            if (replay && saved.keystoneDirty) {
+                // Explicit history steps change the warp for this sample.
+                // Composite histories have no valid mapping across that edit.
+                saved.temporalValid = saved.maskValid = saved.levelsValid = false;
+                uctAnalysisFrame_.reset(); uctLastCaptureMs_ = 0;
+            }
+            const auto copy = [&](void* dst, size_t dstPitch, const void* src, size_t srcPitch,
+                                  size_t rowBytes, size_t rows) {
+                ThrowIfCudaFailed(cudaMemcpy2DAsync(dst, dstPitch, src, srcPitch, rowBytes,
+                    rows, cudaMemcpyDeviceToDevice, stream_), "Media history snapshot copy failed");
+            };
+            if (replay) {
+                temporalHistoryValid_ = saved.temporalValid;
+                textMaskHistoryValid_ = saved.maskValid;
+                autoLevelsValid_ = saved.levelsValid;
+                if (saved.temporalValid)
+                    copy(deviceTemporalHistory_, devicePitchHistory_, saved.temporal, saved.temporalPitch,
+                         static_cast<size_t>(procWidth) * sizeof(float4), procHeight);
+                if (saved.maskValid)
+                    copy(deviceTextMaskHistory_, deviceTextMaskPitch_, saved.mask, saved.maskPitch, procWidth, procHeight);
+                if (saved.levelsValid)
+                    copy(deviceAutoLevels_, sizeof(float2), saved.levels, sizeof(float2), sizeof(float2), 1);
+                copy(current, currentPitch, saved.geometry, saved.geometryPitch,
+                     static_cast<size_t>(procWidth) * sizeof(uchar4), procHeight);
+            } else {
+                saved.temporalValid = temporalHistoryValid_;
+                saved.maskValid = textMaskHistoryValid_;
+                saved.levelsValid = autoLevelsValid_;
+                if (saved.temporalValid)
+                    copy(saved.temporal, saved.temporalPitch, deviceTemporalHistory_, devicePitchHistory_,
+                         static_cast<size_t>(procWidth) * sizeof(float4), procHeight);
+                if (saved.maskValid)
+                    copy(saved.mask, saved.maskPitch, deviceTextMaskHistory_, deviceTextMaskPitch_, procWidth, procHeight);
+                if (saved.levelsValid)
+                    copy(saved.levels, sizeof(float2), deviceAutoLevels_, sizeof(float2), sizeof(float2), 1);
+            }
+        }
+
         // Stabilization runs first so every later stage sees one fixed-reference
         // CUDA geometry. Tracking, recovery, path state, and the affine warp
         // remain device-resident.
         bool sampledControlDiagnostics = false;
-        if (settings.enableStabilization) {
+        if (!replay && settings.enableStabilization) {
             if (!EnsureStabilizationBuffers(procWidth, procHeight)) {
                 return false;
             }
@@ -3929,7 +4585,7 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             if (activeStabilizerEngine_ < 0) {
                 stabilizerStatus_ = "CUDA fixed-reference stabilizer preparing";
             }
-        } else {
+        } else if (!replay) {
             if (stabPrevValid_) {
                 ResetStabilization();
             }
@@ -3940,20 +4596,52 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
         // Keystone follows stabilization (so the detected quad is jitter-free)
         // and precedes every readability stage, letting the straightened slide
         // fill the frame before black/white, sharpening and auto contrast.
-        if (settings.enableKeystone) {
-            if (!EnsureKeystoneResources(procWidth, procHeight)) {
-                return false;
+        if (!replay) {
+            if (frameReprocessing_) {
+                auto& saved = *frameReprocessing_;
+                ThrowIfCudaFailed(cudaMemcpy2DAsync(saved.preKeystone, saved.preKeystonePitch, current, currentPitch,
+                    static_cast<size_t>(procWidth) * sizeof(uchar4), procHeight, cudaMemcpyDeviceToDevice, stream_),
+                    "Media pre-keystone snapshot copy failed");
             }
+            if (settings.enableKeystone) {
+                if (!EnsureKeystoneResources(procWidth, procHeight)) {
+                    return false;
+                }
+                RunKeystoneStage(current, alternate, currentPitch, alternatePitch);
+            } else if (keystoneFullWidth_ != 0) {
+                // Stage is off, so an eased return would be invisible anyway: drop
+                // any pending snapshot and re-enable cleanly from identity.
+                ResetKeystone();
+            }
+            if (frameReprocessing_) {
+                auto& saved = *frameReprocessing_;
+                ThrowIfCudaFailed(cudaMemcpy2DAsync(saved.geometry, saved.geometryPitch, current, currentPitch,
+                    static_cast<size_t>(procWidth) * sizeof(uchar4), procHeight, cudaMemcpyDeviceToDevice, stream_),
+                    "Media geometry snapshot copy failed");
+                saved.valid = true;
+                saved.keystoneDirty = keystoneSingleStepRequested_ || keystoneSingleStepInFlight_;
+            }
+        } // New immutable sample: geometry/history advance exactly once.
+        else if (frameReprocessing_->keystoneDirty && settings.enableKeystone) {
+            auto& saved = *frameReprocessing_;
+            ThrowIfCudaFailed(cudaMemcpy2DAsync(current, currentPitch, saved.preKeystone, saved.preKeystonePitch,
+                static_cast<size_t>(procWidth) * sizeof(uchar4), procHeight, cudaMemcpyDeviceToDevice, stream_),
+                "Media keystone replay copy failed");
             RunKeystoneStage(current, alternate, currentPitch, alternatePitch);
-        } else if (keystoneFullWidth_ != 0) {
-            // Stage is off, so an eased return would be invisible anyway: drop
-            // any pending snapshot and re-enable cleanly from identity.
-            ResetKeystone();
+            ThrowIfCudaFailed(cudaMemcpy2DAsync(saved.geometry, saved.geometryPitch, current, currentPitch,
+                static_cast<size_t>(procWidth) * sizeof(uchar4), procHeight, cudaMemcpyDeviceToDevice, stream_),
+                "Media stepped geometry snapshot copy failed");
+            saved.keystoneDirty = keystoneSingleStepRequested_ || keystoneSingleStepInFlight_;
         }
         if (sampleGpuTiming) {
             ThrowIfCudaFailed(
                 cudaEventRecord(processTimingGeometryEvent_, stream_),
                 "cudaEventRecord geometry timing boundary failed");
+        }
+        if (frameReprocessing_) {
+            frameReprocessing_->epoch = input.cameraEpoch;
+            frameReprocessing_->frame = input.frameSequence;
+            frameReprocessing_->appearance = input.settingsGeneration;
         }
 
         // Independently owned, appearance-neutral analysis before display

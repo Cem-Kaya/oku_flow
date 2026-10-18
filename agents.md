@@ -854,3 +854,14 @@ aligned with the project goals.
 - This mode neither grants desktop availability nor weakens assertion, runtime
   fingerprint, capability, packaging or release requirements. Validate runner
   changes with `scripts/test_test_gate.ps1` before applying them to project gates.
+
+## One-time media output-buffer measurement (2026-10-19)
+- `media_gpu_scene_cuda` keeps the one/two-output ownership and effect regressions
+  in the normal gate. Its `--benchmark-output-buffers` entry point is an explicit
+  one-time experiment, never routine CI or a repeated benchmark requirement.
+- Serialize measurements with other GPU work, preserve raw/pilot/failure output
+  in LocalAppData, and report GPU drawing completion separately from native
+  input, decoder seek/preroll, VSync or screen latency. See
+  `docs/media_output_buffer_benchmark.md` and `tests/README.md`.
+- Prefer exact resource-owner completion for fixture teardown; do not wait for
+  unrelated persistent graphics-library threads or terminate an owner's app.

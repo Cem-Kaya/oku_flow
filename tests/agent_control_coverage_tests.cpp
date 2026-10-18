@@ -69,6 +69,7 @@ std::optional<QString> PatternSample(const QString& pattern) {
     const std::map<QString, QString> samples{
         {"^#[0-9a-fA-F]{6}$", "#A1b2C3"},
         {"^cam-[a-f0-9]{32}$", "cam-" + Hex32()},
+        {"^media-[a-f0-9]{32}$", "media-" + Hex32()},
         {"^(automatic|fmt-[a-f0-9]{32})$", "fmt-" + Hex32()},
         {"^(none|mic-[a-f0-9]{32})$", "mic-" + Hex32()},
         {"^(system|voice-[a-f0-9]{32})$", "system"},
@@ -353,7 +354,7 @@ private slots:
         for (const auto& action : ControlActionRegistry()) QVERIFY(registryActions.insert(Id(action.id)).second);
         for (const auto entry : inventory["actions"].toArray()) inventoryActions.insert(entry.toObject()["actionId"].toString());
         QVERIFY(registryActions == inventoryActions);
-        QCOMPARE(registryActions.size(), std::size_t(39));
+        QCOMPARE(registryActions.size(), std::size_t(46));
         for (const auto& action : ControlActionRegistry()) {
             bool published = false;
             for (const auto edition : kEditions) published |= FindControlTool(action.id, edition) != nullptr;
@@ -434,7 +435,7 @@ private slots:
         for (const auto& p : ParameterRegistry()) QVERIFY(expected.insert(Id(p.id)).second);
         for (const auto& p : ProtectedControlRegistry()) QVERIFY(expected.insert(Id(p.id)).second);
         for (const auto& a : ControlActionRegistry()) QVERIFY(expected.insert(Id(a.id)).second);
-        QCOMPARE(expected.size(), std::size_t(98 + 17 + 39));
+        QCOMPARE(expected.size(), std::size_t(98 + 17 + 46));
         for (const std::size_t limit : {std::size_t(16), std::size_t(7), std::size_t(1)}) {
             int pages = 0; qsizetype largest = 0;
             const auto items = MetadataItems({}, limit, &pages, &largest);
@@ -1062,23 +1063,23 @@ private slots:
         const QSet<QString> installed{mic};
         for(const auto* canvas:{"source","360p","480p","720p","1080p","1440p","2160p"}) {
             const auto plan=PrepareRecordingPreferencePatch(current,installed,{{"recording.canvas",canvas}});
-            QVERIFY(plan.error.isEmpty());QVERIFY(!plan.requiresApproval && !plan.requiresRecording && !plan.asynchronous);
+            QCOMPARE(plan.error,QStringLiteral("unavailable"));QVERIFY(plan.writes.empty());QVERIFY(!plan.requiresApproval && !plan.requiresRecording && !plan.asynchronous);
         }
         const auto noRecording=PrepareRecordingPreferencePatch(current,installed,{{"recording.microphone",mic}});
         QVERIFY(noRecording.error.isEmpty());QVERIFY(noRecording.requiresApproval);
         QVERIFY(!noRecording.requiresRecording && !noRecording.asynchronous);
         const RecordingPreferenceSession session{"exact-session","exact-start",true};
         const auto live=PrepareRecordingPreferencePatch(current,installed,
-            {{"recording.microphone",mic},{"recording.canvas","720p"}},session);
-        QVERIFY(live.error.isEmpty());QCOMPARE(live.writes.size(),std::size_t(2));
+            {{"recording.microphone",mic}},session);
+        QVERIFY(live.error.isEmpty());QCOMPARE(live.writes.size(),std::size_t(1));
         QVERIFY(live.requiresRecording && live.asynchronous && live.requiresApproval && live.terminalRecording);
         QCOMPARE(live.targetIdentity,session.id);QCOMPARE(live.startedAt,session.startedAt);
-        const auto unknown=PrepareRecordingPreferencePatch(current,{},{{"recording.microphone",mic},{"recording.canvas","720p"}},session);
+        const auto unknown=PrepareRecordingPreferencePatch(current,{},{{"recording.microphone",mic}},session);
         QCOMPARE(unknown.error,QStringLiteral("not_found"));QVERIFY(unknown.writes.empty());
         const auto stopping=PrepareRecordingPreferencePatch(current,installed,{{"recording.microphone",mic}},
             {session.id,session.startedAt,false});
         QCOMPARE(stopping.error,QStringLiteral("busy"));QVERIFY(stopping.writes.empty());
-        const auto invalid=PrepareRecordingPreferencePatch(current,installed,{{"recording.microphone",mic},{"recording.canvas","8k"}},session);
+        const auto invalid=PrepareRecordingPreferencePatch(current,installed,{{"recording.microphone",123}},session);
         QCOMPARE(invalid.error,QStringLiteral("invalid_argument"));QVERIFY(invalid.writes.empty());
         const RecordingPreferenceFence fence{2,3,4,session.id};
         QCOMPARE(RecordingPreferenceFenceStatus(fence,true,true,2,3,4,session.id,true,false,false),QStringLiteral("waiting"));

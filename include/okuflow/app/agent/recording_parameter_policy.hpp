@@ -7,7 +7,8 @@ struct RecordingPreferenceSession {
     QString id, startedAt;
     bool stoppable{};
 };
-// Pure two-field planning; runtime provides opaque installed microphone handles
+// Pure microphone planning; deprecated canvas input is atomically rejected.
+// Runtime provides opaque installed microphone handles
 // and the exact current recording identity. No device or file is touched here.
 ControlPlan PrepareRecordingPreferencePatch(const std::map<Field,QJsonValue>& current,
     const QSet<QString>& microphones, const QJsonObject& patch,

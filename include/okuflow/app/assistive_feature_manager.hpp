@@ -48,6 +48,10 @@ public:
     void SetPeriodicAnalysisEnabled(bool enabled);
     void SetOverlayEnabled(bool enabled);
     void ApplySettings(const settings::AssistiveSettings& settings);
+    void NoteCapturedVideo(const QString& originalPath,
+                           const QString& recordingSessionId = {},
+                           int segmentIndex = 1,
+                           qint64 sourceClockOrigin100ns = -1);
 
     bool WantsPeriodicReadback(bool debugViewEnabled) const;
     void MaybeRequestAnalysis(const std::uint8_t* data,

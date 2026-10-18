@@ -12,6 +12,7 @@
 #include "okuflow/common/recording_contract.hpp"
 #include "okuflow/common/gpu_read_retirement.hpp"
 #include "okuflow/common/recording_preservation.hpp"
+#include "okuflow/common/video_archive.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -206,7 +207,10 @@ public:
     // Finalize concurrently with a wedged WriteSample on the same COM
     // object is forbidden — and teardown deliberately leaks the COM
     // references for process exit to reclaim.
-    void MarkAbandoned() { abandoned_.store(true); }
+    void MarkAbandoned() {
+        abandoned_.store(true);
+        if (auto archive = Archive()) archive->Abandoned();
+    }
     bool IsAbandoned() const { return abandoned_.load(); }
 
     VideoRecorder();
@@ -250,12 +254,12 @@ public:
                        std::int64_t duration100ns);
 
     // Worker-thread-only check for the negotiated NV12 or packed BGRA input.
-    // Call for BOTH recorders before admitting a
-    // matched video pair. False means drop this pair, not writer failure;
+    // Call before admitting a clean Original frame. False means drop this
+    // arrival, not writer failure;
     // it leaves timelines and pending samples untouched. Do not call from UI
     // watchdogs, or concurrently with WriteSample/Finalize on this writer.
     bool CanAcceptVideoFrame();
-    // Check BOTH writers before submitting either PCM block. False means the
+    // Check the Original writer before submitting a PCM block. False means the
     // finite audio budget is exhausted or input is invalid; the manager ends
     // the session explicitly rather than silently dropping recorded speech.
     bool CanAcceptAudioFrame(std::size_t byteCount, std::int64_t sampleTime100ns,
@@ -272,10 +276,21 @@ public:
     }
 
     double DurationSeconds() const;
+    // Recording-worker only, after successful AddFrame/AddGpuFrame. This is
+    // admission mapping, not successful native WriteSample evidence.
+    std::int64_t LastAdmittedVideoTimestamp100ns() const {
+        return timeline_.LastTimestamp100ns();
+    }
     const std::string& LastError() const { return lastError_; }
     // The selected attempt may differ from Start's requested path after a
     // GPU-input fallback. Retained through Stop for finalization/publication.
     const std::wstring& OutputPath() const { return targetPath_; }
+    std::shared_ptr<RecordingArchive> Archive() const {
+        return archive_.load(std::memory_order_acquire);
+    }
+    const std::vector<std::wstring>& FailedAttemptPaths() const {
+        return failedAttemptPaths_;
+    }
     bool UsesGpuInput() const { return gpuInputEnabled_; }
     bool UsesWorkerGpuReadback() const {
         return gpuCompatibilityReadback_;
@@ -377,6 +392,8 @@ private:
     std::int64_t timelineEnd100ns_{0};
     bool recording_{false};
     std::wstring targetPath_;
+    std::atomic<std::shared_ptr<RecordingArchive>> archive_;
+    std::vector<std::wstring> failedAttemptPaths_;
     ULONGLONG lastSpaceCheckTicks_{0};
     StopReason stopReason_{StopReason::None};
     Codec activeCodec_{Codec::H264};

@@ -1,11 +1,19 @@
 // This target is Windows-only in CMake. Keep its QObject visible to moc,
 // which does not inherit the compiler's implicit _WIN32 predefined macro.
 #include "okuflow/app/recording_manager.hpp"
+#include "okuflow/common/video_archive.hpp"
 
 #include <QTemporaryDir>
 #include <QFileInfo>
 #include <QFile>
 #include <QSet>
+#include <QDir>
+#include <QDirIterator>
+#include <QCoreApplication>
+#include <QEvent>
+#include <QScopeGuard>
+#include <mferror.h>
+#include <wrl/client.h>
 #include <QtTest>
 #include <limits>
 #include <chrono>
@@ -13,7 +21,7 @@
 namespace okuflow {
 struct RecordingManagerTestAccess {
     static void SetEncoderStart(RecordingManager& manager,
-        std::function<bool(bool, const QString&, VideoRecorder::Codec)> start) {
+        std::function<bool(const QString&, VideoRecorder::Codec)> start) {
         manager.encoderStartOverride_ = std::move(start);
     }
     static bool StartSegment(RecordingManager& manager) {
@@ -22,15 +30,54 @@ struct RecordingManagerTestAccess {
         frame.original.identity.captureClock100ns = 100'000;
         return manager.StartSegment(frame);
     }
-    static QString SelectedPath(RecordingManager& manager, bool processed) {
-        return processed ? manager.segmentProcessedPath_ : manager.segmentOriginalPath_;
+    static QString SelectedPath(RecordingManager& manager) {
+        return manager.segmentOriginalPath_;
     }
-    static QString RequestedPath(RecordingManager& manager, bool processed) {
-        return manager.SegmentPath(processed);
+    static QString RequestedPath(RecordingManager& manager) {
+        return manager.SegmentPath();
+    }
+    static CapturedFrame QueuedOriginal(RecordingManager& manager, std::size_t index) {
+        std::lock_guard lock(manager.queueMutex_);
+        return manager.frameQueue_.at(index).original;
+    }
+    static bool WriteNextQueued(RecordingManager& manager) {
+        RecordingManager::QueuedFrame frame;
+        {
+            std::lock_guard lock(manager.queueMutex_);
+            if (manager.frameQueue_.empty()) return false;
+            frame = std::move(manager.frameQueue_.front());
+            manager.frameQueue_.pop_front();
+        }
+        return manager.WriteFrame(std::move(frame));
+    }
+    static bool WriteAudio(RecordingManager& manager, AudioFrame frame) {
+        return manager.WriteAudioFrame(std::move(frame));
+    }
+    static const VideoRecorder& Recorder(const RecordingManager& manager) {
+        return manager.originalRecorder_;
+    }
+    static void Abandon(RecordingManager& manager) {
+        manager.AbandonWedgedWorker(QStringLiteral("fixture native call deadline"));
+    }
+    static void BeginPart(RecordingManager& manager, int part) {
+        manager.segmentIndex_ = part;
+        manager.segmentClockOrigin100ns_ = manager.segmentLastCaptureClock100ns_ = -1;
+    }
+    static void Admit(RecordingManager& manager, std::uint64_t sequence,
+                      std::int64_t clock, std::int64_t pts) {
+        RecordingFrameIdentity identity;
+        identity.sequenceNumber = sequence; identity.captureClock100ns = clock;
+        manager.PublishFrameAdmission(identity, pts);
+    }
+    static bool FailFirstFrame(RecordingManager& manager) {
+        return manager.CompleteFrameSubmission(false, {}, -1,
+                                               QStringLiteral("fixture first-frame rejection"));
     }
     static void PrimeStartingWithoutCodecWorker(RecordingManager& manager) {
         manager.ShutdownForProcessExit();manager.shutdownRequested_=false;
         manager.stopRequested_=false;manager.frameQueue_.clear();manager.audioQueue_.clear();
+        manager.sessionStartTicket_ = std::make_shared<RecordingManager::SessionStartTicket>(manager.sessionInfo_.id);
+        manager.sessionStartedPosted_ = false;
         manager.segmentFinalized_=true;manager.SetState(RecordingState::Starting);
     }
     static std::size_t QueuedVideo(RecordingManager& manager) {
@@ -79,6 +126,11 @@ struct RecordingManagerTestAccess {
             && manager.stopMessage_ == QStringLiteral("session-b-stop");
     }
 };
+struct VideoRecorderTestAccess {
+    static std::uint64_t PcmFrames(const VideoRecorder& recorder) {
+        return recorder.audioTimeline_.Frames();
+    }
+};
 } // namespace okuflow
 
 namespace {
@@ -103,15 +155,8 @@ struct FakeSinkWriterStatistics {
 class RecordingManagerTests : public QObject {
     Q_OBJECT
 private slots:
-    void failedCodecBytesCannotSuppressFallback_data()
-    {
-        QTest::addColumn<bool>("failProcessed");
-        QTest::newRow("processed-metadata-failure") << true;
-        QTest::newRow("original-metadata-failure") << false;
-    }
     void failedCodecBytesCannotSuppressFallback()
     {
-        QFETCH(bool, failProcessed);
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         okuflow::UserDataPaths paths(directory.path(), QStringLiteral("C:/fixture-install"));
@@ -122,23 +167,19 @@ private slots:
         using Access = okuflow::RecordingManagerTestAccess;
         Access::PrimeStartingWithoutCodecWorker(manager);
         QStringList attempted;
-        Access::SetEncoderStart(manager, [&](bool processed, const QString& path,
+        Access::SetEncoderStart(manager, [&](const QString& path,
                                              okuflow::VideoRecorder::Codec codec) {
             attempted.append(path);
             QFile output(path);
             if (!output.open(QIODevice::WriteOnly | QIODevice::NewOnly) ||
                 output.write("fixture encoder metadata") != 24) return false;
-            return codec != okuflow::VideoRecorder::Codec::Av1 ||
-                   processed != failProcessed;
+            return codec != okuflow::VideoRecorder::Codec::Av1;
         });
         QVERIFY(Access::StartSegment(manager));
         QCOMPARE(manager.State(), okuflow::RecordingState::Recording);
-        QCOMPARE(attempted.size(), failProcessed ? 3 : 4);
-        const QString processed = Access::SelectedPath(manager, true);
-        const QString original = Access::SelectedPath(manager, false);
-        QVERIFY(processed != Access::RequestedPath(manager, true));
-        QVERIFY(original != Access::RequestedPath(manager, false));
-        QVERIFY(processed != original);
+        QCOMPARE(attempted.size(), 2);
+        const QString original = Access::SelectedPath(manager);
+        QVERIFY(original != Access::RequestedPath(manager));
         for (const QString& path : attempted) {
             QFile output(path);
             QVERIFY(output.open(QIODevice::ReadOnly));
@@ -159,13 +200,13 @@ private slots:
         manager.SetRequested(true, session);
         using Access = okuflow::RecordingManagerTestAccess;
         Access::PrimeStartingWithoutCodecWorker(manager);
-        const QString path = Access::RequestedPath(manager, false);
+        const QString path = Access::RequestedPath(manager);
         QFile output(path);
         QVERIFY(output.open(QIODevice::WriteOnly | QIODevice::NewOnly));
         QCOMPARE(output.write("user-owned"), 10);
         output.close();
         int attempts = 0;
-        Access::SetEncoderStart(manager, [&](bool, const QString&,
+        Access::SetEncoderStart(manager, [&](const QString&,
                                              okuflow::VideoRecorder::Codec) {
             ++attempts;
             return true;
@@ -174,6 +215,26 @@ private slots:
         QCOMPARE(attempts, 0);
         QVERIFY(output.open(QIODevice::ReadOnly));
         QCOMPARE(output.readAll(), QByteArray("user-owned"));
+    }
+    void abandonedStartupCannotPublishLateOriginalSuccess()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const okuflow::UserDataPaths paths(directory.path());
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths);
+        manager.SetRequested(true);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        Access::SetEncoderStart(manager, [&](const QString&, okuflow::VideoRecorder::Codec) {
+            // A synchronous native call returns only after its watchdog has
+            // revoked recording. That return cannot restore Recording state.
+            Access::Abandon(manager);
+            return true;
+        });
+        QVERIFY(!Access::StartSegment(manager));
+        QVERIFY(manager.IsWorkerAbandoned());
+        QCOMPARE(manager.State(), okuflow::RecordingState::Failed);
+        QVERIFY(!manager.CurrentArchive());
+        QVERIFY(!manager.LastSavedSegment());
     }
     void terminalPublicationRetiresOldSession_data()
     {
@@ -355,44 +416,29 @@ private slots:
         QVERIFY(!backlog.CanAccept(sink.Query(), 0, maximum, 1));
     }
 
-    void encoderAdmissionDropsPairAndPreservesTimeline()
+    void encoderAdmissionPreservesDroppedSourceTime()
     {
-        okuflow::RecordingEncoderBacklog processed(4, 1024), original(4, 1024);
-        FakeSinkWriterStatistics processedSink, originalSink;
+        okuflow::RecordingEncoderBacklog original(4, 1024);
+        FakeSinkWriterStatistics sink;
         bool havePending = false;
-        okuflow::RecordingTimeline processedTime, originalTime;
-        processedTime.Reset(30, 1);
-        originalTime.Reset(30, 1);
-        const auto admitPair = [&](std::int64_t timestamp) {
-            // Both queries run even if one side is under pressure.
-            const bool p = processed.CanAccept(processedSink.Query(),
-                processedSink.value.qwNumSamplesReceived, havePending, 16);
-            const bool o = original.CanAccept(originalSink.Query(),
-                originalSink.value.qwNumSamplesReceived, havePending, 16);
-            if (!p || !o) return false;
-            processedTime.MapTimestamp(timestamp);
-            originalTime.MapTimestamp(timestamp);
-            if (havePending) {
-                processedSink.Submit(); originalSink.Submit();
-            }
+        okuflow::RecordingTimeline timeline;
+        timeline.Reset(30, 1);
+        const auto admit = [&](std::int64_t timestamp) {
+            if (!original.CanAccept(sink.Query(), sink.value.qwNumSamplesReceived,
+                                    havePending, 16)) return false;
+            timeline.MapTimestamp(timestamp);
+            if (havePending) sink.Submit();
             havePending = true;
-            // Processed encoder is fast; original emits nothing yet.
-            processedSink.Encode(processedSink.value.qwNumSamplesReceived);
             return true;
         };
-        for (int frame = 0; frame < 4; ++frame) QVERIFY(admitPair(frame * 100'000));
-        QVERIFY(!admitPair(400'000));
-        QCOMPARE(processedSink.value.qwNumSamplesReceived, 3ULL);
-        QCOMPARE(originalSink.value.qwNumSamplesReceived, 3ULL);
-        QCOMPARE(processedTime.LastTimestamp100ns(), 300'000LL);
-        QCOMPARE(originalTime.LastTimestamp100ns(), 300'000LL);
-        QCOMPARE(processedSink.queries, 5);
-        QCOMPARE(originalSink.queries, 5);
-        originalSink.Encode(2);
-        QVERIFY(admitPair(600'000));
-        // Recovered admission keeps the dropped-frame gap on BOTH timelines.
-        QCOMPARE(processedTime.LastTimestamp100ns(), 600'000LL);
-        QCOMPARE(originalTime.LastTimestamp100ns(), 600'000LL);
+        for (int frame = 0; frame < 4; ++frame) QVERIFY(admit(frame * 100'000));
+        QVERIFY(!admit(400'000));
+        QCOMPARE(sink.value.qwNumSamplesReceived, 3ULL);
+        QCOMPARE(timeline.LastTimestamp100ns(), 300'000LL);
+        QCOMPARE(sink.queries, 5);
+        sink.Encode(2);
+        QVERIFY(admit(600'000));
+        QCOMPARE(timeline.LastTimestamp100ns(), 600'000LL);
     }
 
     void encoderByteBudgetIncludesPendingAndIncoming()
@@ -674,25 +720,367 @@ private slots:
         }
     }
 
-    void canvasSelectionAppliesToNextSession()
+    void deprecatedCanvasNeverChangesOriginalDimensions()
     {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         const okuflow::UserDataPaths paths(directory.path());
         okuflow::RecordingManager manager(nullptr, {}, {}, paths);
-        manager.SetCanvasMode(okuflow::RecordingCanvasMode::Hd720);
+        manager.SetCanvasMode(okuflow::RecordingCanvasMode::Nhd360);
+        QCOMPARE(manager.ResolveCanvas(1920, 1080).width, 1920u);
         manager.SetRequested(true);
-        QCOMPARE(manager.State(), okuflow::RecordingState::Starting);
-        manager.SetCanvasMode(okuflow::RecordingCanvasMode::FullHd1080);
-        QCOMPARE(manager.ResolveCanvas(640, 480).width, 1280u);
-        QCOMPARE(manager.ResolveCanvas(480, 640).height, 1280u);
+        manager.SetCanvasMode(okuflow::RecordingCanvasMode::Hd720);
+        QCOMPARE(manager.ResolveCanvas(1920, 1080).height, 1080u);
+        QCOMPARE(manager.ResolveCanvas(1080, 1920).height, 1920u);
         manager.Stop();
         QTRY_COMPARE(manager.State(), okuflow::RecordingState::Failed);
-        QCOMPARE(manager.ResolveCanvas(640, 480).width, 1920u);
-        manager.SetRequested(true);
-        QCOMPARE(manager.State(), okuflow::RecordingState::Starting);
-        QCOMPARE(manager.ResolveCanvas(480, 640).height, 1920u);
+        QCOMPARE(manager.ResolveCanvas(3840, 2160).width, 3840u);
         QVERIFY(manager.ShutdownForProcessExit());
+    }
+
+    void originalAdmissionOwnsOnlyCleanSourceAndRemainsBounded()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const okuflow::UserDataPaths paths(directory.path());
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths);
+        manager.SetRequested(true);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        okuflow::CapturedFrame source;
+        source.width = 64; source.height = 48;
+        source.pixels.assign(64u * 48u * 4u, 37);
+        source.identity.captureClock100ns = 100'000;
+        source.identity.sequenceNumber = 71;
+        // Invalid/absent legacy display payload cannot block clean admission.
+        manager.AddSceneFrame(nullptr, 0, 0, {}, source);
+        manager.AddGpuSceneFrame({}, {}, source);
+        manager.AddOriginalFrame(source);
+        QCOMPARE(Access::QueuedVideo(manager), std::size_t(3));
+        for (std::size_t index = 0; index < 3; ++index) {
+            const auto queued = Access::QueuedOriginal(manager, index);
+            QCOMPARE(queued.width, 64u); QCOMPARE(queued.height, 48u);
+            QVERIFY(queued.pixels == source.pixels);
+            QCOMPARE(queued.identity.sequenceNumber, 71ULL);
+        }
+        source.pixels[0] = 99;
+        QCOMPARE(Access::QueuedOriginal(manager, 0).pixels[0], std::uint8_t(37));
+        auto malformed = source; malformed.pixels.pop_back();
+        manager.AddOriginalFrame(std::move(malformed));
+        QCOMPARE(Access::QueuedVideo(manager), std::size_t(3));
+        for (unsigned index = 0; index < 20; ++index) manager.AddOriginalFrame(source);
+        QCOMPARE(Access::QueuedVideo(manager), std::size_t(12));
+        QCOMPARE(manager.DropCounts().queueOverflow, 11ULL);
+        manager.Stop(); Access::Finish(manager, false);
+    }
+
+    void activeTimelinePublishesExactBoundedPartAdmissions()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const okuflow::UserDataPaths paths(directory.path());
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths);
+        okuflow::RecordingSessionInfo session; session.id = QStringLiteral("admission-session");
+        manager.SetRequested(true, session);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        QVERIFY(!manager.CurrentTimeline());
+        Access::Admit(manager, 71, 1'000'000, 0);
+        const auto first = manager.CurrentTimeline(); QVERIFY(first);
+        QCOMPARE(first->session.id, session.id); QCOMPARE(first->segmentIndex, 1);
+        QCOMPARE(first->firstCaptureClock100ns, 1'000'000LL);
+        Access::Admit(manager, 74, 2'000'000, 1'000'000);
+        auto current = manager.CurrentTimeline(); QVERIFY(current);
+        QCOMPARE(current->lastCaptureClock100ns, 2'000'000LL);
+        QCOMPARE(current->lastAdmittedSequence, 74ULL);
+        QCOMPARE(current->lastAdmittedPts100ns, 1'000'000LL);
+        QVERIFY(current->FindAdmission(71, 1'000'000));
+        QVERIFY(!current->FindAdmission(72, 1'500'000)); // A dropped frame has no invented PTS.
+        QVERIFY(!current->FindAdmission(71, 2'000'000)); // Sequence alone is not identity.
+        QCOMPARE(first->recentAdmissions.size(), std::size_t(1)); // Earlier snapshots are immutable.
+        for (unsigned index = 0; index < 130; ++index)
+            Access::Admit(manager, 100 + index, 3'000'000 + index, 2'000'000 + index);
+        current = manager.CurrentTimeline();
+        QCOMPARE(current->recentAdmissions.size(), std::size_t(128));
+        QVERIFY(!current->FindAdmission(71, 1'000'000));
+        Access::BeginPart(manager, 2);
+        Access::Admit(manager, 500, 8'000'000, 0);
+        current = manager.CurrentTimeline();
+        QCOMPARE(current->segmentIndex, 2); QCOMPARE(current->firstCaptureClock100ns, 8'000'000LL);
+        QCOMPARE(current->recentAdmissions.size(), std::size_t(1));
+        QCOMPARE(current->FindAdmission(500, 8'000'000)->pts100ns, 0LL);
+        manager.Stop(); Access::Finish(manager, false);
+        QCOMPARE(manager.CurrentTimeline()->session.completion, okuflow::RecordingSessionCompletion::Failed);
+        manager.SetRequested(true);
+        QVERIFY(!manager.CurrentTimeline());
+        manager.Stop(); Access::Finish(manager, false);
+    }
+
+    void startAcknowledgementRejectsStartupFailures_data()
+    {
+        QTest::addColumn<bool>("encoderStartFails");
+        QTest::newRow("encoder-start-failure") << true;
+        QTest::newRow("first-frame-rejection") << false;
+    }
+    void startAcknowledgementRejectsStartupFailures()
+    {
+        QFETCH(bool, encoderStartFails);
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const okuflow::UserDataPaths paths(directory.path());
+        int starts = 0;
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths, {},
+            [&](const okuflow::RecordingSessionInfo&) { ++starts; });
+        manager.SetRequested(true);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        Access::SetEncoderStart(manager, [&](const QString&, okuflow::VideoRecorder::Codec) {
+            return !encoderStartFails;
+        });
+        QCOMPARE(Access::StartSegment(manager), !encoderStartFails);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        QCOMPARE(starts, 0); // Encoder startup alone acknowledges nothing.
+        if (!encoderStartFails) QVERIFY(!Access::FailFirstFrame(manager));
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        QCOMPARE(manager.State(), okuflow::RecordingState::Failed);
+        QCOMPARE(starts, 0); QVERIFY(!manager.CurrentTimeline());
+    }
+
+    void startAcknowledgementRunsOnceAfterTimelineAndAudioAreReady()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const okuflow::UserDataPaths paths(directory.path());
+        int starts = 0; bool timelineReady = false;
+        okuflow::RecordingSessionInfo observed;
+        okuflow::RecordingManager* active = nullptr;
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths, {},
+            [&](const okuflow::RecordingSessionInfo& session) {
+                ++starts; observed = session;
+                const auto timeline = active->CurrentTimeline();
+                timelineReady = timeline && timeline->session.id == session.id &&
+                    timeline->FindAdmission(7, 1'000'000).has_value();
+            });
+        active = &manager;
+        okuflow::RecordingSessionInfo session;
+        session.id = QStringLiteral("started-session");
+        session.ownerKind = okuflow::RecordingOwnerKind::AgentSession;
+        session.ownerId = QStringLiteral("started-owner");
+        manager.SetRequested(true, session);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        manager.SetSessionAudioPending(session.id);
+        manager.SetSessionAudioResult(session.id, true);
+        Access::Admit(manager, 7, 1'000'000, 0);
+        QCOMPARE(starts, 0); // Delivery is queued to the Qt owning thread.
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        QCOMPARE(starts, 1); QVERIFY(timelineReady);
+        QCOMPARE(observed.id, session.id); QCOMPARE(observed.ownerId, session.ownerId);
+        QCOMPARE(observed.ownerKind, session.ownerKind); QVERIFY(observed.actualAudio);
+        Access::Admit(manager, 8, 2'000'000, 1'000'000);
+        Access::BeginPart(manager, 2); Access::Admit(manager, 9, 3'000'000, 0);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        QCOMPARE(starts, 1); // More frames and source-format parts share one acknowledgement.
+        manager.Stop(); Access::Finish(manager, false);
+    }
+
+    void queuedStartAcknowledgementCannotTargetEndedOrReplacedSession()
+    {
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const okuflow::UserDataPaths paths(directory.path());
+        QStringList started;
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths, {},
+            [&](const okuflow::RecordingSessionInfo& session) { started.append(session.id); });
+        okuflow::RecordingSessionInfo first; first.id = QStringLiteral("first-start-ticket");
+        manager.SetRequested(true, first);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        Access::Admit(manager, 1, 1'000'000, 0); // Its callback remains queued.
+        manager.Stop(); Access::Finish(manager, false);
+        // Reusing even the same supplied id cannot revive the old ticket.
+        manager.SetRequested(true, first);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        QVERIFY(started.isEmpty());
+        Access::Admit(manager, 2, 2'000'000, 0);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        QCOMPARE(started, QStringList{first.id});
+        manager.Stop(); Access::Finish(manager, false);
+    }
+
+    void revokedStartAcknowledgementsCannotOutliveManager_data()
+    {
+        QTest::addColumn<QString>("revoke");
+        QTest::newRow("first-frame-then-failure") << QStringLiteral("failure");
+        QTest::newRow("worker-abandonment") << QStringLiteral("abandon");
+        QTest::newRow("process-shutdown") << QStringLiteral("shutdown");
+        QTest::newRow("manager-destruction") << QStringLiteral("destroy");
+    }
+    void revokedStartAcknowledgementsCannotOutliveManager()
+    {
+        QFETCH(QString, revoke);
+        QTemporaryDir directory; QVERIFY(directory.isValid());
+        const okuflow::UserDataPaths paths(directory.path());
+        int starts = 0;
+        auto manager = std::make_unique<okuflow::RecordingManager>(nullptr,
+            okuflow::RecordingManager::StatusCallback{},
+            okuflow::RecordingManager::SegmentSavedCallback{}, paths,
+            okuflow::RecordingManager::SessionEndedCallback{},
+            [&](const okuflow::RecordingSessionInfo&) { ++starts; });
+        manager->SetRequested(true);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(*manager);
+        Access::Admit(*manager, 1, 1'000'000, 0);
+        if (revoke == QStringLiteral("failure")) Access::Finish(*manager, false);
+        else if (revoke == QStringLiteral("abandon")) Access::Abandon(*manager);
+        else if (revoke == QStringLiteral("shutdown")) QVERIFY(manager->ShutdownForProcessExit());
+        else manager.reset();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        QCOMPARE(starts, 0);
+    }
+
+    void nativeOriginalRecordsOneVideoAndAudioTrack()
+    {
+        if (!qEnvironmentVariableIntValue("OKUFLOW_TEST_ORIGINAL_RECORDING_NATIVE"))
+            QSKIP("Opt-in serial native codec acceptance; no camera or microphone.");
+        const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        QVERIFY(SUCCEEDED(com));
+        const auto comExit = qScopeGuard([] { CoUninitialize(); });
+        QVERIFY(SUCCEEDED(MFStartup(MF_VERSION)));
+        const auto mfExit = qScopeGuard([] { MFShutdown(); });
+        const QString evidenceRoot = qEnvironmentVariable("OKUFLOW_TEST_ORIGINAL_RECORDING_EVIDENCE_DIR",
+            QDir(qEnvironmentVariable("LOCALAPPDATA")).filePath(
+                QStringLiteral("OkuFlow/test-evidence/original-recording")));
+        QVERIFY(QDir().mkpath(evidenceRoot));
+        QTemporaryDir directory(QDir(evidenceRoot).filePath(QStringLiteral("native-XXXXXX")));
+        QVERIFY(directory.isValid()); directory.setAutoRemove(false);
+        qInfo().noquote() << "Original recording evidence:" << directory.path();
+        const okuflow::UserDataPaths paths(directory.path());
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths);
+        okuflow::RecordingSessionInfo session; session.id = QStringLiteral("native-original-only");
+        manager.SetRequested(true, session);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        manager.SetSessionAudioResult(session.id, true);
+        manager.SetCanvasMode(okuflow::RecordingCanvasMode::Nhd360);
+        constexpr std::int64_t origin = 1'000'000;
+        for (unsigned index = 0; index < 30; ++index) {
+            okuflow::CapturedFrame source;
+            source.width = 64; source.height = 48;
+            source.pixels.resize(64u * 48u * 4u);
+            for (std::size_t at = 0; at < source.pixels.size(); at += 4) {
+                source.pixels[at] = 0; source.pixels[at + 1] = 0;
+                source.pixels[at + 2] = 255; source.pixels[at + 3] = 255;
+            }
+            source.identity = {origin + index * 10'000'000LL / 30,
+                               origin + index * 10'000'000LL / 30, index, 30, 1};
+            const std::vector<std::uint8_t> processed(8u * 8u * 4u, 0);
+            const okuflow::RecordingViewTransform cropped{
+                .5f, .5f, .25f, .25f, 0, 0, 1, 1, true};
+            manager.AddSceneFrame(processed.data(), 8, 8, cropped, std::move(source));
+            QVERIFY(Access::WriteNextQueued(manager));
+            QCOMPARE(manager.State(), okuflow::RecordingState::Recording);
+            okuflow::AudioFrame audio;
+            audio.pcm.assign(1600 * 2, 0); // mono 48 kHz, exactly 1/30 second
+            audio.captureClock100ns = origin + index * 10'000'000LL / 30;
+            audio.duration100ns = 10'000'000LL / 30;
+            QVERIFY(Access::WriteAudio(manager, std::move(audio)));
+            // Exercise ordinary paced input, rather than treating the bounded
+            // encoder queue as an unbounded synthetic offline transcoder.
+            QTest::qWait(34);
+        }
+        QCOMPARE(okuflow::VideoRecorderTestAccess::PcmFrames(Access::Recorder(manager)), 48'000ULL);
+        const auto timeline = manager.CurrentTimeline(); QVERIFY(timeline);
+        QCOMPARE(timeline->firstCaptureClock100ns, origin);
+        QCOMPARE(timeline->lastAdmittedSequence, 29ULL);
+        const auto admittedFirst = timeline->FindAdmission(0, origin); QVERIFY(admittedFirst);
+        QCOMPARE(admittedFirst->pts100ns, 0LL);
+        QVERIFY(manager.StopSession(session.id)); Access::Finish(manager, true);
+        QCOMPARE(manager.State(), okuflow::RecordingState::Completed);
+        const auto saved = manager.LastSavedSegment(); QVERIFY(saved.has_value());
+        QCOMPARE(saved->session.id, session.id); QCOMPARE(saved->segmentIndex, 1);
+        QVERIFY(saved->processedPath.isEmpty()); QCOMPARE(saved->framesWritten, 30ULL);
+        QCOMPARE(saved->firstCaptureClock100ns, origin);
+        QCOMPARE(saved->lastCaptureClock100ns, origin + 29 * 10'000'000LL / 30);
+        QCOMPARE(saved->completion, okuflow::RecordingSessionCompletion::Completed);
+        QVERIFY(saved->archive); QVERIFY(manager.CurrentArchive() == saved->archive);
+        const auto archived = saved->archive->Snapshot();
+        QCOMPARE(QString::fromStdWString(archived.path), saved->originalPath);
+        QVERIFY(archived.finalized); QVERIFY(archived.complete);
+        QStringList outputs;
+        QDirIterator files(directory.path(), {QStringLiteral("*.mp4")}, QDir::Files,
+                           QDirIterator::Subdirectories);
+        while (files.hasNext()) outputs.append(files.next());
+        // std::filesystem's fallback path uses Windows separators; Qt's
+        // enumerator returns slash-separated labels for the same file. Hold
+        // exact file identities rather than treating spelling as identity.
+        Microsoft::WRL::ComPtr<IMFByteStream> selectedFile;
+        okuflow::VideoFileIdentity selectedIdentity;
+        QVERIFY(SUCCEEDED(okuflow::OpenStableVideoReadStream(
+            saved->originalPath.toStdWString(), selectedFile.GetAddressOf(), &selectedIdentity)));
+        unsigned selectedOutputs = 0;
+        for (const QString& output : outputs) {
+            QVERIFY(!output.contains(QStringLiteral("_processed")));
+            Microsoft::WRL::ComPtr<IMFByteStream> outputFile;
+            okuflow::VideoFileIdentity outputIdentity;
+            QVERIFY(SUCCEEDED(okuflow::OpenStableVideoReadStream(
+                output.toStdWString(), outputFile.GetAddressOf(), &outputIdentity)));
+            if (outputIdentity.SameFile(selectedIdentity)) {
+                ++selectedOutputs;
+                continue;
+            }
+            bool knownFailedAttempt = false;
+            for (const QString& failedPath : saved->failedAttemptPaths) {
+                Microsoft::WRL::ComPtr<IMFByteStream> failedFile;
+                okuflow::VideoFileIdentity failedIdentity;
+                QVERIFY(SUCCEEDED(okuflow::OpenStableVideoReadStream(
+                    failedPath.toStdWString(), failedFile.GetAddressOf(), &failedIdentity)));
+                if (outputIdentity.SameFile(failedIdentity)) {
+                    knownFailedAttempt = true;
+                    break;
+                }
+            }
+            QVERIFY2(knownFailedAttempt, qPrintable(output));
+        }
+        QCOMPARE(selectedOutputs, 1u);
+        Microsoft::WRL::ComPtr<IMFSourceReader> reader;
+        Microsoft::WRL::ComPtr<IMFAttributes> readerAttributes;
+        QVERIFY(SUCCEEDED(MFCreateAttributes(readerAttributes.GetAddressOf(), 1)));
+        QVERIFY(SUCCEEDED(readerAttributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE)));
+        QVERIFY(SUCCEEDED(MFCreateSourceReaderFromURL(saved->originalPath.toStdWString().c_str(),
+            readerAttributes.Get(), reader.GetAddressOf())));
+        unsigned videos = 0, audios = 0; DWORD videoStream = 0;
+        for (DWORD stream = 0; stream < 16; ++stream) {
+            Microsoft::WRL::ComPtr<IMFMediaType> type;
+            const HRESULT result = reader->GetNativeMediaType(stream, 0, type.GetAddressOf());
+            if (result == MF_E_INVALIDSTREAMNUMBER) break;
+            QVERIFY(SUCCEEDED(result)); GUID major{};
+            QVERIFY(SUCCEEDED(type->GetGUID(MF_MT_MAJOR_TYPE, &major)));
+            if (major == MFMediaType_Video) {
+                ++videos; videoStream = stream; UINT32 width = 0, height = 0;
+                QVERIFY(SUCCEEDED(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &width, &height)));
+                QCOMPARE(width, 64u); QCOMPARE(height, 48u);
+            }
+            if (major == MFMediaType_Audio) ++audios;
+        }
+        QCOMPARE(videos, 1u); QCOMPARE(audios, 1u);
+        reader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE);
+        QVERIFY(SUCCEEDED(reader->SetStreamSelection(videoStream, TRUE)));
+        Microsoft::WRL::ComPtr<IMFMediaType> decodedType;
+        QVERIFY(SUCCEEDED(MFCreateMediaType(decodedType.GetAddressOf())));
+        QVERIFY(SUCCEEDED(decodedType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)));
+        QVERIFY(SUCCEEDED(decodedType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32)));
+        QVERIFY(SUCCEEDED(reader->SetCurrentMediaType(videoStream, nullptr, decodedType.Get())));
+        bool decoded = false;
+        for (unsigned attempt = 0; attempt < 8 && !decoded; ++attempt) {
+            DWORD flags = 0; LONGLONG pts = -1;
+            Microsoft::WRL::ComPtr<IMFSample> sample;
+            QVERIFY(SUCCEEDED(reader->ReadSample(videoStream, 0, nullptr, &flags, &pts,
+                                                sample.GetAddressOf())));
+            if (!sample) continue;
+            Microsoft::WRL::ComPtr<IMFMediaBuffer> pixels;
+            QVERIFY(SUCCEEDED(sample->ConvertToContiguousBuffer(pixels.GetAddressOf())));
+            BYTE* bytes = nullptr; DWORD length = 0;
+            QVERIFY(SUCCEEDED(pixels->Lock(&bytes, nullptr, &length)));
+            const bool clean = length >= 4 && bytes[2] > 200 && bytes[1] < 60 && bytes[0] < 60;
+            pixels->Unlock(); QVERIFY(clean); decoded = true;
+        }
+        QVERIFY(decoded);
     }
 
     void cpuFallbackUsesNv12LayoutAndColor()
@@ -712,35 +1100,7 @@ private slots:
         QVERIFY(!okuflow::ConvertRecordingBgraToNv12(nullptr, 12, 2, 2, nv12));
     }
 
-    void processedInkUsesSnapshotAndPannedTransform()
-    {
-        constexpr UINT size = 100;
-        std::vector<std::uint8_t> original(size * size * 4u, 0);
-        auto processed = original;
-        okuflow::AnnotationModel model;
-        model.BeginStroke({0.75, 0.4}, Qt::red, 0.08,
-                          okuflow::AnnotationItemKind::kLine);
-        model.SetStraightStrokeEnd({0.75, 0.6});
-        model.EndStroke();
-        const auto snapshot = model.strokes();
-        QVERIFY(model.Clear());
-        QVERIFY(!model.hasInk());
-        const okuflow::RecordingViewTransform pan{
-            0.5f, 0.0f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, true};
-        okuflow::ComposeRecordingAnnotations(processed, size, size, pan, snapshot);
-        const std::size_t center = (50u * size + 50u) * 4u;
-        QVERIFY(processed[center + 2] > 200);
-        QCOMPARE(original[center + 2], std::uint8_t(0));
-        auto clearedFrame = original;
-        okuflow::ComposeRecordingAnnotations(clearedFrame, size, size, pan,
-                                              model.strokes());
-        QVERIFY(clearedFrame == original);
-        QVERIFY(model.Undo());
-        auto undoFrame = original;
-        okuflow::ComposeRecordingAnnotations(undoFrame, size, size, pan,
-                                              model.strokes());
-        QVERIFY(undoFrame == processed);
-    }
+
 };
 
 QTEST_GUILESS_MAIN(RecordingManagerTests)

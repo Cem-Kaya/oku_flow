@@ -2,7 +2,7 @@
 
 The implementation inventory is [app_control_inventory.json](../tests/data/app_control_inventory.json).
 It records **98 adjustable values**, **13 protected entries** (including the
-four-field external lease bundle and an internal credential locator), and **39
+four-field external lease bundle and an internal credential locator), and **46
 action/workflow identities** found in the current Windows production source.
 The original 19 MCP tools and their private SDK proof cover a subset. This
 inventory alone does not establish native target or hardware acceptance. The
@@ -75,8 +75,8 @@ These descriptors are implemented in `app/agent/control_registry.cpp` and
 `app/agent/parameter_registry.cpp`. `ParameterRegistry`/`FindParameter` return
 the immutable 98-field table; `ProtectedControlRegistry` returns 17 metadata
 entries (the protected bundle's four fields are flattened), and
-`ControlActionRegistry` preserves the 39 existing-tool/native-only workflow
-classifications. `ParameterGroupForTool` maps the eight appended finite pairs.
+`ControlActionRegistry` preserves the existing-tool/native-only classifications
+and adds seven selected-video actions. `ParameterGroupForTool` maps the eight appended finite pairs.
 `ParameterGetSchema` permits an optional unique filter of 1–16 field IDs;
 `ParameterSetSchema` constructs nonempty closed patches with only that group's
 properties. `ParameterMetadataPage(group, afterField, limit, edition)` emits

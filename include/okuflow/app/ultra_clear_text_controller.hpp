@@ -3,6 +3,7 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/ui/uct_screen_text_accessible.hpp"
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 
 #include <QObject>
@@ -171,6 +172,78 @@ struct UctTiming {
     std::int64_t refreshIntervalMs{1500};
     double stableSimilarity{0.92};
     int probeDecimation{2};
+    // Current-job deadline, independent of an immutable frame's media age.
+    std::int64_t immutableJobTimeoutMs{30000};
+    std::int64_t mediaRecognitionIntervalMs{350}; // paced advancing-media OCR, not a per-frame task
+    // Wall-clock bound for advancing-media validation freshness. The media
+    // bound lives in the model's freshness policy (350 ms of media PTS);
+    // a no-analysis gap is retained only while both bounds hold.
+    std::int64_t mediaValidationFreshnessMs{350};
+};
+
+// Full processed-scene input retained by the selected-media owner. The
+// timestamp belongs to the source image; it is never refreshed to admit OCR.
+// `device` is an optional independently owned full-scene, pre-zoom device
+// image of the same frame. When it matches the scene (source epoch, frame
+// sequence and dimensions) recognition prefers the scheduler's device path
+// and any CPU readback happens on a worker thread only; otherwise valid
+// `pixels` are the CPU fallback. `frameSeq`/`timestampMs` stay the
+// authoritative frame identity and real media PTS, and the device pointer
+// identity participates in same-frame/discontinuity checks. The trailing
+// field keeps existing three-field aggregate initializers valid.
+struct UctImmutableFrame {
+    uct::SharedPixels pixels;
+    std::uint64_t frameSeq{};
+    std::int64_t timestampMs{};
+    uct::SharedDeviceImage device;
+};
+
+// Explicit media authority, separate from live camera/presentation liveness.
+// Changing sourceAuthority (e.g. seek generation), geometry or selected frame
+// revokes earlier work. Pixels or the device image must cover the complete
+// processed scene.
+struct UctImmutableScene {
+    UctGeometryKey geometry;
+    std::uint64_t sourceAuthority{};
+    UctImmutableFrame selected;
+    std::optional<UctImmutableFrame> corroboration;
+    ViewTransform transform;
+    std::uint32_t viewportWidth{};
+    std::uint32_t viewportHeight{};
+    int strokeWeight{};
+};
+
+// A receipt for a successfully presented advancing media frame. timestampMs
+// is its real media PTS (milliseconds); UI/job clocks remain separate.
+struct UctAdvancingMediaScene {
+    UctGeometryKey geometry;
+    std::uint64_t sourceAuthority{};
+    UctImmutableFrame current;
+    ViewTransform transform;
+    std::uint32_t viewportWidth{};
+    std::uint32_t viewportHeight{};
+    int strokeWeight{};
+};
+
+// A successful advancing-media presentation receipt WITHOUT any analysis
+// pixels, for presented frames whose display has no analysis lease (pool
+// pressure, probe/OCR pacing, or a copy the presenter withheld). It carries
+// only what the presenter can state truthfully about the displayed frame:
+// its geometry, source authority, frame sequence, real media PTS and view.
+// It never restamps an older analysis image as the displayed frame, never
+// submits a probe or OCR job, and never renews validation. The controller
+// advances its display/model clock from frameSeq/timestampMs and keeps the
+// previously validated overlay only while that real validation stays fresh
+// in both media time and wall time.
+struct UctAdvancingMediaPresentation {
+    UctGeometryKey geometry;
+    std::uint64_t sourceAuthority{};
+    std::uint64_t frameSeq{};     // frame actually presented
+    std::int64_t timestampMs{};   // its real media PTS, never an analysis PTS
+    ViewTransform transform;
+    std::uint32_t viewportWidth{};
+    std::uint32_t viewportHeight{};
+    int strokeWeight{};
 };
 
 // Owns Ultra Clear Text runtime state on the UI thread. The presentation path
@@ -197,6 +270,60 @@ public:
     // Retire a previous worker asynchronously and fence its queued callbacks.
     void ReplaceRecognizerFactory(RecognizerFactory factory);
     void SetShowOriginal(bool showOriginal);
+
+    // Selected media uses the same recognition scheduler as live input.
+    // A successful selection recognizes its owned complete scene once, then
+    // optionally one real distinct neighbour. Invalid input still suspends
+    // hidden live analysis until ClearImmutableScene() is called.
+    bool SetImmutableScene(UctImmutableScene scene);
+    // A processed media view may not have provable single-frame text
+    // correspondence (temporal/hold composites or neural output). Preserve
+    // the user's UCT preference, but revoke its words, jobs and UIA exposure.
+    void SetMediaOverlaySuppressed(bool suppressed);
+    // Successful native media receipt only. Retains one latest scene lease,
+    // paces full-scene probes/OCR, and never fabricates a camera presentation.
+    bool OnAdvancingMediaPresented(UctAdvancingMediaScene scene);
+    // Successful advancing-media presentation with no analysis lease for the
+    // displayed frame. Advances only the display/model clock and view;
+    // submits no probe/OCR and renews no validation, recognition stamp or
+    // analysis health. A geometry/source-authority change, seek, backward
+    // frame/PTS, or a same-sequence frame with a different PTS revokes all
+    // text immediately and records the receipt as a display-only chain
+    // awaiting a real analysis frame. Returns true only when the receipt
+    // continues the current chain (forward, or the same frame reprojected);
+    // a discontinuity, the first establishing receipt and an invalid view
+    // return false. Presenter faults still use OnMediaPresentationFailed().
+    bool OnAdvancingMediaPresentedWithoutAnalysis(UctAdvancingMediaPresentation receipt);
+    void UpdateImmutableView(const ViewTransform& transform, std::uint32_t viewportWidth,
+                             std::uint32_t viewportHeight, int strokeWeight = 0);
+    // Media presenter faults hide every text surface until a real successful
+    // receipt. View-only updates and camera notifications cannot reopen it.
+    // SetImmutableScene/OnAdvancingMediaPresented already carry that receipt;
+    // use this success signal after a committed view-only media presentation.
+    void OnMediaPresentationSucceeded();
+    void OnMediaPresentationFailed();
+    void ClearImmutableScene();
+    // Selected-media ownership, including advancement, suspends hidden live OCR.
+    // A display-only advancing chain (no analysis frame yet) also suspends it.
+    bool HasImmutableScene() const noexcept
+    {
+        return immutableScene_.has_value() || advancingMediaScene_.has_value() ||
+               advancingDisplay_.has_value();
+    }
+    bool HasAdvancingMediaScene() const noexcept
+    {
+        return advancingMediaScene_.has_value() || advancingDisplay_.has_value();
+    }
+    // Latest advancing display receipt, separate from the last analysis input.
+    bool HasAdvancingDisplayReceipt() const noexcept { return advancingDisplay_.has_value(); }
+    std::uint64_t AdvancingDisplayFrameSeq() const noexcept
+    {
+        return advancingDisplay_ ? advancingDisplay_->frameSeq : std::uint64_t{0};
+    }
+    std::int64_t AdvancingDisplayTimestampMs() const noexcept
+    {
+        return advancingDisplay_ ? advancingDisplay_->timestampMs : std::int64_t{0};
+    }
 
     // Presentation clock. Never blocks; returns true when a viewport copy
     // should be requested with this presentation.
@@ -246,6 +373,12 @@ public:
     std::uint64_t AcceptedResults() const noexcept { return acceptedResults_; }
     bool HasPendingReadback() const noexcept { return pendingReadbackId_ != 0; }
     QString StatusSource() const { return statusSource_; }
+    // UI Automation exposure of the drawn text (null without a render target).
+    UctScreenTextAccessibility* ScreenTextAccessibility() const noexcept { return screenText_; }
+    // Lines the overlay currently replaces, as exposed to screen readers:
+    // empty unless UCT is drawing glyphs now, each glyph word cross-checked
+    // against the overlay's word set.
+    UctScreenTextSnapshot ScreenTextSnapshot() const;
 
 signals:
     void recognitionAdmitted(int verdict);
@@ -257,6 +390,20 @@ private:
     void HandleProbeOutcome(uct::ProbeOutcome outcome);
     void HandleResult(uct::RecognitionResult result);
     void HandleBackendStatus(uct::BackendStatus status);
+    void SubmitImmutableIfNeeded();
+    void HandleImmutableResult(uct::RecognitionResult result);
+    uct::SourceStamp ImmutableStamp(const UctImmutableFrame& frame) const;
+    void SubmitAdvancingMediaProbe();
+    // Media model clock: the latest DISPLAYED frame's real media PTS while
+    // advancing (with or without an analysis lease), never the PTS of the
+    // last analysis input restamped onto a newer displayed frame.
+    std::int64_t ModelTime(std::int64_t wallNowMs) const;
+    // True unless advancing text's last REAL validation is wall-stale for the
+    // currently displayed frame. The exact validated frame still displayed
+    // is exempt, mirroring the model's media-time freshness rule. Receipts
+    // without pixels never refresh this.
+    bool AdvancingValidationFresh(std::int64_t wallNowMs) const;
+    void NoteAdvancingValidation(std::int64_t wallNowMs);
     void RefreshOverlay(std::int64_t nowMs);
     void UpdateReadingText();
     bool AnalysisHealthy() const;
@@ -268,6 +415,7 @@ private:
 
     QPointer<UltraClearTextOverlay> overlay_;
     QPointer<UltraClearTextPanel> panel_;
+    QPointer<UctScreenTextAccessibility> screenText_;
     RecognizerFactory factory_;
     Clock clock_;
     UctTiming timing_;
@@ -281,9 +429,42 @@ private:
     uct::OverlayModel model_;
     uct::BackendStatus backend_;
 
+    std::optional<UctImmutableScene> immutableScene_;
+    std::optional<UctAdvancingMediaScene> advancingMediaScene_;
+    // Latest successful advancing DISPLAY receipt (analysis-carrying or
+    // without-analysis). This is the display/model clock and the continuity
+    // basis; advancingMediaScene_ above remains the last real analysis
+    // input and is never restamped with this receipt's frame/PTS.
+    std::optional<UctAdvancingMediaPresentation> advancingDisplay_;
+    // Wall time and frame of the last real probe/recognition validation of
+    // advancing text. Only HandleProbeOutcome/HandleResult refresh it.
+    std::int64_t advancingValidatedWallMs_{};
+    std::uint64_t advancingValidatedFrameSeq_{};
+    bool haveAdvancingValidation_{};
+    // Identity (not ownership) of the advancing scene's device image. The
+    // strong lease is released once the probe reader consumes it, so the
+    // two-slot analysis pool is not pinned by receipt metadata; the weak
+    // identity still detects a different image reused for the same frame.
+    std::weak_ptr<const uct::DeviceImage> advancingDeviceIdentity_;
+    // Receipt-time input validity, retained after the device lease release
+    // so presentation availability keeps tracking the displayed scene.
+    bool advancingReceiptValid_{};
+    std::uint64_t advancingMediaJob_{};
+    std::int64_t advancingMediaSubmittedAtMs_{};
+    std::int64_t advancingMediaLastSubmitMs_{std::numeric_limits<std::int64_t>::min() / 2};
+    std::uint64_t advancingMediaProbeFrame_{};
+    bool advancingMediaHaveProbe_{};
+    std::optional<uct::RecognitionResult> immutableSelectedResult_;
+    std::uint64_t immutableSelectedJob_{};
+    std::uint64_t immutableCorroborationJob_{};
+    std::int64_t immutableSubmittedAtMs_{};
+    bool immutableSelectedAttempted_{};
+    bool immutableCorroborationAttempted_{};
+
     bool enabled_{};
     bool showOriginal_{};
     bool compositePaused_{};
+    bool mediaOverlaySuppressed_{};
     bool cameraActive_{};
     bool haveGeometry_{};
     bool settling_{};

@@ -34,14 +34,23 @@ handshake rejects a different app catalog instead of changing discovery at
 runtime. Selecting `v1` does not clear acceptance or enable packaging.
 
 The preserved development editions contain 14, 17 and 19 tools respectively.
-`dev-full` and the still-gated `v1` contain 36 tools: the original 19 plus
-`app.controls.list` and eight finite grouped get/set pairs. Their inventory
-describes 98 adjustable parameters, 17 protected metadata entries and 39
+`dev-full` and the still-gated `v1` contain 43 tools: the original 19 plus
+`app.controls.list`, eight finite grouped get/set pairs and seven selected-video
+actions. Their inventory describes 98 adjustable parameters, 17 protected metadata entries and 46
 workflow actions. A listed field is not proof that its native implementation,
 hardware or permission is available. Runtime rows expose availability,
 writability and unsupported reasons; protected entries expose no secret values.
 Native-only workflow metadata is not a callable automation method. See the
 [control inventory](control_inventory.md) for ownership and field semantics.
+
+Selected-video MCP tools are `video_state_get`, `video_pause`, `video_resume`,
+`video_seek`, `video_jump_latest_end`, `video_return_to_camera` and
+`video_save_frame` (the internal action IDs use dots). They bind opaque document identity and selection generation;
+they accept no file paths. Opening a file remains a native owner action.
+Selected-frame saves use the photo permission domain and durable operation
+receipts. Media advancement invalidates old observation coordinates, and a
+view undo cannot cross a source/selection change. See
+[selected-video control](video_agent_control.md) for exact schemas and limits.
 
 The protocol revision is deliberately pinned to the official
 [lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle),

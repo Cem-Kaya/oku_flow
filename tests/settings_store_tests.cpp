@@ -629,7 +629,20 @@ void SettingsStoreTests::roundTripPreservesAdvancedConfig()
     QCOMPARE(loaded->advancedPanelWidth, expected.advancedPanelWidth);
     QCOMPARE(loaded->viewportRateMode, expected.viewportRateMode);
     QCOMPARE(loaded->viewportFitMode, expected.viewportFitMode);
-    QCOMPARE(loaded->recordingCanvasMode, expected.recordingCanvasMode);
+    QCOMPARE(loaded->recordingCanvasMode, RecordingCanvasMode::Source);
+    QVERIFY(!QJsonDocument::fromJson(savedJson).object().contains(QStringLiteral("recording")));
+    // A retained pre-migration preference must also be ignored on load.
+    auto legacyRoot = QJsonDocument::fromJson(savedJson).object();
+    legacyRoot.insert(QStringLiteral("recording"),
+        QJsonObject{{QStringLiteral("canvasMode"), static_cast<int>(RecordingCanvasMode::Sd480)}});
+    const QString legacyPath = dir.filePath(QStringLiteral("legacy-canvas.json"));
+    QFile legacyFile(legacyPath);
+    QVERIFY(legacyFile.open(QIODevice::WriteOnly));
+    legacyFile.write(QJsonDocument(legacyRoot).toJson());
+    legacyFile.close();
+    const auto legacyLoaded = Load(legacyPath);
+    QVERIFY(legacyLoaded.has_value());
+    QCOMPARE(legacyLoaded->recordingCanvasMode, RecordingCanvasMode::Source);
     QCOMPARE(loaded->uiSectionStates, expected.uiSectionStates);
     QCOMPARE(loaded->assistiveOverlayGeometry, expected.assistiveOverlayGeometry);
     QCOMPARE(loaded->assistiveOverlayDockPosition, expected.assistiveOverlayDockPosition);

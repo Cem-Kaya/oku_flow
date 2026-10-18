@@ -46,6 +46,7 @@ public:
     void StopOwnedRecording(const QString& owner) override;
     void CancelOwnedSource(const QString& owner) override;
     bool HasOwnedSource(const QString& owner) const override;
+    bool ObservationStillCurrent(const AuthorizedObservation& expected) const override;
     void NoticeNativeChanges();
     void NoteNativeCameraAcceleration(const QString& symbolicLink);
     QString CreatePhoto(const QString& owner);
@@ -55,6 +56,10 @@ public:
     void FrameProcessed();
     void FramePresented(const ObservationFrame& frame);
     ObservationFrame PresentedFrame(const ViewTransform& transform, QSize source, QSize viewport);
+    // Construct selected-media authority from the exact candidate that was
+    // submitted, before the app commits doc.presented to that candidate.
+    ObservationFrame PresentedMediaFrame(const ViewTransform& transform, QSize source, QSize viewport,
+                                         quint64 sequence, qint64 pts100ns, bool gpuProcessed = false);
     bool WantsObservationReadback(const ObservationFrame& frame);
     void ObservationReadbackSubmitted(quint64 id, const ObservationFrame& frame);
     void ConsumeObservationReadback(quint64 id, const QImage& pixels);
@@ -69,6 +74,9 @@ public:
     bool ValidateImageParameterBatch(const ControlPlan& plan) const;
     void FinalizeUctModelParameters();
     static bool ImageParameterEffectiveIntent(Field field, const std::map<Field,QJsonValue>& current);
+    // Selected-media effect policy; GPU capability is supplied by the actual
+    // selected backend, independently of whether a scene has been presented.
+    static bool SelectedMediaImageFieldAvailable(Field field, bool gpuAvailable);
     static std::optional<Field> ImageParameterField(std::string_view id);
     std::map<Field,QJsonValue> ImageParameterFields() const;
     static std::map<Field,QJsonValue> ImageProfileFields(const settings::AdvancedConfig& config,
@@ -102,6 +110,10 @@ public:
     static std::optional<Field> UiParameterField(std::string_view id);
     static ControlPlan PlanUiParameterDependencies(const std::map<Field,QJsonValue>& current,
                                                    ToolId tool, const QJsonObject& args);
+    ControlPlan PrepareVideoControl(ToolId tool, const QJsonObject& args) const;
+    QJsonObject QueryVideoState() const;
+    void ExecuteVideoControl(ToolId tool, const QJsonObject& args, const QString& owner,
+                             ControlCompletion completion);
 private:
     QString CameraHandle(const QString& symbolicLink) const;
     mutable std::map<QString,QString> cameraHandles_;

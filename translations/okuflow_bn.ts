@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>CPU টেক্সট রিকগনাইজার</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>বর্তমান রেকর্ডিং</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>ভিডিও</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>লাইভ</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>লাইভের পেছনে</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>বিরত</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>ভিডিওর শেষ</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>ভিডিও খোলা হচ্ছে…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>ভিডিওতে অবস্থান বদলানো হচ্ছে…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>রেকর্ডিংয়ের অপেক্ষায়</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>রেকর্ডিং শেষ হচ্ছে</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>ভিডিও পাওয়া যাচ্ছে না</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>ভিডিও প্লেব্যাক</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>১০ সেকেন্ড পেছনে যান</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>ভিডিও থামিয়ে রাখুন</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>ভিডিও আবার চালান</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>লাইভে যান</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>শেষে যান</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>ক্যামেরায় ফিরুন</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>ফ্রেম সংরক্ষণ করুন</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>প্লেব্যাকের শব্দ চালু করুন</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>প্লেব্যাকের শব্দ বন্ধ করুন</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>ভিডিও নিয়ন্ত্রণ</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>ভিডিও টাইমলাইন</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>বাম ও ডান: এক সেকেন্ড। Page Up ও Page Down: দশ সেকেন্ড। Home: শুরু। End: রেকর্ডিংয়ের শেষ।</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%2-এর মধ্যে %1</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>ভিডিও খুলুন</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>সংরক্ষিত ভিডিও খুলুন (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>মূল ভিডিও রেকর্ড করুন</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>মূল MP4 রেকর্ডিং শুরু বা বন্ধ করুন</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>মূল ভিডিও রেকর্ডিংয়ের জন্য শব্দ বেছে নিন। মাইক্রোফোন শুধু রেকর্ডিং চলার সময় ব্যবহার হয়।</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>মূল MP4 রেকর্ডিংয়ের জন্য মাইক্রোফোনের অডিও বেছে নিন, অথবা মাইক্রোফোন ব্যবহার করবেন না বেছে নিন।</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>দেখানো ফ্রেমটি ধরে রাখা যায়নি। রেকর্ড করা ভিডিও পাওয়া যাবে।</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>ভিডিও খোলা যায়নি: বিদ্যমান একটি স্থানীয় ফাইল বেছে নিন।</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>রেকর্ডিং থামানো যায়নি বলে ভিডিও খোলা হয়নি।</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>ভিডিও খোলার আগে রেকর্ডিং শেষ করা হচ্ছে...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>রেকর্ড করা ভিডিওতে অবস্থান বদলানো সম্ভব হওয়ার জন্য অপেক্ষা করা হচ্ছে।</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>থামিয়ে রাখা ফ্রেমটি রেকর্ড হয়নি। চালিয়ে যেতে রেকর্ড করা ভিডিওতে কোনো অবস্থানে যান।</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>থামিয়ে রাখা ফ্রেমটির রেকর্ড করা অবস্থান যাচাই করা যায়নি। চালিয়ে যেতে রেকর্ড করা ভিডিওতে কোনো অবস্থানে যান।</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>ভিডিওর শেষ। আবার চালাতে আগের কোনো অবস্থানে যান।</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>ক্যামেরা পাওয়া যাচ্ছে না। রেকর্ডিংয়ের সর্বশেষ ফ্রেম দেখানো হচ্ছে।</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>স্থির করা ফ্রেমটি রেকর্ড হয়নি। ধরে রাখা ছবিটি এখনও পাওয়া যাবে।</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>স্থির করা ফ্রেমের রেকর্ড করা অবস্থান যাচাই করা যায়নি। ধরে রাখা ছবিটি এখনও পাওয়া যাবে।</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>রেকর্ডিংয়ের উপলভ্য অংশ শেষ। ধরে রাখা ছবিটি এখনও পাওয়া যাবে।</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>ভিডিও পাওয়া যাচ্ছে না: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>প্লেব্যাকের শব্দ পাওয়া যাচ্ছে না। ভিডিও চলতে থাকবে।</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>ফ্রেম সংরক্ষণ করা যায়নি: নির্বাচিত দৃশ্যটি পাওয়া যাচ্ছে না।</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>ফ্রেম সংরক্ষণ করা যায়নি: ছবিটি সারিতে যোগ করা যায়নি।</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>ফ্রেম সংরক্ষণ করা যায়নি: OkuFlow Photos ফোল্ডারটি পাওয়া যাচ্ছে না।</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>নির্বাচিত ভিডিওর ফ্রেম সংরক্ষিত হয়েছে।</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>নির্বাচিত ভিডিওর ফ্রেম সংরক্ষণ করা যায়নি।</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>ফ্রেম সংরক্ষণ করা যায়নি: ছবি সংরক্ষণের কাজ চলছে। আবার চেষ্টা করুন।</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>ভিডিও থামিয়ে রাখা সম্ভব নয়: দেখানো ফ্রেমটি ধরে রাখা যায়নি।</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;নিয়ন্ত্রণ&lt;/h2&gt;&lt;p&gt;&lt;b&gt;সরল&lt;/b&gt; ক্যামেরার দৃশ্যটি বড় করে দেখায়। দ্রুত মোড বদলাতে কোণের ক্যারোসেল বা ১ থেকে ৯ নম্বর কী ব্যবহার করুন।&lt;/p&gt;&lt;p&gt;&lt;b&gt;UI লুকান&lt;/b&gt; বা &lt;b&gt;Ctrl+H&lt;/b&gt; ক্যামেরার দৃশ্য থেকে নিয়ন্ত্রণ ও সহকারী সরিয়ে দেয়। &lt;b&gt;UI দেখান&lt;/b&gt; এগুলো এবং আগের উত্তরটি ফিরিয়ে আনে।&lt;/p&gt;&lt;p&gt;&lt;b&gt;উন্নত&lt;/b&gt; অংশে ছবি ও সহকারীর বিস্তারিত সেটিংস খুলুন। প্যানেলের ধারের বিভাজকটি টেনে আকার বদলান।&lt;/p&gt;&lt;p&gt;ক্যামেরার দৃশ্য টেনে প্যান করুন। জুম করতে Ctrl চেপে মাউসের চাকা ঘোরান। পর্দায় চলাচলের নিয়ন্ত্রণ পেতে &lt;b&gt;সেটিংস &amp;gt; দৃশ্য ও নেভিগেশন&lt;/b&gt;-এ &lt;b&gt;ভার্চুয়াল জয়স্টিক&lt;/b&gt; চালু করুন।&lt;/p&gt;&lt;p&gt;ছবি মূল ও প্রক্রিয়াজাত—দুই সংস্করণই সংরক্ষণ করে। রেকর্ড মূল ভিডিও সংরক্ষণ করে। ব্যাখ্যা কর দৃশ্যটি বর্ণনা করে; পড়ুন লেখা শনাক্ত করে। আপনার OkuFlow ফাইলের ফোল্ডার খুলতে &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; চাপুন।&lt;/p&gt;&lt;h2&gt;বৈশিষ্ট্য&lt;/h2&gt;&lt;p&gt;&lt;b&gt;পাঠ্য স্বচ্ছতা&lt;/b&gt; নথি পরিষ্কার করা, স্থানীয় কনট্রাস্ট, শার্পেনিং এবং লেখার স্থির প্রান্ত একত্র করে। &lt;b&gt;রং প্রদর্শন করুন&lt;/b&gt; পড়ার জন্য রঙের প্যালেট ও নিজস্ব রঙের স্কিম দেয়।&lt;/p&gt;&lt;p&gt;ঐচ্ছিক NVIDIA Video Effects রানটাইম ইনস্টল থাকলে &lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; জুম করা সূক্ষ্ম বিবরণ উন্নত করে।&lt;/p&gt;&lt;p&gt;&lt;b&gt;লেখা পড়া ও সহকারী&lt;/b&gt; লেখা পড়তে, দৃশ্য ব্যাখ্যা করতে, পরের প্রশ্নের উত্তর দিতে এবং ফলাফল বক্তৃতার নোটে যোগ করতে পারে।&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>ভিডিও ফাইল (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;সব ফাইল (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>এই দৃশ্যের Ultra Clear Text</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… চিহ্নটি এমন লেখাকে বোঝায় যা মূল ছবিতেই রাখা হয়েছে।</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>ভিডিও প্লেব্যাক: জুম, ঘোরানো, পড়ার রং এবং UCT ব্যবহার করা যাবে। উন্নত GPU ইফেক্ট ব্যবহার করা যাবে না।</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC মূল, এনকোডার শুরু হচ্ছে]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC মূল, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>ভিডিও থামিয়ে রাখা সম্ভব নয়: দেখানো ফ্রেমিং হুবহু ধরে রাখা যায়নি।</translation>
+        </message>
     </context>
 </TS>

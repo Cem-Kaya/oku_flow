@@ -192,6 +192,21 @@ QJsonObject NotesRecordingIdentity(const QString& path)
     return identity;
 }
 
+// Both current single-video cards and legacy pairs bind transcription to the
+// exact committed Original identity prepared by the serial notes writer.
+QString NotesTranscribeTools(const QString& escapedOriginalUrl)
+{
+    return QStringLiteral(
+            "    <section class=\"transcribe-tools\" data-transcribe-src=\"%1\" data-recording-identity=\"__OKUFLOW_MEDIA_IDENTITY__\">\n"
+            "      <div class=\"transcribe-actions\"><button type=\"button\" class=\"transcribe-start\">Transcribe</button>"
+            "<button type=\"button\" class=\"transcribe-stop\" hidden>Stop</button>"
+            "<button type=\"button\" class=\"transcribe-export\" hidden>Save as text</button></div>\n"
+            "      <p class=\"transcribe-status\" role=\"status\"></p>\n"
+            "      <div class=\"transcribe-result\" hidden><h3 class=\"transcribe-heading\">Transcript</h3>"
+            "<div class=\"transcribe-lines\"></div></div>\n"
+            "    </section>\n").arg(escapedOriginalUrl);
+}
+
 // Non-empty configured values take precedence over the environment variable.
 QString ResolvedSetting(const QString& configured, const char* envName)
 {
@@ -799,6 +814,40 @@ void AssistiveRuntime::NoteCapturedPhotoPair(const QString& originalPath,
                         originalPath,
                         processedPath,
                         false);
+}
+
+void AssistiveRuntime::NoteCapturedVideo(const QString& originalPath,
+                                         const QString& recordingSessionId,
+                                         int segmentIndex,
+                                         qint64 sourceClockOrigin100ns)
+{
+    if (!config_.lectureNotesEnabled || config_.notesDirectory.trimmed().isEmpty() ||
+        originalPath.trimmed().isEmpty() || !EnsureNotesFile()) {
+        return;
+    }
+    const QString originalUrl = NotesMediaUrl(notesFilePath_, originalPath).toHtmlEscaped();
+    QString content = QStringLiteral(
+        "    <figure>\n"
+        "      <video controls preload=\"metadata\">\n"
+        "        <source src=\"%1\" type=\"video/mp4\">\n"
+        "        <a href=\"%1\">%2</a>\n"
+        "      </video>\n"
+        "      <figcaption><a href=\"%1\">%3</a></figcaption>\n"
+        "    </figure>\n")
+        .arg(originalUrl,
+             QCoreApplication::translate("OkuFlow", "Open original video").toHtmlEscaped(),
+             QCoreApplication::translate("OkuFlow", "Original camera video").toHtmlEscaped());
+    content += NotesTranscribeTools(originalUrl);
+    NoteSectionMetadata metadata;
+    metadata.cssClass = QStringLiteral("media");
+    metadata.kind = QStringLiteral("video");
+    metadata.recordingPath = originalPath;
+    metadata.dataRecordingSession = recordingSessionId;
+    metadata.dataRecordingPart = segmentIndex;
+    metadata.dataSourceClockOrigin100ns = sourceClockOrigin100ns;
+    metadata.previewText = QCoreApplication::translate("OkuFlow", "Original camera video");
+    AppendNoteHtmlSection(QCoreApplication::translate("OkuFlow", "Video recorded"),
+                          content, metadata);
 }
 
 void AssistiveRuntime::NoteCapturedVideoPair(const QString& originalPath,
@@ -2182,15 +2231,7 @@ void AssistiveRuntime::AppendNoteMediaPair(const QString& heading,
                  processedUrl,
                  processedCaption);
     if (video) {
-        content += QStringLiteral(
-            "    <section class=\"transcribe-tools\" data-transcribe-src=\"%1\" data-recording-identity=\"__OKUFLOW_MEDIA_IDENTITY__\">\n"
-            "      <div class=\"transcribe-actions\"><button type=\"button\" class=\"transcribe-start\">Transcribe</button>"
-            "<button type=\"button\" class=\"transcribe-stop\" hidden>Stop</button>"
-            "<button type=\"button\" class=\"transcribe-export\" hidden>Save as text</button></div>\n"
-            "      <p class=\"transcribe-status\" role=\"status\"></p>\n"
-            "      <div class=\"transcribe-result\" hidden><h3 class=\"transcribe-heading\">Transcript</h3>"
-            "<div class=\"transcribe-lines\"></div></div>\n"
-            "    </section>\n").arg(originalUrl);
+        content += NotesTranscribeTools(originalUrl);
     }
     NoteSectionMetadata metadata;
     metadata.cssClass = QStringLiteral("media");
@@ -2337,6 +2378,14 @@ bool AssistiveRuntime::AppendNoteHtmlSection(const QString& heading,
     if (IsSafeAttributeToken(metadata.dataRecordingSession, QStringLiteral("-"))) {
         attributes += QStringLiteral(" data-recording-session=\"%1\"")
                           .arg(metadata.dataRecordingSession.toHtmlEscaped());
+    }
+    if (metadata.dataRecordingPart > 0) {
+        attributes += QStringLiteral(" data-recording-part=\"%1\"")
+                          .arg(metadata.dataRecordingPart);
+    }
+    if (metadata.dataSourceClockOrigin100ns >= 0) {
+        attributes += QStringLiteral(" data-source-clock-origin-100ns=\"%1\"")
+                          .arg(metadata.dataSourceClockOrigin100ns);
     }
     if (metadata.dataSequence >= 0) {
         attributes += QStringLiteral(" data-sequence=\"%1\"")

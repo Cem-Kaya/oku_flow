@@ -17,6 +17,19 @@
 #endif
 
 namespace okuflow::agent {
+bool AppControlTarget::SelectedMediaImageFieldAvailable(Field field, bool gpuAvailable) {
+    // Debug composite is a camera diagnostic, not a media shader effect.
+    if(field==Field::DebugView)return false;
+    if(gpuAvailable)return true;
+    switch(field) {
+    case Field::BlackWhite:case Field::Threshold:case Field::Contrast:case Field::Brightness:
+    case Field::Scheme:case Field::CustomColorMode:case Field::CustomColorStopCount:
+    case Field::CustomColorStops:case Field::CustomColorStepped:case Field::CustomColorRecipe:
+    case Field::UctGpuDetector:case Field::UctGpuRecognizer:case Field::UctCpuDetector:case Field::UctCpuRecognizer:
+        return true;
+    default:return false;
+    }
+}
 namespace {
 struct ParameterField { std::string_view id; Field field; };
 constexpr ParameterField kImageViewFields[] = {
@@ -478,7 +491,9 @@ std::map<Field,QJsonValue> AppControlTarget::ImageParameterFields() const {
     fields[Field::SuperResUltra1440p]=app_.mlTextSuperResolutionUltra1440p_;
     fields[Field::SuperResPerformanceOverride]=app_.superResPerformanceOverride_;
     fields[Field::BumpHold]=app_.bumpHoldEnabled_;
-    fields[Field::KeystonePaused]=app_.cudaSurface_ && app_.cudaSurface_->GetKeystoneTrackingState().paused;
+    fields[Field::KeystonePaused]=app_.MediaViewSelected()
+        ? app_.mediaGpuScene_ && app_.mediaGpuScene_->GetKeystoneTrackingState().paused
+        : app_.cudaSurface_ && app_.cudaSurface_->GetKeystoneTrackingState().paused;
     return fields;
 }
 
@@ -500,11 +515,18 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
         saved[Field::VirtualJoystick]=committed->virtualJoystick;
         saved[Field::ZoomWheelAcceleration]=committed->zoomWheelAcceleration;
     }
-    const bool cuda=app_.cudaSurface_ && app_.cudaSurface_->IsValid() && app_.cudaPipelineAvailable_;
-    const bool live=app_.usingCudaLastFrame_ && app_.cameraActive_;
-    const bool master=Value(fields,Field::TextClarity).toBool();
+    const bool media=app_.MediaViewSelected();
+    const bool mediaGpu=media && app_.SelectedMediaGpuProcessingAvailable();
+    const bool displayedGpu=media && app_.MediaGpuViewSelected();
+    const bool cuda=media?mediaGpu:app_.cudaSurface_ && app_.cudaSurface_->IsValid() && app_.cudaPipelineAvailable_;
+    const bool live=media?displayedGpu:app_.usingCudaLastFrame_ && app_.cameraActive_;
+    const bool hasFrame=media?app_.SelectedVideoState()["hasFrame"].toBool():app_.cameraActive_;
+    const bool master=(!media || displayedGpu) && Value(fields,Field::TextClarity).toBool();
     const bool adaptive=master && Value(fields,Field::Adaptive).toBool();
     const bool twoColor=adaptive && Value(fields,Field::TwoColor).toBool();
+    auto effectiveFields=fields;
+    // Dormant GPU text preferences cannot mask the CPU threshold/color recipe.
+    if(media && !displayedGpu)effectiveFields[Field::TextClarity]=false;
     const auto enabled=[&](Field f){return Value(fields,f).toBool();};
     QJsonObject parameters;
     for(const auto& entry:kImageViewFields) {
@@ -514,7 +536,11 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
         bool available=app_.uiState_ && app_.mainWindow_ &&
             (ParameterWidget(field,*app_.uiState_,app_.mainWindow_.get()) || field==Field::KeystonePaused || field==Field::SuperResPerformanceOverride);
         QString unsupported=available?QString():QString("native_control_unavailable");
-        if(group==ParameterGroup::Image && field!=Field::DebugView && !IsUctModel(field) && !cuda) {available=false;unsupported="cuda_unavailable";}
+        if(group==ParameterGroup::Image && media && !SelectedMediaImageFieldAvailable(field,mediaGpu)) {available=false;unsupported="selected_media_unsupported_effect";}
+        else if(group==ParameterGroup::Image && !media && field!=Field::DebugView && !IsUctModel(field) && !cuda) {available=false;unsupported="cuda_unavailable";}
+        if(field==Field::KeystonePaused && mediaGpu && (!app_.mediaGpuScene_ || !app_.mediaGpuScene_->SceneReady())) {
+            available=false;unsupported="no_processed_frame";
+        }
         if(IsSuperRes(field)) {
 #if OKUFLOW_ENABLE_TEXT_SR
             if(!app_.mainWindow_ || !app_.mainWindow_->isMaxineRuntimeInstalled()) {available=false;unsupported="maxine_unavailable";}
@@ -522,14 +548,18 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
             available=false;unsupported="super_resolution_not_built";
 #endif
         }
-        bool active=live;QString inactive=live?QString():QString("no_processed_frame");
-        bool intent=ImageParameterEffectiveIntent(field,fields);
+        bool active=live || (media && hasFrame && SelectedMediaImageFieldAvailable(field,false));
+        QString inactive=active?QString():QString("no_processed_frame");
+        bool intent=ImageParameterEffectiveIntent(field,effectiveFields);
         if(TextHandler(field) && !IsSuperRes(field) && field!=Field::TextClarity && !master)inactive="text_clarity_disabled";
         if(IsSuperRes(field)) {
-            active=live && app_.cudaSurface_ && app_.cudaSurface_->IsSuperResActive();
+            active=live && (media ? app_.mediaGpuScene_ && app_.mediaGpuScene_->IsSuperResActive()
+                                  : app_.cudaSurface_ && app_.cudaSurface_->IsSuperResActive());
             intent=enabled(Field::SuperResEnabled);
             if(field==Field::SuperResPrefer2x || field==Field::SuperResUltra1440p || field==Field::SuperResPerformanceOverride)intent&=enabled(field);
-            if(!active)inactive=app_.cudaSurface_ && app_.cudaSurface_->IsSuperResPerformanceLimited()?"performance_limit":"super_resolution_inactive";
+            if(!active)inactive=(media ? app_.mediaGpuScene_ && app_.mediaGpuScene_->IsSuperResPerformanceLimited()
+                                       : app_.cudaSurface_ && app_.cudaSurface_->IsSuperResPerformanceLimited())
+                ?"performance_limit":"super_resolution_inactive";
         }
         if((field==Field::BlackWhite || field==Field::Threshold) && adaptive) {intent=false;inactive="adaptive_binarization";}
         if((field==Field::SmartSharpen || field==Field::SmartStrength) && adaptive) {intent=false;inactive="adaptive_binarization";}
@@ -541,9 +571,9 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
         if(IsCustomComponent(field) && Value(fields,Field::Scheme)!="custom") {intent=false;inactive="custom_scheme_inactive";}
         if((field==Field::Scheme || IsCustomComponent(field)) && twoColor) {intent=false;inactive="two_color_text";}
         if(group==ParameterGroup::View || field==Field::DebugView) {
-            active=app_.cameraActive_;intent=requested.isBool()?requested.toBool():true;inactive=active?QString():QString("no_frame");
+            active=app_.cameraActive_ || media;intent=requested.isBool()?requested.toBool():true;inactive=active?QString():QString("no_frame");
             if(field==Field::PresentationRate || field==Field::Framing || field==Field::VirtualJoystick || field==Field::ZoomWheelAcceleration)active=true;
-            if(field==Field::FocusMarker && (app_.debugViewEnabled_ || Value(fields,Field::Framing)=="fit")) {intent=false;inactive="view_layout";}
+            if(field==Field::FocusMarker && ((!media && app_.debugViewEnabled_) || Value(fields,Field::Framing)=="fit")) {intent=false;inactive="view_layout";}
         }
         if(IsUctModel(field)) {
             const auto* controller=app_.ultraClearText_.get();
@@ -556,8 +586,12 @@ QJsonObject AppControlTarget::QueryImageParameters(ToolId tool,const QJsonObject
         QJsonValue effective=requested.isBool()?QJsonValue(active && intent):active && intent?requested:QJsonValue(QJsonValue::Null);
         if(field==Field::ZoomEnabled && Value(fields,Field::Framing)=="fit") {effective=false;inactive="view_layout";}
         if((field==Field::CenterX || field==Field::CenterY) && Value(fields,Field::Framing)=="fit") {effective=0.5;inactive="view_layout";}
-        if(field==Field::ZoomAmount)effective=app_.cameraActive_?QJsonValue(Value(fields,Field::Framing)=="fit" || !enabled(Field::ZoomEnabled)?1.0:app_.zoomAmount_):QJsonValue(QJsonValue::Null);
+        if(field==Field::ZoomAmount)effective=app_.cameraActive_ || media?QJsonValue(Value(fields,Field::Framing)=="fit" || !enabled(Field::ZoomEnabled)?1.0:app_.zoomAmount_):QJsonValue(QJsonValue::Null);
         if(field==Field::PresentationRate)effective=app_.pipelineOrchestrator_->EffectiveViewportRate();
+        if(media && group==ParameterGroup::Image && !SelectedMediaImageFieldAvailable(field,displayedGpu)) {
+            effective=QJsonValue(QJsonValue::Null);inactive="selected_media_unsupported_effect";
+            if(SelectedMediaImageFieldAvailable(field,mediaGpu))inactive="no_processed_frame";
+        }
         if(!intent && inactive.isEmpty())inactive="disabled";
         const bool sessionOnly=descriptor->persistence=="session_only";
         QJsonObject item{{"requested",requested},{"effective",effective},{"saved",sessionOnly?QJsonValue(QJsonValue::Null):WireValue(field,Value(saved,field))},
@@ -583,6 +617,10 @@ ControlPlan AppControlTarget::PrepareImageParameters(ToolId tool,const QJsonObje
     const auto fields=ImageParameterFields();const auto rows=QueryImageParameters(tool,{})["parameters"].toObject();
     for(auto it=args.begin();it!=args.end();++it) {
         const auto f=ImageParameterField(it.key().toStdString());
+        if(app_.MediaViewSelected() && group==ParameterGroup::Image && f &&
+           !SelectedMediaImageFieldAvailable(*f,app_.SelectedMediaGpuProcessingAvailable())) {
+            plan.error="unavailable";plan.writes.clear();return plan;
+        }
         const auto planned=f?std::find_if(plan.writes.begin(),plan.writes.end(),[&](const FieldWrite& w){return w.field==*f;}):plan.writes.end();
         const bool nativeWidget=f && app_.uiState_ && (ParameterWidget(*f,*app_.uiState_,app_.mainWindow_.get()) ||
             *f==Field::KeystonePaused || *f==Field::SuperResPerformanceOverride);
@@ -646,7 +684,9 @@ bool AppControlTarget::ValidateImageParameterBatch(const ControlPlan& plan) cons
                 write.field==Field::CustomColorStops?"stops":"stepped";
             if(value[key]!=write.value)return false;
         } else if(write.field==Field::KeystonePaused || write.field==Field::SuperResPerformanceOverride) {
-            if(!write.value.isBool() || !app_.cudaSurface_ || !app_.cudaSurface_->IsValid())return false;
+            if(!write.value.isBool() || (app_.MediaViewSelected()
+                ? !app_.SelectedMediaGpuProcessingAvailable()
+                : !app_.cudaSurface_ || !app_.cudaSurface_->IsValid()))return false;
             if(write.field==Field::KeystonePaused && write.value.toBool() && !Value(desired,Field::Keystone).toBool())return false;
             if(write.field==Field::SuperResPerformanceOverride && write.value.toBool() && !Value(desired,Field::SuperResEnabled).toBool())return false;
         } else if(!IsCustomComponent(write.field) && write.field!=Field::KeystonePaused && write.field!=Field::SuperResPerformanceOverride &&
@@ -729,11 +769,18 @@ std::optional<bool> AppControlTarget::ApplyImageParameter(const FieldWrite& writ
     if(write.field==Field::CenterX) {app_.SetZoomCenter(float(write.value.toDouble()),app_.zoomCenterY_,true,true,false);return true;}
     if(write.field==Field::CenterY) {app_.SetZoomCenter(app_.zoomCenterX_,float(write.value.toDouble()),true,true,false);return true;}
     if(write.field==Field::KeystonePaused) {
-        if(!app_.cudaSurface_)return false;app_.cudaSurface_->SetKeystoneTrackingPaused(write.value.toBool());
+        if(app_.MediaViewSelected()) {
+            if(!app_.SelectedMediaGpuProcessingAvailable() || !app_.mediaGpuScene_ || !app_.mediaGpuScene_->SceneReady())return false;
+            app_.mediaGpuScene_->SetKeystoneTrackingPaused(write.value.toBool());
+        } else {
+            if(!app_.cudaSurface_)return false;
+            app_.cudaSurface_->SetKeystoneTrackingPaused(write.value.toBool());
+        }
         app_.UpdateKeystoneTrackingUi();return true;
     }
     if(write.field==Field::SuperResPerformanceOverride) {
-        if(!app_.mlTextSuperResolutionEnabled_ || !app_.cudaSurface_)return false;
+        if(!app_.mlTextSuperResolutionEnabled_ || (app_.MediaViewSelected()
+            ? !app_.SelectedMediaGpuProcessingAvailable() : !app_.cudaSurface_))return false;
         app_.mainWindow_->setSuperResPerformanceOverrideChecked(write.value.toBool());
         app_.SetSuperResPerformanceOverride(write.value.toBool());return true;
     }

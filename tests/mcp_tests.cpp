@@ -88,8 +88,8 @@ class McpTests final : public QObject {
         QCOMPARE(ControlRegistry(CatalogEdition::DevCore).size(), std::size_t(14));
         QCOMPARE(ControlRegistry(CatalogEdition::DevCapture).size(), std::size_t(17));
         QCOMPARE(ControlRegistry(CatalogEdition::DevCamera).size(), std::size_t(19));
-        QCOMPARE(ControlRegistry(CatalogEdition::DevFull).size(), std::size_t(36));
-        QCOMPARE(ControlRegistry(CatalogEdition::V1).size(), std::size_t(36));
+        QCOMPARE(ControlRegistry(CatalogEdition::DevFull).size(), std::size_t(43));
+        QCOMPARE(ControlRegistry(CatalogEdition::V1).size(), std::size_t(43));
         QCOMPARE(static_cast<int>(CatalogEdition::V1), 3);
         QCOMPARE(static_cast<int>(CatalogEdition::DevFull), 4);
         QVERIFY(!FindControlTool("image.settings.set", CatalogEdition::DevCamera));
@@ -221,7 +221,7 @@ class McpTests final : public QObject {
         }
         QCOMPARE(parameters, 98);
         QCOMPARE(protectedEntries, 17);
-        QCOMPARE(actions, 39);
+        QCOMPARE(actions, 46);
         QVERIFY(!Json::Parse(ParameterMetadataPage("image", "not-a-field", 16)).Find("ok")->Boolean());
         QVERIFY(!Json::Parse(ParameterMetadataPage("wrong-group")).Find("ok")->Boolean());
         QVERIFY(!Json::Parse(ParameterMetadataPage({}, {}, 17)).Find("ok")->Boolean());
@@ -236,7 +236,7 @@ class McpTests final : public QObject {
         protocol.Line(Initialize);
         protocol.Line(Initialized);
         protocol.Line(R"({"jsonrpc":"2.0","id":2,"method":"tools/list"})");
-        QCOMPARE(responses.back().Find("result")->Find("tools")->Elements().size(), std::size_t(36));
+        QCOMPARE(responses.back().Find("result")->Find("tools")->Elements().size(), std::size_t(43));
         for (auto args :
              {R"({})", R"({"image.blur.enabled":"true"})", R"({"image.colors.custom.stops":["#000000"]})",
               R"({"assistant.apiKey":"never"})"}) {
@@ -356,7 +356,7 @@ class McpTests final : public QObject {
         Write(app, "approve:" + pending.Find("peerId")->String());
         QVERIFY(WaitType(app, "approved").Find("ok")->Boolean());
         Write(bridge, R"({"jsonrpc":"2.0","id":2,"method":"tools/list"})");
-        QCOMPARE(Read(bridge).Find("result")->Find("tools")->Elements().size(), std::size_t(36));
+        QCOMPARE(Read(bridge).Find("result")->Find("tools")->Elements().size(), std::size_t(43));
         Write(
             bridge,
             R"({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"app.controls.list","arguments":{"group":"image","limit":16}}})");

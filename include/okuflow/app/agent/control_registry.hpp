@@ -44,7 +44,14 @@ enum class ToolId {
     UiPreferencesGet,
     UiPreferencesSet,
     AnnotationPreferencesGet,
-    AnnotationPreferencesSet
+    AnnotationPreferencesSet,
+    VideoState,
+    VideoPause,
+    VideoResume,
+    VideoSeek,
+    VideoJumpLatestEnd,
+    VideoReturnCamera,
+    VideoSaveFrame
 };
 
 // This catalog has no Qt/runtime dependency. Listing grants no authority.
@@ -66,6 +73,7 @@ std::string_view CatalogEditionName(CatalogEdition edition);
 CatalogEdition BuiltControlCatalogEdition() noexcept;
 // Advisory MCP metadata only; never use this hint as admission authority.
 bool ControlToolDestructiveHint(ToolId id) noexcept;
+bool IsVideoControlTool(ToolId id) noexcept;
 std::span<const ToolDescriptor> ControlRegistry(CatalogEdition edition);
 const ToolDescriptor *FindControlTool(std::string_view name, CatalogEdition edition);
 

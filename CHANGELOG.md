@@ -1,6 +1,43 @@
 # Changelog
 
 ## [Unreleased]
+
+- Add an explicit two-output GPU media experiment and one-time throughput/latency
+  measurements, preserving shared processing history and independent output
+  fences. Keep one output as the app default after the measured tradeoff.
+
+- Prefer native GPU video decode/conversion and a separate CUDA media scene,
+  retaining the CPU compatibility reader. Keep texture leases, seeks and
+  private producer/graphics fences bounded. Apply the shared blur/sharpen,
+  Text Clarity, auto contrast, stabilization, keystone, temporal smoothing and
+  asynchronous Super Resolution pipeline with independent media histories.
+  Preserve exact GPU viewport snapshots for Save Frame, Read/Explain and annotations without a per-frame
+  CPU video copy. Advance UCT's display clock across analysis gaps without
+  fabricating OCR evidence or renewing old text's validation.
+
+- Make video buffering resolution/stride aware under a 256 MiB decoded ceiling.
+  Check staging/replacement credit, backpressure retained-frame pressure and
+  keep a small saved-file lookahead. New seeks discard queued frames, skip
+  owned copies of discarded preroll and publish their exact target before
+  optional OCR corroboration. Remove the worker's fixed per-frame wait and
+  keep archive/live lookahead shallow. Fine scrubs share proven immutable pixels
+  without decoding/copying again; End scans cannot misclassify earlier seeks.
+- Expose verified UCT glyph text as passive, positioned native accessibility
+  lines on the render viewport. Throttle semantic additions while keeping
+  geometry current and revoking invalid text immediately; native screen-reader
+  and mixed-DPI acceptance remain separate from offscreen model checks.
+- Add accessible saved-video playback and same-session recording rewind with a
+  source-labelled bottom transport. Opening a saved file first finalizes the
+  current recording; Resume keeps the held position, and the forward action
+  follows live for a recording or holds the last file frame. New recordings save
+  one clean Original video with optional microphone audio; paired photos and
+  legacy video notes remain compatible. Keep native decode, archive indexing,
+  sound and exact selected-frame saving asynchronous and bounded.
+- Preserve uncertain OCR spans as ordered omissions instead of silently
+  removing words. Give immutable video scenes separate UCT authority and
+  distinct-neighbour evidence, with no repeated OCR on unchanged completed
+  stills. Retain observation mappings by insertion age and reject stale media
+  frame coordinates. Keep legacy processed-video canvas settings inactive.
 - Add independent PP-OCRv6 detector/recognizer selectors under UCT advanced
   settings. GPU defaults to medium/medium; CPU defaults to tiny/small. Persist
   the four choices and expose them through the existing Assistant/MCP image

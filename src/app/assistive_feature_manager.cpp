@@ -98,6 +98,14 @@ void AssistiveFeatureManager::ApplySettings(const settings::AssistiveSettings& s
     runtime_->SetConfig(BuildRuntimeConfig(settings));
 }
 
+void AssistiveFeatureManager::NoteCapturedVideo(const QString& originalPath,
+                                               const QString& recordingSessionId,
+                                               int segmentIndex,
+                                               qint64 sourceClockOrigin100ns) {
+    runtime_->NoteCapturedVideo(originalPath, recordingSessionId, segmentIndex,
+                                sourceClockOrigin100ns);
+}
+
 bool AssistiveFeatureManager::WantsPeriodicReadback(bool debugViewEnabled) const {
     return overlayEnabled_ &&
            !debugViewEnabled &&

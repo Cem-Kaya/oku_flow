@@ -3273,5 +3273,245 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>CPU text recognizer</source>
             <translation>Распознавание текста на CPU</translation>
         </message>
+        <message>
+            <source>Current recording</source>
+            <translation>Текущая запись</translation>
+        </message>
+        <message>
+            <source>Video</source>
+            <translation>Видео</translation>
+        </message>
+        <message>
+            <source>Live</source>
+            <translation>В реальном времени</translation>
+        </message>
+        <message>
+            <source>Behind live</source>
+            <translation>С отставанием от эфира</translation>
+        </message>
+        <message>
+            <source>Paused</source>
+            <translation>Пауза</translation>
+        </message>
+        <message>
+            <source>End of video</source>
+            <translation>Конец видео</translation>
+        </message>
+        <message>
+            <source>Opening video…</source>
+            <translation>Открытие видео…</translation>
+        </message>
+        <message>
+            <source>Seeking…</source>
+            <translation>Перемотка…</translation>
+        </message>
+        <message>
+            <source>Waiting for recording</source>
+            <translation>Ожидание записи</translation>
+        </message>
+        <message>
+            <source>Finishing recording</source>
+            <translation>Завершение записи</translation>
+        </message>
+        <message>
+            <source>Video unavailable</source>
+            <translation>Видео недоступно</translation>
+        </message>
+        <message>
+            <source>Video playback</source>
+            <translation>Воспроизведение видео</translation>
+        </message>
+        <message>
+            <source>Rewind 10 seconds</source>
+            <translation>Перемотать на 10 секунд назад</translation>
+        </message>
+        <message>
+            <source>Pause video</source>
+            <translation>Приостановить видео</translation>
+        </message>
+        <message>
+            <source>Resume video</source>
+            <translation>Продолжить воспроизведение</translation>
+        </message>
+        <message>
+            <source>Jump to live</source>
+            <translation>Перейти к эфиру</translation>
+        </message>
+        <message>
+            <source>Jump to end</source>
+            <translation>Перейти в конец</translation>
+        </message>
+        <message>
+            <source>Return to camera</source>
+            <translation>Вернуться к камере</translation>
+        </message>
+        <message>
+            <source>Save frame</source>
+            <translation>Сохранить кадр</translation>
+        </message>
+        <message>
+            <source>Unmute playback</source>
+            <translation>Включить звук</translation>
+        </message>
+        <message>
+            <source>Mute playback</source>
+            <translation>Выключить звук</translation>
+        </message>
+        <message>
+            <source>Video controls</source>
+            <translation>Элементы управления видео</translation>
+        </message>
+        <message>
+            <source>Video timeline</source>
+            <translation>Шкала времени видео</translation>
+        </message>
+        <message>
+            <source>Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.</source>
+            <translation>Стрелки влево и вправо: на 1 секунду. Page Up и Page Down: на 10 секунд. Home: в начало. End: в конец записи.</translation>
+        </message>
+        <message>
+            <source>%1 of %2</source>
+            <translation>%1 из %2</translation>
+        </message>
+        <message>
+            <source>Open video</source>
+            <translation>Открыть видео</translation>
+        </message>
+        <message>
+            <source>Open a saved video (Ctrl+O)</source>
+            <translation>Открыть сохранённое видео (Ctrl+O)</translation>
+        </message>
+        <message>
+            <source>Record Original video</source>
+            <translation>Записать исходное видео</translation>
+        </message>
+        <message>
+            <source>Start or stop an Original MP4 recording</source>
+            <translation>Начать или остановить запись исходного видео в формате MP4</translation>
+        </message>
+        <message>
+            <source>Select sound for the Original video recording. The microphone is used only while recording.</source>
+            <translation>Выберите звук для записи исходного видео. Микрофон используется только во время записи.</translation>
+        </message>
+        <message>
+            <source>Select microphone audio for the Original MP4 recording, or choose no microphone.</source>
+            <translation>Выберите звук с микрофона для записи исходного видео в формате MP4 или отключите микрофон.</translation>
+        </message>
+        <message>
+            <source>The displayed frame could not be retained. Recorded video remains available.</source>
+            <translation>Не удалось удержать отображаемый кадр. Записанное видео по-прежнему доступно.</translation>
+        </message>
+        <message>
+            <source>Video could not be opened: select one existing local file.</source>
+            <translation>Не удалось открыть видео: выберите один существующий локальный файл.</translation>
+        </message>
+        <message>
+            <source>Video was not opened because the recording could not be stopped.</source>
+            <translation>Видео не открыто, поскольку не удалось остановить запись.</translation>
+        </message>
+        <message>
+            <source>Finishing recording before opening video...</source>
+            <translation>Завершение записи перед открытием видео...</translation>
+        </message>
+        <message>
+            <source>Waiting for recorded video to become seekable.</source>
+            <translation>Ожидание возможности перемотки по записанному видео.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. Seek to recorded video to continue.</source>
+            <translation>Кадр при паузе не попал в запись. Перейдите к записанному видео, чтобы продолжить.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. Seek to recorded video to continue.</source>
+            <translation>Не удалось проверить позицию кадра при паузе в записи. Перейдите к записанному видео, чтобы продолжить.</translation>
+        </message>
+        <message>
+            <source>End of video. Seek to an earlier point to play again.</source>
+            <translation>Конец видео. Перейдите к более раннему моменту, чтобы воспроизвести его снова.</translation>
+        </message>
+        <message>
+            <source>Camera unavailable. Showing the latest recorded frame.</source>
+            <translation>Камера недоступна. Показан последний записанный кадр.</translation>
+        </message>
+        <message>
+            <source>Held frame was not recorded. The retained image is still available.</source>
+            <translation>Кадр при паузе не попал в запись. Зафиксированный кадр по-прежнему доступен.</translation>
+        </message>
+        <message>
+            <source>The held frame's recorded position could not be verified. The retained image is still available.</source>
+            <translation>Не удалось проверить позицию кадра при паузе в записи. Зафиксированный кадр по-прежнему доступен.</translation>
+        </message>
+        <message>
+            <source>End of available recording. The retained image is still available.</source>
+            <translation>Доступная запись закончилась. Зафиксированный кадр по-прежнему доступен.</translation>
+        </message>
+        <message>
+            <source>Video unavailable: %1</source>
+            <translation>Видео недоступно: %1</translation>
+        </message>
+        <message>
+            <source>Playback sound unavailable. Video playback continues.</source>
+            <translation>Звук воспроизведения недоступен. Видео продолжает воспроизводиться.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the selected view is unavailable.</source>
+            <translation>Кадр не сохранён: выбранное изображение недоступно.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image could not be queued.</source>
+            <translation>Кадр не сохранён: не удалось добавить изображение в очередь.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the OkuFlow Photos folder is unavailable.</source>
+            <translation>Кадр не сохранён: папка OkuFlow Photos недоступна.</translation>
+        </message>
+        <message>
+            <source>Saved selected video frame.</source>
+            <translation>Выбранный кадр видео сохранён.</translation>
+        </message>
+        <message>
+            <source>The selected video frame could not be saved.</source>
+            <translation>Не удалось сохранить выбранный кадр видео.</translation>
+        </message>
+        <message>
+            <source>Frame not saved: the image writer is busy. Try again.</source>
+            <translation>Кадр не сохранён: программа записи изображения занята. Повторите попытку.</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed frame could not be retained.</source>
+            <translation>Пауза недоступна: не удалось сохранить отображаемый кадр.</translation>
+        </message>
+        <message>
+            <source>&lt;h2&gt;Controls&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Simple&lt;/b&gt; maximizes the camera view. Use the corner carousel or number keys 1 through 9 to change quick modes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Hide UI&lt;/b&gt; or &lt;b&gt;Ctrl+H&lt;/b&gt; clears controls and the assistant from the camera view. &lt;b&gt;Show UI&lt;/b&gt; restores them and the existing answer.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Advanced&lt;/b&gt; opens detailed image and Assistant settings. Drag the divider at the panel edge to resize it.&lt;/p&gt;&lt;p&gt;Drag the camera view to pan. Use Ctrl plus the mouse wheel to zoom. Enable &lt;b&gt;Virtual Joystick&lt;/b&gt; under &lt;b&gt;Settings &amp;gt; View and navigation&lt;/b&gt; for an on-screen movement control.&lt;/p&gt;&lt;p&gt;Photo saves original and processed versions. Record saves Original video. Explain describes the scene; Read recognizes text. Press &lt;b&gt;Ctrl+Shift+O&lt;/b&gt; to open the folder containing your OkuFlow files.&lt;/p&gt;&lt;h2&gt;Features&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Text Clarity&lt;/b&gt; combines document cleanup, local contrast, sharpening, and stable text edges. &lt;b&gt;Display Colors&lt;/b&gt; provides reading palettes and custom color schemes.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; improves zoomed detail when the optional NVIDIA Video Effects runtime is installed.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Text reading and Assistant&lt;/b&gt; can read text, explain the view, answer follow-up questions, and add results to lecture notes.&lt;/p&gt;</source>
+            <translation>&lt;h2&gt;Управление&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Простой режим&lt;/b&gt; разворачивает изображение с камеры на весь экран. Используйте карусель в углу или клавиши с цифрами от 1 до 9, чтобы переключать быстрые режимы.&lt;/p&gt;&lt;p&gt;Команда &lt;b&gt;Скрыть интерфейс&lt;/b&gt; или сочетание &lt;b&gt;Ctrl+H&lt;/b&gt; убирает элементы управления и помощника с изображения камеры. Команда &lt;b&gt;Показать интерфейс&lt;/b&gt; возвращает их и уже полученный ответ.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Расширенный режим&lt;/b&gt; открывает подробные настройки изображения и помощника. Перетащите разделитель у края панели, чтобы изменить её размер.&lt;/p&gt;&lt;p&gt;Перетаскивайте изображение камеры, чтобы перемещать его. Удерживайте Ctrl и прокручивайте колёсико мыши, чтобы изменить масштаб. Включите &lt;b&gt;Виртуальный джойстик&lt;/b&gt; в разделе &lt;b&gt;Настройки &amp;gt; Просмотр и навигация&lt;/b&gt;, чтобы управлять перемещением на экране.&lt;/p&gt;&lt;p&gt;Команда «Фото» сохраняет исходную и обработанную версии. Команда «Запись» сохраняет исходное видео. Команда «Объяснить» описывает сцену, а «Распознать текст» распознаёт текст. Нажмите &lt;b&gt;Ctrl+Shift+O&lt;/b&gt;, чтобы открыть папку с файлами OkuFlow.&lt;/p&gt;&lt;h2&gt;Возможности&lt;/h2&gt;&lt;p&gt;&lt;b&gt;Чёткость текста&lt;/b&gt; объединяет очистку документа, локальный контраст, повышение резкости и стабилизацию краёв текста. &lt;b&gt;Цвета экрана&lt;/b&gt; предлагает палитры для чтения и пользовательские цветовые схемы.&lt;/p&gt;&lt;p&gt;&lt;b&gt;NVIDIA Super Resolution&lt;/b&gt; повышает детализацию при увеличении, если установлен дополнительный компонент NVIDIA Video Effects.&lt;/p&gt;&lt;p&gt;&lt;b&gt;Чтение текста и помощник&lt;/b&gt; могут читать текст, объяснять изображение, отвечать на дополнительные вопросы и добавлять результаты в конспект лекции.&lt;/p&gt;</translation>
+        </message>
+        <message>
+            <source>Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)</source>
+            <translation>Видеофайлы (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;Все файлы (*)</translation>
+        </message>
+        <message>
+            <source>Ultra Clear Text on this view</source>
+            <translation>Ultra Clear Text в этом представлении</translation>
+        </message>
+        <message>
+            <source>… marks text left as the original image.</source>
+            <translation>… отмечает текст, оставленный на исходном изображении.</translation>
+        </message>
+        <message>
+            <source>Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.</source>
+            <translation>Воспроизведение видео: доступны масштабирование, поворот, цвета для чтения и UCT. Расширенные эффекты GPU недоступны.</translation>
+        </message>
+        <message>
+            <source> [REC original, starting encoder]</source>
+            <translation> [REC оригинал, запуск кодировщика]</translation>
+        </message>
+        <message>
+            <source> [REC original, %1]</source>
+            <translation> [REC оригинал, %1]</translation>
+        </message>
+        <message>
+            <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
+            <translation>Пауза недоступна: не удалось точно сохранить отображаемую область кадра.</translation>
+        </message>
     </context>
 </TS>

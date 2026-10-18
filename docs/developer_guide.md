@@ -5,6 +5,16 @@ OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository:
 OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- Development video playback uses one bounded Media Foundation decoder and the
+  Original recording archive for same-session rewind. Opening a saved video
+  first finalizes ongoing recording; a new recording returns to the camera.
+  The native bottom transport, immutable UCT and exact frame saving share the
+  selected document. New video is Original-only; photo pairs and legacy notes
+  are preserved. See [the implementation contract](accessible_video_implementation.md).
+  CUDA builds prefer native GPU video textures and a private CUDA scene,
+  retaining CPU compatibility. See [GPU playback](gpu_video_playback.md) for
+  device ownership, format limits and explicit image-action transfers.
+  This is not a new published Windows installer.
 - UCT advanced settings persist separate PP-OCRv6 detector/recognizer tiers
   for GPU (medium/medium by default) and CPU fallback (tiny/small). All three
   tiers use compiled immutable pins, native combo data and the same four
@@ -60,7 +70,7 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   without announcing that the original camera returned.
 - CPU frame pipeline for format conversion and rotation of formats the GPU path does not consume, plus the legacy debug composite view. NV12 and YUY2 camera frames bypass it entirely: color conversion and rotation run in CUDA.
 - Direct3D 12 presenter for swap-chain output plus GPU texture readback.
-  Processed and rotation-correct unenhanced video recording use a bounded
+  Rotation-correct clean Original video recording uses a bounded
   384 MiB pool of shareable GPU canvases and feed Media Foundation hardware
   encoders without a GPU-to-CPU-to-GPU round trip. Confirmed GPU conversion
   completion releases the source lease; encoder samples own their separate
@@ -532,10 +542,9 @@ profiling flags for ordinary operation.
   large checked color grid, thickness or text-size control, Solid/Dashed
   style, and shape choice as applicable. The flyout closes when drawing
   starts and never hides on a timer.
-- Recording remains available while Draw is active. Ink is alpha-composited
-  into the processed MP4 at its selected recording resolution; the paired
-  original MP4 remains a clean camera recording without annotations or
-  selection handles.
+- Recording remains available while Draw is active. The single Original MP4
+  stays clean, without viewing effects, annotations or selection handles.
+  Selected-frame saves can include the admitted view's UCT and ink.
 - Middle-button drag continues to pan the camera while Draw is active. Text
   follows a canvas-first workflow: choose Text, click the desired scene
   position, type in the inline editor, then press Enter to place the label
@@ -550,7 +559,7 @@ profiling flags for ordinary operation.
   capture-and-Clear, and Done. The persistent Photo/Record/Explain/Read/Draw
   bar remains above the drawing canvas and clickable in both Simple and
   Advanced; Photo can capture the current drawing, Record/Stop controls the
-  annotated processed recording, and pressing Draw again leaves drawing mode.
+  clean Original recording, and pressing Draw again leaves drawing mode.
   The bar compresses to icons when the viewport is narrow. Tool/state changes
   use screen-reader announcements and never start TTS.
 - `Hide UI` at the top-right or `Ctrl+H` hides controls and the assistant for a clear camera view. `Show UI` restores the previous layout and answer. Simple controls also fade after five idle seconds; keyboard navigation keeps them visible. `Esc` closes the quick-mode grid.
@@ -741,30 +750,28 @@ profiling flags for ordinary operation.
   Annotation color, width, line style, shape choice, text size, and the
   `Settings > Notes and files > Save drawing to notes when leaving Draw` preference
   persist globally; strokes are session-only and are discarded after exit.
-- `Start Recording` writes synchronized `VID_<timestamp>_original.mp4` and
-  `VID_<timestamp>_processed.mp4` files to
-  `Documents\OkuFlow\Recordings\YYYY-MM-DD\`. Both are encoded live:
-  the original follows the selected camera mode and the processed file follows
-  `Processed recording resolution`.
-  Processed recordings include Draw ink on both GPU and CPU routes; originals
-  remain clean. CPU fallback within a GPU-started writer converts to its NV12
-  input contract without resetting the paired timeline.
-  When a microphone is selected, the same capture-clock-synchronized
-  48 kHz mono AAC track is embedded in both files. Choosing
-  `No microphone (video only)` omits the audio stream.
-  OkuFlow tries AV1 first and falls back to H.264 when AV1 is unavailable. It
-  does not transcode after Stop. Fragmented MP4 limits how much recent media a
-  process failure can lose, but playback of an incomplete file is not assumed
-  without checking it. The duration cap is 12 hours, and disk-space
-  guards stop both files together. Stop discards queued frames and finalizes
-  after the sample currently being encoded. Each nonempty original or
-  processed file is retained independently after an encoder or finalization
-  failure, including when its partner is missing. Only a fully finalized pair
-  is added to lecture notes. OkuFlow removes only its own regular, zero-byte
-  output with no accepted video samples; it does not sweep old recording
-  folders at startup. Paired capture approximately
-  doubles output storage and adds CPU camera-format conversion while
-  recording.
+- `Start Recording` writes one `VID_<timestamp>_original.mp4` under
+  `Documents\OkuFlow\Recordings\YYYY-MM-DD\`, with one encoder and optional
+  capture-clock-synchronized 48 kHz mono AAC. Conversion and source orientation
+  are included; view crop, colors, UCT, Super Resolution and Draw ink are not.
+  CPU fallback within a GPU-started writer preserves that Original timeline.
+  AV1 remains preferred with H.264 fallback; Stop does not transcode.
+  Source-format changes create `_partN` Originals. The 12-hour duration and
+  disk-space guards stop the session. Stop releases queued work and finalizes
+  the in-flight sample; failed attempts/nonempty outputs remain preserved.
+  Only a successfully finalized selected Original is added once to notes.
+  Session-owned regular zero-byte outputs with no accepted samples may be
+  removed; old recording folders and legacy pairs remain untouched.
+- A current recording exposes verified fragments for same-session rewind.
+  Pausing owns the last successfully displayed scene and its exact admitted
+  PTS or explicit capture-time mapping. Opening a saved file first stops and
+  finalizes recording. Starting a new recording leaves saved playback only
+  after preflight succeeds. Stop preserves the selected recording cursor and
+  play/pause intent. The forward transport follows live for a recording or
+  holds the last decodable saved frame; Resume continues the held cursor.
+  Ordinary unrecorded camera use creates no history. See
+  [archive and player ownership](video_archive_backend.md) and
+  [document lifecycle](video_document_lifecycle.md).
 
 ## Navigation And Interaction
 - `Ctrl + mouse wheel`: zoom around the cursor.
@@ -822,7 +829,7 @@ manual reset requires removing both primary and backup.
   Advanced Assistant can change it to another writable folder outside the
   application directory. The choice persists as `paths.userDataRoot`.
 - Snapshot pairs and annotated captures are written under
-  `Photos\YYYY-MM-DD\`; original/processed recording pairs are written under
+  `Photos\YYYY-MM-DD\`; new Original recordings are written under
   `Recordings\YYYY-MM-DD\`; lecture notes are written as
   `Notes\NOTES_<timestamp>.html`; Assistant exports default to `Analysis\`.
   Console-attached launches also tee Qt diagnostics to one timestamped file

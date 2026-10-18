@@ -8,11 +8,14 @@ ControlPlan PrepareRecordingPreferencePatch(const std::map<Field,QJsonValue>& cu
     const QSet<QString>& microphones,const QJsonObject& patch,
     const RecordingPreferenceSession& session,bool recorderUnavailable) {
     ControlPlan plan;
+    // Retained legacy metadata is not an alternate recording-resolution knob.
+    // Reject even a no-op before planning any microphone stop or preference.
+    if(patch.contains("recording.canvas")) {plan.error="unavailable";return plan;}
     const auto schema=QJsonDocument::fromJson(QByteArray::fromStdString(ParameterSetSchema(ParameterGroup::Recording))).object();
     if(!MatchesControlSchema(patch,schema)) {plan.error="invalid_argument";return plan;}
     auto fail=[&](const char* code) {plan=ControlPlan{};plan.error=QString::fromLatin1(code);return plan;};
     for(auto it=patch.begin();it!=patch.end();++it) {
-        const auto field=it.key()=="recording.microphone"?Field::RecordingMicrophone:Field::RecordingCanvas;
+        const auto field=Field::RecordingMicrophone;
         const auto existing=current.find(field);
         if(existing==current.end())return fail("unavailable");
         if(existing->second==it.value())continue;

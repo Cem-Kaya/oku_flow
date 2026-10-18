@@ -12,6 +12,7 @@
 #include <optional>
 #include <vector>
 #include <set>
+#include <memory>
 
 namespace okuflow::agent {
 
@@ -33,9 +34,17 @@ enum class Field {
     UiSetupPromptDeclined, UiActiveTab, AnnotationColor, AnnotationWidth, AnnotationTextSize, AnnotationDashed,
     AnnotationShape, AnnotationCaptureOnExit, AnnotationTool, AnnotationEnabled,
     CameraFormat, CameraAcceleration, CameraTorch, RecordingMicrophone, RecordingCanvas, NotesRoot,
-    UctGpuDetector, UctGpuRecognizer, UctCpuDetector, UctCpuRecognizer
+    UctGpuDetector, UctGpuRecognizer, UctCpuDetector, UctCpuRecognizer,
+    VideoSelection
 };
 enum class ContextKind { EmbeddedTurn, ExternalLease };
+// Native admitted work may outlive a normally completed embedded turn. This
+// GUI-thread-only token retains revocation, never image or source permission.
+struct AdmittedControlAuthority {
+    QString owner;
+    ContextKind kind{ContextKind::EmbeddedTurn};
+    bool canceled{}, photosRevoked{};
+};
 enum class ApprovalDomain { None, Configuration };
 QString FieldName(Field field);
 QString ParameterId(Field field);
@@ -51,11 +60,17 @@ struct AuthorizedObservation {
     ControlStamp stamp;
     quint64 grantGeneration{};
     quint64 frameSequence{};
-    qint64 processedAt{}; // native monotonic frame time; zero only for synthetic targets
+    qint64 processedAt{}; // native camera time; zero for immutable media or synthetic targets
+    bool immutableSource{};
+    QString documentId;
+    quint64 documentGeneration{}, selectionGeneration{};
+    qint64 mediaPts100ns{-1};
 };
 struct ControlPlan {
     std::vector<FieldWrite> writes;
     std::vector<Field> observedFields;
+    // Revision dependencies grant no writes and create no inverse/undo entry.
+    std::vector<Field> requiredFields;
     QString targetIdentity;
     QString error;
     bool resetsHistory{};
@@ -106,6 +121,7 @@ public:
     virtual void StopOwnedRecording(const QString& owner) = 0;
     virtual void CancelOwnedSource(const QString&) {}
     virtual bool HasOwnedSource(const QString&) const { return false; }
+    virtual bool ObservationStillCurrent(const AuthorizedObservation&) const { return true; }
 };
 
 struct ControlGrants {
@@ -152,6 +168,7 @@ public:
     bool AuthorizeFrameDelivery(const QString& contextId, ControlStamp expected);
     bool AuthorizeFrameDelivery(const AuthorizedObservation& expected);
     bool IsContextActive(const QString& contextId);
+    std::shared_ptr<const AdmittedControlAuthority> CaptureOperationAuthority(const QString& contextId);
     quint64 FieldRevision(Field field) const;
     ControlResult ApplyDeferredFields(const QString& contextId, ToolId tool, const QJsonObject& args, ControlPlan plan);
     ControlResult ResolveApproval(const QString& approvalId, bool allow);
@@ -163,7 +180,10 @@ public:
     void InvalidateGeometry(bool processing = false);
 private:
     struct Revision { quint64 value{}; bool user{}; };
-    struct Inverse { QJsonValue previous; quint64 lastWrite{}; QString targetIdentity; };
+    struct Inverse {
+        QJsonValue previous; quint64 lastWrite{}; QString targetIdentity; quint64 sourceEpoch{};
+        QJsonValue videoSelection;
+    };
     struct Reservation {
         QByteArray digest; ControlResult result; bool completed{};
         std::vector<ControlCompletion> listeners;
@@ -175,6 +195,7 @@ private:
     struct Context {
         QString id;
         ContextSpec spec;
+        std::shared_ptr<AdmittedControlAuthority> operationAuthority;
         bool active{true};
         qint64 started{}, lastCall{}, ended{};
         int mutations{}, approvals{}, observations{};
@@ -235,6 +256,7 @@ private:
     CatalogEdition edition_;
     bool embeddedEnabled_{}, externalEnabled_{};
     std::optional<Context> context_;
+    std::deque<std::weak_ptr<AdmittedControlAuthority>> operationAuthorities_;
     std::optional<Approval> approval_;
     std::map<QString,PendingReceipt> pendingReceipts_; // bounded by operation capacity
     std::map<Field, Revision> revisions_;

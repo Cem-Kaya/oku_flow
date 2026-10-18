@@ -4,6 +4,7 @@
 #include "okuflow/app/agent/app_control_target.hpp"
 #include "okuflow/capture/capture_buffer.hpp"
 #include "okuflow/capture/phone_camera.hpp"
+#include "okuflow/common/video_playback.hpp"
 
 #include <QAccessible>
 #include <QLockFile>
@@ -13,6 +14,9 @@
 #include <QThreadPool>
 
 #include <set>
+#include <bit>
+#include <cstring>
+#include <limits>
 #include <tuple>
 #include <utility>
 
@@ -20,19 +24,76 @@ namespace okuflow {
 
 namespace {
 
-RecordingViewTransform ToRecordingTransform(const ViewTransform& transform)
+void RetainOriginalForPresentation(PresentedOriginalCache& cache,
+                                  const CapturedFrame* original,
+                                  const std::optional<RecordingSessionInfo>& session,
+                                  std::uint64_t cameraEpoch, int rotation,
+                                  const PresentedOriginalCache::ViewRecipe& recipe)
 {
-    return RecordingViewTransform{
-        transform.sourceX,
-        transform.sourceY,
-        transform.sourceWidth,
-        transform.sourceHeight,
-        transform.destinationX,
-        transform.destinationY,
-        transform.destinationWidth,
-        transform.destinationHeight,
-        transform.valid,
+    if (!original || !session) return;
+    try {
+        cache.Stage(*original, session->id, cameraEpoch, rotation, recipe);
+    } catch (const std::bad_alloc&) {
+        // Pause retention cannot revoke the independently admitted recording.
+        // A later successful unretained receipt invalidates the old hold.
+    }
+}
+
+// Playback owns these pixels independently of camera textures and encoder
+// leases. Preparing appearance here keeps pan/zoom on the viewport clock.
+uct::SharedPixels PrepareMediaScene(const uint8_t* data, UINT width, UINT height,
+                                   UINT stride, int turns, bool blackWhite,
+                                   float threshold, int colorTransform,
+                                   const color_schemes::ColorLut& lut,
+                                   float contrast, float brightness)
+{
+    if (!data || !VideoPlaybackLayoutFits(width, height, stride)) return {};
+    auto result = std::make_shared<uct::PixelBuffer>();
+    turns = ((turns % 4) + 4) % 4;
+    result->width = (turns & 1) ? height : width;
+    result->height = (turns & 1) ? width : height;
+    result->strideBytes = result->width * 4;
+    result->bytes.resize(static_cast<std::size_t>(result->strideBytes) * result->height);
+    const auto grade = [contrast, brightness](uint8_t value) {
+        return std::clamp((static_cast<float>(value) / 255.0f - 0.5f) * contrast +
+                              0.5f + brightness,
+                          0.0f, 1.0f);
     };
+    const auto byte = [](float value) {
+        return static_cast<uint8_t>(std::clamp(std::lround(value * 255.0f), 0l, 255l));
+    };
+    for (UINT y = 0; y < static_cast<UINT>(result->height); ++y) {
+        for (UINT x = 0; x < static_cast<UINT>(result->width); ++x) {
+            const UINT sx = turns == 1 ? y : turns == 2 ? width - 1 - x :
+                            turns == 3 ? width - 1 - y : x;
+            const UINT sy = turns == 1 ? height - 1 - x : turns == 2 ? height - 1 - y :
+                            turns == 3 ? x : y;
+            const auto* source = data + static_cast<std::size_t>(sy) * stride + sx * 4;
+            auto* target = result->bytes.data() +
+                static_cast<std::size_t>(y) * result->strideBytes + x * 4;
+            uint8_t b = source[0], g = source[1], r = source[2];
+            if (blackWhite) {
+                const auto luma = byte(0.114f * (b / 255.0f) + 0.587f * (g / 255.0f) +
+                                       0.299f * (r / 255.0f));
+                b = g = r = (static_cast<float>(luma) / 255.0f) >=
+                                    std::clamp(threshold, 0.0f, 1.0f) ? 255 : 0;
+            }
+            float gb = grade(b), gg = grade(g), gr = grade(r);
+            if (colorTransform == 1) {
+                gb = 1.0f - gb; gg = 1.0f - gg; gr = 1.0f - gr;
+            }
+            if (colorTransform == 2) {
+                const auto mapped = lut[byte(0.114f * gb + 0.587f * gg + 0.299f * gr)];
+                target[0] = static_cast<uint8_t>(mapped);
+                target[1] = static_cast<uint8_t>(mapped >> 8);
+                target[2] = static_cast<uint8_t>(mapped >> 16);
+            } else {
+                target[0] = byte(gb); target[1] = byte(gg); target[2] = byte(gr);
+            }
+            target[3] = source[3];
+        }
+    }
+    return result;
 }
 
 float MeasureCaptureToPresentLatency(std::int64_t captureClock100ns)
@@ -139,6 +200,14 @@ SuperResCacheExtent ComputeSuperResCacheExtent(UINT sceneWidth,
 }
 
 } // namespace
+
+QSize OkuFlowApp::ProcessingCacheExtent(UINT width, UINT height) const {
+    const auto extent = ComputeSuperResCacheExtent(width, height, mlTextSuperResolutionUltra1440p_);
+    const QSize ceiling = width >= height ? QSize(2560, 1440) : QSize(1440, 2560);
+    const QSize requested(extent.width, extent.height);
+    return requested.width() <= ceiling.width() && requested.height() <= ceiling.height()
+        ? requested : requested.scaled(ceiling, Qt::KeepAspectRatio);
+}
 
 void OkuFlowApp::EnumerateCameras() {
     cameras_ = mediaCapture_.EnumerateCameras(false);
@@ -459,6 +528,7 @@ bool OkuFlowApp::HandlePresenterFault() {
     if (presenter_) presenter_->PollGpuProgress();
     if ((!presenter_ || !presenter_->IsFaulted()) &&
         (!cudaSurface_ || !cudaSurface_->IsFaulted())) return false;
+    if (ultraClearText_) ultraClearText_->OnMediaPresentationFailed();
     CancelPendingAssistantCaptures();
     usingCudaLastFrame_ = false;
     cudaSceneReady_ = false;
@@ -637,6 +707,46 @@ bool OkuFlowApp::EnsureCudaSurface(UINT width, UINT height) {
     }
 }
 
+void OkuFlowApp::AdmitOriginalFrame(CapturedFrame& originalFrame, bool cudaOriginal) {
+    if (!recordingManager_ || !recordingManager_->IsActive() ||
+        originalFrame.width == 0 || originalFrame.height == 0) return;
+
+    QElapsedTimer cloneTimer;
+    cloneTimer.start();
+    bool poolExhausted = false;
+    // A photo may already have materialized Original. Do not clone a second
+    // GPU image in that case. Nothing in this producer samples viewing effects.
+    if (!originalFrame.HasCpuPixels() && cudaOriginal && cudaOriginalTexture_ && presenter_) {
+        RecordingViewTransform fullSource;
+        fullSource.valid = true;
+        originalFrame.gpuScene = presenter_->RequestRecordingFrame(
+            cudaOriginalTexture_.Get(), originalFrame.width, originalFrame.height,
+            fullSource, originalFrame.width, originalFrame.height, nullptr, 0,
+            &poolExhausted,
+            pipelineOrchestrator_->FenceInteropEnabled() ? presenter_->LastExternalSignal() : 0);
+        if (!pipelineOrchestrator_->FenceInteropEnabled() && !presenter_->WaitForIdle()) return;
+    }
+    if (originalFrame.IsValid()) {
+        // The manager retains an owned CPU/GPU lease; the caller may still
+        // need its clean CPU pixels for the independent paired-photo action.
+        const auto session = recordingManager_->CurrentSessionInfo();
+        recordingManager_->AddOriginalFrame(originalFrame);
+        // The raw CUDA path has already processed this exact source. CPU
+        // ingress is admitted before processing, so it stages only after a
+        // successful scene build below; busy processing cannot replace the
+        // pending source of a previously deferred scene.
+        if (cudaOriginal && !MediaViewSelected())
+            RetainOriginalForPresentation(presentedOriginalCache_, &originalFrame,
+                session, cameraSessionId_, CameraOriginalRotationQuarterTurns(), cudaSceneViewRecipe_);
+    } else if (poolExhausted) {
+        recordingManager_->NotifyRecordingPoolSkipped();
+    } else {
+        recordingManager_->NotifyReadbackSkipped();
+    }
+    pipelineOrchestrator_->RecordStageSample(FrameTimingStage::RecordingClone,
+        static_cast<float>(cloneTimer.nsecsElapsed()) * 1e-6f);
+}
+
 bool OkuFlowApp::ProcessFrameWithCuda(UINT width, UINT height) {
     cudaSubmissionBusy_ = false;
     const auto& stageRaw = cpuPipeline_.StageRaw();
@@ -701,7 +811,7 @@ bool OkuFlowApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
     }
     // Rotation happens on the GPU after conversion, so the interop surface and
     // every processing stage run at the post-rotation extent.
-    const int turns = ((rotationQuarterTurns_ % 4) + 4) % 4;
+    const int turns = ((CameraOriginalRotationQuarterTurns() % 4) + 4) % 4;
     const UINT outWidth = ((turns & 1) != 0) ? height : width;
     const UINT outHeight = ((turns & 1) != 0) ? width : height;
 
@@ -785,6 +895,7 @@ bool OkuFlowApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
                 usingCudaLastFrame_ = true;
                 pendingSceneCaptureClock100ns_ = currentCameraCaptureClock100ns_;
                 ++startupProcessedScenes_;
+                if (originalFrame) AdmitOriginalFrame(*originalFrame, true);
                 PresentLatestCudaScene(true, originalFrame);
                 return true;
             }
@@ -903,26 +1014,18 @@ bool OkuFlowApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
     usingCudaLastFrame_ = true;
     pendingSceneCaptureClock100ns_ = currentCameraCaptureClock100ns_;
     ++startupProcessedScenes_;
+    if (originalFrame) AdmitOriginalFrame(*originalFrame, true);
     PresentLatestCudaScene(true, originalFrame);
     return true;
 }
 
-// Shared tail of the CUDA path: builds ProcessingSettings from the live UI
-// state, runs ProcessFrame with the fence dance, and presents the result.
-// The interop surface must already exist at presentWidth x presentHeight.
-bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth, UINT presentHeight) {
-    cudaSubmissionBusy_ = false;
-    if (!cudaSurface_) {
-        qWarning() << "CUDA pipeline disabled: surface not available";
-        usingCudaLastFrame_ = false;
-        return false;
-    }
-
+ProcessingSettings OkuFlowApp::BuildProcessingSettings(UINT width, UINT height, UINT cacheWidth,
+                                                         UINT cacheHeight, std::uint64_t frameSequence) const {
     ProcessingSettings settings{};
     if (controlService_) {
         const auto stamp = controlService_->Stamp();
         settings.controlFrame = {stamp.sourceEpoch,stamp.processingVersion,stamp.viewVersion,
-            stamp.geometryEpoch,currentCameraFrameSequence_,
+            stamp.geometryEpoch,frameSequence,
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()};
     }
     settings.enableBlackWhite = blackWhiteEnabled_;
@@ -943,10 +1046,10 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     settings.enableSpatialSharpen = spatialSharpenEnabled_;
     settings.spatialUpscaler = spatialUpscaler_;
     settings.spatialSharpness = spatialSharpness_;
-    settings.spatialViewportWidth = presenter_->ViewportWidth();
-    settings.spatialViewportHeight = presenter_->ViewportHeight();
+    settings.spatialViewportWidth = presenter_ ? presenter_->ViewportWidth() : width;
+    settings.spatialViewportHeight = presenter_ ? presenter_->ViewportHeight() : height;
     settings.spatialViewTransform = ComputeViewTransform(
-        presentWidth, presentHeight,
+        width, height,
         settings.spatialViewportWidth, settings.spatialViewportHeight,
         settings.zoomAmount, settings.zoomCenterX, settings.zoomCenterY,
         pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fit
@@ -1000,10 +1103,33 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     if (settings.enableMlSuperRes && !settings.mlSuperResUltra1440p &&
         settings.zoomAmount >= 1.33f) {
         settings.spatialViewTransform = CanonicalizeSuperResViewTransform(
-            settings.spatialViewTransform, presentWidth, presentHeight,
-            cudaSuperResWidth_, cudaSuperResHeight_, settings.zoomAmount);
+            settings.spatialViewTransform, width, height,
+            cacheWidth, cacheHeight, settings.zoomAmount);
     }
     settings.ApplyTextClarityMaster();
+    return settings;
+}
+
+// Shared tail of the CUDA path: builds ProcessingSettings from the live UI
+// state, runs ProcessFrame with the fence dance, and presents the result.
+// The interop surface must already exist at presentWidth x presentHeight.
+bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth, UINT presentHeight) {
+    cudaSubmissionBusy_ = false;
+    if (!cudaSurface_) {
+        qWarning() << "CUDA pipeline disabled: surface not available";
+        usingCudaLastFrame_ = false;
+        return false;
+    }
+
+    ProcessingSettings settings = BuildProcessingSettings(presentWidth, presentHeight,
+        cudaSuperResWidth_, cudaSuperResHeight_, currentCameraFrameSequence_);
+    const bool hiddenLive = MediaViewSelected();
+    if (hiddenLive) {
+        // The selected file/held scene has its own effects cache. A camera
+        // consumer here needs only conversion/orientation and Original output.
+        settings = ProcessingSettings{};
+        settings.stagingFormat = cudaBufferFormat_;
+    }
 
     // The presenter owns reservations and queue dependencies for both APIs.
     FenceSyncParams cudaSyncParams{};
@@ -1026,7 +1152,7 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     stampedInput.frameSequence = currentCameraFrameSequence_;
     stampedInput.settingsGeneration = cudaProcessingGeneration_;
 #if OKUFLOW_ENABLE_CUDA
-    cudaSurface_->EnableUctAnalysis(ultraClearText_ && ultraClearText_->IsEnabled());
+    cudaSurface_->EnableUctAnalysis(!hiddenLive && ultraClearText_ && ultraClearText_->IsEnabled());
 #endif
     if (!cudaSurface_->ProcessFrame(stampedInput, settings, cudaSyncParams)) {
         pipelineOrchestrator_->RecordStageSample(
@@ -1088,6 +1214,21 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     }
 
     asyncSuperResPresentPending_ = false; // a new exact base scene supersedes enhancement
+    // Stamp only the successfully admitted scene. A newer requested recipe,
+    // failed upload or deferred presentation cannot rewrite displayed authority.
+    const auto textStages = settings.TextClarityStages();
+    cudaSceneViewRecipe_ = {
+        !settings.enableBlur && !settings.enableSpatialSharpen &&
+            !settings.enableTemporalSmoothing && !settings.enableStabilization &&
+            !settings.enableBumpHold && !settings.enableKeystone && !settings.enableAutoContrast &&
+            !textStages.background && !textStages.adaptive && !textStages.smartSharpen &&
+            !textStages.clahe && !textStages.twoColor && !textStages.hysteresis &&
+            !textStages.selectiveSharpen && !textStages.glare,
+        settings.enableBlackWhite,
+        settings.enableBlackWhite ? settings.blackWhiteThreshold : 0.5f,
+        static_cast<int>(settings.displayColorTransform),
+        settings.displayColorTransform == DisplayColorTransform::kLumaLut ? settings.displayColorLutGeneration : 0,
+        settings.contrast, settings.brightness};
     cudaPipelineAvailable_ = true;
     UpdateKeystoneTrackingUi();
     usingCudaLastFrame_ = true;
@@ -1095,7 +1236,7 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     // Ultra Clear Text provenance: exactly what this admitted scene was built
     // with. Busy/failed submissions above keep the previous snapshot, so
     // re-presents of the cached texture never borrow a newer frame/setting.
-    {
+    if (!hiddenLive) {
         UctSceneSettings applied = UltraClearTextRequest();
         applied.keystone = settings.enableKeystone;
         applied.stabilization = settings.enableStabilization;
@@ -1104,17 +1245,23 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
             applied, presentWidth, presentHeight, currentCameraFrameSequence_,
             settings.enableTemporalSmoothing || (settings.enableStabilization && settings.enableBumpHold));
     }
-    if (controlTarget_) controlTarget_->FrameProcessed();
+    if (!hiddenLive && controlTarget_) controlTarget_->FrameProcessed();
     // CPU pixels belong to the last CPU presentation, not this GPU scene.
-    presentationBuffer_.clear();
-    presentationWidth_ = 0;
-    presentationHeight_ = 0;
-    pipelineOrchestrator_->MarkSceneDirty();
+    if (!hiddenLive) {
+        presentationBuffer_.clear();
+        presentationWidth_ = 0;
+        presentationHeight_ = 0;
+    }
+    if (!hiddenLive) pipelineOrchestrator_->MarkSceneDirty();
     return true;
 }
 
 void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
                                          CapturedFrame* originalFrame) {
+    if (MediaViewSelected()) {
+        PresentMediaView();
+        return;
+    }
     if (!cudaSceneReady_ || !cudaSharedTexture_ || !presenter_ ||
         !presenter_->IsInitialized() ||
         processedFrameWidth_ == 0 || processedFrameHeight_ == 0) {
@@ -1225,16 +1372,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         pendingPhotoReadbackTimer_.invalidate();
         photoCapturePending_ = true;
     }
-    if (pendingAnnotationReadbackId_ != 0 &&
-        pendingAnnotationReadbackTimer_.isValid() &&
-        pendingAnnotationReadbackTimer_.elapsed() > 1000) {
-        pendingAnnotationReadbackId_ = 0;
-        pendingAnnotationReadbackTimer_.invalidate();
-        // This intent belongs to the copied frame. A fresh frame cannot
-        // replace an expired readback, even if it has the same dimensions.
-        activeAnnotationCapture_.reset();
-        ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
-    }
+    ExpireAnnotationReadback();
     if (pendingOnDemandReadbackId_ != 0 &&
         pendingOnDemandReadbackTimer_.isValid() &&
         pendingOnDemandReadbackTimer_.elapsed() > 1000) {
@@ -1249,8 +1387,6 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         pendingAssistantFrameReadbackTimer_.invalidate();
         pipelineOrchestrator_->MarkViewportDirty();
     }
-    const bool recordingActive =
-        newCameraFrame && recordingManager_ && recordingManager_->IsActive();
     const bool assistiveWanted =
         newCameraFrame && assistiveManager_->WantsPeriodicReadback(debugViewEnabled_);
     const bool photoWanted =
@@ -1326,6 +1462,9 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
             ultraClearText_->OnPresentationSucceeded();
         }
         lastAnnotationPresentation_ = uctContext;
+        presentedOriginalCache_.Presented(cameraSessionId_, uctContext.frameSeq, annotationTransform,
+            presentationTexture == cudaSharedTexture_.Get() &&
+            !focusMarkerEnabled_);
         lastAnnotationGpuPresentation_ = annotationPresentation;
         lastAnnotationPresentation_->cameraActive = true;
         lastAnnotationSceneRevision_ = annotationSceneRevision_;
@@ -1378,97 +1517,6 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         pipelineOrchestrator_->MarkViewportDirty();
     }
 
-    // Recording owns fixed GPU textures independent of the swap chain.
-    // Clone both the canonical processed view and the post-conversion,
-    // post-rotation original frame into unique shareable allocations. The
-    // worker can feed them directly to Media Foundation without retaining a
-    // camera-owned texture or reading either stream through system memory.
-    if (recordingActive && originalFrame &&
-        originalFrame->width > 0 && originalFrame->height > 0) {
-        QElapsedTimer recordingCloneTimer;
-        recordingCloneTimer.start();
-        const RecordingCanvasSize canvas =
-            recordingManager_->ResolveCanvas(
-                originalFrame->width, originalFrame->height);
-        QImage annotationLayer;
-        const AnnotationOverlay* annotationOverlay =
-            mainWindow_->annotationOverlay();
-        if (annotationOverlay && annotationOverlay->IsActive() && annotationOverlay->HasInk()) {
-            annotationLayer = QImage(
-                static_cast<int>(canvas.width),
-                static_cast<int>(canvas.height),
-                QImage::Format_ARGB32);
-            annotationLayer.fill(Qt::transparent);
-            QPainter annotationPainter(&annotationLayer);
-            // Ink is stored in full-scene coordinates, even when the video
-            // texture below is sampled through a remapped SuperRes crop.
-            RenderAnnotationStrokes(
-                annotationPainter,
-                annotationOverlay->Strokes(),
-                annotationTransform,
-                annotationLayer.size());
-        }
-        bool processedPoolExhausted = false;
-        GpuVideoFrame recordingFrame =
-            presenter_->RequestRecordingFrame(
-                presentationTexture,
-                presentationSourceWidth,
-                presentationSourceHeight,
-                ToRecordingTransform(transform),
-                canvas.width,
-                canvas.height,
-                annotationLayer.isNull()
-                    ? nullptr
-                    : annotationLayer.constBits(),
-                annotationLayer.isNull()
-                    ? 0
-                    : static_cast<std::size_t>(
-                          annotationLayer.bytesPerLine()),
-                &processedPoolExhausted,
-                presentSync.enable ? presentSync.waitValue : 0);
-        RecordingViewTransform originalTransform;
-        originalTransform.valid = true;
-        GpuVideoFrame originalRecordingFrame;
-        bool originalPoolExhausted = false;
-        if (cudaOriginalTexture_) {
-            originalRecordingFrame =
-                presenter_->RequestRecordingFrame(
-                    cudaOriginalTexture_.Get(),
-                    originalFrame->width,
-                    originalFrame->height,
-                    originalTransform,
-                    originalFrame->width,
-                    originalFrame->height,
-                    nullptr,
-                    0,
-                    &originalPoolExhausted,
-                    presentSync.enable ? presentSync.waitValue : 0);
-        }
-        if (!pipelineOrchestrator_->FenceInteropEnabled() &&
-            !presenter_->WaitForIdle()) {
-            // Without a shared semaphore the next CUDA frame cannot wait on
-            // these recording readers. Completion must precede source reuse.
-            return;
-        }
-        if (recordingFrame.IsValid() &&
-            (originalRecordingFrame.IsValid() ||
-             originalFrame->HasCpuPixels())) {
-            originalFrame->gpuScene = std::move(originalRecordingFrame);
-            recordingManager_->AddGpuSceneFrame(
-                std::move(recordingFrame),
-                ToRecordingTransform(transform),
-                std::move(*originalFrame));
-        } else {
-            if (processedPoolExhausted || originalPoolExhausted) {
-                recordingManager_->NotifyRecordingPoolSkipped();
-            } else {
-                recordingManager_->NotifyReadbackSkipped();
-            }
-        }
-        pipelineOrchestrator_->RecordStageSample(
-            FrameTimingStage::RecordingClone,
-            static_cast<float>(recordingCloneTimer.nsecsElapsed()) * 1e-6f);
-    }
     if (presented) {
         pipelineOrchestrator_->MarkViewportPresented();
         superResPresentedLastFrame_ = presentingSuperRes;
@@ -1482,8 +1530,41 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
 }
 
 // Drain completed asynchronous viewport copies for photos and assistive
-// analysis. Processed recording now uses a fenced GPU canvas and does not
-// consume this CPU readback ring.
+// analysis. Original GPU admission owns a fenced full-source clone and does
+// not consume this CPU readback ring.
+void OkuFlowApp::RetirePendingMediaHoldReadback() {
+    if (mediaHoldReadbackId_ != 0) {
+        // The presenter admits at most one owned Original copy outstanding,
+        // including canceled copies. Retain its exact id until it drains.
+        if (retiredMediaHoldReadbackId_ == 0 || retiredMediaHoldReadbackId_ == mediaHoldReadbackId_) {
+            retiredMediaHoldReadbackId_ = mediaHoldReadbackId_;
+            mediaHoldReadbackId_ = 0;
+            mediaHoldReadbackRetired_ = false;
+        } else {
+            // A resize may drop an older completed ring receipt before the
+            // discard is observed. Keep a second bounded id in the active
+            // slot, discard-only, rather than forgetting either provenance.
+            // It blocks another hold until its own completion.
+            mediaHoldReadbackRetired_ = true;
+        }
+    }
+    mediaHoldReadbackTimer_.invalidate();
+}
+
+bool OkuFlowApp::DiscardRetiredMediaHoldReadback(UINT64 requestId) {
+    if (requestId == 0) return false;
+    if (requestId == retiredMediaHoldReadbackId_) {
+        retiredMediaHoldReadbackId_ = 0;
+        return true;
+    }
+    if (mediaHoldReadbackRetired_ && requestId == mediaHoldReadbackId_) {
+        mediaHoldReadbackId_ = 0;
+        mediaHoldReadbackRetired_ = false;
+        return true;
+    }
+    return false;
+}
+
 void OkuFlowApp::DrainCompletedGpuReadbacks() {
     if (!presenter_) {
         return;
@@ -1496,6 +1577,18 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                                                readbackWidth,
                                                readbackHeight,
                                                &requestId)) {
+        if (ConsumeVideoGpuReadback(requestId,asyncReadbackBuffer_,readbackWidth,readbackHeight)) continue;
+        if (DiscardRetiredMediaHoldReadback(requestId)) continue;
+        if (requestId == mediaHoldReadbackId_) {
+            mediaHoldReadbackId_ = 0;
+            mediaHoldReadbackRetired_ = false;
+            mediaHoldReadbackTimer_.invalidate();
+            AcceptLiveMediaHold(std::move(asyncReadbackBuffer_), readbackWidth,
+                readbackHeight, mediaHoldFrameSeq_, mediaHoldCaptureClock100ns_);
+            // This was a full clean source copy, not a presented viewport or
+            // an assistive/observation request. Never route it to those consumers.
+            continue;
+        }
         if (controlTarget_) controlTarget_->ConsumeObservationReadback(requestId,QImage(asyncReadbackBuffer_.data(),
             readbackWidth,readbackHeight,readbackWidth*4,QImage::Format_ARGB32));
         if (requestId == pendingPhotoReadbackId_ &&
@@ -1562,12 +1655,14 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
         const bool focusAcceptable =
             !focusGateEnabled || !cudaSurface_ ||
             cudaSurface_->IsFocusAcceptable(focusThreshold_);
-        assistiveManager_->MaybeRequestAnalysis(asyncReadbackBuffer_.data(),
-                                                 readbackWidth,
-                                                 readbackHeight,
-                                                 debugViewEnabled_,
-                                                 focusGateEnabled,
-                                                 focusAcceptable);
+        if (!MediaViewSelected()) {
+            assistiveManager_->MaybeRequestAnalysis(asyncReadbackBuffer_.data(),
+                                                     readbackWidth,
+                                                     readbackHeight,
+                                                     debugViewEnabled_,
+                                                     focusGateEnabled,
+                                                     focusAcceptable);
+        }
         // Last consumer: Ultra Clear Text takes the pixels by swapping the
         // vector with a recycled one, so no 4K copy happens on this thread.
         if (ultraClearText_ && ultraClearText_->OwnsReadback(requestId)) {
@@ -1576,6 +1671,45 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                 static_cast<int>(readbackHeight), static_cast<int>(readbackWidth * 4));
         }
     }
+    PollSelectedVideoSave();
+    if (mediaHoldReadbackId_ != 0 && mediaHoldReadbackTimer_.isValid() &&
+        mediaHoldReadbackTimer_.elapsed() > 1000) {
+        RetirePendingMediaHoldReadback();
+        AcceptLiveMediaHold({}, 0, 0, mediaHoldFrameSeq_, mediaHoldCaptureClock100ns_);
+        ShowStatusMessage(QStringLiteral("Pause unavailable: the displayed frame could not be retained."));
+    }
+}
+
+bool OkuFlowApp::CaptureLiveForMediaHold() {
+    if (MediaViewSelected() || mediaHoldReadbackId_ != 0 || !cameraFramePresented_) return false;
+    const auto retained = presentedOriginalCache_.Displayed();
+    const auto session = recordingManager_ ? recordingManager_->CurrentSessionInfo() : std::nullopt;
+    if (!retained || retained->cameraEpoch != cameraSessionId_ ||
+        !session || retained->recordingSessionId != session->id ||
+        !retained->transform.valid) return false;
+    const auto& original = *retained->original;
+    PresentedOriginalCache::ViewRecipe selectedRecipe;
+    selectedRecipe.blackWhite = blackWhiteEnabled_;
+    selectedRecipe.blackWhiteThreshold = blackWhiteEnabled_ ? blackWhiteThreshold_ : 0.5f;
+    selectedRecipe.colorTransform = displayColorScheme_.id == QStringLiteral("normal") ? 0 :
+        displayColorScheme_.id == QStringLiteral("inverted") ? 1 : 2;
+    selectedRecipe.colorLutGeneration = selectedRecipe.colorTransform == 2 ? displayColorLutGeneration_ : 0;
+    selectedRecipe.contrast = contrast_; selectedRecipe.brightness = brightness_;
+    if (!retained->canReproduceCleanView || retained->recipe != selectedRecipe) return false;
+    mediaHoldFrameSeq_ = original.identity.sequenceNumber;
+    mediaHoldCaptureClock100ns_ = original.identity.captureClock100ns;
+    mediaHoldViewTransform_ = retained->transform;
+    mediaHoldCameraRotation_ = retained->rotationQuarterTurns;
+    if (original.HasGpuScene()) {
+        if (!presenter_ || presenter_->IsFaulted() ||
+            !presenter_->RequestReadback(original.gpuScene, &mediaHoldReadbackId_)) return false;
+        mediaHoldReadbackTimer_.start();
+        return true;
+    }
+    if (!original.HasCpuPixels()) return false;
+    AcceptLiveMediaHold(original.pixels, original.width, original.height,
+                       mediaHoldFrameSeq_, mediaHoldCaptureClock100ns_);
+    return true;
 }
 
 bool OkuFlowApp::StartCameraCapture(size_t index,
@@ -2193,7 +2327,7 @@ void OkuFlowApp::DriveCameraReconnect() {
 
 
 void OkuFlowApp::RefreshAsyncSuperRes() {
-    if (!cameraActive_ || !usingCudaLastFrame_ || !cudaSceneReady_ || !cudaSurface_ ||
+    if (MediaViewSelected() || !cameraActive_ || !usingCudaLastFrame_ || !cudaSceneReady_ || !cudaSurface_ ||
         !presenter_ || !presenter_->IsInitialized() || !cudaSurface_->HasSuperResWork() ||
         pipelineOrchestrator_->IsViewportInteractionActive()) return;
     FenceSyncParams sync{};
@@ -2227,6 +2361,10 @@ void OkuFlowApp::RefreshAsyncSuperRes() {
 }
 
 void OkuFlowApp::PresentPendingScene() {
+    if (MediaViewSelected()) {
+        if (presenter_ && !HandlePresenterFault()) PresentMediaView();
+        return;
+    }
     RefreshAsyncSuperRes();
     if (!presenter_ || HandlePresenterFault() || !cameraActive_ ||
         (!pipelineOrchestrator_->IsViewportDirty() &&
@@ -2246,10 +2384,18 @@ void OkuFlowApp::PresentPendingScene() {
 
 bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
     UpdatePhoneLightUi();
+    PollSelectedVideoSave();
     if (HandlePresenterFault()) return false;
     // A completed capture is independent of another camera arrival or present.
     // Poll on idle ticks too, before any camera/readiness early return.
     DrainCompletedGpuReadbacks();
+    if (!MediaViewSelected()) {
+        mediaPresentedScenePixels_.reset();
+        mediaViewportAdmission_.displayed.reset();
+    }
+    if (MediaViewSelected() ||
+        (recordingManager_ && !recordingManager_->CurrentSessionInfo() && mediaHoldReadbackId_ == 0))
+        presentedOriginalCache_.Reset();
     // Camera loss / reconnect state machine. ConsumeDeviceLost() is polled
     // here in addition to the capture error callback so the reconnect starts
     // no matter which side notices the loss first.
@@ -2277,12 +2423,11 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
                 << currentCameraAccelerationKey_;
     }
 
-    if (!cameraActive_ || !cameraIngress_) {
-        return false;
-    }
-
     if (ApplyInputForces(elapsedSeconds)) {
         pipelineOrchestrator_->MarkViewportDirty();
+    }
+    if (!cameraActive_ || !cameraIngress_) {
+        return false;
     }
     MediaFrame frame;
     {
@@ -2351,6 +2496,7 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
     }
     if (cpuOriginalRequired) {
         if (!PrepareOriginalFrame(frame, originalFrame) && recordingActive) {
+            if (const auto session = recordingManager_->CurrentSessionInfo()) OnVideoRecordingStopping(*session);
             recordingManager_->Stop(QStringLiteral(
                 "Recording stopped: the original camera frame could not be converted."));
             recordingActive = false;
@@ -2358,6 +2504,10 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
     } else if (recordingActive) {
         PopulateOriginalFrameMetadata(frame, originalFrame);
     }
+
+    // With no Original/photo consumer, a hidden camera frame needs no pixel
+    // processing. Ingress and device-loss handling continue independently.
+    if (MediaViewSelected() && !recordingActive && !photoCapturePending_) return true;
 
     // GPU fast path: NV12/YUY2 frames go straight to CUDA (conversion and
     // rotation on the GPU), skipping the per-pixel CPU work below. The CPU
@@ -2439,10 +2589,13 @@ bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
     }
     if (recordingActive && !originalFrame.HasCpuPixels() &&
         !PrepareOriginalFrame(frame, originalFrame)) {
+        if (const auto session = recordingManager_->CurrentSessionInfo()) OnVideoRecordingStopping(*session);
         recordingManager_->Stop(QStringLiteral(
             "Recording stopped: the original camera frame could not be converted."));
         recordingActive = false;
     }
+    if (recordingActive) AdmitOriginalFrame(originalFrame, false);
+    if (MediaViewSelected()) return true;
     if (!cpuPipeline_.ConvertFrameToBgra(frame.data,
                                          frame.subtype,
                                          frame.width,
@@ -2477,10 +2630,13 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
         processedFrameWidth_ = width;
         processedFrameHeight_ = height;
         usingCudaLastFrame_ = true;
-        // Recording and the periodic assistive grab both use the async
-        // readback ring; nothing on this path blocks on the GPU anymore.
+        // Original admission already happened on the camera producer path.
+        // Periodic assistive grabs use the asynchronous viewport readback ring.
         pendingSceneCaptureClock100ns_ = currentCameraCaptureClock100ns_;
         ++startupProcessedScenes_;
+        RetainOriginalForPresentation(presentedOriginalCache_, originalFrame,
+            recordingManager_ ? recordingManager_->CurrentSessionInfo() : std::nullopt,
+            cameraSessionId_, CameraOriginalRotationQuarterTurns(), cudaSceneViewRecipe_);
         PresentLatestCudaScene(true, originalFrame);
         return;
     }
@@ -2514,6 +2670,9 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
         if (controlTarget_) controlTarget_->FrameProcessed();
         pendingSceneCaptureClock100ns_ = currentCameraCaptureClock100ns_;
         ++startupProcessedScenes_;
+        RetainOriginalForPresentation(presentedOriginalCache_, originalFrame,
+            recordingManager_ ? recordingManager_->CurrentSessionInfo() : std::nullopt,
+            cameraSessionId_, CameraOriginalRotationQuarterTurns(), {});
         PresentFitted(
             cpuSceneBuffer_.data(),
             width,
@@ -2527,6 +2686,7 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
     }
 
     // Legacy CPU composite, kept as a diagnostic for the debug view only.
+    presentedOriginalCache_.Reset(); // diagnostic panels have no single clean-source view
     processing::CpuPipelineConfig config{};
     config.enableBlackWhite = blackWhiteEnabled_;
     config.blackWhiteThreshold = blackWhiteThreshold_;
@@ -2579,13 +2739,194 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
                   originalFrame);
 }
 
+void OkuFlowApp::ExpireAnnotationReadback() {
+    if (pendingAnnotationReadbackId_ != 0 &&
+        ((pendingAnnotationReadbackTimer_.isValid() && pendingAnnotationReadbackTimer_.elapsed() > 1000) ||
+         (presenter_ && !presenter_->HasReadbackRequest(pendingAnnotationReadbackId_)))) {
+        pendingAnnotationReadbackId_ = 0;
+        pendingAnnotationReadbackTimer_.invalidate();
+        // This intent belongs to the copied frame. A fresh frame cannot
+        // replace an expired readback, even if it has the same dimensions.
+        activeAnnotationCapture_.reset();
+        ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
+    }
+}
+
+bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UINT height,
+                                           UINT stride, std::uint64_t sourceEpoch,
+                                           std::uint64_t frameSeq,
+                                           const VideoPlaybackFrame* neighbor,
+                                           std::int64_t pts100ns,
+                                           bool continuousPlayback) {
+    if (!data || !VideoPlaybackLayoutFits(width, height, stride) || !presenter_ ||
+        !uiState_->renderWidget_ || !uiState_->renderWidget_->isPresenterReady()) return false;
+    if (HandlePresenterFault()) return false;
+    const int turns = ((rotationQuarterTurns_ % 4) + 4) % 4;
+    const int colorTransform = displayColorScheme_.id == QStringLiteral("normal") ? 0 :
+        displayColorScheme_.id == QStringLiteral("inverted") ? 1 : 2;
+    const std::array<std::uint64_t, 12> recipe{
+        sourceEpoch, frameSeq, width, height, stride, static_cast<std::uint64_t>(turns),
+        displayColorLutGeneration_, std::bit_cast<std::uint32_t>(contrast_),
+        std::bit_cast<std::uint32_t>(brightness_), static_cast<std::uint64_t>(blackWhiteEnabled_),
+        std::bit_cast<std::uint32_t>(blackWhiteThreshold_), static_cast<std::uint64_t>(colorTransform)};
+    const bool changed = !mediaSceneCacheValid_ || recipe != mediaSceneRecipe_;
+    const std::uint64_t neighborId =
+        !continuousPlayback && ultraClearText_ && ultraClearText_->IsEnabled() && neighbor ? neighbor->sampleId + 1 : 0;
+    const bool wasContinuousPlayback = mediaUctContinuousPlayback_;
+    std::optional<UctImmutableScene> pausedScene;
+    ViewTransform transform;
+    MediaViewportAdmission::Stamp viewportStamp;
+    bool needsPresentation = true;
+    try {
+        if (changed) {
+            // A deferred decoder-ahead candidate must not change the owned
+            // source lease of the actual displayed frame selected by Save.
+            auto prepared = mediaViewportAdmission_.displayed &&
+                    mediaViewportAdmission_.displayed->recipe == recipe && mediaPresentedScenePixels_
+                ? mediaPresentedScenePixels_
+                : PrepareMediaScene(data, width, height, stride, turns,
+                    blackWhiteEnabled_, blackWhiteThreshold_, colorTransform,
+                    displayColorLut_, contrast_, brightness_);
+            if (!prepared) return false;
+            if (!mediaSceneCacheValid_ || !std::equal(recipe.begin()+6, recipe.end(), mediaSceneRecipe_.begin()+6))
+                ++mediaSceneAppearanceRevision_;
+            mediaScenePixels_ = std::move(prepared);
+            mediaSceneWidth_ = mediaScenePixels_->width;
+            mediaSceneHeight_ = mediaScenePixels_->height;
+            mediaSceneRecipe_ = recipe;
+            mediaSceneCacheValid_ = true;
+            ++annotationSceneRevision_;
+            if (controlTarget_) controlTarget_->FrameProcessed();
+        }
+        transform = ComputeViewTransform(mediaSceneWidth_, mediaSceneHeight_,
+            presenter_->ViewportWidth(), presenter_->ViewportHeight(),
+            zoomEnabled_ ? zoomAmount_ : 1.0f, zoomCenterX_, zoomCenterY_,
+            pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fit
+                ? ViewportFitMode::kFit : ViewportFitMode::kFill);
+        if (!transform.valid) return false;
+        const bool drawMarker = focusMarkerEnabled_ &&
+            pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fill;
+        viewportStamp = {recipe, transform, presenter_->ViewportWidth(), presenter_->ViewportHeight(),
+            drawMarker, drawMarker ? zoomCenterX_ : 0.0f, drawMarker ? zoomCenterY_ : 0.0f};
+        needsPresentation = mediaViewportAdmission_.NeedsPresentation(viewportStamp,
+            pipelineOrchestrator_->IsViewportDirty(), presenter_->NeedsScenePresent()) ||
+            !lastAnnotationPresentation_ || presentationBuffer_.empty() ||
+            presentationWidth_ != viewportStamp.width || presentationHeight_ != viewportStamp.height;
+        if (ultraClearText_ && !continuousPlayback) {
+            if (changed || wasContinuousPlayback || ultraClearText_->HasAdvancingMediaScene() ||
+                !ultraClearText_->HasImmutableScene() ||
+                neighborId != mediaUctNeighborSeq_) {
+                UctImmutableScene scene;
+                scene.geometry.settings.sourceEpoch = sourceEpoch;
+                scene.geometry.settings.rotationQuarterTurns = turns;
+                scene.geometry.settings.colorScheme = mediaSceneAppearanceRevision_;
+                scene.geometry.sceneWidth = mediaSceneWidth_;
+                scene.geometry.sceneHeight = mediaSceneHeight_;
+                scene.sourceAuthority = sourceEpoch;
+                scene.selected = {mediaScenePixels_, frameSeq, pts100ns / 10'000};
+                scene.transform = transform;
+                scene.viewportWidth = presenter_->ViewportWidth();
+                scene.viewportHeight = presenter_->ViewportHeight();
+                scene.strokeWeight = 0; // CUDA stroke modification is not applied here.
+                pausedScene = std::move(scene);
+            }
+        }
+    } catch (const std::bad_alloc&) {
+        return false;
+    }
+    const auto advancingReceipt = [&] {
+        if (!ultraClearText_) return;
+        ultraClearText_->SetMediaOverlaySuppressed(false);
+        UctAdvancingMediaScene scene;
+        scene.geometry.settings.sourceEpoch = sourceEpoch;
+        scene.geometry.settings.rotationQuarterTurns = turns;
+        scene.geometry.settings.colorScheme = mediaSceneAppearanceRevision_;
+        scene.geometry.sceneWidth = mediaSceneWidth_;
+        scene.geometry.sceneHeight = mediaSceneHeight_;
+        scene.sourceAuthority = sourceEpoch;
+        scene.current = {mediaScenePixels_, frameSeq, pts100ns / 10'000};
+        scene.transform = transform;
+        scene.viewportWidth = viewportStamp.width;
+        scene.viewportHeight = viewportStamp.height;
+        scene.strokeWeight = 0;
+        ultraClearText_->OnAdvancingMediaPresented(std::move(scene));
+    };
+    const auto pausedReceipt = [&] {
+        if (!ultraClearText_) return;
+        ultraClearText_->SetMediaOverlaySuppressed(false);
+        if (pausedScene) {
+            // Prepare one real neighbour only after a matching successful
+            // receipt. Busy viewport retries and continuous playback never
+            // repeat this full-source appearance pass.
+            if (neighborId != 0 && neighbor && neighbor->sampleId != frameSeq &&
+                neighbor->width == width && neighbor->height == height &&
+                VideoPlaybackLayoutFits(width, height, neighbor->strideBytes) &&
+                neighbor->bgra && neighbor->bgra->size() >= static_cast<std::size_t>(neighbor->strideBytes) * height) {
+                try {
+                    auto pixels = PrepareMediaScene(neighbor->bgra->data(), width, height,
+                        neighbor->strideBytes, turns, blackWhiteEnabled_, blackWhiteThreshold_,
+                        colorTransform, displayColorLut_, contrast_, brightness_);
+                    if (pixels) pausedScene->corroboration = UctImmutableFrame{
+                        std::move(pixels), neighbor->sampleId, neighbor->pts100ns / 10'000};
+                } catch (const std::bad_alloc&) {
+                    // Missing optional corroboration cannot substitute older
+                    // words for the successfully displayed current source.
+                }
+            }
+            ultraClearText_->SetImmutableScene(std::move(*pausedScene));
+            mediaUctNeighborSeq_ = neighborId;
+        } else if (needsPresentation) {
+            ultraClearText_->UpdateImmutableView(transform, viewportStamp.width, viewportStamp.height, 0);
+        }
+    };
+    if (!needsPresentation) {
+        // This exact frame/recipe/view still has its successful native receipt
+        // and retained viewport. Polling and explicit Save may reuse it without
+        // clearing, resampling or uploading the same pixels again.
+        if (continuousPlayback && !wasContinuousPlayback) advancingReceipt();
+        else if (!continuousPlayback) pausedReceipt();
+        mediaUctContinuousPlayback_ = continuousPlayback;
+        return true;
+    }
+    lastAnnotationPresentation_.reset();
+    PresentFitted(mediaScenePixels_->bytes.data(), mediaSceneWidth_, mediaSceneHeight_,
+        pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fill,
+        zoomCenterX_, zoomCenterY_, nullptr, true);
+    const bool presented = lastAnnotationPresentation_.has_value() && !presenter_->IsFaulted() &&
+        !presenter_->NeedsScenePresent();
+    if (presented) {
+        mediaViewportAdmission_.Presented(viewportStamp);
+        mediaPresentedScenePixels_ = mediaScenePixels_;
+        mediaPresentedWithCuda_ = mediaSuperResPresented_ = false;
+        if (controlTarget_) {
+            auto observation = controlTarget_->PresentedMediaFrame(transform,
+                QSize(mediaSceneWidth_, mediaSceneHeight_), QSize(viewportStamp.width, viewportStamp.height),
+                frameSeq, SelectedMediaDocumentPts100ns(pts100ns));
+            observation.diagnostics["media"] = QJsonObject{
+                {"sourceEpoch", qint64(sourceEpoch)}, {"frameSequence", qint64(frameSeq)},
+                {"backend", "cpu-output"}};
+            controlTarget_->CpuObservationPresented(QImage(presentationBuffer_.data(), viewportStamp.width,
+                viewportStamp.height, viewportStamp.width * 4, QImage::Format_ARGB32), observation);
+        }
+        if (continuousPlayback) advancingReceipt();
+        else pausedReceipt();
+        mediaUctContinuousPlayback_ = continuousPlayback;
+    }
+    return presented;
+}
+
 void OkuFlowApp::PresentFitted(const uint8_t* data,
                                 UINT srcWidth,
                                 UINT srcHeight,
                                 bool cropToFill,
                                 float centerXNorm,
                                 float centerYNorm,
-                                const CapturedFrame* originalFrame) {
+                                const CapturedFrame* originalFrame,
+                                bool selectedMedia) {
+    if (!selectedMedia && MediaViewSelected()) {
+        PresentMediaView();
+        return;
+    }
     if (!data || srcWidth == 0 || srcHeight == 0) {
         return;
     }
@@ -2652,7 +2993,7 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
 
     // CPU presentation already owns system-memory viewport pixels; copy them
     // for Ultra Clear Text before the focus marker is drawn into them.
-    if (ultraClearText_) {
+    if (ultraClearText_ && !selectedMedia) {
         const UctFrameContext uctContext = UltraClearTextContext(
             false, transform, mapping.targetWidth, mapping.targetHeight);
         if (ultraClearText_->OnPresented(uctContext)) {
@@ -2718,24 +3059,13 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
                                                  focusGateEnabled,
                                                  focusAcceptable);
     }
-    if (originalFrame && originalFrame->IsValid()) {
-        if (recordingManager_) {
-            recordingManager_->AddSceneFrame(
-                data,
-                srcWidth,
-                srcHeight,
-                ToRecordingTransform(transform),
-                std::move(*originalFrame),
-                mainWindow_ && mainWindow_->annotationOverlay() && mainWindow_->annotationOverlay()->IsActive()
-                    ? mainWindow_->annotationOverlay()->Strokes()
-                    : QVector<AnnotationStroke>{});
-        }
-    }
     presenter_->Present(presentationBuffer_.data(), mapping.targetWidth, mapping.targetHeight);
     if (presenter_->IsFaulted() || presenter_->NeedsScenePresent()) {
         if (ultraClearText_) {
-            if (presenter_->IsFaulted()) ultraClearText_->OnPresentationFailed();
-            else ultraClearText_->OnPresentationDeferred();
+            if (presenter_->IsFaulted()) {
+                if (selectedMedia) ultraClearText_->OnMediaPresentationFailed();
+                else ultraClearText_->OnPresentationFailed();
+            } else ultraClearText_->OnPresentationDeferred();
         }
     }
     if (presenter_->IsFaulted()) return;
@@ -2744,24 +3074,45 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         return;
     }
     if (ultraClearText_) {
-        ultraClearText_->OnPresentationSucceeded();
+        if (selectedMedia) ultraClearText_->OnMediaPresentationSucceeded();
+        else ultraClearText_->OnPresentationSucceeded();
     }
-    cameraFramePresented_ = true;
-    lastAnnotationPresentation_ = UltraClearTextContext(false, transform,
-        mapping.targetWidth, mapping.targetHeight);
+    if (!selectedMedia) cameraFramePresented_ = true;
+    if (!selectedMedia) {
+        lastAnnotationPresentation_ = UltraClearTextContext(false, transform,
+            mapping.targetWidth, mapping.targetHeight);
+        presentedOriginalCache_.Presented(cameraSessionId_, lastAnnotationPresentation_->frameSeq,
+            transform, !lastAnnotationPresentation_->compositeFrames && !debugViewEnabled_ &&
+            !focusMarkerEnabled_);
+    } else {
+        UctFrameContext context;
+        context.geometry.settings.sourceEpoch = mediaSceneRecipe_[0];
+        context.geometry.settings.rotationQuarterTurns = static_cast<int>(mediaSceneRecipe_[5]);
+        context.geometry.settings.colorScheme = mediaSceneAppearanceRevision_;
+        context.geometry.sceneWidth = srcWidth;
+        context.geometry.sceneHeight = srcHeight;
+        context.requested = context.geometry.settings;
+        context.frameSeq = mediaSceneRecipe_[1];
+        context.transform = transform;
+        context.viewportWidth = mapping.targetWidth;
+        context.viewportHeight = mapping.targetHeight;
+        lastAnnotationPresentation_ = context;
+    }
     lastAnnotationSceneRevision_ = annotationSceneRevision_;
     lastAnnotationGpuPresentation_.reset();
     annotationPresentationCuda_ = false;
-    cameraIntent_.MarkFirstFrame(startingCameraIntentGeneration_);
-    RecordStartupFirstPresent();
-    if (pendingSceneCaptureClock100ns_) {
+    if (!selectedMedia) {
+        cameraIntent_.MarkFirstFrame(startingCameraIntentGeneration_);
+        RecordStartupFirstPresent();
+    }
+    if (!selectedMedia && pendingSceneCaptureClock100ns_) {
         pipelineOrchestrator_->RecordCaptureToPresentSample(
             MeasureCaptureToPresentLatency(*pendingSceneCaptureClock100ns_));
         pendingSceneCaptureClock100ns_.reset();
     }
     pipelineOrchestrator_->MarkViewportPresented();
-    if (controlTarget_) {
-        const auto frame = controlTarget_->PresentedFrame(transform,QSize(srcWidth,srcHeight),QSize(mapping.targetWidth,mapping.targetHeight));
+    if (controlTarget_ && !selectedMedia) {
+        auto frame = controlTarget_->PresentedFrame(transform,QSize(srcWidth,srcHeight),QSize(mapping.targetWidth,mapping.targetHeight));
         controlTarget_->CpuObservationPresented(QImage(presentationBuffer_.data(),mapping.targetWidth,mapping.targetHeight,mapping.targetWidth*4,QImage::Format_ARGB32),frame);
     }
     if (originalFrame) {
@@ -2785,7 +3136,7 @@ bool OkuFlowApp::PrepareOriginalFrame(const MediaFrame& source,
 
     UINT width = source.width;
     UINT height = source.height;
-    capturePipeline_.RotateRawBuffer(rotationQuarterTurns_, width, height);
+    capturePipeline_.RotateRawBuffer(CameraOriginalRotationQuarterTurns(), width, height);
     const std::vector<uint8_t>& pixels = capturePipeline_.StageRaw();
     if (pixels.empty()) {
         return false;
@@ -2813,7 +3164,7 @@ bool OkuFlowApp::PopulateOriginalFrameMetadata(
     if (source.width == 0 || source.height == 0) {
         return false;
     }
-    const int turns = ((rotationQuarterTurns_ % 4) + 4) % 4;
+    const int turns = ((CameraOriginalRotationQuarterTurns() % 4) + 4) % 4;
     destination = {};
     destination.width =
         ((turns & 1) != 0) ? source.height : source.width;
@@ -2998,7 +3349,8 @@ bool OkuFlowApp::AnnotationFrameMatches(const UctFrameContext& candidate) const
     const auto& frame = capture.frame;
     const auto& a = frame.transform;
     const auto& b = candidate.transform;
-    return frame.cameraActive && candidate.cameraActive &&
+    return frame.cameraActive == candidate.cameraActive &&
+        (frame.cameraActive || MediaViewSelected()) &&
         capture.sceneRevision == annotationSceneRevision_ &&
         frame.geometry == candidate.geometry && frame.requested == candidate.requested &&
         frame.frameSeq == candidate.frameSeq &&
@@ -3043,7 +3395,16 @@ void OkuFlowApp::QueueAnnotationSnapshot(int reason)
         !mainWindow_->annotationOverlay()->HasInk()) {
         return;
     }
-    if (!lastAnnotationPresentation_ || !lastAnnotationPresentation_->cameraActive ||
+    // A decoder-ahead candidate can have replaced the reusable scene while
+    // the swapchain still shows doc.presented. Regenerate that exact selected
+    // frame before reading its authority, rather than checking a revoked
+    // receipt and giving up before the recovery path can run.
+    if (MediaViewSelected() && pendingAnnotationReadbackId_ == 0 && annotationCaptureQueue_.empty() &&
+        !PresentSelectedMediaFrameForCapture()) {
+        ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
+        return;
+    }
+    if (!lastAnnotationPresentation_ || (!lastAnnotationPresentation_->cameraActive && !MediaViewSelected()) ||
         pendingAnnotationReadbackId_ != 0 || !annotationCaptureQueue_.empty() ||
         (annotationPresentationCuda_ && !lastAnnotationGpuPresentation_)) {
         ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
@@ -3071,7 +3432,8 @@ void OkuFlowApp::QueueAnnotationSnapshot(int reason)
     annotationCaptureQueue_.push_back(std::move(capture));
     // Request the cached, already displayed scene in this UI turn, before a
     // later camera tick can replace it. Never defer the intent to fresh pixels.
-    PresentLatestCudaScene(false, nullptr);
+    if (MediaViewSelected()) PresentSelectedMediaFrameForCapture();
+    else PresentLatestCudaScene(false, nullptr);
     if (!annotationCaptureQueue_.empty()) {
         annotationCaptureQueue_.clear(); // Ring full or unavailable scene: no retarget/retry.
         ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));

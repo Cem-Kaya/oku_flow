@@ -13,6 +13,7 @@ if(OKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE)
         endif()
     endforeach()
     target_link_libraries(native_app_control_fixture PRIVATE Qt6::Test)
+    target_compile_definitions(native_app_control_fixture PRIVATE OKUFLOW_VIDEO_DOCUMENT_TESTS=1)
     set_target_properties(native_app_control_fixture PROPERTIES WIN32_EXECUTABLE FALSE OUTPUT_NAME oku_flow
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/native-control")
     add_dependencies(native_app_control_fixture release_okuflow_translations okuflow_mcp)
