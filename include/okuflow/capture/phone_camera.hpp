@@ -1,6 +1,7 @@
 #pragma once
 #ifdef _WIN32
 #include "okuflow/capture/media_capture.hpp"
+#include "okuflow/capture/phone_startup_budget.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -146,7 +147,7 @@ private:
     void ApplyTorchAcknowledgment(const QJsonObject& status);
     void RetirePendingTorch();
     void Run(CameraDescriptor descriptor, Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> manager,
-             FrameCallback callback, CaptureErrorCallback errorCallback);
+             FrameCallback callback, CaptureErrorCallback errorCallback, PhoneStartupBudget startupBudget);
     std::atomic<bool> canceled_{false};
     std::thread worker_;
     mutable std::mutex mutex_;

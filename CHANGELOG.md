@@ -1,6 +1,169 @@
 # Changelog
 
 ## [Unreleased]
+- Add independent PP-OCRv6 detector/recognizer selectors under UCT advanced
+  settings. GPU defaults to medium/medium; CPU defaults to tiny/small. Persist
+  the four choices and expose them through the existing Assistant/MCP image
+  settings API. Switch OCR workers asynchronously; UCT activation remains
+  session-only. Pin all six optional models and retain their original notices.
+- Keep Ultra Clear Text visible through busy presentation slots and small OCR
+  refresh jitter without extending validation deadlines. Fit padded Paddle boxes
+  to visible source ink and retain gray/source backgrounds when improving contrast.
+- Add optional local PaddleOCR with TensorRT CUDA inference and automatic
+  independently configured ONNX Runtime CPU fallback, then built-in Windows OCR. Analyze
+  owned pre-zoom scenes so 16x display zoom retains text context. Keep motion
+  validation independent of slow inference and rendering; pin model/runtime
+  inputs and retain their licenses outside the source and release inventory.
+  Serve CPU OCR while GPU engines prepare, preserve healthy engines after an
+  input-copy fault, and avoid queued device jobs starving live validation.
+  Backpressure slow probes, report recoverable input failures, retry clean
+  allocation pressure, and select dense-page regions deterministically.
+- Allow an explicit diagnosed-repair test recheck with an archived reason and
+  prior blocking attempt; ordinary resume/fresh runs still preserve blockers.
+- Hide Ultra Clear Text and its reading pane after failed or stalled
+  presentations until the presenter confirms success. Preserve omitted-word
+  positions and the reader's selection during recognition updates; draw a
+  replacement background only when its glyph is drawable, with cached paint data.
+  Keep dense patch matches during coarse search, retire duplicate cropped lines
+  on return pan, and retain only exact current validation during a delayed OCR
+  refresh. Retry failed initialization on explicit off/on and preserve dense
+  text polarity using surrounding paper/board pixels.
+- Resolve the bundle's Qt SDK from CI's `QT_ROOT_DIR` after explicit overrides,
+  and install the matching Multimedia source notices in hosted checks. Accept
+  its original Qt LGPL text when an archive SDK lacks installer license files.
+  Exercise that layout so local paths/notices cannot mask missing CI setup.
+- Run Maxine model loading, inference and teardown on an independent producer
+  with private GPU snapshots/output. Keep live current-frame fallback and publish
+  only matching completions through the graphics fence; late results cannot
+  replace newer camera frames. Revoke OCR/annotation authority on enhancement
+  changes and retain immediate same-frame photo/recording pairing.
+- Avoid recursive Visual Studio file discovery and auxiliary setup telemetry in
+  Windows bundle preflight. Stream setup diagnostics while retaining the strict
+  compiler/Qt checks and existing test deadline.
+- Drop advisory Android camera metadata under control-channel pressure while
+  reserving space for state and acknowledgments; metadata overflow no longer
+  disconnects otherwise viable video. Reliable/video overflow and the stalled-
+  writer watchdog still retire the session.
+- Detect an overdue Media Foundation camera read from the idle frame tick,
+  revoke late deliveries and enter existing safe recovery. Sleeping time does
+  not count; a driver that cannot stop remains safely retained until restart.
+  Announce webcam reconnection only after a presented frame and retain the
+  original retry deadline across silent reader activations.
+- Avoid repeated settings serialization on save refusal and duplicate section-
+  badge refreshes during image changes. Refresh stale localization/work-tracking
+  docs and record which Argon findings are defects versus intentional contracts.
+- Prioritize pan/zoom over new synchronous Maxine calls, resuming after a short
+  navigation tail while keeping current-frame spatial fallback and performance
+  guard state. Photo/readback retries do not count as input. Create SuperRes
+  timing events as a complete pair so allocation failure cannot leave a null
+  stop event on the next frame.
+- Add opt-in offline chat render/reading-anchor measurements and bounded Maxine
+  host-call latency distributions; retain actual native pan, queue and stale-frame
+  performance as unverified instead of claiming an unmeasured speedup.
+- Update only an eligible final streaming Assistant paragraph after measuring
+  full-conversation reconstruction cost, preserving reading position and full
+  rendering for metadata, style, short-bubble and other changes.
+- Bind browser notes transcription to an immutable recording UUID and fresh
+  bounded-memory file fingerprint. Same-named folders, changed media and stale
+  sidecars cannot substitute another recording; UUID-addressed sidecars keep
+  delayed old writers from overwriting successor transcripts. Hashing stays
+  off the native UI, and legacy basename-only sidecars remain untouched.
+- Preserve complete previous Windows bundles when a secondary runtime is locked;
+  publish with verified directory swaps and rollback, retaining recovery copies.
+  Require Ninja/VS2022 x64 for bundle equivalence and add read-only toolchain
+  preflight with actionable fresh-cache guidance.
+- Bind MSI tooling to the exact reviewed WiX package tree, and generate release
+  CUDA facts, capability selection and toolkit notices from the configured target
+  rather than the invoking shell's CUDA environment.
+- Continue recording codec/input fallback after a failed encoder leaves bytes.
+  Retain each failed attempt, exclusively create fresh retry outputs, and add
+  only the selected finalized pair to notes. After native AAC gap compaction
+  was reproduced, preserve elapsed audio time with bounded worker-side PCM
+  silence and exact sample-count accounting. Native synthetic audio/video
+  markers now retain their alignment across the measured three-second gap.
+- Keep phone fallback modes within the remaining Windows startup budget,
+  report candidate failure/progress, and reserve decode time. Codec headers
+  alone no longer trigger an early HEVC decoder fallback while modes start.
+- Bind saved annotations to the displayed camera frame and transform; reject
+  stale readbacks instead of drawing strokes onto a later or different source.
+- Keep approved asynchronous actions in progress until their real operation
+  outcome, attaching the final receipt to the original retained chat turn.
+- Preserve concurrent phone UI and USB-host setting changes with serialized
+  field patches instead of replacing stale whole settings objects.
+- Retain phone camera zoom commands during startup until capture is ready,
+  without treating an unconfigured session as a camera-mode failure.
+- Save annotation PNGs atomically under unused names, preserving prior captures
+  and hiding incomplete encodes from the photo library.
+- Preserve the exact selected chat occurrence, selection direction and reading
+  position when messages stream or reflow.
+- Wait for real recording-preference state changes instead of immediately
+  reporting unchanged enriched metadata as a transition.
+- Keep Ultra Clear Text words on a shared line baseline and type size instead
+  of stretching each word to its own OCR ink height.
+- Persist Quick Modes at the Save action and preserve previous modes on write
+  failure, so an immediate crash cannot lose an apparently saved mode.
+- Open and retire microphones on an independent worker, including final native
+  shutdown. Keep controls responsive on timeout, reject late session callbacks,
+  and report video-only recordings truthfully when no microphone is selected.
+- Constrain non-coding Codex sessions before launch and replace the child when
+  coding/internet permissions change; Read and Explain stay offline.
+- Keep webcam reopen, format changes and reconnect driver startup off the UI
+  thread; report reconnect success only after asynchronous completion.
+
+
+- Commit conversation history before pruning older records. Failed replacement
+  leaves existing chats intact; blocked cleanup retains one durable, bounded
+  overflow and refuses further growth until cleanup succeeds.
+
+- Move Ultra Clear Text probe/validation work off the presentation thread and
+  hand GPU readbacks to workers through immutable pooled buffers. Cached scenes
+  keep their applied frame/settings identity through deferred processing; source
+  retirement clears text immediately. Correct reading order, freshness and
+  measured-color refresh, with cached glyph repaint checks while OCR is held.
+
+- Keep background flattening neutral when only glare reduction is selected.
+  Ordinary pixels retain their original values and the saved flatten strength
+  remains available when re-enabled.
+
+- Release bundle validation now requires an explicit CPU/CUDA capability profile.
+  Missing cases, CTest skips and skipped Qt rows cannot satisfy required native
+  GUI or CUDA/recording coverage. Development checks keep optional skips visible.
+
+- Android Stop, host replacement and settings restarts now use one main-thread
+  lifecycle owner. Commands, camera results and outgoing packets retain their
+  original host token; a retired session cannot restart or change its successor.
+
+- Freeze completed note transcripts before asynchronous file access and serialize
+  writes for the same recording. Starting another transcription cannot clear an
+  older sidecar or let its delayed status overwrite the active run.
+
+- Verify exact test-input bytes afresh before and after every gate, including
+  resume. Preserved file lengths/timestamps cannot reuse an old digest; duplicate
+  references are still memoized within each individual fingerprint pass.
+
+- Carry native observation source/view/processing/geometry and frame provenance
+  through Assistant previews and provider/MCP delivery. Final sends recheck the
+  original authority, modal state and frame-grant generation; revoking and
+  re-enabling a grant cannot revive previously captured images.
+
+- Store changed API keys, endpoints and provider bindings under new protected
+  credential ids. Failed settings saves and backup recovery retain the prior
+  endpoint/key pair; unchanged saves and retries reuse their existing generation.
+
+- Retire recording queues, stop state and callback identity before admitting a
+  replacement session. Video/audio error cleanup cannot clear the new session.
+
+- Add experimental, opt-in **Ultra Clear Text** (development, not
+  release-accepted): local Windows OCR of steady printed camera text drawn as
+  sharp glyph plates registered to the processed scene, with an accessible
+  on/off switch, an always-available Show original comparison, a polite status
+  line and a selectable Recognized text pane. Recognition runs asynchronously
+  on one latest-only worker fed by the existing presenter readback ring;
+  pan/zoom reprojection stays on the presentation clock. Results carry
+  source/geometry/frame stamps and pass age, pixel-residual, temporal-agreement
+  and high-risk-token checks; uncertain words, handwriting, math, drawings and
+  moving text stay as the original image. Pauses during Temporal Smooth and
+  Extra Stable. New strings are English-only pending translation review.
 
 - Drain already-accepted fake adb connections before waiting for another
   arrival, covered by a deterministic two-client backlog regression. Declare
@@ -1815,3 +1978,15 @@
 > Upload `dist/OkuFlow/OkuFlow.zip` to GitHub Releases when publishing v0.1.
 
 - Development agent controls show canonical normalized approval changes and retain exact recording-stop disclosure. Native source selection supersedes pending agent transitions; actual source activation retires earlier frame permission. Device-bound format and torch requests reject mismatched camera identities (unreleased; hardware acceptance pending).
+
+### Unreleased Maxine lifecycle repair (2026-10-17)
+
+- Explicit SuperRes teardown now permits the same runtime adapter to initialize
+  again and avoids redundant worker teardown after successful retirement.
+  Timed-out SDK calls retain their existing resource quarantine. A desktop-free
+  CUDA fixture exercises the real adapter with private controlled fake SDK DLLs;
+  this change does not move frame processing off the UI path or establish an
+  asynchronous speedup.
+- SuperRes frame errors now identify input transfer, effect execution or output
+  transfer and retain the SDK's numeric status. Failure short-circuiting and
+  successful reuse of the same loaded model are covered by the private fixture.

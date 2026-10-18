@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "ort": {
+    "version": "1.31.0",
+    "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-x64-1.31.0.zip",
+    "archive": "onnxruntime-win-x64-1.31.0.zip",
+    "sha256": "3958d8a44984160692c1b4ffd0de3cb48f8c39f9d34bb31e433db06e30b82195",
+    "dllSha256": "0c42dc4e278f0968fdf9ebf1b1e54a74c657a9942e70803e453c91993451cf4c"
+  },
+  "tensorrt": {
+    "version": "11.4.0.106",
+    "url": "https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/11.4.0/zip/TensorRT-Enterprise-11.4.0.106-Windows-amd64-cuda-12.9-Release-external.zip",
+    "archive": "TensorRT-11.4.0.106-cuda12.9.zip",
+    "sha256": "82d29828ff7611b90f524cc13d45e56c752a6f4a3d223b07275012d0a2047bdc",
+    "license": "https://docs.nvidia.com/deeplearning/tensorrt/11.4.0/reference/sla.html"
+  },
+  "models": [
+    {
+      "directory": "det",
+      "repository": "PaddlePaddle/PP-OCRv6_tiny_det_onnx",
+      "revision": "2ba1506c0380b8f0b03dd142459aac66d4421f6c",
+      "files": {
+        "inference.onnx": "193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8",
+        "inference.yml": "3ac018be6f97499a08faa3bbdeb33640968d9307f6736d152902747a9f259593",
+        "README.md": "f48628931a5dc994ce5c67e32c94d71b4a7e96b8c5c1b00663284999c3c566bc"
+      },
+      "kind": "det",
+      "tier": "tiny"
+    },
+    {
+      "directory": "rec",
+      "repository": "PaddlePaddle/PP-OCRv6_small_rec_onnx",
+      "revision": "b8f84f0b80c529de40b4fbb3544b84fa7233a513",
+      "files": {
+        "inference.onnx": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "inference.yml": "ab078671bb49f06228eadccd34f1bb501e157f7a047095ffb943ba81512c77d1",
+        "README.md": "7d46dbd183ac09bd5a2e6b4577dcb29240751b1c00eb6813eca308d529f86806"
+      },
+      "kind": "rec",
+      "tier": "small"
+    },
+    {
+      "directory": "det/medium",
+      "kind": "det",
+      "tier": "medium",
+      "repository": "PaddlePaddle/PP-OCRv6_medium_det_onnx",
+      "revision": "61323801669c338b7891481ec7bac61ce31b576a",
+      "files": {
+        "inference.onnx": "eb13b44b25bb36f89528b68720af8a61d9cf381176107f465db1757b65d086e1",
+        "inference.yml": "7298d5ead546584af2504d03355f881ac7a7bc0eb1e282d3e159277c1d0af871",
+        "README.md": "3046e3aab0194a2291bb3941c93b980c2b3a938a24a5be88354968f6d6187ac8"
+      }
+    },
+    {
+      "directory": "rec/medium",
+      "kind": "rec",
+      "tier": "medium",
+      "repository": "PaddlePaddle/PP-OCRv6_medium_rec_onnx",
+      "revision": "50c7eacafc52fa7bcf4194e8cd08e46f8558504b",
+      "files": {
+        "inference.onnx": "9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba",
+        "inference.yml": "991b700facf5b50a7de193468207d5f4255b538dde0d312ae3b7c7a9b6873129",
+        "README.md": "ebce8d28436623ecab4952e24935aed86b3f8ecaf8f8736b92d5544f60fae1e9"
+      }
+    },
+    {
+      "kind": "det",
+      "tier": "small",
+      "directory": "det/small",
+      "repository": "PaddlePaddle/PP-OCRv6_small_det_onnx",
+      "revision": "28fe5895c24fd108c19eb3e8479f4ab385fbfc62",
+      "files": {
+        "README.md": "e9403667f0f92055d8ce9e73a2beb1002fc489d9342697db74039eb7178bb5fb",
+        "inference.onnx": "d73e0058b7a8086bbd57f3d10b8bcd4ff95363f67e06e2762b5e814fe9c9410e",
+        "inference.yml": "193f435274bf9f0b5f71a929bbfbcf148282df7e633b34e7c373e8f44741b516"
+      }
+    },
+    {
+      "kind": "rec",
+      "tier": "tiny",
+      "directory": "rec/tiny",
+      "repository": "PaddlePaddle/PP-OCRv6_tiny_rec_onnx",
+      "revision": "2612ab37152ae0a677521bae4e1e3d4fb4cf7c30",
+      "files": {
+        "README.md": "e83dd03e515a2d064eaba8ec82248f21dbf6a0813550bafe4c70ee2f6e8fdf2a",
+        "inference.onnx": "9ef676d6ed3c88256a2d92c640c44f25b0c40947e111b14b8be8f594091563e6",
+        "inference.yml": "66170210bad538e83fff3c4a3867e547d6bf20b50d64b20347c4b913f3034ea1"
+      }
+    }
+  ]
+}

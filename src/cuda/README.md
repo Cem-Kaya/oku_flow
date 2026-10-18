@@ -22,3 +22,8 @@ boards, strokes, complementary images, and padded-buffer guards. Run it through
 the tracked CUDA CTest preset or `scripts/agent_build.bat`; a missing CUDA device
 reports a clean skip. See `docs/code_reference.md` and `tests/README.md` for the
 launch contract and regression scope.
+
+The effective per-frame settings zero flatten strength when that child is off,
+including glare-only launches of the shared kernel. This does not erase the
+stored strength. CUDA regression inputs cover neutral ordinary pixels, reduced
+bright glare, independent flattening, alpha and pitched-buffer padding.

@@ -4,8 +4,82 @@
 
 #include <QTemporaryDir>
 #include <QFileInfo>
+#include <QFile>
+#include <QSet>
 #include <QtTest>
 #include <limits>
+#include <chrono>
+
+namespace okuflow {
+struct RecordingManagerTestAccess {
+    static void SetEncoderStart(RecordingManager& manager,
+        std::function<bool(bool, const QString&, VideoRecorder::Codec)> start) {
+        manager.encoderStartOverride_ = std::move(start);
+    }
+    static bool StartSegment(RecordingManager& manager) {
+        RecordingManager::QueuedFrame frame;
+        frame.original.width = frame.original.height = 64;
+        frame.original.identity.captureClock100ns = 100'000;
+        return manager.StartSegment(frame);
+    }
+    static QString SelectedPath(RecordingManager& manager, bool processed) {
+        return processed ? manager.segmentProcessedPath_ : manager.segmentOriginalPath_;
+    }
+    static QString RequestedPath(RecordingManager& manager, bool processed) {
+        return manager.SegmentPath(processed);
+    }
+    static void PrimeStartingWithoutCodecWorker(RecordingManager& manager) {
+        manager.ShutdownForProcessExit();manager.shutdownRequested_=false;
+        manager.stopRequested_=false;manager.frameQueue_.clear();manager.audioQueue_.clear();
+        manager.segmentFinalized_=true;manager.SetState(RecordingState::Starting);
+    }
+    static std::size_t QueuedVideo(RecordingManager& manager) {
+        std::lock_guard lock(manager.queueMutex_);return manager.frameQueue_.size();
+    }
+    static bool AudioEnabled(RecordingManager& manager) {return manager.audioCaptureEnabled_.load();}
+    static void PrimeRetirement(RecordingManager& manager) {
+        // Isolate the real retirement code from codecs and the idle worker.
+        // The fixture subsequently drives FinishSession on a controlled thread.
+        manager.ShutdownForProcessExit();
+        manager.shutdownRequested_ = false;
+        manager.SetState(RecordingState::Stopping);
+        manager.sessionHadOutput_ = true;
+        manager.segmentFinalized_ = true;
+        manager.frameQueue_.emplace_back();
+        manager.audioQueue_.emplace_back();
+        manager.stopRequested_ = true;
+        manager.stopMessage_ = QStringLiteral("session-a-stop");
+        manager.workerWriting_ = true;
+    }
+    static void Observe(RecordingManager& manager,
+                        std::function<void(RecordingState)> observer) {
+        manager.statePublicationObserver_ = std::move(observer);
+    }
+    static bool Retired(RecordingManager& manager) {
+        std::lock_guard lock(manager.queueMutex_);
+        return manager.frameQueue_.empty() && manager.audioQueue_.empty()
+            && !manager.audioStartupPending_ && !manager.stopRequested_ && !manager.workerWriting_
+            && manager.stopMessage_.isEmpty();
+    }
+    static void Finish(RecordingManager& manager, bool success) {
+        manager.FinishSession(success, success ? QString() : QStringLiteral("fixture failure"));
+    }
+    static void SeedReplacement(RecordingManager& manager) {
+        std::lock_guard lock(manager.queueMutex_);
+        manager.frameQueue_.emplace_back();
+        manager.audioQueue_.emplace_back();
+        manager.stopRequested_ = true;
+        manager.stopMessage_ = QStringLiteral("session-b-stop");
+    }
+    static bool ReplacementIntact(RecordingManager& manager, const QString& id) {
+        std::lock_guard lock(manager.queueMutex_);
+        return manager.sessionInfo_.id == id
+            && manager.frameQueue_.size() == 1 && manager.audioQueue_.size() == 1
+            && manager.stopRequested_
+            && manager.stopMessage_ == QStringLiteral("session-b-stop");
+    }
+};
+} // namespace okuflow
 
 namespace {
 
@@ -29,6 +103,138 @@ struct FakeSinkWriterStatistics {
 class RecordingManagerTests : public QObject {
     Q_OBJECT
 private slots:
+    void failedCodecBytesCannotSuppressFallback_data()
+    {
+        QTest::addColumn<bool>("failProcessed");
+        QTest::newRow("processed-metadata-failure") << true;
+        QTest::newRow("original-metadata-failure") << false;
+    }
+    void failedCodecBytesCannotSuppressFallback()
+    {
+        QFETCH(bool, failProcessed);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        okuflow::UserDataPaths paths(directory.path(), QStringLiteral("C:/fixture-install"));
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths);
+        okuflow::RecordingSessionInfo session;
+        session.id = QStringLiteral("codec-fallback-fixture");
+        manager.SetRequested(true, session);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        QStringList attempted;
+        Access::SetEncoderStart(manager, [&](bool processed, const QString& path,
+                                             okuflow::VideoRecorder::Codec codec) {
+            attempted.append(path);
+            QFile output(path);
+            if (!output.open(QIODevice::WriteOnly | QIODevice::NewOnly) ||
+                output.write("fixture encoder metadata") != 24) return false;
+            return codec != okuflow::VideoRecorder::Codec::Av1 ||
+                   processed != failProcessed;
+        });
+        QVERIFY(Access::StartSegment(manager));
+        QCOMPARE(manager.State(), okuflow::RecordingState::Recording);
+        QCOMPARE(attempted.size(), failProcessed ? 3 : 4);
+        const QString processed = Access::SelectedPath(manager, true);
+        const QString original = Access::SelectedPath(manager, false);
+        QVERIFY(processed != Access::RequestedPath(manager, true));
+        QVERIFY(original != Access::RequestedPath(manager, false));
+        QVERIFY(processed != original);
+        for (const QString& path : attempted) {
+            QFile output(path);
+            QVERIFY(output.open(QIODevice::ReadOnly));
+            QCOMPARE(output.readAll(), QByteArray("fixture encoder metadata"));
+        }
+        QCOMPARE(QSet<QString>(attempted.begin(), attempted.end()).size(), attempted.size());
+        QVERIFY(manager.StopSession(session.id));
+        Access::Finish(manager, false);
+    }
+    void preexistingRecordingOutputIsPreserved()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        okuflow::UserDataPaths paths(directory.path(), QStringLiteral("C:/fixture-install"));
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths);
+        okuflow::RecordingSessionInfo session;
+        session.id = QStringLiteral("codec-collision-fixture");
+        manager.SetRequested(true, session);
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeStartingWithoutCodecWorker(manager);
+        const QString path = Access::RequestedPath(manager, false);
+        QFile output(path);
+        QVERIFY(output.open(QIODevice::WriteOnly | QIODevice::NewOnly));
+        QCOMPARE(output.write("user-owned"), 10);
+        output.close();
+        int attempts = 0;
+        Access::SetEncoderStart(manager, [&](bool, const QString&,
+                                             okuflow::VideoRecorder::Codec) {
+            ++attempts;
+            return true;
+        });
+        QVERIFY(!Access::StartSegment(manager));
+        QCOMPARE(attempts, 0);
+        QVERIFY(output.open(QIODevice::ReadOnly));
+        QCOMPARE(output.readAll(), QByteArray("user-owned"));
+    }
+    void terminalPublicationRetiresOldSession_data()
+    {
+        QTest::addColumn<bool>("success");
+        QTest::newRow("normal-stop") << true;
+        QTest::newRow("video-error") << false;
+        QTest::newRow("audio-error") << false;
+    }
+    void terminalPublicationRetiresOldSession()
+    {
+        QFETCH(bool, success);
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        okuflow::UserDataPaths paths(directory.path(), QStringLiteral("C:/fixture-install"));
+        okuflow::RecordingManager manager(nullptr, {}, {}, paths);
+        okuflow::RecordingSessionInfo first;
+        first.id = QStringLiteral("session-a");
+        manager.SetRequested(true, first);
+        QVERIFY(manager.CurrentSessionInfo());
+        using Access = okuflow::RecordingManagerTestAccess;
+        Access::PrimeRetirement(manager);
+        std::mutex gateMutex;
+        std::condition_variable gate;
+        bool published = false, resume = false, retiredAtPublication = false;
+        Access::Observe(manager, [&](okuflow::RecordingState state) {
+            if (state != okuflow::RecordingState::Completed
+                && state != okuflow::RecordingState::Failed) return;
+            const bool retired = Access::Retired(manager);
+            std::unique_lock lock(gateMutex);
+            retiredAtPublication = retired;
+            published = true;
+            gate.notify_all();
+            gate.wait_for(lock, std::chrono::seconds(5), [&] { return resume; });
+        });
+        std::thread finishing([&] { Access::Finish(manager, success); });
+        bool reached = false;
+        {
+            std::unique_lock lock(gateMutex);
+            reached = gate.wait_for(lock, std::chrono::seconds(3), [&] { return published; });
+        }
+        okuflow::RecordingSessionInfo second;
+        second.id = QStringLiteral("session-b");
+        bool replacementAdmitted = false;
+        if (reached) {
+            manager.SetRequested(true, second);
+            const auto session = manager.CurrentSessionInfo();
+            replacementAdmitted = session && session->id == second.id;
+            Access::SeedReplacement(manager);
+        }
+        {
+            std::lock_guard lock(gateMutex);
+            resume = true;
+        }
+        gate.notify_all();
+        finishing.join();
+        // Assert after joining so a failed assertion cannot strand a worker.
+        QVERIFY(reached);
+        QVERIFY(retiredAtPublication);
+        QVERIFY(replacementAdmitted);
+        QVERIFY(Access::ReplacementIntact(manager, second.id));
+    }
     void exactSessionStopCannotTouchReplacement()
     {
         QTemporaryDir directory; QVERIFY(directory.isValid());
@@ -49,6 +255,30 @@ private slots:
         manager.SetRequested(true,second); QVERIFY(manager.CurrentSessionInfo());
         QVERIFY(!manager.StopSession(first.id)); QCOMPARE(manager.CurrentSessionInfo()->id,second.id);
         QVERIFY(manager.StopSession(second.id)); QVERIFY(manager.ShutdownForProcessExit());
+    }
+    void microphoneDecisionHoldsVideoAndLateResultsCannotEnableAnotherSession()
+    {
+        QTemporaryDir directory;QVERIFY(directory.isValid());
+        okuflow::UserDataPaths paths(directory.path(),QStringLiteral("C:/fixture-install"));
+        okuflow::RecordingManager manager(nullptr,{},{},paths);
+        okuflow::RecordingSessionInfo first;first.id="audio-pending-a";manager.SetRequested(true,first);
+        using Access=okuflow::RecordingManagerTestAccess;Access::PrimeStartingWithoutCodecWorker(manager);
+        manager.SetSessionAudioPending(first.id);
+        const std::vector<uint8_t> pixels(64*64*4,127);
+        const auto submit=[&] {
+            okuflow::CapturedFrame original;original.width=original.height=64;original.pixels=pixels;
+            original.identity.captureClock100ns=100000;okuflow::RecordingViewTransform transform;transform.valid=true;
+            manager.AddSceneFrame(pixels.data(),64,64,transform,std::move(original));
+        };
+        submit();QCOMPARE(Access::QueuedVideo(manager),std::size_t(0));
+        manager.SetSessionAudioResult("foreign",true);submit();QCOMPARE(Access::QueuedVideo(manager),std::size_t(0));
+        QVERIFY(!manager.CurrentSessionInfo()->actualAudio);
+        manager.SetSessionAudioResult(first.id,false);submit();QCOMPARE(Access::QueuedVideo(manager),std::size_t(1));
+        QVERIFY(manager.StopSession(first.id));Access::Finish(manager,false);
+        manager.SetSessionAudioResult(first.id,true);QVERIFY(!Access::AudioEnabled(manager));
+        okuflow::RecordingSessionInfo second;second.id="audio-pending-b";manager.SetRequested(true,second);
+        manager.SetSessionAudioResult(first.id,true);QVERIFY(!manager.CurrentSessionInfo()->actualAudio);
+        QVERIFY(manager.StopSession(second.id));Access::Finish(manager,false);
     }
     void startupBudgetRequiresPendingAndNextFrameToFit()
     {

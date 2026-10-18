@@ -107,6 +107,7 @@ Check your provider's privacy terms before sending sensitive material. Local rec
 
 | Work | Status |
 | --- | --- |
+| Ultra Clear Text: local recognition with sharp overlaid letters | Experimental development build; recognition and rendering run independently; [scope and limits](docs/ultra_clear_text.md) |
 | Claude through the Anthropic CLI for Read, Explain and Assistant | In development for a future release |
 | GPU acceleration for AMD and Intel graphics | Planned |
 | Android USB camera companion | Available to invited Alpha testers; compatibility testing continues |

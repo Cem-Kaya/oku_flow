@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>Tindakan sedang berlangsung.</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>Status tindakan tidak tersedia.</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>Nyalakan lampu telepon</translation>
         </message>
@@ -3244,6 +3252,26 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
         <message>
             <source>Change drawing settings and save a photo?</source>
             <translation>Ingin mengubah pengaturan gambar dan menyimpan foto?</translation>
+        </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>Pengaturan lanjutan UCT</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>Detektor teks GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>Pengenal teks GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>Detektor teks CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>Pengenal teks CPU</translation>
         </message>
     </context>
 </TS>

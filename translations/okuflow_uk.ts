@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>Дія виконується.</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>Стан дії недоступний.</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>Увімкніть світло телефону</translation>
         </message>
@@ -3244,6 +3252,26 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <message>
             <source>Change drawing settings and save a photo?</source>
             <translation>Змінити налаштування малювання та зберегти фотографію?</translation>
+        </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>Розширені налаштування UCT</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>Виявлення тексту на GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>Розпізнавання тексту на GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>Виявлення тексту на CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>Розпізнавання тексту на CPU</translation>
         </message>
     </context>
 </TS>

@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>Åtgärden pågår.</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>Åtgärdens status är inte tillgänglig.</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>Slå på telefonlampan</translation>
         </message>
@@ -3244,6 +3252,26 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
         <message>
             <source>Change drawing settings and save a photo?</source>
             <translation>Ändra ritinställningar och spara ett foto?</translation>
+        </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>Avancerade UCT-inställningar</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>Textdetektering med GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>Textigenkänning med GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>Textdetektering med CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>Textigenkänning med CPU</translation>
         </message>
     </context>
 </TS>

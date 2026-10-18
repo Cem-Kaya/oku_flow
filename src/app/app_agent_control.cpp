@@ -36,8 +36,12 @@ QString FieldLabel(const QString& field) {
 QString Receipt(const QJsonObject& event) {
     const auto type = event.value("type").toString();
     if (type == "settings_not_saved") return Ui("Settings could not be saved.");
-    if (type == "operation_receipt") return event.value("outcome").toObject().value("ok").toBool()
-        ? Ui("Action completed.") : Ui("Action could not be completed.");
+    if (type == "operation_receipt") {
+        const auto outcome=event.value("outcome").toObject();
+        if (outcome["statusUnavailable"].toBool())return Ui("Action status is unavailable.");
+        if (outcome["pending"].toBool())return Ui("Action in progress.");
+        return outcome["ok"].toBool()?Ui("Action completed."):Ui("Action could not be completed.");
+    }
     if (type == "applied") {
         QStringList fields;
         const auto applied = event.value("applied").toObject();
@@ -170,9 +174,10 @@ void OkuFlowApp::InitializeAgentControl()
         }
         const auto approval = controlService_->PendingApproval();
         const auto receipt = Receipt(event);
-        if (!receipt.isEmpty() && agentReceiptTicket_ && event.value("contextId").toString() == agentReceiptContext_ &&
-            assistiveManager_->Runtime().ChatSession().AppendActionReceipt(*agentReceiptTicket_,receipt))
-            agentTranscripts_[agentConversationId_] = QString::fromUtf8(QJsonDocument(
+        const auto receiptTicket=agentReceiptTickets_.find(event.value("contextId").toString());
+        if (!receipt.isEmpty() && receiptTicket!=agentReceiptTickets_.end() &&
+            assistiveManager_->Runtime().ChatSession().AppendActionReceipt(receiptTicket->second,receipt))
+            agentTranscripts_[receiptTicket->second.conversationId] = QString::fromUtf8(QJsonDocument(
                 assistiveManager_->Runtime().ChatSession().Snapshot().value("messages").toArray()).toJson(QJsonDocument::Compact));
         for (auto* panel : panels()) {
             if (approval.isEmpty()) panel->ClearPendingApproval(); else panel->SetPendingApproval(approval);
@@ -279,17 +284,21 @@ void OkuFlowApp::SubmitAgentPrompt(const QString& prompt)
     }
     auto& runtime=assistiveManager_->Runtime();
     agentReceiptContext_ = agentContext_; agentReceiptTicket_ = runtime.ChatSession().ActiveTicket();
+    for (auto it=agentReceiptTickets_.begin();it!=agentReceiptTickets_.end();)
+        it=runtime.ChatSession().OwnsTicket(it->second)?std::next(it):agentReceiptTickets_.erase(it);
+    if (agentReceiptTicket_)agentReceiptTickets_[agentContext_]=*agentReceiptTicket_;
     if(!runtime.BeginControlAnswer(prompt,[this] {CancelAgentTurn();})) {
         controlService_->End(agentContext_);agentContext_.clear();runtime.FailPreparedChat("busy");return;
     }
     const auto generation=agentGeneration_;
-    const auto start=[this,generation,prompt](QByteArray jpeg) {
+    const auto start=[this,generation,prompt](QByteArray jpeg,
+        std::optional<agent::AuthorizedObservation> observation) {
         if(generation!=agentGeneration_ || agentContext_.isEmpty())return;
         const QString responsePrompt=AssistiveRuntime::AppendResponseLanguageDirective(prompt,
             languageManager_?languageManager_->languageCode():QStringLiteral("en"));
         if(Codex(settingsController_->MutableSettings().assistive)) {
             if (!agentCodex_->SubmitTurn(agentContext_,responsePrompt,std::move(jpeg),
-                assistiveManager_->Runtime().ChatSession().BridgeContext(ChatBackendKind::Agent))) {
+                assistiveManager_->Runtime().ChatSession().BridgeContext(ChatBackendKind::Agent),observation)) {
                 controlService_->End(agentContext_); agentContext_.clear();
                 assistiveManager_->Runtime().CompleteControlAnswer({}, {}, {},"agent_unavailable",false);
             }
@@ -317,30 +326,29 @@ void OkuFlowApp::SubmitAgentPrompt(const QString& prompt)
                 "Re-read after stale_state and summarize changes. User grants are enforced by the app. ")+
                 settingsController_->MutableSettings().assistive.assistantInstructions;
             if(!agentHttp_->Start({agentContext_,QStringLiteral("http-%1-%2").arg(agentOwner_).arg(generation),
-                policy,responsePrompt,std::move(jpeg),assistiveManager_->Runtime().ChatSession().TextContext()},completed))completed({{},"agent_unavailable",false});
+                policy,responsePrompt,std::move(jpeg),assistiveManager_->Runtime().ChatSession().TextContext(),observation},completed))completed({{},"agent_unavailable",false});
         }
     };
     const bool frames=controlService_->ContextStatus().value("grants").toObject().value("frames").toBool();
-    if(!frames) {start({});return;}
+    if(!frames) {start({},{});return;}
     controlService_->Submit({agentContext_,QStringLiteral("initial-%1").arg(generation),"view_observe",{}},
         [self=QPointer<OkuFlowApp>(this),generation,start](agent::ControlResult result) {
         if(!self || generation!=self->agentGeneration_ || self->agentContext_.isEmpty())return;
-        if(!result.content.value("ok").toBool() || result.jpeg.isEmpty()) {
+        if(!result.content.value("ok").toBool() || result.jpeg.isEmpty() || !result.observation) {
             self->controlService_->End(self->agentContext_);self->agentContext_.clear();
             self->assistiveManager_->Runtime().CompleteControlAnswer({}, {}, {},
                 result.content.value("error").toObject().value("code").toString("no_frame"),false);return;
         }
         const auto jpeg=std::move(result.jpeg);
-        const auto sourceEpoch=self->controlService_->Stamp().sourceEpoch;
+        const auto observation=*result.observation;
         self->assistiveManager_->Runtime().PrepareControlImagePreview(jpeg,
-            [self,generation,sourceEpoch,start,jpeg]() {
+            [self,generation,observation,start,jpeg]() {
                 if (!self || generation!=self->agentGeneration_ || self->agentContext_.isEmpty()) return;
-                if (self->controlService_->Stamp().sourceEpoch!=sourceEpoch ||
-                    !self->controlService_->ContextStatus().value("grants").toObject().value("frames").toBool()) {
+                if (!self->controlService_->AuthorizeFrameDelivery(observation)) {
                     self->controlService_->End(self->agentContext_);self->agentContext_.clear();
                     self->assistiveManager_->Runtime().CompleteControlAnswer({}, {}, {},"consent_required",false);return;
                 }
-                start(jpeg);
+                start(jpeg,observation);
             });
     });
 }
@@ -417,10 +425,11 @@ void OkuFlowApp::TickAgentScene()
     controlService_->Submit({context,QStringLiteral("scene-%1-%2").arg(generation).arg(Id()),"view_observe",{{"maxLongSide",768}}},
         [self,context,stamp,generation](agent::ControlResult result) {
             if(!self || generation!=self->agentSceneGeneration_ || context!=self->agentSceneContext_)return;
-            if(!result.content.value("ok").toBool() || result.jpeg.isEmpty()) {self->CancelAgentScene();return;}
-            auto guard=[self,context,stamp,generation] {
+            if(!result.content.value("ok").toBool() || result.jpeg.isEmpty() || !result.observation) {self->CancelAgentScene();return;}
+            const auto observation=*result.observation;
+            auto guard=[self,context,observation,generation] {
                 return self && self->agentSceneRequested_ && generation==self->agentSceneGeneration_ && context==self->agentSceneContext_
-                    && self->controlService_->AuthorizeFrameDelivery(context,stamp);
+                    && self->controlService_->AuthorizeFrameDelivery(observation);
             };
             if(!guard()) {self->CancelAgentScene();return;}
             self->agentSceneEffective_=true;

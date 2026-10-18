@@ -4,6 +4,7 @@
 
 #include <QtTest>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -19,6 +20,9 @@ class RecordingIntegrityTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void pcmTimelinePreservesGapsAndOnset();
+    void pcmTimelineHandlesOverlapsAndFractionalBlocks();
+    void pcmTimelineRejectsUnboundedOrOverflowingWork();
     void exactNominalFrameDurations();
     void fractionalRateDoesNotDrift();
     void cameraTimestampsPreserveRealGaps();
@@ -32,6 +36,85 @@ private slots:
     void canvasResamplerPreservesIdentityAndFitBars();
     void negativeStrideRestoresTopDownRows();
 };
+
+void RecordingIntegrityTests::pcmTimelinePreservesGapsAndOnset()
+{
+    okuflow::RecordingPcmTimeline timeline;
+    timeline.Reset(48000);
+    okuflow::RecordingPcmSpan span;
+    for (int block = 0; block < 30; ++block) {
+        QVERIFY(timeline.Plan(block * 333'333LL, 1600, span));
+        QCOMPARE(span.silenceFrames, 0ULL);
+        QCOMPARE(span.skipFrames, 0ULL);
+        QCOMPARE(span.dataFrames, 1600ULL);
+        QVERIFY(timeline.Advance(span.dataFrames));
+    }
+    QCOMPARE(timeline.TimestampAfter(), 10'000'000LL);
+    QVERIFY(timeline.Plan(39'999'990, 1600, span));
+    QCOMPARE(span.silenceFrames, 144'000ULL);
+    QCOMPARE(span.dataFrames, 1600ULL);
+    // Planning/admission alone cannot consume media time, including failure.
+    QCOMPARE(timeline.TimestampAfter(), 10'000'000LL);
+    while (span.silenceFrames) {
+        const auto chunk = std::min<std::uint64_t>(4800, span.silenceFrames);
+        QVERIFY(timeline.Advance(chunk));
+        span.silenceFrames -= chunk;
+    }
+    QCOMPARE(timeline.TimestampAfter(), 40'000'000LL);
+    QVERIFY(timeline.Advance(span.dataFrames));
+    QCOMPARE(timeline.Frames(), 193'600ULL);
+    // A new segment owns an independent origin; a delayed first microphone
+    // block needs leading silence rather than an AAC track starting at zero.
+    timeline.Reset(48000);
+    QVERIFY(timeline.Plan(20'000'000, 1600, span));
+    QCOMPARE(span.silenceFrames, 96'000ULL);
+    QCOMPARE(timeline.Frames(), 0ULL);
+}
+
+void RecordingIntegrityTests::pcmTimelineHandlesOverlapsAndFractionalBlocks()
+{
+    okuflow::RecordingPcmTimeline timeline;
+    timeline.Reset(44100);
+    okuflow::RecordingPcmSpan span;
+    // One-sample blocks deliberately alternate rounded durations. Conversion
+    // from the absolute sample count must not accumulate per-block error.
+    for (std::uint64_t frame = 0; frame < 44'100; ++frame) {
+        const auto time = static_cast<std::int64_t>(frame * 10'000'000 / 44'100);
+        QVERIFY(timeline.Plan(time, 1, span));
+        QCOMPARE(span.silenceFrames, 0ULL);
+        QCOMPARE(span.skipFrames, 0ULL);
+        QVERIFY(timeline.Advance(1));
+    }
+    QCOMPARE(timeline.TimestampAfter(), 10'000'000LL);
+    QVERIFY(timeline.Plan(9'999'773, 100, span)); // about one frame early
+    QCOMPARE(span.skipFrames, 0ULL);
+    QVERIFY(timeline.Plan(9'000'000, 8820, span));
+    QCOMPARE(span.skipFrames, 4410ULL);
+    QCOMPARE(span.dataFrames, 4410ULL);
+    QCOMPARE(span.silenceFrames, 0ULL);
+    QVERIFY(timeline.Plan(0, 100, span));
+    QCOMPARE(span.skipFrames, 100ULL);
+    QCOMPARE(span.dataFrames, 0ULL);
+    QCOMPARE(timeline.TimestampAfter(), 10'000'000LL);
+}
+
+void RecordingIntegrityTests::pcmTimelineRejectsUnboundedOrOverflowingWork()
+{
+    okuflow::RecordingPcmTimeline timeline;
+    timeline.Reset(48000);
+    okuflow::RecordingPcmSpan span;
+    QVERIFY(timeline.Plan(100'000'000, 1600, span));
+    QCOMPARE(span.silenceFrames, 480'000ULL);
+    QVERIFY(!timeline.Plan(100'001'000, 1600, span));
+    QVERIFY(!timeline.Plan(std::numeric_limits<std::int64_t>::max(), 1600, span));
+    QVERIFY(!timeline.Plan(-1, 1600, span));
+    QVERIFY(!timeline.Plan(0, std::numeric_limits<std::uint64_t>::max(), span));
+    QVERIFY(!timeline.Advance(std::numeric_limits<std::uint64_t>::max()));
+    QCOMPARE(timeline.Frames(), 0ULL);
+    timeline.Reset(0);
+    QVERIFY(!timeline.Plan(0, 1600, span));
+    QCOMPARE(timeline.TimestampAfter(), -1LL);
+}
 
 void RecordingIntegrityTests::exactNominalFrameDurations()
 {

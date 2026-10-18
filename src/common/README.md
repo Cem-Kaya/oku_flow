@@ -91,3 +91,31 @@ The scoped scene lane in AssistiveRuntime is independent from shared chat and
 native Read/periodic ownership. Its app-issued frame guard fences actual HTTP
 submission, delayed Codex turn/start and terminal presentation/notes. It stays
 tool-free, temporary, silent and bounded by the requesting core context.
+
+Ultra Clear Text core lives in `ultra_clear_text.cpp` (stamps, probes,
+box-filtered residual matching, latest-only scheduler, overlay model). The
+built-in Windows OCR backend is split into the Qt-free C++/WinRT unit
+`uct_windows_ocr.cpp` (no precompiled header) and the adapter
+`uct_default_recognizer.cpp`, so fixtures can link the core without WinRT.
+See [`docs/ultra_clear_text.md`](../../docs/ultra_clear_text.md).
+
+UCT `PixelPool`/`SharedPixels` retain immutable buffers across its two latest-only
+workers. `ProbeWorker` builds bounded probes and residual checks off the UI;
+`RecognitionScheduler` prepares OCR lines. Budget-exhausted validation remains
+unverified. Reading order uses strict sorting plus explicit row clustering.
+
+Visible chat history commits a new/replacement record atomically before old
+retention entries can be deleted. Failed publication preserves previous files.
+A cleanup failure permits one bounded committed overflow and blocks further
+writes until retention cleanup succeeds; restart can recover that overflow.
+
+Ordinary non-coding Codex children use the pinned constrained launch profile
+before inference. Read/Explain stay offline after a coding session. Optional
+ordinary Assistant web search requires its internet preference. Changing
+coding/network/workspace permissions retires and replaces the child. The coding
+profile remains an explicit persistent-request opt-in with workspace sandbox
+and network policy. Protocol fixtures verify argv and lifecycle; they do not
+establish live model behavior or OS sandbox acceptance. Upstream
+[App Server documentation](https://learn.chatgpt.com/docs/app-server) describes
+thread/turn sandbox policies; the reviewed 0.160.1 feature inventory remains
+the compatibility authority here.

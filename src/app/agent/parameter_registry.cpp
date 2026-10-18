@@ -5,6 +5,18 @@
 namespace okuflow::agent {
 namespace {
 constexpr ParameterDescriptor kParameters[] = {
+    {"image.uct.gpu.detector",ParameterGroup::Image,R"parameter({"type":"string","enum":["tiny","small","medium"]})parameter","model_tier",
+     "shared_saved_immediate",ParameterPermission::View,ParameterAccess::WritableWithPolicy,false,
+     "src/app/app_ultra_clear_text.cpp","OnUltraClearTextModelsChanged","preference; active backend and model readiness reported separately"},
+    {"image.uct.gpu.recognizer",ParameterGroup::Image,R"parameter({"type":"string","enum":["tiny","small","medium"]})parameter","model_tier",
+     "shared_saved_immediate",ParameterPermission::View,ParameterAccess::WritableWithPolicy,false,
+     "src/app/app_ultra_clear_text.cpp","OnUltraClearTextModelsChanged","preference; active backend and model readiness reported separately"},
+    {"image.uct.cpu.detector",ParameterGroup::Image,R"parameter({"type":"string","enum":["tiny","small","medium"]})parameter","model_tier",
+     "shared_saved_immediate",ParameterPermission::View,ParameterAccess::WritableWithPolicy,false,
+     "src/app/app_ultra_clear_text.cpp","OnUltraClearTextModelsChanged","preference; active backend and model readiness reported separately"},
+    {"image.uct.cpu.recognizer",ParameterGroup::Image,R"parameter({"type":"string","enum":["tiny","small","medium"]})parameter","model_tier",
+     "shared_saved_immediate",ParameterPermission::View,ParameterAccess::WritableWithPolicy,false,
+     "src/app/app_ultra_clear_text.cpp","OnUltraClearTextModelsChanged","preference; active backend and model readiness reported separately"},
     {"view.zoom.enabled", ParameterGroup::View, R"parameter({"type":"boolean"})parameter", "none",
      "live_profile", ParameterPermission::View, ParameterAccess::WritableWithPolicy, false,
      "src/app/app_controls.cpp", "OnZoomToggled",

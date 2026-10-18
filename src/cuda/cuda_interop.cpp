@@ -1,6 +1,8 @@
 #ifdef _WIN32
 
 #include "okuflow/cuda/cuda_interop.hpp"
+#include "okuflow/cuda/uct_analysis_pool.hpp"
+#include "okuflow/cuda/timing_event_pair.hpp"
 #include "okuflow/common/gpu_copy_lease.hpp"
 
 #include <d3d12.h>
@@ -12,7 +14,7 @@
 #include <cuda_d3d11_interop.h>
 
 #include "okuflow/cuda/cuda_kernels.hpp"
-#include "okuflow/common/maxine_superres.hpp"
+#include "okuflow/common/maxine_async_producer.hpp"
 #include "okuflow/common/superres_scale_policy.hpp"
 
 #include <windows.h>
@@ -35,6 +37,31 @@
 #include <QString>
 
 namespace okuflow {
+
+void CudaInteropSurface::EnableUctAnalysis(bool enabled)
+{
+    if (!enabled && uctAnalysisEnabled_) {
+        uctAnalysisFrame_.reset();
+        uctAnalysisPool_.reset(); // cleanup never waits on the presentation thread
+        uctLastCaptureMs_ = 0;
+    }
+    uctAnalysisEnabled_ = enabled;
+}
+bool CudaInteropSurface::UctAnalysisFailed() const
+{
+    return uctAnalysisPool_ && uctAnalysisPool_->HasFailure();
+}
+
+struct CudaInteropSurface::AsyncSuperResState {
+    MaxineAsyncProducer::Ticket ticket;
+    MaxineAsyncProducer::Config config;
+    SuperResRoiMetadata roi;
+    std::size_t sourceX{}, sourceY{};
+    unsigned factorNumerator{}, factorDenominator{};
+    std::chrono::steady_clock::time_point requestedAt;
+    float publishedAgeMs{-1};
+    bool enabled{};
+};
 
 struct CudaInteropSurface::D3D11InteropState {
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
@@ -581,7 +608,8 @@ void CudaInteropSurface::QuarantineGpuResources() noexcept {
     // owning C++ states and D3D storage too: releasing either is unsafe while
     // queued work may still use the destination or imported camera source.
     (void)d3d11Interop_.release();
-    (void)maxineSuperRes_.release();
+    (void)maxineProducer_.release();
+    (void)asyncSuperRes_.release();
     d3d12Device_.Detach();
     retainedMainTexture_.Detach();
     retainedSuperResTexture_.Detach();
@@ -1723,33 +1751,10 @@ bool CudaInteropSurface::EnsureKeystoneResources(unsigned int width, unsigned in
 }
 
 void CudaInteropSurface::ReleaseSuperRes() {
-    if (maxineSuperRes_) {
-        maxineSuperRes_->Teardown();
-        if (maxineSuperRes_->IsFaulted()) {
-            lastError_ = maxineSuperRes_->LastError();
-            streamFaulted_ = true;
-            valid_ = false;
-            return;
-        }
-        maxineSuperRes_.reset();
-    }
-    if (deviceSuperResOutput_) {
-        cudaFree(deviceSuperResOutput_);
-        deviceSuperResOutput_ = nullptr;
-    }
-    devicePitchSuperResOutput_ = 0;
-    deviceSuperResOutputWidth_ = 0;
-    deviceSuperResOutputHeight_ = 0;
-    if (superResStartEvent_) {
-        cudaEventDestroy(superResStartEvent_);
-        superResStartEvent_ = nullptr;
-    }
-    if (superResStopEvent_) {
-        cudaEventDestroy(superResStopEvent_);
-        superResStopEvent_ = nullptr;
-    }
-    superResTimingPending_ = false;
-    discardSuperResTiming_ = false;
+    // Revocation only: producer retirement and GPU/SDK cleanup stay off UI.
+    if (maxineProducer_) maxineProducer_->Invalidate();
+    if (asyncSuperRes_) asyncSuperRes_->enabled = false;
+    ++superResRequestGeneration_;
     superResTimingStrength_ = -1.0f;
     superResRequestedStrength_ = -1.0f;
     superResAutoDisabled_ = false;
@@ -1771,37 +1776,10 @@ void CudaInteropSurface::ReleaseSuperRes() {
     superResStatus_.clear();
 }
 
-bool CudaInteropSurface::EnsureSuperResOutputBuffer(unsigned int width,
-                                                   unsigned int height) {
-    if (deviceSuperResOutput_ &&
-        deviceSuperResOutputWidth_ == width &&
-        deviceSuperResOutputHeight_ == height) {
-        return true;
-    }
-    if (deviceSuperResOutput_) {
-        cudaFree(deviceSuperResOutput_);
-        deviceSuperResOutput_ = nullptr;
-    }
-    devicePitchSuperResOutput_ = 0;
-    deviceSuperResOutputWidth_ = 0;
-    deviceSuperResOutputHeight_ = 0;
-    ThrowIfCudaFailed(
-        cudaMallocPitch(
-            reinterpret_cast<void**>(&deviceSuperResOutput_),
-            &devicePitchSuperResOutput_,
-            static_cast<size_t>(width) * sizeof(uchar4),
-            height),
-        "cudaMallocPitch SuperRes output failed");
-    deviceSuperResOutputWidth_ = width;
-    deviceSuperResOutputHeight_ = height;
-    return true;
-}
-
 void CudaInteropSurface::SetSuperResPerformanceOverride(bool enabled) {
     superResPerformanceOverride_ = enabled;
     if (enabled) {
         superResAutoDisabled_ = false;
-        discardSuperResTiming_ = superResTimingPending_;
         superResWarmupSamples_ = 0;
         superResTimingSamples_ = 0;
         superResTimingTotalMs_ = 0.0f;
@@ -1814,54 +1792,137 @@ void CudaInteropSurface::SetSuperResPerformanceOverride(bool enabled) {
     }
 }
 
+void CudaInteropSurface::InvalidateSuperResRequest() {
+    if (maxineProducer_) maxineProducer_->Invalidate(false);
+    if (asyncSuperRes_) asyncSuperRes_->enabled = false;
+    ++superResRequestGeneration_;
+    superResActive_ = false;
+    superResRoi_.valid = false;
+}
+
 void CudaInteropSurface::ResetSuperRes() {
-    if (!SynchronizeStream()) return;
     ReleaseSuperRes();
 }
 
-void CudaInteropSurface::ConsumeSuperResTiming() {
-    if (!superResTimingPending_ || !superResStopEvent_) {
-        return;
+void CudaInteropSurface::AccumulateSuperResTiming(float elapsedMs) {
+    if (!std::isfinite(elapsedMs) || elapsedMs < 0) return;
+    if (superResWarmupSamples_ < kSuperResWarmupFrames) ++superResWarmupSamples_;
+    else { superResTimingTotalMs_ += elapsedMs; ++superResTimingSamples_; }
+    if (superResTimingSamples_ >= kSuperResTimingFrames) {
+        const float average = superResTimingTotalMs_ / superResTimingSamples_;
+        superResLastAverageMs_ = average;
+        superResAutoDisabled_ = average > kSuperResLatencyTargetMs && !superResPerformanceOverride_;
+        superResStatus_ = SuperResTimingStatus(superResAutoDisabled_
+            ? "SuperRes disabled after exceeding the performance target;"
+            : "NVIDIA Video Effects SuperRes active;", average);
+        superResTimingSamples_ = 0; superResTimingTotalMs_ = 0;
     }
-    const cudaError_t query = cudaEventQuery(superResStopEvent_);
-    if (query == cudaErrorNotReady) {
-        return;
+}
+
+bool CudaInteropSurface::NeedsSuperResPolling() const {
+    return valid_ && asyncSuperRes_ && asyncSuperRes_->enabled && maxineProducer_ &&
+        !superResAutoDisabled_ && !superResFailureLatched_ &&
+        (!superResActive_ || maxineProducer_->HasWork() || maxineProducer_->IsFaulted());
+}
+
+bool CudaInteropSurface::HasSuperResWork() const {
+    return valid_ && asyncSuperRes_ && asyncSuperRes_->enabled && maxineProducer_ &&
+        !superResAutoDisabled_ && !superResFailureLatched_ &&
+        (maxineProducer_->HasWork() || maxineProducer_->IsFaulted());
+}
+
+SuperResAsyncStatistics CudaInteropSurface::SuperResStatistics() const {
+    if (!maxineProducer_) return {};
+    const auto stats = maxineProducer_->Stats();
+    return {stats.submitted,stats.completed,stats.staleDiscarded,stats.desiredOverwritten,
+            asyncSuperRes_ ? asyncSuperRes_->publishedAgeMs : -1.0f};
+}
+
+SuperResRefreshResult CudaInteropSurface::RefreshSuperRes(const FenceSyncParams& sync) {
+    if (!HasSuperResWork() || !PollIdle()) return SuperResRefreshResult::NoWork;
+    const auto latchFailure = [&] {
+        superResFailureLatched_ = true;
+        superResFailSrcWidth_ = asyncSuperRes_->config.sourceWidth;
+        superResFailSrcHeight_ = asyncSuperRes_->config.sourceHeight;
+        superResFailFactorNum_ = asyncSuperRes_->factorNumerator;
+        superResFailFactorDen_ = asyncSuperRes_->factorDenominator;
+    };
+    if (maxineProducer_->IsFaulted()) {
+        superResStatus_ = maxineProducer_->LastError();
+        latchFailure();
+        return SuperResRefreshResult::NoWork; // private failure never faults base presentation
     }
-    if (query != cudaSuccess) {
-        superResTimingPending_ = false;
-        return;
-    }
-    if (discardSuperResTiming_) {
-        discardSuperResTiming_ = false;
-        superResTimingPending_ = false;
-        return;
-    }
-    float elapsedMs = 0.0f;
-    if (cudaEventElapsedTime(&elapsedMs, superResStartEvent_, superResStopEvent_) == cudaSuccess) {
-        if (superResWarmupSamples_ < kSuperResWarmupFrames) {
-            ++superResWarmupSamples_;
-        } else {
-            superResTimingTotalMs_ += elapsedMs;
-            ++superResTimingSamples_;
+    MaxineAsyncProducer::Output output;
+    const bool taken = maxineProducer_->TryTake(asyncSuperRes_->ticket, output);
+    // Stale output never publishes, but its GPU cost still belongs to the
+    // matching configuration's performance window (no starvation loophole).
+    if (output.config == asyncSuperRes_->config) AccumulateSuperResTiming(output.gpuMs);
+    bool leased = taken;
+    bool queued = false;
+    try {
+        // Reserve/wait/signal uses the same shared graphics fence as a camera
+        // submission. The private SDK stream never waits on graphics or lends
+        // mutable A/B processing buffers to inference.
+        if (sync.enable && externalSemaphore_) {
+            cudaExternalSemaphoreWaitParams wait{}; wait.params.fence.value = sync.waitValue;
+            ThrowIfCudaFailed(cudaWaitExternalSemaphoresAsync(&externalSemaphore_, &wait, 1, stream_),
+                              "SuperRes publication graphics wait failed");
+            queued = true;
         }
-        if (superResTimingSamples_ >= kSuperResTimingFrames) {
-            const float averageMs = superResTimingTotalMs_ / static_cast<float>(superResTimingSamples_);
-            superResLastAverageMs_ = averageMs;
-            if (averageMs > kSuperResLatencyTargetMs && !superResPerformanceOverride_) {
-                superResAutoDisabled_ = true;
-                superResStatus_ = SuperResTimingStatus(
-                    "SuperRes disabled after exceeding the performance target;", averageMs);
+        bool published = false;
+        if (taken) {
+            if (output.success) {
+                if (!superResAutoDisabled_) {
+                    LaunchOpaqueAlphaLinear(static_cast<uchar4*>(output.pixels), output.pitch,
+                                            output.width, output.height, stream_);
+                    queued = true;
+                    ThrowIfCudaFailed(cudaMemcpy2DToArrayAsync(superResLevel0Array_, 0, 0,
+                        output.pixels, output.pitch, static_cast<std::size_t>(output.width) * sizeof(uchar4),
+                        output.height, cudaMemcpyDeviceToDevice, stream_), "SuperRes private output publication failed");
+                    superResActive_ = true;
+                    superResSourceWidth_ = asyncSuperRes_->config.sourceWidth;
+                    superResSourceHeight_ = asyncSuperRes_->config.sourceHeight;
+                    superResFactorValue_ = asyncSuperRes_->roi.scaleFactor;
+                    superResRoi_ = asyncSuperRes_->roi;
+                    superResRoi_.generation = ++superResGeneration_;
+                    asyncSuperRes_->publishedAgeMs = std::chrono::duration<float,std::milli>(
+                        std::chrono::steady_clock::now() - asyncSuperRes_->requestedAt).count();
+                    if (superResLastAverageMs_ < 0)
+                        superResStatus_ = "NVIDIA Video Effects SuperRes active";
+                    published = true;
+                }
             } else {
-                superResStatus_ = averageMs > kSuperResLatencyTargetMs
-                                      ? SuperResTimingStatus(
-                                            "SuperRes active by user override;", averageMs)
-                                      : SuperResTimingStatus("SuperRes active;", averageMs);
+                superResStatus_ = output.error;
+                latchFailure();
             }
-            superResTimingSamples_ = 0;
-            superResTimingTotalMs_ = 0.0f;
+            const bool released = maxineProducer_->ReleaseOutput(stream_);
+            leased = false;
+            ThrowIfCudaFailed(released ? cudaSuccess : cudaErrorUnknown, "SuperRes consumer retirement event failed");
+            queued = true;
+        } else if (!superResAutoDisabled_ && !maxineProducer_->TrySubmit(level0Array_, asyncSuperRes_->sourceX,
+                    asyncSuperRes_->sourceY, stream_, asyncSuperRes_->ticket)) {
+            if (maxineProducer_->IsFaulted()) {
+                // A failed input snapshot may have queued work before its
+                // event failed. Keep the caller's reservation until full drain.
+                lastError_ = maxineProducer_->LastError();
+                streamFaulted_ = true; valid_ = false;
+                return SuperResRefreshResult::Failed;
+            }
+        } else if (!superResAutoDisabled_) queued = true;
+        if (!queued) return SuperResRefreshResult::NoWork;
+        if (sync.enable && externalSemaphore_) {
+            cudaExternalSemaphoreSignalParams signal{}; signal.params.fence.value = sync.signalValue;
+            ThrowIfCudaFailed(cudaSignalExternalSemaphoresAsync(&externalSemaphore_, &signal, 1, stream_),
+                              "SuperRes publication signal failed");
         }
+        return published ? SuperResRefreshResult::Published : SuperResRefreshResult::Submitted;
+    } catch (const std::exception& error) {
+        if (leased) (void)maxineProducer_->ReleaseOutput(stream_);
+        lastError_ = error.what();
+        streamFaulted_ = true; valid_ = false;
+        superResRoi_.valid = false; superResActive_ = false;
+        return SuperResRefreshResult::Failed;
     }
-    superResTimingPending_ = false;
 }
 
 void CudaInteropSurface::UpdateSuperResCache(
@@ -1874,6 +1935,7 @@ void CudaInteropSurface::UpdateSuperResCache(
     const ProcessingSettings& settings) {
     superResActive_ = false;
     superResRoi_.valid = false;
+    if (asyncSuperRes_) asyncSuperRes_->enabled = false;
 
     // SuperRes is a camera-clock cache, not the viewport transform itself.
     // settings.zoomAmount/center describe the requested viewport ROI even
@@ -1887,7 +1949,6 @@ void CudaInteropSurface::UpdateSuperResCache(
          (!settings.mlSuperResUltra1440p &&
           settings.zoomAmount >= 1.33f));
     if (!requested && superResRequestedLastFrame_) {
-        discardSuperResTiming_ = superResTimingPending_;
         superResAutoDisabled_ = false;
         superResFailureLatched_ = false;
         superResWarmupSamples_ = 0;
@@ -1906,6 +1967,17 @@ void CudaInteropSurface::UpdateSuperResCache(
     }
 
 #if OKUFLOW_ENABLE_TEXT_SR
+    if (settings.deferMlSuperResForInteraction) {
+        // Never admit a new private model/inference request while the user is
+        // navigating. The ordinary spatial cache below uses this same camera
+        // frame, so captures/observations cannot inherit an older SR result.
+        // Keep the model, failure latch and performance window across input;
+        // navigation is not a user toggle and must not defeat the guard.
+        if (!superResAutoDisabled_ && !superResFailureLatched_)
+            superResStatus_ = "NVIDIA SuperRes paused during viewport navigation";
+        return;
+    }
+
     struct SuperResScale {
         unsigned int numerator;
         unsigned int denominator;
@@ -2022,131 +2094,42 @@ void CudaInteropSurface::UpdateSuperResCache(
         superResTimingOutputHeight_ != outputHeight ||
         superResTimingStrength_ != effectiveStrength;
     if (configurationChanged) {
-        // Ensure reloads SDK image/effect resources only for a changed load
-        // configuration; retire their previous transfers before deallocation.
-        if (maxineSuperRes_ && maxineSuperRes_->IsReady() && !SynchronizeStream()) return;
+        // The producer owns model/image reconfiguration after both private
+        // producer and consumer work retire; this path only resets accounting.
         superResTimingSourceWidth_ = sourceWidth;
         superResTimingSourceHeight_ = sourceHeight;
         superResTimingOutputWidth_ = outputWidth;
         superResTimingOutputHeight_ = outputHeight;
         superResTimingStrength_ = effectiveStrength;
-        discardSuperResTiming_ = superResTimingPending_;
         superResWarmupSamples_ = 0;
         superResTimingSamples_ = 0;
         superResTimingTotalMs_ = 0.0f;
         superResLastAverageMs_ = -1.0f;
         superResAutoDisabled_ = false;
     }
-    ConsumeSuperResTiming();
     if (superResAutoDisabled_) return;
 
-    const auto* sourceRoi =
-        reinterpret_cast<const unsigned char*>(source) +
-        static_cast<size_t>(sourceY) * sourcePitch +
-        static_cast<size_t>(sourceX) * sizeof(uchar4);
+    (void)source; (void)sourcePitch; (void)destination; (void)destinationPitch;
+    if (!maxineProducer_) maxineProducer_ = std::make_unique<MaxineAsyncProducer>(cudaDeviceId_);
+    if (!asyncSuperRes_) asyncSuperRes_ = std::make_unique<AsyncSuperResState>();
+    auto& state = *asyncSuperRes_;
+    state.ticket = {currentCameraEpoch_, currentFrameSequence_, processedSceneSerial_,
+                    currentSettingsGeneration_, ++superResRequestGeneration_};
+    state.config = {sourceWidth, sourceHeight, outputWidth, outputHeight, effectiveStrength};
+    state.sourceX = static_cast<std::size_t>(sourceX) * sizeof(uchar4);
+    state.sourceY = sourceY;
+    state.factorNumerator = factorNum; state.factorDenominator = factorDen;
+    state.roi = {true, 0, static_cast<float>(sourceX) / width, static_cast<float>(sourceY) / height,
+        static_cast<float>(sourceWidth) / width, static_cast<float>(sourceHeight) / height,
+        outputWidth, outputHeight, static_cast<float>(factorNum) / factorDen};
+    state.requestedAt = std::chrono::steady_clock::now();
+    state.publishedAgeMs = -1;
+    state.enabled = true;
+    maxineProducer_->Request(state.ticket, state.config);
+    // Preparing/loading and inference are independent. The presentation clock
+    // snapshots this exact full-scene array only after the private slot is ready.
+    superResStatus_ = "NVIDIA Video Effects SuperRes processing asynchronously";
 
-    if (!maxineSuperRes_) {
-        maxineSuperRes_ = std::make_unique<MaxineSuperRes>();
-    }
-    maxineSuperRes_->SetStrength(effectiveStrength);
-    if (!maxineSuperRes_->Ensure(sourceWidth,
-                                 sourceHeight,
-                                 outputWidth,
-                                 outputHeight,
-                                 reinterpret_cast<void*>(stream_))) {
-        superResStatus_ = maxineSuperRes_->LastError();
-        if (maxineSuperRes_->IsFaulted()) {
-            lastError_ = superResStatus_;
-            streamFaulted_ = true;
-            valid_ = false;
-        }
-        latchFailure();
-        return;
-    }
-
-    if (!superResStartEvent_) {
-        ThrowIfCudaFailed(cudaEventCreate(&superResStartEvent_),
-                          "cudaEventCreate SuperRes start failed");
-        ThrowIfCudaFailed(cudaEventCreate(&superResStopEvent_),
-                          "cudaEventCreate SuperRes stop failed");
-    }
-    const bool measure = !superResTimingPending_;
-    if (measure) {
-        ThrowIfCudaFailed(cudaEventRecord(superResStartEvent_, stream_),
-                          "cudaEventRecord SuperRes start failed");
-    }
-    uchar4* superResDestination = destination;
-    size_t superResDestinationPitch = destinationPitch;
-    if (outputWidth != width || outputHeight != height) {
-        EnsureSuperResOutputBuffer(outputWidth, outputHeight);
-        superResDestination = deviceSuperResOutput_;
-        superResDestinationPitch = devicePitchSuperResOutput_;
-    }
-    // Maxine converts three-channel output to BGRA; NvCVImage_Transfer does
-    // not guarantee alpha. The allocation stays private until Run succeeds
-    // and the alpha-only pass below completes on this same stream.
-    if (!maxineSuperRes_->Run(
-            sourceRoi,
-            sourcePitch,
-            superResDestination,
-            superResDestinationPitch)) {
-        superResStatus_ = maxineSuperRes_->LastError();
-        if (maxineSuperRes_->IsFaulted()) {
-            lastError_ = superResStatus_;
-            streamFaulted_ = true;
-            valid_ = false;
-        }
-        latchFailure();
-        return;
-    }
-    LaunchOpaqueAlphaLinear(superResDestination, superResDestinationPitch,
-                            static_cast<int>(outputWidth), static_cast<int>(outputHeight), stream_);
-    if (measure) {
-        ThrowIfCudaFailed(cudaEventRecord(superResStopEvent_, stream_),
-                          "cudaEventRecord SuperRes stop failed");
-        superResTimingPending_ = true;
-    }
-    ThrowIfCudaFailed(
-        cudaMemcpy2DToArrayAsync(superResLevel0Array_,
-                                 0,
-                                 0,
-                                 superResDestination,
-                                 superResDestinationPitch,
-                                 static_cast<size_t>(outputWidth) * sizeof(uchar4),
-                                 outputHeight,
-                                 cudaMemcpyDeviceToDevice,
-                                 stream_),
-        "cudaMemcpy2DToArrayAsync SuperRes cache failed");
-
-    const float factorValue =
-        static_cast<float>(factorNum) / static_cast<float>(factorDen);
-    superResActive_ = true;
-    superResSourceWidth_ = sourceWidth;
-    superResSourceHeight_ = sourceHeight;
-    superResFactorValue_ = factorValue;
-    superResRoi_ = {
-        true,
-        ++superResGeneration_,
-        static_cast<float>(sourceX) / static_cast<float>(width),
-        static_cast<float>(sourceY) / static_cast<float>(height),
-        static_cast<float>(sourceWidth) / static_cast<float>(width),
-        static_cast<float>(sourceHeight) / static_cast<float>(height),
-        outputWidth,
-        outputHeight,
-        factorValue,
-    };
-    if (superResLastAverageMs_ < 0.0f) {
-        superResStatus_ = superResWarmupSamples_ < kSuperResWarmupFrames
-                              ? "NVIDIA Video Effects SuperRes warming up"
-                              : "NVIDIA Video Effects SuperRes measuring performance";
-    } else if (superResPerformanceOverride_ &&
-               superResLastAverageMs_ > kSuperResLatencyTargetMs) {
-        superResStatus_ = SuperResTimingStatus(
-            "SuperRes active by user override;", superResLastAverageMs_);
-    } else {
-        superResStatus_ = SuperResTimingStatus(
-            "NVIDIA Video Effects SuperRes active;", superResLastAverageMs_);
-    }
 #else
     superResStatus_ =
         "SuperRes support is disabled in this build";
@@ -3973,6 +3956,20 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                 "cudaEventRecord geometry timing boundary failed");
         }
 
+        // Independently owned, appearance-neutral analysis before display
+        // enhancement/zoom. Capture enqueues only a D2D copy on this stream;
+        // inference and all host waits belong to the OCR worker.
+        if (uctAnalysisEnabled_) {
+            const auto now=std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            if(now-uctLastCaptureMs_>=80) {
+                if(!uctAnalysisPool_) uctAnalysisPool_=std::make_unique<uct::AnalysisPool>();
+                auto frame=uctAnalysisPool_->Capture(current,currentPitch,procWidth,procHeight,stream_,
+                    input.cameraEpoch,input.frameSequence,input.settingsGeneration);
+                if(frame) {uctAnalysisFrame_=std::move(frame);uctLastCaptureMs_=now;}
+            }
+        }
+
         const auto textStages = settings.TextClarityStages();
         const bool backgroundActive = textStages.background;
         const bool binarizationActive = textStages.adaptive;
@@ -4276,6 +4273,10 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
                                                    cudaMemcpyDeviceToDevice, stream_),
                           "cudaMemcpy2DToArrayAsync failed");
 
+        ++processedSceneSerial_;
+        currentCameraEpoch_ = input.cameraEpoch ? input.cameraEpoch : 1;
+        currentFrameSequence_ = input.frameSequence ? input.frameSequence : processedSceneSerial_;
+        currentSettingsGeneration_ = input.settingsGeneration ? input.settingsGeneration : processedSceneSerial_;
         UpdateSuperResCache(current,
                             currentPitch,
                             alternate,

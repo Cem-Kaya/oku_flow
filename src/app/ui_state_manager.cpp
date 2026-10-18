@@ -423,7 +423,6 @@ void UIStateManager::ApplyConfigToUI(const settings::AdvancedConfig& config,
 
     }
     app_.UpdateControlEnabledStates();
-    app_.UpdateSectionChangedCounts();
     app_.SyncCurrentConfigToPersistence(preservePresetSelection);
     app_.UpdateProcessingStatusLabel();
 }

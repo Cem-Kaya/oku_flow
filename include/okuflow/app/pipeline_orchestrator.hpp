@@ -48,6 +48,9 @@ public:
         std::function<bool()> hasContinuousMotion;
         std::function<bool()> isMousePanActive;
         std::function<bool()> needsScenePresent;
+        // Async completion polling needs the presentation clock even while
+        // pixels/viewport are unchanged; it must not extend the motion tail.
+        std::function<bool()> hasAsyncSceneWork;
         std::function<bool()> cameraActive;
         std::function<double()> cameraFrameRate;
         std::function<bool()> usingCuda;
@@ -79,6 +82,9 @@ public:
     // A camera arrival changes the scene without extending the user-motion tail.
     void MarkSceneDirty();
     bool IsViewportDirty() const;
+    // Camera arrivals do not count as input. Used to keep optional neural
+    // inference off active keyboard/joystick/mouse navigation and its tail.
+    bool IsViewportInteractionActive() const;
     void NotifyViewportMotion();
     void MarkViewportPresented();
 
@@ -127,6 +133,7 @@ private:
     bool viewportDirty_{true};
     QElapsedTimer viewportTickTimer_;
     QElapsedTimer viewportMotionTailTimer_;
+    QElapsedTimer viewportInteractionTailTimer_;
     QElapsedTimer viewportRateMeasurementTimer_;
 
     static constexpr std::size_t kTimingSampleCapacity = 240;

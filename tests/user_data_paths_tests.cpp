@@ -38,7 +38,56 @@ private slots:
     void removesFailedEncodeTemps();
     void reportsInvalidPhotoMarker();
     void leavesActivePhotoPairTransactionAlone();
+    void annotationPublicationNeverClobbersOrExposesPartialFiles();
+    void failedAnnotationEncodePublishesNothing();
 };
+
+void UserDataPathsTests::annotationPublicationNeverClobbersOrExposesPartialFiles()
+{
+    QTemporaryDir root;QVERIFY(root.isValid());
+    const QString stem=QStringLiteral("ANNOTATION_same_timestamp");
+    const QString occupied=root.filePath(stem+QStringLiteral(".png"));
+    QFile existing(occupied);QVERIFY(existing.open(QIODevice::ReadWrite));
+    QCOMPARE(existing.write("previous capture"),qint64{16});QVERIFY(existing.flush());
+    for(int i=0;i<2;++i) {
+        const auto result=UserDataPaths::WriteAnnotationImage(root.path(),stem,[&](QIODevice* file) {
+            // Until the encoder returns, only the previous complete capture
+            // is publicly named. Partial bytes belong to an exclusive temp.
+            if(QDir(root.path()).entryList({"*.png"},QDir::Files).size()!=1+i)return false;
+            return file->write("complete capture")==16;
+        });
+        QVERIFY(result.committed);QVERIFY(result.path!=occupied);
+        QVERIFY(result.leftoverPaths.isEmpty());
+        QFile saved(result.path);QVERIFY(saved.open(QIODevice::ReadOnly));
+        QCOMPARE(saved.readAll(),QByteArray("complete capture"));
+    }
+    existing.seek(0);QCOMPARE(existing.readAll(),QByteArray("previous capture"));
+    QCOMPARE(QDir(root.path()).entryList({"*.png"},QDir::Files).size(),3);
+    QVERIFY(QDir(root.path()).entryList({"*.writing"},QDir::Files|QDir::Hidden).isEmpty());
+    // A destination admitted after private encoding also remains untouched.
+    const QString raced=root.filePath(QStringLiteral("ANNOTATION_race.png"));
+    const auto race=UserDataPaths::WriteAnnotationImage(root.path(),"ANNOTATION_race",[&](QIODevice* file) {
+        QFile other(raced);
+        return other.open(QIODevice::WriteOnly|QIODevice::NewOnly) && other.write("external")==8 &&
+               file->write("ours")==4;
+    });
+    QVERIFY(race.committed);QVERIFY(race.path!=raced);
+    QFile other(raced);QVERIFY(other.open(QIODevice::ReadOnly));QCOMPARE(other.readAll(),QByteArray("external"));
+}
+
+void UserDataPathsTests::failedAnnotationEncodePublishesNothing()
+{
+    QTemporaryDir root;QVERIFY(root.isValid());
+    const auto failed=UserDataPaths::WriteAnnotationImage(root.path(),"ANNOTATION_failure",[](QIODevice* file) {
+        file->write("partial bytes");return false;
+    });
+    QVERIFY(!failed.committed);QVERIFY(failed.path.isEmpty());QVERIFY(failed.leftoverPaths.isEmpty());
+    const auto empty=UserDataPaths::WriteAnnotationImage(root.path(),"ANNOTATION_empty",[](QIODevice*){return true;});
+    QVERIFY(!empty.committed);
+    const auto invalid=UserDataPaths::WriteAnnotationImage(root.path(),"../escape",[](QIODevice*){return true;});
+    QVERIFY(!invalid.committed);
+    QVERIFY(QDir(root.path()).entryList(QDir::Files|QDir::Hidden|QDir::NoDotAndDotDot).isEmpty());
+}
 
 void UserDataPathsTests::recoveryIgnoresCompletedLibraryAndKeepsLegacyStaleness()
 {

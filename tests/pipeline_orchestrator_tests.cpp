@@ -17,8 +17,28 @@ private slots:
     void coalescesCameraFrameWakeups();
     void busyFrameRetriesLeaveQtHeartbeatResponsive();
     void sceneArrivalsDoNotExtendUserMotionTail();
+    void asyncWorkPollsBetweenCameraFramesWithoutNavigation();
+    void interactionAdmissionDistinguishesNavigationFromSceneArrival();
     void cameraHandoffRetriesStillPresentHeldViewport();
+    void zeroFrameReconnectRetriesKeepOriginalDeadline();
 };
+
+void PipelineOrchestratorTests::zeroFrameReconnectRetriesKeepOriginalDeadline()
+{
+    PipelineOrchestrator orchestrator(*this, {});
+    QVERIFY(orchestrator.BeginCameraReconnect(1000));
+    for (qint64 failureAt : {4000, 15000, 26000}) {
+        QVERIFY(!orchestrator.BeginCameraReconnect(failureAt));
+        orchestrator.ScheduleCameraReconnectRetry(failureAt);
+        QVERIFY(!orchestrator.CameraReconnectExpired(30999));
+        QVERIFY(orchestrator.CameraReconnectExpired(31000));
+    }
+    // A retry's next-attempt time may exceed expiry, but may not extend it.
+    QVERIFY(!orchestrator.CameraReconnectDue(31000));
+    QVERIFY(orchestrator.CameraReconnectExpired(31000));
+    orchestrator.CancelCameraReconnect();
+    QVERIFY(!orchestrator.IsCameraReconnectPending());
+}
 
 void PipelineOrchestratorTests::reportsNearestRankPercentiles()
 {
@@ -140,6 +160,38 @@ void PipelineOrchestratorTests::busyFrameRetriesLeaveQtHeartbeatResponsive()
     QVERIFY(!orchestrator.IsViewportDirty());
 }
 
+void PipelineOrchestratorTests::asyncWorkPollsBetweenCameraFramesWithoutNavigation()
+{
+    for (bool fenceInterop : {false, true}) {
+        bool pending = true;
+        int polls = 0;
+        PipelineOrchestrator orchestrator(*this,
+            PipelineOrchestrator::Callbacks{
+                .tick = [](double) { return false; }, // no new camera input
+                .presentPendingScene = [&] { if (++polls == 3) pending = false; },
+                .hasAsyncSceneWork = [&] { return pending; },
+                .cameraActive = [] { return true; },
+                .cameraFrameRate = [] { return 5.0; },
+                .usingCuda = [] { return true; },
+                .queryDisplayRefreshRate = [] { return 120; },
+            });
+        orchestrator.SetFenceInteropEnabled(fenceInterop);
+        orchestrator.displayRefreshHz_ = 120;
+        orchestrator.viewportMotionTailTimer_.invalidate();
+        orchestrator.MarkViewportPresented();
+        orchestrator.UpdateTimerPolicy();
+        QCOMPARE(orchestrator.timer_.interval(), 8);
+        for (int tick = 0; tick < 3; ++tick) {
+            QVERIFY(!orchestrator.IsViewportDirty());
+            QVERIFY(!orchestrator.IsViewportInteractionActive());
+            orchestrator.OnTick();
+        }
+        QCOMPARE(polls, 3);
+        QCOMPARE(orchestrator.timer_.interval(), 200); // completion restores camera-idle policy
+        QVERIFY(!orchestrator.viewportMotionTailTimer_.isValid());
+    }
+}
+
 void PipelineOrchestratorTests::sceneArrivalsDoNotExtendUserMotionTail()
 {
     PipelineOrchestrator orchestrator(*this,
@@ -167,6 +219,46 @@ void PipelineOrchestratorTests::sceneArrivalsDoNotExtendUserMotionTail()
     orchestrator.MarkViewportPresented();
     orchestrator.UpdateTimerPolicy();
     QCOMPARE(orchestrator.timer_.interval(), 8);
+}
+
+void PipelineOrchestratorTests::interactionAdmissionDistinguishesNavigationFromSceneArrival()
+{
+    bool continuousMotion = false;
+    bool mousePan = false;
+    PipelineOrchestrator orchestrator(*this,
+        PipelineOrchestrator::Callbacks{
+            .hasContinuousMotion = [&] { return continuousMotion; },
+            .isMousePanActive = [&] { return mousePan; },
+        });
+    QVERIFY(!orchestrator.IsViewportInteractionActive());
+    orchestrator.MarkSceneDirty();
+    QVERIFY(!orchestrator.IsViewportInteractionActive());
+    continuousMotion = true;
+    QVERIFY(orchestrator.IsViewportInteractionActive());
+    continuousMotion = false;
+    mousePan = true;
+    QVERIFY(orchestrator.IsViewportInteractionActive());
+    mousePan = false;
+    QVERIFY(!orchestrator.IsViewportInteractionActive());
+
+    // Redraw/readback/photo retries may request the fast viewport clock, but
+    // cannot masquerade as navigation and indefinitely suppress inference.
+    for (int retry = 0; retry != 20; ++retry) {
+        orchestrator.MarkViewportDirty();
+        QVERIFY(!orchestrator.IsViewportInteractionActive());
+    }
+    // A wheel/key update explicitly opens the navigation settling tail.
+    // Camera/redraw activity neither resets nor extends that input lease.
+    orchestrator.NotifyViewportMotion();
+    QVERIFY(orchestrator.IsViewportInteractionActive());
+    orchestrator.MarkViewportPresented();
+    QVERIFY(orchestrator.IsViewportInteractionActive());
+    orchestrator.viewportInteractionTailTimer_.invalidate();
+    for (int frame = 0; frame != 20; ++frame) {
+        orchestrator.MarkSceneDirty();
+        orchestrator.MarkViewportDirty();
+        QVERIFY(!orchestrator.IsViewportInteractionActive());
+    }
 }
 
 void PipelineOrchestratorTests::cameraHandoffRetriesStillPresentHeldViewport()

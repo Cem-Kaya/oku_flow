@@ -1,5 +1,10 @@
 # Improvement Ideas
 
+[54 — Argon codebase analysis](54-argon-codebase-analysis-2026-10-17.md)
+is preserved with its original baseline; the
+[verification and repair record](../docs/argon_review_verification_2026_10_17.md)
+separates confirmed defects from intentional contracts and architectural work.
+
 Actionable improvement backlog for OkuFlow (formerly OpenZoom), written for AI agents (or humans) picking up
 future work. Produced from a full-codebase analysis on 2026-07-21 at commit `9e069d9`
 ("Add assistive runtime and harden Windows builds"). Original `file:line` references

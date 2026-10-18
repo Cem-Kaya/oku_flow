@@ -124,7 +124,9 @@ settings::ViewportFitModeSetting PipelineOrchestrator::ViewportFitMode() const
 
 void PipelineOrchestrator::MarkViewportDirty()
 {
-    NotifyViewportMotion();
+    // Redraw/readback retries retain the fast presentation tail, but are not
+    // navigation and must not suppress neural processing (notably a photo).
+    viewportMotionTailTimer_.restart();
     MarkSceneDirty();
 }
 
@@ -139,9 +141,18 @@ bool PipelineOrchestrator::IsViewportDirty() const
     return viewportDirty_;
 }
 
+bool PipelineOrchestrator::IsViewportInteractionActive() const
+{
+    return (callbacks_.hasContinuousMotion && callbacks_.hasContinuousMotion()) ||
+           (callbacks_.isMousePanActive && callbacks_.isMousePanActive()) ||
+           (viewportInteractionTailTimer_.isValid() &&
+            viewportInteractionTailTimer_.elapsed() < 150);
+}
+
 void PipelineOrchestrator::NotifyViewportMotion()
 {
     viewportMotionTailTimer_.restart();
+    viewportInteractionTailTimer_.restart();
 }
 
 void PipelineOrchestrator::MarkViewportPresented()
@@ -356,19 +367,12 @@ void PipelineOrchestrator::UpdateTimerPolicy()
     } else {
         announcedClampedRate_ = 0;
     }
-    const bool continuousMotion =
-        callbacks_.hasContinuousMotion &&
-        callbacks_.hasContinuousMotion();
-    const bool mousePan =
-        callbacks_.isMousePanActive && callbacks_.isMousePanActive();
     const bool presenterNeedsFrame =
         callbacks_.needsScenePresent && callbacks_.needsScenePresent();
-    const bool settling =
-        viewportMotionTailTimer_.isValid() &&
+    const bool settling = viewportMotionTailTimer_.isValid() &&
         viewportMotionTailTimer_.elapsed() < 150;
     const bool viewportActive =
-        continuousMotion || mousePan || viewportDirty_ ||
-        presenterNeedsFrame || settling;
+        IsViewportInteractionActive() || viewportDirty_ || presenterNeedsFrame || settling;
     const bool cameraActive =
         callbacks_.cameraActive && callbacks_.cameraActive();
     const double cameraRate =
@@ -385,7 +389,9 @@ void PipelineOrchestrator::UpdateTimerPolicy()
         blockingCudaPresent
             ? std::min(effectiveViewportRate_, idleCameraRate)
             : effectiveViewportRate_;
-    const int targetRate =
+    const bool asyncSceneWork =
+        callbacks_.hasAsyncSceneWork && callbacks_.hasAsyncSceneWork();
+    const int targetRate = asyncSceneWork ? effectiveViewportRate_ :
         viewportActive
             ? activeViewportRate
             : (cameraActive ? idleCameraRate : 10);

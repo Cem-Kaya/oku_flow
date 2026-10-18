@@ -25,12 +25,15 @@ from __future__ import annotations
 
 import argparse
 import html
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -655,7 +658,43 @@ def section(time: str, heading: str, content: str, *, css: str = "", kind: str =
     )
 
 
-def media_pair(s: dict, original: str, processed: str, video: bool) -> str:
+def recording_identity(path: Path) -> dict:
+    """Mirror the native immutable recording marker with bounded file reads."""
+    digest = bytes(32)
+    size = 0
+    with path.open("rb") as recording:
+        while chunk := recording.read(1024 * 1024):
+            size += len(chunk)
+            digest = hashlib.sha256(digest + chunk).digest()
+    if size <= 0:
+        raise ValueError("An empty recording cannot acquire a media identity.")
+    identity = {"version": 1, "mediaId": str(uuid.uuid4()), "name": path.name,
+                "size": size, "algorithm": "sha256-chain-1m-v1", "fingerprint": digest.hex()}
+    marker = path.with_name(path.name + ".okuflow-media.json")
+    def existing() -> dict:
+        value = json.loads(marker.read_text(encoding="utf-8"))
+        if any(value.get(key) != identity[key] for key in ("version", "name", "size", "algorithm", "fingerprint")):
+            raise ValueError("Preview media changed under an immutable identity; use a fresh --out folder.")
+        uuid.UUID(value["mediaId"])
+        return value
+    if marker.exists():
+        return existing()
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as staging:
+        temporary = Path(staging.name)
+        json.dump(identity, staging, separators=(",", ":"))
+        staging.flush()
+        os.fsync(staging.fileno())
+    try:
+        try:
+            os.link(temporary, marker)  # Atomic complete-file publication; never replace a marker.
+        except FileExistsError:
+            return existing()
+        return identity
+    finally:
+        temporary.unlink()
+
+
+def media_pair(s: dict, original: str, processed: str, video: bool, identity: dict | None = None) -> str:
     # Mirrors AssistiveRuntime::AppendNoteMediaPair.
     if video:
         def player(url: str, label: str) -> str:
@@ -684,7 +723,8 @@ def media_pair(s: dict, original: str, processed: str, video: bool) -> str:
     )
     if video:
         content += (
-            f'    <section class="transcribe-tools" data-transcribe-src="{esc(original)}">\n'
+            f'    <section class="transcribe-tools" data-transcribe-src="{esc(original)}" '
+            f'data-recording-identity="{esc(json.dumps(identity, separators=(",", ":")))}">\n'
             '      <div class="transcribe-actions"><button type="button" class="transcribe-start">Transcribe</button>'
             '<button type="button" class="transcribe-stop" hidden>Stop</button>'
             '<button type="button" class="transcribe-export" hidden>Save as text</button></div>\n'
@@ -789,6 +829,8 @@ def main() -> None:
     now = datetime.now()
     day = now.strftime("%Y-%m-%d")
     media = make_media(out, day, speech if speech and speech.exists() else None)
+    original_recording = out / "Notes" / media["vid_o"]
+    identity = recording_identity(original_recording) if original_recording.exists() else None
 
     document = raw_pieces(TEMPLATE, "HTML").replace("@@TRANSCRIBE_SCRIPT@@", raw_pieces(BRIDGE, "JS"))
     created = s["started"].replace("%1", f'<time datetime="{now.isoformat(timespec="seconds")}">{now:%Y-%m-%d %H:%M:%S}</time>')
@@ -801,7 +843,7 @@ def main() -> None:
 
     lang = args.lang
     blocks = [
-        section("10:15:00", s["video"], media_pair(s, media["vid_o"], media["vid_p"], True),
+        section("10:15:00", s["video"], media_pair(s, media["vid_o"], media["vid_p"], True, identity),
                 css="media", kind="video", lang=lang, preview=s["pair_video"]),
         section("10:22:10", s["photo"], media_pair(s, media["pho_o"], media["pho_p"], False),
                 css="media", kind="photo", lang=lang, preview=s["pair_photo"]),

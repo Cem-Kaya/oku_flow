@@ -5,6 +5,17 @@ OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository:
 OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- UCT advanced settings persist separate PP-OCRv6 detector/recognizer tiers
+  for GPU (medium/medium by default) and CPU fallback (tiny/small). All three
+  tiers use compiled immutable pins, native combo data and the same four
+  Assistant/MCP image-setting fields. Model replacement retires old workers
+  asynchronously; activation remains session-only. See [UCT](ultra_clear_text.md).
+- Experimental UCT has optional PP-OCRv6 TensorRT CUDA and ONNX Runtime CPU
+  adapters, with built-in Windows OCR as the final fallback. Prepare pinned
+  development inputs with `scripts/prepare_uct_runtime.ps1` (`-TensorRT` opts
+  into the external SDK), then reconfigure. See [UCT](ultra_clear_text.md) for
+  dependencies, independent analysis/validation workers and scoped acceptance.
+  These components are not yet a published installer inventory.
 - Lecture notes have larger text, remembered text-size and colour controls,
   media-type filters, grouped conversations, and timestamped transcripts.
   Preview the viewer locally with `python -B scripts/render_notes_preview.py`;
@@ -14,7 +25,7 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   a second first-use click opens the local-only tool at okuflow.com/transcribe/.
   Pick the speech model and processor explicitly there. Audio/text are never
   uploaded by the tool. Returned text is shown under the recording and saved
-  beside it as an `.okuflow-transcript.json` sidecar. Existing notes files are
+  beside it as a `.okuflow-transcript-<UUID>.json` sidecar. Existing notes files are
   preserved; transcription no longer runs in the Windows app.
 - Camera selection follows the saved physical device rather than its changing
   enumeration index; older settings use their numeric index until an identity
@@ -35,6 +46,18 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   immediately without restarting. Debug logs, file names, device names, model
   ids, and persisted setting tokens remain stable English/data values.
 - Media Foundation camera enumeration with per-device mode listing (`width x height @ fps`), restart-safe device activation, plain-language failure reporting, and automatic reconnection: when a camera drops mid-lecture, OkuFlow quietly retries the same physical device for about 30 seconds (2s/4s/8s backoff) without any modal dialogs, and only reports failure if the device never comes back.
+  An in-flight native `ReadSample` also has a 10-second working-time watchdog
+  (four negotiated frame periods for slower sources, up to 60 seconds). It is
+  polled without waiting on the driver; sleep/hibernation and image processing
+  do not consume that pending-read budget. Recovery uses the existing bounded
+  split stop. If the driver never quiesces, its resources stay retained and a
+  restart is required rather than attempting unsafe reuse.
+  Reopening a webcam reader does not announce reconnection: the first successful
+  frame presentation does. Zero-frame attempts retain the original 30-second
+  recovery window; an adopted reader waits for video instead of reopening on
+  every tick, and expiry retires it even while opening or waiting for video.
+  Working manual or fallback video also retires an older recovery window,
+  without announcing that the original camera returned.
 - CPU frame pipeline for format conversion and rotation of formats the GPU path does not consume, plus the legacy debug composite view. NV12 and YUY2 camera frames bypass it entirely: color conversion and rotation run in CUDA.
 - Direct3D 12 presenter for swap-chain output plus GPU texture readback.
   Processed and rotation-correct unenhanced video recording use a bounded
@@ -71,11 +94,20 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   saved choices return when it is enabled. Independent Colors and contrast
   controls and NVIDIA Super Resolution keep their own switches.
 - Optional NVIDIA Maxine SuperRes replaces NIS/FSR for zoomed text when the
-  separately installed Video Effects runtime is available. It runs on the
-  existing CUDA stream, discards 10 warmup samples, and automatically falls
+  separately installed Video Effects runtime is available. Its independent
+  producer owns a private CUDA stream and input/output buffers; model loading,
+  inference and teardown do not wait on the UI. It discards 10 warmup samples,
+  including completed stale jobs for the matching configuration, and falls
   back if its next 60-frame average exceeds the 24 ms latency target. Advanced
   reports the measured average and offers a compact checkbox override when
-  latency is the only failure.
+  latency is the only failure. New model loads and neural frame calls are
+  deferred during pan/zoom and a 150 ms navigation tail; the same camera
+  frame uses the normal spatial/base fallback in that interval. Generic
+  redraw, photo and readback retries do not count as navigation. This does
+  not preempt an SDK call already running, but it no longer waits for that
+  call. The presentation clock publishes only exact-current-scene results;
+  photos/recordings keep immediate same-frame fallback while SR is pending.
+  See [ownership and capture policy](maxine_async_producer_design.md).
 - Two-speed UI: Simple mode gives the full client area to the live view and overlays three auto-fading primary clusters plus contextual screen-correction controls; Advanced keeps the camera visible beside a narrow inspector containing every parameter and pipeline diagnostics. The chosen mode persists.
 - Stage-1 quick modes backed by full stage-2 advanced configurations, including promotion of advanced tuning into user-defined quick options.
 - Text reading and scene explanations use a signed-in Codex CLI/ChatGPT
@@ -109,7 +141,7 @@ CUDA is the processing path; the CPU effects pipeline is deprecated. When the D3
 - Windows 10 or Windows 11.
 - Visual Studio 2022 with the Desktop C++ workload and Windows SDK.
 - Qt 6.12.0 for `msvc2022_64`, or matching overrides via `QT_PREFIX` / `Qt6_DIR`.
-- CMake 3.23 or newer.
+- CMake 3.25 or newer (the checked-in schema-6 presets require it).
 - NVIDIA GPU plus CUDA Toolkit 12.9 if you want the default CUDA path.
   CUDA 12.9 is the compatibility build for Pascal GTX 10-series (`sm_61`)
   through RTX 50-series. CUDA 13 comparison builds require an explicit toolkit
@@ -250,6 +282,17 @@ no Maxine import library and ships no proprietary runtime or model files.
 
 ### Release bundle
 
+Release provenance now comes from CMake's per-configuration
+`okuflow-build-facts/Release.json`. The bundle checks that manifest against the
+cache and built application, uses its effective CPU/CUDA tier for capability
+selection, and stages the license from the compiler's actual toolkit. Metadata
+requires `-BuildDirectory` and checks the staged application and CUDA notice;
+ambient `CUDA_PATH` cannot change the recorded toolkit version or target
+architectures. A successful application build seals the facts and executable
+hashes; configure-only changes cannot relabel old CPU/CUDA bytes. Reconfigure
+and build an older tree to create this evidence. See
+[packaging provenance fixtures](../tests/README.md#packaging-provenance-fixtures-rb-001rb-002).
+
 For a complete build-to-GitHub release, use `scripts/publish_windows_release.ps1`
 with a new version, reviewed notes, a previous MSI fixture and `-Publish`.
 It calls the tracked matrix and bundle gates, verifies both packages, exercises
@@ -277,6 +320,14 @@ Release packaging also needs the matching Qt `Sources` component so it can
 stage Qt Multimedia's exact FFmpeg LGPL-2.1-or-later text. The script discovers
 the normal sibling `Src` directory automatically; set `QT_SOURCE_ROOT` when the
 matching source tree is installed elsewhere.
+For CI-installed SDKs, the bundle also recognizes `QT_ROOT_DIR` after the
+explicit `QT_PREFIX` / `Qt6_DIR` overrides and before its local default. It logs
+the selected deployment prefix and still validates the deployment tools, Qt
+license, module SPDX files and FFmpeg source notice. Hosted Windows checks
+install just the matching Qt Multimedia source archive for that notice and
+its `LICENSES/LGPL-3.0-only.txt`. The latter supplies the Qt notice when an
+archive-installed SDK lacks the SDK/online-installer license directories.
+Missing all three license locations still fails preflight.
 
 The published bundle contains the native `oku_flow.exe` launcher,
 `OkuFlowApp.exe`, the signed Microsoft `vc_redist.x64.exe` installer, Qt runtime files,
@@ -430,6 +481,14 @@ profiling flags for ordinary operation.
   choice. [Localization](localization.md) lists codes, draft translation
   provenance, the required small-agent translation review policy and the native
   wording/layout/screen-reader checks still pending.
+- `Ultra Clear Text (experimental)` at the end of `Advanced > Image > Text
+  clarity` recognizes steady printed text with optional local PaddleOCR or the built-in Windows OCR engine
+  and draws sharp letters over validated words; everything else stays the
+  original image. It is off on every launch, offers `Show original camera
+  text`, and lists accepted words in a selectable `Recognized text` pane. It
+  pauses during Temporal Smooth/Extra Stable and reports when Windows has no
+  OCR language. Development feature, not release-accepted; see
+  [Ultra Clear Text](ultra_clear_text.md).
 - `Viewport framing` under `Advanced > Settings > View and navigation`
   is a global viewport preference:
   `Fill (crop)` fills the camera area without distorting it, while `Fit (show
@@ -756,7 +815,9 @@ manual reset requires removing both primary and backup.
   conversation index entries. If a file exceeds the limit, OkuFlow keeps it as
   `settings.json.too-large-<timestamp>` and restores the last valid backup. A
   save that would exceed the limit changes nothing and asks you to delete old
-  Assistant conversations.
+  Assistant conversations. Detailed save status propagates through the settings
+  controller without serializing again to diagnose a refusal. Each discrete
+  save still freshly validates the existing file before rotating its backup.
 - User-created files share one root: `Documents\OkuFlow\` by default.
   Advanced Assistant can change it to another writable folder outside the
   application directory. The choice persists as `paths.userDataRoot`.
@@ -901,6 +962,8 @@ by Windows Credential Manager instead.
 ## Documentation Map
 - [`docs/README.md`](../docs/README.md) for the architecture overview.
 - [`docs/code_reference.md`](../docs/code_reference.md) for the current class and file map.
+- [`docs/ultra_clear_text.md`](ultra_clear_text.md) for the experimental OCR glyph overlay, its
+  clocks, provenance invariants and validation boundaries.
 - [`docs/hardcoded_paths.md`](../docs/hardcoded_paths.md) for machine-specific defaults.
 - [`improvement_ideas/00-status-and-priority.md`](../improvement_ideas/00-status-and-priority.md)
   for implementation status and what to work on next — the single tracker.
@@ -967,6 +1030,17 @@ listeners remain untouched while a private shadow tries USB. Empty raw private
 transports plus two healthy default probes permit handback. `BorrowOnly` has no
 lifecycle effects; explicit webcam intent only releases idle owned support.
 See the provenance pins, private fixtures and limits in adb_distribution.md.
+
+Phone startup retains one 12-second Windows deadline, including listener setup
+and any initial codec retry. The receiver sends its remaining phone budget with
+a one-second decoding reserve; Android divides that remainder across at most
+six fallback modes and reports candidate progress. Queues, discovery, setup and
+retry gaps consume the same budget. HEVC's four-second decoder watchdog begins
+with real encoded input rather than codec headers. See the
+[startup timing contract](../android/PROTOCOL.md#startup-budget-and-candidate-progress).
+Validate changes with `scripts/build_android.ps1 -Lint`, the host protocol suite
+and the tracked Windows `phone_camera_contract` gate; fake clocks and protocol
+fixtures do not establish real-phone startup or stalled-driver recovery.
 
 ### Progress deadlines
 
@@ -1079,3 +1153,93 @@ Release manifest freshness preserves the typed UTC timestamp returned by
 PowerShell JSON parsing. Run `pwsh -NoProfile -File scripts/test_publication_time.ps1`
 after changing publisher timestamp handling; its offline fixtures cover UTC,
 explicit offsets, JSON date conversion and rejection of ambiguous timestamps.
+
+Annotation snapshots now encode into a private same-directory temporary and
+publish by atomic no-clobber rename. Timestamp collisions receive unique suffixes;
+only committed files are added to notes. Failed encode bytes stay unpublished.
+
+
+## Recording encoder fallback evidence
+
+Failed AV1 or native-GPU initialization retains its output while the next
+codec/input attempt uses an exclusively created GUID sibling. Notes use the
+selected writers' actual paths after both finalize. See [recording attempts
+and audio timeline validation](recording_attempts_and_timeline.md) for file
+ownership, regression fixtures and the opt-in marked Windows AAC diagnostic.
+
+### Transactional publication and toolchain checks (RB-003 / RB-004)
+
+The bundle entrypoint now defaults to Ninja and initializes Visual Studio 2022
+x64 itself. Ninja is required because the mandatory shared-source equivalence
+fixture consumes `compile_commands.json`. Other generators, including Visual
+Studio and Ninja Multi-Config, fail before configuration. Generator options in
+`CMAKE_ARGS` are refused; use `CMAKE_GENERATOR=Ninja`. Keep an old cache intact
+and select a fresh `OKUFLOW_BUNDLE_BUILD_DIR` when migrating generators.
+
+Run `scripts\build_release_bundle.bat --check-toolchain` to check VS2022 x64,
+Ninja, CMake, Qt deployment/license prerequisites and any existing cache without
+configuring, compiling or modifying `dist`. Discovery uses the registered VS
+root and fixed initializer path rather than recursively scanning its files.
+The batch disables the initializer's auxiliary telemetry within its own local
+environment and streams setup diagnostics; full compiler/Qt checks still run.
+Normal builds force Release, tests and compilation-database export after
+optional CMake arguments.
+
+Each invocation owns a fresh `dist\OkuFlow.staging-<guid>\` directory. The
+publisher validates every prior runtime file against its manifest and refuses
+owner `output`/`captures`, unlisted files/empty directories, reparse paths,
+running images and locked files. A primary refusal leaves it untouched and
+selects exactly `dist\OkuFlow2\`; an unsafe secondary also stays untouched and
+fails publication. The switch uses same-parent directory renames with rollback,
+then verifies all new bytes. The complete preceding runtime remains in
+`OkuFlow.previous-<guid>` or `OkuFlow2.previous-<guid>` for recovery; packaging
+never recursively deletes these generations. Transaction-failure staging is
+retained for diagnosis. Review retained generations manually when reclaiming
+space, with the app closed and owner captures kept separately.
+
+Private regressions are documented in
+[tests/README.md](../tests/README.md#bundle-publication-and-toolchain-fixtures-rb-003--rb-004).
+They do not substitute for the tracked release matrix or real installer checks.
+
+## Exact notes recording selection (audit PW-004)
+
+New notes cards bind the finalized Original file to an immutable UUID/size/content
+fingerprint in `<original-video>.okuflow-media.json`. The existing serial notes
+worker creates/reuses that marker and embeds it in the card; hashing is never on
+the application UI thread. The notes browser checks the selected folder's marker
+and actual bytes in bounded 1 MiB slices before handoff, restoration or saving.
+Two unrelated trees with the same folder/video names cannot substitute content,
+even when size and modification time match. Keep the marker with its recording
+when moving/copying the notes tree. Version-2 transcript sidecars carry the same
+identity. The filename is `.okuflow-transcript-<UUID>.json` (61 characters,
+independent of the video basename), so an old writer cannot overwrite a new
+recording's transcript after an awaited file operation. Legacy basename-only
+sidecars, size/time sidecars and unbound old notes do not restore/transcribe
+automatically; playback and direct selection in Transcribe remain available.
+
+The website verifies the transferred File before model/cache work and echoes its
+identity on the private channel. Stop during fingerprint I/O uses its existing
+job fence; stale work cannot create a worker or publish results. These changes
+preserve media-relative transcript times and immutable serialized sidecar saves.
+Run the desktop-free `node --test scripts/test_notes_transcribe_bridge.mjs` and
+sibling `npm run check`, then the tracked native notes fixture when permitted.
+This patch's Node contracts are local boundary evidence, not actual Chrome grant,
+codec, native-UI or release acceptance. Preview regeneration now preserves
+immutable markers; use a fresh `--out` folder after changing generated media.
+
+## Opt-in chat and Maxine performance evidence
+
+Use the excluded `assistant_chat_benchmark` target for bounded offline chat
+render tails and controlled `DeadlineWorker` waits. `OKUFLOW_MAXINE_PROFILE=1`
+separately collects bounded actual Maxine host-call distributions during an
+authorized native session. Eligible append-only chat updates now reparse only
+the maximum-width final assistant body, with full-render fallbacks and reading
+anchor/geometry parity checks. Neither diagnostic proves native
+pan-to-present/stale-frame performance. See [measurement commands and
+limitations](performance_diagnostics.md).
+
+Native marked AAC/video verification reproduced and then closed three-second
+AAC gap compaction on the tested Windows codec. Missing PCM intervals now use
+bounded worker-side silence with sample-count accounting. The fixed synthetic
+markers differed by about -0.633 ms; this does not establish physical microphone
+clock accuracy or long-soak fidelity. See the linked timeline evidence.

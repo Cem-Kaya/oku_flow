@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "app_internal.hpp"
+#include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/app/agent/app_control_target.hpp"
 
 namespace okuflow {
@@ -97,6 +98,10 @@ void OkuFlowApp::UpdatePresetDescription()
 
 void OkuFlowApp::SyncCurrentConfigToPersistence(bool preservePresetSelection)
 {
+    // Revoke neural publication at the native edit, before another camera
+    // frame arrives, independently of optional agent-service observations.
+    ++cudaProcessingGeneration_;
+    if (cudaSurface_) cudaSurface_->InvalidateSuperResRequest();
     if (controlTarget_) controlTarget_->NoticeNativeChanges();
     if (configTrackingSuspended_) {
         return;
@@ -168,7 +173,9 @@ void OkuFlowApp::PromoteCurrentConfigToPreset()
         return;
     }
 
-    settingsController_->PromoteCurrentConfig(CaptureCurrentAdvancedConfig(), name);
+    const auto promoted=settingsController_->PromoteCurrentConfig(CaptureCurrentAdvancedConfig(), name);
+    if(!settingsController_->LastError().isEmpty())ShowStatusMessage(settingsController_->LastError(),10000);
+    if(!promoted)return;
 
     PopulatePresetList();
     RefreshPresetSelection(true);
@@ -202,6 +209,8 @@ void OkuFlowApp::OnPresetSelectionChanged(QListWidgetItem* current, QListWidgetI
 }
 
 void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings settings) {
+    if(mainWindow_ && mainWindow_->ultraClearTextPanel())
+        mainWindow_->ultraClearTextPanel()->SetModelSettings(settings.ultraClearTextModels);
     // Callers can pass the controller's mutable settings. Applying controls
     // invokes handlers that save back into that same object, so take a stable
     // value snapshot before any handler can overwrite fields still to restore.
@@ -288,6 +297,8 @@ void OkuFlowApp::ApplyPersistentSettings(const settings::PersistentSettings sett
 }
 
 void OkuFlowApp::SavePersistentSettings() {
+    if(mainWindow_ && mainWindow_->ultraClearTextPanel())
+        settingsController_->MutableSettings().ultraClearTextModels=mainWindow_->ultraClearTextPanel()->ModelSettings();
     // Only an explicit native source selection changes saved startup intent.
     // Runtime fallback, temporary agent selection, and safety-marker saves
     // must preserve the last saved camera identity.

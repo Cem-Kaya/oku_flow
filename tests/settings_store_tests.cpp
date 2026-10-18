@@ -164,6 +164,7 @@ class SettingsStoreTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void uctModelDefaultsMigrationAndRoundTrip();
     void controlSettingsAndConversationKinds();
     void defaultsUseLunaLow();
     void automaticFallbackPreservesPreferredCamera();
@@ -202,13 +203,45 @@ private slots:
     void credentialDeletionRetries();
     void pendingDeletionNeverReusesReplacementKey_data();
     void pendingDeletionNeverReusesReplacementKey();
+    void credentialRotationKeepsRecoverableEndpointBinding_data();
+    void credentialRotationKeepsRecoverableEndpointBinding();
+    void unchangedCredentialBindingDoesNotCreateGenerations();
     void ignoresPlaintextApiKeyField();
     void clampsOutOfRangeValues();
     void sixteenXZoomPreservesSettingsAndBoundsProfiles();
     void equivalenceUsesUiTolerances();
     void presetIdentitySurvivesApplyTimeMutations();
+    void quickModeSaveIsDurableBeforeReturn();
+    void failedQuickModeSavePreservesOldModesAndLiveSettings();
     void danglingPresetResolutionLeavesSelectionUnchanged();
 };
+
+void SettingsStoreTests::uctModelDefaultsMigrationAndRoundTrip()
+{
+    using uct::ModelTier;
+    const PersistentSettings defaults;
+    QCOMPARE(defaults.ultraClearTextModels.gpuDetector,ModelTier::Medium);
+    QCOMPARE(defaults.ultraClearTextModels.gpuRecognizer,ModelTier::Medium);
+    QCOMPARE(defaults.ultraClearTextModels.cpuDetector,ModelTier::Tiny);
+    QCOMPARE(defaults.ultraClearTextModels.cpuRecognizer,ModelTier::Small);
+    QTemporaryDir directory;QVERIFY(directory.isValid());const auto path=directory.filePath("settings.json");
+    auto root=QJsonDocument::fromJson(Serialize(defaults)).object();root.remove("ultraClearTextModels");
+    const auto write=[&]{QFile f(path);if(!f.open(QIODevice::WriteOnly|QIODevice::Truncate))return false;return f.write(QJsonDocument(root).toJson())>0;};
+    QVERIFY(write());auto loaded=Load(path);QVERIFY(loaded);
+    QVERIFY(loaded->ultraClearTextModels==defaults.ultraClearTextModels);
+    root["ultraClearTextModels"]=QJsonObject{{"gpuDetector","untrusted.onnx"},{"gpuRecognizer",42},{"cpuDetector","small"},{"cpuRecognizer","tiny"}};
+    QVERIFY(write());loaded=Load(path);QVERIFY(loaded);
+    QCOMPARE(loaded->ultraClearTextModels.gpuDetector,ModelTier::Medium);
+    QCOMPARE(loaded->ultraClearTextModels.gpuRecognizer,ModelTier::Medium);
+    QCOMPARE(loaded->ultraClearTextModels.cpuDetector,ModelTier::Small);
+    QCOMPARE(loaded->ultraClearTextModels.cpuRecognizer,ModelTier::Tiny);
+    loaded->ultraClearTextModels={ModelTier::Small,ModelTier::Tiny,ModelTier::Medium,ModelTier::Medium};
+    QVERIFY(Save(path,*loaded));const auto saved=Load(path);QVERIFY(saved);
+    QVERIFY(saved->ultraClearTextModels==loaded->ultraClearTextModels);
+    const auto json=QJsonDocument::fromJson(Serialize(*saved)).object()["ultraClearTextModels"].toObject();
+    QCOMPARE(json["gpuDetector"].toString(),"small");QCOMPARE(json["gpuRecognizer"].toString(),"tiny");
+    QVERIFY(!json.contains("enabled"));
+}
 
 void SettingsStoreTests::controlSettingsAndConversationKinds()
 {
@@ -390,6 +423,11 @@ void SettingsStoreTests::textClarityStageSelectionHonorsEveryRefinement()
             QCOMPARE(normalized.smartSharpen, stages.smartSharpen);
             QCOMPARE(normalized.selectiveSharpen, stages.selectiveSharpen);
             QCOMPARE(normalized.pipeline, stages.pipeline);
+            // Dormant flatten strength must never leak into the combined
+            // glare-only launch. The persisted preference remains available.
+            QCOMPARE(effective.backgroundFlattenStrength,
+                     stages.background ? preferences.backgroundFlattenStrength : 0.0f);
+            QCOMPARE(preferences.backgroundFlattenStrength, 0.8f);
         }
     }
 }
@@ -1324,7 +1362,7 @@ void SettingsStoreTests::committedSnapshotSeparatesLiveAndFailedSave()
     bool refuse = false;
     SettingsController::StorageOperations storage;
     storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
-        return !refuse && Save(target,value);
+        return refuse ? SaveStatus::Failed : SaveDetailed(target,value);
     };
     SettingsController controller(path,storage);
     QVERIFY(!controller.LastCommittedSettings()); // defaults have no file yet
@@ -1364,7 +1402,7 @@ void SettingsStoreTests::committedSnapshotTracksRecoveredBackup()
     PersistentSettings backup; backup.currentConfig.zoomAmount = 3.0f;
     QVERIFY(Save(path+QStringLiteral(".backup"),backup));
     SettingsController::StorageOperations storage;
-    storage.saveSettings = [](const QString&,const PersistentSettings&) { return false; };
+    storage.saveSettings = [](const QString&,const PersistentSettings&) { return SaveStatus::Failed; };
     SettingsController controller(path,storage);
     QVERIFY(controller.LastCommittedSettings());
     QCOMPARE(controller.LastCommittedSettings()->currentConfig.zoomAmount,3.0f);
@@ -1393,8 +1431,8 @@ void SettingsStoreTests::committedSnapshotTracksPartialCredentialCommit()
     };
     storage.saveSettings = [&](const QString& target,const PersistentSettings& value) {
         ++saves;
-        if (failCleanup && value.assistive.pendingCredentialRemovals.isEmpty()) return false;
-        return Save(target,value);
+        if (failCleanup && value.assistive.pendingCredentialRemovals.isEmpty()) return SaveStatus::Failed;
+        return SaveDetailed(target,value);
     };
     SettingsController controller(path,storage);
     QVERIFY(controller.LastCommittedSettings());
@@ -1504,9 +1542,9 @@ void SettingsStoreTests::credentialDeletionRetries()
     };
     storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
         ++saveCalls;
-        if (!value.assistive.vlmCredentialId.isEmpty()) return false;
-        if (failSave && saveCalls == 1) return false;
-        return Save(target, value);
+        if (!value.assistive.vlmCredentialId.isEmpty()) return SaveStatus::Failed;
+        if (failSave && saveCalls == 1) return SaveStatus::Failed;
+        return SaveDetailed(target, value);
     };
     SettingsController controller(path, storage);
     QCOMPARE(readCalls, 1);
@@ -1573,8 +1611,8 @@ void SettingsStoreTests::pendingDeletionNeverReusesReplacementKey()
         return true;
     };
     storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
-        if (failPublication) return false;
-        return Save(target, value);
+        if (failPublication) return SaveStatus::Failed;
+        return SaveDetailed(target, value);
     };
     SettingsController controller(path, storage);
     controller.MutableSettings().assistive.vlmApiKey = QStringLiteral("new fixture key");
@@ -1607,6 +1645,94 @@ void SettingsStoreTests::pendingDeletionNeverReusesReplacementKey()
     QVERIFY(savedDisk.has_value());
     QVERIFY(savedDisk->assistive.pendingCredentialRemovals.isEmpty());
     QCOMPARE(savedDisk->assistive.vlmCredentialId, restart ? QString() : replacementId);
+}
+
+void SettingsStoreTests::credentialRotationKeepsRecoverableEndpointBinding_data()
+{
+    QTest::addColumn<bool>("commitReplacement");
+    QTest::addColumn<bool>("changeKey");
+    QTest::newRow("failed-settings-publication") << false << true;
+    QTest::newRow("recover-backup-after-rotation") << true << true;
+    QTest::newRow("endpoint-only-failed-publication") << false << false;
+}
+
+void SettingsStoreTests::credentialRotationKeepsRecoverableEndpointBinding()
+{
+    QFETCH(bool, commitReplacement);
+    QFETCH(bool, changeKey);
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto path = directory.filePath(QStringLiteral("settings.json"));
+    const auto oldId = QStringLiteral("fixture-original-key-id");
+    const auto oldKey = QStringLiteral("fixture-key-a");
+    const auto newKey = changeKey ? QStringLiteral("fixture-key-b") : oldKey;
+    PersistentSettings original;
+    original.assistive.aiProvider = QStringLiteral("vlm");
+    original.assistive.vlmApiUrl = QStringLiteral("https://endpoint-a.invalid/v1");
+    original.assistive.vlmCredentialId = oldId;
+    QVERIFY(Save(path, original));
+    QMap<QString, QString> secrets{{oldId, oldKey}};
+    int writes = 0;
+    SettingsController::StorageOperations storage;
+    storage.readSecret = [&](const QString& id) {
+        return secrets.contains(id)
+            ? ProtectedSecretResult{ProtectedSecretResult::Status::Found, secrets.value(id), {}}
+            : ProtectedSecretResult{};
+    };
+    storage.writeSecret = [&](const QString& id, const QString& value, QString*) {
+        ++writes;
+        secrets.insert(id, value);
+        return true;
+    };
+    storage.removeSecret = [&](const QString& id, QString*) { secrets.remove(id); return true; };
+    storage.saveSettings = [&](const QString& target, const PersistentSettings& value) {
+        return commitReplacement ? SaveDetailed(target, value) : SaveStatus::Failed;
+    };
+    SettingsController controller(path, storage);
+    controller.MutableSettings().assistive.vlmApiUrl = QStringLiteral("https://endpoint-b.invalid/v1");
+    controller.MutableSettings().assistive.vlmApiKey = newKey;
+    QCOMPARE(controller.Save(controller.Settings().currentConfig), commitReplacement);
+    const auto replacementId = controller.Settings().assistive.vlmCredentialId;
+    QVERIFY(replacementId != oldId);
+    QCOMPARE(secrets.value(oldId), oldKey);
+    QCOMPARE(secrets.value(replacementId), newKey);
+    QCOMPARE(writes, 1);
+    if (!commitReplacement) {
+        QVERIFY(!controller.Save(controller.Settings().currentConfig));
+        QCOMPARE(controller.Settings().assistive.vlmCredentialId, replacementId);
+        QCOMPARE(writes, 1); // retry the same staged immutable generation
+    } else {
+        QVERIFY(WriteBytes(path, "{ corrupt primary"));
+    }
+    SettingsController restarted(path, storage);
+    QCOMPARE(restarted.Settings().assistive.vlmApiUrl, original.assistive.vlmApiUrl);
+    QCOMPARE(restarted.Settings().assistive.vlmCredentialId, oldId);
+    QCOMPARE(restarted.Settings().assistive.vlmApiKey, oldKey);
+}
+
+void SettingsStoreTests::unchangedCredentialBindingDoesNotCreateGenerations()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto path = directory.filePath(QStringLiteral("settings.json"));
+    PersistentSettings original;
+    original.assistive.vlmApiUrl = QStringLiteral("https://endpoint-a.invalid/v1");
+    original.assistive.vlmCredentialId = QStringLiteral("fixture-key-id");
+    QVERIFY(Save(path, original));
+    int writes = 0;
+    SettingsController::StorageOperations storage;
+    storage.readSecret = [](const QString&) {
+        return ProtectedSecretResult{ProtectedSecretResult::Status::Found,
+                                     QStringLiteral("fixture-key-a"), {}};
+    };
+    storage.writeSecret = [&](const QString&, const QString&, QString*) { ++writes; return true; };
+    storage.removeSecret = [](const QString&, QString*) { return true; };
+    storage.saveSettings = SaveDetailed;
+    SettingsController controller(path, storage);
+    QVERIFY(controller.Save(controller.Settings().currentConfig));
+    QVERIFY(controller.Save(controller.Settings().currentConfig));
+    QCOMPARE(controller.Settings().assistive.vlmCredentialId, original.assistive.vlmCredentialId);
+    QCOMPARE(writes, 0);
 }
 
 void SettingsStoreTests::ignoresPlaintextApiKeyField()
@@ -1651,6 +1777,34 @@ void SettingsStoreTests::equivalenceUsesUiTolerances()
     QVERIFY(!AreConfigsEquivalent(base, outside));
 }
 
+void SettingsStoreTests::quickModeSaveIsDurableBeforeReturn()
+{
+    QTemporaryDir dir;QVERIFY(dir.isValid());const auto path=dir.filePath("settings.json");
+    SettingsController controller(path);auto live=controller.Settings().currentConfig;live.zoomAmount=3.25f;
+    QVERIFY(controller.PromoteCurrentConfig(live,"Durable mode"));
+    // Reopen without a destructor/shutdown save or a separate Save action.
+    SettingsController reopened(path);
+    QCOMPARE(reopened.Settings().customPresets.size(),std::size_t(1));
+    const auto preset=reopened.Settings().customPresets.front();
+    const auto restored=reopened.ResolvePreset(preset.id);QVERIFY(restored);
+    QCOMPARE(restored->zoomAmount,3.25f);QCOMPARE(reopened.Settings().selectedPresetId,preset.id);
+}
+
+void SettingsStoreTests::failedQuickModeSavePreservesOldModesAndLiveSettings()
+{
+    QTemporaryDir dir;QVERIFY(dir.isValid());const auto path=dir.filePath("settings.json");bool refuse=false;
+    SettingsController::StorageOperations storage;
+    storage.saveSettings=[&](const QString& target,const PersistentSettings& value) {return refuse ? SaveStatus::Failed : SaveDetailed(target,value);};
+    SettingsController controller(path,storage);QVERIFY(controller.Save(controller.Settings().currentConfig));
+    const auto before=Serialize(controller.Settings());const auto bytes=ReadBytes(path);
+    auto live=controller.Settings().currentConfig;live.zoomAmount=4.5f;refuse=true;
+    QVERIFY(!controller.PromoteCurrentConfig(live,"Must not look saved"));
+    QCOMPARE(Serialize(controller.Settings()),before);QCOMPARE(ReadBytes(path),bytes);
+    QVERIFY(!controller.LastError().isEmpty());
+    refuse=false;QVERIFY(controller.PromoteCurrentConfig(live,"Retry durable mode"));
+    SettingsController reopened(path);QCOMPARE(reopened.Settings().customPresets.size(),std::size_t(1));
+}
+
 void SettingsStoreTests::presetIdentitySurvivesApplyTimeMutations()
 {
     QTemporaryDir dir;
@@ -1660,8 +1814,9 @@ void SettingsStoreTests::presetIdentitySurvivesApplyTimeMutations()
 
     // A promoted custom preset is unique, so re-derivation cannot hide
     // behind a coincidental built-in match.
-    const PresetDefinition preset = controller.PromoteCurrentConfig(
+    const auto promoted = controller.PromoteCurrentConfig(
         MakePopulatedConfig(), QStringLiteral("Apply Mutation Fixture"));
+    QVERIFY(promoted);const PresetDefinition preset=*promoted;
     const auto resolved = controller.ResolvePreset(preset.id);
     QVERIFY(resolved.has_value());
 

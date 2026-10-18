@@ -42,7 +42,7 @@ QStringList CodexAgentProfile::DisabledFeatures()
     // Include optional variants so user-enabled features cannot widen this
     // child. The complete name/stability inventory is pinned above.
     return {QStringLiteral("apps"), QStringLiteral("plugins"),
-        QStringLiteral("image_generation"), QStringLiteral("multi_agent"),
+        QStringLiteral("image_generation"), QStringLiteral("view_image"), QStringLiteral("multi_agent"),
         QStringLiteral("multi_agent_v2"), QStringLiteral("tool_suggest"),
         QStringLiteral("shell_tool"), QStringLiteral("code_mode_host"),
         QStringLiteral("code_mode"), QStringLiteral("code_mode_only"),
@@ -55,7 +55,7 @@ QStringList CodexAgentProfile::DisabledFeatures()
 }
 
 CodexAgentLaunchProfile CodexAgentProfile::Validate(
-    const QString& version, const QString& features, const QJsonArray& mcp)
+    const QString& version, const QString& features, const QJsonArray& mcp, bool allowWebSearch)
 {
     if (version.trimmed() != QStringLiteral("codex-cli 0.160.1"))
         return Unavailable("unsupported_codex_version");
@@ -67,7 +67,7 @@ CodexAgentLaunchProfile CodexAgentProfile::Validate(
     for (const QString& feature : DisabledFeatures()) {
         args << QStringLiteral("--disable") << feature;
     }
-    args << QStringLiteral("-c") << QStringLiteral("web_search=\"disabled\"")
+    args << QStringLiteral("-c") << (allowWebSearch ? QStringLiteral("web_search=\"live\"") : QStringLiteral("web_search=\"disabled\""))
          << QStringLiteral("-c") << QStringLiteral("approval_policy=\"never\"")
          << QStringLiteral("-c") << QStringLiteral("sandbox_mode=\"read-only\"");
     QSet<QString> seen;

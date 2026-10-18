@@ -17,16 +17,21 @@ public:
     void BeginGeneration(bool hevc, TimePoint now) noexcept {
         hevc_ = hevc;
         generationDecoded_ = false;
+        generationEncoded_ = false;
         generationStarted_ = now;
         // Repeated configuration changes must not postpone the stream deadline.
     }
     void PacketReceived(TimePoint now) noexcept { lastPacket_ = now; }
+    void EncodedFrameReceived(TimePoint now) noexcept {
+        if (!generationEncoded_) generationStarted_ = now;
+        generationEncoded_ = true;
+    }
     void FrameDecoded(TimePoint now) noexcept {
         generationDecoded_ = true;
         lastFrame_ = now;
     }
     Failure Check(TimePoint now) const noexcept {
-        if (hevc_ && !generationDecoded_ &&
+        if (hevc_ && generationEncoded_ && !generationDecoded_ &&
             now - generationStarted_ >= std::chrono::seconds(4))
             return Failure::HevcStalled;
         if (now - lastPacket_ >= std::chrono::seconds(12))
@@ -40,6 +45,7 @@ private:
     TimePoint lastPacket_, lastFrame_, generationStarted_;
     bool hevc_{false};
     bool generationDecoded_{false};
+    bool generationEncoded_{false};
 };
 
 } // namespace okuflow

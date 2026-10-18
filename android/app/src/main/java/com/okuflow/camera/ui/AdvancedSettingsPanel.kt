@@ -83,7 +83,7 @@ import kotlin.math.roundToInt
  * connected), shown first on both levels so setting changes show their effect.
  */
 @Composable
-fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (CameraSettings) -> Unit,
+fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: ((CameraSettings) -> CameraSettings) -> Unit,
     paused: Boolean = false, onPauseChange: () -> Unit = {}, onBack: () -> Unit) {
     var showMoreOptions by rememberSaveable { mutableStateOf(false) }
     var showPrivacy by rememberSaveable { mutableStateOf(false) }
@@ -111,14 +111,15 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
     }
     var modes by remember(settings.cameraId, settings.codec) { mutableStateOf(emptyList<StreamMode>()) }
     var loadingModes by remember(settings.cameraId, settings.codec) { mutableStateOf(true) }
-    val currentSettings by rememberUpdatedState(settings)
     val currentOnChange by rememberUpdatedState(onChange)
     LaunchedEffect(settings.cameraId, settings.codec) {
-        modes = withContext(Dispatchers.IO) { runCatching { catalog.modes(settings) }.getOrDefault(emptyList()) }
+        val completedModes = withContext(Dispatchers.IO) { runCatching { catalog.modes(settings) }.getOrDefault(emptyList()) }
+        modes = completedModes
         loadingModes = false
-        val latest = currentSettings
-        val reconciled = latest.withAvailableModes(modes)
-        if (reconciled != latest) currentOnChange(reconciled)
+        currentOnChange { current ->
+            if (current.cameraId == settings.cameraId && current.codec == settings.codec)
+                current.withAvailableModes(completedModes) else current
+        }
     }
     val automatic = stringResource(R.string.setting_auto)
     val mainModes = remember(modes) { everydayModes(modes) }
@@ -153,10 +154,10 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                         SettingsDivider()
                         ChoiceSetting(stringResource(R.string.setting_bitrate), settings.bitrateMbps,
                             listOf(0 to automatic, 10 to "10 Mbps", 20 to "20 Mbps", 40 to "40 Mbps", 80 to "80 Mbps")) {
-                            onChange(settings.copy(bitrateMbps = it))
+                            onChange { current -> current.copy(bitrateMbps = it) }
                         }
                     }
-                    OutlinedButton(onClick = { onChange(CameraSettings()) },
+                    OutlinedButton(onClick = { onChange { CameraSettings() } },
                         shape = RoundedCornerShape(16.dp), border = BorderStroke(2.dp, Color.White),
                         modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
                         Text(stringResource(R.string.settings_reset), fontSize = 20.sp, lineHeight = 28.sp, textAlign = TextAlign.Center)
@@ -171,7 +172,7 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                             listOf("" to automatic) + cameras.map { camera ->
                                 camera.id to "${stringResource(if (camera.facing == CameraCharacteristics.LENS_FACING_FRONT)
                                     R.string.camera_front else R.string.camera_back)} · ${camera.id}"
-                            }) { onChange(settings.copy(cameraId = it)) }
+                            }) { onChange { current -> current.copy(cameraId = it) } }
                         SettingsDivider()
                         ModeSetting(stringResource(R.string.setting_mode), settings, mainModes, loadingModes, onChange)
                         SettingsHint(stringResource(R.string.setting_main_modes_hint),
@@ -183,7 +184,7 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                         }
                         SettingsDivider()
                         ChoiceSetting(stringResource(R.string.setting_codec), settings.codec,
-                            listOf("avc" to "H.264", "hevc" to "HEVC / H.265")) { onChange(settings.copy(codec = it)) }
+                            listOf("avc" to "H.264", "hevc" to "HEVC / H.265")) { onChange { current -> current.copy(codec = it) } }
                     }
                     OutlinedButton(onClick = { showMoreOptions = true }, shape = RoundedCornerShape(12.dp),
                         border = BorderStroke(2.dp, Color.White), modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
@@ -193,11 +194,11 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                     SettingsSection(stringResource(R.string.settings_image)) {
                         ChoiceSetting(stringResource(R.string.setting_stabilization), settings.stabilization,
                             listOf("off" to stringResource(R.string.setting_off), "optical" to stringResource(R.string.setting_optical),
-                                "electronic" to stringResource(R.string.setting_electronic))) { onChange(settings.copy(stabilization = it)) }
+                                "electronic" to stringResource(R.string.setting_electronic))) { onChange { current -> current.copy(stabilization = it) } }
                         SettingsHint(stringResource(R.string.stabilization_hint), Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp))
                         SettingsDivider()
                         ToggleSetting(stringResource(R.string.setting_autofocus), settings.autofocus,
-                            stringResource(R.string.focus_hint)) { onChange(settings.copy(autofocus = it)) }
+                            stringResource(R.string.focus_hint)) { onChange { current -> current.copy(autofocus = it) } }
                         SettingsDivider()
                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(stringResource(R.string.setting_torch), fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium)
@@ -209,7 +210,7 @@ fun AdvancedSettingsPanel(settings: CameraSettings, status: String, onChange: (C
                             Text(exposureLabel, fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium)
                             SettingsHint(stringResource(R.string.exposure_hint))
                             Slider(value = settings.exposure.toFloat(),
-                                onValueChange = { onChange(settings.copy(exposure = it.roundToInt())) },
+                                onValueChange = { onChange { current -> current.copy(exposure = it.roundToInt()) } },
                                 valueRange = -12f..12f, steps = 23,
                                 modifier = Modifier.fillMaxWidth().semantics {
                                     contentDescription = exposureLabel
@@ -256,7 +257,7 @@ private fun LanguageSetting() {
 /** A shared selector; a selection made in More options stays visible even when the main list hides it. */
 @Composable
 private fun ModeSetting(label: String, settings: CameraSettings, modes: List<StreamMode>, loading: Boolean,
-    onChange: (CameraSettings) -> Unit) {
+    onChange: ((CameraSettings) -> CameraSettings) -> Unit) {
     val selected = if (settings.hasExplicitMode) "${settings.modeWidth}x${settings.modeHeight}@${settings.fps}" else ""
     val automatic = stringResource(R.string.setting_auto)
     ChoiceSetting(label, selected, listOf("" to automatic) + modes.map { mode ->
@@ -267,8 +268,8 @@ private fun ModeSetting(label: String, settings: CameraSettings, modes: List<Str
         else -> automatic
     }) { key ->
         val mode = modes.firstOrNull { it.key == key }
-        onChange(settings.copy(resolution = 0, modeWidth = mode?.width ?: 0, modeHeight = mode?.height ?: 0,
-            fps = mode?.fps ?: 60))
+        onChange { current -> current.copy(resolution = 0, modeWidth = mode?.width ?: 0, modeHeight = mode?.height ?: 0,
+            fps = mode?.fps ?: 60) }
     }
     if (!loading && modes.isEmpty()) SettingsHint(stringResource(R.string.setting_modes_unavailable),
         Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp))

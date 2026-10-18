@@ -27,6 +27,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <exception>
 #include <utility>
 
 namespace okuflow {
@@ -307,6 +308,9 @@ void RecordingManager::SetState(RecordingState state)
     }
     state_.store(state);
     qInfo() << "Recording state:" << StateName(state);
+    if (statePublicationObserver_) {
+        statePublicationObserver_(state);
+    }
 }
 
 void RecordingManager::SetCanvasMode(RecordingCanvasMode mode)
@@ -428,7 +432,10 @@ void RecordingManager::SetRequested(bool requested, std::optional<RecordingSessi
         segmentIndex_ = 1;
         sessionHadOutput_ = false;
         sessionFinalizationFailed_ = false;
+        audioStartupPending_ = false;
         processedWidth_ = 0;
+        segmentProcessedPath_.clear();
+        segmentOriginalPath_.clear();
         segmentFinalized_ = true;
         processedHeight_ = 0;
         originalWidth_ = 0;
@@ -484,10 +491,20 @@ bool RecordingManager::StopSession(const QString& expectedSessionId)
     return true;
 }
 
-void RecordingManager::SetSessionAudioResult(const QString& expectedSessionId, bool actualAudio)
+void RecordingManager::SetSessionAudioPending(const QString& expectedSessionId)
 {
     std::lock_guard lock(queueMutex_);
-    if (sessionInfo_.id == expectedSessionId) sessionInfo_.actualAudio = actualAudio;
+    if(sessionInfo_.id==expectedSessionId && IsActive()) {
+        audioStartupPending_=true;audioCaptureEnabled_=true;sessionInfo_.actualAudio=false;
+    }
+}
+void RecordingManager::SetSessionAudioResult(const QString& expectedSessionId,bool actualAudio)
+{
+    {std::lock_guard lock(queueMutex_);
+     if(sessionInfo_.id!=expectedSessionId || !IsActive())return;
+     sessionInfo_.actualAudio=actualAudio;audioStartupPending_=false;audioCaptureEnabled_=actualAudio;
+     if(!actualAudio)audioQueue_.clear();}
+    queueCv_.notify_all();
 }
 
 void RecordingManager::Stop(const QString& message)
@@ -761,7 +778,7 @@ void RecordingManager::AddSceneFrame(
     queued.original = std::move(originalFrame);
 
     std::unique_lock lock(queueMutex_);
-    if (stopRequested_ || shutdownRequested_) {
+    if (stopRequested_ || shutdownRequested_ || audioStartupPending_) {
         return;
     }
     if (frameQueue_.size() >= kMaxQueuedFrames) {
@@ -791,7 +808,7 @@ void RecordingManager::AddGpuSceneFrame(
     queued.original = std::move(originalFrame);
 
     std::unique_lock lock(queueMutex_);
-    if (stopRequested_ || shutdownRequested_) {
+    if (stopRequested_ || shutdownRequested_ || audioStartupPending_) {
         return;
     }
     if (frameQueue_.size() >= kMaxQueuedFrames) {
@@ -848,15 +865,16 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
     const VideoRecorder::AudioFormat audioFormat{};
     const bool includeAudio = audioCaptureEnabled_;
 
-    const QString processedPath = SegmentPath(true);
-    const QString originalPath = SegmentPath(false);
+    const QString requestedProcessedPath = SegmentPath(true);
+    const QString requestedOriginalPath = SegmentPath(false);
     const std::array codecs{
         VideoRecorder::Codec::Av1, VideoRecorder::Codec::H264};
     QStringList failures;
 
     // Never overwrite or clean a pre-existing path, including a user-owned
     // zero-byte file. The paths below belong to this segment only after this.
-    if (QFileInfo::exists(processedPath) || QFileInfo::exists(originalPath)) {
+    if (QFileInfo::exists(requestedProcessedPath) ||
+        QFileInfo::exists(requestedOriginalPath)) {
         FinishSession(false, QStringLiteral("Recording could not start."));
         return false;
     }
@@ -864,16 +882,26 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
     for (const VideoRecorder::Codec codec : codecs) {
         processedRecorder_.Stop();
         originalRecorder_.Stop();
-        RemoveEmptySessionRecording(processedPath);
-        RemoveEmptySessionRecording(originalPath);
-        // A failed initialization can already have written metadata or
-        // fragments. Retain it instead of reusing the filename for a retry.
-        if (QFileInfo::exists(processedPath) || QFileInfo::exists(originalPath)) {
-            break;
+        QString processedPath = requestedProcessedPath;
+        QString originalPath = requestedOriginalPath;
+        if (codec != codecs.front()) {
+            // Each codec owns fresh names. Failed metadata/fragments remain
+            // intact and cannot suppress a viable fallback or enter notes.
+            try {
+                processedPath = QString::fromStdWString(
+                    NewRecordingAttemptPath(requestedProcessedPath.toStdWString()));
+                originalPath = QString::fromStdWString(
+                    NewRecordingAttemptPath(requestedOriginalPath.toStdWString()));
+            } catch (const std::exception& error) {
+                failures.append(QString::fromUtf8(error.what()));
+                break;
+            }
         }
 
         const bool processedStarted =
-            firstFrame.processedGpuScene.IsValid()
+            encoderStartOverride_
+                ? encoderStartOverride_(true, processedPath, codec)
+                : firstFrame.processedGpuScene.IsValid()
                 ? processedRecorder_.StartGpu(
                       processedPath.toStdWString(),
                       parameters.processedWidth,
@@ -917,8 +945,13 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
                              processedRecorder_.LastError())));
             continue;
         }
+        if (!encoderStartOverride_) {
+            processedPath = QString::fromStdWString(processedRecorder_.OutputPath());
+        }
         const bool originalStarted =
-            firstFrame.original.HasGpuScene()
+            encoderStartOverride_
+                ? encoderStartOverride_(false, originalPath, codec)
+                : firstFrame.original.HasGpuScene()
                 ? originalRecorder_.StartGpu(
                       originalPath.toStdWString(),
                       parameters.originalWidth,
@@ -961,11 +994,15 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
                          QString::fromStdString(
                              originalRecorder_.LastError())));
             processedRecorder_.Stop();
-            RemoveEmptySessionRecording(processedPath);
             continue;
+        }
+        if (!encoderStartOverride_) {
+            originalPath = QString::fromStdWString(originalRecorder_.OutputPath());
         }
 
         processedWidth_ = parameters.processedWidth;
+        segmentProcessedPath_ = processedPath;
+        segmentOriginalPath_ = originalPath;
         segmentFinalized_ = false;
         processedHeight_ = parameters.processedHeight;
         originalWidth_ = parameters.originalWidth;
@@ -1042,8 +1079,6 @@ bool RecordingManager::StartSegment(const QueuedFrame& firstFrame)
 
     processedRecorder_.Stop();
     originalRecorder_.Stop();
-    RemoveEmptySessionRecording(processedPath);
-    RemoveEmptySessionRecording(originalPath);
     FinishSession(
         false,
         failures.isEmpty()
@@ -1323,8 +1358,8 @@ bool RecordingManager::FinalizeSegment(bool terminal)
     SetWorkerOp(WorkerOp::kFinalize,
                 workerOpFrameSequence_.load(std::memory_order_relaxed));
 
-    const QString processedPath = SegmentPath(true);
-    const QString originalPath = SegmentPath(false);
+    const QString processedPath = segmentProcessedPath_;
+    const QString originalPath = segmentOriginalPath_;
     const QString processedRoute =
         RecordingInputRoute(processedRecorder_);
     const QString originalRoute =
@@ -1487,6 +1522,7 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
         qWarning() << "Recording worker resumed after the stop watchdog "
                       "abandoned the session; suppressing its completion.";
         std::lock_guard lock(queueMutex_);
+        audioStartupPending_=false;
         frameQueue_.clear();
         audioQueue_.clear();
         stopRequested_ = false;
@@ -1540,7 +1576,6 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
                 ? QStringLiteral("Recording saved. %1").arg(drops)
                 : QStringLiteral("%1 Recording saved. %2")
                       .arg(stopMessage_, drops);
-        SetState(RecordingState::Completed);
     } else if (outcome ==
                RecordingCompletionOutcome::FailedBeforeFirstFrame) {
         message =
@@ -1548,7 +1583,6 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
                 ? QStringLiteral(
                       "Recording stopped before the first frame was written.")
                 : detail;
-        SetState(RecordingState::Failed);
     } else {
         message =
             detail.isEmpty()
@@ -1557,21 +1591,24 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
                       "fragments may still be playable. %1")
                       .arg(drops)
                 : QStringLiteral("%1 %2").arg(detail, drops);
-        SetState(RecordingState::Failed);
     }
-    PostButtonState(state_.load());
-    PostStatus(message, saved ? 9000 : 14000);
-
     RecordingSessionInfo endedSession;
     {
         std::lock_guard lock(queueMutex_);
         endedSession = sessionInfo_;
         endedSession.completion = saved ? RecordingSessionCompletion::Completed : RecordingSessionCompletion::Failed;
+        audioStartupPending_=false;
         frameQueue_.clear();
         audioQueue_.clear();
         stopRequested_ = false;
         stopMessage_.clear();
+        workerWriting_ = false;
     }
+    SetWorkerOp(WorkerOp::kIdle, 0);
+    const RecordingState terminalState = saved
+        ? RecordingState::Completed : RecordingState::Failed;
+    PostButtonState(terminalState);
+    PostStatus(message, saved ? 9000 : 14000);
     if (sessionEndedCallback_ && recordButton_ &&
         !workerAbandoned_.load()) {
         const SessionEndedCallback callback = sessionEndedCallback_;
@@ -1580,6 +1617,10 @@ void RecordingManager::FinishSession(bool success, const QString& detail)
             [callback, endedSession]() { callback(endedSession); },
             Qt::QueuedConnection);
     }
+    // Completed/Failed admits the next session immediately. Publish only after
+    // all old-session mutations and callback snapshots have retired. Nothing
+    // below this boundary may clear queues or sample sessionInfo_ again.
+    SetState(terminalState);
 }
 
 void RecordingManager::RetireGpuInputReads()
@@ -1634,8 +1675,8 @@ void RecordingManager::WorkerLoop()
             std::unique_lock lock(queueMutex_);
             const auto workAvailable = [this]() {
                 return shutdownRequested_ || stopRequested_ ||
-                       !frameQueue_.empty() ||
-                       (!audioQueue_.empty() &&
+                       (!audioStartupPending_ && !frameQueue_.empty()) ||
+                       (!audioStartupPending_ && !audioQueue_.empty() &&
                         processedRecorder_.IsRecording() &&
                         originalRecorder_.IsRecording());
             };
@@ -1653,7 +1694,7 @@ void RecordingManager::WorkerLoop()
                 processedRecorder_.IsRecording() &&
                 originalRecorder_.IsRecording();
             const bool audioComesFirst =
-                !stopRequested_ && recorderReady && !audioQueue_.empty() &&
+                !stopRequested_ && !audioStartupPending_ && recorderReady && !audioQueue_.empty() &&
                 (frameQueue_.empty() ||
                  audioQueue_.front().captureClock100ns <=
                      frameQueue_.front()
@@ -1663,7 +1704,7 @@ void RecordingManager::WorkerLoop()
                 audioQueue_.pop_front();
                 workerWriting_ = true;
                 haveAudio = true;
-            } else if (!stopRequested_ && !frameQueue_.empty() &&
+            } else if (!stopRequested_ && !audioStartupPending_ && !frameQueue_.empty() &&
                        !shouldShutdown) {
                 frame = std::move(frameQueue_.front());
                 frameQueue_.pop_front();
@@ -1683,11 +1724,9 @@ void RecordingManager::WorkerLoop()
                 workerWriting_ = false;
             }
             queueCv_.notify_all();
-            if (!keepGoing) {
-                std::lock_guard lock(queueMutex_);
-                frameQueue_.clear();
-                stopRequested_ = false;
-            }
+            // A failing WriteFrame retires its session in FinishSession. Its
+            // terminal state may already have admitted a new GUI request.
+            (void)keepGoing;
             continue;
         }
         if (haveAudio) {
@@ -1698,12 +1737,8 @@ void RecordingManager::WorkerLoop()
                 workerWriting_ = false;
             }
             queueCv_.notify_all();
-            if (!keepGoing) {
-                std::lock_guard lock(queueMutex_);
-                frameQueue_.clear();
-                audioQueue_.clear();
-                stopRequested_ = false;
-            }
+            // WriteAudioFrame uses the same retirement/publication boundary.
+            (void)keepGoing;
             continue;
         }
 

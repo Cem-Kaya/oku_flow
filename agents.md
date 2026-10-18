@@ -587,3 +587,270 @@ aligned with the project goals.
   lived OkuFlow-named processes. Preserve their `okuflow_process_identity`
   CTest lock when adding related fixtures; do not relax fail-closed image
   classification to accommodate concurrent test process exits.
+
+## Windows RC evidence prerequisites (2026-10-16)
+- Resolve cached/discovered PowerShell launch aliases through
+  `cmake/PowerShell.cmake`; evidence must hash the actual interpreter image.
+  Keep the stable launcher cached and resolve its current image on configure.
+  Keep Qt stderr logging on for registered Qt fixtures so row skips and
+  assertions remain visible. Truncated passing output is incomplete evidence.
+- Keep batch bookkeeping outside CUDA/Qt/OKUFLOW runtime variable namespaces.
+  A resume with changed shared runtime inputs for a latest unresolved result must refuse;
+  diagnose it and run an explicitly fresh gate after repair, rather than
+  clearing the failure by changing the environment. Rebuilt per-test inputs
+  may resume under the same shared runtime after a diagnosed repair.
+- Windows Application Control refusal is a prerequisite failure. Retain the
+  native error and original Code Integrity evidence; never disable security,
+  turn it into a skip, or weaken a deadline to obtain passing coverage.
+
+## Desktop-sized native visual evidence (2026-10-17)
+- Keep wide/tall geometry regression inputs intact. Use the desktop visual
+  cases for complete native examples on smaller/high-DPI work areas instead
+  of changing OS scaling or accepting clipped screenshots.
+- Preserve the capture manifest and refused-image diagnostics. A requested
+  desktop visual example must fail if its full native bounds cannot be saved;
+  offscreen widget grabs never substitute for native visual evidence.
+
+## Exact-byte validation evidence (2026-10-17)
+- Hash runtime, executable and declared fixture bytes afresh in the pre-run and
+  post-run fingerprint passes, including resume. Persistent length/mtime caches
+  are diagnostic only. Duplicate inputs may share a digest within a pass; clear
+  that memo before post-run verification. Keep metadata-preserving mutation
+  regressions and all unresolved-failure blockers intact.
+
+## Ultra Clear Text development (2026-10-17)
+- UCT is experimental and opt-in. Keep recognition off the UI/presentation
+  path: one latest-only worker, at most one presenter readback outstanding,
+  overlay reprojection on the presentation clock. Never add synchronous
+  readback or block present on OCR. See `docs/ultra_clear_text.md`.
+- Keep stamps from the copied pixels through jobs, results and accepted lines;
+  invalidate on source/geometry changes and fail closed for uncertain, moving,
+  high-risk or composite-frame text. Never fabricate math, handwriting or
+  curves, and do not claim recognition accuracy without measured evidence.
+- The backend is built-in `Windows.Media.Ocr`; do not add OCR models or
+  libraries without license review in `docs/THIRD_PARTY_LICENSES.md`.
+  `ultra_clear_text_contract` and `ultra_clear_text_windows_ocr` are
+  desktop-free; native GUI, NVDA and real-camera checks stay serial and
+  separate. New UCT strings still need the translation review policy.
+- Treat `OnPresented` as submission preflight; only the actual present-success
+  receipt may refresh presentation availability. Watchdog/failure suppression
+  applies to both glyphs and reading text, including queued completions/toggles.
+- Background plates and glyphs must share one drawability decision. Keep font
+  and color preparation off the pan/zoom paint path, preserve ordered omission
+  gaps and reading selections, and test actual pixels as well as word counts.
+
+## Required release-capability evidence (2026-10-17)
+- Bundle gates must select their strict `windows-cpu` or `windows-cuda`
+  capability profile. Required native GUI, state/ownership contracts and CUDA
+  kernel/cubin/GPU-fed H.264 cases need complete passes; skips or missing cases
+  are blocked/not run, never hardware acceptance. Development remains explicit.
+- Preserve separate capability receipts and original CTest statuses. Do not
+  weaken required profiles to accommodate unavailable release hardware. Optional
+  AV1 on Pascal is distinct from required H.264. See `tests/README.md` for scope
+  and the independent provider/device/Maxine/installer acceptance still needed.
+
+## Imported Android host dependencies (2026-10-17)
+- Keep `scripts/android_camera_probe.py` in Android host CI and the scoped
+  impact manifest. Probe-only edits require the host protocol suite without
+  a Windows rebuild. Preserve that selection in `test_select_tests.ps1`.
+
+## Preset parser baseline (2026-10-17)
+- CMake 3.25 is the minimum for the checked-in schema-6 presets. Keep both
+  preset entrypoints, root minimum and developer prerequisite aligned. Check
+  root configuration and both manifests with the documented minimum when
+  changing preset schema; the included `cmake/` directory is not a source root.
+
+## Lecture-output readiness (2026-10-17)
+- WebSocket identification is not output readiness. Poll typed OBS NotReady
+  (207) within the owned startup deadline, preserving other request failures.
+  Run `scripts/test_lecture_camera.ps1` after readiness changes. This private
+  protocol fixture does not replace inspecting genuine virtual-camera frames.
+
+## Packaging provenance authority (2026-10-17)
+- Execute WiX only through `windows-installer/wix_tool.ps1`: verify the pinned
+  archive and complete extracted tree before each invocation. Do not restore
+  ambient-feed installs or reuse unverified installed shims.
+- Release CUDA tier, compiler/runtime versions, architecture coverage and notice
+  identity come from CMake's per-configuration `okuflow-build-facts` manifest.
+  Require its successful post-build facts/executable seal, preserve
+  cache/configuration and built/staged-byte checks; shell CUDA paths
+  are inputs to configuration, never independent release facts. Run the private
+  `scripts/test_release_provenance.ps1` fixtures after changing this contract;
+  they do not replace shipping builds, hardware or disposable-VM acceptance.
+
+## Transactional bundle publication and generator preflight (2026-10-17)
+- `build_release_bundle.bat` requires Ninja, initializes only VS2022 x64, and
+  forces the compilation database required by shared-source equivalence. Use
+  `--check-toolchain` for read-only tool/Qt/cache checks. Unsupported generators
+  and incompatible caches require a fresh `OKUFLOW_BUNDLE_BUILD_DIR`; never
+  delete an existing cache as an automatic repair.
+- Use unique `dist/OkuFlow.staging-<guid>` generations and the tracked
+  `publish_release_bundle.ps1` transaction. Before renaming a prior bundle,
+  require its exact manifest inventory/hashes, no owner output/captures,
+  unknown files/directories, reparse points, running images or file locks.
+  Primary refusal may select exactly `OkuFlow2`; secondary refusal is fatal.
+- Exchange only same-parent directory names, retain the complete prior
+  `*.previous-<guid>` generation, rehash after switching, and roll back a failed
+  rename/verification. Never copy or recursively delete an old bundle to force
+  publication. Preserve transaction-failure staging and recovery evidence.
+- Run `test_bundle_publication.ps1` and `test_bundle_toolchain.ps1` for private
+  transaction/preflight regressions. They do not establish compilation, native
+  GUI, hardware, installer or full release acceptance.
+
+## Exact notes recording identity (2026-10-17)
+- Keep the immutable `.okuflow-media.json` marker with its finalized Original
+  recording. Generate/reuse it only in the serial notes worker; never hash a large
+  recording synchronously on the native UI thread. Existing mismatched markers
+  are refusals, not permission to replace a recording's UUID.
+- Bind granted directory resolution, fresh bounded file fingerprints, handoff
+  messages and version-2 transcript sidecars to the same full identity. A folder
+  name, basename, byte size or modification time alone cannot authorize reuse.
+  Address transcript sidecars by UUID (`.okuflow-transcript-<mediaId>.json`), so
+  an old awaited writer cannot overwrite a successor recording at the same video
+  basename. Do not trust or automatically migrate basename-only legacy sidecars.
+  Preserve immutable save snapshots, per-media write order and absolute media PTS.
+
+## Bounded performance evidence (2026-10-17)
+
+- Use the excluded `assistant_chat_benchmark` target only as explicit offline
+  Qt-offscreen CPU evidence; preserve its raw JSON and invalid anchor/selection
+  results. Controlled `DeadlineWorker` sleeps are not Maxine measurements.
+- `OKUFLOW_MAXINE_PROFILE=1` retains at most the last 16,384 host-call samples
+  per worker and emits a teardown summary. Keep omitted-earlier counts and
+  censored timeout/throw outcomes visible. No per-frame file I/O is permitted.
+- Native camera/desktop profiling still requires an explicitly available
+  session. Host waits, GPU completion, sensor latency, pan-to-present and stale
+  result/queue traces are distinct evidence. See `docs/performance_diagnostics.md`.
+
+## Private Maxine lifecycle and navigation validation (2026-10-17)
+
+- The `maxine_lifecycle_cuda` and `maxine_navigation_cuda` fixtures use privately
+  built fake SDK DLLs, a real CUDA device and, for navigation, private D3D12
+  textures without a native window. They are desktop-free `gpu` cases, serial
+  with other GPU tests. Keep exact helper DLLs in CTest `REQUIRED_FILES` and
+  outside release staging; never substitute the owner's installed runtime.
+- Fake SDK transitions validate ownership, failure handling and same-frame
+  fallback admission, not actual model pixels, optical quality or performance.
+  Preserve separate real-runtime/pan-to-submission acceptance and the full
+  independent-producer follow-up. See `tests/README.md` for scoped commands.
+
+## Bounded bundle preflight and compiler identity (2026-10-17)
+- Reject generator arguments and incompatible bundle caches with the explicit
+  configuration-only check before initializing VS. That check must never claim
+  toolchain or Qt readiness. Valid batch invocations still initialize the real
+  installed VS2022 x64 shell and run the complete preflight before dist writes.
+- Never reuse inherited version/architecture declarations as toolchain proof.
+  Clear inherited `VSINSTALLDIR` before the selected Microsoft initializer;
+  verify the resulting root against installed 17.x C++ discovery and the active
+  compiler's exact Hostx64/x64 path. Keep environment-spoof refusal coverage.
+- The bundle fixture performs exactly one real initialization and asserts early
+  refusal for all invalid configurations. Keep its 60-second limit, named case
+  progress and original failed evidence. Do not raise the deadline, fake VS or
+  remove assertions to mask a slow setup path.
+
+## Advisory pressure and native read progress (2026-10-17)
+- Android METADATA is lossy advisory state. Preserve the bounded control reserve
+  for ACK/STATE/ERROR and keep reliable/video overflow and stalled-write failure
+  policy. Validate the actual `OutboundQueue` helper with JVM tests; do not
+  substitute those checks for physical USB transport acceptance.
+- Native camera-read watchdogs measure only an armed `ReadSample`, using working
+  time that excludes system suspension. A timeout revokes delivery and enters
+  existing split stop; it never frees a blocked driver or permits abandoned
+  session reuse. Test late returns and cancellation without a physical camera.
+- Reader adoption is not restored video. Physical reconnect completion requires
+  successful frame presentation; repeated zero-frame attempts retain their
+  original retry deadline, and expiry also cancels pending/adopted attempts.
+  Keep the actual-app offscreen and orchestrator regressions separate from
+  native GUI and hardware acceptance.
+
+## Direct bundle toolchain discovery and diagnostics (2026-10-17)
+- Resolve the installed VS2022 root through `vswhere -property installationPath`
+  and its fixed `Common7/Tools/VsDevCmd.bat` path. Do not recursively scan an
+  entire toolchain to locate this known entrypoint.
+- Keep compiler initialization and full identity/Qt checks. Scope Microsoft's
+  auxiliary telemetry suppression to the batch environment; do not set a user
+  or machine preference. Stream child setup output into CTest and private case
+  logs so timeout evidence retains the last completed stage.
+- Preserve the preflight's 60-second deadline and all refusal/no-mutation
+  assertions. Let tracked runners own setup instead of redundantly initializing
+  the caller shell, which can overflow Windows batch environment lines.
+
+## Independent Maxine producer ownership (2026-10-17)
+- Keep model loading, inference, GPU completion and teardown on the private
+  producer worker. One in-flight slot and one overwriteable CPU descriptor;
+  never retain a borrowed scene/processing-buffer pointer as a queued job.
+- Publish only the complete current camera/processing/settings/request ticket.
+  Use the existing graphics fence and retain private output through its exact
+  consumer-copy event. Invalidation/shutdown never joins an SDK call on UI;
+  unknown completion retains the complete private state until process exit.
+- Async readiness uses the existing presentation clock through
+  `hasAsyncSceneWork`; it is neither camera processing nor navigation input.
+  Preserve immediate same-frame capture pairing and enhancement authority for
+  annotations, UCT and agent observations. See the Maxine producer policy doc.
+- Native settings changes must immediately advance processing authority and
+  revoke pending neural output independently of Assistant/MCP. Ordinary settings
+  invalidation preserves healthy models and failure/performance latches;
+  explicit reset alone permits retry of the same failed configuration.
+- Run the three desktop-free Maxine CUDA fixtures and scheduler/UCT regressions
+  after ownership changes. Strict Windows-CUDA release acceptance requires all
+  three; private fake SDKs prove neither vendor quality nor native pan latency.
+
+## Relocated Qt bundle preflight (2026-10-17)
+- Bundle Qt discovery honors explicit `QT_PREFIX` / `Qt6_DIR`, then CI's
+  `QT_ROOT_DIR`, then the local default. Invalid explicit overrides must fail;
+  keep the complete deployment/license checks and selected-prefix diagnostic.
+- CTest supplies the SDK and source root it configured. The preflight fixture
+  uses a private junction to that actual SDK, never fake Qt tools/licenses, and
+  declares all module SPDX and notice files as runtime inputs. Preserve the
+  single real VS initialization, refusal assertions and 60-second deadline.
+- Hosted Qt setup includes only matching Multimedia sources for the FFmpeg
+  notice and uses a source-aware cache key. Do not assume a compile-only SDK
+  installation contains the release preflight's source/license inventory.
+- Archive SDKs may lack the online installer's license folder. Preserve the
+  fallback to the matching Multimedia source's `LICENSES/LGPL-3.0-only.txt`,
+  its exact staging bytes and runtime-input fingerprint. The relocated fixture
+  excludes only the optional SDK `LICENSES` directory and must assert the real
+  source notice is selected; never manufacture a license to make it pass.
+
+## Focused bundle publication scenarios (2026-10-17)
+- Preserve all 13 synthetic publication scenarios across the Exchange,
+  Refusals and Rollback CTest groups (3/7/3 cases). Each keeps its 60-second
+  limit, named progress, exact coverage-count assertion and publisher runtime
+  inputs. Keep the shared process-identity lock; never overlap the hidden
+  running-image fixture with other identity-sensitive checks.
+- Direct `test_bundle_publication.ps1` defaults to All. Splitting the cumulative
+  fixture is not permission to omit locked/running-image, owner-data, exact
+  inventory, reparse, rollback or late-change assertions. Production publication
+  safety behavior is unchanged; native installer/release acceptance is separate.
+
+## Optional OCR component validation (2026-10-18)
+
+- Prepare only pinned local OCR inputs with `scripts/prepare_uct_runtime.ps1`;
+  TensorRT is an explicit optional external SDK. Keep model/runtime archives,
+  engine plans and original notices under LocalAppData. CMake/app startup must
+  never download or silently bundle them. Review a complete license/SBOM
+  inventory before including these optional files in a public installer.
+- Preserve the Qt-free public CUDA interop header through forward declarations;
+  snapshot/download implementations may use QtGui. Keep the Maxine navigation
+  fixture's actual pool/kernel dependency aligned with production.
+- Run model-free `uct_paddle_processing`, serial GPU `uct_paddle_cuda`, and UCT
+  scheduler/controller contracts after inference/ownership changes. Real pinned
+  CPU/TensorRT graph rows require explicit opt-in and are separate acceptance.
+  Do not repeat cold model compilation as a routine benchmark. See tests/README.
+- Keep GPU neural tensors resident, retain exact owned inputs through stream
+  completion and quarantine unknown completion. Independent decimated validation
+  readback is intentional: slow inference must not stall motion checks. Neither
+  branch may block the UI, overwrite a leased slot or borrow presenter memory.
+- Native GUI/device availability remains governed by the desktop rules below;
+  offscreen model/kernel passes do not establish live camera or installer quality.
+
+## Diagnosed prerequisite repair evidence (2026-10-18)
+- Never remove or edit a test ledger to clear a blocker. After diagnosing and
+  repairing a cause outside a test's fingerprinted inputs, use the tracked
+  runner's explicit `-RecheckAfterRepair` with a concrete repair reason. It
+  requires exact `-Test` names of matching Failed/Unfinished blockers, preserves
+  original logs and per-case/capability repair provenance, and refuses a second
+  unchanged failing recheck. Ordinary resume/fresh modes still refuse retries.
+- This mode neither grants desktop availability nor weakens assertion, runtime
+  fingerprint, capability, packaging or release requirements. Validate runner
+  changes with `scripts/test_test_gate.ps1` before applying them to project gates.

@@ -12,7 +12,10 @@ param(
     [ValidateRange(1, 1024)][int]$Parallel = [Environment]::ProcessorCount,
     [ValidateSet('msvc-cpu-tests', 'msvc-cuda-tests')][string]$UncoveredByPreset,
     [string[]]$RetryInterrupted,
+    [ValidateScript({ $_.Trim().Length -ge 20 })][string]$RecheckAfterRepair,
     [switch]$ExcludeGui,
+    [ValidateSet('development', 'windows-cpu', 'windows-cuda', 'windows-cuda-kernels')]
+    [string]$CapabilityProfile = 'development',
     [switch]$List
 )
 
@@ -26,6 +29,44 @@ function Get-Digest([string]$Text) {
 
 function Get-Labels($Case) {
     @($Case.properties | Where-Object name -eq LABELS | ForEach-Object value)
+}
+
+function Get-CapabilityRequirements([string]$Profile) {
+    $cuda = @('yuv_color_conversion_cuda', 'text_clarity_sauvola_cuda',
+        'stabilization_similarity_cuda', 'spatial_upscaler_reference_cuda',
+        'stabilization_replay_regression', 'cuda_architecture_coverage')
+    $base = @('shared_source_equivalence', 'settings_store_round_trip',
+        'phone_camera_contract', 'windows_runtime_contract', 'recording_manager',
+        'agent_control_contract', 'mcp_bridge_contract')
+    switch ($Profile) {
+        'windows-cpu' { @{ tests = $base; labels = @('gui'); cuda = $false } }
+        'windows-cuda' { @{ tests = $base + $cuda + @('media_writer_gpu_codecs',
+            'maxine_lifecycle_cuda', 'maxine_navigation_cuda', 'maxine_async_cuda'); labels = @('gui'); cuda = $true } }
+        'windows-cuda-kernels' { @{ tests = $cuda; labels = @(); cuda = $true } }
+        default { @{ tests = @(); labels = @(); cuda = $null } }
+    }
+}
+
+function Get-CapabilityVerdict($Requirements, $Inventory, $Records, [string[]]$SelectedNames) {
+    $names = @($Requirements.tests)
+    $rows = @()
+    foreach ($label in $Requirements.labels) {
+        $matches = @($Inventory | Where-Object { $label -cin (Get-Labels $_) })
+        if (!$matches.Count) { $rows += @{ name = "label:$label"; state = 'NotRun'; reason = 'Required label has no registered cases.' } }
+        $names += @($matches.name)
+    }
+    foreach ($name in @($names | Sort-Object -Unique)) {
+        $record = $Records[$name]
+        $state = if ($name -cnotin $Inventory.name -or $name -cnotin $SelectedNames -or !$record) { 'NotRun' }
+            elseif ($record.status -ceq 'Passed') { 'Passed' }
+            elseif ($record.status -ceq 'Failed') { 'Failed' }
+            else { 'Blocked' } # A CTest skip or skipped Qt row is not capability acceptance.
+        $rows += @{ name = $name; state = $state; sourceStatus = $(if ($record) { $record.status } else { 'Missing' }) }
+    }
+    $state = if (@($rows | Where-Object state -eq 'Failed').Count) { 'Failed' }
+        elseif (@($rows | Where-Object state -ne 'Passed').Count) { 'Blocked' }
+        elseif (!$rows.Count) { 'NotApplicable' } else { 'Passed' }
+    @{ state = $state; cases = $rows }
 }
 
 function Get-PresetDirectory([string]$Name) {
@@ -47,14 +88,9 @@ function Initialize-HashCache([string]$Path) {
     $script:hashCachePath = $Path
     $script:hashCache = @{}
     $script:hashCacheDirty = $false
-    if (Test-Path -LiteralPath $Path) {
-        try {
-            $stored = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable
-            if ($stored.schema -eq 1 -and $stored.files -is [System.Collections.IDictionary]) {
-                $script:hashCache = $stored.files
-            }
-        } catch { Write-Warning 'Unreadable file hash cache; rebuilding it.' }
-    }
+    # Persisted hashes are diagnostic only. Length/mtime cannot certify exact
+    # bytes across invocations: builds, copies or deliberate edits can restore
+    # both metadata values. Memoize only within this fingerprint pass.
 }
 
 function Save-HashCache {
@@ -187,6 +223,7 @@ function Get-CaseResult($Case) {
     }
     if ($Case.SelectSingleNode('skipped')) { return 'Skipped' }
     if ($Case.status -ne 'run') { return 'Failed' }
+    if ([string]$Case.'system-out' -match '\[This part of the test output was removed since it exceeds the threshold of') { return 'Unfinished' }
     if ([string]$Case.'system-out' -match '(?m)^SKIP\s*:') { return 'PassedWithSkips' }
     return 'Passed'
 }
@@ -253,6 +290,12 @@ function Save-Ledger($Ledger, [string]$Path) {
 
 $runnerLock = $null
 try {
+    if ($RecheckAfterRepair -and ($Resume -or $RetryInterrupted)) {
+        throw '-RecheckAfterRepair requires a repair reason and cannot combine with -Resume or -RetryInterrupted.'
+    }
+    if ($RecheckAfterRepair -and (!$Test -or $Label -or $Select -or $UncoveredByPreset)) {
+        throw '-RecheckAfterRepair requires exact -Test names, without label or broad selection.'
+    }
     if (!$env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required for private test evidence.' }
     # A comma list also works through pwsh -File, which cannot bind multiple
     # command-line arguments to an array parameter. Native PowerShell accepts arrays.
@@ -290,6 +333,19 @@ try {
     })
     if (!$selected.Count) { throw 'Selection contains no tests.' }
     if ($List) { $selected | ForEach-Object { $_.name }; exit 0 }
+    $capabilityRequirements = Get-CapabilityRequirements $CapabilityProfile
+    if ($CapabilityProfile -ne 'development') {
+        $cudaEnabled = [regex]::IsMatch($cache, '(?m)^OKUFLOW_ENABLE_CUDA:[^=]+=ON\r?$')
+        if ($cudaEnabled -ne $capabilityRequirements.cuda) { throw "Capability profile $CapabilityProfile disagrees with the configured CUDA build." }
+        if ($RetryInterrupted -or ($CapabilityProfile -ne 'windows-cuda-kernels' -and ($scoped -or $ExcludeGui))) {
+            throw "Capability profile $CapabilityProfile requires the complete unfiltered build inventory."
+        }
+        $missing = Get-CapabilityVerdict $capabilityRequirements $tests @{} @($selected.name)
+        $unregistered = @($missing.cases | Where-Object {
+            $_.name -like 'label:*' -or $_.name -cnotin $tests.name -or $_.name -cnotin $selected.name
+        })
+        if ($unregistered.Count) { throw "Capability NotRun: required cases absent from selection/inventory: $($unregistered.name -join ', ')" }
+    }
     $root = Join-Path $env:LOCALAPPDATA 'OkuFlow/test-evidence'
     [void][IO.Directory]::CreateDirectory($root)
     # Never delete another runner's lock or overlap CPU/CUDA/bundle gates.
@@ -323,19 +379,38 @@ try {
         $fingerprint = $before[$name].digest
         if (!$ledger.evidence.ContainsKey($name)) { $ledger.evidence[$name] = @{} }
         $prior = $ledger.evidence[$name][$fingerprint]
+        $previous = $ledger.results[$name]
+        if ($Resume -and !$prior -and $previous -and
+            $previous.status -in 'Failed', 'Interrupted', 'Unfinished' -and
+            (!$previous.shared -or $previous.shared -ne $runtime.sharedDigest)) {
+            $oldShared = if ($previous.shared) { $ledger.sharedInputs[$previous.shared] } else { $null }
+            $changed = if ($oldShared) {
+                @(@($oldShared.Keys) + @($runtime.shared.Keys) | Sort-Object -Unique | Where-Object { $oldShared[$_] -ne $runtime.shared[$_] })
+            } else { @('prior shared inputs unavailable') }
+            throw "Resume inputs changed for unresolved test: $name. Shared inputs: $($changed -join ', '). Diagnose the failure and run a fresh gate explicitly; resume cannot retry it under a different shared runtime."
+        }
         if ($name -cin $RetryInterrupted -and (!$prior -or $prior.status -ne 'Interrupted')) {
             throw "Only a recorded desktop interruption may be retried with matching inputs: $name"
+        }
+        if ($RecheckAfterRepair) {
+            if (!$prior -or $prior.status -notin 'Failed', 'Unfinished') {
+                throw "Only a recorded Failed/Unfinished blocker may be rechecked after repair: $name"
+            }
+            if ($prior.repairRecheckOf) { throw "Already rechecked this blocking fingerprint after repair: $name" }
         }
         $ledger.results[$name] = $prior
     }
     $pending = @($selected | Where-Object {
         $prior = $ledger.results[$_.name]
         if (!$prior) { return $true }
-        if ($prior.status -in 'Failed', 'Interrupted', 'Unfinished') { return $_.name -cin $RetryInterrupted }
+        if ($prior.status -in 'Failed', 'Interrupted', 'Unfinished') {
+            return [bool]$RecheckAfterRepair -or $_.name -cin $RetryInterrupted
+        }
         if ($prior.status -in 'Skipped', 'PassedWithSkips') { return $true }
-        return !$Resume
+        return !$Resume -and !$RecheckAfterRepair
     })
     Write-Host "Selection: $($selected.Count) of $($tests.Count) tests; $($selected.Count - $pending.Count) matching results retained."
+    if ($RecheckAfterRepair) { Write-Host "Explicit diagnosed-repair recheck: $RecheckAfterRepair" }
     $partitions = @(
         @{ name = 'background'; parallel = $Parallel; cases = @($pending | Where-Object {
             $labels = @(Get-Labels $_); 'gui' -notin $labels -and 'gpu' -notin $labels -and 'codec' -notin $labels
@@ -353,16 +428,27 @@ try {
         $junit = Join-Path $directory "$id.xml"
         $log = Join-Path $directory "$id.log"
         $expression = '^(' + (($cases.name | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')$'
+        $priorBlockers = @{}
         foreach ($case in $cases) {
+            $prior = $ledger.results[$case.name]
+            if ($RecheckAfterRepair -and $prior -and $prior.status -in 'Failed', 'Interrupted', 'Unfinished') {
+                $priorBlockers[$case.name] = @{ status = $prior.status; attempt = $prior.attempt;
+                    fingerprint = $prior.fingerprint; shared = $prior.shared }
+            }
             $result = @{ status = 'Unfinished'; attempt = $id; fingerprint = $before[$case.name].digest;
                 inputs = $before[$case.name].inputs; shared = $before[$case.name].shared }
+            if ($priorBlockers.ContainsKey($case.name)) {
+                $result.repairRecheckOf = $priorBlockers[$case.name].attempt
+                $result.repairReason = $RecheckAfterRepair
+            }
             $ledger.results[$case.name] = $result
             $ledger.evidence[$case.name][$result.fingerprint] = $result
         }
-        $ledger.attempts += @{ id = $id; tests = @($cases.name); partition = $partition.name; parallel = $partition.parallel; log = $log; junit = $junit }
+        $ledger.attempts += @{ id = $id; tests = @($cases.name); partition = $partition.name; parallel = $partition.parallel;
+            log = $log; junit = $junit; repairReason = $RecheckAfterRepair; priorBlockers = $priorBlockers }
         Save-Ledger $ledger $path
         Write-Host "CTest partition: $($partition.name), $($cases.Count) tests, --parallel $($partition.parallel)"
-        & $ctest @arguments --parallel $partition.parallel --output-on-failure --no-tests=error -R $expression --output-junit $junit 2>&1 |
+        & $ctest @arguments --parallel $partition.parallel --output-on-failure --no-tests=error -R $expression --output-junit $junit --test-output-size-passed 1048576 --test-output-size-failed 1048576 2>&1 |
             Tee-Object -FilePath $log | ForEach-Object { Write-Host $_ }
         $exitCode = $LASTEXITCODE
         # CTest overwrites these on the next invocation, including a narrow
@@ -385,6 +471,9 @@ try {
             $result = $ledger.results[$case.name]
             $result.status = Get-CaseResult $case
             $result.seconds = [string]$case.time
+            if ($result.status -eq 'Unfinished') {
+                $errors.Add("Incomplete CTest output for $($case.name); inspect $id-LastTest.log before accepting coverage.")
+            }
         }
         if ($exitCode -and !@($cases | Where-Object { $ledger.results[$_.name].status -in 'Failed', 'Interrupted' }).Count) {
             foreach ($case in $cases) { $ledger.results[$case.name].status = 'Unfinished' }
@@ -401,6 +490,8 @@ try {
         })
         if ($added.Count) { $errors.Add("Test inventory changed during testing; new required tests: $($added.name -join ', ')") }
     }
+    # Read bytes again even when lengths/timestamps were preserved by a writer.
+    $script:hashCache.Clear()
     $afterRuntime = Get-RuntimeInputs (Get-Content -LiteralPath (Join-Path $BuildDirectory 'CMakeCache.txt') -Raw) $ctest $hasGui
     foreach ($case in $fingerprinted) {
         $afterCase = $afterTests | Where-Object name -CEQ $case.name
@@ -433,19 +524,48 @@ try {
     })
     $skipped = @($required | Where-Object { $ledger.results[$_.name].status -eq 'Skipped' })
     $rowSkips = @($required | Where-Object { $ledger.results[$_.name].status -eq 'PassedWithSkips' })
+    $capability = Get-CapabilityVerdict $capabilityRequirements $tests $ledger.results @($required.name)
+    $capability.profile = $CapabilityProfile
+    $capability.checkedAt = [DateTime]::UtcNow.ToString('O')
+    $capability.shared = $runtime.sharedDigest
+    # The case records retain their exact fingerprints and original CTest statuses.
+    # This separate verdict cannot turn a skipped capability into passing evidence.
+    $capability.evidence = @{}
+    $capability.repairRechecks = @{}
+    foreach ($case in $required) {
+        $record = $ledger.results[$case.name]
+        if ($record -and $record.repairRecheckOf) {
+            $capability.repairRechecks[$case.name] = @{ priorAttempt = $record.repairRecheckOf; reason = $record.repairReason }
+        }
+    }
+    foreach ($row in $capability.cases) {
+        if ($ledger.results[$row.name]) { $capability.evidence[$row.name] = $ledger.results[$row.name].fingerprint }
+    }
+    $ledger.capabilityChecks = @($ledger.capabilityChecks | Select-Object -Last 31) + @($capability)
+    Save-Ledger $ledger $path
+    Write-Host "Capabilities ($CapabilityProfile): $($capability.state)"
+    foreach ($row in @($capability.cases | Where-Object state -ne 'Passed')) {
+        Write-Host "Capability $($row.state): $($row.name) [$($row.sourceStatus)]"
+    }
     Write-Host "Evidence: $path"
     Write-Host "Gate: $($required.Count - $unresolved.Count - $skipped.Count) passed ($($rowSkips.Count) with skipped Qt rows), $($skipped.Count) skipped, $($unresolved.Count) unresolved."
+    foreach ($case in $required) {
+        $record = $ledger.results[$case.name]
+        if ($record.status -in 'Passed', 'PassedWithSkips' -and $record.repairRecheckOf) {
+            Write-Host "Passed after diagnosed-repair recheck: $($case.name); prior attempt $($record.repairRecheckOf); $($record.repairReason)"
+        }
+    }
     foreach ($case in $unresolved) {
         $state = $ledger.results[$case.name].status
         if (!$state) { $state = 'Pending' }
         Write-Host "$state`: $($case.name)"
     }
     if ($scoped) {
-        $verdict = if ($unresolved.Count -or $errors.Count) { 'FAIL' } else { 'PASS' }
+        $verdict = if ($unresolved.Count -or $errors.Count -or $capability.state -in 'Failed', 'Blocked') { 'FAIL' } else { 'PASS' }
         Write-Host "SCOPED $verdict`: $($required.Count) of $($tests.Count) tests ($($required.name -join ', '))."
     }
     if ($ExcludeGui) { Write-Host 'PARTIAL VALIDATION: GUI checks remain pending; not the full release gate.' }
-    if ($unresolved.Count -or $errors.Count) { exit 1 }
+    if ($unresolved.Count -or $errors.Count -or $capability.state -in 'Failed', 'Blocked') { exit 1 }
     exit 0
 } catch {
     Write-Error $_ -ErrorAction Continue

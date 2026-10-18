@@ -25,7 +25,8 @@ public:
     bool IsReady() const { return available_; }
     bool IsTurnActive() const { return active_; }
     bool SubmitTurn(QString contextId, QString prompt, QByteArray jpeg = {},
-                    QJsonArray completedTextContext = {});
+                    QJsonArray completedTextContext = {},
+                    std::optional<agent::AuthorizedObservation> observation = {});
     void Cancel();
     void ResetConversation();
     void Shutdown();
@@ -66,7 +67,7 @@ private:
     QString context_, prompt_, thread_, turn_, text_;
     QByteArray jpeg_;
     QJsonArray completedTextContext_;
-    agent::ControlStamp initialImageStamp_;
+    std::optional<agent::AuthorizedObservation> initialImageAuthorization_;
     QStringList retired_;
     std::vector<Call> buffered_;
     std::vector<std::pair<QString,QJsonObject>> earlyEvents_;

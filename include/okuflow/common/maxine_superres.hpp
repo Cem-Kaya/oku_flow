@@ -44,6 +44,9 @@ private:
     class Worker;
     std::unique_ptr<Worker> worker_;
     std::string workerError_;
+    // Only a completed teardown retires ownership. Faulted calls retain Impl
+    // and its borrowed CUDA resources, regardless of this flag.
+    bool retired_{true};
 };
 
 } // namespace okuflow

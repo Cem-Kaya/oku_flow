@@ -56,7 +56,19 @@ private slots:
                 {{"fields",QJsonArray{QString::fromUtf8(descriptor.id.data(),qsizetype(descriptor.id.size()))}}});
             QVERIFY(plan.error.isEmpty());QCOMPARE(plan.observedFields.size(),size_t(1));QCOMPARE(plan.observedFields.front(),*field);
         }
-        QCOMPARE(image,49);QCOMPARE(view,9);QVERIFY(!AppControlTarget::ImageParameterField("image.arbitrary.setting"));
+        QCOMPARE(image,53);QCOMPARE(view,9);QVERIFY(!AppControlTarget::ImageParameterField("image.arbitrary.setting"));
+    }
+    void uctModelsUseIndependentClosedPreferencesWithoutImageCoupling() {
+        const auto fields=Defaults();
+        const auto plan=Image(fields,{{"image.uct.gpu.detector","medium"},{"image.uct.gpu.recognizer","small"},
+            {"image.uct.cpu.detector","tiny"},{"image.uct.cpu.recognizer","medium"}});
+        QVERIFY(plan.error.isEmpty());QCOMPARE(plan.writes.size(),size_t(4));
+        QCOMPARE(Written(plan,Field::UctGpuDetector).toString(),"medium");QCOMPARE(Written(plan,Field::UctCpuRecognizer).toString(),"medium");
+        QVERIFY(Written(plan,Field::TextClarity).isUndefined());QVERIFY(!plan.resetsHistory);
+        for(const auto invalid:{QJsonValue("custom.onnx"),QJsonValue(2),QJsonValue(true)}) {
+            const auto rejected=Image(fields,{{"image.uct.gpu.detector","small"},{"image.uct.cpu.recognizer",invalid}});
+            QCOMPARE(rejected.error,"invalid_argument");QVERIFY(rejected.writes.empty());
+        }
     }
     void invalidSecondFieldRejectsTheWholePlan() {
         const auto fields=Defaults();

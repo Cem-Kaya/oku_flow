@@ -277,6 +277,7 @@ std::shared_ptr<OwnedAdbServer> CreateOwnedAdbServer(
             std::string error;
             auto arguments = fixtureArguments;
             arguments.insert(arguments.end(), {L"-L", L"tcp:" + std::to_wstring(port), L"server", L"nodaemon"});
+            qInfo() << "Starting owned Android USB support with" << executable;
             auto child = OwnedChildProcess::Launch({
                 executable.toStdWString(),
                 arguments, QFileInfo(executable).absolutePath().toStdWString(), {},
@@ -1206,11 +1207,12 @@ bool PhoneCameraTransport::Start(const CameraDescriptor& descriptor, IMFDXGIDevi
                                  const std::atomic<bool>* startupCanceled)
 {
     ComPtr<IMFDXGIDeviceManager> retained = manager;
-    worker_ = std::thread([this, descriptor, retained, callback = std::move(callback), errorCallback = std::move(errorCallback)] {
-        Run(descriptor, retained, callback, errorCallback);
+    const PhoneStartupBudget startupBudget(Clock::now());
+    worker_ = std::thread([this, descriptor, retained, callback = std::move(callback), errorCallback = std::move(errorCallback), startupBudget] {
+        Run(descriptor, retained, callback, errorCallback, startupBudget);
     });
     std::unique_lock lock(mutex_);
-    const auto deadline = Clock::now() + std::chrono::seconds(12);
+    const auto deadline = startupBudget.Deadline();
     while (!opened_ && !failed_ && !canceled_.load()) {
         if ((startupCanceled && startupCanceled->load()) || Clock::now() >= deadline) {
             error_ = startupCanceled && startupCanceled->load() ? "Phone camera canceled" :
@@ -1282,7 +1284,7 @@ std::string PhoneCameraTransport::Error() const { std::lock_guard lock(mutex_); 
 std::string PhoneCameraTransport::ProblemCode() const { std::lock_guard lock(mutex_); return problemCode_; }
 
 void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDeviceManager> manager,
-                               FrameCallback callback, CaptureErrorCallback errorCallback)
+                               FrameCallback callback, CaptureErrorCallback errorCallback, PhoneStartupBudget startupBudget)
 {
     std::unique_ptr<OccupiedPhone> occupied;
     const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -1363,7 +1365,12 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
             if (bound.type != 1 || bound.flags || Json(bound)["channel"].toString() != "video") throw std::runtime_error("Phone video binding failed");
             if (!descriptor.phoneCameraId.empty()) Command(control, {{"op", "camera"}, {"cameraId", QString::fromStdString(descriptor.phoneCameraId)}}, &canceled_);
             Command(control, {{"op", "torch"}, {"enabled", false}}, &canceled_);
-            Command(control, {{"op", "start"}}, &canceled_);
+            const auto now = Clock::now();
+            // Initial HEVC->AVC retry shares Start's original deadline. A
+            // running stream's later renegotiation gets its normal fresh budget.
+            const int cameraBudgetMs = (lastDecodedClock < 0 ? startupBudget : PhoneStartupBudget(now)).RemainingCameraMs(now);
+            if (!cameraBudgetMs) throw std::runtime_error("Phone camera startup budget exhausted during USB negotiation");
+            Command(control, {{"op", "start"}, {"startupBudgetMs", cameraBudgetMs}}, &canceled_);
             std::map<quint32, QJsonObject> modes;
             std::unique_ptr<PhoneVideoDecoder> decoder;
             PhoneVideoCodec decoderCodec = PhoneVideoCodec::Avc;
@@ -1390,6 +1397,11 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                     if (packet.type == 5) throw PhoneProtocolError(json["code"].toString().toStdString(), json["error"].toString().toStdString());
                     if (packet.type == 4) {
                         ApplyTorchAcknowledgment(json);
+                    }
+                    if (packet.type == 3 && json["event"].toString() == "retrying") {
+                        qInfo() << "Phone startup candidate" << json["attempt"].toInt() << "/" << json["candidates"].toInt()
+                                << json["mime"].toString() << json["width"].toInt() << "x" << json["height"].toInt()
+                                << "rejected:" << json["reason"].toString() << "remaining ms:" << json["remainingMs"].toInt();
                     }
                     if (packet.type == 3 && json["event"].toString() == "configured") {
                         const UINT width = json["width"].toInt(), height = json["height"].toInt();
@@ -1456,6 +1468,7 @@ void PhoneCameraTransport::Run(CameraDescriptor descriptor, ComPtr<IMFDXGIDevice
                 const auto data = packet.data.mid(20);
                 if (!data.startsWith(QByteArray("\0\0\1", 3)) && !data.startsWith(QByteArray("\0\0\0\1", 4))) throw std::runtime_error("Phone video is not Annex B");
                 if (!(packet.flags & 2)) {
+                    progress.EncodedFrameReceived(Clock::now());
                     if (timestamp < 0 || timestamp <= previousTimestamp) throw std::runtime_error("Invalid phone frame timestamp");
                     previousTimestamp = timestamp;
                     if (firstTimestamp < 0) firstTimestamp = timestamp;

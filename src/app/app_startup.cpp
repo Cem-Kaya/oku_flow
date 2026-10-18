@@ -190,6 +190,18 @@ void OkuFlowApp::ConfigureStartupProfiling() {
 }
 
 void OkuFlowApp::RecordStartupFirstPresent() {
+    if (cameraActive_ && cameraFramePresented_ &&
+        pipelineOrchestrator_->IsCameraReconnectPending()) {
+        const bool reconnected = cameraIntent_.Requested().origin == agent::CameraSourceOrigin::Reconnect;
+        const int attempts = pipelineOrchestrator_->CameraReconnectAttempt()+1;
+        // Working fallback/manual video also retires the old recovery owner,
+        // without claiming that its original source has returned.
+        pipelineOrchestrator_->CancelCameraReconnect();
+        if (reconnected) {
+            qInfo() << "Camera reconnected after" << attempts << "attempt(s)";
+            ShowStatusMessage(QStringLiteral("Camera reconnected."), 5000);
+        }
+    }
     ++startupPresentedFrames_;
     if (startupFirstFrameLogged_) return;
     startupFirstFrameLogged_ = true;
@@ -302,8 +314,9 @@ void OkuFlowApp::QueueInitialCameraStart(
     if (uiState_->cameraCombo_) uiState_->cameraCombo_->setEnabled(false);
     if (uiState_->cameraFormatCombo_) uiState_->cameraFormatCombo_->setEnabled(false);
     qInfo() << "Startup timing: camera worker dispatched" << startupTimer_.elapsed() << "ms";
+    const auto startForTest = cameraStartForTest_;
     try {
-        std::thread([job, name, symbolicLink, phoneSerial, phoneCameraId, phoneTransportId, requestedStableId,
+        std::thread([job, startForTest, name, symbolicLink, phoneSerial, phoneCameraId, phoneTransportId, requestedStableId,
                      requestAcceleration, interactive, captureSession]() mutable {
             const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
             try {
@@ -314,7 +327,7 @@ void OkuFlowApp::QueueInitialCameraStart(
                 localDescriptor.phoneSerial = phoneSerial;
                 localDescriptor.phoneCameraId = phoneCameraId;
                 localDescriptor.phoneTransportId = phoneTransportId;
-                if (phoneSerial.empty()) {
+                if (phoneSerial.empty() && !startForTest) {
                     Microsoft::WRL::ComPtr<IMFAttributes> attributes;
                     ThrowIfFailed(MFCreateAttributes(&attributes, 2), "Create camera attributes");
                     ThrowIfFailed(attributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
@@ -329,6 +342,7 @@ void OkuFlowApp::QueueInitialCameraStart(
                 }
                 const auto start = [&](CaptureAccelerationMode mode) {
                     if (job->canceled->load()) return false;
+                    if (startForTest) return startForTest(*job->canceled);
                     return job->capture->StartCapture(localDescriptor, nullptr, job->callback,
                         mode == CaptureAccelerationMode::Accelerated ? MFVideoFormat_ARGB32
                                                                     : MFVideoFormat_NV12,

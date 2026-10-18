@@ -1,0 +1,5 @@
+LIBRARY NVCVImage
+EXPORTS
+    NvCVImage_Alloc
+    NvCVImage_Dealloc
+    NvCVImage_Transfer

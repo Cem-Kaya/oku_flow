@@ -45,7 +45,10 @@ include(http_agent.cmake)
 include(visible_chat.cmake)
 include(visible_chat_store.cmake)
 include(mcp.cmake)
+include(bundle_publication.cmake)
 include(native_control.cmake)
+include(ultra_clear_text.cmake)
+include(maxine_lifecycle.cmake)
 set_tests_properties(deadline_worker PROPERTIES TIMEOUT 15
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
 add_executable(launcher_fixture launcher_fixture.cpp)
@@ -672,6 +675,11 @@ if (WIN32)
         ${PROJECT_SOURCE_DIR}/src/ui/render_widget.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/assistive_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/annotation_overlay.cpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_overlay.hpp
+        ${PROJECT_SOURCE_DIR}/include/okuflow/ui/ultra_clear_text_panel.hpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_overlay.cpp
+        ${PROJECT_SOURCE_DIR}/src/ui/ultra_clear_text_panel.cpp
+        ${PROJECT_SOURCE_DIR}/src/common/ultra_clear_text.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/joystick_overlay.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/color_scheme_picker.cpp
         ${PROJECT_SOURCE_DIR}/src/ui/collapsible_section.cpp
@@ -690,7 +698,7 @@ if (WIN32)
     target_compile_definitions(main_window_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
         UNICODE _UNICODE OKUFLOW_HAS_CUDA_EXT_MEMORY=0 OKUFLOW_ENABLE_TEXT_SR=0)
     target_link_libraries(main_window_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets
-        Qt6::Test d3d12 dxgi d3dcompiler)
+        Qt6::Test d3d12 dxgi d3dcompiler dwmapi)
     qt_add_resources(main_window_tests "okuflow_main_window_test_translations"
         PREFIX "/i18n"
         BASE "${CMAKE_CURRENT_BINARY_DIR}/../cmake"
@@ -736,6 +744,8 @@ if (WIN32)
         fake_codex_app_server.cpp
     )
     target_link_libraries(fake_codex_app_server PRIVATE Qt6::Core)
+    target_compile_definitions(fake_codex_app_server PRIVATE
+        OKUFLOW_AGENT_PROFILE_FIXTURE="${PROJECT_SOURCE_DIR}/assets/codex-agent/0.160.1-profile.json")
     add_dependencies(notes_html_tests fake_codex_app_server)
 
     add_executable(assistive_preparation_tests
@@ -893,6 +903,9 @@ if(TARGET annotation_overlay_tests)
 endif()
 get_property(okuflow_tests DIRECTORY PROPERTY TESTS)
 foreach(test IN LISTS okuflow_tests)
+    # Windows Qt otherwise routes some plain-text results to the debugger,
+    # hiding failed assertions and skipped data rows from CTest's evidence.
+    set_property(TEST "${test}" APPEND PROPERTY ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
     get_property(labels TEST "${test}" PROPERTY LABELS)
     if("gui" IN_LIST labels)
         set_tests_properties("${test}" PROPERTIES RUN_SERIAL TRUE RESOURCE_LOCK okuflow_desktop)

@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>กำลังดำเนินการ</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>ไม่สามารถตรวจสอบสถานะการดำเนินการได้</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>เปิดไฟโทรศัพท์</translation>
         </message>
@@ -3244,6 +3252,26 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <message>
             <source>Change drawing settings and save a photo?</source>
             <translation>เปลี่ยนการตั้งค่าการวาดและบันทึกรูปภาพหรือไม่?</translation>
+        </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>การตั้งค่าขั้นสูงของ UCT</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>โมเดลตรวจจับข้อความบน GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>โมเดลรู้จำข้อความบน GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>โมเดลตรวจจับข้อความบน CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>โมเดลรู้จำข้อความบน CPU</translation>
         </message>
     </context>
 </TS>

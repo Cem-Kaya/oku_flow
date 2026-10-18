@@ -89,6 +89,54 @@ std::int64_t RecordingTimeline::MapTimestamp(
     return mapped;
 }
 
+bool RecordingPcmTimeline::Plan(std::int64_t mediaTime100ns,
+                                std::uint64_t inputFrames,
+                                RecordingPcmSpan& span) const
+{
+    span = {};
+    if (!sampleRate_ || mediaTime100ns < 0 || !inputFrames) return false;
+    constexpr auto ticks = static_cast<std::uint64_t>(kMediaFoundationTicksPerSecond);
+    const auto time = static_cast<std::uint64_t>(mediaTime100ns);
+    const auto seconds = time / ticks;
+    const auto maximum = std::numeric_limits<std::uint64_t>::max();
+    if (seconds > maximum / sampleRate_) return false;
+    const auto fraction = ((time % ticks) * sampleRate_ + ticks / 2) / ticks;
+    if (seconds * sampleRate_ > maximum - fraction) return false;
+    const auto target = seconds * sampleRate_ + fraction;
+    if (target > frames_) {
+        span.silenceFrames = target - frames_;
+        if (span.silenceFrames >
+            static_cast<std::uint64_t>(sampleRate_) * kMaximumGapSeconds) return false;
+    } else if (frames_ - target > 1) {
+        // A one-frame rounding overlap retains the original block. A genuine
+        // overlap must not replay already-covered media later on the clock.
+        span.skipFrames = std::min(inputFrames, frames_ - target);
+    }
+    span.dataFrames = inputFrames - span.skipFrames;
+    if (span.silenceFrames > maximum - span.dataFrames) return false;
+    return TimestampAfter(span.silenceFrames + span.dataFrames) >= 0;
+}
+
+std::int64_t RecordingPcmTimeline::TimestampAfter(std::uint64_t additional) const
+{
+    const auto maximum = std::numeric_limits<std::uint64_t>::max();
+    if (!sampleRate_ || additional > maximum - frames_) return -1;
+    const auto total = frames_ + additional;
+    constexpr auto ticks = static_cast<std::uint64_t>(kMediaFoundationTicksPerSecond);
+    constexpr auto last = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+    const auto seconds = total / sampleRate_;
+    const auto fraction = (total % sampleRate_) * ticks / sampleRate_;
+    if (seconds > last / ticks || seconds * ticks > last - fraction) return -1;
+    return static_cast<std::int64_t>(seconds * ticks + fraction);
+}
+
+bool RecordingPcmTimeline::Advance(std::uint64_t frames)
+{
+    if (TimestampAfter(frames) < 0) return false;
+    frames_ += frames;
+    return true;
+}
+
 RecordingCanvasSize ResolveRecordingCanvas(RecordingCanvasMode mode,
                                            std::uint32_t sourceWidth,
                                            std::uint32_t sourceHeight)

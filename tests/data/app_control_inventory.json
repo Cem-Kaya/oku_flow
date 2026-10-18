@@ -4731,6 +4731,198 @@
         "tests/main_window_tests.cpp"
       ],
       "agentCoverage": "not_yet_implemented_for_expanded_field"
+    },
+    {
+      "fieldId": "image.uct.gpu.detector",
+      "group": "image",
+      "nativePersistence": "shared_saved_immediate",
+      "units": "model_tier",
+      "schema": {
+        "type": "string",
+        "enum": [
+          "tiny",
+          "small",
+          "medium"
+        ]
+      },
+      "native": {
+        "source": "src/app/app_ultra_clear_text.cpp",
+        "handler": "OnUltraClearTextModelsChanged",
+        "widget": "uctGpuDetector",
+        "settingsMember": "ultraClearTextModels.gpuDetector"
+      },
+      "kind": "preference",
+      "permissionDomain": "view",
+      "effects": [
+        "cancel_old_ocr_authority",
+        "asynchronous_backend_reload"
+      ],
+      "availability": "preference; active backend and model readiness reported separately",
+      "mcpAccess": "typed_get_set",
+      "serviceField": "UctGpuDetector",
+      "nativeDefault": "medium",
+      "validation": {
+        "native": "Strict tier enum mapped to native combo data.",
+        "required": [
+          "unknown_field_rejected",
+          "wrong_type_nonfinite_out_of_range_rejected",
+          "native_and_agent_effect_equivalence",
+          "revision_user_wins",
+          "undo_skips_native_changes",
+          "no_privilege_or_grant_widening",
+          "unavailable_has_no_side_effect"
+        ]
+      },
+      "existingTestFiles": [
+        "tests/uct_paddle_tests.cpp",
+        "tests/settings_store_tests.cpp",
+        "tests/native_app_control_fixture.cpp"
+      ],
+      "agentCoverage": "native_offscreen_fixture"
+    },
+    {
+      "fieldId": "image.uct.gpu.recognizer",
+      "group": "image",
+      "nativePersistence": "shared_saved_immediate",
+      "units": "model_tier",
+      "schema": {
+        "type": "string",
+        "enum": [
+          "tiny",
+          "small",
+          "medium"
+        ]
+      },
+      "native": {
+        "source": "src/app/app_ultra_clear_text.cpp",
+        "handler": "OnUltraClearTextModelsChanged",
+        "widget": "uctGpuRecognizer",
+        "settingsMember": "ultraClearTextModels.gpuRecognizer"
+      },
+      "kind": "preference",
+      "permissionDomain": "view",
+      "effects": [
+        "cancel_old_ocr_authority",
+        "asynchronous_backend_reload"
+      ],
+      "availability": "preference; active backend and model readiness reported separately",
+      "mcpAccess": "typed_get_set",
+      "serviceField": "UctGpuRecognizer",
+      "nativeDefault": "medium",
+      "validation": {
+        "native": "Strict tier enum mapped to native combo data.",
+        "required": [
+          "unknown_field_rejected",
+          "wrong_type_nonfinite_out_of_range_rejected",
+          "native_and_agent_effect_equivalence",
+          "revision_user_wins",
+          "undo_skips_native_changes",
+          "no_privilege_or_grant_widening",
+          "unavailable_has_no_side_effect"
+        ]
+      },
+      "existingTestFiles": [
+        "tests/uct_paddle_tests.cpp",
+        "tests/settings_store_tests.cpp",
+        "tests/native_app_control_fixture.cpp"
+      ],
+      "agentCoverage": "native_offscreen_fixture"
+    },
+    {
+      "fieldId": "image.uct.cpu.detector",
+      "group": "image",
+      "nativePersistence": "shared_saved_immediate",
+      "units": "model_tier",
+      "schema": {
+        "type": "string",
+        "enum": [
+          "tiny",
+          "small",
+          "medium"
+        ]
+      },
+      "native": {
+        "source": "src/app/app_ultra_clear_text.cpp",
+        "handler": "OnUltraClearTextModelsChanged",
+        "widget": "uctCpuDetector",
+        "settingsMember": "ultraClearTextModels.cpuDetector"
+      },
+      "kind": "preference",
+      "permissionDomain": "view",
+      "effects": [
+        "cancel_old_ocr_authority",
+        "asynchronous_backend_reload"
+      ],
+      "availability": "preference; active backend and model readiness reported separately",
+      "mcpAccess": "typed_get_set",
+      "serviceField": "UctCpuDetector",
+      "nativeDefault": "tiny",
+      "validation": {
+        "native": "Strict tier enum mapped to native combo data.",
+        "required": [
+          "unknown_field_rejected",
+          "wrong_type_nonfinite_out_of_range_rejected",
+          "native_and_agent_effect_equivalence",
+          "revision_user_wins",
+          "undo_skips_native_changes",
+          "no_privilege_or_grant_widening",
+          "unavailable_has_no_side_effect"
+        ]
+      },
+      "existingTestFiles": [
+        "tests/uct_paddle_tests.cpp",
+        "tests/settings_store_tests.cpp",
+        "tests/native_app_control_fixture.cpp"
+      ],
+      "agentCoverage": "native_offscreen_fixture"
+    },
+    {
+      "fieldId": "image.uct.cpu.recognizer",
+      "group": "image",
+      "nativePersistence": "shared_saved_immediate",
+      "units": "model_tier",
+      "schema": {
+        "type": "string",
+        "enum": [
+          "tiny",
+          "small",
+          "medium"
+        ]
+      },
+      "native": {
+        "source": "src/app/app_ultra_clear_text.cpp",
+        "handler": "OnUltraClearTextModelsChanged",
+        "widget": "uctCpuRecognizer",
+        "settingsMember": "ultraClearTextModels.cpuRecognizer"
+      },
+      "kind": "preference",
+      "permissionDomain": "view",
+      "effects": [
+        "cancel_old_ocr_authority",
+        "asynchronous_backend_reload"
+      ],
+      "availability": "preference; active backend and model readiness reported separately",
+      "mcpAccess": "typed_get_set",
+      "serviceField": "UctCpuRecognizer",
+      "nativeDefault": "small",
+      "validation": {
+        "native": "Strict tier enum mapped to native combo data.",
+        "required": [
+          "unknown_field_rejected",
+          "wrong_type_nonfinite_out_of_range_rejected",
+          "native_and_agent_effect_equivalence",
+          "revision_user_wins",
+          "undo_skips_native_changes",
+          "no_privilege_or_grant_widening",
+          "unavailable_has_no_side_effect"
+        ]
+      },
+      "existingTestFiles": [
+        "tests/uct_paddle_tests.cpp",
+        "tests/settings_store_tests.cpp",
+        "tests/native_app_control_fixture.cpp"
+      ],
+      "agentCoverage": "native_offscreen_fixture"
     }
   ],
   "protectedControls": [

@@ -50,6 +50,28 @@ private slots:
         Worker worker;
         QCOMPARE(worker.Execute([] { throw std::runtime_error("fixture"); }, 1s), Worker::Result::Threw);
     }
+    void busyWorkerRejectsRatherThanQueueing()
+    {
+        Worker worker;
+        const auto entered = std::make_shared<std::promise<void>>();
+        std::promise<void> release;
+        auto enteredFuture = entered->get_future();
+        const auto wait = release.get_future().share();
+        auto first = std::async(std::launch::async, [&worker, entered, wait] {
+            return worker.Execute([entered, wait] { entered->set_value(); wait.wait(); }, 2s);
+        });
+        const bool started = enteredFuture.wait_for(1s) == std::future_status::ready;
+        const auto queuedTaskRan = std::make_shared<std::atomic_bool>(false);
+        const auto second = started
+            ? worker.Execute([queuedTaskRan] { *queuedTaskRan = true; }, 20ms)
+            : Worker::Result::Threw;
+        release.set_value();
+        const auto completed = first.get();
+        QVERIFY(started);
+        QCOMPARE(second, Worker::Result::Rejected);
+        QCOMPARE(completed, Worker::Result::Completed);
+        QVERIFY(!queuedTaskRan->load());
+    }
 };
 QTEST_APPLESS_MAIN(DeadlineWorkerTests)
 #include "deadline_worker_tests.moc"

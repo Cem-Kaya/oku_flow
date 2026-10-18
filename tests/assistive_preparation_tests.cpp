@@ -299,7 +299,7 @@ private slots:
         QVERIFY(!QFileInfo::exists(fixture.directory.path()+"/launch.json"));
         QCOMPARE(runtime.ChatSession().Snapshot(),before);QVERIFY(runtime.notesFilePath().isEmpty());
     }
-    void ordinaryCodexLaunchDoesNotAcquireScopedProfile() {
+    void ordinaryCodexLaunchUsesConstrainedProfile() {
         CodexFixture fixture("explain-threads");auto cfg=fixture.ScopedConfig();
         qputenv("OKUFLOW_FAKE_SCENE_EXPECT_RESTRICTED","0");
         okuflow::CodexAppServerClient client;
@@ -309,7 +309,10 @@ private slots:
         client.RequestVisionTurn("Describe",path,{},false);
         QTRY_COMPARE_WITH_TIMEOUT(finished.size(),1,5000);QVERIFY(finished.first().at(3).toString().isEmpty());
         QFile proof(fixture.directory.path()+"/launch.json");QVERIFY(proof.open(QIODevice::ReadOnly));
-        QCOMPARE(QJsonDocument::fromJson(proof.readAll()).array(),QJsonArray({"app-server","--listen","stdio://"}));
+        const auto args=QJsonDocument::fromJson(proof.readAll()).array();
+        QVERIFY(args.contains("shell_tool"));QVERIFY(args.contains("view_image"));
+        QVERIFY(args.contains("sandbox_mode=\"read-only\""));
+        QVERIFY(args.contains("mcp_servers.fixture-private.enabled=false"));
     }
 
     void sharedExplainHttpFollowupReadAndNotesOwnership()
@@ -446,6 +449,51 @@ private slots:
         QVERIFY(runtime.ChatSession().BackendThread(okuflow::ChatBackendKind::Agent).isEmpty());
         QVERIFY(runtime.ChatSession().BackendThread(okuflow::ChatBackendKind::Explain).isEmpty());
     }
+    void nonCodingChildIsConfinedBeforeAnyTurnNotification()
+    {
+        CodexFixture fixture("vision-happy");QVERIFY(fixture.directory.isValid());
+        const auto path=fixture.directory.filePath("launches.jsonl");
+        const auto old=qgetenv("OKUFLOW_FAKE_CODEX_LAUNCH_LOG");
+        const auto cleanup=qScopeGuard([&] {if(old.isNull())qunsetenv("OKUFLOW_FAKE_CODEX_LAUNCH_LOG");else qputenv("OKUFLOW_FAKE_CODEX_LAUNCH_LOG",old);});
+        qputenv("OKUFLOW_FAKE_CODEX_LAUNCH_LOG",path.toLocal8Bit());
+        okuflow::CodexAppServerClient client;
+        client.Configure(QCoreApplication::applicationDirPath()+"/fake_codex_app_server.exe",{},{},{},false,false,{});
+        QSignalSpy finished(&client,&okuflow::CodexAppServerClient::TurnFinished);
+        client.RequestVisionTurn("Describe",{}, {},false);
+        QTRY_COMPARE(finished.size(),1);
+        QFile log(path);QVERIFY(log.open(QIODevice::ReadOnly));
+        const auto args=QJsonDocument::fromJson(log.readLine()).array();
+        const auto has=[&](const char* value) {return args.contains(QString::fromLatin1(value));};
+        for(const auto* capability:{"shell_tool","code_mode","view_image","apps","plugins","computer_use","hooks"})QVERIFY2(has(capability),capability);
+        QVERIFY(has("sandbox_mode=\"read-only\""));QVERIFY(has("web_search=\"disabled\""));
+        QVERIFY(has("mcp_servers.fixture-private.enabled=false"));
+    }
+    void codingToVisionAndInternetChangesReplaceTheChildProfile()
+    {
+        CodexFixture fixture("vision-happy");QVERIFY(fixture.directory.isValid());
+        const auto path=fixture.directory.filePath("launches.jsonl");
+        const auto old=qgetenv("OKUFLOW_FAKE_CODEX_LAUNCH_LOG");
+        const auto cleanup=qScopeGuard([&] {if(old.isNull())qunsetenv("OKUFLOW_FAKE_CODEX_LAUNCH_LOG");else qputenv("OKUFLOW_FAKE_CODEX_LAUNCH_LOG",old);});
+        qputenv("OKUFLOW_FAKE_CODEX_LAUNCH_LOG",path.toLocal8Bit());
+        const auto executable=QCoreApplication::applicationDirPath()+"/fake_codex_app_server.exe";
+        okuflow::CodexAppServerClient client;
+        client.Configure(executable,{},{},{},true,true,fixture.directory.path());
+        QSignalSpy finished(&client,&okuflow::CodexAppServerClient::TurnFinished);
+        client.RequestVisionTurn("Coding question",{},{},true);QTRY_COMPARE(finished.size(),1);
+        client.RequestVisionTurn("Read",{},{},false);QTRY_COMPARE(finished.size(),2);
+        client.Configure(executable,{},{},{},true,false,{});
+        client.RequestVisionTurn("Internet question",{},{},true);QTRY_COMPARE(finished.size(),3);
+        client.Configure(executable,{},{},{},false,false,{});
+        client.RequestVisionTurn("Offline question",{},{},true);QTRY_COMPARE(finished.size(),4);
+        QFile log(path);QVERIFY(log.open(QIODevice::ReadOnly));QList<QJsonArray> launches;
+        while(!log.atEnd())launches.append(QJsonDocument::fromJson(log.readLine()).array());
+        QCOMPARE(launches.size(),4);
+        QVERIFY(!launches[0].contains("shell_tool"));
+        for(int index=1;index<launches.size();++index)QVERIFY(launches[index].contains("shell_tool"));
+        QVERIFY(launches[1].contains("web_search=\"disabled\""));
+        QVERIFY(launches[2].contains("web_search=\"live\""));
+        QVERIFY(launches[3].contains("web_search=\"disabled\""));
+    }
     void explainTextFollowupRetainsThreadWithoutCodingPermissions()
     {
         CodexFixture fixture("explain-threads"); QVERIFY(fixture.directory.isValid());
@@ -487,19 +535,22 @@ private slots:
         QCOMPARE(runtime.ChatSession().Snapshot()["kind"].toString(),"explain");
         runtime.FailPreparedChat("fixture canceled");
     }
-    void ordinaryPermissionMaskCannotWidenWhileOpening()
+    void ordinaryPermissionChangeRetiresOpeningTurnWithoutWidening()
     {
-        CodexFixture fixture("explain-threads"); QVERIFY(fixture.directory.isValid());
+        CodexFixture fixture("permission-mask"); QVERIFY(fixture.directory.isValid());
         const auto config=fixture.Config(); okuflow::CodexAppServerClient client;
         client.Configure(config.codexExecutablePath,{},{},{},false,false,fixture.directory.path());
         QSignalSpy finished(&client,&okuflow::CodexAppServerClient::TurnFinished);
         QSignalSpy created(&client,&okuflow::CodexAppServerClient::ConversationCreated);
         client.RequestVisionTurn("Text-only follow-up",{}, {},true,false,true);
         // No event dispatch has occurred: the admitted request is still opening.
-        client.Configure(config.codexExecutablePath,{},{},{},true,true,fixture.directory.path());
+        client.Configure(config.codexExecutablePath,{},{},{},false,true,fixture.directory.path());
         QTRY_COMPARE_WITH_TIMEOUT(finished.size(),1,5000);
-        QCOMPARE(finished.first()[3].toString(),QString());
-        QCOMPARE(created.size(),1); QCOMPARE(created.first()[0].toJsonObject()["kind"].toString(),"assistant");
+        QVERIFY(finished.first()[4].toBool());QCOMPARE(created.size(),0);
+        client.RequestVisionTurn("Explicit new coding request",{},{},true,false,true);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(),2,5000);
+        QCOMPARE(finished[1][3].toString(),QString());
+        QCOMPARE(created.size(),1);QCOMPARE(created.first()[0].toJsonObject()["kind"].toString(),"coding");
     }
     void codingAndAssistantMasksStartDistinctConversationKinds()
     {

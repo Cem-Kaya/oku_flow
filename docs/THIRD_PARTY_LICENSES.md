@@ -51,6 +51,12 @@ binaries and caches are not added to Windows/Android release inventories.
     dependency; an installation without it can still produce a complete bundle.
   - If you modify Qt itself, those changes must be handled under Qt's licensing terms.
   - Development builds expect the user to provide a local Qt installation.
+  - Hosted checks install the matching `qtmultimedia` source archive alongside
+    the SDK for the bundle preflight's FFmpeg notice. Archive installations
+    can also supply the unchanged `LICENSES/LGPL-3.0-only.txt` from that module
+    when neither the SDK nor Qt's online-installer directory contains the Qt
+    license text. The original bytes are still staged and checked; the source
+    fallback is not permission to omit a notice. This adds no runtime dependency.
 
 ### FFmpeg libraries deployed by Qt Multimedia
 - Upstream: <https://ffmpeg.org/>
@@ -102,7 +108,7 @@ binaries and caches are not added to Windows/Android release inventories.
   release notice staging. No compiler, toolkit archive or new third-party
   implementation is added to the repository or application payload.
 - OkuFlow redistribution scope:
-  - CUDA-enabled builds link `cudart_static` into `oku_flow.exe`
+  - CUDA-enabled builds link `cudart_static` into `OkuFlowApp.exe`
   - no standalone CUDA Toolkit runtime DLLs, headers, compilers, or developer
     tools are copied into release bundles
   - the Toolkit EULA (`EULA.txt` or the newer `LICENSE` filename) from the exact build toolkit is staged as
@@ -133,6 +139,10 @@ binaries and caches are not added to Windows/Android release inventories.
   notice as `licenses/NVIDIA_MAXINE_INTEGRATION_NOTICE.txt`.
 - Required product attribution: `SuperRes powered by NVIDIA Maxine™`.
   This attribution does not imply NVIDIA endorsement.
+- Development lifecycle/navigation fixtures compile first-party fake ABI
+  implementations against these existing MIT headers. Their private helper
+  DLLs contain no NVIDIA runtime/models, are not Maxine image-quality evidence,
+  and must never enter release staging.
 
 ## Lucide Icons
 - Upstream: <https://lucide.dev/>
@@ -146,8 +156,40 @@ binaries and caches are not added to Windows/Android release inventories.
 - Attribution: retain the local license file in source and the third-party
   notice in redistributed builds as `licenses/LUCIDE_LICENSE.txt`
 
+## Optional experimental PaddleOCR component (2026-10-18)
+
+PP-OCRv6 tiny, small and medium detection and recognition ONNX weights, configuration and
+original model cards come from PaddlePaddle under Apache-2.0. Exact repository
+revisions and hashes are in `scripts/uct/pins.json`. The unchanged upstream
+license is retained in `third_party/paddleocr/LICENSE` and staged as
+`MODEL_LICENSES.txt`. The dictionary is part of the pinned configuration.
+First-party CPU/CUDA DB region extraction and CTC decoding do not add OpenCV,
+pyclipper, Python or PaddlePaddle to the application.
+
+ONNX Runtime CPU 1.31.0 uses MIT and its complete retained third-party terms.
+Preparation verifies the official Microsoft archive and DLL hashes, retaining
+`LICENSE`, `ThirdPartyNotices.txt` and `Privacy.md` with `onnxruntime.dll`.
+This is separate from the website dependency; no ONNX CUDA/cuDNN is added.
+
+TensorRT SDK 11.4.0.106 for CUDA 12.9 is optional and externally installed
+under LocalAppData. Its archive is pinned; headers are Apache-2.0, while the
+runtime remains governed by the [versioned NVIDIA SDK agreement](https://docs.nvidia.com/deeplearning/tensorrt/11.4.0/reference/sla.html).
+Its original `doc/Acknowledgements.txt` stays with that installation. OkuFlow's
+GPL section-7 NVIDIA exception does not waive NVIDIA redistribution terms.
+The preparation command installs it only with `-TensorRT`; the application
+does not download it. No TensorRT files or model weights are silently added
+to an installer. Public inclusion needs a reviewed inventory, notices and
+SBOM entries; private development acceptance does not establish that gate.
+
 ## Microsoft Platform Components
+
 - APIs used: Media Foundation, Direct3D 12, DXGI, Windows Imaging Component, and other Windows SDK libraries
+- Ultra Clear Text (experimental) calls the built-in `Windows.Media.Ocr`
+  engine through C++/WinRT projection headers from the Windows SDK and links
+  `windowsapp.lib`. The OCR engine and its language data are Windows
+  components on the user's machine; the Windows fallback redistributes no
+  Windows OCR model or language pack and copies no C++/WinRT source into the
+  repository. C++/WinRT headers are used as provided by the installed SDK.
 - License source: Windows SDK / Visual Studio / OS redistribution terms
 - Notes: these platform APIs are not copied into the repository as standalone
   third-party source code. When `windeployqt` stages `D3Dcompiler_47.dll`, the
@@ -274,6 +316,12 @@ MIT header snapshot. It does not add a link-time or redistribution dependency
 on the proprietary runtime.
 
 ## Optional External Tools And Services
+- MSI tooling executes the WiX apphost directly from the already reviewed
+  4.0.6 NuGet archive after complete extracted-tree byte verification. No
+  separately resolved NuGet tool, new WiX version or shipped component is
+  introduced. CUDA metadata and notice staging use CMake's effective compiler
+  and linked static runtime facts; the selected toolkit's exact license bytes
+  must match the configured manifest.
 - WiX Toolset 4.0.6 is a developer-only MSI compiler under MS-RL, pinned by
   NuGet SHA-256 in `scripts/windows-installer/tools.json`. The unmodified exact
   upstream license is retained as `scripts/windows-installer/WIX_LICENSE.txt`;
@@ -354,3 +402,6 @@ MIT/ISC/BSD development-only dependencies. Install this fixture outside the
 checkout with lifecycle scripts disabled. It is never bundled into OkuFlow,
 Android artifacts or installer payloads. Passing it proves interoperability
 with a private synthetic application, not a live provider or camera.
+
+The original PaddleOCR Apache license is marked `-text` in `.gitattributes`,
+so Windows checkout conversion cannot alter the reviewed upstream bytes.

@@ -1,5 +1,27 @@
 # Windows installers, signing and updates
 
+## Exact package and CUDA provenance (audit RB-001/RB-002)
+
+MSI authoring and extraction execute WiX's own apphost from the SHA-256-pinned
+4.0.6 NuGet archive. The shared resolver checks every extracted file against
+that archive before invocation, rejecting changed files and added dependencies.
+It does not resolve a second copy through NuGet feeds or reuse an installed
+shim. Package/version/license pins and the developer-only distribution scope
+remain unchanged; the MSI receipt records package and apphost hashes.
+
+Release metadata requires a configured build directory containing
+`okuflow-build-facts/Release.json`. CMake emits this from the actual application
+target, compiler, linked static CUDA runtime and architecture list. Packaging
+checks cache/configuration, the successful post-build facts/executable seal and
+target-byte agreement, and stages the exact toolkit notice identified there.
+Reconfiguring without rebuilding cannot relabel an existing executable. The
+controlled signing step refreshes the seal after signing succeeds; standalone
+metadata never refreshes it. CPU-only metadata omits CUDA packages even
+when the caller has CUDA environment variables; an inconsistent `-CudaEnabled`
+assertion is refused. Older build trees need reconfiguration and a successful
+application build. These checks do
+not establish GPU, driver, installer-guest or public-release acceptance.
+
 ## Published channels (2026-10-14)
 
 [GitHub v0.2.5](https://github.com/Cem-Kaya/oku_flow/releases/tag/v0.2.5)

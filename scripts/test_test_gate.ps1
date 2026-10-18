@@ -17,7 +17,7 @@ function Assert-Contract([bool]$Condition, [string]$Message) {
 }
 
 function Invoke-Gate([string[]]$Options, [int]$Expected, [string]$Contains) {
-    $output = & pwsh -NoProfile -File $runner -BuildDirectory (Join-Path $root 'build') @Options 2>&1
+    $output = & "$PSHOME/pwsh.exe" -NoProfile -File $runner -BuildDirectory (Join-Path $root 'build') @Options 2>&1
     $actual = $LASTEXITCODE
     $text = $output -join "`n"
     $script:lastOutput = $text
@@ -55,6 +55,25 @@ try {
     foreach ($definition in $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
         . ([scriptblock]::Create($definition.Extent.Text))
     }
+    $requirements = @{ tests = @('required'); labels = @('gui') }
+    $inventory = @(@{ name = 'required'; properties = @() },
+        @{ name = 'native'; properties = @(@{ name = 'LABELS'; value = @('gui') }) })
+    foreach ($status in 'Skipped', 'PassedWithSkips', 'Interrupted', 'Unfinished', 'Failed') {
+        $records = @{ required = @{ status = $status }; native = @{ status = 'Passed' } }
+        $verdict = Get-CapabilityVerdict $requirements $inventory $records @('required', 'native')
+        Assert-Contract ($verdict.state -in 'Failed', 'Blocked') "Required capability accepted $status."
+        Assert-Contract ($records.required.status -eq $status) 'Capability verdict rewrote original CTest evidence.'
+    }
+    $records = @{ required = @{ status = 'Passed' }; native = @{ status = 'Passed' } }
+    Assert-Contract ((Get-CapabilityVerdict $requirements $inventory $records @('required', 'native')).state -eq 'Passed') 'Complete required-capability evidence did not pass.'
+    Assert-Contract ((Get-CapabilityVerdict $requirements $inventory $records @('required')).state -eq 'Blocked') 'An unselected GUI pass was reused without fingerprinting.'
+    Assert-Contract ((Get-CapabilityVerdict $requirements @($inventory[0]) $records @('required')).state -eq 'Blocked') 'Absent GUI inventory accepted.'
+    Assert-Contract ((Get-CapabilityVerdict $requirements $inventory @{} @('required', 'native')).state -eq 'Blocked') 'Missing capability evidence accepted.'
+    Assert-Contract ((Get-CapabilityVerdict (Get-CapabilityRequirements 'development') $inventory @{} @()).state -eq 'NotApplicable') 'Development was represented as release acceptance.'
+    [xml]$truncated = '<testsuite><testcase status="run"><system-out>PASS : Fixture::early()
+[This part of the test output was removed since it exceeds the threshold of 1048576 bytes.]
+</system-out></testcase></testsuite>'
+    Assert-Contract ((Get-CaseResult $truncated.testsuite.testcase) -eq 'Unfinished') 'Truncated passing output was accepted as complete coverage.'
     $cachePath = Join-Path $root 'unit-hash-cache.json'
     $hashFile = Join-Path $root 'hash-input.bin'
     [IO.File]::WriteAllText($hashFile, 'abcd')
@@ -68,26 +87,65 @@ try {
     $parts = [ordered]@{}
     Add-FileDigest $parts $hashFile
     $initialHash = $parts["file:$hashFile"]
+    Add-FileDigest $parts $hashFile
+    Assert-Contract ($script:hashCalls -eq 1) 'Repeated input in one fingerprint pass was not deduplicated.'
     Save-HashCache
     Initialize-HashCache $cachePath
     Add-FileDigest $parts $hashFile
-    Assert-Contract ($script:hashCalls -eq 1 -and $parts["file:$hashFile"] -eq $initialHash) 'Persistent hash cache did not reuse SHA256.'
+    Assert-Contract ($script:hashCalls -eq 2 -and $parts["file:$hashFile"] -eq $initialHash) 'New fingerprint pass trusted a persisted metadata-only digest.'
+    $time = (Get-Item -LiteralPath $hashFile).LastWriteTimeUtc
+    [IO.File]::WriteAllText($hashFile, 'wxyz')
+    [IO.File]::SetLastWriteTimeUtc($hashFile, $time)
+    Save-HashCache
+    Initialize-HashCache $cachePath
+    Add-FileDigest $parts $hashFile
+    Assert-Contract ($script:hashCalls -eq 3 -and $parts["file:$hashFile"] -ne $initialHash) 'Same-length bytes with restored timestamp reused passing evidence.'
+    $initialHash = $parts["file:$hashFile"]
     $time = (Get-Item -LiteralPath $hashFile).LastWriteTimeUtc
     [IO.File]::WriteAllText($hashFile, 'efgh')
     [IO.File]::SetLastWriteTimeUtc($hashFile, $time.AddSeconds(2))
     Add-FileDigest $parts $hashFile
-    Assert-Contract ($script:hashCalls -eq 2 -and $parts["file:$hashFile"] -ne $initialHash) 'Same-length mtime change did not invalidate hash cache.'
+    Assert-Contract ($script:hashCalls -eq 4 -and $parts["file:$hashFile"] -ne $initialHash) 'Same-length mtime change did not invalidate hash cache.'
     $time = (Get-Item -LiteralPath $hashFile).LastWriteTimeUtc
     $previousHash = $parts["file:$hashFile"]
     [IO.File]::WriteAllText($hashFile, 'longer content')
     [IO.File]::SetLastWriteTimeUtc($hashFile, $time)
     Add-FileDigest $parts $hashFile
-    Assert-Contract ($script:hashCalls -eq 3 -and $parts["file:$hashFile"] -ne $previousHash) 'Length change with unchanged mtime did not invalidate hash cache.'
+    Assert-Contract ($script:hashCalls -eq 5 -and $parts["file:$hashFile"] -ne $previousHash) 'Length change with unchanged mtime did not invalidate hash cache.'
     Remove-Item -LiteralPath $hashFile
     Add-FileDigest $parts $hashFile
     Assert-Contract ($parts["file:$hashFile"] -eq 'MISSING' -and !$script:hashCache.ContainsKey($hashFile)) 'Missing file reused cached hash.'
     Remove-Item Function:\Get-FileHash
-    Write-Host 'PASS: persistent hash cache reused SHA256 and invalidated mtime/length changes.'
+    Write-Host 'PASS: fingerprint passes hash exact bytes afresh, including restored metadata; duplicate inputs are deduplicated within one pass.'
+
+    # Resolve a cached launch alias to the readable image, as both production
+    # CMake consumers must do before evidence tries to hash the interpreter.
+    $powershellModule = (Join-Path (Split-Path $PSScriptRoot -Parent) 'cmake/PowerShell.cmake').Replace('\', '/')
+    $requestedPowerShell = (Get-Command pwsh.exe).Source.Replace('\', '/')
+    $resolveScript = Join-Path $root 'resolve-powershell.cmake'
+    @"
+include("$powershellModule")
+set(TEST_PWSH "$requestedPowerShell" CACHE FILEPATH "" FORCE)
+okuflow_find_powershell(TEST_PWSH)
+get_property(launcher CACHE TEST_PWSH PROPERTY VALUE)
+if(NOT launcher STREQUAL "$requestedPowerShell")
+    message(FATAL_ERROR "Discovery replaced the stable launcher cache")
+endif()
+file(SHA256 "`${TEST_PWSH}" image_hash)
+file(WRITE "$($root.Replace('\', '/'))/resolved-powershell.txt" "`${TEST_PWSH}")
+unset(TEST_PWSH)
+set(TEST_PWSH "$($root.Replace('\', '/'))/removed-store-version/pwsh.exe" CACHE FILEPATH "" FORCE)
+okuflow_find_powershell(TEST_PWSH)
+file(SHA256 "`${TEST_PWSH}" rediscovered_hash)
+if(NOT image_hash STREQUAL rediscovered_hash)
+    message(FATAL_ERROR "Stale launcher rediscovery changed the interpreter")
+endif()
+"@ | Set-Content -LiteralPath $resolveScript
+    & $CMake -P $resolveScript *> (Join-Path $root 'resolve-powershell.log')
+    Assert-Contract ($LASTEXITCODE -eq 0) 'Cached PowerShell alias did not resolve to a hashable interpreter.'
+    $resolvedPowerShell = Get-Content -LiteralPath (Join-Path $root 'resolved-powershell.txt') -Raw
+    Assert-Contract ((Get-FileHash -LiteralPath $resolvedPowerShell -Algorithm SHA256).Hash -eq
+        (Get-FileHash -LiteralPath "$PSHOME/pwsh.exe" -Algorithm SHA256).Hash) 'PowerShell discovery changed the interpreter.'
 
     # Representative pre-change layout: 92 tests, 12 distinct fingerprints
     # each, 500 common DLL/runtime keys. Preserve all compact attempt records.
@@ -162,11 +220,25 @@ param([string]$Case, [Parameter(ValueFromRemainingArguments)][string[]]$Remainin
 $countFile = Join-Path $PSScriptRoot "$Case.count"
 $count = if (Test-Path $countFile) { [int](Get-Content $countFile) + 1 } else { 1 }
 Set-Content $countFile $count
+if ($Case -eq 'prerequisite' -and !(Test-Path (Join-Path $PSScriptRoot 'prerequisite.restored'))) {
+    Write-Output 'FAIL! : Fixture::prerequisite() missing external prerequisite'
+    exit 1
+}
 if ($Case -eq 'mutate') {
-    Set-Content (Join-Path $PSScriptRoot 'data.json') 'changed during execution'
+    $path = Join-Path $PSScriptRoot 'data.json'
+    $time = (Get-Item -LiteralPath $path).LastWriteTimeUtc
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $bytes[0] = $bytes[0] -bxor 1
+    [IO.File]::WriteAllBytes($path, $bytes)
+    [IO.File]::SetLastWriteTimeUtc($path, $time)
 }
 if ($Case -eq 'runtime_mutate') {
-    Set-Content (Join-Path $PSScriptRoot 'qt/bin/runtime.dll') 'changed during execution'
+    $path = Join-Path $PSScriptRoot 'qt/bin/runtime.dll'
+    $time = (Get-Item -LiteralPath $path).LastWriteTimeUtc
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $bytes[0] = $bytes[0] -bxor 1
+    [IO.File]::WriteAllBytes($path, $bytes)
+    [IO.File]::SetLastWriteTimeUtc($path, $time)
 }
 if ($Case -eq 'inventory_mutate') {
     Add-Content (Join-Path $PSScriptRoot 'build/CTestTestfile.cmake') 'add_test(fixture_late "cmd.exe" "/c" "exit 0")'
@@ -207,6 +279,7 @@ if ($Case -eq 'mixed') {
     exit 2
 }
 if ($Case -eq 'optional') {
+    1..40 | ForEach-Object { Write-Output ('PASS   : Fixture::diagnostic() ' + ('x' * 100)) }
     Write-Output 'SKIP   : Fixture::optional() unavailable optional fixture'
     exit 0
 }
@@ -220,11 +293,13 @@ Write-Output 'Totals: 1 passed, 0 failed, 0 skipped, 0 blacklisted'
 cmake_minimum_required(VERSION 3.23)
 project(GateContract NONE)
 enable_testing()
-find_program(PWSH pwsh REQUIRED)
+include("@POWERSHELL_MODULE@")
+okuflow_find_powershell(PWSH)
 # Absent GUI executable is inventory only, and can never execute in this suite.
 add_test(NAME fixture_gui COMMAND "${CMAKE_SOURCE_DIR}/never-run-gui.exe")
 set_tests_properties(fixture_gui PROPERTIES LABELS "gui")
 '@
+    $header = $header.Replace('@POWERSHELL_MODULE@', $powershellModule)
     $cmakeText = $header + @'
 
 foreach(case pass interrupted assertion mixed optional skipped)
@@ -237,6 +312,25 @@ endforeach()
 add_test(NAME fixture_absent COMMAND "${CMAKE_SOURCE_DIR}/absent.exe")
 '@)
     Invoke-Gate -Options @('-Test', 'fixture_pass') -Expected 0 -Contains 'SCOPED PASS: 1 of 8 tests (fixture_pass)'
+    # The batch's bookkeeping changes between the CPU and CUDA gates. Derive
+    # its actual variable names, then exercise the real child gate so its
+    # persisted fingerprint proves whether a pass would be repeated.
+    $batch = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'agent_build.bat') -Raw
+    $bookkeeping = @([regex]::Matches($batch, 'set "([A-Z_]*CUDA_(?:RESULT|SCOPE|SELECTION))=') |
+        ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    Assert-Contract ($bookkeeping.Count -eq 3) 'CUDA gate bookkeeping inventory is incomplete.'
+    $saved = @{}
+    try {
+        foreach ($name in $bookkeeping) {
+            $saved[$name] = [Environment]::GetEnvironmentVariable($name)
+            [Environment]::SetEnvironmentVariable($name, 'second gate state')
+        }
+        Invoke-Gate -Options @('-Test', 'fixture_pass', '-Resume') -Expected 0
+        Assert-Contract ((Get-Content (Join-Path $root 'pass.count')) -eq '1') 'Batch bookkeeping repeated a passing test.'
+    } finally {
+        foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) }
+    }
+    Write-Host 'PASS: batch bookkeeping changes do not repeat matching evidence.'
     Invoke-Gate -Options @('-Label', 'unknown') -Expected 1 -Contains 'Unknown CTest label'
     Invoke-Gate -Options @('-Test', 'Fixture_pass') -Expected 1 -Contains 'Unknown exact test name'
     Invoke-Gate -Options @('-Select', 'not-a-selection') -Expected 1 -Contains 'Unknown test or label'
@@ -275,6 +369,18 @@ add_test(NAME fixture_absent COMMAND "${CMAKE_SOURCE_DIR}/absent.exe")
     Assert-Contract ((Get-Content (Join-Path $root 'assertion.count')) -eq '1') 'Pruning caused a matching failed test to rerun.'
     Assert-Contract ($ledger.results.fixture_assertion.shared -and !$ledger.results.fixture_assertion.inputs.Contains('platform')) 'Legacy failure inputs were not deduplicated.'
     Write-Host 'PASS: matching legacy Failed evidence still blocks after pruning and migration.'
+    $env:QT_SCALE_FACTOR = '1.619'
+    Invoke-Gate -Options @('-Test', 'fixture_assertion', '-Resume') -Expected 1 -Contains 'Resume inputs changed for unresolved test: fixture_assertion'
+    Assert-Contract ((Get-Content (Join-Path $root 'assertion.count')) -eq '1') 'Changed resume inputs retried an unresolved assertion.'
+    $ledger = Read-Ledger
+    $savedResult = $ledger.results.fixture_assertion
+    $ledger.results.fixture_assertion = @{ fingerprint = $savedResult.fingerprint; status = 'Failed'; inputs = @{}; blockerOnly = $true }
+    Save-Ledger $ledger $ledgerPath
+    Invoke-Gate -Options @('-Test', 'fixture_assertion', '-Resume') -Expected 1 -Contains 'prior shared inputs unavailable'
+    Assert-Contract ((Get-Content (Join-Path $root 'assertion.count')) -eq '1') 'A compact blocker with unknown runtime was retried.'
+    $ledger.results.fixture_assertion = $savedResult
+    Save-Ledger $ledger $ledgerPath
+    $env:QT_SCALE_FACTOR = $originalScale
     Invoke-Gate -Options @('-ExcludeGui', '-Resume', '-RetryInterrupted', 'fixture_assertion') -Expected 1 -Contains 'Only a recorded desktop interruption'
     Invoke-Gate -Options @('-ExcludeGui', '-Resume', '-RetryInterrupted', 'fixture_mixed') -Expected 1 -Contains 'Only a recorded desktop interruption'
     Invoke-Gate -Options @('-ExcludeGui', '-Resume', '-RetryInterrupted', 'fixture_interrupted') -Expected 1
@@ -297,11 +403,49 @@ add_test(NAME fixture_absent COMMAND "${CMAKE_SOURCE_DIR}/absent.exe")
     $env:QT_SCALE_FACTOR = $originalScale
     $repaired = $fixture.Replace("if (`$Case -eq 'assertion')", 'if ($false)').Replace("if (`$Case -eq 'mixed')", 'if ($false)')
     Set-Content -LiteralPath (Join-Path $root 'fixture.ps1') -Value $repaired
+    Invoke-Gate -Options @('-Test', 'fixture_assertion', '-Resume') -Expected 0
+    Assert-Contract ((Get-Content (Join-Path $root 'assertion.count')) -eq '2') 'Repaired per-test inputs did not resume under the same shared runtime.'
     Invoke-Gate -Options @('-ExcludeGui') -Expected 0 -Contains '0 unresolved'
     Invoke-Gate -Options @('-ExcludeGui', '-Resume') -Expected 0 -Contains '0 unresolved'
     Assert-Contract ((Get-Content (Join-Path $root 'pass.count')) -eq '3') 'Successful resume repeated a pass.'
     $raw = Get-Content -LiteralPath (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'OkuFlow/test-evidence') -Recurse -Filter 'ledger-v2.json')[0].FullName -Raw
     Assert-Contract (!$raw.Contains($env:OKUFLOW_GATE_CONTRACT_SECRET)) 'Secret environment value was persisted.'
+    # An external prerequisite can be repaired without changing a test's bytes.
+    # Normal fresh/resume gates must still block; only an audited recheck runs it.
+    Configure-Fixture ($header + @'
+
+add_test(NAME fixture_prerequisite COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case prerequisite)
+add_test(NAME fixture_pass COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case pass)
+'@)
+    Invoke-Gate -Options @('-ExcludeGui') -Expected 1
+    $failedPrerequisite = (Read-Ledger).results.fixture_prerequisite
+    $passCount = Get-Content (Join-Path $root 'pass.count')
+    Set-Content (Join-Path $root 'prerequisite.restored') 'original prerequisite restored'
+    Invoke-Gate -Options @('-Test', 'fixture_prerequisite') -Expected 1
+    Assert-Contract ((Get-Content (Join-Path $root 'prerequisite.count')) -eq '1') 'Ordinary fresh gate retried unchanged failed inputs.'
+    Invoke-Gate -Options @('-Resume', '-RecheckAfterRepair', 'Restored the missing external prerequisite.') -Expected 1 -Contains 'cannot combine'
+    Invoke-Gate -Options @('-ExcludeGui', '-RecheckAfterRepair', 'Restored the missing external prerequisite.') -Expected 1 -Contains 'requires exact -Test'
+    Invoke-Gate -Options @('-Test', 'fixture_pass', '-RecheckAfterRepair', 'Restored the missing external prerequisite.') -Expected 1 -Contains 'Only a recorded'
+    Invoke-Gate -Options @('-Test', 'fixture_prerequisite', '-RecheckAfterRepair', 'Restored the missing external prerequisite.') -Expected 0 -Contains 'Passed after diagnosed-repair recheck'
+    $rechecked = Read-Ledger
+    $repairAttempt = $rechecked.attempts[-1]
+    Assert-Contract ((Get-Content (Join-Path $root 'prerequisite.count')) -eq '2') 'Explicit repaired-prerequisite recheck did not execute once.'
+    Assert-Contract ((Get-Content (Join-Path $root 'pass.count')) -eq $passCount) 'Recheck unnecessarily repeated a matching pass.'
+    Assert-Contract ($repairAttempt.repairReason -eq 'Restored the missing external prerequisite.') 'Repair diagnosis was not retained.'
+    Assert-Contract ($repairAttempt.priorBlockers.fixture_prerequisite.attempt -eq $failedPrerequisite.attempt) 'Original blocking attempt was not recorded.'
+    Assert-Contract ($rechecked.results.fixture_prerequisite.repairRecheckOf -eq $failedPrerequisite.attempt) 'Per-case repair identity missing.'
+    Assert-Contract ($rechecked.capabilityChecks[-1].repairRechecks.fixture_prerequisite.reason -eq $repairAttempt.repairReason) 'Capability evidence hid repair provenance.'
+    $oldAttempt = $rechecked.attempts | Where-Object id -eq $failedPrerequisite.attempt
+    Assert-Contract ((Test-Path $oldAttempt.log) -and (Test-Path $oldAttempt.junit)) 'Recheck removed original failed evidence.'
+    Configure-Fixture ($header + @'
+
+add_test(NAME fixture_repair_fails COMMAND "cmd.exe" /c "exit 1")
+'@)
+    Invoke-Gate -Options @('-Test', 'fixture_repair_fails') -Expected 1
+    Invoke-Gate -Options @('-Test', 'fixture_repair_fails', '-RecheckAfterRepair', 'Fixture simulates a diagnosed repair that still fails.') -Expected 1
+    $failedRepairAttempt = (Read-Ledger).results.fixture_repair_fails.attempt
+    Invoke-Gate -Options @('-Test', 'fixture_repair_fails', '-RecheckAfterRepair', 'Fixture simulates a second attempt at the same repair.') -Expected 1 -Contains 'Already rechecked'
+    Assert-Contract ((Read-Ledger).results.fixture_repair_fails.attempt -eq $failedRepairAttempt) 'Unchanged failing repair was automatically repeated.'
     # Independent executable fingerprints: changing B cannot rerun A.
     foreach ($name in 'a', 'b') { Copy-Item -LiteralPath $CMake -Destination (Join-Path $root "$name.exe") }
     Configure-Fixture ($header + @'
@@ -433,6 +577,32 @@ add_test(NAME fixture_full COMMAND "${CMAKE_COMMAND}" -E echo full)
 '@
     Invoke-Gate -Options @() -Expected 0 -Contains 'Gate: 1 passed (0 with skipped Qt rows), 0 skipped, 0 unresolved.'
     Assert-Contract ($lastOutput -notmatch 'SCOPED |PARTIAL VALIDATION') 'Full gate was mislabeled scoped or partial.'
+    # Required kernel capability fixtures are private command-line cases, never
+    # native GPU/GUI programs. Exercise actual runner exit and persisted verdict.
+    $kernelRequirements = Get-CapabilityRequirements 'windows-cuda-kernels'
+    foreach ($mode in 'skipped', 'optional', 'pass') {
+        $capabilityFixture = @'
+cmake_minimum_required(VERSION 3.23)
+project(GateContract NONE)
+enable_testing()
+set(OKUFLOW_ENABLE_CUDA ON CACHE BOOL "fixture" FORCE)
+'@
+        $pwshPath = "$PSHOME/pwsh.exe".Replace('\', '/')
+        $fixturePath = "$root/fixture.ps1".Replace('\', '/')
+        foreach ($name in $kernelRequirements.tests) {
+            $case = if ($name -eq 'yuv_color_conversion_cuda') { $mode } else { 'pass' }
+            $capabilityFixture += "`nadd_test(NAME $name COMMAND `"$pwshPath`" -NoProfile -File `"$fixturePath`" -Case $case)`nset_tests_properties($name PROPERTIES LABELS `"gpu`" SKIP_RETURN_CODE 77)`n"
+        }
+        Configure-Fixture $capabilityFixture
+        $expected = if ($mode -eq 'pass') { 0 } else { 1 }
+        $state = if ($mode -eq 'pass') { 'Passed' } else { 'Blocked' }
+        Invoke-Gate -Options @('-CapabilityProfile', 'windows-cuda-kernels') -Expected $expected -Contains "Capabilities (windows-cuda-kernels): $state"
+        $ledger = Read-Ledger
+        Assert-Contract ($ledger.capabilityChecks[-1].state -eq $state) 'Capability verdict missing from ledger.'
+        Assert-Contract ($ledger.capabilityChecks[-1].evidence.yuv_color_conversion_cuda -eq $ledger.results.yuv_color_conversion_cuda.fingerprint) 'Capability acceptance detached from exact case bytes.'
+    }
+    Invoke-Gate -Options @('-CapabilityProfile', 'windows-cpu') -Expected 1 -Contains 'disagrees with the configured CUDA build'
+    Invoke-Gate -Options @('-CapabilityProfile', 'windows-cuda-kernels', '-Test', 'yuv_color_conversion_cuda') -Expected 1 -Contains 'Capability NotRun'
     Write-Host "PASS: $checks gate contract checks in $([math]::Round($clock.Elapsed.TotalSeconds, 2)) seconds; no GUI executed."
     Write-Host "Private fixture evidence: $root"
 } finally {

@@ -11,6 +11,8 @@
 #include <QThreadPool>
 #include <QSemaphore>
 #include <QScopeGuard>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include "okuflow/common/assistive_runtime.hpp"
 #include "okuflow/common/codex_app_server_client.hpp"
@@ -401,8 +403,47 @@ private slots:
         QVERIFY(!ReadAll(path).contains(QStringLiteral("rejected")));
     }
 
+    void recordingIdentityIsStableAndRefusesReplacedBytes()
+    {
+        QTemporaryDir fixture;
+        QVERIFY(fixture.isValid());
+        const QString original = fixture.filePath(QStringLiteral("video.mp4"));
+        const QString marker = original + QStringLiteral(".okuflow-media.json");
+        auto writeMedia = [&](const QByteArray& bytes) {
+            QFile media(original);
+            return media.open(QIODevice::WriteOnly) && media.write(bytes) == bytes.size();
+        };
+        QVERIFY(writeMedia("fixture recording"));
+        AssistiveRuntime runtime;
+        auto config = NotesConfig();
+        config.notesDirectory = fixture.path();
+        runtime.SetConfig(config);
+        QSignalSpy writes(&runtime, &AssistiveRuntime::NotesWriteFinished);
+        runtime.NoteCapturedVideoPair(original, fixture.filePath(QStringLiteral("processed.mp4")));
+        QTRY_COMPARE(writes.size(), 2);
+        QVERIFY(writes.last().at(1).toString().isEmpty());
+        const QString first = ReadAll(marker);
+        QVERIFY(!first.isEmpty());
+        runtime.NoteCapturedVideoPair(original, fixture.filePath(QStringLiteral("processed.mp4")));
+        QTRY_COMPARE(writes.size(), 3);
+        QVERIFY(writes.last().at(1).toString().isEmpty());
+        QCOMPARE(ReadAll(marker), first);
+        QVERIFY(writeMedia("changed recording")); // Identical length, different bytes.
+        runtime.NoteCapturedVideoPair(original, fixture.filePath(QStringLiteral("processed.mp4")));
+        QTRY_COMPARE(writes.size(), 4);
+        QVERIFY(!writes.last().at(1).toString().isEmpty());
+        QCOMPARE(ReadAll(marker), first); // Never replace an immutable identity marker.
+    }
+
     void appendedDocumentStaysStyledEscapedAndDeduplicated()
     {
+        // Finalized media identity is computed by the storage worker, so the
+        // fixture must provide actual bytes rather than filename-only media.
+        for (const auto* name : {"VID_original.mp4", "VID2_original.mp4"}) {
+            QFile recording(notesDirectory_ + QLatin1Char('/') + QLatin1String(name));
+            QVERIFY(recording.open(QIODevice::WriteOnly));
+            QCOMPARE(recording.write("fixture recording"), 17);
+        }
         AssistiveRuntime runtime;
         runtime.SetConfig(NotesConfig());
         QSignalSpy writes(&runtime, &AssistiveRuntime::NotesWriteFinished);
@@ -444,7 +485,18 @@ private slots:
         QVERIFY(!content.contains(QStringLiteral("http://")));
         QVERIFY(content.contains(QStringLiteral("https://okuflow.com/transcribe/")));
         QCOMPARE(content.count(QStringLiteral("data-transcribe-src=\"")), 2);
-        QVERIFY(content.contains(QStringLiteral(".okuflow-transcript.json")));
+        QCOMPARE(content.count(QStringLiteral("data-recording-identity=\"")), 2);
+        QVERIFY(!content.contains(QStringLiteral("__OKUFLOW_MEDIA_IDENTITY__")));
+        const auto firstIdentity = QJsonDocument::fromJson(ReadAll(notesDirectory_ +
+            QStringLiteral("/VID_original.mp4.okuflow-media.json")).toUtf8()).object();
+        const auto secondIdentity = QJsonDocument::fromJson(ReadAll(notesDirectory_ +
+            QStringLiteral("/VID2_original.mp4.okuflow-media.json")).toUtf8()).object();
+        QCOMPARE(firstIdentity.value(QStringLiteral("size")).toInt(), 17);
+        QCOMPARE(firstIdentity.value(QStringLiteral("fingerprint")).toString(),
+            QStringLiteral("2e0fa70301bb1ee4a5875308ff4df614d95578a0d19cf1788dce6a0c11aa64ba"));
+        QCOMPARE(firstIdentity.value(QStringLiteral("fingerprint")), secondIdentity.value(QStringLiteral("fingerprint")));
+        QVERIFY(firstIdentity.value(QStringLiteral("mediaId")) != secondIdentity.value(QStringLiteral("mediaId")));
+        QVERIFY(content.contains(QStringLiteral(".okuflow-transcript-")));
         QVERIFY(!content.contains(QStringLiteral("Consolidate EVERY transcript")));
 
         // Sections are native collapsibles with a type icon, the heading in

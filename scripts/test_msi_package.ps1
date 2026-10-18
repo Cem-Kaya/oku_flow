@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$InstallerPath,[Parameter(Mandatory)][string]$BundlePath)
 . (Join-Path $PSScriptRoot 'windows-installer\common.ps1')
+. (Join-Path $PSScriptRoot 'windows-installer\wix_tool.ps1')
 $installer = New-Object -ComObject WindowsInstaller.Installer
 $database = $installer.OpenDatabase((Resolve-Path -LiteralPath $InstallerPath).Path,0)
 $properties = @{}
@@ -19,10 +20,9 @@ foreach($row in (Read-InstallerTable $database 'SELECT `Action`, `Sequence` FROM
 if ($sequence['RemoveExistingProducts'] -le $sequence['InstallInitialize'] -or $sequence['RemoveExistingProducts'] -ge $sequence['InstallFinalize']) {throw 'Major upgrade must remain inside the rollback transaction.'}
 # WiX extraction reads the cabinet without installation, registry writes or UAC.
 $pins = Get-Content (Join-Path $PSScriptRoot 'windows-installer\tools.json') -Raw | ConvertFrom-Json
-$wix = Join-Path $env:LOCALAPPDATA "OkuFlow\installer-tools\wix-$($pins.wix.version)\wix.exe"
+$wix = Get-VerifiedWixTool $pins.wix (Join-Path $env:LOCALAPPDATA "OkuFlow\installer-tools\wix-$($pins.wix.version)")
 $extract = Join-Path $env:LOCALAPPDATA "OkuFlow\installer-validation\$([Guid]::NewGuid().ToString('N'))"
-& $wix msi decompile (Resolve-Path -LiteralPath $InstallerPath).Path -x $extract -o "$extract.wxs"
-if ($LASTEXITCODE -ne 0) {throw 'MSI payload extraction failed.'}
+Invoke-VerifiedWix $wix -Arguments @('msi', 'decompile', (Resolve-Path -LiteralPath $InstallerPath).Path, '-x', $extract, '-o', "$extract.wxs")
 $extracted = @(Get-ChildItem -LiteralPath $extract -File -Recurse)
 $hashes = @{}
 foreach($file in $extracted) {$hash=(Get-FileHash -LiteralPath $file.FullName).Hash; if(-not $hashes.ContainsKey($hash)){$hashes[$hash]=0};$hashes[$hash]++}

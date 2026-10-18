@@ -49,6 +49,10 @@ inline std::string_view ReceiptLabelSource(std::string_view key) {
     // Canonical ids plus legacy-only receipt keys, each bound to the caption
     // users already see for that control.
     static constexpr std::pair<std::string_view, std::string_view> labels[]{
+        {"image.uct.gpu.detector","GPU text detector"},
+        {"image.uct.gpu.recognizer","GPU text recognizer"},
+        {"image.uct.cpu.detector","CPU text detector"},
+        {"image.uct.cpu.recognizer","CPU text recognizer"},
         {"view.zoom.enabled", "Zoom"}, {"view.zoom.amount", "Zoom"},
         {"view.center.x", "Horizontal position"}, {"view.center.y", "Vertical position"},
         {"view.focusMarker", "Show Focus Point"}, {"view.fit", "Viewport framing"},

@@ -22,3 +22,15 @@ add_test(NAME agent_control_panel_headless COMMAND agent_control_panel_tests)
 set_tests_properties(agent_control_panel_headless PROPERTIES TIMEOUT 30
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_BIN_DIRECTORY}")
+
+# Explicit development diagnostic: no timing threshold, default build or CTest.
+add_executable(assistant_chat_benchmark EXCLUDE_FROM_ALL
+    assistant_chat_benchmark.cpp
+    ${PROJECT_SOURCE_DIR}/assets/okuflow_resources.qrc
+    ${PROJECT_SOURCE_DIR}/include/okuflow/ui/assistant_chat_view.hpp
+    ${PROJECT_SOURCE_DIR}/src/ui/assistant_chat_view.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/ui_translation.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/translation_catalog.cpp)
+target_include_directories(assistant_chat_benchmark PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(assistant_chat_benchmark PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+target_compile_options(assistant_chat_benchmark PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)

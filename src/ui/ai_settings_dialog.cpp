@@ -633,7 +633,8 @@ void AiSettingsDialog::UpdateFormWrapping()
 settings::AssistiveSettings AiSettingsDialog::result() const
 {
     // Start from the initial values so the Credential Manager id survives;
-    // SettingsController needs it to replace or delete the stored API key.
+    // SettingsController needs it to stage a replacement generation safely or
+    // delete the currently referenced API key.
     settings::AssistiveSettings out = initial_;
     out.aiProvider = providerCombo_->currentData().toString();
     out.codexExecutablePath = codexPathEdit_->text().trimmed();

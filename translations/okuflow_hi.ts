@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>कार्रवाई जारी है।</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>कार्रवाई की स्थिति उपलब्ध नहीं है।</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>फ़ोन की लाइट चालू करें</translation>
         </message>
@@ -3244,6 +3252,26 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <message>
             <source>Change drawing settings and save a photo?</source>
             <translation>क्या आप चित्र बनाने की सेटिंग बदलकर एक फ़ोटो सहेजना चाहते हैं?</translation>
+        </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>UCT की उन्नत सेटिंग्स</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>GPU टेक्स्ट डिटेक्टर</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>GPU टेक्स्ट रिकग्नाइज़र</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>CPU टेक्स्ट डिटेक्टर</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>CPU टेक्स्ट रिकग्नाइज़र</translation>
         </message>
     </context>
 </TS>

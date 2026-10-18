@@ -94,8 +94,29 @@ function Invoke-ObsRequest([string]$Type, [hashtable]$Data = @{}) {
     Send-ObsMessage @{ op = 6; d = @{ requestType = $Type; requestId = $id; requestData = $Data } }
     $response = Receive-ObsMessage
     if ($response.op -ne 7 -or $response.d.requestId -ne $id) { throw "Unexpected response to $Type." }
-    if (-not $response.d.requestStatus.result) { throw "OBS $Type failed: $($response.d.requestStatus.comment)" }
+    if (-not $response.d.requestStatus.result) {
+        $failure = [InvalidOperationException]::new("OBS $Type failed: $($response.d.requestStatus.comment)")
+        $failure.Data['ObsStatusCode'] = [int]$response.d.requestStatus.code
+        throw $failure
+    }
     return $response.d.responseData
+}
+
+function Wait-ObsCameraReady($State, $Process, [DateTime]$Deadline) {
+    while ([DateTime]::UtcNow -lt $Deadline) {
+        if ($Process.HasExited) { throw 'OBS exited during startup; inspect its private logs.' }
+        try {
+            if (-not $script:socket) { Connect-Obs $State }
+            return Invoke-ObsRequest 'GetVirtualCamStatus'
+        } catch {
+            # Authentication can finish before scene/output initialization.
+            # Only OBS's typed NotReady (207) permits another connected probe.
+            if ($script:socket -and $_.Exception.Data['ObsStatusCode'] -ne 207) { throw }
+            if ([DateTime]::UtcNow -ge $Deadline) { break }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    throw 'OBS output readiness deadline expired; inspect its private logs.'
 }
 
 function Stop-OwnedObs($State, $Process) {
@@ -340,14 +361,7 @@ AutoStart=true
     Write-JsonFile $statePath $state
     try {
         $deadline = [DateTime]::UtcNow.AddSeconds(40)
-        do {
-            try { Connect-Obs $state; break } catch {
-                if ($process.HasExited) { throw "OBS exited during startup. Inspect $config\logs." }
-                if ([DateTime]::UtcNow -ge $deadline) { throw "OBS control did not become ready. Inspect $config\logs." }
-                Start-Sleep -Milliseconds 500
-            }
-        } while ($true)
-        $camera = Invoke-ObsRequest 'GetVirtualCamStatus'
+        $camera = Wait-ObsCameraReady $state $process $deadline
         if (-not $camera.outputActive) { Invoke-ObsRequest 'StartVirtualCam' | Out-Null }
         $media = Invoke-ObsRequest 'GetMediaInputStatus' @{ inputName = 'Lecture video' }
         if ($media.mediaDuration -le 0) { throw 'OBS could not decode the video.' }

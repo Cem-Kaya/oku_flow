@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <iterator>
 #include <limits>
 #include <stdexcept>
@@ -20,6 +21,22 @@
 #include <vector>
 
 namespace okuflow {
+
+std::wstring NewRecordingAttemptPath(const std::wstring& requestedPath)
+{
+    GUID id{};
+    if (FAILED(CoCreateGuid(&id))) {
+        throw std::runtime_error("Could not allocate a recording attempt identity.");
+    }
+    wchar_t token[40]{};
+    if (StringFromGUID2(id, token, static_cast<int>(std::size(token))) == 0) {
+        throw std::runtime_error("Could not format a recording attempt identity.");
+    }
+    const std::filesystem::path path(requestedPath);
+    return (path.parent_path() /
+            (path.stem().wstring() + L"_attempt-" + token +
+             path.extension().wstring())).wstring();
+}
 
 bool RecordingEncoderBacklog::CanStart(std::uint64_t sampleBytes,
                                        std::uint64_t sampleLimit,
@@ -472,8 +489,8 @@ bool VideoRecorder::Start(const std::wstring& filePath,
         videoBacklog_.Reset();
         audioBacklog_.Reset(audioFormat && audioFormat->IsValid() ?
                             static_cast<std::uint64_t>(audioFormat->channels) * 2 : 2);
+        audioTimeline_.Reset(audioFormat && audioFormat->IsValid() ? audioFormat->sampleRate : 48000);
         lastEncoderStatisticsError_ = S_OK;
-        targetPath_ = filePath;
         lastSpaceCheckTicks_ = GetTickCount64();
         stopReason_ = StopReason::None;
         activeCodec_ = codec;
@@ -741,8 +758,9 @@ bool VideoRecorder::StartGpu(
                 "backlog budget. Use a smaller camera mode or recording "
                 "resolution; each BGRA input frame must be at most 64 MiB.");
         }
+        std::wstring attemptPath = filePath;
         try {
-            InitializeSink(filePath,
+            InitializeSink(attemptPath,
                            width,
                            height,
                            frameRateNumerator,
@@ -763,26 +781,16 @@ bool VideoRecorder::StartGpu(
             sinkWriter_.Reset();
             pendingSample_.Reset();
             ResetGpuVideoProcessor();
-            WIN32_FILE_ATTRIBUTE_DATA failedOutput{};
-            if (GetFileAttributesExW(filePath.c_str(), GetFileExInfoStandard,
-                                     &failedOutput)) {
-                if (failedOutput.nFileSizeHigh != 0 ||
-                    failedOutput.nFileSizeLow != 0 ||
-                    (failedOutput.dwFileAttributes &
-                     (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) {
-                    throw; // Preserve nonempty/unknown output; do not retry.
-                }
-                if (!DeleteFileW(filePath.c_str())) {
-                    throw;
-                }
-            }
+            // Never delete/reopen a failed sink's output. Even BeginWriting
+            // can emit useful metadata before rejecting DXGI input.
+            attemptPath = NewRecordingAttemptPath(filePath);
             if (!InputFitsEncoderBudget(width, height, false)) {
                 throw std::runtime_error(
                     "GPU compatibility recording input cannot fit the encoder "
                     "backlog budget. Use a smaller camera mode or recording "
                     "resolution; each BGRA input frame must be at most 64 MiB.");
             }
-            InitializeSink(filePath,
+            InitializeSink(attemptPath,
                            width,
                            height,
                            frameRateNumerator,
@@ -805,8 +813,8 @@ bool VideoRecorder::StartGpu(
         videoBacklog_.Reset();
         audioBacklog_.Reset(audioFormat && audioFormat->IsValid() ?
                             static_cast<std::uint64_t>(audioFormat->channels) * 2 : 2);
+        audioTimeline_.Reset(audioFormat && audioFormat->IsValid() ? audioFormat->sampleRate : 48000);
         lastEncoderStatisticsError_ = S_OK;
-        targetPath_ = filePath;
         lastSpaceCheckTicks_ = GetTickCount64();
         stopReason_ = StopReason::None;
         activeCodec_ = codec;
@@ -956,8 +964,17 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
     ThrowIfFailed(attrs->SetGUID(MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_FMPEG4),
                   "Set fragmented MP4 container");
 
+    // The earlier existence check is advisory: exclusively create the actual
+    // output so a racing user file can never be truncated by the URL sink.
+    Microsoft::WRL::ComPtr<IMFByteStream> output;
+    ThrowIfFailed(MFCreateFile(MF_ACCESSMODE_WRITE, MF_OPENMODE_FAIL_IF_EXIST,
+                              MF_FILEFLAGS_NONE, filePath.c_str(), &output),
+                  "Exclusively create recording output");
+    if (sinkInitializationObserver_) {
+        sinkInitializationObserver_(d3dManager != nullptr, output.Get());
+    }
     Microsoft::WRL::ComPtr<IMFSinkWriter> writer;
-    ThrowIfFailed(MFCreateSinkWriterFromURL(filePath.c_str(), nullptr, attrs.Get(), writer.GetAddressOf()),
+    ThrowIfFailed(MFCreateSinkWriterFromURL(nullptr, output.Get(), attrs.Get(), writer.GetAddressOf()),
                   "Create sink writer");
 
     // Output type. The caller probes AV1 first and falls back to H.264 when
@@ -1111,6 +1128,7 @@ bool VideoRecorder::InitializeSink(const std::wstring& filePath,
     ThrowIfFailed(writer->BeginWriting(), "BeginWriting");
 
     sinkWriter_ = writer;
+    targetPath_ = filePath;
     return true;
 }
 
@@ -1120,10 +1138,66 @@ bool VideoRecorder::AddAudioFrame(
     std::int64_t sampleTime100ns,
     std::int64_t duration100ns)
 {
-    if (!pcmData || !CanAcceptAudioFrame(byteCount, sampleTime100ns, duration100ns)) {
+    if (!pcmData || !ValidAudioInput(byteCount, sampleTime100ns, duration100ns)) {
         SetError("Recording audio input is invalid or its encoder backlog budget is exhausted.");
         return false;
     }
+    try {
+        const std::uint64_t alignment = static_cast<std::uint64_t>(audioFormat_.channels) * 2;
+        RecordingPcmSpan span;
+        if (!audioTimeline_.Plan(sampleTime100ns, byteCount / alignment, span)) {
+            SetError("Recording audio gap exceeds the bounded ten-second repair limit or its timeline is invalid. Existing video was retained.");
+            return false;
+        }
+        const bool repairingGap = span.silenceFrames != 0;
+        // Work stays on the recording worker. Fixed scratch space and a fixed
+        // admission deadline prevent a delayed/hostile timestamp from allocating
+        // or queuing seconds of PCM without the normal encoder budget.
+        const ULONGLONG deadline = GetTickCount64() + 250;
+        const auto submit = [&](const std::uint8_t* data, std::uint64_t frames) {
+            const auto time = audioTimeline_.TimestampAfter();
+            const auto end = audioTimeline_.TimestampAfter(frames);
+            const auto bytes = static_cast<std::size_t>(frames * alignment);
+            while (!CanAcceptAudioBlock(bytes, time, end - time)) {
+                if (!repairingGap || abandoned_.load() || !recording_ ||
+                    GetTickCount64() >= deadline) {
+                    SetError("Recording audio could not preserve its timeline within the bounded encoder input budget. Existing video was retained.");
+                    return false;
+                }
+                Sleep(1);
+            }
+            if (!WriteAudioBlock(data, bytes, time, end - time)) return false;
+            return audioTimeline_.Advance(frames);
+        };
+        if (span.silenceFrames) {
+            const auto chunkFrames = std::min<std::uint64_t>(4800,
+                std::max<std::uint64_t>(1, 65536 / alignment));
+            const std::vector<std::uint8_t> silence(
+                static_cast<std::size_t>(chunkFrames * alignment), 0);
+            while (span.silenceFrames) {
+                if (GetTickCount64() >= deadline || abandoned_.load()) {
+                    SetError("Recording audio gap repair reached its worker deadline. Existing video was retained.");
+                    return false;
+                }
+                const auto frames = std::min(span.silenceFrames, chunkFrames);
+                if (!submit(silence.data(), frames)) return false;
+                span.silenceFrames -= frames;
+            }
+        }
+        return !span.dataFrames || submit(
+            pcmData + static_cast<std::size_t>(span.skipFrames * alignment), span.dataFrames);
+    } catch (const std::exception& error) {
+        SetError(error.what());
+    } catch (...) {
+        SetError("Unknown exception preserving the recording audio timeline");
+    }
+    return false;
+}
+
+bool VideoRecorder::WriteAudioBlock(
+    const std::uint8_t* pcmData, std::size_t byteCount,
+    std::int64_t sampleTime100ns, std::int64_t duration100ns)
+{
     try {
         Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
         ThrowIfFailed(
@@ -1257,6 +1331,24 @@ bool VideoRecorder::CanAcceptAudioFrame(std::size_t byteCount,
                                         std::int64_t sampleTime100ns,
                                         std::int64_t duration100ns)
 {
+    if (!ValidAudioInput(byteCount, sampleTime100ns, duration100ns)) return false;
+    const std::uint64_t alignment = static_cast<std::uint64_t>(audioFormat_.channels) * 2;
+    RecordingPcmSpan span;
+    if (!audioTimeline_.Plan(sampleTime100ns, byteCount / alignment, span)) return false;
+    if (!span.silenceFrames && !span.dataFrames) return true;
+    const auto frames = span.silenceFrames
+        ? std::min<std::uint64_t>(span.silenceFrames, std::min<std::uint64_t>(4800,
+            std::max<std::uint64_t>(1, 65536 / alignment)))
+        : span.dataFrames;
+    const auto time = audioTimeline_.TimestampAfter();
+    return CanAcceptAudioBlock(static_cast<std::size_t>(frames * alignment), time,
+                              audioTimeline_.TimestampAfter(frames) - time);
+}
+
+bool VideoRecorder::ValidAudioInput(std::size_t byteCount,
+                                        std::int64_t sampleTime100ns,
+                                        std::int64_t duration100ns) const
+{
     if (abandoned_.load() || !recording_ || !sinkWriter_ || !audioEnabled_ ||
         byteCount == 0 || byteCount > std::numeric_limits<DWORD>::max() ||
         byteCount > RecordingAudioBacklog::kByteLimit || sampleTime100ns < 0 ||
@@ -1270,6 +1362,14 @@ bool VideoRecorder::CanAcceptAudioFrame(std::size_t byteCount,
     // The capture block duration is rounded to whole 100ns units. Do not let
     // inconsistent duration metadata evade the PCM-duration bound.
     if (duration100ns < pcmDuration || duration100ns - pcmDuration > 1) return false;
+    return true;
+}
+
+bool VideoRecorder::CanAcceptAudioBlock(std::size_t byteCount,
+                                        std::int64_t sampleTime100ns,
+                                        std::int64_t duration100ns)
+{
+    if (!ValidAudioInput(byteCount, sampleTime100ns, duration100ns)) return false;
     StageResetGuard stageGuard(stage_);
     stage_.store(WriterStage::kQueryEncoderStatistics, std::memory_order_relaxed);
     MF_SINK_WRITER_STATISTICS statistics{};

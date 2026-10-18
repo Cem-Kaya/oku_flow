@@ -57,6 +57,8 @@ namespace okuflow {
 
 class OkuFlowApp;
 class ColorSchemePicker;
+class UltraClearTextOverlay;
+class UltraClearTextPanel;
 class CollapsibleSection;
 namespace settings { struct AdvancedConfig; }
 
@@ -98,6 +100,8 @@ public:
     QPushButton* recordButton() const;
     QPushButton* annotationButton() const;
     AnnotationOverlay* annotationOverlay() const;
+    UltraClearTextOverlay* ultraClearTextOverlay() const { return ultraClearTextOverlay_; }
+    UltraClearTextPanel* ultraClearTextPanel() const { return ultraClearTextPanel_; }
     QCheckBox* temporalSmoothCheckbox() const;
     QSlider* temporalSmoothSlider() const;
     QLabel* temporalSmoothValueLabel() const;
@@ -343,6 +347,8 @@ private:
     QPushButton* recordButton_{};
     QPushButton* annotationButton_{};
     AnnotationOverlay* annotationOverlay_{};
+    UltraClearTextOverlay* ultraClearTextOverlay_{};
+    UltraClearTextPanel* ultraClearTextPanel_{};
     bool changingAnnotationMode_{};
     QCheckBox* temporalSmoothCheckbox_{};
     QSlider* temporalSmoothSlider_{};

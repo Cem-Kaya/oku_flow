@@ -45,8 +45,9 @@ struct ID3D12Fence;
 struct ID3D11Texture2D;
 
 namespace okuflow {
+namespace uct {class DeviceImage;class AnalysisPool;using SharedDeviceImage=std::shared_ptr<const DeviceImage>;}
 
-class MaxineSuperRes;
+class MaxineAsyncProducer;
 
 struct FenceSyncParams {
     bool enable{false};
@@ -73,6 +74,13 @@ struct SuperResRoiMetadata {
     unsigned int outputWidth{};
     unsigned int outputHeight{};
     float scaleFactor{};
+};
+
+enum class SuperResRefreshResult { NoWork, Submitted, Published, Failed };
+
+struct SuperResAsyncStatistics {
+    std::uint64_t submitted{}, completed{}, staleDiscarded{}, desiredOverwritten{};
+    float publishedAgeMs{-1.0f};
 };
 
 struct GpuStageTimings {
@@ -166,12 +174,19 @@ struct ProcessingSettings {
     bool enableGlareSuppression{false};
     float glareSuppressionStrength{0.5f};
     bool enableMlSuperRes{false};
+    // Transient scheduling intent, never a persisted user preference. Keep
+    // current-frame spatial/base output while navigation has priority.
+    bool deferMlSuperResForInteraction{false};
     float mlSuperResStrength{0.65f};
     bool mlSuperResUltra1440p{false};
 
     // Apply only to an effective per-frame copy, never persisted preferences.
     // Independent Black & White, display colors, and Maxine remain unchanged.
     void ApplyTextClarityMaster() {
+        // Background and glare share a kernel. Its flatten arithmetic must be
+        // neutral when only glare is selected, without erasing the saved knob.
+        if (!enableAutoTextClarity || !enableBackgroundFlatten)
+            backgroundFlattenStrength = 0.0f;
         if (enableAutoTextClarity) return;
         enableBackgroundFlatten = false;
         enableAdaptiveBinarization = false;
@@ -239,6 +254,8 @@ struct ProcessingInput {
     // Publish the converted, post-rotation frame to the optional original
     // recording surface before stabilization or any visual effects.
     bool publishOriginalFrame{false};
+    // Unconditional presentation identity, independent of optional agent diagnostics.
+    std::uint64_t cameraEpoch{}, frameSequence{}, settingsGeneration{};
 };
 
 #if OKUFLOW_HAS_CUDA_EXT_MEMORY
@@ -263,6 +280,9 @@ public:
     bool ProcessFrame(const ProcessingInput& input,
                       const ProcessingSettings& settings,
                       const FenceSyncParams& fenceSync);
+    void EnableUctAnalysis(bool enabled);
+    bool UctAnalysisFailed() const;
+    uct::SharedDeviceImage TakeUctAnalysis() { return std::move(uctAnalysisFrame_); }
     const std::string& LastError() const { return lastError_; }
     bool LastFailureWasBusy() const { return uploadAdmissionBusy_; }
     bool LastFailureWasCaptureInterop() const {
@@ -293,6 +313,11 @@ public:
     bool IsSuperResPerformanceLimited() const { return superResAutoDisabled_; }
     void SetSuperResPerformanceOverride(bool enabled);
     void ResetSuperRes();
+    void InvalidateSuperResRequest();
+    bool HasSuperResWork() const;
+    bool NeedsSuperResPolling() const;
+    SuperResRefreshResult RefreshSuperRes(const FenceSyncParams& fenceSync);
+    SuperResAsyncStatistics SuperResStatistics() const;
     // Releases per-camera imports only after a nonblocking copy-completion
     // probe. Pending/failed copies retain imports and their producer lease.
     // atProcessExit retains the isolated legacy-driver registration fallback.
@@ -325,6 +350,10 @@ public:
     CudaInteropSurface& operator=(const CudaInteropSurface&) = delete;
 
 private:
+    bool uctAnalysisEnabled_{};
+    std::unique_ptr<uct::AnalysisPool> uctAnalysisPool_;
+    uct::SharedDeviceImage uctAnalysisFrame_;
+    std::int64_t uctLastCaptureMs_{};
     void Initialize(ID3D12Resource* texture,
                     ID3D12Resource* superResTexture,
                     ID3D12Fence* sharedFence,
@@ -336,7 +365,6 @@ private:
                                            ID3D12Resource* texture);
     bool CreateOriginalSurfaceFromResource(ID3D12Device* device,
                                            ID3D12Resource* texture);
-    bool EnsureSuperResOutputBuffer(unsigned int width, unsigned int height);
     void ImportFenceSemaphore(ID3D12Device* device, ID3D12Fence* fence);
     bool EnsureDeviceBuffers(unsigned int width, unsigned int height, CudaBufferFormat format);
     bool EnsureTemporalHistory(unsigned int width, unsigned int height);
@@ -357,7 +385,7 @@ private:
     void ReleaseTextClarity();
     void ReleaseSuperRes();
     void ConsumeStabilizerTiming();
-    void ConsumeSuperResTiming();
+    void AccumulateSuperResTiming(float elapsedMs);
     void UpdateSuperResCache(const uchar4* source,
                              size_t sourcePitch,
                              uchar4* destination,
@@ -421,13 +449,9 @@ private:
     uchar4* deviceBufferA_{};
     uchar4* deviceBufferB_{};
     uchar4* deviceScratch_{};
-    uchar4* deviceSuperResOutput_{};
     size_t devicePitchA_{};
     size_t devicePitchB_{};
     size_t devicePitchScratch_{};
-    size_t devicePitchSuperResOutput_{};
-    unsigned int deviceSuperResOutputWidth_{};
-    unsigned int deviceSuperResOutputHeight_{};
     unsigned int deviceWidth_{};
     unsigned int deviceHeight_{};
     CudaBufferFormat bufferFormat_{CudaBufferFormat::kRgba8};
@@ -587,14 +611,14 @@ private:
     bool focusScoreValid_{};
     float latestFocusScore_{};
 
-    // NVIDIA Video Effects is loaded only when requested. Timing uses CUDA
-    // events on the existing interop stream, so the latency guard never stalls
-    // the render loop with a host-side synchronization.
-    std::unique_ptr<MaxineSuperRes> maxineSuperRes_;
-    cudaEvent_t superResStartEvent_{};
-    cudaEvent_t superResStopEvent_{};
-    bool superResTimingPending_{};
-    bool discardSuperResTiming_{};
+    // SDK calls and private GPU storage belong to the independent producer.
+    // The presentation thread only snapshots input and publishes exact results.
+    struct AsyncSuperResState;
+    std::unique_ptr<AsyncSuperResState> asyncSuperRes_;
+    std::unique_ptr<MaxineAsyncProducer> maxineProducer_;
+    std::uint64_t processedSceneSerial_{};
+    std::uint64_t superResRequestGeneration_{};
+    std::uint64_t currentCameraEpoch_{}, currentFrameSequence_{}, currentSettingsGeneration_{};
     unsigned int superResTimingSourceWidth_{};
     unsigned int superResTimingSourceHeight_{};
     unsigned int superResTimingOutputWidth_{};
@@ -684,6 +708,11 @@ public:
     bool IsSuperResPerformanceLimited() const { return false; }
     void SetSuperResPerformanceOverride(bool /*enabled*/) {}
     void ResetSuperRes() {}
+    void InvalidateSuperResRequest() {}
+    bool HasSuperResWork() const { return false; }
+    bool NeedsSuperResPolling() const { return false; }
+    SuperResRefreshResult RefreshSuperRes(const FenceSyncParams&) { return SuperResRefreshResult::NoWork; }
+    SuperResAsyncStatistics SuperResStatistics() const { return {}; }
     void ResetCaptureInterop(bool /*atProcessExit*/ = false) {}
     void AbandonCaptureInterop() noexcept {}
     bool PollCaptureCopy() { return true; }

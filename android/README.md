@@ -34,6 +34,14 @@ with an installed system decoder, HEVC into the existing MediaFrame pipeline.
 The Python probe also receives HEVC.
 The implemented wire contract is in [PROTOCOL.md](PROTOCOL.md).
 
+Development startup now shares the Windows receiver's remaining deadline across
+camera fallback attempts, including queues, discovery and retry gaps. The host
+keeps its 12-second startup cap and reserves time for decoding; the phone tries
+up to six modes with bounded per-candidate progress and failure diagnostics.
+Codec headers alone do not trigger premature HEVC decoder fallback. These local
+changes have not established physical-phone or published-release acceptance;
+see the [startup contract](PROTOCOL.md#startup-budget-and-candidate-progress).
+
 After setup the phone always states what is happening and what to do next.
 It shows **Open OkuFlow on your computer**, then **Connected to OkuFlow** while
 waiting for camera video, then **Streaming to OkuFlow** with the actual mode.
@@ -280,3 +288,23 @@ The immediate destination is the owner's first Google Play **closed test** for
 12 invited testers, rather than production. USB streaming stays unchanged with
 no application PIN, pairing step or encryption added. Trust wording is explicit;
 this technical choice is not evidence of a Google Play policy exception or approval.
+
+## Serial host ownership
+
+Socket connect/disconnect/command callbacks post immutable host tokens to the
+service's main event owner. `StreamSessionOwner` admits a restart only while
+that exact host is connected and has requested streaming. Stop revokes intent
+before invalidating the engine token; a delayed settings restart stays stopped.
+Camera state/errors carry the initiating token, and state, metadata and frames
+are routed only to the matching socket session. Socket callbacks run outside
+its session lock; old retirement cannot stop a replacement host.
+
+`StreamSessionOwnerTest` uses a held producer and deterministic owner-event
+ordering for Stop/restart, delayed old connect/command/disconnect, close and
+wrong-thread rejection. These JVM tests do not establish real Camera2, cable
+recovery or long-soak acceptance. No display configuration is changed.
+
+Camera setting edits apply as serialized field patches. A delayed local control
+callback preserves independent USB host changes; edits to the same setting use
+the last accepted value. Reset explicitly restores all camera preferences.
+Torch remains session-only and is cleared on host replacement.

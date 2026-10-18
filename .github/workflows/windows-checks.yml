@@ -91,9 +91,12 @@ jobs:
           arch: win64_msvc2022_64
           # Qt 6.12's base package already includes SVG and Linguist tools.
           modules: qtmultimedia qtspeech qtimageformats
+          # The real bundle preflight also validates Qt Multimedia's source notice.
+          source: true
+          src-archives: qtmultimedia
           dir: ${{ runner.temp }}
           cache: true
-          cache-key-prefix: okuflow-qt-6.12.0-windows-msvc2022
+          cache-key-prefix: okuflow-qt-6.12.0-windows-msvc2022-multimedia-src
           setup-python: false
           # Released aqt 3.3.0 lacks Qt 6.11+ split Windows repositories.
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
@@ -262,13 +265,13 @@ jobs:
         run: |
           changes=all
           if [ -n "$PR_BASE" ]; then
-            changes=$(git diff --name-only "$PR_BASE" -- android/ ':!android/**/*.md' ':!android/*.md')
+            changes=$(git diff --name-only "$PR_BASE" -- android/ scripts/android_camera_probe.py tests/test_impact.json .github/workflows/windows-checks.yml ':!android/**/*.md' ':!android/*.md')
           fi
           if [ -n "$changes" ]; then
             echo 'run=true' >> "$GITHUB_OUTPUT"
           else
             echo 'run=false' >> "$GITHUB_OUTPUT"
-            echo 'Android host protocol: no Android changes; skipped.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Android host protocol: no protocol dependency changes; skipped.' >> "$GITHUB_STEP_SUMMARY"
           fi
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         if: ${{ steps.selection.outputs.run == 'true' }}

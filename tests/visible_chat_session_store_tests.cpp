@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QJsonDocument>
 #include <QTemporaryDir>
+#include <QScopeGuard>
 #include <QtTest>
 #ifdef _WIN32
 #include <Windows.h>
@@ -100,6 +101,59 @@ private slots:
         QVERIFY(store.Save(large.Snapshot()));
         const auto record=store.Load(large.ConversationId());QVERIFY(record);QVERIFY(record->messages.size()<=128);
         QVERIFY(Bytes(directory.filePath(large.ConversationId()+".json")).size()<=1024*1024);
+    }
+    void failedNewCommitAtRetentionLimitPreservesEveryPreviousConversation() {
+#ifdef _WIN32
+        QTemporaryDir directory;QVERIFY(directory.isValid());VisibleChatSessionStore store(directory.path());
+        QMap<QString,QByteArray> previous;
+        for (int index=0;index<64;++index) {
+            VisibleChatSession chat;chat.SetDraft(QStringLiteral("saved draft %1").arg(index));
+            QVERIFY(store.Save(chat.Snapshot()));
+            previous[chat.ConversationId()]=Bytes(directory.filePath(chat.ConversationId()+".json"));
+        }
+        VisibleChatSession next;next.SetDraft("new draft");
+        const auto path=directory.filePath(next.ConversationId()+".json");
+        QFile placeholder(path);QVERIFY(placeholder.open(QIODevice::WriteOnly));
+        const QByteArray marker="uncommitted target";QCOMPARE(placeholder.write(marker),marker.size());placeholder.close();
+        const auto native=QDir::toNativeSeparators(path);
+        HANDLE lock=CreateFileW(reinterpret_cast<LPCWSTR>(native.utf16()),GENERIC_READ,FILE_SHARE_READ,
+            nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+        QVERIFY(lock!=INVALID_HANDLE_VALUE);
+        const auto revision=store.Revision();
+        const bool saved=store.Save(next.Snapshot());CloseHandle(lock);
+        QVERIFY(!saved);QCOMPARE(store.Revision(),revision);QCOMPARE(store.List().size(),64);
+        QCOMPARE(Bytes(path),marker);
+        for (auto item=previous.begin();item!=previous.end();++item)
+            QCOMPARE(Bytes(directory.filePath(item.key()+".json")),item.value());
+        VisibleChatSessionStore restarted(directory.path());QCOMPARE(restarted.List().size(),64);
+        QVERIFY(restarted.Save(next.Snapshot()));QCOMPARE(restarted.List().size(),64);
+        QVERIFY(restarted.Load(next.ConversationId()));
+#endif
+    }
+    void blockedPruningKeepsOneCommittedOverflowAndRefusesFurtherGrowth() {
+#ifdef _WIN32
+        QTemporaryDir directory;QVERIFY(directory.isValid());VisibleChatSessionStore store(directory.path());
+        QList<HANDLE> locks;
+        const auto release=qScopeGuard([&] { for (const auto handle : locks) CloseHandle(handle); });
+        for (int index=0;index<64;++index) {
+            VisibleChatSession chat;chat.SetDraft(QStringLiteral("protected draft %1").arg(index));
+            QVERIFY(store.Save(chat.Snapshot()));
+            const auto native=QDir::toNativeSeparators(directory.filePath(chat.ConversationId()+".json"));
+            const auto handle=CreateFileW(reinterpret_cast<LPCWSTR>(native.utf16()),GENERIC_READ,FILE_SHARE_READ,
+                nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+            QVERIFY(handle!=INVALID_HANDLE_VALUE);locks.append(handle);
+        }
+        VisibleChatSession committed;committed.SetDraft("durable before retention cleanup");
+        QVERIFY(store.Save(committed.Snapshot()));QCOMPARE(store.List().size(),65);
+        QCOMPARE(store.ErrorCode(),QStringLiteral("retention_pending"));
+        VisibleChatSession rejected;rejected.SetDraft("must not grow the overflow");
+        QVERIFY(!store.Save(rejected.Snapshot()));QCOMPARE(store.List().size(),65);
+        QVERIFY(!QFile::exists(directory.filePath(rejected.ConversationId()+".json")));
+        VisibleChatSessionStore restarted(directory.path());QVERIFY(restarted.Load(committed.ConversationId()));
+        for (const auto handle : locks) CloseHandle(handle);locks.clear();
+        QVERIFY(restarted.Save(rejected.Snapshot()));QCOMPARE(restarted.List().size(),64);
+        QVERIFY(restarted.Load(rejected.ConversationId()));
+#endif
     }
     void legacyRestoreRemainsOutsideLocalStoreAdmission() {
         VisibleChatSession legacy;

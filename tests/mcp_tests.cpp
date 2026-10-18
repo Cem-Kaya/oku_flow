@@ -94,11 +94,11 @@ class McpTests final : public QObject {
         QCOMPARE(static_cast<int>(CatalogEdition::DevFull), 4);
         QVERIFY(!FindControlTool("image.settings.set", CatalogEdition::DevCamera));
         QVERIFY(FindControlTool("image_settings_set", CatalogEdition::DevFull));
-        QCOMPARE(ParameterRegistry().size(), std::size_t(94));
+        QCOMPARE(ParameterRegistry().size(), std::size_t(98));
         QFile inventory(QFINDTESTDATA("data/app_control_inventory.json"));
         QVERIFY(inventory.open(QIODevice::ReadOnly));
         auto source = QJsonDocument::fromJson(inventory.readAll()).object().value("controls").toArray();
-        QCOMPARE(source.size(), qsizetype(94));
+        QCOMPARE(source.size(), qsizetype(98));
         std::set<std::string_view> ids;
         for (const auto &field : ParameterRegistry()) {
             QVERIFY(ids.insert(field.id).second);
@@ -219,7 +219,7 @@ class McpTests final : public QObject {
             QVERIFY(next->String() != after);
             after = next->String();
         }
-        QCOMPARE(parameters, 94);
+        QCOMPARE(parameters, 98);
         QCOMPARE(protectedEntries, 17);
         QCOMPARE(actions, 39);
         QVERIFY(!Json::Parse(ParameterMetadataPage("image", "not-a-field", 16)).Find("ok")->Boolean());

@@ -46,15 +46,36 @@ data class CameraSettings(
     )
 }
 
+/** One serialized read/patch/publish boundary, including stale Compose callbacks. */
+internal class CameraSettingsState(initial: CameraSettings, private val persist: (CameraSettings) -> Unit) {
+    private val mutable = MutableStateFlow(initial.sanitized())
+    val state = mutable.asStateFlow()
+    private var generation = 0L
+
+    @Synchronized
+    fun update(patch: (CameraSettings) -> CameraSettings): CameraSettings {
+        val value = patch(mutable.value).sanitized()
+        if (value != mutable.value) {
+            persist(value)
+            mutable.value = value
+            generation++
+        }
+        return value
+    }
+
+    @Synchronized
+    fun revision(): Long = generation
+}
+
 /** Shared by UI/service. Preferences persist; torch is published only for the live session. */
 class CameraSettingsStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences("camera", Context.MODE_PRIVATE)
-    private val mutable = MutableStateFlow(read())
-    val state = mutable.asStateFlow()
+    private val mutations = CameraSettingsState(read(), ::persist)
+    val state = mutations.state
 
-    @Synchronized
-    fun update(settings: CameraSettings) {
-        val value = settings.sanitized()
+    fun update(patch: (CameraSettings) -> CameraSettings): CameraSettings = mutations.update(patch)
+
+    private fun persist(value: CameraSettings) {
         preferences.edit {
             putString("camera", value.cameraId)
             putInt("resolution", value.resolution)
@@ -68,7 +89,6 @@ class CameraSettingsStore(context: Context) {
             putInt("exposure", value.exposure)
             putBoolean("autofocus", value.autofocus)
         }
-        mutable.value = value
     }
 
     private fun read() = CameraSettings(

@@ -1,5 +1,51 @@
 # Hard-Coded Paths and Defaults
 
+## Optional PaddleOCR (2026-10-18)
+
+`scripts/uct/pins.json` pins upstream model revisions, model/config/card hashes,
+ONNX Runtime CPU 1.31.0 archive/DLL and TensorRT 11.4.0.106 CUDA-12.9 archive.
+`prepare_uct_runtime.ps1` defaults to `%LOCALAPPDATA%/OkuFlow/ocr-deps` for SDK
+archives/extraction and `ocr-runtime` for verified models, CPU runtime and
+notices. `-CacheRoot`/`-RuntimeRoot` select other local roots. No download occurs
+on UCT enable or CMake configuration.
+
+`uct_model_pins.hpp` compiles the same six immutable graph/config identities;
+the model-free fixture reconciles them against `pins.json`. Tiny detector uses
+`det/`, small recognizer uses `rec/`; other tiers use `det/{small,medium}` and
+`rec/{tiny,medium}`. Persistent `ultraClearTextModels` stores independent
+`gpuDetector`, `gpuRecognizer`, `cpuDetector`, `cpuRecognizer` tokens from
+`tiny|small|medium`. Missing/invalid values independently fall back to
+medium/medium on GPU and tiny/small on CPU. It never persists UCT activation.
+
+`OKUFLOW_UCT_ROOT` selects model/CPU files; otherwise an `ocr` directory beside
+the inner application is preferred when it contains a detector, then LocalAppData.
+`OKUFLOW_UCT_TENSORRT_ROOT` selects the external SDK at runtime; otherwise the
+pinned SDK extraction under `ocr-deps` is used. CMake's `OKUFLOW_UCT_SDK_ROOT`
+and `OKUFLOW_UCT_TENSORRT_ROOT` locate optional headers; absent headers compile
+fallback stubs. Runtime SDK overrides must match the pinned version. The
+runtime `OKUFLOW_UCT_CUDA_BIN`, then `CUDA_PATH_V12_9/bin`, then the documented
+private CUDA-12.9.2 toolkit `bin` supplies optional CUDA DLL dependencies.
+No compiler-machine absolute path is baked into the OCR loader.
+
+Engine plans stay in `%LOCALAPPDATA%/OkuFlow/ocr-engines`, keyed by graph hash,
+GPU UUID, driver and TensorRT/precision identity, with a payload integrity hash.
+Model/license data never belongs in Git or capture output. The analysis pool
+has two slots, at most 128 MiB each; input dimensions are limited to 8192 per
+axis. Detector long edge is 960, recognizer canvas 1024×48, accepted regions
+at most 128, detector thresholds 0.2/0.4 and word confidence at least 0.7.
+These are bounded experimental defaults, not accuracy or latency promises.
+
+UCT's optional padded-box ink fit samples about 16K pixels per word, requires
+at least 24 luma levels of separation, and refuses a fit under 35% of its input
+width/height. Near-identical refresh retention requires IoU >= 0.8 and edges/
+dimensions within 10% of word height, plus current independent validation.
+The existing 350 ms freshness and 600 ms presentation watchdog are unchanged.
+Source-color contrast adjustment targets 7:1 and uses 16 bounded search steps.
+Accepted background brightness uses 64 fixed levels; same-polarity foreground/
+background changes up to 8 RGB channel levels retain the prior color. A neutral
+ink channel spread up to 16 snaps to pure black/white. Only replacement colors
+are stabilized; the camera image is not quantized to a global palette.
+
 ## Browser notes transcription
 
 The opt-in notes renderer defaults to `%LOCALAPPDATA%\OkuFlow\notes-preview\`.
@@ -12,12 +58,23 @@ New notes use `https://okuflow.com/transcribe/?ui=<document-language>` only to
 open the static browser tool. Recording bytes and segments travel over a
 private MessageChannel, not URL parameters or a local server. Chrome stores
 the user-selected directory handle in `okuflow-notes-files` IndexedDB and
-saves `<original-video>.okuflow-transcript.json` beside the recording. The
+saves `.okuflow-transcript-<mediaId>.json` beside the recording. The
 desktop does not infer a fixed Documents path or read/transcribe those files.
 
 This document tracks machine-specific defaults, generated output locations, and other fixed values that should be reviewed when the toolchain or deployment story changes.
 
 ## Installer and icon tooling
+
+Verified WiX 4.0.6 tool files are extracted directly from the pinned NuGet into
+`installer-tools/wix-4.0.6/verified-<package-sha256>/`; every file is compared
+with the archive before invocation. The prior tool-path shim and ambient
+NuGet sources are ignored. CMake writes
+`<build>/okuflow-build-facts/<configuration>.json`; the application's successful
+post-build step binds it to the executable in `<configuration>.seal.json`.
+Metadata requires that matching seal. Its effective compiler,
+linked static runtime, architecture list and toolkit-license path replace
+ambient CUDA variables as packaging provenance. These paths are build-tool
+evidence, not application settings or additional shipped dependencies.
 
 Release orchestration uses `%LOCALAPPDATA%\OkuFlow\release-runs\<version>-<guid>`
 for logs, immutable payload snapshots, upload verification and temporary notes.
@@ -32,6 +89,16 @@ directory and takes its actual prefix from `QT_ROOT_DIR`. It pins aqtinstall to
 repository layout. CI logs/screenshots go under `RUNNER_TEMP/okuflow-evidence`,
 never the owner's desktop or fixture settings. Action commits are pinned in the
 workflow; update them deliberately with CI validation.
+The same Qt action installs only the `qtmultimedia` source archive for the
+bundle preflight's matching FFmpeg and Qt LGPL notices, with a separate source-aware cache
+prefix. Bundle Qt resolution is `QT_PREFIX`, then `Qt6_DIR`, then `QT_ROOT_DIR`,
+then the documented local default. An invalid explicit override fails rather
+than falling through. CTest supplies its configured SDK/source root to the
+preflight fixture and fingerprints the module SPDX and license files it reads.
+Qt license resolution checks `<prefix>/LICENSES/LGPL-3.0-only.txt`, then
+`<prefix>/../../Licenses/LICENSE`, then
+`<QT_SOURCE_ROOT>/qtmultimedia/LICENSES/LGPL-3.0-only.txt`. The final location
+supports archive SDKs without requiring the interactive Qt installer.
 MSVC setup discovers only Visual Studio 2022 (`[17.0,18.0)`) and uses its installed
 `Common7/Tools/Launch-VsDevShell.ps1` with x64 host/target. Android host protocol
 checks pin `ubuntu-24.04`; review that image deliberately rather than inheriting
@@ -183,7 +250,7 @@ and never authorize killing or replacing a foreign/shared adb server.
 - Tracked agent release compile: `build/msvc-release`, or
   `OKUFLOW_AGENT_RELEASE_BUILD_DIR` for an isolated output while that executable
   is running. CPU/CUDA test build directories retain their preset defaults.
-- Release bundle staging directory: `dist\OkuFlow.staging\`
+- Release bundle staging directory: `dist\OkuFlow.staging-<32-hex-guid>\`
   The tracked release batch script is checked out with CRLF on Windows.
 - Locked-primary fallback bundle: `dist\OkuFlow2\`
 - CUDA replay output and traces generated by CTest:
@@ -496,9 +563,16 @@ Update this file whenever these defaults move or new fixed paths are introduced.
   An already authorized foreground listener remains bound across unplug/replug;
   Pause, permission loss or debugging explicitly off stops it. New service
   requests require a resumed activity; foreground refusal waits for a new resume.
-- Encoder startup tries at most six candidates with 4 s first-frame deadlines.
+- Native phone startup has one 12 s deadline including negotiation and initial
+  codec retry. `start.startupBudgetMs` grants the phone its actual remainder
+  minus a 1 s decoder reserve. Android clamps it to 1–12000 ms, retains at most
+  six candidates with at least 500 ms each, and fairly divides remaining time
+  after 200 ms retry gaps; every candidate is capped at 4 s. Queue, discovery,
+  encoder setup and teardown time count, and pre-video settings restarts keep
+  the original deadline. See `android/PROTOCOL.md` for progress fields.
   Windows packet-silence and decoded-output deadlines are independently 12 s;
-  HEVC first output in each generation has a 4 s deadline. Reconfiguration and
+  HEVC first output in each generation has a 4 s deadline starting at real
+  encoded input, not codec configuration. Reconfiguration and
   packet arrivals never reset the decoded-output deadline. Decoded buffers are
   bounded to 64 MiB; Windows
   H.264 limits 4096×2304 / 251658240 pixels per second. SEVERE thermal state
@@ -524,6 +598,11 @@ Update this file whenever these defaults move or new fixed paths are introduced.
 - Adb lookup: `OKUFLOW_ADB_PATH`, executable-relative `platform-tools/adb.exe`,
   `ANDROID_HOME`, `ANDROID_SDK_ROOT`, PATH, then environment-derived
   `%LOCALAPPDATA%/Android/Sdk/platform-tools/adb.exe`. No user path is compiled.
+  These are trusted same-user executable inputs, including an explicit override;
+  runtime lookup is not a signature/pinning security boundary. SDK/PATH fallback
+  supports development trees without bundled adb. Owned launches log the exact
+  absolute executable path. Packaging and legacy reclamation retain their
+  separate reviewed-manifest checks.
   With no default listener/override, hidden direct server starts select a
   private ephemeral loopback port. An exact owned child in a non-inherited
   kill-on-close job dies at normal exit or process crash. Failed launch, child
@@ -669,3 +748,64 @@ It is outside Drive and release bundles; it contains no images, credentials,
 backend references or control grants. Retention is at most 64 conversations /
 32 MiB, with each record capped at 1 MiB. This is text history, not notes or
 capture media; legacy Codex index/storage paths remain unchanged.
+
+## Bundle transaction paths (RB-003 / RB-004)
+
+- New staging uses one unpredictable `dist/OkuFlow.staging-<32-hex-guid>` name
+  per invocation. Packaging never clears an unknown old staging directory.
+- Successful replacements retain a complete same-parent backup at
+  `dist/OkuFlow.previous-<guid>` or `dist/OkuFlow2.previous-<guid>`. No old runtime
+  or owner data is recursively deleted to publish the new generation.
+- Publication and toolchain fixtures use GUID roots below
+  `%LOCALAPPDATA%/OkuFlow/bundle-publication-fixtures/` and
+  `%LOCALAPPDATA%/OkuFlow/bundle-toolchain-fixtures/`. Their logs, fake runtimes
+  and injected failures are private evidence, never release payloads.
+- `build_release_bundle.bat` accepts only Ninja for its required compiler
+  database and selects VS2022 17.x x64. `--check-toolchain` exits before any
+  configure/build/dist write; a stale generator cache requires a fresh
+  `OKUFLOW_BUNDLE_BUILD_DIR`, without automatic cache deletion.
+
+## Exact recording markers (audit PW-004)
+
+Beside each finalized Original video used by new notes, the serial storage worker
+publishes `<actual-video-name>.okuflow-media.json`. This immutable version-1 marker
+holds its UUID, basename, exact byte size and `sha256-chain-1m-v1` fingerprint;
+chunk size is fixed at 1 MiB, with a 32-zero-byte initial chain state. It has no
+machine path or transcript text. A selected root's basename is only a lookup hint;
+the exact marker and freshly hashed file bytes authorize handoff/sidecar access.
+Transcript sidecars are version 2 and include that complete identity. Their
+UUID-addressed filename `.okuflow-transcript-<mediaId>.json` is always 61 ASCII
+characters; it never shares a write target with a successor UUID at the same
+video path. Legacy `<video>.okuflow-transcript.json` files remain untouched and
+are not trusted or migrated automatically. Keep markers
+with recordings when moving the tree. No fixed Documents location is inferred.
+
+## Optional performance diagnostic bounds
+
+- `OKUFLOW_MAXINE_PROFILE=1` enables one in-memory ring of 16,384 host-call
+  samples per Maxine worker. Destruction emits stage/outcome counts and
+  nearest-rank p50/p95/p99/max microseconds to existing Qt stderr logging;
+  omitted earlier calls are counted. It is disabled by default and writes no
+  per-frame file. Timed-out resources retain their existing ownership.
+- `assistant_chat_benchmark` forces Qt offscreen and registers
+  `%WINDIR%/Fonts/segoeui.ttf`. It accepts 20..1000 measured deltas, 4..128 even
+  messages, 128..2048 initial characters per message and 1..2 views, with a
+  production 256 Ki-character total bound and at most eight synthetic previews.
+  Default: 200 deltas after ten warmups, 40 messages × 1024 characters, two
+  views of 900×720 and 430×720. `--output` explicitly selects the evidence file.
+  See [diagnostic commands](performance_diagnostics.md); these are offline CPU
+  measurements, not native/Maxine acceptance.
+- Optional `--trace-events` keeps at most 32 Qt events taking at least 500 µs
+  per delta, with inclusive duration and phase. It is a separate diagnostic
+  workload; default benchmark timing excludes this tracing overhead.
+
+
+## AAC timeline repair bounds
+After native Windows marker verification showed AAC timestamp-gap compaction,
+recording fills holes with zero PCM on its worker. Each block has at most
+4,800 PCM frames; ordinary channel layouts use no more than 64 KiB scratch.
+A single hole is limited to ten seconds, with one 250 ms admission-loop budget
+for its repair and following speech. Oversized gaps or unavailable credit stop
+and finalize existing recording output rather than compacting speech. Native
+COM/driver calls retain their separate watchdog limits. See
+[recording timeline evidence](recording_attempts_and_timeline.md).

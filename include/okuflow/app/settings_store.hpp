@@ -8,6 +8,7 @@
 
 #include "okuflow/app/color_schemes.hpp"
 #include "okuflow/common/recording_contract.hpp"
+#include "okuflow/common/uct_model_settings.hpp"
 
 #include <optional>
 #include <vector>
@@ -158,6 +159,8 @@ struct PresetDefinition {
 };
 
 struct PersistentSettings {
+    // Model preferences persist; UCT enable/show-original remain session-only.
+    uct::ModelSettings ultraClearTextModels;
     // UI language preference: a supported code from app_language.hpp (an
     // explicit choice) or "system". Empty also follows the Windows display
     // language and is saved as "system".

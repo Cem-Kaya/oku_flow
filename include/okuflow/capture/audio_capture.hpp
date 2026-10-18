@@ -49,6 +49,8 @@ public:
     bool Start(const AudioDeviceDescriptor& descriptor,
                AudioFrameCallback callback,
                AudioErrorCallback errorCallback = {});
+    // Worker-only: the reader/Flush wait is bounded, but final native Shutdown
+    // and COM release may block. Keep the owner alive until this returns.
     void Stop();
 
     bool IsRunning() const { return session_ && session_->running.load(); }

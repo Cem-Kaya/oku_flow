@@ -8,7 +8,7 @@
   ],
   "none": ["\\.md$", "^docs/", "^improvement_ideas/", "^website/"],
   "rules": [
-    { "paths": ["^android/"], "tests": [], "extraChecks": ["android-host-protocol"] },
+    { "paths": ["^android/", "^scripts/android_camera_probe\\.py$"], "tests": [], "extraChecks": ["android-host-protocol"] },
     {
       "paths": ["^translations/", "^src/ui/translation_catalog\\.cpp$"],
       "tests": ["^language_catalog_contract$", "^multilingual_live_switch$", "^main_window_interactions\\..*([Ll]anguage|[Tt]ranslat)", "^ai_settings_dialog_interactions\\."],

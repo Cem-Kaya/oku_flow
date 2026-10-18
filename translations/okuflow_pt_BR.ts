@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>Ação em andamento.</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>O status da ação não está disponível.</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>Acenda a luz do telefone</translation>
         </message>
@@ -3244,6 +3252,26 @@ Use “Conectar ao ChatGPT” na guia Assistente do modo Avançado para fazer lo
         <message>
             <source>Change drawing settings and save a photo?</source>
             <translation>Alterar as configurações de desenho e salvar uma foto?</translation>
+        </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>Configurações avançadas do UCT</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>Detector de texto na GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>Reconhecimento de texto na GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>Detector de texto na CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>Reconhecimento de texto na CPU</translation>
         </message>
     </context>
 </TS>

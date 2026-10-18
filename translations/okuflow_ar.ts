@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>جارٍ تنفيذ الإجراء.</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>حالة الإجراء غير متاحة.</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>قم بتشغيل ضوء الهاتف</translation>
         </message>
@@ -3244,6 +3252,26 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
         <message>
             <source>Change drawing settings and save a photo?</source>
             <translation>هل تريد تغيير إعدادات الرسم وحفظ صورة؟</translation>
+        </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>إعدادات UCT المتقدمة</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>كشف النص باستخدام GPU</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>التعرف على النص باستخدام GPU</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>كشف النص باستخدام CPU</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>التعرف على النص باستخدام CPU</translation>
         </message>
     </context>
 </TS>

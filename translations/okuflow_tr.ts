@@ -4,6 +4,14 @@
     <context>
         <name>OkuFlow</name>
         <message>
+            <source>Action in progress.</source>
+            <translation>İşlem sürüyor.</translation>
+        </message>
+        <message>
+            <source>Action status is unavailable.</source>
+            <translation>İşlem durumu alınamıyor.</translation>
+        </message>
+        <message>
             <source>Turn on phone light</source>
             <translation>Telefon ışığını aç</translation>
         </message>
@@ -3244,6 +3252,26 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
         <message>
             <source>Change drawing settings and save a photo?</source>
             <translation>Çizim ayarları değiştirilsin ve bir fotoğraf kaydedilsin mi?</translation>
+        </message>
+        <message>
+            <source>UCT advanced settings</source>
+            <translation>UCT gelişmiş ayarları</translation>
+        </message>
+        <message>
+            <source>GPU text detector</source>
+            <translation>GPU metin algılama modeli</translation>
+        </message>
+        <message>
+            <source>GPU text recognizer</source>
+            <translation>GPU metin tanıma modeli</translation>
+        </message>
+        <message>
+            <source>CPU text detector</source>
+            <translation>CPU metin algılama modeli</translation>
+        </message>
+        <message>
+            <source>CPU text recognizer</source>
+            <translation>CPU metin tanıma modeli</translation>
         </message>
     </context>
 </TS>

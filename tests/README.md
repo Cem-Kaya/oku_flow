@@ -1,5 +1,99 @@
 # OkuFlow Tests
 
+## Optional PaddleOCR acceptance (2026-10-18)
+
+`uct_paddle_processing` reconciles all six compiled tier pins against the
+preparation manifest (a declared runtime input). Settings/planner contracts
+cover GPU medium/medium and CPU tiny/small defaults, migration, closed enum
+validation and independent choices. `ultra_clear_text_contract` replaces a held
+worker without joining it on UI or reviving stale results. The opt-in
+`native_app_control_offscreen` exercises the four real UCT combos through the
+actual target, including saved projection, undo and native user edits.
+Real CPU/TensorRT rows remain explicit opt-in: defaults now select different
+model pairs. Reuse valid engine plans; do not repeat cold compilation as a
+routine benchmark. All of these checks can run without foreground desktop use.
+
+`uct_paddle_processing` is desktop-free and model-free: CPU reference
+normalization/region/CTC checks, missing/tampered model refusal and scripted
+backend initialization/runtime/exception/cancellation fallback. `uct_paddle_cuda`
+compares actual device normalization, quads, padded crops and CTC against CPU
+references and verifies two-slot owned snapshots, exact stamps and readback
+after source overwrite. It is serial with other `gpu` tests and does not open
+a native window. Neither fixture requires TensorRT or model downloads.
+Input-copy faults are separately tested so one bad frame cannot exhaust the
+backend chain. Preparation tests keep CPU service available and promote the
+retained GPU candidate only when ready. A separate SDK-free build passes the
+same fourteen selected Qt rows, and required-adapter configuration refuses
+missing headers explicitly.
+
+The UCT contract additionally holds a device recognizer to prove presentation
+clock progress, cancellation ownership and independent probe progress at 16x.
+Its device fake enforces two live images and checks at least ten fresh probes
+while inference is held; static accepted text stays below ten recognitions
+across at least twenty captures. The real CUDA pool holds one lease while
+reusing the other for thirty fresh probes, including decimation above one.
+The existing real Windows fixture calls `CreateWindowsRecognizer` explicitly;
+installing optional Paddle files cannot silently change which engine it tests.
+The Maxine navigation target includes the same pool/kernels and QtGui for its
+analysis dependency, while its window-free/private-SDK contract is unchanged.
+
+Actual model acceptance is opt-in, outside the ordinary model-free CTest gate:
+
+```powershell
+pwsh -NoProfile -File scripts/prepare_uct_runtime.ps1 -TensorRT
+# Reconfigure/build the appropriate tracked CPU/CUDA test preset afterward.
+$env:QT_QPA_PLATFORM = 'offscreen'
+$env:OKUFLOW_TEST_PADDLE_RUNTIME = '1'
+$env:OKUFLOW_TEST_PADDLE_GPU = '1'
+# Use the configured Qt bin on PATH, as CTest does.
+build/msvc-cuda-tests/tests/uct_paddle_tests.exe optionalRealCpu optionalRealGpu
+```
+
+These rows fail (rather than skip) when explicitly selected dependencies are
+missing. TensorRT acceptance exercises system-memory upload and an independently
+owned direct device input, checking six known printed words. First use may
+compile model/GPU-specific cached plans on the OCR worker. Do not repeatedly
+delete caches or call this a general camera/FPS benchmark. The one-time RTX4090
+synthetic cold compilation was about 86 s; cached warm inference was 7–38 ms,
+CPU 96–142 ms across development runs. These are fixture observations, not
+live-camera latency, GTX1070 validation, multilingual accuracy or render-tail
+acceptance. Keep fixture logs and SDK/model caches under LocalAppData, outside
+Git and installer staging. A background gate excluding native GUI is partial.
+
+## Packaging provenance fixtures (RB-001/RB-002)
+
+Run `pwsh -NoProfile -File scripts/test_release_provenance.ps1 -CMake
+<cmake.exe> -Ninja <ninja.exe>`. This desktop-free script configures private
+synthetic imported targets only; it never builds OkuFlow or installs anything.
+It checks corrupted WiX archives, preinstalled-shim isolation, changed/added
+tool dependencies, CPU and explicit CUDA toolkit facts under conflicting
+ambient variables, stale cache/configuration, staged-application mismatches,
+changed runtime/license bytes, missing/changed build seals, and CPU-to-CUDA
+reconfiguration retaining the prior CPU executable. Imported synthetic targets
+explicitly invoke the production post-build seal command without compiling.
+Actual metadata and SPDX generation use
+private synthetic payloads and signature results restricted to that fixture
+root. No certificate or credential is accessed. Optional `-WixPackage
+<reviewed-cached-wix.4.0.6.nupkg>` additionally runs the real pin's version check
+and compiles/extracts a tiny synthetic MSI from a verified private extraction,
+without network access, signing or installation.
+Evidence stays under `%LOCALAPPDATA%/OkuFlow/release-provenance-fixtures/`.
+These are script-contract results, not shipping builds or MSI/VM acceptance.
+
+`node --test scripts/test_notes_transcribe_bridge.mjs` checks the actual embedded
+notes bridge with controlled asynchronous file-handle barriers. It requires
+Node's built-in test/VM modules only and creates no browser, model or media.
+These desktop-free publication contracts complement `notes_html_contract` and
+the separate native Chrome handoff fixture; they do not replace browser/device
+acceptance.
+
+Test evidence hashes each distinct file's bytes afresh before and after every
+invocation, including resume. Length and modification time only optimize
+duplicate references within one fingerprint pass; persisted digests are not
+authority for skipping a fresh hash. Metadata-preserving replacements must
+invalidate previous passes. The post-run pass clears its memo before rereading
+runtime and case inputs.
+
 The 2026-10-15 scoped chat regression repair preserves native foreground,
 Escape focus, drag latching/cancellation, streaming selection/scroll, and Hide UI
 assertions. Fixtures use the visible chat header and `VisibleChatSession` shared
@@ -154,6 +248,20 @@ must still match. CPU, CUDA and bundle evidence never substitute for one
 another. After changing monitors, native DPI, drivers or hardware, GUI evidence
 is invalidated automatically.
 
+PowerShell-backed tests resolve the actual interpreter image through
+`cmake/PowerShell.cmake`, including when an existing cache contains a Windows
+Store execution alias. The alias can launch successfully while refusing file
+hashing; generated test commands use its real process image to avoid a pre-test
+evidence failure. The cache retains the launcher and resolves its current image
+on configure, including rediscovery when a cached versioned path disappears.
+Reconfigure after updating/removing PowerShell before running cached CTest commands.
+Registered Qt fixtures set `QT_FORCE_STDERR_LOGGING=1` so Qt assertions and
+skipped data rows remain visible in JUnit and detailed CTest logs. This does not
+change their platform, assertions or deadlines.
+CTest retains up to 1 MiB of output per passing/failing test in JUnit. A passing
+result with CTest's truncation marker remains `Unfinished`; inspect the archived
+full LastTest log rather than accepting potentially hidden Qt row skips.
+
 Background tests run in parallel across logical processors (`-Parallel`
 overrides). Tests labelled `gpu` or `codec` run serially in a second CTest
 invocation, followed by serial `gui` tests.
@@ -167,8 +275,8 @@ reformatted slot must remain discoverable; compare CTest names with the built
 fixture's `-functions` list after changing registration. All cases retain the
 fake-provider binaries and compatibility profile in `REQUIRED_FILES`.
 
-The phone-camera and legacy-adb fixtures set `QT_FORCE_STDERR_LOGGING=1` and
-use `-v1` to retain row entry and failure output through CTest on Windows.
+The phone-camera and legacy-adb fixtures additionally use `-v1` to retain row
+entry and failure output through CTest on Windows.
 Without that environment, Qt may send its plain-text output to the system
 debugger instead. Keep original empty-output failures archived: a later local
 pass is diagnostic evidence, not proof of the original failure's cause.
@@ -211,8 +319,14 @@ rebuild or publish anything. Keep the original Qt/OKUFLOW environment overrides.
 It retries exactly one recorded interrupted case once, retains its original
 failure/log, and still returns failure if another required case is unresolved.
 The following resume runs normal compile/translation gates and reuses only
-matching CTest evidence. A changed inventory refuses resume: unset the flag,
-build and run a fresh complete gate. Do not use CTest's mutable LastTestsFailed
+matching CTest evidence. If an unresolved test has different shared runtime inputs, resume
+refuses before starting another attempt: diagnose the cause, unset the flag,
+build and deliberately run a fresh gate. A diagnosed per-test repair/rebuild
+can resume under the same shared runtime. Passing tests with changed inputs
+still require new evidence. Batch CUDA result/scope/selection variables use
+`AGENT_CUDA_*` names so bookkeeping cannot masquerade as CUDA runtime input.
+PATH remains a real fingerprint input; use the same developer environment.
+Do not use CTest's mutable LastTestsFailed
 file as evidence for another configuration or use `--repeat until-pass`.
 
 Only a single Qt failure explicitly marked `OKUFLOW_DESKTOP_INTERRUPTED:`
@@ -377,6 +491,16 @@ First-run selection prefers only a companion that answered its handshake;
 saved webcam and legacy numeric preferences still win. Android settings tests
 verify a new host session clears only the light. The HEVC row explicitly skips only when the optional decoder probe fails;
 H.264 remains required.
+Fake-clock startup rows retain the original 12-second host deadline through
+negotiation/codec retry and its one-second decode reserve. They also check a
+stalled first mode followed by a decoding fallback, CSD without real input, the
+four-second HEVC clock after real input, and the unchanged 12-second silence
+bound. Android's `CameraStartupPlanTest` uses the production planner with a fake
+monotonic clock: stalled-first/fallback-success, one/two/six candidates, returned
+unused shares, depleted budgets, queue/setup time and retired-token cancellation.
+Run it with the tracked `scripts/build_android.ps1 -Lint` workflow. These timing
+fixtures do not validate physical Camera2/codec-driver latency or cancellation
+inside a blocked platform call.
 Private fake-server rows also verify targeted USB recovery, a healthy device
 with a stuck camera, a hung shared server, stalled transport selection,
 replug races, old listing transport IDs, unsupported-service throttling,
@@ -547,8 +671,28 @@ keyboard focus boundaries, dependent controls, and translated Explain/Stop
 state. Run GUI tests serially in an interactive Windows desktop session.
 For layout evidence, set `OKUFLOW_UI_TEST_SCREENSHOTS` to an output directory;
 the fixture saves English, Turkish, and German views including native tool
-windows only while its process owns the foreground. Otherwise it warns and
-skips the image instead of saving another app's desktop. Use distinct
+windows only when the whole capture fits the screen's available work area.
+It verifies native ownership/occlusion before and after the grab and records
+success/refusal, logical bounds, DPI ratio and physical image size in
+`native-captures.jsonl`. Original wide/tall geometry contracts retain their
+sizes and assertions; unsuitable optional images are refused, never clipped.
+`desktopVisualLayouts` adds required desktop-fitting visual examples for all
+three languages. `desktopVisualChat` adds light/dark native Advanced/floating
+chat, thumbnails, wrapped text, attachment states, keyboard focus, owner moves
+and Approval Details selection/scroll before and after a refresh. These cases
+set both Qt's application color-scheme hint and palette, so native style assets
+match the labelled light/dark fixture without changing the Windows theme. The
+chat footer's physical hit targets must belong to its native window after the
+queued splitter layout settles within a bounded wait; the test deadline stays 30 s.
+These cases
+use actual available geometry including frame margins and taskbar space, with
+no OS scale/resolution changes. When screenshots are requested, failure to
+capture any of these new examples fails its test. Without a capture directory
+the same native geometry/behavior assertions still run. Their private HWNDs
+disable opening transitions so captures cannot land in a compositor cross-fade;
+no system animation setting is changed. Each layout row additionally proves
+that an intentionally off-screen capture is refused without writing a PNG.
+Use distinct
 directories when repeating with `QT_SCALE_FACTOR=1.5`
 or `2`, and inspect the images for clipping as well as checking CTest results.
 These tests do not validate live AI responses or screen-reader speech.
@@ -1013,3 +1157,363 @@ hundredth-step speech rate, and native-scene guards. These are synthetic
 headless boundaries, not native voice/camera/provider or GUI acceptance.
 
 The opt-in actual-app control fixture requires a private CPU dev-full configure with -DOKUFLOW_ENABLE_NATIVE_CONTROL_FIXTURE=ON. Build native_app_control_fixture explicitly and run only native_app_control_offscreen. It uses actual production Qt controls and private settings under Qt offscreen, bypassing platform/device/provider startup. The separate scripts/test_mcp_native_sdk.mjs validates authenticated stdio/IPC against that real target. These checks establish the executed CPU-native subset, not CUDA effects, physical camera/phone or complete 94-field hardware acceptance.
+
+## Ultra Clear Text fixtures (development)
+
+The desktop-free contract includes padded Paddle-box ink fitting (title,
+descenders and accents), rendered source-gray contrast, busy-slot projection
+retention without watchdog renewal, bounded missed-probe tolerance, and refresh
+retention that keeps old reference/geometry/identity rather than lending proof
+to a new reference. Review regressions include 300 alternating successful/busy
+pan attempts with held OCR and zero overlay Hide/Show events, resize refusal,
+duplicate-retention prevention, fair probe order, palette hysteresis, neighbouring
+line exclusion and recovery of a CTC edge undershoot. Native pan smoothness and exact camera glyph fit remain
+separate manual/native acceptance; the offscreen cases do not verify DWM timing.
+
+The review follow-up adds fail-before/pass-after cases for presentation timeout
+and failed-attempt restoration, ordered omission gaps, plate/glyph eligibility,
+and reading-pane cursor/selection/scroll retention. The real Windows OCR rows
+also cover a printed region surrounded by the opposite brightness. These
+synthetic results do not establish accuracy on real boards or paper.
+`main_window_interactions.ultraClearTextOverlayFollowsNativeViewport` is a
+separate serial native GUI case with known words, Fill-mode pan/zoom, resize,
+owner-hide and complete screenshot evidence. Fit intentionally ignores zoom;
+the pan test must establish that its source rectangle actually changed.
+Matching/admission cases also preserve a dense incumbent through sparse aliasing
+without losing the coarse proposal's odd-pixel neighbor, prevent duplicate text
+after return pan, reject seven kinds of borrowed validation proof, retry terminal
+initialization explicitly, and preserve dense-word polarity. The held-OCR
+presentation test establishes its asynchronous worker before counting the fixed
+300 presentations; it does not count worker-startup scheduling as rendering work.
+
+`ultra_clear_text_contract` (label `headless`) runs under Qt offscreen with
+production overlay/panel widgets, a deterministic synthetic printed page
+(`ultra_clear_text_test_support.hpp`, no downloaded images) and scripted or
+held recognizers. It covers geometry/DPI, residual tracking and rejection,
+high-risk tokens, temporal agreement, stale/late/moved results, freshness,
+latest-only coalescing, cancellation ownership, bounded destruction, and the
+controller's presentation-clock independence while OCR is held.
+`ultra_clear_text_windows_ocr` (labels `headless;ocr-runtime`) exercises the
+real built-in Windows OCR engine on synthetic dark-on-light and light-on-dark
+pages and skips when no OCR language is installed; a skip is not a pass.
+Neither opens native windows, cameras or network connections. Native GUI
+layout, screen-reader and real-camera acceptance remain separate.
+
+## Required release capabilities (TB-002)
+
+The default `run_test_gate.ps1 -CapabilityProfile development` preserves optional
+skips and reports capability acceptance as `NotApplicable`. It is useful CPU/CI
+coverage, not evidence that unavailable hardware was exercised.
+`windows-cpu` requires the entire unfiltered CPU inventory, with every native
+`gui` case and the settings/recording/runtime/phone/control/MCP boundary cases
+strictly `Passed`. `windows-cuda` additionally requires all six CUDA kernel/cubin
+cases and `media_writer_gpu_codecs` (GPU-fed H.264). Their missing/skip/Qt-row-skip
+states block acceptance. Optional AV1 is not required on Pascal; its absence
+inside a successfully exercised H.264 fixture is reported separately by that
+fixture. `windows-cuda-kernels` permits the CUDA delta selection but still
+requires each of its six registered cases in that selection to pass.
+
+The bundle script chooses CPU/CUDA profiles from its requested build and the
+runner verifies the configured cache matches. The ledger records a separate
+`capabilityChecks` receipt with `Passed`, `Failed`, `Blocked`, `NotRun` case
+states and exact result fingerprints. Original CTest skip/failure evidence is
+never rewritten. Filtered GUI runs cannot pass a shipping profile. The explicit
+emergency untested-bundle path remains visibly untested. These minimum automated
+profiles do not establish Maxine quality, live provider access, physical phone
+recovery or clean-VM installer acceptance. UCT real OCR runtime coverage remains
+separate until that experimental feature's shipping profile is defined.
+
+Run `scripts/test_test_gate.ps1 -CMake <cmake.exe>` after policy changes. Its
+private command-line fixtures cover required missing/skipped/row-skipped/failed
+capabilities, exact fingerprint binding and CPU/CUDA build mismatches without
+opening GUI windows or using a GPU.
+
+UCT follow-up contracts exercise actual cached glyph painting during held OCR,
+worker-outcome synchronization, processed-scene provenance (including deferred
+processing/CPU fallback), immediate source retirement, strict mixed-height
+reading order and same-word color refresh. The GPU readback fixture uses pooled
+immutable vector handoff; CPU presentation copying remains explicit. Dense 4K
+residual costs are reported separately from UI/presentation callback costs.
+The 33-case UCT contract and installed Windows OCR passed in both CPU and CUDA
+builds on the development PC; this is not physical-page/GTX1070/UIA acceptance.
+
+Android host protocol selection includes `scripts/android_camera_probe.py`, which
+its tests import outside the Android tree. Probe-only edits select the Python
+host suite without rebuilding Windows. CI also selects the job for workflow
+and impact-manifest changes. The change-selector fixture checks this dependency.
+
+
+### Recording fallback and marked AAC timeline evidence
+
+The recording manager fixture injects failed AV1 metadata in either leg and
+verifies distinct H.264 output with all failed bytes retained. Native codec
+fixtures check exclusive sink creation; the GPU fixture rejects a native sink
+after metadata and then encodes through worker readback. The opt-in AAC gap
+run compares decoded 440/880 Hz audio and red/green video markers. See
+[the timeline contract](../docs/recording_attempts_and_timeline.md) for settings
+and evidence limits. Fake manager passes do not establish codec behavior.
+
+## Bundle publication and toolchain fixtures (RB-003 / RB-004)
+
+Run from a Windows PowerShell 7 terminal:
+
+```powershell
+pwsh -NoProfile -File scripts/test_bundle_publication.ps1
+$env:QT_ROOT_DIR = 'C:\Qt\6.12.0\msvc2022_64' # actual SDK; CTest supplies its configured path
+pwsh -NoProfile -File scripts/test_bundle_toolchain.ps1
+```
+
+Publication fixtures use synthetic manifest-owned bundles under LocalAppData,
+including a locked secondary DLL and a private copied command interpreter
+started without a window and exited normally through redirected stdin. They
+assert byte-for-byte old-generation preservation, running-image refusal,
+primary/secondary exchange, rollback after injected rename/verification errors,
+and rejection of owner output/captures, unknown files/directories, tampering,
+external staging and junctions. Failure injection loads only the actual helper
+function definitions into the private fixture; production exposes no bypass.
+
+The toolchain fixture invokes the actual batch `--check-toolchain` entrypoint.
+It checks default Ninja/VS2022 x64/Qt prerequisites, refuses Visual Studio,
+Ninja Multi-Config, Makefiles and generator overrides, and proves stale cache
+bytes survive refusal. It creates no build tree or release payload. Run it on
+a machine with the documented VS2022/Qt SDK installed. Both commands preserve
+private fixture evidence and establish scoped transaction/preflight behavior,
+not application compilation, GUI/hardware, MSI or full release acceptance.
+
+CTest splits publication into `bundle_publication_contract` (three exchange,
+locked-DLL and running-image scenarios), `bundle_publication_refusals` (seven
+owner-data/inventory/path scenarios) and `bundle_publication_rollback` (three
+rollback/late-owner scenarios). Each retains a 60-second limit and asserts its
+scenario count; the direct script defaults to `-CaseSet All` for all 13.
+Named BEGIN/PASS timings identify the last reached scenario on failure.
+`bundle_toolchain_contract` remains separate. Every case declares absolute
+helper/runtime inputs and carries `headless;packaging`. All publication groups
+retain the native process-identity resource lock and run serially because the
+exchange group owns a hidden OkuFlow-named console child. No free owner desktop
+is needed; these are still scoped fixtures rather than full release acceptance.
+
+The toolchain regression receives CTest's configured Qt SDK/source root and
+exercises the real batch through a private relocated SDK junction whose path
+contains spaces. It asserts that prefix, preventing a local `C:\Qt` installation
+from masking missing CI setup. Explicit overrides are cleared only inside the
+fixture and restored afterward. Real qmake/deployment, license and module SPDX
+checks remain required, with notice inputs fingerprinted. The relocated view
+omits only the SDK's `LICENSES` directory and asserts that the real batch
+selects `QT_SOURCE_ROOT/qtmultimedia/LICENSES/LGPL-3.0-only.txt`; all other SDK
+entries use real directory junctions or hash-verified root-file copies. The
+source file must exist even when a local SDK also includes its own copy.
+Hosted Qt setup includes the matching `qtmultimedia` source archive for its
+Qt LGPL and FFmpeg notices;
+it does not install all Qt sources or fabricate license files. The 60-second
+limit and exactly one real VS initialization are unchanged.
+
+## Exact recording identity fixtures (audit PW-004)
+
+The notes bridge Node contracts cover unrelated same-named folder trees, matching
+name/size/mtime with different bytes, different UUIDs for identical bytes, wrong
+returned identity, stale/legacy sidecar refusal, identity-bearing File handoff,
+revalidation before sidecar save and bounded 1 MiB reads. A `createWritable`
+barrier replaces the media bytes, marker UUID and saved successor transcript
+after old validation; the old completion writes only its own UUID target and
+cannot overwrite that successor. The tests also refuse legacy basename-only
+sidecars without modifying/migrating them. Existing PW-003 barriers
+still prove immutable snapshots and ordered writers. `notes_html` additionally
+checks native UUID stability, no-clobber refusal after same-length replacement,
+escaped generated metadata and the fixed cross-language fingerprint vector.
+Native cases were added but must be compiled/run through the tracked gate.
+The sibling website's cancellation contracts verify byte validation before cached
+result reuse and Stop during a held fingerprint read. No browser/model/device is
+started by either Node command. For the opt-in actual Chrome notes fixture, the
+recording must be exactly the file identified by the generated notes and its
+sibling `.okuflow-media.json`; metadata-only lookalikes are deliberately refused.
+
+## Opt-in performance measurements (NP-010 / PF-001)
+
+`assistant_chat_benchmark` is excluded from the default build and CTest. It
+forces Qt offscreen, constructs production chat widgets with bounded synthetic
+snapshots and records per-delta p50/p95/p99 CPU/queued-callback timings, exact
+selection endpoints and reading-anchor displacement. Its controlled
+`DeadlineWorker` sleeps are explicitly separate from actual Maxine timings.
+The app-less `deadline_worker` fixture also tests rejection of a concurrent call
+without queueing/executing it. See [commands, evidence and limits](../docs/performance_diagnostics.md).
+
+
+`recording_integrity` also checks the production PCM planner: exact three-second
+silence, delayed onset, independent segment reset, one-frame rounding tolerance,
+covered overlaps, 44.1 kHz fractional conversion and huge/overflowing timestamp
+refusal without consuming the cursor. Native codec passes check exact submitted
+PCM-frame totals (144,000 normal, 288,000 for the three-second diagnostic),
+then decode and compare actual tone/video markers. Original failing evidence
+remains separate from the post-repair run.
+
+The post-repair Windows marked diagnostic passed: three-second-gap PCM
+submission was 288,000 frames, with decoded audio/video markers at 3.999333 /
+3.999967 seconds (about -0.633 ms). Normal input stayed at 144,000 submitted
+frames. This is native synthetic codec evidence, not a physical microphone or
+release-matrix result; see the retained-evidence details in the timeline guide.
+
+## Private Maxine adapter lifecycle fixture
+
+The CUDA-only `maxine_lifecycle_tests` target builds the production runtime
+adapter with two private fake SDK DLLs under the build's `tests/maxine-fixture/`
+directory. `maxine_lifecycle_cuda` is desktop-free and labelled `gpu`; the tracked
+CUDA delta includes it. It requires a real CUDA device (CTest skip code 77 when
+unavailable) but never loads a proprietary Maxine runtime/model or opens a camera.
+Its exact fake DLLs are declared CTest runtime inputs and selected only through
+the existing process-local `OKUFLOW_MAXINE_PATH`. Nothing is installed or staged.
+
+```powershell
+cmake --preset msvc-cuda-tests
+cmake --build --preset msvc-cuda-tests-build --target maxine_lifecycle_tests
+ctest --preset msvc-cuda-tests -R '^maxine_lifecycle_cuda$' --output-on-failure
+```
+
+Coverage uses actual adapter transitions: repeated teardown dispatch count,
+successful reload after retirement, failed partial-load cleanup and retry,
+original device/worker-thread ownership, and a controlled blocked frame whose
+deadline/destructor/late completion cannot release quarantined SDK resources.
+The quarantine case deliberately retains its small fake effect/images until
+process exit. Synthetic malloc-backed images and no-op transfers are lifecycle
+fixtures, not SR pixel, driver-failure, model-performance or async-producer proof.
+This scoped run does not replace the tracked shipping/CPU/CUDA acceptance gate.
+
+The sibling target `maxine_navigation_tests` / CTest `maxine_navigation_cuda`
+adds the actual `CudaInteropSurface`, CUDA/NIS kernels and private D3D12 shared
+textures. It opens no native window, presenter or camera. A default-off fixture
+control fills neural output with a known CUDA pattern. Readback checks prove
+navigation admits no model/run, uses the changed current frame's spatial/base
+pixels rather than previous neural pixels, and resumes the same loaded model.
+Retirement balances effect/image ownership. Both helpers are exact runtime
+inputs; the GPU cases serialize. This establishes neither real Maxine output
+quality nor pan-to-submission performance.
+
+```powershell
+cmake --build --preset msvc-cuda-tests-build --target maxine_navigation_tests
+ctest --preset msvc-cuda-tests -R '^maxine_navigation_cuda$' --output-on-failure
+```
+
+The same fixture fails each frame stage once (input transfer, synchronous effect
+execution, output transfer), verifies exact stage/status diagnostics and skipped
+downstream calls, then checks that a later successful frame reuses the original
+loaded effect/images and clears the ordinary error. These controlled SDK statuses
+do not simulate or establish recovery from an actual device failure.
+
+## Bundle preflight startup bound (CI follow-up, 2026-10-17)
+
+`bundle_toolchain_contract` retains its 60-second deadline and all original
+assertions. Unsupported generators still fail in the batch before any setup;
+generator overrides and incompatible caches now fail in a configuration-only
+helper before VS initialization. Exactly one valid actual-batch invocation
+starts the real installed VS2022 x64 shell and checks the full toolchain/Qt
+prerequisites. The fixture records a named BEGIN/PASS and elapsed time for each
+case and asserts that rejected configurations never reached initialization.
+
+Additional negative checks cannot replace real tools: they forge only version,
+architecture and installation-root environment claims, require the full helper
+to reject an unregistered root, and prove that configuration-only success does
+not certify a toolchain. The positive batch must repair those same claims by
+initializing the installed shell, then independently checking its registered
+17.x C++ root and exact x64 compiler path. Installer `vswhere.exe` is required
+for that identity verification. No fake VS executable or setup script is run.
+
+The installed-root lookup uses `vswhere -property installationPath` and the
+known `Common7/Tools/VsDevCmd.bat` path, avoiding a recursive search through the
+entire installed toolchain. The bundle's local environment sets Microsoft's
+`VSCMD_SKIP_SENDTELEMETRY=1`: compiler initialization and identity checks still
+run, while the initializer does not spawn unrelated background telemetry that
+can retain a captured child pipe. Setup stage output streams into CTest and a
+per-case log immediately, including on a timeout; it is not held until exit.
+
+Run 39047500019 timed out in the positive case on commit `8f4567c`. Its buffered
+output identifies that case, but does not establish which inner setup operation
+stalled. Keep that original failure separate from subsequent local and hosted
+validation. Let `agent_build.bat` initialize its own developer shell; redundant
+caller initialization can overflow Windows batch environment lines.
+This is a bounded-work correction for the remote timeout, with no automatic
+retry, deadline increase or relaxed assertion. Original failed evidence stays
+separate from subsequent validation.
+
+## Argon 54 focused regressions
+
+`capture_shutdown` now drives the production `CaptureLoop` with an owned fake
+`IMFSourceReader`: a STREAMTICK then a gated read. It injects only the pending
+read's age, checks negotiated low-rate grace and exactly one loss signal, and
+verifies nonblocking split stop, late-return suppression, phone exclusion and
+explicit cancellation. Existing abandonment tests retain the unsafe-driver
+quarantine contract. No camera, phone, system clock or desktop is changed.
+
+`settings_store_round_trip` retains actual size-limit/backup, failed publication,
+committed-state and protected-secret ordering coverage through the detailed
+`SaveStatus` injection contract. `OutboundQueueTest` exercises the exact Kotlin
+control/video factories under advisory saturation, reliable reserve, byte/FIFO,
+close/in-flight and concurrent-producer transitions. Run the Android build/JVM/
+lint command documented in `android/BUILDING.md`; do not install its debug APK
+or substitute queue tests for physical USB acceptance.
+
+The Argon recovery follow-up also exercises the actual app through
+`native_app_control_offscreen`: reader adoption alone stays pending, repeated
+idle drives do not reopen it, successful presentation completes recovery once,
+and a second silent adopted reader expires and retires. The pure orchestrator
+case preserves the original 30-second window even if backoff schedules its next
+attempt later. Synthetic adoption/presentation acknowledgment is not real
+camera or native GUI acceptance.
+
+## Independent Maxine producer validation (2026-10-17)
+
+`maxine_async_tests` / `maxine_async_cuda` runs with real CUDA and the same
+private fake SDK DLLs as the adapter/surface fixtures. It checks source mutation
+after a private snapshot, one in-flight job while the backend is gated, CPU
+request coalescing, rejection of each of five ticket fields, consumer-copy
+lifetime across reconfiguration, invalidation/destruction before a held SDK
+returns, and an explicit retry after an ordinary model-load failure. Output
+pixel echo is a test-only CUDA pattern operation, never neural-quality evidence.
+All gates are released by fixture ownership, including exception paths.
+Weak settings invalidation must preserve the failed-configuration latch; only
+an explicit reset permits a same-configuration retry.
+
+The surface fixture now imports a private shared D3D12 fence and exercises
+asynchronous snapshot/publication waits and signals. `AwaitNeural` is a fixture
+poll with a deadline; production has no wait loop or native window here.
+`pipeline_timing_percentiles` separately verifies fast async-work polling between
+5-FPS camera frames, returning to idle policy without a user-motion tail.
+`neuralPublicationRevokesHeldRecognition` keeps old OCR from being published
+when neural enhancement changes pixels from the same source/camera frame.
+The surface fixture also verifies immediate native-settings revocation before
+the next frame without retiring the healthy model. The opt-in
+`native_app_control_offscreen` case
+`nativeImageEditsAdvanceProcessingAuthorityWithoutAgent` verifies the actual
+app's settings-generation path with no agent target, then restores its fixture
+configuration. This is Qt-offscreen, without a native window or real camera.
+
+The strict `windows-cuda` release profile requires all three Maxine fixtures
+(`maxine_lifecycle_cuda`, `maxine_navigation_cuda`, `maxine_async_cuda`) in
+addition to its existing requirements. The kernel-only profile is unchanged.
+A missing, skipped or incomplete required fixture cannot certify a release.
+Helpers remain private test outputs and must never enter application staging.
+
+```powershell
+cmake --build --preset msvc-cuda-tests-build --target maxine_async_tests maxine_navigation_tests maxine_lifecycle_tests
+./scripts/run_test_gate.ps1 -Preset msvc-cuda-tests -Test maxine_async_cuda,maxine_navigation_cuda,maxine_lifecycle_cuda
+```
+
+This is background synthetic acceptance of scheduling, ownership and pixels.
+Real runtime pan-to-submission, sharpness transitions, optical quality,
+physical-phone/camera and installer acceptance remain separate. Immediate
+photos/recordings retain paired current-frame spatial/base output while neural
+processing is pending; no delayed SR capture queue is introduced.
+
+### Diagnosed external prerequisite repair
+
+Ordinary fresh/resume gates deliberately retain matching Failed/Interrupted/
+Unfinished blockers. If the cause is diagnosed and repaired outside fingerprinted
+inputs (for example, a missing SDK prerequisite poisoned a CTest partition), use
+`pwsh -NoProfile -File scripts/run_test_gate.ps1 -Preset msvc-cpu-tests -ExcludeGui -Test EXACT_CTEST_NAME -RecheckAfterRepair 'Restored the missing original Qt source license prerequisite.'`.
+Name only actual matching Failed/Unfinished blockers. Rebuild affected targets
+first. The reason must contain at least 20 characters;
+this mode cannot combine with Resume, RetryInterrupted or broad selectors. A
+failed recheck cannot repeat against the same blocking fingerprint. It runs the
+named cases once and preserves other matching passes, the old log/JUnit and
+blocker identity alongside the reason. It does not turn a failed run into a pass,
+retry automatically, authorize GUI use, or replace missing release acceptance.
+Per-case and capability evidence retains repair provenance; the summary names
+passes obtained through this mode, including when later reused.
