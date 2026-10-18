@@ -1,6 +1,17 @@
 # Changelog
 
 ## [Unreleased]
+- Add optional local PaddleOCR with TensorRT CUDA inference and automatic
+  same-model ONNX Runtime CPU fallback, then built-in Windows OCR. Analyze
+  owned pre-zoom scenes so 16x display zoom retains text context. Keep motion
+  validation independent of slow inference and rendering; pin model/runtime
+  inputs and retain their licenses outside the source and release inventory.
+  Serve CPU OCR while GPU engines prepare, preserve healthy engines after an
+  input-copy fault, and avoid queued device jobs starving live validation.
+  Backpressure slow probes, report recoverable input failures, retry clean
+  allocation pressure, and select dense-page regions deterministically.
+- Allow an explicit diagnosed-repair test recheck with an archived reason and
+  prior blocking attempt; ordinary resume/fresh runs still preserve blockers.
 - Hide Ultra Clear Text and its reading pane after failed or stalled
   presentations until the presenter confirms success. Preserve omitted-word
   positions and the reader's selection during recognition updates; draw a

@@ -1025,6 +1025,9 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     stampedInput.cameraEpoch = cameraSessionId_;
     stampedInput.frameSequence = currentCameraFrameSequence_;
     stampedInput.settingsGeneration = cudaProcessingGeneration_;
+#if OKUFLOW_ENABLE_CUDA
+    cudaSurface_->EnableUctAnalysis(ultraClearText_ && ultraClearText_->IsEnabled());
+#endif
     if (!cudaSurface_->ProcessFrame(stampedInput, settings, cudaSyncParams)) {
         pipelineOrchestrator_->RecordStageSample(
             FrameTimingStage::CudaSubmission,
@@ -1203,7 +1206,12 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     // An asynchronous enhancement changes the displayed image even when the
     // camera frame/geometry did not change. Revoke older OCR/readback tickets.
     uctContext.geometry.neuralEnhancement = presentingSuperRes;
-    const bool uctWanted = ultraClearText_ && ultraClearText_->OnPresented(uctContext);
+    auto uctAnalysisContext=uctContext;
+    uctAnalysisContext.geometry.neuralEnhancement=false; // analysis precedes neural appearance
+#if OKUFLOW_ENABLE_CUDA
+    if (ultraClearText_) ultraClearText_->OnAnalysisHealth(cudaSurface_->UctAnalysisFailed());
+#endif
+    const bool uctWanted = ultraClearText_ && ultraClearText_->OnPresented(uctAnalysisContext);
     presentationFocusX = std::clamp(presentationFocusX, 0.0f, 1.0f);
     presentationFocusY = std::clamp(presentationFocusY, 0.0f, 1.0f);
 
@@ -1285,8 +1293,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
     presentationOptions.focusY = presentationFocusY;
     presentationOptions.requestReadback =
         assistiveWanted || photoWanted || annotationWanted ||
-        onDemandAssistiveWanted || assistantFrameWanted || observationWanted ||
-        uctWanted;
+        onDemandAssistiveWanted || assistantFrameWanted || observationWanted;
     UINT64 readbackRequestId = 0;
     QElapsedTimer presentationTimer;
     presentationTimer.start();
@@ -1331,7 +1338,12 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         }
     }
     if (uctWanted && presented) {
-        ultraClearText_->OnReadbackRequested(readbackRequestId, uctContext);
+#if OKUFLOW_ENABLE_CUDA
+        auto analysis=cudaSurface_->TakeUctAnalysis();
+        if(analysis && analysis->processingGeneration==cudaProcessingGeneration_ &&
+            analysis->frameSequence==uctContext.frameSeq)
+            ultraClearText_->OnDeviceScene(uctAnalysisContext,std::move(analysis));
+#endif
     }
     if (readbackRequestId != 0) {
         if (observationWanted) controlTarget_->ObservationReadbackSubmitted(readbackRequestId,observationFrame);
@@ -2641,9 +2653,12 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         const UctFrameContext uctContext = UltraClearTextContext(
             false, transform, mapping.targetWidth, mapping.targetHeight);
         if (ultraClearText_->OnPresented(uctContext)) {
+            auto analysisContext=uctContext;
+            analysisContext.transform={};analysisContext.transform.valid=true;
+            analysisContext.viewportWidth=srcWidth;analysisContext.viewportHeight=srcHeight;
             ultraClearText_->OnCpuViewport(
-                uctContext, presentationBuffer_.data(), static_cast<int>(mapping.targetWidth),
-                static_cast<int>(mapping.targetHeight), static_cast<int>(dstStride));
+                analysisContext, data, static_cast<int>(srcWidth),
+                static_cast<int>(srcHeight), static_cast<int>(srcStride));
         }
     }
 

@@ -1,4 +1,5 @@
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/common/uct_paddle.hpp"
 
 #if defined(_WIN32)
 #include "okuflow/common/uct_windows_ocr.hpp"
@@ -102,15 +103,20 @@ private:
 
 } // namespace
 
-std::unique_ptr<Recognizer> CreateDefaultRecognizer()
+std::unique_ptr<Recognizer> CreateWindowsRecognizer()
 {
     return std::make_unique<WindowsOcrRecognizer>();
 }
 #else
-std::unique_ptr<Recognizer> CreateDefaultRecognizer()
+std::unique_ptr<Recognizer> CreateWindowsRecognizer()
 {
     return {};
 }
 #endif
+
+std::unique_ptr<Recognizer> CreateDefaultRecognizer()
+{
+    return CreateAutomaticRecognizer();
+}
 
 } // namespace okuflow::uct

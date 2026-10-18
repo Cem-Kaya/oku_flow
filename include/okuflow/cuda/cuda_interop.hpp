@@ -45,6 +45,7 @@ struct ID3D12Fence;
 struct ID3D11Texture2D;
 
 namespace okuflow {
+namespace uct {class DeviceImage;class AnalysisPool;using SharedDeviceImage=std::shared_ptr<const DeviceImage>;}
 
 class MaxineAsyncProducer;
 
@@ -279,6 +280,9 @@ public:
     bool ProcessFrame(const ProcessingInput& input,
                       const ProcessingSettings& settings,
                       const FenceSyncParams& fenceSync);
+    void EnableUctAnalysis(bool enabled);
+    bool UctAnalysisFailed() const;
+    uct::SharedDeviceImage TakeUctAnalysis() { return std::move(uctAnalysisFrame_); }
     const std::string& LastError() const { return lastError_; }
     bool LastFailureWasBusy() const { return uploadAdmissionBusy_; }
     bool LastFailureWasCaptureInterop() const {
@@ -346,6 +350,10 @@ public:
     CudaInteropSurface& operator=(const CudaInteropSurface&) = delete;
 
 private:
+    bool uctAnalysisEnabled_{};
+    std::unique_ptr<uct::AnalysisPool> uctAnalysisPool_;
+    uct::SharedDeviceImage uctAnalysisFrame_;
+    std::int64_t uctLastCaptureMs_{};
     void Initialize(ID3D12Resource* texture,
                     ID3D12Resource* superResTexture,
                     ID3D12Fence* sharedFence,

@@ -53,6 +53,8 @@ if (OKUFLOW_ENABLE_CUDA)
 endif()
 
 add_executable(oku_flow ${OKUFLOW_CPP_SOURCES})
+include(UctOcr.cmake)
+okuflow_configure_ocr(oku_flow)
 
 if (OKUFLOW_ENABLE_CUDA)
     target_sources(oku_flow PRIVATE ${OKUFLOW_CUDA_SOURCES})

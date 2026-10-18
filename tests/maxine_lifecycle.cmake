@@ -35,6 +35,8 @@ if(WIN32 AND OKUFLOW_ENABLE_CUDA)
     add_executable(maxine_navigation_tests maxine_navigation_tests.cpp
         "${PROJECT_SOURCE_DIR}/src/common/maxine_async_producer.cpp"
         "${PROJECT_SOURCE_DIR}/src/cuda/cuda_interop.cpp"
+        "${PROJECT_SOURCE_DIR}/src/cuda/uct_analysis_pool.cpp"
+        "${PROJECT_SOURCE_DIR}/src/cuda/uct_kernels.cu"
         "${PROJECT_SOURCE_DIR}/src/cuda/cuda_kernels.cu"
         "${PROJECT_SOURCE_DIR}/src/cuda/spatial_upscalers.cu"
         "${PROJECT_SOURCE_DIR}/src/common/maxine_superres.cpp"
@@ -48,7 +50,7 @@ if(WIN32 AND OKUFLOW_ENABLE_CUDA)
         OKUFLOW_MAXINE_FAKE_EFFECTS="$<TARGET_FILE:maxine_fake_effects>")
     target_compile_options(maxine_navigation_tests PRIVATE $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>)
     target_link_libraries(maxine_navigation_tests PRIVATE
-        Qt6::Core CUDA::cudart_static CUDA::cuda_driver d3d11 d3d12 dxgi advapi32)
+        Qt6::Core Qt6::Gui CUDA::cudart_static CUDA::cuda_driver d3d11 d3d12 dxgi advapi32)
     set_target_properties(maxine_navigation_tests PROPERTIES
         CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_RUNTIME_LIBRARY Static
         CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}")

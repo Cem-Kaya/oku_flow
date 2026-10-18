@@ -220,6 +220,10 @@ param([string]$Case, [Parameter(ValueFromRemainingArguments)][string[]]$Remainin
 $countFile = Join-Path $PSScriptRoot "$Case.count"
 $count = if (Test-Path $countFile) { [int](Get-Content $countFile) + 1 } else { 1 }
 Set-Content $countFile $count
+if ($Case -eq 'prerequisite' -and !(Test-Path (Join-Path $PSScriptRoot 'prerequisite.restored'))) {
+    Write-Output 'FAIL! : Fixture::prerequisite() missing external prerequisite'
+    exit 1
+}
 if ($Case -eq 'mutate') {
     $path = Join-Path $PSScriptRoot 'data.json'
     $time = (Get-Item -LiteralPath $path).LastWriteTimeUtc
@@ -406,6 +410,42 @@ add_test(NAME fixture_absent COMMAND "${CMAKE_SOURCE_DIR}/absent.exe")
     Assert-Contract ((Get-Content (Join-Path $root 'pass.count')) -eq '3') 'Successful resume repeated a pass.'
     $raw = Get-Content -LiteralPath (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'OkuFlow/test-evidence') -Recurse -Filter 'ledger-v2.json')[0].FullName -Raw
     Assert-Contract (!$raw.Contains($env:OKUFLOW_GATE_CONTRACT_SECRET)) 'Secret environment value was persisted.'
+    # An external prerequisite can be repaired without changing a test's bytes.
+    # Normal fresh/resume gates must still block; only an audited recheck runs it.
+    Configure-Fixture ($header + @'
+
+add_test(NAME fixture_prerequisite COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case prerequisite)
+add_test(NAME fixture_pass COMMAND "${PWSH}" -NoProfile -File "${CMAKE_SOURCE_DIR}/fixture.ps1" -Case pass)
+'@)
+    Invoke-Gate -Options @('-ExcludeGui') -Expected 1
+    $failedPrerequisite = (Read-Ledger).results.fixture_prerequisite
+    $passCount = Get-Content (Join-Path $root 'pass.count')
+    Set-Content (Join-Path $root 'prerequisite.restored') 'original prerequisite restored'
+    Invoke-Gate -Options @('-Test', 'fixture_prerequisite') -Expected 1
+    Assert-Contract ((Get-Content (Join-Path $root 'prerequisite.count')) -eq '1') 'Ordinary fresh gate retried unchanged failed inputs.'
+    Invoke-Gate -Options @('-Resume', '-RecheckAfterRepair', 'Restored the missing external prerequisite.') -Expected 1 -Contains 'cannot combine'
+    Invoke-Gate -Options @('-ExcludeGui', '-RecheckAfterRepair', 'Restored the missing external prerequisite.') -Expected 1 -Contains 'requires exact -Test'
+    Invoke-Gate -Options @('-Test', 'fixture_pass', '-RecheckAfterRepair', 'Restored the missing external prerequisite.') -Expected 1 -Contains 'Only a recorded'
+    Invoke-Gate -Options @('-Test', 'fixture_prerequisite', '-RecheckAfterRepair', 'Restored the missing external prerequisite.') -Expected 0 -Contains 'Passed after diagnosed-repair recheck'
+    $rechecked = Read-Ledger
+    $repairAttempt = $rechecked.attempts[-1]
+    Assert-Contract ((Get-Content (Join-Path $root 'prerequisite.count')) -eq '2') 'Explicit repaired-prerequisite recheck did not execute once.'
+    Assert-Contract ((Get-Content (Join-Path $root 'pass.count')) -eq $passCount) 'Recheck unnecessarily repeated a matching pass.'
+    Assert-Contract ($repairAttempt.repairReason -eq 'Restored the missing external prerequisite.') 'Repair diagnosis was not retained.'
+    Assert-Contract ($repairAttempt.priorBlockers.fixture_prerequisite.attempt -eq $failedPrerequisite.attempt) 'Original blocking attempt was not recorded.'
+    Assert-Contract ($rechecked.results.fixture_prerequisite.repairRecheckOf -eq $failedPrerequisite.attempt) 'Per-case repair identity missing.'
+    Assert-Contract ($rechecked.capabilityChecks[-1].repairRechecks.fixture_prerequisite.reason -eq $repairAttempt.repairReason) 'Capability evidence hid repair provenance.'
+    $oldAttempt = $rechecked.attempts | Where-Object id -eq $failedPrerequisite.attempt
+    Assert-Contract ((Test-Path $oldAttempt.log) -and (Test-Path $oldAttempt.junit)) 'Recheck removed original failed evidence.'
+    Configure-Fixture ($header + @'
+
+add_test(NAME fixture_repair_fails COMMAND "cmd.exe" /c "exit 1")
+'@)
+    Invoke-Gate -Options @('-Test', 'fixture_repair_fails') -Expected 1
+    Invoke-Gate -Options @('-Test', 'fixture_repair_fails', '-RecheckAfterRepair', 'Fixture simulates a diagnosed repair that still fails.') -Expected 1
+    $failedRepairAttempt = (Read-Ledger).results.fixture_repair_fails.attempt
+    Invoke-Gate -Options @('-Test', 'fixture_repair_fails', '-RecheckAfterRepair', 'Fixture simulates a second attempt at the same repair.') -Expected 1 -Contains 'Already rechecked'
+    Assert-Contract ((Read-Ledger).results.fixture_repair_fails.attempt -eq $failedRepairAttempt) 'Unchanged failing repair was automatically repeated.'
     # Independent executable fingerprints: changing B cannot rerun A.
     foreach ($name in 'a', 'b') { Copy-Item -LiteralPath $CMake -Destination (Join-Path $root "$name.exe") }
     Configure-Fixture ($header + @'

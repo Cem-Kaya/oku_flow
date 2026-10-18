@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include "okuflow/cuda/cuda_interop.hpp"
+#include "okuflow/cuda/uct_analysis_pool.hpp"
 #include "okuflow/cuda/timing_event_pair.hpp"
 #include "okuflow/common/gpu_copy_lease.hpp"
 
@@ -36,6 +37,20 @@
 #include <QString>
 
 namespace okuflow {
+
+void CudaInteropSurface::EnableUctAnalysis(bool enabled)
+{
+    if (!enabled && uctAnalysisEnabled_) {
+        uctAnalysisFrame_.reset();
+        uctAnalysisPool_.reset(); // cleanup never waits on the presentation thread
+        uctLastCaptureMs_ = 0;
+    }
+    uctAnalysisEnabled_ = enabled;
+}
+bool CudaInteropSurface::UctAnalysisFailed() const
+{
+    return uctAnalysisPool_ && uctAnalysisPool_->HasFailure();
+}
 
 struct CudaInteropSurface::AsyncSuperResState {
     MaxineAsyncProducer::Ticket ticket;
@@ -3939,6 +3954,20 @@ bool CudaInteropSurface::ProcessFrame(const ProcessingInput& input,
             ThrowIfCudaFailed(
                 cudaEventRecord(processTimingGeometryEvent_, stream_),
                 "cudaEventRecord geometry timing boundary failed");
+        }
+
+        // Independently owned, appearance-neutral analysis before display
+        // enhancement/zoom. Capture enqueues only a D2D copy on this stream;
+        // inference and all host waits belong to the OCR worker.
+        if (uctAnalysisEnabled_) {
+            const auto now=std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            if(now-uctLastCaptureMs_>=80) {
+                if(!uctAnalysisPool_) uctAnalysisPool_=std::make_unique<uct::AnalysisPool>();
+                auto frame=uctAnalysisPool_->Capture(current,currentPitch,procWidth,procHeight,stream_,
+                    input.cameraEpoch,input.frameSequence,input.settingsGeneration);
+                if(frame) {uctAnalysisFrame_=std::move(frame);uctLastCaptureMs_=now;}
+            }
         }
 
         const auto textStages = settings.TextClarityStages();

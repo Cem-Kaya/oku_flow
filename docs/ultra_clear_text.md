@@ -23,14 +23,79 @@ accepted use cases. Use Show original to compare, especially for numbers.
   **Recognized text** pane with the accepted words in reading order. An
   ellipsis (…) marks words that were left as the original image.
 - Glyph weight follows the existing Text Clarity **Stroke weight** slider.
-  Plate colors are measured from the processed camera pixels, using a bounded
-  surrounding margin to identify the background of dense/bold print, so the display
-  color scheme is preserved; if that pair reads below 7:1 contrast the plate
+  Plate colors are measured from the analysis pixels, using a bounded
+  surrounding margin to identify the background of dense/bold print. CUDA's
+  neutral analysis branch precedes display color effects, so its plates preserve
+  source polarity rather than a display LUT. If that pair reads below 7:1 contrast the plate
   falls back to pure black/white in the scene's polarity.
 
 ## Recognition backend
 
-UCT uses the built-in Windows OCR engine, `Windows.Media.Ocr`, through
+### PaddleOCR development backend (2026-10-18)
+
+New builds select **TensorRT CUDA → ONNX Runtime CPU → Windows OCR**. Both
+Paddle paths use the pinned PP-OCRv6 tiny detector and small recognizer.
+Unavailable/failed backends retire for the current recognition session;
+copy/input faults drop only that frame. Cancellation does not start fallback.
+Each fallback candidate initializes at most once per session; GPU promotion
+does not resurrect a CPU backend that already failed. A rejected owned-input
+or readiness check preserves healthy GPU engines.
+UCT off/on starts a fresh session without joining a native call on the UI.
+
+Run `pwsh -NoProfile -File scripts/prepare_uct_runtime.ps1`, optionally with
+`-TensorRT` for the external CUDA-12.9 TensorRT SDK. Files stay in
+`%LOCALAPPDATA%/OkuFlow/ocr-deps` and `ocr-runtime`. Reconfigure CMake after
+preparation. No network/model downloads happen when enabling UCT.
+`OKUFLOW_UCT_ROOT` overrides the model/CPU directory;
+`OKUFLOW_UCT_TENSORRT_ROOT` overrides the external TensorRT SDK.
+Build-time `OKUFLOW_UCT_SDK_ROOT` selects the private header cache.
+SDK-free builds retain Windows OCR. See [third-party terms](THIRD_PARTY_LICENSES.md).
+`OKUFLOW_UCT_REQUIRE_PADDLE_CPU` and `OKUFLOW_UCT_REQUIRE_TENSORRT` make missing
+build dependencies fatal for an explicitly required adapter. CUDA DLL discovery
+uses runtime `OKUFLOW_UCT_CUDA_BIN`, then `CUDA_PATH_V12_9/bin`, then the local
+documented CUDA-12.9.2 installation, never a compiled-in developer path.
+
+TensorRT uses a private low-priority stream, float32 graphs, device I/O,
+CUDA normalization, connected regions, rectification and CTC reduction.
+Only a region count is downloaded between networks; token/box metadata
+comes back afterward, never the full model logits. Engines prepare on a
+separate owned worker; CPU OCR serves until preparation
+finishes, then GPU is promoted between jobs. TensorRT's progress monitor
+cooperatively cancels when the backend session ends; it cannot preempt every
+vendor call. Cache identity binds model, GPU UUID, driver,
+TensorRT version and precision; cached bytes also have an integrity digest.
+
+CUDA analysis captures the geometry-correct scene before appearance effects,
+SuperRes and display zoom into two owned device slots. Busy slots skip an
+opportunity. CPU presentation also offers its pre-zoom scene. Complete-scene
+context preserves words even when only part is visible at 16x. Source,
+processing and frame identity remain bound through worker submission.
+
+**Transfer boundary:** no neural input, probability map or recognizer logits
+round-trip through the CPU between inference stages. Final color/reference
+preparation reads that job's image after GPU recognition. Independently, a
+latest-only validation reader downloads a GPU-decimated image (long edge at
+most 960) to keep checking motion while recognition is slow or preparing an
+engine. It never supplies pixels to TensorRT. This is not zero-readback:
+validation, color preparation and string publication use the CPU. Rendering
+does not wait for recognition, validation or their private copy streams.
+Each reader reuses its stream and pinned/device download buffers. Stable
+accepted scenes honor the refresh interval instead of inferring on every
+capture. Device OCR never retains a pending snapshot while inference runs:
+the two-slot pool remains available for live validation. Copy/allocator faults
+with unknown completion latch that pool until UCT is disabled/re-enabled;
+uncertain resources remain retained rather than repeatedly allocated.
+
+GTX 1070 uses CPU OCR: CUDA 12.9 optical-kernel support does not imply Pascal
+support in TensorRT. CTC character spans are estimates, not glyph outlines.
+Recognition of handwriting/math/curves is not established. Full-scene detection
+caps its longest dimension at 960; tiny text in high-resolution frames may
+still need a future context/tile strategy. No performance claim follows from
+runtime compatibility alone.
+
+### Built-in final fallback
+
+When optional Paddle components are absent or fail, UCT uses `Windows.Media.Ocr` through
 C++/WinRT headers from the Windows SDK (10.0.26100 on the development
 machine) and `windowsapp.lib`. No model file, download, network call or
 provider account is involved, and nothing is redistributed: the engine and its
@@ -59,30 +124,25 @@ new attempt. Ordinary slow recognition does not trigger restart.
 ## Architecture
 
 ```text
-camera -> CUDA/CPU processing -> presenter -----------------> viewport
-                                 |
-                     stamped asynchronous viewport readback
-                                 |
-             UI: immutable pooled-buffer handoff (vector swap)
-                                 |
-             ProbeWorker: luma/integral, similarity, residual checks
-                                 |
-             UI: apply matching outcomes / latest-only OCR admission
-                                 |
-             RecognitionScheduler: Windows OCR + line preparation
-                                 |
-             UI: bounded admission / cached scene-space words
-                                 |
-             overlay reprojects and paints on the presentation clock
+camera -> geometry-correct scene -> appearance/presenter -> viewport
+                       |
+                owned pre-zoom snapshot
+                       |-------------------------------|
+       latest-only recognition worker        bounded validation reader
+       TensorRT / Paddle CPU / Windows         -> CPU ProbeWorker
+       + final reference/color preparation     -> motion checks
+                       |-------------------------------|
+                    UI: bounded admission, cached scene-space words
+                       |
+                overlay paints on the presentation clock
 ```
 
 There is no second capture or render pipeline. UCT reuses:
 
 - `PresentLatestCudaScene` / `PresentFitted` for the per-presentation hook,
-  the annotation `ViewTransform` (full scene → viewport) and the presenter's
-  existing four-slot asynchronous readback ring
-  (`ViewportPresentationOptions::requestReadback`). The CPU presentation path
-  already owns system-memory viewport pixels and offers them directly.
+  the annotation `ViewTransform` (full scene → viewport) and a separate owned
+  pre-zoom analysis snapshot. UCT no longer requests the presenter's final
+  zoomed viewport readback. CPU presentation supplies its pre-zoom scene.
 - The annotation overlay's coordinate space and floating tool-window pattern.
 
 ### Clocks and non-blocking guarantees
@@ -98,10 +158,11 @@ There is no second capture or render pipeline. UCT reuses:
   with one executing and one latest-only waiting request. A 60 ms per-probe
   search budget leaves unchecked lines unverified/hidden; a cancellation is
   checked between line searches. OCR preparation also runs on its worker.
-- GPU readback bytes move into a shared immutable pooled buffer after all other
-  readback consumers finish. The handoff is a vector swap, with recycled
-  buffers returned after their last consumer. CPU fallback still copies its
-  reused presentation buffer; this remaining copy has not been called zero-copy.
+- CUDA analysis uses two independently owned device snapshots. Stream events
+  protect copies; slots held by a reader/inference job are never overwritten.
+  Downloads use private nonblocking streams and pinned host memory on workers.
+  Unknown GPU completion retains the complete input/output closure. CPU input
+  still uses a bounded immutable pixel pool and an owned scene copy.
 - OCR results carry prepared scene-space boxes/reference patches. Admission
   against a newer probe has a 3 ms search budget; unverified lines stay hidden
   until a later worker outcome verifies them. Rendering never waits for either
@@ -112,12 +173,14 @@ There is no second capture or render pipeline. UCT reuses:
   presenter receipt restores an unchanged, validated scene; submission attempts,
   control toggles and worker completions cannot restore it. Failed presentations
   hide both surfaces immediately. The watchdog uses successful receipts only.
-- Probes are requested at most every 80 ms and only when no UCT copy is
-  outstanding (1 s timeout, like the other readback users). If the ring is
-  full the presentation is not blocked; the next presentation retries.
+- Analysis opportunities are throttled to 80 ms. Busy snapshot slots skip an
+  opportunity instead of blocking presentation. Source/frame/processing
+  provenance must match the successfully presented scene before handoff.
 - Recognition runs on one worker with at most one job in flight and one
-  latest-only pending slot. A busy worker only receives a replacement after
-  the probes saw the scene change, so slow OCR cannot accumulate work.
+  latest-only pending slot. CUDA input replaces only that pending descriptor;
+  CPU admission also uses probe stability. Slow OCR cannot accumulate a queue.
+  The independent device-validation reader has the same bounded ownership and
+  cancellation rules. Probe outcomes cannot replace a newer scene reference.
 - Cancellation (source switch, geometry change, disable, unavailable backend)
   increments the scheduler authority immediately. In-flight input copies stay
   owned by the worker until the native call returns; Windows OCR is asked to
@@ -201,7 +264,10 @@ recognition.
 | --- | --- |
 | `include/okuflow/common/ultra_clear_text.hpp`, `src/common/ultra_clear_text.cpp` | Stamps, geometry, probes, patches, scheduler, overlay model (Qt Core/Gui only) |
 | `include/okuflow/common/uct_windows_ocr.hpp`, `src/common/uct_windows_ocr.cpp` | Qt-free C++/WinRT `Windows.Media.Ocr` wrapper (no PCH) |
-| `src/common/uct_default_recognizer.cpp` | Recognizer adapter: grayscale, dark-background inversion, size limit |
+| `src/common/uct_default_recognizer.cpp` | Default automatic selection and Windows adapter: grayscale, inversion, size limit |
+| `uct_paddle.hpp`, `uct_paddle*.cpp`, `uct_onnx_cpu.cpp`, `uct_tensorrt.cpp` | Shared Paddle contracts/algorithms, dynamic CPU/TensorRT adapters and fallback |
+| `uct_device_image.hpp`, `uct_analysis_pool.{hpp,cpp}`, `uct_kernels.{hpp,cu}` | Owned device snapshot, bounded independent probes, resident GPU pre/postprocessing |
+| `scripts/prepare_uct_runtime.ps1`, `scripts/uct/pins.json` | Explicit private dependency preparation and exact upstream pins/notices |
 | `include/okuflow/app/ultra_clear_text_controller.hpp`, `src/app/ultra_clear_text_controller.cpp` | UI-thread runtime: scheduling, freshness, status |
 | `src/app/app_ultra_clear_text.cpp` | Production wiring and per-presentation context |
 | `include/okuflow/ui/ultra_clear_text_overlay.hpp`, `src/ui/ultra_clear_text_overlay.cpp` | Click-through glyph overlay |
@@ -238,6 +304,9 @@ no native windows, no camera, no network):
   pages, dark-on-light and light-on-dark, each also tested with an
   opposite-brightness surround that dominates the frame. It skips when Windows has no OCR
   language; a skip is not a pass.
+- `uct_paddle_processing` and serial `uct_paddle_cuda` cover model-free fallback
+  and CPU/device algorithm/ownership contracts. Explicit real model rows and
+  independent-device-probe cases are described in [tests/README](../tests/README.md#optional-paddleocr-acceptance-2026-10-18).
 
 The native `main_window_interactions` UCT cases check control geometry and
 overlay alignment through Fill-mode pan/zoom, resize and owner hiding, using
@@ -251,9 +320,9 @@ p50/p95/p99 presentation tails with UCT on, and any CER/WER measurement.
 
 ## Not implemented (deferred)
 
-Curved pages, handwriting/cursive, complex math or diagrams, per-character
-confidence (Windows OCR exposes none), languages beyond the installed Windows
-OCR languages, rotation-aware tracking beyond translation, a frozen-region
+Curved pages, handwriting/cursive, complex math or diagrams, exact character
+outlines, validated multilingual quality beyond the model/installed Windows
+language coverage, rotation-aware tracking beyond translation, a frozen-region
 reading mode, persistence of the opt-in, and translations of the new strings
 (see [Localization](localization.md#ultra-clear-text-strings-pending-review)).
 Cross-decimation rounding/centroid precision also remains follow-up: measured
@@ -314,3 +383,56 @@ Unconfirmed and high-risk tokens leave an ellipsis at their original position
 with a single typographic ellipsis, never `Take tablet ...`. Show original
 keeps verified reading text available while hiding glyphs; presentation failure
 or timeout hides both until a confirmed successful presentation.
+
+### Probe progress and resource recovery (2026-10-18)
+
+Only one device candidate may traverse the independent readback and probe
+workers at a time. Its exact frame remains owned until validation decides
+whether OCR is needed; a newer camera frame cannot replace it during a slow
+probe. The readback deadline releases stale admission without a UI wait.
+Motion during inference is checked by admission against the newest independent
+probe, rather than by comparing the candidate with itself.
+
+Clean snapshot allocation failures retry after 250 ms. Unknown copy completion
+quarantines that pool until an explicit UCT reset and retains uncertain memory.
+The controller exposes pool failure and repeated probe/OCR input failures using
+the existing unavailable-text status; healthy frames recover without retiring
+models. Busy leased slots are normal backpressure, not a failure.
+
+Dense detector output retains the first 128 eligible component roots in raster
+order on both CPU and GPU. GPU prefix compaction is deterministic and reports
+the full eligible count before truncation; it never downloads a probability map.
+
+The helper verifies original SDK extraction against pinned archives. Runtime
+TensorRT DLL checks enforce the expected version, not individual DLL hashes;
+CUDA dependency folders are owner-controlled. These local paths and the engine
+cache trust other processes running as the same Windows user. The exact graph
+bytes read by the TensorRT builder are rehashed before parsing.
+
+A valid current CPU analysis image clears a previous CUDA pool failure when the
+presentation path falls back to CPU. Invalid buffers cannot clear it. The slow-
+probe/input-health fixture also exercises this transition; backend health stays
+separate from either input path.
+
+### Final review follow-up
+
+GPU crop emission uses the same PCA-height/width orientation rule as CPU and
+GPU classification. The tilted/vertical regression first failed on the prior
+implementation, then passed after repair. Component moment sums now use exact
+64-bit integer atomics with double covariance evaluation, preventing order-
+dependent angle changes from float accumulation.
+
+Snapshot and decimated-readback allocation checks CUDA memory-pool capability.
+Unsupported devices use cached legacy allocations; the forced legacy fixture
+exercises this branch on the development GPU, including reduced-image readback.
+This removes that API prerequisite but does not establish physical GTX 1070
+acceptance. Legacy allocation may synchronize on first use or growth; steady
+frames reuse buffers, and enable/resize tail performance remains unmeasured.
+
+The CPU-input TensorRT path keeps a persistent upload snapshot pool and preserves
+healthy engines for pre-enqueue resource faults. The scheduler chooses device vs
+CPU input once per job. Clean allocation pressure becomes visibly failed only
+after three consecutive attempts; unknown completion remains immediately failed.
+Rejected device submission releases its candidate immediately. Unused same-frame
+similarity state/computation was removed; device-input provenance remains a test
+and diagnostic field.

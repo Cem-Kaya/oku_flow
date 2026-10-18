@@ -417,6 +417,63 @@ double Percentile(QVector<double> values, double p)
     return values[index];
 }
 
+struct DeviceJobState {
+    std::atomic<int> readbacks{},probes{},gpuCalls{},cpuCalls{};
+    std::atomic<int> liveImages{};
+    std::atomic<int> probeDelayMs{};
+    std::atomic<bool> probeFails{};
+    std::atomic<int> preferences{};
+    bool flipPreference{};
+    std::atomic<bool> started{},release{},wrongOrder{};
+};
+class TestDeviceImage final : public DeviceImage {
+public:
+    explicit TestDeviceImage(std::shared_ptr<DeviceJobState> state):state_(std::move(state)) {
+        ++state_->liveImages;
+        width=128;height=64;pitch=width*4;sourceEpoch=1;frameSequence=1;
+    }
+    ~TestDeviceImage() override{--state_->liveImages;}
+    const void* Data() const override{return this;}
+    bool WaitReady(void*,QString&) const override{return true;}
+    QImage Readback(const std::atomic<bool>&,QString&) const override {
+        if(!state_->release.load())state_->wrongOrder=true;
+        ++state_->readbacks;QImage page(width,height,QImage::Format_ARGB32);page.fill(Qt::white);return page;
+    }
+    QImage ReadProbe(const std::atomic<bool>&,QString& error) const override {
+        ++state_->probes;
+        std::this_thread::sleep_for(std::chrono::milliseconds(state_->probeDelayMs.load()));
+        if (state_->probeFails.load()) { error="fixture copy failure"; return {}; }
+        QImage page(width,height,QImage::Format_ARGB32);page.fill(Qt::white);return page;
+    }
+private:std::shared_ptr<DeviceJobState> state_;
+};
+class DeviceRecognizer final : public Recognizer {
+public:
+    explicit DeviceRecognizer(std::shared_ptr<DeviceJobState> state):state_(std::move(state)){}
+    BackendStatus Initialize() override{return {BackendState::kReady,"device fake","",""};}
+    bool WantsDeviceInput() const override {
+        const int query=++state_->preferences;
+        return !state_->flipPreference || query==1;
+    }
+    RecognitionOutput Recognize(const QImage&,const std::atomic<bool>&) override{++state_->cpuCalls;return {};}
+    RecognitionOutput RecognizeDevice(const DeviceImage&,const std::atomic<bool>&) override {
+        ++state_->gpuCalls;state_->started=true;
+        while(!state_->release.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        RecognitionOutput output;output.ok=true;output.lines={{{{"TEST",QRectF(8,8,40,16)}}}};return output;
+    }
+private:std::shared_ptr<DeviceJobState> state_;
+};
+struct ReleaseDeviceJob {std::shared_ptr<DeviceJobState> state;~ReleaseDeviceJob(){state->release=true;}};
+class SceneDeviceImage final : public DeviceImage {
+public:
+    explicit SceneDeviceImage(QImage page):page_(std::move(page)){width=page_.width();height=page_.height();pitch=page_.bytesPerLine();sourceEpoch=7;}
+    const void* Data() const override{return this;}
+    bool WaitReady(void*,QString&) const override{return true;}
+    QImage Readback(const std::atomic<bool>&,QString&) const override{return page_;}
+    QImage ReadProbe(const std::atomic<bool>&,QString&) const override{return page_.scaled(width/2,height/2,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);}
+private:QImage page_;
+};
+
 } // namespace
 
 class UltraClearTextTests final : public QObject {
@@ -462,6 +519,11 @@ private slots:
     void schedulerCoalescesLatestOnly();
     void schedulerCancelRevokesWithoutReleasingInput();
     void schedulerDestructionIsBoundedWhileHeld();
+    void deviceRecognitionPrecedesReadbackAndDoesNotBlockUi();
+    void cancelledDeviceJobRetainsInputAndRejectsLateOutput();
+    void deviceProbesContinueAt16xWhileInferenceIsHeld();
+    void staticDeviceSceneDoesNotContinuouslyRunOcr();
+    void slowDeviceProbesStillSubmitOcrAndInputHealthRecovers();
 
     // --- Controller (production widgets, scripted OCR) ----------------------
     void slowOcrNeverBlocksPresentationClock();
@@ -489,6 +551,131 @@ private slots:
     void readingPaneRemapsChangedText_data();
     void readingPaneRemapsChangedText();
 };
+
+void UltraClearTextTests::deviceRecognitionPrecedesReadbackAndDoesNotBlockUi()
+{
+    auto shared=std::make_shared<DeviceJobState>();ReleaseDeviceJob release{shared};
+    shared->flipPreference=true;
+    std::atomic<int> completions{};RecognitionResult completed;
+    RecognitionScheduler scheduler(std::make_unique<DeviceRecognizer>(shared),[&](RecognitionResult value){completed=std::move(value);++completions;},{});
+    QTRY_COMPARE(scheduler.Status().state,BackendState::kReady);
+    auto image=std::make_shared<TestDeviceImage>(shared);
+    SourceStamp stamp;stamp.sourceEpoch=1;stamp.frameSeq=1;stamp.viewportWidth=128;stamp.viewportHeight=64;stamp.viewTransform.valid=true;
+    QVERIFY(scheduler.SubmitDevice(stamp,image)!=0);
+    QTRY_VERIFY(shared->started.load());QCOMPARE(shared->readbacks.load(),0);
+    int ticks=0;QTimer timer;connect(&timer,&QTimer::timeout,[&]{++ticks;});timer.start(1);
+    QTRY_VERIFY(ticks>=10);QCOMPARE(completions.load(),0);
+    shared->release=true;QTRY_COMPARE(completions.load(),1);
+    QCOMPARE(shared->readbacks.load(),1);QCOMPARE(shared->cpuCalls.load(),0);QVERIFY(!shared->wrongOrder.load());
+    QVERIFY(completed.deviceInput);QVERIFY(completed.output.ok);QVERIFY(completed.reference.IsValid());
+    QCOMPARE(shared->preferences.load(),1);
+    QCOMPARE(completed.stamp.frameSeq,stamp.frameSeq);
+    image->width=9000;QCOMPARE(scheduler.SubmitDevice(stamp,image),std::uint64_t{0});
+}
+
+void UltraClearTextTests::cancelledDeviceJobRetainsInputAndRejectsLateOutput()
+{
+    auto shared=std::make_shared<DeviceJobState>();ReleaseDeviceJob release{shared};std::atomic<int> completions{};
+    RecognitionScheduler scheduler(std::make_unique<DeviceRecognizer>(shared),[&](RecognitionResult){++completions;},{});
+    QTRY_COMPARE(scheduler.Status().state,BackendState::kReady);
+    auto image=std::make_shared<TestDeviceImage>(shared);std::weak_ptr<const DeviceImage> owned=image;
+    SourceStamp stamp;stamp.sourceEpoch=1;stamp.frameSeq=1;stamp.viewportWidth=128;stamp.viewportHeight=64;stamp.viewTransform.valid=true;
+    QVERIFY(scheduler.SubmitDevice(stamp,image)!=0);QTRY_VERIFY(shared->started.load());
+    scheduler.Cancel();image.reset();QVERIFY(!owned.expired());
+    shared->release=true;QTRY_VERIFY(!scheduler.HasWork());QTRY_VERIFY(owned.expired());
+    QCOMPARE(completions.load(),0);QCOMPARE(shared->readbacks.load(),0);
+}
+
+void UltraClearTextTests::deviceProbesContinueAt16xWhileInferenceIsHeld()
+{
+    auto shared=std::make_shared<DeviceJobState>();ReleaseDeviceJob release{shared};
+    QWidget owner;UltraClearTextOverlay overlay(&owner,&owner);UltraClearTextPanel panel(&owner);
+    std::int64_t now=1000;
+    UltraClearTextController controller(&overlay,&panel,[shared]{return std::make_unique<DeviceRecognizer>(shared);},nullptr,[&]{return now;});
+    controller.SetEnabled(true);QTRY_COMPARE(controller.BackendStatusSnapshot().state,BackendState::kReady);
+    UctFrameContext context;context.geometry.settings.sourceEpoch=1;context.requested=context.geometry.settings;
+    context.geometry.sceneWidth=128;context.geometry.sceneHeight=64;context.cameraActive=true;
+    context.viewportWidth=960;context.viewportHeight=540;
+    context.transform=ComputeViewTransform(128,64,960,540,16.f,.5f,.5f,ViewportFitMode::kFit);
+    int captured=0;
+    for(int frame=1;frame<=40;++frame){
+        now+=90;context.frameSeq=frame;controller.OnPresented(context);controller.OnPresentationSucceeded();
+        if(shared->liveImages.load()<2){auto image=std::make_shared<TestDeviceImage>(shared);image->frameSequence=frame;image->timestampMs=now;
+            controller.OnDeviceScene(context,image);++captured;}
+        QTest::qWait(4);
+    }
+    QTRY_VERIFY(controller.ProbeStatistics().completed>0);
+    QTRY_COMPARE(shared->gpuCalls.load(),1);QVERIFY(shared->probes.load()>=10);QVERIFY(captured>=10);QCOMPARE(shared->readbacks.load(),0);
+    QCOMPARE(controller.SchedulerStatistics().coalesced,std::uint64_t{0});
+    controller.SetEnabled(false);shared->release=true;
+    const auto acceptedBefore = controller.AcceptedResults();
+    QTRY_COMPARE(shared->liveImages.load(),0);
+    QTest::qWait(20);
+    QCOMPARE(controller.AcceptedResults(),acceptedBefore);
+    QCOMPARE(overlay.WordCount(),0);
+}
+
+void UltraClearTextTests::slowDeviceProbesStillSubmitOcrAndInputHealthRecovers()
+{
+    auto shared=std::make_shared<DeviceJobState>(); shared->release=true;
+    shared->probeDelayMs=120; shared->probeFails=true;
+    QWidget owner;UltraClearTextOverlay overlay(&owner,&owner);UltraClearTextPanel panel(&owner);
+    std::int64_t now=1000;
+    UltraClearTextController controller(&overlay,&panel,[shared]{return std::make_unique<DeviceRecognizer>(shared);},nullptr,[&]{return now;});
+    controller.SetEnabled(true);QTRY_COMPARE(controller.BackendStatusSnapshot().state,BackendState::kReady);
+    UctFrameContext context;context.geometry.settings.sourceEpoch=1;context.requested=context.geometry.settings;
+    context.geometry.sceneWidth=128;context.geometry.sceneHeight=64;context.cameraActive=true;
+    context.viewportWidth=960;context.viewportHeight=540;
+    context.transform=ComputeViewTransform(128,64,960,540,16.f,.5f,.5f,ViewportFitMode::kFit);
+    auto tick=[&] {
+        now+=10; ++context.frameSeq;
+        const bool wanted=controller.OnPresented(context);controller.OnPresentationSucceeded();
+        if(wanted) { auto image=std::make_shared<TestDeviceImage>(shared);
+            image->frameSequence=context.frameSeq;image->timestampMs=now;
+            controller.OnDeviceScene(context,std::move(image)); }
+        QTest::qWait(10);
+    };
+    for(int i=0;i<150 && !controller.StatusSource().contains("stopped working");++i) tick();
+    QVERIFY2(controller.StatusSource().contains("stopped working"),qPrintable(controller.StatusSource()));
+    QCOMPARE(controller.BackendStatusSnapshot().state,BackendState::kReady);
+    shared->probeFails=false;
+    for(int i=0;i<150 && shared->gpuCalls.load()==0;++i) tick();
+    QVERIFY(shared->gpuCalls.load()>0);
+    QVERIFY(!controller.StatusSource().contains("stopped working"));
+    controller.OnAnalysisHealth(true);
+    QVERIFY(controller.StatusSource().contains("stopped working"));
+    controller.OnCpuViewport(context,nullptr,128,64,128*4);
+    QVERIFY(controller.StatusSource().contains("stopped working"));
+    QImage cpu(128,64,QImage::Format_ARGB32);cpu.fill(Qt::white);
+    controller.OnCpuViewport(context,cpu.constBits(),cpu.width(),cpu.height(),cpu.bytesPerLine());
+    QVERIFY(!controller.StatusSource().contains("stopped working"));
+    QCOMPARE(controller.BackendStatusSnapshot().state,BackendState::kReady);
+    controller.SetEnabled(false);
+    QTRY_COMPARE(shared->liveImages.load(),0);
+}
+
+void UltraClearTextTests::staticDeviceSceneDoesNotContinuouslyRunOcr()
+{
+    const auto page=MakePage(kLines);auto shared=std::make_shared<ScriptShared>();shared->SetWords(page.words);
+    ViewTransform identity;identity.valid=true;shared->transforms.insert(Checksum(page.image),identity);
+    QWidget owner;UltraClearTextOverlay overlay(&owner,&owner);UltraClearTextPanel panel(&owner);
+    std::int64_t now=1000;UctTiming timing;timing.refreshIntervalMs=10000;
+    UltraClearTextController controller(&overlay,&panel,[shared]{return std::make_unique<ScriptedRecognizer>(shared);},nullptr,[&]{return now;},timing);
+    controller.SetEnabled(true);QTRY_COMPARE(controller.BackendStatusSnapshot().state,BackendState::kReady);
+    UctFrameContext context;context.geometry.settings.sourceEpoch=7;context.requested=context.geometry.settings;
+    context.geometry.sceneWidth=page.image.width();context.geometry.sceneHeight=page.image.height();context.cameraActive=true;
+    context.viewportWidth=960;context.viewportHeight=540;context.transform=ComputeViewTransform(page.image.width(),page.image.height(),960,540,16.f,.2f,.2f,ViewportFitMode::kFit);
+    int captures=0;
+    for(int frame=1;frame<=300;++frame){
+        now+=20;context.frameSeq=frame;const bool wanted=controller.OnPresented(context);controller.OnPresentationSucceeded();
+        if(wanted){auto image=std::make_shared<SceneDeviceImage>(page.image);image->timestampMs=now;image->frameSequence=frame;
+            controller.OnDeviceScene(context,image);++captures;}
+        QTest::qWait(5);
+    }
+    QVERIFY(controller.AcceptedResults()>0);QVERIFY(captures>=20);
+    std::lock_guard lock(shared->mutex);QVERIFY2(shared->calls<10,"A stable accepted device scene should not infer on every capture.");
+    QVERIFY(shared->calls>=2);
+}
 
 void UltraClearTextTests::glyphsShareLineBaselineDespiteDifferentInkHeights()
 {

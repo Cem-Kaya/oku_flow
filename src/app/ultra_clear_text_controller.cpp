@@ -4,6 +4,7 @@
 
 #include "okuflow/ui/ultra_clear_text_overlay.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
+#include "okuflow/common/async_cleanup.hpp"
 
 #include <QCheckBox>
 #include <QElapsedTimer>
@@ -88,6 +89,7 @@ UltraClearTextController::~UltraClearTextController()
 {
     // Disables worker callbacks before this object's members disappear.
     probeWorker_.reset();
+    deviceProbeReader_.reset();
     scheduler_.reset();
 }
 
@@ -112,6 +114,31 @@ void UltraClearTextController::EnsureScheduler()
     }
     if (scheduler_) {
         return;
+    }
+    if(!deviceProbeReader_) {
+        deviceProbeReader_=std::make_unique<uct::RecognitionScheduler>(nullptr,
+            [self](uct::RecognitionResult result){
+                if(!self)return;
+                QMetaObject::invokeMethod(self.data(),[self,result=std::move(result)]() mutable {
+                    if(!self||!self->enabled_||self->settling_||self->compositePaused_||
+                        !self->deviceProbeReader_->IsCurrent(result)||!result.stamp.SameScene(self->CurrentScene())||
+                        !result.output.ok||!result.reference.IsValid()){
+                        if(self && self->deviceCandidate_ && self->deviceCandidate_->frameSequence==result.stamp.frameSeq) {
+                            self->deviceCandidate_.reset();
+                            if (!result.output.cancelled) ++self->consecutiveProbeFailures_;
+                            self->RefreshOverlay(self->clock_());
+                            self->UpdateStatus();
+                        }
+                        return;
+                    }
+                    self->consecutiveProbeFailures_ = 0;
+                    uct::ProbeRequest request;request.stamp=result.stamp;
+                    request.preparedProbe=std::make_shared<uct::ProbeFrame>(std::move(result.reference));
+                    request.previous=self->latestProbe_;request.lines=self->model_.LineReferences(self->CurrentScene());
+                    request.tuning=uct::ModelTuning{}.match;request.budgetMs=self->timing_.probeCheckBudgetMs;
+                    self->probeWorker_->Submit(std::move(request));
+                },Qt::QueuedConnection);
+            },uct::RecognitionScheduler::StatusChanged{},1,uct::ModelTuning{}.minimumWordHeightPx,true);
     }
     backend_ = {};
     const std::uint64_t generation = ++schedulerGeneration_;
@@ -173,10 +200,20 @@ void UltraClearTextController::SetEnabled(bool enabled)
         haveGeometry_ = false; // the next presentation starts a fresh generation
         settling_ = false;
         consecutiveFailures_ = 0;
+        consecutiveInputFailures_ = 0;
+        consecutiveProbeFailures_ = 0;
+        analysisPoolFailed_ = false;
     } else {
         presentationAvailable_ = false;
         watchdog_->stop();
         Invalidate({});
+        // End the backend session without joining a native call on the UI.
+        // Destruction cancels GPU preparation cooperatively; a new enable gets
+        // a fresh backend chain, including candidates that previously failed.
+        ++schedulerGeneration_;
+        auto retired=std::shared_ptr<uct::RecognitionScheduler>(std::move(scheduler_));
+        AsyncCleanup::Start([retired]{return true;});
+        backend_={};
     }
     UpdateStatus();
 }
@@ -233,6 +270,11 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
         // The presenter drops copies across resizes; never wait forever.
         pendingReadbackId_ = 0;
     }
+    if (deviceCandidate_ && now - deviceCandidateSinceMs_ > timing_.readbackTimeoutMs) {
+        deviceCandidate_.reset();
+        deviceProbeReader_->Cancel();
+        ++consecutiveProbeFailures_;
+    }
     // Freshness is enforced on the presentation clock, not the OCR clock.
     RefreshOverlay(now);
     UpdateStatus();
@@ -242,7 +284,8 @@ bool UltraClearTextController::OnPresented(const UctFrameContext& context)
     }
     // Latest-only end to end: no new viewport copy while the probe worker
     // still has one waiting to start.
-    if (probeWorker_ && probeWorker_->HasPending()) {
+    if (deviceCandidate_ || (deviceProbeReader_ && deviceProbeReader_->HasWork()) ||
+        (probeWorker_ && probeWorker_->HasPending())) {
         return false;
     }
     return now - lastProbeRequestMs_ >= timing_.probeIntervalMs;
@@ -358,12 +401,42 @@ void UltraClearTextController::OnCpuViewport(const UctFrameContext& context, con
     uct::SourceStamp stamp = MakeStamp(context, now);
     stamp.viewportWidth = static_cast<std::uint32_t>(std::max(0, width));
     stamp.viewportHeight = static_cast<std::uint32_t>(std::max(0, height));
-    SubmitProbe(stamp, pool_->Copy(bgra, width, height, strideBytes));
+    auto pixels = pool_->Copy(bgra, width, height, strideBytes);
+    // This path no longer depends on the CUDA snapshot pool. Only an actual
+    // valid current CPU image may clear its previous resource failure.
+    if (pixels && !compositePaused_ && stamp.SameScene(CurrentScene())) OnAnalysisHealth(false);
+    SubmitProbe(stamp, std::move(pixels));
 }
 
 uct::SchedulerStats UltraClearTextController::SchedulerStatistics() const
 {
     return scheduler_ ? scheduler_->Stats() : uct::SchedulerStats{};
+}
+
+void UltraClearTextController::OnDeviceScene(const UctFrameContext& context, uct::SharedDeviceImage device)
+{
+    if (deviceCandidate_ || (deviceProbeReader_ && deviceProbeReader_->HasWork())) return;
+    if (!enabled_ || settling_ || compositePaused_ || !scheduler_ || !device) return;
+    const auto now=clock_();
+    if (device->sourceEpoch!=context.geometry.settings.sourceEpoch || device->timestampMs>now ||
+        now-device->timestampMs>1000 || device->frameSequence!=context.frameSeq) return;
+    auto stamp=MakeStamp(context,device->timestampMs);
+    stamp.frameSeq=device->frameSequence;
+    stamp.viewTransform={}; stamp.viewTransform.valid=true; // independent complete scene, no display crop
+    stamp.viewportWidth=device->width;stamp.viewportHeight=device->height;
+    lastProbeRequestMs_=now;
+    deviceCandidate_=device;
+    deviceCandidateSinceMs_=now;
+    if (!deviceProbeReader_->SubmitDevice(stamp,std::move(device))) deviceCandidate_.reset();
+}
+
+void UltraClearTextController::OnAnalysisHealth(bool failed)
+{
+    if (analysisPoolFailed_ == failed) return;
+    analysisPoolFailed_ = failed;
+    RefreshOverlay(clock_());
+    UpdateReadingText();
+    UpdateStatus();
 }
 
 uct::ProbeWorkerStats UltraClearTextController::ProbeStatistics() const
@@ -401,8 +474,10 @@ void UltraClearTextController::Invalidate(const QString& reason)
     if (probeWorker_) {
         probeWorker_->Cancel();
     }
+    if(deviceProbeReader_)deviceProbeReader_->Cancel();
     model_.Reset();
     latestProbe_.reset();
+    deviceCandidate_.reset();
     stableProbes_ = 0;
     changedSinceSubmit_ = true;
     lastJobCoverage_ = {};
@@ -443,7 +518,8 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
     QElapsedTimer handling;
     handling.start();
     if (!enabled_ || !probeWorker_ || !probeWorker_->IsCurrent(outcome) || settling_ || compositePaused_ ||
-        !outcome.stamp.SameScene(CurrentScene()) || !outcome.probe) {
+        !outcome.stamp.SameScene(CurrentScene()) || !outcome.probe ||
+        (latestProbe_ && outcome.stamp.frameSeq<latestProbe_->stamp.frameSeq)) {
         return;
     }
     const std::int64_t now = clock_();
@@ -458,9 +534,11 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
     }
     latestProbe_ = outcome.probe;
 
-    if (scheduler_ && BackendUsable(backend_) && stableProbes_ >= 1 && outcome.pixels) {
-        const int width = outcome.pixels->width;
-        const int height = outcome.pixels->height;
+    auto candidate=deviceCandidate_ && deviceCandidate_->frameSequence==outcome.stamp.frameSeq
+        ? std::exchange(deviceCandidate_,{}) : uct::SharedDeviceImage{};
+    if (scheduler_ && BackendUsable(backend_) && stableProbes_ >= 1 && (outcome.pixels||candidate)) {
+        const int width = candidate?candidate->width:outcome.pixels->width;
+        const int height = candidate?candidate->height:outcome.pixels->height;
         const QRectF viewScene =
             uct::ViewRectToScene(outcome.stamp.viewTransform, width, height, QRectF(0, 0, width, height))
                 .intersected(QRectF(0.0, 0.0, 1.0, 1.0));
@@ -471,8 +549,12 @@ void UltraClearTextController::HandleProbeOutcome(uct::ProbeOutcome outcome)
         // Latest-only: a busy worker only receives a replacement after the
         // scene changed, so slow recognition cannot accumulate work. The
         // pixels move on without a copy.
-        if (needed && (!scheduler_->HasWork() || changedSinceSubmit_)) {
-            if (scheduler_->Submit(outcome.stamp, std::move(outcome.pixels)) != 0) {
+        // Device snapshots share a two-slot pool with validation. Never park
+        // a pending OCR lease while inference holds the other slot.
+        if (needed && (!scheduler_->HasWork() || (!candidate && changedSinceSubmit_))) {
+            const auto job=candidate?scheduler_->SubmitDevice(outcome.stamp,std::move(candidate))
+                                    :scheduler_->Submit(outcome.stamp, std::move(outcome.pixels));
+            if (job != 0) {
                 lastSubmitMs_ = now;
                 lastJobCoverage_ = viewScene;
                 changedSinceSubmit_ = false;
@@ -489,12 +571,17 @@ void UltraClearTextController::HandleResult(uct::RecognitionResult result)
 {
     QElapsedTimer handling;
     handling.start();
-    if (!enabled_ || !scheduler_ || !scheduler_->IsCurrent(result) || settling_) {
+    if (!enabled_ || !scheduler_ || !scheduler_->IsCurrent(result) || settling_ || compositePaused_ ||
+        !result.stamp.SameScene(CurrentScene())) {
         ++rejectedResults_;
         return;
     }
     const std::int64_t now = clock_();
-    if (!result.output.ok && !result.output.cancelled) {
+    // Admit compares recognized pixels with the newest independent scene probe.
+    // The admission probe for this exact device frame is not a motion test.
+    if (result.output.inputFault && !result.output.cancelled) ++consecutiveInputFailures_;
+    else if (result.output.ok) consecutiveInputFailures_ = 0;
+    if (!result.output.ok && !result.output.cancelled && !result.output.inputFault && !result.output.backendPreparing) {
         if (++consecutiveFailures_ >= kMaximumConsecutiveFailures) {
             backend_.state = uct::BackendState::kFailed;
             backend_.detail = result.output.error;
@@ -547,7 +634,7 @@ void UltraClearTextController::RefreshOverlay(std::int64_t nowMs)
     if (!overlay_) {
         return;
     }
-    if (!enabled_ || showOriginal_ || compositePaused_ || settling_ || !PresentationAvailable(nowMs) ||
+    if (!enabled_ || !AnalysisHealthy() || showOriginal_ || compositePaused_ || settling_ || !PresentationAvailable(nowMs) ||
         !BackendUsable(backend_)) {
         overlay_->ClearWords();
         overlayWords_.clear();
@@ -587,7 +674,7 @@ void UltraClearTextController::UpdateReadingText()
     // The pane offers exactly the lines verified on screen now (also while
     // Show original hides the glyph plates).
     QString text;
-    if (enabled_ && PresentationAvailable(clock_()) && !compositePaused_ && !settling_ && BackendUsable(backend_)) {
+    if (enabled_ && AnalysisHealthy() && PresentationAvailable(clock_()) && !compositePaused_ && !settling_ && BackendUsable(backend_)) {
         text = model_.ReadingText(clock_(), currentFrameSeq_);
     }
     if (text == readingText_) {
@@ -605,6 +692,12 @@ void UltraClearTextController::SetStatus(const QString& source, bool important)
     if (panel_) {
         panel_->SetStatus(source, important);
     }
+}
+
+bool UltraClearTextController::AnalysisHealthy() const
+{
+    return !analysisPoolFailed_ && consecutiveInputFailures_ < kMaximumConsecutiveFailures &&
+           consecutiveProbeFailures_ < kMaximumConsecutiveFailures;
 }
 
 void UltraClearTextController::UpdateStatus()
@@ -631,6 +724,10 @@ void UltraClearTextController::UpdateStatus()
         return;
     case uct::BackendState::kReady:
         break;
+    }
+    if (!AnalysisHealthy()) {
+        SetStatus(QStringLiteral("Text recognition stopped working. The original camera image is shown."), true);
+        return;
     }
     if (compositePaused_) {
         SetStatus(QStringLiteral("Paused while Temporal Smooth or Extra Stable is on. "

@@ -822,3 +822,35 @@ aligned with the project goals.
   fixture is not permission to omit locked/running-image, owner-data, exact
   inventory, reparse, rollback or late-change assertions. Production publication
   safety behavior is unchanged; native installer/release acceptance is separate.
+
+## Optional OCR component validation (2026-10-18)
+
+- Prepare only pinned local OCR inputs with `scripts/prepare_uct_runtime.ps1`;
+  TensorRT is an explicit optional external SDK. Keep model/runtime archives,
+  engine plans and original notices under LocalAppData. CMake/app startup must
+  never download or silently bundle them. Review a complete license/SBOM
+  inventory before including these optional files in a public installer.
+- Preserve the Qt-free public CUDA interop header through forward declarations;
+  snapshot/download implementations may use QtGui. Keep the Maxine navigation
+  fixture's actual pool/kernel dependency aligned with production.
+- Run model-free `uct_paddle_processing`, serial GPU `uct_paddle_cuda`, and UCT
+  scheduler/controller contracts after inference/ownership changes. Real pinned
+  CPU/TensorRT graph rows require explicit opt-in and are separate acceptance.
+  Do not repeat cold model compilation as a routine benchmark. See tests/README.
+- Keep GPU neural tensors resident, retain exact owned inputs through stream
+  completion and quarantine unknown completion. Independent decimated validation
+  readback is intentional: slow inference must not stall motion checks. Neither
+  branch may block the UI, overwrite a leased slot or borrow presenter memory.
+- Native GUI/device availability remains governed by the desktop rules below;
+  offscreen model/kernel passes do not establish live camera or installer quality.
+
+## Diagnosed prerequisite repair evidence (2026-10-18)
+- Never remove or edit a test ledger to clear a blocker. After diagnosing and
+  repairing a cause outside a test's fingerprinted inputs, use the tracked
+  runner's explicit `-RecheckAfterRepair` with a concrete repair reason. It
+  requires exact `-Test` names of matching Failed/Unfinished blockers, preserves
+  original logs and per-case/capability repair provenance, and refuses a second
+  unchanged failing recheck. Ordinary resume/fresh modes still refuse retries.
+- This mode neither grants desktop availability nor weakens assertion, runtime
+  fingerprint, capability, packaging or release requirements. Validate runner
+  changes with `scripts/test_test_gate.ps1` before applying them to project gates.

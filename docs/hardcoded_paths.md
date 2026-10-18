@@ -1,5 +1,32 @@
 # Hard-Coded Paths and Defaults
 
+## Optional PaddleOCR (2026-10-18)
+
+`scripts/uct/pins.json` pins upstream model revisions, model/config/card hashes,
+ONNX Runtime CPU 1.31.0 archive/DLL and TensorRT 11.4.0.106 CUDA-12.9 archive.
+`prepare_uct_runtime.ps1` defaults to `%LOCALAPPDATA%/OkuFlow/ocr-deps` for SDK
+archives/extraction and `ocr-runtime` for verified models, CPU runtime and
+notices. `-CacheRoot`/`-RuntimeRoot` select other local roots. No download occurs
+on UCT enable or CMake configuration.
+
+`OKUFLOW_UCT_ROOT` selects model/CPU files; otherwise an `ocr` directory beside
+the inner application is preferred when it contains a detector, then LocalAppData.
+`OKUFLOW_UCT_TENSORRT_ROOT` selects the external SDK at runtime; otherwise the
+pinned SDK extraction under `ocr-deps` is used. CMake's `OKUFLOW_UCT_SDK_ROOT`
+and `OKUFLOW_UCT_TENSORRT_ROOT` locate optional headers; absent headers compile
+fallback stubs. Runtime SDK overrides must match the pinned version. The
+runtime `OKUFLOW_UCT_CUDA_BIN`, then `CUDA_PATH_V12_9/bin`, then the documented
+private CUDA-12.9.2 toolkit `bin` supplies optional CUDA DLL dependencies.
+No compiler-machine absolute path is baked into the OCR loader.
+
+Engine plans stay in `%LOCALAPPDATA%/OkuFlow/ocr-engines`, keyed by graph hash,
+GPU UUID, driver and TensorRT/precision identity, with a payload integrity hash.
+Model/license data never belongs in Git or capture output. The analysis pool
+has two slots, at most 128 MiB each; input dimensions are limited to 8192 per
+axis. Detector long edge is 960, recognizer canvas 1024×48, accepted regions
+at most 128, detector thresholds 0.2/0.4 and word confidence at least 0.7.
+These are bounded experimental defaults, not accuracy or latency promises.
+
 ## Browser notes transcription
 
 The opt-in notes renderer defaults to `%LOCALAPPDATA%\OkuFlow\notes-preview\`.

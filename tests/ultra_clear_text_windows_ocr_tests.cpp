@@ -3,6 +3,7 @@
 // Skips (never passes vacuously) when Windows has no OCR language installed.
 
 #include "okuflow/common/ultra_clear_text.hpp"
+#include "okuflow/common/uct_paddle.hpp"
 #include "ultra_clear_text_test_support.hpp"
 
 #include <QGuiApplication>
@@ -65,7 +66,7 @@ void UltraClearTextWindowsOcrTests::recognizesSyntheticPrintedPage()
     std::optional<RecognitionResult> received;
     BackendStatus status;
     RecognitionScheduler scheduler(
-        CreateDefaultRecognizer(),
+        CreateWindowsRecognizer(),
         [&](RecognitionResult r) {
             std::lock_guard lock(mutex);
             received = std::move(r);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "okuflow/common/view_transform.hpp"
+#include "okuflow/common/uct_device_image.hpp"
 
 #include <QColor>
 #include <QImage>
@@ -163,6 +164,8 @@ struct RecognitionOutput {
     bool cancelled{};
     QString error;
     QVector<RecognizedLine> lines;
+    bool inputFault{}; // dropped frame/copy, not a reason to retire a backend
+    bool backendPreparing{}; // use a temporary fallback, retain this candidate
 };
 
 // Runs only on the scheduler's worker thread. Implementations must honor
@@ -172,12 +175,23 @@ class Recognizer {
 public:
     virtual ~Recognizer() = default;
     virtual BackendStatus Initialize() = 0;
+    // Optional runtime status update after automatic backend failover.
+    virtual BackendStatus Status() const { return {}; }
+    virtual bool WantsDeviceInput() const { return false; }
+    virtual bool Preparing() const { return false; }
     virtual RecognitionOutput Recognize(const QImage& image,
                                         const std::atomic<bool>& cancelled) = 0;
+    virtual RecognitionOutput RecognizeDevice(const DeviceImage& image,
+                                              const std::atomic<bool>& cancelled)
+    {
+        QString error;
+        const QImage pixels=image.Readback(cancelled,error);
+        if(pixels.isNull()) {RecognitionOutput output;output.error=error;output.cancelled=cancelled.load();output.inputFault=true;return output;}
+        return Recognize(pixels,cancelled);
+    }
 };
 
-// Windows.Media.Ocr adapter (built-in Windows 10/11 OCR, no model files).
-// Unavailable on other platforms or when no OCR-capable language exists.
+// Optional TensorRT -> Paddle CPU -> built-in Windows OCR, selected on worker.
 std::unique_ptr<Recognizer> CreateDefaultRecognizer();
 
 // --- Scheduler -------------------------------------------------------------
@@ -214,6 +228,7 @@ struct RecognitionResult {
     // lines itself when this is empty (hand-built fixtures).
     QVector<PreparedLine> prepared;
     double durationMs{};
+    bool deviceInput{};
 };
 
 // Maps recognized words into scene coordinates and builds per-line residual
@@ -243,7 +258,8 @@ public:
                          Completion completion,
                          StatusChanged statusChanged,
                          int referenceDecimation = 2,
-                         double minimumWordHeightPx = 7.0);
+                         double minimumWordHeightPx = 7.0,
+                         bool probeOnly = false);
     ~RecognitionScheduler();
     RecognitionScheduler(const RecognitionScheduler&) = delete;
     RecognitionScheduler& operator=(const RecognitionScheduler&) = delete;
@@ -253,6 +269,7 @@ public:
     std::uint64_t Submit(const SourceStamp& stamp, QImage pixels);
     // Zero-copy hand-off of already shared, immutable pixels.
     std::uint64_t Submit(const SourceStamp& stamp, SharedPixels pixels);
+    std::uint64_t SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device);
     void Cancel();
     std::uint64_t Authority() const;
     bool IsCurrent(const RecognitionResult& result) const;
@@ -328,6 +345,7 @@ bool IsHighRiskToken(const QString& text);
 struct ProbeRequest {
     SourceStamp stamp;
     SharedPixels pixels;
+    std::shared_ptr<const ProbeFrame> preparedProbe;
     int decimation{2};
     std::shared_ptr<const ProbeFrame> previous;
     QVector<LineReference> lines;

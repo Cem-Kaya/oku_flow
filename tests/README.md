@@ -1,5 +1,54 @@
 # OkuFlow Tests
 
+## Optional PaddleOCR acceptance (2026-10-18)
+
+`uct_paddle_processing` is desktop-free and model-free: CPU reference
+normalization/region/CTC checks, missing/tampered model refusal and scripted
+backend initialization/runtime/exception/cancellation fallback. `uct_paddle_cuda`
+compares actual device normalization, quads, padded crops and CTC against CPU
+references and verifies two-slot owned snapshots, exact stamps and readback
+after source overwrite. It is serial with other `gpu` tests and does not open
+a native window. Neither fixture requires TensorRT or model downloads.
+Input-copy faults are separately tested so one bad frame cannot exhaust the
+backend chain. Preparation tests keep CPU service available and promote the
+retained GPU candidate only when ready. A separate SDK-free build passes the
+same fourteen selected Qt rows, and required-adapter configuration refuses
+missing headers explicitly.
+
+The UCT contract additionally holds a device recognizer to prove presentation
+clock progress, cancellation ownership and independent probe progress at 16x.
+Its device fake enforces two live images and checks at least ten fresh probes
+while inference is held; static accepted text stays below ten recognitions
+across at least twenty captures. The real CUDA pool holds one lease while
+reusing the other for thirty fresh probes, including decimation above one.
+The existing real Windows fixture calls `CreateWindowsRecognizer` explicitly;
+installing optional Paddle files cannot silently change which engine it tests.
+The Maxine navigation target includes the same pool/kernels and QtGui for its
+analysis dependency, while its window-free/private-SDK contract is unchanged.
+
+Actual model acceptance is opt-in, outside the ordinary model-free CTest gate:
+
+```powershell
+pwsh -NoProfile -File scripts/prepare_uct_runtime.ps1 -TensorRT
+# Reconfigure/build the appropriate tracked CPU/CUDA test preset afterward.
+$env:QT_QPA_PLATFORM = 'offscreen'
+$env:OKUFLOW_TEST_PADDLE_RUNTIME = '1'
+$env:OKUFLOW_TEST_PADDLE_GPU = '1'
+# Use the configured Qt bin on PATH, as CTest does.
+build/msvc-cuda-tests/tests/uct_paddle_tests.exe optionalRealCpu optionalRealGpu
+```
+
+These rows fail (rather than skip) when explicitly selected dependencies are
+missing. TensorRT acceptance exercises system-memory upload and an independently
+owned direct device input, checking six known printed words. First use may
+compile model/GPU-specific cached plans on the OCR worker. Do not repeatedly
+delete caches or call this a general camera/FPS benchmark. The one-time RTX4090
+synthetic cold compilation was about 86 s; cached warm inference was 7–38 ms,
+CPU 96–142 ms across development runs. These are fixture observations, not
+live-camera latency, GTX1070 validation, multilingual accuracy or render-tail
+acceptance. Keep fixture logs and SDK/model caches under LocalAppData, outside
+Git and installer staging. A background gate excluding native GUI is partial.
+
 ## Packaging provenance fixtures (RB-001/RB-002)
 
 Run `pwsh -NoProfile -File scripts/test_release_provenance.ps1 -CMake
@@ -1431,3 +1480,19 @@ Real runtime pan-to-submission, sharpness transitions, optical quality,
 physical-phone/camera and installer acceptance remain separate. Immediate
 photos/recordings retain paired current-frame spatial/base output while neural
 processing is pending; no delayed SR capture queue is introduced.
+
+### Diagnosed external prerequisite repair
+
+Ordinary fresh/resume gates deliberately retain matching Failed/Interrupted/
+Unfinished blockers. If the cause is diagnosed and repaired outside fingerprinted
+inputs (for example, a missing SDK prerequisite poisoned a CTest partition), use
+`pwsh -NoProfile -File scripts/run_test_gate.ps1 -Preset msvc-cpu-tests -ExcludeGui -Test EXACT_CTEST_NAME -RecheckAfterRepair 'Restored the missing original Qt source license prerequisite.'`.
+Name only actual matching Failed/Unfinished blockers. Rebuild affected targets
+first. The reason must contain at least 20 characters;
+this mode cannot combine with Resume, RetryInterrupted or broad selectors. A
+failed recheck cannot repeat against the same blocking fingerprint. It runs the
+named cases once and preserves other matching passes, the old log/JUnit and
+blocker identity alongside the reason. It does not turn a failed run into a pass,
+retry automatically, authorize GUI use, or replace missing release acceptance.
+Per-case and capability evidence retains repair provenance; the summary names
+passes obtained through this mode, including when later reused.

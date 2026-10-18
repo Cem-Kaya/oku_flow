@@ -220,6 +220,9 @@ public:
     // so its pixels are copied once into a pooled buffer.
     void OnCpuViewport(const UctFrameContext& context, const std::uint8_t* bgra, int width,
                        int height, int strideBytes);
+    void OnDeviceScene(const UctFrameContext& context, uct::SharedDeviceImage device);
+    // A pool/copy failure is recoverable input health, not a failed OCR model.
+    void OnAnalysisHealth(bool failed);
 
     // Diagnostics and fixtures.
     const uct::OverlayModel& Model() const noexcept { return model_; }
@@ -250,6 +253,7 @@ private:
     void HandleBackendStatus(uct::BackendStatus status);
     void RefreshOverlay(std::int64_t nowMs);
     void UpdateReadingText();
+    bool AnalysisHealthy() const;
     bool PresentationAvailable(std::int64_t nowMs) const;
     void UpdateStatus();
     void SetStatus(const QString& source, bool important = false);
@@ -263,6 +267,9 @@ private:
     UctTiming timing_;
     std::shared_ptr<uct::PixelPool> pool_;
     std::unique_ptr<uct::RecognitionScheduler> scheduler_;
+    std::unique_ptr<uct::RecognitionScheduler> deviceProbeReader_;
+    uct::SharedDeviceImage deviceCandidate_;
+    std::int64_t deviceCandidateSinceMs_{};
     std::uint64_t schedulerGeneration_{}; // fences callbacks across explicit initialization retry
     std::unique_ptr<uct::ProbeWorker> probeWorker_;
     uct::OverlayModel model_;
@@ -294,6 +301,9 @@ private:
     bool lastResultEmpty_{};
 
     int consecutiveFailures_{};
+    int consecutiveInputFailures_{};
+    int consecutiveProbeFailures_{};
+    bool analysisPoolFailed_{};
     QTimer* watchdog_{};
     std::int64_t lastPresentMs_{};
     QVector<UltraClearTextOverlay::SceneWord> overlayWords_;

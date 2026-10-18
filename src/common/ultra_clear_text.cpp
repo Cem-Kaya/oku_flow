@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cstring>
 #include <limits>
 #include <mutex>
 #include <thread>
@@ -790,6 +791,7 @@ struct RecognitionScheduler::State {
         std::uint64_t authority{};
         SourceStamp stamp;
         QImage pixels;
+        SharedDeviceImage device;
     };
 
     std::mutex mutex;
@@ -801,6 +803,7 @@ struct RecognitionScheduler::State {
     Completion completion;
     StatusChanged statusChanged;
     int referenceDecimation{2};
+    bool probeOnly{};
     double minimumWordHeightPx{7.0};
     std::optional<Job> pending;
     bool inFlight{};
@@ -825,7 +828,7 @@ struct RecognitionScheduler::State {
         }
     }
 
-    std::uint64_t Enqueue(const SourceStamp& stamp, QImage owned)
+    std::uint64_t Enqueue(const SourceStamp& stamp, QImage owned, SharedDeviceImage device = {})
     {
         std::lock_guard lock(mutex);
         if (shutdown || status.state == BackendState::kUnavailable ||
@@ -840,6 +843,7 @@ struct RecognitionScheduler::State {
         job.authority = authority;
         job.stamp = stamp;
         job.pixels = std::move(owned);
+        job.device = std::move(device);
         const std::uint64_t id = job.id;
         pending = std::move(job);
         ++stats.submitted;
@@ -850,8 +854,10 @@ struct RecognitionScheduler::State {
     static void Run(std::shared_ptr<State> self)
     {
         BackendStatus initial;
-        if (self->recognizer) {
-            initial = self->recognizer->Initialize();
+        if(self->probeOnly)initial.state=BackendState::kReady;
+        else if (self->recognizer) {
+            try {initial = self->recognizer->Initialize();}
+            catch(const std::exception& error){initial.state=BackendState::kFailed;initial.detail=QString::fromUtf8(error.what());}
         } else {
             initial.state = BackendState::kUnavailable;
             initial.detail = QStringLiteral("No recognition backend is available.");
@@ -877,31 +883,60 @@ struct RecognitionScheduler::State {
             result.jobId = job.id;
             result.authority = job.authority;
             result.stamp = job.stamp;
+            result.deviceInput = static_cast<bool>(job.device);
+            QImage pixels=job.pixels;
+            try {
             const BackendState state = [&] {
                 std::lock_guard lock(self->mutex);
                 return self->status.state;
             }();
             if (state != BackendState::kReady) {
                 result.output.error = QStringLiteral("Recognition backend is not ready.");
+            } else if(self->probeOnly) {
+                result.output.inputFault=true;
+                if(job.device)pixels=job.device->ReadProbe(self->cancelInFlight,result.output.error);
+                else result.output.error="Device validation requires an owned image.";
+                result.output.ok=!pixels.isNull();result.output.cancelled=self->cancelInFlight.load();
+                result.output.inputFault=pixels.isNull();
             } else {
-                result.output = self->recognizer->Recognize(job.pixels, self->cancelInFlight);
+                const bool wantsDevice = job.device && self->recognizer->WantsDeviceInput();
+                if(job.device && !wantsDevice) {
+                    result.output.inputFault=true;
+                    pixels=job.device->Readback(self->cancelInFlight,result.output.error);
+                    result.output.inputFault=pixels.isNull();
+                }
+                if(!job.device || wantsDevice || !pixels.isNull())result.output = wantsDevice
+                    ? self->recognizer->RecognizeDevice(*job.device, self->cancelInFlight)
+                    : self->recognizer->Recognize(pixels, self->cancelInFlight);
+                else {result.output.cancelled=self->cancelInFlight.load();result.output.inputFault=true;}
+                const auto currentStatus = self->recognizer->Status();
+                if (currentStatus.state != BackendState::kNotStarted) self->Publish(currentStatus);
             }
             if (result.output.ok && !self->cancelInFlight.load()) {
-                result.reference = MakeProbeFrame(job.pixels.constBits(), job.pixels.width(),
-                                                  job.pixels.height(),
-                                                  static_cast<int>(job.pixels.bytesPerLine()),
+                // GPU recognition finishes before the existing CPU validation
+                // branch reads any pixels. The network path remains resident;
+                // only final publication/reference preparation crosses back.
+                if(pixels.isNull()&&job.device){
+                    result.output.inputFault=true;pixels=job.device->Readback(self->cancelInFlight,result.output.error);
+                    result.output.inputFault=pixels.isNull();
+                }
+                if(pixels.isNull()){result.output.ok=false;result.output.inputFault=true;result.output.cancelled=self->cancelInFlight.load();}
+                result.reference = MakeProbeFrame(pixels.constBits(), pixels.width(),
+                                                  pixels.height(),
+                                                  static_cast<int>(pixels.bytesPerLine()),
                                                   self->referenceDecimation, job.stamp);
                 for (const RecognizedLine& line : result.output.lines) {
                     QRectF bounds;
                     for (const RecognizedWord& word : line.words) {
                         bounds = bounds.isNull() ? word.boundsPx : bounds.united(word.boundsPx);
                     }
-                    result.lineColors.push_back(MeasureLineColors(job.pixels, bounds.toAlignedRect()));
+                    result.lineColors.push_back(MeasureLineColors(pixels, bounds.toAlignedRect()));
                 }
                 // Scene mapping and residual references are pixel work too:
                 // done here so UI-thread admission stays cheap.
                 result.prepared = PrepareLines(result, self->minimumWordHeightPx);
             }
+            }catch(const std::exception& error){result.output.ok=false;result.output.lines.clear();result.output.error=QString::fromUtf8(error.what());}
             result.durationMs = timer.nsecsElapsed() / 1e6;
             bool current = false;
             {
@@ -932,10 +967,11 @@ RecognitionScheduler::RecognitionScheduler(std::unique_ptr<Recognizer> recognize
                                            Completion completion,
                                            StatusChanged statusChanged,
                                            int referenceDecimation,
-                                           double minimumWordHeightPx)
+                                           double minimumWordHeightPx, bool probeOnly)
     : state_(std::make_shared<State>())
 {
     state_->minimumWordHeightPx = minimumWordHeightPx;
+    state_->probeOnly=probeOnly;
     state_->recognizer = std::move(recognizer);
     state_->completion = std::move(completion);
     state_->statusChanged = std::move(statusChanged);
@@ -998,6 +1034,16 @@ std::uint64_t RecognitionScheduler::Submit(const SourceStamp& stamp, SharedPixel
         return 0;
     }
     return state_->Enqueue(stamp, std::move(view));
+}
+
+std::uint64_t RecognitionScheduler::SubmitDevice(const SourceStamp& stamp, SharedDeviceImage device)
+{
+    if(!device||!device->Data()||device->width<=0||device->height<=0||device->width>8192||device->height>8192||
+        static_cast<std::size_t>(device->width)*device->height*4>128ull*1024*1024||
+        device->pitch<static_cast<std::size_t>(device->width)*4||
+        stamp.sourceEpoch!=device->sourceEpoch||stamp.frameSeq!=device->frameSequence||
+        stamp.viewportWidth!=device->width||stamp.viewportHeight!=device->height)return 0;
+    return state_->Enqueue(stamp, {}, std::move(device));
 }
 
 void RecognitionScheduler::Cancel()
@@ -1089,6 +1135,7 @@ struct ProbeWorker::State {
             outcome.stamp = request.stamp;
             QElapsedTimer timer;
             timer.start();
+            outcome.probe=request.preparedProbe;
             if (request.pixels && request.pixels->IsValid()) {
                 auto probe = std::make_shared<ProbeFrame>(MakeProbeFrame(
                     request.pixels->bytes.data(), request.pixels->width, request.pixels->height,

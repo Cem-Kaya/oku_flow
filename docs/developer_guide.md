@@ -5,6 +5,12 @@ OkuFlow was formerly named OpenZoom. Website: <https://okuflow.com>. Repository:
 OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, Direct3D 12, and an optional CUDA processing path. The current codebase already supports live camera capture, GPU (CUDA) frame processing with CPU format-conversion support paths, a two-stage preset/advanced UI, rotation-aware presentation, persistent settings, paired photo snapshots, and live AV1/H.264 recording with optional microphone audio in fragmented MP4 containers.
 
 ## Current Capabilities
+- Experimental UCT has optional PP-OCRv6 TensorRT CUDA and ONNX Runtime CPU
+  adapters, with built-in Windows OCR as the final fallback. Prepare pinned
+  development inputs with `scripts/prepare_uct_runtime.ps1` (`-TensorRT` opts
+  into the external SDK), then reconfigure. See [UCT](ultra_clear_text.md) for
+  dependencies, independent analysis/validation workers and scoped acceptance.
+  These components are not yet a published installer inventory.
 - Lecture notes have larger text, remembered text-size and colour controls,
   media-type filters, grouped conversations, and timestamped transcripts.
   Preview the viewer locally with `python -B scripts/render_notes_preview.py`;
@@ -471,7 +477,7 @@ profiling flags for ordinary operation.
   provenance, the required small-agent translation review policy and the native
   wording/layout/screen-reader checks still pending.
 - `Ultra Clear Text (experimental)` at the end of `Advanced > Image > Text
-  clarity` recognizes steady printed text with the built-in Windows OCR engine
+  clarity` recognizes steady printed text with optional local PaddleOCR or the built-in Windows OCR engine
   and draws sharp letters over validated words; everything else stays the
   original image. It is off on every launch, offers `Show original camera
   text`, and lists accepted words in a selectable `Recognized text` pane. It

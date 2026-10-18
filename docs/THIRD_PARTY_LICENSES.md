@@ -156,13 +156,39 @@ binaries and caches are not added to Windows/Android release inventories.
 - Attribution: retain the local license file in source and the third-party
   notice in redistributed builds as `licenses/LUCIDE_LICENSE.txt`
 
+## Optional experimental PaddleOCR component (2026-10-18)
+
+PP-OCRv6 tiny detection and small recognition ONNX weights, configuration and
+original model cards come from PaddlePaddle under Apache-2.0. Exact repository
+revisions and hashes are in `scripts/uct/pins.json`. The unchanged upstream
+license is retained in `third_party/paddleocr/LICENSE` and staged as
+`MODEL_LICENSES.txt`. The dictionary is part of the pinned configuration.
+First-party CPU/CUDA DB region extraction and CTC decoding do not add OpenCV,
+pyclipper, Python or PaddlePaddle to the application.
+
+ONNX Runtime CPU 1.31.0 uses MIT and its complete retained third-party terms.
+Preparation verifies the official Microsoft archive and DLL hashes, retaining
+`LICENSE`, `ThirdPartyNotices.txt` and `Privacy.md` with `onnxruntime.dll`.
+This is separate from the website dependency; no ONNX CUDA/cuDNN is added.
+
+TensorRT SDK 11.4.0.106 for CUDA 12.9 is optional and externally installed
+under LocalAppData. Its archive is pinned; headers are Apache-2.0, while the
+runtime remains governed by the [versioned NVIDIA SDK agreement](https://docs.nvidia.com/deeplearning/tensorrt/11.4.0/reference/sla.html).
+Its original `doc/Acknowledgements.txt` stays with that installation. OkuFlow's
+GPL section-7 NVIDIA exception does not waive NVIDIA redistribution terms.
+The preparation command installs it only with `-TensorRT`; the application
+does not download it. No TensorRT files or model weights are silently added
+to an installer. Public inclusion needs a reviewed inventory, notices and
+SBOM entries; private development acceptance does not establish that gate.
+
 ## Microsoft Platform Components
+
 - APIs used: Media Foundation, Direct3D 12, DXGI, Windows Imaging Component, and other Windows SDK libraries
 - Ultra Clear Text (experimental) calls the built-in `Windows.Media.Ocr`
   engine through C++/WinRT projection headers from the Windows SDK and links
   `windowsapp.lib`. The OCR engine and its language data are Windows
-  components on the user's machine; OkuFlow ships no OCR model, language pack
-  or third-party OCR library and copies no C++/WinRT source into the
+  components on the user's machine; the Windows fallback redistributes no
+  Windows OCR model or language pack and copies no C++/WinRT source into the
   repository. C++/WinRT headers are used as provided by the installed SDK.
 - License source: Windows SDK / Visual Studio / OS redistribution terms
 - Notes: these platform APIs are not copied into the repository as standalone
@@ -376,3 +402,6 @@ MIT/ISC/BSD development-only dependencies. Install this fixture outside the
 checkout with lifecycle scripts disabled. It is never bundled into OkuFlow,
 Android artifacts or installer payloads. Passing it proves interoperability
 with a private synthetic application, not a live provider or camera.
+
+The original PaddleOCR Apache license is marked `-text` in `.gitattributes`,
+so Windows checkout conversion cannot alter the reviewed upstream bytes.

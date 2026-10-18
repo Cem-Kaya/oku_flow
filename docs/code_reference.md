@@ -1,5 +1,90 @@
 # OkuFlow Code Reference
 
+## PaddleOCR analysis and fallback (2026-10-18)
+
+This section supersedes the older Windows-only/final-viewport UCT description
+below. See [UCT architecture](ultra_clear_text.md) for transfer boundaries.
+
+- `uct_device_image.hpp`: `DeviceImage` is shared immutable ownership of a
+  pre-zoom BGRA allocation and exact device/source/frame/processing/time stamp.
+  `Data`/`WaitReady` expose device input; worker-only `Readback` provides final
+  reference/color or CPU fallback pixels. `ReadProbe` is a separate bounded
+  validation copy. It never supplies neural input. TensorRT holds a shared
+  image lease until the stream proves completion, including error cleanup.
+- `uct_analysis_pool.hpp/.cpp`: `AnalysisPool::Capture` makes stream-ordered
+  owned D2D snapshots in two slots, skipping busy/oversized inputs. Private
+  `Storage` event ownership prevents reuse while leased; `Image` implements
+  worker-only downloads through pinned `Download` state and private streams.
+  Unknown completion retains both DMA endpoints through `AsyncCleanup`.
+- `CudaInteropSurface::{EnableUctAnalysis,TakeUctAnalysis}` controls the
+  throttled geometry-correct snapshot before appearance/SuperRes/zoom.
+  `TryCudaFrame` enables it only for UCT. `PresentLatestCudaScene` accepts only
+  the successfully presented frame/processing generation. UCT uses neutral
+  analysis provenance separately from annotation neural provenance.
+  `PresentFitted` hands CPU UCT the pre-zoom scene and an identity transform.
+- `Recognizer::{Status,Preparing,WantsDeviceInput,RecognizeDevice}` provides status,
+  device routing and default CPU readback. `RecognitionResult::{deviceInput,
+  stability}` records the route and worker-computed scene similarity.
+  `RecognitionScheduler::SubmitDevice` validates/retains the device lease and
+  coalesces it latest-only. Native exceptions produce failed outputs. GPU OCR
+  precedes that job's full reference/color readback. Its `probeOnly` mode uses
+  `ReadProbe`, never a recognizer, and constructs only a validation reference.
+  `RecognitionOutput::{inputFault,backendPreparing}` distinguishes a dropped
+  input/temporary preparation from a fault that retires an inference backend.
+- `UltraClearTextController::OnDeviceScene` requires matching source/frame and
+  recent capture time, stamps identity scene coordinates, and submits separate
+  validation plus an exact pending candidate. `HandleProbeOutcome` consumes
+  only the matching stable candidate under coverage/refresh gates and never
+  queues a second device OCR lease while inference runs. `EnsureScheduler` owns a bounded device
+  validation reader feeding CPU `ProbeWorker`; `Invalidate` cancels all three
+  authorities. `HandleResult` compares against the newest independent probe;
+  `HandleProbeOutcome` cannot move the reference backward. Display zoom does
+  not alter recognition input or stop validation during held inference.
+  `SetEnabled(false)` retires the recognition scheduler through `AsyncCleanup`
+  after revoking callback generation, so reenable creates a fresh chain without
+  joining a native call on the UI thread.
+- `uct_paddle.hpp`: `PaddleAssets` and `LoadPaddleAssets` verify pinned graphs
+  and dictionary. `DefaultPaddleRoot` resolves explicit, adjacent and local
+  roots. `PaddleTensor`/`PaddleCpuSession` describe bounded float I/O.
+  `PaddleDetectionSize`, `PaddleNormalize`, `PaddleDetect`, `PaddleRectify`,
+  `PaddleDecode`/`PaddleDecodeTokens`, `PaddleQuad` and `PaddleToken` implement
+  first-party bilinear BGR normalization, connected-component/PCA regions,
+  padded rectification and confidence-filtered CTC word spans. Spans are
+  approximate, not exact glyph geometry. `gpu::{Normalize,Detect,Rectify,
+  Decode,Probe}` in `uct_kernels` implement device equivalents using
+  `gpu::{Component,Quad,Token}` with finite-value checks and bounded outputs.
+- `CreateDefaultRecognizer` delegates to `CreateAutomaticRecognizer`:
+  TensorRT, Paddle CPU, Windows. The candidate-vector overload supports exact
+  fallback tests. Private `AutomaticRecognizer` retires unavailable/failing
+  candidates for its lifetime; input faults and cancellation never advance the
+  chain. A preparing GPU candidate is retained while CPU/Windows serves, then
+  promoted between jobs. CPU device input is copied once per call across fallback.
+  `CreateWindowsRecognizer` retains the original Windows.Media.Ocr adapter.
+- `CreatePaddleCpuRecognizer` uses `OpenPaddleCpuSession`/private
+  `OnnxCpuSession`, runtime-loaded hash-pinned CPU ONNX Runtime, two intra-op
+  threads and checked float tensor dimensions. `CreateTensorRtRecognizer`
+  creates private `TensorRtRecognizer`: `BeginPreparation` launches an owned
+  `Preparation` worker for exact-version SDK factories, low-priority stream and
+  model/GPU/driver-bound cached `Network` engines. `Progress` cooperatively
+  checks preparation cancellation; `Ensure` only adopts ready state. `Retire`
+  and `RetireState` own asynchronous completion/cleanup. Private `State`,
+  `DeviceBuffer`, `HostBuffer`, `Libraries`, `DllDirectory` and mutex-protected
+  `Logger` keep GPU/host/code lifetime independent of the UI. Only counts and
+  compact boxes/tokens cross between neural stages and final string assembly.
+- `cmake/UctOcr.cmake::okuflow_configure_ocr` locates optional local SDK
+  headers, compiles availability stubs when absent and never downloads.
+  `prepare_uct_runtime.ps1::{Get-Verified,Expand-Verified}` checks exact archive,
+  model and CPU DLL hashes, verifies extracted bytes before its completion marker
+  and retains notices; TensorRT remains external. Strict adapter-required CMake
+  options turn missing headers/CUDA into configure errors.
+- `PaddleTests` covers algorithms, fallback/exception/cancellation, model
+  refusal and CUDA snapshot parity/ownership; opt-in real CPU/TensorRT rows
+  exercise actual graphs, including direct device input. UCT controller tests
+  exercise held GPU input, cancellation, UI progress and independent probes
+  at 16x. Fixture helpers (`FakeBackend`, `BackendCalls`, `GpuBuffer`,
+  `FixtureStream`, `DeviceJobState`, `TestDeviceImage`, `DeviceRecognizer`,
+  `ReleaseDeviceJob`, `CopyFaultImage`, `SceneDeviceImage`) are test-only and never deployed.
+
 ## Packaging provenance authority (audit RB-001/RB-002)
 
 `windows-installer/wix_tool.ps1` supplies `Get-VerifiedWixTool`,
@@ -4909,3 +4994,56 @@ separate paths. Two initialization-state rows exercise actual recreation.
 `slowOcrNeverBlocksPresentationClock` establishes a held OCR job before the
 300-presentation loop. Asynchronous worker startup under parallel test load
 cannot shorten that loop; the original progress/time assertions remain.
+
+### OCR device recovery and deterministic region selection
+
+`AnalysisCaptureHealth` distinguishes clean retryable resource pressure from
+unknown-completion quarantine; `CanAttempt` implements the 250 ms backoff and
+`Failure`/`Success` retain visible health until recovery. `AnalysisPool::HasFailure`
+and `CudaInteropSurface::UctAnalysisFailed` project this owner-thread state to
+`UltraClearTextController::OnAnalysisHealth`. Probe and recognition input fault
+counters remain separate from backend failure, so a good probe cannot mask a
+repeated OCR input fault. Candidate admission serializes both device worker hops
+and times out without joining. `HandleResult` uses `OverlayModel::Admit` with the
+newest independent probe; no same-frame stability check claims to detect motion.
+
+`AutomaticRecognizer` records Uninitialized/Ready/Retired per candidate, preserving
+ready fallback sessions and lifetime retirement across asynchronous GPU promotion.
+`TensorRtRecognizer::RecognizeDevice` preserves engines for pre-enqueue input
+faults. `Network` validates the actual bytes before SDK parsing. GPU `boxes`,
+`countBoxes`, `boxOffsets`, `emitBoxes` compact valid component roots in raster
+order, using label scratch for block offsets after connectivity is consumed.
+`eligibleRank` computes deterministic intra-block ranks without CPU map readback.
+
+`scripts/run_test_gate.ps1 -RecheckAfterRepair '<diagnosed repair>'` explicitly
+rechecks blockers once, reuses matching passes, and archives the repair reason
+and original blocker identity on each new attempt. It refuses Resume and
+RetryInterrupted combinations; this is never an automatic failed-test retry.
+The private test-gate fixture covers unchanged test bytes after a repaired
+external prerequisite, ordinary retry refusal, exact one-time recheck, unaffected
+pass reuse and retention of the original logs.
+
+`UltraClearTextController::AnalysisHealthy` gates both painted glyphs and reading
+text, so recoverable input failure status always corresponds to original pixels.
+Health recovery preserves model state but still requires normal age/proof checks.
+
+`OnCpuViewport` clears CUDA pool failure only after acquiring valid current CPU
+pixels, so acceleration fallback cannot leave a healthy CPU path latched off.
+
+`AnalysisAllocation::{Automatic,Legacy}` selects capability-tested stream-ordered
+or legacy snapshot/reduced-buffer allocation. The choice is cached per device;
+reader caches also bind allocation kind. Legacy cleanup stays on retirement
+workers. `gpu::Component` uses integer count and signed 64-bit moment sums;
+`axes` evaluates covariance in double. Both `boxes` and `emitBoxes` use the same
+PCA orientation rule. The oriented fixture compares exact corner order on
+horizontal, vertical and positive/negative tilted large components.
+
+`RecognitionScheduler` snapshots `WantsDeviceInput` once for each job and no
+longer accepts a redundant previous-reference argument on `SubmitDevice` or
+publishes unused `RecognitionResult::stability`. Input provenance remains.
+`State::uploadPool` caches CPU-presentation snapshots for TensorRT; proven clean
+upload resource faults do not retire the engines.
+
+Repair rechecks require exact named matching Failed/Unfinished cases; a failed
+recheck cannot repeat unchanged. Results retain `repairRecheckOf` and `repairReason`;
+capability records retain `repairRechecks`, and summaries identify repaired passes.

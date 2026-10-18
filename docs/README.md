@@ -1,5 +1,11 @@
 # OkuFlow Documentation Guide
 
+[Ultra Clear Text](ultra_clear_text.md#paddleocr-development-backend-2026-10-18)
+documents optional local PaddleOCR/TensorRT, CPU/Windows fallback, independent
+pre-zoom analysis, preparation, transfer boundaries and acceptance limits.
+[Implementation review repairs](uct_paddle_review_2026_10_18.md) distinguish
+verified fallback/ownership regressions from remaining camera/release acceptance.
+
 [Argon report verification](argon_review_verification_2026_10_17.md) records
 every finding's disposition, confirmed repairs and intentional state/tool contracts.
 

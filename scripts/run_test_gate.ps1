@@ -12,6 +12,7 @@ param(
     [ValidateRange(1, 1024)][int]$Parallel = [Environment]::ProcessorCount,
     [ValidateSet('msvc-cpu-tests', 'msvc-cuda-tests')][string]$UncoveredByPreset,
     [string[]]$RetryInterrupted,
+    [ValidateScript({ $_.Trim().Length -ge 20 })][string]$RecheckAfterRepair,
     [switch]$ExcludeGui,
     [ValidateSet('development', 'windows-cpu', 'windows-cuda', 'windows-cuda-kernels')]
     [string]$CapabilityProfile = 'development',
@@ -289,6 +290,12 @@ function Save-Ledger($Ledger, [string]$Path) {
 
 $runnerLock = $null
 try {
+    if ($RecheckAfterRepair -and ($Resume -or $RetryInterrupted)) {
+        throw '-RecheckAfterRepair requires a repair reason and cannot combine with -Resume or -RetryInterrupted.'
+    }
+    if ($RecheckAfterRepair -and (!$Test -or $Label -or $Select -or $UncoveredByPreset)) {
+        throw '-RecheckAfterRepair requires exact -Test names, without label or broad selection.'
+    }
     if (!$env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required for private test evidence.' }
     # A comma list also works through pwsh -File, which cannot bind multiple
     # command-line arguments to an array parameter. Native PowerShell accepts arrays.
@@ -385,16 +392,25 @@ try {
         if ($name -cin $RetryInterrupted -and (!$prior -or $prior.status -ne 'Interrupted')) {
             throw "Only a recorded desktop interruption may be retried with matching inputs: $name"
         }
+        if ($RecheckAfterRepair) {
+            if (!$prior -or $prior.status -notin 'Failed', 'Unfinished') {
+                throw "Only a recorded Failed/Unfinished blocker may be rechecked after repair: $name"
+            }
+            if ($prior.repairRecheckOf) { throw "Already rechecked this blocking fingerprint after repair: $name" }
+        }
         $ledger.results[$name] = $prior
     }
     $pending = @($selected | Where-Object {
         $prior = $ledger.results[$_.name]
         if (!$prior) { return $true }
-        if ($prior.status -in 'Failed', 'Interrupted', 'Unfinished') { return $_.name -cin $RetryInterrupted }
+        if ($prior.status -in 'Failed', 'Interrupted', 'Unfinished') {
+            return [bool]$RecheckAfterRepair -or $_.name -cin $RetryInterrupted
+        }
         if ($prior.status -in 'Skipped', 'PassedWithSkips') { return $true }
-        return !$Resume
+        return !$Resume -and !$RecheckAfterRepair
     })
     Write-Host "Selection: $($selected.Count) of $($tests.Count) tests; $($selected.Count - $pending.Count) matching results retained."
+    if ($RecheckAfterRepair) { Write-Host "Explicit diagnosed-repair recheck: $RecheckAfterRepair" }
     $partitions = @(
         @{ name = 'background'; parallel = $Parallel; cases = @($pending | Where-Object {
             $labels = @(Get-Labels $_); 'gui' -notin $labels -and 'gpu' -notin $labels -and 'codec' -notin $labels
@@ -412,13 +428,24 @@ try {
         $junit = Join-Path $directory "$id.xml"
         $log = Join-Path $directory "$id.log"
         $expression = '^(' + (($cases.name | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')$'
+        $priorBlockers = @{}
         foreach ($case in $cases) {
+            $prior = $ledger.results[$case.name]
+            if ($RecheckAfterRepair -and $prior -and $prior.status -in 'Failed', 'Interrupted', 'Unfinished') {
+                $priorBlockers[$case.name] = @{ status = $prior.status; attempt = $prior.attempt;
+                    fingerprint = $prior.fingerprint; shared = $prior.shared }
+            }
             $result = @{ status = 'Unfinished'; attempt = $id; fingerprint = $before[$case.name].digest;
                 inputs = $before[$case.name].inputs; shared = $before[$case.name].shared }
+            if ($priorBlockers.ContainsKey($case.name)) {
+                $result.repairRecheckOf = $priorBlockers[$case.name].attempt
+                $result.repairReason = $RecheckAfterRepair
+            }
             $ledger.results[$case.name] = $result
             $ledger.evidence[$case.name][$result.fingerprint] = $result
         }
-        $ledger.attempts += @{ id = $id; tests = @($cases.name); partition = $partition.name; parallel = $partition.parallel; log = $log; junit = $junit }
+        $ledger.attempts += @{ id = $id; tests = @($cases.name); partition = $partition.name; parallel = $partition.parallel;
+            log = $log; junit = $junit; repairReason = $RecheckAfterRepair; priorBlockers = $priorBlockers }
         Save-Ledger $ledger $path
         Write-Host "CTest partition: $($partition.name), $($cases.Count) tests, --parallel $($partition.parallel)"
         & $ctest @arguments --parallel $partition.parallel --output-on-failure --no-tests=error -R $expression --output-junit $junit --test-output-size-passed 1048576 --test-output-size-failed 1048576 2>&1 |
@@ -504,6 +531,13 @@ try {
     # The case records retain their exact fingerprints and original CTest statuses.
     # This separate verdict cannot turn a skipped capability into passing evidence.
     $capability.evidence = @{}
+    $capability.repairRechecks = @{}
+    foreach ($case in $required) {
+        $record = $ledger.results[$case.name]
+        if ($record -and $record.repairRecheckOf) {
+            $capability.repairRechecks[$case.name] = @{ priorAttempt = $record.repairRecheckOf; reason = $record.repairReason }
+        }
+    }
     foreach ($row in $capability.cases) {
         if ($ledger.results[$row.name]) { $capability.evidence[$row.name] = $ledger.results[$row.name].fingerprint }
     }
@@ -515,6 +549,12 @@ try {
     }
     Write-Host "Evidence: $path"
     Write-Host "Gate: $($required.Count - $unresolved.Count - $skipped.Count) passed ($($rowSkips.Count) with skipped Qt rows), $($skipped.Count) skipped, $($unresolved.Count) unresolved."
+    foreach ($case in $required) {
+        $record = $ledger.results[$case.name]
+        if ($record.status -in 'Passed', 'PassedWithSkips' -and $record.repairRecheckOf) {
+            Write-Host "Passed after diagnosed-repair recheck: $($case.name); prior attempt $($record.repairRecheckOf); $($record.repairReason)"
+        }
+    }
     foreach ($case in $unresolved) {
         $state = $ledger.results[$case.name].status
         if (!$state) { $state = 'Pending' }
