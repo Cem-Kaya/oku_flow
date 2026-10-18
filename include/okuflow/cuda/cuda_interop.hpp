@@ -305,6 +305,12 @@ public:
     bool IsValid() const { return valid_; }
     bool IsFaulted() const { return streamFaulted_; }
     bool HasExternalSemaphore() const { return externalSemaphore_ != nullptr; }
+    // Experimental media-only second output. Configure on the construction
+    // worker before any frame; selection is nonblocking and requires an idle
+    // producer stream. Both outputs share one effect history/model/stream.
+    // The caller owns per-output graphics completion and safe retirement.
+    bool ConfigureMediaOutputBuffer(ID3D12Resource*, ID3D12Resource*, ID3D12Fence*);
+    bool SelectMediaOutputBuffer(unsigned index);
 
 
     bool ProcessFrame(const ProcessingInput& input,
@@ -476,6 +482,10 @@ private:
     void ResetKeystoneCornersToIdentity();
     bool SynchronizeStream() noexcept;
     void QuarantineGpuResources() noexcept;
+    void SwapMediaOutputBindings() noexcept;
+    struct AlternateOutput;
+    std::unique_ptr<AlternateOutput> alternateOutput_;
+    unsigned mediaOutputIndex_{};
     bool UploadD3D11Frame(const ProcessingInput& input,
                           uchar4* destination,
                           size_t destinationPitch);
@@ -789,6 +799,8 @@ public:
 
     const std::string& LastError() const { static std::string dummy; return dummy; }
     bool LastFailureWasCaptureInterop() const { return false; }
+    bool ConfigureMediaOutputBuffer(ID3D12Resource*, ID3D12Resource*, ID3D12Fence*) { return false; }
+    bool SelectMediaOutputBuffer(unsigned index) { return index == 0; }
     bool LastFailureWasBusy() const { return false; }
     bool PrepareMediaBgraInput(unsigned int, unsigned int, int, bool) { return false; }
     void ResetTemporalHistory() {}

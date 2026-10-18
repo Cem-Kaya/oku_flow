@@ -162,3 +162,16 @@ measurements remain separate acceptance. Two old hosted action-row failures were
 traced to a five-button assertion after Open video became the sixth; the shared
 assertion now checks all six and both test binaries compile. Their native rerun
 belongs on the free hosted desktop. No installer or public release is certified.
+
+
+## Two-output experiment (2026-10-19)
+
+The explicit [one/two-output comparison](media_output_buffer_benchmark.md) shares
+one processing history and uses independent output fences. Thirty-two timed
+trials measured GPU processing/drawing completion with minimum-duration phases,
+plus target/view changes. Two outputs helped light 4K throughput but did not
+improve the throughput/latency balance with text effects, so ordinary app
+construction stays at one. The experiment is not part of recurring validation.
+Afterward the tracked background Release/CPU/CUDA gate passed again (108 CPU,
+17 CUDA), the offscreen native app passed 53 Qt rows, and PCH ON/OFF equivalence
+passed. Native desktop/screen-reader and public release boundaries are unchanged.

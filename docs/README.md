@@ -676,3 +676,7 @@ maps all 36 supplied findings to fixes, measurements and remaining acceptance.
 [Asynchronous Maxine producer](maxine_async_producer_design.md) records its
 private stream/slot ownership, exact-current-frame publication, immediate
 capture policy, cancellation and separate native performance acceptance.
+
+[One-time media output-buffer comparison](media_output_buffer_benchmark.md)
+records the real GPU throughput/latency tradeoff for one and two outputs. The
+experiment preserves one history and leaves the app default unchanged.

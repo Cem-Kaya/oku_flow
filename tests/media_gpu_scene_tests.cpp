@@ -331,9 +331,9 @@ public:
     // One view-only consumer read: wait the private producer fence on the
     // private queue, copy scene -> staging, signal the reserved value, then
     // record it exactly as a successful presentation would.
-    ReadResult ReadScene(okuflow::MediaGpuScene& scene, bool recordByValue = false, bool cache = false)
+    ReadResult ReadScene(okuflow::MediaGpuScene& scene, bool recordByValue = false, bool cache = false, ID3D12Resource* completedOutput = nullptr)
     {
-        ID3D12Resource* texture = cache ? scene.SuperResTexture() : scene.Texture();
+        ID3D12Resource* texture = completedOutput ? completedOutput : (cache ? scene.SuperResTexture() : scene.Texture());
         Require(texture != nullptr, "scene texture missing for consumer read");
         const auto sync = scene.PresentationSync();
         Require(sync.enable && sync.presentationFence && sync.signalValue != 0,
@@ -654,9 +654,9 @@ std::vector<Bgra> BlurReference(std::vector<Bgra> pixels, int radius, float sigm
     return pass(pass(pixels, false), true);
 }
 
-void EffectAndHistoryTests(Harness& harness)
+void EffectAndHistoryTests(Harness& harness, unsigned outputBuffers = 1)
 {
-    okuflow::MediaGpuScene scene;
+    okuflow::MediaGpuScene scene(outputBuffers);
     PrepareUntilReady(scene, harness.Device(), kWidth, kHeight);
     auto a = harness.MakeFrame(kWidth, kHeight, 12, 1000);
     auto b = harness.MakeFrame(kWidth, kHeight, 13, 1001);
@@ -814,14 +814,14 @@ struct SdkGate {
     }
 };
 
-void SpatialAndNeuralTests(Harness& harness)
+void SpatialAndNeuralTests(Harness& harness, unsigned outputBuffers = 1)
 {
 #if defined(OKUFLOW_MAXINE_FAKE_IMAGE) && defined(OKUFLOW_MAXINE_FAKE_EFFECTS)
     FakeModule image(OKUFLOW_MAXINE_FAKE_IMAGE), effects(OKUFLOW_MAXINE_FAKE_EFFECTS);
     Require(image.fill && effects.block, "private fake SDK pixel/gate controls missing");
     constexpr unsigned color = 0xff4bb123u;
     image.fill(true, color);
-    okuflow::MediaGpuScene scene;
+    okuflow::MediaGpuScene scene(outputBuffers);
     PrepareUntilReady(scene, harness.Device(), 512, 512);
     Require(scene.SuperResWidth() == 512 && scene.SuperResHeight() == 512,
             "media spatial cache allocation has the wrong extent");
@@ -954,6 +954,8 @@ void AwaitOwnedWorkers()
 
 } // namespace
 
+#include "media_gpu_buffer_benchmark.hpp"
+
 int main(int argc, char** argv)
 {
     QCoreApplication application(argc, argv);
@@ -972,6 +974,10 @@ int main(int argc, char** argv)
 
         {
         Harness harness;
+        if (application.arguments().contains(QStringLiteral("--benchmark-output-buffers"))) {
+            DoubleOutputTests(harness); BufferBenchmark(harness); return 0;
+        }
+        DoubleOutputTests(harness);
         okuflow::MediaGpuScene scene;
 
         // Unprepared surface: everything reads empty and safely.
@@ -1391,6 +1397,8 @@ int main(int argc, char** argv)
         CpuBgraTests(harness);
         EffectAndHistoryTests(harness);
         SpatialAndNeuralTests(harness);
+        EffectAndHistoryTests(harness, 2);
+        SpatialAndNeuralTests(harness, 2);
         } // Queue destruction of all fixture-owned GPU scenes first.
         AwaitOwnedWorkers();
         std::puts("PASS: MediaGpuScene exact-adapter GPU ownership, private fence reads, "

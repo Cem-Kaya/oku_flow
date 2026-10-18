@@ -7,6 +7,7 @@ if(WIN32 AND OKUFLOW_ENABLE_CUDA)
     set(media_gpu_scene_fixture_include "${PROJECT_SOURCE_DIR}/third_party/maxine/Maxine-VFX-SDK/nvvfx/include")
     add_executable(media_gpu_scene_tests media_gpu_scene_tests.cpp
         "${PROJECT_SOURCE_DIR}/src/app/media_gpu_scene.cpp"
+        "${PROJECT_SOURCE_DIR}/src/d3d12/presenter.cpp"
         "${PROJECT_SOURCE_DIR}/src/common/maxine_async_producer.cpp"
         "${PROJECT_SOURCE_DIR}/src/cuda/cuda_interop.cpp"
         "${PROJECT_SOURCE_DIR}/src/cuda/uct_analysis_pool.cpp"
@@ -30,7 +31,7 @@ if(WIN32 AND OKUFLOW_ENABLE_CUDA)
     endif()
     target_compile_options(media_gpu_scene_tests PRIVATE $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>)
     target_link_libraries(media_gpu_scene_tests PRIVATE
-        Qt6::Core Qt6::Gui CUDA::cudart_static CUDA::cuda_driver d3d11 d3d12 dxgi advapi32)
+        Qt6::Core Qt6::Gui CUDA::cudart_static CUDA::cuda_driver d3d11 d3d12 dxgi d3dcompiler windowscodecs advapi32)
     set_target_properties(media_gpu_scene_tests PROPERTIES
         CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_RUNTIME_LIBRARY Static
         CUDA_ARCHITECTURES "${OKUFLOW_CUDA_ARCHITECTURES}")

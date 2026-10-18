@@ -65,7 +65,9 @@ class MediaGpuScene final {
 public:
     enum class Status { Pending, Ready, Failed };
 
-    MediaGpuScene();
+    // Two outputs is an explicit throughput/latency experiment; ordinary app
+    // construction retains one until benchmark acceptance. History stays shared.
+    explicit MediaGpuScene(unsigned outputBuffers = 1);
     // Never waits: any live, retiring, or still-initializing bundle is handed
     // to a bounded AsyncCleanup closure; healthy invalidation instead retains it.
     ~MediaGpuScene();
@@ -181,6 +183,10 @@ public:
     // Failed bundles and superseded initialization retire asynchronously.
     // Also re-arms a latched configuration/process failure.
     void Invalidate() noexcept;
+    // Explicit nonblocking resource release. Ready proves this helper's own
+    // construction/retirement closures completed; Failed retains quarantine.
+    // Unlike Invalidate, this gives up healthy cached allocations/models.
+    Status Release();
 
 private:
     struct State;

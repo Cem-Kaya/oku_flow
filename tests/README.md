@@ -1612,3 +1612,29 @@ changes remain Pending with unchanged scene/fence/history, then the exact owned
 upload remains readable before the newest request runs. This bound keeps old
 view updates from accumulating behind a seek. Native action-row assertions cover
 all six actions including Open video; they still require a free desktop.
+
+### One-time output-buffer experiment
+
+The normal `media_gpu_scene_cuda` contract includes two-output isolation,
+backpressure/newest-seek/reset checks and runs full effect/history plus private
+fake-neural cases with one and two outputs. It never runs a timing benchmark.
+
+To explicitly repeat the one-time experiment after building the fixture:
+
+```powershell
+$env:OKUFLOW_AGENT_EXCLUDE_GUI = '1'
+scripts/agent_build.bat --scoped msvc-cuda-tests media_gpu_scene_cuda
+$env:PATH = "C:\Qt\6.12.0\msvc2022_64\bin;$env:PATH"
+build/msvc-cuda-tests/tests/media_gpu_scene_tests.exe --benchmark-output-buffers
+```
+
+Keep raw output in LocalAppData and serialize it with other GPU/codec work.
+No native desktop is needed. The comparison uses production CUDA and viewport
+shader commands, already decoded immutable inputs and GPU-completion receipts;
+it excludes decoder/preroll, VSync, screen scanout and native input scheduling.
+Four order-balanced repetitions compare 1080p/4K neutral and text-effect profiles,
+with minimum-duration steady phases and explicit target/view changes. It is not
+an automatic benchmark or a release FPS requirement. The measured report and
+per-trial CSV are in [the result](../docs/media_output_buffer_benchmark.md).
+The ordinary app retains one output because the measured tradeoff did not improve
+both throughput and tail latency across the target workloads.

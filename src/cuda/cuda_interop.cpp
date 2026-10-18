@@ -602,6 +602,71 @@ void ReleaseMappedExternalImage(cudaSurfaceObject_t* surfaceObject,
 
 } // namespace
 
+// Only output interop rotates: histories, source imports, inference and the
+// processing stream remain single-owned. Destroy only after both output fences
+// and the producer stream have completed, or quarantine the entire owner.
+struct CudaInteropSurface::AlternateOutput {
+    Microsoft::WRL::ComPtr<ID3D12Resource> texture, cache;
+    Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+    cudaExternalMemory_t memory{}, cacheMemory{};
+    cudaMipmappedArray_t mip{}, cacheMip{};
+    cudaArray_t array{}, cacheArray{};
+    cudaSurfaceObject_t surface{}, cacheSurface{};
+    cudaExternalSemaphore_t semaphore{};
+    ~AlternateOutput() {
+        ReleaseMappedExternalImage(&surface, mip, array, memory, "alternate scene");
+        ReleaseMappedExternalImage(&cacheSurface, cacheMip, cacheArray, cacheMemory, "alternate cache");
+        if (semaphore) cudaDestroyExternalSemaphore(semaphore);
+    }
+};
+
+void CudaInteropSurface::SwapMediaOutputBindings() noexcept {
+    auto& other = *alternateOutput_;
+    retainedMainTexture_.Swap(other.texture); retainedSuperResTexture_.Swap(other.cache);
+    retainedSharedFence_.Swap(other.fence);
+    std::swap(externalMemory_, other.memory); std::swap(mipArray_, other.mip);
+    std::swap(level0Array_, other.array); std::swap(surfaceObject_, other.surface);
+    std::swap(superResExternalMemory_, other.cacheMemory); std::swap(superResMipArray_, other.cacheMip);
+    std::swap(superResLevel0Array_, other.cacheArray); std::swap(superResSurfaceObject_, other.cacheSurface);
+    std::swap(externalSemaphore_, other.semaphore);
+}
+
+bool CudaInteropSurface::ConfigureMediaOutputBuffer(ID3D12Resource* texture,
+    ID3D12Resource* cache, ID3D12Fence* fence) {
+    if (!valid_ || !frameReprocessing_ || alternateOutput_ || !texture || !cache || !fence) return false;
+    const auto desc = texture->GetDesc(); const auto cacheDesc = cache->GetDesc();
+    if (desc.Width != width_ || desc.Height != height_ || desc.Format != format_ ||
+        cacheDesc.Width != superResWidth_ || cacheDesc.Height != superResHeight_ || cacheDesc.Format != format_)
+        return false;
+    Microsoft::WRL::ComPtr<ID3D12Device> device, otherDevice, cacheDevice, fenceDevice;
+    if (FAILED(retainedMainTexture_->GetDevice(IID_PPV_ARGS(&device))) ||
+        FAILED(texture->GetDevice(IID_PPV_ARGS(&otherDevice))) ||
+        FAILED(cache->GetDevice(IID_PPV_ARGS(&cacheDevice))) || FAILED(fence->GetDevice(IID_PPV_ARGS(&fenceDevice))) ||
+        device.Get() != otherDevice.Get() || device.Get() != cacheDevice.Get() || device.Get() != fenceDevice.Get()) return false;
+    alternateOutput_ = std::make_unique<AlternateOutput>();
+    SwapMediaOutputBindings(); // park output zero, construct output one in the empty bindings
+    retainedMainTexture_ = texture; retainedSuperResTexture_ = cache; retainedSharedFence_ = fence;
+    bool configured = false;
+    try {
+        ThrowIfCudaFailed(cudaSetDevice(cudaDeviceId_), "Alternate output device selection failed");
+        CreateSurfaceFromResource(device.Get(), texture);
+        CreateSuperResSurfaceFromResource(device.Get(), cache);
+        ImportFenceSemaphore(device.Get(), fence);
+        configured = true;
+    } catch (const std::exception& error) { lastError_ = error.what(); }
+    SwapMediaOutputBindings(); // output zero remains selected, including on partial failure
+    if (!configured) alternateOutput_.reset(); // no work has ever referenced output one
+    return configured;
+}
+
+bool CudaInteropSurface::SelectMediaOutputBuffer(unsigned index) {
+    if (index == mediaOutputIndex_) return valid_ && !streamFaulted_;
+    if (index > 1 || !alternateOutput_ || !PollIdle()) return false;
+    SwapMediaOutputBindings();
+    mediaOutputIndex_ = index;
+    return true;
+}
+
 CudaInteropSurface::CudaInteropSurface(ID3D12Resource* texture,
                                        ID3D12Resource* superResTexture,
                                        ID3D12Fence* sharedFence,
@@ -714,6 +779,7 @@ void CudaInteropSurface::QuarantineGpuResources() noexcept {
     (void)maxineProducer_.release();
     (void)asyncSuperRes_.release();
     (void)frameReprocessing_.release();
+    (void)alternateOutput_.release();
     d3d12Device_.Detach();
     retainedMainTexture_.Detach();
     retainedSuperResTexture_.Detach();
@@ -732,6 +798,7 @@ CudaInteropSurface::~CudaInteropSurface() {
     ReleaseDeviceBuffers();
 
     frameReprocessing_.reset();
+    alternateOutput_.reset();
 
     if (processTimingStartEvent_) {
         cudaEventDestroy(processTimingStartEvent_);
@@ -913,7 +980,7 @@ bool CudaInteropSurface::CreateSurfaceFromResource(ID3D12Device* device, ID3D12R
         ThrowIfCudaFailed(cudaCreateSurfaceObject(&surfaceObject_, &resourceDesc),
                           "cudaCreateSurfaceObject failed");
 
-        ThrowIfCudaFailed(cudaStreamCreate(&stream_), "cudaStreamCreate failed");
+        if (!stream_) ThrowIfCudaFailed(cudaStreamCreate(&stream_), "cudaStreamCreate failed");
     } catch (const std::exception& e) {
         lastError_ = e.what();
         qWarning() << "CreateSurfaceFromResource exception:" << e.what();

@@ -179,3 +179,15 @@ These checks do not measure native playback FPS, pan-to-photon latency, audio
 hardware sync, HDR display quality, Narrator/NVDA, mixed-monitor DPI, long soak or
 installer acceptance. GUI remains separate and serial on an explicitly free
 desktop. See [validation record](accessible_video_implementation.md).
+
+## Bounded output-buffer experiment
+
+The explicit `MediaGpuScene(2)` variant prepares two base/cache outputs with
+independent producer/graphics fence timelines, sharing the same processing
+history, source imports, models and stream. It permits a graphics read and the
+next processing pass to overlap, while returning Pending when credit is busy.
+Waiting targets can be replaced; submitted work is not falsely called canceled.
+Normal app construction remains one output. The [one-time comparison](media_output_buffer_benchmark.md)
+records throughput, tail latency, memory cost and the reason that default stays.
+Explicit `Release()` polls exact owned retirement; neither output can be destroyed
+on the UI thread or reused before its own reader completed.

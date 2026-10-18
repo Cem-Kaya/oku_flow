@@ -5477,3 +5477,26 @@ uses the document timer to expire a genuinely active annotation intent without
 requiring a camera or retargeting later pixels. `ActionRowsProblem` inventories
 all six production action buttons, including Open video, while preserving its
 rectangle, equal-row-width and minimum-height assertions.
+
+`MediaGpuScene(unsigned outputBuffers = 1)` accepts one or two outputs. The
+experimental two-output `OutputSlot` rotates base/cache textures and a private
+fence timeline while preserving one `CudaInteropSurface`, processing history,
+source-import cache and inference worker. `Bundle::SelectOutput` swaps only
+prepared output bindings. Both reader completions are proven during retirement;
+Pending admission never advances history or publishes another texture's stamp.
+`Release()` gives a nonblocking exact-owner completion receipt for explicit
+resource release, unlike cache-preserving `Invalidate()`.
+
+`CudaInteropSurface::AlternateOutput`, `ConfigureMediaOutputBuffer`,
+`SwapMediaOutputBindings` and `SelectMediaOutputBuffer` prepare matching native
+resources on the construction worker and swap their imported surfaces/semaphore
+only with an idle producer. Quarantine retains the entire alternate owner too.
+Ordinary camera/app construction does not allocate or select an alternate.
+
+`media_gpu_buffer_benchmark.hpp` supplies `DoubleOutputTests` and the explicit
+`BufferBenchmark` entry point. `VideoGpuPresenterFixture::Initialize` uses the
+existing friend seam to create production viewport commands/shaders without an
+HWND. `AwaitProducer` verifies independent output completion; `Percentile`
+reduces local timing samples. Existing effect/history and spatial/neural cases
+accept an output count and validate both configurations. Timed comparisons stay
+outside recurring CTest and do not claim end-to-end player/monitor latency.

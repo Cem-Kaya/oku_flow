@@ -17,6 +17,12 @@
 namespace okuflow {
 namespace {
 
+struct OutputSlot {
+    Microsoft::WRL::ComPtr<ID3D12Resource> texture, cache;
+    Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+    std::uint64_t nextValue{1}, producer{}, graphics{}, reservation{};
+};
+
 struct Bundle {
     Microsoft::WRL::ComPtr<ID3D12Device> device;
     Microsoft::WRL::ComPtr<ID3D12Resource> texture;
@@ -33,7 +39,19 @@ struct Bundle {
     std::uint64_t lastCudaSignal{};
     std::uint64_t lastGraphicsSignal{};
     std::uint64_t pendingGraphicsSignal{};
+    OutputSlot parked;
+    unsigned outputBuffers{1}, outputIndex{};
     bool sceneReady{};
+
+    bool SelectOutput(unsigned index) {
+        if (index == outputIndex) return true;
+        if (!surface->SelectMediaOutputBuffer(index)) return false;
+        texture.Swap(parked.texture); superResTexture.Swap(parked.cache); fence.Swap(parked.fence);
+        std::swap(nextValue, parked.nextValue); std::swap(lastCudaSignal, parked.producer);
+        std::swap(lastGraphicsSignal, parked.graphics); std::swap(pendingGraphicsSignal, parked.reservation);
+        outputIndex = index;
+        return true;
+    }
     std::uint64_t sceneEpoch{};
     std::uint64_t sceneFrameSequence{};
     std::uint64_t sceneAppearance{};
@@ -62,6 +80,7 @@ struct InitSlot {
     UINT height{};
     UINT cacheWidth{}, cacheHeight{};
     std::uint64_t generation{};
+    unsigned outputBuffers{1};
 };
 
 std::string HrError(const char* what, HRESULT hr)
@@ -96,24 +115,27 @@ bool RetireBundleNow(Bundle& bundle)
         if (!bundle.surface->WaitForIdle()) return false;
         if (!bundle.surface->PollCaptureCopy()) return false;
     }
-    const std::uint64_t lastSignal =
-        std::max(bundle.lastCudaSignal, bundle.lastGraphicsSignal);
-    if (bundle.fence && lastSignal != 0) {
-        const UINT64 completed = bundle.fence->GetCompletedValue();
-        if (completed == UINT64_MAX) return false; // device removed
-        if (completed < lastSignal) {
-            HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-            if (!event) return false;
-            const HRESULT hr =
-                bundle.fence->SetEventOnCompletion(lastSignal, event);
-            bool done = false;
-            if (SUCCEEDED(hr)) {
-                done = WaitForSingleObject(event, 1000) == WAIT_OBJECT_0;
+    const auto waitOutput = [](ID3D12Fence* fence, std::uint64_t lastSignal) {
+        if (fence && lastSignal != 0) {
+            const UINT64 completed = fence->GetCompletedValue();
+            if (completed == UINT64_MAX) return false; // device removed
+            if (completed < lastSignal) {
+                HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+                if (!event) return false;
+                const HRESULT hr =
+                    fence->SetEventOnCompletion(lastSignal, event);
+                bool done = false;
+                if (SUCCEEDED(hr)) {
+                    done = WaitForSingleObject(event, 1000) == WAIT_OBJECT_0;
+                }
+                CloseHandle(event);
+                if (!done) return false;
             }
-            CloseHandle(event);
-            if (!done) return false;
         }
-    }
+        return true;
+    };
+    if (!waitOutput(bundle.fence.Get(), std::max(bundle.lastCudaSignal, bundle.lastGraphicsSignal)) ||
+        !waitOutput(bundle.parked.fence.Get(), std::max(bundle.parked.producer, bundle.parked.graphics))) return false;
     // The surface imported the texture and fence into CUDA; destroy it while
     // both D3D12 objects are still alive, then release them.
     bundle.surface.reset();
@@ -207,6 +229,22 @@ void BuildBundle(const std::shared_ptr<InitSlot>& slot)
             // cached, never imported or destroyed on the UI thread.
             bundle->surface->EnableAsyncD3D11SourcePreparation(true);
             bundle->surface->EnableFrameReprocessing();
+            bundle->outputBuffers = slot->outputBuffers;
+            if (slot->outputBuffers == 2) {
+                hr = slot->device->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&bundle->parked.fence));
+                if (FAILED(hr)) throw std::runtime_error(HrError("Alternate media fence", hr));
+                desc.Width = slot->width; desc.Height = slot->height;
+                hr = slot->device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_SHARED, &desc,
+                    D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&bundle->parked.texture));
+                if (FAILED(hr)) throw std::runtime_error(HrError("Alternate media scene", hr));
+                desc.Width = slot->cacheWidth; desc.Height = slot->cacheHeight;
+                hr = slot->device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_SHARED, &desc,
+                    D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&bundle->parked.cache));
+                if (FAILED(hr)) throw std::runtime_error(HrError("Alternate media cache", hr));
+                if (!bundle->surface->ConfigureMediaOutputBuffer(bundle->parked.texture.Get(),
+                    bundle->parked.cache.Get(), bundle->parked.fence.Get()))
+                    throw std::runtime_error("Alternate media output import failed: " + bundle->surface->LastError());
+            }
         }
     } catch (const std::exception& e) {
         error = e.what();
@@ -232,6 +270,7 @@ struct MediaGpuScene::State {
     UINT desiredHeight{};
     UINT desiredCacheWidth{}, desiredCacheHeight{};
     bool performanceOverride{};
+    unsigned outputBuffers{1};
     std::uint64_t generation{};
     // Latched attempt failure (init/process), re-armed only by Invalidate().
     bool attemptFailed{};
@@ -318,7 +357,10 @@ struct MediaGpuScene::State {
     }
 };
 
-MediaGpuScene::MediaGpuScene() : state_(std::make_unique<State>()) {}
+MediaGpuScene::MediaGpuScene(unsigned outputBuffers) : state_(std::make_unique<State>()) {
+    if (outputBuffers != 1 && outputBuffers != 2) throw std::invalid_argument("Media output buffer count must be one or two");
+    state_->outputBuffers = outputBuffers;
+}
 
 MediaGpuScene::~MediaGpuScene()
 {
@@ -397,6 +439,7 @@ MediaGpuScene::Status MediaGpuScene::Prepare(ID3D12Device* device,
     slot->cacheWidth = cacheWidth;
     slot->cacheHeight = cacheHeight;
     slot->generation = s.generation;
+    slot->outputBuffers = s.outputBuffers;
     try {
         std::thread([slot] { BuildBundle(slot); }).detach();
     } catch (...) {
@@ -557,6 +600,20 @@ MediaGpuScene::Status MediaGpuScene::Process(const VideoPlaybackFrame& frame,
         s.RetireCurrent();
         return Status::Failed;
     }
+    // Each output has its own fence. A higher producer value on output one
+    // must never falsely complete a still-reading graphics value on output zero.
+    unsigned targetOutput = b.outputIndex;
+    if (b.outputBuffers == 2) {
+        const auto freeOutput = [](ID3D12Fence* fence, std::uint64_t value) {
+            const auto completed = fence->GetCompletedValue();
+            return completed != UINT64_MAX && completed >= value;
+        };
+        const bool parkedFree = freeOutput(b.parked.fence.Get(), std::max(b.parked.producer, b.parked.graphics));
+        const bool currentFree = freeOutput(b.fence.Get(), std::max(b.lastCudaSignal, b.lastGraphicsSignal));
+        if (parkedFree && (b.sceneReady || !currentFree)) {
+            targetOutput = 1 - b.outputIndex;
+        } else if (!currentFree) return Status::Pending;
+    }
     if (discontinuity || geometryChanged) {
         b.surface->ResetFrameHistory();
         ++b.historyResetCount;
@@ -609,6 +666,8 @@ MediaGpuScene::Status MediaGpuScene::Process(const VideoPlaybackFrame& frame,
     input.settingsGeneration = appearance;
     input.reprocessFrame = sameFrame && !discontinuity && !geometryChanged;
 
+    const unsigned previousOutput = b.outputIndex;
+    if (!b.SelectOutput(targetOutput)) return Status::Pending;
     // This new submission supersedes any unrecorded presentation of the old
     // scene; its reservation was never queued, so dropping it is safe.
     b.pendingGraphicsSignal = 0;
@@ -621,7 +680,10 @@ MediaGpuScene::Status MediaGpuScene::Process(const VideoPlaybackFrame& frame,
     if (!b.surface->ProcessFrame(input, settings, sync)) {
         if (b.surface->LastFailureWasBusy() && !b.surface->IsFaulted()) {
             // Admission enqueued nothing (the reserved value is burned).
-            return Status::Pending;
+            if (b.SelectOutput(previousOutput)) return Status::Pending;
+            // A failed rollback cannot leave old metadata on another texture.
+            s.error = "Media output rollback failed"; s.attemptFailed = true;
+            s.RetireCurrent(); return Status::Failed;
         }
         // Work may be queued without its fence signal. The scene must not be
         // presented or overwritten; the retirement worker proves completion
@@ -863,6 +925,19 @@ D3D11SourceStatistics MediaGpuScene::SourceStatistics() const
 #else
     return {};
 #endif
+}
+
+MediaGpuScene::Status MediaGpuScene::Release() {
+    auto& s = *state_;
+    if (s.current || s.init) {
+        ++s.generation;
+        s.desiredDevice.Reset();
+        s.analysis.reset();
+        s.RetireCurrent();
+    }
+    s.Poll();
+    if (s.quarantined) return Status::Failed;
+    return s.current || s.init || s.retirement ? Status::Pending : Status::Ready;
 }
 
 void MediaGpuScene::Invalidate() noexcept

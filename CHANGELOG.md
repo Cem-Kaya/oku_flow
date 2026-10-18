@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Add an explicit two-output GPU media experiment and one-time throughput/latency
+  measurements, preserving shared processing history and independent output
+  fences. Keep one output as the app default after the measured tradeoff.
+
 - Prefer native GPU video decode/conversion and a separate CUDA media scene,
   retaining the CPU compatibility reader. Keep texture leases, seeks and
   private producer/graphics fences bounded. Apply the shared blur/sharpen,
