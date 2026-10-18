@@ -21,8 +21,10 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <thread>
 
 using namespace okuflow;
 using namespace okuflow::uct;
@@ -44,6 +46,8 @@ struct ImmutableScript {
     QVector<PageWord> words;
     std::atomic<int> initialized{};
     std::atomic<int> calls{};
+    std::atomic<int> deviceCalls{};
+    std::atomic<bool> wantsDevice{};
 
     void Release()
     {
@@ -71,12 +75,29 @@ public:
         return status;
     }
 
+    bool WantsDeviceInput() const override { return script_->wantsDevice.load(); }
+
     RecognitionOutput Recognize(const QImage& image, const std::atomic<bool>& cancelled) override
     {
-        std::unique_lock lock(script_->mutex);
-        const auto words = script_->words;
         ++script_->calls;
-        script_->changed.wait(lock, [&] { return !script_->holdRecognition; });
+        return Produce(image.width(), image.height(), cancelled);
+    }
+
+    RecognitionOutput RecognizeDevice(const DeviceImage& image, const std::atomic<bool>& cancelled) override
+    {
+        ++script_->deviceCalls;
+        return Produce(image.width, image.height, cancelled);
+    }
+
+private:
+    RecognitionOutput Produce(int width, int height, const std::atomic<bool>& cancelled)
+    {
+        QVector<PageWord> words;
+        {
+            std::unique_lock lock(script_->mutex);
+            words = script_->words;
+            script_->changed.wait(lock, [&] { return !script_->holdRecognition; });
+        }
         RecognitionOutput output;
         output.cancelled = cancelled.load();
         output.ok = !output.cancelled;
@@ -84,14 +105,13 @@ public:
         RecognizedLine line;
         for (const PageWord& word : words) {
             line.words.push_back({word.text,
-                QRectF(word.sceneRect.x() * image.width(), word.sceneRect.y() * image.height(),
-                       word.sceneRect.width() * image.width(), word.sceneRect.height() * image.height())});
+                QRectF(word.sceneRect.x() * width, word.sceneRect.y() * height,
+                       word.sceneRect.width() * width, word.sceneRect.height() * height)});
         }
         output.lines.push_back(std::move(line));
         return output;
     }
 
-private:
     std::shared_ptr<ImmutableScript> script_;
 };
 
@@ -106,8 +126,60 @@ SharedPixels OwnedPixels(const QImage& image)
     return pixels;
 }
 
+// Independently owned fake GPU scene. Readback/ReadProbe stand in for worker
+// copies and record any accidental UI-thread pixel access.
+struct FakeDeviceState {
+    std::thread::id uiThread{std::this_thread::get_id()};
+    std::atomic<int> readbacks{};
+    std::atomic<int> probes{};
+    std::atomic<bool> readOnUiThread{};
+    std::atomic<bool> probeFails{};
+};
+
+class FakeDeviceImage final : public DeviceImage {
+public:
+    FakeDeviceImage(std::shared_ptr<FakeDeviceState> state, QImage page,
+                    std::uint64_t epoch, std::uint64_t frame, std::int64_t ptsMs)
+        : state_(std::move(state)), page_(std::move(page))
+    {
+        width = page_.width();
+        height = page_.height();
+        pitch = static_cast<std::size_t>(page_.bytesPerLine());
+        sourceEpoch = epoch;
+        frameSequence = frame;
+        timestampMs = ptsMs;
+    }
+    const void* Data() const override { return this; }
+    bool WaitReady(void*, QString&) const override { return true; }
+    QImage Readback(const std::atomic<bool>&, QString&) const override
+    {
+        ++state_->readbacks;
+        NoteThread();
+        return page_;
+    }
+    QImage ReadProbe(const std::atomic<bool>&, QString& error) const override
+    {
+        ++state_->probes;
+        NoteThread();
+        if (state_->probeFails.load()) {
+            error = QStringLiteral("fixture probe failure");
+            return {};
+        }
+        return page_.scaled(width / 2, height / 2, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    }
+
+private:
+    void NoteThread() const
+    {
+        if (std::this_thread::get_id() == state_->uiThread) state_->readOnUiThread = true;
+    }
+    std::shared_ptr<FakeDeviceState> state_;
+    QImage page_;
+};
+
 struct ImmutableHarness {
     std::shared_ptr<ImmutableScript> script = std::make_shared<ImmutableScript>();
+    std::shared_ptr<FakeDeviceState> devices = std::make_shared<FakeDeviceState>();
     std::int64_t now{3600000};
     QWidget owner;
     QWidget target{&owner};
@@ -173,6 +245,77 @@ struct ImmutableHarness {
         return scene;
     }
 
+    SharedDeviceImage Device(const QImage& image, std::uint64_t frame, std::int64_t ptsMs,
+                             std::uint64_t epoch = 41) const
+    {
+        return std::make_shared<FakeDeviceImage>(devices, image, epoch, frame, ptsMs);
+    }
+
+    // Device-only selected still: no CPU pixels are retained at all.
+    UctImmutableScene DeviceScene(std::uint64_t frame = 10) const
+    {
+        auto scene = Scene(frame);
+        scene.selected = {{}, frame, 1, Device(page.image, frame, 1)};
+        return scene;
+    }
+
+    UctAdvancingMediaScene PlayDeviceFrame(std::uint64_t frame, std::uint64_t authority = 3)
+    {
+        UctAdvancingMediaScene scene;
+        scene.geometry.settings.sourceEpoch = 41;
+        scene.geometry.sceneWidth = page.image.width();
+        scene.geometry.sceneHeight = page.image.height();
+        scene.sourceAuthority = authority;
+        const std::int64_t pts = 10000 + static_cast<std::int64_t>(frame) * 20;
+        scene.current = {{}, frame, pts,
+                         Device(IndependentFramePixels(page.image, frame), frame, pts)};
+        scene.transform.valid = true;
+        scene.viewportWidth = 960;
+        scene.viewportHeight = 540;
+        {
+            std::lock_guard lock(script->mutex);
+            script->words = page.words;
+        }
+        now += 20;
+        controller->OnAdvancingMediaPresented(scene);
+        QTest::qWait(5);
+        return scene;
+    }
+
+    // No-analysis display receipt for `frame`: real media PTS, no pixels.
+    UctAdvancingMediaPresentation GapReceipt(std::uint64_t frame, std::uint64_t authority = 3) const
+    {
+        UctAdvancingMediaPresentation receipt;
+        receipt.geometry.settings.sourceEpoch = 41;
+        receipt.geometry.sceneWidth = page.image.width();
+        receipt.geometry.sceneHeight = page.image.height();
+        receipt.sourceAuthority = authority;
+        receipt.frameSeq = frame;
+        receipt.timestampMs = 10000 + static_cast<std::int64_t>(frame) * 20;
+        receipt.transform.valid = true;
+        receipt.viewportWidth = 960;
+        receipt.viewportHeight = 540;
+        return receipt;
+    }
+
+    bool PresentGap(std::uint64_t frame, std::uint64_t authority = 3, std::int64_t wallAdvanceMs = 20)
+    {
+        now += wallAdvanceMs;
+        return controller->OnAdvancingMediaPresentedWithoutAnalysis(GapReceipt(frame, authority));
+    }
+
+    // Plays real device frames from `first` until glyphs are drawn, then a
+    // few more so validation is current. Returns the last played frame.
+    std::uint64_t EstablishDeviceGlyphs(std::uint64_t first = 1, std::uint64_t authority = 3)
+    {
+        std::uint64_t frame = first;
+        for (; frame < first + 240 && overlay.WordCount() == 0; ++frame)
+            PlayDeviceFrame(frame, authority);
+        for (int i = 0; i < 8; ++i) PlayDeviceFrame(frame++, authority);
+        QTest::qWait(10);
+        return frame - 1;
+    }
+
     QString Reading() const { return panel.readingPane()->toPlainText(); }
 };
 
@@ -199,7 +342,59 @@ private slots:
     void mediaPresentationFailureRevokesCachedArtifact();
     void immutablePresentationFailureBlocksBackendReadiness();
     void advancingPresentationFailureBlocksLateResult();
+    void deviceImmutableRecognizesWithoutCpuPixels();
+    void deviceImmutableDistinctCorroborationDrawsGlyphs();
+    void deviceImmutableIdenticalPixelsNeverCorroborate();
+    void deviceImmutableRejectsMismatchedImageAndFallsBackToPixels();
+    void deviceAdvancingMediaPacesAndValidates();
+    void deviceAdvancingSeekAndBackwardFrameRevoke();
+    void deviceAdvancingSlowJobUsesWallDeadline();
+    void deviceAdvancingProbeFailureRecovers();
+    void deviceAdvancingReleasesConsumedAnalysisLease();
+    void gapReceiptRetainsBrieflyThenMediaExpiryHidesAndCurrentInputRecovers();
+    void gapReceiptWallExpiryHidesDespiteFreshMediaPts();
+    void gapReceiptDiscontinuitiesRevokeImmediately();
+    void gapReceiptLateOldRecognitionCannotReviveAfterExpiry();
+    void gapReceiptSameFrameReprojectsRepeatedlyWithoutWork();
+    void processingCorrespondenceGateRevokesTextAndUiaWithoutChangingPreference();
 };
+
+void UltraClearTextControllerTests::processingCorrespondenceGateRevokesTextAndUiaWithoutChangingPreference()
+{
+    AccessibilityActivation accessibility;
+    ImmutableHarness h;
+    h.Enable();
+    auto scene = h.Scene();
+    auto independent = h.page.image.copy();
+    independent.setPixelColor(950, 530, Qt::red);
+    scene.corroboration = UctImmutableFrame{OwnedPixels(independent), 11, 2};
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_VERIFY(h.overlay.WordCount() > 0);
+    QVERIFY(!h.Reading().isEmpty());
+    QVERIFY(h.controller->ScreenTextAccessibility()->ExposedLineCount() > 0);
+    h.controller->SetMediaOverlaySuppressed(true);
+    QVERIFY(h.controller->IsEnabled()); // user preference remains on
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().isEmpty());
+    QCOMPARE(h.controller->ScreenTextAccessibility()->ExposedLineCount(), 0);
+    const auto jobs = h.controller->SchedulerStatistics().submitted;
+    QVERIFY(h.controller->SetImmutableScene(scene)); // cannot bypass processing correspondence
+    h.controller->SetShowOriginal(true);
+    h.controller->SetShowOriginal(false);
+    h.controller->OnMediaPresentationSucceeded();
+    QTest::qWait(50);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    h.controller->SetMediaOverlaySuppressed(false);
+    QTRY_VERIFY(h.overlay.WordCount() > 0);
+    QVERIFY(!h.Reading().isEmpty());
+    QVERIFY(h.controller->ScreenTextAccessibility()->ExposedLineCount() > 0);
+    h.controller->SetMediaOverlaySuppressed(true);
+    h.controller->ClearImmutableScene(); // leaving media must clear the gate even without an owned scene
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_VERIFY(h.overlay.WordCount() > 0);
+}
 
 void UltraClearTextControllerTests::immutableOldFrameAndIdleDoNoPeriodicWork()
 {
@@ -733,6 +928,470 @@ void UltraClearTextControllerTests::advancingPresentationFailureBlocksLateResult
     QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
     QVERIFY(!h.controller->ScreenTextSnapshot().lines.isEmpty());
     QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
+}
+
+void UltraClearTextControllerTests::deviceImmutableRecognizesWithoutCpuPixels()
+{
+    ImmutableHarness h;
+    auto scene = h.DeviceScene();
+    QVERIFY(!scene.selected.pixels);
+    QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
+    h.Enable();
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(admitted.size(), 1);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    QCOMPARE(h.overlay.WordCount(), 0); // one still is reading evidence only
+    QVERIFY(!h.controller->Model().Lines().isEmpty());
+    const auto& provenance = h.controller->Model().Lines().first().provenance;
+    QCOMPARE(provenance.frameSeq, scene.selected.frameSeq);
+    QCOMPARE(provenance.timestampMs, std::int64_t(1)); // real source PTS, never refreshed
+    QCOMPARE(provenance.viewportWidth, std::uint32_t(960));
+    QCOMPARE(provenance.viewportHeight, std::uint32_t(540));
+    // The native CPU recognizer fell back through a worker readback.
+    QCOMPARE(h.script->calls.load(), 1);
+    QCOMPARE(h.script->deviceCalls.load(), 0);
+    QVERIFY(h.devices->readbacks.load() >= 1);
+    QVERIFY(!h.devices->readOnUiThread.load());
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(1));
+    QCOMPARE(h.controller->ProbeStatistics().submitted, std::uint64_t(0));
+    QCOMPARE(h.controller->PixelAllocations(), std::uint64_t(0));
+    // Exact device lease repeated: projection only, no second analysis.
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(1));
+    // Same frame identity with a new device lease is a new selection.
+    auto reselected = scene;
+    reselected.selected.device = h.Device(h.page.image, 10, 1);
+    const auto generation = h.controller->GeometryGeneration();
+    QVERIFY(h.controller->SetImmutableScene(reselected));
+    QVERIFY(h.controller->GeometryGeneration() > generation);
+    QTRY_COMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(2));
+}
+
+void UltraClearTextControllerTests::deviceImmutableDistinctCorroborationDrawsGlyphs()
+{
+    ImmutableHarness h;
+    h.script->wantsDevice = true;
+    auto scene = h.DeviceScene();
+    auto neighbour = h.page.image.copy();
+    neighbour.setPixelColor(950, 530, Qt::red); // genuinely distinct pixels
+    scene.corroboration = UctImmutableFrame{{}, 11, 2, h.Device(neighbour, 11, 2)};
+    h.Enable();
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_VERIFY(h.overlay.WordCount() > 0);
+    QCOMPARE(h.script->deviceCalls.load(), 2);
+    QCOMPARE(h.script->calls.load(), 0); // GPU-preferred path, no CPU recognition
+    QVERIFY(!h.devices->readOnUiThread.load());
+    QVERIFY(!h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QCOMPARE(h.controller->ProbeStatistics().submitted, std::uint64_t(0));
+}
+
+void UltraClearTextControllerTests::deviceImmutableIdenticalPixelsNeverCorroborate()
+{
+    ImmutableHarness h;
+    auto scene = h.DeviceScene();
+    // Different lease and frame identity, byte-identical scene pixels.
+    scene.corroboration = UctImmutableFrame{{}, 11, 2, h.Device(h.page.image, 11, 2)};
+    QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
+    h.Enable();
+    QVERIFY(h.controller->SetImmutableScene(scene));
+    QTRY_COMPARE(admitted.size(), 2);
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    QTest::qWait(250);
+    QCOMPARE(h.script->calls.load(), 2); // bounded attempt, no retry loop
+}
+
+void UltraClearTextControllerTests::deviceImmutableRejectsMismatchedImageAndFallsBackToPixels()
+{
+    { // dimensions do not cover the declared scene
+        ImmutableHarness h;
+        auto scene = h.DeviceScene();
+        const QImage small(64, 64, QImage::Format_ARGB32);
+        scene.selected.device = h.Device(small, 10, 1);
+        QVERIFY(!h.controller->SetImmutableScene(scene));
+        h.Enable();
+        QVERIFY(h.controller->HasImmutableScene()); // live input stays suspended
+        QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+        QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(0));
+        QVERIFY(h.Reading().isEmpty());
+    }
+    { // device frame identity disagrees with the frame's authoritative stamp
+        ImmutableHarness h;
+        auto scene = h.DeviceScene();
+        scene.selected.device = h.Device(h.page.image, 99, 1);
+        QVERIFY(!h.controller->SetImmutableScene(scene));
+        h.Enable();
+        QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+        QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(0));
+    }
+    { // device source epoch disagrees with the scene geometry
+        ImmutableHarness h;
+        auto scene = h.DeviceScene();
+        scene.selected.device = h.Device(h.page.image, 10, 1, 7);
+        QVERIFY(!h.controller->SetImmutableScene(scene));
+        h.Enable();
+        QTRY_COMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+        QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(0));
+    }
+    { // a broken device lease must not lose UCT when CPU pixels are owned too
+        ImmutableHarness h;
+        auto scene = h.Scene();
+        const QImage small(64, 64, QImage::Format_ARGB32);
+        scene.selected.device = h.Device(small, 10, 1);
+        h.Enable();
+        QVERIFY(h.controller->SetImmutableScene(scene));
+        QTRY_VERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+        QCOMPARE(h.script->calls.load(), 1);
+    }
+}
+
+void UltraClearTextControllerTests::deviceAdvancingMediaPacesAndValidates()
+{
+    ImmutableHarness h;
+    h.Enable();
+    UctAdvancingMediaScene last;
+    for (std::uint64_t frame = 1; frame <= 120 && h.overlay.WordCount() == 0; ++frame)
+        last = h.PlayDeviceFrame(frame);
+    QVERIFY(h.overlay.WordCount() > 0);
+    QVERIFY(h.controller->HasAdvancingMediaScene());
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    const std::uint64_t lastFrame = last.current.frameSeq;
+    for (std::uint64_t frame = lastFrame + 1; frame <= lastFrame + 40; ++frame)
+        last = h.PlayDeviceFrame(frame);
+    QVERIFY(h.overlay.WordCount() > 0);
+    const auto jobs = h.controller->SchedulerStatistics().submitted;
+    QVERIFY2(jobs >= 2 && jobs <= 12, "Advancing device media must pace OCR, not submit per frame");
+    QVERIFY(h.devices->probes.load() >= 5);
+    QVERIFY(h.controller->ProbeStatistics().completed >= 5);
+    QVERIFY(!h.controller->Model().Lines().isEmpty());
+    const auto& line = h.controller->Model().Lines().first();
+    QVERIFY(line.validatedFrameSeq > line.provenance.frameSeq); // independent probes keep validating
+    QVERIFY(line.provenance.timestampMs >= 10000 && line.provenance.timestampMs <= 14000);
+    QVERIFY(line.validatedAtMs >= line.provenance.timestampMs);
+    QVERIFY(!h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QCOMPARE(h.controller->PixelAllocations(), std::uint64_t(0)); // no UI viewport copy
+    QVERIFY(!h.devices->readOnUiThread.load());
+    QVERIFY(h.script->calls.load() + h.script->deviceCalls.load() >= 2);
+}
+
+void UltraClearTextControllerTests::deviceAdvancingSeekAndBackwardFrameRevoke()
+{
+    ImmutableHarness h;
+    h.script->holdRecognition = true;
+    h.Enable();
+    std::uint64_t frame = 1;
+    for (; frame < 60 && h.script->calls.load() == 0; ++frame) h.PlayDeviceFrame(frame);
+    QTRY_COMPARE(h.script->calls.load(), 1); // recognition held in flight
+    const auto beforeSeek = h.controller->GeometryGeneration();
+    h.PlayDeviceFrame(frame++, 9); // seek: new source authority
+    QVERIFY(h.controller->GeometryGeneration() > beforeSeek);
+    QVERIFY(h.Reading().isEmpty());
+    const auto seekGeneration = h.controller->GeometryGeneration();
+    h.script->Release();
+    for (int i = 0; i < 120 && h.overlay.WordCount() == 0; ++i) h.PlayDeviceFrame(frame++, 9);
+    QVERIFY(h.overlay.WordCount() > 0);
+    QVERIFY(h.controller->SchedulerStatistics().revoked >= 1);
+    QCOMPARE(h.controller->Model().Lines().first().provenance.geometryGeneration, seekGeneration);
+    // A backward frame under the same authority is a discontinuity too.
+    const auto beforeBackward = h.controller->GeometryGeneration();
+    h.PlayDeviceFrame(2, 9);
+    QVERIFY(h.controller->GeometryGeneration() > beforeBackward);
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().isEmpty());
+}
+
+void UltraClearTextControllerTests::deviceAdvancingSlowJobUsesWallDeadline()
+{
+    UctTiming timing;
+    timing.immutableJobTimeoutMs = 100;
+    ImmutableHarness h(timing);
+    h.script->holdRecognition = true;
+    h.Enable();
+    for (std::uint64_t frame = 1; frame < 60 && h.script->calls.load() == 0; ++frame)
+        h.PlayDeviceFrame(frame);
+    QTRY_COMPARE(h.script->calls.load(), 1);
+    h.now += 101; // media PTS unchanged; only the wall job deadline expires
+    h.script->Release();
+    QTRY_COMPARE(h.controller->RejectedResults(), std::uint64_t(1));
+    QVERIFY(h.Reading().isEmpty());
+    QVERIFY(h.controller->Model().Lines().isEmpty());
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, std::uint64_t(1));
+}
+
+void UltraClearTextControllerTests::deviceAdvancingProbeFailureRecovers()
+{
+    ImmutableHarness h;
+    h.devices->probeFails = true;
+    h.Enable();
+    std::uint64_t frame = 1;
+    for (; frame <= 80 && !h.controller->StatusSource().contains(QStringLiteral("stopped working")); ++frame)
+        h.PlayDeviceFrame(frame);
+    QVERIFY2(h.controller->StatusSource().contains(QStringLiteral("stopped working")),
+             qPrintable(h.controller->StatusSource()));
+    QCOMPARE(h.controller->BackendStatusSnapshot().state, BackendState::kReady);
+    QVERIFY(h.Reading().isEmpty());
+    QCOMPARE(h.overlay.WordCount(), 0);
+    h.devices->probeFails = false; // copies recover: UCT must not stay lost
+    for (int i = 0; i < 160 && h.overlay.WordCount() == 0; ++i) h.PlayDeviceFrame(frame++);
+    QVERIFY(h.overlay.WordCount() > 0);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    QVERIFY(!h.controller->StatusSource().contains(QStringLiteral("stopped working")));
+}
+
+void UltraClearTextControllerTests::deviceAdvancingReleasesConsumedAnalysisLease()
+{
+    ImmutableHarness h;
+    h.Enable();
+    std::map<std::uint64_t, std::weak_ptr<const DeviceImage>> leases;
+    for (std::uint64_t frame = 1; frame <= 160 && h.overlay.WordCount() == 0; ++frame) {
+        const auto scene = h.PlayDeviceFrame(frame);
+        leases[frame] = scene.current.device; // the returned scene copy drops here
+    }
+    QVERIFY(h.overlay.WordCount() > 0);
+    const auto provenFrame = h.controller->Model().Lines().first().provenance.frameSeq;
+    const auto lease = leases.find(provenFrame);
+    QVERIFY(lease != leases.end());
+    // Validation and recognition consumed this exact device image. Once they
+    // finish, the retained advancing scene must not keep its analysis-pool
+    // lease alive merely as receipt metadata...
+    QTRY_VERIFY_WITH_TIMEOUT(lease->second.expired(), 5000);
+    // ...while the displayed scene remains presentable and its text drawn.
+    QVERIFY(h.controller->HasAdvancingMediaScene());
+    QVERIFY(h.overlay.WordCount() > 0);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+}
+
+void UltraClearTextControllerTests::gapReceiptRetainsBrieflyThenMediaExpiryHidesAndCurrentInputRecovers()
+{
+    ImmutableHarness h;
+    h.Enable();
+    const std::uint64_t last = h.EstablishDeviceGlyphs();
+    QVERIFY(h.overlay.WordCount() > 0);
+    QVERIFY(!h.controller->Model().Lines().isEmpty());
+    const auto line = h.controller->Model().Lines().first();
+    const auto generation = h.controller->GeometryGeneration();
+    const auto jobs = h.controller->SchedulerStatistics().submitted;
+    const auto probes = h.controller->ProbeStatistics().submitted;
+    const int deviceProbes = h.devices->probes.load();
+    const int deviceReadbacks = h.devices->readbacks.load();
+
+    // Ordinary forward gap at 4x media speed (20 ms PTS per 5 ms wall):
+    // retained while the previous real validation is media-fresh.
+    std::uint64_t frame = last + 1;
+    while (10000 + static_cast<std::int64_t>(frame) * 20 <= line.validatedAtMs + 200) {
+        QVERIFY(h.PresentGap(frame++, 3, 5));
+    }
+    QVERIFY(frame > last + 1); // at least one gap frame was actually presented
+    QVERIFY(h.overlay.WordCount() > 0);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    QVERIFY(!h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QCOMPARE(h.controller->AdvancingDisplayFrameSeq(), frame - 1);
+    QCOMPARE(h.controller->AdvancingDisplayTimestampMs(),
+             10000 + static_cast<std::int64_t>(frame - 1) * 20);
+    // No synthetic work and no restamping of the old analysis frame.
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
+    QCOMPARE(h.controller->ProbeStatistics().submitted, probes);
+    QCOMPARE(h.devices->probes.load(), deviceProbes);
+    QCOMPARE(h.devices->readbacks.load(), deviceReadbacks);
+    QCOMPARE(h.controller->GeometryGeneration(), generation);
+    QCOMPARE(h.controller->Model().Lines().first().provenance.frameSeq, line.provenance.frameSeq);
+    QCOMPARE(h.controller->Model().Lines().first().provenance.timestampMs, line.provenance.timestampMs);
+    QCOMPARE(h.controller->Model().Lines().first().validatedAtMs, line.validatedAtMs);
+    QCOMPARE(h.controller->Model().Lines().first().validatedFrameSeq, line.validatedFrameSeq);
+    QVERIFY(!h.devices->readOnUiThread.load());
+
+    // Media expiry: displayed PTS passes the 350 ms validation bound while
+    // the wall advance stays well inside it.
+    while (10000 + static_cast<std::int64_t>(frame) * 20 <= line.validatedAtMs + 350) {
+        QVERIFY(h.PresentGap(frame++, 3, 5));
+    }
+    QVERIFY(h.PresentGap(frame++, 3, 5)); // first receipt beyond the bound
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().isEmpty());
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QVERIFY(h.controller->HasAdvancingMediaScene()); // expiry is not a discontinuity
+    QCOMPARE(h.controller->GeometryGeneration(), generation);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
+
+    // The next real device frames continue the same chain and recover text.
+    for (int i = 0; i < 240 && h.overlay.WordCount() == 0; ++i) h.PlayDeviceFrame(frame++);
+    QVERIFY(h.overlay.WordCount() > 0);
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+    QCOMPARE(h.controller->GeometryGeneration(), generation);
+    QVERIFY(h.controller->Model().Lines().first().validatedFrameSeq > line.validatedFrameSeq);
+}
+
+void UltraClearTextControllerTests::gapReceiptWallExpiryHidesDespiteFreshMediaPts()
+{
+    ImmutableHarness h;
+    h.Enable();
+    const std::uint64_t last = h.EstablishDeviceGlyphs();
+    QVERIFY(h.overlay.WordCount() > 0);
+    const auto generation = h.controller->GeometryGeneration();
+    const auto jobs = h.controller->SchedulerStatistics().submitted;
+
+    // One forward frame, only +20 ms of media PTS, but the wall clock has
+    // run far past the validation bound (slow motion / stalled presenter).
+    QVERIFY(h.PresentGap(last + 1, 3, 5000));
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().isEmpty());
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+    QCOMPARE(h.controller->GeometryGeneration(), generation); // expiry, not revocation
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
+
+    std::uint64_t frame = last + 2;
+    for (int i = 0; i < 240 && h.overlay.WordCount() == 0; ++i) h.PlayDeviceFrame(frame++);
+    QVERIFY(h.overlay.WordCount() > 0);
+    QCOMPARE(h.controller->GeometryGeneration(), generation);
+}
+
+void UltraClearTextControllerTests::gapReceiptDiscontinuitiesRevokeImmediately()
+{
+    { // seek: new source authority, even with a forward frame
+        ImmutableHarness h;
+        h.Enable();
+        const std::uint64_t last = h.EstablishDeviceGlyphs();
+        QVERIFY(h.overlay.WordCount() > 0);
+        const auto generation = h.controller->GeometryGeneration();
+        QVERIFY(!h.PresentGap(last + 1, 9));
+        QVERIFY(h.controller->GeometryGeneration() > generation);
+        QCOMPARE(h.overlay.WordCount(), 0);
+        QVERIFY(h.Reading().isEmpty());
+        QVERIFY(h.controller->Model().Lines().isEmpty());
+        QVERIFY(h.controller->HasAdvancingMediaScene()); // display-only chain suspends live
+        // Real frames under the new authority establish a new chain.
+        std::uint64_t frame = last + 2;
+        for (int i = 0; i < 240 && h.overlay.WordCount() == 0; ++i) h.PlayDeviceFrame(frame++, 9);
+        QVERIFY(h.overlay.WordCount() > 0);
+    }
+    { // backward frame under the same authority
+        ImmutableHarness h;
+        h.Enable();
+        const std::uint64_t last = h.EstablishDeviceGlyphs();
+        QVERIFY(h.overlay.WordCount() > 0);
+        const auto generation = h.controller->GeometryGeneration();
+        QVERIFY(!h.PresentGap(last - 2));
+        QVERIFY(h.controller->GeometryGeneration() > generation);
+        QCOMPARE(h.overlay.WordCount(), 0);
+        QVERIFY(h.Reading().isEmpty());
+        QVERIFY(h.controller->Model().Lines().isEmpty());
+    }
+    { // geometry change carried by the display receipt
+        ImmutableHarness h;
+        h.Enable();
+        const std::uint64_t last = h.EstablishDeviceGlyphs();
+        QVERIFY(h.overlay.WordCount() > 0);
+        const auto generation = h.controller->GeometryGeneration();
+        auto receipt = h.GapReceipt(last + 1);
+        receipt.geometry.sceneWidth = 640;
+        receipt.geometry.sceneHeight = 360;
+        h.now += 20;
+        QVERIFY(!h.controller->OnAdvancingMediaPresentedWithoutAnalysis(receipt));
+        QVERIFY(h.controller->GeometryGeneration() > generation);
+        QCOMPARE(h.overlay.WordCount(), 0);
+        QVERIFY(h.Reading().isEmpty());
+    }
+    { // forward sequence with backward PTS, and same sequence with new PTS
+        ImmutableHarness h;
+        h.Enable();
+        const std::uint64_t last = h.EstablishDeviceGlyphs();
+        QVERIFY(h.overlay.WordCount() > 0);
+        const auto generation = h.controller->GeometryGeneration();
+        auto receipt = h.GapReceipt(last + 1);
+        receipt.timestampMs -= 40; // PTS moved backward
+        h.now += 20;
+        QVERIFY(!h.controller->OnAdvancingMediaPresentedWithoutAnalysis(receipt));
+        QVERIFY(h.controller->GeometryGeneration() > generation);
+        QCOMPARE(h.overlay.WordCount(), 0);
+
+        auto sameFrame = receipt; // the receipt above is the display now
+        sameFrame.timestampMs += 20; // same sequence, inconsistent PTS
+        const auto afterFirst = h.controller->GeometryGeneration();
+        h.now += 20;
+        QVERIFY(!h.controller->OnAdvancingMediaPresentedWithoutAnalysis(sameFrame));
+        QVERIFY(h.controller->GeometryGeneration() > afterFirst);
+    }
+}
+
+void UltraClearTextControllerTests::gapReceiptLateOldRecognitionCannotReviveAfterExpiry()
+{
+    ImmutableHarness h;
+    h.Enable();
+    auto frame = h.EstablishDeviceGlyphs() + 1;
+    QVERIFY(h.overlay.WordCount() > 0);
+    const int calls = h.script->calls.load() + h.script->deviceCalls.load();
+    {
+        std::lock_guard lock(h.script->mutex);
+        h.script->holdRecognition = true;
+    }
+    for (; frame < 400 && h.script->calls.load() + h.script->deviceCalls.load() == calls; ++frame)
+        h.PlayDeviceFrame(frame);
+    QVERIFY(h.script->calls.load() + h.script->deviceCalls.load() > calls); // refresh held in flight
+    QVERIFY(h.overlay.WordCount() > 0);
+
+    // No-analysis gap runs both freshness bounds out; text hides on expiry.
+    for (int i = 0; i < 30; ++i) QVERIFY(h.PresentGap(frame++, 3, 20));
+    QCOMPARE(h.overlay.WordCount(), 0);
+    QVERIFY(h.Reading().isEmpty());
+
+    QSignalSpy admitted(h.controller.get(), &UltraClearTextController::recognitionAdmitted);
+    h.script->Release(); // the held, now-old recognition completes late
+    QTRY_COMPARE(admitted.size(), 1);
+    QTest::qWait(20);
+    QCOMPARE(h.overlay.WordCount(), 0); // it cannot revive expired text
+    QVERIFY(h.Reading().isEmpty());
+    QVERIFY(h.controller->ScreenTextSnapshot().lines.isEmpty());
+
+    for (int i = 0; i < 240 && h.overlay.WordCount() == 0; ++i) h.PlayDeviceFrame(frame++);
+    QVERIFY(h.overlay.WordCount() > 0); // later current input recovers
+    QVERIFY(h.Reading().contains(QStringLiteral("Reading helps")));
+}
+
+void UltraClearTextControllerTests::gapReceiptSameFrameReprojectsRepeatedlyWithoutWork()
+{
+    ImmutableHarness h;
+    h.Enable();
+    const std::uint64_t last = h.EstablishDeviceGlyphs();
+    QVERIFY(h.overlay.WordCount() > 0);
+    QTest::qWait(20); // drain in-flight probes so counters below are stable
+    const auto words = h.overlay.Words();
+    const auto rects = h.overlay.ProjectedWordRects();
+    const auto generation = h.controller->GeometryGeneration();
+    const auto jobs = h.controller->SchedulerStatistics().submitted;
+    const auto probes = h.controller->ProbeStatistics().submitted;
+    const int deviceProbes = h.devices->probes.load();
+    const auto provenance = h.controller->Model().Lines().first().provenance;
+
+    // The same displayed frame presented again under two different views:
+    // pure reprojection, repeated, with no probe/OCR or restamping.
+    auto receipt = h.GapReceipt(last);
+    receipt.transform = ComputeViewTransform(960, 540, 960, 540, 2.0f, 0.3f, 0.3f,
+                                             ViewportFitMode::kFill);
+    QVERIFY(receipt.transform.valid);
+    h.now += 20;
+    QVERIFY(h.controller->OnAdvancingMediaPresentedWithoutAnalysis(receipt));
+    QCOMPARE(h.overlay.WordCount(), words.size());
+    QCOMPARE(h.overlay.Words().first().sceneRect, words.first().sceneRect);
+    QCOMPARE(h.overlay.ProjectedWordRects().first(),
+             SceneRectToView(receipt.transform, h.overlay.width(), h.overlay.height(),
+                             words.first().sceneRect));
+    QVERIFY(h.overlay.ProjectedWordRects().first() != rects.first());
+
+    receipt.transform = ComputeViewTransform(960, 540, 960, 540, 3.0f, 0.6f, 0.4f,
+                                             ViewportFitMode::kFill);
+    h.now += 20;
+    QVERIFY(h.controller->OnAdvancingMediaPresentedWithoutAnalysis(receipt));
+    QCOMPARE(h.overlay.WordCount(), words.size());
+    QCOMPARE(h.overlay.ProjectedWordRects().first(),
+             SceneRectToView(receipt.transform, h.overlay.width(), h.overlay.height(),
+                             words.first().sceneRect));
+    QCOMPARE(h.controller->GeometryGeneration(), generation);
+    QCOMPARE(h.controller->SchedulerStatistics().submitted, jobs);
+    QCOMPARE(h.controller->ProbeStatistics().submitted, probes);
+    QCOMPARE(h.devices->probes.load(), deviceProbes);
+    QCOMPARE(h.controller->Model().Lines().first().provenance.frameSeq, provenance.frameSeq);
+    QCOMPARE(h.controller->Model().Lines().first().provenance.timestampMs, provenance.timestampMs);
+    QCOMPARE(h.controller->AdvancingDisplayFrameSeq(), last);
 }
 
 int main(int argc, char** argv)

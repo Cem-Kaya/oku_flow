@@ -331,6 +331,8 @@ bool OkuFlowApp::Initialize()
                 return presenter_ && presenter_->NeedsScenePresent();
             },
             .hasAsyncSceneWork = [this]() {
+                if (MediaViewSelected())
+                    return mediaGpuScene_ && mediaGpuScene_->NeedsSuperResPolling();
                 return cameraActive_ && usingCudaLastFrame_ && cudaSceneReady_ && cudaSurface_ &&
                     (asyncSuperResPresentPending_ || cudaSurface_->NeedsSuperResPolling()) &&
                     !pipelineOrchestrator_->IsViewportInteractionActive();
@@ -339,7 +341,7 @@ bool OkuFlowApp::Initialize()
             .cameraFrameRate = [this]() {
                 return mediaCapture_.CurrentFrameRate();
             },
-            .usingCuda = [this]() { return usingCudaLastFrame_; },
+            .usingCuda = [this]() { return !MediaViewSelected() && usingCudaLastFrame_; },
             .queryDisplayRefreshRate = [this]() {
                 return uiState_ && uiState_->renderWidget_
                            ? QueryDisplayRefreshHz(reinterpret_cast<HWND>(

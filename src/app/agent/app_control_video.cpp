@@ -64,8 +64,11 @@ QJsonObject AppControlTarget::QueryVideoState() const {
     // User-selected filenames are untrusted content. Discovery exposes only an
     // opaque process-local identity, never file paths or filename instructions.
     state["recordingActive"]=RecordingActive();
-    state["pipeline"]=app_.MediaViewSelected()?QStringLiteral("cpu_selected_media"):app_.usingCudaLastFrame_?QStringLiteral("cuda"):QStringLiteral("raw_passthrough");
-    state["advancedGpuEffectsAvailable"]=!app_.MediaViewSelected() && app_.usingCudaLastFrame_;
+    state["pipeline"]=app_.MediaViewSelected()
+        ? (app_.MediaGpuViewSelected()?QStringLiteral("gpu_selected_media"):QStringLiteral("cpu_selected_media"))
+        : app_.usingCudaLastFrame_?QStringLiteral("cuda"):QStringLiteral("raw_passthrough");
+    state["advancedGpuEffectsAvailable"]=app_.MediaViewSelected()
+        ? app_.SelectedMediaGpuProcessingAvailable() : app_.usingCudaLastFrame_;
     state["openPolicy"]="native_ui_only";
     return state;
 }

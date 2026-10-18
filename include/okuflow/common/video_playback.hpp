@@ -2,6 +2,7 @@
 
 #ifdef _WIN32
 #include "okuflow/common/video_archive.hpp"
+#include "okuflow/common/video_gpu_decoder.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -15,6 +16,7 @@ struct VideoPlaybackFrame {
     // Immutable pixels can be reticketed after a same-frame seek without a
     // second image allocation. The final pixel lease owns the budget charge.
     std::shared_ptr<const std::vector<std::uint8_t>> bgra;
+    std::shared_ptr<const VideoPlaybackGpuImage> gpu;
     std::uint32_t width{}, height{}, strideBytes{};
     std::uint32_t rotationDegrees{}, pixelAspectNumerator{1}, pixelAspectDenominator{1};
     std::int64_t pts100ns{}, duration100ns{};
@@ -42,6 +44,10 @@ struct VideoPlaybackSnapshot {
     std::int64_t lastRequestLatencyUs{};
     bool memoryPressure{};
     bool lastRequestReusedFrame{};
+    bool gpuResident{};
+    std::uint32_t gpuDecodedBitsPerComponent{};
+    std::size_t gpuTextureBytes{};
+    std::string backendReason;
     bool hasAudio{}, audioAvailable{}, muted{true}, incomplete{}, activeRecording{};
     std::string error;
 };
@@ -80,6 +86,12 @@ public:
     std::uint64_t OpenArchive(std::shared_ptr<RecordingArchive> archive);
     std::uint64_t Seek100ns(std::int64_t target);
     std::uint64_t JumpToEnd();
+    // Applies to subsequent opens. The UI supplies the presenter's exact LUID
+    // only when its CUDA output is available; empty selects CPU compatibility.
+    void SetGpuAdapter(std::optional<LUID> adapter);
+    // Explicitly revokes the GPU request and re-seeks the same document at its
+    // held cursor. It remains CPU-only for that document until the next Open.
+    std::uint64_t UseCpuFallback(std::string reason);
     void SetPlaying(bool playing);
     void SetMuted(bool muted);
     // Consumed output clock in the same steady-clock epoch as

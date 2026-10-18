@@ -97,7 +97,7 @@ QString ActionRowsProblem(MainWindow& window, int* rowCount)
 {
     const QList<QPushButton*> actions{window.capturePhotoButton(), window.recordButton(),
                                       window.explainNowButton(), window.readTextButton(),
-                                      window.annotationButton()};
+                                      window.annotationButton(), window.openVideoButton()};
     QMap<int, QList<QRect>> rows;
     for (QPushButton* button : actions) {
         const QRect rect = GlobalRect(button);

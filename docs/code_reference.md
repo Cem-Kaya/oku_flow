@@ -109,6 +109,48 @@
   `PresentFitted` selected-media branch reuse owned pixels for pan/zoom without
   claiming camera liveness. `CameraOriginalRotationQuarterTurns` separates
   recording orientation from file-view rotation. See [presentation](media_presentation.md).
+- `VideoPlaybackGpuImage` owns immutable D3D11 texture storage;
+  `VideoGpuFormat` describes decoded/square-pixel geometry and orientation.
+  `VideoGpuDecoder::{Create,CreateFromDevice,ConfigureReader,SetFormat,Convert,
+  RetainedBytes,HasConversionCredit}` implement exact-adapter DXGI decode output,
+  checked GPU color conversion and bounded texture admission/retirement.
+  `CreateFromDevice` can force a private conversion target for compatibility
+  validation. `VideoPlayback::{SetGpuAdapter,UseCpuFallback}` select the preferred
+  reader and explicit compatibility transition; `gpuResident`, `gpuTextureBytes`
+  and `backendReason` report actual output rather than inferred hardware use.
+- `MediaGpuScene::{Prepare,Process,Texture,Width,Height,SceneReady,SceneEpoch,
+  SceneFrameSequence,SceneAppearance,PresentationSync,RecordPresented,
+  TakeUctAnalysis,Analysis,UctAnalysisFailed,Error,Invalidate}` own one private
+  CUDA scene with worker initialization/retirement, exact input leases and
+  independent producer/read-completion signals. `Status` distinguishes Pending,
+  Ready and Failed without a UI join. Camera stateful effects are cleared.
+  `FenceSyncParams::presentationFence` selects this independent timeline for
+  presenter reads, leaving camera/external signal authority unchanged.
+- `PresentSelectedMediaGpuFrame`, `MediaGpuViewSelected` and
+  `RequestMediaCpuFallback` wire the scene, supported appearance, viewport
+  admission, observations and current UCT. `PresentSelectedMediaFrameForCapture`
+  temporarily selects the actual presented frame instead of decoder-ahead work.
+  `BeginSelectedVideoSaveReceipt`, `QueueSelectedVideoFrameImage`,
+  `PollSelectedVideoSave` and `ConsumeVideoGpuReadback` preserve the exact owned
+  Save payload across asynchronous GPU readback/PNG writing and resize retry;
+  retired save copies cannot enter unrelated image consumers. GPU annotation
+  requests use the selected-media presentation and exact matching receipt.
+- `UctImmutableFrame::device` and device/pixel validation helpers
+  (`DeviceMatchesFrame`, `PixelsMatchFrame`, `FrameInputValid`, `EffectiveDevice`)
+  admit exact owned GPU analysis or CPU fallback. `UctAdvancingMediaPresentation`,
+  `OnAdvancingMediaPresentedWithoutAnalysis`, `HasAdvancingDisplayReceipt`,
+  `AdvancingDisplayFrameSeq`, `AdvancingDisplayTimestampMs`, `ModelTime` and
+  `AdvancingValidationFresh` separate the displayed media clock from analysis
+  ownership. Missing input never restamps pixels or refreshes validation;
+  `mediaValidationFreshnessMs` bounds wall retention as well as real media PTS.
+  Consumed advancing device leases use weak identity after worker handoff.
+- `VideoGpuPresenterFixture` is the private window-free initialization/upload
+  seam used only by `video_gpu_snapshot_tests`. It exercises production snapshot
+  shaders, fence signals and owned readbacks. `NativeGpuConversion` checks actual
+  NV12/P010 pixels, pool credit and private-target conversion;
+  `NativeGpuExternal` validates exact private codec files through Open/Seek/End.
+  `media_gpu_scene_tests` checks real CUDA scene pixels, rotation, effects,
+  device analysis identity, private reads, source leases and init cancellation.
 - `VideoTransport::Snapshot`, `SetSnapshot`, `SetUiHidden`, `TimeText` and its
   semantic signals expose native keyboard/accessibility controls without owning
   media. `MainWindow::videoTransport`, `openVideoButton`, `openVideoRequested`
@@ -2561,12 +2603,15 @@ Namespace `okuflow::processing`
   - `void Present(const uint8_t* data, UINT width, UINT height)`
   - `bool PresentSceneTexture(ID3D12Resource*, UINT sourceWidth,
     UINT sourceHeight, const ViewTransform&, const FenceSyncParams*,
-    const ViewportPresentationOptions*, UINT64* outReadbackRequestId)`
+    const ViewportPresentationOptions*, UINT64* outReadbackRequestId,
+    UINT64* outIndependentReadSignal)`
   - `bool ReadbackTexture(ID3D12Resource* texture, UINT width, UINT height,
     std::vector<uint8_t>& outBgra, UINT64 waitFenceValue = 0)` — optionally
     queues a shared-fence wait before the blocking GPU copy, used by on-demand
     Read and Assistant frame attachment to avoid reading active CUDA writes
   - `bool RequestReadback(ID3D12Resource* texture, UINT width, UINT height, UINT64* outRequestId = nullptr)` — enqueues an async copy into a four-slot ring, optionally returning its fence-backed request id; returns false when every slot is in flight
+  - `bool HasReadbackRequest(UINT64)` - reports an exact active ring receipt,
+    allowing an owned snapshot to retry after resize dropped its old copy.
   - `GpuVideoFrame RequestRecordingFrame(...)` — samples the canonical
     recording transform into a leased shareable BGRA texture. The lazily grown
     pool is capped at 384 MiB and 48 slots; a null result with
@@ -2576,10 +2621,13 @@ Namespace `okuflow::processing`
     uploaded into a per-lease texture and alpha-composited after scene
     framing. Only the processed caller supplies this layer, so original
     recordings remain clean.
-    Its final optional `UINT64 waitFenceValue = 0` queues the CUDA producer
+    Its optional `UINT64 waitFenceValue = 0` queues the CUDA producer
     dependency explicitly, so recording clones remain valid when viewport
     admission is busy. The presenter reserves and publishes the actual clone
-    completion on its timeline. The no-semaphore fallback retains its bounded
+    completion on its timeline. Optional `independentSceneSync` instead waits
+    and signals the private media producer/read fence, returning the actual read
+    signal even when a later operation fails. `viewportOptions` retains focus
+    marker geometry in an exact selected-view clone. The no-semaphore fallback retains its bounded
     completion drain before the next CUDA overwrite. Pool reuse and
     obsolete-dimension eviction both require the producer fence to retire,
     as well as consumer-reader lease release; pending or device-lost completion
@@ -5286,3 +5334,146 @@ upload resource faults do not retire the engines.
 Repair rechecks require exact named matching Failed/Unfinished cases; a failed
 recheck cannot repeat unchanged. Results retain `repairRecheckOf` and `repairReason`;
 capability records retain `repairRechecks`, and summaries identify repaired passes.
+
+### GPU playback lifetime and exact selected-frame observations
+
+`VideoGpuIncompatible` identifies native GPU device/format/conversion failures;
+`VideoGpuBackpressure` identifies temporary consumer-held allocation credit.
+Only the former may select the same-document CPU compatibility retry.
+`VideoGpuDecoder::AttachSourceReader`, `DetachSourceReader`, `HasUnsafePending`,
+`PollPending`, `DrainPending`, `ClearPending` and `MarkUnsafe` preserve the complete
+reader/sample/view/output/query owner before GPU submission. A never-ended
+query is not polled; unproven completion retains the entire converter until
+process exit. Native calls remain on the one playback worker.
+
+`VideoReadStreamClone`, returned optionally by `OpenStableVideoReadStream` and
+`RecordingArchive::OpenReadStream`, creates independent stream cursors over the
+same held file backing and archive validation policy. GPU-to-CPU replacement
+cannot share a still-prefetching reader's cursor or reopen an unrelated path.
+`VideoPlaybackSnapshot::gpuDecodedBitsPerComponent` records the accepted decoded
+subtype's precision before display conversion.
+
+`D3D12Presenter::KeepSubmittedFence` retains a producer fence before queuing its
+Wait. `SubmittedSource<T>::lastRead` is assigned only by a real global graphics
+submission. `RetireCompletedSourceReferences` transfers proven-completed source
+textures and fences to the single bounded `sourceRetirement_` worker. Unknown
+completion follows presenter quarantine, preserving both native object types.
+
+`AppControlTarget::PresentedMediaFrame` constructs immutable observation authority
+from the submitted candidate's exact frame sequence and media PTS. The ordinary
+selected-document identity and control stamp remain source-scoped; the previous
+`doc.presented` cursor is never attached to newly submitted pixels. CPU media
+calls this only after a successful viewport receipt. `QueueAnnotationSnapshot`
+regenerates the actual selected frame before reading its annotation authority;
+Read/Explain and non-agent image attachments do the same in their click turn.
+`QueryVideoState` and `State` report `gpu_selected_media` or `cpu_selected_media`
+from the displayed path. `AppControlTarget::SelectedMediaImageFieldAvailable`
+separates the basic CPU-rendering whitelist from all supported GPU image effects;
+Debug remains camera-only. Writable capability comes from
+`SelectedMediaGpuProcessingAvailable`, independently of the actual decoder, while
+effective values require an actual processed media receipt. Preparing effects use
+`no_processed_frame`; unsupported effects use `selected_media_unsupported_effect`.
+
+### Complete selected-video processing and transport repairs
+
+`OkuFlowApp::BuildProcessingSettings` is shared by live-camera and selected-video
+submission. It maps the same effective Text Clarity, blur/sharpen, color,
+auto-contrast, tracking, temporal and neural preferences; the hidden recording
+camera still requests only clean Original conversion. `ProcessingCacheExtent`
+bounds the media spatial/neural cache while preserving aspect ratio.
+`MediaAppearanceSignature` hashes explicit effect members without padding,
+host pointers, frame clocks or view-only geometry. `mediaGpuViewRecipe_` tracks
+ROI/navigation separately, preserving UCT's full-scene appearance authority.
+
+`SetMediaOverlaySuppressed` revokes media OCR jobs, glyph/pane text and UIA
+exposure when processed-view correspondence is unprovable, while retaining
+the user's enable preference. Job admission and late callbacks honor the gate;
+clearing media removes it even when no immutable input remains owned.
+
+`VideoGpuDecoder::DecoderPreferredOutputs` probes a bounded merit-ordered native
+decoder's offered types for the exact coded input and device without streaming.
+`CodedBitsPerComponent` uses bounded container records/profile evidence before
+opportunistic negotiation. GPU incompatibility can start one fresh CPU-attempt
+budget; it cannot extend or restart the failed GPU attempt indefinitely.
+
+`CudaInteropSurface::D3D11SourceStatus`, `D3D11SourceStatistics`,
+`EnableAsyncD3D11SourcePreparation`, `PrepareD3D11Source`, `SourceStatistics`,
+`D3D11PrepareSlot`, `BuildD3D11Import`, `AdoptPreparedImport`, `PollImportCopy`,
+`PollAllImportCopies` and `DestroyD3D11Import` separate bounded source preparation,
+eight-entry reuse, exact copy leases and worker-only native import retirement.
+`MediaGpuScene::SourceStatistics` exposes evidence of worker imports and reuse.
+
+`VideoTransport::IsActionReady`, `SetFocusReturnTarget` and its focus/readiness
+helpers preserve semantic focus while a transiently unavailable action is inert.
+`SeekBaseline` and `CommitSeek` use current/pending document time for relative
+keys, wheel and accessible increments, independently of the frozen inspection
+thumb. `AnnounceSettledState` coalesces only settled states and their current time.
+`MainWindow::eventFilter` checks action readiness for Space on the render host.
+Wide controls retain translated labels; recording hides duplicate Return/Mute,
+and file Return remains last in the tab order.
+
+`VideoDocumentState::controlsMediaGpuAvailable` refreshes native enabled states
+when media processing capability changes without changing documents. New file or
+own-recording rebindings clear the prior document's display receipt and completed
+request; offscreen decode alone cannot authorize image actions for the new file.
+`openingDifferentVideoCannotInheritPreviousDisplayReceipt` covers this boundary.
+
+`PresentedMediaFrame` also accepts the candidate's `gpuProcessed` flag. A first
+GPU frame cannot inherit CPU diagnostic certainty from the previous display;
+missing/mismatched private-scene diagnostics remain unknown until proven.
+
+`MediaGpuScene::Prepare` accepts optional bounded cache extents. `BaseTexture`,
+`SuperResTexture`, `SuperResWidth/Height`, `SuperResRoi`, `IsSuperResActive`,
+`IsSuperResPerformanceLimited`, `SuperResStatus`, `SetSuperResPerformanceOverride`,
+`NeedsSuperResPolling`, `RefreshSuperRes` and `SuperResStatistics` expose the private
+media enhancement lifecycle. Publication advances `SceneGeneration` and the
+private producer fence; a paused scene polls this independently of decode.
+`GetKeystoneTrackingState`, `SetKeystoneTrackingPaused`, `StepKeystoneCorrection`
+and `ControlDiagnostics` route controls to the selected scene rather than the
+hidden camera. Successful steps force exact-frame replay. `HistoryResetCount`
+and `UctCoordinatesReliable` describe processing discontinuity and single-frame
+OCR correspondence, without promising real model quality.
+
+`ProcessingInput::reprocessFrame`, `CudaInteropSurface::EnableFrameReprocessing`,
+`FrameReprocessingState`, `ResetFrameHistory` and `RefreshUctAnalysis` preserve
+post-geometry pixels and histories from before the current immutable sample.
+Forward samples advance tracking/history; same-sample appearance/ROI updates
+replay without registering or blending that sample again. Analysis-only retry
+uses the owned geometry snapshot and closes its private-fence submission even
+when the analysis pool is busy. `EffectAndHistoryTests` and
+`SpatialAndNeuralTests` inspect actual GPU pixels, replay/reset, paused keystone
+step, private fake-SDK publication, retained models and obsolete tickets.
+`AwaitOwnedWorkers` is console-fixture shutdown only: it keeps the static CUDA
+runtime loaded until the fixture's own detached host workers finish.
+
+`SelectedMediaDocumentPts100ns` adds the current recording part's document offset
+before producing observation authority; UCT and decoder internals keep local PTS.
+`SelectedMediaGpuSceneProcessed` preserves a matching analysis lease across a
+throttled view replay, rejects foreign epoch/frame/appearance leases before
+storing them, and spends retries only when their deadline is due.
+Correspondence recovery resets the bounded analysis budget. Media keystone and
+processing/SR status refresh on a 100-ms cadence, including paused polling.
+`ExpireAnnotationReadback` is shared by live processing and media polling; a
+missing ring receipt or one-second expiry retires that exact annotation intent
+without substituting a later frame. Save uses the displayed processing backend,
+independently of whether decode supplied CPU bytes or a resident GPU texture.
+
+`ProcessingInput::rotateBgraOnGpu` is opt-in for unrotated host video BGRA;
+camera BGRA keeps its existing pre-rotated contract. `PrepareMediaBgraInput`
+checks post-rotation extent and pinned-ring/stream credit before allocating or
+queuing work. CPU input validates actual row pitch and last-row minimum bytes;
+weak exact storage identity plus layout/type prevents false same-frame reuse
+across CPU/GPU transitions. `MediaGpuScene::Process` admits only one in-flight
+processing pass, leaving newer ROI/source requests pending rather than queuing
+obsolete work. `ResetSuperRes` and `ResetTextClarityHistory` revoke pending neural
+output on explicit native edits without joining workers. The latter also clears
+the saved pre-frame text-mask validity so replay cannot resurrect old settings.
+
+
+`validUctLeaseSurvivesViewReplaysAndRetryStaysBounded` checks 125 replay polls,
+exact backoff boundaries, immediate rejection of mismatched incoming OCR leases
+and recovery in the real app wiring. `selectedMediaPollingExpiresPendingAnnotationReadbackWithoutRetargeting`
+uses the document timer to expire a genuinely active annotation intent without
+requiring a camera or retargeting later pixels. `ActionRowsProblem` inventories
+all six production action buttons, including Open video, while preserving its
+rectangle, equal-row-width and minimum-height assertions.

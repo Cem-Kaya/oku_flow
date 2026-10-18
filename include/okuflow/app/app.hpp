@@ -97,6 +97,8 @@ struct CameraIngress;
 struct StartupWorkerTracker;
 struct MicrophoneWorkerState;
 struct VideoPlaybackFrame;
+struct VideoPlaybackSnapshot;
+class MediaGpuScene;
 
 class D3D12Presenter;
 class CudaInteropSurface;
@@ -210,6 +212,8 @@ private:
     bool MediaViewSelected() const;
     bool MediaPlaybackPlaying() const;
     bool PresentMediaView();
+    std::int64_t SelectedMediaDocumentPts100ns(std::int64_t localPts100ns) const;
+    void ExpireAnnotationReadback();
     void AcceptLiveMediaHold(std::vector<std::uint8_t> pixels, UINT width, UINT height,
                              std::uint64_t sequence, std::int64_t captureClock100ns);
     void SaveSelectedVideoFrame();
@@ -222,6 +226,12 @@ private:
     QString PendingVideoOpenForTest() const;
     std::shared_ptr<const VideoPlaybackFrame> HeldVideoFrameForTest() const;
     void SeedCommittedVideoSaveForTest();
+    // Models a successful native presentation of the adopted frame followed
+    // by Pause, without a D3D presenter. Returns the held frame.
+    std::shared_ptr<const VideoPlaybackFrame> HoldPresentedVideoFrameForTest(
+        std::shared_ptr<const VideoPlaybackFrame> presented);
+    std::shared_ptr<const VideoPlaybackFrame> SelectedVideoFrameForTest() const;
+    VideoPlaybackSnapshot VideoPlaybackSnapshotForTest() const;
 #endif
     void SeekSelectedVideo(qint64 positionMs);
     void ToggleSelectedVideoPlayback();
@@ -234,6 +244,51 @@ private:
                                     const VideoPlaybackFrame* neighbor = nullptr,
                                     std::int64_t pts100ns = 0,
                                     bool continuousPlayback = false);
+    bool PresentSelectedMediaGpuFrame(const VideoPlaybackFrame& frame,
+                                     const VideoPlaybackFrame* neighbor,
+                                     bool continuousPlayback);
+    bool MediaGpuViewSelected() const;
+    bool SelectedMediaGpuProcessingAvailable() const;
+    ProcessingSettings BuildProcessingSettings(UINT width, UINT height, UINT cacheWidth,
+                                                UINT cacheHeight, std::uint64_t frameSequence) const;
+    QSize ProcessingCacheExtent(UINT width, UINT height) const;
+    void RequestMediaCpuFallback(const std::string& reason);
+    // Presenter adapter for selected-media GPU decode, or empty for CPU
+    // compatibility (no CUDA build, missing/faulted presenter or camera CUDA,
+    // or an adapter whose media CUDA scene already failed this session).
+    std::optional<LUID> SelectedMediaGpuAdapter() const;
+    // Records the presenter adapter as media-CUDA unusable for this session so
+    // later opens decode on CPU instead of repeating GPU decode and CUDA setup.
+    void MarkMediaCudaAdapterUnavailable(const std::string& reason);
+    // Selected-media scene recipe: selection epoch, frame, extent, stride,
+    // rotation, then appearance. Everything from rotation onward changes the
+    // processed pixels, including a same-extent 180-degree turn.
+    using MediaSceneRecipe = std::array<std::uint64_t, 12>;
+    static constexpr std::size_t kMediaRecipeRotation = 5;
+    static constexpr std::size_t kMediaRecipeColorTransform = 11;
+    MediaSceneRecipe SelectedMediaSceneRecipe(const VideoPlaybackFrame& frame) const;
+    // Admits the selected recipe; true when the cached scene changed. Revokes
+    // analysis/pixel leases and advances appearance for rotation/appearance.
+    bool AdmitSelectedMediaSceneRecipe(const MediaSceneRecipe& recipe);
+    // Identity stamped on the processed media GPU scene.
+    struct MediaGpuSceneStamp {
+        bool ready{};
+        std::uint64_t epoch{}, frameSequence{}, appearance{};
+        bool analysisFailed{};
+    };
+    // Whole-frame GPU pass decision. UCT adds only a bounded per-frame
+    // analysis retry with backoff; a failed analysis pool stops it at once.
+    static constexpr int kMediaAnalysisAttempts = 5;
+    bool SelectedMediaGpuSceneNeedsProcess(const MediaGpuSceneStamp& scene, std::uint64_t frameSequence,
+                                          bool uctEnabled, std::int64_t nowMs) const;
+    void SelectedMediaGpuSceneProcessed(bool uctEnabled, uct::SharedDeviceImage analysis,
+                                        std::int64_t nowMs);
+    bool SelectedMediaAnalysisGivenUp(bool analysisFailed) const;
+    bool PresentSelectedMediaFrameForCapture();
+    void PollSelectedVideoSave();
+    void BeginSelectedVideoSaveReceipt();
+    bool ConsumeVideoGpuReadback(UINT64 requestId,const std::vector<std::uint8_t>& pixels,UINT width,UINT height);
+    void QueueSelectedVideoFrameImage(QImage owned,bool receiptStarted=false);
     bool CaptureLiveForMediaHold();
     void RetirePendingMediaHoldReadback();
     bool DiscardRetiredMediaHoldReadback(UINT64 requestId);
@@ -619,8 +674,27 @@ private:
     std::array<std::uint64_t, 12> mediaSceneRecipe_{};
     std::uint64_t mediaSceneAppearanceRevision_{};
     bool mediaSceneCacheValid_{};
+    std::array<std::uint64_t, 8> mediaGpuViewRecipe_{};
+    bool mediaGpuViewRecipeValid_{};
+    bool mediaPresentedWithCuda_{};
+    bool mediaSuperResPresented_{};
+    std::uint64_t mediaPresentedSceneGeneration_{};
     std::uint64_t mediaUctNeighborSeq_{};
     bool mediaUctContinuousPlayback_{};
+    std::unique_ptr<MediaGpuScene> mediaGpuScene_;
+    std::unique_ptr<MediaGpuScene> mediaGpuNeighborScene_;
+    uct::SharedDeviceImage mediaGpuAnalysis_,mediaGpuNeighborAnalysis_;
+    std::int64_t mediaGpuAnalysisRetryAtMs_{};
+    std::int64_t mediaGpuNeighborRetryAtMs_{};
+    std::int64_t mediaDiagnosticsRefreshAtMs_{};
+    bool mediaGpuAnalysisSuppressed_{};
+    int mediaGpuAnalysisAttempts_{};
+    bool mediaGpuAnalysisEnabled_{};
+    struct MediaCudaAdapterFailure {
+        std::uint64_t adapter{};
+        std::string reason;
+    };
+    std::vector<MediaCudaAdapterFailure> mediaCudaFailedAdapters_;
     struct MediaViewportAdmission {
         struct Stamp {
             std::array<std::uint64_t, 12> recipe{};

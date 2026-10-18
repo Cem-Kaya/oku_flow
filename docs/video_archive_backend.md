@@ -52,8 +52,8 @@ Open/seek return monotonically increasing request generations. Public methods
 perform bounded bookkeeping; they never wait for native decoder teardown.
 `VideoPlaybackSnapshot` carries state, generation, opened identity, metadata
 duration, verified/observed actual endpoint, audio capabilities, mute/error
-status and shared immutable `VideoPlaybackFrame` leases. Frames carry tight
-BGRA pixels, actual PTS/duration/sample identity, rotation metadata and
+status and shared immutable `VideoPlaybackFrame` leases. Frames carry either tight
+BGRA pixels or an owned GPU image, actual PTS/duration/sample identity, rotation metadata and
 request/archive generations. Native pixel aspect is normalized directly into
 square-pixel rows without an additional frame allocation. Alpha is made opaque
 because the system RGB32 converter's fourth byte is padding. The optional `neighborFrame`
@@ -216,8 +216,8 @@ stream accepts at most a 64 MiB individual read and retains no read-ahead cache.
 Parser metadata remains below 8 MiB; mutation bookkeeping is fixed size.
 Audio queues retain at most 32 packets, 2 MiB and 500 ms, with individual packets
 limited to 256 KiB. Native decoder reference pictures/driver/internal caches
-remain separate platform allocations requiring measurement. CPU output is
-requested; no new replay GPU pool is allocated by this backend.
+remain separate platform allocations requiring measurement. CPU compatibility output is
+requested by that path; the preferred GPU reader has a separate bounded pool.
 
 ### Seek-first scheduling
 
@@ -249,8 +249,8 @@ credit. End scans cache only their actual endpoint; earlier search anchors do
 not prove this interval. Subsequent playback/corroboration repositions native
 tracks when necessary. Pending requests clear old completion diagnostics.
 
-This implementation still uses CPU RGB32 decoding/conversion. Hardware-decoded
-textures and GPU color conversion are a separate implementation step; increasing
+The CPU compatibility implementation uses RGB32 decoding/conversion. The
+preferred GPU implementation is documented below; increasing
 the cap does not accelerate codec reference decoding or establish screen latency.
 
 Spatial display effects and UCT belong to the selected-view controller. This
@@ -316,3 +316,14 @@ do not establish long-soak, physical camera, GPU, GUI or release acceptance.
 API references: [Source Reader processing and seeking](https://learn.microsoft.com/en-us/windows/win32/medfound/processing-media-data-with-the-source-reader),
 [IMFByteStream BeginWrite](https://learn.microsoft.com/en-us/windows/win32/api/mfobjects/nf-mfobjects-imfbytestream-beginwrite),
 [IMFByteStream capabilities](https://learn.microsoft.com/en-us/windows/win32/api/mfobjects/nf-mfobjects-imfbytestream-getcapabilities).
+
+## Preferred GPU reader
+
+CUDA builds can select the exact presenter adapter with `SetGpuAdapter` before
+Open. `UseCpuFallback` re-seeks the same held document while keeping read-only
+file identity. `gpuResident`, `gpuTextureBytes` and `backendReason` distinguish
+actual device output and compatibility reasons from CPU decoded-byte counters.
+The one worker owns native decode and D3D11 conversion. Published device textures
+are owned output copies, not leased decoder DPB samples. See
+[GPU ownership and capability limits](gpu_video_playback.md) for the eight-slot,
+256 MiB logical pool, private-target compatibility, media scene and validation.

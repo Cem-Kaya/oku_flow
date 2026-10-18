@@ -4,6 +4,7 @@
 #include "okuflow/d3d12/fence_wait.hpp"
 #include "okuflow/d3d12/frame_readiness.hpp"
 #include "okuflow/d3d12/recording_slot_policy.hpp"
+#include "okuflow/common/async_cleanup.hpp"
 
 #include <QDebug>
 
@@ -587,18 +588,23 @@ bool D3D12Presenter::PresentSceneTexture(ID3D12Resource* texture,
                                         const ViewTransform& transform,
                                         const FenceSyncParams* fenceSync,
                                         const ViewportPresentationOptions* options,
-                                        UINT64* outReadbackRequestId)
+                                        UINT64* outReadbackRequestId,
+                                        UINT64* outIndependentReadSignal)
 try
 {
     if (outReadbackRequestId) {
         *outReadbackRequestId = 0;
     }
+    if (outIndependentReadSignal) *outIndependentReadSignal = 0;
     if (!initialized_ || !texture || sourceWidth == 0 || sourceHeight == 0 ||
         width_ == 0 || height_ == 0 || !transform.valid) {
         return false;
     }
 
     const bool useFenceSync = fenceSync && fenceSync->enable && fence_.Get() != nullptr;
+    ID3D12Fence* producerFence=useFenceSync && fenceSync->presentationFence?fenceSync->presentationFence:fence_.Get();
+    if(useFenceSync && fenceSync->presentationFence && (!fenceSync->signalValue ||
+        fenceSync->signalValue<=fenceSync->waitValue))return false;
     const UINT backIndex = swapChain_->GetCurrentBackBufferIndex();
     if (!TryAcquireFrameSlot(backIndex)) {
         scenePresentNeeded_ = !faulted_;
@@ -614,11 +620,6 @@ try
     ThrowIfFailed(commandList_->Reset(allocator, nullptr), "Failed to reset command list");
 
     Microsoft::WRL::ComPtr<ID3D12Resource> backBuffer = backBuffers_[backIndex];
-
-    if (useFenceSync && fenceSync->waitValue > 0) {
-        ThrowIfFailed(commandQueue_->Wait(fence_.Get(), fenceSync->waitValue),
-                      "Failed to queue wait on shared fence");
-    }
 
     auto transitionSourceToSample = TransitionBarrier(
         texture,
@@ -724,9 +725,21 @@ try
     ID3D12CommandList* lists[] = { commandList_.Get() };
     if (!KeepSubmittedResource(texture)) return false;
     if (!QueueExternalDependency()) return false;
+    if (useFenceSync && fenceSync->presentationFence && !KeepSubmittedFence(producerFence)) return false;
+    if (useFenceSync && fenceSync->waitValue > 0) {
+        ThrowIfFailed(commandQueue_->Wait(producerFence, fenceSync->waitValue),
+                      "Failed to queue wait on shared fence");
+    }
     commandQueue_->ExecuteCommandLists(static_cast<UINT>(std::size(lists)), lists);
 
     if (useFenceSync) {
+        if(fenceSync->presentationFence) {
+            // Independent media reads include the optional viewport copy and
+            // never reserve or publish a camera CUDA producer signal.
+            ThrowIfFailed(commandQueue_->Signal(producerFence,fenceSync->signalValue),
+                "Failed to signal independent scene read completion");
+            if(outIndependentReadSignal)*outIndependentReadSignal=fenceSync->signalValue;
+        }
         // Signal the shared fence as soon as the sampled draw is queued so
         // CUDA can begin its next frame once texture reads have retired.
         const UINT64 textureSignal =
@@ -822,6 +835,8 @@ UINT64 D3D12Presenter::ReserveGraphicsSignal() {
 void D3D12Presenter::GraphicsSignalSubmitted(UINT64 value) noexcept {
     sharedTimeline_.GraphicsSubmitted(value);
     fenceValue_ = value;
+    for (auto& source : submittedSourceTextures_) if (source.lastRead==UINT64_MAX) source.lastRead=value;
+    for (auto& source : submittedSourceFences_) if (source.lastRead==UINT64_MAX) source.lastRead=value;
     PollGpuProgress();
 }
 
@@ -1485,6 +1500,13 @@ catch (const std::exception& error)
     return false;
 }
 
+bool D3D12Presenter::HasReadbackRequest(UINT64 requestId) const
+{
+    if (!requestId) return false;
+    return std::any_of(std::begin(asyncReadbackSlots_), std::end(asyncReadbackSlots_),
+        [requestId](const auto& slot) { return slot.inFlight && slot.fenceValue == requestId; });
+}
+
 bool D3D12Presenter::RequestReadbackOwned(ID3D12Resource* texture,
                                         UINT width, UINT height,
                                         UINT64* outRequestId,
@@ -1576,9 +1598,13 @@ GpuVideoFrame D3D12Presenter::RequestRecordingFrame(
     const uint8_t* annotationBgra,
     std::size_t annotationStrideBytes,
     bool* outPoolExhausted,
-    UINT64 waitFenceValue)
+    UINT64 waitFenceValue,
+    const FenceSyncParams* independentSceneSync,
+    UINT64* outIndependentReadSignal,
+    const ViewportPresentationOptions* viewportOptions)
 {
     GpuVideoFrame frame;
+    if (outIndependentReadSignal) *outIndependentReadSignal = 0;
     if (outPoolExhausted) {
         *outPoolExhausted = false;
     }
@@ -1588,6 +1614,9 @@ GpuVideoFrame D3D12Presenter::RequestRecordingFrame(
         !transform.valid) {
         return frame;
     }
+    const bool independent = independentSceneSync && independentSceneSync->enable;
+    if (independent && (!independentSceneSync->presentationFence ||
+        independentSceneSync->signalValue <= independentSceneSync->waitValue)) return frame;
 
     try {
         if (!recordingFramePool_) {
@@ -1719,11 +1748,11 @@ GpuVideoFrame D3D12Presenter::RequestRecordingFrame(
             transform.targetY,
             transform.targetWidth,
             transform.targetHeight,
-            0.5f,
-            0.5f,
+            viewportOptions ? viewportOptions->focusX : 0.5f,
+            viewportOptions ? viewportOptions->focusY : 0.5f,
             static_cast<float>(targetWidth),
             static_cast<float>(targetHeight),
-            0.0f,
+            viewportOptions && viewportOptions->drawFocusMarker ? 1.0f : 0.0f,
             0.0f,
             0.0f,
             0.0f,
@@ -1783,13 +1812,22 @@ GpuVideoFrame D3D12Presenter::RequestRecordingFrame(
             "Failed to close recording command list");
         ID3D12CommandList* lists[] = {commandList_.Get()};
         if (!KeepSubmittedResource(texture)) return {};
-        if (waitFenceValue > 0) {
+        if (!QueueExternalDependency()) return {};
+        if (independent && !KeepSubmittedFence(independentSceneSync->presentationFence)) return {};
+        if (independent && independentSceneSync->waitValue > 0) {
+            ThrowIfFailed(commandQueue_->Wait(independentSceneSync->presentationFence,
+                independentSceneSync->waitValue), "Failed to queue independent scene snapshot wait");
+        } else if (waitFenceValue > 0) {
             ThrowIfFailed(commandQueue_->Wait(fence_.Get(), waitFenceValue),
                           "Failed to queue recording wait on CUDA fence");
         }
-        if (!QueueExternalDependency()) return {};
         slot->producerValue = kRecordingProducerPending;
         commandQueue_->ExecuteCommandLists(1, lists);
+        if (independent) {
+            ThrowIfFailed(commandQueue_->Signal(independentSceneSync->presentationFence,
+                independentSceneSync->signalValue), "Failed to signal independent scene snapshot read");
+            if (outIndependentReadSignal) *outIndependentReadSignal = independentSceneSync->signalValue;
+        }
         const UINT64 readyValue = ReserveGraphicsSignal();
         ThrowIfFailed(
             commandQueue_->Signal(fence_.Get(), readyValue),
@@ -1913,6 +1951,7 @@ bool D3D12Presenter::WaitForGpu() noexcept
     GraphicsSignalSubmitted(value);
     if (!WaitForFenceValue(value)) return false;
     submittedSourceTextures_.clear();
+    submittedSourceFences_.clear();
     return true;
 }
 
@@ -1979,14 +2018,49 @@ bool D3D12Presenter::WaitForIdle() noexcept
 
 bool D3D12Presenter::KeepSubmittedResource(ID3D12Resource* texture)
 {
-    for (const auto& resource : submittedSourceTextures_)
-        if (resource.Get() == texture) return true;
+    for (auto& resource : submittedSourceTextures_)
+        if (resource.object.Get() == texture) {resource.lastRead=UINT64_MAX;return true;}
+    RetireCompletedSourceReferences();
     // Scene resources normally remain stable until a full drain. Bound even
     // unexpected source churn, and retain every resource already submitted.
     if (submittedSourceTextures_.size() >= 128)
         return MarkFenceFault("Too many unretired source resources");
-    submittedSourceTextures_.emplace_back(texture);
+    submittedSourceTextures_.push_back({texture});
     return true;
+}
+
+bool D3D12Presenter::KeepSubmittedFence(ID3D12Fence* fence)
+{
+    for (auto& retained : submittedSourceFences_)
+        if (retained.object.Get() == fence) {retained.lastRead=UINT64_MAX;return true;}
+    RetireCompletedSourceReferences();
+    if (submittedSourceFences_.size() >= 128)
+        return MarkFenceFault("Too many unretired independent producer fences");
+    submittedSourceFences_.push_back({fence});
+    return true;
+}
+
+void D3D12Presenter::RetireCompletedSourceReferences()
+{
+    if (!fence_ || faulted_) return;
+    if (sourceRetirement_) {
+        if (sourceRetirement_->Poll()==AsyncCleanup::Status::Running) return;
+        sourceRetirement_.reset();
+    }
+    const auto completed=fence_->GetCompletedValue();
+    if (completed==UINT64_MAX) return;
+    auto retired=std::make_shared<std::vector<Microsoft::WRL::ComPtr<IUnknown>>>();
+    const auto collect=[&](auto& sources) {
+        for(auto source=sources.begin();source!=sources.end();) {
+            if(source->lastRead<=completed) {
+                // Hold before erase: even the final native release happens on
+                // the one retirement worker, after proven queue completion.
+                retired->emplace_back(source->object.Get());source=sources.erase(source);
+            } else ++source;
+        }
+    };
+    collect(submittedSourceTextures_);collect(submittedSourceFences_);
+    if(!retired->empty())sourceRetirement_=AsyncCleanup::Start([retired]{retired->clear();return true;});
 }
 
 void D3D12Presenter::QuarantineResources() noexcept
@@ -2018,7 +2092,8 @@ void D3D12Presenter::QuarantineResources() noexcept
         // ring owner until process exit without allocation during failure.
         if (slot.sourceLease) slot.sourceLease->quarantine = slot.sourceLease;
     }
-    for (auto& texture : submittedSourceTextures_) texture.Detach();
+    for (auto& texture : submittedSourceTextures_) texture.object.Detach();
+    for (auto& fence : submittedSourceFences_) fence.object.Detach();
     if (recordingFramePool_) recordingFramePool_->RetainUntilProcessExit(recordingFramePool_);
     fenceEvent_ = nullptr;
     frameLatencyWaitableObject_ = nullptr;

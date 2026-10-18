@@ -14,8 +14,9 @@ display scene. There is no processed-video recording canvas, ink composition or
 second recording clone in either presentation path. Photos retain their separate
 paired-image behavior.
 
-When a recording continues behind an opened video or held recording frame, live
-camera ingestion and device-loss handling continue. Native GPU input still uses
+When the same recording continues behind its held/rewound frame, live
+camera ingestion and device-loss handling continue. Opening a foreign saved
+video first finalizes recording; it never records another video behind file playback. Native GPU input still uses
 its conversion/orientation route and fenced Original clone, with live effects and
 live UCT disabled. CPU fallback performs only clean Original conversion. With no
 recording or photo consumer, hidden camera arrivals need no image processing.
@@ -30,6 +31,15 @@ reading-color LUT, contrast and brightness run once per frame or appearance
 change. Pan, zoom, Fit/Fill, focus-marker movement and resize reuse that scene
 through `PresentFitted`; they do not rerun decoding, camera effects or OCR.
 Selected pixels never borrow the mutable live CUDA texture.
+
+CUDA-enabled builds instead prefer `PresentSelectedMediaGpuFrame` and a private
+`MediaGpuScene`, with exact adapter selection before Open and CPU fallback on
+unsupported output. Its owned texture, private fence, device UCT and explicit
+readback/snapshot contracts are in [GPU playback](gpu_video_playback.md).
+The transport contract is shared. GPU media uses the same production effect
+settings as live video, with its own history and asynchronous neural cache;
+CPU-only rendering retains the basic compatibility appearance subset. A system
+CPU decoder can still supply the full GPU processing path when CUDA is healthy.
 
 A successful viewport receipt retains its exact source/appearance recipe,
 transform, native viewport extent and focus-marker state. Unchanged paused
@@ -70,8 +80,8 @@ The neighbor is prepared only while UCT is enabled. Include all of these in
 resource-plateau measurements and admission budgeting.
 
 Successful selected-media presentation publishes the same current viewport to
-native observations and retains it in `presentationBuffer_` for explicit image
-actions. Annotation snapshots retain selected-frame identity without setting the
+native observations. CPU retains `presentationBuffer_`; GPU requests explicit
+asynchronous viewport copies or an owned snapshot clone for image actions. Annotation snapshots retain selected-frame identity without setting the
 camera-active flag. Read/Explain, Save frame and agent delivery must bind to the
 selected document and successful presentation receipt; source/seek transitions
 must retire stale requests before another document can consume them.

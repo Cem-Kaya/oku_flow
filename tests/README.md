@@ -1559,3 +1559,56 @@ blocker identity alongside the reason. It does not turn a failed run into a pass
 retry automatically, authorize GUI use, or replace missing release acceptance.
 Per-case and capability evidence retains repair provenance; the summary names
 passes obtained through this mode, including when later reused.
+
+
+### GPU selected-video playback
+
+`video_playback_gpu_avc`, `video_playback_gpu_av1`,
+`video_playback_gpu_4k`, `video_playback_gpu_dci_4k` and
+`video_gpu_conversion` are serial, window-free native codec/GPU cases. Opt in
+with both `OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1` and `OKUFLOW_TEST_VIDEO_GPU=1`.
+They require actual GPU image output and preserve CPU-fallback checks. NV12/P010
+conversion exercises real pixels, retained-lease pressure and a forced private
+processor-target/copy path in addition to a shared target.
+
+`video_gpu_snapshot` runs production presenter snapshot shaders and owned
+readbacks without an HWND. An unattached composition swapchain also exercises
+the real scene draw and busy-slot admission. It checks an initially unsignaled
+independent producer dependency, exact source/overlay pixels, retained clone
+identity, global timeline isolation and resize-style retry. Hardware absence is
+a prerequisite skip, never acceptance. `media_gpu_scene_cuda` uses the real
+CUDA media scene and exact-adapter private D3D11/D3D12 resources; rotation,
+appearance, UCT device identity, repeated reads and init/lease retirement are
+checked without a camera or desktop window. Its fake Maxine helpers remain
+private test inputs. Added effect/history cases verify shared effect pixels,
+paused replay, seek reset, spatial ROI and asynchronous fake neural publication;
+they do not establish real Maxine model quality or latency.
+
+Optional absolute `OKUFLOW_TEST_VIDEO_GPU_FILES` CMake list entries register
+`video_gpu_format_<filename>` with each exact file in `REQUIRED_FILES`. These
+cases require resident Open/Seek/End output for privately supplied codec/profile
+fixtures. No encoder or sample download is added to normal tests. Local HEVC
+Main10, AV1 10-bit and VP9 evidence uses synthetic files outside the checkout.
+
+The immutable/controller contract includes device-worker CPU fallback, distinct
+versus identical corroboration, stale/late/revoked inputs, paced advancing probes,
+lease release and no-analysis gap receipts. Gap receipts must preserve briefly
+validated glyphs without scheduling work or renewing validation; media and wall
+expiry, source/seek/backward changes and late results revoke exposure.
+
+Run these through `scripts/run_test_gate.ps1` after building their exact targets;
+`agent_build.bat` still owns final Release/CPU/CUDA integration. Preserve failed
+attempts. Window-free passes do not certify native screen FPS, screen-reader
+behavior, HDR, physical A/V sync, long soak or installers. See
+[GPU contracts](../docs/gpu_video_playback.md).
+
+
+The media native offscreen fixture also checks first-GPU diagnostic uncertainty,
+125 view replays retaining a valid OCR lease, rejection of foreign OCR identity,
+retry deadline accounting, new-document display authority and one-second expiry
+of an active annotation copy. The CUDA scene fixture holds a private graphics
+fence to prove one in-flight processing pass: newer CPU inputs and orientation
+changes remain Pending with unchanged scene/fence/history, then the exact owned
+upload remains readable before the newest request runs. This bound keeps old
+view updates from accumulating behind a seek. Native action-row assertions cover
+all six actions including Open video; they still require a free desktop.

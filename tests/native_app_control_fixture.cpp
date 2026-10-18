@@ -13,6 +13,7 @@
 #include "okuflow/ui/render_widget.hpp"
 #include "okuflow/ui/ultra_clear_text_panel.hpp"
 #include "okuflow/ui/video_transport.hpp"
+#include "okuflow/common/uct_device_image.hpp"
 #include "okuflow/common/video_playback.hpp"
 #include "okuflow/mcp/app_ipc_endpoint.hpp"
 #include <QApplication>
@@ -68,6 +69,16 @@ struct RecordingManagerTestAccess {
 namespace okuflow::agent {
 // This harness intentionally bypasses platform/device/provider bootstrap.
 // All controls and transitions below are the real production implementations.
+#if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
+// Metadata-only analysis lease: identity fields only, never read back and
+// never a CUDA allocation, so retention policy can run without hardware.
+class MetadataOnlyDeviceImage final : public uct::DeviceImage {
+public:
+    const void* Data() const override {return nullptr;}
+    bool WaitReady(void*,QString&) const override {return true;}
+    QImage Readback(const std::atomic<bool>&,QString&) const override {return {};}
+};
+#endif
 class NativeControlFixture {
 public:
     static void Initialize(OkuFlowApp& app,const QString& root) {
@@ -146,6 +157,20 @@ public:
     static bool AnnotationEmpty(OkuFlowApp& app) {
         return app.annotationCaptureQueue_.empty() && !app.activeAnnotationCapture_ &&
             app.pendingAnnotationReadbackId_==0 && !app.lastAnnotationPresentation_;
+    }
+    // Production submission moves the queued intent into the active slot
+    // and starts its one-second receipt deadline. PrimeAnnotation instead
+    // leaves the intent in both places with the timer stopped.
+    static void SubmitPrimedAnnotationReadback(OkuFlowApp& app) {
+        if(!app.annotationCaptureQueue_.empty())app.annotationCaptureQueue_.pop_front();
+        app.pendingAnnotationReadbackTimer_.restart();
+    }
+    static bool AnnotationReadbackPending(OkuFlowApp& app) {
+        return app.activeAnnotationCapture_.has_value() && app.pendingAnnotationReadbackId_!=0;
+    }
+    static bool AnnotationReadbackExpired(OkuFlowApp& app) {
+        return !app.activeAnnotationCapture_ && app.pendingAnnotationReadbackId_==0 &&
+            app.annotationCaptureQueue_.empty();
     }
     static void ClearAnnotation(OkuFlowApp& app) {app.CancelAnnotationCaptures();}
     static AppControlService& Service(OkuFlowApp& app) {return *app.controlService_;}
@@ -436,6 +461,126 @@ public:
         app.SeedVideoDocumentForTest({},nullptr,false,false);
         app.ReturnVideoToCamera();
     }
+    static void SeekVideo(OkuFlowApp& app,qint64 positionMs) {app.SeekSelectedVideo(positionMs);}
+    static void ToggleVideo(OkuFlowApp& app) {app.ToggleSelectedVideoPlayback();}
+    static void JumpVideo(OkuFlowApp& app) {app.JumpSelectedVideoToEnd();}
+    static std::shared_ptr<const VideoPlaybackFrame> SelectedVideoFrame(const OkuFlowApp& app) {
+        return app.SelectedVideoFrameForTest();
+    }
+    static std::shared_ptr<const VideoPlaybackFrame> HoldPresentedVideoFrame(OkuFlowApp& app,
+        const std::shared_ptr<const VideoPlaybackFrame>& presented) {return app.HoldPresentedVideoFrameForTest(presented);}
+    static VideoPlaybackSnapshot DecoderSnapshot(const OkuFlowApp& app) {return app.VideoPlaybackSnapshotForTest();}
+    // Same entry used by an actual app-side media CUDA scene failure.
+    static void MediaSceneFailed(OkuFlowApp& app,const std::string& reason) {app.RequestMediaCpuFallback(reason);}
+    static bool HasMediaGpuScene(const OkuFlowApp& app) {return static_cast<bool>(app.mediaGpuScene_);}
+    // Owned lease metadata only; no CUDA call ever touches this image.
+    static uct::SharedDeviceImage MetadataAnalysis(const OkuFlowApp& app,std::uint64_t frameSequence,
+                                                   std::uint64_t appearance) {
+        auto image=std::make_shared<MetadataOnlyDeviceImage>();
+        image->width=32;image->height=16;image->pitch=128;
+        image->sourceEpoch=app.mediaDocumentEpoch_;image->frameSequence=frameSequence;
+        image->processingGeneration=appearance;
+        return image;
+    }
+    // Window-free selected-media GPU admission. MediaGpuScene stamps a processed
+    // scene with exactly this epoch/frame/appearance identity.
+    static bool SameExtentRotationReprocessesWithUctOff(OkuFlowApp& app) {
+        const auto rotation=app.rotationQuarterTurns_;
+        const auto restore=qScopeGuard([&] {
+            app.rotationQuarterTurns_=rotation;app.InvalidateMediaSelection();
+            app.SelectedMediaGpuSceneProcessed(false,{},0);
+        });
+        app.InvalidateMediaSelection();
+        app.rotationQuarterTurns_=0;
+        VideoPlaybackFrame frame;frame.width=32;frame.height=16;frame.strideBytes=128;frame.sampleId=7;
+        if(!app.AdmitSelectedMediaSceneRecipe(app.SelectedMediaSceneRecipe(frame)))return false;
+        app.SelectedMediaGpuSceneProcessed(false,{},1000);
+        const OkuFlowApp::MediaGpuSceneStamp upright{true,app.mediaDocumentEpoch_,7,app.mediaSceneAppearanceRevision_,false};
+        // Two seconds of unchanged 60-Hz paused polling reuse the processed scene.
+        for(std::int64_t now=1000;now<3000;now+=16)
+            if(app.AdmitSelectedMediaSceneRecipe(app.SelectedMediaSceneRecipe(frame)) ||
+               app.SelectedMediaGpuSceneNeedsProcess(upright,7,false,now))return false;
+        app.rotationQuarterTurns_=2; // 180 degrees keeps the 32x16 extent
+        const auto turned=app.SelectedMediaSceneRecipe(frame);
+        if(turned[OkuFlowApp::kMediaRecipeRotation]!=2 || !app.AdmitSelectedMediaSceneRecipe(turned))return false;
+        if(app.mediaSceneWidth_!=32 || app.mediaSceneHeight_!=16)return false;
+        if(!app.SelectedMediaGpuSceneNeedsProcess(upright,7,false,3000))return false;
+        app.SelectedMediaGpuSceneProcessed(false,{},3000);
+        const OkuFlowApp::MediaGpuSceneStamp rotated{true,app.mediaDocumentEpoch_,7,app.mediaSceneAppearanceRevision_,false};
+        if(app.SelectedMediaGpuSceneNeedsProcess(rotated,7,false,3016))return false;
+        app.rotationQuarterTurns_=1; // a quarter turn swaps the processed extent
+        if(!app.AdmitSelectedMediaSceneRecipe(app.SelectedMediaSceneRecipe(frame)))return false;
+        return app.mediaSceneWidth_==16 && app.mediaSceneHeight_==32 &&
+            app.SelectedMediaGpuSceneNeedsProcess(rotated,7,false,3032);
+    }
+    static bool ValidUctLeaseSurvivesViewReplays(OkuFlowApp& app) {
+        const auto restore=qScopeGuard([&] {app.InvalidateMediaSelection();app.SelectedMediaGpuSceneProcessed(false,{},0);});
+        app.InvalidateMediaSelection();
+        VideoPlaybackFrame frame;frame.width=32;frame.height=16;frame.strideBytes=128;frame.sampleId=21;
+        if(!app.AdmitSelectedMediaSceneRecipe(app.SelectedMediaSceneRecipe(frame)))return false;
+        const auto lease=MetadataAnalysis(app,21,app.mediaSceneAppearanceRevision_);
+        app.SelectedMediaGpuSceneProcessed(true,lease,1000);
+        if(app.mediaGpuAnalysis_!=lease || app.mediaGpuAnalysisAttempts_!=0)return false;
+        OkuFlowApp::MediaGpuSceneStamp stamp{true,app.mediaDocumentEpoch_,21,app.mediaSceneAppearanceRevision_,false};
+        // Two seconds of 60-Hz view replays whose capture throttle yields no
+        // fresh lease: the valid same-scene lease survives every replay and
+        // its untouched retry budget never demands another whole-frame pass.
+        for(std::int64_t now=1000;now<3000;now+=16) {
+            app.SelectedMediaGpuSceneProcessed(true,{},now);
+            if(app.mediaGpuAnalysis_!=lease || app.mediaGpuAnalysisAttempts_!=0 ||
+               app.SelectedMediaGpuSceneNeedsProcess(stamp,21,true,now))return false;
+        }
+        // An incoming lease from another appearance cannot replace the valid
+        // current lease, even transiently. A real appearance change invalidates
+        // the old one immediately, before the next overlay admission.
+        const auto stale=MetadataAnalysis(app,21,app.mediaSceneAppearanceRevision_+1);
+        app.SelectedMediaGpuSceneProcessed(true,stale,2999);
+        if(app.mediaGpuAnalysis_!=lease || app.mediaGpuAnalysisAttempts_!=0)return false;
+        ++app.mediaSceneAppearanceRevision_;
+        stamp.appearance=app.mediaSceneAppearanceRevision_;
+        app.SelectedMediaGpuSceneProcessed(true,lease,3000);
+        if(app.mediaGpuAnalysis_ || app.mediaGpuAnalysisAttempts_!=1)return false;
+        // Replays before the 80-ms retry deadline spend no further attempts.
+        for(std::int64_t now=3001;now<3080;now+=16) {
+            app.SelectedMediaGpuSceneProcessed(true,{},now);
+            if(app.mediaGpuAnalysis_ || app.mediaGpuAnalysisAttempts_!=1 ||
+               app.SelectedMediaGpuSceneNeedsProcess(stamp,21,true,now))return false;
+        }
+        if(!app.SelectedMediaGpuSceneNeedsProcess(stamp,21,true,3080))return false;
+        app.SelectedMediaGpuSceneProcessed(true,{},3080);
+        if(app.mediaGpuAnalysisAttempts_!=2)return false;
+        // The second backoff is 160 ms: still quiet halfway, due at its end.
+        if(app.SelectedMediaGpuSceneNeedsProcess(stamp,21,true,3160))return false;
+        if(!app.SelectedMediaGpuSceneNeedsProcess(stamp,21,true,3240))return false;
+        // A fresh valid lease for this exact scene restores the retry budget.
+        const auto restored=MetadataAnalysis(app,21,app.mediaSceneAppearanceRevision_);
+        app.SelectedMediaGpuSceneProcessed(true,restored,3240);
+        return app.mediaGpuAnalysis_==restored && app.mediaGpuAnalysisAttempts_==0 &&
+            !app.SelectedMediaGpuSceneNeedsProcess(stamp,21,true,3240);
+    }
+    static bool PausedMediaAnalysisRetryIsBoundedPerFrame(OkuFlowApp& app) {
+        const auto restore=qScopeGuard([&] {app.InvalidateMediaSelection();app.SelectedMediaGpuSceneProcessed(false,{},0);});
+        app.InvalidateMediaSelection();
+        VideoPlaybackFrame frame;frame.width=32;frame.height=16;frame.strideBytes=128;frame.sampleId=9;
+        if(!app.AdmitSelectedMediaSceneRecipe(app.SelectedMediaSceneRecipe(frame)))return false;
+        OkuFlowApp::MediaGpuSceneStamp scene{true,app.mediaDocumentEpoch_,9,app.mediaSceneAppearanceRevision_,false};
+        // UCT on, and no pass yields an analysis lease for this paused frame.
+        int passes=0;
+        for(std::int64_t now=0;now<60'000;now+=16)
+            if(app.SelectedMediaGpuSceneNeedsProcess(scene,9,true,now)) {app.SelectedMediaGpuSceneProcessed(true,{},now);++passes;}
+        if(passes!=OkuFlowApp::kMediaAnalysisAttempts || !app.SelectedMediaAnalysisGivenUp(false))return false;
+        // The next selected frame receives a fresh bounded budget.
+        frame.sampleId=10;
+        if(!app.AdmitSelectedMediaSceneRecipe(app.SelectedMediaSceneRecipe(frame)) || app.SelectedMediaAnalysisGivenUp(false))return false;
+        scene.frameSequence=10;scene.appearance=app.mediaSceneAppearanceRevision_;
+        if(!app.SelectedMediaGpuSceneNeedsProcess(scene,10,true,60'000))return false;
+        app.SelectedMediaGpuSceneProcessed(true,{},60'000);
+        // A failed analysis pool stops whole-frame retries at once.
+        scene.analysisFailed=true;
+        for(std::int64_t now=60'000;now<70'000;now+=16)
+            if(app.SelectedMediaGpuSceneNeedsProcess(scene,10,true,now))return false;
+        return app.SelectedMediaAnalysisGivenUp(true) && !app.SelectedMediaAnalysisGivenUp(false);
+    }
 #endif
 };
 }
@@ -533,6 +678,109 @@ public:
     explicit NativeAcceptance(OkuFlowApp& app):app_(app) {}
 private slots:
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
+    void selectedMediaGpuPolicyIncludesAllImageEffects() {
+        // Exercise the policy seam without creating a CUDA surface or claiming
+        // that this offscreen fixture has executed any shader.
+        for(const auto field:{Field::Blur,Field::BlurSigma,Field::BlurRadius,
+            Field::Spatial,Field::Upscaler,Field::Sharpness,Field::TextClarity,
+            Field::Flatten,Field::Adaptive,Field::SmartSharpen,Field::Clahe,
+            Field::Glare,Field::FocusDetection,Field::Hysteresis,Field::TwoColor,
+            Field::AutoContrast,Field::AutoContrastStrength,Field::Stabilization,
+            Field::BumpHold,Field::Keystone,Field::KeystonePaused,Field::Temporal,
+            Field::TemporalAlpha,Field::SuperResEnabled,Field::SuperResStrength,
+            Field::SuperResPrefer2x,Field::SuperResUltra1440p,Field::SuperResPerformanceOverride}) {
+            QVERIFY(AppControlTarget::SelectedMediaImageFieldAvailable(field,true));
+            QVERIFY(!AppControlTarget::SelectedMediaImageFieldAvailable(field,false));
+        }
+        for(const auto field:{Field::BlackWhite,Field::Threshold,Field::Contrast,Field::Brightness,
+            Field::Scheme,Field::CustomColorRecipe,Field::UctCpuDetector,Field::UctGpuDetector})
+            QVERIFY(AppControlTarget::SelectedMediaImageFieldAvailable(field,false));
+        QVERIFY(!AppControlTarget::SelectedMediaImageFieldAvailable(Field::DebugView,true));
+    }
+    void selectedCpuMediaRejectsGpuEffectMutations() {
+        const auto original=NativeControlFixture::CurrentImageConfig(app_);
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ResetVideo(app_);
+            NativeControlFixture::RestoreImageConfig(app_,original);
+        });
+        auto dormant=original;
+        dormant.autoTextClarityEnabled=true;dormant.adaptiveBinarizationEnabled=true;
+        dormant.twoColorTextEnabled=true;dormant.blackWhiteEnabled=true;
+        NativeControlFixture::RestoreImageConfig(app_,dormant);
+        NativeControlFixture::SeedVideo(app_,{},OwnedVideoPolicyFrame(),false,false);
+        auto& target=NativeControlFixture::Target(app_);
+        const auto rows=target.QueryImageParameters(ToolId::ImageSettingsGet,{})["parameters"].toObject();
+        const auto before=target.ImageParameterFields();
+        for(const auto* id:{"image.blur.enabled","image.spatial.enabled","image.textClarity.enabled",
+            "image.autoContrast.enabled","image.stabilization.enabled","image.keystone.enabled",
+            "image.temporal.enabled","image.superResolution.enabled"}) {
+            const auto row=rows[id].toObject();
+            QVERIFY(!row["available"].toBool());QVERIFY(!row["writable"].toBool());
+            QVERIFY(row["effective"].isNull());
+            QCOMPARE(row["effectiveReason"].toString(),QStringLiteral("selected_media_unsupported_effect"));
+            const auto field=AppControlTarget::ImageParameterField(id);QVERIFY(field);
+            const bool next=!before.at(*field).toBool();
+            const auto plan=target.PrepareImageParameters(ToolId::ImageSettingsSet,{{id,next}});
+            QCOMPARE(plan.error,QStringLiteral("unavailable"));QVERIFY(plan.writes.empty());
+            ControlPlan bypass;bypass.writes.push_back({*field,next});
+            QVERIFY(!target.ValidateImageParameterBatch(bypass));
+        }
+        QVERIFY(rows["image.contrast"].toObject()["writable"].toBool());
+        QVERIFY(rows["image.blackWhite.enabled"].toObject()["writable"].toBool());
+        // Unsupported requested adaptive text must not shadow the actual CPU
+        // threshold/color recipe, even though those GPU preferences are kept.
+        QVERIFY(rows["image.blackWhite.enabled"].toObject()["effective"].toBool());
+        QVERIFY(rows["image.blackWhite.threshold"].toObject()["effective"].isDouble());
+        QCOMPARE(rows["image.colors.schemeId"].toObject()["effective"],rows["image.colors.schemeId"].toObject()["requested"]);
+        QCOMPARE(target.ImageParameterFields(),before);
+        const auto state=target.QueryVideoState();
+        QCOMPARE(state["pipeline"].toString(),QStringLiteral("cpu_selected_media"));
+        QVERIFY(!state["advancedGpuEffectsAvailable"].toBool());
+    }
+    void selectedMediaObservationUsesPresentationCandidateIdentity() {
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::SeedVideo(app_,{},OwnedVideoPolicyFrame(),false,false);
+        auto& target=NativeControlFixture::Target(app_);
+        const auto old=NativeControlFixture::VideoState(app_);
+        const auto transform=ComputeViewTransform(32,16,640,480,2,0.25f,0.75f,ViewportFitMode::kFill);
+        constexpr quint64 candidateSequence=741;
+        constexpr qint64 candidatePts=59'000'000;
+        QVERIFY(old["frameSequence"].toInteger()!=candidateSequence);
+        QVERIFY(old["selectedPts100ns"].toInteger()!=candidatePts);
+        const auto frame=target.PresentedMediaFrame(transform,QSize(32,16),QSize(640,480),candidateSequence,candidatePts);
+        QVERIFY(frame.immutableSource);
+        QCOMPARE(frame.sequence,candidateSequence);QCOMPARE(frame.mediaPts100ns,candidatePts);
+        QCOMPARE(frame.documentId,old["documentId"].toString());
+        QCOMPARE(frame.selectionGeneration,old["selectionGeneration"].toInteger());
+        QCOMPARE(frame.documentGeneration,old["selectionGeneration"].toInteger());
+        // The paused CPU candidate carries known still-frame diagnostics.
+        QVERIFY(frame.held && *frame.held);
+        QVERIFY(frame.converging && !*frame.converging);
+        QVERIFY(frame.keystoneQuad && !*frame.keystoneQuad);
+        QVERIFY(frame.diagnostics.value("available").toBool());
+        // Constructing candidate authority must not publish it as the displayed
+        // document; the successful presenter submission owns that transition.
+        const auto after=NativeControlFixture::VideoState(app_);
+        QCOMPARE(after["frameSequence"],old["frameSequence"]);
+        QCOMPARE(after["selectedPts100ns"],old["selectedPts100ns"]);
+        // The same candidate submitted through the GPU scene is explicitly
+        // unknown without a completed media helper diagnostic: no held,
+        // converging or keystone certainty is inherited from this CPU
+        // display, even for the first GPU frame. This fixture creates no
+        // CUDA scene, so nothing here claims GPU execution.
+        QVERIFY(!NativeControlFixture::HasMediaGpuScene(app_));
+        const auto gpuFrame=target.PresentedMediaFrame(transform,QSize(32,16),QSize(640,480),
+            candidateSequence,candidatePts,true);
+        QVERIFY(gpuFrame.immutableSource);
+        QCOMPARE(gpuFrame.sequence,candidateSequence);QCOMPARE(gpuFrame.mediaPts100ns,candidatePts);
+        QCOMPARE(gpuFrame.documentId,old["documentId"].toString());
+        QVERIFY(!gpuFrame.held);QVERIFY(!gpuFrame.converging);QVERIFY(!gpuFrame.keystoneQuad);
+        QVERIFY(!gpuFrame.diagnostics.value("available").toBool());
+        QCOMPARE(gpuFrame.diagnostics.value("basis").toString(),QStringLiteral("pending-media-gpu-diagnostic"));
+        const auto afterGpu=NativeControlFixture::VideoState(app_);
+        QCOMPARE(afterGpu["frameSequence"],old["frameSequence"]);
+        QCOMPARE(afterGpu["selectedPts100ns"],old["selectedPts100ns"]);
+    }
     void unchangedPausedMediaKeepsOneViewportUpload() {
         QVERIFY(NativeControlFixture::MediaViewportAdmissionAvoidsRepeatedUploads());
     }
@@ -790,7 +1038,7 @@ private slots:
         RecordingSessionInfo session;session.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
         NativeControlFixture::PendingVideoFinalization(app_,session);
         NativeControlFixture::OpenVideo(app_,obsolete);
-        const auto request=NativeControlFixture::VideoState(app_)["requestGeneration"];
+        const QJsonValue request=NativeControlFixture::VideoState(app_)["requestGeneration"];
         NativeControlFixture::OpenVideo(app_,newest);
         QCOMPARE(NativeControlFixture::PendingVideoOpen(app_),QDir::cleanPath(newest));
         QVERIFY(!NativeControlFixture::VideoStartAllowed(app_));
@@ -807,6 +1055,141 @@ private slots:
         QCOMPARE(NativeControlFixture::VideoState(app_)["sourceName"].toString(),QFileInfo(newest).fileName());
         NativeControlFixture::ResetVideo(app_);
         bool removed=false;QTRY_VERIFY_WITH_TIMEOUT(removed || (removed=QFile::remove(newest)),3000);
+    }
+    void sameExtentRotationReprocessesPausedGpuSceneWithUctOff() {
+        QVERIFY(NativeControlFixture::SameExtentRotationReprocessesWithUctOff(app_));
+    }
+    void validUctLeaseSurvivesViewReplaysAndRetryStaysBounded() {
+        QVERIFY(NativeControlFixture::ValidUctLeaseSurvivesViewReplays(app_));
+    }
+    void pausedMediaAnalysisRetryIsBoundedAndStopsOnPoolFailure() {
+        QVERIFY(NativeControlFixture::PausedMediaAnalysisRetryIsBoundedPerFrame(app_));
+    }
+    void openingDifferentVideoCannotInheritPreviousDisplayReceipt() {
+        QTemporaryDir folder;QVERIFY(folder.isValid());
+        const auto path=folder.filePath(QStringLiteral("new-document.avi"));
+        QVERIFY(WritePrivateVideoFixture(path));
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::SeedVideo(app_,{},OwnedVideoPolicyFrame(),false,false);
+        const auto previous=NativeControlFixture::VideoState(app_);
+        QVERIFY(previous["hasFrame"].toBool());
+        NativeControlFixture::OpenVideo(app_,path);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["documentId"]!=previous["documentId"],5000);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::SelectedVideoFrame(app_),5000);
+        const auto selected=NativeControlFixture::VideoState(app_);
+        // This fixture decodes, but never presents a native frame. A new file
+        // must await its own display receipt even when the old file had one.
+        QVERIFY(!selected["hasFrame"].toBool());
+        QVERIFY(!selected["canSaveFrame"].toBool());
+        QCOMPARE(selected["frameSequence"].toInteger(),qint64(0));
+        QCOMPARE(selected["completedRequestGeneration"].toInteger(),qint64(0));
+        QVERIFY(!NativeControlFixture::VideoUi(app_).canSaveFrame);
+        NativeControlFixture::ResetVideo(app_);
+        bool removed=false;QTRY_VERIFY_WITH_TIMEOUT(removed || (removed=QFile::remove(path)),3000);
+    }
+    void transportGenerationIsPerDocumentAndShowsPendingSeekTarget() {
+        QTemporaryDir folder;QVERIFY(folder.isValid());
+        const auto path=folder.filePath(QStringLiteral("transport.avi"));
+        QVERIFY(WritePrivateVideoFixture(path));
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::ResetVideo(app_);
+        const auto camera=NativeControlFixture::VideoUi(app_).sourceGeneration;
+        NativeControlFixture::OpenVideo(app_,path);
+        QTRY_COMPARE_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["kind"].toString(),QStringLiteral("file"),5000);
+        QTRY_COMPARE_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["state"].toString(),QStringLiteral("paused"),5000);
+        const auto opened=NativeControlFixture::VideoUi(app_);
+        QCOMPARE(opened.source,VideoTransport::Source::Video);
+        QVERIFY(opened.sourceGeneration!=camera);
+        const QJsonValue documentId=NativeControlFixture::VideoState(app_)["documentId"];
+        const QJsonValue selection=NativeControlFixture::VideoState(app_)["selectionGeneration"];
+        NativeControlFixture::SeekVideo(app_,250);
+        // Selection authority advances; the transport document does not.
+        QVERIFY(NativeControlFixture::VideoState(app_)["selectionGeneration"]!=selection);
+        QCOMPARE(NativeControlFixture::VideoUi(app_).sourceGeneration,opened.sourceGeneration);
+        QCOMPARE(NativeControlFixture::VideoUi(app_).positionMs,qint64(250));
+        // A second relative seek before the first is shown accumulates from it.
+        NativeControlFixture::SeekVideo(app_,NativeControlFixture::VideoUi(app_).positionMs-100);
+        QCOMPARE(NativeControlFixture::VideoUi(app_).positionMs,qint64(150));
+        QTRY_COMPARE_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["state"].toString(),QStringLiteral("paused"),5000);
+        // Offscreen decode is not a presentation, so the target remains shown.
+        QCOMPARE(NativeControlFixture::VideoUi(app_).positionMs,qint64(150));
+        NativeControlFixture::ToggleVideo(app_);NativeControlFixture::ToggleVideo(app_);
+        NativeControlFixture::JumpVideo(app_);
+        QCOMPARE(NativeControlFixture::VideoUi(app_).sourceGeneration,opened.sourceGeneration);
+        QCOMPARE(NativeControlFixture::VideoState(app_)["documentId"],documentId);
+        NativeControlFixture::ResetVideo(app_); // Return to camera is a document change
+        QVERIFY(NativeControlFixture::VideoUi(app_).sourceGeneration!=opened.sourceGeneration);
+        bool removed=false;QTRY_VERIFY_WITH_TIMEOUT(removed || (removed=QFile::remove(path)),3000);
+    }
+    void selectedMediaPollingExpiresPendingAnnotationReadbackWithoutRetargeting() {
+        const auto cleanup=qScopeGuard([&] {
+            NativeControlFixture::ClearAnnotation(app_);NativeControlFixture::ResetVideo(app_);
+        });
+        NativeControlFixture::SeedVideo(app_,{},OwnedVideoPolicyFrame(),false,false);
+        const auto original=NativeControlFixture::PrimeAnnotation(app_);
+        NativeControlFixture::SubmitPrimedAnnotationReadback(app_);
+        QVERIFY(NativeControlFixture::AnnotationReadbackPending(app_));
+        QElapsedTimer clock;clock.start();
+        // The seeded document's real 16-ms playback timer drives
+        // PollVideoPlayback, whose first act is the shared one-second
+        // readback expiry. Offscreen never produces a presenter receipt.
+        QTest::qWait(120);
+        QVERIFY(NativeControlFixture::AnnotationReadbackPending(app_)); // deadline not yet reached
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::AnnotationReadbackExpired(app_),5000);
+        QVERIFY(clock.elapsed()>=900); // the full one-second intent lifetime elapsed
+        // The expired intent stays dead: later polling never retargets it
+        // onto a subsequent frame with the same geometry.
+        QVERIFY(!NativeControlFixture::AnnotationMatches(app_,original));
+        QTest::qWait(120);
+        QVERIFY(NativeControlFixture::AnnotationReadbackExpired(app_));
+        QVERIFY(!NativeControlFixture::AnnotationMatches(app_,original));
+    }
+    void pausedMediaFallbackAdoptsCpuFrameAtDisplayedPoint() {
+        QTemporaryDir folder;QVERIFY(folder.isValid());
+        const auto path=folder.filePath(QStringLiteral("fallback.avi"));
+        QVERIFY(WritePrivateVideoFixture(path));
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::ResetVideo(app_);
+        NativeControlFixture::OpenVideo(app_,path);
+        QTRY_COMPARE_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["kind"].toString(),QStringLiteral("file"),5000);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::SelectedVideoFrame(app_),5000);
+        const auto displayed=NativeControlFixture::SelectedVideoFrame(app_);
+        QCOMPARE(displayed->pts100ns,std::int64_t(0));
+        // The decoder advances beyond the frame that is modelled as displayed.
+        NativeControlFixture::SeekVideo(app_,200);
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::SelectedVideoFrame(app_) &&
+            NativeControlFixture::SelectedVideoFrame(app_)->pts100ns==2'000'000,5000);
+        QVERIFY(NativeControlFixture::HoldPresentedVideoFrame(app_,displayed)==displayed);
+        const auto held=NativeControlFixture::VideoState(app_);
+        const auto ahead=NativeControlFixture::DecoderSnapshot(app_).frame;
+        QVERIFY(ahead);QCOMPARE(ahead->pts100ns,std::int64_t(2'000'000));
+        const std::string reason="fixture: selected media CUDA scene failed";
+        NativeControlFixture::MediaSceneFailed(app_,reason);
+        const auto request=NativeControlFixture::VideoState(app_)["requestGeneration"].toInteger();
+        QVERIFY(request>held["requestGeneration"].toInteger());
+        // The paused hold no longer blocks adoption of the CPU result, which
+        // re-decodes the displayed point rather than the decoder-ahead frame.
+        QTRY_VERIFY_WITH_TIMEOUT(NativeControlFixture::SelectedVideoFrame(app_) &&
+            qint64(NativeControlFixture::SelectedVideoFrame(app_)->requestGeneration)==request,5000);
+        const auto adopted=NativeControlFixture::SelectedVideoFrame(app_);
+        QCOMPARE(adopted->pts100ns,displayed->pts100ns);
+        QVERIFY(adopted!=displayed);
+        QVERIFY(adopted->bgra && !adopted->gpu);
+        const auto decoder=NativeControlFixture::DecoderSnapshot(app_);
+        QVERIFY(!decoder.gpuResident);
+        QCOMPARE(QString::fromStdString(decoder.backendReason),QString::fromStdString(reason));
+        const auto state=NativeControlFixture::VideoState(app_);
+        QCOMPARE(state["state"].toString(),QStringLiteral("paused"));
+        QVERIFY(!state["playing"].toBool());
+        QCOMPARE(state["documentId"],held["documentId"]);
+        // The modeled old display survives fallback. Offscreen cannot present
+        // the replacement, so its new request must not receive a display receipt.
+        QVERIFY(state["hasFrame"].toBool());
+        QCOMPARE(state["frameSequence"],held["frameSequence"]);
+        QCOMPARE(state["completedRequestGeneration"],held["completedRequestGeneration"]);
+        QVERIFY(state["completedRequestGeneration"].toInteger()!=request);
+        NativeControlFixture::ResetVideo(app_);
+        bool removed=false;QTRY_VERIFY_WITH_TIMEOUT(removed || (removed=QFile::remove(path)),3000);
     }
 #endif
     void nativeImageEditsAdvanceProcessingAuthorityWithoutAgent() {

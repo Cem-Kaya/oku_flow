@@ -27,6 +27,7 @@ struct IDXGISwapChain3;
 namespace okuflow {
 
 struct RecordingFramePoolState;
+class AsyncCleanup;
 
 struct ViewportPresentationOptions {
     bool drawFocusMarker{false};
@@ -58,7 +59,8 @@ public:
                              const ViewTransform& transform,
                              const FenceSyncParams* fenceSync = nullptr,
                              const ViewportPresentationOptions* options = nullptr,
-                             UINT64* outReadbackRequestId = nullptr);
+                             UINT64* outReadbackRequestId = nullptr,
+                             UINT64* outIndependentReadSignal = nullptr);
 
     // Copy a GPU texture into a CPU buffer (BGRA8). Blocking; first waits on
     // waitFenceValue on the GPU queue, then waits for the copy to complete.
@@ -80,6 +82,7 @@ public:
     // through its copy fence, even if recording/selection drops its reference.
     // At most one such owned hold copy is outstanding, including cancellation.
     bool RequestReadback(const GpuVideoFrame& frame, UINT64* outRequestId = nullptr);
+    bool HasReadbackRequest(UINT64 requestId) const;
     // Renders the canonical recording transform into a shareable, fixed-size
     // BGRA texture. The returned frame is immediately queueable: D3D11 waits
     // on its shared fence on-GPU, so neither the UI nor recording worker has
@@ -96,7 +99,10 @@ public:
         const uint8_t* annotationBgra = nullptr,
         std::size_t annotationStrideBytes = 0,
         bool* outPoolExhausted = nullptr,
-        UINT64 waitFenceValue = 0);
+        UINT64 waitFenceValue = 0,
+        const FenceSyncParams* independentSceneSync = nullptr,
+        UINT64* outIndependentReadSignal = nullptr,
+        const ViewportPresentationOptions* viewportOptions = nullptr);
 
     // If a previously requested readback has completed, move its pixels into
     // outBgra (BGRA8 tightly packed) and return true. Returns the OLDEST
@@ -123,6 +129,7 @@ public:
     bool WaitForIdle() noexcept;
 
 private:
+    friend struct VideoGpuPresenterFixture;
     // Frames in flight; matches the swap-chain buffer count so the current
     // back-buffer index doubles as the per-frame resource slot.
     static constexpr UINT kFrameCount = 2;
@@ -140,6 +147,8 @@ private:
     bool MarkFenceFault(const char* reason) noexcept;
     void QuarantineResources() noexcept;
     bool KeepSubmittedResource(ID3D12Resource* texture);
+    bool KeepSubmittedFence(ID3D12Fence* fence);
+    void RetireCompletedSourceReferences();
     bool TryAcquireFrameSlot(UINT slot);
 
     HWND hwnd_{};
@@ -147,7 +156,13 @@ private:
     UINT height_{};
     bool initialized_{};
     bool faulted_{};
-    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> submittedSourceTextures_;
+    template<class T> struct SubmittedSource {
+        Microsoft::WRL::ComPtr<T> object;
+        UINT64 lastRead{UINT64_MAX}; // pending/unknown until a graphics signal
+    };
+    std::vector<SubmittedSource<ID3D12Resource>> submittedSourceTextures_;
+    std::vector<SubmittedSource<ID3D12Fence>> submittedSourceFences_;
+    std::shared_ptr<AsyncCleanup> sourceRetirement_;
     bool scenePresentNeeded_{true};
     std::uint64_t missedPresentCount_{};
 

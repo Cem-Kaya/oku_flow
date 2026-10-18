@@ -11,6 +11,9 @@ OkuFlow is a Windows-only camera magnifier built around Qt 6, Media Foundation, 
   The native bottom transport, immutable UCT and exact frame saving share the
   selected document. New video is Original-only; photo pairs and legacy notes
   are preserved. See [the implementation contract](accessible_video_implementation.md).
+  CUDA builds prefer native GPU video textures and a private CUDA scene,
+  retaining CPU compatibility. See [GPU playback](gpu_video_playback.md) for
+  device ownership, format limits and explicit image-action transfers.
   This is not a new published Windows installer.
 - UCT advanced settings persist separate PP-OCRv6 detector/recognizer tiers
   for GPU (medium/medium by default) and CPU fallback (tiny/small). All three

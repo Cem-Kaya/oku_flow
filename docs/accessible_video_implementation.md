@@ -90,8 +90,9 @@ Native desktop/focus/layout tests, the Windows UIA bridge, Narrator/NVDA/Magnifi
 mixed-monitor DPI, physical camera/phone and microphone quality, A/V sync,
 long-soak resource measurements, live providers and installer acceptance remain
 separate. No installer or public release is certified by this background run.
-Selected-media rendering currently supports the documented CPU view effects;
-advanced GPU effects explicitly report unavailable. The seven new media tools
+At that checkpoint, selected-media rendering used the documented CPU view
+effects; stateful/neural effects were explicitly unavailable at that checkpoint.
+The subsequent GPU work extends processing as described in GPU playback. The seven new media tools
 are in the opt-in `dev-full`/`v1` catalogs; this work does not promote the default
 MCP catalog or certify V1 acceptance.
 
@@ -116,3 +117,48 @@ with the same shared pixel allocation and no native reads or owned pixel copies.
 These small samples are observations, not screen-latency, 4K60, real-lecture or
 hardware-decoder acceptance. The CPU path is retained as the compatibility
 fallback for the subsequent GPU-playback implementation.
+
+
+## GPU playback and full-effects follow-up (2026-10-19)
+
+The tracked `scripts/agent_build.bat` finished with PASS for shipping Release
+compilation, the CPU suite and the CUDA delta, using CUDA 12.9.86, Qt 6.12.0,
+VS 2022 and an isolated Release output. `OKUFLOW_AGENT_EXCLUDE_GUI=1` kept native
+desktop fixtures excluded. This is a background validation pass, not full release
+or installer acceptance. The complete GPU ownership/effect design is recorded in
+[GPU video playback](gpu_video_playback.md).
+
+| Check | Result and scope |
+| --- | --- |
+| Shipping Release | Compiled the GPU decoder, independent CUDA media scene, full shared effect settings and native transport/app wiring. |
+| CPU selection | 108 cases passed, zero unresolved. `recording_manager` and `mcp_bridge_contract` retain their two optional skipped-row cases; no whole case was skipped. Includes window-free GPU decode/conversion/snapshots and explicit Original recording because this machine has a supported GPU. |
+| CUDA delta | All 17 cases passed, no skipped rows or unresolved cases. Includes the six kernel/architecture cases, UCT CUDA, three synthetic Maxine fixtures, full media scene, production presenter snapshot, AVC/AV1/UHD/DCI playback and native conversion. |
+| Actual-app native target, Qt offscreen | 53 Qt rows passed with zero skips. Muse's added cases cover first-GPU diagnostic uncertainty, retained OCR leases across 125 view replays, bounded retry deadlines and one-second annotation expiry without retargeting. Other cases cover CPU/GPU control policy, candidate identities and prior-document receipt revocation. |
+| Shared-source equivalence | Passed with PCH ON in the tracked configurations and PCH OFF in the isolated actual-app fixture. |
+| Optional local format inputs | Synthetic HEVC Main10, VP9 and AV1 10-bit cases passed, requiring actual resident output, seek and EOF. These private inputs are declared runtime files, not repository assets or a new FFmpeg dependency. |
+| Localization | Translation integrity gate passed for all 24 non-English catalogs, 872 entries each. This follow-up adds no new translation keys. Earlier full language review remains distinct from rendered/native-speaker acceptance. |
+
+The GPU scene case checks actual GPU rotation, blur/color/text/temporal effects,
+replay without duplicate history updates, reset boundaries, CPU BGRA uploads,
+UCT device identity, paused keystone stepping and asynchronous neural ownership.
+Its private fake Maxine SDK proves publication/cancellation and model retention,
+not vendor inference quality or measured real-model FPS. The presenter case uses
+an unattached composition swapchain, production draw/snapshot shaders and real
+fence dependencies without taking the owner's desktop.
+
+The first matrix caught an obsolete fixture expecting multiple queued CPU inputs
+after admission was bounded to one in-flight processing pass. The repaired case
+preserves its actual blocked-fence and pinned-pixel ownership checks, verifies
+Pending/newer-frame rejection without history/scene/fence changes, and passes.
+The earlier VP9 negotiation failure was repaired by decoder-output negotiation;
+its focused native case and final selection pass. Fingerprint guards also refused
+resume across changed PATH/toolchain inputs; those refusals and all original
+failure attempts remain archived, alongside the subsequent repaired inputs.
+The final run reused only matching passing evidence and has no unresolved cases.
+
+Native GUI/focus/layout execution, Windows UIA/Narrator/NVDA/Magnifier,
+mixed-monitor DPI, physical A/V sync, real Maxine quality/performance and long-soak
+measurements remain separate acceptance. Two old hosted action-row failures were
+traced to a five-button assertion after Open video became the sixth; the shared
+assertion now checks all six and both test binaries compile. Their native rerun
+belongs on the free hosted desktop. No installer or public release is certified.

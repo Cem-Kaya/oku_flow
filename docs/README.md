@@ -8,6 +8,9 @@ the corrected recording/playback contract. The [native archive/player](video_arc
 [OCR uncertainty](uct_uncertainty_repair.md) and [agent actions](video_agent_control.md)
 describe the development implementation and its separate acceptance boundaries.
 
+[GPU video playback](gpu_video_playback.md) documents native GPU conversion,
+private CUDA/presentation ownership, exact image actions and CPU fallback.
+
 [Positioned UCT screen text](uct_screen_text_accessibility.md) describes the
 passive Windows accessibility model. [Video/UCT language review](uct_recap_localization_review_2026_10_18.md)
 records complete small-agent review of the new UI copy.

@@ -4,10 +4,15 @@
 #include <mfidl.h>
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
 namespace okuflow {
+
+// Independent cursor over the exact already held file backing, including its
+// range validator. A quarantined reader cannot race its successor's cursor.
+using VideoReadStreamClone = std::function<HRESULT(IMFByteStream**)>;
 
 // A held Windows file identity. Paths are labels, never identity evidence.
 struct VideoFileIdentity {
@@ -58,7 +63,8 @@ public:
     bool ValidateRange(std::uint64_t generation, std::uint64_t begin,
                        std::uint64_t bytes) const;
     HRESULT OpenReadStream(IMFByteStream** stream,
-                           RecordingArchiveSnapshot* admitted = nullptr) const;
+                           RecordingArchiveSnapshot* admitted = nullptr,
+                           VideoReadStreamClone* clone = nullptr) const;
     static HRESULT Observe(IMFByteStream* underlying,
                            const std::shared_ptr<RecordingArchive>& archive,
                            IMFByteStream** observed);
@@ -70,7 +76,8 @@ private:
 // stream supplies identity and denies writes/deletes for saved media.
 HRESULT OpenStableVideoReadStream(const std::wstring& path,
                                  IMFByteStream** stream,
-                                 VideoFileIdentity* identity);
+                                 VideoFileIdentity* identity,
+                                 VideoReadStreamClone* clone = nullptr);
 // CREATE_NEW preserves exclusive output ownership while FILE_SHARE_READ
 // permits the producer-fenced active parser. Never truncates an existing file.
 HRESULT CreateRecordingArchiveOutputStream(const std::wstring& path,

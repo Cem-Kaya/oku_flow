@@ -119,3 +119,25 @@ Each invocation preserves an explicit QtTest text report under
 `%LOCALAPPDATA%/OkuFlow/test-evidence/immutable-uct/` and replays it to stdout
 with the numeric result, keeping test diagnostics inspectable even when the
 implicit QtTest logger produces no captured output.
+
+## Device inputs and analysis gaps
+
+`UctImmutableFrame::device` optionally carries the exact owned pre-zoom GPU
+image instead of CPU pixels. Admission checks dimensions, pitch, epoch and
+sequence before either inference or decimated validation; a valid CPU image
+remains an input fallback. Advancing device probes release their consumed strong
+scene lease after the worker owns it, while weak identity and receipt validity
+remain separate. Paused one-shot recognition retains its selected input.
+
+`UctAdvancingMediaPresentation` and
+`OnAdvancingMediaPresentedWithoutAnalysis` describe successful displayed frames
+for which analysis was throttled/busy. They update geometry, frame sequence and
+real media PTS without creating an image or refreshing validation. A separate
+display clock prevents stale glyphs surviving a newer scene just because the
+last analysis image is old. Media-time admission and
+`UctTiming::mediaValidationFreshnessMs` (350 ms wall time) bound retention;
+only a real validated frame/probe renews it. Same-frame view receipts can
+reproject without work. Invalid geometry, source/seek changes, backward PTS or
+inconsistent sequence identity revoke text immediately. Late old recognition
+cannot revive expired text. GPU input and gap tests use fake owned device images;
+the CUDA scene fixture separately verifies real device analysis ownership.

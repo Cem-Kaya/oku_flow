@@ -1703,6 +1703,7 @@ MainWindow::MainWindow()
     viewLayout->setSpacing(0);
     viewLayout->addWidget(renderWidget_, 1);
     videoTransport_ = new VideoTransport(viewColumn);
+    videoTransport_->SetFocusReturnTarget(renderWidget_);
     viewLayout->addWidget(videoTransport_);
     contentSplitter_ = new QSplitter(Qt::Horizontal);
     contentSplitter_->setObjectName(QStringLiteral("advancedContentSplitter"));
@@ -4440,8 +4441,9 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         }
         if (watched == renderWidget_ && key->key() == Qt::Key_Space &&
             key->modifiers() == Qt::NoModifier && videoTransport_ &&
-            videoTransport_->isVisible() && videoTransport_->playPauseButton()->isEnabled()) {
-            if (!key->isAutoRepeat()) emit videoTransport_->PlayPauseRequested();
+            videoTransport_->isVisible()) {
+            if (!key->isAutoRepeat() && videoTransport_->IsActionReady(videoTransport_->playPauseButton()))
+                emit videoTransport_->PlayPauseRequested();
             event->accept();
             return true;
         }

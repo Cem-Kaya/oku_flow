@@ -3,10 +3,12 @@
 #if defined(_WIN32) || defined(Q_MOC_RUN)
 
 #include <QElapsedTimer>
+#include <QPointer>
 #include <QString>
 #include <QWidget>
 
 #include <vector>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 class QLabel;
@@ -15,6 +17,7 @@ class QPushButton;
 class QSlider;
 class QEvent;
 class QResizeEvent;
+class QTimer;
 QT_END_NAMESPACE
 
 namespace okuflow {
@@ -48,6 +51,12 @@ public:
     void SetSnapshot(const Snapshot& snapshot);
     const Snapshot& snapshot() const { return snapshot_; }
     void SetUiHidden(bool hidden);
+    // Keyboard focus held inside the bar moves here when the bar hides,
+    // instead of to whichever control Qt would pick next.
+    void SetFocusReturnTarget(QWidget* target);
+    // True when activating the control issues its request now. A control
+    // that holds focus stays enabled but inert while busy or unavailable.
+    bool IsActionReady(const QWidget* control) const;
     std::vector<QWidget*> FocusTargets() const;
     QSlider* timeline() const { return timeline_; }
     QPushButton* playPauseButton() const { return playPauseButton_; }
@@ -67,10 +76,23 @@ protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
-    void RefreshText(bool announce);
+    enum class Gate { Ready, Busy, Unavailable };
+    void UpdateActions();
+    void ApplyGate(QWidget* control, Gate gate);
+    bool SetActionShown(QPushButton* button, bool shown);
+    bool ActionShown(const QWidget* control) const;
+    void MoveFocusFrom(QWidget* leaving, QWidget* preferred);
+    void ReturnFocus();
+    void RefreshText();
+    void ApplyButtonFaces();
+    void ApplyStyle();
+    void RequestAnnouncement();
+    void AnnounceSettledState();
     void RefreshTimeline(bool force);
     void UpdateLayout();
     void CommitSeek(qint64 positionMs);
+    qint64 SeekBaseline() const;
+    std::vector<QPushButton*> ActionButtons() const;
     QString StateText() const;
     static QString TimeText(qint64 milliseconds);
 
@@ -87,11 +109,22 @@ private:
     QPushButton* muteButton_{};
     QWidget* controlsRow_{};
     QGridLayout* controlsLayout_{};
+    QTimer* announcementTimer_{};
+    QPointer<QWidget> focusReturnTarget_;
     QElapsedTimer timelineUpdateClock_;
+    QString lastAnnouncement_;
+    std::optional<qint64> pendingSeekMs_;
+    std::vector<QPushButton*> layoutButtons_;
     bool dragging_{};
     bool updating_{};
     bool uiHidden_{};
+    bool labelled_{};
+    bool muteShown_{true};
+    bool returnShown_{true};
+    bool announcementPending_{};
+    bool applyingStyle_{};
     int layoutColumns_{};
+    int wheelRemainder_{};
     quint64 dragGeneration_{};
 };
 

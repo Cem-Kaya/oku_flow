@@ -12,7 +12,10 @@ OkuFlow relies on several third-party SDKs and code drops. Keep this summary wit
 The development video player/archive and WASAPI playback output use Windows
 Media Foundation, COM and Windows audio APIs from the existing Windows SDK.
 They add first-party code, not a bundled media framework or downloaded codec.
-Native decoding depends on codecs installed on the user's Windows system;
+The preferred GPU player uses the same Windows D3D11 video processor/DXGI
+manager and existing CUDA interop, adding no bundled decoder or media SDK.
+Privately generated codec-test files and the owner's FFmpeg installation are
+not release payloads or application dependencies. Native decoding depends on codecs installed on the user's Windows system;
 successful local AV1 decoding does not grant redistribution rights to an
 external codec extension. Existing Qt accessibility APIs serve the native
 transport under the Qt terms below.

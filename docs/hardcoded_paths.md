@@ -839,3 +839,16 @@ for its repair and following speech. Oversized gaps or unavailable credit stop
 and finalize existing recording output rather than compacting speech. Native
 COM/driver calls retain their separate watchdog limits. See
 [recording timeline evidence](recording_attempts_and_timeline.md).
+
+
+## GPU selected-video resource policy
+
+The GPU decoder admits eight logical BGRA texture allocations / 256 MiB across
+published leases, pool storage, optional private conversion target and deferred
+native release. The CPU decoded allowance remains adaptive 96-256 MiB. These
+are separate from CUDA scene/scratch, analysis/model buffers, driver decoder DPB,
+Original recording and one explicit Save snapshot. No allocation equals a total
+RAM/VRAM ceiling. UCT advancing gap retention uses 350 ms wall validation plus
+real-media freshness; gap receipts cannot renew either. Save's owned GPU clone
+has a three-second asynchronous readback deadline and retains exact identity
+through resize retry/late-result discard. See [GPU playback](gpu_video_playback.md).

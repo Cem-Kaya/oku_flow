@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Prefer native GPU video decode/conversion and a separate CUDA media scene,
+  retaining the CPU compatibility reader. Keep texture leases, seeks and
+  private producer/graphics fences bounded. Apply the shared blur/sharpen,
+  Text Clarity, auto contrast, stabilization, keystone, temporal smoothing and
+  asynchronous Super Resolution pipeline with independent media histories.
+  Preserve exact GPU viewport snapshots for Save Frame, Read/Explain and annotations without a per-frame
+  CPU video copy. Advance UCT's display clock across analysis gaps without
+  fabricating OCR evidence or renewing old text's validation.
+
 - Make video buffering resolution/stride aware under a 256 MiB decoded ceiling.
   Check staging/replacement credit, backpressure retained-frame pressure and
   keep a small saved-file lookahead. New seeks discard queued frames, skip

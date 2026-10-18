@@ -255,8 +255,8 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         if (autoTextClarityEnabled_) {
             return QStringLiteral("Text Clarity");
         }
-        if (cudaSurface_ && cudaSurface_->IsSuperResActive() &&
-            superResPresentedLastFrame_) {
+        if (MediaViewSelected() ? (mediaSuperResPresented_ && mediaGpuScene_ && mediaGpuScene_->IsSuperResActive())
+                                : (cudaSurface_ && cudaSurface_->IsSuperResActive() && superResPresentedLastFrame_)) {
             return QStringLiteral("NVIDIA SuperRes");
         }
         if (spatialSharpenEnabled_) {
@@ -276,6 +276,13 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         detail = text;
         color = errorColor;
         politeness = LivePoliteness::kAssertive;
+    } else if (MediaViewSelected() && SelectedMediaGpuProcessingAvailable()) {
+        text = mediaGpuScene_ && mediaGpuScene_->SceneReady()
+            ? QStringLiteral("GPU Ready") : QStringLiteral("Opening video\u2026");
+        detail = QStringLiteral("Processing: GPU (%1)").arg(backendLabel());
+        if (mediaGpuScene_ && !mediaGpuScene_->SuperResStatus().empty())
+            detail.append(QStringLiteral(", %1").arg(QString::fromStdString(mediaGpuScene_->SuperResStatus())));
+        color = readyColor;
     } else if (MediaViewSelected()) {
         text = QStringLiteral("Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.");
         detail = text;
@@ -456,7 +463,18 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
     QString superResLogState = QStringLiteral("off");
     QString superResLogMessage = superResStatus;
     bool superResActive = false;
-    if (mlTextSuperResolutionEnabled_ && !MediaViewSelected()) {
+    if (mlTextSuperResolutionEnabled_ && MediaViewSelected()) {
+        // Diagnostics must describe the selected private scene, never the
+        // hidden camera's independent model/cache or performance latch.
+        superResActive = mediaSuperResPresented_ && mediaGpuScene_ && mediaGpuScene_->IsSuperResActive();
+        superResStatus = !SelectedMediaGpuProcessingAvailable()
+            ? QStringLiteral("Video playback: zoom, rotation, reading colors and UCT. Advanced GPU effects are unavailable.")
+            : mediaGpuScene_ && !mediaGpuScene_->SuperResStatus().empty()
+                ? QString::fromStdString(mediaGpuScene_->SuperResStatus())
+                : QStringLiteral("Starting NVIDIA Super Resolution");
+        superResLogState = superResActive ? QStringLiteral("active") : QStringLiteral("media-pending");
+        superResLogMessage = superResStatus;
+    } else if (mlTextSuperResolutionEnabled_) {
         if (!mlTextSuperResolutionUltra1440p_ &&
             (!zoomEnabled_ || zoomAmount_ < 1.33f)) {
             superResStatus = QStringLiteral(
@@ -539,7 +557,8 @@ void OkuFlowApp::UpdateProcessingStatusLabel() {
         mainWindow_->setSuperResStatus(
             superResStatus,
             superResActive,
-            !MediaViewSelected() && cudaSurface_ && cudaSurface_->IsSuperResPerformanceLimited());
+            MediaViewSelected() ? (mediaGpuScene_ && mediaGpuScene_->IsSuperResPerformanceLimited())
+                                : (cudaSurface_ && cudaSurface_->IsSuperResPerformanceLimited()));
     }
     if (superResLogState != lastSuperResLogState_) {
         qInfo().noquote() << "NVIDIA Super Resolution:"

@@ -69,8 +69,10 @@ acceptance; this is a documented integration limitation, not a claim that every
 screen reader fails or works. Partial/disjoint character-range clipping and
 mixed-monitor scaling also retain Qt adapter limits.
 
-Current selected-media viewing supports CPU zoom, rotation, reading colors and
-UCT. Advanced GPU effects are explicitly unavailable. Exact live-recording Pause
+Selected-media viewing supports zoom, rotation, reading colors and UCT through
+the CPU compatibility or preferred GPU scene. The later full-effects GPU
+integration uses shared camera/video settings with independent media history;
+CPU-only rendering retains its restricted subset. Exact live-recording Pause
 refuses an actually displayed composite/warp/neural/unsupported recipe instead
 of substituting different pixels. Saved recordings always remain clean Original.
 
@@ -80,3 +82,56 @@ installer or public release acceptance. The owner reserved the desktop for this
 integration run; native GUI cases remain pending. Test evidence and original
 failures stay in the tracked LocalAppData ledger. See
 [implementation and validation](accessible_video_implementation.md).
+
+## GPU integration review follow-up
+
+Muse Wonderful implemented and reviewed the independent CUDA scene, device UCT
+inputs and analysis-gap continuity. Grok 4.7 High separately reviewed decoder
+ownership and app integration. Opus reviewed transport usability and low-level
+app wiring, then received separate implementation assignments for each scope.
+The coordinator verified the reported paths before applying or assigning fixes.
+Review is evidence of code inspection, not native desktop or device acceptance.
+
+| Verified issue | Repair |
+| --- | --- |
+| Failed or timed-out video-processor work could release the decoder sample/reader or poll a query never ended | Capture the entire native owner before Blt; never poll an unended query; quarantine unknown completion. |
+| A fallback reader could share a quarantined reader's byte-stream cursor | Clone independent cursors over the same held file backing and range policy. |
+| Temporary pressure or an ordinary stale/seek failure could latch CPU compatibility | Separate typed GPU incompatibility from allocation pressure and request validity. |
+| Shared video-processor targets are rejected by some drivers | Capability fallback uses a private processor target and GPU copy, under the same allocation budget. |
+| Eight-bit negotiation could silently discard a higher-precision native source | Prefer appropriate high-precision output and verify actual decoder precision on 10-bit fixtures. |
+| A queued private-fence wait could outlive its unretained native fence | Retain the fence before Wait, after admission checks; retire only behind proven global-queue completion. |
+| Presenter lifetime holds accumulated every prior source | Bounded worker retirement follows each source's actual global read fence. |
+| Observe paired new pixels with the previous displayed sample's sequence/PTS | Build media observation authority from the exact submitted candidate. |
+| Read/Explain and image attachments could capture a decoder successor | Pin the displayed sample and submit its copy during the click turn. |
+| Ink capture rejected a replaced scene before attempting recovery | Regenerate the actual selected frame before reading its annotation authority. |
+
+Native conversion, CUDA scene and window-free presenter fixtures exercise real
+GPU operations. App fixtures use the real target under Qt offscreen. Their
+precise final results and any remaining gaps belong in the validation record;
+none of these fixtures claims visible UIA, screen-reader, HDR or A/V acceptance.
+
+The full-effects Muse follow-up found additional app seams: multi-part observation
+PTS needed the document offset; first GPU candidates needed explicit backend
+provenance; view retries could discard a valid OCR lease or drain its attempt
+budget; resize-dropped annotation readbacks lacked media expiry; and paused
+keystone/SR status lacked refresh. Repairs address those paths separately from
+GPU decoding. The coordinator also revoked prior-document display receipts on
+new-file adoption and preserved unknown GPU diagnostic state until proven.
+
+
+The final Muse regression round added hardware-free real-app checks for unknown
+first-GPU diagnostics, retained exact UCT leases and bounded retries, and the
+one-second annotation expiry while media is selected. The coordinator closed its
+remaining admission concern by validating incoming OCR identity before storage,
+rather than waiting for another replay. Multi-part PTS remains code-reviewed;
+a real multi-segment recording is still separate acceptance.
+
+The pre-update hosted CPU check failed two layout cases because their shared
+assertion inventoried five actions after Open video became the sixth. The
+assertion now includes the real sixth button; all geometry requirements remain.
+Native execution of those two cases is deferred to the free hosted desktop.
+The first local GPU matrix exposed a fixture still expecting three queued CPU
+uploads. The fixture now verifies the intentional one-in-flight bound, unchanged
+scene/fence/history on repeated busy admission, nonblocking return and exact
+owned queued pixels after releasing the private graphics gate. The failure and
+original evidence are retained.

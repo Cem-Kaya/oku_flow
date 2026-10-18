@@ -728,8 +728,10 @@ HRESULT RecordingArchive::Observe(IMFByteStream* stream, const std::shared_ptr<R
     auto observed = Make<ObservedStream>(stream, archive->state_);
     return observed ? observed.CopyTo(result) : E_OUTOFMEMORY;
 }
-HRESULT OpenStableVideoReadStream(const std::wstring& path, IMFByteStream** stream, VideoFileIdentity* identity) {
+HRESULT OpenStableVideoReadStream(const std::wstring& path, IMFByteStream** stream, VideoFileIdentity* identity,
+    VideoReadStreamClone* clone) {
     if (!stream || !identity) return E_POINTER; *stream = nullptr;
+    if (clone) *clone = {};
     auto backing = std::make_shared<FileBacking>();
     backing->handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -737,7 +739,9 @@ HRESULT OpenStableVideoReadStream(const std::wstring& path, IMFByteStream** stre
     *identity = Identity(backing->handle);
     if (!identity->valid) return HRESULT_FROM_WIN32(ERROR_FILE_INVALID);
     backing->length = identity->sizeBytes;
-    return MakeStream(std::move(backing), stream);
+    const auto result=MakeStream(backing,stream);
+    if(SUCCEEDED(result) && clone)*clone=[backing](IMFByteStream** output){return MakeStream(backing,output);};
+    return result;
 }
 HRESULT CreateRecordingArchiveOutputStream(const std::wstring& path, IMFByteStream** stream) {
     if (!stream) return E_POINTER; *stream = nullptr;
@@ -748,8 +752,10 @@ HRESULT CreateRecordingArchiveOutputStream(const std::wstring& path, IMFByteStre
     backing->writable = true;
     return MakeStream(std::move(backing), stream);
 }
-HRESULT RecordingArchive::OpenReadStream(IMFByteStream** stream, RecordingArchiveSnapshot* admitted) const {
+HRESULT RecordingArchive::OpenReadStream(IMFByteStream** stream, RecordingArchiveSnapshot* admitted,
+    VideoReadStreamClone* clone) const {
     if (!stream) return E_POINTER; *stream = nullptr;
+    if (clone) *clone = {};
     const auto snap = Snapshot();
     if (snap.verifiedMediaBytes == 0 || snap.seekableEnd100ns < 0 ||
         !ValidateRange(snap.generation, 0, snap.verifiedMediaBytes)) return MF_E_NOT_AVAILABLE;
@@ -768,7 +774,9 @@ HRESULT RecordingArchive::OpenReadStream(IMFByteStream** stream, RecordingArchiv
     };
     backing->generation = snap.generation; backing->length = snap.verifiedMediaBytes;
     if (admitted) *admitted = snap;
-    return MakeStream(std::move(backing), stream);
+    const auto result=MakeStream(backing,stream);
+    if(SUCCEEDED(result) && clone)*clone=[backing](IMFByteStream** output){return MakeStream(backing,output);};
+    return result;
 }
 } // namespace okuflow
 #endif

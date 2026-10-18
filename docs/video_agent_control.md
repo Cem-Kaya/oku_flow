@@ -61,12 +61,21 @@ Read/Explain keeps its separate existing authorization. `capture.photo.take`
 remains next-live-camera semantics and is unavailable while selected media is
 being displayed; use Save frame for the displayed scene.
 
-Selected playback uses the CPU path for magnification, pan, fit, source threshold,
-contrast/brightness and reading-color recipes. UCT model preferences retain their
-separate native/backend reporting. Unsupported CUDA-only image changes return
-`unavailable`, and grouped image reads report `selected_media_cpu_path` with null
-effective values. Discovery does not claim CUDA stabilization, adaptive clarity,
-blur, spatial sharpening or Maxine processing for selected playback.
+Selected playback uses the same production processing settings as the camera
+when CUDA processing is available: blur/sharpen, Text Clarity, auto contrast,
+stabilization, keystone, temporal smoothing and Super Resolution, in addition to
+pan/zoom, orientation and reading colors. Native controls and MCP setters use
+`SelectedMediaGpuProcessingAvailable` for capability; a CPU decoder can still
+feed GPU processing. Effective values instead use the backend of the last
+successful display receipt (`gpu_selected_media` or `cpu_selected_media`). A
+preparing GPU scene reports `no_processed_frame`, rather than treating a hidden
+camera's output as effective video processing. `SelectedMediaImageFieldAvailable`
+retains the CPU compatibility whitelist and excludes camera Debug. Debug and
+live-camera AutoAdjust remain outside selected-media processing. Unsupported
+writes return `unavailable`; unsupported effective values remain null with
+`selected_media_unsupported_effect`. Keystone Step and SR performance override
+route to the independent media helper; UCT model preferences keep their own
+native/backend reporting.
 
 `recording.canvas` remains legacy enum metadata only. Its runtime value reports
 `source`, `writable=false`, `unsupportedReason=deprecated_original_only`, and no

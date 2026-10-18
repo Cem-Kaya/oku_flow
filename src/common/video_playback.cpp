@@ -45,6 +45,9 @@ struct Command {
     CommandKind kind{CommandKind::None}; std::uint64_t generation{};
     std::wstring path; std::shared_ptr<RecordingArchive> archive;
     std::int64_t target{}; Clock::time_point queued{};
+    std::optional<LUID> gpuAdapter;
+    bool forceCpu{};
+    std::string backendReason;
 };
 std::string Error(const char* text, HRESULT hr) {
     char code[32]{}; std::snprintf(code, sizeof(code), " (0x%08lx)", static_cast<unsigned long>(hr));
@@ -55,10 +58,13 @@ struct DecodeFailure : std::runtime_error { using std::runtime_error::runtime_er
 struct Reader {
     ComPtr<IMFSourceReader> source;
     ComPtr<IMFByteStream> bytes;
+    VideoReadStreamClone cloneRead;
+    ComPtr<IMFMediaType> nativeMetadata;
     VideoFileIdentity file;
     std::shared_ptr<RecordingArchive> archive;
     RecordingArchiveSnapshot archiveAdmission;
     std::uint32_t width{}, height{}, stride{}, rotation{}, parN{1}, parD{1};
+    std::uint32_t gpuComponentBits{};
     std::uint32_t videoStreamIndex{};
     std::uint32_t audioRate{}, audioChannels{};
     std::int64_t duration{};
@@ -70,19 +76,26 @@ struct Reader {
     std::int64_t lastDecodedPts{-1};
     std::int64_t decodeCost100ns{10'000};
     VideoPlaybackMemoryPlan memory;
+    std::shared_ptr<VideoGpuDecoder> gpu;
     std::weak_ptr<const VideoPlaybackFrame> cachedSeekFrame;
     std::int64_t cachedSeekLowerBound{};
     bool cachedSeekEnded{},needsReposition{};
     void Reset() {
-        source.Reset(); bytes.Reset(); archive.reset(); lastDecodedPts = -1; memory = {};
+        // The decoder drops a completed conversion sample before its reader;
+        // an unknown-completion closure stays quarantined inside the decoder
+        // (with its own reader reference), so releasing our refs below can
+        // never free a sample or reader the GPU may still touch.
+        if (gpu) gpu->DetachSourceReader();
+        gpu.reset(); source.Reset(); nativeMetadata.Reset(); bytes.Reset(); cloneRead={}; archive.reset(); lastDecodedPts = -1; memory = {};
         cachedSeekFrame.reset();needsReposition=false;
-        width = height = stride = rotation = audioRate = audioChannels = 0;
+        width = height = stride = rotation = audioRate = audioChannels = gpuComponentBits = 0;
         duration = 0; audioFloor100ns = audioEnd100ns = 0; audioEos = false;
         hasAudio = audioAvailable = eos = incomplete = false;
         parN = parD = 1; file = {}; archiveAdmission = {};
     }
 };
 bool HasDecodeCredit(const Reader& r, const std::shared_ptr<PixelBudget>& pool) {
+    if(r.gpu)return r.gpu->HasConversionCredit();
     const auto needed=r.memory.workingBytes;
     const auto limit=pool->limit.load();
     return needed && needed <= limit && pool->bytes.load() <= limit - needed;
@@ -92,6 +105,9 @@ struct VideoPlayback::State {
     mutable std::mutex mutex; std::condition_variable changed;
     std::atomic<bool> stop{}; std::atomic<std::uint64_t> generation{};
     Command pending;
+    std::optional<LUID> gpuAdapter;
+    bool cpuFallback{};
+    std::string backendReason;
     VideoPlaybackSnapshot snapshot;
     std::deque<std::shared_ptr<const VideoPlaybackFrame>> ready;
     bool prepareNeighbor{};
@@ -126,8 +142,9 @@ bool ReadyEmpty(VideoPlayback::State& s) {
     std::lock_guard lock(s.mutex);return s.ready.empty();
 }
 bool WaitForDecodeCredit(Reader& r,VideoPlayback::State& s,std::uint64_t generation,
-                         Clock::time_point deadline,const std::shared_ptr<const VideoPlaybackFrame>& previous) {
+                         Clock::time_point deadline,std::shared_ptr<const VideoPlaybackFrame>& previous) {
     const auto credit=[&] {
+        if(r.gpu)return r.gpu->HasConversionCredit();
         // A seek-local predecessor can be dropped AFTER a real replacement
         // sample arrives. Keep it across a no-sample EOS read, which needs
         // staging alone and must retain the actual last image.
@@ -137,6 +154,11 @@ bool WaitForDecodeCredit(Reader& r,VideoPlayback::State& s,std::uint64_t generat
         const auto limit=s.pixels->limit.load();
         return needed<=limit && s.pixels->bytes.load()<=limit-needed;
     };
+    // A GPU predecessor lease can itself hold the conversion slot being
+    // waited for. Drop that optional lease before waiting (only under actual
+    // pressure), mirroring the CPU copy path's pre-allocation release;
+    // waiting while holding it could never free credit.
+    if(r.gpu && previous && previous->gpu && !credit())previous.reset();
     while(s.Current(generation) && !credit()) {
         std::unique_lock lock(s.mutex);
         s.snapshot.neighborFrame.reset(); // optional; external leases remain honestly charged
@@ -156,6 +178,27 @@ std::int64_t PlaybackNowLocked(const VideoPlayback::State& s, Clock::time_point 
 void ConfigureVideo(Reader& r) {
     ComPtr<IMFMediaType> type;
     Check(r.source->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &type), "Read decoded video format");
+    if(r.gpu) {
+        if(r.nativeMetadata)for(const auto& key:{MF_MT_MINIMUM_DISPLAY_APERTURE,MF_MT_GEOMETRIC_APERTURE,
+            MF_MT_PIXEL_ASPECT_RATIO,MF_MT_VIDEO_ROTATION,MF_MT_TRANSFER_FUNCTION,MF_MT_VIDEO_PRIMARIES,
+            MF_MT_YUV_MATRIX,MF_MT_VIDEO_NOMINAL_RANGE,MF_MT_INTERLACE_MODE}) {
+            PROPVARIANT value;PropVariantInit(&value);MF_ATTRIBUTE_TYPE kind{};
+            UINT32 scalar{};
+            const bool scalarUnknown=(key==MF_MT_YUV_MATRIX || key==MF_MT_VIDEO_NOMINAL_RANGE ||
+                key==MF_MT_TRANSFER_FUNCTION || key==MF_MT_VIDEO_PRIMARIES || key==MF_MT_INTERLACE_MODE) &&
+                SUCCEEDED(type->GetUINT32(key,&scalar)) && scalar==0;
+            if((FAILED(type->GetItemType(key,&kind)) || scalarUnknown) &&
+               SUCCEEDED(r.nativeMetadata->GetItem(key,&value)))type->SetItem(key,value);
+            PropVariantClear(&value);
+        }
+        const auto format=r.gpu->SetFormat(type.Get());
+        r.gpuComponentBits=format.subtype==MFVideoFormat_P010 || format.subtype==MFVideoFormat_Y410?10:
+            format.subtype==MFVideoFormat_P016 || format.subtype==MFVideoFormat_Y416?16:8;
+        r.width=format.squareWidth;r.height=format.height;r.stride=r.width*4;r.rotation=format.rotation;r.parN=r.parD=1;
+        const auto plan=PlanVideoPlaybackMemory(r.width,r.height,r.stride,1,1,bool(r.archive));
+        if(!plan)throw std::runtime_error("GPU playback working dimensions exceed admission.");
+        r.memory=*plan;return;
+    }
     GUID subtype{}; Check(type->GetGUID(MF_MT_SUBTYPE, &subtype), "Read decoded video subtype");
     if (subtype != MFVideoFormat_RGB32 && subtype != MFVideoFormat_ARGB32)
         throw std::runtime_error("The decoder did not provide bounded BGRA video.");
@@ -178,30 +221,142 @@ void ConfigureVideo(Reader& r) {
     if(!memory)throw std::runtime_error("The decoded working set exceeds the playback memory ceiling.");
     r.memory=*memory;
 }
+bool IsHighPrecisionFormat(const GUID& format) {
+    return format == MFVideoFormat_P010 || format == MFVideoFormat_P016 ||
+           format == MFVideoFormat_Y410 || format == MFVideoFormat_Y416;
+}
+// Coded precision proven by the container's standardized codec-config
+// record inside the native type's sample description, when present and
+// well-formed. Unknown stays unknown: negotiation then follows the
+// installed decoder's own preference order instead of guessing.
+std::optional<unsigned> CodedBitsPerComponent(IMFMediaType* native, const GUID& coded) {
+    UINT32 blobSize{};
+    std::vector<std::uint8_t> blob;
+    if (SUCCEEDED(native->GetBlobSize(MF_MT_MPEG4_SAMPLE_DESCRIPTION, &blobSize)) &&
+        blobSize && blobSize <= 64u * 1024) {
+        blob.resize(blobSize); UINT32 actual{};
+        if (FAILED(native->GetBlob(MF_MT_MPEG4_SAMPLE_DESCRIPTION, blob.data(), blobSize, &actual)))
+            blob.clear();
+        else blob.resize(actual);
+    }
+    const auto record = [&](const char* fourcc) -> const std::uint8_t* {
+        for (std::size_t i = 0; i + 4 <= blob.size(); ++i)
+            if (std::memcmp(blob.data() + i, fourcc, 4) == 0) return blob.data() + i + 4;
+        return nullptr;
+    };
+    const auto remaining = [&](const std::uint8_t* at) -> std::size_t {
+        return at ? std::size_t(blob.data() + blob.size() - at) : 0;
+    };
+    if (coded == MFVideoFormat_AV1) {
+        // AV1CodecConfigurationRecord: marker|version, seq_profile/level,
+        // then tier, high_bitdepth, twelve_bit flag bits.
+        const auto* r = record("av1C");
+        if (r && remaining(r) >= 4 && (r[0] & 0x80) && (r[0] & 0x7f) == 1)
+            return (r[2] & 0x20) ? 12u : ((r[2] & 0x40) ? 10u : 8u);
+    } else if (coded == MFVideoFormat_HEVC) {
+        // HEVCDecoderConfigurationRecord byte 17 low bits: bitDepthLumaMinus8.
+        const auto* r = record("hvcC");
+        if (r && remaining(r) >= 19 && r[0] == 1) return 8u + (r[17] & 0x7u);
+        const auto profile = MFGetAttributeUINT32(native, MF_MT_MPEG2_PROFILE, 0);
+        if (profile == 1) return 8u;         // Main
+        if (profile == 2) return 10u;        // Main 10
+    } else if (coded == MFVideoFormat_VP90) {
+        // VPCodecConfigurationRecord full box: version, flags, profile,
+        // level, then bitDepth in the high nibble.
+        const auto* r = record("vpcC");
+        if (r && remaining(r) >= 7 && r[0] <= 1 && r[4] <= 3) {
+            const unsigned bits = r[6] >> 4;
+            if (bits == 8 || bits == 10 || bits == 12) return bits;
+        }
+    }
+    return std::nullopt;
+}
 void ConfigureReader(Reader& r, const Command& cmd) {
     if (cmd.archive) {
         r.archive = cmd.archive;
-        Check(cmd.archive->OpenReadStream(&r.bytes, &r.archiveAdmission), "Active recording is not yet safely readable");
+        if(!r.bytes)Check(cmd.archive->OpenReadStream(&r.bytes, &r.archiveAdmission,&r.cloneRead), "Active recording is not yet safely readable");
         r.file = r.archiveAdmission.file; r.duration = r.archiveAdmission.duration100ns;
         r.incomplete = r.archiveAdmission.finalized && !r.archiveAdmission.complete;
-    } else Check(OpenStableVideoReadStream(cmd.path, &r.bytes, &r.file), "Open a stable read-only video handle");
+    } else if(!r.bytes)Check(OpenStableVideoReadStream(cmd.path, &r.bytes, &r.file,&r.cloneRead), "Open a stable read-only video handle");
     ComPtr<IMFAttributes> attrs; Check(MFCreateAttributes(&attrs, 4), "Create playback attributes");
-    Check(attrs->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE), "Enable native BGRA conversion");
-    Check(attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, FALSE), "Select bounded CPU decode output");
+    if(cmd.gpuAdapter && !cmd.forceCpu) {
+        r.gpu=VideoGpuDecoder::Create(*cmd.gpuAdapter);r.gpu->ConfigureReader(attrs.Get());
+    } else {
+        Check(attrs->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE), "Enable native BGRA conversion");
+        Check(attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, FALSE), "Select bounded CPU decode output");
+    }
     Check(MFCreateSourceReaderFromByteStream(r.bytes.Get(), attrs.Get(), &r.source), "Open native video decoder");
+    if(r.gpu)r.gpu->AttachSourceReader(r.source.Get());
     Check(r.source->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE), "Select playback tracks");
     Check(r.source->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE), "Select video track");
     ComPtr<IMFMediaType> nativeVideo;
     Check(r.source->GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &nativeVideo), "Probe coded video format");
+    r.nativeMetadata=nativeVideo;
     UINT32 codedWidth{}, codedHeight{};
     Check(MFGetAttributeSize(nativeVideo.Get(), MF_MT_FRAME_SIZE, &codedWidth, &codedHeight), "Probe coded video dimensions");
     if (!VideoPlaybackLayoutFits(codedWidth, codedHeight, std::int64_t(codedWidth) * 4))
         throw std::runtime_error("Coded video dimensions exceed playback admission limits.");
     ComPtr<IMFMediaType> output; Check(MFCreateMediaType(&output), "Create decoded video type");
-    output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); output->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-    Check(r.source->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, output.Get()), "Request BGRA video");
+    output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    if(r.gpu) {
+        // Negotiate formats, not a codec-name allowlist. An installed
+        // decoder may accept a partial type it merely tolerates and then
+        // stall inside the first native read (observed when forcing a
+        // 10-bit output type for an 8-bit stream whose decoder lists that
+        // type last), so attempt order follows evidence instead of a fixed
+        // precision-first list: proven coded precision first, then the
+        // decoder's own offered-type preference, then the previous
+        // opportunistic order when neither is known. High-bit-depth and
+        // packed output remain eligible in every case.
+        bool selected{};
+        GUID codedSubtype{};nativeVideo->GetGUID(MF_MT_SUBTYPE,&codedSubtype);
+        const auto profile=MFGetAttributeUINT32(nativeVideo.Get(),MF_MT_MPEG2_PROFILE,0);
+        // H.264 baseline/main/high are 8-bit.
+        const bool knownEightBitAvc=codedSubtype==MFVideoFormat_H264 && profile<110;
+        auto provenBits=CodedBitsPerComponent(nativeVideo.Get(),codedSubtype);
+        if(!provenBits && knownEightBitAvc)provenBits=8u;
+        const std::array<GUID,9> highPrecision{MFVideoFormat_P010,MFVideoFormat_P016,MFVideoFormat_Y410,
+            MFVideoFormat_Y416,MFVideoFormat_NV12,MFVideoFormat_YUY2,MFVideoFormat_AYUV,MFVideoFormat_ARGB32,MFVideoFormat_RGB32};
+        const std::array<GUID,9> eightBit{MFVideoFormat_NV12,MFVideoFormat_P010,MFVideoFormat_P016,MFVideoFormat_YUY2,
+            MFVideoFormat_AYUV,MFVideoFormat_Y410,MFVideoFormat_Y416,MFVideoFormat_ARGB32,MFVideoFormat_RGB32};
+        const auto offered=r.gpu->DecoderPreferredOutputs(nativeVideo.Get());
+        std::vector<GUID> offeredSupported;
+        for(const auto& format:offered)
+            if(std::find(highPrecision.begin(),highPrecision.end(),format)!=highPrecision.end() &&
+               std::find(offeredSupported.begin(),offeredSupported.end(),format)==offeredSupported.end())
+                offeredSupported.push_back(format);
+        std::vector<GUID> order;
+        const auto append=[&](const GUID& format) {
+            if(std::find(order.begin(),order.end(),format)==order.end())order.push_back(format);
+        };
+        if(provenBits && *provenBits>8) {
+            for(const auto& format:offeredSupported)if(IsHighPrecisionFormat(format))append(format);
+            for(const auto& format:highPrecision)if(IsHighPrecisionFormat(format))append(format);
+            for(const auto& format:offeredSupported)append(format);
+            for(const auto& format:highPrecision)append(format);
+        } else if(provenBits) {
+            for(const auto& format:offeredSupported)if(!IsHighPrecisionFormat(format))append(format);
+            for(const auto& format:highPrecision)if(!IsHighPrecisionFormat(format))append(format);
+            for(const auto& format:offeredSupported)append(format);
+            for(const auto& format:highPrecision)append(format);
+        } else if(!offeredSupported.empty()) {
+            for(const auto& format:offeredSupported)append(format);
+            for(const auto& format:highPrecision)if(!IsHighPrecisionFormat(format))append(format);
+            for(const auto& format:highPrecision)append(format);
+        } else {
+            for(const auto& format:knownEightBitAvc?eightBit:highPrecision)append(format);
+        }
+        for(const auto& format:order) {
+            output->SetGUID(MF_MT_SUBTYPE,format);
+            if(SUCCEEDED(r.source->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM,nullptr,output.Get()))) {selected=true;break;}
+        }
+        if(!selected)throw VideoGpuIncompatible("No installed GPU-compatible decoder output type was accepted.");
+    } else {
+        output->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+        Check(r.source->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, output.Get()), "Request BGRA video");
+    }
     ConfigureVideo(r);
-    if (nativeVideo) {
+    if (nativeVideo && !r.gpu) {
         UINT32 rotation{}; UINT32 numerator{}, denominator{};
         if (SUCCEEDED(nativeVideo->GetUINT32(MF_MT_VIDEO_ROTATION, &rotation)) &&
             (rotation == 0 || rotation == 90 || rotation == 180 || rotation == 270)) r.rotation = rotation;
@@ -328,12 +483,17 @@ std::shared_ptr<const VideoPlaybackFrame> CopyFrame(Reader& r, IMFSample* sample
     return frame;
 }
 bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
-               std::shared_ptr<const VideoPlaybackFrame>& frame,
+               std::shared_ptr<const VideoPlaybackFrame>& frame, Clock::time_point deadline,
                std::shared_ptr<const VideoPlaybackFrame>* optionalPrevious = nullptr,
                std::int64_t minimumCopiedPts = -1) {
     if(!state.Current(gen))return false;
+    // Never start a new native read on a reader whose previous MF sample is
+    // still retained by an unsafe conversion; fall back through the typed
+    // error instead of risking the decoder pool.
+    if(r.gpu && r.gpu->HasUnsafePending())
+        throw VideoGpuIncompatible("GPU playback conversion is retained with unknown completion; using CPU playback.");
     const auto started=Clock::now();
-    const auto staging = r.memory.stagingBytes;
+    const auto staging = r.gpu?0:r.memory.stagingBytes;
     ReservePixels(state.pixels, staging);
     struct StagingLease {
         std::shared_ptr<PixelBudget> pool; std::size_t bytes;
@@ -342,23 +502,55 @@ bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
     DWORD stream{}, flags{}; LONGLONG time{}; ComPtr<IMFSample> sample;
     const auto readHr = r.source->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0,
         &stream, &flags, &time, &sample);
-    if (FAILED(readHr)) throw DecodeFailure(Error("Decode video sample", readHr));
+    if (FAILED(readHr)) {
+        if(r.archive && !r.archive->ValidateRange(r.archiveAdmission.generation,0,r.archiveAdmission.verifiedMediaBytes))
+            throw std::runtime_error("Recording bytes changed during native decode; seek again.");
+        if(r.gpu)throw VideoGpuIncompatible(Error("Decode GPU video sample",readHr));
+        throw DecodeFailure(Error("Decode video sample",readHr));
+    }
     if (!state.Current(gen)) return false;
     r.videoStreamIndex = stream;
     if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED) {ConfigureVideo(r);AdmitReaderMemory(r,state,gen);}
-    if (std::uint64_t(r.stride) * r.height > staging)
+    if (!r.gpu && std::uint64_t(r.stride) * r.height > staging)
         throw std::runtime_error("Video format changed beyond the admitted decoded staging size.");
-    if (flags & MF_SOURCE_READERF_ERROR) throw DecodeFailure("Native video source reported a decoder error.");
+    if (flags & MF_SOURCE_READERF_ERROR) {
+        // Same classified GPU fault as a failed ReadSample HRESULT above: a
+        // decoder stream error on the GPU reader latches CPU compatibility
+        // for this document instead of ending it as generically incomplete.
+        if (r.archive && !r.archive->ValidateRange(r.archiveAdmission.generation,0,r.archiveAdmission.verifiedMediaBytes))
+            throw std::runtime_error("Recording bytes changed during native decode; seek again.");
+        if (r.gpu) throw VideoGpuIncompatible("Native GPU video decoder reported a stream error; using CPU playback.");
+        throw DecodeFailure("Native video source reported a decoder error.");
+    }
     if(sample)r.lastDecodedPts=time;
     // Seek preroll still goes through the native codec (its references are
     // required), but discarded frames need no owned BGRA copy or alpha sweep.
     if (sample && (minimumCopiedPts<0 || time>=minimumCopiedPts)) {
+        if(r.gpu) {
+            if(!VideoPlaybackTimestampFits(time))throw std::runtime_error("GPU playback returned an invalid timestamp.");
+            auto owned=std::make_shared<VideoPlaybackFrame>();
+            // Mirror the CPU branch: a superseded optional predecessor must
+            // not hold the conversion credit this real replacement needs.
+            if(optionalPrevious && *optionalPrevious && (*optionalPrevious)->gpu &&
+               !r.gpu->HasConversionCredit())optionalPrevious->reset();
+            owned->gpu=r.gpu->Convert(sample.Get(),[&]{return state.Current(gen);},deadline);
+            if(!owned->gpu || !state.Current(gen))return false;
+            owned->width=r.width;owned->height=r.height;owned->strideBytes=r.width*4;
+            owned->rotationDegrees=r.rotation;owned->pts100ns=time;sample->GetSampleDuration(&owned->duration100ns);
+            if(!VideoPlaybackTimestampFits(time,owned->duration100ns))throw std::runtime_error("GPU playback returned an invalid duration.");
+            owned->requestGeneration=gen;owned->archiveGeneration=r.archiveAdmission.generation;
+            owned->sampleId=std::uint64_t(time);owned->videoTrackId=r.archive?r.archiveAdmission.videoTrackId:r.videoStreamIndex;
+            if(r.archive && !r.archive->ValidateRange(r.archiveAdmission.generation,0,r.archiveAdmission.verifiedMediaBytes))
+                throw std::runtime_error("Recording bytes changed during GPU decode; seek again.");
+            frame=std::move(owned);
+        } else {
         const auto squareWidth = (std::uint64_t(r.width) * r.parN + r.parD / 2) / r.parD;
         const auto destination = squareWidth * r.height * 4;
         const auto limit=state.pixels->limit.load();
         if (optionalPrevious && (destination > limit ||
             state.pixels->bytes.load() > limit - destination)) optionalPrevious->reset();
         frame = CopyFrame(r, sample.Get(), time, gen, state.pixels); r.lastDecodedPts = frame->pts100ns;
+        }
     }
     if (flags & MF_SOURCE_READERF_ENDOFSTREAM) r.eos = true;
     const auto cost=std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-started).count()/100;
@@ -366,6 +558,10 @@ bool ReadVideo(Reader& r, VideoPlayback::State& state, std::uint64_t gen,
     return sample != nullptr;
 }
 void SeekReader(Reader& r, std::int64_t target) {
+    // No new native seek on a reader whose sample is retained by an unsafe
+    // conversion; the typed error routes to a fresh CPU reader instead.
+    if(r.gpu && r.gpu->HasUnsafePending())
+        throw VideoGpuIncompatible("GPU playback conversion is retained with unknown completion; using CPU playback.");
     if (!VideoPlaybackTimestampFits(target)) throw std::runtime_error("Seek target exceeds the supported host-clock range.");
     PROPVARIANT position; PropVariantInit(&position); position.vt = VT_I8; position.hVal.QuadPart = std::max<std::int64_t>(0, target);
     Check(r.source->SetCurrentPosition(GUID_NULL, position), "Seek native video source"); r.eos = false; r.lastDecodedPts = -1;
@@ -456,6 +652,9 @@ void Publish(VideoPlayback::State& s, Reader& r, const Command& cmd,
     s.snapshot.hasAudio = r.hasAudio; s.snapshot.audioAvailable = r.audioAvailable;
     s.snapshot.activeRecording = r.archive && !r.archiveAdmission.finalized;
     s.snapshot.incomplete = r.incomplete; s.snapshot.error.clear();
+    s.snapshot.gpuResident=bool(s.snapshot.frame && s.snapshot.frame->gpu);
+    s.snapshot.gpuDecodedBitsPerComponent=r.gpu?r.gpuComponentBits:0;
+    s.snapshot.backendReason=s.backendReason;
     s.snapshot.memoryPressure=false;
     s.snapshot.lastRequestReadCount=reads;
     s.snapshot.lastRequestCopiedFrames=copies;
@@ -465,6 +664,29 @@ void Publish(VideoPlayback::State& s, Reader& r, const Command& cmd,
     s.neighborNotBefore=Clock::now()+std::chrono::milliseconds(50);
     s.operationStart = {};
     if (s.snapshot.frame) { s.clockPts = s.snapshot.frame->pts100ns; s.clockStart = Clock::now(); }
+}
+// Same-worker, same-generation CPU fallback for a genuine GPU fault found
+// outside an open/seek command (playback, neighbor preparation, archive
+// refresh). Requeues a seek at the externally held cursor; the command path
+// rebuilds the reader on the same stable byte-stream handle and identity.
+// The old GPU reader is only detached there: if its conversion completion is
+// unknown, the decoder quarantine retains that exact reader/sample untouched
+// while the fresh CPU reader proceeds; it is never seeked or read again.
+void QueueCpuFallback(VideoPlayback::State& s, Command document, std::int64_t lastDecodedPts,
+                      const std::string& reason) {
+    std::lock_guard lock(s.mutex);
+    if (!s.Current(document.generation) || s.cpuFallback || document.forceCpu) return;
+    s.cpuFallback = true; s.backendReason = reason;
+    document.kind = CommandKind::Seek; document.forceCpu = true; document.gpuAdapter.reset();
+    document.backendReason = reason;
+    document.target = s.snapshot.frame ? s.snapshot.frame->pts100ns
+                                       : std::max<std::int64_t>(0, lastDecodedPts);
+    document.queued = Clock::now();
+    s.playing = false; ClearAudio(s); s.ready.clear();
+    s.prepareNeighbor = false; s.restartAtCursor = false;
+    s.snapshot.state = VideoPlaybackState::Seeking; s.snapshot.error.clear();
+    s.operationStart = document.queued;
+    s.pending = std::move(document); s.changed.notify_one();
 }
 void Worker(std::shared_ptr<VideoPlayback::State> s) {
     bool permit{}; bool com{}; bool mf{}; Reader reader; Command document;
@@ -500,6 +722,21 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         if (!s->Current(command.generation)) continue;
                         ConfigureReader(reader, command); AdmitReaderMemory(reader,*s,command.generation); document = command;
                     } else {
+                        if((command.forceCpu && reader.gpu) || (!reader.source && command.forceCpu)) {
+                            // Keep the stable stream handle and identity across
+                            // fallback. Re-opening a path could select new bytes.
+                            auto clone=reader.cloneRead;const auto identity=reader.file;
+                            const auto admission=reader.archiveAdmission;const auto archive=reader.archive;
+                            // Even an unsafe reader can retain native prefetch.
+                            // Share the exact held file backing, never its cursor.
+                            ComPtr<IMFByteStream> bytes;
+                            if(!clone)throw std::runtime_error("No independent held-file cursor is available for CPU fallback.");
+                            Check(clone(&bytes),"Clone the held video stream for CPU fallback");
+                            reader.Reset();reader.bytes=bytes;reader.cloneRead=std::move(clone);reader.file=identity;
+                            reader.archiveAdmission=admission;reader.archive=archive;
+                            document.forceCpu=true;document.gpuAdapter.reset();
+                            ConfigureReader(reader,document);AdmitReaderMemory(reader,*s,command.generation);
+                        }
                         if (!reader.source) throw std::runtime_error("No readable video is selected.");
                         document.generation = command.generation;
                         if (document.archive) {
@@ -537,6 +774,10 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         Publish(*s,reader,document,selected,reader.cachedSeekEnded?VideoPlaybackState::Ended:VideoPlaybackState::Paused,{},0,0,true);
                         continue;
                     }
+                    // A stale generation may have left an unsafe pending
+                    // conversion on this reader; no native call may touch it.
+                    if(reader.gpu && reader.gpu->HasUnsafePending())
+                        throw VideoGpuIncompatible("GPU playback conversion is retained with unknown completion; using CPU playback.");
                     // Every command repositions audio and video together; no
                     // hidden audio cursor can continue through a scrub.
                     if (reader.hasAudio) reader.source->SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM, FALSE);
@@ -556,7 +797,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                         // A real replacement sample may release this optional
                         // lease before its owned pixel copy is allocated.
                         std::shared_ptr<const VideoPlaybackFrame> next;
-                        try { if(ReadVideo(reader,*s,command.generation,next,&chosen,end?-1:target))++decoded; }
+                        try { if(ReadVideo(reader,*s,command.generation,next,deadline,&chosen,end?-1:target))++decoded; }
                         catch (const DecodeFailure&) {
                             if (!end || !chosen) throw;
                             reader.eos = true; reader.incomplete = true; break;
@@ -596,6 +837,31 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     reader.cachedSeekLowerBound=end?chosen->pts100ns:target;
                     reader.cachedSeekEnded=end || reader.eos;reader.needsReposition=false;
                     Publish(*s,reader,document,chosen,end || reader.eos?VideoPlaybackState::Ended:VideoPlaybackState::Paused,neighbor,samples,copies);
+                } catch (const VideoGpuIncompatible& error) {
+                    // Only a genuine GPU device/format/conversion fault
+                    // latches this document to CPU. Ordinary failures below
+                    // (revoked archive bytes, the seek read/deadline budget,
+                    // texture-credit backpressure, stale generations) must
+                    // not discard a healthy GPU path.
+                    std::lock_guard lock(s->mutex);
+                    if(s->Current(command.generation) && command.gpuAdapter && !command.forceCpu) {
+                        // A failed first hardware attempt never publishes a
+                        // pretend GPU frame. The same worker, generation and
+                        // stable handle perform the bounded CPU retry.
+                        command.forceCpu=true;command.backendReason=error.what();
+                        s->cpuFallback=true;s->backendReason=error.what();
+                        if(command.kind==CommandKind::Open) {document=command;command.kind=CommandKind::Seek;}
+                        // The retry is a new CPU pipeline, not more time for
+                        // the failed GPU attempt: it gets its own request-age
+                        // budget (mirroring QueueCpuFallback). A GPU fault
+                        // surfacing at the deadline -- conversion-drain
+                        // expiry by construction -- would otherwise strand
+                        // the healthy CPU path as expired/Unavailable.
+                        command.queued=Clock::now();s->operationStart=command.queued;
+                        s->pending=std::move(command);s->changed.notify_one();continue;
+                    }
+                    if (s->Current(command.generation)) { s->snapshot.state = VideoPlaybackState::Unavailable;
+                        s->snapshot.requestGeneration = command.generation; s->snapshot.error = error.what(); s->playing = false; ClearAudio(*s); s->operationStart = {}; }
                 } catch (const std::exception& error) {
                     std::lock_guard lock(s->mutex);
                     if (s->Current(command.generation)) { s->snapshot.state = VideoPlaybackState::Unavailable;
@@ -616,21 +882,34 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                          continue;
                      }
                      selectedPts=s->snapshot.frame->pts100ns;}
+                    const auto preempted=[&] {std::lock_guard lock(s->mutex);
+                        return !s->Current(document.generation) || s->playing || s->pending.kind!=CommandKind::None;};
+                    if(preempted())continue;
                     const auto deadline=Clock::now()+std::chrono::seconds(2);
+                    bool touched{};
                     if(reader.needsReposition) {
-                        SeekReader(reader,selectedPts);reader.needsReposition=false;
+                        touched=true;SeekReader(reader,selectedPts);reader.needsReposition=false;
                     }
                     std::shared_ptr<const VideoPlaybackFrame> next;
                     for(unsigned reads=0;reads<VideoPlayback::kSeekSampleLimit && !reader.eos &&
                         Clock::now()<deadline && s->Current(document.generation) && HasDecodeCredit(reader,s->pixels);++reads) {
-                        ReadVideo(reader,*s,document.generation,next,nullptr,selectedPts+1);
+                        if(preempted())break;
+                        touched=true;
+                        ReadVideo(reader,*s,document.generation,next,deadline,nullptr,selectedPts+1);
                         if(next)break;
                     }
                     std::lock_guard lock(s->mutex);
+                    if(s->playing || s->pending.kind!=CommandKind::None) {if(touched)reader.needsReposition=true;continue;}
                     if(next && s->Current(document.generation) && s->snapshot.frame &&
                        next->pts100ns!=s->snapshot.frame->pts100ns && s->ready.size()<reader.memory.lookaheadFrames) {
                         s->ready.push_back(next);s->snapshot.neighborFrame=std::move(next);
                     }
+                } catch(const VideoGpuIncompatible& error) {
+                    // The completed seek's frame stays published; rebuild on
+                    // CPU at that held cursor rather than leaving an unsafe
+                    // or incompatible GPU reader for the next play/seek.
+                    reader.needsReposition=true;
+                    QueueCpuFallback(*s,document,reader.lastDecodedPts,error.what());
                 } catch(const std::exception&) {reader.needsReposition=true; /* Completed seek remains valid. */ }
                 continue;
             }
@@ -670,6 +949,9 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                                 s->snapshot.error.clear();
                             }
                             continue;
+                        } catch (const VideoGpuIncompatible& error) {
+                            QueueCpuFallback(*s,document,reader.lastDecodedPts,error.what());
+                            continue;
                         } catch (const std::exception& error) {
                             std::lock_guard lock(s->mutex);
                             if (s->Current(document.generation)) { s->playing = false;
@@ -704,11 +986,12 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
             try {
                 MarkNativeOperation(*s, document.generation, true);
                 const auto deadline = Clock::now() + std::chrono::seconds(2);
-                bool restart{}, audioEnabled{}; std::int64_t cursor{};
+                bool restart{}, audioEnabled{}; std::int64_t cursor{},copyFloor{};
                 { std::lock_guard lock(s->mutex);
                   restart = s->restartAtCursor; s->restartAtCursor = false;
                   audioEnabled = !s->muted && reader.audioAvailable;
                   cursor = s->restartCursor100ns;
+                  copyFloor=s->snapshot.frame?s->snapshot.frame->pts100ns+1:0;
                   s->snapshot.neighborFrame.reset();
                 }
                 if (restart) {
@@ -743,7 +1026,7 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                     }
                     std::shared_ptr<const VideoPlaybackFrame> decoded;
                     bool readSample{};
-                    try {readSample=ReadVideo(reader,*s,document.generation,decoded,nullptr,cursor+1);}
+                    try {readSample=ReadVideo(reader,*s,document.generation,decoded,deadline,nullptr,copyFloor);}
                     catch(const DecodeFailure&) {
                         if(!readyCount)throw;
                         reader.eos=true;reader.incomplete=true;break;
@@ -811,6 +1094,12 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
                       if (reader.eos) s->snapshot.seekableEnd100ns = next->pts100ns;
                   }
                 }
+            } catch (const VideoGpuIncompatible& error) {
+                // Coherent in-worker fallback: rebuild this same document on
+                // CPU at the held cursor instead of stranding playback in
+                // Unavailable with a live (possibly unsafe) GPU reader.
+                { std::lock_guard lock(s->mutex); s->operationStart = {}; }
+                QueueCpuFallback(*s,document,reader.lastDecodedPts,error.what());
             } catch (const DecodeFailure& error) {
                 std::lock_guard lock(s->mutex);
                 if (s->Current(document.generation)) {
@@ -839,6 +1128,9 @@ void Worker(std::shared_ptr<VideoPlayback::State> s) {
 std::uint64_t Submit(const std::shared_ptr<VideoPlayback::State>& s, Command command) {
     std::lock_guard lock(s->mutex);
     command.generation = s->generation.fetch_add(1) + 1; command.queued = Clock::now();
+    if(command.kind==CommandKind::Open) {s->cpuFallback=false;s->backendReason.clear();}
+    if(command.forceCpu) {s->cpuFallback=true;s->backendReason=command.backendReason;}
+    command.gpuAdapter=s->gpuAdapter;command.forceCpu=command.forceCpu || s->cpuFallback;
     s->snapshot.requestGeneration = command.generation;
     s->snapshot.state = command.kind == CommandKind::Open ? VideoPlaybackState::Opening : VideoPlaybackState::Seeking;
     s->snapshot.error.clear(); s->playing = false; ClearAudio(*s);
@@ -885,6 +1177,12 @@ std::uint64_t VideoPlayback::OpenFile(std::wstring path) { Command c; c.kind = C
 std::uint64_t VideoPlayback::OpenArchive(std::shared_ptr<RecordingArchive> archive) { Command c; c.kind = CommandKind::Open; c.archive = std::move(archive); return Submit(state_, std::move(c)); }
 std::uint64_t VideoPlayback::Seek100ns(std::int64_t target) { Command c; c.kind = CommandKind::Seek; c.target = std::max<std::int64_t>(0, target); return Submit(state_, std::move(c)); }
 std::uint64_t VideoPlayback::JumpToEnd() { Command c; c.kind = CommandKind::End; return Submit(state_, std::move(c)); }
+void VideoPlayback::SetGpuAdapter(std::optional<LUID> adapter) {std::lock_guard lock(state_->mutex);state_->gpuAdapter=adapter;}
+std::uint64_t VideoPlayback::UseCpuFallback(std::string reason) {
+    Command c;c.kind=CommandKind::Seek;c.forceCpu=true;c.backendReason=std::move(reason);
+    {std::lock_guard lock(state_->mutex);if(state_->snapshot.frame)c.target=state_->snapshot.frame->pts100ns;}
+    return Submit(state_,std::move(c));
+}
 void VideoPlayback::SetPlaying(bool play) {
     std::lock_guard lock(state_->mutex);
     if (play && (!state_->snapshot.frame ||
@@ -904,7 +1202,7 @@ void VideoPlayback::SetPlaying(bool play) {
 void VideoPlayback::SetMuted(bool muted) {
     std::lock_guard lock(state_->mutex);
     if (state_->muted == muted) return;
-    if (state_->playing) {
+    if (state_->playing && state_->snapshot.audioAvailable) {
         const auto now = Clock::now(); state_->restartCursor100ns = PlaybackNowLocked(*state_, now);
         state_->clockPts = state_->restartCursor100ns; state_->clockStart = now; state_->restartAtCursor = true;
         state_->ready.clear();
@@ -927,6 +1225,7 @@ VideoPlaybackSnapshot VideoPlayback::Snapshot() const {
     std::lock_guard lock(state_->mutex); auto result = state_->snapshot;
     result.decodedBytes = state_->pixels->bytes.load(); result.peakDecodedBytes = state_->pixels->peak.load();
     result.decodedByteLimit=state_->pixels->limit.load();result.readyFrames=static_cast<std::uint32_t>(state_->ready.size());
+    result.gpuTextureBytes=VideoGpuDecoder::RetainedBytes();
     if (state_->operationStart != Clock::time_point{} && Clock::now() - state_->operationStart > std::chrono::seconds(2)) {
         result.state = VideoPlaybackState::Unavailable;
         result.error = "Native playback operation exceeded its cooperative deadline; replacement waits for the same worker.";

@@ -1,5 +1,6 @@
 #ifdef _WIN32
 #include "okuflow/app/agent/app_control_target.hpp"
+#include "okuflow/app/media_gpu_scene.hpp"
 #include "okuflow/app/agent/parameter_registry.hpp"
 #include "okuflow/app/app.hpp"
 #include "okuflow/app/constants.hpp"
@@ -84,14 +85,17 @@ std::map<Field,QJsonValue> AppControlTarget::Fields() const {
 QJsonObject AppControlTarget::State() const {
     const auto f = Fields();
     const bool fit = f.at(Field::Framing) == "fit";
-    const bool effects = app_.usingCudaLastFrame_ && !app_.MediaViewSelected();
-    const bool binary = f.at(Field::TextClarity).toBool() && f.at(Field::Adaptive).toBool();
     const bool selectedMedia=app_.MediaViewSelected();
-    const auto effect = [effects,selectedMedia](const QJsonValue& requested,bool shadowed = false,bool cpuSupported=false) {
+    const bool mediaGpuAvailable=selectedMedia && app_.SelectedMediaGpuProcessingAvailable();
+    const bool effects = selectedMedia ? app_.MediaGpuViewSelected() : app_.usingCudaLastFrame_;
+    const bool binary = effects && f.at(Field::TextClarity).toBool() && f.at(Field::Adaptive).toBool();
+    const bool mediaFrame=selectedMedia && app_.SelectedVideoState()["hasFrame"].toBool();
+    const auto effect = [effects,selectedMedia,mediaFrame,mediaGpuAvailable](const QJsonValue& requested,bool shadowed = false,bool mediaSupported=false) {
         const bool enabled = !requested.isBool() || requested.toBool();
-        const bool effective = (effects || (selectedMedia && cpuSupported)) && !shadowed && enabled;
+        const bool effective = (effects || (mediaFrame && mediaSupported)) && !shadowed && enabled;
         return QJsonObject{{"requested",requested},{"effective",effective},
-            {"inactiveReason",effective ? QString() : selectedMedia && !cpuSupported ? QStringLiteral("selected_media_cpu_path") : !effects ? QStringLiteral("raw_passthrough")
+            {"inactiveReason",effective ? QString() : selectedMedia && !effects && !mediaSupported
+                ? (mediaGpuAvailable ? QStringLiteral("no_processed_frame") : QStringLiteral("selected_media_unsupported_effect")) : !effects ? QStringLiteral("raw_passthrough")
                 : !enabled ? QStringLiteral("disabled") : QStringLiteral("adaptive_binarization")}};
     };
     return {{"view",QJsonObject{{"framing",f.at(Field::Framing)},{"zoomRequested",f.at(Field::ZoomAmount)},
@@ -105,12 +109,12 @@ QJsonObject AppControlTarget::State() const {
             {"transitionPending",app_.cameraStartupPending_ || app_.cameraStopPending_ || app_.pendingCameraStart_.has_value()}}},
         {"image",QJsonObject{{"schemeId",f.at(Field::Scheme)},{"textClarity",f.at(Field::TextClarity)},{"contrast",f.at(Field::Contrast)},
             {"brightness",f.at(Field::Brightness)},{"monochrome",f.at(Field::BlackWhite)},
-            {"readingColors",QJsonObject{{"scheme",effect(f.at(Field::Scheme),false,true)},{"textClarity",effect(f.at(Field::TextClarity))},
+            {"readingColors",QJsonObject{{"scheme",effect(f.at(Field::Scheme),binary && f.at(Field::TwoColor).toBool(),true)},{"textClarity",effect(f.at(Field::TextClarity))},
                 {"adaptive",effect(binary)},
                 {"twoColor",effect(f.at(Field::TwoColor),!binary)},
-                {"blackWhite",effect(f.at(Field::BlackWhite),!selectedMedia && binary,true)}}}}},
+                {"blackWhite",effect(f.at(Field::BlackWhite),binary,true)}}}}},
         {"ui",QJsonObject{{"modal",ModalActive()},{"userInteracting",UserInteracting()},{"hidden",app_.mainWindow_->isUiHidden()}}},
-        {"pipeline",app_.MediaViewSelected() ? "cpu_selected_media" : app_.usingCudaLastFrame_ ? "cuda" : "raw_passthrough"},
+        {"pipeline",QueryVideoState()["pipeline"]},
         {"profile",QJsonObject{{"presetId",f.at(Field::Preset)}}},
         {"video",QueryVideoState()}};
 }
@@ -233,7 +237,7 @@ ControlPlan AppControlTarget::Prepare(ToolId tool, const QJsonObject& args, cons
         for (const auto& builtIn : color_schemes::BuiltInColorSchemes()) found |= builtIn.id == scheme;
         if (!found) plan.error = "not_found";
         else write(Field::Scheme,scheme);
-        if(app_.MediaViewSelected() && plan.error.isEmpty()) {
+        if(app_.MediaViewSelected() && !app_.SelectedMediaGpuProcessingAvailable() && plan.error.isEmpty()) {
             // The selected-media CPU path implements a source threshold and
             // color recipe; it does not run CUDA's adaptive text pipeline.
             plan.writes.clear();
@@ -286,7 +290,7 @@ ControlPlan AppControlTarget::Prepare(ToolId tool, const QJsonObject& args, cons
         break;
     }
     case ToolId::Observe: case ToolId::Metrics:
-        if ((!app_.cameraActive_ && !app_.MediaViewSelected()) || app_.debugViewEnabled_) plan.error = "unavailable";
+        if ((!app_.cameraActive_ && !app_.MediaViewSelected()) || (!app_.MediaViewSelected() && app_.debugViewEnabled_)) plan.error = "unavailable";
         else if(app_.MediaViewSelected() && !QueryVideoState()["hasFrame"].toBool())plan.error="unavailable";
         break;
     case ToolId::Photo:
@@ -339,7 +343,7 @@ ControlPlan AppControlTarget::Prepare(ToolId tool, const QJsonObject& args, cons
     }
     default: break;
     }
-    if (plan.error.isEmpty() && !app_.usingCudaLastFrame_) {
+    if (plan.error.isEmpty() && !(app_.MediaViewSelected() ? app_.SelectedMediaGpuProcessingAvailable() : app_.usingCudaLastFrame_)) {
         const bool imageMutation = std::any_of(plan.writes.begin(),plan.writes.end(),[this,&fields](const FieldWrite& field) {
             const auto current = fields.find(field.field);
             if (current != fields.end() && current->second == field.value) return false;
@@ -838,7 +842,7 @@ ObservationFrame AppControlTarget::PresentedFrame(const ViewTransform& transform
         const auto state=app_.SelectedVideoState();
         ObservationFrame frame{current,transform,source,viewport,
             static_cast<quint64>(state["frameSequence"].toInteger()),0,!state["playing"].toBool(),false,0.0,
-            app_.focusThreshold_,false,{{"available",true},{"basis","selected-media-cpu"}}};
+            app_.focusThreshold_,false,{{"available",true},{"basis",app_.MediaGpuViewSelected()?"selected-media-gpu":"selected-media-cpu"}}};
         frame.immutableSource=true;
         frame.documentId=state["documentId"].toString();
         frame.documentGeneration=state["selectionGeneration"].toInteger();
@@ -873,6 +877,40 @@ ObservationFrame AppControlTarget::PresentedFrame(const ViewTransform& transform
     const double fps = elapsed > 0 && MonotonicNow()-uniqueFrameTimes_.back() <= 1000
         ? (uniqueFrameTimes_.size()-1)*1000.0/elapsed : 0.0;
     return {stamp,transform,source,viewport,frameSequence_,processedAt_,held,converging,fps,app_.focusThreshold_,quad,diagnostics};
+}
+ObservationFrame AppControlTarget::PresentedMediaFrame(const ViewTransform& transform, QSize source,
+                                                       QSize viewport, quint64 sequence, qint64 pts100ns, bool gpuProcessed) {
+    auto frame = PresentedFrame(transform, source, viewport);
+    // SelectedVideoState still describes the previously displayed sample
+    // during presentation. Never pair those old coordinates/PTS with new pixels.
+    if (frame.immutableSource) {
+        frame.sequence = sequence;
+        frame.mediaPts100ns = pts100ns;
+        if (gpuProcessed) {
+            // The candidate may be the first GPU frame: the previous display's
+            // backend cannot determine diagnostics for this submission.
+            frame.held.reset(); frame.converging.reset(); frame.keystoneQuad.reset();
+            frame.diagnostics = {{"available",false},{"basis","pending-media-gpu-diagnostic"}};
+        }
+        if (gpuProcessed && app_.mediaGpuScene_) {
+            // Temporal/warp diagnostics belong to the selected private scene.
+            // A prior camera or media sample cannot authorize this candidate.
+            const auto sample = app_.mediaGpuScene_->ControlDiagnostics();
+            const auto& identity = sample.frame;
+            const bool matches = identity.frameSequence == sequence &&
+                identity.sourceEpoch == frame.stamp.sourceEpoch &&
+                identity.processingVersion == frame.stamp.processingVersion &&
+                app_.mediaGpuScene_->SceneEpoch() == app_.mediaDocumentEpoch_ &&
+                app_.mediaGpuScene_->SceneFrameSequence() == sequence;
+            frame.held = matches ? std::optional<bool>(sample.held) : std::nullopt;
+            frame.converging = matches ? std::optional<bool>(sample.converging) : std::nullopt;
+            frame.keystoneQuad = matches ? std::optional<bool>(sample.keystoneQuadValid) : std::nullopt;
+            frame.diagnostics = {{"available",matches},{"basis","completed-media-gpu-diagnostic"},
+                {"matchesFrame",matches},{"frameSequence",static_cast<qint64>(identity.frameSequence)},
+                {"stabilizationModelValid",matches ? QJsonValue(sample.stabilizationModelValid) : QJsonValue()}};
+        }
+    }
+    return frame;
 }
 bool AppControlTarget::WantsObservationReadback(const ObservationFrame& frame) {
     if (observationReadbackId_ && MonotonicNow()-observationSubmittedAt_ > 1000) observationReadbackId_ = 0;

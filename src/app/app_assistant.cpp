@@ -73,7 +73,7 @@ void OkuFlowApp::SubmitOnDemandAnalysis(bool readText)
     }
     if (!readText) {
         CancelAssistantHistoryLoad();
-        const bool frameAvailable = (usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
+        const bool frameAvailable = MediaGpuViewSelected() || (usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
             processedFrameWidth_ > 0 && processedFrameHeight_ > 0) ||
             (!presentationBuffer_.empty() && presentationWidth_ > 0 && presentationHeight_ > 0);
         if (frameAvailable && assistiveManager_->Runtime().ChatSession().Snapshot().value("kind").toString() != "explain")
@@ -83,8 +83,8 @@ void OkuFlowApp::SubmitOnDemandAnalysis(bool readText)
     // Prefer the processed GPU output. Queue the request with the next
     // viewport presentation so the existing CUDA/D3D fence contract orders
     // the copy without blocking the UI thread.
-    if (!MediaViewSelected() && usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
-        processedFrameWidth_ > 0 && processedFrameHeight_ > 0) {
+    if (MediaGpuViewSelected() || (!MediaViewSelected() && usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
+        processedFrameWidth_ > 0 && processedFrameHeight_ > 0)) {
         if (!readText && !assistiveManager_->Runtime().PrepareChatTurn(
             QCoreApplication::translate("OkuFlow","Explain"),ChatBackendKind::Explain,ChatRequestOrigin::ExplainButton)) return;
         if (!readText) assistiveManager_->Overlay().ShowChat(true);
@@ -96,6 +96,14 @@ void OkuFlowApp::SubmitOnDemandAnalysis(bool readText)
             mainWindow_->setExplainBusy(true);
         }
         pipelineOrchestrator_->MarkViewportDirty();
+        if (MediaGpuViewSelected() &&
+            (!PresentSelectedMediaFrameForCapture() || !pendingOnDemandReadbackId_)) {
+            // Capture the displayed receipt in this turn. A later decoder
+            // candidate must not silently become the image the user asked about.
+            CancelPendingAssistantCaptures();
+            ShowStatusMessage(QStringLiteral("No camera frame is available to attach."), 5000);
+            return;
+        }
         ShowStatusMessage(QStringLiteral("Capturing the current view..."), 3000);
         return;
     }
@@ -201,11 +209,17 @@ void OkuFlowApp::SubmitAssistantPromptText(const QString& prompt,
         DispatchAssistantPrompt(prompt,clearAdvancedEditor,nullptr,0,0,false);
         return;
     }
-    if (attachFrame && !MediaViewSelected() && usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
-        processedFrameWidth_ > 0 && processedFrameHeight_ > 0) {
+    if (attachFrame && (MediaGpuViewSelected() || (!MediaViewSelected() && usingCudaLastFrame_ && cudaSharedTexture_ && presenter_ &&
+        processedFrameWidth_ > 0 && processedFrameHeight_ > 0))) {
         pendingAssistantFramePrompt_ = PendingAssistantFramePrompt{prompt.trimmed(),clearAdvancedEditor};
         ArmAssistantCaptureDeadline(); SetAssistantBusy(true);
-        pipelineOrchestrator_->MarkViewportDirty(); return;
+        pipelineOrchestrator_->MarkViewportDirty();
+        if (MediaGpuViewSelected() &&
+            (!PresentSelectedMediaFrameForCapture() || !pendingAssistantFrameReadbackId_)) {
+            CancelPendingAssistantCaptures();
+            ShowStatusMessage(QStringLiteral("No camera frame is available to attach."), 5000);
+        }
+        return;
     }
     const uint8_t* data = nullptr; int width = 0, height = 0;
     if (attachFrame && !presentationBuffer_.empty() && presentationWidth_ > 0 && presentationHeight_ > 0) {

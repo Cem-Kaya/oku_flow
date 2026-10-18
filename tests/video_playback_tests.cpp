@@ -3,6 +3,7 @@
 #include "okuflow/common/video_playback.hpp"
 #include "okuflow/common/media_writer.hpp"
 #include <mfapi.h>
+#include <dxgi1_6.h>
 #include <wrl/client.h>
 #include <wrl/implements.h>
 #include <algorithm>
@@ -21,6 +22,15 @@ using namespace okuflow;
 using Microsoft::WRL::ComPtr;
 using Clock = std::chrono::steady_clock;
 int failures{};
+void Expect(bool ok,const char* message);
+std::optional<LUID> gpuAdapter;
+void ConfigureGpu(VideoPlayback& player) {if(gpuAdapter)player.SetGpuAdapter(gpuAdapter);}
+void RequireGpu(const VideoPlaybackSnapshot& snapshot) {
+    if(!gpuAdapter)return;
+    if(!snapshot.gpuResident)std::cerr<<"GPU fallback diagnostic: "<<snapshot.backendReason<<" error="<<snapshot.error<<'\n';
+    Expect(snapshot.gpuResident && snapshot.frame && snapshot.frame->gpu && !snapshot.frame->bgra,
+        "GPU opt-in fixture publishes actual resident texture pixels without CPU BGRA");
+}
 class PrewriteProbe final : public Microsoft::WRL::RuntimeClass<
     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IMFByteStream> {
 public:
@@ -94,14 +104,26 @@ void LayoutAndIdentity() {
     const auto path = TempPath();
     { std::ofstream file(path, std::ios::binary); file << "identity fixture"; }
     VideoFileIdentity first, second; ComPtr<IMFByteStream> a, b;
-    Expect(SUCCEEDED(OpenStableVideoReadStream(path.wstring(), &a, &first)), "stable held handle opened");
+    VideoReadStreamClone clone;
+    Expect(SUCCEEDED(OpenStableVideoReadStream(path.wstring(), &a, &first,&clone)), "stable held handle opened");
     Expect(SUCCEEDED(OpenStableVideoReadStream(path.wstring(), &b, &second)) && first.SameFile(second), "same held identity");
     const auto writer = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
         nullptr, OPEN_EXISTING, 0, nullptr);
     Expect(writer == INVALID_HANDLE_VALUE, "saved source denied concurrent writes");
     if (writer != INVALID_HANDLE_VALUE) CloseHandle(writer);
     if (a) { BYTE bytes[32]{}; ULONG read{}; Expect(SUCCEEDED(a->Read(bytes, 16, &read)) && read == 16, "same admitted handle is readable"); }
-    a.Reset(); b.Reset(); std::error_code ec; std::filesystem::remove(path, ec);
+    ComPtr<IMFByteStream> independent;
+    Expect(clone && SUCCEEDED(clone(&independent)),"CPU fallback clones the held backing without reopening its pathname");
+    if(a && independent) {
+        QWORD position{};BYTE bytes[4]{};ULONG read{};
+        Expect(SUCCEEDED(a->SetCurrentPosition(7)) && SUCCEEDED(independent->Read(bytes,4,&read)) &&
+            read==4 && std::memcmp(bytes,"iden",4)==0 && SUCCEEDED(a->GetCurrentPosition(&position)) && position==7,
+            "GPU-retained reader and CPU successor have independent logical cursors");
+        a.Reset();b.Reset();
+        Expect(SUCCEEDED(independent->SetCurrentPosition(0)) && SUCCEEDED(independent->Read(bytes,4,&read)) && read==4,
+            "cloned read stream keeps the exact held file alive after original wrappers retire");
+    }
+    independent.Reset();clone={};a.Reset();b.Reset();std::error_code ec;std::filesystem::remove(path,ec);
 }
 void MutationObservation() {
     const auto path = TempPath();
@@ -179,7 +201,7 @@ void UnsupportedAndUnknownWrites() {
     std::filesystem::remove(unknownPath, ec);
 }
 void FailedOpenSupersession() {
-    VideoPlayback player;
+    VideoPlayback player;ConfigureGpu(player);
     const auto first = player.OpenFile(TempPath().wstring());
     const auto second = player.OpenFile(TempPath().wstring());
     Expect(second > first, "open generations monotonic");
@@ -195,14 +217,17 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
     }
     const int priorFailures = failures;
     const auto path = TempPath(); VideoRecorder recorder; VideoRecorder::AudioFormat audioFormat;
+    // Native AV1 hardware has a larger minimum extent than the CPU decoder.
+    // Keep tiny CPU fixtures, but use an admitted hardware-sized GPU sample.
+    const UINT width=gpuAdapter?320u:160u,height=gpuAdapter?192u:96u;
     std::wcout << L"Native codec fixture: " << path.wstring() << L'\n';
-    const bool started = recorder.Start(path.wstring(), 160, 96, 30, 1, codec, &audioFormat);
+    const bool started = recorder.Start(path.wstring(), width, height, 30, 1, codec, &audioFormat);
     if (!started && codec == VideoRecorder::Codec::Av1) {
         std::cout << "SKIP native AV1 unavailable: " << recorder.LastError() << '\n'; nativeSkipped = true; return;
     }
     Expect(started, "native selected video codec/AAC recorder starts");
     if (!recorder.IsRecording()) { std::cerr << recorder.LastError() << '\n'; return; }
-    std::vector<std::uint8_t> pixels(160 * 96 * 4, 255);
+    std::vector<std::uint8_t> pixels(std::size_t(width) * height * 4, 255);
     std::vector<std::int16_t> pcm(1600);
     const auto submitFrame = [&](int frame) {
         for (std::size_t p = 0; p < pixels.size(); p += 4) { pixels[p] = static_cast<std::uint8_t>(frame); pixels[p + 1] = 70; pixels[p + 2] = 180; }
@@ -213,7 +238,7 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
         const bool videoReady = Wait([&] { return recorder.CanAcceptVideoFrame(); }, 2000);
         Expect(videoReady, "bounded encoder video admission");
         if (!videoReady) return false;
-        const bool videoWritten = recorder.AddFrame(pixels.data(), 160 * 4, id);
+        const bool videoWritten = recorder.AddFrame(pixels.data(), width * 4, id);
         Expect(videoWritten, "native video submitted");
         if (!videoWritten) return false;
         const bool audioReady = Wait([&] { return recorder.CanAcceptAudioFrame(pcm.size() * 2, id.captureTimestamp100ns, 333333); }, 2000);
@@ -229,7 +254,7 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
     auto archive = recorder.Archive();
     Wait([&] { const auto s = archive->Snapshot(); return s.availability != ActiveRewindAvailability::WaitingForMedia; });
     auto active = archive->Snapshot();
-    VideoPlayback player;
+    VideoPlayback player;ConfigureGpu(player);
     std::cout << "Active archive availability=" << static_cast<int>(active.availability) << " pts=" << active.seekableEnd100ns << " reason=" << active.error << '\n';
     if (strictActive) Expect(active.availability == ActiveRewindAvailability::Available,
         "production active fMP4 metadata/config/payload proof before Finalize");
@@ -237,6 +262,7 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
         const auto g = player.OpenArchive(archive);
         Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == g && s.state != VideoPlaybackState::Opening; }), "active decoder completes bounded open");
         Expect(player.Snapshot().frame != nullptr, "verified active fragment decodes actual pixels");
+        RequireGpu(player.Snapshot());
         const auto activeSeek = player.Seek100ns(5'000'000);
         Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == activeSeek && s.state == VideoPlaybackState::Paused; }),
             "actual active fragmented MP4 seek before Finalize");
@@ -292,6 +318,7 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
         Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == g && s.state != VideoPlaybackState::Opening; }), "saved file first frame opens");
         auto snapshot = player.Snapshot();
         Expect(snapshot.frame && snapshot.state == VideoPlaybackState::Paused, "saved first frame paused");
+        RequireGpu(snapshot);
         Expect(snapshot.hasAudio && snapshot.audioAvailable, "same SourceReader exposes AAC decoded PCM");
         if (snapshot.neighborFrame) Expect(snapshot.frame->pts100ns != snapshot.neighborFrame->pts100ns, "owned neighbor has distinct real PTS");
         const auto a = player.Seek100ns(20'000'000); const auto b = player.Seek100ns(5'000'000);
@@ -326,6 +353,24 @@ void NativeAvcAac(VideoRecorder::Codec codec = VideoRecorder::Codec::H264, bool 
             !player.Snapshot().lastRequestReusedFrame,"end cache does not substitute the final frame for an earlier target");
         player.SetPlaying(true);
         Expect(Wait([&]{return player.Snapshot().state==VideoPlaybackState::Ended;}),"playback resumes from a real pre-end seek");
+        if(gpuAdapter) {
+            const auto original=player.Snapshot();
+            const auto fallback=player.UseCpuFallback("fixture consumer interop refusal");
+            Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==fallback && s.frame &&
+                s.frame->requestGeneration==fallback && (s.state==VideoPlaybackState::Paused || s.state==VideoPlaybackState::Ended);}),
+                "GPU consumer failure re-seeks the same stable document through CPU compatibility");
+            const auto cpu=player.Snapshot();
+            Expect(!cpu.gpuResident && cpu.frame && cpu.frame->bgra && !cpu.frame->gpu &&
+                cpu.file.SameFile(original.file) && cpu.frame->pts100ns==original.frame->pts100ns &&
+                cpu.backendReason=="fixture consumer interop refusal","fallback preserves held PTS/file identity and reports actual CPU pixels");
+            player.SetGpuAdapter(LUID{0xdeadbeefu,LONG(0x7fffffff)});
+            const auto refused=player.OpenFile(path.wstring());
+            Expect(Wait([&]{const auto s=player.Snapshot();return s.requestGeneration==refused && s.state==VideoPlaybackState::Paused;}),
+                "an unavailable exact GPU adapter falls back before publishing the open request");
+            const auto unavailable=player.Snapshot();
+            Expect(!unavailable.gpuResident && unavailable.frame && unavailable.frame->bgra && !unavailable.backendReason.empty(),
+                "failed GPU admission never claims a resident frame");
+        }
         player.Close();
     }
     archive.reset();
@@ -339,9 +384,10 @@ void NativeSparseVideoAudio(VideoRecorder::Codec codec) {
     std::wcout << L"Sparse-video/continuous-AAC fixture: " << path.wstring() << L'\n';
     const int priorFailures = failures;
     VideoRecorder recorder; VideoRecorder::AudioFormat audioFormat;
-    Expect(recorder.Start(path.wstring(), 160, 96, 30, 1, codec, &audioFormat), "sparse-video AAC recorder starts");
+    const UINT width=gpuAdapter?320u:160u,height=gpuAdapter?192u:96u;
+    Expect(recorder.Start(path.wstring(), width, height, 30, 1, codec, &audioFormat), "sparse-video AAC recorder starts");
     if (!recorder.IsRecording()) return;
-    std::vector<std::uint8_t> pixels(160 * 96 * 4, 180);
+    std::vector<std::uint8_t> pixels(std::size_t(width) * height * 4, 180);
     std::vector<std::int16_t> pcm(1600);
     // Preserve the sparse VFR samples, then continue AAC alone so container
     // duration is not a video-sample position and end seeking must observe it.
@@ -351,7 +397,7 @@ void NativeSparseVideoAudio(VideoRecorder::Codec codec) {
             RecordingFrameIdentity id; id.captureTimestamp100ns = id.captureClock100ns = time;
             id.sequenceNumber = slot + 1; id.frameRateNumerator = 30; id.frameRateDenominator = 1;
             const bool admitted = Wait([&] { return recorder.CanAcceptVideoFrame(); }, 2000);
-            Expect(admitted && recorder.AddFrame(pixels.data(), 160 * 4, id), "sparse video sample accepted");
+            Expect(admitted && recorder.AddFrame(pixels.data(), width * 4, id), "sparse video sample accepted");
             if (!admitted) break;
         }
         for (std::size_t i = 0; i < pcm.size(); ++i)
@@ -363,9 +409,10 @@ void NativeSparseVideoAudio(VideoRecorder::Codec codec) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
     Expect(recorder.Stop().FullyCompleted(), "sparse-video fixture finalized by recorder");
-    VideoPlayback player; const auto open = player.OpenFile(path.wstring());
+    VideoPlayback player;ConfigureGpu(player); const auto open = player.OpenFile(path.wstring());
     Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == open && s.state == VideoPlaybackState::Paused; }),
         "sparse-video saved file opens paused");
+    RequireGpu(player.Snapshot());
     const auto seek = player.Seek100ns(1);
     Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == seek && s.state == VideoPlaybackState::Paused; }),
         "sparse-video fixture selects the frame preceding its two-second gap");
@@ -419,15 +466,17 @@ void NativeFourKPool(bool dci=false) {
     }
     Expect(recorder.Stop().FullyCompleted(), "4K fixture finalized");
     pixels.clear(); pixels.shrink_to_fit();
-    VideoPlayback player; const auto open = player.OpenFile(path.wstring());
+    VideoPlayback player;ConfigureGpu(player); const auto open = player.OpenFile(path.wstring());
     Expect(Wait([&] { const auto s = player.Snapshot(); return s.requestGeneration == open && s.state == VideoPlaybackState::Paused; }),
         "4K first frame opens with an admitted complete working set");
     auto held=player.Snapshot(); // Actual app retains a displayed pair across decoder work.
+    RequireGpu(held);
     player.SetPlaying(true); std::set<std::int64_t> displayed;
     Expect(Wait([&] {
         const auto s = player.Snapshot();
         Expect(s.state != VideoPlaybackState::Unavailable, "ordinary 4K playback remains available");
-        Expect(s.decodedBytes <= s.decodedByteLimit && s.peakDecodedBytes <= VideoPlayback::kDecodedByteLimit,
+        Expect(s.decodedBytes <= s.decodedByteLimit && s.peakDecodedBytes <= VideoPlayback::kDecodedByteLimit &&
+            s.gpuTextureBytes<=VideoGpuDecoder::kTextureByteLimit,
             "4K working and immutable leases stay inside adaptive/hard limits");
         if (s.frame) displayed.insert(s.frame->pts100ns);
         return displayed.size() >= 5 || s.state == VideoPlaybackState::Unavailable;
@@ -477,7 +526,7 @@ void NativeFourKPool(bool dci=false) {
         Expect(s.lastRequestReusedFrame && !s.lastRequestReadCount && !s.lastRequestCopiedFrames,
             "same-frame seek performs no native seek/preroll reads or pixel copies");
         Expect(s.frame && fineFrame && s.frame->pts100ns==fineFrame->pts100ns &&
-            s.frame->requestGeneration==request && s.frame->bgra==fineFrame->bgra,
+            s.frame->requestGeneration==request && s.frame->bgra==fineFrame->bgra && s.frame->gpu==fineFrame->gpu,
             "cached seek retickets exact immutable pixels without changing their source time");
         fineTimes.push_back(s.lastRequestLatencyUs);
     }
@@ -547,6 +596,109 @@ void NativeFourKPool(bool dci=false) {
         if (ec) std::wcout << L"Retained 4K fixture pending handle retirement: " << path.wstring() << L'\n';
     } else std::wcout << L"Retained failed 4K fixture: " << path.wstring() << L'\n';
 }
+void NativeGpuConversion() {
+    ComPtr<IDXGIFactory4> factory;ComPtr<IDXGIAdapter> adapter;ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;
+    if(FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) || !gpuAdapter ||
+       FAILED(factory->EnumAdapterByLuid(*gpuAdapter,IID_PPV_ARGS(&adapter))) ||
+       FAILED(D3D11CreateDevice(adapter.Get(),D3D_DRIVER_TYPE_UNKNOWN,nullptr,
+           D3D11_CREATE_DEVICE_VIDEO_SUPPORT|D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context))) {
+        Expect(false,"GPU conversion fixture creates the exact video device");return;
+    }
+    for(const bool privateTarget:{false,true}) {
+    Expect(Wait([]{return VideoGpuDecoder::RetainedBytes()==0;}),"prior converter retires before the next pool fixture");
+    auto converter=VideoGpuDecoder::CreateFromDevice(device.Get(),privateTarget);
+    if(!privateTarget) {
+        // Negotiation follows the installed decoder's own preference order:
+        // for a synthetic VP9 coded type the decoder lists its native 8-bit
+        // output before the 10-bit type it merely tolerates. Forcing the
+        // tolerated type first stalls the first native sample read.
+        ComPtr<IMFMediaType> coded;MFCreateMediaType(&coded);
+        coded->SetGUID(MF_MT_MAJOR_TYPE,MFMediaType_Video);coded->SetGUID(MF_MT_SUBTYPE,MFVideoFormat_VP90);
+        MFSetAttributeSize(coded.Get(),MF_MT_FRAME_SIZE,640,360);
+        MFSetAttributeRatio(coded.Get(),MF_MT_PIXEL_ASPECT_RATIO,1,1);
+        coded->SetUINT32(MF_MT_INTERLACE_MODE,MFVideoInterlace_Progressive);
+        const auto offered=converter->DecoderPreferredOutputs(coded.Get());
+        if(!offered.empty()) {
+            const auto nv12=std::find(offered.begin(),offered.end(),MFVideoFormat_NV12);
+            const auto p010=std::find(offered.begin(),offered.end(),MFVideoFormat_P010);
+            Expect(nv12!=offered.end() && (p010==offered.end() || nv12<p010),
+                "decoder preference enumeration keeps native 8-bit VP9 output before tolerated 10-bit output");
+        } else std::cout<<"SKIP-INFO no installed VP9 decoder accepted the synthetic coded type\n";
+    }
+    const UINT width=320,height=192;
+    for(const bool tenBit:{false,true}) {
+        ComPtr<IMFMediaType> type;MFCreateMediaType(&type);type->SetGUID(MF_MT_MAJOR_TYPE,MFMediaType_Video);
+        type->SetGUID(MF_MT_SUBTYPE,tenBit?MFVideoFormat_P010:MFVideoFormat_NV12);
+        MFSetAttributeSize(type.Get(),MF_MT_FRAME_SIZE,width,height);MFSetAttributeRatio(type.Get(),MF_MT_PIXEL_ASPECT_RATIO,1,1);
+        type->SetUINT32(MF_MT_INTERLACE_MODE,MFVideoInterlace_Progressive);type->SetUINT32(MF_MT_YUV_MATRIX,MFVideoTransferMatrix_BT709);
+        type->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE,MFNominalRange_16_235);type->SetUINT32(MF_MT_TRANSFER_FUNCTION,MFVideoTransFunc_709);
+        converter->SetFormat(type.Get());
+        std::vector<std::uint8_t> pixels(std::size_t(width)*height*3/2*(tenBit?2:1));
+        if(tenBit) {
+            auto* values=reinterpret_cast<std::uint16_t*>(pixels.data());
+            std::fill(values,values+width*height,64u<<6);std::fill(values+width*height,values+pixels.size()/2,512u<<6);
+        } else {std::fill(pixels.begin(),pixels.begin()+width*height,16);std::fill(pixels.begin()+width*height,pixels.end(),128);}
+        D3D11_TEXTURE2D_DESC desc{};desc.Width=width;desc.Height=height;desc.MipLevels=desc.ArraySize=1;
+        desc.Format=tenBit?DXGI_FORMAT_P010:DXGI_FORMAT_NV12;desc.SampleDesc.Count=1;desc.Usage=D3D11_USAGE_DEFAULT;
+        desc.BindFlags=D3D11_BIND_DECODER;
+        D3D11_SUBRESOURCE_DATA initial{pixels.data(),width*(tenBit?2u:1u),0};ComPtr<ID3D11Texture2D> source;
+        const auto textureResult=device->CreateTexture2D(&desc,&initial,&source);
+        Expect(SUCCEEDED(textureResult),"synthetic NV12/P010 texture is admitted by the real device");
+        if(FAILED(textureResult))continue;
+        ComPtr<IMFMediaBuffer> buffer;ComPtr<IMFSample> sample;MFCreateSample(&sample);
+        Expect(SUCCEEDED(MFCreateDXGISurfaceBuffer(__uuidof(ID3D11Texture2D),source.Get(),0,FALSE,&buffer)) &&
+            SUCCEEDED(sample->AddBuffer(buffer.Get())),"synthetic sample retains its native surface");
+        std::shared_ptr<const VideoPlaybackGpuImage> first;
+        try {first=converter->Convert(sample.Get(),[]{return true;},Clock::now()+std::chrono::seconds(2));}
+        catch(const std::exception& error) {std::cerr<<"GPU conversion diagnostic: "<<error.what()<<'\n';}
+        Expect(bool(first),"native NV12 and 10-bit P010 both convert on the GPU");
+        if(!first)continue;
+        D3D11_TEXTURE2D_DESC output{};first->texture->GetDesc(&output);
+        Expect(output.Format==DXGI_FORMAT_B8G8R8A8_UNORM && (output.MiscFlags&D3D11_RESOURCE_MISC_SHARED_NTHANDLE),
+            "converted output is an owned shareable BGRA allocation");
+        output.Usage=D3D11_USAGE_STAGING;output.BindFlags=output.MiscFlags=0;output.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Texture2D> staging;Expect(SUCCEEDED(device->CreateTexture2D(&output,nullptr,&staging)),"fixture readback allocation succeeds");
+        if(!staging)continue;
+        context->CopyResource(staging.Get(),first->texture);D3D11_MAPPED_SUBRESOURCE mapped{};
+        Expect(SUCCEEDED(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped)),"fixture-only GPU color readback completes");
+        if(mapped.pData) {
+            const auto* pixel=static_cast<const std::uint8_t*>(mapped.pData)+std::size_t(height/2)*mapped.RowPitch+width/2*4;
+            Expect(pixel[0]<=3 && pixel[1]<=3 && pixel[2]<=3 && pixel[3]==255,
+                "limited black is correctly converted to opaque full-range RGB for 8/10-bit input");
+            context->Unmap(staging.Get(),0);
+        }
+        std::vector<std::shared_ptr<const VideoPlaybackGpuImage>> leases{first};
+        for(unsigned i=1;i<VideoGpuDecoder::kTextureSlotLimit && converter->HasConversionCredit();++i)
+            leases.push_back(converter->Convert(sample.Get(),[]{return true;},Clock::now()+std::chrono::seconds(2)));
+        Expect(leases.size()>=2 && leases.size()<=VideoGpuDecoder::kTextureSlotLimit && !converter->HasConversionCredit(),
+            "consumer-held GPU images stop conversion at the bounded slot count");
+        const auto reused=leases.back()->texture;leases.back().reset();
+        Expect(converter->HasConversionCredit(),"a released GPU lease makes its slot reusable without another allocation");
+        const auto again=converter->Convert(sample.Get(),[]{return true;},Clock::now()+std::chrono::seconds(2));
+        Expect(again && again->texture==reused && first->texture!=again->texture,"only the released GPU slot is reused");
+        Expect(!converter->Convert(sample.Get(),[]{return false;},Clock::now()+std::chrono::seconds(2)),
+            "canceled conversion publishes no image");
+    }
+    }
+}
+void NativeGpuExternal(const std::filesystem::path& path) {
+    VideoPlayback player;ConfigureGpu(player);
+    const auto opened=player.OpenFile(path.wstring());
+    const bool ready=Wait([&] {const auto s=player.Snapshot();return s.frame || s.state==VideoPlaybackState::Unavailable;},10000);
+    auto s=player.Snapshot();
+    std::cout<<"External GPU format "<<path.filename().string()<<" resident="<<s.gpuResident<<" reason="<<s.backendReason<<" error="<<s.error<<'\n';
+    Expect(ready && s.frame && s.requestGeneration==opened,"external native format opens with a current frame");
+    if(!s.frame)return;
+    RequireGpu(s);
+    if(path.filename().string().find("main10")!=std::string::npos)
+        Expect(s.gpuDecodedBitsPerComponent>=10,"10-bit native source keeps high-precision decoder output before GPU BGRA conversion");
+    const auto seek=player.Seek100ns(10'000'000);
+    Expect(Wait([&] {s=player.Snapshot();return s.requestGeneration==seek && s.frame && s.state==VideoPlaybackState::Paused;},10000),"external native format seeks without stale publication");
+    RequireGpu(s);Expect(s.frame && s.frame->pts100ns>=10'000'000,"external format publishes requested PTS");
+    const auto end=player.JumpToEnd();
+    Expect(Wait([&] {s=player.Snapshot();return s.requestGeneration==end && s.state==VideoPlaybackState::Ended;},10000),"external native format holds actual endpoint");
+    RequireGpu(s);player.Close();
+}
 }
 int main(int argc, char** argv) {
     if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return 2;
@@ -557,9 +709,26 @@ int main(int argc, char** argv) {
             std::cout << "SKIP opt-in native codec run requires OKUFLOW_TEST_VIDEO_PLAYBACK_CODEC=1\n";
             MFShutdown(); CoUninitialize(); return 77;
         }
-        if (mode == "--native-4k" || mode == "--native-dci-4k") NativeFourKPool(mode=="--native-dci-4k");
+        if(mode=="--native-gpu-avc" || mode=="--native-gpu-av1" || mode=="--native-gpu-4k" || mode=="--native-gpu-dci-4k" || mode=="--gpu-conversion" || mode=="--native-gpu-external") {
+            ComPtr<IDXGIFactory6> factory;ComPtr<IDXGIAdapter1> adapter;DXGI_ADAPTER_DESC1 desc{};
+            if(!GetEnvironmentVariableW(L"OKUFLOW_TEST_VIDEO_GPU",nullptr,0) ||
+               FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) ||
+               FAILED(factory->EnumAdapterByGpuPreference(0,DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,IID_PPV_ARGS(&adapter))) ||
+               FAILED(adapter->GetDesc1(&desc)) || (desc.Flags&DXGI_ADAPTER_FLAG_SOFTWARE)) {
+                std::cout<<"SKIP opt-in native GPU decoder requires a hardware adapter and OKUFLOW_TEST_VIDEO_GPU=1\n";
+                MFShutdown();CoUninitialize();return 77;
+            }
+            gpuAdapter=desc.AdapterLuid;
+        }
+        if(mode=="--native-gpu-external") {
+            if(argc!=3)Expect(false,"external GPU fixture requires exactly one file path");
+            else NativeGpuExternal(std::filesystem::path(argv[2]));
+        }
+        else if(mode=="--gpu-conversion")NativeGpuConversion();
+        else if (mode == "--native-4k" || mode == "--native-dci-4k" || mode=="--native-gpu-4k" || mode=="--native-gpu-dci-4k")
+            NativeFourKPool(mode=="--native-dci-4k" || mode=="--native-gpu-dci-4k");
         else {
-            const auto codec = mode == "--native-av1" ? VideoRecorder::Codec::Av1 : VideoRecorder::Codec::H264;
+            const auto codec = mode == "--native-av1" || mode=="--native-gpu-av1" ? VideoRecorder::Codec::Av1 : VideoRecorder::Codec::H264;
             NativeAvcAac(codec, true);
             if (!failures && !nativeSkipped) NativeSparseVideoAudio(codec);
         }

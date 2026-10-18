@@ -201,6 +201,14 @@ SuperResCacheExtent ComputeSuperResCacheExtent(UINT sceneWidth,
 
 } // namespace
 
+QSize OkuFlowApp::ProcessingCacheExtent(UINT width, UINT height) const {
+    const auto extent = ComputeSuperResCacheExtent(width, height, mlTextSuperResolutionUltra1440p_);
+    const QSize ceiling = width >= height ? QSize(2560, 1440) : QSize(1440, 2560);
+    const QSize requested(extent.width, extent.height);
+    return requested.width() <= ceiling.width() && requested.height() <= ceiling.height()
+        ? requested : requested.scaled(ceiling, Qt::KeepAspectRatio);
+}
+
 void OkuFlowApp::EnumerateCameras() {
     cameras_ = mediaCapture_.EnumerateCameras(false);
     if (cameras_.empty()) {
@@ -1011,22 +1019,13 @@ bool OkuFlowApp::TryProcessRawFrameWithCuda(MediaFrame& frame,
     return true;
 }
 
-// Shared tail of the CUDA path: builds ProcessingSettings from the live UI
-// state, runs ProcessFrame with the fence dance, and presents the result.
-// The interop surface must already exist at presentWidth x presentHeight.
-bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth, UINT presentHeight) {
-    cudaSubmissionBusy_ = false;
-    if (!cudaSurface_) {
-        qWarning() << "CUDA pipeline disabled: surface not available";
-        usingCudaLastFrame_ = false;
-        return false;
-    }
-
+ProcessingSettings OkuFlowApp::BuildProcessingSettings(UINT width, UINT height, UINT cacheWidth,
+                                                         UINT cacheHeight, std::uint64_t frameSequence) const {
     ProcessingSettings settings{};
     if (controlService_) {
         const auto stamp = controlService_->Stamp();
         settings.controlFrame = {stamp.sourceEpoch,stamp.processingVersion,stamp.viewVersion,
-            stamp.geometryEpoch,currentCameraFrameSequence_,
+            stamp.geometryEpoch,frameSequence,
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()};
     }
     settings.enableBlackWhite = blackWhiteEnabled_;
@@ -1047,10 +1046,10 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     settings.enableSpatialSharpen = spatialSharpenEnabled_;
     settings.spatialUpscaler = spatialUpscaler_;
     settings.spatialSharpness = spatialSharpness_;
-    settings.spatialViewportWidth = presenter_->ViewportWidth();
-    settings.spatialViewportHeight = presenter_->ViewportHeight();
+    settings.spatialViewportWidth = presenter_ ? presenter_->ViewportWidth() : width;
+    settings.spatialViewportHeight = presenter_ ? presenter_->ViewportHeight() : height;
     settings.spatialViewTransform = ComputeViewTransform(
-        presentWidth, presentHeight,
+        width, height,
         settings.spatialViewportWidth, settings.spatialViewportHeight,
         settings.zoomAmount, settings.zoomCenterX, settings.zoomCenterY,
         pipelineOrchestrator_->ViewportFitMode() == settings::ViewportFitModeSetting::Fit
@@ -1104,10 +1103,26 @@ bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth
     if (settings.enableMlSuperRes && !settings.mlSuperResUltra1440p &&
         settings.zoomAmount >= 1.33f) {
         settings.spatialViewTransform = CanonicalizeSuperResViewTransform(
-            settings.spatialViewTransform, presentWidth, presentHeight,
-            cudaSuperResWidth_, cudaSuperResHeight_, settings.zoomAmount);
+            settings.spatialViewTransform, width, height,
+            cacheWidth, cacheHeight, settings.zoomAmount);
     }
     settings.ApplyTextClarityMaster();
+    return settings;
+}
+
+// Shared tail of the CUDA path: builds ProcessingSettings from the live UI
+// state, runs ProcessFrame with the fence dance, and presents the result.
+// The interop surface must already exist at presentWidth x presentHeight.
+bool OkuFlowApp::RunCudaPipeline(const ProcessingInput& input, UINT presentWidth, UINT presentHeight) {
+    cudaSubmissionBusy_ = false;
+    if (!cudaSurface_) {
+        qWarning() << "CUDA pipeline disabled: surface not available";
+        usingCudaLastFrame_ = false;
+        return false;
+    }
+
+    ProcessingSettings settings = BuildProcessingSettings(presentWidth, presentHeight,
+        cudaSuperResWidth_, cudaSuperResHeight_, currentCameraFrameSequence_);
     const bool hiddenLive = MediaViewSelected();
     if (hiddenLive) {
         // The selected file/held scene has its own effects cache. A camera
@@ -1357,16 +1372,7 @@ void OkuFlowApp::PresentLatestCudaScene(bool newCameraFrame,
         pendingPhotoReadbackTimer_.invalidate();
         photoCapturePending_ = true;
     }
-    if (pendingAnnotationReadbackId_ != 0 &&
-        pendingAnnotationReadbackTimer_.isValid() &&
-        pendingAnnotationReadbackTimer_.elapsed() > 1000) {
-        pendingAnnotationReadbackId_ = 0;
-        pendingAnnotationReadbackTimer_.invalidate();
-        // This intent belongs to the copied frame. A fresh frame cannot
-        // replace an expired readback, even if it has the same dimensions.
-        activeAnnotationCapture_.reset();
-        ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
-    }
+    ExpireAnnotationReadback();
     if (pendingOnDemandReadbackId_ != 0 &&
         pendingOnDemandReadbackTimer_.isValid() &&
         pendingOnDemandReadbackTimer_.elapsed() > 1000) {
@@ -1571,6 +1577,7 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                                                readbackWidth,
                                                readbackHeight,
                                                &requestId)) {
+        if (ConsumeVideoGpuReadback(requestId,asyncReadbackBuffer_,readbackWidth,readbackHeight)) continue;
         if (DiscardRetiredMediaHoldReadback(requestId)) continue;
         if (requestId == mediaHoldReadbackId_) {
             mediaHoldReadbackId_ = 0;
@@ -1664,6 +1671,7 @@ void OkuFlowApp::DrainCompletedGpuReadbacks() {
                 static_cast<int>(readbackHeight), static_cast<int>(readbackWidth * 4));
         }
     }
+    PollSelectedVideoSave();
     if (mediaHoldReadbackId_ != 0 && mediaHoldReadbackTimer_.isValid() &&
         mediaHoldReadbackTimer_.elapsed() > 1000) {
         RetirePendingMediaHoldReadback();
@@ -2376,6 +2384,7 @@ void OkuFlowApp::PresentPendingScene() {
 
 bool OkuFlowApp::RunFrameTick(double elapsedSeconds) {
     UpdatePhoneLightUi();
+    PollSelectedVideoSave();
     if (HandlePresenterFault()) return false;
     // A completed capture is independent of another camera arrival or present.
     // Poll on idle ticks too, before any camera/readiness early return.
@@ -2730,6 +2739,19 @@ void OkuFlowApp::BuildCompositeAndPresent(UINT width,
                   originalFrame);
 }
 
+void OkuFlowApp::ExpireAnnotationReadback() {
+    if (pendingAnnotationReadbackId_ != 0 &&
+        ((pendingAnnotationReadbackTimer_.isValid() && pendingAnnotationReadbackTimer_.elapsed() > 1000) ||
+         (presenter_ && !presenter_->HasReadbackRequest(pendingAnnotationReadbackId_)))) {
+        pendingAnnotationReadbackId_ = 0;
+        pendingAnnotationReadbackTimer_.invalidate();
+        // This intent belongs to the copied frame. A fresh frame cannot
+        // replace an expired readback, even if it has the same dimensions.
+        activeAnnotationCapture_.reset();
+        ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
+    }
+}
+
 bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UINT height,
                                            UINT stride, std::uint64_t sourceEpoch,
                                            std::uint64_t frameSeq,
@@ -2814,6 +2836,7 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
     }
     const auto advancingReceipt = [&] {
         if (!ultraClearText_) return;
+        ultraClearText_->SetMediaOverlaySuppressed(false);
         UctAdvancingMediaScene scene;
         scene.geometry.settings.sourceEpoch = sourceEpoch;
         scene.geometry.settings.rotationQuarterTurns = turns;
@@ -2830,6 +2853,7 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
     };
     const auto pausedReceipt = [&] {
         if (!ultraClearText_) return;
+        ultraClearText_->SetMediaOverlaySuppressed(false);
         if (pausedScene) {
             // Prepare one real neighbour only after a matching successful
             // receipt. Busy viewport retries and continuous playback never
@@ -2873,6 +2897,17 @@ bool OkuFlowApp::PresentSelectedMediaPixels(const uint8_t* data, UINT width, UIN
     if (presented) {
         mediaViewportAdmission_.Presented(viewportStamp);
         mediaPresentedScenePixels_ = mediaScenePixels_;
+        mediaPresentedWithCuda_ = mediaSuperResPresented_ = false;
+        if (controlTarget_) {
+            auto observation = controlTarget_->PresentedMediaFrame(transform,
+                QSize(mediaSceneWidth_, mediaSceneHeight_), QSize(viewportStamp.width, viewportStamp.height),
+                frameSeq, SelectedMediaDocumentPts100ns(pts100ns));
+            observation.diagnostics["media"] = QJsonObject{
+                {"sourceEpoch", qint64(sourceEpoch)}, {"frameSequence", qint64(frameSeq)},
+                {"backend", "cpu-output"}};
+            controlTarget_->CpuObservationPresented(QImage(presentationBuffer_.data(), viewportStamp.width,
+                viewportStamp.height, viewportStamp.width * 4, QImage::Format_ARGB32), observation);
+        }
         if (continuousPlayback) advancingReceipt();
         else pausedReceipt();
         mediaUctContinuousPlayback_ = continuousPlayback;
@@ -3076,11 +3111,8 @@ void OkuFlowApp::PresentFitted(const uint8_t* data,
         pendingSceneCaptureClock100ns_.reset();
     }
     pipelineOrchestrator_->MarkViewportPresented();
-    if (controlTarget_) {
+    if (controlTarget_ && !selectedMedia) {
         auto frame = controlTarget_->PresentedFrame(transform,QSize(srcWidth,srcHeight),QSize(mapping.targetWidth,mapping.targetHeight));
-        if (selectedMedia) frame.diagnostics["media"] = QJsonObject{
-            {"sourceEpoch",static_cast<qint64>(mediaSceneRecipe_[0])},
-            {"frameSequence",static_cast<qint64>(mediaSceneRecipe_[1])}};
         controlTarget_->CpuObservationPresented(QImage(presentationBuffer_.data(),mapping.targetWidth,mapping.targetHeight,mapping.targetWidth*4,QImage::Format_ARGB32),frame);
     }
     if (originalFrame) {
@@ -3317,7 +3349,8 @@ bool OkuFlowApp::AnnotationFrameMatches(const UctFrameContext& candidate) const
     const auto& frame = capture.frame;
     const auto& a = frame.transform;
     const auto& b = candidate.transform;
-    return frame.cameraActive && candidate.cameraActive &&
+    return frame.cameraActive == candidate.cameraActive &&
+        (frame.cameraActive || MediaViewSelected()) &&
         capture.sceneRevision == annotationSceneRevision_ &&
         frame.geometry == candidate.geometry && frame.requested == candidate.requested &&
         frame.frameSeq == candidate.frameSeq &&
@@ -3362,6 +3395,15 @@ void OkuFlowApp::QueueAnnotationSnapshot(int reason)
         !mainWindow_->annotationOverlay()->HasInk()) {
         return;
     }
+    // A decoder-ahead candidate can have replaced the reusable scene while
+    // the swapchain still shows doc.presented. Regenerate that exact selected
+    // frame before reading its authority, rather than checking a revoked
+    // receipt and giving up before the recovery path can run.
+    if (MediaViewSelected() && pendingAnnotationReadbackId_ == 0 && annotationCaptureQueue_.empty() &&
+        !PresentSelectedMediaFrameForCapture()) {
+        ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
+        return;
+    }
     if (!lastAnnotationPresentation_ || (!lastAnnotationPresentation_->cameraActive && !MediaViewSelected()) ||
         pendingAnnotationReadbackId_ != 0 || !annotationCaptureQueue_.empty() ||
         (annotationPresentationCuda_ && !lastAnnotationGpuPresentation_)) {
@@ -3390,7 +3432,8 @@ void OkuFlowApp::QueueAnnotationSnapshot(int reason)
     annotationCaptureQueue_.push_back(std::move(capture));
     // Request the cached, already displayed scene in this UI turn, before a
     // later camera tick can replace it. Never defer the intent to fresh pixels.
-    PresentLatestCudaScene(false, nullptr);
+    if (MediaViewSelected()) PresentSelectedMediaFrameForCapture();
+    else PresentLatestCudaScene(false, nullptr);
     if (!annotationCaptureQueue_.empty()) {
         annotationCaptureQueue_.clear(); // Ring full or unavailable scene: no retarget/retry.
         ShowStatusMessage(QStringLiteral("Annotated view not saved: the viewport was unavailable."));
