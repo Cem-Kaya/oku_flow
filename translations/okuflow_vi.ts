@@ -3513,5 +3513,13 @@ Chọn Kết nối ChatGPT trong tab Trợ lý của chế độ Nâng cao để
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Không thể tạm dừng: không thể giữ nguyên chính xác khung hình đang hiển thị.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>Xem video</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Chọn video</translation>
+        </message>
     </context>
 </TS>

@@ -3513,5 +3513,13 @@ Melden Sie sich auf der erweiterten Registerkarte Assistent über ChatGPT verbin
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Pause nicht verfügbar: Der angezeigte Bildausschnitt konnte nicht exakt beibehalten werden.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>Video ansehen</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Video auswählen</translation>
+        </message>
     </context>
 </TS>

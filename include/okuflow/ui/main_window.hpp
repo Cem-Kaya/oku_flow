@@ -5,6 +5,7 @@
 #include <QAbstractNativeEventFilter>
 #include <QColor>
 #include <QString>
+#include <QStringList>
 #include <QMainWindow>
 #include <QWidget>
 #include <QPointF>
@@ -73,6 +74,9 @@ public:
 
     RenderWidget* renderWidget() const;
     QComboBox* cameraCombo() const;
+    void setCameraDevices(const QStringList& names, int selectedCamera);
+    void setVideoSourceSelected(bool selected, int cameraIndex);
+    bool videoSourceSelected() const;
     QPushButton* phoneLightButton() const;
     QComboBox* microphoneCombo() const;
     QListWidget* presetList() const;
@@ -280,6 +284,7 @@ private:
     QSize chromeViewportSize_;
     qreal chromeDevicePixelRatio_{};
     void UpdateCameraPlaceholderVisibility();
+    void UpdateCameraSourceUi();
     void RevealSimpleChrome();
     void FadeSimpleChrome();
     void SetChromeOpacity(qreal opacity, int durationMs, bool hideWhenFinished);
@@ -313,6 +318,7 @@ private:
 
     RenderWidget* renderWidget_{};
     QComboBox* cameraCombo_{};
+    QWidget* cameraFormatControls_{};
     QPushButton* phoneLightButton_{};
     QComboBox* microphoneCombo_{};
     QListWidget* presetList_{};

@@ -688,7 +688,7 @@ MainWindow::MainWindow()
     capturePhotoButton_ = new QPushButton("Photo");
     recordButton_ = new QPushButton("Record");
     recordButton_->setCheckable(true);
-    openVideoButton_ = new QPushButton(QStringLiteral("Open video"));
+    openVideoButton_ = new QPushButton(QStringLiteral("Select video"));
     openVideoButton_->setObjectName(QStringLiteral("openVideoButton"));
     openVideoButton_->setToolTip(QStringLiteral("Open a saved video (Ctrl+O)"));
     connect(openVideoButton_, &QPushButton::clicked, this, &MainWindow::openVideoRequested);
@@ -1296,6 +1296,10 @@ MainWindow::MainWindow()
     cameraLabel->setBuddy(cameraCombo_);
     deviceLayout->addWidget(cameraLabel);
     deviceLayout->addWidget(cameraCombo_);
+    deviceLayout->addWidget(openVideoButton_);
+    openVideoButton_->hide();
+    connect(cameraCombo_, &QComboBox::currentIndexChanged, this,
+            &MainWindow::UpdateCameraSourceUi);
 
     phoneLightButton_ = new QPushButton(QStringLiteral("Turn on phone light"));
     phoneLightButton_->setObjectName(QStringLiteral("phoneLightButton"));
@@ -1331,9 +1335,14 @@ MainWindow::MainWindow()
     cameraFormatNoticeLabel_->setObjectName(QStringLiteral("formatWarningLabel"));
     cameraFormatNoticeLabel_->setWordWrap(true);
     cameraFormatNoticeLabel_->setVisible(false);
-    deviceLayout->addWidget(cameraFormatLabel);
-    deviceLayout->addWidget(cameraFormatCombo_);
-    deviceLayout->addWidget(cameraFormatNoticeLabel_);
+    cameraFormatControls_ = new QWidget();
+    auto* cameraFormatLayout = new QVBoxLayout(cameraFormatControls_);
+    cameraFormatLayout->setContentsMargins(0, 0, 0, 0);
+    cameraFormatLayout->addWidget(cameraFormatLabel);
+    cameraFormatLayout->addWidget(cameraFormatCombo_);
+    cameraFormatLayout->addWidget(cameraFormatNoticeLabel_);
+    deviceLayout->addWidget(cameraFormatControls_);
+    setCameraDevices({}, -1);
 
     // ---- 2. View and navigation ----------------------------------------
     deviceMoreSection_ = makeSection(QStringLiteral("View and navigation"),
@@ -1440,11 +1449,6 @@ MainWindow::MainWindow()
     changeUserDataFolderButton_ =
         new QPushButton(QStringLiteral("Change OkuFlow folder..."));
     notesFilesLayout->addWidget(openNotesButton_);
-    auto* openVideoInSettings = new QPushButton(QStringLiteral("Open video"));
-    openVideoInSettings->setAccessibleName(QStringLiteral("Open video"));
-    openVideoInSettings->setToolTip(QStringLiteral("Open a saved video (Ctrl+O)"));
-    connect(openVideoInSettings, &QPushButton::clicked, this, &MainWindow::openVideoRequested);
-    notesFilesLayout->addWidget(openVideoInSettings);
     notesFilesLayout->addWidget(annotationCaptureOnExitCheckbox_);
     notesFilesLayout->addWidget(openUserDataFolderButton_);
     notesFilesLayout->addWidget(changeUserDataFolderButton_);
@@ -1840,7 +1844,6 @@ MainWindow::MainWindow()
     bottomRightLayout->addWidget(explainNowButton_, 0, 2);
     bottomRightLayout->addWidget(readTextButton_, 0, 3);
     bottomRightLayout->addWidget(annotationButton_, 0, 4);
-    bottomRightLayout->addWidget(openVideoButton_, 0, 5);
 
     connect(annotationButton_, &QPushButton::toggled, this, [this](bool checked) {
         if (changingAnnotationMode_) {
@@ -2076,7 +2079,7 @@ MainWindow::MainWindow()
             "Save synchronized original and processed camera photos");
     setA11y(recordButton_, "Record Video",
             "Start or stop an Original MP4 recording");
-    setA11y(openVideoButton_, "Open video", "Open a saved video (Ctrl+O)");
+    setA11y(openVideoButton_, "Select video", "Open a saved video (Ctrl+O)");
     setA11y(annotationButton_, "Draw on camera view",
             "Open annotation mode to mark the lecture view with scene-anchored ink.");
     setA11y(joystickCheckbox_, "Virtual Joystick",
@@ -2290,7 +2293,6 @@ MainWindow::MainWindow()
     QWidget::setTabOrder(recordButton_, explainNowButton_);
     QWidget::setTabOrder(explainNowButton_, readTextButton_);
     QWidget::setTabOrder(readTextButton_, annotationButton_);
-    QWidget::setTabOrder(annotationButton_, openVideoButton_);
 
     // Inside the inspector, keyboard order is each tab's visual order: its
     // search field, header controls, then section headers and contents
@@ -2906,6 +2908,42 @@ RenderWidget* MainWindow::renderWidget() const
 }
 
 QComboBox* MainWindow::cameraCombo() const { return cameraCombo_; }
+
+void MainWindow::setCameraDevices(const QStringList& names, int selectedCamera)
+{
+    const bool video = videoSourceSelected();
+    const QSignalBlocker blocker(cameraCombo_);
+    cameraCombo_->clear();
+    cameraCombo_->addItems(names);
+    cameraCombo_->addItem(TranslateUi(QStringLiteral("View video")), QStringLiteral("video"));
+    cameraCombo_->setCurrentIndex(video ? names.size()
+        : selectedCamera >= 0 && selectedCamera < names.size() ? selectedCamera : -1);
+    UpdateCameraSourceUi();
+}
+
+bool MainWindow::videoSourceSelected() const
+{
+    return cameraCombo_ && cameraCombo_->currentData().toString() == QStringLiteral("video");
+}
+
+void MainWindow::setVideoSourceSelected(bool selected, int cameraIndex)
+{
+    const QSignalBlocker blocker(cameraCombo_);
+    const int videoIndex = cameraCombo_->findData(QStringLiteral("video"));
+    cameraCombo_->setCurrentIndex(selected ? videoIndex
+        : cameraIndex >= 0 && cameraIndex < videoIndex ? cameraIndex : -1);
+    UpdateCameraSourceUi();
+}
+
+void MainWindow::UpdateCameraSourceUi()
+{
+    const bool video = videoSourceSelected();
+    openVideoButton_->setVisible(video);
+    cameraFormatControls_->setVisible(!video);
+    if (video) {
+        phoneLightButton_->hide();
+    }
+}
 QPushButton* MainWindow::phoneLightButton() const { return phoneLightButton_; }
 QComboBox* MainWindow::microphoneCombo() const { return microphoneCombo_; }
 QListWidget* MainWindow::presetList() const { return presetList_; }
@@ -3518,7 +3556,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
     UpdateUiVisibilityControl();
     currentModeButton_->setMinimumWidth(220);
     currentModeButton_->setMaximumWidth(QWIDGETSIZE_MAX);
-    const std::array<std::pair<QPushButton*, QString>, 6> actionButtons{{
+    const std::array<std::pair<QPushButton*, QString>, 5> actionButtons{{
         {capturePhotoButton_, QStringLiteral("Photo")},
         {recordButton_, !recordButton_->isEnabled()
                             ? QStringLiteral("Finishing")
@@ -3530,7 +3568,6 @@ void MainWindow::UpdateSimpleChromeGeometry()
                                 : QStringLiteral("Explain")},
         {readTextButton_, QStringLiteral("Read")},
         {annotationButton_, QStringLiteral("Draw")},
-        {openVideoButton_, QStringLiteral("Open video")},
     }};
     for (const auto& [button, label] : actionButtons) {
         button->setText(TranslateUi(label));
@@ -3651,7 +3688,7 @@ void MainWindow::UpdateSimpleChromeGeometry()
     };
     // Test the real translated button sizes, including stylesheet padding
     // and icons. Retain readable labels even at the minimum camera width.
-    arrangeActions(6);
+    arrangeActions(static_cast<int>(actionButtons.size()));
     const bool cornerChrome =
         bottomLeftPanel_->width() + trackingWidth + refit(bottomRightPanel_) <= viewWidth;
     if (!cornerChrome) {
@@ -4224,6 +4261,11 @@ void MainWindow::changeEvent(QEvent* event)
         refreshSliderReadouts();
         refreshTextClarityUi();
         refreshSystemLanguageItem();
+        if (cameraCombo_) {
+            const QSignalBlocker blocker(cameraCombo_);
+            const int videoIndex = cameraCombo_->findData(QStringLiteral("video"));
+            if (videoIndex >= 0) cameraCombo_->setItemText(videoIndex, TranslateUi(QStringLiteral("View video")));
+        }
         UpdateUiVisibilityControl();
         ApplyExplainBusyUi();
         UpdateAdvancedTabToolTips();
@@ -4499,7 +4541,7 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
                 previousModeButton_, currentModeButton_, nextModeButton_,
                 simpleKeystoneBackButton_, simpleKeystonePauseButton_, simpleKeystoneNextButton_,
                 capturePhotoButton_, recordButton_, explainNowButton_, readTextButton_,
-                annotationButton_, openVideoButton_};
+                annotationButton_};
             if (videoTransport_ && videoTransport_->isVisible()) {
                 const auto transportTargets = videoTransport_->FocusTargets();
                 focusOrder.insert(focusOrder.end(), transportTargets.begin(), transportTargets.end());

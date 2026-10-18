@@ -3513,5 +3513,13 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>مکث در دسترس نیست: قاب‌بندیِ نمایشی را نمی‌شد دقیقاً حفظ کرد.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>نمایش ویدیو</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>انتخاب ویدیو</translation>
+        </message>
     </context>
 </TS>

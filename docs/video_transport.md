@@ -6,8 +6,14 @@ column's width. The native corner-control windows remain inside the render
 rectangle, so they cannot cover the timeline. Plain unrecorded camera use has
 no transport and supplies no camera-history collection.
 
-Open video is a sixth corner action, a Settings / Notes and files button, and
-`Ctrl+O` on OkuFlow's main/owned control surfaces. A single local file URL may
+Saved-video selection lives in Settings > Camera. The camera dropdown includes
+`View video`; choosing it opens the local file picker. While video is selected,
+`Select video` appears directly beneath the dropdown. Orientation stays available
+for the video; camera-only format controls and the phone light are hidden.
+Camera discovery preserves this selection. Choosing a physical/phone camera
+leaves file review, and canceling the picker keeps the previous viewed source.
+There is no Open video action in the corner toolbar or Notes and files.
+`Ctrl+O` still works on OkuFlow's main/owned control surfaces. A single local file URL may
 also be dropped on the view or its owned chrome. Drag handling inspects MIME
 data only and commits a CopyAction; asynchronous format validation and opening
 belong to the application. Opening a saved file stops/finalizes a current
@@ -102,7 +108,9 @@ string; existing keys may already be present in the catalogs.
 | `Video timeline` | Slider accessible name |
 | `Left and Right: one second. Page Up and Page Down: ten seconds. Home: start. End: recorded end.` | Timeline help |
 | `%1 of %2` | Accessible current time and total time; preserve both placeholders |
-| `Open video` | Corner and Notes/files actions |
+| `Open video` | File dialog title |
+| `View video` | Camera/source dropdown option |
+| `Select video` | Conditional file selection button under the source dropdown |
 | `Open a saved video (Ctrl+O)` | Open action help; preserve shortcut |
 | `Record Original video` | Record tooltip |
 | `Start or stop an Original MP4 recording` | Record accessible description |

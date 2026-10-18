@@ -3513,5 +3513,13 @@ Přihlaste se přes Connect ChatGPT na kartě Asistent v režimu Upřesnit.</tra
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Pozastavení není k dispozici: zobrazený výřez se nepodařilo přesně zachovat.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>Zobrazit video</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Vybrat video</translation>
+        </message>
     </context>
 </TS>

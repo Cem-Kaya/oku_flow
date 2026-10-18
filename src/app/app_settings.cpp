@@ -315,7 +315,7 @@ void OkuFlowApp::SavePersistentSettings() {
         settingsController_->MutableSettings().microphoneEndpointId =
             uiState_->microphoneCombo_->currentData().toString();
     }
-    settingsController_->MutableSettings().rotationQuarterTurns = rotationQuarterTurns_;
+    settingsController_->MutableSettings().rotationQuarterTurns = CameraOriginalRotationQuarterTurns();
     settingsController_->MutableSettings().virtualJoystick = virtualJoystickEnabled_;
     settingsController_->MutableSettings().controlsCollapsed = false;
     if (uiState_->zoomWheelAccelerationCheckbox_) {

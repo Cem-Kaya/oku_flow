@@ -3513,5 +3513,13 @@ Use “Conectar ao ChatGPT” na guia Assistente do modo Avançado para fazer lo
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Não é possível pausar: não foi possível manter exatamente o enquadramento exibido.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>Assistir a um vídeo</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Selecionar vídeo</translation>
+        </message>
     </context>
 </TS>

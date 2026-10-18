@@ -20,13 +20,16 @@ pixels. Its source label distinguishes the current recording from a saved file;
 ordinary live camera use has no timeline. Native Pause/Resume, timeline,
 forward-to-live/end, Return to camera, Mute and Save frame controls retain
 keyboard and accessibility semantics. Opening a file first finalizes recording.
-The Open video action joins the corner actions and is also available through
-Ctrl+O and a single local-file drop. See [transport layout](video_transport.md).
+Open a file through Settings > Camera > View video, Ctrl+O or a single local-file
+drop. The conditional Select video button sits below the source dropdown;
+the five corner actions remain Photo, Record, Explain, Read and Draw. See
+[transport layout](video_transport.md).
 
-Selected media uses the CPU presentation path for zoom, rotation, reading
-colors and UCT. Advanced GPU effects are unavailable there; preferences remain
-intact for returning to the camera. Camera setup and keystone strips must not
-obscure the selected file or imply that those effects are applied.
+Selected media shares image controls, including orientation. The independent
+CUDA media scene supports the shared effects pipeline; CPU compatibility retains
+zoom, rotation, reading colors and UCT. Camera resolution/frame rate and the phone
+light are hidden while video is selected. Video rotation preserves the camera's
+saved orientation and restores it on Return to camera.
 
 Simple mode is the normal operating view:
 

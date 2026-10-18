@@ -3513,5 +3513,13 @@ Wybierz „Połącz z ChatGPT” na karcie Asystent w trybie zaawansowanym, aby 
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Pauza niedostępna: nie udało się dokładnie zachować wyświetlanego kadru.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>Wyświetl wideo</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Wybierz wideo</translation>
+        </message>
     </context>
 </TS>

@@ -3513,5 +3513,13 @@ Utilisez Connect ChatGPT dans l'onglet Assistant avancé pour vous connecter.</t
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Pause indisponible : le cadrage affiché n’a pas pu être conservé à l’identique.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>Regarder une vidéo</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Sélectionner une vidéo</translation>
+        </message>
     </context>
 </TS>

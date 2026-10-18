@@ -3513,5 +3513,13 @@ Välj Anslut ChatGPT på fliken Assistent i avancerat läge för att logga in.</
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Det går inte att pausa: den visade bildens utsnitt kunde inte behållas exakt.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>Visa video</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Välj video</translation>
+        </message>
     </context>
 </TS>

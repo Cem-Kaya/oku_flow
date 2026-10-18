@@ -3513,5 +3513,13 @@ Gebruik ChatGPT verbinden op het tabblad Assistent in de geavanceerde modus om u
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Pauzeren niet beschikbaar: het weergegeven kader kon niet exact worden behouden.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>Video bekijken</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Video selecteren</translation>
+        </message>
     </context>
 </TS>

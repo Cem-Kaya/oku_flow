@@ -3513,5 +3513,13 @@ Giriş yapmak için Gelişmiş Asistan sekmesindeki ChatGPT Bağlantısı’nı 
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Duraklatılamıyor: görüntülenen kadraj aynen korunamadı.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>Video izle</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Video seç</translation>
+        </message>
     </context>
 </TS>

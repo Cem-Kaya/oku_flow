@@ -3513,5 +3513,13 @@ Use Connect ChatGPT on the Advanced Assistant tab to sign in.</source>
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>일시 정지할 수 없습니다: 현재 표시된 구도를 정확히 유지할 수 없습니다.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>동영상 보기</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>동영상 선택</translation>
+        </message>
     </context>
 </TS>

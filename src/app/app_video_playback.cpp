@@ -165,6 +165,7 @@ void OkuFlowApp::InitializeVideoPlayback()
             QCoreApplication::translate("OkuFlow", "Open video"), {},
             QCoreApplication::translate("OkuFlow", "Video files (*.mp4 *.m4v *.mov *.avi *.wmv *.mkv);;All files (*)"));
         if (!path.isEmpty()) OpenVideoFile(path);
+        else PollVideoPlayback(); // Cancel keeps the actual viewed source selected.
     });
     connect(mainWindow_.get(), &MainWindow::videoFileDropped, this, &OkuFlowApp::OpenVideoFile);
     auto* transport = mainWindow_->videoTransport();
@@ -999,6 +1000,8 @@ void OkuFlowApp::PollVideoPlayback()
              !doc.followingLive && !doc.finishing && !doc.heldLive && !doc.pausedDisplayHold && !doc.pendingHold)
         ui.state = VideoTransport::State::Waiting;
     mainWindow_->videoTransport()->SetSnapshot(ui);
+    mainWindow_->setVideoSourceSelected(MediaViewSelected() || doc.openingFile ||
+        !doc.waitingSession.isEmpty(), selectedCameraIndex_);
     const bool selectedMedia = MediaViewSelected();
     const bool mediaGpuAvailable = selectedMedia && SelectedMediaGpuProcessingAvailable();
     if (!doc.controlsInitialized || doc.controlsMediaSelected != selectedMedia ||
@@ -1007,6 +1010,7 @@ void OkuFlowApp::PollVideoPlayback()
         doc.controlsMediaSelected = selectedMedia;
         doc.controlsMediaGpuAvailable = mediaGpuAvailable;
         UpdateControlEnabledStates();
+        UpdatePhoneLightUi();
         UpdateKeystoneTrackingUi();
         UpdateProcessingStatusLabel();
     }

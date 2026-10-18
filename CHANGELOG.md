@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Move saved-video selection into Settings > Camera: choose View video to open
+  the file picker, then use Select video to replace it. Keep the five camera
+  actions uncluttered, preserve the source selection through camera discovery,
+  and keep video orientation separate from the saved camera preference.
+
 - Add an explicit two-output GPU media experiment and one-time throughput/latency
   measurements, preserving shared processing history and independent output
   fences. Keep one output as the app default after the measured tradeoff.

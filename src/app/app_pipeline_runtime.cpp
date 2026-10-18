@@ -231,10 +231,9 @@ void OkuFlowApp::PopulateCameraCombo() {
         return;
     }
 
-    uiState_->cameraCombo_->clear();
-    for (const auto& camera : cameras_) {
-        uiState_->cameraCombo_->addItem(QString::fromWCharArray(camera.name.c_str()));
-    }
+    QStringList names;
+    for (const auto& camera : cameras_) names.append(QString::fromWCharArray(camera.name.c_str()));
+    mainWindow_->setCameraDevices(names, selectedCameraIndex_);
 }
 
 void OkuFlowApp::PollPhoneCameraDiscovery()
@@ -267,7 +266,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                 if (changed && uiState_->cameraCombo_) {
                     auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
                     PopulateCameraCombo();
-                    uiState_->cameraCombo_->setCurrentIndex(selectedCameraIndex_);
+                    if (!mainWindow_->videoSourceSelected()) uiState_->cameraCombo_->setCurrentIndex(selectedCameraIndex_);
                 }
                 UpdatePhoneLightUi();
                 for (const auto& phone : discovered) {
@@ -290,7 +289,7 @@ void OkuFlowApp::PollPhoneCameraDiscovery()
                     pipelineOrchestrator_->CancelCameraReconnect();
                     if (uiState_->cameraCombo_) {
                         auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-                        uiState_->cameraCombo_->setCurrentIndex(target);
+                        if (!mainWindow_->videoSourceSelected()) uiState_->cameraCombo_->setCurrentIndex(target);
                     }
                     if (preferredPhoneCamera_.isEmpty() && cameraIntent_.FillStartupIdentity(
                             QString::fromStdWString(cameras_[static_cast<size_t>(target)].symbolicLink),target)) {
@@ -351,7 +350,7 @@ void OkuFlowApp::StartFallbackCamera()
         if (!cameras_[i].phoneSerial.empty()) continue;
         if (uiState_->cameraCombo_) {
             auto blocker = uiState_->BlockSignals(uiState_->cameraCombo_);
-            uiState_->cameraCombo_->setCurrentIndex(static_cast<int>(i));
+            if (!mainWindow_->videoSourceSelected()) uiState_->cameraCombo_->setCurrentIndex(static_cast<int>(i));
         }
         StartCameraCapture(i, false, false, true,agent::CameraSourceOrigin::Fallback);
         return;

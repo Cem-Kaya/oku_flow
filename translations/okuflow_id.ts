@@ -3513,5 +3513,13 @@ Pilih Hubungkan ChatGPT di tab Asisten pada mode Tingkat Lanjut untuk masuk.</tr
             <source>Pause unavailable: the displayed framing could not be retained exactly.</source>
             <translation>Jeda tidak tersedia: area gambar yang sedang ditampilkan tidak dapat dipertahankan dengan tepat.</translation>
         </message>
+        <message>
+            <source>View video</source>
+            <translation>Tonton video</translation>
+        </message>
+        <message>
+            <source>Select video</source>
+            <translation>Pilih video</translation>
+        </message>
     </context>
 </TS>

@@ -22,6 +22,8 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLayout>
+#include <QPushButton>
 #include <QScopeGuard>
 #include <QSlider>
 #include <QTemporaryDir>
@@ -335,6 +337,17 @@ public:
     static void VideoSaved(OkuFlowApp& app,const SavedRecordingSegment& part) {app.OnVideoSegmentSaved(part);}
     static bool VideoTimerActive(const OkuFlowApp& app) {return app.videoPlaybackTimer_ && app.videoPlaybackTimer_->isActive();}
     static VideoTransport::Snapshot VideoUi(const OkuFlowApp& app) {return app.mainWindow_->videoTransport()->snapshot();}
+    static MainWindow& Window(OkuFlowApp& app) {return *app.mainWindow_;}
+    static void VideoOrientation(OkuFlowApp& app,int turns) {
+        app.uiState_->rotationCombo_->setCurrentIndex(turns);
+        app.OnRotationSelectionChanged(turns);
+    }
+    static int VideoRecipeOrientation(const OkuFlowApp& app) {
+        return static_cast<int>(app.SelectedMediaSceneRecipe(*app.SelectedVideoFrameForTest())[OkuFlowApp::kMediaRecipeRotation]);
+    }
+    static int CameraOrientation(const OkuFlowApp& app) {return app.CameraOriginalRotationQuarterTurns();}
+    static int SavedOrientation(const OkuFlowApp& app) {return app.settingsController_->Settings().rotationQuarterTurns;}
+    static void ReturnVideo(OkuFlowApp& app) {app.ReturnVideoToCamera();}
     static bool VideoStartAllowed(const OkuFlowApp& app) {return app.BeforeRequestRecording();}
     static void SetCameraActive(OkuFlowApp& app,bool active) {app.cameraActive_=active;}
     static std::shared_ptr<const VideoPlaybackFrame> HeldVideoFrame(const OkuFlowApp& app) {
@@ -678,6 +691,32 @@ public:
     explicit NativeAcceptance(OkuFlowApp& app):app_(app) {}
 private slots:
 #if defined(OKUFLOW_VIDEO_DOCUMENT_TESTS)
+    void videoSourceControlsBelongToCameraSettings() {
+        MainWindow window;
+        window.setCameraDevices({"Fixture webcam","Fixture phone"},0);
+        auto* combo=window.cameraCombo();auto* select=window.openVideoButton();
+        QVERIFY(select->parentWidget()==combo->parentWidget());
+        QVERIFY(select->parentWidget()!=window.annotationButton()->parentWidget());
+        QCOMPARE(window.annotationButton()->parentWidget()->layout()->indexOf(select),-1);
+        QVERIFY(select->isHidden());QVERIFY(!window.cameraFormatCombo()->parentWidget()->isHidden());
+        QCOMPARE(combo->count(),3);QCOMPARE(combo->itemText(2),QStringLiteral("View video"));
+        QSignalSpy changes(combo,&QComboBox::currentIndexChanged);
+        QSignalSpy opens(&window,&MainWindow::openVideoRequested);
+        combo->setCurrentIndex(2);
+        QVERIFY(window.videoSourceSelected());QVERIFY(!select->isHidden());
+        QCOMPARE(select->text(),QStringLiteral("Select video"));
+        QVERIFY(window.cameraFormatCombo()->parentWidget()->isHidden());
+        QVERIFY(!window.rotationCombo()->isHidden());QVERIFY(window.rotationCombo()->isEnabled());
+        QCOMPARE(combo->nextInFocusChain(),static_cast<QWidget*>(select));
+        select->click();QCOMPARE(opens.count(),1);
+        window.setCameraDevices({"Fixture webcam","Fixture phone","New phone"},1);
+        QVERIFY(window.videoSourceSelected());QCOMPARE(combo->currentIndex(),3);
+        QCOMPARE(changes.count(),1);QCOMPARE(opens.count(),1); // refresh cannot open a dialog
+        window.setVideoSourceSelected(false,1);
+        QVERIFY(!window.videoSourceSelected());QCOMPARE(combo->currentIndex(),1);
+        QVERIFY(select->isHidden());QVERIFY(!window.cameraFormatCombo()->parentWidget()->isHidden());
+        QCOMPARE(changes.count(),1);
+    }
     void selectedMediaGpuPolicyIncludesAllImageEffects() {
         // Exercise the policy seam without creating a CUDA surface or claiming
         // that this offscreen fixture has executed any shader.
@@ -1028,6 +1067,32 @@ private slots:
         QVERIFY(!state["hasFrame"].toBool());
         NativeControlFixture::ResetVideo(app_);
         bool removed=false;QTRY_VERIFY_WITH_TIMEOUT(removed || (removed=QFile::remove(path)),3000);
+    }
+    void selectedVideoOrientationPreservesCameraPreferenceAndIdentity() {
+        QTemporaryDir folder;QVERIFY(folder.isValid());
+        const auto path=folder.filePath(QStringLiteral("orientation.avi"));
+        QVERIFY(WritePrivateVideoFixture(path));
+        const auto cleanup=qScopeGuard([&] {NativeControlFixture::ReturnVideo(app_);NativeControlFixture::ResetVideo(app_);});
+        NativeControlFixture::ResetVideo(app_);
+        const int cameraTurns=NativeControlFixture::CameraOrientation(app_);
+        NativeControlFixture::OpenVideo(app_,path);
+        QTRY_COMPARE_WITH_TIMEOUT(NativeControlFixture::VideoState(app_)["kind"].toString(),QStringLiteral("file"),5000);
+        auto& window=NativeControlFixture::Window(app_);
+        QVERIFY(window.videoSourceSelected());QVERIFY(!window.openVideoButton()->isHidden());
+        const auto identity=NativeControlFixture::VideoState(app_)["documentId"];
+        const auto pts=NativeControlFixture::SelectedVideoFrame(app_)->pts100ns;
+        for(int turns:{1,2,3}) {
+            NativeControlFixture::VideoOrientation(app_,turns);
+            QCOMPARE(window.rotationCombo()->currentIndex(),turns);
+            QCOMPARE(NativeControlFixture::VideoRecipeOrientation(app_),turns);
+            QCOMPARE(NativeControlFixture::CameraOrientation(app_),cameraTurns);
+            QCOMPARE(NativeControlFixture::SavedOrientation(app_),cameraTurns);
+            QCOMPARE(NativeControlFixture::VideoState(app_)["documentId"],identity);
+            QCOMPARE(NativeControlFixture::SelectedVideoFrame(app_)->pts100ns,pts);
+        }
+        NativeControlFixture::ReturnVideo(app_);
+        QVERIFY(!window.videoSourceSelected());QVERIFY(window.openVideoButton()->isHidden());
+        QCOMPARE(window.rotationCombo()->currentIndex(),cameraTurns);
     }
     void pendingRecordingOpenWaitsForMatchingSessionAndNewestFileWins() {
         QTemporaryDir folder;QVERIFY(folder.isValid());

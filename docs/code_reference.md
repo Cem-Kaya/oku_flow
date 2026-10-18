@@ -5475,7 +5475,7 @@ exact backoff boundaries, immediate rejection of mismatched incoming OCR leases
 and recovery in the real app wiring. `selectedMediaPollingExpiresPendingAnnotationReadbackWithoutRetargeting`
 uses the document timer to expire a genuinely active annotation intent without
 requiring a camera or retargeting later pixels. `ActionRowsProblem` inventories
-all six production action buttons, including Open video, while preserving its
+the production corner actions (now five, with Select video in Camera settings), while preserving its
 rectangle, equal-row-width and minimum-height assertions.
 
 `MediaGpuScene(unsigned outputBuffers = 1)` accepts one or two outputs. The
@@ -5500,3 +5500,34 @@ HWND. `AwaitProducer` verifies independent output completion; `Percentile`
 reduces local timing samples. Existing effect/history and spatial/neural cases
 accept an output count and validate both configurations. Timed comparisons stay
 outside recurring CTest and do not claim end-to-end player/monitor latency.
+
+
+### Camera settings video source (2026-10-19)
+
+`MainWindow::setCameraDevices(names, selectedCamera)` rebuilds device labels and
+appends the tagged, translated View video option without emitting a source change.
+It preserves a selected video across discovery refreshes. `videoSourceSelected()`
+checks the item's data tag rather than a translated label or a camera index.
+`setVideoSourceSelected(selected, cameraIndex)` silently synchronizes the source
+with playback adoption, opening, failure, cancellation and return. The private
+`UpdateCameraSourceUi()` shows Select video below the dropdown and hides camera
+format/torch controls while leaving Orientation available. Keyboard order follows
+the inspector layout; only the five capture/assistive buttons enter corner geometry.
+
+`PopulateCameraCombo()` delegates to that device-list seam; automatic phone and
+fallback index updates preserve a video choice. `OnCameraSelectionChanged()` routes
+the video entry to the existing local picker and a manual camera entry back to
+live capture. `InitializeVideoPlayback()` re-synchronizes the source on picker
+cancel, and `PollVideoPlayback()` reflects the current document without opening a
+dialog. `SetRotationQuarterTurns()` and `SavePersistentSettings()` retain
+`CameraOriginalRotationQuarterTurns()` as the saved camera preference during file
+review, while selected media continues using the current orientation recipe.
+
+The offscreen native fixture adds `videoSourceControlsBelongToCameraSettings`
+(placement, five-action separation, source visibility, keyboard order and silent
+refresh/reselection) and `selectedVideoOrientationPreservesCameraPreferenceAndIdentity`
+(actual native file adoption, quarter/half/three-quarter rotation through the
+native control handler, paused cursor/document identity and camera restoration).
+`NativeControlFixture::Window`, `VideoOrientation`, `VideoRecipeOrientation`,
+`CameraOrientation`, `SavedOrientation` and `ReturnVideo` expose only these
+hardware-free production seams; they do not claim actual GPU display or UIA.
